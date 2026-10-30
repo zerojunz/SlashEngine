@@ -3399,6 +3399,17 @@ std::optional<Frame3D> Renderer::prepare(
         }
     }
     drawn_ = std::move(drawn);
+    // A spatial shader's vertex() places corners where they were with the time of the frame before
+    // too, as Godot's prev_data.time.
+    const double step =
+        (use_taa || fsr2) && drawn_time_ && *drawn_time_ <= time ? time - *drawn_time_ : 0.0;
+    for (Draw& draw : draws_) {
+        if (draw.material.shader != render::ShaderId::None) {
+            auto& clock = draw.material.shader_constants.at(render::kShaderTimeConstant);
+            clock[1] = clock[0] - static_cast<float>(step);
+        }
+    }
+    drawn_time_ = time;
     // Meshes no entity drew this frame go, and so do the entities' records of them.
     for (auto it = shared_.begin(); it != shared_.end();) {
         if (it->second.used != frame_) {

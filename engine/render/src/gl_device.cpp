@@ -503,8 +503,10 @@ public:
                 for (const auto& [id, program] : game_programs_) {
                     gl_.delete_program(program);
                 }
-                for (const auto& [id, program] : spatial_programs_) {
-                    gl_.delete_program(program);
+                for (const auto* programs : {&spatial_programs_, &spatial_shadow_programs_}) {
+                    for (const auto& [id, program] : *programs) {
+                        gl_.delete_program(program);
+                    }
                 }
                 for (const auto& [id, mesh] : meshes_) {
                     delete_mesh(mesh);
@@ -745,18 +747,35 @@ public:
             return checked.error();
         }
         make_current();
-        // A spatial shader's fragment stage goes with the mesh shader's vertex stage.
+        // A spatial shader's fragment stage goes with its vertex stage, or the mesh shader's when
+        // it has no vertex(); its shadows draw with its own stages where it runs them there.
         const bool spatial = shader.type == ShaderType::Spatial;
-        auto program = spatial ? link(at_w1_vertex(joined(shaders::kMeshVertexGlsl)),
-                                      at_w1_fragment(shader.glsl_fragment), kMeshSamplerNames,
-                                      "the game's spatial shader")
-                               : link(shader.glsl_vertex, shader.glsl_fragment,
-                                      kMaterialSamplerNames, "the game's shader");
+        auto program =
+            spatial ? link(at_w1_vertex(shader.vertex_used ? shader.glsl_vertex
+                                                           : joined(shaders::kMeshVertexGlsl)),
+                           at_w1_fragment(shader.glsl_fragment), kMeshSamplerNames,
+                           "the game's spatial shader")
+                    : link(shader.glsl_vertex, shader.glsl_fragment, kMaterialSamplerNames,
+                           "the game's shader");
         if (!program) {
             return program.error();
         }
+        GLuint shadow = 0;
+        if (spatial && shader.shadows_used()) {
+            auto made =
+                link(at_w1_vertex(shader.shadow_vertex.glsl), at_w1_fragment(shader.shadow.glsl),
+                     kMeshSamplerNames, "the game's spatial shader's shadows");
+            if (!made) {
+                gl_.delete_program(program.value());
+                return made.error();
+            }
+            shadow = made.value();
+        }
         const auto id = static_cast<ShaderId>(next_shader_++);
         (spatial ? spatial_programs_ : game_programs_)[id] = program.value();
+        if (shadow != 0) {
+            spatial_shadow_programs_[id] = shadow;
+        }
         return id;
     }
 
@@ -767,11 +786,19 @@ public:
             return;
         }
         // The frame being built may still draw with it, so it goes once the frame is sent.
-        if (in_frame_) {
-            pending_programs_.push_back(it->second);
-        } else {
-            make_current();
-            gl_.delete_program(it->second);
+        std::vector<GLuint> going{it->second};
+        if (const auto shadow = spatial_shadow_programs_.find(shader);
+            shadow != spatial_shadow_programs_.end()) {
+            going.push_back(shadow->second);
+            spatial_shadow_programs_.erase(shadow);
+        }
+        for (const GLuint program : going) {
+            if (in_frame_) {
+                pending_programs_.push_back(program);
+            } else {
+                make_current();
+                gl_.delete_program(program);
+            }
         }
         programs.erase(it);
     }
@@ -1996,7 +2023,8 @@ private:
     // They draw upside down, as frames do (see kFlipY), so the atlas's rows are the other
     // devices'; each rect's first row is GL's bottom, and front faces turn counterclockwise.
     void draw_shadows(const ShadowPlan& plan, std::span<const std::size_t> pass_uniforms,
-                      std::span<const std::pair<std::size_t, std::size_t>> placed) {
+                      std::span<const std::pair<std::size_t, std::size_t>> placed,
+                      std::span<const std::size_t> shadow_games) {
         gl_.bind_framebuffer(gl::kFramebuffer, shadow_framebuffer_);
         const GLenum none = gl::kNone;
         gl_.draw_buffers(1, &none);
@@ -2050,9 +2078,23 @@ private:
                     gl_.bind_buffer_range(gl::kUniformBuffer, kSurfaceBinding, uniform_buffer_,
                                           static_cast<GLintptr>(placed[i].second),
                                           static_cast<GLsizeiptr>(sizeof(MeshSurfaceUniforms)));
-                    gl_.active_texture(gl::kTexture0);
-                    gl_.bind_texture(gl::kTexture2D, batch.units[0].texture);
-                    gl_.bind_sampler(0, batch.units[0].sampler);
+                    // A spatial shader that draws its shadows reads its texture params, the
+                    // material's first units, in both stages.
+                    const auto game = spatial_shadow_programs_.find(draw.material.shader);
+                    const bool own = game != spatial_shadow_programs_.end();
+                    gl_.use_program(own ? game->second : shadow_program_);
+                    if (own) {
+                        gl_.bind_buffer_range(
+                            gl::kUniformBuffer, kGameBinding, uniform_buffer_,
+                            static_cast<GLintptr>(shadow_games[(p * mesh_draws_.size()) + i]),
+                            static_cast<GLsizeiptr>(sizeof(SpatialUniforms)));
+                    }
+                    const std::size_t units = own ? kSpatialShaderTextures : 1;
+                    for (std::size_t unit = 0; unit < units; ++unit) {
+                        gl_.active_texture(gl::kTexture0 + static_cast<GLenum>(unit));
+                        gl_.bind_texture(gl::kTexture2D, batch.units.at(unit).texture);
+                        gl_.bind_sampler(static_cast<GLuint>(unit), batch.units.at(unit).sampler);
+                    }
                     gl_.bind_vertex_array(batch.vertex_array);
                     draw_triangles(batch);
                 }
@@ -2107,8 +2149,21 @@ private:
             if (mesh_draws_[i].material.shader != ShaderId::None) {
                 const SpatialUniforms game =
                     spatial_uniforms(scene, mesh_draws_[i].transform, mesh_draws_[i].material,
-                                     frame_width_, frame_height_);
+                                     frame_width_, frame_height_, mesh_draws_[i].previous);
                 games[i] = place_uniforms(&game, sizeof(game));
+            }
+        }
+        // A spatial shader that draws its shadows sees each pass's draw from the light.
+        std::vector<std::size_t> shadow_games(plan.passes.size() * mesh_draws_.size());
+        for (std::size_t p = 0; p < plan.passes.size(); ++p) {
+            for (std::size_t i = 0; i < mesh_draws_.size(); ++i) {
+                const MeshDraw& draw = mesh_draws_[i];
+                if (spatial_shadow_programs_.contains(draw.material.shader) &&
+                    shadow_pass_draws(plan.passes[p], draw, mesh_batches_[i].bounds)) {
+                    const SpatialUniforms game = shadow_spatial_uniforms(plan.passes[p], draw);
+                    shadow_games[(p * mesh_draws_.size()) + i] =
+                        place_uniforms(&game, sizeof(game));
+                }
             }
         }
         gl_.bind_buffer(gl::kUniformBuffer, uniform_buffer_);
@@ -2124,7 +2179,7 @@ private:
                               static_cast<GLintptr>(shadows_at),
                               static_cast<GLsizeiptr>(sizeof(MeshShadowUniforms)));
         if (!plan.passes.empty()) {
-            draw_shadows(plan, pass_uniforms, placed);
+            draw_shadows(plan, pass_uniforms, placed, shadow_games);
         }
 
         gl_.framebuffer_renderbuffer(gl::kFramebuffer, gl::kDepthAttachment, gl::kRenderbuffer,
@@ -2620,6 +2675,8 @@ private:
     std::vector<Texture> pending_release_;
     std::unordered_map<ShaderId, GLuint> game_programs_;
     std::unordered_map<ShaderId, GLuint> spatial_programs_; // a game's spatial shaders'
+    // A game's spatial shaders' shadow programs, where they draw their shadows.
+    std::unordered_map<ShaderId, GLuint> spatial_shadow_programs_;
     std::uint32_t next_shader_ = 1;
     std::vector<GLuint> pending_programs_;
     std::unordered_map<MeshId, GlMesh> meshes_;

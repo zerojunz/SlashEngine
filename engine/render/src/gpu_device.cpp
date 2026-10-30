@@ -589,6 +589,9 @@ public:
                 SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
             }
         }
+        for (const GameShadowPipeline& made : game_shadow_pipelines_) {
+            SDL_ReleaseGPUGraphicsPipeline(device_, made.pipeline);
+        }
         for (SDL_GPUComputePipeline* pipeline : compute_pipelines_) {
             if (pipeline != nullptr) {
                 SDL_ReleaseGPUComputePipeline(device_, pipeline);
@@ -1005,6 +1008,13 @@ public:
             return true;
         });
         std::erase_if(mesh_pipelines_, [&](const MeshPipeline& pipeline) {
+            if (pipeline.game != shader) {
+                return false;
+            }
+            release(pipeline.pipeline);
+            return true;
+        });
+        std::erase_if(game_shadow_pipelines_, [&](const GameShadowPipeline& pipeline) {
             if (pipeline.game != shader) {
                 return false;
             }
@@ -2036,6 +2046,13 @@ public:
             }
             batch.normal_pipeline = normal.value();
         }
+        if (material.shader != ShaderId::None && shadows != ShadowCasting::Off) {
+            auto made = game_shadow_pipelines(material.shader);
+            if (!made) {
+                return made.error();
+            }
+            batch.shadow_pipelines = made.value();
+        }
         const std::array<MaterialTexture, kMeshTextures> slots = mesh_texture_slots(material);
         for (std::size_t slot = 0; slot < kMeshTextures; ++slot) {
             batch.samplers.at(slot) = binding(slots.at(slot).texture, slots.at(slot).repeat);
@@ -2417,6 +2434,8 @@ private:
         SDL_GPUGraphicsPipeline* pipeline = nullptr;
         // The prepass's, for an opaque mesh in a frame with SSAO, SSR or TAA.
         SDL_GPUGraphicsPipeline* normal_pipeline = nullptr;
+        // A game's spatial shader's shadow pipelines by CullMode, where it draws its shadows.
+        std::array<SDL_GPUGraphicsPipeline*, 3> shadow_pipelines{};
         std::array<SDL_GPUTextureSamplerBinding, kMeshTextures> samplers{};
         // Where its vertices were in the frame before, which TAA's prepass reads.
         SDL_GPUBuffer* previous_vertices = nullptr;
@@ -2454,8 +2473,10 @@ private:
         std::uint32_t capacity = 0;
     };
 
-    // A game's shader (create_shader). A spatial shader has no vertex stage, its fragment is
-    // the Compatibility renderer's, and it has Forward+'s and the prepasses' too.
+    // A game's shader (create_shader). A spatial shader's fragment is the Compatibility
+    // renderer's, and it has Forward+'s and the prepasses' too; its vertex stages, the motion
+    // prepass's and its shadow passes' stages only where it runs them (a vertex(), or
+    // ALPHA_SCISSOR_THRESHOLD for the shadows), else the mesh shader's draw.
     struct GameShader {
         ShaderType type = ShaderType::Canvas;
         SDL_GPUShader* vertex = nullptr;
@@ -2463,6 +2484,9 @@ private:
         SDL_GPUShader* clustered = nullptr;
         SDL_GPUShader* normal = nullptr;
         SDL_GPUShader* motion = nullptr;
+        SDL_GPUShader* motion_vertex = nullptr;
+        SDL_GPUShader* shadow_vertex = nullptr;
+        SDL_GPUShader* shadow = nullptr;
     };
 
     // A spatial shader's fragment stages: the Compatibility renderer's, Forward+'s and the
@@ -2503,11 +2527,51 @@ private:
             stage =
                 make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code(shader.motion), textures + 3, 4);
         }
+        if (stage) {
+            made.motion = stage.value();
+        }
+        // vertex() reads its textures in the vertex stage, in the same slots, and the
+        // material's uniforms after the mesh shader's.
+        const auto vertex_code = [&](const ShaderStage& vertex) {
+            return ShaderCode{.vertex_spirv = bytes(vertex.spirv),
+                              .fragment_spirv = {},
+                              .vertex_msl = vertex.msl,
+                              .fragment_msl = {},
+                              .hlsl = vertex.hlsl};
+        };
+        if (stage && shader.vertex_used) {
+            const ShaderCode moved{.vertex_spirv = bytes(shader.spirv_vertex),
+                                   .fragment_spirv = {},
+                                   .vertex_msl = shader.msl_vertex,
+                                   .fragment_msl = {},
+                                   .hlsl = shader.hlsl_vertex};
+            stage = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, moved, kSpatialShaderTextures, 3);
+            if (stage) {
+                made.vertex = stage.value();
+                stage =
+                    make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, vertex_code(shader.motion_vertex),
+                                    kSpatialShaderTextures, 3);
+            }
+            if (stage) {
+                made.motion_vertex = stage.value();
+            }
+        }
+        if (stage && shader.shadows_used()) {
+            stage = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, vertex_code(shader.shadow_vertex),
+                                    kSpatialShaderTextures, 3);
+            if (stage) {
+                made.shadow_vertex = stage.value();
+                stage = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code(shader.shadow),
+                                        kSpatialShaderTextures, 2);
+            }
+            if (stage) {
+                made.shadow = stage.value();
+            }
+        }
         if (!stage) {
             release_game_shader(made);
             return stage.error();
         }
-        made.motion = stage.value();
         const auto id = static_cast<ShaderId>(next_shader_++);
         game_shaders_[id] = made;
         return id;
@@ -2515,7 +2579,8 @@ private:
 
     void release_game_shader(const GameShader& game) {
         for (SDL_GPUShader* shader :
-             {game.vertex, game.fragment, game.clustered, game.normal, game.motion}) {
+             {game.vertex, game.fragment, game.clustered, game.normal, game.motion,
+              game.motion_vertex, game.shadow_vertex, game.shadow}) {
             if (shader != nullptr) {
                 SDL_ReleaseGPUShader(device_, shader);
             }
@@ -3256,6 +3321,7 @@ private:
         info.fragment_shader = clustered ? clustered_shader_ : mesh_shaders_[1];
         if (material.shader != ShaderId::None) {
             const GameShader& game = game_shaders_.at(material.shader);
+            info.vertex_shader = game.vertex != nullptr ? game.vertex : mesh_shaders_[0];
             info.fragment_shader = clustered ? game.clustered : game.fragment;
         }
         info.vertex_input_state.vertex_buffer_descriptions = &buffer;
@@ -3326,8 +3392,14 @@ private:
         color.format = kNormalFormat;
         SDL_GPUGraphicsPipelineCreateInfo info{};
         info.vertex_shader = mesh_shaders_[0];
-        info.fragment_shader =
-            game == ShaderId::None ? normal_shader_ : game_shaders_.at(game).normal;
+        info.fragment_shader = normal_shader_;
+        if (game != ShaderId::None) {
+            const GameShader& shaders = game_shaders_.at(game);
+            if (shaders.vertex != nullptr) {
+                info.vertex_shader = shaders.vertex;
+            }
+            info.fragment_shader = shaders.normal;
+        }
         info.vertex_input_state.vertex_buffer_descriptions = &buffer;
         info.vertex_input_state.num_vertex_buffers = 1;
         info.vertex_input_state.vertex_attributes = attributes.data();
@@ -3424,8 +3496,14 @@ private:
         colors[1].format = kVelocityFormat;
         SDL_GPUGraphicsPipelineCreateInfo info{};
         info.vertex_shader = motion_shaders_[0];
-        info.fragment_shader =
-            game == ShaderId::None ? motion_shaders_[1] : game_shaders_.at(game).motion;
+        info.fragment_shader = motion_shaders_[1];
+        if (game != ShaderId::None) {
+            const GameShader& shaders = game_shaders_.at(game);
+            if (shaders.motion_vertex != nullptr) {
+                info.vertex_shader = shaders.motion_vertex;
+            }
+            info.fragment_shader = shaders.motion;
+        }
         info.vertex_input_state.vertex_buffer_descriptions = buffers.data();
         info.vertex_input_state.num_vertex_buffers = static_cast<std::uint32_t>(buffers.size());
         info.vertex_input_state.vertex_attributes = attributes.data();
@@ -3573,36 +3651,71 @@ private:
             }
             shadow_shaders_ = {vertex.value(), fragment.value()};
         }
-        const std::array<SDL_GPUVertexAttribute, 6> attributes = mesh_attributes();
-        SDL_GPUVertexBufferDescription buffer{};
-        buffer.slot = 0;
-        buffer.pitch = sizeof(Vertex3D);
-        buffer.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
         constexpr std::array kCullModes{CullMode::Back, CullMode::Front, CullMode::Disabled};
         for (std::size_t i = 0; i < shadow_pipelines_.size(); ++i) {
-            SDL_GPUGraphicsPipelineCreateInfo info{};
-            info.vertex_shader = shadow_shaders_[0];
-            info.fragment_shader = shadow_shaders_[1];
-            info.vertex_input_state.vertex_buffer_descriptions = &buffer;
-            info.vertex_input_state.num_vertex_buffers = 1;
-            info.vertex_input_state.vertex_attributes = attributes.data();
-            info.vertex_input_state.num_vertex_attributes =
-                static_cast<std::uint32_t>(attributes.size());
-            info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
-            info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
-            info.rasterizer_state.cull_mode = gpu_cull(kCullModes.at(i));
-            info.rasterizer_state.front_face = SDL_GPU_FRONTFACE_CLOCKWISE;
-            info.depth_stencil_state.enable_depth_test = true;
-            info.depth_stencil_state.enable_depth_write = true;
-            info.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_GREATER;
-            info.target_info.has_depth_stencil_target = true;
-            info.target_info.depth_stencil_format = shadow_format_;
-            shadow_pipelines_.at(i) = SDL_CreateGPUGraphicsPipeline(device_, &info);
+            shadow_pipelines_.at(i) =
+                make_shadow_pipeline(shadow_shaders_[0], shadow_shaders_[1], kCullModes.at(i));
             if (shadow_pipelines_.at(i) == nullptr) {
                 return sdl_error("creating the shadow pipeline failed");
             }
         }
         return {};
+    }
+
+    // A shadow pipeline with these stages, culling as cull says: depth only.
+    SDL_GPUGraphicsPipeline* make_shadow_pipeline(SDL_GPUShader* vertex, SDL_GPUShader* fragment,
+                                                  CullMode cull) {
+        const std::array<SDL_GPUVertexAttribute, 6> attributes = mesh_attributes();
+        SDL_GPUVertexBufferDescription buffer{};
+        buffer.slot = 0;
+        buffer.pitch = sizeof(Vertex3D);
+        buffer.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+        SDL_GPUGraphicsPipelineCreateInfo info{};
+        info.vertex_shader = vertex;
+        info.fragment_shader = fragment;
+        info.vertex_input_state.vertex_buffer_descriptions = &buffer;
+        info.vertex_input_state.num_vertex_buffers = 1;
+        info.vertex_input_state.vertex_attributes = attributes.data();
+        info.vertex_input_state.num_vertex_attributes =
+            static_cast<std::uint32_t>(attributes.size());
+        info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+        info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+        info.rasterizer_state.cull_mode = gpu_cull(cull);
+        info.rasterizer_state.front_face = SDL_GPU_FRONTFACE_CLOCKWISE;
+        info.depth_stencil_state.enable_depth_test = true;
+        info.depth_stencil_state.enable_depth_write = true;
+        info.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_GREATER;
+        info.target_info.has_depth_stencil_target = true;
+        info.target_info.depth_stencil_format = shadow_format_;
+        return SDL_CreateGPUGraphicsPipeline(device_, &info);
+    }
+
+    // A game's spatial shader's shadow pipelines, a cull mode each, made the first time a frame
+    // draws its meshes; none for a shader whose shadows the mesh shader's stages draw.
+    Result<std::array<SDL_GPUGraphicsPipeline*, 3>> game_shadow_pipelines(ShaderId shader) {
+        std::array<SDL_GPUGraphicsPipeline*, 3> out{};
+        const GameShader& game = game_shaders_.at(shader);
+        if (game.shadow == nullptr) {
+            return out;
+        }
+        constexpr std::array kCullModes{CullMode::Back, CullMode::Front, CullMode::Disabled};
+        for (std::size_t i = 0; i < out.size(); ++i) {
+            for (const GameShadowPipeline& made : game_shadow_pipelines_) {
+                if (made.game == shader && made.cull == kCullModes.at(i)) {
+                    out.at(i) = made.pipeline;
+                }
+            }
+            if (out.at(i) != nullptr) {
+                continue;
+            }
+            out.at(i) = make_shadow_pipeline(game.shadow_vertex, game.shadow, kCullModes.at(i));
+            if (out.at(i) == nullptr) {
+                return sdl_error("creating a spatial shader's shadow pipeline failed");
+            }
+            game_shadow_pipelines_.push_back(
+                {.game = shader, .cull = kCullModes.at(i), .pipeline = out.at(i)});
+        }
+        return out;
     }
 
     // The frame's shadow passes: each atlas in a pass of its own, each light's view drawn into
@@ -3643,8 +3756,12 @@ private:
                     if (!shadow_pass_draws(pass, draw, batch.bounds)) {
                         continue;
                     }
-                    SDL_GPUGraphicsPipeline* pipeline =
-                        shadow_pipelines_.at(static_cast<std::size_t>(shadow_cull(pass, draw)));
+                    const auto cull = static_cast<std::size_t>(shadow_cull(pass, draw));
+                    SDL_GPUGraphicsPipeline* pipeline = batch.shadow_pipelines.at(cull);
+                    const bool game = pipeline != nullptr;
+                    if (!game) {
+                        pipeline = shadow_pipelines_.at(cull);
+                    }
                     if (pipeline != bound) {
                         SDL_BindGPUGraphicsPipeline(render, pipeline);
                         bound = pipeline;
@@ -3661,7 +3778,21 @@ private:
                     SDL_BindGPUVertexBuffers(render, 0, &vertices, 1);
                     const SDL_GPUBufferBinding indices{.buffer = batch.indices, .offset = 0};
                     SDL_BindGPUIndexBuffer(render, &indices, SDL_GPU_INDEXELEMENTSIZE_32BIT);
-                    SDL_BindGPUFragmentSamplers(render, 0, batch.samplers.data(), 1);
+                    if (game) {
+                        // A game's shader sees the draw from the light, with its textures in
+                        // both stages.
+                        const SpatialUniforms uniforms = shadow_spatial_uniforms(pass, draw);
+                        SDL_PushGPUVertexUniformData(commands, 2, &uniforms,
+                                                     static_cast<std::uint32_t>(sizeof(uniforms)));
+                        SDL_PushGPUFragmentUniformData(
+                            commands, 1, &uniforms, static_cast<std::uint32_t>(sizeof(uniforms)));
+                        SDL_BindGPUVertexSamplers(render, 0, batch.samplers.data(),
+                                                  kSpatialShaderTextures);
+                        SDL_BindGPUFragmentSamplers(render, 0, batch.samplers.data(),
+                                                    kSpatialShaderTextures);
+                    } else {
+                        SDL_BindGPUFragmentSamplers(render, 0, batch.samplers.data(), 1);
+                    }
                     SDL_DrawGPUIndexedPrimitives(render, batch.range.count, 1, batch.range.first, 0,
                                                  0);
                 }
@@ -3779,10 +3910,17 @@ private:
                 SDL_PushGPUFragmentUniformData(commands, 0, &surface,
                                                static_cast<std::uint32_t>(sizeof(surface)));
                 if (draw.material.shader != ShaderId::None) {
-                    const SpatialUniforms game = spatial_uniforms(
-                        scene, draw.transform, draw.material, scene_width_, scene_height_);
+                    const SpatialUniforms game =
+                        spatial_uniforms(scene, draw.transform, draw.material, scene_width_,
+                                         scene_height_, draw.previous);
                     SDL_PushGPUFragmentUniformData(commands, 3, &game,
                                                    static_cast<std::uint32_t>(sizeof(game)));
+                    if (game_shaders_.at(draw.material.shader).vertex != nullptr) {
+                        SDL_PushGPUVertexUniformData(commands, 2, &game,
+                                                     static_cast<std::uint32_t>(sizeof(game)));
+                        SDL_BindGPUVertexSamplers(pass, 0, batch.samplers.data(),
+                                                  kSpatialShaderTextures);
+                    }
                 }
                 // The motion vectors' prepass reads where the vertices were from a second buffer.
                 const std::array vertices{
@@ -7093,6 +7231,13 @@ private:
     SDL_GPUSampler* shadow_sampler_ = nullptr;
     std::array<SDL_GPUShader*, 2> shadow_shaders_{};             // vertex, then fragment
     std::array<SDL_GPUGraphicsPipeline*, 3> shadow_pipelines_{}; // by CullMode
+    // Game spatial shaders' shadow pipelines.
+    struct GameShadowPipeline {
+        ShaderId game = ShaderId::None;
+        CullMode cull = CullMode::Back;
+        SDL_GPUGraphicsPipeline* pipeline = nullptr;
+    };
+    std::vector<GameShadowPipeline> game_shadow_pipelines_;
     std::uint32_t depth_width_ = 0;
     std::uint32_t depth_height_ = 0;
     // What the post passes draw with: their shaders, a pipeline for each target format, and the

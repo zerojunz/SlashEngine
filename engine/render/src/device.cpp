@@ -138,33 +138,44 @@ Error unknown_shader(ShaderId shader) {
 Result<void> check_compiled_shader(const CompiledShader& shader, Backend backend) {
     bool present = true;
     if (shader.type == ShaderType::Spatial) {
-        // The fragment stages alone: meshes' corners are placed by the mesh shader's own.
-        const std::array<const ShaderStage*, 3> forward{&shader.clustered, &shader.normal_roughness,
-                                                        &shader.motion};
-        const auto all = [&](auto has) { return std::ranges::all_of(forward, has); };
+        // The fragment stages, the vertex stages with a vertex() and the shadow passes' where
+        // they run it.
+        std::vector<const ShaderStage*> stages{&shader.clustered, &shader.normal_roughness,
+                                               &shader.motion};
+        if (shader.vertex_used) {
+            stages.push_back(&shader.motion_vertex);
+        }
+        if (shader.shadows_used()) {
+            stages.push_back(&shader.shadow_vertex);
+            stages.push_back(&shader.shadow);
+        }
+        const auto all = [&](auto has) { return std::ranges::all_of(stages, has); };
+        const bool vertex = shader.vertex_used;
         switch (backend) {
         case Backend::Vulkan:
-            present = !shader.spirv_fragment.empty() &&
+            present = !shader.spirv_fragment.empty() && (!vertex || !shader.spirv_vertex.empty()) &&
                       all([](const ShaderStage* stage) { return !stage->spirv.empty(); });
             break;
         case Backend::Metal:
-            present = !shader.msl_fragment.empty() &&
+            present = !shader.msl_fragment.empty() && (!vertex || !shader.msl_vertex.empty()) &&
                       all([](const ShaderStage* stage) { return !stage->msl.empty(); });
             break;
         case Backend::D3D12:
-            present = !shader.hlsl.empty() &&
+            present = !shader.hlsl.empty() && (!vertex || !shader.hlsl_vertex.empty()) &&
                       all([](const ShaderStage* stage) { return !stage->hlsl.empty(); });
             break;
         case Backend::OpenGl:
         case Backend::OpenGlEs:
-            present = !shader.glsl_fragment.empty();
+            present = !shader.glsl_fragment.empty() && (!vertex || !shader.glsl_vertex.empty()) &&
+                      (!shader.shadows_used() ||
+                       (!shader.shadow_vertex.glsl.empty() && !shader.shadow.glsl.empty()));
             break;
         case Backend::WebGpu:
-            present = !shader.wgsl_fragment.empty() &&
+            present = !shader.wgsl_fragment.empty() && (!vertex || !shader.wgsl_vertex.empty()) &&
                       all([](const ShaderStage* stage) { return !stage->wgsl.empty(); });
             break;
         case Backend::Software:
-            present = !shader.cpu_fragment.empty();
+            present = !shader.cpu_fragment.empty() && (!vertex || !shader.cpu_vertex.empty());
             break;
         case Backend::Null:
             break;

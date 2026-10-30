@@ -229,6 +229,88 @@ render::ShaderSource glass() {
             .params = {}};
 }
 
+// Hills: vertex() lifts a sheet by a height texture and a wave in time and colors it by its UV,
+// and fragment() cuts a strip out of it, in its shadows too.
+render::ShaderSource hills() {
+    return {.path = "shaders/hills.hlsl",
+            .code = R"(void vertex() {
+    float rise = texture(heights, UV).r * lift;
+    VERTEX.y += rise + 0.1 * sin(TIME * 2.0 + VERTEX.x * 3.0);
+    NORMAL = normalize(NORMAL + float3(-0.3 * cos(VERTEX.x * 3.0), 0.0, 0.0));
+    COLOR = float4(UV, 0.4, 1.0);
+}
+
+void fragment() {
+    ALBEDO = COLOR.rgb;
+    ROUGHNESS = 0.6;
+    ALPHA = UV.x > 0.4 && UV.x < 0.55 ? 0.0 : 1.0;
+    ALPHA_SCISSOR_THRESHOLD = 0.5;
+}
+)",
+            .type = render::ShaderType::Spatial,
+            .params = {{.name = "heights", .components = 0, .slot = 0},
+                       {.name = "lift", .components = 1, .slot = 0}}};
+}
+
+// A swell: vertex() pushes the corners out along their normals, in the world.
+render::ShaderSource swell() {
+    return {.path = "shaders/swell.hlsl",
+            .code = "void vertex() {\n    VERTEX += normalize(NORMAL) * 0.15;\n}\n",
+            .type = render::ShaderType::Spatial,
+            .params = {},
+            .world_vertex_coords = true};
+}
+
+// A card moved along x by vertex(), its right half cut away by fragment().
+render::ShaderSource shifted() {
+    return {.path = "shaders/shifted.hlsl",
+            .code = "void vertex() {\n    VERTEX.x += shift;\n}\n\n"
+                    "void fragment() {\n    ALPHA = UV.x < 0.5 ? 1.0 : 0.0;\n"
+                    "    ALPHA_SCISSOR_THRESHOLD = 0.5;\n}\n",
+            .type = render::ShaderType::Spatial,
+            .params = {{.name = "shift", .components = 1, .slot = 0}}};
+}
+
+// A sheet of cells by cells squares over -1 to 1 in x and z, facing up.
+std::vector<render::Vertex3D> grid(int cells) {
+    std::vector<render::Vertex3D> out;
+    const float size = 2.0F / static_cast<float>(cells);
+    for (int row = 0; row < cells; ++row) {
+        for (int column = 0; column < cells; ++column) {
+            const Float3 center{-1.0F + ((static_cast<float>(column) + 0.5F) * size), 0.0F,
+                                -1.0F + ((static_cast<float>(row) + 0.5F) * size)};
+            std::vector<render::Vertex3D> cell =
+                quad(center, {1, 0, 0}, {0, 0, -1}, {0, 1, 0}, size);
+            for (render::Vertex3D& vertex : cell) {
+                vertex.uv = {(vertex.position[0] + 1.0F) * 0.5F,
+                             (vertex.position[2] + 1.0F) * 0.5F};
+            }
+            out.insert(out.end(), cell.begin(), cell.end());
+        }
+    }
+    return out;
+}
+
+// Where a point in the world lands on a square target size pixels across.
+std::array<std::uint32_t, 2> pixel_of(const render::Scene3D& scene, const Float3& point,
+                                      std::uint32_t size) {
+    const auto apply = [](const Mat4& m, const std::array<float, 4>& v) {
+        std::array<float, 4> out{};
+        for (std::size_t row = 0; row < 4; ++row) {
+            for (std::size_t column = 0; column < 4; ++column) {
+                out.at(row) += m.at((column * 4) + row) * v.at(column);
+            }
+        }
+        return out;
+    };
+    const std::array<float, 4> clip =
+        apply(scene.projection, apply(scene.camera, {point[0], point[1], point[2], 1.0F}));
+    const float x = ((clip[0] / clip[3]) * 0.5F) + 0.5F;
+    const float y = 0.5F - ((clip[1] / clip[3]) * 0.5F);
+    return {static_cast<std::uint32_t>(x * static_cast<float>(size)),
+            static_cast<std::uint32_t>(y * static_cast<float>(size))};
+}
+
 render::Scene3D lit_scene(render::RenderMethod method) {
     render::Scene3D scene;
     scene.method = method;
@@ -398,11 +480,19 @@ std::pair<int, std::string> differences(const render::Image& got, const render::
 TEST_CASE("a spatial shader compiles into the mesh shader's fragment stages and the CPU") {
     const render::CompiledShader shader = compiled(glow());
     CHECK(shader.type == render::ShaderType::Spatial);
-    // The mesh shader's own vertex stage draws it.
+    // With no vertex(), the mesh shader's own vertex stage draws it, and with no
+    // ALPHA_SCISSOR_THRESHOLD, the mesh shader's shadow stages draw its shadows.
+    CHECK_FALSE(shader.vertex_used);
+    CHECK_FALSE(shader.shadows_used());
     CHECK(shader.spirv_vertex.empty());
     CHECK(shader.msl_vertex.empty());
     CHECK(shader.glsl_vertex.empty());
     CHECK(shader.wgsl_vertex.empty());
+    CHECK(shader.hlsl_vertex.empty());
+    CHECK(shader.cpu_vertex.empty());
+    CHECK(shader.motion_vertex == render::ShaderStage{});
+    CHECK(shader.shadow_vertex == render::ShaderStage{});
+    CHECK(shader.shadow == render::ShaderStage{});
     CHECK(shader.spirv_fragment.front() == 0x07230203U);
     CHECK(shader.msl_fragment.find("fs_main") != std::string::npos);
     // The GL device binds the mesh shader's textures and varyings by name.
@@ -438,14 +528,33 @@ TEST_CASE("a spatial shader compiles into the mesh shader's fragment stages and 
     CHECK(cut.alpha_used);
     CHECK(cut.alpha_scissor_used);
     CHECK_FALSE(cut.normal_map_used);
+    // It cuts its holes in its shadows too, so its shadow passes run it.
+    CHECK(cut.shadows_used());
+    CHECK_FALSE(cut.vertex_used);
+    for (const render::ShaderStage* stage : {&cut.shadow_vertex, &cut.shadow}) {
+        CHECK_FALSE(stage->spirv.empty());
+        CHECK_FALSE(stage->msl.empty());
+        CHECK_FALSE(stage->wgsl.empty());
+        CHECK_FALSE(stage->hlsl.empty());
+        CHECK_FALSE(stage->glsl.empty());
+    }
+    CHECK(cut.spirv_vertex.empty());
 }
 
 #if defined(_WIN32)
 TEST_CASE("a spatial shader's stages compile with Windows' HLSL compiler") {
-    const render::CompiledShader shader = compiled(surface());
-    for (const std::string* hlsl : {&shader.hlsl, &shader.clustered.hlsl,
-                                    &shader.normal_roughness.hlsl, &shader.motion.hlsl}) {
-        const auto result = render::detail::compile_hlsl(*hlsl, "fs_main", "ps_5_1");
+    for (const render::CompiledShader& shader : {compiled(surface()), compiled(hills())}) {
+        for (const std::string* hlsl :
+             {&shader.hlsl, &shader.clustered.hlsl, &shader.normal_roughness.hlsl,
+              &shader.motion.hlsl, &shader.shadow.hlsl}) {
+            const auto result = render::detail::compile_hlsl(*hlsl, "fs_main", "ps_5_1");
+            CHECK_MESSAGE(result.ok(), (result.ok() ? "" : result.error().message));
+        }
+    }
+    const render::CompiledShader shader = compiled(hills());
+    for (const std::string* hlsl :
+         {&shader.hlsl_vertex, &shader.motion_vertex.hlsl, &shader.shadow_vertex.hlsl}) {
+        const auto result = render::detail::compile_hlsl(*hlsl, "vs_main", "vs_5_1");
         CHECK_MESSAGE(result.ok(), (result.ok() ? "" : result.error().message));
     }
 }
@@ -457,13 +566,10 @@ TEST_CASE("spatial shader errors name the game's file and line") {
     const std::string error = error_of(source);
     CAPTURE(error);
     CHECK(error.starts_with("shaders/glow.hlsl:11: "));
-    source = glow();
-    source.code += "\nvoid vertex() {\n}\n";
-    CHECK(error_of(source).find("take no vertex() yet") != std::string::npos);
 }
 
 TEST_CASE("param names the code around a spatial shader takes are reserved, and the rest compile") {
-    for (const char* file : {"mesh.hlsl", "tonemap.hlsl"}) {
+    for (const char* file : {"mesh.hlsl", "tonemap.hlsl", "shadow.hlsl"}) {
         const std::vector<std::string> globals = globals_of(file);
         CHECK(globals.size() > 5);
         for (const std::string& name : globals) {
@@ -613,6 +719,204 @@ TEST_CASE("every device draws spatial shaders' surfaces as the software device d
     }
 }
 
+TEST_CASE("a spatial shader's vertex() compiles into the mesh shader's vertex stages and the CPU") {
+    const render::CompiledShader shader = compiled(hills());
+    CHECK(shader.vertex_used);
+    CHECK(shader.shadows_used());
+    CHECK(shader.spirv_vertex.front() == 0x07230203U);
+    CHECK(shader.msl_vertex.find("vs_main") != std::string::npos);
+    CHECK(shader.hlsl_vertex.find("#define GAME_VERTEX") != std::string::npos);
+    CHECK(shader.hlsl_vertex.find("#line 1 \"shaders/hills.hlsl\"") != std::string::npos);
+    // Its uniforms follow the camera's and the instance's, and the GL device binds its textures
+    // by the names the fragment stage reads them by.
+    CHECK(shader.glsl_vertex.find("GameMaterial") != std::string::npos);
+    CHECK(shader.glsl_vertex.find("albedo_texture") != std::string::npos);
+    CHECK(shader.glsl_vertex.find("v_world") != std::string::npos);
+    // WGSL reads its uniforms third in group 1 and its textures in the fragment stage's group.
+    CHECK(shader.wgsl_vertex.find("@group(1u) @binding(2u)") != std::string::npos);
+    CHECK(shader.wgsl_vertex.find("@group(2u) @binding(0u)") != std::string::npos);
+    CHECK(shader.motion_vertex.hlsl.find("#define MOTION_VECTORS") != std::string::npos);
+    for (const render::ShaderStage* stage :
+         {&shader.motion_vertex, &shader.shadow_vertex, &shader.shadow}) {
+        CHECK_FALSE(stage->spirv.empty());
+        CHECK_FALSE(stage->msl.empty());
+        CHECK_FALSE(stage->wgsl.empty());
+        CHECK_FALSE(stage->hlsl.empty());
+    }
+    CHECK_FALSE(shader.shadow_vertex.glsl.empty());
+    CHECK_FALSE(shader.shadow.glsl.empty());
+    CHECK(render::ShaderVm::load(shader.cpu_vertex).ok());
+    // world_vertex_coords moves the corners in the world, so its code differs.
+    render::ShaderSource local = swell();
+    local.world_vertex_coords = false;
+    CHECK(compiled(swell()).hlsl_vertex != compiled(local).hlsl_vertex);
+
+    // Material files keep every stage.
+    json::Value doc = parse(
+        R"({"format": 1, "params": {"heights": {"type": "texture"}, "lift": {"type": "float"}},
+            "shader": "shaders/hills.hlsl", "shader_type": "spatial"})");
+    doc["compiled"] = canvas::compiled_shader_json(shader);
+    CHECK(canvas::validate_material(doc).empty());
+    auto read = canvas::parse_material(doc);
+    REQUIRE_MESSAGE(read.ok(), (read.ok() ? "" : read.error().message));
+    REQUIRE(read.value().compiled != nullptr);
+    CHECK(*read.value().compiled == shader);
+}
+
+TEST_CASE("vertex() moves a mesh's corners, in its shadows too, which fragment() cuts") {
+    const auto device = render::create_software_device();
+    auto shader = device->create_shader(compiled(shifted()));
+    REQUIRE_MESSAGE(shader.ok(), (shader.ok() ? "" : shader.error().message));
+    constexpr std::uint32_t kSize = 64;
+    auto target = device->create_texture({.width = kSize, .height = kSize, .render_target = true});
+    auto ground = device->create_mesh(quad({0, 0, 0}, {1, 0, 0}, {0, 0, -1}, {0, 1, 0}, 8.0F), {});
+    auto card = device->create_mesh(quad({0, 0, 0}, {1, 0, 0}, {0, 0, -1}, {0, 1, 0}, 1.0F), {});
+    REQUIRE(target.ok());
+    REQUIRE(ground.ok());
+    REQUIRE(card.ok());
+    // Seen from above, lit from nearly above: the card casts without being drawn.
+    render::Scene3D scene;
+    scene.method = render::RenderMethod::Compatibility;
+    scene.camera = render::look_at({0.8F, 6.0F, 0.01F}, {0.8F, 0.0F, 0.0F}, {0.0F, 0.0F, -1.0F});
+    scene.projection = render::perspective(60.0F, 1.0F, 0.1F, 100.0F);
+    scene.ambient = {0.2F, 0.2F, 0.2F};
+    scene.lights = {{.type = render::LightType::Directional,
+                     .color = {1.0F, 1.0F, 1.0F},
+                     .direction = {0.1F, -1.0F, 0.05F},
+                     .shadow = true}};
+    const auto frame = [&](float shift) {
+        render::Material3D material;
+        material.shader = shader.value();
+        material.shader_constants[0] = {shift, shift, shift, shift};
+        material.transparency = render::Transparency::AlphaScissor;
+        material.cull = render::CullMode::Disabled;
+        REQUIRE(device->begin_frame({.target = target.value(), .clear = {}, .scene = scene}).ok());
+        CHECK(device->draw_mesh(ground.value(), placed(0, 0, 0, 0), {.roughness = 1.0F}).ok());
+        CHECK(device
+                  ->draw_mesh(card.value(), placed(0, 0, 1, 0), material, 1,
+                              render::ShadowCasting::ShadowsOnly)
+                  .ok());
+        REQUIRE(device->end_frame().ok());
+        auto image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        return std::move(image).value();
+    };
+    const auto light = [&](const render::Image& image, float x) {
+        const auto [px, py] = pixel_of(scene, {x, 0.0F, 0.0F}, kSize);
+        const std::size_t i = ((std::size_t{py} * kSize) + px) * 4;
+        return int{image.pixels.at(i)} + image.pixels.at(i + 1) + image.pixels.at(i + 2);
+    };
+    // The card's left half shadows the ground under it; its right half is cut away.
+    const render::Image still = frame(0.0F);
+    CHECK(light(still, -0.25F) < light(still, 0.35F) - 100);
+    CHECK(light(still, 1.8F) == light(still, 0.35F));
+    // Moved 2 along x by vertex(), its shadow goes with it.
+    const render::Image moved = frame(2.0F);
+    CHECK(light(moved, 1.8F) < light(moved, -0.25F) - 100);
+    CHECK(light(moved, -0.25F) == light(still, 0.35F));
+    device->destroy_mesh(ground.value());
+    device->destroy_mesh(card.value());
+    device->destroy_texture(target.value());
+    device->destroy_shader(shader.value());
+}
+
+// A frame of a sheet lifted into hills by vertex(), cut in a strip, and a box swelled in the
+// world, over a plain floor and lit by a shadowed sun, as the scene's renderer draws them.
+render::Image draw_hills(render::RenderDevice& device, const render::Scene3D& scene) {
+    auto lifted = device.create_shader(compiled(hills()));
+    REQUIRE_MESSAGE(lifted.ok(), (lifted.ok() ? "" : lifted.error().message));
+    auto swelled = device.create_shader(compiled(swell()));
+    REQUIRE_MESSAGE(swelled.ok(), (swelled.ok() ? "" : swelled.error().message));
+    auto target = device.create_texture({.width = 64, .height = 64, .render_target = true});
+    REQUIRE(target.ok());
+    std::vector<std::uint8_t> rises;
+    for (int y = 0; y < 4; ++y) {
+        for (int x = 0; x < 4; ++x) {
+            const auto rise = static_cast<std::uint8_t>((x * 60) + (y * 20));
+            rises.insert(rises.end(), {rise, rise, rise, 255});
+        }
+    }
+    auto heights = device.create_texture({.width = 4, .height = 4}, rises);
+    auto sheet = device.create_mesh(grid(8), {});
+    auto box = device.create_mesh(cube(), {});
+    auto floor =
+        device.create_mesh(quad({0, -0.5F, 0}, {1, 0, 0}, {0, 0, -1}, {0, 1, 0}, 6.0F), {});
+    REQUIRE(heights.ok());
+    REQUIRE(sheet.ok());
+    REQUIRE(box.ok());
+    REQUIRE(floor.ok());
+    render::Material3D hilly;
+    hilly.shader = lifted.value();
+    hilly.shader_constants[0] = {0.6F, 0.6F, 0.6F, 0.6F}; // lift
+    hilly.shader_constants[render::kShaderTimeConstant] = {2.0F, 1.9F, 0.0F, 0.0F};
+    hilly.shader_textures[0] = {.texture = heights.value()};
+    hilly.transparency = render::Transparency::AlphaScissor;
+    hilly.cull = render::CullMode::Disabled;
+    render::Material3D swollen;
+    swollen.shader = swelled.value();
+    REQUIRE(device
+                .begin_frame(
+                    {.target = target.value(), .clear = {0.05F, 0.05F, 0.1F, 1.0F}, .scene = scene})
+                .ok());
+    CHECK(device.draw_mesh(floor.value(), placed(0, 0, 0, 0), {.roughness = 0.8F}).ok());
+    CHECK(device.draw_mesh(sheet.value(), placed(20, -0.3F, 0.0F, 0.2F), hilly).ok());
+    CHECK(device.draw_mesh(box.value(), placed(30, 0.9F, 0.2F, -0.6F), swollen).ok());
+    REQUIRE(device.end_frame().ok());
+    auto image = device.read_texture(target.value());
+    REQUIRE_MESSAGE(image.ok(), (image.ok() ? "" : image.error().message));
+    for (const render::MeshId mesh : {sheet.value(), box.value(), floor.value()}) {
+        device.destroy_mesh(mesh);
+    }
+    device.destroy_texture(heights.value());
+    device.destroy_texture(target.value());
+    device.destroy_shader(lifted.value());
+    device.destroy_shader(swelled.value());
+    return image.value();
+}
+
+TEST_CASE("every device draws spatial shaders' vertex() and shadows as the software device does") {
+    render::Scene3D sunny = lit_scene(render::RenderMethod::ForwardPlus);
+    sunny.lights.at(0).shadow = true;
+    render::Scene3D smoothed = sunny;
+    smoothed.ssao.enabled = true;
+    smoothed.use_taa = true;
+    render::Scene3D compatibility = sunny;
+    compatibility.method = render::RenderMethod::Compatibility;
+    const std::array<std::pair<const char*, render::Scene3D>, 3> scenes{
+        {{"forward+", sunny},
+         {"forward+ with SSAO and TAA", smoothed},
+         {"compatibility", compatibility}}};
+    const auto software = render::create_software_device();
+    std::vector<render::Image> expected;
+    expected.reserve(scenes.size());
+    for (const auto& [name, scene] : scenes) {
+        expected.push_back(draw_hills(*software, scene));
+    }
+    for (auto& device : slash::test::hardware_devices()) {
+        CAPTURE(render::backend_name(device->backend()));
+        const bool opengl = device->backend() == render::Backend::OpenGl ||
+                            device->backend() == render::Backend::OpenGlEs;
+        for (std::size_t i = 0; i < scenes.size(); ++i) {
+            CAPTURE(scenes.at(i).first);
+            // The OpenGL devices draw only as Compatibility.
+            const render::Image& want = opengl ? expected.back() : expected.at(i);
+            const render::Image image = draw_hills(*device, scenes.at(i).second);
+            const auto [count, first] = differences(image, want);
+            CAPTURE(first);
+            // SSAO over the shadows' edges rounds a few scattered pixels a level or three apart.
+            CHECK(count <= 24);
+            if (count > 24) {
+                auto drawn = render::encode_png(image);
+                auto wanted = render::encode_png(want);
+                REQUIRE(drawn.ok());
+                REQUIRE(wanted.ok());
+                MESSAGE("drawn, as a base64 PNG: " << slash::base64_encode(drawn.value()));
+                MESSAGE("expected, as a base64 PNG: " << slash::base64_encode(wanted.value()));
+            }
+        }
+    }
+}
+
 TEST_CASE("a spatial material reads Godot's render modes, and its textures take slots from 0") {
     auto parsed = canvas::parse_material(parse(R"({
       "format": 1,
@@ -623,7 +927,7 @@ TEST_CASE("a spatial material reads Godot's render modes, and its textures take 
         "tint": {"type": "color", "value": [1, 0.5, 0]}
       },
       "render_mode": ["blend_add", "cull_disabled", "unshaded", "fog_disabled",
-                      "shadows_disabled"],
+                      "shadows_disabled", "world_vertex_coords"],
       "shader": "shaders/surface.hlsl",
       "shader_type": "spatial"
     })"));
@@ -635,11 +939,13 @@ TEST_CASE("a spatial material reads Godot's render modes, and its textures take 
     CHECK(material.modes.unshaded);
     CHECK(material.modes.fog_disabled);
     CHECK(material.modes.shadows_disabled);
+    CHECK(material.modes.world_vertex_coords);
     CHECK(material.params.at("bumps").slot == 0U);
     CHECK(material.params.at("pattern").slot == 1U);
 
     const render::ShaderSource source = canvas::shader_source(material, "code");
     CHECK(source.type == render::ShaderType::Spatial);
+    CHECK(source.world_vertex_coords);
     REQUIRE(source.params.size() == 4);
     CHECK(source.params[2] ==
           render::ShaderSource::Param{

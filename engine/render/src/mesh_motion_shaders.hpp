@@ -2273,7 +2273,9 @@ R"hlsl(// The 3D shader for Forward+'s prepass in a frame with TAA, as Godot's
 // the prepass of a frame with TAA, which draws each pixel's motion vector into a second target.
 // With GAME_SHADER defined, a game's spatial shader gives each pixel's surface: the shader tools
 // (tools/shader_compiler) put its code before this file's, with GameSurface, game_surface and
-// game_specular, and its texture params in the StandardMaterial3D's slots.
+// game_specular, and its texture params in the StandardMaterial3D's slots. With GAME_VERTEX too,
+// its vertex() places the corners, through GameVertex and game_vertex, with its texture params
+// in the vertex stage's slots 0 to 4.
 
 cbuffer Camera : register(b0, space1) {
     float4x4 view_projection;          // world to clip space, with TAA's jitter
@@ -2320,6 +2322,21 @@ struct VertexOutput {
 
 VertexOutput vs_main(VertexInput input) {
     VertexOutput output;
+#ifdef GAME_VERTEX
+    // A game's spatial shader moves the corner with its vertex(), as Godot's ShaderMaterial:
+    // game_vertex, which the shader tools write around it, gives it in the world.
+    GameVertex moved = game_vertex(input.position, input.normal, input.tangent, input.uv,
+                                   input.uv2, input.color, false);
+    float4 world = float4(moved.world, 1.0);
+    output.world = world.xyz;
+    output.position = mul(view_projection, world);
+    output.normal = normalize(moved.normal);
+    output.tangent = normalize(moved.tangent);
+    output.binormal = normalize(moved.binormal);
+    output.uv = moved.uv;
+    output.color = moved.color;
+    output.uv2 = moved.uv2 * lightmap_uv.zw + lightmap_uv.xy;
+#else
     float4 world = mul(model, float4(input.position, 1.0));
     output.world = world.xyz;
     output.position = mul(view_projection, world);
@@ -2331,11 +2348,19 @@ VertexOutput vs_main(VertexInput input) {
     output.uv = input.uv * uv1.xy + uv1.zw;
     output.color = input.color;
     output.uv2 = input.uv2 * lightmap_uv.zw + lightmap_uv.xy;
+#endif
 #ifdef MOTION_VECTORS
     output.motion_clip = output.position;
     output.motion_clip.xy -= jitter.xy * output.position.w;
+#ifdef GAME_VERTEX
+    // Where vertex() put the corner in the frame before, with its model and time.
+    GameVertex before = game_vertex(input.previous, input.normal, input.tangent, input.uv,
+                                    input.uv2, input.color, true);
+    output.previous_clip = mul(previous_view_projection, float4(before.world, 1.0));
+#else
     output.previous_clip =
         mul(previous_view_projection, mul(previous_model, float4(input.previous, 1.0)));
+#endif
 #endif
     return output;
 }
@@ -2456,7 +2481,8 @@ cbuffer Scene : register(b1, space3) {
     // affect, then 1 when its layer 1 holds its SSR.
     float4 ssao;
     float4 view_rows[3]; // the world to the camera's space, a row each, for normals
-    // Forward+'s reflection probes: how many in probes, the level the roughest surfaces read, and
+)hlsl",
+R"hlsl(    // Forward+'s reflection probes: how many in probes, the level the roughest surfaces read, and
     // the exposure their light is multiplied by.
     float4 reflections;
     // 1 when meshes trace their VoxelGIs (Forward+, and not a reflection probe's capture), then 1
@@ -2481,8 +2507,7 @@ struct DirectionalShadow {
     float4x4 matrices[4]; // one a cascade
     float4 splits;        // the view depth each cascade reaches
     float4 normal_bias;   // each cascade's, in world units
-)hlsl",
-R"hlsl(    float4 params;        // fade from and to (view z), opacity, how many cascades
+    float4 params;        // fade from and to (view z), opacity, how many cascades
     float4 options;       // 1 blends cascades, an atlas texel
 };
 
@@ -2696,7 +2721,8 @@ float4 fog_process(float3 world) {
         uint count = (uint)camera.w;
         for (uint i = 0u; i < count; ++i) {
             if (lights[i].direction.w == kDirectional) {
-                float amount = pow(max(dot(view, normalize(lights[i].direction.xyz)), 0.0), 8.0);
+)hlsl",
+R"hlsl(                float amount = pow(max(dot(view, normalize(lights[i].direction.xyz)), 0.0), 8.0);
                 color += lights[i].color.rgb * amount * fog.y;
             }
         }
@@ -2729,8 +2755,7 @@ float4 sample_fog_froxels(float3 uvw) {
                     fog_froxels[(low.z * size.y + low.y) * size.x + high.x], t.x);
     float4 b = lerp(fog_froxels[(low.z * size.y + high.y) * size.x + low.x],
                     fog_froxels[(low.z * size.y + high.y) * size.x + high.x], t.x);
-)hlsl",
-R"hlsl(    float4 c = lerp(fog_froxels[(high.z * size.y + low.y) * size.x + low.x],
+    float4 c = lerp(fog_froxels[(high.z * size.y + low.y) * size.x + low.x],
                     fog_froxels[(high.z * size.y + low.y) * size.x + high.x], t.x);
     float4 d = lerp(fog_froxels[(high.z * size.y + high.y) * size.x + low.x],
                     fog_froxels[(high.z * size.y + high.y) * size.x + high.x], t.x);
@@ -2976,7 +3001,8 @@ float light_shadow(bool directional, uint slot, float3 world, float3 normal, flo
         }
     }
     if (!directional) {
-        return lerp(1.0, shadow, positional_shadows[slot].params.y);
+)hlsl",
+R"hlsl(        return lerp(1.0, shadow, positional_shadows[slot].params.y);
     }
     if (lookups == 2u) {
         shadow = lerp(shadow, next, blend);
@@ -3011,8 +3037,7 @@ float3 unpack_ground_normal(float4 texel) {
 // A direction in the mesh's space, in the world through the pixel's tangent frame: a terrain's
 // vertices have the normal +Y and the tangent +X, so its binormal is -Z.
 float3 frame_direction(VertexOutput input, float3 v) {
-)hlsl",
-R"hlsl(    return normalize(input.tangent * v.x + input.normal * v.y - input.binormal * v.z);
+    return normalize(input.tangent * v.x + input.normal * v.y - input.binormal * v.z);
 }
 
 // An opaque pixel's ray-traced shadows, when its frame has them (on): the screen texture's layers
@@ -3245,7 +3270,8 @@ void apply_decal(Decal decal, float3 world, float3 geometry, float3 dx, float3 d
         if (has_rect(decal.rects[2])) {
             float3 orm = texels[2].xyz;
             ao = lerp(ao, orm.r, albedo.a);
-            roughness = lerp(roughness, orm.g, albedo.a);
+)hlsl",
+R"hlsl(            roughness = lerp(roughness, orm.g, albedo.a);
             metallic = lerp(metallic, orm.b, albedo.a);
         }
     }
@@ -3270,8 +3296,7 @@ void apply_decals(VertexOutput input, float3 geometry, inout float3 base, inout 
     uint range = clusters[cell + decal_words + slice];
     uint first = range & 0xFFFFu;
     uint end = range >> 16u;
-)hlsl",
-R"hlsl(    float3 geo = normalize(geometry);
+    float3 geo = normalize(geometry);
     float3 dx;
     float3 dy;
     surface_steps(input.world, geo, dx, dy);
@@ -3492,7 +3517,8 @@ void voxel_gi_compute(uint index, float3 world, float3 normal, float3 reflection
             float3 turned = tangent * c.x + bitangent * c.y + normal * c.z;
             float3 dir = normalize(float3(dot(gi.rows[0].xyz, turned), dot(gi.rows[1].xyz, turned),
                                           dot(gi.rows[2].xyz, turned)));
-            light += kHighQualityWeights[i] * voxel_cone_trace(index, cell_size, max_distance,
+)hlsl",
+R"hlsl(            light += kHighQualityWeights[i] * voxel_cone_trace(index, cell_size, max_distance,
                                                                position, dir, 0.577, gi.params.y);
         }
     } else {
@@ -3520,8 +3546,7 @@ void voxel_gi_compute(uint index, float3 world, float3 normal, float3 reflection
 
 // Godot's process_gi: what the pixel's VoxelGIs give it, ambient light and reflections, each with
 // how much of the sky's it replaces in alpha.
-)hlsl",
-R"hlsl(void trace_voxel_gis(float3 world, float3 normal, float3 view, float roughness,
+void trace_voxel_gis(float3 world, float3 normal, float3 view, float roughness,
                      out float4 ambient_accum, out float4 reflection_accum) {
     float3 reflection = normalize(reflect(-view, normal));
     roughness *= roughness;
@@ -3732,7 +3757,8 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
     }
 
     ambient_light *= base * (1.0 - metallic);
-    diffuse_light *= base * ao_direct * (1.0 - metallic);
+)hlsl",
+R"hlsl(    diffuse_light *= base * ao_direct * (1.0 - metallic);
     specular_light *= ao_direct;
     return diffuse_light + specular_light + reflected + emitted + ambient_light;
 }
@@ -3763,8 +3789,7 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
         }
         alpha = 1.0;
     }
-)hlsl",
-R"hlsl(    bool terrain = false;
+    bool terrain = false;
     float3 base = game.albedo.rgb;
     float metallic = game.material.x;
     float roughness = game.material.y;

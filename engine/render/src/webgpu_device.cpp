@@ -658,6 +658,9 @@ public:
                 wgpuRenderPipelineRelease(pipeline);
             }
         }
+        for (const GameShadowPipeline& made : game_shadow_pipelines_) {
+            wgpuRenderPipelineRelease(made.pipeline);
+        }
         for (WGPUComputePipeline pipeline : compute_pipelines_) {
             if (pipeline != nullptr) {
                 wgpuComputePipelineRelease(pipeline);
@@ -701,6 +704,10 @@ public:
                                            mesh_textures_layout_,
                                            mesh_fragment_layout_,
                                            mesh_game_fragment_layout_,
+                                           mesh_game_vertex_layout_,
+                                           game_shadow_textures_layout_,
+                                           shadow_game_vertex_layout_,
+                                           shadow_game_fragment_layout_,
                                            mesh_clusters_layout_,
                                            shadow_vertex_layout_,
                                            shadow_fragment_layout_,
@@ -916,14 +923,23 @@ public:
             return checked.error();
         }
         const bool spatial = shader.type == ShaderType::Spatial;
-        const GameShader made =
-            spatial ? GameShader{.type = ShaderType::Spatial,
-                                 .fragment = create_module(shader.wgsl_fragment),
-                                 .clustered = create_module(shader.clustered.wgsl),
-                                 .normal = create_module(shader.normal_roughness.wgsl),
-                                 .motion = create_module(shader.motion.wgsl)}
-                    : GameShader{.vertex = create_module(shader.wgsl_vertex),
-                                 .fragment = create_module(shader.wgsl_fragment)};
+        GameShader made{.vertex = create_module(shader.wgsl_vertex),
+                        .fragment = create_module(shader.wgsl_fragment)};
+        if (spatial) {
+            made = {.type = ShaderType::Spatial,
+                    .fragment = create_module(shader.wgsl_fragment),
+                    .clustered = create_module(shader.clustered.wgsl),
+                    .normal = create_module(shader.normal_roughness.wgsl),
+                    .motion = create_module(shader.motion.wgsl)};
+            if (shader.vertex_used) {
+                made.vertex = create_module(shader.wgsl_vertex);
+                made.motion_vertex = create_module(shader.motion_vertex.wgsl);
+            }
+            if (shader.shadows_used()) {
+                made.shadow_vertex = create_module(shader.shadow_vertex.wgsl);
+                made.shadow = create_module(shader.shadow.wgsl);
+            }
+        }
         // Where the device can wait, WGSL the browser refuses fails here, not at the first draw.
         if (can_wait_) {
             if (auto errors = scoped_errors(); !errors) {
@@ -957,6 +973,13 @@ public:
             return true;
         });
         std::erase_if(mesh_pipelines_, [&](const MeshPipeline& made) {
+            if (made.game != shader) {
+                return false;
+            }
+            release(made.pipeline);
+            return true;
+        });
+        std::erase_if(game_shadow_pipelines_, [&](const GameShadowPipeline& made) {
             if (made.game != shader) {
                 return false;
             }
@@ -2252,8 +2275,10 @@ private:
         std::uint32_t fog_sky = 0;
         std::vector<std::uint32_t> passes;
         std::vector<std::pair<std::uint32_t, std::uint32_t>> draws;
-        // Each draw's spatial shader uniforms, for those with a game's shader.
+        // Each draw's spatial shader uniforms, for those with a game's shader, and in each
+        // shadow pass (a draw count a pass), for those whose shader draws its shadows.
         std::vector<std::uint32_t> games;
+        std::vector<std::uint32_t> shadow_games;
     };
 
     // A shadow atlas: a depth texture the shadow passes draw into and the mesh pass samples.
@@ -2319,8 +2344,10 @@ private:
     };
 
     // A game's shader: the material shader's stages with the game's code in them. A spatial
-    // shader has no vertex stage, its fragment is the Compatibility renderer's, and it has
-    // Forward+'s and the prepasses' too.
+    // shader's fragment is the Compatibility renderer's, and it has Forward+'s and the prepasses'
+    // too; its vertex stages, the motion prepass's and its shadow passes' stages only where it
+    // runs them (a vertex(), or ALPHA_SCISSOR_THRESHOLD for the shadows), else the mesh shader's
+    // draw.
     struct GameShader {
         ShaderType type = ShaderType::Canvas;
         WGPUShaderModule vertex = nullptr;
@@ -2328,6 +2355,9 @@ private:
         WGPUShaderModule clustered = nullptr;
         WGPUShaderModule normal = nullptr;
         WGPUShaderModule motion = nullptr;
+        WGPUShaderModule motion_vertex = nullptr;
+        WGPUShaderModule shadow_vertex = nullptr;
+        WGPUShaderModule shadow = nullptr;
     };
 
     struct ParticleSystem {
@@ -2617,6 +2647,10 @@ private:
             uniform_entry(0, WGPUShaderStage_Vertex, sizeof(MeshCameraUniforms)),
             uniform_entry(1, WGPUShaderStage_Vertex, sizeof(MeshInstanceUniforms))};
         mesh_vertex_layout_ = layout(mesh_vertex);
+        const std::array mesh_game_vertex{
+            mesh_vertex[0], mesh_vertex[1],
+            uniform_entry(2, WGPUShaderStage_Vertex, sizeof(SpatialUniforms))};
+        mesh_game_vertex_layout_ = layout(mesh_game_vertex);
         constexpr std::uint32_t kMeshSlots = kMeshTextures + 5;
         std::array<WGPUBindGroupLayoutEntry, kMeshSlots * 2> mesh_textures{};
         for (std::uint32_t slot = 0; slot < kMeshSlots; ++slot) {
@@ -2632,7 +2666,20 @@ private:
             WGPUTextureViewDimension_2DArray;
         mesh_textures.at(kMeshTextures + 4).texture.viewDimension =
             WGPUTextureViewDimension_CubeArray;
+        // A spatial shader's vertex() reads its texture params, the material's first slots.
+        for (std::uint32_t slot = 0; slot < kSpatialShaderTextures; ++slot) {
+            mesh_textures.at(slot).visibility |= WGPUShaderStage_Vertex;
+            mesh_textures.at(kMeshSlots + slot).visibility |= WGPUShaderStage_Vertex;
+        }
         mesh_textures_layout_ = layout(mesh_textures);
+        // A spatial shader's shadow passes read its texture params alone, in both stages.
+        std::array<WGPUBindGroupLayoutEntry, kSpatialShaderTextures * 2> game_shadow_textures{};
+        for (std::uint32_t slot = 0; slot < kSpatialShaderTextures; ++slot) {
+            game_shadow_textures.at(slot) = mesh_textures.at(slot);
+            game_shadow_textures.at(kSpatialShaderTextures + slot) =
+                mesh_textures.at(kMeshSlots + slot);
+        }
+        game_shadow_textures_layout_ = layout(game_shadow_textures);
         const std::array mesh_fragment{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(MeshSurfaceUniforms)),
             uniform_entry(1, WGPUShaderStage_Fragment, sizeof(MeshSceneUniforms)),
@@ -2658,6 +2705,14 @@ private:
         const std::array shadow_fragment{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(MeshSurfaceUniforms))};
         shadow_fragment_layout_ = layout(shadow_fragment);
+        const std::array shadow_game_vertex{
+            shadow_vertex[0], shadow_vertex[1],
+            uniform_entry(2, WGPUShaderStage_Vertex, sizeof(SpatialUniforms))};
+        shadow_game_vertex_layout_ = layout(shadow_game_vertex);
+        const std::array shadow_game_fragment{
+            shadow_fragment[0],
+            uniform_entry(1, WGPUShaderStage_Fragment, sizeof(SpatialUniforms))};
+        shadow_game_fragment_layout_ = layout(shadow_game_fragment);
         std::array<WGPUBindGroupLayoutEntry, kPostTextures * 2> post_textures{};
         for (std::uint32_t slot = 0; slot < kPostTextures; ++slot) {
             post_textures.at(slot) = texture_entry(slot);
@@ -2827,11 +2882,14 @@ private:
             pipeline_layout({mesh_clusters_layout_, mesh_vertex_layout_, mesh_textures_layout_,
                              mesh_fragment_layout_});
         pipeline_layouts_.at(kMeshGameLayout) =
-            pipeline_layout({empty_layout_, mesh_vertex_layout_, mesh_textures_layout_,
+            pipeline_layout({empty_layout_, mesh_game_vertex_layout_, mesh_textures_layout_,
                              mesh_game_fragment_layout_});
         pipeline_layouts_.at(kMeshClusteredGameLayout) =
-            pipeline_layout({mesh_clusters_layout_, mesh_vertex_layout_, mesh_textures_layout_,
+            pipeline_layout({mesh_clusters_layout_, mesh_game_vertex_layout_, mesh_textures_layout_,
                              mesh_game_fragment_layout_});
+        pipeline_layouts_.at(kShadowGameLayout) =
+            pipeline_layout({empty_layout_, shadow_game_vertex_layout_,
+                             game_shadow_textures_layout_, shadow_game_fragment_layout_});
         pipeline_layouts_.at(kShadowLayout) =
             pipeline_layout({empty_layout_, shadow_vertex_layout_, sprite_textures_layout_,
                              shadow_fragment_layout_});
@@ -2883,7 +2941,8 @@ private:
 
     static void release_game_shader(const GameShader& shader) {
         for (WGPUShaderModule module :
-             {shader.vertex, shader.fragment, shader.clustered, shader.normal, shader.motion}) {
+             {shader.vertex, shader.fragment, shader.clustered, shader.normal, shader.motion,
+              shader.motion_vertex, shader.shadow_vertex, shader.shadow}) {
             if (module != nullptr) {
                 wgpuShaderModuleRelease(module);
             }
@@ -3119,6 +3178,10 @@ private:
             buffer_entry(0, uniform_buffer_, sizeof(MeshCameraUniforms)),
             buffer_entry(1, uniform_buffer_, sizeof(MeshInstanceUniforms))};
         mesh_vertex_group_ = bind_group(mesh_vertex_layout_, mesh_vertex);
+        const std::array mesh_game_vertex{
+            mesh_vertex[0], mesh_vertex[1],
+            buffer_entry(2, uniform_buffer_, sizeof(SpatialUniforms))};
+        mesh_game_vertex_group_ = bind_group(mesh_game_vertex_layout_, mesh_game_vertex);
         const std::array mesh_fragment{
             buffer_entry(0, uniform_buffer_, sizeof(MeshSurfaceUniforms)),
             buffer_entry(1, uniform_buffer_, sizeof(MeshSceneUniforms)),
@@ -3135,6 +3198,14 @@ private:
         const std::array shadow_fragment{
             buffer_entry(0, uniform_buffer_, sizeof(MeshSurfaceUniforms))};
         shadow_fragment_group_ = bind_group(shadow_fragment_layout_, shadow_fragment);
+        const std::array shadow_game_vertex{
+            shadow_vertex[0], shadow_vertex[1],
+            buffer_entry(2, uniform_buffer_, sizeof(SpatialUniforms))};
+        shadow_game_vertex_group_ = bind_group(shadow_game_vertex_layout_, shadow_game_vertex);
+        const std::array shadow_game_fragment{
+            shadow_fragment[0], buffer_entry(1, uniform_buffer_, sizeof(SpatialUniforms))};
+        shadow_game_fragment_group_ =
+            bind_group(shadow_game_fragment_layout_, shadow_game_fragment);
         const std::array post{buffer_entry(0, uniform_buffer_, sizeof(PostUniforms))};
         post_uniforms_group_ = bind_group(post_uniforms_layout_, post);
         const std::array forward{buffer_entry(0, uniform_buffer_, sizeof(ForwardPostUniforms))};
@@ -3163,17 +3234,18 @@ private:
     }
 
     void release_uniform_groups() {
-        for (WGPUBindGroup* group : {&vertex_uniforms_group_,       &fragment_uniforms_group_,
-                                     &compute_uniforms_group_,      &mesh_vertex_group_,
-                                     &mesh_fragment_group_,         &mesh_game_fragment_group_,
-                                     &shadow_vertex_group_,         &shadow_fragment_group_,
-                                     &post_uniforms_group_,         &forward_uniforms_group_,
-                                     &sky_uniforms_group_,          &filter_uniforms_group_,
-                                     &ssao_uniforms_group_,         &ssr_uniforms_group_,
-                                     &taa_uniforms_group_,          &fsr2_uniforms_group_,
-                                     &fsr2_compute_uniforms_group_, &fsr3_uniforms_group_,
-                                     &fsr3_compute_uniforms_group_, &fog_uniforms_group_,
-                                     &fog_sky_uniforms_group_}) {
+        for (WGPUBindGroup* group : {&vertex_uniforms_group_,      &fragment_uniforms_group_,
+                                     &compute_uniforms_group_,     &mesh_vertex_group_,
+                                     &mesh_fragment_group_,        &mesh_game_fragment_group_,
+                                     &mesh_game_vertex_group_,     &shadow_game_vertex_group_,
+                                     &shadow_game_fragment_group_, &shadow_vertex_group_,
+                                     &shadow_fragment_group_,      &post_uniforms_group_,
+                                     &forward_uniforms_group_,     &sky_uniforms_group_,
+                                     &filter_uniforms_group_,      &ssao_uniforms_group_,
+                                     &ssr_uniforms_group_,         &taa_uniforms_group_,
+                                     &fsr2_uniforms_group_,        &fsr2_compute_uniforms_group_,
+                                     &fsr3_uniforms_group_,        &fsr3_compute_uniforms_group_,
+                                     &fog_uniforms_group_,         &fog_sky_uniforms_group_}) {
             if (*group != nullptr) {
                 wgpuBindGroupRelease(*group);
                 *group = nullptr;
@@ -3847,6 +3919,67 @@ private:
         return group;
     }
 
+    // A game's spatial shader's shadow pipeline for a cull mode, made the first time a frame
+    // needs it: its shadow.hlsl stages, depth only.
+    WGPURenderPipeline game_shadow_pipeline(ShaderId shader, CullMode cull) {
+        for (const GameShadowPipeline& made : game_shadow_pipelines_) {
+            if (made.game == shader && made.cull == cull) {
+                return made.pipeline;
+            }
+        }
+        const GameShader& game = game_shaders_.at(shader);
+        const std::array attributes = mesh_attributes();
+        WGPUVertexBufferLayout buffer = WGPU_VERTEX_BUFFER_LAYOUT_INIT;
+        buffer.stepMode = WGPUVertexStepMode_Vertex;
+        buffer.arrayStride = sizeof(Vertex3D);
+        buffer.attributeCount = attributes.size();
+        buffer.attributes = attributes.data();
+        WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
+        fragment.module = game.shadow;
+        fragment.entryPoint = text_view("fs_main");
+        WGPUDepthStencilState depth = WGPU_DEPTH_STENCIL_STATE_INIT;
+        depth.format = kDepthFormat;
+        depth.depthWriteEnabled = WGPUOptionalBool_True;
+        depth.depthCompare = WGPUCompareFunction_Greater;
+        WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
+        info.layout = pipeline_layouts_.at(kShadowGameLayout);
+        info.vertex.module = game.shadow_vertex;
+        info.vertex.entryPoint = text_view("vs_main");
+        info.vertex.bufferCount = 1;
+        info.vertex.buffers = &buffer;
+        info.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+        info.primitive.frontFace = WGPUFrontFace_CW;
+        info.primitive.cullMode = gpu_cull(cull);
+        info.depthStencil = &depth;
+        info.fragment = &fragment;
+        WGPURenderPipeline made = wgpuDeviceCreateRenderPipeline(device_, &info);
+        game_shadow_pipelines_.push_back({.game = shader, .cull = cull, .pipeline = made});
+        return made;
+    }
+
+    // A spatial shader's texture params for its shadow passes, the material's first slots.
+    WGPUBindGroup game_shadow_group(const MeshBindings& bindings) {
+        TextureBindings key{};
+        std::copy_n(bindings.begin(), kSpatialShaderTextures, key.begin());
+        if (const auto it = game_shadow_groups_.find(key); it != game_shadow_groups_.end()) {
+            return it->second;
+        }
+        std::array<WGPUBindGroupEntry, kSpatialShaderTextures * 2> entries{};
+        for (std::uint32_t slot = 0; slot < kSpatialShaderTextures; ++slot) {
+            WGPUBindGroupEntry& texture = entries.at(slot);
+            texture = WGPU_BIND_GROUP_ENTRY_INIT;
+            texture.binding = slot;
+            texture.textureView = bindings.at(slot).first;
+            WGPUBindGroupEntry& sampler = entries.at(kSpatialShaderTextures + slot);
+            sampler = WGPU_BIND_GROUP_ENTRY_INIT;
+            sampler.binding = kMeshSamplerBinding + slot;
+            sampler.sampler = bindings.at(slot).second;
+        }
+        WGPUBindGroup group = bind_group(game_shadow_textures_layout_, entries);
+        game_shadow_groups_.emplace(key, group);
+        return group;
+    }
+
     // Records the frame's shadow passes: each atlas in a pass of its own, each light's view drawn
     // into its rect.
     void encode_shadows(WGPUCommandEncoder encoder, const MeshUniforms& at) {
@@ -3886,20 +4019,30 @@ private:
                     if (!shadow_pass_draws(pass, draw, batch.bounds)) {
                         continue;
                     }
-                    WGPURenderPipeline pipeline = shadow_pipeline(shadow_cull(pass, draw));
+                    // A spatial shader that draws its shadows sees the draw from the light,
+                    // with its texture params in both stages.
+                    const std::uint32_t game = at.shadow_games.at((p * mesh_draws_.size()) + i);
+                    WGPURenderPipeline pipeline =
+                        game != 0
+                            ? game_shadow_pipeline(draw.material.shader, shadow_cull(pass, draw))
+                            : shadow_pipeline(shadow_cull(pass, draw));
                     if (pipeline != bound) {
                         wgpuRenderPassEncoderSetPipeline(render, pipeline);
                         bound = pipeline;
                     }
-                    const std::array<std::uint32_t, 2> vertex_offsets{at.passes[p],
-                                                                      at.draws[i].first};
-                    wgpuRenderPassEncoderSetBindGroup(render, 1, shadow_vertex_group_,
-                                                      vertex_offsets.size(), vertex_offsets.data());
-                    wgpuRenderPassEncoderSetBindGroup(render, 2, albedo_group(batch.bindings[0]), 0,
-                                                      nullptr);
-                    const std::uint32_t surface = at.draws[i].second;
-                    wgpuRenderPassEncoderSetBindGroup(render, 3, shadow_fragment_group_, 1,
-                                                      &surface);
+                    const std::array<std::uint32_t, 3> vertex_offsets{at.passes[p],
+                                                                      at.draws[i].first, game};
+                    wgpuRenderPassEncoderSetBindGroup(
+                        render, 1, game != 0 ? shadow_game_vertex_group_ : shadow_vertex_group_,
+                        game != 0 ? 3 : 2, vertex_offsets.data());
+                    wgpuRenderPassEncoderSetBindGroup(render, 2,
+                                                      game != 0 ? game_shadow_group(batch.bindings)
+                                                                : albedo_group(batch.bindings[0]),
+                                                      0, nullptr);
+                    const std::array<std::uint32_t, 2> fragment_offsets{at.draws[i].second, game};
+                    wgpuRenderPassEncoderSetBindGroup(
+                        render, 3, game != 0 ? shadow_game_fragment_group_ : shadow_fragment_group_,
+                        game != 0 ? 2 : 1, fragment_offsets.data());
                     wgpuRenderPassEncoderSetVertexBuffer(render, 0, batch.vertices, 0,
                                                          WGPU_WHOLE_SIZE);
                     wgpuRenderPassEncoderSetIndexBuffer(render, batch.indices,
@@ -3962,6 +4105,9 @@ private:
             clustered ? (game ? kMeshClusteredGameLayout : kMeshClusteredLayout)
                       : (game ? kMeshGameLayout : kMeshLayout));
         info.vertex.module = module(kMeshVertexModule, joined(shaders::kMeshVertexWgsl));
+        if (game && game_shaders_.at(material.shader).vertex != nullptr) {
+            info.vertex.module = game_shaders_.at(material.shader).vertex;
+        }
         info.vertex.entryPoint = text_view("vs_main");
         info.vertex.bufferCount = 1;
         info.vertex.buffers = &buffer;
@@ -4114,15 +4260,35 @@ private:
                                   uniforms_.add(mesh_surface_uniforms(draw.material, draw.layers)));
             std::uint32_t game = 0;
             if (draw.material.shader != ShaderId::None) {
-                SpatialUniforms uniforms = spatial_uniforms(scene, draw.transform, draw.material,
-                                                            scene_width_, scene_height_);
-                for (Mat4* matrix : {&uniforms.model, &uniforms.view, &uniforms.inv_view,
-                                     &uniforms.projection, &uniforms.inv_projection}) {
+                SpatialUniforms uniforms =
+                    spatial_uniforms(scene, draw.transform, draw.material, scene_width_,
+                                     scene_height_, draw.previous);
+                for (Mat4* matrix :
+                     {&uniforms.model, &uniforms.view, &uniforms.inv_view, &uniforms.projection,
+                      &uniforms.inv_projection, &uniforms.normal_model, &uniforms.previous_model}) {
                     *matrix = transposed(*matrix);
                 }
                 game = uniforms_.add(uniforms);
             }
             at.games.push_back(game);
+        }
+        at.shadow_games.assign(plan.passes.size() * mesh_draws_.size(), 0);
+        for (std::size_t p = 0; p < plan.passes.size(); ++p) {
+            for (std::size_t i = 0; i < mesh_draws_.size(); ++i) {
+                const MeshDraw& draw = mesh_draws_[i];
+                if (draw.material.shader == ShaderId::None ||
+                    game_shaders_.at(draw.material.shader).shadow == nullptr ||
+                    !shadow_pass_draws(plan.passes[p], draw, mesh_batches_[i].bounds)) {
+                    continue;
+                }
+                SpatialUniforms uniforms = shadow_spatial_uniforms(plan.passes[p], draw);
+                for (Mat4* matrix :
+                     {&uniforms.model, &uniforms.view, &uniforms.inv_view, &uniforms.projection,
+                      &uniforms.inv_projection, &uniforms.normal_model, &uniforms.previous_model}) {
+                    *matrix = transposed(*matrix);
+                }
+                at.shadow_games.at((p * mesh_draws_.size()) + i) = uniforms_.add(uniforms);
+            }
         }
         return at;
     }
@@ -4278,9 +4444,13 @@ private:
                 wgpuRenderPassEncoderSetPipeline(pass, pipeline);
                 bound = pipeline;
             }
-            const std::array<std::uint32_t, 2> vertex_offsets{at.camera, at.draws[i].first};
-            wgpuRenderPassEncoderSetBindGroup(pass, 1, mesh_vertex_group_, vertex_offsets.size(),
-                                              vertex_offsets.data());
+            // A spatial shader's draws read its uniforms in the vertex stage too.
+            const bool game = mesh_draws_[i].material.shader != ShaderId::None;
+            const std::array<std::uint32_t, 3> vertex_offsets{at.camera, at.draws[i].first,
+                                                              at.games[i]};
+            wgpuRenderPassEncoderSetBindGroup(pass, 1,
+                                              game ? mesh_game_vertex_group_ : mesh_vertex_group_,
+                                              game ? 3 : 2, vertex_offsets.data());
             MeshBindings bindings = batch.bindings;
             for (std::size_t atlas = 0; atlas < 2; ++atlas) {
                 const bool drawn = (atlas == 0 ? shadow_plan_->directional_size
@@ -4302,7 +4472,6 @@ private:
             wgpuRenderPassEncoderSetBindGroup(pass, 2, mesh_texture_group(bindings), 0, nullptr);
             const std::array<std::uint32_t, 4> fragment_offsets{at.draws[i].second, scene,
                                                                 at.shadows, at.games[i]};
-            const bool game = mesh_draws_[i].material.shader != ShaderId::None;
             wgpuRenderPassEncoderSetBindGroup(
                 pass, 3, game ? mesh_game_fragment_group_ : mesh_fragment_group_, game ? 4 : 3,
                 fragment_offsets.data());
@@ -4349,6 +4518,9 @@ private:
         WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
         info.layout = pipeline_layouts_.at(game == ShaderId::None ? kMeshLayout : kMeshGameLayout);
         info.vertex.module = module(kMeshVertexModule, joined(shaders::kMeshVertexWgsl));
+        if (game != ShaderId::None && game_shaders_.at(game).vertex != nullptr) {
+            info.vertex.module = game_shaders_.at(game).vertex;
+        }
         info.vertex.entryPoint = text_view("vs_main");
         info.vertex.bufferCount = 1;
         info.vertex.buffers = &buffer;
@@ -4430,6 +4602,9 @@ private:
         info.layout = pipeline_layouts_.at(game == ShaderId::None ? kMeshLayout : kMeshGameLayout);
         info.vertex.module =
             module(kMeshMotionVertexModule, joined(shaders::kMeshMotionVertexWgsl));
+        if (game != ShaderId::None && game_shaders_.at(game).motion_vertex != nullptr) {
+            info.vertex.module = game_shaders_.at(game).motion_vertex;
+        }
         info.vertex.entryPoint = text_view("vs_main");
         info.vertex.bufferCount = buffers.size();
         info.vertex.buffers = buffers.data();
@@ -6118,21 +6293,25 @@ private:
 
     // Drops the groups that bind a texture that is going.
     void forget_texture_groups(WGPUTextureView view) {
-        std::erase_if(texture_groups_, [&](const auto& entry) {
-            const bool binds = std::ranges::any_of(
-                entry.first, [&](const auto& bound) { return bound.first == view; });
-            if (binds) {
-                wgpuBindGroupRelease(entry.second);
-            }
-            return binds;
-        });
+        for (auto* groups : {&texture_groups_, &game_shadow_groups_}) {
+            std::erase_if(*groups, [&](const auto& entry) {
+                const bool binds = std::ranges::any_of(
+                    entry.first, [&](const auto& bound) { return bound.first == view; });
+                if (binds) {
+                    wgpuBindGroupRelease(entry.second);
+                }
+                return binds;
+            });
+        }
     }
 
     void clear_texture_groups() {
-        for (const auto& [key, group] : texture_groups_) {
-            wgpuBindGroupRelease(group);
+        for (auto* groups : {&texture_groups_, &game_shadow_groups_}) {
+            for (const auto& [key, group] : *groups) {
+                wgpuBindGroupRelease(group);
+            }
+            groups->clear();
         }
-        texture_groups_.clear();
     }
 
     // Copies the frame's vertices, what its particle jobs read and its uniforms to the GPU, with
@@ -6287,6 +6466,7 @@ private:
     static constexpr std::size_t kMesh3DLayout = kFsr3ReconstructLayout + 1;
     static constexpr std::size_t kMeshGameLayout = kMesh3DLayout + 1;
     static constexpr std::size_t kMeshClusteredGameLayout = kMeshGameLayout + 1;
+    static constexpr std::size_t kShadowGameLayout = kMeshClusteredGameLayout + 1;
 
     WGPUInstance instance_;
     WGPUDevice device_;
@@ -6320,6 +6500,11 @@ private:
     WGPUBindGroupLayout mesh_textures_layout_ = nullptr;
     WGPUBindGroupLayout mesh_fragment_layout_ = nullptr;
     WGPUBindGroupLayout mesh_game_fragment_layout_ = nullptr; // with a spatial shader's uniforms
+    WGPUBindGroupLayout mesh_game_vertex_layout_ = nullptr;   // the same for its vertex stage
+    // A spatial shader's shadow passes': its texture params, and its uniforms in each stage.
+    WGPUBindGroupLayout game_shadow_textures_layout_ = nullptr;
+    WGPUBindGroupLayout shadow_game_vertex_layout_ = nullptr;
+    WGPUBindGroupLayout shadow_game_fragment_layout_ = nullptr;
     WGPUBindGroupLayout mesh_clusters_layout_ = nullptr;
     WGPUBindGroupLayout shadow_vertex_layout_ = nullptr;
     WGPUBindGroupLayout shadow_fragment_layout_ = nullptr;
@@ -6350,7 +6535,7 @@ private:
     WGPUBindGroupLayout fog_uniforms_layout_ = nullptr;
     WGPUBindGroupLayout fog_sky_storage_layout_ = nullptr;
     WGPUBindGroupLayout fog_sky_uniforms_layout_ = nullptr;
-    std::array<WGPUPipelineLayout, kMeshClusteredGameLayout + 1> pipeline_layouts_{};
+    std::array<WGPUPipelineLayout, kShadowGameLayout + 1> pipeline_layouts_{};
     std::array<WGPUSampler, 4> samplers_{}; // by sampler_index
     GpuTexture white_;
     std::unordered_map<TextureId, Texture> textures_;
@@ -6370,6 +6555,9 @@ private:
     WGPUBindGroup mesh_vertex_group_ = nullptr;
     WGPUBindGroup mesh_fragment_group_ = nullptr;
     WGPUBindGroup mesh_game_fragment_group_ = nullptr;
+    WGPUBindGroup mesh_game_vertex_group_ = nullptr;
+    WGPUBindGroup shadow_game_vertex_group_ = nullptr;
+    WGPUBindGroup shadow_game_fragment_group_ = nullptr;
     WGPUBindGroup shadow_vertex_group_ = nullptr;
     WGPUBindGroup shadow_fragment_group_ = nullptr;
     WGPUBindGroup post_uniforms_group_ = nullptr;
@@ -6425,6 +6613,15 @@ private:
     GpuTexture no_shadows_; // bound for an atlas the frame doesn't draw
     WGPUSampler shadow_sampler_ = nullptr;
     std::array<WGPURenderPipeline, 3> shadow_pipelines_{}; // by CullMode
+    // Game spatial shaders' shadow pipelines.
+    struct GameShadowPipeline {
+        ShaderId game = ShaderId::None;
+        CullMode cull = CullMode::Back;
+        WGPURenderPipeline pipeline = nullptr;
+    };
+    std::vector<GameShadowPipeline> game_shadow_pipelines_;
+    // A spatial shader's shadow passes' texture groups, by the textures they bind.
+    std::unordered_map<TextureBindings, WGPUBindGroup, BindingsHash> game_shadow_groups_;
     std::vector<std::pair<WGPUTextureFormat, WGPURenderPipeline>> post_pipelines_;
     std::vector<std::pair<WGPUTextureFormat, WGPURenderPipeline>> sky_pipelines_;
     PostTargets post_targets_;

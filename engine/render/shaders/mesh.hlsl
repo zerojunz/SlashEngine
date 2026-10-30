@@ -15,7 +15,9 @@
 // the prepass of a frame with TAA, which draws each pixel's motion vector into a second target.
 // With GAME_SHADER defined, a game's spatial shader gives each pixel's surface: the shader tools
 // (tools/shader_compiler) put its code before this file's, with GameSurface, game_surface and
-// game_specular, and its texture params in the StandardMaterial3D's slots.
+// game_specular, and its texture params in the StandardMaterial3D's slots. With GAME_VERTEX too,
+// its vertex() places the corners, through GameVertex and game_vertex, with its texture params
+// in the vertex stage's slots 0 to 4.
 
 cbuffer Camera : register(b0, space1) {
     float4x4 view_projection;          // world to clip space, with TAA's jitter
@@ -62,6 +64,21 @@ struct VertexOutput {
 
 VertexOutput vs_main(VertexInput input) {
     VertexOutput output;
+#ifdef GAME_VERTEX
+    // A game's spatial shader moves the corner with its vertex(), as Godot's ShaderMaterial:
+    // game_vertex, which the shader tools write around it, gives it in the world.
+    GameVertex moved = game_vertex(input.position, input.normal, input.tangent, input.uv,
+                                   input.uv2, input.color, false);
+    float4 world = float4(moved.world, 1.0);
+    output.world = world.xyz;
+    output.position = mul(view_projection, world);
+    output.normal = normalize(moved.normal);
+    output.tangent = normalize(moved.tangent);
+    output.binormal = normalize(moved.binormal);
+    output.uv = moved.uv;
+    output.color = moved.color;
+    output.uv2 = moved.uv2 * lightmap_uv.zw + lightmap_uv.xy;
+#else
     float4 world = mul(model, float4(input.position, 1.0));
     output.world = world.xyz;
     output.position = mul(view_projection, world);
@@ -73,11 +90,19 @@ VertexOutput vs_main(VertexInput input) {
     output.uv = input.uv * uv1.xy + uv1.zw;
     output.color = input.color;
     output.uv2 = input.uv2 * lightmap_uv.zw + lightmap_uv.xy;
+#endif
 #ifdef MOTION_VECTORS
     output.motion_clip = output.position;
     output.motion_clip.xy -= jitter.xy * output.position.w;
+#ifdef GAME_VERTEX
+    // Where vertex() put the corner in the frame before, with its model and time.
+    GameVertex before = game_vertex(input.previous, input.normal, input.tangent, input.uv,
+                                    input.uv2, input.color, true);
+    output.previous_clip = mul(previous_view_projection, float4(before.world, 1.0));
+#else
     output.previous_clip =
         mul(previous_view_projection, mul(previous_model, float4(input.previous, 1.0)));
+#endif
 #endif
     return output;
 }

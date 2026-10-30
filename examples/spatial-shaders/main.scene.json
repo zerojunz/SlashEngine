@@ -48,8 +48,8 @@
     },
     "sun": {
       "components": {
-        "DirectionalLight3D": {},
-        "Transform3D": {"rotation": [-0.9, 0.5, 0]}
+        "DirectionalLight3D": {"shadow_enabled": true},
+        "Transform3D": {"rotation": [-0.55, 2.7, 0]}
       }
     }
   },

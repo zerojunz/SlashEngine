@@ -3091,9 +3091,10 @@ void fragment() {
 #### Spatial shaders
 
 A material with `"shader_type": "spatial"` is Godot's `shader_type spatial`: its shader's
-`fragment()` gives a mesh's surface, which the engine's 3D lighting then lights as it lights a
-`StandardMaterial3D`, with every light, shadow, reflection, the sky, fog, SSAO, SSR and the rest.
-A `MeshInstance3D` draws one through its `material_override`.
+`vertex()` moves a mesh's corners and its `fragment()` gives the mesh's surface, which the
+engine's 3D lighting then lights as it lights a `StandardMaterial3D`, with every light, shadow,
+reflection, the sky, fog, SSAO, SSR and the rest. A `MeshInstance3D` draws one through its
+`material_override`.
 [examples/spatial-shaders](../../examples/spatial-shaders/) has a crystal, a fence and a glass
 ball.
 
@@ -3123,8 +3124,18 @@ void fragment() {
 
 `render_mode` is Godot's `render_mode` line: one of `blend_mix` (the default), `blend_add`,
 `blend_sub` and `blend_mul`, which blend a transparent mesh; one of `cull_back` (the default),
-`cull_front` and `cull_disabled`; and `unshaded`, `fog_disabled` and `shadows_disabled`. A
-spatial material has no `blend` or `light_mode`.
+`cull_front` and `cull_disabled`; and `unshaded`, `fog_disabled`, `shadows_disabled` and
+`world_vertex_coords`, which gives `vertex()` its corner in the world rather than in the mesh's
+own space, as Godot's. A spatial material has no `blend` or `light_mode`.
+
+```hlsl
+// shaders/sway.hlsl: the top of a fence leans in the wind, and its shadow with it.
+void vertex() {
+    VERTEX.x += sin(TIME * 2.0 + NODE_POSITION_WORLD.x) * 0.1 * max(VERTEX.y, 0.0);
+}
+```
+
+In `fragment()`:
 
 | Built-in | Type | Value |
 | --- | --- | --- |
@@ -3149,9 +3160,23 @@ spatial material has no `blend` or `light_mode`.
 | `SCREEN_UV` | float2 | `FRAGCOORD.xy` over `VIEWPORT_SIZE`, from 0 to 1 across the frame |
 | `FRONT_FACING` | bool | Whether the camera sees the triangle's front |
 | `TIME` | float | Seconds of game time, wrapping every hour |
-| `MODEL_MATRIX`, `VIEW_MATRIX`, `INV_VIEW_MATRIX`, `PROJECTION_MATRIX`, `INV_PROJECTION_MATRIX` | float4x4 | The mesh's place in the world, the world to view space, and view space to clip space, and back |
+| `MODEL_MATRIX`, `VIEW_MATRIX`, `INV_VIEW_MATRIX`, `PROJECTION_MATRIX`, `INV_PROJECTION_MATRIX`, `MODELVIEW_MATRIX` | float4x4 | The mesh's place in the world, the world to view space, and view space to clip space, and back, and the mesh to view space |
+| `MODEL_NORMAL_MATRIX`, `MODELVIEW_NORMAL_MATRIX` | float3x3 | What turns the mesh's normals into the world's and into view space |
 | `CAMERA_POSITION_WORLD`, `CAMERA_DIRECTION_WORLD` | float3 | Where the camera is and the way it looks, in the world |
+| `NODE_POSITION_WORLD`, `NODE_POSITION_VIEW` | float3 | The mesh's origin in the world and in view space |
 | `VIEWPORT_SIZE` | float2 | The size of what the frame draws, in pixels |
+
+In `vertex()`, which runs once a corner:
+
+| Built-in | Type | Value |
+| --- | --- | --- |
+| `VERTEX` | float3 | In and out: the corner, in the mesh's space (in the world's with `world_vertex_coords`) |
+| `NORMAL`, `TANGENT`, `BINORMAL` | float3 | In and out: its normal, tangent and binormal, in the same space |
+| `UV`, `UV2` | float2 | In and out: its texture coordinates, which `fragment()` then reads |
+| `COLOR` | float4 | In and out: its vertex color |
+| `TIME`, the matrices, `CAMERA_*`, `NODE_*` and `VIEWPORT_SIZE` | | As in `fragment()` |
+
+`texture()` works in `vertex()` too, reading the texture's largest level.
 
 - Params are globals as in canvas shaders. A spatial shader takes up to 5 textures, and a
   texture param with `"source_color": true` holds sRGB colors that `texture()` makes linear, as
@@ -3162,10 +3187,14 @@ spatial material has no `blend` or `light_mode`.
   renderer's, Forward+'s, and the prepasses that draw normals for SSAO and SSR and motion for TAA
   and FSR 2, so `NORMAL_MAP`, `ROUGHNESS` and cut-outs show in them too. `frame.capture` draws it
   on the CPU, where derivatives (`ddx`, `ddy`, `fwidth`) work as on a GPU.
+- `vertex()` is compiled into the mesh shader's vertex stage, the motion prepass's (which runs
+  it again with the mesh's place and `TIME` of the frame before, so TAA and FSR 2 see what it
+  moves) and the shadow pass's, so a mesh's shadow moves with it. Shadow passes see the light's
+  view and projection in `VIEW_MATRIX` and `PROJECTION_MATRIX`.
 - A mesh whose material's shader writes `ALPHA` draws after the opaque ones, farthest first, and
-  casts no shadow; one that writes `ALPHA_SCISSOR_THRESHOLD` casts its whole shape for now.
-- Not yet: `vertex()` (meshes' corners are placed as the engine places them, and a shader with
-  one is refused), `light()`, and the shadow pass reading the shader.
+  casts no shadow; one that writes `ALPHA_SCISSOR_THRESHOLD` runs its `fragment()` in the shadow
+  pass too and casts only what it keeps.
+- Not yet: `light()`.
 
 ## Animations
 
