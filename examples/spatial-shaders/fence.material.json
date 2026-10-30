@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "params": {
+    "slats": {"type": "float", "value": 5.0}
+  },
+  "render_mode": ["cull_disabled"],
+  "shader": "shaders/fence.hlsl",
+  "shader_type": "spatial"
+}

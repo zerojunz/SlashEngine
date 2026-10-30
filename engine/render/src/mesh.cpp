@@ -648,6 +648,12 @@ MeshVoxelGIUniforms voxel_gi_uniforms(const VoxelGIProbe& probe) {
 
 std::array<MaterialTexture, kMeshTextures> mesh_texture_slots(const Material3D& material) {
     std::array<MaterialTexture, kMeshTextures> slots{};
+    if (material.shader != ShaderId::None) {
+        std::copy(material.shader_textures.begin(), material.shader_textures.end(), slots.begin());
+        slots[5] = {.texture = material.voxel_gi.atlas, .repeat = false};
+        slots[10] = {.texture = material.lightmap.texture, .repeat = false};
+        return slots;
+    }
     if (!material.terrain.enabled) {
         slots[0] = material.albedo_texture;
         slots[1] = material.metallic_texture;
@@ -676,6 +682,27 @@ std::array<float, 2> mesh_texture_uv(const MeshSurfaceUniforms& surface, std::si
     }
     const float tiles = surface.terrain_uv.at((slot - 3) % 4);
     return {uv[0] * tiles, uv[1] * tiles};
+}
+
+SpatialUniforms spatial_uniforms(const Scene3D& scene, const Mat4& transform,
+                                 const Material3D& material, std::uint32_t width,
+                                 std::uint32_t height) {
+    const auto to_floats = [](const std::array<double, 16>& m) {
+        Mat4 out{};
+        for (std::size_t i = 0; i < out.size(); ++i) {
+            out.at(i) = static_cast<float>(m.at(i));
+        }
+        return out;
+    };
+    SpatialUniforms out;
+    out.constants = material.shader_constants;
+    out.model = transform;
+    out.view = scene.camera;
+    out.inv_view = to_floats(inverse_matrix(scene.camera));
+    out.projection = scene.projection;
+    out.inv_projection = to_floats(inverse_matrix(scene.projection));
+    out.viewport = {static_cast<float>(width), static_cast<float>(height), 0.0F, 0.0F};
+    return out;
 }
 
 MeshSurfaceUniforms mesh_surface_uniforms(const Material3D& material, std::uint32_t layers) {
@@ -729,7 +756,9 @@ MeshSurfaceUniforms mesh_surface_uniforms(const Material3D& material, std::uint3
             out.voxel_gis.at(i) = voxel_gi_uniforms(gi.probes.at(i));
         }
     }
-    float threshold = material.alpha_scissor_threshold;
+    // A game's spatial shader cuts its pixels by its own ALPHA_SCISSOR_THRESHOLD; the shadow
+    // passes don't run it, so they keep its whole shape.
+    float threshold = material.shader != ShaderId::None ? 0.0F : material.alpha_scissor_threshold;
     std::uint32_t terrain = 0;
     if (material.terrain.enabled) {
         // The color map's alpha cuts holes, in the mesh and its shadows, as HTerrain's shader
@@ -1054,6 +1083,12 @@ Error unknown_mesh(MeshId mesh) {
                       "no mesh " + std::to_string(static_cast<std::uint32_t>(mesh)));
 }
 
+Error not_spatial_shader(ShaderId shader) {
+    return make_error(ErrorCode::InvalidArgument,
+                      "shader " + std::to_string(static_cast<std::uint32_t>(shader)) +
+                          " isn't a spatial shader made on this device");
+}
+
 Error no_scene() {
     return make_error(ErrorCode::InvalidArgument,
                       "draw_mesh needs a frame with a scene (Frame::scene)");
@@ -1256,6 +1291,24 @@ struct SurfacePixel {
 std::optional<SurfacePixel> surface_pixel(const MeshSurfaceUniforms& surface,
                                           const MeshPixel& pixel) {
     const std::uint32_t flags = surface.options[0];
+    if (pixel.game) {
+        // A game's spatial shader gave it, as mesh.hlsl's GAME_SHADER: its alpha cut by its
+        // ALPHA_SCISSOR_THRESHOLD.
+        const GameSurface& game = *pixel.game;
+        SurfacePixel out;
+        out.alpha = (flags & kMeshHasAlpha) != 0 ? game.albedo[3] : 1.0F;
+        if ((flags & kMeshAlphaScissor) != 0) {
+            if (out.alpha < game.normal[3]) {
+                return std::nullopt;
+            }
+            out.alpha = 1.0F;
+        }
+        out.base = xyz(game.albedo);
+        out.metallic = game.material[0];
+        out.roughness = game.material[1];
+        out.normal = xyz(game.normal);
+        return out;
+    }
     Float4 color{};
     for (std::size_t i = 0; i < 4; ++i) {
         color.at(i) = surface.albedo.at(i) * pixel.texels[0].at(i);
@@ -1447,7 +1500,9 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     const bool terrain = found->terrain;
     const TerrainTexel& ground = found->ground;
     Float3 emitted{};
-    if ((flags & kMeshUnshaded) == 0) {
+    if ((flags & kMeshUnshaded) == 0 && pixel.game) {
+        emitted = xyz(pixel.game->emission);
+    } else if ((flags & kMeshUnshaded) == 0) {
         emitted = {surface.emission[0], surface.emission[1], surface.emission[2]};
         if ((flags & kMeshEmissionTexture) != 0) {
             emitted = add(emitted, xyz(pixel.texels[3]));
@@ -1462,7 +1517,7 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     // turned to the pixel's side.
     DecalSurface decaled{.base = found->base,
                          .normal = found->normal,
-                         .ao = 1.0F,
+                         .ao = pixel.game ? pixel.game->material[3] : 1.0F,
                          .roughness = found->roughness,
                          .metallic = found->metallic,
                          .emitted = emitted};
@@ -1483,14 +1538,16 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     // Godot's SSAO: the frame's occlusion at the pixel darkens the opaque meshes' ambient light,
     // with the decals' ambient occlusion, and their direct light by its light affect times its AO
     // channel affect.
+    // A game's shader starts them at its AO and AO_LIGHT_AFFECT, as Godot's.
     float ao = decaled.ao;
-    float ao_direct = 1.0F;
+    float ao_light_affect = pixel.game ? pixel.game->emission[3] : 0.0F;
     const bool opaque = (flags & kMeshHasAlpha) == 0 || (flags & kMeshAlphaScissor) != 0;
     if (scene.ssao[0] != 0.0F && opaque && !maps.ao.empty()) {
         ao = std::min(ao, maps.ao[(std::size_t{pixel.y} * maps.ao_width) + pixel.x]);
-        const float affect = std::max(0.0F, scene.ssao[1]) * scene.ssao[2];
-        ao_direct = 1.0F + ((ao - 1.0F) * affect);
+        ao_light_affect +=
+            (std::max(ao_light_affect, scene.ssao[1]) - ao_light_affect) * scene.ssao[2];
     }
+    const float ao_direct = 1.0F + ((ao - 1.0F) * ao_light_affect);
     // An opaque pixel of a frame with ray-traced shadows takes its lights' from them.
     const bool traced = scene.screen[2] != 0.0F && opaque && !maps.ray_shadows.empty();
     // Its SSR (alpha below 0 for none) goes over their reflections of the sky.
@@ -1499,7 +1556,7 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
         const std::size_t at = ((std::size_t{pixel.y} * maps.ao_width) + pixel.x) * 4;
         ssr = {maps.ssr[at], maps.ssr[at + 1], maps.ssr[at + 2], maps.ssr[at + 3]};
     }
-    const float specular = surface.surface[2];
+    const float specular = pixel.game ? pixel.game->material[2] : surface.surface[2];
 
     const Float3 view =
         normalize(sub({scene.camera[0], scene.camera[1], scene.camera[2]}, pixel.world));

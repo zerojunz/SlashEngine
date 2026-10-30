@@ -3,6 +3,7 @@
 #include "slash/canvas/particles.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/profile.hpp"
+#include "slash/scene3d/material.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/video/video.hpp"
 
@@ -389,6 +390,67 @@ CanvasRenderer::CanvasRenderer(render::RenderDevice& device, asset::Assets& asse
             const render::ParticleProcess3D* space = &material->space;
             return std::shared_ptr<const render::ParticleProcess3D>(std::move(material), space);
         });
+    scene3d_.set_override_materials(
+        [this](const std::string& path, const std::map<std::string, json::Value>& params,
+               double time) { return override_material(path, params, time); });
+}
+
+Result<scene3d::OverrideMaterial>
+CanvasRenderer::override_material(const std::string& path,
+                                  const std::map<std::string, json::Value>& params, double time) {
+    scene3d::OverrideMaterial out;
+    if (path.ends_with(scene3d::kStandardMaterialSuffix)) {
+        auto doc = assets_->load<json::Value>(path);
+        if (!doc) {
+            return doc.error();
+        }
+        auto standard = scene3d::parse_standard_material(*doc.value());
+        if (!standard) {
+            return standard.error();
+        }
+        out.standard = std::move(standard).value();
+        return out;
+    }
+    auto entry = material_entry(path);
+    if (!entry) {
+        return entry.error();
+    }
+    const MaterialEntry& found = *entry.value();
+    if (found.material->shader_type != render::ShaderType::Spatial) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "\"" + path +
+                              "\" is a canvas material; a mesh takes one with \"shader_type\": "
+                              "\"spatial\"");
+    }
+    std::string failed;
+    auto instance = instantiate(*found.material, params, time, &failed);
+    if (!instance) {
+        return make_error(instance.error().code,
+                          "material_params/" + failed + ": " + instance.error().message);
+    }
+    const MaterialInstance& made = instance.value();
+    out.shader = found.shader;
+    std::copy(made.program.constants.begin(),
+              made.program.constants.begin() +
+                  static_cast<std::ptrdiff_t>(
+                      std::min(made.program.constants.size(), out.constants.size())),
+              out.constants.begin());
+    for (std::size_t slot = 0; slot < out.textures.size(); ++slot) {
+        const MaterialTextureRef& texture = made.spatial_textures.at(slot);
+        out.textures.at(slot) = {
+            .path = texture.path, .repeat = texture.repeat, .filter = texture.filter};
+    }
+    out.blend = made.modes.blend;
+    out.cull = made.modes.cull;
+    out.unshaded = made.modes.unshaded;
+    out.fog_disabled = made.modes.fog_disabled;
+    out.shadows_disabled = made.modes.shadows_disabled;
+    if (found.compiled && found.compiled->alpha_scissor_used) {
+        out.transparency = render::Transparency::AlphaScissor;
+    } else if (found.compiled && found.compiled->alpha_used) {
+        out.transparency = render::Transparency::Alpha;
+    }
+    return out;
 }
 
 CanvasRenderer::~CanvasRenderer() {

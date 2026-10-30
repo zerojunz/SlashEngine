@@ -588,6 +588,14 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         eight primitive meshes, `StandardMaterial3D`, `Camera3D`, `DirectionalLight3D`,
         `OmniLight3D`, `SpotLight3D` and `WorldEnvironment`, drawn under the canvas by every
         game and by `frame.capture`
+- [ ] A game's own 3D shaders, as Godot's `shader_type spatial`
+  - [x] `fragment()` gives a mesh's surface (`ALBEDO`, `ROUGHNESS`, `NORMAL_MAP`, `EMISSION`,
+        `ALPHA` and the rest, Godot's built-ins in view space), lit by the engine's 3D
+        lighting: compiled into the mesh shader's Compatibility, Forward+ and prepass stages for
+        Vulkan, Metal, Direct3D 12, WebGPU and OpenGL and run by the software device on 2x2
+        quads; `.material.json` files with `"shader_type": "spatial"` and Godot's render
+        modes, drawn through `MeshInstance3D.material_override`
+  - [ ] `vertex()`, and the shadow pass reading the shader
 - [x] Cascaded, omni and spot shadows
 - [x] Post-processing: tonemap, bloom, SSAO, SSR, depth of field, auto exposure, color grading
   - [x] Godot's Compatibility renderer's tonemappers (linear, Reinhard, filmic, ACES, AgX),
@@ -1074,7 +1082,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | 3D renderer | Clustered forward+ with PBR, plus a low-end path for web and mobile | 7 | Done |
 | Shadows | Cascaded, omni and spot shadow maps | 7 | Done |
 | Post-processing | Tonemap, bloom, SSAO, SSR, DoF, auto exposure, color grading | 7 | Done |
-| Materials and shaders | HLSL shaders plus a JSON material graph | 5, 7 | In part: canvas material graphs, a game's own HLSL canvas shaders and `StandardMaterial3D`'s inputs on meshes are done; 3D shaders and material files in 7 |
+| Materials and shaders | HLSL shaders plus a JSON material graph | 5, 7 | In part: canvas material graphs, a game's own HLSL canvas shaders, `StandardMaterial3D`'s inputs and material files, and spatial shaders' `fragment()` are done; spatial `vertex()` in 7 |
 | Keyframe animation | Keyframe tracks on any reflected property | 5 | Done |
 | Skeletal animation | Skinned meshes, blending, root motion | 7 | Done |
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Done |

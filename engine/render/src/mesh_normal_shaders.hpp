@@ -1579,6 +1579,9 @@ R"hlsl(// The 3D shader's fragment stage for Forward+'s normal-roughness prepass
 // draw them). mesh_normal.hlsl defines NORMAL_ROUGHNESS for Forward+'s prepass, which draws the normals
 // and roughness that ssao.hlsl and ssr.hlsl read, and mesh_motion.hlsl MOTION_VECTORS too for
 // the prepass of a frame with TAA, which draws each pixel's motion vector into a second target.
+// With GAME_SHADER defined, a game's spatial shader gives each pixel's surface: the shader tools
+// (tools/shader_compiler) put its code before this file's, with GameSurface, game_surface and
+// game_specular, and its texture params in the StandardMaterial3D's slots.
 
 cbuffer Camera : register(b0, space1) {
     float4x4 view_projection;          // world to clip space, with TAA's jitter
@@ -1648,22 +1651,26 @@ VertexOutput vs_main(VertexInput input) {
 // A terrain's textures take the first eleven slots: the color map, splat map and normal map in
 // albedo's, metallic's and roughness's, then its layers' albedo_bump in emission's, normal's and
 // ground 2 and 3's, then their normal_roughness. A lightmap, half floats, takes the last slot.
+#ifndef GAME_SHADER
 Texture2D<float4> albedo_texture : register(t0, space2);
 Texture2D<float4> metallic_texture : register(t1, space2);
 Texture2D<float4> roughness_texture : register(t2, space2);
 Texture2D<float4> emission_texture : register(t3, space2);
 Texture2D<float4> normal_texture : register(t4, space2);
+#endif
 Texture2D<float4> ground_texture_2 : register(t5, space2);
 Texture2D<float4> ground_texture_3 : register(t6, space2);
 Texture2D<float4> ground_normal_0 : register(t7, space2);
 Texture2D<float4> ground_normal_1 : register(t8, space2);
 Texture2D<float4> ground_normal_2 : register(t9, space2);
 Texture2D<float4> ground_normal_3 : register(t10, space2);
+#ifndef GAME_SHADER
 SamplerState albedo_sampler : register(s0, space2);
 SamplerState metallic_sampler : register(s1, space2);
 SamplerState roughness_sampler : register(s2, space2);
 SamplerState emission_sampler : register(s3, space2);
 SamplerState normal_sampler : register(s4, space2);
+#endif
 SamplerState ground_sampler_2 : register(s5, space2);
 SamplerState ground_sampler_3 : register(s6, space2);
 SamplerState ground_normal_sampler_0 : register(s7, space2);
@@ -1782,15 +1789,15 @@ struct DirectionalShadow {
     float4x4 matrices[4]; // one a cascade
     float4 splits;        // the view depth each cascade reaches
     float4 normal_bias;   // each cascade's, in world units
-    float4 params;        // fade from and to (view z), opacity, how many cascades
+)hlsl",
+R"hlsl(    float4 params;        // fade from and to (view z), opacity, how many cascades
     float4 options;       // 1 blends cascades, an atlas texel
 };
 
 struct PositionalShadow {
     float4x4 light;    // the world to the light's own space, for an omni light's faces
     float4x4 faces[6]; // one a cube face for an omni light; a spot light's first
-)hlsl",
-R"hlsl(    float4 rects[6];   // each face's tile, its texture coordinates' low and high
+    float4 rects[6];   // each face's tile, its texture coordinates' low and high
     float4 params;     // normal bias over distance, opacity, an atlas texel, how many faces
     float4 position;   // the light's place
 };
@@ -1840,7 +1847,15 @@ struct Decal {
     float4 params;         // emission energy, albedo mix, upper fade, lower fade
     uint4 options;         // its cull mask
 };
-#if defined(SLASH_MSL)
+#if defined(SLASH_MSL) && defined(GAME_SHADER)
+// After a game's shader's uniforms too.
+StructuredBuffer<Light> clustered_lights : register(t4, space2);
+StructuredBuffer<uint> clusters : register(t5, space2);
+StructuredBuffer<Probe> probes : register(t6, space2);
+StructuredBuffer<Decal> decals : register(t7, space2);
+StructuredBuffer<uint> decal_atlas : register(t8, space2);
+StructuredBuffer<float4> fog_froxels : register(t9, space2);
+#elif defined(SLASH_MSL)
 StructuredBuffer<Light> clustered_lights : register(t3, space2);
 StructuredBuffer<uint> clusters : register(t4, space2);
 StructuredBuffer<Probe> probes : register(t5, space2);
@@ -2022,7 +2037,8 @@ float4 sample_fog_froxels(float3 uvw) {
                     fog_froxels[(low.z * size.y + low.y) * size.x + high.x], t.x);
     float4 b = lerp(fog_froxels[(low.z * size.y + high.y) * size.x + low.x],
                     fog_froxels[(low.z * size.y + high.y) * size.x + high.x], t.x);
-    float4 c = lerp(fog_froxels[(high.z * size.y + low.y) * size.x + low.x],
+)hlsl",
+R"hlsl(    float4 c = lerp(fog_froxels[(high.z * size.y + low.y) * size.x + low.x],
                     fog_froxels[(high.z * size.y + low.y) * size.x + high.x], t.x);
     float4 d = lerp(fog_froxels[(high.z * size.y + high.y) * size.x + low.x],
                     fog_froxels[(high.z * size.y + high.y) * size.x + high.x], t.x);
@@ -2039,8 +2055,7 @@ float4 volumetric_fog_process(float2 uv, float view_depth) {
     if (z < 1.0) {
         z = pow(z, volumetric_fog.z);
     }
-)hlsl",
-R"hlsl(    return sample_fog_froxels(float3(uv, z));
+    return sample_fog_froxels(float3(uv, z));
 }
 #endif
 
@@ -2304,7 +2319,8 @@ float3 unpack_ground_normal(float4 texel) {
 // A direction in the mesh's space, in the world through the pixel's tangent frame: a terrain's
 // vertices have the normal +Y and the tangent +X, so its binormal is -Z.
 float3 frame_direction(VertexOutput input, float3 v) {
-    return normalize(input.tangent * v.x + input.normal * v.y - input.binormal * v.z);
+)hlsl",
+R"hlsl(    return normalize(input.tangent * v.x + input.normal * v.y - input.binormal * v.z);
 }
 
 // An opaque pixel's ray-traced shadows, when its frame has them (on): the screen texture's layers
@@ -2320,8 +2336,7 @@ struct RayShadows {
 // draw's layers, with the shading normal and the one shadows offset along (geometry). A pixel with
 // ray-traced shadows takes a light's with a ray slot from them in place of its shadow map's.
 void add_light(Light light, float3 world, float3 normal, float3 geometry, float3 view, float3 f0,
-)hlsl",
-R"hlsl(               float roughness, float metallic, RayShadows rays, inout float3 diffuse_light,
+               float roughness, float metallic, RayShadows rays, inout float3 diffuse_light,
                inout float3 specular_light) {
     if (((uint)light.params.w & options.z) == 0u) {
         return;
@@ -2563,7 +2578,8 @@ void apply_decals(VertexOutput input, float3 geometry, inout float3 base, inout 
     uint range = clusters[cell + decal_words + slice];
     uint first = range & 0xFFFFu;
     uint end = range >> 16u;
-    float3 geo = normalize(geometry);
+)hlsl",
+R"hlsl(    float3 geo = normalize(geometry);
     float3 dx;
     float3 dy;
     surface_steps(input.world, geo, dx, dy);
@@ -2586,8 +2602,7 @@ void apply_decals(VertexOutput input, float3 geometry, inout float3 base, inout 
 // A probe's cube read along a direction in its space: the cube holds it mirrored along z.
 float3 sample_probe(Probe probe, float3 direction, float level) {
     return probe_atlas
-)hlsl",
-R"hlsl(        .SampleLevel(probe_sampler, float4(direction.xy, -direction.z, probe.options.y), level)
+        .SampleLevel(probe_sampler, float4(direction.xy, -direction.z, probe.options.y), level)
         .rgb;
 }
 
@@ -2813,7 +2828,8 @@ void voxel_gi_compute(uint index, float3 world, float3 normal, float3 reflection
 
 // Godot's process_gi: what the pixel's VoxelGIs give it, ambient light and reflections, each with
 // how much of the sky's it replaces in alpha.
-void trace_voxel_gis(float3 world, float3 normal, float3 view, float roughness,
+)hlsl",
+R"hlsl(void trace_voxel_gis(float3 world, float3 normal, float3 view, float roughness,
                      out float4 ambient_accum, out float4 reflection_accum) {
     float3 reflection = normalize(reflect(-view, normal));
     roughness *= roughness;
@@ -2830,8 +2846,7 @@ void trace_voxel_gis(float3 world, float3 normal, float3 view, float roughness,
     }
     if (blend_accum > 0.0) {
         ambient_accum /= blend_accum;
-)hlsl",
-R"hlsl(        reflection_accum /= blend_accum;
+        reflection_accum /= blend_accum;
     }
 }
 #endif
@@ -2907,7 +2922,11 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
                  RayShadows rays) {
     bool lightmapped = (options.x & kLightmap) != 0u;
     bool captured = (options.x & kLightmapCapture) != 0u;
+#ifdef GAME_SHADER
+    float specular = game_specular;
+#else
     float specular = surface.z;
+#endif
     float3 view = normalize(camera.xyz - input.world);
     float3 f0 = lerp((float3)(0.16 * specular * specular), base, metallic);
 
@@ -3036,6 +3055,31 @@ PrepassOutput fs_main(VertexOutput input, bool front : SV_IsFrontFace) {
 #else
 float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
 #endif
+#ifdef GAME_SHADER
+    // A game's spatial shader gives the surface in place of the StandardMaterial3D's, as Godot's
+    // ShaderMaterial: game_surface, which the shader tools write around its fragment()
+    // (tools/shader_compiler), and its ALPHA cut by its ALPHA_SCISSOR_THRESHOLD.
+    uint flags = options.x;
+    GameSurface game =
+        game_surface(input.world, input.normal, input.tangent, input.binormal, input.uv,
+                     input.uv2, input.color, float4(input.position.xyz, 1.0), front,
+                     (flags & kSideCheck) != 0u && !front);
+    float alpha = (flags & kHasAlpha) != 0u ? game.albedo.a : 1.0;
+    if ((flags & kAlphaScissor) != 0u) {
+        if (alpha < game.normal.w) {
+            discard;
+        }
+        alpha = 1.0;
+    }
+)hlsl",
+R"hlsl(    bool terrain = false;
+    float3 base = game.albedo.rgb;
+    float metallic = game.material.x;
+    float roughness = game.material.y;
+    float3 shape = (float3)0.0;
+    float3 normal = game.normal.xyz;
+    game_specular = game.material.z;
+#else
     // Every texture is sampled first, while control flow is uniform, as WGSL requires. A
     // terrain's ground layers tile across its maps.
     bool terrain = (options.w & kTerrain) != 0u;
@@ -3064,8 +3108,7 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
     if ((flags & kAlphaScissor) != 0u) {
         if (alpha < asfloat(options.y)) {
             discard;
-)hlsl",
-R"hlsl(        }
+        }
         alpha = 1.0;
     }
     float3 base;
@@ -3125,6 +3168,7 @@ R"hlsl(        }
     } else {
         normal = normalize(normal);
     }
+#endif
 #ifdef NORMAL_ROUGHNESS
     // The prepass's normal in the camera's space, as Godot's normal_roughness_buffer has it, and
     // roughness, in its seven bits.
@@ -3147,6 +3191,11 @@ R"hlsl(        }
 #endif
 #else
     float3 emitted = (float3)0.0;
+#ifdef GAME_SHADER
+    if ((flags & kUnshaded) == 0u) {
+        emitted = game.emission.rgb;
+    }
+#else
     if ((flags & kUnshaded) == 0u) {
         emitted = emission.rgb;
         if ((flags & kEmissionTexture) != 0u) {
@@ -3154,14 +3203,21 @@ R"hlsl(        }
         }
         emitted = srgb_to_linear(emitted) * emission.w;
     }
+#endif
     // Shadows offset the point they sample along the vertex normal, as Godot's normal_interp; a
     // terrain's along its shape's.
     float3 geometry = terrain ? frame_direction(input, shape) : normalize(input.normal);
     // Godot's SSAO: the frame's occlusion at the pixel darkens the opaque meshes' ambient light,
     // with the decals' ambient occlusion, and their direct light by its light affect times its AO
-    // channel affect. Its SSR (alpha below 0 for none) goes over their reflections of the sky.
+    // channel affect. Its SSR (alpha below 0 for none) goes over their reflections of the sky. A
+    // game's shader starts them at its AO and AO_LIGHT_AFFECT, as Godot's.
+#ifdef GAME_SHADER
+    float ao = game.material.w;
+    float ao_light_affect = game.emission.w;
+#else
     float ao = 1.0;
-    float ao_direct = 1.0;
+    float ao_light_affect = 0.0;
+#endif
     float4 ssr = float4(0.0, 0.0, 0.0, -1.0);
     RayShadows rays;
     rays.on = false;
@@ -3177,7 +3233,7 @@ R"hlsl(        }
     bool opaque = (flags & kHasAlpha) == 0u || (flags & kAlphaScissor) != 0u;
     if (ssao.x != 0.0 && opaque) {
         ao = min(ao, screen_texture.Load(int4((int2)input.position.xy, 0, 0)).r);
-        ao_direct = lerp(1.0, ao, lerp(0.0, max(0.0, ssao.y), ssao.z));
+        ao_light_affect = lerp(ao_light_affect, max(ao_light_affect, ssao.y), ssao.z);
     }
     if (ssao.w != 0.0 && opaque) {
         ssr = screen_texture.Load(int4((int2)input.position.xy, 1, 0));
@@ -3188,6 +3244,7 @@ R"hlsl(        }
         rays.high = screen_texture.Load(int4((int2)input.position.xy, 3, 0));
     }
 #endif
+    float ao_direct = lerp(1.0, ao, ao_light_affect);
     float3 lit = base;
     if ((flags & kUnshaded) == 0u) {
         lit = lit_color(input, base, normal, geometry, metallic, roughness, emitted, ao,

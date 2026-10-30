@@ -50,6 +50,14 @@
 //
 // The shader tools compile it for every backend (render::compile_shader), and exports write the
 // compiled code into the file as "compiled", since games can't compile shaders.
+//
+// With "shader_type": "spatial", the file is a 3D material, Godot's ShaderMaterial for a mesh
+// (MeshInstance3D's material_override names it): its shader's fragment() gives each pixel's
+// ALBEDO, ROUGHNESS, NORMAL_MAP and the rest, and "render_mode" lists Godot's render modes:
+//
+//   {"format": 1, "shader_type": "spatial", "render_mode": ["cull_disabled"],
+//    "params": {"tint": {"type": "color", "value": [1, 0.5, 0.2, 1]}},
+//    "shader": "shaders/glow.hlsl"}
 namespace slash::canvas {
 
 inline constexpr std::string_view kMaterialSuffix = ".material.json";
@@ -66,13 +74,32 @@ struct MaterialParam {
     std::string filter = "inherit"; // textures: "inherit", "linear" or "nearest"
     std::optional<double> min;      // numbers: the smallest value allowed in each component
     std::optional<double> max;
+    // A spatial material's texture of sRGB colors, which its shader reads linear, as Godot's
+    // source_color hint. Its color params are always.
+    bool source_color = false;
     // Where the program reads it: a constant, or a texture's slot (1 to 3). None when the
     // graph doesn't use it. A shader's params all have one, in name order: numbers from
-    // constant 0, textures from slot 1.
+    // constant 0, textures from slot 1, or in a spatial shader from slot 0 to 4.
     std::optional<std::uint32_t> slot;
 };
 
+// A spatial material's render modes, as Godot's render_mode line: how its meshes blend
+// (blend_mix, blend_add, blend_sub, blend_mul) and cull (cull_back, cull_front, cull_disabled),
+// and unshaded, fog_disabled and shadows_disabled.
+struct SpatialModes {
+    render::BlendMode blend = render::BlendMode::Mix;
+    render::CullMode cull = render::CullMode::Back;
+    bool unshaded = false;
+    bool fog_disabled = false;
+    bool shadows_disabled = false;
+
+    bool operator==(const SpatialModes&) const = default;
+};
+
 struct CanvasMaterial {
+    // A canvas material's, or a spatial one's, which draws meshes and needs a shader.
+    render::ShaderType shader_type = render::ShaderType::Canvas;
+    SpatialModes modes; // a spatial material's
     render::BlendMode blend = render::BlendMode::Mix;
     render::LightMode light_mode = render::LightMode::Normal; // how 2D lights shade it
     std::map<std::string, MaterialParam, std::less<>> params;
@@ -139,12 +166,17 @@ struct MaterialTextureRef {
     std::string filter = "inherit";
 };
 
-// A material ready to draw one sprite: its params' values and the time filled in.
+// A material ready to draw one sprite, or one mesh: its params' values and the time filled in.
 struct MaterialInstance {
     render::BlendMode blend = render::BlendMode::Mix;
     render::LightMode light_mode = render::LightMode::Normal;
     render::MaterialProgram program;
     std::array<MaterialTextureRef, render::kMaterialTextureSlots - 1> textures;
+    // A spatial material's: its render modes and textures by slot. Its color params' values are
+    // linear in program's constants.
+    render::ShaderType shader_type = render::ShaderType::Canvas;
+    SpatialModes modes;
+    std::array<MaterialTextureRef, render::kSpatialShaderTextures> spatial_textures;
     // A shader material's shader file, and the shader compiled, which evaluate runs: instantiate
     // copies the material's "compiled", and callers fill it from compile_material_shader
     // otherwise.
@@ -172,7 +204,7 @@ using ImageSource = std::function<Result<const render::Image*>(const std::string
 // The colors a sprite draws at each texture coordinate before blending, from 0 to 1, computed
 // on the CPU as the GPU computes them. texture is the sprite's own texture ("" for none, which
 // is white), sampled with filter, as are texture params that "inherit". A shader runs its
-// fragment() at each, with no vertex() and derivatives of 0.
+// fragment() at each, with no vertex() and derivatives of 0. Fails for a spatial material.
 [[nodiscard]] Result<std::vector<std::array<float, 4>>>
 evaluate(const MaterialInstance& instance, const std::string& texture, render::Filter filter,
          const PixelInputs& inputs, std::span<const std::array<float, 2>> uvs,
