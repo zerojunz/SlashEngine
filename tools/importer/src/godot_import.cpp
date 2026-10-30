@@ -703,6 +703,10 @@ constexpr std::array kNodeTypes{
     NodeType{"GPUParticlesCollisionHeightField3D", Family::Node3D,
              "GPUParticlesCollisionHeightField3D", ""},
     NodeType{"Camera3D", Family::Node3D, "Camera3D", ""},
+    NodeType{"XROrigin3D", Family::Node3D, "XROrigin3D", ""},
+    NodeType{"XRCamera3D", Family::Node3D, "Camera3D", "XRCamera3D"},
+    NodeType{"XRController3D", Family::Node3D, "XRController3D", ""},
+    NodeType{"XRAnchor3D", Family::Node3D, "XRAnchor3D", ""},
     NodeType{"DirectionalLight3D", Family::Node3D, "DirectionalLight3D", ""},
     NodeType{"OmniLight3D", Family::Node3D, "OmniLight3D", ""},
     NodeType{"SpotLight3D", Family::Node3D, "SpotLight3D", ""},
@@ -2108,6 +2112,38 @@ private:
         if (const Value* input = setting("audio", "driver/enable_input");
             input != nullptr && input->kind == Value::Kind::Bool && input->boolean) {
             project["audio"]["enable_input"] = true;
+        }
+        // XR, as Godot's xr/openxr and xr/shaders settings.
+        const auto flag = [&](std::string_view xr_setting, json::Value& out) {
+            if (const Value* value = setting("xr", xr_setting);
+                value != nullptr && value->kind == Value::Kind::Bool) {
+                out = value->boolean;
+            }
+        };
+        const auto pick = [&](std::string_view xr_setting,
+                              std::initializer_list<std::string_view> names, std::string_view key) {
+            const Value* value = number("xr", xr_setting);
+            if (value == nullptr) {
+                return;
+            }
+            const auto index = static_cast<std::size_t>(value->number());
+            if (value->number() < 0.0 || index >= names.size()) {
+                problems_.add("setting xr/" + std::string(xr_setting), "project.godot",
+                              "an option this version of Godot doesn't have");
+                return;
+            }
+            project["xr"]["openxr"][key] = *(names.begin() + index);
+        };
+        if (setting("xr", "openxr/enabled") != nullptr) {
+            flag("openxr/enabled", project["xr"]["openxr"]["enabled"]);
+        }
+        pick("openxr/form_factor", {"head_mounted", "handheld"}, "form_factor");
+        pick("openxr/view_configuration", {"mono", "stereo"}, "view_configuration");
+        pick("openxr/reference_space", {"local", "stage", "local_floor"}, "reference_space");
+        pick("openxr/environment_blend_mode", {"opaque", "additive", "alpha"},
+             "environment_blend_mode");
+        if (setting("xr", "shaders/enabled") != nullptr) {
+            flag("shaders/enabled", project["xr"]["shaders"]["enabled"]);
         }
         convert_input(settings, project);
         convert_internationalization(settings, project);

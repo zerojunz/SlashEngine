@@ -79,6 +79,7 @@ as `entity.get`, reject it as an unknown param.
 | Localization | [`l10n.state`](#l10nstate), [`l10n.set_locale`](#l10nset_locale), [`l10n.extract`](#l10nextract), [`l10n.check`](#l10ncheck) |
 | Services | [`services.state`](#servicesstate), [`services.test`](#servicestest) |
 | Network | [`net.host`](#nethost), [`net.join`](#netjoin), [`net.state`](#netstate), [`net.rpc`](#netrpc), [`net.close`](#netclose) |
+| XR | [`xr.state`](#xrstate), [`xr.set`](#xrset) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.review`](#storyboardreview), [`storyboard.edit`](#storyboardedit) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
 | Query | [`world.query`](#worldquery) |
@@ -3481,6 +3482,76 @@ Without `peer`: `{"transport":"offline"}`.
 
 [`examples/network-sessions`](../../examples/network-sessions/) plays a game on three sessions
 with these commands.
+
+## XR
+
+A session's world has an XR server, as Godot's `XRServer` ([XR](scene-format.md#xr)), with a
+test headset in place of a real one: a head and two hand controllers that `xr.set` moves and
+presses as a player would. It starts when project.json's
+[`xr.openxr.enabled`](project-format.md#xr) is set, or when `xr.set` starts it. What `xr.set`
+changes reaches the server's trackers, the XR nodes and their events at the next tick, as a
+headset's runtime delivers them; a failed command or a dry run puts the headset back.
+
+### xr.state
+
+Returns the interfaces (each one's capabilities, play area and blend mode when it is
+initialized), the world scale, origin and reference frame when they aren't the defaults, the
+trackers with their poses (position, and rotation when it turns; `tracking` only when lost) and
+inputs, the XR nodes with their tracker and whether they are tracked, the test headset's last
+haptic pulses and the XR nodes' problems.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `trackers` | array of strings | all | Only these trackers, and the nodes following them |
+
+Needs: `read`.
+
+```json
+{"trackers": ["right_hand"]}
+```
+
+```json
+{"interfaces":[{"capabilities":["stereo","vr","ar"],"environment_blend_mode":"opaque",
+  "initialized":true,"name":"Test","play_area":[[-1,0,-1],[1,0,-1],[1,0,1],[-1,0,1]],
+  "play_area_mode":"roomscale","primary":true,"tracking_status":"normal"}],
+ "nodes":{"right":{"pose":"grip","tracker":"right_hand","tracking":true}},
+ "trackers":{"right_hand":{"hand":"right","inputs":{"trigger":1,"trigger_click":true},
+  "poses":{"aim":{"position":[0.3,1.9,-0.4],"rotation":[1.2,0,0]},...},"type":"controller"}}}
+```
+
+### xr.set
+
+Moves the test headset's trackers, presses their inputs and sets its play area. Each tracker's
+`position` and `rotation` (in Transform3D's Euler angles) move every one of its poses; `poses`
+moves them one by one. A tracker the headset doesn't have needs a `type` to be added, as an
+anchor the headset found. Returns the tick the server has the changes at.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `initialize` | boolean | | Starts or stops the test headset, which adds or takes away its trackers |
+| `trackers` | object | | Changes by tracker name: `type`, `hand`, `profile`, `position`, `rotation`, `tracking`, `poses` (by name, each with `position`, `rotation`, `linear_velocity`, `angular_velocity`, `tracking` and `confidence`), `inputs` (by action name: a boolean button, a number trigger or an `[x, y]` thumbstick) and `remove` |
+| `play_area_mode` | `"sitting"`, `"roomscale"` or `"stage"` | | |
+| `play_area_size` | `[x, z]` | `[2, 2]` | Meters |
+| `environment_blend_mode` | `"opaque"`, `"additive"` or `"alpha"` | | |
+| `center_on_hmd` | `"reset_full_rotation"`, `"reset_but_keep_tilt"` or `"dont_reset_rotation"` | | Makes where the head is now the play space's center, as Godot's `center_on_hmd`; nothing on a stage |
+| `keep_height` | boolean | `true` | With `center_on_hmd`: leaves the head's height alone |
+
+Needs: `run`.
+
+```json
+{"trackers": {"right_hand": {"position": [0.3, 1.9, -0.4], "inputs": {"trigger": 1.0}}}}
+```
+
+```json
+{"tick":1}
+```
+
+```
+/trackers/right_hnd: the test headset has no tracker "right_hnd"; give its type to add one, or did you mean "right_hand"?
+```
+
+[`examples/xr-tracking`](../../examples/xr-tracking/) raises a sword, loses a hand and centers
+the play space.
 
 ## Storyboard
 

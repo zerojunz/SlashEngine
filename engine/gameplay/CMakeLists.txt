@@ -16,7 +16,7 @@ function(slash_gameplay_host target)
     endif()
     set(libraries slash_ai slash_animation slash_asset slash_audio slash_canvas slash_core slash_gameplay
         slash_input slash_l10n slash_net slash_physics2d slash_platform slash_render slash_runtime slash_services slash_text
-        slash_ui slash_video slash_world)
+        slash_ui slash_video slash_world slash_xr)
     set_property(TARGET ${target} PROPERTY ENABLE_EXPORTS ON)
     target_link_libraries(${target} PRIVATE ${libraries})
     # Each archive whole, once, ahead of the program's objects. The usual link line names them

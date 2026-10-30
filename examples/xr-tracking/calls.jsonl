@@ -1,0 +1,17 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"step","params":{}}
+{"jsonrpc":"2.0","id":3,"method":"xr.state","params":{}}
+{"jsonrpc":"2.0","id":4,"method":"events.subscribe","params":{"kinds":["button_pressed","button_released","input_float_changed","tracking_changed"]}}
+{"jsonrpc":"2.0","id":5,"method":"xr.set","params":{"trackers":{"right_hand":{"position":[0.3,1.9,-0.4],"rotation":[1.2,0.0,0.0],"inputs":{"trigger":1.0,"trigger_click":true}}}}}
+{"jsonrpc":"2.0","id":6,"method":"step","params":{}}
+{"jsonrpc":"2.0","id":7,"method":"events.read","params":{"subscription":"events_1"}}
+{"jsonrpc":"2.0","id":8,"method":"entity.get","params":{"id":"right","components":["Transform3D"]}}
+{"jsonrpc":"2.0","id":9,"method":"xr.set","params":{"trackers":{"right_hand":{"tracking":false,"inputs":{"trigger":0.0,"trigger_click":false}}}}}
+{"jsonrpc":"2.0","id":10,"method":"step","params":{}}
+{"jsonrpc":"2.0","id":11,"method":"events.read","params":{"subscription":"events_1"}}
+{"jsonrpc":"2.0","id":12,"method":"entity.get","params":{"id":"right","components":["Transform3D"]}}
+{"jsonrpc":"2.0","id":13,"method":"xr.set","params":{"trackers":{"head":{"position":[0.5,1.7,0.8],"rotation":[0.0,0.6,0.0]}}}}
+{"jsonrpc":"2.0","id":14,"method":"xr.set","params":{"center_on_hmd":"reset_full_rotation"}}
+{"jsonrpc":"2.0","id":15,"method":"step","params":{}}
+{"jsonrpc":"2.0","id":16,"method":"xr.state","params":{"trackers":["head"]}}
+{"jsonrpc":"2.0","id":17,"method":"entity.get","params":{"id":"head","components":["Transform3D"]}}

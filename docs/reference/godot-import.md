@@ -127,6 +127,8 @@ above the world.
 | `MeshInstance3D` | `Transform3D`, `MeshInstance3D`, and its mesh's and material's components (see [3D](#3d)) |
 | `CPUParticles3D` | `Transform3D`, `CPUParticles3D`, and its mesh's and material's components (see [3D particles](#3d-particles)) |
 | `Camera3D`, `DirectionalLight3D`, `OmniLight3D`, `SpotLight3D`, `AudioStreamPlayer3D`, `AudioListener3D` | `Transform3D` and the component of the same name |
+| `XROrigin3D`, `XRController3D`, `XRAnchor3D` | `Transform3D` and the component of the same name |
+| `XRCamera3D` | `Transform3D`, `Camera3D` and `XRCamera3D` |
 | `StaticBody3D`, `AnimatableBody3D`, `RigidBody3D`, `CharacterBody3D`, `Area3D` | `Transform3D` and the body; its `CollisionShape3D` children are its shapes |
 | `CollisionShape3D` | `Transform3D` and `CollisionShape3D`, with its shape's fields (see [3D](#3d)) |
 | `WorldEnvironment` | `WorldEnvironment`, with its environment's fields, and its sky's material (see [3D](#3d)) |
@@ -644,6 +646,8 @@ on its top.
 | `audio/general/2d_panning_strength` | `audio.panning_strength_2d` |
 | `audio/general/3d_panning_strength` | `audio.panning_strength_3d` |
 | `audio/driver/enable_input` | `audio.enable_input` |
+| `xr/openxr/enabled`, `form_factor`, `view_configuration`, `reference_space`, `environment_blend_mode` | `xr.openxr`'s fields of the same names |
+| `xr/shaders/enabled` | `xr.shaders.enabled` |
 | `[input]` | `input` |
 | `internationalization/locale/translations` | `internationalization.locale.translations`: `.po` and `.mo` files as they are, and a CSV file once for the `.translation` files Godot compiled it into (by its `.import` file, else by name); a compiled one with no CSV source, a file that isn't there and a CSV `delimiter` other than commas are reported |
 | `internationalization/locale/fallback`, `locale/test` | `internationalization.locale.fallback`, `test` |
