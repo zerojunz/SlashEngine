@@ -1,0 +1,16 @@
+{
+  "collision_bounce": 0.3,
+  "collision_friction": 0.2,
+  "collision_mode": "rigid",
+  "color": [1, 0.7, 0.2, 1],
+  "direction": [0, -1, 0],
+  "emission_points": [
+    [0, 0, 0]
+  ],
+  "emission_shape": "points",
+  "format": 1,
+  "gravity": [0, -9.8, 0],
+  "initial_velocity_max": 1,
+  "initial_velocity_min": 0.5,
+  "spread": 20
+}

@@ -35,6 +35,7 @@
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/material.hpp"
+#include "slash/scene3d/particle_collision.hpp"
 #include "slash/scene3d/recipe.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/scene3d/terrain.hpp"
@@ -212,8 +213,9 @@ DataFile data_file(std::string_view name) {
     if (name.ends_with(canvas::kTileSetSuffix)) {
         return DataFile::TileSet;
     }
-    // A 16-bit heightmap is data, not a texture: it never ships in a texture's forms.
-    if (name.ends_with(scene3d::kHeightmapSuffix)) {
+    // A 16-bit heightmap, or an SDF collider's distances, is data, not a texture: it never ships
+    // in a texture's forms.
+    if (name.ends_with(scene3d::kHeightmapSuffix) || name.ends_with(scene3d::kParticleSdfSuffix)) {
         return DataFile::Heightmap;
     }
     if (render::is_image_path(name)) {

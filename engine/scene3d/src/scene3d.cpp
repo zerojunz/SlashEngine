@@ -11,6 +11,7 @@
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/ik.hpp"
 #include "slash/scene3d/lightmap.hpp"
+#include "slash/scene3d/particle_collision.hpp"
 #include "slash/scene3d/particles.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
@@ -894,6 +895,9 @@ std::vector<Problem> check_meshes(const world::World& world) {
         problems.push_back(std::move(problem));
     }
     for (Problem& problem : check_voxel_gis(world)) {
+        problems.push_back(std::move(problem));
+    }
+    for (Problem& problem : check_particle_colliders(world)) {
         problems.push_back(std::move(problem));
     }
     return problems;

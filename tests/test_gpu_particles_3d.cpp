@@ -1,16 +1,19 @@
 #include "slash/asset/assets.hpp"
 #include "slash/canvas/canvas.hpp"
 #include "slash/canvas/gpu_particles.hpp"
+#include "slash/core/jobs.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/math.hpp"
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/particles3d.hpp"
 #include "slash/scene3d/gpu_particles.hpp"
+#include "slash/scene3d/particle_collision.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/tree3d.hpp"
 #include "slash/world/world.hpp"
 
 #include <doctest/doctest.h>
@@ -624,6 +627,147 @@ TEST_CASE("GPUParticles3D falls onto a collision box and bounces off a sphere, a
     CHECK(scene.live(hiding).size() == 1);
     scene.step(60);
     CHECK(scene.live(hiding).empty());
+}
+
+TEST_CASE("GPUParticles3D rests on a baked SDF of the meshes around it, as Godot's") {
+    Scene scene;
+    scene.files["drop.process_material.json"] =
+        R"({"format": 1, "gravity": [0, -9.8, 0], "emission_shape": "points",
+            "emission_points": [[0, 1, 0]], "collision_mode": "rigid"})";
+    const entt::entity emitter = scene.create("drops", R"({"Transform3D": {},
+        "GPUParticles3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
+                           "collision_base_size": 0.1,
+                           "process_material": "drop.process_material.json"},
+        "QuadMesh": {}})");
+    // A slab whose top is at y 0, and a ball on another layer the bake leaves out.
+    scene.create("slab", R"({"Transform3D": {"position": [0, -0.25, 0]}, "MeshInstance3D": {},
+        "BoxMesh": {"size": [3, 0.5, 3]}})");
+    scene.create("ball", R"({"Transform3D": {"position": [0, 1, 0]},
+        "MeshInstance3D": {"layers": 2}, "SphereMesh": {}})");
+    const entt::entity sdf = scene.create("sdf", R"({"Transform3D": {},
+        "GPUParticlesCollisionSDF3D": {"size": [4, 2, 4], "resolution": "32", "thickness": 2,
+                                       "bake_mask": 1}})");
+
+    // Godot's cells: 32 along the longest side, the others as many whole cells as fit.
+    CHECK(scene3d::particle_sdf_cells({4.0F, 2.0F, 4.0F}, "32") ==
+          std::array<std::uint32_t, 3>{32, 16, 32});
+    CHECK(scene3d::particle_sdf_cells({4.0F, 2.0F, 4.0F}, "33") ==
+          std::array<std::uint32_t, 3>{0, 0, 0});
+    const scene3d::ModelLoader no_models;
+    auto baked = scene3d::bake_particle_sdf(scene.world, sdf, no_models);
+    REQUIRE(baked.ok());
+    CHECK(baked.value().meshes == 1);
+    CHECK(baked.value().triangles == 12);
+    // The same distances on a pool with threads.
+    slash::jobs::Pool pool(3);
+    auto threaded = scene3d::bake_particle_sdf(scene.world, sdf, no_models, &pool);
+    REQUIRE(threaded.ok());
+    CHECK(threaded.value().sdf == baked.value().sdf);
+    // The file reads back as the distances.
+    auto encoded = scene3d::encode_particle_sdf(baked.value().sdf);
+    REQUIRE(encoded.ok());
+    const render::Gray16 texture = render::decode_gray16(encoded.value()).value();
+    CHECK(scene3d::particle_sdf(texture, 1, 32).value() == baked.value().sdf);
+    CHECK_FALSE(scene3d::particle_sdf(texture, 64, 1).ok());
+
+    // Without a texture it collides with nothing: a field of 1s, as Godot's white.
+    scene.step();
+    auto kept = scene3d::particle_steps_3d(scene.world, emitter);
+    REQUIRE(kept.has_value());
+    REQUIRE(kept->steps.back().colliders.size() == 1);
+    CHECK(kept->steps.back().colliders[0].shape == render::ColliderShape3D::Sdf);
+    CHECK(kept->steps.back().colliders[0].sdf->distances == std::vector<std::uint16_t>{0x3C00});
+
+    scene.files["level.sdf.png"] = encoded.value();
+    scene.world.ecs().patch<world::GPUParticlesCollisionSDF3D>(sdf, [](auto& collider) {
+        collider.texture = "level.sdf.png";
+        collider.slices_vertical = 32;
+    });
+    scene.step(150);
+    auto live = scene.live(emitter);
+    REQUIRE(live.size() == 1);
+    CHECK(live[0].origin.y == doctest::Approx(0.1).epsilon(0.05));
+    CHECK(scene3d::check_meshes(scene.world).empty());
+
+    // A texture that isn't an .sdf.png file, or can't be cut into its slices, is reported.
+    scene.world.set_file_reader([&](std::string_view path) -> slash::Result<std::string> {
+        const auto found = scene.files.find(path);
+        if (found == scene.files.end()) {
+            return slash::make_error(slash::ErrorCode::NotFound, "no such file");
+        }
+        return found->second;
+    });
+    scene.create("wrong", R"({"Transform3D": {}, "GPUParticlesCollisionSDF3D": {
+        "texture": "level.png"}})");
+    scene.create("uncut", R"({"Transform3D": {}, "GPUParticlesCollisionSDF3D": {
+        "texture": "level.sdf.png", "slices_horizontal": 64}})");
+    const auto problems = scene3d::check_meshes(scene.world);
+    REQUIRE(problems.size() == 2);
+    CHECK(problems[0].path == "/components/GPUParticlesCollisionSDF3D/texture");
+    CHECK(problems[0].message == "\"level.png\" isn't a .sdf.png file");
+    CHECK(problems[1].message.find("level.sdf.png") != std::string::npos);
+}
+
+TEST_CASE("GPUParticles3D rests on a height field drawn from above, which follows the camera") {
+    Scene scene;
+    scene.files["drop.process_material.json"] =
+        R"({"format": 1, "gravity": [0, -9.8, 0], "emission_shape": "points",
+            "emission_points": [[1, 3, 0]], "collision_mode": "rigid"})";
+    const entt::entity emitter = scene.create("drops", R"({"Transform3D": {},
+        "GPUParticles3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
+                           "collision_base_size": 0.1, "visibility_aabb_size": [8, 8, 8],
+                           "process_material": "drop.process_material.json"},
+        "QuadMesh": {}})");
+    // Ground at y 0.5, and a roof above it on a layer the height field leaves out.
+    scene.create("ground", R"({"Transform3D": {"position": [0, 0.5, 0]}, "MeshInstance3D": {},
+        "PlaneMesh": {"size": [4, 4]}})");
+    scene.create("roof", R"({"Transform3D": {"position": [0, 1.5, 0]},
+        "MeshInstance3D": {"layers": 2}, "PlaneMesh": {"size": [4, 4]}})");
+    const entt::entity field = scene.create("field", R"({"Transform3D": {},
+        "GPUParticlesCollisionHeightField3D": {"size": [6, 4, 6], "resolution": "256",
+                                               "heightfield_mask": 1}})");
+    // A second height field: Godot's particles take only the first.
+    scene.create("second", R"({"Transform3D": {},
+        "GPUParticlesCollisionHeightField3D": {"size": [6, 4, 6], "resolution": "256",
+                                               "heightfield_mask": 1}})");
+
+    CHECK(scene3d::particle_height_field_size({6.0F, 4.0F, 3.0F}, "256") ==
+          std::array<std::uint32_t, 2>{256, 128});
+    CHECK(scene3d::particle_height_field_size({6.0F, 4.0F, 3.0F}, "64") ==
+          std::array<std::uint32_t, 2>{0, 0});
+    std::vector<scene3d::Problem> problems;
+    const scene3d::ModelLoader no_models;
+    const render::ParticleHeightField3D heights = scene3d::particle_height_field(
+        scene.world, world::Tree3D(scene.world), field, no_models, problems);
+    CHECK(problems.empty());
+    REQUIRE(heights.width == 256);
+    REQUIRE(heights.height == 256);
+    // The ground's height (0.5 in a box from -2 to 2) in the middle, nothing at the edge.
+    CHECK(heights.heights[(128 * 256) + 128] == doctest::Approx(0.625));
+    CHECK(heights.heights[0] == 0.0F);
+
+    scene.step();
+    auto kept = scene3d::particle_steps_3d(scene.world, emitter);
+    REQUIRE(kept.has_value());
+    REQUIRE(kept->steps.back().colliders.size() == 1);
+    CHECK(kept->steps.back().colliders[0].shape == render::ColliderShape3D::HeightField);
+    scene.step(150);
+    auto live = scene.live(emitter);
+    REQUIRE(live.size() == 1);
+    CHECK(live[0].origin.y == doctest::Approx(0.6).epsilon(0.05));
+    CHECK(live[0].origin.x == doctest::Approx(1.0));
+    CHECK(scene3d::check_meshes(scene.world).empty());
+
+    // With follow_camera_enabled it steps after the current camera a meter at a time.
+    scene.create("eye", R"({"Transform3D": {"position": [10.5, 2, -3.2]},
+        "Camera3D": {"current": true}})");
+    scene.world.ecs().patch<world::GPUParticlesCollisionHeightField3D>(
+        field, [](auto& c) { c.follow_camera_enabled = true; });
+    scene.step();
+    const Vec3 moved = scene.world.ecs().get<world::Transform3D>(field).position;
+    CHECK(moved.x == doctest::Approx(10.0));
+    CHECK(moved.y == doctest::Approx(0.0));
+    CHECK(moved.z == doctest::Approx(-3.0));
 }
 
 TEST_CASE("a vector field attractor cuts its texture into slices, as Godot's Texture3D importer") {

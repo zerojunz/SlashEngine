@@ -388,6 +388,38 @@ Result<void> check_particle_process_3d(const ParticleProcess3D& process,
             return make_error(ErrorCode::InvalidArgument,
                               "a particle step's collision size is 0 or more");
         }
+        std::size_t height_fields = 0;
+        for (const ParticleCollider3D& collider : step.colliders) {
+            if (collider.shape == ColliderShape3D::Sdf) {
+                const ParticleSdf3D* sdf = collider.sdf.get();
+                if (sdf == nullptr || sdf->width == 0 || sdf->height == 0 || sdf->depth == 0 ||
+                    sdf->distances.size() != std::size_t{sdf->width} * sdf->height * sdf->depth ||
+                    sdf->distances.size() > kMaxParticleSdfCells3D) {
+                    return make_error(ErrorCode::InvalidArgument,
+                                      "an SDF collider needs width times height times depth "
+                                      "distances, at most " +
+                                          std::to_string(kMaxParticleSdfCells3D));
+                }
+                if (!finite(collider.scale)) {
+                    return make_error(ErrorCode::InvalidArgument,
+                                      "an SDF collider's scale is a number");
+                }
+            } else if (collider.shape == ColliderShape3D::HeightField) {
+                const ParticleHeightField3D* field = collider.heights.get();
+                if (++height_fields > 1) {
+                    return make_error(ErrorCode::InvalidArgument,
+                                      "a particle step has at most one height field");
+                }
+                if (field == nullptr || field->width == 0 || field->height == 0 ||
+                    field->heights.size() != std::size_t{field->width} * field->height ||
+                    field->heights.size() > kMaxParticleHeightTexels3D) {
+                    return make_error(ErrorCode::InvalidArgument,
+                                      "a height field collider needs width times height heights, "
+                                      "at most " +
+                                          std::to_string(kMaxParticleHeightTexels3D));
+                }
+            }
+        }
         for (const ParticleAttractor3D& attractor : step.attractors) {
             if (attractor.shape != AttractorShape3D::VectorField) {
                 continue;

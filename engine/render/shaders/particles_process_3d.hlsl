@@ -63,8 +63,10 @@ static const uint kAttractorSphere = 0u;
 static const uint kAttractorBox = 1u;
 // The collider count's place in a step's flags, a collider's words and ColliderShape3D.
 static const uint kStepColliderShift = 16u;
-static const uint kColliderWords = 4u;
+static const uint kColliderWords = 5u;
 static const uint kColliderSphere = 0u;
+static const uint kColliderBox = 1u;
+static const uint kColliderSdf = 2u;
 
 // EmissionShape and ParticleParam.
 static const uint kShapePoint = 0u;
@@ -760,6 +762,67 @@ float3 attractor_force(Step step, float3 pos) {
     return force;
 }
 
+// An SDF's distance from a half float's bits, made into a float's bits; subnormal halves read
+// as 0, as on the CPU.
+float sdf_value(uint half_bits) {
+    uint exponent = (half_bits >> 10u) & 0x1Fu;
+    uint sign_bit = (half_bits & 0x8000u) << 16u;
+    uint mantissa = (half_bits & 0x3FFu) << 13u;
+    if (exponent == 0u) {
+        return 0.0;
+    }
+    return asfloat(sign_bit | (exponent == 31u ? 0x7F800000u : ((exponent + 112u) << 23u)) |
+                   mantissa);
+}
+
+// An SDF's cell: {width, height, depth, 0}, then eight half floats a word, each word's two halves
+// a lane, low bits first.
+float sdf_cell(uint sdf, uint3 size, uint x, uint y, uint z) {
+    uint index = (((z * size.y) + y) * size.x) + x;
+    uint lane = data[sdf + 1u + (index >> 3u)][(index >> 1u) & 3u];
+    return sdf_value((index & 1u) == 0u ? (lane & 0xFFFFu) : (lane >> 16u));
+}
+
+// An SDF's distance at uvw, filtered as sample_field filters a field's texels.
+float sample_sdf(uint sdf, float3 uvw) {
+    uint3 size = data[sdf].xyz;
+    float3 texel = clamp((uvw * float3(size)) - 0.5, float3(0.0, 0.0, 0.0), float3(size - 1u));
+    uint3 low = uint3(texel);
+    uint3 high = min(low + 1u, size - 1u);
+    float3 t = texel - float3(low);
+    float near = mix(mix(sdf_cell(sdf, size, low.x, low.y, low.z),
+                         sdf_cell(sdf, size, high.x, low.y, low.z), t.x),
+                     mix(sdf_cell(sdf, size, low.x, high.y, low.z),
+                         sdf_cell(sdf, size, high.x, high.y, low.z), t.x),
+                     t.y);
+    float far = mix(mix(sdf_cell(sdf, size, low.x, low.y, high.z),
+                        sdf_cell(sdf, size, high.x, low.y, high.z), t.x),
+                    mix(sdf_cell(sdf, size, low.x, high.y, high.z),
+                        sdf_cell(sdf, size, high.x, high.y, high.z), t.x),
+                    t.y);
+    return mix(near, far, t.z);
+}
+
+// A height field's height: {width, height, 0, 0}, then four floats a word.
+float height_texel(uint field, uint width, uint x, uint z) {
+    uint index = (z * width) + x;
+    return asfloat(data[field + 1u + (index >> 2u)][index & 3u]);
+}
+
+// A height field's height at uv, filtered as a linear sampler that clamps to the edge.
+float sample_heights(uint field, float2 uv) {
+    uint2 size = data[field].xy;
+    float2 texel = clamp((uv * float2(size)) - 0.5, float2(0.0, 0.0), float2(size - 1u));
+    uint2 low = uint2(texel);
+    uint2 high = min(low + 1u, size - 1u);
+    float2 t = texel - float2(low);
+    return mix(mix(height_texel(field, size.x, low.x, low.y),
+                   height_texel(field, size.x, high.x, low.y), t.x),
+               mix(height_texel(field, size.x, low.x, high.y),
+                   height_texel(field, size.x, high.x, high.y), t.x),
+               t.y);
+}
+
 // GLSL's sign: 0 for 0.
 float3 sign_of(float3 v) {
     return float3(v.x > 0.0 ? 1.0 : (v.x < 0.0 ? -1.0 : 0.0),
@@ -777,8 +840,8 @@ float collision_size(Particle3D particle, Step step) {
     return step.collision_size * (scale * 0.33333333333);
 }
 
-// particles.glsl's collider loop: each sphere and box the particle at pos of the given size
-// touches, their ways out added up so it leaves them all. The loop runs to its end, as
+// particles.glsl's collider loop: each sphere, box, SDF and height field the particle at pos of
+// the given size touches, their ways out added up so it leaves them all. The loop runs to its end, as
 // attractor_force's.
 Contact collider_contact(Step step, float3 pos, float size) {
     // Particles just touching a collider count as touching it.
@@ -799,6 +862,7 @@ Contact collider_contact(Step step, float3 pos, float size) {
         place.origin = c.yzw;
         uint4 d = data[at + 3u];
         float3 ext = asfloat(d.xyz);
+        uint4 e = data[at + 4u];
 
         float3 rel = pos - place.origin;
         float3 normal = float3(0.0, 0.0, 0.0);
@@ -810,6 +874,58 @@ Contact collider_contact(Step step, float3 pos, float size) {
                 touches = true;
                 depth = -dist;
                 normal = unit(rel);
+            }
+        } else if (d.w == kColliderSdf) {
+            float3 local = float3(dot(rel, place.x), dot(rel, place.y), dot(rel, place.z));
+            float3 abs_pos = abs(local);
+            float extra = 0.0;
+            if (abs_pos.x > ext.x || abs_pos.y > ext.y || abs_pos.z > ext.z) {
+                // Outside the box: as far again as its nearest point.
+                extra = length_of(abs_pos - min(abs_pos, ext));
+            }
+            if (!(extra > size) && e.x != 0u) {
+                float3 uvw = ((local / ext) + 1.0) * 0.5;
+                float dist = (sample_sdf(e.x, uvw) * asfloat(e.y)) + extra;
+                if (dist <= size + kEpsilon) {
+                    touches = true;
+                    depth = size - dist;
+                    float3 across = float3(
+                        sample_sdf(e.x, uvw + float3(kEpsilon, 0.0, 0.0)) -
+                            sample_sdf(e.x, uvw - float3(kEpsilon, 0.0, 0.0)),
+                        sample_sdf(e.x, uvw + float3(0.0, kEpsilon, 0.0)) -
+                            sample_sdf(e.x, uvw - float3(0.0, kEpsilon, 0.0)),
+                        sample_sdf(e.x, uvw + float3(0.0, 0.0, kEpsilon)) -
+                            sample_sdf(e.x, uvw - float3(0.0, 0.0, kEpsilon)));
+                    normal = basis(place, unit(across));
+                }
+            }
+        } else if (d.w != kColliderBox) {
+            // A height field, whose normal and depth Godot leaves in its space, unturned.
+            const float kDelta = 1.0 / 8192.0;
+            float3 local = float3(dot(rel, place.x), dot(rel, place.y), dot(rel, place.z));
+            float3 bottom = float3(local.x, local.y - size, local.z);
+            if (!(abs(bottom.x) > ext.x || abs(bottom.y) > ext.y || abs(bottom.z) > ext.z) &&
+                e.x != 0u) {
+                float3 uvw = ((bottom / ext) + 1.0) * 0.5;
+                float y = sample_heights(e.x, uvw.xz);
+                if (y + kEpsilon >= uvw.y) {
+                    float3 pos1 = ((float3(uvw.x, y, uvw.z) * 2.0) - 1.0) * ext;
+                    float3 pos2 =
+                        ((float3(uvw.x + kDelta, sample_heights(e.x, uvw.xz + float2(kDelta, 0.0)),
+                                 uvw.z) *
+                          2.0) -
+                         1.0) *
+                        ext;
+                    float3 pos3 =
+                        ((float3(uvw.x, sample_heights(e.x, uvw.xz + float2(0.0, kDelta)),
+                                 uvw.z + kDelta) *
+                          2.0) -
+                         1.0) *
+                        ext;
+                    touches = true;
+                    normal = unit(cross(pos1 - pos2, pos1 - pos3));
+                    depth = dot(normal, pos1) - dot(normal, bottom);
+                }
             }
         } else {
             float3 local = float3(dot(rel, place.x), dot(rel, place.y), dot(rel, place.z));

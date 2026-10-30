@@ -1,0 +1,18 @@
+scene.open {"path":"main.scene.json"}
+{"entities":9,"path":"main.scene.json"}
+particles.bake_sdf {"id":"statue_sdf"}
+{"cells":[16,16,16],"file":"main.statue_sdf.sdf.png","meshes":1,"triangles":4224}
+step {"ticks":180}
+{"tick":180,"ticks":180}
+snow: 97 alive, 0 below the yard, 51 lying on it, 3 of them on the mound
+sparks: 48 alive, 0 inside the statue, 36 resting on its top, 0 below it
+component.set {"components":{"GPUParticlesCollisionSDF3D":{"texture":""}},"id":"statue_sdf"}
+{"changed":{"GPUParticlesCollisionSDF3D":{"texture":""}},"id":"statue_sdf"}
+step {"ticks":60}
+{"tick":240,"ticks":60}
+sparks: 48 alive, 7 inside the statue, 0 resting on its top, 30 below it
+batch {"commands":[{"command":"component.set","params":{"components":{"GPUParticlesCollisionHeightField3D":{"follow_camera_enabled":true}},"id":"snowfield"}},{"command":"component.set","params":{"components":{"Transform3D":{"position":[5.5,3.0,9.0]}},"id":"camera"}}]}
+{"results":[{"changed":{"GPUParticlesCollisionHeightField3D":{"follow_camera_enabled":true}},"id":"snowfield"},{"changed":{"Transform3D":{"position":[5.5,3.0,9.0]}},"id":"camera"}]}
+step {"ticks":1}
+{"tick":241,"ticks":1}
+snowfield at 5.0 1.0 8.0

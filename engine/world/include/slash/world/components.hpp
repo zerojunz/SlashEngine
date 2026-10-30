@@ -2815,6 +2815,48 @@ struct GPUParticlesCollisionBox3D {
 };
 SLASH_COMPONENT(GPUParticlesCollisionBox3D, cull_mask, size)
 
+// As GPUParticlesCollisionSphere3D, the shape of the meshes in a box, as Godot's
+// GPUParticlesCollisionSDF3D: particles.bake_sdf writes the distance from each of resolution
+// cells along the box's longest side to the nearest surface of the meshes on a layer of
+// bake_mask into texture, a .sdf.png file whose slices_vertical slices are the cells' depth.
+// Particles read the distances, so they collide with any shape, from outside or within thickness
+// cells behind a face.
+struct GPUParticlesCollisionSDF3D {
+    std::uint32_t cull_mask = 0xFFFFFU; // every layer
+    Vec3 size{2.0F, 2.0F, 2.0F};
+    std::string resolution = "64"; // "16", "32", "64", "128", "256" or "512"
+    float thickness = 1.0F;
+    std::uint32_t bake_mask = 0xFFFFFFFFU;
+    std::string texture; // project path of a .sdf.png file; "" until baked
+    int slices_horizontal = 1;
+    int slices_vertical = 1;
+
+    friend bool operator==(const GPUParticlesCollisionSDF3D&,
+                           const GPUParticlesCollisionSDF3D&) = default;
+};
+SLASH_COMPONENT(GPUParticlesCollisionSDF3D, cull_mask, size, resolution, thickness, bake_mask,
+                texture, slices_horizontal, slices_vertical)
+
+// As GPUParticlesCollisionSphere3D, the ground under a box, as Godot's
+// GPUParticlesCollisionHeightField3D: the gpu_particles_3d system draws the highest surface of
+// the meshes on a layer of heightfield_mask in the box from above, resolution texels along its
+// longer side, when it moves (update_mode "when_moved") or every tick ("always"), and with
+// follow_camera_enabled steps it after the current Camera3D, as Godot does, by the length of its
+// x and z axes (a meter unscaled). One height field acts on an emitter.
+struct GPUParticlesCollisionHeightField3D {
+    std::uint32_t cull_mask = 0xFFFFFU; // every layer
+    Vec3 size{2.0F, 2.0F, 2.0F};
+    std::string resolution = "1024"; // "256", "512" or "1024"
+    std::string update_mode = "when_moved";
+    bool follow_camera_enabled = false;
+    std::uint32_t heightfield_mask = 0xFFFFFU;
+
+    friend bool operator==(const GPUParticlesCollisionHeightField3D&,
+                           const GPUParticlesCollisionHeightField3D&) = default;
+};
+SLASH_COMPONENT(GPUParticlesCollisionHeightField3D, cull_mask, size, resolution, update_mode,
+                follow_camera_enabled, heightfield_mask)
+
 // ---- Audio, as Godot's AudioStreamPlayer nodes.
 
 // Plays a sound through a bus, as Godot's AudioStreamPlayer: the same wherever the entity is.

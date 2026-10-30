@@ -49,12 +49,14 @@ inline constexpr std::uint32_t kProcessCollisionHide = 512U;
 // and its collision size. Each attractor is kAttractorWords3D words: its transform (3), {extents,
 // strength} and {shape, where its field is, attenuation, directionality}. A field is {width,
 // height, depth, 0}, then a word a texel. Each collider is kColliderWords3D words: its transform
-// (3) and {extents, shape}.
+// (3), {extents, shape} and {where its SDF or height field is, its SDF's scale, 0, 0}. An SDF is
+// {width, height, depth, 0}, then eight half floats a word (each lane two, low bits first); a
+// height field {width, height, 0, 0}, then four floats a word.
 inline constexpr std::uint32_t kStepWords3D = 8;
 inline constexpr std::uint32_t kStepAttractorShift = 8;
 inline constexpr std::uint32_t kStepColliderShift = 16;
 inline constexpr std::uint32_t kAttractorWords3D = 5;
-inline constexpr std::uint32_t kColliderWords3D = 4;
+inline constexpr std::uint32_t kColliderWords3D = 5;
 
 // Appends a 3D process material's words.
 void pack_particle_process_3d(const ParticleProcess3D& process, std::vector<Word>& out);
