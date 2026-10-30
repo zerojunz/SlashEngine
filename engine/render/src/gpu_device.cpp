@@ -22,6 +22,7 @@
 #include "fsr3_reconstruct_shaders.hpp"
 #include "fsr3_reduce_shaders.hpp"
 #include "fsr3_shading_change_shaders.hpp"
+#include "gpu_rays.hpp"
 #include "hlsl_compiler.hpp"
 #include "material_shaders.hpp"
 #include "mesh_clustered_shaders.hpp"
@@ -61,7 +62,6 @@
 #include "volumetric_fog.hpp"
 #include "volumetric_fog_shaders.hpp"
 #include "volumetric_fog_sky_shaders.hpp"
-#include "vulkan_rays.hpp"
 
 #include "slash/core/log.hpp"
 #include "slash/render/image.hpp"
@@ -821,6 +821,8 @@ public:
         }
         if (backend_ == Backend::Vulkan) {
             rays_ = make_vulkan_rays(device_);
+        } else if (backend_ == Backend::Metal) {
+            rays_ = make_metal_rays(device_);
         }
         if (auto made = make_shaders(ShaderKind::Sprite); !made) {
             return made;
@@ -6908,10 +6910,10 @@ private:
     };
     Screen screen_;
     SDL_GPUTexture* no_screen_ = nullptr;
-    // Ray queries on Vulkan where the GPU has them (src/vulkan_rays.hpp), the textures they
+    // Ray queries on Vulkan and Metal where the GPU has them (src/gpu_rays.hpp), the textures they
     // write a frame's shadows, occlusion, reflections and ambient light into, and whether this
     // frame traces them.
-    std::unique_ptr<VulkanRays> rays_;
+    std::unique_ptr<GpuRays> rays_;
     struct RayShadowTextures {
         std::array<SDL_GPUTexture*, 6> textures{};
         std::uint32_t width = 0;

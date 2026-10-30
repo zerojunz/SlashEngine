@@ -1854,8 +1854,8 @@ probes](scene-format.md#light-probes), as Godot's LightmapGI bake: the
 `MeshInstance3D`s whose `gi_mode` is `"static"` under its parent (the whole world for a root),
 lit by the lights there whose `light_bake_mode` isn't `"disabled"` and by its environment, with
 shadows and bounces. It unwraps the meshes into lightmap UVs, traces their light and the probes'
-on the CPU, or with `"device": "gpu"` on a GPU that traces rays (Vulkan with ray queries, as
-Godot's LightmapperRD traces on the GPU: the same light but for rounding), then writes a `.lightmap.json` file and its texels in an `.hdr` file beside it, and
+on the CPU, or with `"device": "gpu"` on a GPU that traces rays (Vulkan with ray queries, or Metal
+on a Mac whose GPU supports ray tracing, as Godot's LightmapperRD traces on the GPU: the same light but for rounding), then writes a `.lightmap.json` file and its texels in an `.hdr` file beside it, and
 sets the LightmapGI's `light_data` to the file. It returns the files, how many meshes and lights
 it baked, how many `probes`, the size of a slice, how many slices, with `device` the one that
 traced it (`"cpu"` where no GPU traces rays) and `problems` when there are any: models or textures that
@@ -4887,7 +4887,8 @@ error at `/scaling/upscaler` that lists the ones it has. Either way nothing chan
 makes, traced on the GPU: each frame adds `samples` paths a pixel to the frames before it while
 the world looks the same, so a person watching the window, or an agent reading `path_samples`,
 sees the noise fade, and anything that moves starts it over. Devices that trace rays
-(`RenderDevice::ray_tracing`: Vulkan where the GPU has ray queries) trace the paths with the
+(`RenderDevice::ray_tracing`: Vulkan where the GPU has ray queries, Metal where it supports ray
+tracing) trace the paths with the
 same code and random numbers as the software device, so the still matches `frame.capture`'s to a
 level or two; elsewhere the window keeps drawing the live frame and `path_samples` stays `0`. A
 game whose frames can't be path traced refuses it at `/path_trace`.
