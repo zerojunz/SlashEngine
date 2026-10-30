@@ -136,6 +136,17 @@ std::string host_name() {
 #endif
 }
 
+// Where exports from an engine with no dependency cache of its own fetch its dependencies, once
+// per machine: ~/.slash/cpm-cache.
+fs::path dependencies_dir() {
+#ifdef _WIN32
+    const std::string home = environment("USERPROFILE");
+#else
+    const std::string home = environment("HOME");
+#endif
+    return fs::path(home) / ".slash" / "cpm-cache";
+}
+
 bool is_engine_dir(const fs::path& path) {
     std::error_code error;
     return !path.empty() && fs::exists(path / "export" / "CMakeLists.txt", error);
@@ -1620,12 +1631,12 @@ ExportResult export_game(const ExportOptions& options) {
     platform::ProcessOptions process;
     process.log_path = log_path.string();
     if (environment("CPM_SOURCE_CACHE").empty()) {
+        // A checkout's own cache, else one per machine, so an installed engine fetches its
+        // dependencies once for every game.
         const fs::path engine_cache = engine_dir / ".cpm-cache";
-        process.environment.emplace_back(
-            "CPM_SOURCE_CACHE",
-            fs::exists(engine_cache, error)
-                ? engine_cache.string()
-                : fs::absolute(work / ".." / "cpm-cache", error).lexically_normal().string());
+        process.environment.emplace_back("CPM_SOURCE_CACHE", fs::exists(engine_cache, error)
+                                                                 ? engine_cache.string()
+                                                                 : dependencies_dir().string());
     }
 
     // Windows and Linux builds on other hosts, every Linux build and web builds with no emsdk use

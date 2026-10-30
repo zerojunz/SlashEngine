@@ -65,7 +65,8 @@ ComponentType& GameModule::add_component() {
 using GameModuleFunction = void (*)(GameModule& game);
 
 // What a gameplay library was built against. The engine refuses a library built against other
-// headers or with another compiler, since their structs might not match its own.
+// headers or with another compiler family or standard library ABI, since their structs might not
+// match its own.
 struct GameModuleAbi {
     const char* api;      // SLASH_API_HASH
     const char* compiler; // SLASH_COMPILER_ID
@@ -76,22 +77,29 @@ struct GameModuleAbi {
 #define SLASH_GAME_MODULE_STRINGIFY_(value) #value
 #define SLASH_GAME_MODULE_STRINGIFY(value) SLASH_GAME_MODULE_STRINGIFY_(value)
 
-// The compiler and C++ standard library, as text.
+// The compiler and the ABI of its C++ standard library, as text. Other versions of a compiler
+// lay out the same structs alike over the same library ABI, so a released engine's tools take a
+// game built with the person's own Xcode or compiler; only the family and the ABI must match.
 #if defined(__clang__)
-#define SLASH_COMPILER_NAME "clang " __clang_version__
+#define SLASH_COMPILER_NAME "clang"
 #elif defined(__GNUC__)
-#define SLASH_COMPILER_NAME "gcc " __VERSION__
+#define SLASH_COMPILER_NAME "gcc"
 #elif defined(_MSC_VER)
-#define SLASH_COMPILER_NAME "msvc " SLASH_GAME_MODULE_STRINGIFY(_MSC_FULL_VER)
+#define SLASH_COMPILER_NAME                                                                        \
+    "msvc, iterator debug level " SLASH_GAME_MODULE_STRINGIFY(_ITERATOR_DEBUG_LEVEL)
 #else
 #define SLASH_COMPILER_NAME "unknown"
 #endif
 #if defined(_LIBCPP_VERSION)
 #define SLASH_COMPILER_ID                                                                          \
-    SLASH_COMPILER_NAME ", libc++ " SLASH_GAME_MODULE_STRINGIFY(_LIBCPP_VERSION)
+    SLASH_COMPILER_NAME ", libc++ ABI " SLASH_GAME_MODULE_STRINGIFY(_LIBCPP_ABI_VERSION)
+#elif defined(__GLIBCXX__) && defined(_GLIBCXX_DEBUG)
+#define SLASH_COMPILER_ID                                                                          \
+    SLASH_COMPILER_NAME                                                                            \
+    ", libstdc++ ABI " SLASH_GAME_MODULE_STRINGIFY(_GLIBCXX_USE_CXX11_ABI) " debug"
 #elif defined(__GLIBCXX__)
 #define SLASH_COMPILER_ID                                                                          \
-    SLASH_COMPILER_NAME ", libstdc++ " SLASH_GAME_MODULE_STRINGIFY(__GLIBCXX__)
+    SLASH_COMPILER_NAME ", libstdc++ ABI " SLASH_GAME_MODULE_STRINGIFY(_GLIBCXX_USE_CXX11_ABI)
 #else
 #define SLASH_COMPILER_ID SLASH_COMPILER_NAME
 #endif

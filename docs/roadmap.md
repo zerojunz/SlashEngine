@@ -1049,6 +1049,14 @@ chose this split.
         or compile a plugin's `sources` into the game on every platform; CI exports a game with
         the example's plugin for all six
 - [ ] The engine and tools released for macOS
+  - [x] An install a Mac can use with no checkout: `cmake --install` puts `slash-cli`, `slash-mcp`
+        and `slash-game` in `bin/` and the engine's sources, examples, docs and a relocatable
+        gameplay SDK in `share/slashengine/`, where the tools find them. Games' C++ builds with
+        the compiler on `PATH`, matched by compiler family and library ABI rather than version;
+        exports fetch dependencies once per machine. CI packages it as `slashengine-macos.tar.gz`,
+        then builds a game's code and exports the game from the unpacked copy
+  - [ ] A published release: a version tag, the archive attached and the tools notarized with a
+        Developer ID
 - [ ] Exports for all six platforms
 - [x] Reference docs generated from `engine.describe`: `slash-cli docs` writes every component's
       fields (the structs inside them too), every command's params and the systems as Markdown,

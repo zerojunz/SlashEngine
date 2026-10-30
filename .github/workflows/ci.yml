@@ -502,6 +502,52 @@ jobs:
           path: build/empty-game/.slash/export/*/export.log
           if-no-files-found: ignore
 
+  # The macOS release (docs/getting-started.md): the tools and the engine's sources installed,
+  # packaged, then unpacked elsewhere and used with the checkout moved away, as a Mac with no
+  # checkout would use them.
+  release:
+    name: Package the macOS release
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: .cpm-cache
+          key: cpm-macos-15-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/dependencies.json') }}
+
+      - name: Install tools
+        run: brew install ninja
+
+      # The export job for macOS saves this cache; this one only reads it.
+      - name: Cache compiled objects
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: release-macos-15
+          max-size: ${{ env.CCACHE_MAX_SIZE }}
+          save: false
+
+      - name: Build the tools
+        run: |
+          cmake --preset release ${{ env.CCACHE_CMAKE_ARGS }}
+          cmake --build --preset release --target slash-cli slash-mcp slash-game
+
+      - name: Install and package them
+        run: |
+          cmake --install build/release --prefix "$RUNNER_TEMP/slashengine"
+          tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/slashengine-macos.tar.gz" slashengine
+
+      - name: Build and export a game from the unpacked package
+        run: .github/scripts/check-release.sh "$RUNNER_TEMP/slashengine-macos.tar.gz" .
+
+      - name: Upload the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: slashengine-macos
+          path: ${{ runner.temp }}/slashengine-macos.tar.gz
+          if-no-files-found: error
+
   # A Mac builds Windows and Linux games with the toolchains slash-cli downloads; the runners
   # for those platforms then run them.
   cross-export:

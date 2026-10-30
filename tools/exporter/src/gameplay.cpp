@@ -377,15 +377,20 @@ std::optional<Workspace> configure_gameplay(const std::string& project, const st
                     "platform link the code in");
     }
     std::error_code error;
-    const fs::path sdk = SLASH_GAMEPLAY_SDK;
-    if (sdk.empty() || !fs::exists(sdk, error)) {
-        return fail("this program's engine build has no gameplay-sdk.cmake; build the engine "
-                    "with CMake first");
-    }
     const std::optional<std::string> engine_dir = find_engine(engine);
     if (!engine_dir) {
         return fail("could not find the engine sources; set SLASH_ENGINE_DIR to a SlashEngine "
                     "checkout");
+    }
+    // An installed engine's SDK beside its sources (cmake/gameplay/install_sdk.cmake), else the
+    // one in the build tree this program came from.
+    fs::path sdk = fs::path(*engine_dir) / "gameplay-sdk.cmake";
+    if (!fs::exists(sdk, error)) {
+        sdk = SLASH_GAMEPLAY_SDK;
+    }
+    if (sdk.empty() || !fs::exists(sdk, error)) {
+        return fail("this program's engine build has no gameplay-sdk.cmake; build the engine "
+                    "with CMake first");
     }
     if (!detail::program_runs("cmake")) {
         return fail("building gameplay code needs CMake 3.25 or newer on PATH");
@@ -420,9 +425,12 @@ std::optional<Workspace> configure_gameplay(const std::string& project, const st
                                        sdk.string(),
                                        "-DSLASH_PROJECT_DIR=" + out.root,
                                        "-DSLASH_GAMEPLAY_SOURCES=" + source_list};
-    if (!fs::exists(out.build / "CMakeCache.txt", error) &&
-        !std::string_view(SLASH_GAMEPLAY_GENERATOR).empty()) {
-        configure.insert(configure.begin() + 1, {"-G", SLASH_GAMEPLAY_GENERATOR});
+    // The engine's generator, unless it is Ninja and this machine has none (an installed engine
+    // on a Mac without Homebrew's), when CMake picks its own.
+    const std::string_view generator = SLASH_GAMEPLAY_GENERATOR;
+    if (!fs::exists(out.build / "CMakeCache.txt", error) && !generator.empty() &&
+        (!generator.starts_with("Ninja") || detail::program_runs("ninja"))) {
+        configure.insert(configure.begin() + 1, {"-G", std::string(generator)});
     }
     if (!run_step("configure", configure, out.log, failure)) {
         if (failure.message.empty()) {
