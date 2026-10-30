@@ -2025,6 +2025,13 @@ hidden and out of the pointer's way, which the page's screen reader reads: `dom_
 node to its role and attributes and `dom_changes` says what the page adds, changes and removes
 (`slash/accessibility/web.hpp`, `src/dom.cpp`, the same on every platform so tests read it
 natively), and the clicks and focus the elements get come back through `dom_requests`.
+Phones keep elements of their own the same way (`slash/accessibility/mobile.hpp`,
+`src/mobile.cpp`): on Android `src/android.cpp` hands `android_changes`' JSON through JNI to
+`org.slashengine.accessibility.Bridge` (`engine/accessibility/android/`, compiled by Android
+exports), an `AccessibilityNodeProvider` of virtual views on SDL's surface that answers
+TalkBack's touch exploration and queues its actions for `android_requests`; on iOS `src/ios.mm`
+puts a `UIAccessibilityElement` per node (`ios_element`'s label, value, hint and traits) in SDL's
+view, and VoiceOver's gestures become requests through `ios_request`.
 `examples/accessibility` works a pause menu as a screen reader would.
 
 ## Localization

@@ -5754,7 +5754,19 @@ so an agent can check a game can be played without seeing it.
   and a screen reader's click or focus on an element runs as `ui.accessibility_action`'s `click`
   or `focus`. A page can't tell whether a screen reader is running, so `auto` counts one as in use
   from the first click or focus it gives an element.
-- Not yet: Android's TalkBack and iOS's VoiceOver, text runs and
+- On Android, TalkBack reads the tree as virtual views of the game's surface, each the widget its
+  role is (`Button`, `CheckBox`, `Switch`, `EditText`, `SeekBar`, `ScrollView` and the rest) with
+  its text, hint, state, range and live region, and explores it by touch. Its actions run on the
+  controls: click, focus, set text and progress, show on screen, and scrolling forward and
+  backward, which steps a range or scrolls a `ScrollContainer`. `auto` serves it while a
+  touch-exploring service such as TalkBack is on.
+- On iOS, VoiceOver reads each control as a `UIAccessibilityElement` in the game's view, with its
+  label, value, hint and traits (button, toggle button on iOS 17 and later, static text,
+  adjustable, selected, not enabled); containers are left out. A double tap clicks, swipes up and
+  down step an adjustable range, and three-finger swipes scroll the `ScrollContainer` holding the
+  element. VoiceOver follows the game's focus and speaks what changes in a live region. `auto`
+  serves it while VoiceOver runs.
+- Not yet: text runs and
   selections in a `TextEdit`, keyboard drag and drop (`ui_accessibility_drag_and_drop`) and
   announcements.
 
