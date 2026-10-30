@@ -1,0 +1,112 @@
+name: DXIL shaders
+
+# Builds Microsoft's DXC from the source cmake/dependencies.json pins and compiles the Direct3D 12
+# ray tracing shaders' HLSL (engine/render/src/*_hlsl.hpp) to signed DXIL with
+# cmake/compile_ray_dxil.cmake, so no one needs DXC on their machine.
+#
+# - On a pull request that changes them, it checks the committed DXIL is what DXC makes.
+# - Run by hand on a branch, it commits the DXIL it made onto that branch's head and pushes the
+#   commit to the branch "dxil-shaders", for the branch's author to cherry-pick:
+#   git fetch origin dxil-shaders && git cherry-pick FETCH_HEAD
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/dxil.yml
+      - cmake/compile_ray_dxil.cmake
+      - engine/render/src/*_hlsl.hpp
+      - engine/render/src/*_dxil.hpp
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: The branch whose shaders to compile
+        required: true
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  dxil:
+    name: Compile DXIL with DXC
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # to push the branch "dxil-shaders" when run by hand
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Read DXC's pin
+        id: pin
+        run: |
+          python3 - <<'EOF' >> "$GITHUB_OUTPUT"
+          import json
+          dxc = json.load(open("cmake/dependencies.json"))["dependencies"]["DirectXShaderCompiler"]
+          for key in ("repository", "tag", "license_file", "license_sha256"):
+              print(f"{key}={dxc[key]}")
+          EOF
+
+      - name: Cache DXC
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: dxc
+          key: dxc-${{ steps.pin.outputs.tag }}-ubuntu-24.04
+
+      - name: Build DXC
+        if: steps.cache.outputs.cache-hit != 'true'
+        env:
+          REPOSITORY: ${{ steps.pin.outputs.repository }}
+          TAG: ${{ steps.pin.outputs.tag }}
+          LICENSE_FILE: ${{ steps.pin.outputs.license_file }}
+          LICENSE_SHA256: ${{ steps.pin.outputs.license_sha256 }}
+        run: |
+          sudo apt-get update && sudo apt-get install -y ninja-build
+          git clone --depth 1 --branch "$TAG" "$REPOSITORY" "$RUNNER_TEMP/dxc-src"
+          git -C "$RUNNER_TEMP/dxc-src" submodule update --init --depth 1 external/DirectX-Headers
+          # The licence reviewed when it was pinned, as the licenses test checks the others'.
+          hash=$(tr -d '\r' < "$RUNNER_TEMP/dxc-src/$LICENSE_FILE" | sha256sum | cut -d' ' -f1)
+          if [ "$hash" != "$LICENSE_SHA256" ]; then
+            echo "DXC's licence at $TAG is not the reviewed text (sha256 $hash)"; exit 1
+          fi
+          cmake -S "$RUNNER_TEMP/dxc-src" -B "$RUNNER_TEMP/dxc-build" -G Ninja \
+            -C "$RUNNER_TEMP/dxc-src/cmake/caches/PredefinedParams.cmake" \
+            -DCMAKE_BUILD_TYPE=Release -DENABLE_SPIRV_CODEGEN=OFF -DSPIRV_BUILD_TESTS=OFF \
+            -DHLSL_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_TESTS=OFF -DCLANG_INCLUDE_TESTS=OFF
+          # dxc, its libdxcompiler, and libdxil, the validator that signs what it makes.
+          ninja -C "$RUNNER_TEMP/dxc-build" dxc dxildll
+          mkdir -p dxc
+          cp "$RUNNER_TEMP/dxc-build/bin/dxc" dxc/
+          cp -P "$RUNNER_TEMP/dxc-build"/lib/libdxcompiler.so* "$RUNNER_TEMP/dxc-build"/lib/libdxil.so* dxc/
+
+      - name: Compile the shaders
+        run: |
+          export LD_LIBRARY_PATH="$PWD/dxc"
+          dxc/dxc --version
+          cmake -DDXC="$PWD/dxc/dxc" -DROOT="$PWD" -P cmake/compile_ray_dxil.cmake
+
+      - name: Check the committed DXIL
+        if: github.event_name == 'pull_request'
+        run: |
+          if ! git diff --exit-code --stat -- engine/render/src; then
+            echo "The committed DXIL isn't what DXC makes of the HLSL: run this workflow by hand"
+            echo "on the branch (Actions > DXIL shaders > Run workflow) and cherry-pick the commit"
+            echo "it pushes to the branch dxil-shaders."
+            exit 1
+          fi
+
+      - name: Push the DXIL to the branch dxil-shaders
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          REF: ${{ inputs.ref }}
+        run: |
+          if git diff --quiet -- engine/render/src; then
+            echo "The DXIL on $REF is up to date."; exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add engine/render/src/*_dxil.hpp
+          git commit -m "Compile the ray tracing shaders' DXIL with DXC" \
+            -m "Made by the DXIL shaders workflow on $REF."
+          git push --force origin HEAD:refs/heads/dxil-shaders

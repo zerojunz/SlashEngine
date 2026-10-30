@@ -1,0 +1,126 @@
+# Compiles the Direct3D 12 ray tracing shaders' HLSL to signed DXIL with DXC, which Windows'
+# d3dcompiler can't do (ray queries need shader model 6.5). The HLSL is committed in
+# engine/render/src/<shader>_hlsl.hpp, made from the shaders' GLSL by slash-ray-msl --hlsl; this
+# writes <shader>_dxil.hpp beside it, the bytes Direct3D 12 takes and the SHA-256 of the HLSL they
+# were made from, which a test holds to the HLSL so a stale header fails every build.
+#
+# DXC isn't a dependency of the engine: the "DXIL shaders" workflow (.github/workflows/dxil.yml)
+# builds it from the source cmake/dependencies.json pins and runs this, so no one needs it
+# locally. With a DXC of your own (and its libdxil, which signs what it makes):
+#
+#   cmake -DDXC=<path to dxc> -DROOT=<repository> -P cmake/compile_ray_dxil.cmake
+#
+# Each HLSL header names its profile in a line "// profile: cs_6_5" and its passes in a line
+# "// passes: <n>", and holds the source as raw string literals k<Name>Hlsl, split into pieces as
+# MSVC needs. A pass is the shader with its specialization constant kPass (SPIRV-Cross's
+# SPIRV_CROSS_CONSTANT_ID_0) set to its number, compiled on its own as Direct3D 12 has no
+# specialization constants.
+
+cmake_minimum_required(VERSION 3.25)
+
+if(NOT DXC OR NOT EXISTS "${DXC}")
+    message(FATAL_ERROR "compile_ray_dxil.cmake needs -DDXC=<path to dxc>")
+endif()
+if(NOT ROOT)
+    get_filename_component(ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+endif()
+set(work "${ROOT}/build/dxil")
+file(MAKE_DIRECTORY "${work}")
+
+set(kJoin ")hlsl\"\n    R\"hlsl(")
+file(GLOB sources "${ROOT}/engine/render/src/*_hlsl.hpp")
+if(NOT sources)
+    message(STATUS "no HLSL headers to compile")
+endif()
+foreach(source IN LISTS sources)
+    get_filename_component(file_name "${source}" NAME)
+    string(REGEX REPLACE "_hlsl\\.hpp$" "" base "${file_name}")
+    file(READ "${source}" text)
+    if(NOT text MATCHES "inline constexpr char k([A-Za-z0-9]+)Hlsl\\[\\]")
+        message(FATAL_ERROR "${source} has no k<Name>Hlsl")
+    endif()
+    set(name "${CMAKE_MATCH_1}")
+    if(NOT text MATCHES "// profile: ([a-z]+_[0-9]+_[0-9]+)")
+        message(FATAL_ERROR "${source} names no profile")
+    endif()
+    set(profile "${CMAKE_MATCH_1}")
+    if(NOT text MATCHES "// passes: ([0-9]+)")
+        message(FATAL_ERROR "${source} names no passes")
+    endif()
+    set(passes "${CMAKE_MATCH_1}")
+
+    # The source, its pieces joined back.
+    string(REPLACE "${kJoin}" "" joined "${text}")
+    string(FIND "${joined}" "R\"hlsl(" start)
+    string(FIND "${joined}" ")hlsl\"" end REVERSE)
+    math(EXPR start "${start} + 7")
+    math(EXPR length "${end} - ${start}")
+    string(SUBSTRING "${joined}" ${start} ${length} hlsl)
+    string(SHA256 from "${hlsl}")
+    file(WRITE "${work}/${base}.hlsl" "${hlsl}")
+
+    execute_process(COMMAND "${DXC}" --version OUTPUT_VARIABLE version ERROR_VARIABLE version)
+    string(STRIP "${version}" version)
+    string(REPLACE "\n" "; " version "${version}")
+
+    set(arrays "")
+    set(table "")
+    math(EXPR last "${passes} - 1")
+    foreach(pass RANGE ${last})
+        set(dxil "${work}/${base}_${pass}.dxil")
+        execute_process(
+            COMMAND "${DXC}" -T ${profile} -E main -HV 2021 -O3 -Qstrip_debug -Qstrip_reflect
+                -D SPIRV_CROSS_CONSTANT_ID_0=${pass}u -Fo "${dxil}" "${work}/${base}.hlsl"
+            RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE output)
+        if(NOT result EQUAL 0)
+            message(FATAL_ERROR "DXC failed for ${file_name}'s pass ${pass}:\n${output}")
+        endif()
+
+        # A DXIL container starts with "DXBC" and the digest the validator signs it with;
+        # Direct3D 12 refuses one whose digest is zero.
+        file(READ "${dxil}" hex HEX)
+        string(SUBSTRING "${hex}" 0 8 magic)
+        string(SUBSTRING "${hex}" 8 32 digest)
+        if(NOT magic STREQUAL "44584243")
+            message(FATAL_ERROR "DXC wrote no DXIL container for ${file_name}'s pass ${pass}")
+        endif()
+        if(digest MATCHES "^0+$")
+            message(FATAL_ERROR "the DXIL of ${file_name} isn't signed: put libdxil (DXC's "
+                                "dxildll target) beside DXC's libdxcompiler")
+        endif()
+
+        # The bytes as a C array body, twelve to a line.
+        string(REGEX REPLACE "(..)" "0x\\1, " hex "${hex}")
+        string(REPEAT "0x[0-9a-f][0-9a-f], " 11 line)
+        string(REGEX REPLACE "(${line}0x[0-9a-f][0-9a-f],) " "\\1\n    " hex "${hex}")
+        string(REGEX REPLACE ",\n    $" ",\n" hex "${hex}")
+        string(REGEX REPLACE ", $" ",\n" hex "${hex}")
+        string(APPEND arrays "// Pass ${pass}.
+alignas(4) inline constexpr unsigned char k${name}Dxil${pass}[] = {
+    ${hex}};
+
+")
+        string(APPEND table "    std::span<const unsigned char>(k${name}Dxil${pass}),\n")
+    endforeach()
+
+    file(WRITE "${ROOT}/engine/render/src/${base}_dxil.hpp" "// clang-format off
+// Generated by cmake/compile_ray_dxil.cmake from ${file_name} with ${version}.
+// Don't edit: run the \"DXIL shaders\" workflow (.github/workflows/dxil.yml) on your branch.
+#pragma once
+
+#include <array>
+#include <span>
+
+namespace slash::render::shaders {
+
+${arrays}// The signed DXIL Direct3D 12 runs, a pass each.
+inline constexpr std::array<std::span<const unsigned char>, ${passes}> k${name}Dxil = {
+${table}};
+
+// The SHA-256 of the HLSL it was compiled from.
+inline constexpr char k${name}DxilFrom[] = \"${from}\";
+
+} // namespace slash::render::shaders
+")
+    message(STATUS "compiled ${file_name}'s ${passes} passes for ${profile}")
+endforeach()

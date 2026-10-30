@@ -46,6 +46,7 @@ or license not allowed here, or whose license text changed without review.
 | [glslang](https://github.com/KhronosGroup/glslang) | 16.6.0 | BSD-3-Clause, with parts under BSD-2-Clause, MIT, Apache 2.0, NVIDIA's permissive notice (AML-glslang) and, in its generated parser, GPL 3.0 with the Bison exception, which lets it ship under any terms | Compiling a game's HLSL shaders to SPIR-V (tools only, not shipped in games) | Fetched, linked into slash-cli and slash-mcp |
 | [SPIRV-Cross](https://github.com/KhronosGroup/SPIRV-Cross) | vulkan-sdk-1.4.363.0 | Apache 2.0 or MIT, at the user's choice; its `spirv.hpp` is MIT | Turning a game's compiled shaders into MSL and GLSL ES (tools only, not shipped in games) | Fetched, linked into slash-cli and slash-mcp |
 | [Tint, in Dawn](https://github.com/google/dawn) | v20260423.175430 | BSD-3-Clause | Turning a game's compiled shaders into WGSL for WebGPU (tools only, not shipped in games); Dawn's CMake builds only Tint, with one patch for Xcode 15's clang (`cmake/patches/`) | Fetched, linked into slash-cli and slash-mcp |
+| [DirectXShaderCompiler (DXC)](https://github.com/microsoft/DirectXShaderCompiler) | v1.9.2609 | NCSA (LLVM's), with miniz under MIT | Compiling the Direct3D 12 ray tracing shaders to signed DXIL, committed in `engine/render/src/*_dxil.hpp` (tools only, not shipped in games or linked into anything) | Built from source by the "DXIL shaders" workflow (`.github/workflows/dxil.yml`) only; not fetched by the engine's build |
 | [SPIRV-Tools](https://github.com/KhronosGroup/SPIRV-Tools) | vulkan-sdk-1.4.350.0 | Apache 2.0 | Reading SPIR-V for Tint (tools only) | Fetched, linked into slash-cli and slash-mcp |
 | [SPIRV-Headers](https://github.com/KhronosGroup/SPIRV-Headers) | vulkan-sdk-1.4.350.0 | Khronos's MIT text (MIT-Khronos-old); its Markdown docs are CC BY 4.0 and not used | SPIR-V's definitions, for SPIRV-Tools (tools only) | Fetched, headers only |
 | [Abseil](https://github.com/abseil/abseil-cpp) | 20250512.1 | Apache 2.0 | Number parsing in Tint (tools only) | Fetched, linked into slash-cli and slash-mcp |
@@ -72,8 +73,8 @@ file, as its license asks:
 | [FidelityFX Super Resolution 2.2](https://github.com/GPUOpen-Effects/FidelityFX-FSR2) (`ffx_fsr2_*.h`), by Advanced Micro Devices (2022-2023), as Godot 4.6 runs it | MIT | The `fsr2` render scale mode: its seven passes | `engine/render/shaders/fsr2.hlsl` and `fsr2_*.hlsl`, compiled into `engine/render/src/fsr2_*_shaders.hpp`, and their CPU twin in `engine/render/src/fsr2.cpp` |
 | [FidelityFX SDK 1.1.4](https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK) (`ffx_fsr3upscaler_*.h`), by Advanced Micro Devices (2024) | MIT | The `fsr3` render scale mode: FSR 3.1's upscaler passes | `engine/render/shaders/fsr3.hlsl` and `fsr3_*.hlsl`, compiled into `engine/render/src/fsr3_*_shaders.hpp`, and their CPU twin in `engine/render/src/fsr3.cpp` |
 
-The renderer's own shaders are compiled ahead of time with three command-line tools whose output
-is committed in `engine/render/src/*_shaders.hpp`, so building the engine needs none of them;
+The renderer's own shaders are compiled ahead of time with command-line tools whose output is
+committed in `engine/render/src/*_shaders.hpp`, so building the engine needs none of them;
 `fsr_shaders.hpp` is written by `slash-shader-header`, built on the same projects' libraries. (A
 game's own shaders are compiled by slash-cli, slash-mcp and exports with those libraries, listed
 above; games get the compiled code, never the compilers.)
@@ -83,6 +84,7 @@ above; games get the compiled code, never the compilers.)
 | [glslang](https://github.com/KhronosGroup/glslang) | BSD-3-Clause, with parts under BSD-2-Clause, MIT and Apache 2.0 | HLSL to SPIR-V for Vulkan |
 | [SPIRV-Cross](https://github.com/KhronosGroup/SPIRV-Cross) | Apache 2.0 | SPIR-V to MSL for Metal and GLSL ES for OpenGL ES and WebGL 2 |
 | [Tint, in Dawn](https://github.com/google/dawn) | BSD-3-Clause | SPIR-V to WGSL for WebGPU |
+| [DXC](https://github.com/microsoft/DirectXShaderCompiler) | NCSA | HLSL to DXIL for Direct3D 12's ray tracing shaders, in a CI workflow (`cmake/compile_ray_dxil.cmake`) |
 
 On Windows, Direct3D 12 compiles the HLSL at startup with `d3dcompiler_47.dll`, which comes with
 Windows; the engine loads it at run time and ships no copy.
