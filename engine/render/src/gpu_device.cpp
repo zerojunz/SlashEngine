@@ -798,8 +798,7 @@ public:
             SDL_ReleaseGPUSampler(device_, radiance_sampler_);
         }
         for (const auto& [id, game] : game_shaders_) {
-            SDL_ReleaseGPUShader(device_, game.vertex);
-            SDL_ReleaseGPUShader(device_, game.fragment);
+            release_game_shader(game);
         }
         // What was forgotten above.
         release_pending();
@@ -952,6 +951,9 @@ public:
         if (auto checked = check_compiled_shader(shader, backend_); !checked) {
             return checked.error();
         }
+        if (shader.type == ShaderType::Spatial) {
+            return create_spatial_shader(shader);
+        }
         const auto bytes = [](const std::vector<std::uint32_t>& words) {
             return std::span<const unsigned char>(
                 reinterpret_cast<const unsigned char*>(words.data()), words.size() * 4);
@@ -988,19 +990,28 @@ public:
             return;
         }
         // The frame being built may still draw with its pipelines, so they go once it is sent.
+        const auto release = [&](SDL_GPUGraphicsPipeline* pipeline) {
+            if (in_frame_) {
+                pending_pipelines_.push_back(pipeline);
+            } else {
+                SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
+            }
+        };
         std::erase_if(pipelines_, [&](const Pipeline& pipeline) {
             if (pipeline.game != shader) {
                 return false;
             }
-            if (in_frame_) {
-                pending_pipelines_.push_back(pipeline.pipeline);
-            } else {
-                SDL_ReleaseGPUGraphicsPipeline(device_, pipeline.pipeline);
-            }
+            release(pipeline.pipeline);
             return true;
         });
-        SDL_ReleaseGPUShader(device_, it->second.vertex);
-        SDL_ReleaseGPUShader(device_, it->second.fragment);
+        std::erase_if(mesh_pipelines_, [&](const MeshPipeline& pipeline) {
+            if (pipeline.game != shader) {
+                return false;
+            }
+            release(pipeline.pipeline);
+            return true;
+        });
+        release_game_shader(it->second);
         game_shaders_.erase(it);
     }
 
@@ -1984,6 +1995,9 @@ public:
         if (auto checked = check_lod(lod, it->second.ranges.size() - 1); !checked) {
             return checked;
         }
+        if (auto checked = check_spatial_shader(material.shader); !checked) {
+            return checked;
+        }
         if (frame_commands_ == nullptr || !frame_.scene) {
             return {}; // a skipped frame (check_mesh_draw refused one with no scene)
         }
@@ -2014,8 +2028,9 @@ public:
         // normals, and with TAA or FSR 2 their motion vectors.
         if ((uses_prepass(*frame_.scene) || traced_) &&
             material.transparency != Transparency::Alpha) {
-            auto normal = uses_motion_vectors(*frame_.scene) ? motion_pipeline_for(material.cull)
-                                                             : normal_pipeline_for(material.cull);
+            auto normal = uses_motion_vectors(*frame_.scene)
+                              ? motion_pipeline_for(material.cull, material.shader)
+                              : normal_pipeline_for(material.cull, material.shader);
             if (!normal) {
                 return normal.error();
             }
@@ -2416,12 +2431,18 @@ private:
         std::uint32_t size = 0;
     };
 
+    // Which pass a mesh pipeline draws: the meshes' own, or the prepass's normals, with or
+    // without motion vectors.
+    enum class MeshPass : std::uint8_t { Color, Normal, Motion };
+
     struct MeshPipeline {
         SDL_GPUTextureFormat format = SDL_GPU_TEXTUREFORMAT_INVALID;
         CullMode cull = CullMode::Back;
         bool blended = false;             // an Alpha material's, which writes no depth
         BlendMode blend = BlendMode::Mix; // when blended
         bool clustered = false;           // Forward+'s fragment stage
+        ShaderId game = ShaderId::None;   // a game's spatial shader's fragment stages
+        MeshPass pass = MeshPass::Color;  // the prepass's only with a game's shader
         SDL_GPUGraphicsPipeline* pipeline = nullptr;
     };
 
@@ -2433,11 +2454,85 @@ private:
         std::uint32_t capacity = 0;
     };
 
-    // A game's shader (create_shader).
+    // A game's shader (create_shader). A spatial shader has no vertex stage, its fragment is
+    // the Compatibility renderer's, and it has Forward+'s and the prepasses' too.
     struct GameShader {
+        ShaderType type = ShaderType::Canvas;
         SDL_GPUShader* vertex = nullptr;
         SDL_GPUShader* fragment = nullptr;
+        SDL_GPUShader* clustered = nullptr;
+        SDL_GPUShader* normal = nullptr;
+        SDL_GPUShader* motion = nullptr;
     };
+
+    // A spatial shader's fragment stages: the Compatibility renderer's, Forward+'s and the
+    // prepasses', each reading the material's uniforms after the mesh shader's.
+    Result<ShaderId> create_spatial_shader(const CompiledShader& shader) {
+        const auto bytes = [](const std::vector<std::uint32_t>& words) {
+            return std::span<const unsigned char>(
+                reinterpret_cast<const unsigned char*>(words.data()), words.size() * 4);
+        };
+        const auto code = [&](const ShaderStage& stage) {
+            return ShaderCode{.vertex_spirv = {},
+                              .fragment_spirv = bytes(stage.spirv),
+                              .vertex_msl = {},
+                              .fragment_msl = stage.msl,
+                              .hlsl = stage.hlsl};
+        };
+        const ShaderCode compatibility{.vertex_spirv = {},
+                                       .fragment_spirv = bytes(shader.spirv_fragment),
+                                       .vertex_msl = {},
+                                       .fragment_msl = shader.msl_fragment,
+                                       .hlsl = shader.hlsl};
+        GameShader made{.type = ShaderType::Spatial};
+        const auto textures = static_cast<std::uint32_t>(kMeshTextures);
+        Result<SDL_GPUShader*> stage =
+            make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, compatibility, textures + 3, 4);
+        if (stage) {
+            made.fragment = stage.value();
+            stage = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code(shader.clustered),
+                                    textures + 5, 4, 6);
+        }
+        if (stage) {
+            made.clustered = stage.value();
+            stage = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code(shader.normal_roughness),
+                                    textures + 3, 4);
+        }
+        if (stage) {
+            made.normal = stage.value();
+            stage =
+                make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code(shader.motion), textures + 3, 4);
+        }
+        if (!stage) {
+            release_game_shader(made);
+            return stage.error();
+        }
+        made.motion = stage.value();
+        const auto id = static_cast<ShaderId>(next_shader_++);
+        game_shaders_[id] = made;
+        return id;
+    }
+
+    void release_game_shader(const GameShader& game) {
+        for (SDL_GPUShader* shader :
+             {game.vertex, game.fragment, game.clustered, game.normal, game.motion}) {
+            if (shader != nullptr) {
+                SDL_ReleaseGPUShader(device_, shader);
+            }
+        }
+    }
+
+    // Whether a mesh's material can draw here: with no shader, or a spatial one made here.
+    [[nodiscard]] Result<void> check_spatial_shader(ShaderId shader) const {
+        if (shader == ShaderId::None) {
+            return {};
+        }
+        const auto found = game_shaders_.find(shader);
+        if (found == game_shaders_.end() || found->second.type != ShaderType::Spatial) {
+            return detail::not_spatial_shader(shader);
+        }
+        return {};
+    }
 
     struct ParticleSystem {
         SDL_GPUBuffer* buffer = nullptr; // its particles, then its trails' copies
@@ -2530,7 +2625,10 @@ private:
         }
         if (auto checked = check_material(
                 material, frame_.target, [&](TextureId id) { return usable(id); },
-                [&](ShaderId id) { return game_shaders_.contains(id); });
+                [&](ShaderId id) {
+                    const auto found = game_shaders_.find(id);
+                    return found != game_shaders_.end() && found->second.type == ShaderType::Canvas;
+                });
             !checked) {
             return checked;
         }
@@ -3130,7 +3228,8 @@ private:
         const BlendMode blend = blended ? material.blend : BlendMode::Mix;
         for (const MeshPipeline& made : mesh_pipelines_) {
             if (made.format == format && made.cull == material.cull && made.blended == blended &&
-                made.blend == blend && made.clustered == clustered) {
+                made.blend == blend && made.clustered == clustered &&
+                made.game == material.shader && made.pass == MeshPass::Color) {
                 return made.pipeline;
             }
         }
@@ -3155,6 +3254,10 @@ private:
         SDL_GPUGraphicsPipelineCreateInfo info{};
         info.vertex_shader = mesh_shaders_[0];
         info.fragment_shader = clustered ? clustered_shader_ : mesh_shaders_[1];
+        if (material.shader != ShaderId::None) {
+            const GameShader& game = game_shaders_.at(material.shader);
+            info.fragment_shader = clustered ? game.clustered : game.fragment;
+        }
         info.vertex_input_state.vertex_buffer_descriptions = &buffer;
         info.vertex_input_state.num_vertex_buffers = 1;
         info.vertex_input_state.vertex_attributes = attributes.data();
@@ -3181,14 +3284,18 @@ private:
                                    .blended = blended,
                                    .blend = blend,
                                    .clustered = clustered,
+                                   .game = material.shader,
                                    .pipeline = pipeline});
         return pipeline;
     }
 
     // The pipeline drawing opaque meshes that cull as cull says into SSAO's normal-roughness
-    // prepass, made the first time a frame needs it.
-    Result<SDL_GPUGraphicsPipeline*> normal_pipeline_for(CullMode cull) {
-        SDL_GPUGraphicsPipeline*& made = normal_pipelines_.at(static_cast<std::size_t>(cull));
+    // prepass, with a game's spatial shader's stage or the mesh shader's, made the first time a
+    // frame needs it.
+    Result<SDL_GPUGraphicsPipeline*> normal_pipeline_for(CullMode cull, ShaderId game) {
+        SDL_GPUGraphicsPipeline* made = game == ShaderId::None
+                                            ? normal_pipelines_.at(static_cast<std::size_t>(cull))
+                                            : game_prepass(game, cull, MeshPass::Normal);
         if (made != nullptr) {
             return made;
         }
@@ -3219,7 +3326,8 @@ private:
         color.format = kNormalFormat;
         SDL_GPUGraphicsPipelineCreateInfo info{};
         info.vertex_shader = mesh_shaders_[0];
-        info.fragment_shader = normal_shader_;
+        info.fragment_shader =
+            game == ShaderId::None ? normal_shader_ : game_shaders_.at(game).normal;
         info.vertex_input_state.vertex_buffer_descriptions = &buffer;
         info.vertex_input_state.num_vertex_buffers = 1;
         info.vertex_input_state.vertex_attributes = attributes.data();
@@ -3240,14 +3348,40 @@ private:
         if (made == nullptr) {
             return sdl_error("creating the normal-roughness prepass's pipeline failed");
         }
+        keep_prepass(made, cull, game, MeshPass::Normal);
         return made;
+    }
+
+    // A game's spatial shader's prepass pipeline, if it is made.
+    SDL_GPUGraphicsPipeline* game_prepass(ShaderId game, CullMode cull, MeshPass pass) const {
+        for (const MeshPipeline& made : mesh_pipelines_) {
+            if (made.game == game && made.cull == cull && made.pass == pass) {
+                return made.pipeline;
+            }
+        }
+        return nullptr;
+    }
+
+    // Keeps a prepass pipeline made for cull and a game's shader, or the mesh shader's.
+    void keep_prepass(SDL_GPUGraphicsPipeline* pipeline, CullMode cull, ShaderId game,
+                      MeshPass pass) {
+        if (game != ShaderId::None) {
+            mesh_pipelines_.push_back(
+                {.cull = cull, .game = game, .pass = pass, .pipeline = pipeline});
+        } else if (pass == MeshPass::Normal) {
+            normal_pipelines_.at(static_cast<std::size_t>(cull)) = pipeline;
+        } else {
+            motion_pipelines_.at(static_cast<std::size_t>(cull)) = pipeline;
+        }
     }
 
     // The pipeline drawing opaque meshes that cull as cull says into TAA's prepass, which draws
     // their motion vectors too, from a second vertex buffer of where their vertices were, made
     // the first time a frame needs it.
-    Result<SDL_GPUGraphicsPipeline*> motion_pipeline_for(CullMode cull) {
-        SDL_GPUGraphicsPipeline*& made = motion_pipelines_.at(static_cast<std::size_t>(cull));
+    Result<SDL_GPUGraphicsPipeline*> motion_pipeline_for(CullMode cull, ShaderId game) {
+        SDL_GPUGraphicsPipeline* made = game == ShaderId::None
+                                            ? motion_pipelines_.at(static_cast<std::size_t>(cull))
+                                            : game_prepass(game, cull, MeshPass::Motion);
         if (made != nullptr) {
             return made;
         }
@@ -3290,7 +3424,8 @@ private:
         colors[1].format = kVelocityFormat;
         SDL_GPUGraphicsPipelineCreateInfo info{};
         info.vertex_shader = motion_shaders_[0];
-        info.fragment_shader = motion_shaders_[1];
+        info.fragment_shader =
+            game == ShaderId::None ? motion_shaders_[1] : game_shaders_.at(game).motion;
         info.vertex_input_state.vertex_buffer_descriptions = buffers.data();
         info.vertex_input_state.num_vertex_buffers = static_cast<std::uint32_t>(buffers.size());
         info.vertex_input_state.vertex_attributes = attributes.data();
@@ -3311,6 +3446,7 @@ private:
         if (made == nullptr) {
             return sdl_error("creating TAA's prepass's pipeline failed");
         }
+        keep_prepass(made, cull, game, MeshPass::Motion);
         return made;
     }
 
@@ -3642,6 +3778,12 @@ private:
                     mesh_surface_uniforms(draw.material, draw.layers);
                 SDL_PushGPUFragmentUniformData(commands, 0, &surface,
                                                static_cast<std::uint32_t>(sizeof(surface)));
+                if (draw.material.shader != ShaderId::None) {
+                    const SpatialUniforms game = spatial_uniforms(
+                        scene, draw.transform, draw.material, scene_width_, scene_height_);
+                    SDL_PushGPUFragmentUniformData(commands, 3, &game,
+                                                   static_cast<std::uint32_t>(sizeof(game)));
+                }
                 // The motion vectors' prepass reads where the vertices were from a second buffer.
                 const std::array vertices{
                     SDL_GPUBufferBinding{.buffer = batch.vertices, .offset = 0},

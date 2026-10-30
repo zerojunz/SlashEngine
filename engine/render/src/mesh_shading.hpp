@@ -103,8 +103,8 @@ struct MeshSurfaceUniforms {
 };
 
 // A draw's textures in mesh.hlsl's slots. A StandardMaterial3D's albedo, metallic, roughness,
-// emission and normal textures, the rest None but the sixth, its VoxelGIs' atlas, and the last, its
-// lightmap; with terrain shading,
+// emission and normal textures (a game's shader's texture params in their place), the rest None
+// but the sixth, its VoxelGIs' atlas, and the last, its lightmap; with terrain shading,
 // the color map, splat map and normal map, then the four layers' albedo_bump and their
 // normal_roughness.
 [[nodiscard]] std::array<MaterialTexture, kMeshTextures>
@@ -246,6 +246,11 @@ static_assert(sizeof(MeshShadowPassUniforms) == 144);
                                                           const Material3D& material);
 [[nodiscard]] MeshInstanceUniforms
 mesh_instance_uniforms(const Mat4& transform, const Material3D& material, const Mat4& previous);
+// A spatial shader's uniforms for a draw at transform with a material of a scene, onto a target
+// of width by height pixels.
+[[nodiscard]] SpatialUniforms spatial_uniforms(const Scene3D& scene, const Mat4& transform,
+                                               const Material3D& material, std::uint32_t width,
+                                               std::uint32_t height);
 [[nodiscard]] MeshSurfaceUniforms mesh_surface_uniforms(const Material3D& material,
                                                         std::uint32_t layers);
 // The scene's uniforms: in Compatibility its first kMaxLights3D lights, in Forward+ its
@@ -411,6 +416,8 @@ template <typename Known>
                                              const Known& known);
 [[nodiscard]] Error unknown_mesh(MeshId mesh);
 [[nodiscard]] Error no_scene();
+// A 3D material's shader that isn't a spatial shader made on the device.
+[[nodiscard]] Error not_spatial_shader(ShaderId shader);
 // What draw_mesh checks in a frame: that it has a scene, the mesh exists (mesh_known), the
 // transform is finite and the material is usable.
 template <typename Known>
@@ -444,6 +451,17 @@ struct MeshCorner {
                                      const MeshInstanceUniforms& instance, const Vertex3D& vertex,
                                      const Float3& previous);
 
+// The surface a spatial shader's game_surface gives a pixel (shaders/mesh.hlsl), as its CPU module
+// writes it (cpu_spatial): ALBEDO (linear) and ALPHA; METALLIC, ROUGHNESS, SPECULAR and AO;
+// EMISSION (linear) and AO_LIGHT_AFFECT; the shading normal in the world and
+// ALPHA_SCISSOR_THRESHOLD.
+struct GameSurface {
+    Float4 albedo{};
+    Float4 material{};
+    Float4 emission{};
+    Float4 normal{};
+};
+
 // What the fragment stage reads at a pixel: where it is in the target, the corners' values there,
 // which face it is on, and what each texture holds there.
 struct MeshPixel {
@@ -461,6 +479,8 @@ struct MeshPixel {
     Float3 lightmap{};
     // The draw's VoxelGI atlas, when it traces VoxelGIs.
     const Image* voxel_gi = nullptr;
+    // The surface its game's shader gives it, in place of the material's, when it has one.
+    std::optional<GameSurface> game{}; // NOLINT(readability-redundant-member-init): left out
 
     [[nodiscard]] static constexpr std::array<Float4, kMeshTextures> white_texels() {
         std::array<Float4, kMeshTextures> out{};
@@ -694,6 +714,18 @@ Result<void> check_material_3d(const Material3D& material, TextureId target, con
             if (!finite({layer.uv_scale, layer.colormap_opacity}) || !(layer.uv_scale > 0.0F)) {
                 return make_error(ErrorCode::InvalidArgument,
                                   "a terrain layer's uv_scale is above 0 and its numbers finite");
+            }
+        }
+    }
+    if (m.shader != ShaderId::None) {
+        if (m.terrain.enabled) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a 3D material drawn with a game's shader has no terrain shading");
+        }
+        for (const std::array<float, 4>& constant : m.shader_constants) {
+            if (!finite({constant[0], constant[1], constant[2], constant[3]})) {
+                return make_error(ErrorCode::InvalidArgument,
+                                  "a 3D material's shader constants are finite");
             }
         }
     }

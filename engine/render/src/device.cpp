@@ -15,6 +15,7 @@
 #include "slash/core/text.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -131,33 +132,67 @@ Error unknown_texture(TextureId texture) {
 
 Error unknown_shader(ShaderId shader) {
     return make_error(ErrorCode::NotFound,
-                      "no shader " + std::to_string(static_cast<std::uint32_t>(shader)));
+                      "no canvas shader " + std::to_string(static_cast<std::uint32_t>(shader)));
 }
 
 Result<void> check_compiled_shader(const CompiledShader& shader, Backend backend) {
     bool present = true;
-    switch (backend) {
-    case Backend::Vulkan:
-        present = !shader.spirv_vertex.empty() && !shader.spirv_fragment.empty();
-        break;
-    case Backend::Metal:
-        present = !shader.msl_vertex.empty() && !shader.msl_fragment.empty();
-        break;
-    case Backend::D3D12:
-        present = !shader.hlsl.empty();
-        break;
-    case Backend::OpenGl:
-    case Backend::OpenGlEs:
-        present = !shader.glsl_vertex.empty() && !shader.glsl_fragment.empty();
-        break;
-    case Backend::WebGpu:
-        present = !shader.wgsl_vertex.empty() && !shader.wgsl_fragment.empty();
-        break;
-    case Backend::Software:
-        present = !shader.cpu_fragment.empty();
-        break;
-    case Backend::Null:
-        break;
+    if (shader.type == ShaderType::Spatial) {
+        // The fragment stages alone: meshes' corners are placed by the mesh shader's own.
+        const std::array<const ShaderStage*, 3> forward{&shader.clustered, &shader.normal_roughness,
+                                                        &shader.motion};
+        const auto all = [&](auto has) { return std::ranges::all_of(forward, has); };
+        switch (backend) {
+        case Backend::Vulkan:
+            present = !shader.spirv_fragment.empty() &&
+                      all([](const ShaderStage* stage) { return !stage->spirv.empty(); });
+            break;
+        case Backend::Metal:
+            present = !shader.msl_fragment.empty() &&
+                      all([](const ShaderStage* stage) { return !stage->msl.empty(); });
+            break;
+        case Backend::D3D12:
+            present = !shader.hlsl.empty() &&
+                      all([](const ShaderStage* stage) { return !stage->hlsl.empty(); });
+            break;
+        case Backend::OpenGl:
+        case Backend::OpenGlEs:
+            present = !shader.glsl_fragment.empty();
+            break;
+        case Backend::WebGpu:
+            present = !shader.wgsl_fragment.empty() &&
+                      all([](const ShaderStage* stage) { return !stage->wgsl.empty(); });
+            break;
+        case Backend::Software:
+            present = !shader.cpu_fragment.empty();
+            break;
+        case Backend::Null:
+            break;
+        }
+    } else {
+        switch (backend) {
+        case Backend::Vulkan:
+            present = !shader.spirv_vertex.empty() && !shader.spirv_fragment.empty();
+            break;
+        case Backend::Metal:
+            present = !shader.msl_vertex.empty() && !shader.msl_fragment.empty();
+            break;
+        case Backend::D3D12:
+            present = !shader.hlsl.empty();
+            break;
+        case Backend::OpenGl:
+        case Backend::OpenGlEs:
+            present = !shader.glsl_vertex.empty() && !shader.glsl_fragment.empty();
+            break;
+        case Backend::WebGpu:
+            present = !shader.wgsl_vertex.empty() && !shader.wgsl_fragment.empty();
+            break;
+        case Backend::Software:
+            present = !shader.cpu_fragment.empty();
+            break;
+        case Backend::Null:
+            break;
+        }
     }
     if (!present) {
         return make_error(ErrorCode::InvalidArgument, "the shader has no code for the " +
@@ -647,9 +682,9 @@ public:
 
     void destroy_texture(TextureId texture) override { textures_.erase(texture); }
 
-    Result<ShaderId> create_shader(const CompiledShader& /*shader*/) override {
+    Result<ShaderId> create_shader(const CompiledShader& shader) override {
         const auto id = static_cast<ShaderId>(next_shader_++);
-        shaders_.insert(id);
+        shaders_[id] = shader.type;
         return id;
     }
 
@@ -909,6 +944,12 @@ public:
         if (auto checked = detail::check_lod(lod, it->second.triangles.size() - 1); !checked) {
             return checked;
         }
+        if (material.shader != ShaderId::None) {
+            const auto found = shaders_.find(material.shader);
+            if (found == shaders_.end() || found->second != ShaderType::Spatial) {
+                return detail::not_spatial_shader(material.shader);
+            }
+        }
         // Each mesh is a draw of its own, as on the GPU device.
         ++stats_.draws;
         stats_.triangles += it->second.triangles[lod];
@@ -977,7 +1018,10 @@ private:
         }
         if (auto checked = detail::check_material(
                 material, target_, [&](TextureId id) { return textures_.contains(id); },
-                [&](ShaderId id) { return shaders_.contains(id); });
+                [&](ShaderId id) {
+                    const auto found = shaders_.find(id);
+                    return found != shaders_.end() && found->second == ShaderType::Canvas;
+                });
             !checked) {
             return checked;
         }
@@ -990,7 +1034,7 @@ private:
 
     std::unordered_map<TextureId, Texture> textures_;
     std::uint32_t next_texture_ = 1;
-    std::unordered_set<ShaderId> shaders_;
+    std::unordered_map<ShaderId, ShaderType> shaders_;
     std::uint32_t next_shader_ = 1;
     // A particle system's amount and trail.
     struct Shape {

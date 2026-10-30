@@ -128,8 +128,9 @@ struct ShadedVertex {
 
 // A game's shader on the CPU.
 struct SoftwareShader {
+    ShaderType type = ShaderType::Canvas;
     std::optional<ShaderVm> vertex;
-    ShaderVm fragment;
+    ShaderVm fragment; // a spatial shader's gives a mesh's surface (cpu_spatial)
     bool normal_used = false;
     bool specular_used = false;
 };
@@ -399,6 +400,7 @@ public:
             return checked.error();
         }
         auto made = std::make_shared<SoftwareShader>();
+        made->type = shader.type;
         made->normal_used = shader.normal_map_used;
         made->specular_used = shader.specular_used;
         auto fragment = ShaderVm::load(shader.cpu_fragment);
@@ -640,6 +642,12 @@ public:
         if (auto checked = detail::check_lod(lod, it->second.ranges.size() - 1); !checked) {
             return checked;
         }
+        if (material.shader != ShaderId::None) {
+            const auto found = shaders_.find(material.shader);
+            if (found == shaders_.end() || found->second->type != ShaderType::Spatial) {
+                return detail::not_spatial_shader(material.shader);
+            }
+        }
         mesh_draws_.push_back({.mesh = mesh,
                                .transform = transform,
                                .material = material,
@@ -665,7 +673,10 @@ public:
         }
         if (auto checked = detail::check_material(
                 material, frame_.target, [&](TextureId id) { return usable(id); },
-                [&](ShaderId id) { return shaders_.contains(id); });
+                [&](ShaderId id) {
+                    const auto found = shaders_.find(id);
+                    return found != shaders_.end() && found->second->type == ShaderType::Canvas;
+                });
             !checked) {
             return checked;
         }
@@ -1409,6 +1420,10 @@ private:
         std::array<Bound, detail::kMeshTextures> slots{}; // mesh_texture_slots' textures
         const detail::FloatImage* lightmap = nullptr;     // the material's lightmap, if any
         const Image* voxel_gi = nullptr; // its VoxelGIs' atlas, when it traces some
+        // A game's spatial shader, which gives each pixel's surface, and its uniforms.
+        // Initialized, as most initializers leave them out.
+        SoftwareShader* game = nullptr;
+        SpatialUniforms game_uniforms{}; // NOLINT(readability-redundant-member-init)
     };
 
     // Where a pass rasterizes: a rect of a depth buffer stride texels across, onto which clip
@@ -1419,6 +1434,9 @@ private:
         std::uint32_t stride = 0;
         detail::AtlasRect viewport;
         CullMode cull = CullMode::Back;
+        // A draw with a game's spatial shader, whose fragment() runs on 2x2 quads of pixels, as
+        // GPUs run it, so ddx and ddy work.
+        const MeshShader* game = nullptr;
     };
 
     // A pixel of a triangle: its corners, their perspective-correct shares and whether the
@@ -1428,6 +1446,9 @@ private:
         std::array<double, 3> shares{};
         double total = 0.0;
         bool front = true;
+        // The surface a game's spatial shader gave it, when its draw has one. Initialized, as
+        // most initializers leave it out.
+        std::optional<detail::GameSurface> game{}; // NOLINT(readability-redundant-member-init)
 
         [[nodiscard]] float varying(std::size_t k) const {
             return static_cast<float>(((shares[0] * corners[0]->varying.at(k)) +
@@ -1800,7 +1821,7 @@ private:
                                      std::size_t at) {
             const Material3D& material = *shader.material;
             const bool blended = material.transparency == Transparency::Alpha;
-            const auto color = shade_mesh_pixel(shader, fragment.varyings(), fragment.front,
+            const auto color = shade_mesh_pixel(shader, fragment,
                                                 {static_cast<std::uint32_t>(at % target.width()),
                                                  static_cast<std::uint32_t>(at / target.width())});
             if (!color) {
@@ -1839,7 +1860,8 @@ private:
                          const detail::MeshPixel pixel =
                              mesh_pixel(shader, fragment.varyings(), fragment.front,
                                         {static_cast<std::uint32_t>(at % target.width()),
-                                         static_cast<std::uint32_t>(at / target.width())});
+                                         static_cast<std::uint32_t>(at / target.width())},
+                                        fragment.game);
                          const std::optional<Float4> value =
                              detail::mesh_normal_roughness(shader.surface, *shader.scene, pixel);
                          if (!value) {
@@ -2276,6 +2298,11 @@ private:
         if (shader.surface.voxel_gi[0] > 0.0F) {
             shader.voxel_gi = shader.slots[5].image;
         }
+        if (material.shader != ShaderId::None) {
+            shader.game = shaders_.at(material.shader).get();
+            shader.game_uniforms = detail::spatial_uniforms(*frame_.scene, draw.transform, material,
+                                                            target.width(), target.height());
+        }
         const detail::MeshInstanceUniforms instance =
             detail::mesh_instance_uniforms(draw.transform, material, draw.previous);
         corners.clear();
@@ -2305,7 +2332,8 @@ private:
         const MeshRaster raster{.depth = buffer,
                                 .stride = target.width(),
                                 .viewport = {.width = target.width(), .height = target.height()},
-                                .cull = material.cull};
+                                .cull = material.cull,
+                                .game = shader.game != nullptr ? &shader : nullptr};
         const auto shade_pixel = [&](const MeshFragment& fragment, std::size_t at) {
             return shade(shader, fragment, at);
         };
@@ -2486,6 +2514,60 @@ private:
         const bool top_left_b = top_left(c.at, a.at);
         const bool top_left_c = top_left(a.at, b.at);
         MeshFragment fragment{.corners = {a.source, b.source, c.source}, .front = front};
+        if (raster.game != nullptr) {
+            // A game's shader runs on each 2x2 quad a pixel of the triangle is in; the quad's
+            // other pixels only help its derivatives.
+            for (std::int64_t qy = y0 & ~std::int64_t{1}; qy <= y1; qy += 2) {
+                for (std::int64_t qx = x0 & ~std::int64_t{1}; qx <= x1; qx += 2) {
+                    std::array<MeshFragment, 4> quad{fragment, fragment, fragment, fragment};
+                    std::array<bool, 4> drawn{};
+                    std::array<float, 4> depths{};
+                    for (std::size_t lane = 0; lane < 4; ++lane) {
+                        const std::int64_t px = qx + static_cast<std::int64_t>(lane & 1U);
+                        const std::int64_t py = qy + static_cast<std::int64_t>(lane >> 1U);
+                        const std::int64_t cx = (px * kSubpixel) + half;
+                        const std::int64_t cy = (py * kSubpixel) + half;
+                        const std::int64_t wa = edge(b.at, c.at, cx, cy);
+                        const std::int64_t wb = edge(c.at, a.at, cx, cy);
+                        const std::int64_t wc = edge(a.at, b.at, cx, cy);
+                        const double ba = static_cast<double>(wa) / static_cast<double>(area);
+                        const double bb = static_cast<double>(wb) / static_cast<double>(area);
+                        const double bc = static_cast<double>(wc) / static_cast<double>(area);
+                        quad.at(lane).shares = {ba * a.inv_w, bb * b.inv_w, bc * c.inv_w};
+                        quad.at(lane).total = quad.at(lane).shares[0] + quad.at(lane).shares[1] +
+                                              quad.at(lane).shares[2];
+                        const bool inside = px >= x0 && px <= x1 && py >= y0 && py <= y1 &&
+                                            wa >= 0 && wb >= 0 && wc >= 0 &&
+                                            (wa != 0 || top_left_a) && (wb != 0 || top_left_b) &&
+                                            (wc != 0 || top_left_c);
+                        if (!inside) {
+                            continue;
+                        }
+                        depths.at(lane) = static_cast<float>((ba * a.z) + (bb * b.z) + (bc * c.z));
+                        const std::size_t at = (static_cast<std::size_t>(py) * raster.stride) +
+                                               static_cast<std::size_t>(px);
+                        drawn.at(lane) = depths.at(lane) > raster.depth[at];
+                    }
+                    if (!drawn[0] && !drawn[1] && !drawn[2] && !drawn[3]) {
+                        continue;
+                    }
+                    game_surfaces(*raster.game, qx, qy, quad);
+                    for (std::size_t lane = 0; lane < 4; ++lane) {
+                        if (!drawn.at(lane) || !quad.at(lane).game) {
+                            continue;
+                        }
+                        const std::size_t at =
+                            (static_cast<std::size_t>(qy + static_cast<std::int64_t>(lane >> 1U)) *
+                             raster.stride) +
+                            static_cast<std::size_t>(qx + static_cast<std::int64_t>(lane & 1U));
+                        if (shade(quad.at(lane), at)) {
+                            raster.depth[at] = depths.at(lane);
+                        }
+                    }
+                }
+            }
+            return;
+        }
         for (std::int64_t py = y0; py <= y1; ++py) {
             for (std::int64_t px = x0; px <= x1; ++px) {
                 const std::int64_t cx = (px * kSubpixel) + half;
@@ -2516,11 +2598,82 @@ private:
         }
     }
 
+    // Runs a game's spatial shader on a quad of a triangle's fragments, its top left pixel at qx,
+    // qy, as mesh.hlsl's game_surface: each fragment gets the surface it gives, or none where it
+    // discards.
+    static void game_surfaces(const MeshShader& shader, std::int64_t qx, std::int64_t qy,
+                              std::array<MeshFragment, 4>& quad) {
+        ShaderVm::Lanes lanes;
+        lanes.count = 4;
+        lanes.quad = true;
+        const bool flip = shader.material->cull == CullMode::Disabled && !quad[0].front;
+        for (std::size_t lane = 0; lane < 4; ++lane) {
+            const MeshFragment& fragment = quad.at(lane);
+            const auto v = [&](std::size_t k) { return fragment.varying(k); };
+            auto& in = lanes.inputs.at(lane);
+            in.at(cpu_spatial::kWorld) = {v(0), v(1), v(2), flip ? 1.0F : 0.0F};
+            in.at(cpu_spatial::kNormal) = {v(3), v(4), v(5), fragment.front ? 1.0F : 0.0F};
+            in.at(cpu_spatial::kTangent) = {v(6), v(7), v(8), 0.0F};
+            in.at(cpu_spatial::kBinormal) = {v(9), v(10), v(11), 0.0F};
+            in.at(cpu_spatial::kUv) = {v(12), v(13), v(18), v(19)};
+            in.at(cpu_spatial::kVertexColor) = {v(14), v(15), v(16), v(17)};
+            in.at(cpu_spatial::kFragCoord) = {
+                static_cast<float>(qx + static_cast<std::int64_t>(lane & 1U)) + 0.5F,
+                static_cast<float>(qy + static_cast<std::int64_t>(lane >> 1U)) + 0.5F, 0.0F, 1.0F};
+        }
+        const std::array<std::span<const std::byte>, 1> uniforms{
+            std::as_bytes(std::span(&shader.game_uniforms, 1))};
+        const auto slot = [&](std::uint32_t binding) -> const Bound& {
+            return shader.slots.at(std::min<std::size_t>(binding, kSpatialShaderTextures - 1));
+        };
+        const ShaderVm::Textures textures{
+            .sample = [&](std::uint32_t binding, float u,
+                          float v) { return slot(binding).sample(u, v); },
+            .fetch = [&](std::uint32_t binding, std::int32_t x, std::int32_t y) -> Float4 {
+                const Image* image = slot(binding).image;
+                if (image == nullptr) {
+                    return {1.0F, 1.0F, 1.0F, 1.0F};
+                }
+                if (x < 0 || y < 0 || std::cmp_greater_equal(x, image->width) ||
+                    std::cmp_greater_equal(y, image->height)) {
+                    return {0.0F, 0.0F, 0.0F, 0.0F};
+                }
+                const std::size_t at =
+                    ((static_cast<std::size_t>(y) * image->width) + static_cast<std::size_t>(x)) *
+                    4;
+                const auto channel = [&](std::size_t i) {
+                    return static_cast<float>(image->pixels[at + i]) / 255.0F;
+                };
+                return {channel(0), channel(1), channel(2), channel(3)};
+            },
+            .size = [&](std::uint32_t binding) -> std::array<std::uint32_t, 2> {
+                const Image* image = slot(binding).image;
+                if (image == nullptr) {
+                    return {1, 1};
+                }
+                return {image->width, image->height};
+            }};
+        shader.game->fragment.run(lanes, uniforms, textures);
+        for (std::size_t lane = 0; lane < 4; ++lane) {
+            if (lanes.discarded.at(lane)) {
+                quad.at(lane).game.reset();
+                continue;
+            }
+            const auto& out = lanes.outputs.at(lane);
+            quad.at(lane).game = detail::GameSurface{.albedo = out.at(cpu_spatial::kOutAlbedo),
+                                                     .material = out.at(cpu_spatial::kOutMaterial),
+                                                     .emission = out.at(cpu_spatial::kOutEmission),
+                                                     .normal = out.at(cpu_spatial::kOutNormal)};
+        }
+    }
+
     // fs_main in shaders/mesh.hlsl, through its CPU twin, at a pixel of the target.
-    // What the fragment stage reads at a pixel of a draw.
+    // What the fragment stage reads at a pixel of a draw, with the surface a game's shader gave
+    // it, if any.
     static detail::MeshPixel mesh_pixel(const MeshShader& shader,
                                         const std::array<float, 20>& varying, bool front,
-                                        std::array<std::uint32_t, 2> at) {
+                                        std::array<std::uint32_t, 2> at,
+                                        const std::optional<detail::GameSurface>& game = {}) {
         const auto take3 = [&](std::size_t k) {
             return detail::Float3{varying.at(k), varying.at(k + 1), varying.at(k + 2)};
         };
@@ -2542,14 +2695,16 @@ private:
                                                     {varying[18], varying[19]});
         }
         pixel.voxel_gi = shader.voxel_gi;
+        pixel.game = game;
         return pixel;
     }
 
     static std::optional<Float4> shade_mesh_pixel(const MeshShader& shader,
-                                                  const std::array<float, 20>& varying, bool front,
+                                                  const MeshFragment& fragment,
                                                   std::array<std::uint32_t, 2> at) {
-        return detail::shade_mesh(shader.surface, *shader.scene, *shader.maps,
-                                  mesh_pixel(shader, varying, front, at));
+        return detail::shade_mesh(
+            shader.surface, *shader.scene, *shader.maps,
+            mesh_pixel(shader, fragment.varyings(), fragment.front, at, fragment.game));
     }
 
     // Writes a mesh pixel as the GPU device's mesh pipelines do: opaque ones replace the pixel,

@@ -12,6 +12,11 @@
 // entry points (engine/render/shaders/canvas.hlsl), then compiles it with glslang to SPIR-V and
 // with SPIRV-Cross to MSL and GLSL ES, plus the modules the CPU runs with render::ShaderVm.
 //
+// A spatial shader (ShaderType::Spatial), as Godot's, has a fragment() that gives a mesh's surface
+// (ALBEDO, ROUGHNESS, NORMAL_MAP and the rest): its code goes before the mesh shader's
+// (engine/render/shaders/mesh.hlsl, with GAME_SHADER defined), whose fragment stages call it
+// through game_surface, and the CPU runs game_surface alone.
+//
 // slash-cli, slash-mcp and exports link it; games never do, and draw what their export compiled.
 namespace slash::shader_compiler {
 
@@ -20,7 +25,8 @@ namespace slash::shader_compiler {
 [[nodiscard]] Result<render::CompiledShader> compile(const render::ShaderSource& source);
 
 // The HLSL compile wraps the code in: for the GPU's two stages (also what Direct3D 12 compiles),
-// and for the CPU's vertex and fragment modules.
+// and for the CPU's vertex and fragment modules. A spatial shader's gpu is its Compatibility
+// fragment stage, and it has no cpu_vertex.
 struct Wrapped {
     std::string gpu;
     std::string cpu_vertex;

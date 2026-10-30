@@ -764,6 +764,13 @@ their [LODs](#mesh-lods) as if the entity were that many times larger.
 Its `ignore_occlusion_culling` (default `false`) is Godot's: [occluders](#occlusion-culling) never
 hide the mesh.
 
+Its `material_override` (default `""`) is Godot's `GeometryInstance3D.material_override`: a
+`.standard_material.json` file, or a `.material.json` file with `"shader_type": "spatial"`, a game's
+own [spatial shader](#spatial-shaders), which then colors the mesh in place of its
+`StandardMaterial3D` or its model's materials. `material_params` (default `{}`) sets that
+material's params, as `Sprite2D`'s does for canvas materials. `slash-cli scene validate` reports
+an override that isn't one of those files.
+
 The primitive meshes are Godot's, made as Godot makes them: the same corners, normals, tangents
 and texture coordinates, so a texture wraps them as it does in Godot. An entity has at most one.
 Meshes of equal settings share one mesh on the GPU.
@@ -3080,6 +3087,85 @@ void fragment() {
   library on the CPU, which can differ from a GPU's in the last bits.
 - Not yet: passing a texture to a function of your own (sample it in `fragment()` instead), and
   Godot's shader language itself.
+
+#### Spatial shaders
+
+A material with `"shader_type": "spatial"` is Godot's `shader_type spatial`: its shader's
+`fragment()` gives a mesh's surface, which the engine's 3D lighting then lights as it lights a
+`StandardMaterial3D`, with every light, shadow, reflection, the sky, fog, SSAO, SSR and the rest.
+A `MeshInstance3D` draws one through its `material_override`.
+[examples/spatial-shaders](../../examples/spatial-shaders/) has a crystal, a fence and a glass
+ball.
+
+```hlsl
+// shaders/crystal.hlsl, with params tint and glow (colors) and speed (float).
+void fragment() {
+    ALBEDO = tint.rgb;
+    ROUGHNESS = 0.15;
+    float rim = pow(1.0 - saturate(dot(NORMAL, VIEW)), 2.0);
+    EMISSION = glow.rgb * rim * (0.5 + 0.5 * sin(TIME * speed));
+}
+```
+
+```json
+{
+  "format": 1,
+  "params": {
+    "glow": {"type": "color", "value": [0.4, 0.8, 1.0]},
+    "speed": {"type": "float", "value": 3.0},
+    "tint": {"type": "color", "value": [0.3, 0.2, 0.8]}
+  },
+  "render_mode": ["cull_disabled"],
+  "shader": "shaders/crystal.hlsl",
+  "shader_type": "spatial"
+}
+```
+
+`render_mode` is Godot's `render_mode` line: one of `blend_mix` (the default), `blend_add`,
+`blend_sub` and `blend_mul`, which blend a transparent mesh; one of `cull_back` (the default),
+`cull_front` and `cull_disabled`; and `unshaded`, `fog_disabled` and `shadows_disabled`. A
+spatial material has no `blend` or `light_mode`.
+
+| Built-in | Type | Value |
+| --- | --- | --- |
+| `ALBEDO` | float3 | Out: the base color, linear; `(1, 1, 1)` |
+| `ALPHA` | float | Out: the opacity. Writing it makes the mesh transparent, blended by the blend mode, as Godot's; `1` |
+| `ALPHA_SCISSOR_THRESHOLD` | float | Out: writing it cuts the mesh out where `ALPHA` is under it instead of blending |
+| `METALLIC` | float | Out; `0` |
+| `ROUGHNESS` | float | Out; `1` |
+| `SPECULAR` | float | Out: the reflection at facing angles, as Godot's; `0.5` |
+| `EMISSION` | float3 | Out: light the surface gives off, linear, added after lighting; `(0, 0, 0)` |
+| `AO` | float | Out: ambient occlusion, which darkens ambient light; `1` |
+| `AO_LIGHT_AFFECT` | float | Out: how much `AO` darkens direct light too; `0` |
+| `NORMAL_MAP` | float3 | Out: a tangent-space normal map texel (green up), which bends the normal; `(0.5, 0.5, 1)` |
+| `NORMAL_MAP_DEPTH` | float | Out: how far `NORMAL_MAP` bends it; `1` |
+| `NORMAL` | float3 | In and out: the surface's normal in view space, facing the camera on back faces |
+| `TANGENT`, `BINORMAL` | float3 | The surface's tangent and binormal in view space |
+| `VERTEX` | float3 | The pixel's position in view space |
+| `VIEW` | float3 | The direction from the pixel to the camera, in view space |
+| `UV`, `UV2` | float2 | The mesh's texture coordinates |
+| `COLOR` | float4 | The mesh's vertex color |
+| `FRAGCOORD` | float4 | The pixel's center in the target, in pixels from the top left (`xy`), and its depth (`z`) |
+| `SCREEN_UV` | float2 | `FRAGCOORD.xy` over `VIEWPORT_SIZE`, from 0 to 1 across the frame |
+| `FRONT_FACING` | bool | Whether the camera sees the triangle's front |
+| `TIME` | float | Seconds of game time, wrapping every hour |
+| `MODEL_MATRIX`, `VIEW_MATRIX`, `INV_VIEW_MATRIX`, `PROJECTION_MATRIX`, `INV_PROJECTION_MATRIX` | float4x4 | The mesh's place in the world, the world to view space, and view space to clip space, and back |
+| `CAMERA_POSITION_WORLD`, `CAMERA_DIRECTION_WORLD` | float3 | Where the camera is and the way it looks, in the world |
+| `VIEWPORT_SIZE` | float2 | The size of what the frame draws, in pixels |
+
+- Params are globals as in canvas shaders. A spatial shader takes up to 5 textures, and a
+  texture param with `"source_color": true` holds sRGB colors that `texture()` makes linear, as
+  Godot's `source_color` hint. A `color` param's value is made linear before the shader reads
+  it, so colors written in a material look as they do in Godot. The names `mesh.hlsl` and its
+  wrappers declare are refused with the param's path, as `albedo_texture` is.
+- The shader is compiled into each of the mesh shader's fragment stages: the Compatibility
+  renderer's, Forward+'s, and the prepasses that draw normals for SSAO and SSR and motion for TAA
+  and FSR 2, so `NORMAL_MAP`, `ROUGHNESS` and cut-outs show in them too. `frame.capture` draws it
+  on the CPU, where derivatives (`ddx`, `ddy`, `fwidth`) work as on a GPU.
+- A mesh whose material's shader writes `ALPHA` draws after the opaque ones, farthest first, and
+  casts no shadow; one that writes `ALPHA_SCISSOR_THRESHOLD` casts its whole shape for now.
+- Not yet: `vertex()` (meshes' corners are placed as the engine places them, and a shader with
+  one is refused), `light()`, and the shadow pass reading the shader.
 
 ## Animations
 

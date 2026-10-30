@@ -1,0 +1,5 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":7,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"colors":[[0.247,0.478,0.686,1],[0.227,0.161,0.659,1],[0.502,0.671,0.671,1],[0.337,0.482,0.306,1],[0.545,0.451,0.369,1],[0.376,0.533,0.337,1]],"drawn":{"meshes":4},"height":90,"width":160}}
+{"id":3,"jsonrpc":"2.0","result":{"colors":[[0.337,0.655,0.878,1],[0.227,0.169,0.659,1]],"drawn":{"meshes":4},"height":90,"width":160}}
+{"id":4,"jsonrpc":"2.0","result":{"changed":{"MeshInstance3D":{"material_params":{"tint":[0.9,0.3,0.1]}}},"id":"crystal"}}
+{"id":5,"jsonrpc":"2.0","result":{"colors":[[0.392,0.486,0.6,1],[0.698,0.235,0.106,1]],"drawn":{"meshes":4},"height":90,"width":160}}

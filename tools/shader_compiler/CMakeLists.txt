@@ -1,20 +1,30 @@
 # Compiles a game's own HLSL shaders for every backend, with glslang, SPIRV-Cross and Tint, and
 # installs the compiler that render::compile_shader uses. Used by slash-cli, slash-mcp and exports;
 # games never link it.
-set(_slash_canvas_hlsl ${PROJECT_SOURCE_DIR}/engine/render/shaders/canvas.hlsl)
-set(_slash_canvas_hlsl_cpp ${CMAKE_CURRENT_BINARY_DIR}/canvas_hlsl.cpp)
-add_custom_command(
-    OUTPUT ${_slash_canvas_hlsl_cpp}
-    COMMAND ${CMAKE_COMMAND} -DINPUT=${_slash_canvas_hlsl} -DOUTPUT=${_slash_canvas_hlsl_cpp}
-            -DNAMESPACE=slash::shader_compiler::detail -DNAME=kCanvasHlsl
-            -P ${PROJECT_SOURCE_DIR}/cmake/embed.cmake
-    DEPENDS ${_slash_canvas_hlsl} ${PROJECT_SOURCE_DIR}/cmake/embed.cmake
-    COMMENT "Building canvas.hlsl into the shader compiler"
-    VERBATIM)
+
+# The engine's shaders a game's are written into: canvas.hlsl for canvas shaders, mesh.hlsl and the
+# tonemap.hlsl it includes for spatial ones.
+set(_slash_embedded_hlsl "")
+foreach(entry IN ITEMS canvas:kCanvasHlsl mesh:kMeshHlsl tonemap:kTonemapHlsl)
+    string(REPLACE ":" ";" parts ${entry})
+    list(GET parts 0 shader)
+    list(GET parts 1 name)
+    set(input ${PROJECT_SOURCE_DIR}/engine/render/shaders/${shader}.hlsl)
+    set(output ${CMAKE_CURRENT_BINARY_DIR}/${shader}_hlsl.cpp)
+    add_custom_command(
+        OUTPUT ${output}
+        COMMAND ${CMAKE_COMMAND} -DINPUT=${input} -DOUTPUT=${output}
+                -DNAMESPACE=slash::shader_compiler::detail -DNAME=${name}
+                -P ${PROJECT_SOURCE_DIR}/cmake/embed.cmake
+        DEPENDS ${input} ${PROJECT_SOURCE_DIR}/cmake/embed.cmake
+        COMMENT "Building ${shader}.hlsl into the shader compiler"
+        VERBATIM)
+    list(APPEND _slash_embedded_hlsl ${output})
+endforeach()
 
 add_library(slash_shader_compiler
     src/shader_compiler.cpp
-    ${_slash_canvas_hlsl_cpp})
+    ${_slash_embedded_hlsl})
 add_library(slash::shader_compiler ALIAS slash_shader_compiler)
 
 target_include_directories(slash_shader_compiler PUBLIC include)

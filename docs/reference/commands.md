@@ -537,7 +537,8 @@ Returns the colors a [material](scene-format.md#materials) draws at texture coor
 blending, from 0 to 1 and computed on the CPU as the GPU computes them: a check that needs no
 screenshot. Given an entity, it uses its `Sprite2D`'s material, texture, `material_params` and
 `modulate`; the other params try other values. A sprite with no material gives its texture times
-its modulate.
+its modulate. A [spatial material](scene-format.md#spatial-shaders) colors meshes, which the 3D
+lights shade, so it is refused; `frame.capture` shows those.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |

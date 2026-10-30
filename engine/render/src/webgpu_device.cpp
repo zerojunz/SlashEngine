@@ -322,21 +322,34 @@ constexpr std::uint64_t kComputeUniformBytes =
     std::max({sizeof(ProcessUniforms), sizeof(EmitUniforms), sizeof(DrawUniforms),
               sizeof(ProcessUniforms3D), sizeof(SortUniforms3D), sizeof(MeshUniforms3D)});
 // The most bytes any binding of the uniform buffer reads.
-constexpr std::uint64_t kLargestUniforms = std::max<std::uint64_t>(
-    {sizeof(Mat4), sizeof(VertexProgramUniforms), sizeof(ProgramUniforms), sizeof(LightsUniforms),
-     kComputeUniformBytes, sizeof(MeshInstanceUniforms), sizeof(MeshSurfaceUniforms),
-     sizeof(MeshSceneUniforms), sizeof(MeshShadowUniforms), sizeof(MeshShadowPassUniforms),
-     sizeof(PostUniforms), sizeof(SkyUniforms), sizeof(RadianceUniforms), sizeof(SsaoUniforms),
-     sizeof(SsrUniforms), sizeof(MeshCameraUniforms), sizeof(TaaUniforms), sizeof(Fsr2Uniforms),
-     sizeof(Fsr3Uniforms)});
+constexpr std::uint64_t kLargestUniforms = std::max<std::uint64_t>({sizeof(Mat4),
+                                                                    sizeof(VertexProgramUniforms),
+                                                                    sizeof(ProgramUniforms),
+                                                                    sizeof(LightsUniforms),
+                                                                    kComputeUniformBytes,
+                                                                    sizeof(MeshInstanceUniforms),
+                                                                    sizeof(MeshSurfaceUniforms),
+                                                                    sizeof(MeshSceneUniforms),
+                                                                    sizeof(MeshShadowUniforms),
+                                                                    sizeof(MeshShadowPassUniforms),
+                                                                    sizeof(PostUniforms),
+                                                                    sizeof(SkyUniforms),
+                                                                    sizeof(RadianceUniforms),
+                                                                    sizeof(SsaoUniforms),
+                                                                    sizeof(SsrUniforms),
+                                                                    sizeof(MeshCameraUniforms),
+                                                                    sizeof(TaaUniforms),
+                                                                    sizeof(Fsr2Uniforms),
+                                                                    sizeof(Fsr3Uniforms),
+                                                                    sizeof(SpatialUniforms)});
 // The bind groups are SDL's GPU API's, which the HLSL's registers name and the WGSL keeps
 // (cmake/compile_shaders.cmake): a vertex stage's uniforms in group 1, a fragment stage's
 // textures in group 2 (samplers kSamplerBinding after their textures) and its uniforms in group
 // 3; a compute shader's read-only buffers in group 0, read-write ones in 1 and uniforms in 2. The
 // mesh shader's are the same: its camera and instance, its eleven textures, two shadow atlases,
 // the radiance, the SSAO and the SSR, with their samplers kMeshSamplerBinding after them, its
-// surface, scene and shadows; and the shadow shader's: its pass and instance, its albedo texture
-// and its surface.
+// surface, scene and shadows (and a game's spatial shader's uniforms after them); and the shadow
+// shader's: its pass and instance, its albedo texture and its surface.
 constexpr std::uint32_t kSamplerBinding = 8;
 constexpr std::uint32_t kMeshSamplerBinding = 16;
 
@@ -687,6 +700,7 @@ public:
                                            mesh_vertex_layout_,
                                            mesh_textures_layout_,
                                            mesh_fragment_layout_,
+                                           mesh_game_fragment_layout_,
                                            mesh_clusters_layout_,
                                            shadow_vertex_layout_,
                                            shadow_fragment_layout_,
@@ -901,8 +915,15 @@ public:
         if (auto checked = check_compiled_shader(shader, Backend::WebGpu); !checked) {
             return checked.error();
         }
-        const GameShader made{.vertex = create_module(shader.wgsl_vertex),
-                              .fragment = create_module(shader.wgsl_fragment)};
+        const bool spatial = shader.type == ShaderType::Spatial;
+        const GameShader made =
+            spatial ? GameShader{.type = ShaderType::Spatial,
+                                 .fragment = create_module(shader.wgsl_fragment),
+                                 .clustered = create_module(shader.clustered.wgsl),
+                                 .normal = create_module(shader.normal_roughness.wgsl),
+                                 .motion = create_module(shader.motion.wgsl)}
+                    : GameShader{.vertex = create_module(shader.wgsl_vertex),
+                                 .fragment = create_module(shader.wgsl_fragment)};
         // Where the device can wait, WGSL the browser refuses fails here, not at the first draw.
         if (can_wait_) {
             if (auto errors = scoped_errors(); !errors) {
@@ -921,15 +942,25 @@ public:
             return;
         }
         // Its pipelines go with it, once the frame being built, which may draw with them, is sent.
+        const auto release = [&](WGPURenderPipeline pipeline) {
+            if (in_frame_) {
+                pending_pipelines_.push_back(pipeline);
+            } else {
+                wgpuRenderPipelineRelease(pipeline);
+            }
+        };
         std::erase_if(pipelines_, [&](const Pipeline& made) {
             if (made.shader != shader) {
                 return false;
             }
-            if (in_frame_) {
-                pending_pipelines_.push_back(made.pipeline);
-            } else {
-                wgpuRenderPipelineRelease(made.pipeline);
+            release(made.pipeline);
+            return true;
+        });
+        std::erase_if(mesh_pipelines_, [&](const MeshPipeline& made) {
+            if (made.game != shader) {
+                return false;
             }
+            release(made.pipeline);
             return true;
         });
         release_game_shader(it->second);
@@ -1612,6 +1643,12 @@ public:
         if (auto checked = check_lod(lod, it->second.ranges.size() - 1); !checked) {
             return checked;
         }
+        if (material.shader != ShaderId::None) {
+            const auto found = game_shaders_.find(material.shader);
+            if (found == game_shaders_.end() || found->second.type != ShaderType::Spatial) {
+                return not_spatial_shader(material.shader);
+            }
+        }
         if (!frame_drawn_) {
             return {}; // a skipped frame
         }
@@ -1632,8 +1669,8 @@ public:
         // or FSR 2 their motion vectors.
         if (uses_prepass(*frame_.scene) && material.transparency != Transparency::Alpha) {
             batch.normal_pipeline = uses_motion_vectors(*frame_.scene)
-                                        ? motion_pipeline_for(material.cull)
-                                        : normal_pipeline_for(material.cull);
+                                        ? motion_pipeline_for(material.cull, material.shader)
+                                        : normal_pipeline_for(material.cull, material.shader);
         }
         const std::array<MaterialTexture, kMeshTextures> slots = mesh_texture_slots(material);
         for (std::size_t slot = 0; slot < kMeshTextures; ++slot) {
@@ -2166,12 +2203,18 @@ private:
         WGPUBuffer previous_vertices = nullptr;
     };
 
+    // Which pass a mesh pipeline draws: the meshes' own, or the prepass's normals, with or
+    // without motion vectors.
+    enum class MeshPass : std::uint8_t { Color, Normal, Motion };
+
     struct MeshPipeline {
         WGPUTextureFormat format = WGPUTextureFormat_Undefined;
         CullMode cull = CullMode::Back;
         bool blended = false;             // an Alpha material's, which writes no depth
         BlendMode blend = BlendMode::Mix; // when blended
         bool clustered = false;           // Forward+'s, which reads the clusters
+        ShaderId game = ShaderId::None;   // a game's spatial shader's fragment stages
+        MeshPass pass = MeshPass::Color;  // the prepass's only with a game's shader
         WGPURenderPipeline pipeline = nullptr;
     };
 
@@ -2209,6 +2252,8 @@ private:
         std::uint32_t fog_sky = 0;
         std::vector<std::uint32_t> passes;
         std::vector<std::pair<std::uint32_t, std::uint32_t>> draws;
+        // Each draw's spatial shader uniforms, for those with a game's shader.
+        std::vector<std::uint32_t> games;
     };
 
     // A shadow atlas: a depth texture the shadow passes draw into and the mesh pass samples.
@@ -2273,10 +2318,16 @@ private:
         WGPURenderPipeline pipeline = nullptr;
     };
 
-    // A game's shader: the material shader's stages with the game's code in them.
+    // A game's shader: the material shader's stages with the game's code in them. A spatial
+    // shader has no vertex stage, its fragment is the Compatibility renderer's, and it has
+    // Forward+'s and the prepasses' too.
     struct GameShader {
+        ShaderType type = ShaderType::Canvas;
         WGPUShaderModule vertex = nullptr;
         WGPUShaderModule fragment = nullptr;
+        WGPUShaderModule clustered = nullptr;
+        WGPUShaderModule normal = nullptr;
+        WGPUShaderModule motion = nullptr;
     };
 
     struct ParticleSystem {
@@ -2340,7 +2391,10 @@ private:
         }
         if (auto checked = check_material(
                 material, frame_.target, [&](TextureId id) { return usable(id); },
-                [&](ShaderId id) { return game_shaders_.contains(id); });
+                [&](ShaderId id) {
+                    const auto found = game_shaders_.find(id);
+                    return found != game_shaders_.end() && found->second.type == ShaderType::Canvas;
+                });
             !checked) {
             return checked;
         }
@@ -2584,6 +2638,10 @@ private:
             uniform_entry(1, WGPUShaderStage_Fragment, sizeof(MeshSceneUniforms)),
             uniform_entry(2, WGPUShaderStage_Fragment, sizeof(MeshShadowUniforms))};
         mesh_fragment_layout_ = layout(mesh_fragment);
+        const std::array mesh_game_fragment{
+            mesh_fragment[0], mesh_fragment[1], mesh_fragment[2],
+            uniform_entry(3, WGPUShaderStage_Fragment, sizeof(SpatialUniforms))};
+        mesh_game_fragment_layout_ = layout(mesh_game_fragment);
         // Forward+'s clusters: the lights, then each tile's words, the reflection probes, the
         // decals and the decals' atlas.
         const std::array mesh_clusters{storage_entry(0, true, WGPUShaderStage_Fragment),
@@ -2768,6 +2826,12 @@ private:
         pipeline_layouts_.at(kMeshClusteredLayout) =
             pipeline_layout({mesh_clusters_layout_, mesh_vertex_layout_, mesh_textures_layout_,
                              mesh_fragment_layout_});
+        pipeline_layouts_.at(kMeshGameLayout) =
+            pipeline_layout({empty_layout_, mesh_vertex_layout_, mesh_textures_layout_,
+                             mesh_game_fragment_layout_});
+        pipeline_layouts_.at(kMeshClusteredGameLayout) =
+            pipeline_layout({mesh_clusters_layout_, mesh_vertex_layout_, mesh_textures_layout_,
+                             mesh_game_fragment_layout_});
         pipeline_layouts_.at(kShadowLayout) =
             pipeline_layout({empty_layout_, shadow_vertex_layout_, sprite_textures_layout_,
                              shadow_fragment_layout_});
@@ -2818,8 +2882,12 @@ private:
     }
 
     static void release_game_shader(const GameShader& shader) {
-        wgpuShaderModuleRelease(shader.vertex);
-        wgpuShaderModuleRelease(shader.fragment);
+        for (WGPUShaderModule module :
+             {shader.vertex, shader.fragment, shader.clustered, shader.normal, shader.motion}) {
+            if (module != nullptr) {
+                wgpuShaderModuleRelease(module);
+            }
+        }
     }
 
     // A shader module, made the first time it is needed.
@@ -3056,6 +3124,10 @@ private:
             buffer_entry(1, uniform_buffer_, sizeof(MeshSceneUniforms)),
             buffer_entry(2, uniform_buffer_, sizeof(MeshShadowUniforms))};
         mesh_fragment_group_ = bind_group(mesh_fragment_layout_, mesh_fragment);
+        const std::array mesh_game_fragment{
+            mesh_fragment[0], mesh_fragment[1], mesh_fragment[2],
+            buffer_entry(3, uniform_buffer_, sizeof(SpatialUniforms))};
+        mesh_game_fragment_group_ = bind_group(mesh_game_fragment_layout_, mesh_game_fragment);
         const std::array shadow_vertex{
             buffer_entry(0, uniform_buffer_, sizeof(MeshShadowPassUniforms)),
             buffer_entry(1, uniform_buffer_, sizeof(MeshInstanceUniforms))};
@@ -3091,16 +3163,17 @@ private:
     }
 
     void release_uniform_groups() {
-        for (WGPUBindGroup* group : {&vertex_uniforms_group_,  &fragment_uniforms_group_,
-                                     &compute_uniforms_group_, &mesh_vertex_group_,
-                                     &mesh_fragment_group_,    &shadow_vertex_group_,
-                                     &shadow_fragment_group_,  &post_uniforms_group_,
-                                     &forward_uniforms_group_, &sky_uniforms_group_,
-                                     &filter_uniforms_group_,  &ssao_uniforms_group_,
-                                     &ssr_uniforms_group_,     &taa_uniforms_group_,
-                                     &fsr2_uniforms_group_,    &fsr2_compute_uniforms_group_,
-                                     &fsr3_uniforms_group_,    &fsr3_compute_uniforms_group_,
-                                     &fog_uniforms_group_,     &fog_sky_uniforms_group_}) {
+        for (WGPUBindGroup* group : {&vertex_uniforms_group_,       &fragment_uniforms_group_,
+                                     &compute_uniforms_group_,      &mesh_vertex_group_,
+                                     &mesh_fragment_group_,         &mesh_game_fragment_group_,
+                                     &shadow_vertex_group_,         &shadow_fragment_group_,
+                                     &post_uniforms_group_,         &forward_uniforms_group_,
+                                     &sky_uniforms_group_,          &filter_uniforms_group_,
+                                     &ssao_uniforms_group_,         &ssr_uniforms_group_,
+                                     &taa_uniforms_group_,          &fsr2_uniforms_group_,
+                                     &fsr2_compute_uniforms_group_, &fsr3_uniforms_group_,
+                                     &fsr3_compute_uniforms_group_, &fog_uniforms_group_,
+                                     &fog_sky_uniforms_group_}) {
             if (*group != nullptr) {
                 wgpuBindGroupRelease(*group);
                 *group = nullptr;
@@ -3849,7 +3922,8 @@ private:
         const BlendMode blend = blended ? material.blend : BlendMode::Mix;
         for (const MeshPipeline& made : mesh_pipelines_) {
             if (made.format == format && made.cull == material.cull && made.blended == blended &&
-                made.blend == blend && made.clustered == clustered) {
+                made.blend == blend && made.clustered == clustered &&
+                made.game == material.shader && made.pass == MeshPass::Color) {
                 return made.pipeline;
             }
         }
@@ -3869,6 +3943,11 @@ private:
             clustered
                 ? module(kMeshClusteredFragmentModule, joined(shaders::kMeshClusteredFragmentWgsl))
                 : module(kMeshFragmentModule, joined(shaders::kMeshFragmentWgsl));
+        const bool game = material.shader != ShaderId::None;
+        if (game) {
+            const GameShader& made = game_shaders_.at(material.shader);
+            fragment.module = clustered ? made.clustered : made.fragment;
+        }
         fragment.entryPoint = text_view("fs_main");
         fragment.targetCount = 1;
         fragment.targets = &color;
@@ -3879,7 +3958,9 @@ private:
         depth.depthCompare = WGPUCompareFunction_Greater;
 
         WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
-        info.layout = pipeline_layouts_.at(clustered ? kMeshClusteredLayout : kMeshLayout);
+        info.layout = pipeline_layouts_.at(
+            clustered ? (game ? kMeshClusteredGameLayout : kMeshClusteredLayout)
+                      : (game ? kMeshGameLayout : kMeshLayout));
         info.vertex.module = module(kMeshVertexModule, joined(shaders::kMeshVertexWgsl));
         info.vertex.entryPoint = text_view("vs_main");
         info.vertex.bufferCount = 1;
@@ -3896,6 +3977,7 @@ private:
                                    .blended = blended,
                                    .blend = blend,
                                    .clustered = clustered,
+                                   .game = material.shader,
                                    .pipeline = pipeline});
         return pipeline;
     }
@@ -4030,6 +4112,17 @@ private:
             instance.previous_model = transposed(instance.previous_model);
             at.draws.emplace_back(uniforms_.add(instance),
                                   uniforms_.add(mesh_surface_uniforms(draw.material, draw.layers)));
+            std::uint32_t game = 0;
+            if (draw.material.shader != ShaderId::None) {
+                SpatialUniforms uniforms = spatial_uniforms(scene, draw.transform, draw.material,
+                                                            scene_width_, scene_height_);
+                for (Mat4* matrix : {&uniforms.model, &uniforms.view, &uniforms.inv_view,
+                                     &uniforms.projection, &uniforms.inv_projection}) {
+                    *matrix = transposed(*matrix);
+                }
+                game = uniforms_.add(uniforms);
+            }
+            at.games.push_back(game);
         }
         return at;
     }
@@ -4207,10 +4300,12 @@ private:
                                                   : no_probes_.view,
                                               radiance_sampler_};
             wgpuRenderPassEncoderSetBindGroup(pass, 2, mesh_texture_group(bindings), 0, nullptr);
-            const std::array<std::uint32_t, 3> fragment_offsets{at.draws[i].second, scene,
-                                                                at.shadows};
-            wgpuRenderPassEncoderSetBindGroup(pass, 3, mesh_fragment_group_,
-                                              fragment_offsets.size(), fragment_offsets.data());
+            const std::array<std::uint32_t, 4> fragment_offsets{at.draws[i].second, scene,
+                                                                at.shadows, at.games[i]};
+            const bool game = mesh_draws_[i].material.shader != ShaderId::None;
+            wgpuRenderPassEncoderSetBindGroup(
+                pass, 3, game ? mesh_game_fragment_group_ : mesh_fragment_group_, game ? 4 : 3,
+                fragment_offsets.data());
             wgpuRenderPassEncoderSetVertexBuffer(pass, 0, batch.vertices, 0, WGPU_WHOLE_SIZE);
             if (motion) {
                 wgpuRenderPassEncoderSetVertexBuffer(pass, 1, batch.previous_vertices, 0,
@@ -4223,9 +4318,12 @@ private:
     }
 
     // The pipeline drawing opaque meshes that cull as cull says into the normal-roughness
-    // prepass, made the first time a frame needs it.
-    WGPURenderPipeline normal_pipeline_for(CullMode cull) {
-        WGPURenderPipeline& made = normal_pipelines_.at(static_cast<std::size_t>(cull));
+    // prepass, with a game's spatial shader's stage or the mesh shader's, made the first time a
+    // frame needs it.
+    WGPURenderPipeline normal_pipeline_for(CullMode cull, ShaderId game) {
+        WGPURenderPipeline made = game == ShaderId::None
+                                      ? normal_pipelines_.at(static_cast<std::size_t>(cull))
+                                      : game_prepass(game, cull, MeshPass::Normal);
         if (made != nullptr) {
             return made;
         }
@@ -4238,8 +4336,9 @@ private:
         WGPUColorTargetState color = WGPU_COLOR_TARGET_STATE_INIT;
         color.format = kNormalFormat;
         WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
-        fragment.module =
-            module(kMeshNormalFragmentModule, joined(shaders::kMeshNormalFragmentWgsl));
+        fragment.module = game == ShaderId::None ? module(kMeshNormalFragmentModule,
+                                                          joined(shaders::kMeshNormalFragmentWgsl))
+                                                 : game_shaders_.at(game).normal;
         fragment.entryPoint = text_view("fs_main");
         fragment.targetCount = 1;
         fragment.targets = &color;
@@ -4248,7 +4347,7 @@ private:
         depth.depthWriteEnabled = WGPUOptionalBool_True;
         depth.depthCompare = WGPUCompareFunction_Greater;
         WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
-        info.layout = pipeline_layouts_.at(kMeshLayout);
+        info.layout = pipeline_layouts_.at(game == ShaderId::None ? kMeshLayout : kMeshGameLayout);
         info.vertex.module = module(kMeshVertexModule, joined(shaders::kMeshVertexWgsl));
         info.vertex.entryPoint = text_view("vs_main");
         info.vertex.bufferCount = 1;
@@ -4259,14 +4358,39 @@ private:
         info.depthStencil = &depth;
         info.fragment = &fragment;
         made = wgpuDeviceCreateRenderPipeline(device_, &info);
+        keep_prepass(made, cull, game, MeshPass::Normal);
         return made;
+    }
+
+    // A game's spatial shader's prepass pipeline, if it is made.
+    WGPURenderPipeline game_prepass(ShaderId game, CullMode cull, MeshPass pass) const {
+        for (const MeshPipeline& made : mesh_pipelines_) {
+            if (made.game == game && made.cull == cull && made.pass == pass) {
+                return made.pipeline;
+            }
+        }
+        return nullptr;
+    }
+
+    // Keeps a prepass pipeline made for cull and a game's shader, or the mesh shader's.
+    void keep_prepass(WGPURenderPipeline pipeline, CullMode cull, ShaderId game, MeshPass pass) {
+        if (game != ShaderId::None) {
+            mesh_pipelines_.push_back(
+                {.cull = cull, .game = game, .pass = pass, .pipeline = pipeline});
+        } else if (pass == MeshPass::Normal) {
+            normal_pipelines_.at(static_cast<std::size_t>(cull)) = pipeline;
+        } else {
+            motion_pipelines_.at(static_cast<std::size_t>(cull)) = pipeline;
+        }
     }
 
     // The pipeline drawing opaque meshes that cull as cull says into TAA's prepass, which draws
     // their normals and their motion vectors from a second vertex buffer of where their vertices
     // were in the frame before, made the first time a frame needs it.
-    WGPURenderPipeline motion_pipeline_for(CullMode cull) {
-        WGPURenderPipeline& made = motion_pipelines_.at(static_cast<std::size_t>(cull));
+    WGPURenderPipeline motion_pipeline_for(CullMode cull, ShaderId game) {
+        WGPURenderPipeline made = game == ShaderId::None
+                                      ? motion_pipelines_.at(static_cast<std::size_t>(cull))
+                                      : game_prepass(game, cull, MeshPass::Motion);
         if (made != nullptr) {
             return made;
         }
@@ -4292,8 +4416,9 @@ private:
         colors[1] = WGPU_COLOR_TARGET_STATE_INIT;
         colors[1].format = kVelocityFormat;
         WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
-        fragment.module =
-            module(kMeshMotionFragmentModule, joined(shaders::kMeshMotionFragmentWgsl));
+        fragment.module = game == ShaderId::None ? module(kMeshMotionFragmentModule,
+                                                          joined(shaders::kMeshMotionFragmentWgsl))
+                                                 : game_shaders_.at(game).motion;
         fragment.entryPoint = text_view("fs_main");
         fragment.targetCount = colors.size();
         fragment.targets = colors.data();
@@ -4302,7 +4427,7 @@ private:
         depth.depthWriteEnabled = WGPUOptionalBool_True;
         depth.depthCompare = WGPUCompareFunction_Greater;
         WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
-        info.layout = pipeline_layouts_.at(kMeshLayout);
+        info.layout = pipeline_layouts_.at(game == ShaderId::None ? kMeshLayout : kMeshGameLayout);
         info.vertex.module =
             module(kMeshMotionVertexModule, joined(shaders::kMeshMotionVertexWgsl));
         info.vertex.entryPoint = text_view("vs_main");
@@ -4314,6 +4439,7 @@ private:
         info.depthStencil = &depth;
         info.fragment = &fragment;
         made = wgpuDeviceCreateRenderPipeline(device_, &info);
+        keep_prepass(made, cull, game, MeshPass::Motion);
         return made;
     }
 
@@ -6159,6 +6285,8 @@ private:
     static constexpr std::size_t kFsr3Layout = kFogSkyLayout + 1; // one for each Fsr3Pass
     static constexpr std::size_t kFsr3ReconstructLayout = kFsr3Layout + kFsr3Passes;
     static constexpr std::size_t kMesh3DLayout = kFsr3ReconstructLayout + 1;
+    static constexpr std::size_t kMeshGameLayout = kMesh3DLayout + 1;
+    static constexpr std::size_t kMeshClusteredGameLayout = kMeshGameLayout + 1;
 
     WGPUInstance instance_;
     WGPUDevice device_;
@@ -6191,6 +6319,7 @@ private:
     WGPUBindGroupLayout mesh_vertex_layout_ = nullptr;
     WGPUBindGroupLayout mesh_textures_layout_ = nullptr;
     WGPUBindGroupLayout mesh_fragment_layout_ = nullptr;
+    WGPUBindGroupLayout mesh_game_fragment_layout_ = nullptr; // with a spatial shader's uniforms
     WGPUBindGroupLayout mesh_clusters_layout_ = nullptr;
     WGPUBindGroupLayout shadow_vertex_layout_ = nullptr;
     WGPUBindGroupLayout shadow_fragment_layout_ = nullptr;
@@ -6221,7 +6350,7 @@ private:
     WGPUBindGroupLayout fog_uniforms_layout_ = nullptr;
     WGPUBindGroupLayout fog_sky_storage_layout_ = nullptr;
     WGPUBindGroupLayout fog_sky_uniforms_layout_ = nullptr;
-    std::array<WGPUPipelineLayout, kMesh3DLayout + 1> pipeline_layouts_{};
+    std::array<WGPUPipelineLayout, kMeshClusteredGameLayout + 1> pipeline_layouts_{};
     std::array<WGPUSampler, 4> samplers_{}; // by sampler_index
     GpuTexture white_;
     std::unordered_map<TextureId, Texture> textures_;
@@ -6240,6 +6369,7 @@ private:
     WGPUBindGroup compute_uniforms_group_ = nullptr;
     WGPUBindGroup mesh_vertex_group_ = nullptr;
     WGPUBindGroup mesh_fragment_group_ = nullptr;
+    WGPUBindGroup mesh_game_fragment_group_ = nullptr;
     WGPUBindGroup shadow_vertex_group_ = nullptr;
     WGPUBindGroup shadow_fragment_group_ = nullptr;
     WGPUBindGroup post_uniforms_group_ = nullptr;
