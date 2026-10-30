@@ -1400,11 +1400,6 @@ OpticalFlow run_optical_flow(std::span<const std::uint8_t> rgba, std::uint32_t w
     return flow;
 }
 
-bool uses_frame_generation(const Scene3D& scene) {
-    return scene.frame_generation && scene.method == RenderMethod::ForwardPlus && !scene.capture &&
-           !scene.path_trace;
-}
-
 FrameGenerationCamera frame_generation_camera(const Mat4& projection) {
     // AMD's setupDeviceDepthToViewSpaceDepthParams from the projection itself, as FSR 2's.
     const Mat4& p = projection;
@@ -1519,6 +1514,225 @@ void run_frame_generation(std::span<const std::uint8_t> current, std::uint32_t w
     history.width = width;
     history.height = height;
     history.previous.assign(current.begin(), current.end());
+}
+
+FrameGenerationLayout frame_generation_layout(std::uint32_t render_width,
+                                              std::uint32_t render_height,
+                                              std::uint32_t display_width,
+                                              std::uint32_t display_height) {
+    using Section = FrameGenerationSection;
+    FrameGenerationLayout layout;
+    layout.render = {render_width, render_height};
+    layout.display = {display_width, display_height};
+    const std::uint32_t render = render_width * render_height;
+    const std::uint32_t display = display_width * display_height;
+    std::uint32_t luma = 0;
+    for (std::uint32_t level = 0; level < kOpticalFlowLevels; ++level) {
+        luma += (display_width >> level) * (display_height >> level);
+    }
+    const std::array<std::uint32_t, 2> flow = optical_flow_size(display_width, display_height, 0);
+    const auto pyramid = [](std::uint32_t width, std::uint32_t height, int levels) {
+        std::uint32_t texels = 0;
+        for (int level = 0; level < levels; ++level) {
+            const auto shift = static_cast<std::uint32_t>(level + 1);
+            texels += (width >> shift) * (height >> shift);
+        }
+        return texels * 4;
+    };
+    const std::array<std::uint32_t, static_cast<std::size_t>(Section::Count)> sizes{
+        display,                      // PrevRgba
+        display,                      // CurRgba
+        luma,                         // PrevLuma
+        luma,                         // CurLuma
+        kHistograms * kHistogramBins, // SceneKept
+        16,                           // State
+        flow[0] * flow[1] * 2,        // Searched
+        flow[0] * flow[1] * 2,        // Vectors
+        flow[0] * flow[1] * 2,        // Prediction
+        pyramid(render_width, render_height, kGameFieldLevels),
+        render * 2, // Disocclusion
+        display,    // OutRgba
+        display,    // Mask
+        pyramid(display_width, display_height, kInpaintingLevels),
+        render,                       // DilatedDepth
+        render * 2,                   // DilatedMotion
+        render,                       // PreviousDepth
+        render,                       // InterpolatedDepth
+        render * 2,                   // GameField
+        flow[0] * flow[1] * 2,        // FlowField
+        kHistograms * kHistogramBins, // Histograms
+    };
+    std::uint32_t words = 0;
+    std::uint32_t atoms = 0;
+    for (std::size_t i = 0; i < sizes.size(); ++i) {
+        std::uint32_t& next = i < static_cast<std::size_t>(Section::PreviousDepth) ? words : atoms;
+        layout.sections.at(i) = next;
+        next += std::max(sizes.at(i), 1U);
+    }
+    layout.words = words;
+    layout.atoms = atoms;
+    return layout;
+}
+
+namespace {
+
+std::uint32_t groups_of(std::uint32_t threads) {
+    return (threads + 7) / 8;
+}
+
+FrameGenerationUniforms base_uniforms(const FrameGenerationLayout& layout,
+                                      const FrameGenerationCamera& camera) {
+    FrameGenerationUniforms u;
+    u.sizes = {
+        static_cast<std::int32_t>(layout.render[0]), static_cast<std::int32_t>(layout.render[1]),
+        static_cast<std::int32_t>(layout.display[0]), static_cast<std::int32_t>(layout.display[1])};
+    const Float2 scale{1.0F / static_cast<float>(layout.display[0]),
+                       1.0F / static_cast<float>(layout.display[1])};
+    const std::array<std::uint32_t, 2> flow =
+        optical_flow_size(layout.display[0], layout.display[1], 0);
+    u.flow_sizes = {to_int((1.0F / scale[0]) / static_cast<float>(kOpticalFlowBlock)),
+                    to_int((1.0F / scale[1]) / static_cast<float>(kOpticalFlowBlock)),
+                    static_cast<std::int32_t>(flow[0]), static_cast<std::int32_t>(flow[1])};
+    u.view_depth = camera.view_depth;
+    u.camera = {camera.ortho ? 1.0F : 0.0F, camera.tan_half_fov, scale[0], scale[1]};
+    for (std::size_t i = 0; i < layout.sections.size(); ++i) {
+        u.sections.at(i) = layout.sections.at(i);
+    }
+    return u;
+}
+
+void add(std::vector<FrameGenerationDispatch>& plan, const FrameGenerationUniforms& base,
+         FrameGenerationPass pass, std::uint32_t level, std::array<std::uint32_t, 3> groups,
+         std::uint32_t a = 0, std::uint32_t b = 0) {
+    FrameGenerationDispatch d{.uniforms = base, .groups = groups};
+    d.uniforms.step = {static_cast<std::uint32_t>(pass), level, a, b};
+    plan.push_back(d);
+}
+
+// A run of count uints: 64 a group, 1024 groups a row.
+std::array<std::uint32_t, 3> linear_groups(std::uint32_t count) {
+    const std::uint32_t groups = (count + 63) / 64;
+    return {std::min(groups, 1024U), (groups + 1023) / 1024, 1};
+}
+
+void clear(std::vector<FrameGenerationDispatch>& plan, const FrameGenerationUniforms& base,
+           const FrameGenerationLayout& layout, FrameGenerationSection section,
+           std::uint32_t count) {
+    const auto i = static_cast<std::size_t>(section);
+    const bool atom = section >= FrameGenerationSection::PreviousDepth;
+    add(plan, base, atom ? FrameGenerationPass::ClearAtoms : FrameGenerationPass::ClearWords, 0,
+        linear_groups(count), layout.sections.at(i), count);
+}
+
+std::uint32_t section_size(const FrameGenerationLayout& layout, FrameGenerationSection section) {
+    const auto i = static_cast<std::size_t>(section);
+    if (section == FrameGenerationSection::Histograms) {
+        return layout.atoms - layout.sections.at(i);
+    }
+    if (section == FrameGenerationSection::DilatedMotion) {
+        return layout.words - layout.sections.at(i);
+    }
+    return layout.sections.at(i + 1) - layout.sections.at(i);
+}
+
+} // namespace
+
+std::vector<FrameGenerationDispatch>
+frame_generation_prepare_plan(const FrameGenerationLayout& layout,
+                              const std::array<Float4, 4>& reprojection,
+                              const FrameGenerationCamera& camera, bool still) {
+    std::vector<FrameGenerationDispatch> plan;
+    FrameGenerationUniforms base = base_uniforms(layout, camera);
+    base.reprojection = reprojection;
+    clear(plan, base, layout, FrameGenerationSection::PreviousDepth,
+          section_size(layout, FrameGenerationSection::PreviousDepth));
+    add(plan, base, FrameGenerationPass::Prepare, 0,
+        {groups_of(layout.render[0]), groups_of(layout.render[1]), 1}, still ? 1U : 0U);
+    return plan;
+}
+
+std::vector<FrameGenerationDispatch> frame_generation_plan(const FrameGenerationLayout& layout,
+                                                           const FrameGenerationCamera& camera,
+                                                           bool reset) {
+    using Pass = FrameGenerationPass;
+    using Section = FrameGenerationSection;
+    std::vector<FrameGenerationDispatch> plan;
+    const FrameGenerationUniforms base = base_uniforms(layout, camera);
+    const std::uint32_t width = layout.display[0];
+    const std::uint32_t height = layout.display[1];
+    const std::array<std::uint32_t, 3> display{groups_of(width), groups_of(height), 1};
+    const std::array<std::uint32_t, 3> render{groups_of(layout.render[0]),
+                                              groups_of(layout.render[1]), 1};
+    const auto section = [&](Section s) { return layout.sections.at(static_cast<std::size_t>(s)); };
+    // The optical flow.
+    add(plan, base, Pass::Pack, 0, display);
+    for (std::uint32_t level = 1; level < kOpticalFlowLevels; ++level) {
+        add(plan, base, Pass::Luma, level,
+            {groups_of(width >> level), groups_of(height >> level), 1});
+    }
+    if (reset) {
+        clear(plan, base, layout, Section::PrevLuma, section_size(layout, Section::PrevLuma));
+    }
+    clear(plan, base, layout, Section::Histograms, section_size(layout, Section::Histograms));
+    const std::uint32_t strata = (width / 4) / kHistogramsPerDim;
+    const std::uint32_t threads_x = ((strata + 31) / 32) * 32;
+    if (threads_x > 0) {
+        add(plan, base, Pass::Histogram, 0, {threads_x / 8, 128 / 8, kHistograms});
+    }
+    add(plan, base, Pass::SceneChange, 0, {1, 1, 1}, reset ? 1U : 0U);
+    for (int level = static_cast<int>(kOpticalFlowLevels) - 1; level >= 0; --level) {
+        const auto l = static_cast<std::uint32_t>(level);
+        const std::array<std::uint32_t, 2> size = optical_flow_size(width, height, l);
+        add(plan, base, Pass::Search, l, {groups_of(size[0]), groups_of(size[1]), 1});
+        add(plan, base, Pass::Filter, l, {groups_of(size[0]), groups_of(size[1]), 1});
+        if (level > 0) {
+            const std::array<std::uint32_t, 2> next = optical_flow_size(width, height, l - 1);
+            add(plan, base, Pass::Scale, l, {groups_of(next[0]), groups_of(next[1]), 1});
+        }
+    }
+    const std::uint32_t luma = section_size(layout, Section::CurLuma);
+    add(plan, base, Pass::CopyWords, luma, linear_groups(luma), section(Section::CurLuma),
+        section(Section::PrevLuma));
+    // The interpolation.
+    add(plan, base, Pass::Setup, 0, {1, 1, 1}, reset ? 1U : 0U);
+    if (reset) {
+        add(plan, base, Pass::CopyWords, width * height, linear_groups(width * height),
+            section(Section::CurRgba), section(Section::PrevRgba));
+    }
+    for (const Section s : {Section::InterpolatedDepth, Section::GameField, Section::FlowField}) {
+        clear(plan, base, layout, s, section_size(layout, s));
+    }
+    if (!reset) {
+        add(plan, base, Pass::Reconstruct, 0, render);
+        add(plan, base, Pass::GamePrimary, 0, render);
+        add(plan, base, Pass::GameSecondary, 0, render);
+        for (std::uint32_t level = 0; level < static_cast<std::uint32_t>(kGameFieldLevels);
+             ++level) {
+            const std::uint32_t w = layout.render[0] >> (level + 1);
+            const std::uint32_t h = layout.render[1] >> (level + 1);
+            if (w < 1 || h < 1) {
+                break;
+            }
+            add(plan, base, Pass::GamePyramid, level, {groups_of(w), groups_of(h), 1});
+        }
+        add(plan, base, Pass::FlowField, 0,
+            {groups_of(static_cast<std::uint32_t>(base.flow_sizes[0])),
+             groups_of(static_cast<std::uint32_t>(base.flow_sizes[1])), 1});
+        add(plan, base, Pass::Disocclusion, 0, render);
+    }
+    add(plan, base, Pass::Interpolate, 0, display);
+    for (std::uint32_t level = 0; level < static_cast<std::uint32_t>(kInpaintingLevels); ++level) {
+        const std::uint32_t w = width >> (level + 1);
+        const std::uint32_t h = height >> (level + 1);
+        if (w < 1 || h < 1) {
+            break;
+        }
+        add(plan, base, Pass::InpaintPyramid, level, {groups_of(w), groups_of(h), 1});
+    }
+    add(plan, base, Pass::Inpaint, 0, display);
+    add(plan, base, Pass::CopyWords, width * height, linear_groups(width * height),
+        section(Section::CurRgba), section(Section::PrevRgba));
+    return plan;
 }
 
 } // namespace slash::render::detail

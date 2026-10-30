@@ -1,4 +1,5 @@
 #include "../engine/render/src/frame_generation.hpp"
+#include "devices.hpp"
 
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
@@ -312,4 +313,60 @@ TEST_CASE("Frame generation refuses what it can't generate from") {
     scene.method = render::RenderMethod::ForwardPlus;
     scene.path_trace = render::PathTrace3D{};
     CHECK_FALSE(detail::uses_frame_generation(scene));
+}
+
+namespace {
+
+// The frames generated after each of frames frames of the square sliding right (3D, with motion
+// vectors) or the picture sliding right (2D, by the optical flow alone), on a device.
+std::vector<Image> generated_frames(RenderDevice& device, bool three_d, int frames) {
+    auto target = device.create_texture({.width = 64, .height = 64, .render_target = true});
+    auto into = device.create_texture({.width = 64, .height = 64, .render_target = true});
+    REQUIRE(target.ok());
+    REQUIRE(into.ok());
+    auto mesh = device.create_mesh(square(), {});
+    REQUIRE(mesh.ok());
+    const std::vector<std::uint8_t> texels = moved_pattern(64, 64, 0, 0);
+    auto texture = device.create_texture({.width = 64, .height = 64}, texels);
+    REQUIRE(texture.ok());
+    std::vector<Image> out;
+    for (int frame = 0; frame < frames; ++frame) {
+        if (three_d) {
+            const float x = -0.75F + (0.375F * static_cast<float>(frame));
+            draw_square_frame(device, target.value(), mesh.value(), x,
+                              frame == 0 ? std::nullopt : std::optional<float>(x - 0.375F), true);
+        } else {
+            draw_pattern_frame(device, target.value(), texture.value(),
+                               static_cast<float>(frame * 4) - 96.0F);
+        }
+        REQUIRE(device.generate_frame(target.value(), into.value()).ok());
+        out.push_back(read(device, into.value()));
+    }
+    device.destroy_mesh(mesh.value());
+    for (const TextureId id : {target.value(), into.value(), texture.value()}) {
+        device.destroy_texture(id);
+    }
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("GPUs generate frames as the software device does") {
+    auto gpu = slash::test::gpu_device();
+    if (gpu == nullptr) {
+        MESSAGE("no GPU backend; skipped");
+        return;
+    }
+    const auto software = render::create_software_device();
+    for (const bool three_d : {true, false}) {
+        CAPTURE(three_d);
+        const int frames = three_d ? 5 : 24;
+        const std::vector<Image> expected = generated_frames(*software, three_d, frames);
+        const std::vector<Image> drawn = generated_frames(*gpu, three_d, frames);
+        for (int frame = 0; frame < frames; ++frame) {
+            CAPTURE(frame);
+            const auto i = static_cast<std::size_t>(frame);
+            CHECK(differing(drawn[i], expected[i], 2) < 24);
+        }
+    }
 }

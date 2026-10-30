@@ -837,8 +837,7 @@ public:
         }
         count_frame(target);
         // A frame with TAA, FSR 2 or frame generation saw its meshes' vertices as they are now.
-        if (frame_.scene && (detail::uses_motion_vectors(*frame_.scene) ||
-                             detail::uses_frame_generation(*frame_.scene))) {
+        if (frame_.scene && detail::uses_motion_vectors(*frame_.scene)) {
             for (const detail::MeshDraw& draw : mesh_draws_) {
                 if (const auto found = meshes_.find(draw.mesh); found != meshes_.end()) {
                     found->second.moved = false;
@@ -2079,12 +2078,8 @@ private:
         const std::size_t pixels = std::size_t{width} * height;
         const std::vector<float> depth(pixels, 0.0F);
         const std::vector<float> motion(pixels * 2, 0.0F);
-        Mat4 identity{};
-        for (std::size_t i = 0; i < 4; ++i) {
-            identity.at((i * 4) + i) = 1.0F;
-        }
         const Mat4 view_projection =
-            scene != nullptr ? multiply(scene->projection, scene->camera) : identity;
+            scene != nullptr ? multiply(scene->projection, scene->camera) : detail::kNoCamera;
         return detail::prepare_frame_generation(
             {.width = width,
              .height = height,
@@ -2092,8 +2087,8 @@ private:
              .motion = motion,
              .reprojection = detail::reprojection(
                  view_projection, previous != nullptr ? *previous : view_projection),
-             .camera =
-                 detail::frame_generation_camera(scene != nullptr ? scene->projection : identity)},
+             .camera = detail::frame_generation_camera(scene != nullptr ? scene->projection
+                                                                        : detail::kNoCamera)},
             width, height);
     }
 
