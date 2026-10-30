@@ -1,0 +1,32 @@
+{
+  "description": "Apple's StoreKit as the game's purchases backend on iOS and macOS: products, purchases, restore and the App Store receipt.",
+  "format": 1,
+  "license": "MIT",
+  "name": "storekit",
+  "platforms": {
+    "ios": {
+      "backends": {
+        "purchases": "SlashStoreKitPurchases"
+      },
+      "sources": [
+        "apple"
+      ],
+      "system_frameworks": [
+        "StoreKit"
+      ]
+    },
+    "macos": {
+      "backends": {
+        "purchases": "SlashStoreKitPurchases"
+      },
+      "sources": [
+        "apple"
+      ],
+      "system_frameworks": [
+        "StoreKit"
+      ]
+    }
+  },
+  "vendor": "Apple",
+  "version": "1"
+}

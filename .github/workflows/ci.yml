@@ -209,8 +209,14 @@ jobs:
           # before main, so each export proves packages link, ship and load.
           $cli sdk add examples/sdk-package/sdks/hello --project build/empty-game
           cp .github/scripts/hello-sdk-check.cpp build/empty-game/src/
+          # The engine's store package for the platform, as a game selling things adds it.
+          case "${{ matrix.platform }}" in
+            macos|ios) $cli sdk add storekit --project build/empty-game ;;
+            android) $cli sdk add play-billing --project build/empty-game ;;
+          esac
           if [ "${{ matrix.platform }}" = android ]; then
-            # AndroidX from Google's Maven repository, resolved and pinned without Gradle.
+            # AndroidX and Play Billing from Google's Maven repository, resolved and pinned
+            # without Gradle.
             mkdir -p build/empty-game/sdks/androidx
             echo '{"format": 1, "name": "androidx", "version": "1.13.1", "license": "Apache-2.0", "platforms": {"android": {"maven": ["androidx.core:core:1.13.1"]}}}' \
               > build/empty-game/sdks/androidx/sdk.json
@@ -242,6 +248,11 @@ jobs:
           jq -e --arg backend "$backend" \
             '.test.skipped or (.test.services.analytics | index("hello") and index($backend))' \
             build/export.json
+          # The store package's Objective-C backend is the game's purchases backend.
+          case "${{ matrix.platform }}" in
+            macos|ios)
+              jq -e '.test.skipped or .test.services.purchases == "storekit"' build/export.json ;;
+          esac
 
       - name: Ask a model from the web game through fetch()
         if: matrix.platform == 'web'
@@ -377,6 +388,10 @@ jobs:
           grep -q "androidx.core.app.CoreComponentFactory" <<< "$manifest"
           grep -Eq "\.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" <<< "$manifest"
           ! grep -q 'applicationId' <<< "$manifest"
+          # Play Billing: the engine's glue and Google's library dexed, its permission merged.
+          unzip -p "$apk" 'classes*.dex' | grep -aq "Lorg/slashengine/billing/PlayBillingPurchases;"
+          unzip -p "$apk" 'classes*.dex' | grep -aq "Lcom/android/billingclient/api/BillingClient;"
+          grep -q "uses-permission: name='com.android.vending.BILLING'" <<< "$badging"
           "$tools/apksigner" verify --min-sdk-version 30 "$apk"
           # A throwaway release keystore, passed the way a developer would.
           keytool -genkeypair -noprompt -keystore "$RUNNER_TEMP/release.jks" -storepass ci-only \
@@ -408,6 +423,7 @@ jobs:
             cat build/android-test.json
             jq -e '.test.passed == true' build/android-test.json
             jq -e '.test.services.analytics == ["hello", "hello_java"]' build/android-test.json
+            jq -e '.test.services.purchases == "google_play"' build/android-test.json
 
       - name: Upload the export log
         if: failure()

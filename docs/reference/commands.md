@@ -5090,12 +5090,13 @@ of files the lock pins. A package with Maven dependencies and no up-to-date lock
 ### sdk.add
 
 Adds an [SDK package](sdk-format.md#sdk-add) to `project.json`'s `sdks`. A folder in the project
-is listed where it is; a git repository or an `https://` `.zip` or `.tar` archive is copied into
+is listed where it is; one of the engine's [store packages](services.md#stores) (`storekit`,
+`play-billing`), a git repository or an `https://` `.zip` or `.tar` archive is copied into
 `sdks/<name>`. Listing a package twice does nothing.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `source` | string | required | A package folder in the project, a git repository URL, or an archive's `https://` URL |
+| `source` | string | required | A package folder in the project, `storekit` or `play-billing`, a git repository URL, or an archive's `https://` URL |
 | `name` | string | the package's name | Folder under `sdks/` for a copied package |
 | `ref` | string | the default branch | Git branch or tag to clone |
 | `sha256` | string | not checked | The archive's SHA-256; a mismatch adds nothing |

@@ -319,8 +319,10 @@ and downloads, which belong to the machine that exports.
 the project is listed where it is. Anything else is copied into `sdks/<name>` (or `--name`): a
 folder elsewhere, a git repository (an address ending in `.git`, or `git@` or `ssh://`, cloned
 with `--depth 1` at `--ref`), or an `https://` `.zip` or `.tar` archive with `sdk.json` at its
-root or in its one folder, checked against `--sha256` when given. The command takes folders in
-the project, and URLs with the `build` capability. The reply names the package, its platforms and
+root or in its one folder, checked against `--sha256` when given. `storekit` and
+`play-billing` name the engine's own [store packages](services.md#stores), copied from its
+`export/sdks/` folder. The command takes folders in the project, and URLs with the `build`
+capability. The reply names the package, its platforms and
 the keys to set.
 A package with Maven dependencies and no lock adds `"needs_lock": true`.
 
