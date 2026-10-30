@@ -973,7 +973,9 @@ Exit: an agent builds a small 3D sample end to end.
         `ui.accessibility` and `ui.accessibility_action`
   - [x] The platform backend on Windows, macOS and Linux: AccessKit's adapters hand the tree to
         Narrator, VoiceOver and Orca, built by cargo from accesskit-c's pinned crates
-  - [ ] TalkBack on Android, VoiceOver on iOS and the web's screen readers
+  - [x] The web's screen readers: the tree as hidden WAI-ARIA elements over the canvas, kept up
+        to date each tick, with the clicks and focus they get run on the controls
+  - [ ] TalkBack on Android and VoiceOver on iOS
 - [x] Procedural generation, following Godot's noise module and texture resources
       ([design](design.md#procedural-generation))
   - [x] Noise for gameplay code (`procedural::Noise`, Godot's `FastNoiseLite` on Auburn's
@@ -1087,7 +1089,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | XR | OpenXR | 8 | Done: XR server, nodes, stereo views, OpenXR sessions and drawing on Vulkan, Direct3D 12, Metal, OpenGL and Android |
 | Localization | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | 8 | In progress: translation tables, the language setting, auto-translated controls, pseudo-localization, `l10n.extract` and `l10n.check` are done |
 | Video playback | AV1 through dav1d | 8 | Done |
-| Accessibility | AccessKit | 8 | Tree and the Windows, macOS and Linux backends done; Android, iOS and the web to come |
+| Accessibility | AccessKit | 8 | Tree and the Windows, macOS, Linux and web backends done; Android and iOS to come |
 | Storyboard | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | 5, 6 | Done: files, commands and checks, palette, texture and triangle budget checks included, model review, the project map, and the style refined from accepted assets |
 | Analytics, ads and in-app purchases | One API for analytics, ads and purchases; StoreKit, Play Billing and a developer-chosen analytics endpoint in the repo, ad networks as outside adapters | 8 | In progress: the API, its backend interfaces, analytics endpoints, consent with Apple's prompt, StoreKit, Play Billing and the test backend are done; ad networks are outside adapters |
 | Closed vendor SDKs | SDK packages: an `sdk.json` per SDK that exports fetch, check and link on all six platforms, with JNI and Objective-C bridges and engine interfaces for the glue | 6 | In progress: packages, exports, `sdk.add`, `sdk.check`, Android libraries and Maven, services and glue code |

@@ -33,5 +33,8 @@ the screen reader reads the same tree through AccessKit and presses the same con
 slash-cli run --project examples/accessibility --scene examples/accessibility/main.scene.json
 ```
 
+Exported for the web (`slash-cli export web`), the page holds the same tree as hidden ARIA
+elements over the canvas, which a browser's screen reader reads and clicks.
+
 [Accessibility](../../docs/reference/scene-format.md#accessibility) in the scene format reference
 lists what each control reports.
