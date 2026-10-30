@@ -51,6 +51,7 @@ endif()
 add_executable(slash_tests
     test_main.cpp
     test_ai.cpp
+    test_analytics_endpoint.cpp
     test_android_library.cpp
     test_animation.cpp
     test_animation_tree.cpp

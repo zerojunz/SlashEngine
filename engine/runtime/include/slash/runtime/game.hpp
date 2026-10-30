@@ -10,6 +10,7 @@
 #include "slash/platform/run.hpp"
 #include "slash/render/device.hpp"
 #include "slash/runtime/project.hpp"
+#include "slash/services/endpoint.hpp"
 #include "slash/services/services.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/game_module.hpp"
@@ -43,6 +44,9 @@ struct GameOptions {
     // Fills in the backends the services run on, at start: the slash_sdk_register function an
     // export writes for its SDK packages' glue code. Without it the services have no backends.
     void (*register_backends)(services::Backends& backends) = nullptr;
+    // Sends analytics to project.json's services.analytics.endpoint, when it names one: main()
+    // gives it engine/ai's HTTP client. Windowed games only, so test runs send nothing.
+    services::HttpPoster analytics_post = nullptr;
 };
 
 inline constexpr std::string_view kGameUsage =

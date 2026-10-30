@@ -692,6 +692,8 @@ sells, unlocks and submits to by name, through [the services API](services.md):
 | `purchases.products` | | Products by the store's product ID, the same on every store: a letter or digit, then letters, digits, `_` and `.` |
 | `purchases.products.*.type` | required | `consumable` (bought again once finished), `non_consumable` (owned for good) or `subscription` |
 | `analytics.enabled` | `true` | Send analytics events to the backends while the player consents. Off, events are only kept |
+| `analytics.endpoint` | | Send events, batched as JSON, to a server you run: `url`, `format` (`json` or `posthog`), `api_key`, `headers`, `batch_size`, `flush_seconds`, `session_minutes`, `max_queued` ([services](services.md#sending-to-your-own-server)) |
+| `analytics.funnels` | | Funnels by name, each the event names a player goes through in order; each step reached is a `funnel_step` event ([services](services.md#funnels)) |
 | `consent.analytics` | `unknown` | The player's analytics consent until the game sets it: events are sent only when `granted` |
 | `consent.personalized_ads` | `unknown` | Ads are personalized only when `granted` |
 | `games.achievements` | | Achievements by name (letters, digits, `_` and `-`) |

@@ -18,6 +18,7 @@ constexpr std::array<std::string_view, 3> kFormats{"banner", "interstitial", "re
 constexpr std::array<std::string_view, 3> kTypes{"consumable", "non_consumable", "subscription"};
 constexpr std::array<std::string_view, 3> kConsents{"unknown", "granted", "denied"};
 constexpr std::array<std::string_view, 2> kSortOrders{"high_to_low", "low_to_high"};
+constexpr std::array<std::string_view, 2> kEndpointFormats{"json", "posthog"};
 
 constexpr std::size_t kMaxPlacementName = 64;
 constexpr std::size_t kMaxProductId = 100;
@@ -210,6 +211,49 @@ json::Value settings_schema() {
     analytics["properties"]["enabled"]["description"] =
         "Send events to the analytics backends while the player consents.";
 
+    json::Value endpoint = object_schema(
+        "Send events, batched as JSON, to a server you run, when no SDK package sends them.");
+    endpoint["required"] = json::Array{"url"};
+    endpoint["properties"]["url"]["type"] = "string";
+    endpoint["properties"]["url"]["description"] = "An https:// URL, or http:// on this machine.";
+    endpoint["properties"]["format"] =
+        enum_property(kEndpointFormats,
+                      "json (the engine's own) or posthog (PostHog's batch API). Default: json.");
+    endpoint["properties"]["api_key"]["type"] = "string";
+    endpoint["properties"]["api_key"]["description"] =
+        "PostHog's project API key, which only writes events.";
+    json::Value header;
+    header["type"] = "string";
+    endpoint["properties"]["headers"] = object_schema("More HTTP headers. Not for secrets.");
+    endpoint["properties"]["headers"]["additionalProperties"] = std::move(header);
+    const auto number = [&](std::string_view name, std::string_view type, double minimum,
+                            double maximum, double fallback, std::string_view description) {
+        json::Value& property = endpoint["properties"][name];
+        property["type"] = type;
+        property["minimum"] = minimum;
+        property["maximum"] = maximum;
+        property["default"] = fallback;
+        property["description"] = description;
+    };
+    number("batch_size", "integer", 1, 1000, 20, "Events sent together.");
+    number("flush_seconds", "number", 1, 3600, 30, "The longest an event waits for its batch.");
+    number("session_minutes", "number", 1, 1440, 30,
+           "A new session starts after this long without events.");
+    number("max_queued", "integer", 1, 100'000, 1000, "Unsent events kept; the oldest go first.");
+    analytics["properties"]["endpoint"] = std::move(endpoint);
+
+    json::Value step;
+    step["type"] = "string";
+    json::Value funnel;
+    funnel["type"] = "array";
+    funnel["minItems"] = 2;
+    funnel["items"] = std::move(step);
+    json::Value funnels;
+    funnels["type"] = "object";
+    funnels["description"] = "Funnels by name: the events a player goes through, in order.";
+    funnels["additionalProperties"] = std::move(funnel);
+    analytics["properties"]["funnels"] = std::move(funnels);
+
     json::Value consent = object_schema("The player's consent until the game sets it.");
     json::Value analytics_consent =
         enum_property(kConsents, "Events are sent only when granted. Default: unknown.");
@@ -267,6 +311,44 @@ json::Value settings_schema() {
     return schema;
 }
 
+namespace {
+
+// The endpoint's URL and key, and the funnels' names and steps.
+void check_analytics(const json::Value& analytics, const std::string& path,
+                     std::vector<json::ValidationError>& errors) {
+    if (const json::Value* endpoint = analytics.find("endpoint"); endpoint != nullptr) {
+        const std::string& url = endpoint->find("url")->as_string();
+        if (!url.starts_with("https://") && !url.starts_with("http://")) {
+            errors.push_back({path + "/endpoint/url", "expected an https:// or http:// URL"});
+        }
+        const json::Value* format = endpoint->find("format");
+        const json::Value* key = endpoint->find("api_key");
+        if (format != nullptr && format->as_string() == "posthog" &&
+            (key == nullptr || key->as_string().empty())) {
+            errors.push_back({path + "/endpoint/api_key", "PostHog needs the project's API key"});
+        }
+    }
+    if (const json::Value* funnels = analytics.find("funnels"); funnels != nullptr) {
+        for (const auto& [name, steps] : funnels->as_object()) {
+            const std::string at = path + "/funnels/" + escape_pointer(name);
+            if (!valid_placement_name(name)) {
+                errors.push_back(
+                    {at, "expected a funnel name of letters, digits, '_' and '-', at most 64 "
+                         "of them"});
+            }
+            for (std::size_t i = 0; i < steps.size(); ++i) {
+                if (!valid_event_name(steps.as_array()[i].as_string())) {
+                    errors.push_back({at + "/" + std::to_string(i),
+                                      "expected an event name: a letter, then letters, digits "
+                                      "and '_', at most 40 of them"});
+                }
+            }
+        }
+    }
+}
+
+} // namespace
+
 std::vector<json::ValidationError> validate_settings(const json::Value& settings,
                                                      std::string_view at) {
     std::vector<json::ValidationError> errors = json::validate(settings, settings_schema());
@@ -305,6 +387,9 @@ std::vector<json::ValidationError> validate_settings(const json::Value& settings
                      "'.', at most 100 of them"});
             }
         }
+    }
+    if (const json::Value* analytics = settings.find("analytics"); analytics != nullptr) {
+        check_analytics(*analytics, std::string(at) + "/analytics", errors);
     }
     if (const json::Value* games = settings.find("games"); games != nullptr) {
         for (const std::string_view kind : {"achievements", "leaderboards"}) {
@@ -367,6 +452,45 @@ Settings parse_settings(const json::Value& settings) {
     if (const json::Value* analytics = settings.find("analytics"); analytics != nullptr) {
         if (const json::Value* enabled = analytics->find("enabled"); enabled != nullptr) {
             out.analytics_enabled = enabled->as_bool();
+        }
+        if (const json::Value* endpoint = analytics->find("endpoint"); endpoint != nullptr) {
+            AnalyticsEndpoint parsed;
+            parsed.url = endpoint->find("url")->as_string();
+            if (const json::Value* format = endpoint->find("format");
+                format != nullptr && format->as_string() == "posthog") {
+                parsed.format = AnalyticsEndpoint::Format::PostHog;
+            }
+            if (const json::Value* key = endpoint->find("api_key"); key != nullptr) {
+                parsed.api_key = key->as_string();
+            }
+            if (const json::Value* headers = endpoint->find("headers"); headers != nullptr) {
+                for (const auto& [name, value] : headers->as_object()) {
+                    parsed.headers.emplace_back(name, value.as_string());
+                }
+            }
+            if (const json::Value* size = endpoint->find("batch_size"); size != nullptr) {
+                parsed.batch_size = static_cast<int>(size->as_int());
+            }
+            if (const json::Value* seconds = endpoint->find("flush_seconds"); seconds != nullptr) {
+                parsed.flush_seconds = seconds->as_double();
+            }
+            if (const json::Value* minutes = endpoint->find("session_minutes");
+                minutes != nullptr) {
+                parsed.session_minutes = minutes->as_double();
+            }
+            if (const json::Value* kept = endpoint->find("max_queued"); kept != nullptr) {
+                parsed.max_queued = static_cast<int>(kept->as_int());
+            }
+            out.analytics_endpoint = std::move(parsed);
+        }
+        if (const json::Value* funnels = analytics->find("funnels"); funnels != nullptr) {
+            for (const auto& [name, steps] : funnels->as_object()) {
+                Funnel funnel{.name = name, .steps = {}};
+                for (const json::Value& step : steps.as_array()) {
+                    funnel.steps.push_back(step.as_string());
+                }
+                out.funnels.push_back(std::move(funnel));
+            }
         }
     }
     if (const json::Value* consent = settings.find("consent"); consent != nullptr) {

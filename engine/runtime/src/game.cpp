@@ -17,6 +17,8 @@
 #include "slash/xr/openxr.hpp"
 
 #include <SDL3/SDL_events.h>
+#include <SDL3/SDL_filesystem.h>
+#include <SDL3/SDL_stdinc.h>
 
 #include <array>
 #include <charconv>
@@ -173,13 +175,31 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
     game->renderer_->set_vsync(
         render::parse_vsync_mode(game->project_.vsync_mode).value_or(render::VsyncMode::Enabled));
     game->canvas_ = std::make_unique<canvas::CanvasRenderer>(*game->renderer_, game->assets_);
+    services::Backends backends;
     if (options.register_backends != nullptr) {
         // The SDK packages' backends, from the code an export generates for them.
-        services::Backends backends;
         options.register_backends(backends);
-        if (backends.ads || !backends.analytics.empty() || backends.purchases) {
-            services::set_backends(game->world_, std::move(backends));
+    }
+    const auto& endpoint = game->project_.services.analytics_endpoint;
+    if (endpoint && options.analytics_post && !options.headless) {
+        // Events, and the install's ID, wait in the game's user folder until the server takes
+        // them.
+        std::string store;
+        if (char* folder = SDL_GetPrefPath("", game->project_.name.c_str()); folder != nullptr) {
+            store = std::string(folder) + "analytics.json";
+            SDL_free(folder);
         }
+        backends.analytics.push_back(services::make_endpoint_analytics(
+            *endpoint, {.post = options.analytics_post,
+                        .store_path = std::move(store),
+                        .app_name = game->project_.name,
+                        .app_version = game->project_.version,
+                        .platform = std::string(platform::os_name()),
+                        .now_ms = nullptr,
+                        .new_id = nullptr}));
+    }
+    if (backends.ads || !backends.analytics.empty() || backends.purchases || backends.games) {
+        services::set_backends(game->world_, std::move(backends));
     }
     log::info("game started", {{"name", game->project_.name},
                                {"scene", game->project_.main_scene},
