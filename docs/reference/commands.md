@@ -5360,7 +5360,7 @@ entities lost it: a field the code no longer has, a value its new type can't hol
 the old code kept without registering it. A failed swap leaves the old code running and fails
 the command with `-32002` and the reason in `data.error`: a name used twice, a component or
 system named like one of the engine's, no `SLASH_GAME_MODULE` function, or a library built
-against other engine headers or another compiler.
+against other engine headers or another compiler family or standard library ABI.
 
 Compiler errors fail with `-32002`, listing at most 20 in `data.errors`, each with `file`
 (relative to the project when inside it), `line`, `column` and `message`, and `fix` and `notes`

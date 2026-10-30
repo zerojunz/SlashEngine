@@ -290,7 +290,8 @@ endif()
 # Gameplay libraries for test_gameplay.cpp, built as cmake/gameplay builds a game's code: with the
 # engine's headers, and its functions left for the program that loads them.
 if(APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    foreach(variant IN ITEMS v1 v2 v3 duplicate engine_component engine_system no_entry bad_abi)
+    foreach(variant IN ITEMS v1 v2 v3 duplicate engine_component engine_system no_entry bad_abi
+            other_compiler)
         string(TOUPPER ${variant} upper)
         add_library(gameplay_${variant} MODULE gameplay_module.cpp)
         set_target_properties(gameplay_${variant} PROPERTIES PREFIX "" SUFFIX ".so"
@@ -307,7 +308,10 @@ if(APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
         add_dependencies(slash_tests gameplay_${variant})
     endforeach()
     target_compile_definitions(slash_tests PRIVATE
-        SLASH_TEST_GAMEPLAY_DIR="${CMAKE_CURRENT_BINARY_DIR}/gameplay_modules")
+        SLASH_TEST_GAMEPLAY_DIR="${CMAKE_CURRENT_BINARY_DIR}/gameplay_modules"
+        SLASH_TEST_GAMEPLAY_SDK_DATA="${CMAKE_BINARY_DIR}/gameplay-sdk-data.cmake"
+        SLASH_TEST_ENGINE_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+        SLASH_TEST_CXX_COMPILER="${CMAKE_CXX_COMPILER}")
 endif()
 
 # The unit tests run as five ctest tests, by the first letter of the file after "test_", so each
