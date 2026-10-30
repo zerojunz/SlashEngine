@@ -3,6 +3,7 @@
 
 #include "init.hpp"
 
+#include "slash/accessibility/accessibility.hpp"
 #include "slash/ai/commands.hpp"
 #include "slash/ai/config.hpp"
 #include "slash/ai/world.hpp"
@@ -613,10 +614,21 @@ int cmd_run(const std::vector<std::string>& args) {
         driver = slash::render::choose_driver(driver, fallback);
         return slash::render::uses_opengl(driver);
     };
+    // Screen readers read and work the controls unless the project turns accessibility off;
+    // the window is made hidden so their adapter attaches first, as Windows needs.
+    const bool serve_screen_reader =
+        !config.headless && slash::ui::settings(game).accessibility_support != "disabled";
+    config.hidden = serve_screen_reader && slash::accessibility::available();
     auto platform = slash::platform::Platform::create(config);
     if (!platform) {
         return failure("could not start the platform", platform.error());
     }
+    std::unique_ptr<slash::accessibility::Backend> screen_reader;
+    if (serve_screen_reader) {
+        screen_reader = slash::accessibility::Backend::attach(
+            platform.value().window(), project ? project.value().name : std::string("SlashEngine"));
+    }
+    platform.value().show_window();
     // The debug panel and collision shapes, for the person watching; debug.overlay lets an agent
     // show them.
     slash::debug::Overlay overlay(engine.session->assets());
@@ -628,8 +640,12 @@ int cmd_run(const std::vector<std::string>& args) {
     slash::input::SdlReader input_reader;
     input_reader.set_filter(
         [&](const slash::input::Event& event) { return overlay.handle(event); });
-    platform.value().set_event_handler(
-        [&](const SDL_Event& event) { input_reader.read(event, game); });
+    platform.value().set_event_handler([&](const SDL_Event& event) {
+        input_reader.read(event, game);
+        if (screen_reader != nullptr) {
+            screen_reader->handle_event(event);
+        }
+    });
     if (!config.headless) {
         // A window never waits on a model: replies arrive at the first tick after they end.
         slash::ai::set_wait(game, false);
@@ -763,12 +779,17 @@ int cmd_run(const std::vector<std::string>& args) {
             if (!config.headless) {
                 input_reader.set_text_input(platform.value().window(), slash::ui::text_input(game));
             }
+            // What screen readers asked, and the controls as they now are.
+            if (screen_reader != nullptr) {
+                screen_reader->update(game);
+            }
         },
         draw_frame);
     if (server) {
         server->stop();
     }
     slash::ui::set_clipboard_backend(game, {});
+    screen_reader.reset();
     slash::audio::set_sink(game, nullptr);
     slash::audio::set_input_device(game, nullptr);
 

@@ -21,6 +21,7 @@ or license not allowed here, or whose license text changed without review.
 | [wslay](https://github.com/tatsuhiro-t/wslay) | release-1.1.1 | MIT | WebSocket framing for `WebSocketPeer`, as Godot's WSLPeer (not on the web) | Fetched, linked statically |
 | [OpenXR SDK](https://github.com/KhronosGroup/OpenXR-SDK) | release-1.1.65 | Apache 2.0; its headers are Apache 2.0 or MIT and its bundled jsoncpp is MIT (or public domain) | The Khronos OpenXR loader, which finds the headset's runtime, for `xr::OpenXRInterface`, as Godot's `thirdparty/openxr` (Windows, Linux and macOS) | Fetched, the loader's sources linked statically |
 | [dav1d](https://github.com/videolan/dav1d) | 1.5.3 | BSD-2-Clause | Decoding AV1 video for `VideoStreamPlayer`; the engine's own AV1 encoder (`video::encode_frame`) writes in the order its parser reads and uses the AV1 specification's default CDFs as its `src/cdf.c` holds them | Fetched, its C files linked statically (no assembly) |
+| [AccessKit](https://github.com/AccessKit/accesskit-c) | 0.23.1 | MIT or Apache 2.0, at the user's choice; parts of its crates derive from Chromium's accessibility code under its BSD-3-Clause license | Handing the controls' accessibility tree to the system's screen reader (UI Automation, VoiceOver, AT-SPI), as Godot's AccessKit driver; its Rust crates are listed below | Fetched, built by cargo from its `Cargo.lock` into a static library (Windows, macOS and Linux, where cargo is installed) |
 | [libebur128](https://github.com/jiixyj/libebur128) | v1.2.6 | MIT; its bundled `queue.h` is BSD-3-Clause | Measuring loudness (LUFS) and true peaks for `audio.analyze` | Fetched, linked statically |
 | [astc-encoder](https://github.com/ARM-software/astc-encoder) | 5.7.0 | Apache 2.0 | Decoding ASTC 4x4 textures where a GPU can't sample them; tools and tests also encode with it | Fetched, its core linked statically (the decoder alone in games) |
 | [bc7enc_rdo](https://github.com/richgel999/bc7enc_rdo) | b9438627eef73a1157e84201b6fa6eb2ffd6d9f0 | MIT or Unlicense (public domain), at the user's choice | Decoding BC7 textures (`bc7decomp.cpp`) where a GPU can't sample them; tools and tests also encode with `bc7enc.cpp` | Fetched, those two files linked statically (the decoder alone in games) |
@@ -56,6 +57,97 @@ or license not allowed here, or whose license text changed without review.
 | [Tracy](https://github.com/wolfpld/tracy) | v0.14.1 | BSD-3-Clause; its bundled libbacktrace is BSD-3-Clause and its other bundled code permissive | The client of the Tracy profiler, in builds configured with `SLASH_PROFILER=tracy` (not shipped in games) | Fetched only for those builds, linked statically |
 | [doctest](https://github.com/doctest/doctest) | v2.5.2 | MIT | Unit tests (not shipped in games) | Fetched, tests only |
 | [CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) | v0.40.2 | MIT | Dependency fetching | Vendored as `cmake/CPM.cmake` |
+
+AccessKit's C library is built from Rust crates that cargo fetches from crates.io at the versions
+its `Cargo.lock` pins. Those that go into games are below, by the platforms that link them; the
+`crate_licenses` test (`cmake/check_licenses.cmake`) fails a build whose crates, macros and build
+scripts included, have a license not allowed here, or that ships a crate missing from this table.
+
+| Crate | Version | License | Platforms |
+| --- | --- | --- | --- |
+| [accesskit](https://crates.io/crates/accesskit) | 0.25.1 | MIT OR Apache-2.0 | Linux, Windows, macOS |
+| [accesskit_atspi_common](https://crates.io/crates/accesskit_atspi_common) | 0.21.0 | MIT OR Apache-2.0 | Linux |
+| [accesskit_consumer](https://crates.io/crates/accesskit_consumer) | 0.39.1 | MIT OR Apache-2.0 | Linux, Windows, macOS |
+| [accesskit_macos](https://crates.io/crates/accesskit_macos) | 0.27.1 | MIT OR Apache-2.0 | macOS |
+| [accesskit_unix](https://crates.io/crates/accesskit_unix) | 0.24.0 | MIT OR Apache-2.0 | Linux |
+| [accesskit_windows](https://crates.io/crates/accesskit_windows) | 0.35.1 | MIT OR Apache-2.0 | Windows |
+| [async-broadcast](https://crates.io/crates/async-broadcast) | 0.7.1 | MIT OR Apache-2.0 | Linux |
+| [async-channel](https://crates.io/crates/async-channel) | 2.3.1 | Apache-2.0 OR MIT | Linux |
+| [async-executor](https://crates.io/crates/async-executor) | 1.13.1 | Apache-2.0 OR MIT | Linux |
+| [async-io](https://crates.io/crates/async-io) | 2.6.0 | Apache-2.0 OR MIT | Linux |
+| [async-lock](https://crates.io/crates/async-lock) | 3.4.0 | Apache-2.0 OR MIT | Linux |
+| [async-process](https://crates.io/crates/async-process) | 2.5.0 | Apache-2.0 OR MIT | Linux |
+| [async-signal](https://crates.io/crates/async-signal) | 0.2.14 | Apache-2.0 OR MIT | Linux |
+| [async-task](https://crates.io/crates/async-task) | 4.7.1 | Apache-2.0 OR MIT | Linux |
+| [atomic-waker](https://crates.io/crates/atomic-waker) | 1.1.2 | Apache-2.0 OR MIT | Linux |
+| [atspi](https://crates.io/crates/atspi) | 0.29.0 | Apache-2.0 OR MIT | Linux |
+| [atspi-common](https://crates.io/crates/atspi-common) | 0.13.0 | Apache-2.0 OR MIT | Linux |
+| [atspi-proxies](https://crates.io/crates/atspi-proxies) | 0.13.0 | Apache-2.0 OR MIT | Linux |
+| [bitflags](https://crates.io/crates/bitflags) | 2.6.0 | MIT OR Apache-2.0 | Linux, macOS |
+| [blocking](https://crates.io/crates/blocking) | 1.6.1 | Apache-2.0 OR MIT | Linux |
+| [cfg-if](https://crates.io/crates/cfg-if) | 1.0.0 | MIT/Apache-2.0 | Linux |
+| [concurrent-queue](https://crates.io/crates/concurrent-queue) | 2.5.0 | Apache-2.0 OR MIT | Linux |
+| [crossbeam-utils](https://crates.io/crates/crossbeam-utils) | 0.8.15 | MIT OR Apache-2.0 | Linux |
+| [endi](https://crates.io/crates/endi) | 1.1.0 | MIT | Linux |
+| [enumflags2](https://crates.io/crates/enumflags2) | 0.7.10 | MIT OR Apache-2.0 | Linux |
+| [event-listener](https://crates.io/crates/event-listener) | 5.3.1 | Apache-2.0 OR MIT | Linux |
+| [event-listener-strategy](https://crates.io/crates/event-listener-strategy) | 0.5.2 | Apache-2.0 OR MIT | Linux |
+| [fastrand](https://crates.io/crates/fastrand) | 2.1.1 | Apache-2.0 OR MIT | Linux |
+| [foldhash](https://crates.io/crates/foldhash) | 0.2.0 | Zlib | Linux, Windows, macOS |
+| [futures-core](https://crates.io/crates/futures-core) | 0.3.31 | MIT OR Apache-2.0 | Linux |
+| [futures-io](https://crates.io/crates/futures-io) | 0.3.31 | MIT OR Apache-2.0 | Linux |
+| [futures-lite](https://crates.io/crates/futures-lite) | 2.6.0 | Apache-2.0 OR MIT | Linux |
+| [futures-task](https://crates.io/crates/futures-task) | 0.3.31 | MIT OR Apache-2.0 | Linux |
+| [futures-util](https://crates.io/crates/futures-util) | 0.3.31 | MIT OR Apache-2.0 | Linux |
+| [hashbrown](https://crates.io/crates/hashbrown) | 0.17.1 | MIT OR Apache-2.0 | Linux, Windows, macOS |
+| [hex](https://crates.io/crates/hex) | 0.4.3 | MIT OR Apache-2.0 | Linux |
+| [libc](https://crates.io/crates/libc) | 0.2.189 | MIT OR Apache-2.0 | Linux |
+| [linux-raw-sys](https://crates.io/crates/linux-raw-sys) | 0.12.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | Linux |
+| [objc-sys](https://crates.io/crates/objc-sys) | 0.3.5 | MIT | macOS |
+| [objc2](https://crates.io/crates/objc2) | 0.5.2 | MIT | macOS |
+| [objc2-app-kit](https://crates.io/crates/objc2-app-kit) | 0.2.2 | MIT | macOS |
+| [objc2-encode](https://crates.io/crates/objc2-encode) | 4.1.0 | MIT | macOS |
+| [objc2-foundation](https://crates.io/crates/objc2-foundation) | 0.2.2 | MIT | macOS |
+| [once_cell](https://crates.io/crates/once_cell) | 1.19.0 | MIT OR Apache-2.0 | Linux |
+| [ordered-stream](https://crates.io/crates/ordered-stream) | 0.2.0 | MIT OR Apache-2.0 | Linux |
+| [parking](https://crates.io/crates/parking) | 2.2.1 | Apache-2.0 OR MIT | Linux |
+| [phf](https://crates.io/crates/phf) | 0.14.0 | MIT | Linux |
+| [phf_shared](https://crates.io/crates/phf_shared) | 0.14.0 | MIT | Linux |
+| [pin-project-lite](https://crates.io/crates/pin-project-lite) | 0.2.13 | Apache-2.0 OR MIT | Linux |
+| [pin-utils](https://crates.io/crates/pin-utils) | 0.1.0 | MIT OR Apache-2.0 | Linux |
+| [piper](https://crates.io/crates/piper) | 0.2.4 | MIT OR Apache-2.0 | Linux |
+| [polling](https://crates.io/crates/polling) | 3.11.0 | Apache-2.0 OR MIT | Linux |
+| [proc-macro2](https://crates.io/crates/proc-macro2) | 1.0.106 | MIT OR Apache-2.0 | Linux |
+| [quote](https://crates.io/crates/quote) | 1.0.37 | MIT OR Apache-2.0 | Linux |
+| [rustix](https://crates.io/crates/rustix) | 1.1.5 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | Linux |
+| [serde](https://crates.io/crates/serde) | 1.0.229 | MIT OR Apache-2.0 | Linux |
+| [serde_core](https://crates.io/crates/serde_core) | 1.0.229 | MIT OR Apache-2.0 | Linux |
+| [signal-hook-registry](https://crates.io/crates/signal-hook-registry) | 1.4.1 | Apache-2.0/MIT | Linux |
+| [siphasher](https://crates.io/crates/siphasher) | 1.0.2 | MIT/Apache-2.0 | Linux |
+| [slab](https://crates.io/crates/slab) | 0.4.8 | MIT | Linux |
+| [static_assertions](https://crates.io/crates/static_assertions) | 1.1.0 | MIT OR Apache-2.0 | Linux, Windows |
+| [syn](https://crates.io/crates/syn) | 3.0.6 | MIT OR Apache-2.0 | Linux |
+| [tracing](https://crates.io/crates/tracing) | 0.1.40 | MIT | Linux |
+| [tracing-core](https://crates.io/crates/tracing-core) | 0.1.32 | MIT | Linux |
+| [unicode-ident](https://crates.io/crates/unicode-ident) | 1.0.8 | (MIT OR Apache-2.0) AND Unicode-DFS-2016 | Linux |
+| [uuid](https://crates.io/crates/uuid) | 1.19.0 | Apache-2.0 OR MIT | Linux, Windows, macOS |
+| [windows](https://crates.io/crates/windows) | 0.62.2 | MIT OR Apache-2.0 | Windows |
+| [windows-collections](https://crates.io/crates/windows-collections) | 0.3.2 | MIT OR Apache-2.0 | Windows |
+| [windows-core](https://crates.io/crates/windows-core) | 0.62.2 | MIT OR Apache-2.0 | Windows |
+| [windows-future](https://crates.io/crates/windows-future) | 0.3.2 | MIT OR Apache-2.0 | Windows |
+| [windows-link](https://crates.io/crates/windows-link) | 0.2.1 | MIT OR Apache-2.0 | Windows |
+| [windows-numerics](https://crates.io/crates/windows-numerics) | 0.3.1 | MIT OR Apache-2.0 | Windows |
+| [windows-result](https://crates.io/crates/windows-result) | 0.4.1 | MIT OR Apache-2.0 | Windows |
+| [windows-strings](https://crates.io/crates/windows-strings) | 0.5.1 | MIT OR Apache-2.0 | Windows |
+| [windows-threading](https://crates.io/crates/windows-threading) | 0.2.1 | MIT OR Apache-2.0 | Windows |
+| [winnow](https://crates.io/crates/winnow) | 1.0.4 | MIT | Linux |
+| [zbus](https://crates.io/crates/zbus) | 5.19.0 | MIT | Linux |
+| [zbus-lockstep](https://crates.io/crates/zbus-lockstep) | 0.5.2 | MIT | Linux |
+| [zbus_names](https://crates.io/crates/zbus_names) | 4.3.4 | MIT | Linux |
+| [zbus_xml](https://crates.io/crates/zbus_xml) | 5.2.0 | MIT | Linux |
+| [zcheapstr](https://crates.io/crates/zcheapstr) | 1.1.0 | MIT | Linux |
+| [zvariant](https://crates.io/crates/zvariant) | 5.15.0 | MIT | Linux |
+| [zvariant_utils](https://crates.io/crates/zvariant_utils) | 4.2.0 | MIT | Linux |
 
 The FreeType License asks that products using FreeType credit it in their documentation, as Godot
 does. Games built with SlashEngine should include this line in their credits or license notice:

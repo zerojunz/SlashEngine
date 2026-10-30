@@ -21,8 +21,11 @@ cmake_minimum_required(VERSION 3.25)
 # Godot's editor does: AML-glslang, NVIDIA's permissive notice on its preprocessor, and the Bison
 # exception, which lets a parser Bison made ship under any terms. MIT-Khronos-old is the MIT text
 # Khronos puts on SPIRV-Headers, with a note that changed headers may no longer match its specs.
+# Unicode-DFS-2016 is Unicode's permissive license on its data, which the unicode-ident crate
+# carries into AccessKit's Linux build (Dan allowed it, 2026-10-30).
 set(allowed Apache-2.0 BSD-2-Clause BSD-3-Clause BSL-1.0 FTL MIT MIT-0 MIT-Modern-Variant
-    MIT-Khronos-old Unlicense Zlib AML-glslang "GPL-3.0-or-later WITH Bison-exception-2.2")
+    MIT-Khronos-old Unlicense Zlib AML-glslang "GPL-3.0-or-later WITH Bison-exception-2.2"
+    Unicode-DFS-2016)
 
 set(manifest_path "${ROOT}/cmake/dependencies.json")
 file(READ "${manifest_path}" manifest)
@@ -52,6 +55,85 @@ function(license_allowed expression out)
     endforeach()
     set(${out} FALSE PARENT_SCOPE)
 endfunction()
+
+# Whether an SPDX expression with parentheses and old "/" alternatives, as Rust crates write
+# them ("(MIT OR Apache-2.0) AND Unicode-DFS-2016", "MIT/Apache-2.0"), is allowed: each group is
+# worked out innermost first and stands in as one allowed or disallowed name.
+function(spdx_allowed expression out)
+    string(REPLACE "/" " OR " expression "${expression}")
+    while(expression MATCHES "\\(([^()]*)\\)")
+        set(group "${CMAKE_MATCH_0}")
+        license_allowed("${CMAKE_MATCH_1}" ok)
+        if(ok)
+            string(REPLACE "${group}" "MIT" expression "${expression}")
+        else()
+            string(REPLACE "${group}" "NOT-ALLOWED" expression "${expression}")
+        endif()
+    endwhile()
+    string(STRIP "${expression}" expression)
+    license_allowed("${expression}" ok)
+    set(${out} ${ok} PARENT_SCOPE)
+endfunction()
+
+# Rust crates, in place of the rest: with -DCARGO=<cargo> -DCRATE_MANIFEST=<Cargo.toml>
+# -DCRATE_TARGETS=<Rust targets separated by '|'>, every crate its Cargo.lock builds for each
+# target, build scripts' and macros' included, must have an allowed license, and THIRD_PARTY.md
+# must list each crate that goes into games (its normal dependencies, not its macros) at its
+# locked version. The crate_licenses test runs it on AccessKit (cmake/Dependencies.cmake).
+if(CRATE_MANIFEST)
+    string(REPLACE "|" ";" targets "${CRATE_TARGETS}")
+    set(checked "")
+    set(shipped "")
+    foreach(target IN LISTS targets)
+        foreach(edges IN ITEMS "normal,build" "normal,no-proc-macro")
+            execute_process(COMMAND ${CARGO} tree --locked --manifest-path ${CRATE_MANIFEST}
+                    --target ${target} -e ${edges} --prefix none --format "{p}|{l}"
+                OUTPUT_VARIABLE tree ERROR_VARIABLE error RESULT_VARIABLE failed)
+            if(failed)
+                message(FATAL_ERROR "cargo tree failed for ${target}:\n${error}")
+            endif()
+            string(REPLACE "\n" ";" lines "${tree}")
+            foreach(line IN LISTS lines)
+                if(NOT line MATCHES "^([A-Za-z0-9_-]+) v([^ |]+)[^|]*\\|(.*)$")
+                    continue()
+                endif()
+                set(crate "${CMAKE_MATCH_1}")
+                set(version "${CMAKE_MATCH_2}")
+                string(REGEX REPLACE " \\(\\*\\)$" "" license "${CMAKE_MATCH_3}")
+                if(line MATCHES "^[^|]* \\(/")
+                    # The manifest's own crate, pinned in cmake/dependencies.json.
+                    continue()
+                endif()
+                if(edges STREQUAL "normal,build" AND NOT "${crate}@${version}" IN_LIST checked)
+                    list(APPEND checked "${crate}@${version}")
+                    spdx_allowed("${license}" ok)
+                    if(NOT ok)
+                        problem("the crate ${crate} ${version} is under \"${license}\", which is "
+                                "not allowed")
+                    endif()
+                elseif(edges STREQUAL "normal,no-proc-macro" AND
+                       NOT "${crate}@${version}" IN_LIST shipped)
+                    list(APPEND shipped "${crate}@${version}")
+                    string(FIND "${third_party}" "(https://crates.io/crates/${crate}) | ${version} |"
+                        row)
+                    if(row EQUAL -1)
+                        problem("THIRD_PARTY.md has no row for the crate ${crate} at ${version} "
+                                "(${license}), which games built for ${target} ship")
+                    endif()
+                endif()
+            endforeach()
+        endforeach()
+    endforeach()
+    if(problems)
+        message(NOTICE "crate license check failed:${problems}")
+        message(FATAL_ERROR "crate license check failed")
+    endif()
+    list(LENGTH checked crate_count)
+    list(LENGTH shipped shipped_count)
+    message(STATUS "crate licenses ok: ${crate_count} crates allowed, ${shipped_count} that ship "
+        "listed in THIRD_PARTY.md")
+    return()
+endif()
 
 # Fetched dependencies.
 string(REPLACE "|" ";" fetched "${DEPENDENCIES}")

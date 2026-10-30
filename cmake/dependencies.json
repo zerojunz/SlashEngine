@@ -77,6 +77,13 @@
       "repository": "https://github.com/abseil/abseil-cpp.git",
       "tag": "20250512.1"
     },
+    "accesskit-c": {
+      "license": "MIT OR Apache-2.0",
+      "license_file": "LICENSE-MIT",
+      "license_sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+      "repository": "https://github.com/AccessKit/accesskit-c.git",
+      "tag": "0.23.1"
+    },
     "astc-encoder": {
       "license": "Apache-2.0",
       "license_file": "LICENSE.txt",

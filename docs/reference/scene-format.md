@@ -5508,15 +5508,23 @@ so an agent can check a game can be played without seeing it.
   menu).
 - A control is served to a screen reader as project.json's
   [`gui.accessibility_support`](project-format.md) says, Godot's
-  `accessibility/general/accessibility_support`: `auto` (while one is in use, which a platform's
-  backend reports), `always` or `disabled`. While it is, `focus_mode` `accessibility` takes focus
+  `accessibility/general/accessibility_support`: `auto` (while one is in use, which the
+  platform's backend reports), `always` or `disabled`. While it is, `focus_mode` `accessibility` takes focus
   as `all` does, as Godot's `FOCUS_ACCESSIBILITY`.
 - `ui.accessibility` reports as problems a control that can take focus with no name, an
   `accessibility_name` holding its class name or a control character (Godot's accessibility
   warnings), and related controls that aren't controls.
-- Not yet: the platform backend that hands the tree to VoiceOver, Narrator, Orca, TalkBack and
-  the web's screen readers, text runs and selections in a `TextEdit`, keyboard drag and drop
-  (`ui_accessibility_drag_and_drop`) and announcements.
+- Games and `slash-cli run` hand the tree to the system's screen reader through
+  [AccessKit](https://github.com/AccessKit/accesskit-c), as Godot's AccessKit driver
+  (`engine/accessibility`): UI Automation on Windows (Narrator, NVDA, JAWS), VoiceOver on macOS
+  and AT-SPI on Linux (Orca), unless `gui.accessibility_support` is `disabled`. Each tick sends
+  the elements that changed, with bounds in the window's pixels, and runs what the screen reader
+  asked through `ui.accessibility_action`'s actions. `auto` serves one while Windows' screen
+  reader flag or VoiceOver is on, or while AT-SPI reads on Linux. Builds made where cargo isn't
+  installed leave AccessKit out and serve none.
+- Not yet: Android's TalkBack, iOS's VoiceOver and the web's screen readers, text runs and
+  selections in a `TextEdit`, keyboard drag and drop (`ui_accessibility_drag_and_drop`) and
+  announcements.
 
 ### Theme items
 
