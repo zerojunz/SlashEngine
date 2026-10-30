@@ -315,7 +315,8 @@ for [`.score.json` files](scene-format.md#scores), for
 [`.texture.json` files](scene-format.md#procedural-textures), for
 [`.scatter.json` files](scene-format.md#scatter-rules), for [storyboard files](storyboard-format.md),
 for [`project.json`](project-format.md), for [`export_presets.json`](project-format.md#export-presets),
-for [`sdk.json`](sdk-format.md), for [`providers.json`](providers.md) or for a
+for [`sdk.json`](sdk-format.md), for [`.plugin.json` files](project-format.md#plugins), for
+[`providers.json`](providers.md) or for a
 [benchmark task's `task.json`](benchmark.md#tasks).
 
 ```bash
@@ -333,6 +334,7 @@ slash-cli schema audio
 slash-cli schema bus_layout
 slash-cli schema replay
 slash-cli schema test
+slash-cli schema plugin
 slash-cli schema score
 slash-cli schema navmesh
 slash-cli schema navpoly
@@ -354,7 +356,8 @@ slash-cli schema bench
 ### project validate
 
 Checks a folder's `project.json`, its `export_presets.json` if there is one, the theme its
-`gui.theme` names, the bus layout its `audio.bus_layout` names, the [translation
+`gui.theme` names, the [plugin files](project-format.md#plugins) its `plugins` lists, the bus
+layout its `audio.bus_layout` names, the [translation
 files](project-format.md#internationalization) its `internationalization` lists (each must load,
 with its problems by line), the [icons](project-format.md#icons)
 it and its presets name (each must be a square image), its storyboard with [`storyboard.check`](commands.md#storyboardcheck), and

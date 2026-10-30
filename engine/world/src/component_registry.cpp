@@ -127,7 +127,7 @@ json::Value ComponentType::schema(SchemaBuilder& builder) const {
         }
         return builder.define(name_, std::move(definition));
     }
-    json::Value reference = ops_.schema(builder);
+    json::Value reference = ops_.schema(builder, type_hash_);
     json::Value& definition = builder.definition(name_);
     if (!doc_.empty()) {
         definition["description"] = doc_;
@@ -211,7 +211,8 @@ ComponentType& ComponentRegistry::add_stand_in(std::string name, std::vector<std
             return {};
         },
         .schema = nullptr,
-        .rename = [](json::Value& /*fields*/, const EntityRename& /*rename*/) {},
+        .rename = [](entt::id_type /*type*/, json::Value& /*fields*/,
+                     const EntityRename& /*rename*/) {},
         .assure =
             [](entt::registry& registry, entt::id_type type) {
                 static_cast<void>(registry.storage<StandInValue>(type));

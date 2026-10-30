@@ -125,6 +125,17 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
                                                    "\"slash-cli build\"");
         }
     }
+    // Plugins, as Godot loads extensions before the main scene: their components and systems.
+    if (!game->project_.plugins.empty()) {
+        game->plugins_ = std::make_unique<plugin::Plugins>(game->components_);
+        const auto errors = game->plugins_->load_project(data_dir, game->project_.plugins);
+        if (!errors.empty()) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "the plugin " + errors.begin()->first +
+                                  " did not load: " + errors.begin()->second);
+        }
+        game->plugins_->attach(game->world_);
+    }
     if (auto loaded = world::load_scene(game->world_, scene.value()); !loaded) {
         return make_error(loaded.error().code,
                           game->project_.main_scene + ": " + loaded.error().message);

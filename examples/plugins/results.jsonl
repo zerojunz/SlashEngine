@@ -1,0 +1,11 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":2,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"$defs":{"Orbit":{"additionalProperties":false,"description":"Moves the entity round a circle.","properties":{"active":{"default":true,"description":"Whether it moves.","type":"boolean"},"angle":{"default":0.0,"description":"Where it is, in radians.","type":"number"},"center":{"default":[0.0,0.0],"description":"What it circles.","items":{"type":"number"},"maxItems":2,"minItems":2,"type":"array"},"label":{"default":"","description":"Named in lap events.","maxLength":23,"type":"string"},"laps":{"default":0,"description":"Laps finished.","minimum":0.0,"type":"integer"},"notify":{"default":null,"description":"The entity lap events are about.","type":["string","null"]},"radius":{"default":32.0,"description":"How far from the center, in pixels.","minimum":0.0,"type":"number"},"speed":{"default":1.0,"description":"Radians a second; negative goes clockwise.","type":"number"}},"type":"object"}},"$ref":"#/$defs/Orbit","$schema":"https://json-schema.org/draft/2020-12/schema","title":"Orbit"}}
+{"id":3,"jsonrpc":"2.0","result":{"tick":30,"ticks":30}}
+{"id":4,"jsonrpc":"2.0","result":{"count":1,"entities":[{"components":{"Orbit":{"angle":1.5707957744598389,"center":[160.0,90.0],"label":"moon","notify":"sun","radius":40.0,"speed":3.1415927410125732},"Transform2D":{"position":[160.0,130.0]}},"id":"moon"}],"truncated":false}}
+{"id":5,"jsonrpc":"2.0","result":{"subscription":"events_1"}}
+{"id":6,"jsonrpc":"2.0","result":{"tick":120,"ticks":90}}
+{"id":7,"jsonrpc":"2.0","result":{"dropped":0,"events":[{"data":{"label":"moon","laps":1},"id":"sun","kind":"lap","seq":1,"tick":119}],"more":false}}
+{"id":8,"jsonrpc":"2.0","result":{"queued":1,"tick":120}}
+{"id":9,"jsonrpc":"2.0","result":{"tick":121,"ticks":1}}
+{"id":10,"jsonrpc":"2.0","result":{"count":1,"entities":[{"components":{"Orbit":{"angle":-0.05235558748245239,"center":[160.0,90.0],"label":"moon","laps":1,"notify":"sun","radius":40.0,"speed":-3.1415927410125732}},"id":"moon"}],"truncated":false}}
+{"error":{"code":-32602,"data":{"path":"/components/Orbit/radius"},"message":"/components/Orbit/radius: must be at least 0.0, got -5"},"id":11,"jsonrpc":"2.0"}

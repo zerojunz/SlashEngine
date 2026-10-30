@@ -52,6 +52,7 @@
 #include "slash/render/device.hpp"
 #include "slash/runtime/gameplay.hpp"
 #include "slash/runtime/icon.hpp"
+#include "slash/runtime/plugins.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/scene3d/blend.hpp"
 #include "slash/scene3d/gridmap.hpp"
@@ -174,11 +175,11 @@ Usage:
                                      (.replay.json), test (.test.json), score
                                      (.score.json), storyboard, project
                                      (project.json), presets (export_presets.json), sdk
-                                     (sdk.json), providers (providers.json) or bench (a
-                                     benchmark task's task.json)
+                                     (sdk.json), plugin (.plugin.json), providers
+                                     (providers.json) or bench (a benchmark task's task.json)
   slash-cli project validate [dir]   Check project.json, export_presets.json, providers.json,
-                                     the project's theme, bus layout, translations,
-                                     storyboard and SDK packages; lists
+                                     plugin files, the project's theme, bus layout,
+                                     translations, storyboard and SDK packages; lists
                                      every error
   slash-cli test [path...]           Run the project's .test.json tests headless, or those in
                                      the files and folders given, and print only the checks
@@ -435,6 +436,8 @@ struct Engine {
     command::Registry commands;
     // The project's own C++ code, from its gameplay library.
     slash::gameplay::Host gameplay;
+    // The project's plugins, loaded before its scenes open.
+    slash::plugin::Plugins plugins{components};
     std::unique_ptr<command::Session> session;
 
     explicit Engine(const command::SessionOptions& options, bool running = false)
@@ -454,6 +457,8 @@ struct Engine {
         command::SessionOptions session_options = options;
         session_options.capture_logs = false;
         session_options.gameplay = &gameplay;
+        (void)slash::runtime::load_plugins(plugins, options.project_root);
+        session_options.plugins = &plugins;
         session = std::make_unique<command::Session>(components, commands, session_options);
         // Until the code is built, its components are stand-ins, so its scenes still open.
         slash::runtime::add_stand_ins(gameplay, options.project_root);
@@ -1060,14 +1065,17 @@ world::FileReader prefab_reader(const std::string& file) {
 }
 
 // Adds the component types of the game's own code to a registry, for checking a file of its
-// project: from its gameplay library if it is built, else stand-ins for what its sources declare.
+// project: from its gameplay library if it is built, else stand-ins for what its sources declare;
+// and its plugins' types, loaded into plugins.
 slash::runtime::GameplayTypes add_project_types(world::ComponentRegistry& registry,
+                                                slash::plugin::Plugins& plugins,
                                                 const std::string& file) {
     const std::string folder = project_folder(file);
     auto project = slash::runtime::load_project(folder);
     if (!project) {
         return slash::runtime::GameplayTypes::None;
     }
+    (void)slash::runtime::load_plugins(plugins, folder);
     return slash::runtime::add_gameplay_types(registry, folder, project.value(), true);
 }
 
@@ -1149,7 +1157,8 @@ int cmd_scene_validate(const std::string& path) {
         return validate_model(path, text.value());
     }
     world::ComponentRegistry registry = make_registry();
-    (void)add_project_types(registry, path);
+    slash::plugin::Plugins plugins(registry);
+    (void)add_project_types(registry, plugins, path);
     const bool prefab = path.ends_with(world::kPrefabSuffix);
     const bool frames = path.ends_with(slash::canvas::kSpriteFramesSuffix);
     const bool material = path.ends_with(slash::canvas::kMaterialSuffix);
@@ -1365,8 +1374,9 @@ int cmd_scene_format(const std::string& path, bool check) {
     // Formatting loads the file into a world, so it needs the game's code built: stand-ins would
     // leave its components out.
     world::ComponentRegistry registry = make_registry();
+    slash::plugin::Plugins plugins(registry);
     const bool unbuilt =
-        add_project_types(registry, path) == slash::runtime::GameplayTypes::Declared;
+        add_project_types(registry, plugins, path) == slash::runtime::GameplayTypes::Declared;
     if (unbuilt) {
         registry = make_registry();
     }
@@ -1511,7 +1521,7 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 30> kKinds = {"scene",
+    constexpr std::array<std::string_view, 31> kKinds = {"scene",
                                                          "prefab",
                                                          "frames",
                                                          "material",
@@ -1536,6 +1546,7 @@ int cmd_schema(const std::vector<std::string>& args) {
                                                          "project",
                                                          "presets",
                                                          "sdk",
+                                                         "plugin",
                                                          "providers",
                                                          "bench",
                                                          "standard_material",
@@ -1549,7 +1560,7 @@ int cmd_schema(const std::vector<std::string>& args) {
             "texture, scatter, replay, test, "
             "score, "
             "storyboard, "
-            "project, presets, sdk, providers or bench");
+            "project, presets, sdk, plugin, providers or bench");
     }
     json::Value schema;
     if (args[0] == "scene") {
@@ -1606,6 +1617,8 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = slash::runtime::project_schema();
     } else if (args[0] == "sdk") {
         schema = slash::exporter::sdk_schema();
+    } else if (args[0] == "plugin") {
+        schema = slash::plugin::plugin_file_schema();
     } else if (args[0] == "providers") {
         schema = slash::ai::config_schema();
     } else if (args[0] == "bench") {
@@ -1675,6 +1688,10 @@ int cmd_project(const std::vector<std::string>& args) {
             }
         };
         check(project.value().gui_theme, "/gui/theme", slash::ui::validate_theme);
+        for (std::size_t i = 0; i < project.value().plugins.size(); ++i) {
+            check(project.value().plugins[i], "/plugins/" + std::to_string(i),
+                  slash::plugin::validate_plugin_file);
+        }
         check(project.value().audio.bus_layout, "/audio/bus_layout",
               slash::audio::validate_bus_layout);
         // The translation files, as games read them.
