@@ -29,6 +29,6 @@ frame.capture {"points":[[75,20],[75,61],[100,40]]}
   meshes that cast no shadow, as shadow maps leave them out. `path` saves the frame as
   `shots/avenue.png`.
 
-Run as a game (`slash-cli run`), the scene's rays are traced on the GPU with Vulkan's ray queries
-where the GPU has them, matching the capture to a few levels. GPUs that can't trace rays yet draw
-it with the sun's shadow maps.
+Run as a game (`slash-cli run`), the scene's rays are traced on the GPU with Vulkan's, Metal's
+or Direct3D 12's ray queries where the GPU has them, matching the capture to a few levels. GPUs
+that can't trace rays draw it with the sun's shadow maps.

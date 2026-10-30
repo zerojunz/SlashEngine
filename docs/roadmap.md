@@ -652,7 +652,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         camera that FSR 2 uses: a game's `render::TemporalUpscaler` runs in FSR 2's place with
         the native API's device, command buffer and textures
   - [ ] FSR 3 frame generation, once the render device controls presenting frames
-- [ ] Hardware ray tracing: acceleration structures and ray queries in `render::RenderDevice`,
+- [x] Hardware ray tracing: acceleration structures and ray queries in `render::RenderDevice`,
       native on Vulkan, Direct3D 12 and Metal beside SDL3's GPU API (which has none), with a CPU
       twin on the software device; ray-traced shadows, reflections, ambient occlusion and GI,
       falling back to the raster and probe paths where the hardware has none (the web, older
@@ -663,7 +663,10 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Acceleration structures and ray queries on Vulkan: the GPU device asks for
         `VK_KHR_acceleration_structure` and `VK_KHR_ray_query` where the GPU has them and
         records the structures and a ray query compute shader into SDL's command buffer
-  - [ ] Direct3D 12 and Metal
+  - [x] Direct3D 12 and Metal: Metal's encoders run the shaders as MSL on Macs whose GPU
+        supports ray tracing (macOS 13 or later), and Direct3D 12 runs them as DXR 1.1's inline
+        ray queries, compiled to DXIL by DXC in CI, every effect above and the GPU's lightmap
+        bakes on each
   - [x] Ray-traced reflections on the software device: `rendering.ray_tracing.reflections`
         traces the environment's SSR by rays reflected about GGX's microfacet normals, lit as
         the path tracer's bounces, with SSR where a device can't trace them
@@ -1072,8 +1075,8 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Profiling | Tracy, plus `perf.stats` over the command API | 5, 6 | Done: Tracy, and `perf.stats` reports frame pacing, tick and system times and memory by part of the engine |
 | Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants, reviewed automatically | 6, 7 | In progress: the library, search, refining, hosted and test generators, feedback, team sharing, ready-to-use texture forms, parametric model recipes, models' text descriptions and attachment points, imported .glb models and versions from edited files, scene assembly (`entity.place`) and complex assets (recipes built of other model files, kept in the library by their parts' IDs), variants and quality tiers, model checks, automatic review and models made from concept images done; the rest of 3D in 7 |
 | Global illumination | Baked lightmaps and probe-based GI | 7 | Done: reflection probes, baked lightmaps and their light probes, and VoxelGI with its dynamic objects, all imported from Godot |
-| Ray tracing | Acceleration structures and ray queries in the render device on Vulkan, Direct3D 12 and Metal: ray-traced shadows, reflections, AO and GI, with raster and probe fallbacks | 7 | In progress: ray-traced shadows, ambient occlusion, reflections, GI, paths and lightmap bakes on the software device, Vulkan and Metal; Direct3D 12 next |
-| Path tracing | A GPU path tracer for baked lightmaps and progressive reference stills | 7 | Done: progressive reference stills and lightmap bakes on the CPU and on Vulkan's ray queries |
+| Ray tracing | Acceleration structures and ray queries in the render device on Vulkan, Direct3D 12 and Metal: ray-traced shadows, reflections, AO and GI, with raster and probe fallbacks | 7 | Done: ray-traced shadows, ambient occlusion, reflections, GI, paths and lightmap bakes on the software device, Vulkan, Metal and Direct3D 12 (DXR 1.1's inline ray queries) |
+| Path tracing | A GPU path tracer for baked lightmaps and progressive reference stills | 7 | Done: progressive reference stills and lightmap bakes on the CPU and on Vulkan's, Metal's and Direct3D 12's ray queries |
 | Upscaling and frame generation | Render scale with FSR 1, FSR 2/3 and MetalFX built in, FSR 3 frame generation, DLSS, XeSS and FSR 4 as adapters outside the repo | 7 | Planned |
 | Sky and volumetrics | Physical sky, volumetric fog | 7 | Done: procedural, physical and panorama skies, their light on meshes, exponential, depth and height fog, and volumetric fog with fog volumes and VoxelGI's light |
 | Decals | Clustered decals | 7 | Done, imported from Godot |

@@ -1,9 +1,9 @@
-# What ray tracing on the GPU device (engine/render/src/vulkan_rays.cpp) needs of SDL3 beyond the
+# What ray tracing on the GPU device (engine/render/src/*_rays.*) needs of SDL3 beyond the
 # native objects cmake/patches/sdl-native-handles.cmake hands over.
 #
 # SDL_SlashGPUNativeBuffer hands over the buffer an SDL buffer holds now (VkBuffer on Vulkan,
-# id<MTLBuffer> on Metal, null elsewhere for now), unretained, which acceleration structures are
-# built from.
+# id<MTLBuffer> on Metal, ID3D12Resource on Direct3D 12), unretained, which acceleration
+# structures are built from.
 #
 # And SDL_GPUVulkanOptions' feature_list turns on features of device extensions, which SDL3's
 # Vulkan device drops: it folds the list's Vulkan 1.1 to 1.3 feature structures into its own and
@@ -149,5 +149,43 @@ if(NOT text MATCHES "SDL_SlashMetalNativeBuffer")
     endif()
     string(REPLACE "${declaration}" "#endif\n#ifdef SDL_GPU_METAL\nvoid *SDL_SlashMetalNativeBuffer(SDL_GPUBuffer *buffer);\n${declaration}" text "${text}")
     string(REPLACE "${call}" "        return SDL_SlashVulkanNativeBuffer(buffer);\n    }\n#endif\n#ifdef SDL_GPU_METAL\n    if (SDL_strcmp(device->backend, \"metal\") == 0) {\n        return SDL_SlashMetalNativeBuffer(buffer);\n    }\n#endif\n    return NULL;\n" text "${text}")
+    file(WRITE ${file} "${text}")
+endif()
+
+# Direct3D 12's buffers, added beside the others in the same way.
+set(file src/gpu/d3d12/SDL_gpu_d3d12.c)
+file(READ ${file} text)
+if(NOT text MATCHES "SDL_SlashD3D12NativeBuffer")
+    string(FIND "${text}" "#endif // SDL_GPU_D3D12" at REVERSE)
+    if(at EQUAL -1)
+        message(FATAL_ERROR "${file} no longer ends with #endif // SDL_GPU_D3D12")
+    endif()
+    string(SUBSTRING "${text}" 0 ${at} before)
+    string(SUBSTRING "${text}" ${at} -1 after)
+    set(buffer_call [=[
+// SlashEngine (cmake/patches/sdl-ray-tracing.cmake): the buffer an SDL buffer holds now.
+void *SDL_SlashD3D12NativeBuffer(SDL_GPUBuffer *buffer);
+
+void *SDL_SlashD3D12NativeBuffer(SDL_GPUBuffer *buffer)
+{
+    return (void *)((D3D12BufferContainer *)buffer)->activeBuffer->handle;
+}
+
+]=])
+    file(WRITE ${file} "${before}${buffer_call}${after}")
+endif()
+
+set(file src/gpu/SDL_gpu.c)
+file(READ ${file} text)
+if(NOT text MATCHES "SDL_SlashD3D12NativeBuffer")
+    set(declaration "#endif\nvoid *SDL_SlashGPUNativeBuffer(SDL_GPUDevice *device, SDL_GPUBuffer *buffer);\n")
+    set(call "        return SDL_SlashMetalNativeBuffer(buffer);\n    }\n#endif\n    return NULL;\n")
+    string(FIND "${text}" "${declaration}" declared)
+    string(FIND "${text}" "${call}" called)
+    if(declared EQUAL -1 OR called EQUAL -1)
+        message(FATAL_ERROR "${file} no longer has the SlashEngine native buffer code to patch")
+    endif()
+    string(REPLACE "${declaration}" "#endif\n#ifdef SDL_GPU_D3D12\nvoid *SDL_SlashD3D12NativeBuffer(SDL_GPUBuffer *buffer);\n${declaration}" text "${text}")
+    string(REPLACE "${call}" "        return SDL_SlashMetalNativeBuffer(buffer);\n    }\n#endif\n#ifdef SDL_GPU_D3D12\n    if (SDL_strcmp(device->backend, \"direct3d12\") == 0) {\n        return SDL_SlashD3D12NativeBuffer(buffer);\n    }\n#endif\n    return NULL;\n" text "${text}")
     file(WRITE ${file} "${text}")
 endif()
