@@ -679,6 +679,9 @@ struct ReflectionAtlasSettings {
 // anti_aliasing.quality.use_taa, as Godot's rendering/anti_aliasing/quality/use_taa
 // (Scene3D::use_taa).
 [[nodiscard]] bool use_taa(const json::Value& rendering);
+// Whether project.json's rendering object turns on frame generation: frame_generation, a frame
+// made between each two drawn ones (RenderDevice::generate_frame), which Godot doesn't have.
+[[nodiscard]] bool frame_generation(const json::Value& rendering);
 
 // How a reflection probe lights what is inside it, as Godot's ReflectionProbe.ambient_mode: not
 // at all, by the blurriest level of its cube along each pixel's normal, or by a color.

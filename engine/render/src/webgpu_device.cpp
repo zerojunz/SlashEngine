@@ -1639,6 +1639,8 @@ public:
         return true;
     }
 
+    [[nodiscard]] bool generates_frames() const override { return true; }
+
     Result<void> generate_frame(TextureId target, TextureId into) override {
         if (in_frame_) {
             return frame_in_progress("generate_frame");

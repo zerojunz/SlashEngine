@@ -679,11 +679,15 @@ public:
     // motion vectors and depth where its last frame drew meshes with Scene3D::frame_generation,
     // and the optical flow of the two pictures everywhere. A first frame, a frame after a scene
     // change and one whose frame before wasn't generated from give target's last frame as it is.
-    // The software, GPU (Forward+) and WebGPU devices generate frames.
+    // Fails where generates_frames is false.
     [[nodiscard]] virtual Result<void> generate_frame(TextureId /*target*/, TextureId /*into*/) {
         return make_error(ErrorCode::InvalidArgument,
-                          "this device doesn't generate frames yet: only the software device does");
+                          "this device doesn't generate frames: the software, GPU and WebGPU "
+                          "devices do");
     }
+    // Whether generate_frame works: on the software, GPU and WebGPU devices, not the OpenGL and
+    // null ones.
+    [[nodiscard]] virtual bool generates_frames() const { return false; }
 
     // The device's native objects, as an OpenXR runtime's session binds them (Godot hands its
     // graphics extension the rendering device's): the GPU device's, else empty.

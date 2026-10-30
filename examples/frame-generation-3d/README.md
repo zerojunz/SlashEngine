@@ -35,5 +35,6 @@ The optical flow, which finds how the picture moved by blocks of 8x8 pixels, run
 too: it carries what has no motion vectors, such as 2D drawing, once ten frames have passed since
 its first frames, which count as scene changes. `tests/test_frame_generation.cpp` moves a picture
 that way. The software device generates frames on the CPU, the same pixels on every machine, and
-the GPU and WebGPU devices make the same frames in compute shaders; showing the generated frames
-between a running game's frames is still to come.
+the GPU and WebGPU devices make the same frames in compute shaders. A game shows them between its
+drawn frames with project.json's `rendering.frame_generation`
+([project-format.md](../../docs/reference/project-format.md#frame-generation)).

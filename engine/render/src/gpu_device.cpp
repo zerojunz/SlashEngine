@@ -2327,6 +2327,7 @@ public:
 
     [[nodiscard]] MetalFxSupport metalfx() const override { return metalfx_; }
     [[nodiscard]] bool ray_tracing() const override { return rays_ != nullptr; }
+    [[nodiscard]] bool generates_frames() const override { return true; }
     [[nodiscard]] NativeDevice native_device() const override {
         return detail::native_device(device_, backend_);
     }

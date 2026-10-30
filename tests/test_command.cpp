@@ -1440,9 +1440,10 @@ TEST_CASE("a running game lists displays, changes V-Sync and the frame cap, and 
         {.platform = &platform.value(), .loop = &loop.value(), .renderer = renderer.get()});
 
     // Headless runs have no displays.
-    // The render scale is project.json's rendering.scaling; see tests/test_render_scale.cpp.
+    // The render scale is project.json's rendering.scaling; see tests/test_render_scale.cpp, and
+    // frame generation tests/test_generated_frames.cpp.
     const std::string_view scaling =
-        R"("scaling": {"fsr_sharpness": 0.2, "mode": "bilinear", "scale": 1.0})";
+        R"("frame_generation": {"enabled": false}, "scaling": {"fsr_sharpness": 0.2, "mode": "bilinear", "scale": 1.0})";
     CHECK(engine.ok("display.list") ==
           parse(R"({"displays": [], "max_fps": 0, "vsync_mode": "enabled", )" +
                 std::string(scaling) + "}"));
