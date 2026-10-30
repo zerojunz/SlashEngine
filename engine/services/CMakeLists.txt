@@ -1,4 +1,5 @@
 add_library(slash_services
+    src/endpoint.cpp
     src/services.cpp
     src/settings.cpp)
 add_library(slash::services ALIAS slash_services)

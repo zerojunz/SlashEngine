@@ -10,11 +10,16 @@
 #ifdef SLASH_GAME_AI
 #include "slash/ai/world.hpp"
 #endif
+// Games that send analytics to a server of their own POST them with engine/ai's HTTP client.
+#ifdef SLASH_GAME_ANALYTICS
+#include "slash/ai/transport.hpp"
+#endif
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
 #include <cstdio>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -69,6 +74,21 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 #endif
 #ifdef SLASH_SDK_REGISTER
     options.value().register_backends = slash_sdk_register;
+#endif
+#ifdef SLASH_GAME_ANALYTICS
+    options.value().analytics_post = [](slash::services::HttpPost post,
+                                        std::function<void(int status)> done) {
+        slash::ai::HttpRequest request;
+        request.url = std::move(post.url);
+        request.headers = std::move(post.headers);
+        request.body = std::move(post.body);
+        request.timeout_seconds = 30;
+        slash::ai::post_in_background(
+            slash::ai::http_transport(), std::move(request),
+            [done = std::move(done)](slash::Result<slash::ai::HttpResponse> reply) {
+                done(reply ? reply.value().status : 0);
+            });
+    };
 #endif
     auto game = slash::runtime::Game::start(options.value());
     if (!game) {

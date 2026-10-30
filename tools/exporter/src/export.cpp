@@ -1530,6 +1530,10 @@ ExportResult export_game(const ExportOptions& options) {
     } else {
         configure.emplace_back("-DSLASH_GAME_AI=OFF");
     }
+    // Games that send analytics to their own server POST them with engine/ai's HTTP client.
+    configure.emplace_back(project.value().services.analytics_endpoint
+                               ? "-DSLASH_GAME_ANALYTICS=ON"
+                               : "-DSLASH_GAME_ANALYTICS=OFF");
     if (const audio::Settings& sound = project.value().audio; sound.enable_input) {
         // Games that record ask for the microphone: Info.plist's reason on macOS and iOS, the
         // RECORD_AUDIO permission on Android.
