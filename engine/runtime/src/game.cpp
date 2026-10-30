@@ -10,6 +10,7 @@
 #include "slash/net/multiplayer.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/runtime/icon.hpp"
+#include "slash/scene3d/scene3d.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
@@ -19,6 +20,7 @@
 
 #include <array>
 #include <charconv>
+#include <optional>
 #include <system_error>
 #include <utility>
 
@@ -129,11 +131,41 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
         return loop.error();
     }
     game->loop_ = std::make_unique<platform::Loop>(std::move(loop).value());
-    game->renderer_ =
-        game->platform_.headless()
-            ? render::create_null_device()
-            : render::create_device_or_null(
-                  {.window = game->platform_.window(), .driver = driver, .debug = false});
+    // A game that enables XR draws into the headset through OpenXR, as Godot starts its OpenXR
+    // interface: the runtime picks the GPU and makes the device. One whose headset won't start
+    // goes on without it; headless runs have none.
+    std::optional<xr::OpenXRDevice> headset;
+    if (game->project_.xr.enabled && !game->platform_.headless()) {
+        auto prepared = xr::prepare_openxr_device(game->world_, driver);
+        if (prepared) {
+            headset = std::move(prepared).value();
+        } else {
+            log::warn("no headset", {{"error", prepared.error().message}});
+        }
+    }
+    if (game->platform_.headless()) {
+        game->renderer_ = render::create_null_device();
+    } else if (headset) {
+        auto made = render::create_device({.window = game->platform_.window(),
+                                           .driver = headset->driver,
+                                           .debug = false,
+                                           .xr = headset->hooks});
+        if (made) {
+            game->renderer_ = std::move(made).value();
+            if (auto started = xr::use_openxr_interface(game->world_, game->renderer_.get());
+                !started) {
+                log::warn("no headset", {{"error", started.error().message}});
+            }
+        } else {
+            log::warn("no headset: the runtime's GPU device didn't start",
+                      {{"error", made.error().message}});
+            xr::find_interface(game->world_, "OpenXR")->uninitialize(game->world_);
+        }
+    }
+    if (game->renderer_ == nullptr) {
+        game->renderer_ = render::create_device_or_null(
+            {.window = game->platform_.window(), .driver = driver, .debug = false});
+    }
     // The schema only allows known names, so the mode always parses.
     game->renderer_->set_vsync(
         render::parse_vsync_mode(game->project_.vsync_mode).value_or(render::VsyncMode::Enabled));
@@ -210,13 +242,8 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
     services::install(world_, project_.services);
     // Offline until the game's code puts its multiplayer on the network.
     net::install(world_);
-    // The XR server, and the headset through OpenXR when the project enables it, as Godot starts
-    // its OpenXR interface; a game whose headset won't start goes on without one. Headless runs
-    // have no headset.
+    // The XR server; OpenXR starts with the render device (create).
     xr::install(world_, project_.xr);
-    if (project_.xr.enabled && !platform_.headless()) {
-        (void)xr::use_openxr_interface(world_);
-    }
     // In the player's language, unless the project tests another.
     l10n::install(world_, assets_, project_.internationalization, l10n::preferred_locale());
     platform_.set_event_handler([this](const SDL_Event& event) { handle_event(event); });
@@ -299,11 +326,51 @@ void Game::draw() {
         project_.texture_filter == "nearest" ? render::Filter::Nearest : render::Filter::Linear;
     options.time =
         canvas::material_time(world_.tick(), 1.0 / loop_->tick_hz(), options.interpolation);
+    draw_headset(options);
     auto drawn = canvas_->draw(world_, options);
     // One warning, not one per frame.
     if (!drawn && !draw_failed_) {
         draw_failed_ = true;
         log::warn("drawing a frame failed", {{"error", drawn.error().message}});
+    }
+}
+
+// Each of the headset's views, as Godot's XR viewport draws them: into the view's target from
+// the eye's place, then handed to the runtime. The window still shows the current camera.
+void Game::draw_headset(const canvas::CanvasOptions& window) {
+    auto frame = xr::begin_openxr_frame(world_);
+    if (!frame) {
+        warn_headset(frame.error().message);
+        return;
+    }
+    if (frame.value().render) {
+        const std::vector<xr::View> views = xr::views(world_);
+        const Vec2i size = xr::primary_interface(world_)->render_target_size();
+        for (std::size_t i = 0; i < frame.value().targets.size() && i < views.size(); ++i) {
+            const xr::View& view = views[i];
+            canvas::CanvasOptions eye = window;
+            eye.target = frame.value().targets[i];
+            eye.width = static_cast<float>(size.x);
+            eye.height = static_cast<float>(size.y);
+            eye.pixel_width = static_cast<std::uint32_t>(size.x);
+            eye.pixel_height = static_cast<std::uint32_t>(size.y);
+            eye.view3d = scene3d::eye_view(world_, view.transform, view.fov.left, view.fov.right,
+                                           view.fov.down, view.fov.up);
+            if (auto drawn = canvas_->draw(world_, eye); !drawn) {
+                warn_headset(drawn.error().message);
+            }
+        }
+    }
+    if (auto ended = xr::end_openxr_frame(world_); !ended) {
+        warn_headset(ended.error().message);
+    }
+}
+
+void Game::warn_headset(const std::string& message) {
+    // One warning, not one per frame.
+    if (!headset_failed_) {
+        headset_failed_ = true;
+        log::warn("drawing into the headset failed", {{"error", message}});
     }
 }
 

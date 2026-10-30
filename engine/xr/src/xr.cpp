@@ -939,6 +939,9 @@ json::Value state_json(const world::World& world, const std::vector<std::string>
                 runtime["running"] = openxr->running;
                 runtime["headless"] = openxr->headless;
                 runtime["reference_space"] = openxr->reference_space;
+                if (!openxr->graphics.empty()) {
+                    runtime["graphics"] = openxr->graphics;
+                }
                 runtime["frames"] = openxr->frames;
                 entry["openxr"] = std::move(runtime);
             }

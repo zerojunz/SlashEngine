@@ -17,8 +17,20 @@ const OpenXRInfo* openxr_info(const Interface& /*interface*/) {
     return nullptr;
 }
 
-Result<void> use_openxr_interface(world::World& /*world*/) {
+Result<OpenXRDevice> prepare_openxr_device(world::World& /*world*/, std::string_view /*driver*/) {
     return make_error(ErrorCode::NotFound, "OpenXR: this platform's build has no OpenXR loader");
+}
+
+Result<void> use_openxr_interface(world::World& /*world*/, render::RenderDevice* /*device*/) {
+    return make_error(ErrorCode::NotFound, "OpenXR: this platform's build has no OpenXR loader");
+}
+
+Result<OpenXRFrame> begin_openxr_frame(world::World& /*world*/) {
+    return OpenXRFrame{};
+}
+
+Result<void> end_openxr_frame(world::World& /*world*/) {
+    return {};
 }
 
 } // namespace slash::xr

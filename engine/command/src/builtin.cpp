@@ -4970,20 +4970,8 @@ Reply frame_capture(Session& session, const json::Value& params) {
                                "the headset has " + std::to_string(views.size()) + " views");
         }
         const xr::View& view = views[static_cast<std::size_t>(index)];
-        float z_near = 0.05F;
-        float z_far = 4000.0F;
-        const world::Tree3D tree(world);
-        if (const entt::entity camera = world::current_camera(world, tree); camera != entt::null) {
-            const auto& lens = world.ecs().get<const world::Camera3D>(camera);
-            z_near = lens.near;
-            z_far = lens.far;
-        }
-        scene3d::CameraView place;
-        place.eye = world::orthonormalized(view.transform);
-        place.view = place.eye.inverse().matrix();
-        place.projection = render::frustum(view.fov.left, view.fov.right, view.fov.down,
-                                           view.fov.up, z_near, z_far);
-        view3d = place;
+        view3d = scene3d::eye_view(world, view.transform, view.fov.left, view.fov.right,
+                                   view.fov.down, view.fov.up);
         if (const Vec2i target = xr::primary_interface(world)->render_target_size();
             target.x > 0 && target.y > 0) {
             viewport = {static_cast<float>(target.x), static_cast<float>(target.y)};
