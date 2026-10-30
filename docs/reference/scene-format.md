@@ -4551,9 +4551,9 @@ converted to a shader in Godot and then edited would.
 meters and three dimensions, with a [process material](#process-materials) read with Godot's 3D
 fields. The `gpu_particles_3d` system (priority 1110) works out each emitter's steps each tick
 and keeps them, as the 2D system does; `scene3d::Renderer` runs the steps its device hasn't, then
-draws each draw pass's mesh at every live particle, in the visibility box. Metal, Direct3D 12,
-Vulkan and WebGPU run the steps, the view depth sort and the meshes in compute shaders; the
-software and OpenGL devices, `particles.eval` and headless runs run the same steps on the CPU
+draws each draw pass's mesh at every live particle, in the visibility box. Metal, Vulkan and
+WebGPU run the steps, the view depth sort and the meshes in compute shaders, and Direct3D 12 the
+steps, placing the meshes on the CPU for now; the software and OpenGL devices, `particles.eval` and headless runs run the same steps on the CPU
 (`render::process_particles_3d`), so tests and replays see the same particles everywhere.
 Attractors and collision are on the [roadmap](../roadmap.md).
 [examples/gpu-particles-3d](../../examples/gpu-particles-3d/) has sparks, leaves and streaks.

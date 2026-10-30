@@ -1280,8 +1280,10 @@ public:
             !checked) {
             return checked;
         }
-        if (!draw.has_box()) {
-            // Without a box to draw in, the vertices are placed on the CPU, which measures them.
+        // Without a box to draw in, the vertices are placed on the CPU, which measures them. So
+        // they are on Direct3D 12, where SDL's device is lost running particles_mesh_3d.hlsl's
+        // pass (on WARP in CI, from its first draw, sorted or not), until that is found.
+        if (!draw.has_box() || backend_ == Backend::D3D12) {
             auto live = read_particles_3d(particles);
             if (!live) {
                 return live.error();

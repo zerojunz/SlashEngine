@@ -1608,7 +1608,9 @@ particles a thread each, `particles_sort_3d.hlsl` sorts a view depth pass's slot
 sort (keys of depth bits and index, so ties keep slot order) and `particles_mesh_3d.hlsl` writes
 the mesh's vertex buffer a thread a vertex, its box `ParticleMeshDraw3D::box_low` and `box_high`
 (the visibility box, which every device gives the mesh through `set_mesh_bounds`, so blended
-draws order alike); `src/particle_layout_3d.cpp` lays out the words they read.
+draws order alike); `src/particle_layout_3d.cpp` lays out the words they read. On Direct3D 12
+the meshes are placed on the CPU for now, since SDL's device is lost running the mesh pass on
+WARP.
 `render::process_particles_3d` and `particle_mesh_vertices_3d` (`engine/render/src/particles3d.cpp`,
 built with `-ffp-contract=off`) are their CPU twin, which the software and OpenGL devices run,
 and `tests/test_particle_compute_3d.cpp` holds every device to it; a change to one goes in both,
