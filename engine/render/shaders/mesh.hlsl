@@ -662,7 +662,11 @@ void add_light(Light light, float3 world, float3 normal, float3 geometry, float3
 #ifdef CLUSTERED
     if (ray_pixel.x >= 0 && ray > 0.0) {
         uint k = (uint)ray - 1u;
-        attenuation *= screen_texture.Load(int4(ray_pixel, 2 + (int)(k >> 2u), 0))[k & 3u];
+        // The light's channel by a dot product: an index into the texel is an array to FXC,
+        // which loses Direct3D 12's WARP device.
+        float4 rays = screen_texture.Load(int4(ray_pixel, 2 + (int)(k >> 2u), 0));
+        uint lane = k & 3u;
+        attenuation *= dot(rays, float4(lane == 0u, lane == 1u, lane == 2u, lane == 3u));
         ray = -1.0;
     }
 #endif
