@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <utility>
 
 namespace slash::render::detail {
 namespace {
@@ -55,7 +56,8 @@ void pack_particle_process_3d(const ParticleProcess3D& process, std::vector<Word
         (process.disable_z ? kProcessDisableZ : 0U) |
         (process.damping_as_friction ? kProcessDampingAsFriction : 0U) |
         (process.turbulence_enabled ? kProcessTurbulence : 0U) |
-        (process.directional_velocity_global ? kProcessDirectionalGlobal : 0U);
+        (process.directional_velocity_global ? kProcessDirectionalGlobal : 0U) |
+        (process.attractor_interaction ? kProcessAttractors : 0U);
     out.push_back({static_cast<std::uint32_t>(process.emission_shape),
                    bits(process.emission_sphere_radius), bits(process.emission_ring_radius),
                    bits(process.emission_ring_inner_radius)});
@@ -138,6 +140,7 @@ void pack_particle_process_3d(const ParticleProcess3D& process, std::vector<Word
 
 void pack_particle_steps_3d(std::span<const ParticleStep3D> steps, std::vector<Word>& out) {
     out.reserve(out.size() + (steps.size() * kStepWords3D));
+    const std::size_t first = out.size();
     for (const ParticleStep3D& step : steps) {
         const ParticleTransform& t = step.emission;
         out.push_back(floats(t[0], t[1], t[2], t[3]));
@@ -147,10 +150,49 @@ void pack_particle_steps_3d(std::span<const ParticleStep3D> steps, std::vector<W
         out.push_back(
             floats(step.prev_system_phase, step.delta, step.lifetime, step.explosiveness));
         out.push_back(floats(step.randomness, step.amount_ratio, step.interp_to_end, step.time));
-        const std::uint32_t flags = (step.emitting ? kStepEmitting : 0U) |
-                                    (step.fractional_delta ? kStepFractionalDelta : 0U) |
-                                    (step.clear ? kStepClear : 0U);
+        const std::uint32_t flags =
+            (step.emitting ? kStepEmitting : 0U) |
+            (step.fractional_delta ? kStepFractionalDelta : 0U) | (step.clear ? kStepClear : 0U) |
+            (static_cast<std::uint32_t>(step.attractors.size()) << kStepAttractorShift);
         out.push_back({step.cycle, step.seed, flags, 0U});
+    }
+    // Then each step's attractors, and the fields they sample once each.
+    std::vector<std::pair<const ParticleField3D*, std::uint32_t>> fields;
+    for (std::size_t i = 0; i < steps.size(); ++i) {
+        const ParticleStep3D& step = steps[i];
+        if (step.attractors.empty()) {
+            continue;
+        }
+        out[first + (i * kStepWords3D) + 6].at(3) = static_cast<std::uint32_t>(out.size());
+        const std::size_t block = out.size();
+        out.resize(block + (step.attractors.size() * kAttractorWords3D));
+        for (std::size_t a = 0; a < step.attractors.size(); ++a) {
+            const ParticleAttractor3D& attractor = step.attractors[a];
+            std::uint32_t field_at = 0;
+            if (attractor.shape == AttractorShape3D::VectorField && attractor.field != nullptr) {
+                const ParticleField3D* field = attractor.field.get();
+                const auto found = std::find_if(fields.begin(), fields.end(),
+                                                [&](const auto& f) { return f.first == field; });
+                if (found != fields.end()) {
+                    field_at = found->second;
+                } else {
+                    field_at = static_cast<std::uint32_t>(out.size());
+                    fields.emplace_back(field, field_at);
+                    out.push_back({field->width, field->height, field->depth, 0U});
+                    for (const Vec4& texel : field->texels) {
+                        out.push_back(floats(texel));
+                    }
+                }
+            }
+            const ParticleTransform& t = attractor.transform;
+            const std::size_t at = block + (a * kAttractorWords3D);
+            out[at] = floats(t[0], t[1], t[2], t[3]);
+            out[at + 1] = floats(t[4], t[5], t[6], t[7]);
+            out[at + 2] = floats(t[8], t[9], t[10], t[11]);
+            out[at + 3] = floats(attractor.extents, attractor.strength);
+            out[at + 4] = {static_cast<std::uint32_t>(attractor.shape), field_at,
+                           bits(attractor.attenuation), bits(attractor.directionality)};
+        }
     }
 }
 

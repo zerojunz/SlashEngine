@@ -4,6 +4,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/math.hpp"
 #include "slash/core/text.hpp"
+#include "slash/render/image.hpp"
 #include "slash/scene3d/bone_attachment.hpp"
 #include "slash/scene3d/csg.hpp"
 #include "slash/scene3d/gpu_particles.hpp"
@@ -813,6 +814,36 @@ std::vector<Problem> check_meshes(const world::World& world) {
                      "/components/" + std::string(kPrimitiveNames[primitive.value()->index()]),
                      checked.error().message});
             }
+        }
+    }
+    // A vector field's texture must read and cut into its slices.
+    for (const entt::entity entity : made<world::GPUParticlesAttractorVectorField3D>(world)) {
+        const auto& field =
+            world.ecs().get<const world::GPUParticlesAttractorVectorField3D>(entity);
+        const world::FileReader& reader = world.file_reader();
+        if (field.texture.empty() || !reader) {
+            continue;
+        }
+        constexpr std::string_view kTextureField =
+            "/components/GPUParticlesAttractorVectorField3D/texture";
+        auto bytes = reader(field.texture);
+        if (!bytes) {
+            problems.push_back(
+                {entity, std::string(kTextureField),
+                 "\"" + field.texture + "\" could not be read: " + bytes.error().message});
+            continue;
+        }
+        auto image = render::decode_image(bytes.value());
+        if (!image) {
+            problems.push_back({entity, std::string(kTextureField),
+                                "\"" + field.texture + "\": " + image.error().message});
+            continue;
+        }
+        if (auto cut =
+                particle_field(image.value(), field.slices_horizontal, field.slices_vertical);
+            !cut) {
+            problems.push_back({entity, std::string(kTextureField),
+                                "\"" + field.texture + "\": " + cut.error().message});
         }
     }
     for (ModifierProblem& problem : check_stray_modifiers(world)) {
