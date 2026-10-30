@@ -437,21 +437,32 @@ struct Stats {
 // RenderingDevice::get_driver_resource hands them over: on Vulkan, instance, physical_device,
 // device and queue are the VkInstance, VkPhysicalDevice, VkDevice and VkQueue, and queue_family
 // is the queue's family; on Direct3D 12, device and queue are the ID3D12Device and
-// ID3D12CommandQueue; on Metal, the id<MTLDevice> and id<MTLCommandQueue>. The software device
-// has none.
+// ID3D12CommandQueue; on Metal, the id<MTLDevice> and id<MTLCommandQueue>. On OpenGL, gl says
+// which window system the context is on, and device is the context (EGLContext, GLXContext or
+// HGLRC), instance its display (EGLDisplay, the X11 Display* or the window's HDC) and
+// physical_device its config (EGLConfig or GLXFBConfig), with the GLX window and visual and
+// get_proc_address, eglGetProcAddress on EGL. The software device has none.
 struct NativeDevice {
+    // The window system an OpenGL context is on.
+    enum class GlSystem : std::uint8_t { None, Egl, Glx, Wgl };
+
     Backend backend = Backend::Null;
     void* instance = nullptr;
     void* physical_device = nullptr;
     void* device = nullptr;
     void* queue = nullptr;
     std::uint32_t queue_family = 0;
+    GlSystem gl = GlSystem::None;
+    std::uint64_t drawable = 0;
+    std::uint32_t visual = 0;
+    void (*(*get_proc_address)(const char*))() = nullptr;
 };
 
 // A texture as the native API holds it: one of a temporal upscaler's textures, or an OpenXR
 // swapchain's image. On a GPU device, image is the VkImage (and view its
 // VkImageView of the whole image), the ID3D12Resource or the id<MTLTexture>, and format its
-// VkFormat, DXGI_FORMAT or MTLPixelFormat; pixels is empty. On the software device, pixels holds
+// VkFormat, DXGI_FORMAT or MTLPixelFormat; on OpenGL, image is the texture's name and format its
+// internal format; pixels is empty. On the software device, pixels holds
 // its values, rows top to bottom and each pixel's channels together, and the rest is empty.
 struct NativeTexture {
     void* image = nullptr;
@@ -661,11 +672,13 @@ public:
     // DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, _UNORM or _TYPELESS, and an sRGB one shows the colors as
     // the window does. target is in the state OpenXR hands a color swapchain image over in
     // (VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, D3D12_RESOURCE_STATE_RENDER_TARGET) and is left
-    // so. Only the GPU device on Vulkan and Direct3D 12 copies.
+    // so. On OpenGL, target is a GL_SRGB8_ALPHA8 or GL_RGBA8 texture in this device's context,
+    // its rows from the bottom up as OpenXR's are, and the copy turns the picture over to fit.
+    // The GPU device on Vulkan and Direct3D 12 and the OpenGL devices copy.
     virtual Result<void> copy_to_native(TextureId /*source*/, const NativeTexture& /*target*/) {
         return make_error(ErrorCode::InvalidArgument,
                           "this device can't copy into native images: only the GPU device on "
-                          "Vulkan and Direct3D 12 can");
+                          "Vulkan and Direct3D 12 and the OpenGL devices can");
     }
 
 protected:

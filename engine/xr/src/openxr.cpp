@@ -401,6 +401,9 @@ Result<void> OpenXR::create_instance(const Settings& settings, std::string_view 
                         " (it lacks " + std::string(graphics_->extension()) + ")");
         }
         wanted.emplace_back(graphics_->extension());
+        for (const std::string_view extension : graphics_->optional_extensions()) {
+            wanted.emplace_back(extension);
+        }
     } else {
         wanted.emplace_back(kHeadless);
     }
@@ -524,7 +527,11 @@ Result<void> OpenXR::create_session() {
     auto info = made<XrSessionCreateInfo>(XR_TYPE_SESSION_CREATE_INFO);
     info.systemId = system_;
     if (drawing()) {
-        info.next = graphics_->binding(device_->native_device());
+        auto binding = graphics_->binding(device_->native_device(), enabled_);
+        if (!binding) {
+            return fail(binding.error().message);
+        }
+        info.next = binding.value();
     } else if (!extension_enabled(kHeadless)) {
         return fail("OpenXR: the runtime needs a graphics binding to start a session: a game "
                     "with a window draws into the headset, and sessions without one need "
@@ -1313,13 +1320,19 @@ Result<OpenXRDevice> OpenXR::prepare_device(world::World& world, std::string_vie
         graphics_ = detail::make_d3d12_graphics();
     } else if (wanted == "vulkan") {
         graphics_ = detail::make_vulkan_graphics();
+    } else if (wanted == "opengl") {
+        graphics_ = detail::make_opengl_graphics();
     }
     if (graphics_ == nullptr) {
-        return make_error(
-            ErrorCode::InvalidArgument,
-            "OpenXR draws with \"vulkan\"" +
-                std::string(detail::make_d3d12_graphics() != nullptr ? " or \"d3d12\"" : "") +
-                ", not \"" + std::string(driver) + "\"");
+        std::string drivers = "\"vulkan\"";
+        if (detail::make_d3d12_graphics() != nullptr) {
+            drivers += ", \"d3d12\"";
+        }
+        if (detail::make_opengl_graphics() != nullptr) {
+            drivers += ", \"opengl\"";
+        }
+        return make_error(ErrorCode::InvalidArgument,
+                          "OpenXR draws with " + drivers + ", not \"" + std::string(driver) + "\"");
     }
     if (auto made = create_instance(settings(world), {}); !made) {
         finish();

@@ -94,16 +94,16 @@ struct OpenXRInfo {
 [[nodiscard]] std::shared_ptr<Interface> make_openxr_interface();
 [[nodiscard]] const OpenXRInfo* openxr_info(const Interface& interface);
 
-// What the render device that draws into the headset is made with: driver, "vulkan" or "d3d12",
-// and the runtime's part in making it (render::DeviceOptions's driver and xr).
+// What the render device that draws into the headset is made with: driver, "vulkan", "d3d12" or
+// "opengl", and the runtime's part in making it (render::DeviceOptions's driver and xr).
 struct OpenXRDevice {
     std::string driver;
     const render::XrDeviceHooks* hooks = nullptr;
 };
 // Starts OpenXR to draw into the headset, as Godot does before it makes its rendering device:
 // the instance and system, with the graphics extension driver needs ("auto" is "d3d12" on
-// Windows and "vulkan" elsewhere). Make the render device with what it returns, which lives as
-// long as the interface, then call use_openxr_interface with it.
+// Windows and "vulkan" elsewhere; "opengl" on Windows and Linux). Make the render device with what
+// it returns, which lives as long as the interface, then call use_openxr_interface with it.
 Result<OpenXRDevice> prepare_openxr_device(world::World& world, std::string_view driver);
 // Starts the OpenXR interface and makes it the primary one, adding it when the world has none.
 // With the device made after prepare_openxr_device, the session draws with it; without one it is

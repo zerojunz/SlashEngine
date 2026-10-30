@@ -7,8 +7,25 @@
 #if defined(_WIN32)
 #include <d3d12.h>
 #define XR_USE_GRAPHICS_API_D3D12
+#define XR_USE_PLATFORM_WIN32
+#elif defined(__linux__)
+// EGL's types, from the headers SDL carries, without X11's; and the few of Xlib and GLX the Xlib
+// binding names, as handles of their size, so building needs neither's headers.
+#define EGL_NO_X11
+#include <EGL/egl.h>
+struct XlibDisplay;
+struct GlxConfig;
+struct GlxContext;
+using Display = XlibDisplay;
+using GLXDrawable = unsigned long; // NOLINT(google-runtime-int): Xlib's XID
+using GLXFBConfig = GlxConfig*;
+using GLXContext = GlxContext*;
+#define XR_USE_PLATFORM_EGL
+#define XR_USE_PLATFORM_XLIB
 #endif
+#define XR_USE_GRAPHICS_API_OPENGL
 #define XR_USE_GRAPHICS_API_VULKAN
+#include <cstdint>
 #include <openxr/openxr_platform.h>
 #include <string>
 
@@ -107,14 +124,15 @@ public:
     }
 
     // OpenXRVulkanExtension::set_session_create_and_get_next_pointer.
-    const void* binding(const render::NativeDevice& device) override {
+    Result<const void*> binding(const render::NativeDevice& device,
+                                const std::set<std::string, std::less<>>& /*enabled*/) override {
         binding_ = made<XrGraphicsBindingVulkan2KHR>(XR_TYPE_GRAPHICS_BINDING_VULKAN2_KHR);
         binding_.instance = static_cast<VkInstance>(device.instance);
         binding_.physicalDevice = static_cast<VkPhysicalDevice>(device.physical_device);
         binding_.device = static_cast<VkDevice>(device.device);
         binding_.queueFamilyIndex = device.queue_family;
         binding_.queueIndex = 0;
-        return &binding_;
+        return static_cast<const void*>(&binding_);
     }
 
     [[nodiscard]] std::vector<std::int64_t> formats() const override {
@@ -187,11 +205,12 @@ public:
         return {};
     }
 
-    const void* binding(const render::NativeDevice& device) override {
+    Result<const void*> binding(const render::NativeDevice& device,
+                                const std::set<std::string, std::less<>>& /*enabled*/) override {
         binding_ = made<XrGraphicsBindingD3D12KHR>(XR_TYPE_GRAPHICS_BINDING_D3D12_KHR);
         binding_.device = static_cast<ID3D12Device*>(device.device);
         binding_.queue = static_cast<ID3D12CommandQueue*>(device.queue);
-        return &binding_;
+        return static_cast<const void*>(&binding_);
     }
 
     [[nodiscard]] std::vector<std::int64_t> formats() const override {
@@ -227,10 +246,141 @@ private:
 };
 #endif
 
+#if defined(_WIN32) || defined(__linux__)
+class OpenGL final : public OpenXRGraphics {
+public:
+    [[nodiscard]] std::string_view extension() const override {
+        return XR_KHR_OPENGL_ENABLE_EXTENSION_NAME;
+    }
+    [[nodiscard]] std::vector<std::string_view> optional_extensions() const override {
+#if defined(__linux__)
+        return {XR_MNDX_EGL_ENABLE_EXTENSION_NAME};
+#else
+        return {};
+#endif
+    }
+    [[nodiscard]] std::string_view driver() const override { return "opengl"; }
+
+    // OpenXROpenGLExtension::check_graphics_api_support: the runtime's OpenGL versions, which
+    // OpenXR asks for before a session. The device's context is OpenGL 3.3 core or later.
+    Result<void> prepare(XrInstance instance, XrSystemId system,
+                         render::XrDeviceHooks& /*hooks*/) override {
+        const auto requirements = instance_call<PFN_xrGetOpenGLGraphicsRequirementsKHR>(
+            instance, "xrGetOpenGLGraphicsRequirementsKHR");
+        if (requirements == nullptr) {
+            return make_error(ErrorCode::PlatformFailure,
+                              "OpenXR: the runtime lacks XR_KHR_opengl_enable's functions");
+        }
+        auto needed =
+            made<XrGraphicsRequirementsOpenGLKHR>(XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_KHR);
+        if (const XrResult result = requirements(instance, system, &needed); XR_FAILED(result)) {
+            return failed("the runtime's OpenGL requirements couldn't be read", result);
+        }
+        if (needed.minApiVersionSupported > XR_MAKE_VERSION(4, 6, 0)) {
+            return make_error(ErrorCode::PlatformFailure,
+                              "OpenXR: the runtime needs an OpenGL newer than 4.6");
+        }
+        return {};
+    }
+
+    // OpenXROpenGLExtension::set_session_create_and_get_next_pointer, by the window system the
+    // context is on.
+    Result<const void*> binding(const render::NativeDevice& device,
+                                const std::set<std::string, std::less<>>& enabled) override {
+        using System = render::NativeDevice::GlSystem;
+#if defined(_WIN32)
+        if (device.gl == System::Wgl) {
+            win32_ =
+                made<XrGraphicsBindingOpenGLWin32KHR>(XR_TYPE_GRAPHICS_BINDING_OPENGL_WIN32_KHR);
+            win32_.hDC = static_cast<HDC>(device.instance);
+            win32_.hGLRC = static_cast<HGLRC>(device.device);
+            return static_cast<const void*>(&win32_);
+        }
+#else
+        if (device.gl == System::Egl) {
+            if (!enabled.contains(XR_MNDX_EGL_ENABLE_EXTENSION_NAME)) {
+                return make_error(ErrorCode::PlatformFailure,
+                                  "OpenXR: the context is EGL's, and the runtime lacks "
+                                  "XR_MNDX_egl_enable");
+            }
+            egl_ = made<XrGraphicsBindingEGLMNDX>(XR_TYPE_GRAPHICS_BINDING_EGL_MNDX);
+            egl_.getProcAddress =
+                reinterpret_cast<PFN_xrEglGetProcAddressMNDX>(device.get_proc_address);
+            egl_.display = device.instance;
+            egl_.config = device.physical_device;
+            egl_.context = device.device;
+            return static_cast<const void*>(&egl_);
+        }
+        if (device.gl == System::Glx) {
+            xlib_ = made<XrGraphicsBindingOpenGLXlibKHR>(XR_TYPE_GRAPHICS_BINDING_OPENGL_XLIB_KHR);
+            xlib_.xDisplay = static_cast<Display*>(device.instance);
+            xlib_.visualid = device.visual;
+            xlib_.glxFBConfig = static_cast<GLXFBConfig>(device.physical_device);
+            xlib_.glxDrawable = static_cast<GLXDrawable>(device.drawable);
+            xlib_.glxContext = static_cast<GLXContext>(device.device);
+            return static_cast<const void*>(&xlib_);
+        }
+#endif
+        return make_error(ErrorCode::PlatformFailure,
+                          "OpenXR: the OpenGL context is on a window system OpenXR can't bind");
+    }
+
+    [[nodiscard]] std::vector<std::int64_t> formats() const override {
+        constexpr std::int64_t kSrgb8Alpha8 = 0x8C43; // GL_SRGB8_ALPHA8
+        constexpr std::int64_t kRgba8 = 0x8058;       // GL_RGBA8
+        return {kSrgb8Alpha8, kRgba8};
+    }
+
+    // OpenXROpenGLExtension::get_swapchain_image_data.
+    Result<std::vector<void*>> images(XrSwapchain swapchain) override {
+        std::uint32_t count = 0;
+        if (const XrResult result = xrEnumerateSwapchainImages(swapchain, 0, &count, nullptr);
+            XR_FAILED(result)) {
+            return failed("failed to get swapchain image count", result);
+        }
+        std::vector<XrSwapchainImageOpenGLKHR> images(
+            count, made<XrSwapchainImageOpenGLKHR>(XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_KHR));
+        if (const XrResult result = xrEnumerateSwapchainImages(
+                swapchain, count, &count,
+                reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
+            XR_FAILED(result)) {
+            return failed("failed to get swapchain images", result);
+        }
+        std::vector<void*> out;
+        out.reserve(images.size());
+        for (const XrSwapchainImageOpenGLKHR& image : images) {
+            // A texture's name, carried as native images are.
+            out.push_back(reinterpret_cast<void*>( // NOLINT(performance-no-int-to-ptr)
+                std::uintptr_t{image.image}));
+        }
+        return out;
+    }
+
+private:
+#if defined(_WIN32)
+    XrGraphicsBindingOpenGLWin32KHR win32_ =
+        made<XrGraphicsBindingOpenGLWin32KHR>(XR_TYPE_GRAPHICS_BINDING_OPENGL_WIN32_KHR);
+#else
+    XrGraphicsBindingEGLMNDX egl_ =
+        made<XrGraphicsBindingEGLMNDX>(XR_TYPE_GRAPHICS_BINDING_EGL_MNDX);
+    XrGraphicsBindingOpenGLXlibKHR xlib_ =
+        made<XrGraphicsBindingOpenGLXlibKHR>(XR_TYPE_GRAPHICS_BINDING_OPENGL_XLIB_KHR);
+#endif
+};
+#endif
+
 } // namespace
 
 std::unique_ptr<OpenXRGraphics> make_vulkan_graphics() {
     return std::make_unique<Vulkan>();
+}
+
+std::unique_ptr<OpenXRGraphics> make_opengl_graphics() {
+#if defined(_WIN32) || defined(__linux__)
+    return std::make_unique<OpenGL>();
+#else
+    return nullptr;
+#endif
 }
 
 std::unique_ptr<OpenXRGraphics> make_d3d12_graphics() {
