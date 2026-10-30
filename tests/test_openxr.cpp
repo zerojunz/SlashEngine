@@ -15,6 +15,7 @@
 #include <doctest/doctest.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -252,11 +253,20 @@ TEST_CASE("openxr: runtimes that can't start a session say why") {
     }
 }
 
-TEST_CASE("openxr: a game draws each eye into the runtime's swapchains") {
-    // Eyes of 64x64 pixels; a red post 2 m ahead shows left of the left eye's center and right
-    // of the right eye's, over a blue background. The assets outlive the world that uses them.
-    asset::Assets assets{asset::folder_source("openxr_drawing")};
-    OpenXRRig rig("drawing", R"(extensions XR_KHR_vulkan_enable2 XR_EXT_palm_pose
+namespace {
+
+// Draws a world into the stand-in's headset with driver for three frames, as Game::draw_headset
+// does, and checks each eye's probed pixels, which the runtime logs, against what the device
+// drew there. Eyes are 64x64 pixels; an orange post 2 m ahead shows left of the left eye's
+// center and right of the right eye's, over a blue background. Its half-bright green tells a
+// copy that converts to sRGB a second time from one that doesn't.
+void draw_into_headset(const std::string& driver, const std::string& extensions,
+                       const std::string& session, const std::string& format) {
+    CAPTURE(driver);
+    const std::string name = "drawing_" + driver;
+    // The assets outlive the world that uses them.
+    asset::Assets assets{asset::folder_source("openxr_" + name)};
+    OpenXRRig rig(name, "extensions " + extensions + R"( XR_EXT_palm_pose
 view_size 64 64
 probe 38 32
 probe 26 32
@@ -268,9 +278,9 @@ frame 0 head 0 1.7 0 0 0 0 1
     const auto create = [&](std::string_view id, std::string_view components) {
         const entt::entity entity = rig.world->create(id).value();
         const json::Value values = json::parse(components).value();
-        for (const auto& [name, fields] : values.as_object()) {
+        for (const auto& [component, fields] : values.as_object()) {
             std::string path;
-            REQUIRE(rig.components.find(name)->assign(*rig.world, entity, fields, path).ok());
+            REQUIRE(rig.components.find(component)->assign(*rig.world, entity, fields, path).ok());
         }
     };
     create("env", R"({"WorldEnvironment": {"background_mode": "color",
@@ -278,21 +288,23 @@ frame 0 head 0 1.7 0 0 0 0 1
     create("post", R"({"Transform3D": {"position": [0, 1.7, -2]}, "MeshInstance3D": {},
                        "BoxMesh": {"size": [0.5, 3, 0.5]},
                        "StandardMaterial3D": {"shading_mode": "unshaded",
-                                              "albedo_color": [1, 0, 0, 1]}})");
+                                              "albedo_color": [1, 0.5, 0, 1]}})");
 
     // The runtime has its say in the device, then the session draws with it.
-    const auto prepared = xr::prepare_openxr_device(*rig.world, "vulkan");
+    const auto prepared = xr::prepare_openxr_device(*rig.world, driver);
     REQUIRE_MESSAGE(prepared.ok(), (prepared.ok() ? std::string() : prepared.error().message));
-    CHECK(prepared.value().driver == "vulkan");
+    CHECK(prepared.value().driver == driver);
     auto device = render::create_device(
-        {.window = nullptr, .driver = "vulkan", .debug = false, .xr = prepared.value().hooks});
+        {.window = nullptr, .driver = driver, .debug = false, .xr = prepared.value().hooks});
     if (!device) {
 #if defined(__linux__)
         if (!platform::environment_variable("SLASH_EXPECT_GPU").empty()) {
-            FAIL("SLASH_EXPECT_GPU is set, but Vulkan doesn't work: " << device.error().message);
+            FAIL("SLASH_EXPECT_GPU is set, but " << driver
+                                                 << " doesn't work: " << device.error().message);
         }
 #endif
-        MESSAGE("no Vulkan here, so drawing into a headset is skipped: " << device.error().message);
+        MESSAGE("no " << driver << " here, so drawing into a headset with it is skipped: "
+                      << device.error().message);
         xr::find_interface(*rig.world, "OpenXR")->uninitialize(*rig.world);
         return;
     }
@@ -301,8 +313,10 @@ frame 0 head 0 1.7 0 0 0 0 1
     xr::Interface* openxr = xr::primary_interface(*rig.world);
     const xr::OpenXRInfo* info = xr::openxr_info(*openxr);
     CHECK_FALSE(info->headless);
-    CHECK(info->graphics == "vulkan");
+    CHECK(info->graphics == driver);
     CHECK(openxr->render_target_size() == Vec2i{64, 64});
+    // What the device drew at each probe, in each eye.
+    std::vector<std::string> expected;
     {
         canvas::CanvasRenderer renderer(*device.value(), assets);
         int drawn = 0;
@@ -314,6 +328,7 @@ frame 0 head 0 1.7 0 0 0 0 1
                 ++drawn;
                 const std::vector<xr::View> views = xr::views(*rig.world);
                 REQUIRE(views.size() == frame.value().targets.size());
+                expected.clear();
                 for (std::size_t i = 0; i < views.size(); ++i) {
                     canvas::CanvasOptions eye;
                     eye.target = frame.value().targets[i];
@@ -323,6 +338,15 @@ frame 0 head 0 1.7 0 0 0 0 1
                         scene3d::eye_view(*rig.world, views[i].transform, views[i].fov.left,
                                           views[i].fov.right, views[i].fov.down, views[i].fov.up);
                     REQUIRE(renderer.draw(*rig.world, eye).ok());
+                    const auto image = device.value()->read_texture(eye.target);
+                    REQUIRE(image.ok());
+                    for (const auto& [x, y] : {std::pair{38U, 32U}, std::pair{26U, 32U}}) {
+                        const std::uint8_t* p = &image.value().pixels[((y * 64U) + x) * 4U];
+                        expected.push_back("eye " + std::to_string(i) + " " + std::to_string(x) +
+                                           " " + std::to_string(y) + " " + std::to_string(p[0]) +
+                                           " " + std::to_string(p[1]) + " " + std::to_string(p[2]) +
+                                           " " + std::to_string(p[3]));
+                    }
                 }
             }
             const auto ended = xr::end_openxr_frame(*rig.world);
@@ -333,19 +357,32 @@ frame 0 head 0 1.7 0 0 0 0 1
     openxr->uninitialize(*rig.world);
 
     const std::string log = rig.log();
-    CHECK(log.find("instance 1.1 XR_EXT_palm_pose XR_KHR_vulkan_enable2") != std::string::npos);
-    CHECK(log.find("vulkan device") != std::string::npos);
-    CHECK(log.find("create session vulkan") != std::string::npos);
-    // The runtime's first format is BGRA, which the device doesn't copy into; then sRGB RGBA.
-    CHECK(log.find("swapchain 64x64 format 43") != std::string::npos);
+    CHECK(log.find("create session " + session) != std::string::npos);
+    // The runtime's first format is one the device doesn't copy into; then sRGB RGBA.
+    CHECK(log.find("swapchain 64x64 format " + format) != std::string::npos);
     CHECK(log.find("layers 1") != std::string::npos);
-    // The post is in each eye where that eye sees it, and the background around it.
-    CHECK(log.find("eye 0 38 32 255 0 0 255") != std::string::npos);
-    CHECK(log.find("eye 1 38 32 0 0 255 255") != std::string::npos);
-    CHECK(log.find("eye 0 26 32 0 0 255 255") != std::string::npos);
-    CHECK(log.find("eye 1 26 32 255 0 0 255") != std::string::npos);
+    // The post is in each eye where that eye sees it, and the background around it, as drawn.
+    REQUIRE(expected.size() == 4);
+    CHECK(expected[0].starts_with("eye 0 38 32 255 1")); // orange, half-bright green
+    CHECK(expected[1].ends_with(" 0 0 255 255"));        // left eye at 26: background
+    CHECK(expected[2].ends_with(" 0 0 255 255"));        // right eye at 38: background
+    CHECK(expected[3].starts_with("eye 1 26 32 255 1"));
+    for (const std::string& line : expected) {
+        CHECK_MESSAGE(log.find(line + "\n") != std::string::npos, line);
+    }
     CHECK(log.find("eye 1 2 2 0 0 255 255") != std::string::npos);
     CHECK(log.find("unreadable") == std::string::npos);
+}
+
+} // namespace
+
+TEST_CASE("openxr: a game draws each eye into the runtime's swapchains") {
+    // Vulkan: the runtime makes the instance and the device.
+    draw_into_headset("vulkan", "XR_KHR_vulkan_enable2", "vulkan", "43");
+#if defined(__linux__)
+    // OpenGL on EGL, where tests make their contexts.
+    draw_into_headset("opengl", "XR_KHR_opengl_enable XR_MNDX_egl_enable", "egl", "35907");
+#endif
 }
 
 TEST_CASE("openxr: xr.set switches a session between the test headset and the runtime") {
