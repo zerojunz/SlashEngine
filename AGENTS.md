@@ -1239,6 +1239,24 @@ then the frame before's jitter) and `run_fsr3`, the CPU twin, which `tests/test_
 every device to; a change to one goes in both. `examples/fsr3-3d` rebuilds, turns and recolors a
 card.
 
+Frame generation is the frame interpolation and optical flow of AMD's FSR 3.1 (FidelityFX SDK
+1.1.4), which Godot doesn't have. A Forward+ frame with `Scene3D::frame_generation`
+(`uses_frame_generation`) draws motion vectors in its prepass (without a jitter unless TAA or FSR
+2 adds one) and keeps them with its depth through AMD's prepare pass
+(`prepare_frame_generation`); `RenderDevice::generate_frame(target, into)` then writes into
+`into` the frame halfway between `target`'s last two: the optical flow's luma pyramid, scene
+change detection and block search (`run_optical_flow`), the game's and the flow's vector fields,
+the disocclusion mask, the blend of the two frames and the inpainting (`run_frame_generation`).
+`src/frame_generation.hpp` holds the sizes and the CPU twin, which the software device runs, with
+AMD's notice; a frame that drew no meshes for it (2D, or no scene) is moved only as its camera
+turned, so the optical flow carries it. As AMD's, it goes by the game's vectors until ten frames
+after a reset or scene change. It differs from AMD's where AMD's passes race (the game's field
+takes every primary vector before any secondary one, the scene change pass reads its histograms
+before clearing them, and pyramids are made a level a pass), so every device can make the same
+pixels. `tests/test_frame_generation.cpp` moves a card, a picture and blocks;
+`examples/frame-generation-3d` slides a card past a post. The GPU devices and presenting the
+generated frames in the game loop are still to come.
+
 MetalFX is Godot's `metalfx_spatial` and `metalfx_temporal`, after its `metal_fx.mm`: Apple's
 scalers run in the GPU device on Metal (`src/metalfx.mm`, `metalfx_none.cpp` elsewhere), encoded
 into SDL's command buffer through the calls `cmake/patches/sdl-native-handles.cmake` adds to

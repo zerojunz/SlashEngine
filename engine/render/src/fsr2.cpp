@@ -1264,20 +1264,26 @@ Fsr2Uniforms fsr2_uniforms(const Fsr2Frame& frame) {
     const auto mip = fsr2_luma_mip_size(frame.render_width, frame.render_height);
     u.options = {static_cast<std::int32_t>(mip[0]), static_cast<std::int32_t>(mip[1]),
                  sharpness > 1e-6F ? 0 : 1, ortho ? 1 : 0};
+    u.reprojection = reprojection(frame.view_projection, frame.previous);
+    return u;
+}
+
+std::array<Float4, 4> reprojection(const Mat4& view_projection, const Mat4& previous) {
     // Godot's (correction * prev_proj) * prev_transform.affine_inverse() * cur_transform *
     // (correction * cur_proj).inverse(), worked out in doubles.
-    const std::array<double, 16> to_world = inverse_matrix(frame.view_projection);
+    std::array<Float4, 4> out{};
+    const std::array<double, 16> to_world = inverse_matrix(view_projection);
     for (std::size_t column = 0; column < 4; ++column) {
         for (std::size_t row = 0; row < 4; ++row) {
             double sum = 0.0;
             for (std::size_t k = 0; k < 4; ++k) {
-                sum += static_cast<double>(frame.previous.at((k * 4) + row)) *
-                       to_world.at((column * 4) + k);
+                sum +=
+                    static_cast<double>(previous.at((k * 4) + row)) * to_world.at((column * 4) + k);
             }
-            u.reprojection.at(column).at(row) = static_cast<float>(sum);
+            out.at(column).at(row) = static_cast<float>(sum);
         }
     }
-    return u;
+    return out;
 }
 
 std::array<float, 2> derive_motion_vector(const std::array<Float4, 4>& reprojection,

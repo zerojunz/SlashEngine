@@ -674,6 +674,17 @@ public:
                           "on macOS 13 and iOS 16 or later");
     }
 
+    // Writes into into, a render target of target's size, the frame halfway between target's
+    // last two frames, as AMD's FSR 3 frame generation makes it, outside any frame: the game's
+    // motion vectors and depth where its last frame drew meshes with Scene3D::frame_generation,
+    // and the optical flow of the two pictures everywhere. A first frame, a frame after a scene
+    // change and one whose frame before wasn't generated from give target's last frame as it is.
+    // The software device generates frames.
+    [[nodiscard]] virtual Result<void> generate_frame(TextureId /*target*/, TextureId /*into*/) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "this device doesn't generate frames yet: only the software device does");
+    }
+
     // The device's native objects, as an OpenXR runtime's session binds them (Godot hands its
     // graphics extension the rendering device's): the GPU device's, else empty.
     [[nodiscard]] virtual NativeDevice native_device() const { return {}; }
