@@ -1253,9 +1253,15 @@ turned, so the optical flow carries it. As AMD's, it goes by the game's vectors 
 after a reset or scene change. It differs from AMD's where AMD's passes race (the game's field
 takes every primary vector before any secondary one, the scene change pass reads its histograms
 before clearing them, and pyramids are made a level a pass), so every device can make the same
-pixels. `tests/test_frame_generation.cpp` moves a card, a picture and blocks;
-`examples/frame-generation-3d` slides a card past a post. The GPU devices and presenting the
-generated frames in the game loop are still to come.
+pixels. The GPU device (Vulkan, Metal, Direct3D 12) and the WebGPU device run the passes as
+compute dispatches of `shaders/frame_generation.hlsl`, the CPU twin's port, over two storage
+buffers per target (`frame_generation_layout`: the frames, pyramids and fields as words, the
+fields written by atomic max as atoms), in the order `frame_generation_prepare_plan` and
+`frame_generation_plan` give, and `frame_generation_draw.hlsl` draws the result into `into`; a
+change to the twin goes in the shader too. `tests/test_frame_generation.cpp` moves a card, a
+picture and blocks, and holds every device to the software device's frames;
+`examples/frame-generation-3d` slides a card past a post. Presenting the generated frames in the
+game loop is still to come.
 
 MetalFX is Godot's `metalfx_spatial` and `metalfx_temporal`, after its `metal_fx.mm`: Apple's
 scalers run in the GPU device on Metal (`src/metalfx.mm`, `metalfx_none.cpp` elsewhere), encoded

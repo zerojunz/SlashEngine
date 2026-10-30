@@ -667,7 +667,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
     - [x] AMD's optical flow and frame interpolation as a CPU twin, and
           `RenderDevice::generate_frame` on the software device, from the prepass's depth and
           motion vectors (`Scene3D::frame_generation`)
-    - [ ] The GPU and WebGPU devices, held to the CPU twin
+    - [x] The GPU and WebGPU devices, held to the CPU twin
     - [ ] Presenting and pacing generated frames between a running game's frames
 - [x] Hardware ray tracing: acceleration structures and ray queries in `render::RenderDevice`,
       native on Vulkan, Direct3D 12 and Metal beside SDL3's GPU API (which has none), with a CPU

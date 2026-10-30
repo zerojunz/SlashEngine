@@ -679,7 +679,7 @@ public:
     // motion vectors and depth where its last frame drew meshes with Scene3D::frame_generation,
     // and the optical flow of the two pictures everywhere. A first frame, a frame after a scene
     // change and one whose frame before wasn't generated from give target's last frame as it is.
-    // The software device generates frames.
+    // The software, GPU (Forward+) and WebGPU devices generate frames.
     [[nodiscard]] virtual Result<void> generate_frame(TextureId /*target*/, TextureId /*into*/) {
         return make_error(ErrorCode::InvalidArgument,
                           "this device doesn't generate frames yet: only the software device does");

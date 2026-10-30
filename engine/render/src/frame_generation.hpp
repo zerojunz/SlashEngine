@@ -1,5 +1,7 @@
 #pragma once
 
+#include "taa.hpp"
+
 #include "slash/render/device.hpp"
 
 #include <array>
@@ -28,8 +30,9 @@ namespace slash::render::detail {
 
 using Float4 = std::array<float, 4>;
 
-// Whether a frame keeps its prepass for frame generation: Forward+, not a capture or path traced.
-[[nodiscard]] bool uses_frame_generation(const Scene3D& scene);
+// The camera of a frame with no scene.
+inline constexpr Mat4 kNoCamera{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F,
+                                0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
 
 // The optical flow's levels and its blocks' size in pixels.
 inline constexpr std::uint32_t kOpticalFlowLevels = 7;
@@ -129,5 +132,106 @@ struct FrameGenerationHistory {
 void run_frame_generation(std::span<const std::uint8_t> current, std::uint32_t width,
                           std::uint32_t height, const FramePrepared& prepared, bool reset,
                           FrameGenerationHistory& history, std::span<std::uint8_t> out);
+
+// --- The GPU devices' passes (shaders/frame_generation.hlsl) ---------------------------------
+
+// The passes, as the shader numbers them.
+enum class FrameGenerationPass : std::uint8_t {
+    ClearWords = 0,
+    ClearAtoms,
+    CopyWords,
+    Prepare,
+    Pack,
+    Luma,
+    Histogram,
+    SceneChange,
+    Search,
+    Filter,
+    Scale,
+    Setup,
+    Reconstruct,
+    GamePrimary,
+    GameSecondary,
+    GamePyramid,
+    FlowField,
+    Disocclusion,
+    Interpolate,
+    InpaintPyramid,
+    Inpaint,
+};
+
+// The parts of the two buffers a target's frame generation works in, as the shader numbers them:
+// words, then atoms (written by atomic max or add). The frame before's colors and lumas, the scene
+// change histograms and the state are kept between frames; the dilated depth and motion and the
+// previous depth are the last frame's prepare pass.
+enum class FrameGenerationSection : std::uint8_t {
+    PrevRgba = 0,
+    CurRgba,
+    PrevLuma,
+    CurLuma,
+    SceneKept,
+    State,
+    Searched,
+    Vectors,
+    Prediction,
+    GamePyramid,
+    Disocclusion,
+    OutRgba,
+    Mask,
+    InpaintPyramid,
+    DilatedDepth,
+    DilatedMotion,
+    PreviousDepth, // atoms from here
+    InterpolatedDepth,
+    GameField,
+    FlowField,
+    Histograms,
+    Count,
+};
+
+// Where each section starts, in uints, and the two buffers' sizes in uints, for frames drawn at
+// the render size and shown at the display size.
+struct FrameGenerationLayout {
+    std::array<std::uint32_t, 2> render{};
+    std::array<std::uint32_t, 2> display{};
+    std::array<std::uint32_t, static_cast<std::size_t>(FrameGenerationSection::Count)> sections{};
+    std::uint32_t words = 0;
+    std::uint32_t atoms = 0;
+};
+[[nodiscard]] FrameGenerationLayout frame_generation_layout(std::uint32_t render_width,
+                                                            std::uint32_t render_height,
+                                                            std::uint32_t display_width,
+                                                            std::uint32_t display_height);
+
+// The shader's uniforms (272 bytes).
+struct FrameGenerationUniforms {
+    std::array<std::uint32_t, 4> step{}; // the pass, its level, and two numbers it takes
+    std::array<std::int32_t, 4> sizes{}; // the render size, then the display size
+    std::array<std::int32_t, 4> flow_sizes{};
+    Float4 view_depth{};
+    Float4 camera{}; // 1 when orthogonal, unused, 1 over the display size
+    std::array<Float4, 4> reprojection{};
+    std::array<std::uint32_t, 32> sections{};
+};
+static_assert(sizeof(FrameGenerationUniforms) == 272);
+
+// A dispatch of the shader: its uniforms and thread groups of 8 x 8.
+struct FrameGenerationDispatch {
+    FrameGenerationUniforms uniforms;
+    std::array<std::uint32_t, 3> groups{};
+};
+
+// The prepare pass's dispatches for a frame, from its prepass (the depth and motion textures), or
+// with none (still: nothing near, moved as its camera turned), with the reprojection to the frame
+// before and the camera.
+[[nodiscard]] std::vector<FrameGenerationDispatch>
+frame_generation_prepare_plan(const FrameGenerationLayout& layout,
+                              const std::array<Float4, 4>& reprojection,
+                              const FrameGenerationCamera& camera, bool still);
+// Generating a frame's dispatches, after the pack pass reads the frame. A reset starts the
+// history again.
+[[nodiscard]] std::vector<FrameGenerationDispatch>
+frame_generation_plan(const FrameGenerationLayout& layout, const FrameGenerationCamera& camera,
+                      bool reset);
 
 } // namespace slash::render::detail
