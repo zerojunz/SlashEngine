@@ -244,6 +244,14 @@ Reply xr_set(Session& session, const json::Value& params) {
         test->set_play_area_size(
             {static_cast<float>(items[0].as_double()), static_cast<float>(items[1].as_double())});
     }
+    if (const json::Value* ipd = params.find("ipd")) {
+        test->set_ipd(static_cast<float>(ipd->as_double()));
+    }
+    if (const json::Value* size = params.find("render_target_size")) {
+        const json::Array& items = size->as_array();
+        test->set_render_target_size({static_cast<std::int32_t>(items[0].as_int()),
+                                      static_cast<std::int32_t>(items[1].as_int())});
+    }
     if (const json::Value* blend = params.find("environment_blend_mode")) {
         (void)test->set_environment_blend_mode(
             xr::blend_mode_named(blend->as_string()).value_or(xr::BlendMode::Opaque));
@@ -293,6 +301,15 @@ void register_xr_commands(Registry& registry) {
     trackers["type"] = "object";
     trackers["description"] = "Changes by tracker name: head, left_hand, right_hand or new ones.";
     trackers["additionalProperties"] = tracker_schema();
+    json::Value ipd = property("number", "Meters between the eyes. Default: 0.064.");
+    ipd["minimum"] = 0;
+    ipd["maximum"] = 0.2;
+    json::Value target = property("array", "Each view's image, in pixels. Default: [1024, 1024].");
+    target["items"]["type"] = "integer";
+    target["items"]["minimum"] = 1;
+    target["items"]["maximum"] = 4096;
+    target["minItems"] = 2;
+    target["maxItems"] = 2;
     registry.add({
         .name = "xr.set",
         .description = "Moves the test headset's trackers, presses their inputs and sets its "
@@ -306,6 +323,8 @@ void register_xr_commands(Registry& registry) {
             {"play_area_mode", choice({"sitting", "roomscale", "stage"}, "")},
             {"play_area_size", numbers(2, "Meters, x by z.")},
             {"environment_blend_mode", choice({"opaque", "additive", "alpha"}, "")},
+            {"ipd", std::move(ipd)},
+            {"render_target_size", std::move(target)},
             {"center_on_hmd",
              choice({"reset_full_rotation", "reset_but_keep_tilt", "dont_reset_rotation"},
                     "Makes where the head is the play space's center, as Godot's center_on_hmd; "

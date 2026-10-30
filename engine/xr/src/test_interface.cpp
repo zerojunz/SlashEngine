@@ -1,6 +1,7 @@
 #include "internal.hpp"
 
 #include <algorithm>
+#include <numbers>
 #include <utility>
 
 namespace slash::xr {
@@ -10,6 +11,19 @@ constexpr float kStandingHeight = 1.6F;
 // Where the hands rest from the head: forward and down, a shoulder's width apart.
 constexpr Vec3 kLeftHand{-0.2F, -0.4F, -0.3F};
 constexpr Vec3 kRightHand{0.2F, -0.4F, -0.3F};
+// Each eye's field of view in degrees from its center, outward and inward, up and down, as a
+// headset's eyes see more to their own side.
+constexpr float kOuterDegrees = 50.0F;
+constexpr float kInnerDegrees = 40.0F;
+constexpr float kUpDegrees = 45.0F;
+constexpr float kDownDegrees = 45.0F;
+constexpr float kPi = std::numbers::pi_v<float>;
+
+float tangent(float degrees) {
+    const Vec2 turn = cos_sin(degrees * kPi / 180.0F);
+    return turn.y / turn.x;
+}
+
 // The poses Godot's default action map gives each controller.
 constexpr std::array<std::string_view, 4> kHandPoses{"default", "aim", "grip", "palm"};
 
@@ -174,6 +188,41 @@ world::Affine3D TestInterface::camera_transform(const world::World& world) const
     // scale our origin point of our transform
     head.origin = head.origin * world_scale(world);
     return reference_frame(world) * head;
+}
+
+world::Affine3D TestInterface::transform_for_view(const world::World& world, std::uint32_t view,
+                                                  const world::Affine3D& cam_transform) const {
+    // As OpenXRInterface::get_transform_for_view: the view's pose, the head's with each eye half
+    // the distance between them to its side, its origin times the world scale.
+    world::Affine3D t;
+    if (const auto found = state_.trackers.find("head"); found != state_.trackers.end()) {
+        if (const auto pose = found->second.poses.find("default");
+            pose != found->second.poses.end()) {
+            t = pose->second.transform;
+        }
+    }
+    if (state_.stereo) {
+        world::Affine3D eye;
+        eye.origin.x = (view == 0 ? -0.5F : 0.5F) * state_.ipd;
+        t = t * eye;
+    }
+    t.origin = t.origin * world_scale(world);
+    return cam_transform * reference_frame(world) * t;
+}
+
+Fov TestInterface::fov_for_view(std::uint32_t view) const {
+    const float outer = tangent(kOuterDegrees);
+    const float inner = tangent(kInnerDegrees);
+    Fov fov{
+        .left = -outer, .right = outer, .down = -tangent(kDownDegrees), .up = tangent(kUpDegrees)};
+    if (state_.stereo) {
+        if (view == 0) {
+            fov.right = inner;
+        } else {
+            fov.left = -inner;
+        }
+    }
+    return fov;
 }
 
 bool TestInterface::supports_play_area_mode(PlayArea mode) const {

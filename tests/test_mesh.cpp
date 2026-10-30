@@ -249,6 +249,25 @@ TEST_CASE("perspective and orthogonal projections are Godot's, with reversed dep
     CHECK(depth_at(o, 101.0F) == doctest::Approx(0.0F));
 }
 
+TEST_CASE("frustum is Godot's set_frustum for a view's tangents, as an XR eye's projection") {
+    // Symmetric tangents give the perspective projection.
+    const float t = std::tan(37.5F * 3.14159265F / 180.0F);
+    const Mat4 symmetric = render::frustum(-t * 1.5F, t * 1.5F, -t, t, 0.05F, 4000.0F);
+    const Mat4 p = render::perspective(75.0F, 1.5F, 0.05F, 4000.0F);
+    for (std::size_t i = 0; i < 16; ++i) {
+        CHECK(symmetric[i] == doctest::Approx(p[i]).epsilon(1e-5));
+    }
+    // A left eye seeing further out than in: a point straight ahead lands right of center, and
+    // the view's edges land at the image's.
+    const Mat4 eye = render::frustum(-1.2F, 0.8F, -1.0F, 1.0F, 0.1F, 100.0F);
+    const auto x_at = [&](float x, float distance) {
+        return ((eye[0] * x) + (eye[8] * -distance)) / (eye[11] * -distance);
+    };
+    CHECK(x_at(0.0F, 2.0F) == doctest::Approx(0.2F));
+    CHECK(x_at(-2.4F, 2.0F) == doctest::Approx(-1.0F));
+    CHECK(x_at(1.6F, 2.0F) == doctest::Approx(1.0F));
+}
+
 TEST_CASE("look_at sees the target straight ahead, down -Z") {
     const Mat4 camera = render::look_at({0.0F, 0.0F, 5.0F}, {0.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F});
     // The origin is 5 in front; a point above it is above in the camera's space.

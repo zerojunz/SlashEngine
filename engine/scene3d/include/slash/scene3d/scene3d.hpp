@@ -221,6 +221,12 @@ public:
     // Call it just before each tick.
     void before_tick(const world::World& world);
 
+    // Sees the next frames through view instead of the current camera's own, as a headset's eye
+    // sees through an XRCamera3D (XRInterface::get_transform_for_view and
+    // get_projection_for_view); the current camera still picks the environment, its cull mask and
+    // its LOD settings. nullopt goes back to the camera's view.
+    void set_view(const std::optional<CameraView>& view) { view_ = view; }
+
     // Works out the frame for a target of width by height pixels, interpolation of the way from
     // the transforms before the last tick to the current ones, its shadows drawn with shadows,
     // shown at time seconds of game time, over which auto exposure adapts and from which depth of
@@ -277,6 +283,7 @@ public:
     }
 
 private:
+    std::optional<CameraView> view_;
     struct Local {
         Vec3 position;
         Quat rotation;
