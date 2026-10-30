@@ -1875,6 +1875,19 @@ so the editor's `move_line_marks` keeps breakpoints and gutter entries on their 
 Godot's per-line data does. `examples/text-editor` writes a letter and `examples/code-editor`
 colors, numbers, searches and scrolls code.
 
+Accessibility is Godot 4.5's: `src/accessibility.cpp` (`slash/ui/accessibility.hpp`) builds the
+tree its controls fill in `NOTIFICATION_ACCESSIBILITY_UPDATE`, base class first as Godot sends
+it (Node, CanvasItem, Control, then the control's class): roles, names (a button's text, a text
+field's placeholder), values, checked states, ranges, flags, bounds, actions and related
+controls from `Control`'s `accessibility_*` fields, with open popup menus and their items.
+`ui::accessibility_action` runs the actions Godot's controls add (click, focus, increment,
+set_value, scrolling), `ui::accessibility_problems` its accessibility warnings, and
+`ui.accessibility` and `ui.accessibility_action` serve them. `gui.accessibility_support` says when
+controls serve a screen reader (`ui::accessibility_enabled`), and while they do `focus_mode`
+`"accessibility"` (`MenuButton`'s and `ScrollBar`'s) takes focus. The platform backend that
+hands the tree to the system's screen reader isn't written yet. `examples/accessibility` works a
+pause menu as a screen reader would.
+
 ## Localization
 
 `engine/l10n` is Godot's TranslationServer. `project.json`'s `internationalization` lists CSV,

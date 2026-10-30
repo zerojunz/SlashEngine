@@ -1,0 +1,57 @@
+{
+  "entities": {
+    "close": {
+      "components": {
+        "Control": {"custom_minimum_size": [16, 16]},
+        "TextureButton": {}
+      }
+    },
+    "difficulty": {
+      "components": {
+        "Control": {"accessibility_name": "Difficulty"},
+        "OptionButton": {"items": [{"text": "Easy"}, {"text": "Normal"}, {"text": "Hard"}], "selected": 1}
+      }
+    },
+    "hint": {
+      "components": {
+        "Label": {"text": "Changes apply at once"}
+      }
+    },
+    "menu": {
+      "components": {
+        "BoxContainer": {"vertical": true},
+        "Control": {"children": ["title", "resume", "music", "volume", "difficulty", "player", "hint", "close"], "offset_left": 10, "offset_top": 6}
+      }
+    },
+    "music": {
+      "components": {
+        "CheckBox": {"button_pressed": true, "text": "Music"}
+      }
+    },
+    "player": {
+      "components": {
+        "Control": {"accessibility_described_by_nodes": ["hint"], "custom_minimum_size": [120, 0]},
+        "LineEdit": {"placeholder_text": "Your name"}
+      }
+    },
+    "resume": {
+      "components": {
+        "Button": {"text": "Resume"},
+        "Control": {"accessibility_description": "Back to the game"}
+      }
+    },
+    "title": {
+      "components": {
+        "Control": {"accessibility_live": "polite"},
+        "Label": {"text": "Paused"}
+      }
+    },
+    "volume": {
+      "components": {
+        "Control": {"accessibility_labeled_by_nodes": ["title"], "accessibility_name": "Volume", "custom_minimum_size": [120, 0]},
+        "Slider": {"step": 10, "value": 50}
+      }
+    }
+  },
+  "format": 1
+}

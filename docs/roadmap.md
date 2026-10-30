@@ -936,6 +936,11 @@ Exit: an agent builds a small 3D sample end to end.
   - [ ] Sound in videos (Opus in WebM or Matroska)
   - [ ] A full AV1 encoder for the tools, so agents turn captured frames into cutscenes
 - [ ] Accessibility through AccessKit
+  - [x] Godot 4.5's accessibility tree from controls (roles, names, values, states, actions,
+        related controls, open menus), `focus_mode` `accessibility`, `gui.accessibility_support`,
+        `ui.accessibility` and `ui.accessibility_action`
+  - [ ] The platform backend that hands the tree to VoiceOver, Narrator, Orca, TalkBack and the
+        web's screen readers
 - [ ] Platform services, like Unity's Analytics, Ads and In-App Purchasing: one cross-platform C++
       API and command set, with the store or network chosen per export preset
   - [ ] Analytics: custom events, sessions and funnels, batched and sent as JSON to an endpoint
@@ -1033,7 +1038,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | XR | OpenXR | 8 | Planned |
 | Localization | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | 8 | In progress: translation tables, the language setting, auto-translated controls, pseudo-localization, `l10n.extract` and `l10n.check` are done |
 | Video playback | AV1 through dav1d | 8 | Done (sound to come) |
-| Accessibility | AccessKit | 8 | Planned |
+| Accessibility | AccessKit | 8 | Tree done, backend to come |
 | Storyboard | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | 5, 6 | Done: files, commands and checks, palette, texture and triangle budget checks included, model review, the project map, and the style refined from accepted assets |
 | Analytics, ads and in-app purchases | One API for analytics, ads and purchases; StoreKit, Play Billing and a developer-chosen analytics endpoint in the repo, ad networks as outside adapters | 8 | In progress: the API, its backend interfaces, consent and the test backend are done |
 | Closed vendor SDKs | SDK packages: an `sdk.json` per SDK that exports fetch, check and link on all six platforms, with JNI and Objective-C bridges and engine interfaces for the glue | 6 | In progress: packages, exports, `sdk.add`, `sdk.check`, Android libraries and Maven, services and glue code |

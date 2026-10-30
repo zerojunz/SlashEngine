@@ -20,10 +20,10 @@
 #include "slash/command/lightmap.hpp"
 #include "slash/command/model_cleanup.hpp"
 #include "slash/command/navigation.hpp"
+#include "slash/command/net.hpp"
 #include "slash/command/perf.hpp"
 #include "slash/command/place.hpp"
 #include "slash/command/replay.hpp"
-#include "slash/command/net.hpp"
 #include "slash/command/services.hpp"
 #include "slash/command/session.hpp"
 #include "slash/command/terrain.hpp"
@@ -55,6 +55,7 @@
 #include "slash/soundtrack/score.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/text/text.hpp"
+#include "slash/ui/accessibility.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/camera2d.hpp"
 #include "slash/world/component_registry.hpp"
@@ -3453,6 +3454,196 @@ Reply ui_focus(Session& session, const json::Value& params) {
     json::Value result;
     const entt::entity owner = ui::focus_owner(world);
     result["focused"] = owner != entt::null ? json::Value(world.id_of(owner)) : json::Value();
+    return Reply::success(std::move(result));
+}
+
+// IDs of entities, for related controls; those without one are left out.
+json::Array ids_of(const world::World& world, const std::vector<entt::entity>& entities) {
+    json::Array out;
+    for (const entt::entity entity : entities) {
+        if (const std::string_view id = world.id_of(entity); !id.empty()) {
+            out.emplace_back(id);
+        }
+    }
+    return out;
+}
+
+// An accessibility tree element as JSON, with its children, leaving out what is as by default.
+json::Value access_element(const world::World& world, const ui::AccessTree& tree,
+                           std::size_t index) {
+    const ui::AccessElement& element = tree.elements[index];
+    json::Value out;
+    if (const std::string_view id = world.id_of(element.entity); !id.empty()) {
+        out["id"] = id;
+    }
+    if (element.item >= 0) {
+        out["item"] = element.item;
+    }
+    out["role"] = element.role;
+    const auto put = [&out](std::string_view key, const std::string& value) {
+        if (!value.empty()) {
+            out[std::string(key)] = value;
+        }
+    };
+    put("name", element.name);
+    put("description", element.description);
+    put("value", element.value);
+    put("placeholder", element.placeholder);
+    put("tooltip", element.tooltip);
+    put("popup", element.popup_type);
+    if (element.live != "off") {
+        out["live"] = element.live;
+    }
+    if (element.checked) {
+        out["checked"] = *element.checked;
+    }
+    if (element.range) {
+        const auto& range = *element.range;
+        out["range"] = rounded(json::Array{range[0], range[1], range[2], range[3]});
+    }
+    if (element.color) {
+        out["color"] = rounded(
+            json::Array{element.color->x, element.color->y, element.color->z, element.color->w});
+    }
+    if (element.selection) {
+        out["selection"] = json::Array{(*element.selection)[0], (*element.selection)[1]};
+    }
+    out["rect"] =
+        rounded(json::Array{element.rect.x, element.rect.y, element.rect.z, element.rect.w});
+    if (element.selected) {
+        out["selected"] = true;
+    }
+    if (tree.focus == index) {
+        out["focused"] = true;
+    }
+    if (!element.flags.empty()) {
+        json::Array flags;
+        for (const std::string_view flag : element.flags) {
+            flags.emplace_back(flag);
+        }
+        out["flags"] = std::move(flags);
+    }
+    if (!element.actions.empty()) {
+        json::Array actions;
+        for (const std::string_view action : element.actions) {
+            actions.emplace_back(action);
+        }
+        out["actions"] = std::move(actions);
+    }
+    const auto related = [&](std::string_view key, const std::vector<entt::entity>& entities) {
+        if (json::Array ids = ids_of(world, entities); !ids.empty()) {
+            out[std::string(key)] = std::move(ids);
+        }
+    };
+    related("controls", element.controls);
+    related("described_by", element.described_by);
+    related("labeled_by", element.labeled_by);
+    related("flow_to", element.flow_to);
+    related("radio_group", element.radio_group);
+    if (!element.children.empty()) {
+        json::Array children;
+        for (const std::size_t child : element.children) {
+            children.push_back(access_element(world, tree, child));
+        }
+        out["children"] = std::move(children);
+    }
+    return out;
+}
+
+Reply ui_accessibility(Session& session, const json::Value& params) {
+    const world::World& world = session.world();
+    text::Fonts* fonts = ui::fonts(world);
+    SLASH_ASSERT(fonts != nullptr, "sessions install ui");
+    Vec2 viewport = ui::settings(world).viewport;
+    if (const json::Value* size = params.find("viewport"); size != nullptr) {
+        viewport = {static_cast<float>(size->as_array()[0].as_double()),
+                    static_cast<float>(size->as_array()[1].as_double())};
+    }
+    std::vector<entt::entity> wanted;
+    if (const json::Value* ids = params.find("ids"); ids != nullptr) {
+        const json::Array& list = ids->as_array();
+        for (std::size_t i = 0; i < list.size(); ++i) {
+            const std::string& id = list[i].as_string();
+            const entt::entity entity = world.find(id);
+            if (entity == entt::null) {
+                return unknown_entity(world, id, "/ids/" + std::to_string(i));
+            }
+            wanted.push_back(entity);
+        }
+    }
+    const json::Value* hidden = params.find("hidden");
+    const ui::Layout layout = ui::layout(world, *fonts, viewport);
+    const ui::AccessTree tree =
+        ui::accessibility_tree(world, layout, hidden != nullptr && hidden->as_bool());
+    json::Array elements;
+    if (wanted.empty()) {
+        for (const std::size_t root : tree.roots) {
+            elements.push_back(access_element(world, tree, root));
+        }
+    } else {
+        for (const entt::entity entity : wanted) {
+            for (std::size_t i = 0; i < tree.elements.size(); ++i) {
+                if (tree.elements[i].entity == entity && tree.elements[i].item < 0 &&
+                    !tree.elements[i].menu) {
+                    elements.push_back(access_element(world, tree, i));
+                    break;
+                }
+            }
+        }
+    }
+    // Problems of the controls returned.
+    std::set<std::string, std::less<>> shown;
+    const auto collect = [&](const auto& self, const json::Value& element) -> void {
+        if (const json::Value* id = element.find("id"); id != nullptr) {
+            shown.insert(id->as_string());
+        }
+        if (const json::Value* children = element.find("children"); children != nullptr) {
+            for (const json::Value& child : children->as_array()) {
+                self(self, child);
+            }
+        }
+    };
+    for (const json::Value& element : elements) {
+        collect(collect, element);
+    }
+    json::Value result;
+    result["tree"] = std::move(elements);
+    result["enabled"] = ui::accessibility_enabled(world);
+    json::Array problems;
+    for (const ui::Problem& problem : ui::accessibility_problems(world, tree)) {
+        if (!shown.contains(problem.id)) {
+            continue;
+        }
+        json::Value item;
+        item["id"] = problem.id;
+        item["path"] = problem.path;
+        item["message"] = problem.message;
+        problems.push_back(std::move(item));
+    }
+    if (!problems.empty()) {
+        result["problems"] = std::move(problems);
+    }
+    return Reply::success(std::move(result));
+}
+
+Reply ui_accessibility_action(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    const std::string id = text(params, "id");
+    const entt::entity entity = world.find(id);
+    if (entity == entt::null) {
+        return unknown_entity(world, id, "/id");
+    }
+    const json::Value* item = params.find("item");
+    const json::Value* value = params.find("value");
+    const Result<void> done = ui::accessibility_action(
+        world, entity, text(params, "action"), value != nullptr ? *value : json::Value(),
+        item != nullptr ? static_cast<int>(item->as_double()) : -1);
+    if (!done) {
+        return param_error(code::kInvalidParams, item != nullptr ? "/item" : "/action",
+                           quoted(id) + ": " + done.error().message);
+    }
+    json::Value result;
+    result["tick"] = world.tick();
     return Reply::success(std::move(result));
 }
 
@@ -7155,6 +7346,63 @@ void register_builtin_commands(Registry& registry) {
             {"show", property("boolean", "False hides the tooltip. Default true.")},
         }),
         .handler = ui_tooltip,
+    });
+    json::Value access_viewport = property("array", "[width, height] to lay out in. Default: "
+                                                    "the project's window size.");
+    access_viewport["items"]["type"] = "number";
+    access_viewport["items"]["exclusiveMinimum"] = 0;
+    access_viewport["minItems"] = 2;
+    access_viewport["maxItems"] = 2;
+    registry.add({
+        .name = "ui.accessibility",
+        .description = "Returns what a screen reader gets, as Godot's controls describe "
+                       "themselves: the controls' tree, each with its role, name, value, "
+                       "description, tooltip, checked, range [value, min, max, step], rect, "
+                       "flags, focused, actions (besides focus, blur, show_tooltip, "
+                       "hide_tooltip and scroll_into_view) and related controls; open menus "
+                       "with their items. Also problems such as a focusable control with no "
+                       "name.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema({
+            {"ids", names_property("Only these controls, with what is under them. Default: "
+                                   "all.")},
+            {"viewport", std::move(access_viewport)},
+            {"hidden", property("boolean", "Include hidden controls. Default false.")},
+        }),
+        .handler = ui_accessibility,
+    });
+    json::Value access_action = property("string", "The action.");
+    access_action["enum"] = json::Array{"click",        "focus",
+                                        "blur",         "show_tooltip",
+                                        "hide_tooltip", "scroll_into_view",
+                                        "increment",    "decrement",
+                                        "set_value",    "scroll_up",
+                                        "scroll_down",  "scroll_left",
+                                        "scroll_right", "set_scroll_offset"};
+    json::Value access_item = property("integer", "A menu item's index, for click.");
+    access_item["minimum"] = 0;
+    json::Value access_value;
+    access_value["description"] = "set_value's number or text, set_scroll_offset's [x, y], or "
+                                  "\"item\" to scroll an eighth of a page.";
+    registry.add({
+        .name = "ui.accessibility_action",
+        .description = "Does what a screen reader asks of a control, as Godot's accessibility "
+                       "actions: click presses a button (or picks an open menu's item) at the "
+                       "next tick, increment and decrement step a Range, set_value sets a "
+                       "Range or text field, scroll_* scroll a ScrollContainer by a page. "
+                       "Returns the tick.",
+        .capabilities = {Run},
+        .effect = Effect::Edit,
+        .params = params_schema(
+            {
+                {"id", property("string", "The control, or the open menu's owner.")},
+                {"action", std::move(access_action)},
+                {"item", std::move(access_item)},
+                {"value", std::move(access_value)},
+            },
+            {"id", "action"}),
+        .handler = ui_accessibility_action,
     });
     json::Value search_flags = property("array", "How it matches. Default: the TextEdit's "
                                                  "search_flags.");

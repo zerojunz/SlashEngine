@@ -72,7 +72,7 @@ as `entity.get`, reject it as an unknown param.
 | Lights | [`light.sample`](#lightsample) |
 | Global illumination | [`lightmap.bake`](#lightmapbake), [`voxel_gi.bake`](#voxel_gibake) |
 | Occlusion culling | [`occluder.bake`](#occluderbake) |
-| UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.drag`](#uidrag), [`ui.tooltip`](#uitooltip), [`ui.focus`](#uifocus), [`ui.search`](#uisearch), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
+| UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.drag`](#uidrag), [`ui.tooltip`](#uitooltip), [`ui.focus`](#uifocus), [`ui.accessibility`](#uiaccessibility), [`ui.accessibility_action`](#uiaccessibility_action), [`ui.search`](#uisearch), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
 | Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.analyze`](#audioanalyze), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus), [`audio.spectrum`](#audiospectrum), [`audio.record`](#audiorecord), [`audio.input`](#audioinput) |
 | Soundtrack | [`score.import`](#scoreimport), [`score.export`](#scoreexport), [`soundtrack.render`](#soundtrackrender), [`soundtrack.plan`](#soundtrackplan), [`soundtrack.arrange`](#soundtrackarrange), [`soundtrack.check`](#soundtrackcheck) |
@@ -2158,6 +2158,71 @@ Needs: `run`. Emits `focus_exited` and `focus_entered` at the next `step`.
 `focus_mode` is `"none"` (the default for controls other than buttons and `LineEdit`s), can't
 take focus, and that is an error. [`ui.layout`](#uilayout) marks the control with focus
 `"focused": true`.
+
+### ui.accessibility
+
+Returns what a screen reader gets: the [accessibility tree](scene-format.md#accessibility) of the
+controls, as Godot 4.5's controls fill it. Each element has its `role`, and where it has them its
+`name`, `description`, `value`, `placeholder`, `tooltip`, `live`, `popup` (`list` or `menu`),
+`checked`, `range` (`[value, min, max, step]`), `color`, `selection` (`[from, to]` in
+characters), `rect` (`[x, y, w, h]` on screen), `selected`, `focused`, `flags`, `actions` (besides
+`focus`, `blur`, `show_tooltip`, `hide_tooltip` and `scroll_into_view`, which every control
+takes), the related controls (`controls`, `described_by`, `labeled_by`, `flow_to`,
+`radio_group`) and `children`. An open popup menu is a `menu` element with an element per item
+(`item` is its index).
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `ids` | array of strings | all | Only these controls, each with what is under it |
+| `viewport` | `[width, height]` | the project's window size | The viewport to lay out in |
+| `hidden` | boolean | `false` | Include hidden controls, flagged `hidden` |
+
+Needs: `read`. From [examples/accessibility](../../examples/accessibility/):
+
+```json
+{"ids": ["volume"]}
+```
+
+```json
+{"enabled":true,"tree":[{"actions":["decrement","increment","set_value"],"id":"volume","labeled_by":["title"],"name":"Volume","range":[50,0,100,10],"rect":[10,100,161,16],"role":"slider"}]}
+```
+
+`enabled` says whether controls serve a screen reader now (project.json's
+`gui.accessibility_support`). `problems` lists controls that can take focus with no name,
+`accessibility_name`s holding the control's class name or a control character, and related
+controls that aren't controls, each with the JSON Pointer of the field to fix; with `ids`, only
+those of the controls returned.
+
+### ui.accessibility_action
+
+Does what a screen reader asks of a control, as the actions Godot's controls add: `click`
+presses a button at the next tick (as [`ui.press`](#uipress)) or, with `item`, picks an open
+popup menu's item (as [`ui.select`](#uiselect)); `focus` and `blur` give and take focus;
+`show_tooltip` and `hide_tooltip`; `scroll_into_view` scrolls the `ScrollContainer` it is in to
+show it; `increment` and `decrement` step a `Slider`, `ScrollBar` or `ProgressBar` by its step
+(1 without one); `set_value` sets a Range's number or a text field's text; `scroll_up`,
+`scroll_down`, `scroll_left` and `scroll_right` scroll a `ScrollContainer` by a page (an eighth
+of one with `value` `"item"`) and `set_scroll_offset` to `value` `[x, y]`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | The control, or the open popup menu's owner |
+| `action` | string | required | One of the actions above |
+| `item` | integer | | A popup menu item's index, for `click` |
+| `value` | any | | `set_value`'s number or text, `set_scroll_offset`'s `[x, y]`, or `"item"` |
+
+Needs: `run`. Takes `dry_run`, and one `undo` reverts what it set.
+
+```json
+{"id": "volume", "action": "increment"}
+```
+
+```json
+{"tick":1}
+```
+
+An action the control doesn't take, a disabled button or an item that can't be picked is an
+error that says why.
 
 ### ui.search
 
