@@ -455,6 +455,31 @@ if(dav1d_ADDED)
     endif()
 endif()
 
+# The Opus sound in WebM and Matroska videos (engine/video), with its own CMake build: fixed
+# point and no intrinsics, so it decodes with integer math only and the same samples come out on
+# every platform, and without the deep-learning extras (DRED, OSCE), whose models a clone lacks.
+slash_add_dependency(opus
+    SYSTEM TRUE
+    OPTIONS
+        "OPUS_BUILD_SHARED_LIBRARY OFF"
+        "OPUS_BUILD_TESTING OFF"
+        "OPUS_BUILD_PROGRAMS OFF"
+        "OPUS_FIXED_POINT ON"
+        "OPUS_DISABLE_INTRINSICS ON"
+        "OPUS_HARDENING OFF"
+        "OPUS_STACK_PROTECTOR OFF"
+        "OPUS_FORTIFY_SOURCE OFF"
+        "OPUS_DRED OFF"
+        "OPUS_OSCE OFF"
+        "OPUS_INSTALL_PKG_CONFIG_MODULE OFF"
+        "OPUS_INSTALL_CMAKE_CONFIG_MODULE OFF")
+if(opus_ADDED)
+    set_target_properties(opus PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    if(NOT MSVC)
+        target_compile_options(opus PRIVATE -w)
+    endif()
+endif()
+
 # 3D models, as Godot imports glTF 2.0: cgltf parses .gltf and .glb files and MikkTSpace makes
 # the tangents a model leaves out, as Godot's SurfaceTool does (engine/scene3d); stb_image decodes
 # the JPEG textures models carry, which SDL can't (engine/render, beside PNG and BMP).
