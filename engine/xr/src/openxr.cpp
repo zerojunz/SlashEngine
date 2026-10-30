@@ -3,8 +3,10 @@
 #include "slash/xr/openxr.hpp"
 
 #include "internal.hpp"
+#include "openxr_graphics.hpp"
 
 #include "slash/core/log.hpp"
+#include "slash/render/device.hpp"
 
 #include <algorithm>
 #include <array>
@@ -243,6 +245,12 @@ public:
 
     [[nodiscard]] const OpenXRInfo& info() const { return info_; }
 
+    Result<OpenXRDevice> prepare_device(world::World& world, std::string_view driver);
+    // The device the session draws with, set before initialize.
+    void attach_device(render::RenderDevice* device) { device_ = device; }
+    Result<OpenXRFrame> begin_frame(world::World& world);
+    Result<void> end_frame();
+
 private:
     struct ActionTracker {
         std::size_t tracker = 0;
@@ -270,6 +278,11 @@ private:
     }
     Result<void> create_instance(const Settings& settings, std::string_view application);
     Result<void> create_session();
+    Result<void> create_swapchains();
+    void destroy_swapchains();
+    [[nodiscard]] bool drawing() const { return graphics_ != nullptr && device_ != nullptr; }
+    bool wait_frame();
+    void sync_actions(world::World& world);
     bool setup_play_space();
     bool reset_emulated_floor_height();
     void load_action_map();
@@ -325,6 +338,22 @@ private:
     Vec3 head_angular_velocity_;
     Confidence head_confidence_ = Confidence::None;
     bool reference_stage_changing_ = false;
+    // Drawing into the headset: the graphics extension, what it asked of the render device and
+    // the device, a swapchain and a render target for each view, and the frame begun.
+    struct Swapchain {
+        XrSwapchain handle = XR_NULL_HANDLE;
+        std::vector<void*> images;
+        std::uint32_t acquired = 0;
+        bool has_image = false;
+        render::TextureId target = render::TextureId::None;
+    };
+    std::unique_ptr<detail::OpenXRGraphics> graphics_;
+    render::XrDeviceHooks hooks_;
+    bool prepared_ = false;
+    render::RenderDevice* device_ = nullptr;
+    std::int64_t swapchain_format_ = 0;
+    std::vector<Swapchain> swapchains_;
+    bool frame_begun_ = false;
 };
 
 Result<void> OpenXR::fail(std::string message) {
@@ -363,10 +392,18 @@ Result<void> OpenXR::create_instance(const Settings& settings, std::string_view 
         available_.insert(property.extensionName);
     }
 
-    // The extensions Godot's wrappers ask for that this interface uses: drawing nothing yet, the
-    // session is headless where the runtime allows it.
-    std::vector<std::string> wanted{std::string(kHeadless), std::string(kLocalFloor),
-                                    std::string(kPalmPose)};
+    // The extensions Godot's wrappers ask for that this interface uses: the graphics API's when
+    // it draws into the headset, else a headless session where the runtime allows one.
+    std::vector<std::string> wanted{std::string(kLocalFloor), std::string(kPalmPose)};
+    if (graphics_ != nullptr) {
+        if (!available_.contains(graphics_->extension())) {
+            return fail("OpenXR: the runtime can't draw with " + std::string(graphics_->driver()) +
+                        " (it lacks " + std::string(graphics_->extension()) + ")");
+        }
+        wanted.emplace_back(graphics_->extension());
+    } else {
+        wanted.emplace_back(kHeadless);
+    }
     for (const MapProfile& profile : default_action_map().profiles) {
         if (!profile.extension.empty()) {
             wanted.push_back(profile.extension);
@@ -484,16 +521,19 @@ Result<void> OpenXR::create_instance(const Settings& settings, std::string_view 
 
 // OpenXRAPI::create_session, load_supported_reference_spaces and setup_view_space.
 Result<void> OpenXR::create_session() {
-    if (!extension_enabled(kHeadless)) {
-        return fail("OpenXR: the runtime needs a graphics binding to start a session, and "
-                    "drawing into headsets isn't written yet (it lacks XR_MND_headless)");
-    }
     auto info = made<XrSessionCreateInfo>(XR_TYPE_SESSION_CREATE_INFO);
     info.systemId = system_;
+    if (drawing()) {
+        info.next = graphics_->binding(device_->native_device());
+    } else if (!extension_enabled(kHeadless)) {
+        return fail("OpenXR: the runtime needs a graphics binding to start a session: a game "
+                    "with a window draws into the headset, and sessions without one need "
+                    "XR_MND_headless");
+    }
     if (const XrResult result = xrCreateSession(instance_, &info, &session_); XR_FAILED(result)) {
         return fail("OpenXR: failed to create session [" + error_string(instance_, result) + "]");
     }
-    info_.headless = true;
+    info_.headless = !drawing();
     std::uint32_t count = 0;
     (void)xrEnumerateReferenceSpaces(session_, 0, &count, nullptr);
     reference_spaces_.resize(count);
@@ -515,6 +555,78 @@ Result<void> OpenXR::create_session() {
     }
     play_space_dirty_ = true;
     return {};
+}
+
+// OpenXRAPI::create_main_swapchains and OpenXRAPI::obtain_swapchain_formats: a color swapchain
+// for each view at its recommended size, in the first format the runtime lists that the device
+// copies into, and a render target of that size to draw the view in.
+Result<void> OpenXR::create_swapchains() {
+    std::uint32_t count = 0;
+    (void)xrEnumerateSwapchainFormats(session_, 0, &count, nullptr);
+    std::vector<std::int64_t> offered(count);
+    if (!check(xrEnumerateSwapchainFormats(session_, count, &count, offered.data()),
+               "failed to get swapchain formats")) {
+        return fail("OpenXR: the runtime listed no swapchain formats");
+    }
+    swapchain_format_ = 0;
+    const std::vector<std::int64_t> copied = graphics_->formats();
+    for (const std::int64_t format : offered) {
+        if (std::ranges::find(copied, format) != copied.end()) {
+            swapchain_format_ = format;
+            break;
+        }
+    }
+    if (swapchain_format_ == 0) {
+        return fail("OpenXR: the runtime offers no 8-bit RGBA swapchain format");
+    }
+    for (const XrViewConfigurationView& view : view_configuration_views_) {
+        auto create = made<XrSwapchainCreateInfo>(XR_TYPE_SWAPCHAIN_CREATE_INFO);
+        create.usageFlags =
+            XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT;
+        create.format = swapchain_format_;
+        create.sampleCount = 1;
+        create.width = view.recommendedImageRectWidth;
+        create.height = view.recommendedImageRectHeight;
+        create.faceCount = 1;
+        create.arraySize = 1;
+        create.mipCount = 1;
+        Swapchain swapchain;
+        if (const XrResult result = xrCreateSwapchain(session_, &create, &swapchain.handle);
+            XR_FAILED(result)) {
+            destroy_swapchains();
+            return fail("OpenXR: failed to create swapchain [" + error_string(instance_, result) +
+                        "]");
+        }
+        auto images = graphics_->images(swapchain.handle);
+        auto target = device_->create_texture(
+            {.width = create.width, .height = create.height, .render_target = true});
+        if (!images || !target) {
+            xrDestroySwapchain(swapchain.handle);
+            if (target) {
+                device_->destroy_texture(target.value());
+            }
+            destroy_swapchains();
+            return fail(!images ? images.error().message
+                                : "OpenXR: no render target for a view: " + target.error().message);
+        }
+        swapchain.images = std::move(images).value();
+        swapchain.target = target.value();
+        swapchains_.push_back(std::move(swapchain));
+    }
+    return {};
+}
+
+void OpenXR::destroy_swapchains() {
+    for (const Swapchain& swapchain : swapchains_) {
+        if (swapchain.handle != XR_NULL_HANDLE) {
+            xrDestroySwapchain(swapchain.handle);
+        }
+        if (device_ != nullptr && swapchain.target != render::TextureId::None) {
+            device_->destroy_texture(swapchain.target);
+        }
+    }
+    swapchains_.clear();
+    frame_begun_ = false;
 }
 
 // OpenXRAPI::setup_play_space.
@@ -754,11 +866,26 @@ Result<void> OpenXR::initialize(world::World& world) {
         return {};
     }
     const Settings& current = settings(world);
-    if (auto made = create_instance(current, {}); !made) {
-        return made;
+    if (!prepared_) {
+        graphics_.reset();
+        if (auto made = create_instance(current, {}); !made) {
+            return made;
+        }
+    }
+    prepared_ = false;
+    if (graphics_ != nullptr && device_ == nullptr) {
+        finish();
+        return fail("OpenXR: the render device made for the headset wasn't given");
     }
     if (auto made = create_session(); !made) {
+        finish();
         return made;
+    }
+    if (drawing()) {
+        if (auto made = create_swapchains(); !made) {
+            finish();
+            return made;
+        }
     }
     // The trackers the action map's top-level paths name, then the actions on them.
     for (const MapAction& action : default_action_map().actions) {
@@ -803,6 +930,7 @@ void OpenXR::uninitialize(world::World& world) {
 
 // OpenXRAPI::destroy_session.
 void OpenXR::destroy_session() {
+    destroy_swapchains();
     if (running_ && session_ != XR_NULL_HANDLE) {
         xrEndSession(session_);
     }
@@ -850,6 +978,10 @@ void OpenXR::finish() {
     }
     available_.clear();
     enabled_.clear();
+    graphics_.reset();
+    hooks_ = {};
+    prepared_ = false;
+    device_ = nullptr;
     initialized_ = false;
     session_state_ = XR_SESSION_STATE_UNKNOWN;
     info_.session_state = SessionState::Unknown;
@@ -1075,59 +1207,74 @@ void OpenXR::locate_views() {
     }
 }
 
-// OpenXRInterface::process with OpenXRAPI::process, then the frame Godot's renderer would
-// begin and end (pre_render, end_frame) with nothing drawn into it.
+// OpenXRAPI::process's xrWaitFrame, then the play space set up again when it changed.
+bool OpenXR::wait_frame() {
+    auto wait = made<XrFrameWaitInfo>(XR_TYPE_FRAME_WAIT_INFO);
+    frame_state_ = made<XrFrameState>(XR_TYPE_FRAME_STATE);
+    if (!check(xrWaitFrame(session_, &wait, &frame_state_), "xrWaitFrame() was not successful")) {
+        return false;
+    }
+    if (floor_emulation_.should_reset_floor_height && !play_space_dirty_) {
+        (void)reset_emulated_floor_height();
+        floor_emulation_.should_reset_floor_height = false;
+    }
+    if (play_space_dirty_) {
+        (void)setup_play_space();
+        play_space_dirty_ = false;
+    }
+    return true;
+}
+
+// OpenXRAPI::get_head_center and sync_action_sets, at the time the last frame waited for is
+// shown.
+void OpenXR::sync_actions(world::World& world) {
+    world::Affine3D head;
+    Vec3 linear;
+    Vec3 angular;
+    const Confidence confidence = frame_state_.predictedDisplayTime != 0
+                                      ? locate(view_space_, head, linear, angular)
+                                      : Confidence::None;
+    head_confidence_ = confidence;
+    if (confidence != Confidence::None) {
+        head_transform_ = head;
+        head_linear_velocity_ = linear;
+        head_angular_velocity_ = angular;
+    }
+    if (action_set_ != XR_NULL_HANDLE) {
+        const XrActiveActionSet active{action_set_, XR_NULL_PATH};
+        auto sync = made<XrActionsSyncInfo>(XR_TYPE_ACTIONS_SYNC_INFO);
+        sync.countActiveActionSets = 1;
+        sync.activeActionSets = &active;
+        if (check(xrSyncActions(session_, &sync), "failed to sync active action sets")) {
+            if (interaction_profile_changed_) {
+                check_profiles(world);
+                interaction_profile_changed_ = false;
+            }
+            for (TrackerEntry& tracker : trackers_) {
+                handle_tracker(world, tracker);
+            }
+        }
+    }
+}
+
+// OpenXRInterface::process with OpenXRAPI::process. A session that draws waits for its frames as
+// it draws them (begin_frame); a headless one waits for one each tick and ends it with nothing
+// in it, as Godot's renderer would begin and end it (pre_render, end_frame).
 void OpenXR::process(world::World& world) {
     if (instance_ == XR_NULL_HANDLE) {
         return;
     }
     poll_events(world);
     if (running_) {
-        auto wait = made<XrFrameWaitInfo>(XR_TYPE_FRAME_WAIT_INFO);
-        frame_state_ = made<XrFrameState>(XR_TYPE_FRAME_STATE);
-        if (check(xrWaitFrame(session_, &wait, &frame_state_),
-                  "xrWaitFrame() was not successful")) {
-            if (floor_emulation_.should_reset_floor_height && !play_space_dirty_) {
-                (void)reset_emulated_floor_height();
-                floor_emulation_.should_reset_floor_height = false;
+        if (drawing()) {
+            if (frame_state_.predictedDisplayTime != 0 && !play_space_dirty_) {
+                sync_actions(world);
             }
-            if (play_space_dirty_) {
-                (void)setup_play_space();
-                play_space_dirty_ = false;
-            }
-            // OpenXRAPI::get_head_center.
-            world::Affine3D head;
-            Vec3 linear;
-            Vec3 angular;
-            const Confidence confidence = frame_state_.predictedDisplayTime != 0
-                                              ? locate(view_space_, head, linear, angular)
-                                              : Confidence::None;
-            head_confidence_ = confidence;
-            if (confidence != Confidence::None) {
-                head_transform_ = head;
-                head_linear_velocity_ = linear;
-                head_angular_velocity_ = angular;
-            }
-            // OpenXRAPI::sync_action_sets.
-            if (action_set_ != XR_NULL_HANDLE) {
-                const XrActiveActionSet active{action_set_, XR_NULL_PATH};
-                auto sync = made<XrActionsSyncInfo>(XR_TYPE_ACTIONS_SYNC_INFO);
-                sync.countActiveActionSets = 1;
-                sync.activeActionSets = &active;
-                if (check(xrSyncActions(session_, &sync), "failed to sync active action sets")) {
-                    if (interaction_profile_changed_) {
-                        check_profiles(world);
-                        interaction_profile_changed_ = false;
-                    }
-                    for (TrackerEntry& tracker : trackers_) {
-                        handle_tracker(world, tracker);
-                    }
-                }
-            }
+        } else if (wait_frame()) {
+            sync_actions(world);
             locate_views();
             auto begin = made<XrFrameBeginInfo>(XR_TYPE_FRAME_BEGIN_INFO);
             if (check(xrBeginFrame(session_, &begin), "failed to begin frame")) {
-                // end_frame with no layers: nothing is drawn into the headset yet.
                 auto end = made<XrFrameEndInfo>(XR_TYPE_FRAME_END_INFO);
                 end.displayTime = frame_state_.predictedDisplayTime;
                 end.environmentBlendMode = blend_mode_;
@@ -1146,6 +1293,153 @@ void OpenXR::process(world::World& world) {
         emit(world, "pose_recentered");
         reference_stage_changing_ = false;
     }
+}
+
+// OpenXRAPI::prepare_for_rendering's choice of graphics extension, then OpenXRAPI::initialize,
+// as Godot starts OpenXR before it makes its rendering device: the device is made with what the
+// runtime asks of it.
+Result<OpenXRDevice> OpenXR::prepare_device(world::World& world, std::string_view driver) {
+    if (initialized_ || prepared_) {
+        return make_error(ErrorCode::InvalidArgument, "OpenXR has already started");
+    }
+    const std::string_view wanted =
+#if defined(_WIN32)
+        driver == "auto" ? std::string_view("d3d12") : driver;
+#else
+        driver == "auto" ? std::string_view("vulkan") : driver;
+#endif
+    graphics_ = nullptr;
+    if (wanted == "d3d12") {
+        graphics_ = detail::make_d3d12_graphics();
+    } else if (wanted == "vulkan") {
+        graphics_ = detail::make_vulkan_graphics();
+    }
+    if (graphics_ == nullptr) {
+        return make_error(
+            ErrorCode::InvalidArgument,
+            "OpenXR draws with \"vulkan\"" +
+                std::string(detail::make_d3d12_graphics() != nullptr ? " or \"d3d12\"" : "") +
+                ", not \"" + std::string(driver) + "\"");
+    }
+    if (auto made = create_instance(settings(world), {}); !made) {
+        finish();
+        return made.error();
+    }
+    hooks_ = {};
+    if (auto ready = graphics_->prepare(instance_, system_, hooks_); !ready) {
+        const std::string message = ready.error().message;
+        finish();
+        return fail(message).error();
+    }
+    prepared_ = true;
+    info_.graphics = std::string(graphics_->driver());
+    return OpenXRDevice{.driver = info_.graphics, .hooks = &hooks_};
+}
+
+// OpenXRAPI::pre_render: the frame waited for, the views located, the frame begun and, when the
+// runtime shows it, each view's swapchain image acquired.
+Result<OpenXRFrame> OpenXR::begin_frame(world::World& /*world*/) {
+    OpenXRFrame frame;
+    if (!drawing() || !running_ || frame_begun_) {
+        return frame;
+    }
+    if (!wait_frame()) {
+        return frame;
+    }
+    locate_views();
+    auto begin = made<XrFrameBeginInfo>(XR_TYPE_FRAME_BEGIN_INFO);
+    if (const XrResult result = xrBeginFrame(session_, &begin); XR_FAILED(result)) {
+        return fail("OpenXR: failed to begin frame [" + error_string(instance_, result) + "]")
+            .error();
+    }
+    frame_begun_ = true;
+    frame.render = frame_state_.shouldRender == XR_TRUE;
+    if (!frame.render) {
+        return frame;
+    }
+    for (Swapchain& swapchain : swapchains_) {
+        auto acquire = made<XrSwapchainImageAcquireInfo>(XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO);
+        if (!check(xrAcquireSwapchainImage(swapchain.handle, &acquire, &swapchain.acquired),
+                   "failed to acquire swapchain image")) {
+            continue;
+        }
+        auto wait = made<XrSwapchainImageWaitInfo>(XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO);
+        wait.timeout = XR_INFINITE_DURATION;
+        swapchain.has_image = check(xrWaitSwapchainImage(swapchain.handle, &wait),
+                                    "failed to wait for swapchain image");
+        if (!swapchain.has_image) {
+            auto release = made<XrSwapchainImageReleaseInfo>(XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO);
+            (void)check(xrReleaseSwapchainImage(swapchain.handle, &release),
+                        "failed to release swapchain image");
+        }
+    }
+    frame.render = std::ranges::all_of(
+        swapchains_, [](const Swapchain& swapchain) { return swapchain.has_image; });
+    for (const Swapchain& swapchain : swapchains_) {
+        frame.targets.push_back(swapchain.target);
+    }
+    return frame;
+}
+
+// OpenXRAPI::end_frame: each view's render target copied into its swapchain image, the images
+// released and the frame ended with a projection layer of the views, or none when the runtime
+// doesn't show it.
+Result<void> OpenXR::end_frame() {
+    if (!frame_begun_) {
+        return {};
+    }
+    frame_begun_ = false;
+    Result<void> copied;
+    bool complete = !swapchains_.empty();
+    std::vector<XrCompositionLayerProjectionView> projection;
+    for (std::size_t view = 0; view < swapchains_.size(); ++view) {
+        Swapchain& swapchain = swapchains_[view];
+        if (!swapchain.has_image) {
+            complete = false;
+            continue;
+        }
+        const XrViewConfigurationView& size = view_configuration_views_.at(view);
+        if (copied) {
+            copied = device_->copy_to_native(
+                swapchain.target,
+                render::NativeTexture{.image = swapchain.images.at(swapchain.acquired),
+                                      .view = nullptr,
+                                      .format = static_cast<std::uint32_t>(swapchain_format_),
+                                      .width = size.recommendedImageRectWidth,
+                                      .height = size.recommendedImageRectHeight,
+                                      .pixels = {}});
+        }
+        auto release = made<XrSwapchainImageReleaseInfo>(XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO);
+        (void)check(xrReleaseSwapchainImage(swapchain.handle, &release),
+                    "failed to release swapchain image");
+        swapchain.has_image = false;
+        auto layer_view =
+            made<XrCompositionLayerProjectionView>(XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW);
+        layer_view.pose = views_.at(view).pose;
+        layer_view.fov = views_.at(view).fov;
+        layer_view.subImage.swapchain = swapchain.handle;
+        layer_view.subImage.imageRect.extent = {
+            static_cast<std::int32_t>(size.recommendedImageRectWidth),
+            static_cast<std::int32_t>(size.recommendedImageRectHeight)};
+        projection.push_back(layer_view);
+    }
+    auto layer = made<XrCompositionLayerProjection>(XR_TYPE_COMPOSITION_LAYER_PROJECTION);
+    layer.space = play_space_;
+    layer.viewCount = static_cast<std::uint32_t>(projection.size());
+    layer.views = projection.data();
+    const auto* layers = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer);
+    const bool shown =
+        frame_state_.shouldRender == XR_TRUE && complete && copied && view_pose_valid_;
+    auto end = made<XrFrameEndInfo>(XR_TYPE_FRAME_END_INFO);
+    end.displayTime = frame_state_.predictedDisplayTime;
+    end.environmentBlendMode = blend_mode_;
+    end.layerCount = shown ? 1 : 0;
+    end.layers = shown ? &layers : nullptr;
+    if (const XrResult result = xrEndFrame(session_, &end); XR_FAILED(result)) {
+        return fail("OpenXR: failed to end frame [" + error_string(instance_, result) + "]");
+    }
+    ++info_.frames;
+    return copied;
 }
 
 // OpenXRInterface::get_camera_transform.
@@ -1317,13 +1611,53 @@ const OpenXRInfo* openxr_info(const Interface& interface) {
     return &static_cast<const OpenXR&>(interface).info();
 }
 
-Result<void> use_openxr_interface(world::World& world) {
+namespace {
+
+OpenXR& openxr_of(world::World& world) {
     Interface* found = find_interface(world, kName);
     if (found == nullptr) {
         add_interface(world, make_openxr_interface());
         found = find_interface(world, kName);
     }
-    return found->initialize(world);
+    return static_cast<OpenXR&>(*found);
+}
+
+OpenXR* running_openxr(world::World& world) {
+    Interface* primary = primary_interface(world);
+    if (primary == nullptr || primary->name() != kName) {
+        return nullptr;
+    }
+    return static_cast<OpenXR*>(primary);
+}
+
+} // namespace
+
+Result<OpenXRDevice> prepare_openxr_device(world::World& world, std::string_view driver) {
+    return openxr_of(world).prepare_device(world, driver);
+}
+
+Result<void> use_openxr_interface(world::World& world, render::RenderDevice* device) {
+    OpenXR& openxr = openxr_of(world);
+    if (!openxr.is_initialized()) {
+        openxr.attach_device(device);
+    }
+    return openxr.initialize(world);
+}
+
+Result<OpenXRFrame> begin_openxr_frame(world::World& world) {
+    OpenXR* openxr = running_openxr(world);
+    if (openxr == nullptr) {
+        return OpenXRFrame{};
+    }
+    return openxr->begin_frame(world);
+}
+
+Result<void> end_openxr_frame(world::World& world) {
+    OpenXR* openxr = running_openxr(world);
+    if (openxr == nullptr) {
+        return {};
+    }
+    return openxr->end_frame();
 }
 
 } // namespace slash::xr

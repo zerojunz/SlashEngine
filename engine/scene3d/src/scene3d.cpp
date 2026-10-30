@@ -375,6 +375,23 @@ entt::entity current_camera(const world::World& world, const world::Tree3D& tree
     return world::current_camera(world, tree);
 }
 
+CameraView eye_view(const world::World& world, const world::Affine3D& eye, float left, float right,
+                    float down, float up) {
+    float near = 0.05F;
+    float far = 4000.0F;
+    const world::Tree3D tree(world);
+    if (const entt::entity camera = scene3d::current_camera(world, tree); camera != entt::null) {
+        const auto& lens = world.ecs().get<const world::Camera3D>(camera);
+        near = lens.near;
+        far = lens.far;
+    }
+    CameraView out;
+    out.eye = orthonormalized(eye);
+    out.view = out.eye.inverse().matrix();
+    out.projection = render::frustum(left, right, down, up, near, far);
+    return out;
+}
+
 CameraView camera_view(const world::Camera3D& camera, const world::Affine3D& global, float aspect) {
     world::Affine3D eye = orthonormalized(global);
     eye.origin = eye.origin + scaled(eye.y, camera.v_offset) + scaled(eye.x, camera.h_offset);

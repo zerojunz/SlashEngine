@@ -1,5 +1,11 @@
+#include "slash/asset/assets.hpp"
+#include "slash/canvas/canvas.hpp"
 #include "slash/command/builtin.hpp"
 #include "slash/command/session.hpp"
+#include "slash/core/json.hpp"
+#include "slash/platform/process.hpp"
+#include "slash/render/device.hpp"
+#include "slash/scene3d/scene3d.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/world.hpp"
@@ -203,7 +209,7 @@ TEST_CASE("openxr: a runtime's session runs, tracking the head and hands by Godo
     CHECK(info->session_state == xr::SessionState::Exiting);
 
     const std::string log = rig.log();
-    CHECK(log.find("instance 1.1 XR_MND_headless XR_EXT_local_floor XR_EXT_palm_pose") !=
+    CHECK(log.find("instance 1.1 XR_EXT_local_floor XR_EXT_palm_pose XR_MND_headless") !=
           std::string::npos);
     CHECK(log.find("suggest /interaction_profiles/oculus/touch_controller") != std::string::npos);
     // Profiles whose extension the runtime lacks are left out.
@@ -227,7 +233,7 @@ TEST_CASE("openxr: local_floor is the stage's height under local where the runti
 
 TEST_CASE("openxr: runtimes that can't start a session say why") {
     {
-        // No headless sessions: drawing into headsets comes later.
+        // Without headless sessions, a session needs a render device to draw with.
         OpenXRRig rig("graphics", "extensions XR_EXT_palm_pose\n", {.enabled = true});
         const auto started = xr::use_openxr_interface(*rig.world);
         REQUIRE_FALSE(started.ok());
@@ -242,6 +248,102 @@ TEST_CASE("openxr: runtimes that can't start a session say why") {
         REQUIRE_FALSE(started.ok());
         CHECK(started.error().message.find("no runtime") != std::string::npos);
     }
+}
+
+TEST_CASE("openxr: a game draws each eye into the runtime's swapchains") {
+    // Eyes of 64x64 pixels; a red post 2 m ahead shows left of the left eye's center and right
+    // of the right eye's, over a blue background. The assets outlive the world that uses them.
+    asset::Assets assets{asset::folder_source("openxr_drawing")};
+    OpenXRRig rig("drawing", R"(extensions XR_KHR_vulkan_enable2 XR_EXT_palm_pose
+view_size 64 64
+probe 38 32
+probe 26 32
+probe 2 2
+frame 0 head 0 1.7 0 0 0 0 1
+)",
+                  {.enabled = true});
+    canvas::install(*rig.world, assets);
+    const auto create = [&](std::string_view id, std::string_view components) {
+        const entt::entity entity = rig.world->create(id).value();
+        const json::Value values = json::parse(components).value();
+        for (const auto& [name, fields] : values.as_object()) {
+            std::string path;
+            REQUIRE(rig.components.find(name)->assign(*rig.world, entity, fields, path).ok());
+        }
+    };
+    create("env", R"({"WorldEnvironment": {"background_mode": "color",
+                                           "background_color": [0, 0, 1, 1]}})");
+    create("post", R"({"Transform3D": {"position": [0, 1.7, -2]}, "MeshInstance3D": {},
+                       "BoxMesh": {"size": [0.5, 3, 0.5]},
+                       "StandardMaterial3D": {"shading_mode": "unshaded",
+                                              "albedo_color": [1, 0, 0, 1]}})");
+
+    // The runtime has its say in the device, then the session draws with it.
+    const auto prepared = xr::prepare_openxr_device(*rig.world, "vulkan");
+    REQUIRE_MESSAGE(prepared.ok(), (prepared.ok() ? std::string() : prepared.error().message));
+    CHECK(prepared.value().driver == "vulkan");
+    auto device = render::create_device(
+        {.window = nullptr, .driver = "vulkan", .debug = false, .xr = prepared.value().hooks});
+    if (!device) {
+#if defined(__linux__)
+        if (!platform::environment_variable("SLASH_EXPECT_GPU").empty()) {
+            FAIL("SLASH_EXPECT_GPU is set, but Vulkan doesn't work: " << device.error().message);
+        }
+#endif
+        MESSAGE("no Vulkan here, so drawing into a headset is skipped: " << device.error().message);
+        xr::find_interface(*rig.world, "OpenXR")->uninitialize(*rig.world);
+        return;
+    }
+    const auto started = xr::use_openxr_interface(*rig.world, device.value().get());
+    REQUIRE_MESSAGE(started.ok(), (started.ok() ? std::string() : started.error().message));
+    xr::Interface* openxr = xr::primary_interface(*rig.world);
+    const xr::OpenXRInfo* info = xr::openxr_info(*openxr);
+    CHECK_FALSE(info->headless);
+    CHECK(info->graphics == "vulkan");
+    CHECK(openxr->render_target_size() == Vec2i{64, 64});
+    {
+        canvas::CanvasRenderer renderer(*device.value(), assets);
+        int drawn = 0;
+        for (int tick = 0; tick < 3; ++tick) {
+            rig.step(1);
+            const auto frame = xr::begin_openxr_frame(*rig.world);
+            REQUIRE_MESSAGE(frame.ok(), (frame.ok() ? std::string() : frame.error().message));
+            if (frame.value().render) {
+                ++drawn;
+                const std::vector<xr::View> views = xr::views(*rig.world);
+                REQUIRE(views.size() == frame.value().targets.size());
+                for (std::size_t i = 0; i < views.size(); ++i) {
+                    canvas::CanvasOptions eye;
+                    eye.target = frame.value().targets[i];
+                    eye.width = 64.0F;
+                    eye.height = 64.0F;
+                    eye.view3d =
+                        scene3d::eye_view(*rig.world, views[i].transform, views[i].fov.left,
+                                          views[i].fov.right, views[i].fov.down, views[i].fov.up);
+                    REQUIRE(renderer.draw(*rig.world, eye).ok());
+                }
+            }
+            const auto ended = xr::end_openxr_frame(*rig.world);
+            REQUIRE_MESSAGE(ended.ok(), (ended.ok() ? std::string() : ended.error().message));
+        }
+        CHECK(drawn > 0);
+    }
+    openxr->uninitialize(*rig.world);
+
+    const std::string log = rig.log();
+    CHECK(log.find("instance 1.1 XR_EXT_palm_pose XR_KHR_vulkan_enable2") != std::string::npos);
+    CHECK(log.find("vulkan device") != std::string::npos);
+    CHECK(log.find("create session vulkan") != std::string::npos);
+    // The runtime's first format is BGRA, which the device doesn't copy into; then sRGB RGBA.
+    CHECK(log.find("swapchain 64x64 format 43") != std::string::npos);
+    CHECK(log.find("layers 1") != std::string::npos);
+    // The post is in each eye where that eye sees it, and the background around it.
+    CHECK(log.find("eye 0 38 32 255 0 0 255") != std::string::npos);
+    CHECK(log.find("eye 1 38 32 0 0 255 255") != std::string::npos);
+    CHECK(log.find("eye 0 26 32 0 0 255 255") != std::string::npos);
+    CHECK(log.find("eye 1 26 32 255 0 0 255") != std::string::npos);
+    CHECK(log.find("eye 1 2 2 0 0 255 255") != std::string::npos);
+    CHECK(log.find("unreadable") == std::string::npos);
 }
 
 TEST_CASE("openxr: xr.set switches a session between the test headset and the runtime") {

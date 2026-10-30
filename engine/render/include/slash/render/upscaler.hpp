@@ -137,34 +137,6 @@ public:
     virtual void release(RenderDevice& device) = 0;
 };
 
-// The objects of the native API a GPU device draws with, each unretained, as Godot's
-// RenderingDevice::get_driver_resource hands them over: on Vulkan, instance, physical_device,
-// device and queue are the VkInstance, VkPhysicalDevice, VkDevice and VkQueue, and queue_family
-// is the queue's family; on Direct3D 12, device and queue are the ID3D12Device and
-// ID3D12CommandQueue; on Metal, the id<MTLDevice> and id<MTLCommandQueue>. The software device
-// has none.
-struct NativeDevice {
-    Backend backend = Backend::Null;
-    void* instance = nullptr;
-    void* physical_device = nullptr;
-    void* device = nullptr;
-    void* queue = nullptr;
-    std::uint32_t queue_family = 0;
-};
-
-// One of a temporal upscaler's textures. On a GPU device, image is the VkImage (and view its
-// VkImageView of the whole image), the ID3D12Resource or the id<MTLTexture>, and format its
-// VkFormat, DXGI_FORMAT or MTLPixelFormat; pixels is empty. On the software device, pixels holds
-// its values, rows top to bottom and each pixel's channels together, and the rest is empty.
-struct NativeTexture {
-    void* image = nullptr;
-    void* view = nullptr;
-    std::uint32_t format = 0;
-    std::uint32_t width = 0;
-    std::uint32_t height = 0;
-    std::span<float> pixels{}; // NOLINT(readability-redundant-member-init)
-};
-
 // What a temporal upscaler takes for a frame, as FSR 2 takes it in the device. On a GPU device the
 // textures are in the state shaders sample them in (VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 // D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE), the output included, and the upscaler leaves them so,

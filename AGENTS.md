@@ -2144,12 +2144,22 @@ space (`local_floor` emulated from the stage and local spaces), Godot's default 
 (`src/action_map.cpp`, `xr::default_action_map`; vendor profiles only with their extension),
 poses, inputs, views and haptics, its session states as world events. `use_openxr_interface`
 starts it; games do when `xr.openxr.enabled` is set and they have a window, and `xr.set`'s
-`interface` switches a session to it. Swapchains aren't written yet, so sessions start only on
-runtimes with `XR_MND_headless` and end each frame with no layers. `tests/fake_openxr_runtime.cpp`
+`interface` switches a session to it. Windowed games draw into the headset as Godot's
+`OpenXRVulkanExtension` and `OpenXRD3D12Extension` do (`src/openxr_graphics.cpp`):
+`prepare_openxr_device` makes the instance with the graphics extension before the render device,
+which `render::DeviceOptions::xr` makes as the runtime asks, through hooks
+`cmake/patches/sdl-openxr.cmake` adds to SDL (the runtime makes Vulkan's instance and device and
+names the GPU, or names Direct3D 12's adapter); the session makes a swapchain and a render
+target per view, `begin_openxr_frame` waits, begins and acquires, `Game::draw_headset` draws each
+eye with `scene3d::eye_view`, and `end_openxr_frame` copies the targets in with
+`RenderDevice::copy_to_native` (`src/native_copy.cpp`: barriers and a copy recorded into SDL's
+command buffer) and ends the frame with a projection layer. Without a device, sessions need
+`XR_MND_headless` and end each frame with no layers. `tests/fake_openxr_runtime.cpp`
 is a stand-in runtime the loader loads through the `XR_RUNTIME_JSON` manifest the build writes
 (`tests/fake_openxr.json`), playing a script (`FAKE_OPENXR_SCRIPT`: poses and inputs by frame,
-lost poses, recentering, exit) and logging the calls it gets (`FAKE_OPENXR_LOG`);
-`examples/openxr-runtime` runs a session on it.
+lost poses, recentering, exit, eye sizes and pixels to read back) and logging the calls it gets
+(`FAKE_OPENXR_LOG`); offered `XR_KHR_vulkan_enable2`, it hands out Vulkan swapchains and logs the
+probed pixels of each eye it is shown. `examples/openxr-runtime` runs a session on it.
 
 ## AI providers
 

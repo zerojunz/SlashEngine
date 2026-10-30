@@ -26,7 +26,8 @@ xr.state {"trackers": ["right_hand"]}
 - When the runtime stops the session, `session_stopping` and `instance_exiting` follow, and
   `interface` `"test"` goes back to the test headset.
 
-Drawing into a headset's swapchains is not written yet, so OpenXR sessions run only on runtimes
-with `XR_MND_headless`. [XR](../../docs/reference/scene-format.md#xr) in the scene format
+A session has no window, so its OpenXR session is headless and needs a runtime with
+`XR_MND_headless`; a windowed game draws each eye into the headset instead, on Vulkan or
+Direct3D 12 (`tests/test_openxr.cpp` draws a post into the stand-in's Vulkan swapchains). [XR](../../docs/reference/scene-format.md#xr) in the scene format
 reference explains the interface, and [commands](../../docs/reference/commands.md#xrset)
 `xr.set`.
