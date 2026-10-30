@@ -1,4 +1,6 @@
-clip.mkv: 4 frames of 64x32, 1.00 s, 177212 bytes; audio A_PCM/INT/LIT, 44100 Hz, 2 channels, 16 bits
+clip.mkv: 4 frames of 64x32, 1.00 s, 194188 bytes
+  audio A_PCM/INT/LIT, 44100 Hz, 2 channels, 50 packets
+  audio A_OPUS, 48000 Hz, 2 channels, 51 packets
 tick 1: autoplay starts the picture and its sound together
   picture at 0.00 s
   audio.state: {"bus":"Cutscenes","id":"tv","kind":"VideoStreamPlayer","length":1,"position":0.061,"stream":"clip.mkv","voices":1,"volume":[1,1]}
@@ -23,7 +25,11 @@ past the end: both stop
   picture at 1.00 s
   audio.state: {"bus":"Cutscenes","id":"tv","kind":"VideoStreamPlayer","length":1,"stream":"clip.mkv","voices":0,"volume":[1,1]}
   Cutscenes over the last 0.02 s: silent
-audio_track 1, which the clip doesn't have
+audio_track 1: the same sound as Opus, decoded by libopus
   picture at 0.00 s
-  audio.state: {"bus":"Cutscenes","error":"audio_track 1 isn't one of the 1 audio tracks of the video","id":"tv","kind":"VideoStreamPlayer","stream":"clip.mkv","voices":0,"volume":[1,1]}
+  audio.state: {"bus":"Cutscenes","id":"tv","kind":"VideoStreamPlayer","length":1,"position":0.0587,"stream":"clip.mkv","voices":1,"volume":[1,1]}
+  Cutscenes over the last 0.02 s: peak -10.3 dB
+audio_track 2, which the clip doesn't have
+  picture at 0.05 s
+  audio.state: {"bus":"Cutscenes","error":"audio_track 2 isn't one of the 2 audio tracks of the video","id":"tv","kind":"VideoStreamPlayer","stream":"clip.mkv","voices":0,"volume":[1,1]}
   Cutscenes over the last 0.02 s: silent
