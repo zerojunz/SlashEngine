@@ -312,11 +312,17 @@ Image draw_particles(RenderDevice& device, std::uint32_t size) {
     const std::vector<Vertex3D> source = card(0.5F);
     std::vector<render::MeshId> meshes;
     const std::vector<ParticleMeshDraw3D> draws = varied_draws(camera);
-    for (const ParticleMeshDraw3D& draw : draws) {
+    for (std::size_t i = 0; i < draws.size(); ++i) {
+        INFO("draw ", i);
         auto mesh = device.create_mesh(std::vector<Vertex3D>(source.size() * kAmount), {});
         REQUIRE(mesh.ok());
-        const auto filled = device.fill_particle_mesh(system.value(), mesh.value(), source, draw);
+        const auto filled =
+            device.fill_particle_mesh(system.value(), mesh.value(), source, draws[i]);
         REQUIRE_MESSAGE(filled.ok(), error_of(filled));
+        // Reading the particles waits for the GPU, so a device lost while filling a draw's mesh
+        // is reported at that draw.
+        const auto read = device.read_particles_3d(system.value());
+        REQUIRE_MESSAGE(read.ok(), error_of(read));
         meshes.push_back(mesh.value());
     }
     render::Scene3D scene;
