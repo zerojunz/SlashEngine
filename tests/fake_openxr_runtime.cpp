@@ -25,7 +25,9 @@
 // swapchains of Vulkan images, and at each ended frame with a projection layer reads the probed
 // pixels back from the images the layer shows. Offered XR_KHR_opengl_enable and, on Linux,
 // XR_MNDX_egl_enable, it does the same for OpenGL contexts on EGL, with textures made in the
-// application's context, which is current when it calls.
+// application's context, which is current when it calls. Offered XR_KHR_metal_enable on macOS,
+// it names the system's MTLDevice, takes the session's command queue and hands out MTLTextures
+// (fake_openxr_metal.mm).
 //
 // Frames are counted by xrWaitFrame from 1; a value holds until a later frame changes it. What
 // the application did goes to the file FAKE_OPENXR_LOG names, a line a call: instance, session
@@ -51,6 +53,9 @@
 #define EGL_NO_X11
 #include <EGL/egl.h>
 #define XR_USE_PLATFORM_EGL
+#endif
+#if defined(__APPLE__)
+#define XR_USE_GRAPHICS_API_METAL
 #endif
 #define XR_USE_GRAPHICS_API_OPENGL
 #define XR_USE_GRAPHICS_API_VULKAN
@@ -173,6 +178,16 @@ struct ActionObject {
     std::string name;
 };
 
+#if defined(__APPLE__)
+// fake_openxr_metal.mm.
+void* fake_metal_device();
+std::vector<void*> fake_metal_textures(void* device, std::uint32_t width, std::uint32_t height,
+                                       std::int64_t format, int count);
+void fake_metal_release(std::vector<void*>& textures);
+bool fake_metal_read(void* queue, void* texture, std::uint32_t width, std::uint32_t height,
+                     std::vector<std::uint8_t>& pixels);
+#endif
+
 // A swapchain of Vulkan images, handed out in turn.
 struct SwapchainObject {
     std::int64_t format = 0;
@@ -181,6 +196,7 @@ struct SwapchainObject {
     std::vector<VkImage> images;
     std::vector<VkDeviceMemory> memory;
     std::vector<std::uint32_t> textures; // an OpenGL session's
+    std::vector<void*> metal_textures;   // a Metal session's id<MTLTexture>s, retained
     std::uint32_t next = 0;
     std::deque<std::uint32_t> acquired;
     std::int64_t released = -1; // the image last released, which layers show
@@ -191,6 +207,13 @@ struct OpenGl {
     bool requirements = false; // xrGetOpenGLGraphicsRequirementsKHR was called
     bool session = false;
     PFN_xrVoidFunction (*get_proc_address)(const char*) = nullptr;
+};
+
+// A Metal session's device, the runtime's, and its command queue, the application's.
+struct Metal {
+    bool requirements = false; // xrGetMetalGraphicsRequirementsKHR was called
+    void* device = nullptr;
+    void* queue = nullptr;
 };
 
 // The Vulkan objects a drawing session uses, the application's.
@@ -245,6 +268,7 @@ struct Runtime {
     std::uint64_t session_id = 0;
     Vulkan vulkan;
     OpenGl gl;
+    Metal metal;
     std::map<std::uint64_t, SwapchainObject> swapchains;
 };
 
@@ -637,6 +661,18 @@ XrResult XRAPI_CALL create_session(XrInstance /*instance*/, const XrSessionCreat
         r.gl.get_proc_address = egl->getProcAddress;
         r.gl.session = true;
 #endif
+#if defined(__APPLE__)
+    } else if (binding->type == XR_TYPE_GRAPHICS_BINDING_METAL_KHR &&
+               r.enabled.contains("XR_KHR_metal_enable")) {
+        if (!r.metal.requirements) {
+            return XR_ERROR_GRAPHICS_REQUIREMENTS_CALL_MISSING;
+        }
+        const auto* metal = reinterpret_cast<const XrGraphicsBindingMetalKHR*>(binding);
+        if (metal->commandQueue == nullptr) {
+            return XR_ERROR_GRAPHICS_DEVICE_INVALID;
+        }
+        r.metal.queue = metal->commandQueue;
+#endif
     } else if (binding->type == XR_TYPE_GRAPHICS_BINDING_VULKAN2_KHR &&
                r.enabled.contains("XR_KHR_vulkan_enable2")) {
         if (!r.vulkan.requirements) {
@@ -663,9 +699,15 @@ XrResult XRAPI_CALL create_session(XrInstance /*instance*/, const XrSessionCreat
     queue_state(XR_SESSION_STATE_IDLE);
     r.state = XR_SESSION_STATE_READY;
     queue_state(XR_SESSION_STATE_READY);
-    log_line(binding == nullptr ? "create session"
-             : r.gl.session     ? "create session egl"
-                                : "create session vulkan");
+    if (binding == nullptr) {
+        log_line("create session");
+    } else if (r.gl.session) {
+        log_line("create session egl");
+    } else if (r.metal.queue != nullptr) {
+        log_line("create session metal");
+    } else {
+        log_line("create session vulkan");
+    }
     return XR_SUCCESS;
 }
 
@@ -841,6 +883,20 @@ XrResult XRAPI_CALL opengl_requirements(XrInstance /*instance*/, XrSystemId /*sy
     return XR_SUCCESS;
 }
 
+#if defined(__APPLE__)
+XrResult XRAPI_CALL metal_requirements(XrInstance /*instance*/, XrSystemId /*system*/,
+                                       XrGraphicsRequirementsMetalKHR* requirements) {
+    Metal& metal = rt().metal;
+    metal.device = fake_metal_device();
+    if (metal.device == nullptr) {
+        return XR_ERROR_RUNTIME_FAILURE;
+    }
+    requirements->metalDevice = metal.device;
+    metal.requirements = true;
+    return XR_SUCCESS;
+}
+#endif
+
 XrResult XRAPI_CALL vulkan_requirements(XrInstance /*instance*/, XrSystemId /*system*/,
                                         XrGraphicsRequirementsVulkan2KHR* requirements) {
     requirements->minApiVersionSupported = XR_MAKE_VERSION(1, 0, 0);
@@ -983,10 +1039,17 @@ constexpr std::array<std::int64_t, 3> kSwapchainFormats{
 // GL_RGBA16F first, which the application can't copy into, then GL_SRGB8_ALPHA8 and GL_RGBA8.
 constexpr std::array<std::int64_t, 3> kGlSwapchainFormats{0x881A, 0x8C43, 0x8058};
 
+// MTLPixelFormatRGBA16Float first, which the application can't copy into, then
+// MTLPixelFormatRGBA8Unorm_sRGB and MTLPixelFormatRGBA8Unorm.
+constexpr std::array<std::int64_t, 3> kMetalSwapchainFormats{115, 71, 70};
+
 // The formats of the session's API.
 std::span<const std::int64_t> swapchain_formats() {
     if (rt().gl.session) {
         return kGlSwapchainFormats;
+    }
+    if (rt().metal.queue != nullptr) {
+        return kMetalSwapchainFormats;
     }
     if (rt().vulkan.device != VK_NULL_HANDLE) {
         return kSwapchainFormats;
@@ -1009,6 +1072,12 @@ XrResult XRAPI_CALL enumerate_swapchain_formats(XrSession /*session*/, uint32_t 
 }
 
 void free_swapchain(SwapchainObject& swapchain) {
+#if defined(__APPLE__)
+    if (rt().metal.queue != nullptr) {
+        fake_metal_release(swapchain.metal_textures);
+        return;
+    }
+#endif
     if (rt().gl.session) {
         using GlDelete = void (*)(int, const std::uint32_t*);
         gl<GlDelete>("glDeleteTextures")(static_cast<int>(swapchain.textures.size()),
@@ -1061,6 +1130,21 @@ XrResult XRAPI_CALL create_swapchain(XrSession /*session*/, const XrSwapchainCre
                  " format " + std::to_string(info->format));
         return XR_SUCCESS;
     }
+#if defined(__APPLE__)
+    if (r.metal.queue != nullptr) {
+        swapchain.metal_textures =
+            fake_metal_textures(r.metal.device, info->width, info->height, info->format, 3);
+        if (swapchain.metal_textures.empty()) {
+            return XR_ERROR_RUNTIME_FAILURE;
+        }
+        const std::uint64_t id = r.next_id++;
+        r.swapchains[id] = std::move(swapchain);
+        *made = handle<XrSwapchain>(id);
+        log_line("swapchain " + std::to_string(info->width) + "x" + std::to_string(info->height) +
+                 " format " + std::to_string(info->format));
+        return XR_SUCCESS;
+    }
+#endif
     const VkDevice device = r.vulkan.device;
     for (int i = 0; i < 3; ++i) {
         VkImageCreateInfo image_info{};
@@ -1150,6 +1234,24 @@ XrResult XRAPI_CALL enumerate_swapchain_images(XrSwapchain made, uint32_t capaci
         }
         return XR_SUCCESS;
     }
+#if defined(__APPLE__)
+    if (rt().metal.queue != nullptr) {
+        const std::vector<void*>& textures = found->second.metal_textures;
+        *count = static_cast<uint32_t>(textures.size());
+        if (capacity == 0) {
+            return XR_SUCCESS;
+        }
+        if (capacity < textures.size() || images->type != XR_TYPE_SWAPCHAIN_IMAGE_METAL_KHR) {
+            return capacity < textures.size() ? XR_ERROR_SIZE_INSUFFICIENT
+                                              : XR_ERROR_VALIDATION_FAILURE;
+        }
+        auto* metal = reinterpret_cast<XrSwapchainImageMetalKHR*>(images);
+        for (std::size_t i = 0; i < textures.size(); ++i) {
+            metal[i].texture = textures[i];
+        }
+        return XR_SUCCESS;
+    }
+#endif
     const std::vector<VkImage>& own = found->second.images;
     *count = static_cast<uint32_t>(own.size());
     if (capacity == 0) {
@@ -1254,6 +1356,20 @@ void log_probes(std::uint32_t eye, const SwapchainObject& swapchain) {
         log_gl_probes(eye, swapchain);
         return;
     }
+#if defined(__APPLE__)
+    if (rt().metal.queue != nullptr) {
+        std::vector<std::uint8_t> pixels;
+        if (fake_metal_read(
+                rt().metal.queue,
+                swapchain.metal_textures.at(static_cast<std::size_t>(swapchain.released)),
+                swapchain.width, swapchain.height, pixels)) {
+            log_pixels(eye, swapchain, pixels.data(), false, false);
+        } else {
+            log_line("eye " + std::to_string(eye) + " unreadable");
+        }
+        return;
+    }
+#endif
     const VkImage image = swapchain.images.at(static_cast<std::size_t>(swapchain.released));
     const VkDeviceSize bytes = VkDeviceSize{swapchain.width} * swapchain.height * 4;
     VkBufferCreateInfo buffer_info{};
@@ -1558,6 +1674,10 @@ XrResult XRAPI_CALL get_instance_proc_addr(XrInstance instance, const char* name
          reinterpret_cast<PFN_xrVoidFunction>(&opengl_requirements)},
         {"xrGetVulkanGraphicsRequirements2KHR",
          reinterpret_cast<PFN_xrVoidFunction>(&vulkan_requirements)},
+#if defined(__APPLE__)
+        {"xrGetMetalGraphicsRequirementsKHR",
+         reinterpret_cast<PFN_xrVoidFunction>(&metal_requirements)},
+#endif
         {"xrCreateVulkanInstanceKHR",
          reinterpret_cast<PFN_xrVoidFunction>(&create_vulkan_instance)},
         {"xrGetVulkanGraphicsDevice2KHR",

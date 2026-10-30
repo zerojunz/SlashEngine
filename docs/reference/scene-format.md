@@ -6004,11 +6004,13 @@ runtime. The session's states are the interface's events, with `interface` `"Ope
 A windowed game draws into the headset, as Godot's OpenXR module does before it makes its
 rendering device: `xr::prepare_openxr_device` makes the instance with the graphics extension
 of the game's [`rendering.driver`](project-format.md) (`XR_KHR_vulkan_enable2`,
-`XR_KHR_D3D12_enable` on Windows, or `XR_KHR_opengl_enable` for `opengl`, with
-`XR_MNDX_egl_enable` for EGL contexts on Linux), and the render device is made the way the runtime
+`XR_KHR_D3D12_enable` on Windows, `XR_KHR_metal_enable` on macOS, or `XR_KHR_opengl_enable` for
+`opengl`, with `XR_MNDX_egl_enable` for EGL contexts on Linux; `auto` is Direct3D 12 on Windows,
+Metal on macOS and Vulkan elsewhere), and the render device is made the way the runtime
 asks: on Vulkan the runtime makes the instance and the device and names the GPU, on Direct3D 12
-it names the adapter, through hooks a small patch adds to SDL (`cmake/patches/sdl-openxr.cmake`),
-and on OpenGL the session takes the context SDL made, on WGL, GLX or EGL. The session then makes a swapchain for each view at the
+it names the adapter and on Metal the `MTLDevice`, through hooks a small patch adds to SDL
+(`cmake/patches/sdl-openxr.cmake`), and on OpenGL the session takes the context SDL made, on WGL,
+GLX or EGL. A Metal session takes the device's command queue, and its swapchains are `MTLTexture`s. The session then makes a swapchain for each view at the
 runtime's recommended size, in the first 8-bit RGBA format the runtime lists, sRGB first. Each
 drawn frame, `xr::begin_openxr_frame` waits for the runtime's frame and acquires the images, the
 game draws each eye into a render target of that size from the eye's place
@@ -6028,8 +6030,8 @@ context. An export of a game that enables XR adds what Godot's export adds in XR
 manifest: the `org.khronos.openxr.permission.OPENXR` and `OPENXR_SYSTEM` permissions, the queries
 for the runtime broker and the runtime's and API layers' services, the
 `android.hardware.vr.headtracking` feature, and the `org.khronos.openxr.intent.category.IMMERSIVE_HMD`
-and `com.oculus.intent.category.VR` categories that start the game in the headset. Metal, the web
-and iOS have no loader yet. Headless, a game starts no headset, but looks for the runtime and
+and `com.oculus.intent.category.VR` categories that start the game in the headset. The web and
+iOS have no loader yet. Headless, a game starts no headset, but looks for the runtime and
 reports it in its summary's `xr` (`runtime`, and the `error` when none is found), which an
 export's `--test` shows.
 

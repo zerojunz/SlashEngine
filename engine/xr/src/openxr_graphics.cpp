@@ -1,6 +1,6 @@
 // The graphics extensions OpenXR sessions draw with, ported from Godot's modules/openxr/extensions
 // (OpenXRVulkanExtension, OpenXRD3D12Extension, OpenXROpenGLExtension): each function names the
-// one it follows.
+// one it follows. Metal's follows the extension's specification in the same shape.
 #include "openxr_graphics.hpp"
 
 #include <vulkan/vulkan_core.h>
@@ -31,6 +31,9 @@ using GLXFBConfig = GlxConfig*;
 using GLXContext = GlxContext*;
 #define XR_USE_PLATFORM_EGL
 #define XR_USE_PLATFORM_XLIB
+#endif
+#if defined(__APPLE__)
+#define XR_USE_GRAPHICS_API_METAL
 #endif
 #define XR_USE_GRAPHICS_API_OPENGL
 #define XR_USE_GRAPHICS_API_VULKAN
@@ -462,7 +465,86 @@ private:
 };
 #endif
 
+#if defined(__APPLE__)
+// XR_KHR_metal_enable, written as Godot's other graphics extensions are: the runtime names the
+// MTLDevice, the session takes the device's command queue, and swapchains are MTLTextures.
+class Metal final : public OpenXRGraphics {
+public:
+    [[nodiscard]] std::string_view extension() const override {
+        return XR_KHR_METAL_ENABLE_EXTENSION_NAME;
+    }
+    [[nodiscard]] std::string_view driver() const override { return "metal"; }
+
+    // The device the runtime draws with, which SDL then makes its own.
+    Result<void> prepare(XrInstance instance, XrSystemId system,
+                         render::XrDeviceHooks& hooks) override {
+        const auto requirements = instance_call<PFN_xrGetMetalGraphicsRequirementsKHR>(
+            instance, "xrGetMetalGraphicsRequirementsKHR");
+        if (requirements == nullptr) {
+            return make_error(ErrorCode::PlatformFailure,
+                              "OpenXR: the runtime lacks XR_KHR_metal_enable's functions");
+        }
+        auto needed = made<XrGraphicsRequirementsMetalKHR>(XR_TYPE_GRAPHICS_REQUIREMENTS_METAL_KHR);
+        if (const XrResult result = requirements(instance, system, &needed); XR_FAILED(result)) {
+            return failed("the runtime's Metal requirements couldn't be read", result);
+        }
+        if (needed.metalDevice == nullptr) {
+            return make_error(ErrorCode::PlatformFailure, "OpenXR: the runtime named no MTLDevice");
+        }
+        hooks.metal_device = needed.metalDevice;
+        return {};
+    }
+
+    Result<const void*> binding(const render::NativeDevice& device,
+                                const std::set<std::string, std::less<>>& /*enabled*/) override {
+        binding_ = made<XrGraphicsBindingMetalKHR>(XR_TYPE_GRAPHICS_BINDING_METAL_KHR);
+        binding_.commandQueue = device.queue;
+        return static_cast<const void*>(&binding_);
+    }
+
+    [[nodiscard]] std::vector<std::int64_t> formats() const override {
+        constexpr std::int64_t kRgba8UnormSrgb = 71; // MTLPixelFormatRGBA8Unorm_sRGB
+        constexpr std::int64_t kRgba8Unorm = 70;     // MTLPixelFormatRGBA8Unorm
+        return {kRgba8UnormSrgb, kRgba8Unorm};
+    }
+
+    Result<std::vector<void*>> images(XrSwapchain swapchain) override {
+        std::uint32_t count = 0;
+        if (const XrResult result = xrEnumerateSwapchainImages(swapchain, 0, &count, nullptr);
+            XR_FAILED(result)) {
+            return failed("failed to get swapchain image count", result);
+        }
+        std::vector<XrSwapchainImageMetalKHR> images(
+            count, made<XrSwapchainImageMetalKHR>(XR_TYPE_SWAPCHAIN_IMAGE_METAL_KHR));
+        if (const XrResult result = xrEnumerateSwapchainImages(
+                swapchain, count, &count,
+                reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
+            XR_FAILED(result)) {
+            return failed("failed to get swapchain images", result);
+        }
+        std::vector<void*> out;
+        out.reserve(images.size());
+        for (const XrSwapchainImageMetalKHR& image : images) {
+            out.push_back(image.texture);
+        }
+        return out;
+    }
+
+private:
+    XrGraphicsBindingMetalKHR binding_ =
+        made<XrGraphicsBindingMetalKHR>(XR_TYPE_GRAPHICS_BINDING_METAL_KHR);
+};
+#endif
+
 } // namespace
+
+std::unique_ptr<OpenXRGraphics> make_metal_graphics() {
+#if defined(__APPLE__)
+    return std::make_unique<Metal>();
+#else
+    return nullptr;
+#endif
+}
 
 std::unique_ptr<OpenXRGraphics> make_opengl_es_graphics() {
 #if defined(__ANDROID__)

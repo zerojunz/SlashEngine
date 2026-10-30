@@ -236,6 +236,12 @@ if(TARGET slash_openxr)
     target_compile_definitions(fake-openxr PRIVATE
         $<TARGET_PROPERTY:slash_openxr,INTERFACE_COMPILE_DEFINITIONS>)
     set_target_properties(fake-openxr PROPERTIES CXX_VISIBILITY_PRESET hidden)
+    if(APPLE)
+        # Metal sessions' textures, made with Objective-C.
+        target_sources(fake-openxr PRIVATE fake_openxr_metal.mm)
+        set_source_files_properties(fake_openxr_metal.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+        target_link_libraries(fake-openxr PRIVATE "-framework Metal" "-framework Foundation")
+    endif()
     slash_target_warnings(fake-openxr)
     file(GENERATE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/fake_openxr.json CONTENT
         "{\"file_format_version\": \"1.0.0\", \"runtime\": {\"name\": \"SlashEngine stand-in\", \"library_path\": \"$<TARGET_FILE:fake-openxr>\"}}\n")
