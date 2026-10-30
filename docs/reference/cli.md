@@ -416,6 +416,7 @@ slash-cli call <command> [params] [options]
 | `--save` | Save the scene after the command succeeds |
 | `--project <dir>` | Folder that scene paths are relative to (default `.`) |
 | `--allow <list>` | Capabilities: `read`, `edit`, `run`, `filesystem`, `build`, `network` or `all` (default `all`) |
+| `--openxr-runtime <manifest>` | An OpenXR runtime's `.json` manifest for the loader to use in place of the active runtime, as `XR_RUNTIME_JSON`, which the loader ignores in elevated processes on Windows (`xr::set_openxr_runtime`) |
 
 ```bash
 slash-cli call world.query '{"with": ["Transform2D"]}' --scene tests/data/basic.scene.json
@@ -430,7 +431,7 @@ A failed command prints `{"error": {"code", "message", "data"}}` to stdout and e
 ### rpc
 
 Serves commands as [JSON-RPC 2.0](protocols.md#json-rpc), one message per line on stdin and
-stdout, until stdin closes. Takes `--scene`, `--project` and `--allow` as `call` does.
+stdout, until stdin closes. Takes `--scene`, `--project`, `--allow` and `--openxr-runtime` as `call` does.
 
 ```bash
 echo '{"jsonrpc":"2.0","id":1,"method":"entity.get","params":{"id":"player","omit_defaults":true}}' \
@@ -454,6 +455,7 @@ asset files reload while it runs.
 | `--token <token>` | Bearer token clients must send (default: random) |
 | `--project <dir>` | Project folder (default `.`) |
 | `--allow <list>` | Capabilities to grant (default `all`) |
+| `--openxr-runtime <manifest>` | An OpenXR runtime's manifest to use, as `call`'s |
 
 It prints where it listens, and writes the same to `.slash/server.json`:
 

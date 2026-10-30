@@ -3,6 +3,7 @@
 #include "internal.hpp"
 
 #include "slash/world/components.hpp"
+#include "slash/xr/openxr.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -928,6 +929,19 @@ json::Value state_json(const world::World& world, const std::vector<std::string>
                 entry["play_area"] = std::move(area);
             }
             entry["environment_blend_mode"] = blend_mode_name(interface->environment_blend_mode());
+            if (const OpenXRInfo* openxr = openxr_info(*interface); openxr != nullptr) {
+                json::Value runtime;
+                runtime["runtime"] = openxr->runtime_name;
+                runtime["runtime_version"] = openxr->runtime_version;
+                runtime["api_version"] = openxr->api_version;
+                runtime["system"] = openxr->system_name;
+                runtime["session_state"] = session_state_name(openxr->session_state);
+                runtime["running"] = openxr->running;
+                runtime["headless"] = openxr->headless;
+                runtime["reference_space"] = openxr->reference_space;
+                runtime["frames"] = openxr->frames;
+                entry["openxr"] = std::move(runtime);
+            }
             entry["view_count"] = static_cast<std::int64_t>(interface->view_count());
             const Vec2i target = interface->render_target_size();
             entry["render_target_size"] = json::Array{target.x, target.y};
