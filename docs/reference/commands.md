@@ -3488,14 +3488,17 @@ with these commands.
 A session's world has an XR server, as Godot's `XRServer` ([XR](scene-format.md#xr)), with a
 test headset in place of a real one: a head and two hand controllers that `xr.set` moves and
 presses as a player would. It starts when project.json's
-[`xr.openxr.enabled`](project-format.md#xr) is set, or when `xr.set` starts it. What `xr.set`
+[`xr.openxr.enabled`](project-format.md#xr) is set, or when `xr.set` starts it; `xr.set`'s
+`interface` switches to the machine's OpenXR runtime instead, as games use. What `xr.set`
 changes reaches the server's trackers, the XR nodes and their events at the next tick, as a
 headset's runtime delivers them; a failed command or a dry run puts the headset back.
 
 ### xr.state
 
 Returns the interfaces (each one's capabilities, play area, blend mode, `view_count` and
-`render_target_size` when it is initialized), the world scale, origin and reference frame when they aren't the defaults, the
+`render_target_size` when it is initialized; OpenXR's adds `openxr`: the runtime and its
+version, the API version, the system, the session's state, whether it is `running` and
+`headless`, the reference space and the frames it has waited for), the world scale, origin and reference frame when they aren't the defaults, the
 trackers with their poses (position, and rotation when it turns; `tracking` only when lost) and
 inputs, the XR nodes with their tracker and whether they are tracked, the test headset's last
 haptic pulses and the XR nodes' problems.
@@ -3528,6 +3531,7 @@ anchor the headset found. Returns the tick the server has the changes at.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
+| `interface` | `"test"` or `"openxr"` | | Switches to the test headset or to the machine's OpenXR runtime, which then moves the trackers as a headset does. Only on its own; a runtime that can't start says why at `/interface` |
 | `initialize` | boolean | | Starts or stops the test headset, which adds or takes away its trackers |
 | `trackers` | object | | Changes by tracker name: `type`, `hand`, `profile`, `position`, `rotation`, `tracking`, `poses` (by name, each with `position`, `rotation`, `linear_velocity`, `angular_velocity`, `tracking` and `confidence`), `inputs` (by action name: a boolean button, a number trigger or an `[x, y]` thumbstick) and `remove` |
 | `play_area_mode` | `"sitting"`, `"roomscale"` or `"stage"` | | |
@@ -3554,7 +3558,8 @@ Needs: `run`.
 
 [`examples/xr-tracking`](../../examples/xr-tracking/) raises a sword, loses a hand and centers
 the play space, and [`examples/xr-stereo-views`](../../examples/xr-stereo-views/) draws what
-each eye sees.
+each eye sees, and [`examples/openxr-runtime`](../../examples/openxr-runtime/) runs a session
+on an OpenXR runtime.
 
 ## Storyboard
 

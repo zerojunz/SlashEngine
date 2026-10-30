@@ -5852,6 +5852,32 @@ the origin) and its field of view as the tangents of its four edges, which
 and `view_configuration` `"mono"` gives one view at the head. [`frame.capture`](commands.md#framecapture)'s
 `xr_view` draws one.
 
+### OpenXR
+
+Games with [`xr.openxr.enabled`](project-format.md#xr) run on the headset's own OpenXR runtime,
+as Godot's `OpenXRInterface` ([`slash/xr/openxr.hpp`](../../engine/xr/include/slash/xr/openxr.hpp)),
+through the Khronos loader (Apache 2.0), which finds the active runtime or the one
+`XR_RUNTIME_JSON` names; sessions switch to it with `xr.set`'s `interface` `"openxr"`. It
+follows Godot's `OpenXRAPI`: it asks for OpenXR 1.1, then 1.0, and the runtime's form factor and
+view configuration, starts the session when the runtime says it is ready and ends it when the
+runtime says it is stopping, and waits for a frame each tick. The play space is the reference
+space `reference_space` names; `local_floor` on a runtime without it is the stage's floor under
+`local`, as Godot emulates it. Godot's default action map (`xr::default_action_map`: the
+actions `trigger`, `grip`, `primary`, `ax_button`, `haptic` and the rest, bound for the simple,
+Vive, Windows Mixed Reality, Touch, Pico 4, Index, HP Reverb, Odyssey, Vive Cosmos, Vive Focus 3
+and Huawei controllers, each vendor's profile only where the runtime has its extension) reaches
+the `left_hand` and `right_hand` trackers, each with the profile the runtime says the hand is
+holding; their `aim`, `grip` and `palm` poses, the head's pose and each eye's view come from the
+runtime. The session's states are the interface's events, with `interface` `"OpenXR"`:
+`session_begun`, `session_synchronized`, `session_visible`, `session_focussed`,
+`session_stopping`, `session_loss_pending`, `instance_exiting`, `pose_recentered` and
+`play_area_changed`. `xr.state` reports the runtime, its version and the session's state.
+
+Drawing into the headset's swapchains is not written yet, so a session starts only on a runtime
+with `XR_MND_headless` and submits frames with no layers; others say so. Web, Android and iOS
+builds have no loader yet. [examples/openxr-runtime](../../examples/openxr-runtime/) runs a
+session on the engine's stand-in runtime.
+
 ## Video
 
 `VideoStreamPlayer` is Godot's, with AV1 in place of Theora: its `stream` is an IVF file of AV1

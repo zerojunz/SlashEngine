@@ -116,6 +116,7 @@ add_executable(slash_tests
     test_navigation.cpp
     test_net.cpp
     test_occlusion.cpp
+    test_openxr.cpp
     test_recipe.cpp
     test_standard_material.cpp
     test_particle_graphs.cpp
@@ -219,6 +220,23 @@ add_executable(fake-unreal fake_unreal.cpp)
 slash_target_warnings(fake-unreal)
 add_dependencies(slash_tests fake-unreal)
 target_compile_definitions(slash_tests PRIVATE SLASH_FAKE_UNREAL="$<TARGET_FILE:fake-unreal>")
+
+# A stand-in OpenXR runtime, so the OpenXR tests and the openxr-runtime example run without a
+# headset: the loader finds it through the manifest XR_RUNTIME_JSON names.
+if(TARGET slash_openxr)
+    add_library(fake-openxr MODULE fake_openxr_runtime.cpp)
+    target_include_directories(fake-openxr SYSTEM PRIVATE
+        $<TARGET_PROPERTY:slash_openxr,INTERFACE_INCLUDE_DIRECTORIES>)
+    target_compile_definitions(fake-openxr PRIVATE
+        $<TARGET_PROPERTY:slash_openxr,INTERFACE_COMPILE_DEFINITIONS>)
+    set_target_properties(fake-openxr PROPERTIES CXX_VISIBILITY_PRESET hidden)
+    slash_target_warnings(fake-openxr)
+    file(GENERATE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/fake_openxr.json CONTENT
+        "{\"file_format_version\": \"1.0.0\", \"runtime\": {\"name\": \"SlashEngine stand-in\", \"library_path\": \"$<TARGET_FILE:fake-openxr>\"}}\n")
+    add_dependencies(slash_tests fake-openxr)
+    target_compile_definitions(slash_tests PRIVATE
+        SLASH_FAKE_OPENXR="${CMAKE_CURRENT_BINARY_DIR}/fake_openxr.json")
+endif()
 
 # Gameplay libraries for test_gameplay.cpp, built as cmake/gameplay builds a game's code: with the
 # engine's headers, and its functions left for the program that loads them.

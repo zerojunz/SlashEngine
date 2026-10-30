@@ -638,7 +638,7 @@ for the game's code to fill.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `openxr.enabled` | `false` | Start the headset when the game starts. Sessions start the [test headset](scene-format.md#xr) instead, which agents move with `xr.set` |
+| `openxr.enabled` | `false` | Start OpenXR when a windowed game starts, on the runtime the Khronos loader finds (the active one, or `XR_RUNTIME_JSON`'s). Sessions start the [test headset](scene-format.md#xr) instead, which agents move with `xr.set` |
 | `openxr.form_factor` | `"head_mounted"` | Or `"handheld"`: a phone or tablet held up to the room |
 | `openxr.view_configuration` | `"stereo"` | Or `"mono"`: one view instead of one for each eye |
 | `openxr.reference_space` | `"stage"` | Where the play space's origin is: where the head started (`local`, the `sitting` play area), the room's center on the floor (`stage`) or the floor under where the head started (`local_floor`, `roomscale`). `center_on_hmd` does nothing on a stage, which is the room's own |

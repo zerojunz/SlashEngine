@@ -1,7 +1,7 @@
 # Runs one example in a copy of its folder and checks its output exactly; see CMakeLists.txt.
 #
 #   cmake -DEXAMPLE=<folder> -DWORKDIR=<dir> -DCLI=<slash-cli> [-DPROGRAM=<exe>]
-#         [-DASSETRIPPER=<fake-assetripper>] [-DBLENDER=<fake-blender>] [-DUNREAL=<fake-unreal>]
+#         [-DASSETRIPPER=<fake-assetripper>] [-DBLENDER=<fake-blender>] [-DOPENXR=<manifest>] [-DUNREAL=<fake-unreal>]
 #         -P run_example.cmake
 
 set(update "$ENV{SLASH_UPDATE_EXAMPLES}")
@@ -9,6 +9,11 @@ set(update "$ENV{SLASH_UPDATE_EXAMPLES}")
 if(ASSETRIPPER)
     set(ENV{SLASH_ASSETRIPPER} "${ASSETRIPPER}")
     set(ENV{FAKE_ASSETRIPPER_PROJECT} "${WORKDIR}/ripped")
+endif()
+# The OpenXR loader finds the stand-in runtime, which plays the example's openxr_script.txt.
+if(OPENXR)
+    set(ENV{XR_RUNTIME_JSON} "${OPENXR}")
+    set(ENV{FAKE_OPENXR_SCRIPT} "${EXAMPLE}/openxr_script.txt")
 endif()
 # Converting a .blend file runs Blender's stand-in.
 if(BLENDER)

@@ -13,6 +13,7 @@
 #include "slash/ui/ui.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
+#include "slash/xr/openxr.hpp"
 
 #include <SDL3/SDL_events.h>
 
@@ -209,8 +210,13 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
     services::install(world_, project_.services);
     // Offline until the game's code puts its multiplayer on the network.
     net::install(world_);
-    // The XR server; a headset's interface comes with OpenXR.
+    // The XR server, and the headset through OpenXR when the project enables it, as Godot starts
+    // its OpenXR interface; a game whose headset won't start goes on without one. Headless runs
+    // have no headset.
     xr::install(world_, project_.xr);
+    if (project_.xr.enabled && !platform_.headless()) {
+        (void)xr::use_openxr_interface(world_);
+    }
     // In the player's language, unless the project tests another.
     l10n::install(world_, assets_, project_.internationalization, l10n::preferred_locale());
     platform_.set_event_handler([this](const SDL_Event& event) { handle_event(event); });
