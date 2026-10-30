@@ -31,6 +31,9 @@ struct Config {
     // The SDL video drivers to try in order, such as "x11,wayland"; empty for SDL's own order.
     // The SDL_VIDEO_DRIVER environment variable, or that hint when already set, overrides it.
     std::string video_drivers{}; // NOLINT(readability-redundant-member-init): designated init
+    // Make the window hidden, for Platform::show_window to show once what must see it first is
+    // attached: a screen reader's adapter on Windows (accessibility::Backend).
+    bool hidden = false;
 };
 
 struct Events {
@@ -105,6 +108,9 @@ public:
     // Headless, there is no clipboard: it reads empty and setting it does nothing.
     [[nodiscard]] std::string clipboard_text() const;
     void set_clipboard_text(const std::string& text) const;
+
+    // Shows a window made hidden (Config::hidden).
+    void show_window() const;
 
     // Shows width by height straight-alpha RGBA pixels as the window's icon, in its title bar
     // and task bar, as Godot's DisplayServer::set_icon. Headless, and where the system draws

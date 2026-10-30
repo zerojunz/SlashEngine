@@ -39,10 +39,15 @@ Set up once per machine:
 
 | Platform | Setup |
 | --- | --- |
-| Linux | `sudo apt-get install` the `LINUX_SDL_DEPS` in `.github/workflows/ci.yml`, plus `mesa-vulkan-drivers libgl1 libgles2 libegl-mesa0 libgl1-mesa-dri` for the GPU tests and `ccache clang-format-18 clang-tidy-18` |
+| Linux | `sudo apt-get install` the `LINUX_SDL_DEPS` in `.github/workflows/ci.yml`, plus `mesa-vulkan-drivers libgl1 libgles2 libegl-mesa0 libgl1-mesa-dri` for the GPU tests, `at-spi2-core` for the screen reader test and `ccache clang-format-18 clang-tidy-18` |
 | macOS | Xcode's command line tools, then `brew install ninja ccache` |
 | Windows | Visual Studio 2022's C++ tools, `choco install ninja` and Git for Windows (libaom's build runs its Perl); run everything from a Developer PowerShell (x64) |
 | Claude Code cloud session | Nothing: `.claude/hooks/session-start.sh` installs the Linux packages, then configures `dev` with ccache, builds the tools and `slash_tests`, installs the web toolchain and, where dl.google.com is reachable, the Android SDK in the background (Wayland comes from Ubuntu's archive where gitlab.freedesktop.org is blocked). Wait for it with `flock /tmp/slash-session-setup.lock true`; it logs to `.slash/session-setup.log`. Build only the examples you need (`--target example-<folder>`): all of them take some 20 GB in a Debug build |
+
+Screen readers come through AccessKit, which builds with cargo: install Rust 1.87 or later with
+[rustup](https://rustup.rs) (CI's runners have it), and `rustup target add` the targets a build
+makes code for, such as `x86_64-apple-darwin` for a universal Mac. Without them, builds and
+exports leave AccessKit out and say so when configuring.
 
 The loop, the same everywhere (add `-DCMAKE_C_COMPILER_LAUNCHER=ccache
 -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON` to a first configure
@@ -1895,9 +1900,20 @@ controls from `Control`'s `accessibility_*` fields, with open popup menus and th
 set_value, scrolling), `ui::accessibility_problems` its accessibility warnings, and
 `ui.accessibility` and `ui.accessibility_action` serve them. `gui.accessibility_support` says when
 controls serve a screen reader (`ui::accessibility_enabled`), and while they do `focus_mode`
-`"accessibility"` (`MenuButton`'s and `ScrollBar`'s) takes focus. The platform backend that
-hands the tree to the system's screen reader isn't written yet. `examples/accessibility` works a
-pause menu as a screen reader would.
+`"accessibility"` (`MenuButton`'s and `ScrollBar`'s) takes focus. `engine/accessibility` hands
+the tree to the system's screen reader as Godot's `AccessibilityDriverAccessKit`, through
+AccessKit's C library (accesskit-c, which `cmake/Dependencies.cmake` builds with cargo from its
+`Cargo.lock`; builds where cargo or the target's Rust standard library isn't installed leave it
+out): `accessibility::snapshot` turns the tree into nodes with node IDs from entities
+(`node_id`), `changed` picks what an update sends, `make_node` and `make_update`
+(`slash/accessibility/accesskit.hpp`) make AccessKit's, and `Backend::attach` puts the
+subclassing adapter on the window's HWND (before it is shown: `platform::Config::hidden`) or
+NSWindow, or the AT-SPI adapter on Linux. Games and `slash-cli run` call `Backend::update` after
+each tick, which runs queued requests through `ui::accessibility_action` and sets
+`ui::Settings::screen_reader_active`. The `crate_licenses` test holds every crate to the allowed
+licenses and THIRD_PARTY.md's crate table; `atspi_screen_reader` reads and presses a menu through
+AT-SPI under `dbus-run-session` (needs `at-spi2-core`). `examples/accessibility` works a pause
+menu as a screen reader would.
 
 ## Localization
 
@@ -2291,7 +2307,8 @@ CI rejects unformatted code and any clang-tidy finding.
   purchases, achievements and leaderboards, their backends and the test backend), `canvas` (sprites, `.frames.json`
   animations, `.material.json` materials, `.tileset.json` tile maps, 2D lights and shadows, CPU
   particles, GPU particles' steps and drawing them), `text` (fonts, shaping, line breaking, carets and selections, and glyph atlases), `ui`
-  (controls, containers and themes: layout, draw calls, buttons, focus and text fields), `animation` (`.anim.json` keyframe
+  (controls, containers and themes: layout, draw calls, buttons, focus and text fields),
+  `accessibility` (screen readers through AccessKit's adapters), `animation` (`.anim.json` keyframe
   animations, `.animtree.json` animation trees and the systems that play them),
   `scene3d` (3D nodes: primitive meshes, glTF, OBJ, FBX and Blender models, CSG shapes, grid maps, materials, cameras, lights and environments,
   and drawing them), `physics2d` (2D bodies, areas, joints and queries on Box2D), `physics3d` (3D bodies, areas, character movement and queries on Jolt), `navigation` (navigation meshes, maps, paths and agents), `net` (multiplayer peers, the ENet transport, a world's multiplayer and RPCs), `xr` (the XR server, interfaces, trackers, XR nodes, the test headset and OpenXR), `library` (the asset library, its
@@ -2308,8 +2325,8 @@ CI rejects unformatted code and any clang-tidy finding.
 - New dependencies are pinned in `cmake/dependencies.json` (repository, tag, SPDX license and
   the license file's SHA-256), fetched with `slash_add_dependency` in `cmake/Dependencies.cmake`
   and listed in `THIRD_PARTY.md`. Only permissive licenses (MIT and its variants, BSD, zlib,
-  Apache 2.0, Boost, MIT-0, the FreeType License, public domain; glslang's Bison-exception
-  parser, in the tools only); the `licenses` test fails anything else. Never copy code from closed
+  Apache 2.0, Boost, MIT-0, the FreeType License, public domain, Unicode-DFS-2016;
+  glslang's Bison-exception parser, in the tools only); the `licenses` test fails anything else. Never copy code from closed
   engines.
 - Every behavior change comes with a test in `tests/`. Tests must pass headless.
 - Every new feature comes with an example in `examples/` (see below).

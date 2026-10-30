@@ -1,5 +1,6 @@
 #pragma once
 
+#include "slash/accessibility/accessibility.hpp"
 #include "slash/asset/assets.hpp"
 #include "slash/canvas/canvas.hpp"
 #include "slash/core/json.hpp"
@@ -109,6 +110,9 @@ private:
     platform::Platform platform_;
     // Declared after the platform, so it closes the gamepads before SDL quits.
     input::SdlReader input_reader_;
+    // The screen reader's adapter on the window; declared after the platform, so it lets go of
+    // the window before the window closes.
+    std::unique_ptr<accessibility::Backend> screen_reader_;
     // Declared after the platform, so it lets go of the window before the window closes.
     std::unique_ptr<render::RenderDevice> renderer_;
     // Declared after the device, so its textures go before the device does.

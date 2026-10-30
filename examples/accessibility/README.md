@@ -26,5 +26,12 @@ ui.accessibility {}
   toggles at the next tick), step the slider, type a name, open the list (its menu and items
   join the tree, the one shown checked and the menu focused) and pick an item.
 
+Run it in a window with Narrator or NVDA on Windows, VoiceOver on a Mac or Orca on Linux, and
+the screen reader reads the same tree through AccessKit and presses the same controls:
+
+```bash
+slash-cli run --project examples/accessibility --scene examples/accessibility/main.scene.json
+```
+
 [Accessibility](../../docs/reference/scene-format.md#accessibility) in the scene format reference
 lists what each control reports.
