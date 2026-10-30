@@ -2243,9 +2243,8 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     CHECK(unsupported(report, "Environment.ssao_enabled").is_null());
     CHECK(unsupported(report, "Environment.ssr_enabled").is_null());
     CHECK(unsupported(report, "SpotLight3D.light_indirect_energy").is_null());
-    CHECK(
-        why("node type GPUParticles3D") ==
-        "the importer doesn't convert it yet; add SlashEngine's GPUParticles3D component by hand");
+    CHECK(unsupported(report, "node type GPUParticles3D").is_null());
+    CHECK(entity(files, level, "sparks").find("GPUParticles3D")->find("amount")->as_int() == 16);
     CHECK(why("node type Skeleton3D") ==
           "a skeleton a scene builds itself doesn't convert yet; one "
           "an instance of a model file brings does");
@@ -5485,5 +5484,194 @@ material_overlay = SubResource("glow")
     CHECK(snow.find("StandardMaterial3D")->find("billboard_mode")->as_string() == "particles");
     const json::Value overlay = unsupported(plan.report, "CPUParticles3D.material_overlay");
     CHECK(overlay.find("where")->as_string() == "camp.tscn: Snow");
+    fs::remove_all(project);
+}
+
+TEST_CASE("importing Godot's GPUParticles3D keeps its 3D process material, attractors and "
+          "colliders") {
+    const fs::path project = "import_godot_gpu_particles_3d";
+    const fs::path folder = project / "godot";
+    fs::remove_all(project);
+    write(folder / "project.godot", R"(config_version=5
+
+[application]
+
+config/name="Storm"
+run/main_scene="res://storm.tscn"
+)");
+    write_png(folder / "wind.png", 4, 8);
+    write(folder / "wind.png.import", R"([remap]
+
+importer="3d_texture"
+type="CompressedTexture3D"
+
+[params]
+
+compress/mode=1
+slices/horizontal=2
+slices/vertical=4
+)");
+    write(folder / "storm.tscn", R"([gd_scene load_steps=9 format=3]
+
+[ext_resource type="Texture3D" path="res://wind.png" id="1_wind"]
+[ext_resource type="Texture3D" path="res://storm_sdf.exr" id="2_sdf"]
+
+[sub_resource type="Curve" id="grow"]
+_data = [Vector2(0, 0.5), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="Curve" id="flat"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0]
+point_count = 1
+
+[sub_resource type="CurveXYZTexture" id="scales"]
+curve_x = SubResource("grow")
+curve_y = SubResource("flat")
+curve_z = SubResource("grow")
+
+[sub_resource type="ParticleProcessMaterial" id="rain"]
+emission_shape = 3
+emission_box_extents = Vector3(4, 0.2, 3)
+direction = Vector3(0.2, -1, 0)
+spread = 5.0
+flatness = 0.25
+gravity = Vector3(0, -12, 0)
+initial_velocity_min = 2.0
+initial_velocity_max = 3.0
+directional_velocity_min = 0.5
+directional_velocity_max = 1.0
+scale_curve = SubResource("scales")
+particle_flag_rotate_y = true
+attractor_interaction_enabled = false
+collision_mode = 2
+sub_emitter_mode = 1
+
+[sub_resource type="StandardMaterial3D" id="drop"]
+shading_mode = 0
+billboard_mode = 3
+
+[sub_resource type="QuadMesh" id="streak"]
+material = SubResource("drop")
+size = Vector2(0.02, 0.3)
+
+[sub_resource type="SphereMesh" id="ball"]
+
+[node name="Storm" type="Node3D"]
+
+[node name="Rain" type="GPUParticles3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5, 0)
+amount = 256
+lifetime = 1.5
+use_fixed_seed = true
+seed = 7
+fixed_fps = 60
+collision_base_size = 0.05
+visibility_aabb = AABB(-5, -6, -4, 10, 8, 8)
+draw_order = 3
+transform_align = 2
+process_material = SubResource("rain")
+draw_passes = 2
+draw_pass_1 = SubResource("streak")
+draw_pass_2 = SubResource("ball")
+trail_enabled = true
+
+[node name="Pull" type="GPUParticlesAttractorSphere3D" parent="."]
+strength = -2.0
+attenuation = 0.5
+radius = 1.5
+
+[node name="Push" type="GPUParticlesAttractorBox3D" parent="."]
+directionality = 0.75
+size = Vector3(2, 1, 2)
+
+[node name="Wind" type="GPUParticlesAttractorVectorField3D" parent="."]
+cull_mask = 2
+strength = 3.0
+size = Vector3(8, 4, 8)
+texture = ExtResource("1_wind")
+
+[node name="Umbrella" type="GPUParticlesCollisionSphere3D" parent="."]
+radius = 0.8
+
+[node name="Ground" type="GPUParticlesCollisionBox3D" parent="."]
+size = Vector3(10, 1, 10)
+
+[node name="Statue" type="GPUParticlesCollisionSDF3D" parent="."]
+size = Vector3(2, 3, 2)
+resolution = 1
+thickness = 2.0
+bake_mask = 4
+texture = ExtResource("2_sdf")
+
+[node name="Field" type="GPUParticlesCollisionHeightField3D" parent="."]
+size = Vector3(20, 10, 20)
+resolution = 4
+update_mode = 1
+follow_camera_enabled = true
+heightfield_mask = 3
+)");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    const std::string storm = "godot/storm.scene.json";
+    REQUIRE(files.contains(storm));
+
+    // The emitter, its visibility box, its fixed seed and its first pass's quad and material.
+    const json::Value rain = entity(files, storm, "rain");
+    const json::Value& emitter = *rain.find("GPUParticles3D");
+    CHECK(emitter.find("amount")->as_int() == 256);
+    CHECK(emitter.find("seed")->as_int() == 7);
+    CHECK(emitter.find("fixed_fps")->as_int() == 60);
+    CHECK(emitter.find("draw_order")->as_string() == "view_depth");
+    CHECK(emitter.find("transform_align")->as_string() == "y_to_velocity");
+    CHECK(emitter.find("draw_passes")->as_int() == 2);
+    CHECK(*emitter.find("visibility_aabb_position") == parse("[-5.0, -6.0, -4.0]"));
+    CHECK(*emitter.find("visibility_aabb_size") == parse("[10.0, 8.0, 8.0]"));
+    CHECK(*rain.find("QuadMesh") == parse(R"({"size": [0.02, 0.3]})"));
+    CHECK(rain.find("StandardMaterial3D")->find("billboard_mode")->as_string() == "particles");
+    // A primitive mesh on a later pass and a trail are reported.
+    CHECK(unsupported(plan.report, "GPUParticles3D.draw_pass_2") != nullptr);
+    CHECK(unsupported(plan.report, "GPUParticles3D.trail_enabled") != nullptr);
+
+    // The process material keeps its 3D vectors, its flags and its three scale curves.
+    const std::string material = emitter.find("process_material")->as_string();
+    REQUIRE(files.contains(material));
+    const json::Value process = parse(files.at(material));
+    CHECK(*process.find("emission_box_extents") == parse("[4.0, 0.2, 3.0]"));
+    CHECK(*process.find("direction") == parse("[0.2, -1.0, 0.0]"));
+    CHECK(*process.find("gravity") == parse("[0.0, -12.0, 0.0]"));
+    CHECK(process.find("flatness")->as_double() == doctest::Approx(0.25));
+    CHECK(process.find("directional_velocity_max")->as_double() == doctest::Approx(1.0));
+    CHECK(process.find("particle_flag_rotate_y")->as_bool());
+    CHECK_FALSE(process.find("attractor_interaction_enabled")->as_bool());
+    CHECK(process.find("collision_mode")->as_string() == "hide_on_contact");
+    CHECK(
+        *process.find("scale_curve") ==
+        parse(
+            R"({"x": [[0.0, 0.5], [1.0, 1.0]], "y": [[0.0, 1.0]], "z": [[0.0, 0.5], [1.0, 1.0]]})"));
+    CHECK(slash::canvas::parse_process_material_both(process).ok());
+    CHECK(unsupported(plan.report, "ParticleProcessMaterial.sub_emitter_mode") != nullptr);
+
+    // Attractors and colliders keep their fields; a vector field its texture's slices.
+    CHECK(*entity(files, storm, "pull").find("GPUParticlesAttractorSphere3D") ==
+          parse(R"({"strength": -2.0, "attenuation": 0.5, "radius": 1.5})"));
+    CHECK(*entity(files, storm, "push").find("GPUParticlesAttractorBox3D") ==
+          parse(R"({"directionality": 0.75, "size": [2.0, 1.0, 2.0]})"));
+    CHECK(*entity(files, storm, "wind").find("GPUParticlesAttractorVectorField3D") ==
+          parse(R"({"cull_mask": 2, "strength": 3.0, "size": [8.0, 4.0, 8.0],
+                    "texture": "godot/wind.png", "slices_horizontal": 2, "slices_vertical": 4})"));
+    CHECK(*entity(files, storm, "umbrella").find("GPUParticlesCollisionSphere3D") ==
+          parse(R"({"radius": 0.8})"));
+    CHECK(*entity(files, storm, "ground").find("GPUParticlesCollisionBox3D") ==
+          parse(R"({"size": [10.0, 1.0, 10.0]})"));
+    // The SDF is baked again; its Godot texture is reported.
+    CHECK(*entity(files, storm, "statue").find("GPUParticlesCollisionSDF3D") ==
+          parse(R"({"size": [2.0, 3.0, 2.0], "resolution": "32", "thickness": 2.0,
+                    "bake_mask": 4})"));
+    CHECK(unsupported(plan.report, "GPUParticlesCollisionSDF3D.texture") != nullptr);
+    // A height field of more than 1024 texels draws at 1024, the default.
+    CHECK(*entity(files, storm, "field").find("GPUParticlesCollisionHeightField3D") ==
+          parse(R"({"size": [20.0, 10.0, 20.0], "update_mode": "always",
+                    "follow_camera_enabled": true, "heightfield_mask": 3})"));
+    CHECK(unsupported(plan.report, "GPUParticlesCollisionHeightField3D.resolution") != nullptr);
     fs::remove_all(project);
 }

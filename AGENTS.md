@@ -582,7 +582,9 @@ report and the files it would write. `src/godot_text.cpp` parses Godot's text fo
 (`.tscn`, `.tres`, `project.godot`) and `src/godot_import.cpp` converts them: a `.scene.json`
 beside each `.tscn`, a `.frames.json` per `SpriteFrames`, a `.tileset.json` per `TileSet`, a
 `.theme.json` per `Theme`, a `.bus_layout.json` per `AudioBusLayout`, a `.anim.json` per
-`AnimationPlayer` (tracks keep their node paths as targets), `project.godot`'s settings
+`AnimationPlayer` (tracks keep their node paths as targets), a `.process_material.json` per
+`ParticleProcessMaterial` (read in 3D for a `GPUParticles3D`, `process_material_file`'s
+`three_d`; a vector field's slices come from its texture's `.import` file), `project.godot`'s settings
 and input map merged into `project.json`, and a storyboard task per script (`task/port-<name>`)
 to port it to C++. Each GDScript and C# file also becomes a C++ skeleton (`src/scripts.cpp`,
 public header `slash/importer/scripts.hpp`; `read_gdscript` and `read_csharp`, which reads
