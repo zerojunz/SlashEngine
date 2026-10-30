@@ -3,6 +3,7 @@
 #include "steps.hpp"
 
 #include "slash/core/text.hpp"
+#include "slash/exporter/export.hpp"
 #include "slash/exporter/toolchains.hpp"
 #include "slash/exporter/xml.hpp"
 #include "slash/platform/file.hpp"
@@ -1901,6 +1902,22 @@ json::Value check_sdks(const fs::path& project, std::string_view platform, bool 
     return out;
 }
 
+std::optional<fs::path> builtin_sdk(std::string_view name) {
+    if (std::ranges::find(kBuiltinSdks, name) == kBuiltinSdks.end()) {
+        return std::nullopt;
+    }
+    const std::optional<std::string> engine = find_engine();
+    if (!engine) {
+        return std::nullopt;
+    }
+    std::error_code error;
+    fs::path folder = fs::path(*engine) / "export" / "sdks" / std::string(name);
+    if (!fs::is_regular_file(folder / kSdkFile, error)) {
+        return std::nullopt;
+    }
+    return folder;
+}
+
 Result<json::Value> add_sdk(const AddSdkOptions& options) {
     std::error_code error;
     const fs::path project = fs::absolute(options.project, error).lexically_normal();
@@ -1936,7 +1953,16 @@ Result<json::Value> add_sdk(const AddSdkOptions& options) {
     fs::path root;
     std::string location;
     bool copied = true;
-    if (!is_url(options.source)) {
+    if (std::ranges::find(kBuiltinSdks, options.source) != kBuiltinSdks.end()) {
+        const std::optional<fs::path> builtin = builtin_sdk(options.source);
+        if (!builtin) {
+            return make_error(ErrorCode::NotFound,
+                              "the engine's files aren't found, so its " + options.source +
+                                  " package isn't either; set SLASH_ENGINE_DIR to a SlashEngine "
+                                  "checkout");
+        }
+        root = *builtin;
+    } else if (!is_url(options.source)) {
         root = fs::absolute(options.source, error).lexically_normal();
         if (!fs::is_directory(root, error)) {
             return make_error(ErrorCode::NotFound, display(root) + " is not a folder");

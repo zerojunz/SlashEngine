@@ -172,6 +172,33 @@ non-consumable or subscription.
 | `purchase_failed` | `error` | The store refused it |
 | `restore_finished` | `error` if it failed | `restore_purchases` is done |
 
+### Stores
+
+The engine ships a purchases backend for each platform store as an [SDK package](sdk-format.md),
+which `slash-cli sdk add` (or the [`sdk.add`](commands.md#sdkadd) command) copies into the
+project by name. An export preset's `sdks` picks the store it links, so each platform's build
+gets its own.
+
+```bash
+slash-cli sdk add storekit --project my-game       # iOS and macOS
+slash-cli sdk add play-billing --project my-game   # Android
+slash-cli sdk lock --project my-game               # fetch and pin Google's library
+```
+
+| Package | Platforms | Store | Backend name |
+| --- | --- | --- | --- |
+| `storekit` | iOS, macOS | Apple's StoreKit (`SKProductsRequest`, `SKPaymentQueue`), as Godot's iOS in-app store plugin; links the StoreKit framework | `storekit` |
+| `play-billing` | Android | Google Play Billing Library 8, as Godot's Google Play Billing plugin | `google_play` |
+
+Both follow the purchases rules above. StoreKit reports each transaction by its identifier, and
+its `receipt` is the app's App Store receipt (base64) for the game's server to check with Apple;
+a purchase waiting for Ask to Buy is `pending`, and `finish` finishes the transaction. Google
+Play reports each purchase by its purchase token, which is also its `receipt` for the Google Play
+Developer API; `finish` consumes a consumable and acknowledges anything else, and a subscription
+is bought through its base plan, whose renewal price is its `price`. Play Billing's library is
+Google's and not open source, so it is never part of the repository: `sdk lock` fetches it from
+Google's Maven repository and pins it by SHA-256, and Android exports merge it in.
+
 ## Achievements and leaderboards
 
 ```cpp

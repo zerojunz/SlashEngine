@@ -2112,6 +2112,10 @@ windowed games also send them to a server the developer runs: `src/endpoint.cpp`
 (`make_endpoint_analytics`) batches them as the engine's JSON or PostHog's, with Firebase's
 sessions, keeps what is unsent in the user folder and retries, POSTing through the
 `HttpPoster` that `main.cpp` builds on `ai::post_in_background` (`SLASH_GAME_ANALYTICS`).
+Stores are the engine's own SDK packages in `export/sdks/`, which `sdk add` copies in by name
+(`exporter::builtin_sdk`): `storekit` (`SlashStoreKitPurchases.m`, StoreKit 1, which reaches
+iOS 14 and macOS 11) and `play-billing` (`PlayBillingPurchases.java` over Play Billing Library 8,
+fetched and pinned by `sdk lock`); CI exports both and checks the backend each game reports.
 `services.state` shows it all. `examples/services` is a shop selling coins for watched ads and
 purchases, `examples/achievements-and-leaderboards` a race with lap achievements and a
 best-lap leaderboard, and `examples/analytics-endpoint` a tutorial funnel sent to a collector.
