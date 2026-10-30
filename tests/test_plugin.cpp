@@ -3,6 +3,7 @@
 #include "slash/command/session.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/log.hpp"
+#include "slash/exporter/plugins.hpp"
 #include "slash/input/input.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/platform.hpp"
@@ -397,6 +398,9 @@ TEST_CASE("plugin files name an entry and a library per platform") {
     CHECK(errors[0].path == "/libraries/linux.mips");
     CHECK(errors[1].path == "/abi");
     CHECK_FALSE(plugin::validate_plugin_file(parse(R"({"entry": "1e", "libraries": {}})")).empty());
+    CHECK(plugin::validate_plugin_file(parse(R"({"entry": "e"})")).at(0).message ==
+          "expected \"libraries\", \"sources\" or both");
+    CHECK(plugin::validate_plugin_file(parse(R"({"entry": "e", "sources": ["e.c"]})")).empty());
 
     const auto file = plugin::parse_plugin_file(
         parse(R"({"entry": "e", "libraries": {"linux": "bin/a.so", "linux.arm64": "bin/arm/a.so",
@@ -481,3 +485,124 @@ TEST_CASE("a project's plugin files load for this platform") {
     fs::remove_all(root);
 }
 #endif
+
+TEST_CASE("games enter linked plugins and find libraries where exports install them") {
+    const fs::path root = fs::absolute("plugin_linked");
+    fs::remove_all(root);
+    fs::create_directories(root / "addons/orbit");
+    REQUIRE(
+        slash::platform::write_file((root / "addons/orbit/orbit.plugin.json").string(),
+                                    R"({"entry": "orbit_plugin_entry", "sources": ["orbit.c"]})")
+            .ok());
+    const std::vector<std::string> files{"addons/orbit/orbit.plugin.json"};
+
+    // With only sources, the tools have nothing to load; a game that linked them enters them.
+    Game tools;
+    CHECK(
+        contains(tools.plugins.load_project(root.string(), files).at(files[0]), "no library for"));
+    Game game;
+    plugin::LoadOptions options;
+    options.linked.emplace("orbit_plugin_entry", &orbit_plugin_entry);
+    CHECK(game.plugins.load_project(root.string(), files, options).empty());
+    CHECK(game.components.find("Orbit") != nullptr);
+
+#if defined(SLASH_TEST_PLUGIN)
+    // A library that isn't where its file says is found by its name in the folders given, as a
+    // macOS game's Frameworks.
+    const fs::path library(SLASH_TEST_PLUGIN);
+    fs::create_directories(root / "Frameworks");
+    fs::copy_file(library, root / "Frameworks" / library.filename());
+    json::Value file = parse(R"({"entry": "orbit_plugin_entry", "libraries": {}})");
+    file["libraries"][std::string(slash::platform::os_name())] =
+        "bin/" + library.filename().string();
+    REQUIRE(slash::platform::write_file((root / "addons/orbit/orbit.plugin.json").string(),
+                                        json::write(file))
+                .ok());
+    Game installed;
+    CHECK(contains(installed.plugins.load_project(root.string(), files).at(files[0]),
+                   library.filename().string()));
+    Game bundled;
+    CHECK(bundled.plugins
+              .load_project(root.string(), files,
+                            {.linked = {}, .library_folders = {(root / "Frameworks").string()}})
+              .empty());
+#endif
+    fs::remove_all(root);
+}
+
+TEST_CASE("exports compile plugins in from their sources, or ship their libraries") {
+    namespace exporter = slash::exporter;
+    const fs::path root = fs::absolute("plugin_export");
+    fs::remove_all(root);
+    fs::create_directories(root / "addons/orbit/src/apple");
+    fs::create_directories(root / "addons/vendor/lib");
+    const auto write = [&](const std::string& path, std::string_view text) {
+        REQUIRE(slash::platform::write_file((root / path).string(), text).ok());
+    };
+    write("addons/orbit/orbit.plugin.json",
+          R"({"entry": "orbit_entry", "libraries": {"linux": "x.so"}, "sources": ["src"]})");
+    write("addons/orbit/src/orbit.c", "");
+    write("addons/orbit/src/apple/bridge.m", "");
+    write("addons/orbit/src/notes.txt", "");
+    write("addons/vendor/vendor.plugin.json", R"({"entry": "vendor_entry", "libraries": {
+        "linux.x86_64": "lib/libvendor.so", "linux.arm64": "lib/libvendor_arm.so",
+        "android.arm64": "lib/libvendor.so", "android.x86_64": "lib/vendor.so",
+        "ios": "lib/libvendor.a", "web": "lib/vendor.so", "macos": "lib/libvendor.dylib"}})");
+    write("addons/vendor/lib/libvendor.so", "");
+    write("addons/vendor/lib/vendor.so", "");
+    write("addons/vendor/lib/libvendor.a", "");
+    slash::runtime::Project project;
+    project.plugins = {"addons/orbit/orbit.plugin.json", "addons/vendor/vendor.plugin.json"};
+
+    std::vector<exporter::PluginProblem> problems;
+    auto linux = exporter::plan_plugins(root, project, "linux", "x86_64", problems);
+    CHECK(problems.empty());
+    REQUIRE(linux.size() == 2);
+    // Sources are compiled in on every platform, Objective-C only on Apple's.
+    CHECK(linux[0].name == "orbit");
+    CHECK(linux[0].linked());
+    REQUIRE(linux[0].sources.size() == 1);
+    CHECK(linux[0].sources[0].filename() == "orbit.c");
+    CHECK(exporter::plan_plugins(root, project, "macos", "universal", problems)[0].sources.size() ==
+          2);
+    // A library ships as it is, found by the build's CPU.
+    CHECK_FALSE(linux[1].linked());
+    CHECK(linux[1].library_path == "addons/vendor/lib/libvendor.so");
+    CHECK(exporter::plugin_arch("android", "arm64-v8a") == "arm64");
+
+    const std::string source = exporter::plugins_register_source(linux);
+    CHECK(contains(source, "extern \"C\" int orbit_entry("));
+    CHECK(contains(source, "plugins.emplace(\"orbit_entry\", &orbit_entry);"));
+    CHECK_FALSE(contains(source, "vendor_entry"));
+    const std::string cmake = exporter::plugins_cmake(linux, "/build/plugins.cpp");
+    CHECK(contains(cmake, "slash_game_plugin([[orbit]]\n    SOURCES [["));
+    CHECK(contains(cmake, "slash_game_plugin([[vendor]]\n    SHARED [["));
+    CHECK(contains(cmake, "slash_game_plugins_register([[/build/plugins.cpp]])"));
+
+    // iOS links a static library and enters it; the web needs one too; Android needs lib*.so;
+    // a platform with no library and no sources is refused.
+    problems.clear();
+    auto ios = exporter::plan_plugins(root, project, "ios", "simulator", problems);
+    CHECK(problems.empty());
+    REQUIRE(ios.size() == 2);
+    CHECK(ios[1].linked());
+    CHECK(contains(exporter::plugins_cmake(ios, ""), "STATIC [["));
+    CHECK(contains(exporter::plugins_register_source(ios), "vendor_entry"));
+    const auto refused = [&](std::string_view platform, std::string_view arch) {
+        problems.clear();
+        (void)exporter::plan_plugins(root, project, platform, arch, problems);
+        REQUIRE(problems.size() == 1);
+        CHECK(problems[0].file == "addons/vendor/vendor.plugin.json");
+        CHECK(problems[0].path == "/libraries");
+        return problems[0].message;
+    };
+    CHECK(contains(refused("web", "wasm32"), "static library"));
+    CHECK(contains(refused("android", "x86_64"), "lib<name>.so"));
+    CHECK(contains(refused("macos", "universal"), "no file \"addons/vendor/lib/libvendor.dylib\""));
+    CHECK(contains(refused("windows", "x86_64"), "no library for windows.x86_64"));
+    problems.clear();
+    CHECK(exporter::plan_plugins(root, project, "android", "arm64-v8a", problems)[1].library_path ==
+          "addons/vendor/lib/libvendor.so");
+    CHECK(problems.empty());
+    fs::remove_all(root);
+}

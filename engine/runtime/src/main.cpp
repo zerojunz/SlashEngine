@@ -20,6 +20,7 @@
 
 #include <cstdio>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -35,6 +36,11 @@ extern "C" void slash_game_module(slash::world::GameModule& game);
 // An export whose SDK packages have glue code writes this, registering their backends.
 #ifdef SLASH_SDK_REGISTER
 void slash_sdk_register(slash::services::Backends& backends);
+#endif
+
+// An export whose plugins are compiled or linked in writes this, naming their entry functions.
+#ifdef SLASH_GAME_PLUGINS
+void slash_game_plugins(std::map<std::string, SlashPluginEntry, std::less<>>& plugins);
 #endif
 
 namespace {
@@ -74,6 +80,9 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 #endif
 #ifdef SLASH_SDK_REGISTER
     options.value().register_backends = slash_sdk_register;
+#endif
+#ifdef SLASH_GAME_PLUGINS
+    slash_game_plugins(options.value().plugins);
 #endif
 #ifdef SLASH_GAME_ANALYTICS
     options.value().analytics_post = [](slash::services::HttpPost post,

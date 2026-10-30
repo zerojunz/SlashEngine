@@ -40,6 +40,17 @@ extern "C" {
 #define SLASH_PLUGIN_EXPORT __attribute__((visibility("default")))
 #endif
 
+/* A type's alignment, for SlashComponentInfo's align, in C99, C11 and C++ on every compiler. */
+#if defined(__cplusplus)
+#define SLASH_ALIGNOF(type) alignof(type)
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+#define SLASH_ALIGNOF(type) _Alignof(type)
+#elif defined(_MSC_VER)
+#define SLASH_ALIGNOF(type) __alignof(type)
+#else
+#define SLASH_ALIGNOF(type) __alignof__(type)
+#endif
+
 /* A world: a scene's entities and their components, as the engine runs it. */
 typedef struct SlashWorld SlashWorld;
 /* The plugin as it registers, given to its entry function. */
@@ -98,7 +109,7 @@ typedef struct SlashComponentInfo {
     const char* name; /* PascalCase, unique among every component: prefix it with the plugin's */
     const char* doc;  /* one sentence, or NULL */
     uint32_t size;    /* sizeof the struct, at most 4096 */
-    uint32_t align;   /* alignof the struct, at most 16 */
+    uint32_t align;   /* SLASH_ALIGNOF the struct, at most 16 */
     const void* defaults; /* a struct of default values, or NULL for zeros */
     const SlashField* fields;
     uint32_t field_count;

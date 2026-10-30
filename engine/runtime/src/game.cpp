@@ -27,6 +27,21 @@
 #include <utility>
 
 namespace slash::runtime {
+namespace {
+
+// Where exports install plugins' libraries, which games look for by name: the bundle's
+// Frameworks on macOS, and the loader's own search on Android.
+std::vector<std::string> plugin_library_folders() {
+#if defined(__ANDROID__)
+    return {""};
+#elif defined(__APPLE__)
+    return {platform::base_path() + "../Frameworks"};
+#else
+    return {};
+#endif
+}
+
+} // namespace
 
 Result<GameOptions> parse_game_args(const std::vector<std::string>& args) {
     constexpr std::array<std::string_view, 3> kOptions{"--headless", "--ticks", "--data"};
@@ -128,7 +143,9 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
     // Plugins, as Godot loads extensions before the main scene: their components and systems.
     if (!game->project_.plugins.empty()) {
         game->plugins_ = std::make_unique<plugin::Plugins>(game->components_);
-        const auto errors = game->plugins_->load_project(data_dir, game->project_.plugins);
+        const plugin::LoadOptions load{.linked = options.plugins,
+                                       .library_folders = plugin_library_folders()};
+        const auto errors = game->plugins_->load_project(data_dir, game->project_.plugins, load);
         if (!errors.empty()) {
             return make_error(ErrorCode::InvalidArgument,
                               "the plugin " + errors.begin()->first +
@@ -468,6 +485,9 @@ json::Value Game::summary() const {
     }
     if (!xr_.is_null()) {
         summary["xr"] = xr_;
+    }
+    if (plugins_ != nullptr) {
+        summary["plugins"] = plugins_->status();
     }
     return summary;
 }

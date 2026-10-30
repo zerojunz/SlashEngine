@@ -13,6 +13,7 @@ add_library(slash_exporter
     src/icons.cpp
     src/ios.cpp
     src/maven.cpp
+    src/plugins.cpp
     src/presets.cpp
     src/sdk.cpp
     src/steps.cpp

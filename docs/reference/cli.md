@@ -690,8 +690,10 @@ since games can't compile shaders, and the `.hlsl` files stay behind. Each
 hasn't been, and ships as its glTF under its own name, so games never need Blender. Textures ship in the
 forms `project.json`'s [`rendering.textures`](project-format.md#texture-forms) asks for, made
 once and cached in the asset library. Every platform's [icons](project-format.md#icons) are
-made from `project.json`'s `icon`, or the engine's, and the result's `icon` names which. A
-project's
+made from `project.json`'s `icon`, or the engine's, and the result's `icon` names which.
+[Plugins](project-format.md#plugins) ship with their files: compiled in from their `sources`,
+or their library for the platform shipped or linked in, and `--test` reports the `plugins` the
+game loaded. A project's
 [`providers.json`](providers.md#gameplay) is checked and staged without its `replay` settings,
 and the game then installs [`ai::ask`](providers.md#gameplay); Android exports of it, and of
 a game whose `services.analytics` names an

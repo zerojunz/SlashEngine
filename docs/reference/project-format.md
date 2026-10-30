@@ -499,7 +499,8 @@ files (`slash-cli schema plugin`), Godot's `.gdextension` files:
 | --- | --- | --- | --- |
 | `entry` | Yes | | The C name of the entry function, unique among the plugins a game links |
 | `abi` | No | `1` | The `SLASH_PLUGIN_ABI_VERSION` it was built against; an engine loads plugins of its version or older |
-| `libraries` | Yes | | The library for each platform, keyed `<os>.<arch>` or `<os>` (`android`, `ios`, `linux`, `macos`, `web`, `windows`; `arm64`, `wasm32`, `x86_64`), relative to the file. The `<os>.<arch>` key wins |
+| `libraries` | One of these two | | The library for each platform, keyed `<os>.<arch>` or `<os>` (`android`, `ios`, `linux`, `macos`, `web`, `windows`; `arm64`, `wasm32`, `x86_64`), relative to the file. The `<os>.<arch>` key wins. A shared library, or a static one (`.a`) for iOS and the web |
+| `sources` | One of these two | | C, C++ and Objective-C files and folders, relative to the file, that exports compile into the game in place of its libraries, for every platform (Objective-C only for macOS and iOS). The tools still load the library for the machine they run on |
 
 slash-cli, slash-mcp and games load the plugins before scenes open, and the plugin's name is its
 file's name before the first dot. The entry function is handed `get_proc`, which gives each
@@ -530,7 +531,7 @@ SLASH_PLUGIN_EXPORT int orbit_plugin_entry(SlashGetProc get_proc, SlashPlugin* p
         {"angle", SLASH_FIELD_FLOAT, offsetof(Orbit, angle), 0, "Radians.", 0, 0, 0, 0},
     };
     static const SlashComponentInfo info = {"Orbit", "Moves round a circle.", sizeof(Orbit),
-                                            _Alignof(Orbit), NULL, fields, 4};
+                                            SLASH_ALIGNOF(Orbit), NULL, fields, 4};
     SlashSystemInfo system = {"orbit", "Moves Orbit entities.", 100, run, NULL};
     world_each = (SlashWorldEach)get_proc("slash_world_each");
     orbit = ((SlashRegisterComponent)get_proc("slash_register_component"))(plugin, &info);
@@ -559,9 +560,24 @@ SLASH_PLUGIN_EXPORT int orbit_plugin_entry(SlashGetProc get_proc, SlashPlugin* p
   the program exits, and the engine calls the `deinitialize` the entry function sets as it lets
   go of them.
 
-The libraries a file names are loaded on macOS, Windows and Linux. Shipping them in exports, and
-linking them into iOS and web games, comes next. [examples/plugins](../../examples/plugins/) is
-a plugin in C.
+The tools load the library a file names for the machine they run on (macOS, Windows and Linux),
+and so do exports' checks of the project's scenes; a plugin with no library for that machine
+leaves its components unchecked. [`slash-cli export`](cli.md#export) ships each plugin file in
+the game's data, and with it:
+
+- A plugin with `sources`: compiled into the game, on every platform. The export writes a
+  `slash_game_plugins` function naming the entry functions, and the game enters them without
+  loading anything.
+- Otherwise its library for the platform and the build's CPU: in the data folder at the path the
+  file names on Windows and Linux, in the app bundle's `Contents/Frameworks` (signed with the
+  game) on macOS, and in the APK's `lib/<abi>/` on Android, which needs it named
+  `lib<name>.so`. The game looks for a library by its file name there. iOS and the web load no
+  libraries, so there the file names a static library (`.a`), which is linked in and entered.
+
+A plugin that can't ship for the platform (no library and no sources for it, a shared library
+named for iOS or the web) fails the export with the file and the reason. An export's test
+reports the `plugins` the game loaded. [examples/plugins](../../examples/plugins/) is a plugin
+in C, with its source for exports.
 
 ## Input actions
 
