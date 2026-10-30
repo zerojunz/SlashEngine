@@ -1,0 +1,12 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"events.subscribe","params":{"kinds":["session_begun","session_focussed","session_stopping","instance_exiting","profile_changed","button_pressed"]}}
+{"jsonrpc":"2.0","id":3,"method":"xr.set","params":{"interface":"openxr","ipd":0.06}}
+{"jsonrpc":"2.0","id":4,"method":"xr.set","params":{"interface":"openxr"}}
+{"jsonrpc":"2.0","id":5,"method":"step","params":{"ticks":4}}
+{"jsonrpc":"2.0","id":6,"method":"events.read","params":{"subscription":"events_1"}}
+{"jsonrpc":"2.0","id":7,"method":"xr.state","params":{"trackers":["right_hand"]}}
+{"jsonrpc":"2.0","id":8,"method":"entity.get","params":{"id":"right","components":["Transform3D"]}}
+{"jsonrpc":"2.0","id":9,"method":"step","params":{"ticks":4}}
+{"jsonrpc":"2.0","id":10,"method":"events.read","params":{"subscription":"events_1"}}
+{"jsonrpc":"2.0","id":11,"method":"xr.set","params":{"interface":"test"}}
+{"jsonrpc":"2.0","id":12,"method":"xr.state","params":{"trackers":["head"]}}
