@@ -3033,7 +3033,11 @@ R"hlsl(        return;
 #ifdef CLUSTERED
     if (ray_pixel.x >= 0 && ray > 0.0) {
         uint k = (uint)ray - 1u;
-        attenuation *= screen_texture.Load(int4(ray_pixel, 2 + (int)(k >> 2u), 0))[k & 3u];
+        // The light's channel by a dot product: an index into the texel is an array to FXC,
+        // which loses Direct3D 12's WARP device.
+        float4 rays = screen_texture.Load(int4(ray_pixel, 2 + (int)(k >> 2u), 0));
+        uint lane = k & 3u;
+        attenuation *= dot(rays, float4(lane == 0u, lane == 1u, lane == 2u, lane == 3u));
         ray = -1.0;
     }
 #endif
@@ -3271,12 +3275,12 @@ float3 sample_probe(Probe probe, float3 direction, float level) {
 }
 
 // Godot's reflection_process (scene_forward_lights_inc.glsl) for each probe, as its clustered
-// scene shader walks them: each word of 32 from its highest bit, the frame's probes being largest
+)hlsl",
+R"hlsl(// scene shader walks them: each word of 32 from its highest bit, the frame's probes being largest
 // first. reflect_probes in src/reflection.cpp is its CPU twin.
 void reflect_probes(float3 world, float3 ray, float3 normal, float roughness,
                     inout float4 reflection_accum, inout float4 ambient_accum) {
-)hlsl",
-R"hlsl(    uint count = (uint)reflections.x;
+    uint count = (uint)reflections.x;
     for (uint index = 0u; index < ((count + 31u) / 32u) * 32u; ++index) {
         uint at = (index / 32u) * 32u + (31u - index % 32u);
         if (at >= count) {
@@ -3516,7 +3520,8 @@ void trace_voxel_gis(float3 world, float3 normal, float3 view, float roughness,
 #endif
 
 // Godot's textureArray_bicubic (scene_forward_clustered.glsl): a cubic B-spline over the 4x4
-// texels around uv, as four bilinear taps. w0 to w3 are its basis functions, g0 and g1 the taps'
+)hlsl",
+R"hlsl(// texels around uv, as four bilinear taps. w0 to w3 are its basis functions, g0 and g1 the taps'
 // amplitudes and h0 and h1 their offsets.
 float bicubic_w0(float a) {
     return (1.0 / 6.0) * (a * (a * (-a + 3.0) - 3.0) + 1.0);
@@ -3527,8 +3532,7 @@ float bicubic_w1(float a) {
 float bicubic_w2(float a) {
     return (1.0 / 6.0) * (a * (a * (-3.0 * a + 3.0) + 3.0) + 1.0);
 }
-)hlsl",
-R"hlsl(float bicubic_w3(float a) {
+float bicubic_w3(float a) {
     return (1.0 / 6.0) * (a * a * a);
 }
 
@@ -3752,13 +3756,13 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
         // HTerrain's Classic4 shader: each layer tinted by the color map, weighed by the splat
         // map (depth-blended by the bumps), its normal added to the terrain's.
         uint terrain_flags = options.w;
-        float4 normal_roughness[4] = {normal_0, normal_1, normal_2, normal_3};
+)hlsl",
+R"hlsl(        float4 normal_roughness[4] = {normal_0, normal_1, normal_2, normal_3};
         float4 albedo_bump[4] = {emission_texel, mapped_texel, ground_2, ground_3};
         float4 bumps = float4(albedo_bump[0].a, albedo_bump[1].a, albedo_bump[2].a,
                               albedo_bump[3].a);
         float4 weights = (terrain_flags & kTerrainDepthBlending) != 0u
-)hlsl",
-R"hlsl(                             ? depth_blended_weights(metallic_texel, bumps)
+                             ? depth_blended_weights(metallic_texel, bumps)
                              : metallic_texel;
         // Splat weights that are all 0 leave the ground black rather than undefined.
         float sum = max(weights.x + weights.y + weights.z + weights.w, 1.0e-6);

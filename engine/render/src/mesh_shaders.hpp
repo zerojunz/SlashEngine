@@ -7366,7 +7366,11 @@ R"hlsl(        attenuation = omni_attenuation(distance, light.position.w, light.
 #ifdef CLUSTERED
     if (ray_pixel.x >= 0 && ray > 0.0) {
         uint k = (uint)ray - 1u;
-        attenuation *= screen_texture.Load(int4(ray_pixel, 2 + (int)(k >> 2u), 0))[k & 3u];
+        // The light's channel by a dot product: an index into the texel is an array to FXC,
+        // which loses Direct3D 12's WARP device.
+        float4 rays = screen_texture.Load(int4(ray_pixel, 2 + (int)(k >> 2u), 0));
+        uint lane = k & 3u;
+        attenuation *= dot(rays, float4(lane == 0u, lane == 1u, lane == 2u, lane == 3u));
         ray = -1.0;
     }
 #endif
@@ -7610,7 +7614,8 @@ void reflect_probes(float3 world, float3 ray, float3 normal, float roughness,
                     inout float4 reflection_accum, inout float4 ambient_accum) {
     uint count = (uint)reflections.x;
     for (uint index = 0u; index < ((count + 31u) / 32u) * 32u; ++index) {
-        uint at = (index / 32u) * 32u + (31u - index % 32u);
+)hlsl",
+R"hlsl(        uint at = (index / 32u) * 32u + (31u - index % 32u);
         if (at >= count) {
             continue;
         }
@@ -7618,8 +7623,7 @@ void reflect_probes(float3 world, float3 ray, float3 normal, float roughness,
         if (((uint)probe.options.z & options.z) == 0u) {
             continue;
         }
-)hlsl",
-R"hlsl(        if (reflection_accum.a >= 1.0 && ambient_accum.a >= 1.0) {
+        if (reflection_accum.a >= 1.0 && ambient_accum.a >= 1.0) {
             break;
         }
         float3 extents = probe.extents.xyz;
@@ -7864,15 +7868,15 @@ float bicubic_w3(float a) {
     return (1.0 / 6.0) * (a * a * a);
 }
 
-// The lightmap's light at uv, linear, times its exposure: bicubic or bilinear, as Godot samples it.
+)hlsl",
+R"hlsl(// The lightmap's light at uv, linear, times its exposure: bicubic or bilinear, as Godot samples it.
 float3 lightmap_light(float2 uv) {
     float3 light;
     if (lightmap.y != 0.0) {
         uint width;
         uint height;
         ground_normal_3.GetDimensions(width, height);
-)hlsl",
-R"hlsl(        float2 size = float2((float)width, (float)height);
+        float2 size = float2((float)width, (float)height);
         float2 texel = 1.0 / size;
         float2 at = uv * size + 0.5;
         float2 iuv = floor(at);
@@ -8092,12 +8096,12 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
         float4 weights = (terrain_flags & kTerrainDepthBlending) != 0u
                              ? depth_blended_weights(metallic_texel, bumps)
                              : metallic_texel;
-        // Splat weights that are all 0 leave the ground black rather than undefined.
+)hlsl",
+R"hlsl(        // Splat weights that are all 0 leave the ground black rather than undefined.
         float sum = max(weights.x + weights.y + weights.z + weights.w, 1.0e-6);
         float3 blended = (float3)0.0;
         float rough = 0.0;
-)hlsl",
-R"hlsl(        [unroll] for (uint i = 0u; i < 4u; ++i) {
+        [unroll] for (uint i = 0u; i < 4u; ++i) {
             // A layer without a normal_roughness texture is flat, with roughness 1.
             float4 nr = (terrain_flags & (kTerrainNormals << i)) != 0u
                             ? normal_roughness[i]
