@@ -107,6 +107,7 @@ name to its entity.
 | `AudioComponent`, `AmbientSound` | `AudioStreamPlayer3D` with attenuation (`unit_size` the inner radius, `max_distance` its end), else `AudioStreamPlayer`; volume in dB, pitch and auto activate |
 | `BoxComponent`, `SphereComponent`, `CapsuleComponent` | `CollisionShape3D` (see [Collision](#collision)) |
 | `CharacterMovementComponent` | `CharacterBody3D` with its walkable floor angle; its speeds and jump in the report |
+| `NiagaraComponent` | `CPUParticles3D` or `GPUParticles3D` per enabled emitter (see [Particles](#particles)) |
 | `ArrowComponent`, `BillboardComponent` | Nothing: they show only in Unreal's editor |
 
 The level's `WorldEnvironment` is an `environment` entity, made when the level has a sky, a sky
@@ -209,6 +210,49 @@ convert, and are reported: an HTerrain shades with HTerrain's Classic4 shader an
 textures mixed by a splat map, which the port sets. Nor do its holes from a visibility layer,
 splines, grass or foliage.
 
+## Particles
+
+A `NiagaraComponent`'s system becomes Godot's particles. The export reads each emitter's stack
+through `NiagaraExternalEditUtilities`, which Unreal Engine 5.8 added (an older editor reports
+"Niagara emitters" and the component emits nothing): its sim target, its emitter data, each
+module of its four scripts with its inputs' values and dynamic input chains, and its renderers.
+An emitter simulated on the CPU becomes a `CPUParticles3D`; one simulated on the GPU becomes a
+`GPUParticles3D` and a `.process_material.json` file beside the system's `.uasset`, named
+`<system>_<emitter>`. A system of one emitter is the component's entity; with several, each enabled
+emitter is a child entity named `<component>_<emitter>`.
+
+Niagara's particles have no gravity, spread or speed but what modules give them, so those start
+at 0. Lengths go from centimeters to meters and vectors into Godot's axes, as everywhere else.
+A random range (Niagara's `Uniform Ranged` dynamic inputs) is a `_min`/`_max` pair; a `User.`
+parameter's link is read from the system's user variables.
+
+| Niagara | SlashEngine |
+| --- | --- |
+| `EmitterState` | `one_shot` for `Loop Behavior` `Once`; a number of loops is reported and loops for ever |
+| `SpawnRate`, `SpawnBurst_Instantaneous` | `amount` as the rate times the longest lifetime plus the burst; a burst alone is `explosiveness: 1` |
+| `InitializeParticle` | `lifetime` (the longest) and `lifetime_randomness`, `color`, the sprite size or mesh scale as `scale_min`/`scale_max`, and the sprite rotation angle |
+| `AddVelocity` (in particle spawn) | `direction`, `initial_velocity_min`/`max` and, for a random vector, the `spread` of a cone through its range's corners |
+| `AddVelocityInCone` | `direction` along `Cone Axis`, `spread` half of `Cone Angle`, and the speed |
+| `GravityForce` | `gravity` |
+| `ShapeLocation`, `SphereLocation`, `BoxLocation`, `CylinderLocation` | The emission shape: `sphere` or `sphere_surface`, `box` (a plane is a flat box), and `ring` for cylinders, rings and discs |
+| `SpriteRotationRate` | `angular_velocity_min`/`max` |
+| `CurlNoiseForce` | `turbulence_enabled` on GPU emitters, at Godot's own strength and scale; reported on the CPU |
+| `SolveForcesAndVelocity`, `ParticleState`, `EmitterLifeCycle` and the like | Nothing: Godot's particles move, age and die so anyway |
+| Sprite renderer | A `QuadMesh` with a `StandardMaterial3D` billboarding as particles, unshaded and colored by the particles (`draw_pass_1` on the GPU) |
+| Mesh renderer | Its first mesh's `.glb` as `mesh` (CPU) or `draw_pass_1` (GPU) |
+| The system's `bDeterminism` and `RandomSeed` | `seed` (and `use_fixed_seed` on the GPU) |
+| The system's warmup time | `preprocess` |
+| The system's fixed bounds | The `GPUParticles3D`'s visibility box |
+| The emitter's `bLocalSpace` | `local_coords` |
+| The component's `bAutoActivate` off | `emitting: false` |
+
+Over-life modules (`ScaleColor`, `ColorFromCurve`, `ScaleSpriteSize`, `SubUVAnimation` and the
+like), event handlers, other renderers, sprite materials (particles draw in their color) and
+every other module are reported, once per kind. Unreal 5.8's documentation doesn't spell out how
+an input's value is written, so the converter reads Unreal's exported text loosely (numbers,
+vectors, colors, enums and dynamic inputs' `Minimum`/`Maximum` by name) and reports a value it
+can't read as "Niagara input that couldn't be read" rather than guessing it.
+
 ## Blueprints and C++
 
 Each Blueprint becomes a storyboard task (`task/port-<name>`) linking to its `.uasset` and the
@@ -258,7 +302,7 @@ Importing again leaves a skeleton that exists as it is and rewrites `scripts.cpp
 ## Not yet converted
 
 Landscapes' materials and paint layers, foliage, BSP brushes (convert them to static meshes in
-Unreal first), Niagara and Cascade particles, material graphs (meshes draw with what the glTF
+Unreal first), Cascade particles and the Niagara modules [Particles](#particles) lists, material graphs (meshes draw with what the glTF
 exporter bakes them to), Animation Blueprints' graphs, montages and blend spaces, Nanite meshes
 without a fallback, movement components such as `RotatingMovementComponent`, light temperature and
 IES profiles, level streaming and World Partition data layers (a partitioned level's actors are
