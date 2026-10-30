@@ -197,7 +197,8 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
                               .allow_system_fallback = project_.allow_system_fallback,
                               .tooltip_delay_sec = project_.tooltip_delay_sec,
                               .tooltip_position_offset = project_.tooltip_position_offset,
-                              .drag_threshold = project_.drag_threshold});
+                              .drag_threshold = project_.drag_threshold,
+                              .accessibility_support = project_.accessibility_support});
     animation::install(world_, assets_);
     physics2d::install(world_, project_.physics_2d);
     physics3d::install(world_, project_.physics_3d);
