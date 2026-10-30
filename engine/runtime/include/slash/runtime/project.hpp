@@ -135,6 +135,7 @@ struct Project {
     std::string gui_theme;
     // Seconds the mouse rests on a control before its tooltip shows.
     double tooltip_delay_sec = 0.5;
+    std::string accessibility_support = "auto"; // gui.accessibility_support
     // Where a tooltip shows from the pointer, in pixels.
     Vec2 tooltip_position_offset{10.0F, 10.0F};
     // Pixels the mouse moves with the left button held before a drag starts.

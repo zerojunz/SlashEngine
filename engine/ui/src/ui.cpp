@@ -237,6 +237,10 @@ void read_settings(const json::Value& gui, Settings& settings) {
         threshold != nullptr && threshold->is_number()) {
         settings.drag_threshold = static_cast<int>(threshold->as_double());
     }
+    if (const json::Value* support = gui.find("accessibility_support");
+        support != nullptr && support->is_string()) {
+        settings.accessibility_support = support->as_string();
+    }
 }
 
 text::Fonts* fonts(const world::World& world) {
@@ -342,6 +346,50 @@ std::vector<std::string_view> control_classes(const world::World& world, entt::e
         classes.emplace_back("Control");
     }
     return classes;
+}
+
+std::string_view mouse_filter_name(const world::World& world, entt::entity entity) {
+    const auto* control = world.ecs().try_get<world::Control>(entity);
+    if (control != nullptr && !control->mouse_filter.empty()) {
+        if (control->mouse_filter == "ignore" || control->mouse_filter == "pass") {
+            return control->mouse_filter;
+        }
+        return "stop";
+    }
+    const std::vector<std::string_view> classes = control_classes(world, entity);
+    const std::string_view type = classes.empty() ? "Control" : classes.front();
+    if (type == "Label" || type == "NinePatchRect") {
+        return "ignore";
+    }
+    if (type == "TextureRect" || (type.ends_with("Container") && type != "PanelContainer")) {
+        return "pass";
+    }
+    return "stop";
+}
+
+std::string_view focus_mode_name(const world::World& world, entt::entity entity) {
+    const auto* control = world.ecs().try_get<world::Control>(entity);
+    const std::string_view mode = control != nullptr ? control->focus_mode : std::string_view();
+    if (mode == "all" || mode == "click" || mode == "none" || mode == "accessibility") {
+        return mode;
+    }
+    // MenuButton's constructor sets FOCUS_ACCESSIBILITY, as ScrollBar's does in games (the
+    // editor makes them FOCUS_ALL with ScrollBar::set_can_focus_by_default).
+    if (world.ecs().any_of<world::MenuButton, world::ScrollBar>(entity)) {
+        return "accessibility";
+    }
+    return button_of(world, entity) != nullptr ||
+                   world.ecs()
+                       .any_of<world::TextureButton, world::LineEdit, world::TextEdit,
+                               world::Slider>(entity)
+               ? "all"
+               : "none";
+}
+
+bool accessibility_enabled(const world::World& world) {
+    const Settings now = settings(world);
+    return now.accessibility_support == "always" ||
+           (now.accessibility_support == "auto" && now.screen_reader_active);
 }
 
 const world::Button* button_of(const world::World& world, entt::entity entity) {

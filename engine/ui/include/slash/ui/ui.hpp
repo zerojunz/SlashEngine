@@ -64,11 +64,18 @@ struct Settings {
     // Pixels the mouse moves with the left button held before a drag starts, as Godot's
     // Viewport.gui_drag_threshold.
     int drag_threshold = 10;
+    // When controls serve a screen reader, as Godot's accessibility/general/
+    // accessibility_support: "auto" (while one is in use), "always" or "disabled". Serving one,
+    // focus_mode "accessibility" takes focus as "all" does.
+    std::string accessibility_support = "auto";
+    // Whether a screen reader is in use, as DisplayServer::accessibility_screen_reader_active:
+    // a platform's accessibility backend sets it.
+    bool screen_reader_active = false;
 };
 
 // Reads project.json's "gui" object into settings: theme, allow_system_fallback,
-// tooltip_delay_sec, tooltip_position_offset and drag_threshold. What is missing or of the
-// wrong type keeps its value.
+// tooltip_delay_sec, tooltip_position_offset, drag_threshold and accessibility_support. What is
+// missing or of the wrong type keeps its value.
 void read_settings(const json::Value& gui, Settings& settings);
 
 // Asset types "theme" (.theme.json files as Theme) and "texture" (.png, .bmp and .ktx2 files as
@@ -230,7 +237,8 @@ struct Placed {
     // The part of the viewport it draws in, [left, top, right, bottom]: what the controls
     // around it that clip leave, and its own rect too when it clips; nullopt when none clips.
     std::optional<Vec4> clip;
-    bool clips = false; // it clips itself and its children: clip_contents, or a ScrollContainer
+    bool clips = false;    // it clips itself and its children: clip_contents, or a ScrollContainer
+    bool translate = true; // its text shows translated (Node::can_auto_translate)
 };
 
 // A style box a control draws, and where in its rect.

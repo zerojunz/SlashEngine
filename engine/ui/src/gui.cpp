@@ -313,44 +313,23 @@ bool is_container(const world::World& world, entt::entity entity) {
 
 // The mouse filter a control has: its own, or its type's as Godot's constructors set them.
 Filter mouse_filter(const world::World& world, entt::entity entity) {
-    const auto* control = world.ecs().try_get<world::Control>(entity);
-    if (control != nullptr && !control->mouse_filter.empty()) {
-        if (control->mouse_filter == "ignore") {
-            return Filter::Ignore;
-        }
-        return control->mouse_filter == "pass" ? Filter::Pass : Filter::Stop;
-    }
-    const std::vector<std::string_view> classes = control_classes(world, entity);
-    const std::string_view type = classes.empty() ? "Control" : classes.front();
-    if (type == "Label" || type == "NinePatchRect") {
+    const std::string_view filter = mouse_filter_name(world, entity);
+    if (filter == "ignore") {
         return Filter::Ignore;
     }
-    if (type == "TextureRect" || (type.ends_with("Container") && type != "PanelContainer")) {
-        return Filter::Pass;
-    }
-    return Filter::Stop;
+    return filter == "pass" ? Filter::Pass : Filter::Stop;
 }
 
 Focus focus_mode(const world::World& world, entt::entity entity) {
-    const auto* control = world.ecs().try_get<world::Control>(entity);
-    const std::string_view mode = control != nullptr ? control->focus_mode : std::string_view();
+    const std::string_view mode = focus_mode_name(world, entity);
     if (mode == "all") {
         return Focus::All;
     }
     if (mode == "click") {
         return Focus::Click;
     }
-    if (mode == "none") {
-        return Focus::None;
-    }
-    // MenuButton's constructor sets FOCUS_ACCESSIBILITY: keys don't move focus to it.
-    if (world.ecs().all_of<world::MenuButton>(entity)) {
-        return Focus::None;
-    }
-    return is_button(world, entity) ||
-                   world.ecs().any_of<world::LineEdit, world::TextEdit, world::Slider>(entity)
-               ? Focus::All
-               : Focus::None;
+    // FOCUS_ACCESSIBILITY, as Control::_is_focusable and the focus neighbor searches take it.
+    return mode == "accessibility" && accessibility_enabled(world) ? Focus::All : Focus::None;
 }
 
 // The BaseButton fields Button and TextureButton share.
@@ -4308,6 +4287,36 @@ public:
     }
 
     // Viewport::show_tooltip: a control's tooltip now, below its middle.
+    // Control::_accessibility_action_scroll_into_view: the ScrollContainer it is in shows it.
+    bool scroll_into_view(entt::entity control) {
+        const entt::entity container = parent(control);
+        if (container == entt::null || !layout_.scrolls.contains(container) ||
+            world_.id_of(container).empty()) {
+            return false;
+        }
+        ensure_visible(container, control, {});
+        return true;
+    }
+
+    // A ScrollContainer's scroll set on either axis as its bars' set_value keeps it.
+    bool scroll_to(entt::entity container, std::array<std::optional<double>, 2> to) {
+        const auto found = layout_.scrolls.find(container);
+        if (found == layout_.scrolls.end() || world_.id_of(container).empty()) {
+            return false;
+        }
+        if (const std::optional<double> x = to[0]; x.has_value()) {
+            set_scroll(world_, state_, container, 0, found->second.h, *x);
+        }
+        if (const std::optional<double> y = to[1]; y.has_value()) {
+            set_scroll(world_, state_, container, 1, found->second.v, *y);
+        }
+        if (const auto status = state_.scrolls.find(id(container));
+            status != state_.scrolls.end()) {
+            cancel_drag(world_, state_, id(container), status->second);
+        }
+        return true;
+    }
+
     void show_tooltip_for(entt::entity control) {
         const Placed* found = placed(control);
         if (found == nullptr) {
@@ -5729,6 +5738,25 @@ void show_tooltip(world::World& world, entt::entity control) {
         return;
     }
     Gui(world, *state, *found, state->now).show_tooltip_for(control);
+}
+
+bool scroll_into_view(world::World& world, entt::entity control) {
+    GuiState* state = state_of(world);
+    text::Fonts* found = fonts(world);
+    if (state == nullptr || found == nullptr || !is_control(world, control)) {
+        return false;
+    }
+    return Gui(world, *state, *found, state->now).scroll_into_view(control);
+}
+
+bool scroll_container_to(world::World& world, entt::entity container,
+                         std::array<std::optional<double>, 2> to) {
+    GuiState* state = state_of(world);
+    text::Fonts* found = fonts(world);
+    if (state == nullptr || found == nullptr || !world.valid(container)) {
+        return false;
+    }
+    return Gui(world, *state, *found, state->now).scroll_to(container, to);
 }
 
 void cancel_tooltip(world::World& world) {
