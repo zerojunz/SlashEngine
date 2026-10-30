@@ -133,9 +133,12 @@ forward_post_uniforms(const PostProcess& post, ForwardPass pass, std::uint32_t t
                       std::uint32_t target_height, std::uint32_t frame_width,
                       std::uint32_t frame_height, std::uint32_t lut_width = 0,
                       std::uint32_t lut_height = 0);
-// A luminance pass's uniforms, from a source of source's size into a target of target's.
+// A luminance pass's uniforms, from a source of source's size into a target of target's. last
+// marks the frame's last pass, which takes a log average's exponential, whether or not it is
+// LuminanceFinal (the first frame of a version takes its own brightness).
 [[nodiscard]] ForwardPostUniforms luminance_uniforms(const PostProcess& post, ForwardPass pass,
-                                                     PostSize source, PostSize target);
+                                                     PostSize source, PostSize target,
+                                                     bool last = false);
 
 // Depth of field's textures: the world, a copy of it with each pixel's blur size in alpha, a
 // second texture of that size, two of half the size, and the result, which the devices use as the

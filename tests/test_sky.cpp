@@ -60,6 +60,12 @@ Float3 sky_color(Scene3D scene, const Float3& eye) {
     return {color[0], color[1], color[2]};
 }
 
+// Whether a device draws every scene as Compatibility, as the OpenGL devices do.
+bool draws_as_compatibility(const RenderDevice& device) {
+    return device.backend() == render::Backend::OpenGl ||
+           device.backend() == render::Backend::OpenGlEs;
+}
+
 // An sRGB color after the sky's trip to linear and back, which Godot's approximations of the two
 // don't quite undo.
 Float3 round_trip(const Float3& color) {
@@ -327,9 +333,13 @@ TEST_CASE("GPUs draw skies and fog as the software device does") {
         auto software = render::create_software_device();
         auto made = software->create_texture({.width = 16, .height = 8}, texels);
         REQUIRE(made.ok());
-        const Image expected = draw(*software, scene_for(made.value()), &lit, 48);
+        const Image forward = draw(*software, scene_for(made.value()), &lit, 48);
+        Scene3D compatibility = scene_for(made.value());
+        compatibility.method = render::RenderMethod::Compatibility;
+        const Image compatible = draw(*software, compatibility, &lit, 48);
         for (auto& device : slash::test::hardware_devices()) {
             CAPTURE(render::backend_name(device->backend()));
+            const Image& expected = draws_as_compatibility(*device) ? compatible : forward;
             auto texture = device->create_texture({.width = 16, .height = 8}, texels);
             REQUIRE(texture.ok());
             const Image image = draw(*device, scene_for(texture.value()), &lit, 48);
@@ -441,11 +451,13 @@ TEST_CASE("every device reflects the sky's radiance in smooth metal") {
 }
 
 TEST_CASE("GPUs light meshes with radiance as the software device does") {
+    // No channel is 0: a physical sky with its sun down raises the night sky to a power under 1,
+    // which is steep near 0, so a texel's last bit of filtering would show.
     const auto texels = [] {
         std::vector<std::uint8_t> out;
         for (int y = 0; y < 8; ++y) {
             for (int x = 0; x < 16; ++x) {
-                for (const int value : {x * 16, y * 32, 255 - (x * 16), 255}) {
+                for (const int value : {16 + (x * 14), 16 + (y * 28), 255 - (x * 14), 255}) {
                     out.push_back(static_cast<std::uint8_t>(value));
                 }
             }
@@ -482,9 +494,13 @@ TEST_CASE("GPUs light meshes with radiance as the software device does") {
             CAPTURE(roughness);
             const render::Material3D material{
                 .albedo = {0.7F, 0.7F, 0.7F, 1.0F}, .metallic = 0.6F, .roughness = roughness};
-            const Image expected = draw(*software, scene_for(made.value()), &material, 48);
+            const Image forward = draw(*software, scene_for(made.value()), &material, 48);
+            Scene3D compatibility = scene_for(made.value());
+            compatibility.method = render::RenderMethod::Compatibility;
+            const Image compatible = draw(*software, compatibility, &material, 48);
             for (auto& device : slash::test::hardware_devices()) {
                 CAPTURE(render::backend_name(device->backend()));
+                const Image& expected = draws_as_compatibility(*device) ? compatible : forward;
                 auto texture = device->create_texture({.width = 16, .height = 8}, texels);
                 REQUIRE(texture.ok());
                 const Image image = draw(*device, scene_for(texture.value()), &material, 48);

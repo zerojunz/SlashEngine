@@ -824,5 +824,5 @@ build keeps as AAC (`.audioclip` files) are reported. A build whose asset bundle
 Particle systems in 2D scenes and TextMesh Pro text in the world (not under a canvas) are reported.
 A game's own shaders (materials of them convert from the properties they share with the Standard
 shader), the 3D parts listed under [3D scenes](#3d-scenes) and Timeline don't convert. Everything that didn't
-convert is in the report's `unsupported`, once per kind with how many and the first place it was
-seen.
+convert is in the report's `unsupported`, once per kind with how many, the first place it was
+seen and up to eight others (`also`).

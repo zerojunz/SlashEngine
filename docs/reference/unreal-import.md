@@ -15,7 +15,8 @@ the import runs the project's own Unreal Editor in the background, as Godot runs
 `.blend` files: no Unreal code is linked or shipped, and Unreal's license covers running the
 editor you installed. The editor runs `UnrealEditor-Cmd <project>.uproject -run=pythonscript
 -script=unreal_export.py` with the Python Editor Script Plugin and the glTF Exporter plugin
-(both ship with Unreal 5 and are enabled for the run), headless and unattended. The script
+(both ship with Unreal 5 and are enabled for the run), headless and unattended, with
+`-AllowCommandletRendering` so the glTF exporter can bake materials. The script
 (`tools/importer/src/unreal_export.py`) opens each level and writes into
 `<project>/.slash/import/unreal/`:
 
@@ -24,6 +25,7 @@ editor you installed. The editor runs `UnrealEditor-Cmd <project>.uproject -run=
 | `export.json` | Each level's actors and their components with their settings and the values of their C++ classes' properties, the Blueprints, the Enhanced Input actions and mapping contexts, and each mesh's bounds and collision |
 | `meshes/<package>.glb` | Each static and skeletal mesh the levels place, as Unreal's glTF exporter writes it |
 | `materials/<package>.glb` | Each material a component overrides a mesh's slot with, on a preview mesh |
+| `text/<package>.t3d` | Base materials, material functions and Niagara systems as Unreal writes them as text: materials read for world-aligned textures, systems for their emitters |
 | `animations/<package>.glb` | Each animation sequence a skeletal mesh component plays, on its skeleton |
 | `sounds/<package>.wav` | Each sound wave the levels play |
 | `landscapes/<level>/<actor>.r16` | Each landscape's heights, its streaming proxies' too, as Unreal's own `.r16` heightmaps are |
@@ -87,7 +89,7 @@ quarter about y, and what hangs from them is turned back.
 Each actor becomes an entity named after its label in snake case (`Crate Stack` is
 `crate_stack`); its root component is that entity, and every other scene component a child
 entity named `<actor>_<component>`. Attached actors hang under the component they are attached
-to. Hidden components and actors are `visible: false`. The report's `entities` maps each actor's
+to. Hidden actors are `visible: false`, and so are hidden components with nothing under them; a hidden component that holds others, such as a character's capsule, stays shown, since Unreal hides only the component itself and a `Transform3D` hides its children too. The report's `entities` maps each actor's
 name to its entity.
 
 | Unreal | SlashEngine |
@@ -102,16 +104,24 @@ name to its entity.
 | `SpotLightComponent` | `SpotLight3D`, its outer cone angle as `spot_angle` |
 | `RectLightComponent` | A `SpotLight3D` of 89 degrees |
 | `SkyLightComponent` | The `WorldEnvironment`'s ambient light, from the sky or its color, at its intensity |
-| `SkyAtmosphereComponent` | A `sky` background with a `PhysicalSkyMaterial` |
-| `ExponentialHeightFogComponent` | The `WorldEnvironment`'s height fog: density / 10, its inscattering color, its height and falloff, and volumetric fog |
+| `SkyAtmosphereComponent` | A `sky` background with a `PhysicalSkyMaterial`. Godot's defaults are Unreal's air in Godot's color space, so only a changed Rayleigh color (made linear at the default's brightness), Rayleigh scale (`rayleigh_coefficient`), Mie scale (`mie_coefficient`) and anisotropy (`mie_eccentricity`) are written. Godot's physical sky is far dimmer for a sun than Unreal's, so `energy_multiplier` makes its zenith, with the sun 45° up, a sixth as bright as a white surface facing the level's first directional light, as a clear sky is |
+| `ExponentialHeightFogComponent` | The `WorldEnvironment`'s height fog: density / 10, its inscattering color (when that is black, as Unreal 5.8's default is, the sky's color through `fog_aerial_perspective` 1, as Unreal takes it from the sky atmosphere), its height and falloff, and volumetric fog |
 | `AudioComponent`, `AmbientSound` | `AudioStreamPlayer3D` with attenuation (`unit_size` the inner radius, `max_distance` its end), else `AudioStreamPlayer`; volume in dB, pitch and auto activate |
 | `BoxComponent`, `SphereComponent`, `CapsuleComponent` | `CollisionShape3D` (see [Collision](#collision)) |
 | `CharacterMovementComponent` | `CharacterBody3D` with its walkable floor angle; its speeds and jump in the report |
 | `NiagaraComponent` | `CPUParticles3D` or `GPUParticles3D` per enabled emitter (see [Particles](#particles)) |
 | `ArrowComponent`, `BillboardComponent` | Nothing: they show only in Unreal's editor |
 
-The level's `WorldEnvironment` is an `environment` entity, made when the level has a sky, a sky
-light or fog. A level with no camera views from the eyes of the pawn player 0 possesses, or else
+The level's `WorldEnvironment` is an `environment` entity. It tonemaps with `aces` (white 6), as
+Unreal's filmic tonemapper does, and unless the project's `r.DefaultFeature.AutoExposure` is off it
+has a `CameraAttributesPractical` with Unreal's auto exposure: `auto_exposure_scale` is Godot's
+0.4 at Unreal's default exposure compensation (`r.DefaultFeature.AutoExposure.Bias`, 1), doubled
+for each stop over it, and the sensitivities span Unreal's range (EV100 from -10 to 20 with
+`ExtendDefaultLuminanceRange`, 0.03 to 8 cd/m² without) in the import's light units. Its
+`auto_exposure_metering` is `"log_average"`, as Unreal meters the frame's brightness in log space,
+so a few bright pools don't darken the rest of the level as Godot's average would. Unreal also
+leaves out its histogram's brightest and darkest tenth, which this doesn't. A `PostProcessVolume`'s own settings
+aren't read. A level with no camera views from the eyes of the pawn player 0 possesses, or else
 the player start: a `Camera3D` 64 cm up (Unreal's `BaseEyeHeight`), named in the report's
 `camera_added`. The world settings' `KillZ` is the report's `kill_y` and its game mode
 `game_mode`.
@@ -121,7 +131,9 @@ the player start: a `Camera3D` 64 cm up (Unreal's `BaseEyeHeight`), named in the
 Each mesh's `.glb` gets the collision Unreal gives it, as Godot's importer makes it (see
 [`model.cleanup`](commands.md#modelcleanup)): its triangles when it uses its complex collision as
 simple (and isn't simulated), a convex decomposition when it has several simple shapes, a convex
-hull for one, and none when it has no simple collision (reported). A static mesh that collides is
+hull for one, and none when it has no simple collision (reported). The script counts the simple
+shapes in the mesh's body setup, since a commandlet has no static mesh editor subsystem. A
+static mesh that collides is
 then a static body, as every model with collision is; a movable one is an
 `AnimatableBody3D`, and one Unreal simulates a `RigidBody3D` with its mass and damping.
 
@@ -168,6 +180,18 @@ material, found by the slot's material's name or, failing that, by its place, is
 override's, with its images, and the copy keeps the mesh's collision. Components with the same
 overrides share one copy. A Godot scene has no per-surface override that `MeshInstance3D` takes,
 so the copy stands for it. The result's `converted` counts the copies as `material_variants`.
+The override's material is named after its package, not the exporter's preview mesh.
+
+A material that places its textures or works out its colors by world position is baked over the
+mesh's texture coordinates like any other, so its pattern loses its size in the world. The
+export script finds these in the materials' text (T3D, as the editor copies nodes) by following
+the base material's nodes back: a texture sampled at coordinates made from a `WorldPosition`
+node or a material function whose outputs are (two deep), a call to `WorldAlignedTexture`,
+`WorldAlignedNormal`, `WorldCoordinate3Way` or a function that samples by world position, or a
+base color, emissive color, normal, metallic, roughness or specular input made from a
+`WorldPosition` node (a procedural grid). One that reads the world position only for its opacity
+mask or offsets, such as a fade near the camera, bakes as it looks on the mesh. The result's
+`unsupported` lists each as a `world-aligned material`.
 
 ## Animation
 
@@ -212,10 +236,17 @@ splines, grass or foliage.
 
 ## Particles
 
-A `NiagaraComponent`'s system becomes Godot's particles. The export reads each emitter's stack
-through `NiagaraExternalEditUtilities`, which Unreal Engine 5.8 added (an older editor reports
-"Niagara emitters" and the component emits nothing): its sim target, its emitter data, each
-module of its four scripts with its inputs' values and dynamic input chains, and its renderers.
+A `NiagaraComponent`'s system becomes Godot's particles. Python can't reach a Niagara system's
+module stacks, so the export writes the system as text (T3D, as copying it in the editor does)
+to `text/<package>.t3d`, with the display names of the enums its modules' static switches use,
+and the importer reads each emitter from that text (`niagara_from_text` in
+`tools/importer/src/unreal_text.cpp`): its sim target, `bLocalSpace`, each script's modules in
+stack order (walked back from the script's output node along the parameter map, a module
+turned off in the stack left out), and its enabled renderers with their meshes. An input's value
+is what the stack's override node feeds it (a linked parameter, a dynamic input with its own
+inputs, or a typed value), else the script's rapid iteration parameter for it, else the module's
+static switch. A system the editor can't write as text is reported as "Niagara emitters", and
+its component emits nothing.
 An emitter simulated on the CPU becomes a `CPUParticles3D`; one simulated on the GPU becomes a
 `GPUParticles3D` and a `.process_material.json` file beside the system's `.uasset`, named
 `<system>_<emitter>`. A system of one emitter is the component's entity; with several, each enabled
@@ -230,7 +261,7 @@ parameter's link is read from the system's user variables.
 | --- | --- |
 | `EmitterState` | `one_shot` for `Loop Behavior` `Once`; a number of loops is reported and loops for ever |
 | `SpawnRate`, `SpawnBurst_Instantaneous` | `amount` as the rate times the longest lifetime plus the burst; a burst alone is `explosiveness: 1` |
-| `InitializeParticle` | `lifetime` (the longest) and `lifetime_randomness`, `color`, the sprite size or mesh scale as `scale_min`/`scale_max`, and the sprite rotation angle |
+| `InitializeParticle` | `lifetime` (the longest) and `lifetime_randomness`, `color`, the sprite size or mesh scale as `scale_min`/`scale_max`, and the sprite rotation angle; `Lifetime Mode` and `Sprite Size Mode` pick the direct or random values |
 | `AddVelocity` (in particle spawn) | `direction`, `initial_velocity_min`/`max` and, for a random vector, the `spread` of a cone through its range's corners |
 | `AddVelocityInCone` | `direction` along `Cone Axis`, `spread` half of `Cone Angle`, and the speed |
 | `GravityForce` | `gravity` |
@@ -248,10 +279,12 @@ parameter's link is read from the system's user variables.
 
 Over-life modules (`ScaleColor`, `ColorFromCurve`, `ScaleSpriteSize`, `SubUVAnimation` and the
 like), event handlers, other renderers, sprite materials (particles draw in their color) and
-every other module are reported, once per kind. Unreal 5.8's documentation doesn't spell out how
-an input's value is written, so the converter reads Unreal's exported text loosely (numbers,
-vectors, colors, enums and dynamic inputs' `Minimum`/`Maximum` by name) and reports a value it
-can't read as "Niagara input that couldn't be read" rather than guessing it.
+every other module (Set Parameters among them) are reported, once per kind. A parameter store's
+bytes don't say their types, so four bytes are read as a float unless they hold a small whole
+number or -1 (true), and four floats as a vector a color input also takes. The converter reads
+values loosely (numbers, vectors, colors, enums and dynamic inputs' `Minimum`/`Maximum` by name)
+and reports a value it can't read as "Niagara input that couldn't be read" rather than guessing
+it.
 
 ## Blueprints and C++
 
@@ -307,5 +340,5 @@ exporter bakes them to), Animation Blueprints' graphs, montages and blend spaces
 without a fallback, movement components such as `RotatingMovementComponent`, light temperature and
 IES profiles, level streaming and World Partition data layers (a partitioned level's actors are
 loaded all at once), and Blueprint logic (C++ classes become skeletons to port). What a project has
-of these is listed in the result's `unsupported`, once per kind with where it was first seen and
-why.
+of these is listed in the result's `unsupported`, once per kind with where it was first seen, up
+to eight other places (`also`) and why.

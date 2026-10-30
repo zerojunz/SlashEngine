@@ -392,6 +392,19 @@ TEST_CASE("processes read the input they are given to its end") {
 #endif
 }
 
+#ifndef _WIN32
+TEST_CASE("a process ends when it exits, though a program it started keeps its output open") {
+    // The background sleep holds the pipe open long after the shell exits, as the trace server
+    // Unreal Editor starts does.
+    const auto start = std::chrono::steady_clock::now();
+    auto result = platform::run_process({"sh", "-c", "sleep 20 & echo started; echo done"});
+    REQUIRE(result.ok());
+    CHECK(result.value().exit_code == 0);
+    CHECK(result.value().tail == "started\ndone");
+    CHECK(std::chrono::steady_clock::now() - start < std::chrono::seconds(10));
+}
+#endif
+
 TEST_CASE("a program started beside this one prints as it goes and stops when asked") {
     const std::string log = "process_test.log";
     std::remove(log.c_str());
@@ -399,7 +412,7 @@ TEST_CASE("a program started beside this one prints as it goes and stops when as
     options.log_path = log;
     auto echo = platform::start_process({SLASH_TEST_CMAKE, "-E", "echo", "hello"}, options);
     REQUIRE(echo.ok());
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (echo.value()->output().empty() && std::chrono::steady_clock::now() < deadline) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
@@ -422,7 +435,7 @@ TEST_CASE("a program started beside this one prints as it goes and stops when as
     const auto started = std::chrono::steady_clock::now();
     CHECK(sleeper.value()->stop() != 0);
     CHECK_FALSE(sleeper.value()->running());
-    CHECK(std::chrono::steady_clock::now() - started < std::chrono::seconds(30));
+    CHECK(std::chrono::steady_clock::now() - started < std::chrono::seconds(10));
 
     CHECK_FALSE(platform::start_process({"slash-no-such-program-anywhere"}).ok());
     CHECK_FALSE(platform::start_process({}).ok());

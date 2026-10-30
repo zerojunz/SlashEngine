@@ -441,6 +441,28 @@ SkyUniforms sky_uniforms(const Scene3D& scene, std::uint32_t width, std::uint32_
     default:
         break;
     }
+    if (scene.method == RenderMethod::ForwardPlus) {
+        // Forward+ hands its sky the material's source_color uniforms and the lights' colors
+        // linear (Godot's MaterialStorage with p_use_linear_color, and SkyRD's light colors).
+        flags |= kSkyLinear;
+        const auto make_linear = [](Float4& c) {
+            for (std::size_t i = 0; i < 3; ++i) {
+                c.at(i) = srgb_to_linear_exact(c.at(i));
+            }
+        };
+        if (sky.kind == SkyKind::Procedural) {
+            for (std::size_t i = 0; i < 5; ++i) {
+                make_linear(p.at(i));
+            }
+        } else if (sky.kind == SkyKind::Physical) {
+            for (std::size_t i = 0; i < 3; ++i) {
+                make_linear(p.at(i));
+            }
+        }
+        for (std::size_t i = 0; i < count; ++i) {
+            make_linear(out.lights.at(i).color_size);
+        }
+    }
     out.options = {static_cast<std::uint32_t>(sky.kind), static_cast<std::uint32_t>(count), flags,
                    0};
     return out;
@@ -469,26 +491,36 @@ SkyRay sky_ray_toward(const Float3& eye) {
 Float4 shade_sky(const SkyUniforms& uniforms, const SkyRay& ray, const Float4& texel, float x,
                  float y) {
     const Float3& eye = ray.eye;
+    const bool linear = (uniforms.options[2] & kSkyLinear) != 0;
+    Float4 sampled = texel;
+    if (linear) {
+        const Float3 c = srgb_to_linear(rgb(texel));
+        sampled = {c[0], c[1], c[2], texel[3]};
+    }
+    const auto kind = static_cast<SkyKind>(uniforms.options[0]);
     Float3 color{};
-    switch (static_cast<SkyKind>(uniforms.options[0])) {
+    switch (kind) {
     case SkyKind::Color:
         color = rgb(uniforms.params[0]);
         break;
     case SkyKind::Procedural:
-        color = procedural_sky(uniforms, eye, texel);
+        color = procedural_sky(uniforms, eye, sampled);
         break;
     case SkyKind::Physical:
-        color = physical_sky(uniforms, eye, texel);
+        color = physical_sky(uniforms, eye, sampled);
         break;
     case SkyKind::Panorama:
         if ((uniforms.options[2] & kSkyTexture) != 0) {
-            color = scale(rgb(texel), uniforms.params[0][0]);
+            color = scale(rgb(sampled), uniforms.params[0][0]);
         }
         break;
     default:
         break;
     }
-    color = srgb_to_linear(scale(color, uniforms.pixel[2]));
+    color = scale(color, uniforms.pixel[2]);
+    if (!linear || kind == SkyKind::Color) {
+        color = srgb_to_linear(color);
+    }
 
     if (uniforms.fog_color[3] != 0.0F) {
         const Float4& fog = uniforms.fog;
@@ -497,7 +529,8 @@ Float4 shade_sky(const SkyUniforms& uniforms, const SkyRay& ray, const Float4& t
             for (std::uint32_t i = 0; i < uniforms.options[1]; ++i) {
                 const SkyLightUniforms& light = uniforms.lights.at(i);
                 const Float3 light_color =
-                    scale(srgb_to_linear(rgb(light.color_size)), light.direction_energy[3]);
+                    scale(linear ? rgb(light.color_size) : srgb_to_linear(rgb(light.color_size)),
+                          light.direction_energy[3]);
                 const float amount =
                     power(std::max(dot3(eye, xyz(light.direction_energy)), 0.0F), 8.0F) * kPi;
                 fogged = add(fogged, scale(light_color, amount * fog[1]));
@@ -553,6 +586,7 @@ SkyUniforms radiance_face_uniforms(const Scene3D& scene, std::uint32_t face) {
     cube.sky.kind = scene.radiance.kind;
     cube.sky.custom_fov = 0.0F;
     cube.post = scene.post;
+    cube.method = scene.method;
     SkyUniforms out = sky_uniforms(cube, size, size);
     // A pixel's direction is (s, -t, -1) from its place across the face, -1 to 1; the face's
     // matrix turns that into its own s and t axes and out along its axis.

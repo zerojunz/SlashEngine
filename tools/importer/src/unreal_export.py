@@ -8,13 +8,16 @@
 #                      exporter
 #   materials/<path>.glb  each material a component puts over its mesh's own, on the exporter's
 #                      preview mesh
+#   text/<path>.t3d    assets Unreal wrote as text (T3D) for what Python can't reach: materials'
+#                      nodes, to find those placed by world position (world_aligned_materials
+#                      in export.json), and Niagara systems' module stacks
 #   animations/<path>.glb  each animation sequence a skeletal mesh component or an Animation
 #                      Blueprint plays, with its skeletal mesh
 #   sounds/<path>.wav  each sound wave an ambient sound or audio component plays
-#   niagara_systems    in export.json, each Niagara system a level's components play: its emitters,
-#                      their modules' inputs as Unreal writes them as text, and their renderers,
-#                      read through Unreal 5.8's NiagaraExternalEditUtilities (earlier editors
-#                      give only the system's own settings)
+#   niagara_systems    in export.json, each Niagara system a level's components play: its own
+#                      settings, the text file it was written to (text/<path>.t3d), from which
+#                      the importer reads its emitters, and the display names of the enums its
+#                      modules' static switches use
 #   landscapes/<level>/<actor>.r16  each landscape's heights, its streaming proxies' too, as
 #                      Unreal's .r16 heightmaps are: 16-bit and little-endian, a row per vertex
 #                      along its y, 32768 at its own height and 128 a unit of its space
@@ -30,6 +33,7 @@
 
 import json
 import os
+import re
 import traceback
 
 import unreal
@@ -123,6 +127,13 @@ def export_gltf(asset, path):
     except TypeError:
         result = unreal.GLTFExporter.export_to_gltf(asset, path, options, unreal.Set(unreal.Actor))
     ok = result[0] if isinstance(result, tuple) else result
+    # Its messages: a material it couldn't bake is written plain, so the import says so.
+    messages = result[-1] if isinstance(result, tuple) and len(result) > 1 else None
+    for kind in ('errors', 'warnings'):
+        for message in (prop(messages, kind, []) or []) if messages is not None else []:
+            text = str(message)
+            if 'bake' in text.lower():
+                problem('material the glTF exporter could not bake', package_of(asset), text)
     return bool(ok) and os.path.isfile(path)
 
 
@@ -134,12 +145,29 @@ def bounds_of(asset):
 
 
 def static_collision(mesh, entry):
+    # The mesh's body setup holds its simple shapes. In a commandlet (-run=pythonscript) there is
+    # no StaticMeshEditorSubsystem and EditorStaticMeshLibrary answers -1, so they come second.
+    geometry = prop(prop(mesh, 'body_setup'), 'agg_geom')
+    if geometry is not None:
+        kinds = ('box_elems', 'sphere_elems', 'sphyl_elems', 'convex_elems',
+                 'tapered_capsule_elems')
+        counts = {kind: len(prop(geometry, kind, []) or []) for kind in kinds}
+        entry['simple_collision'] = sum(counts.values())
+        entry['convex_collision'] = counts['convex_elems']
+        flag = prop(prop(mesh, 'body_setup'), 'collision_trace_flag')
+        if flag is not None:
+            entry['collision_complexity'] = enum_name(flag)
+        return
     tools = subsystem('StaticMeshEditorSubsystem') or getattr(unreal, 'EditorStaticMeshLibrary',
                                                               None)
     if tools is None:
         return
-    entry['simple_collision'] = call(0, tools.get_simple_collision_count, mesh)
-    entry['convex_collision'] = call(0, tools.get_convex_collision_count, mesh)
+    simple = call(-1, tools.get_simple_collision_count, mesh)
+    if simple is None or simple < 0:
+        problem('mesh whose collision Unreal does not report', package_of(mesh))
+        return
+    entry['simple_collision'] = simple
+    entry['convex_collision'] = max(0, call(0, tools.get_convex_collision_count, mesh) or 0)
     flag = call(None, tools.get_collision_complexity, mesh)
     if flag is not None:
         entry['collision_complexity'] = enum_name(flag)
@@ -170,9 +198,167 @@ def use_mesh(asset, skeletal):
     for slot in prop(asset, 'materials' if skeletal else 'static_materials', []) or []:
         material = prop(slot, 'material_interface')
         slots.append(package_of(material))
+        check_aligned(material)
     entry['materials'] = slots
     meshes[package] = entry
     return package
+
+
+def text_export(obj, name):
+    # An asset as Unreal writes it as text (T3D, as copying it in the editor does), or None.
+    # It holds what Python can't reach: a material's nodes, a Niagara system's module stacks.
+    path = os.path.join(OUT, 'text', name + '.t3d')
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    task = unreal.AssetExportTask()
+    for key, value in (('object', obj), ('filename', path), ('automated', True),
+                       ('prompt', False), ('replace_identical', True)):
+        call(None, task.set_editor_property, key, value)
+    exporter = getattr(unreal, 'ObjectExporterT3D', None)
+    if exporter is not None:
+        call(None, task.set_editor_property, 'exporter', exporter())
+    if not call(False, unreal.Exporter.run_asset_export_task, task) or not os.path.isfile(path):
+        return None
+    with open(path, encoding='utf-8', errors='replace') as text:
+        return text.read()
+
+
+# Functions that place a texture by where a pixel is in the world, not by the mesh's texture
+# coordinates, which a bake onto the mesh can't keep.
+WORLD_FUNCTIONS = ('WorldAlignedTexture', 'WorldAlignedNormal', 'WorldCoordinate3Way')
+# A material's inputs that a bake keeps; opacity masks and offsets placed by world position (a
+# fade near the camera, say) still bake.
+BAKED_INPUTS = ('BaseColor', 'EmissiveColor', 'Normal', 'Metallic', 'Roughness', 'Specular')
+GRAPH_REFERENCE = re.compile(r"'[^'\":]*:([A-Za-z0-9_]+)'")
+GRAPH_FUNCTION = re.compile(r"MaterialFunction'?\"?(/[^'\".]+)")
+
+
+def material_graph(text):
+    # A material's or function's nodes from its text, by name: each one's class and the lines
+    # of its properties (T3D writes each object twice, declared and then filled in).
+    nodes = {}
+    stack = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        begin = re.match(r'Begin Object (?:Class=(\S+) )?Name="([^"]+)"', stripped)
+        if begin:
+            node = nodes.setdefault(begin.group(2), {'class': '', 'lines': []})
+            if begin.group(1):
+                node['class'] = begin.group(1).rsplit('.', 1)[-1]
+            stack.append(begin.group(2))
+        elif stripped == 'End Object':
+            if stack:
+                stack.pop()
+        elif stack:
+            nodes[stack[-1]]['lines'].append(stripped)
+    return nodes
+
+
+def graph_inputs(nodes, keep):
+    # The nodes feeding the properties keep(node, key) picks.
+    found = []
+    for node in nodes.values():
+        for line in node['lines']:
+            if keep(node, line.split('=', 1)[0]):
+                found += GRAPH_REFERENCE.findall(line)
+    return found
+
+
+graph_texts = {}  # material function path: its text, or None
+
+
+def function_text(path):
+    if path not in graph_texts:
+        function = call(None, unreal.load_asset, path)
+        graph_texts[path] = text_export(function, 'materials' + path) if function else None
+    return graph_texts[path]
+
+
+def reaches_world(nodes, starts, depth, through_functions):
+    # Whether the nodes from starts back read where the pixel is in the world: a WorldPosition
+    # node, a world-aligned function, or (through_functions) a function whose outputs do.
+    seen = set()
+    todo = list(starts)
+    while todo:
+        name = todo.pop()
+        if name in seen or name not in nodes:
+            continue
+        seen.add(name)
+        node = nodes[name]
+        if node['class'] == 'MaterialExpressionWorldPosition':
+            return True
+        for line in node['lines']:
+            key = line.split('=', 1)[0]
+            if key in ('Material', 'Function', 'ExpressionGUID', 'MaterialExpressionGuid'):
+                continue
+            path = GRAPH_FUNCTION.search(line) if key == 'MaterialFunction' else None
+            if path is not None:
+                if any(word in path.group(1) for word in WORLD_FUNCTIONS):
+                    return True
+                if through_functions and depth < 2:
+                    text = function_text(path.group(1))
+                    inner = material_graph(text) if text else {}
+                    outputs = graph_inputs(inner, lambda n, k: n['class'].endswith(
+                        'FunctionOutput') and k == 'A')
+                    if reaches_world(inner, outputs, depth + 1, True):
+                        return True
+                continue
+            todo += GRAPH_REFERENCE.findall(line)
+    return False
+
+
+def samples_by_world(nodes, depth):
+    # Whether a graph samples a texture at coordinates made from where the pixel is in the world,
+    # or calls a function (two deep) that does.
+    coordinates = graph_inputs(nodes, lambda n, k: 'TextureSample' in n['class'] and
+                               k == 'Coordinates')
+    if reaches_world(nodes, coordinates, depth, True):
+        return True
+    if depth >= 2:
+        return False
+    for node in nodes.values():
+        for line in node['lines']:
+            path = GRAPH_FUNCTION.search(line) if line.startswith('MaterialFunction=') else None
+            if path is None:
+                continue
+            if any(word in path.group(1) for word in WORLD_FUNCTIONS):
+                return True
+            text = function_text(path.group(1))
+            if text and samples_by_world(material_graph(text), depth + 1):
+                return True
+    return False
+
+
+def world_aligned(material):
+    # Whether a material places textures, or works out colors, by where a pixel is in the world,
+    # read from its text: a texture sampled at world coordinates, or a baked input made from the
+    # world position (a procedural grid). Others that read it (a fade near the camera, a mask)
+    # bake as they look on the mesh.
+    package = package_of(material)
+    if not package:
+        return False
+    text = text_export(material, 'materials' + package)
+    if text is None:
+        return False
+    nodes = material_graph(text)
+    if samples_by_world(nodes, 0):
+        return True
+    outputs = graph_inputs(nodes, lambda n, k: n['class'] == 'MaterialEditorOnlyData' and
+                           k in BAKED_INPUTS)
+    return reaches_world(nodes, outputs, 0, False)
+
+
+aligned = {}  # material package: whether it places textures by world position
+
+
+def check_aligned(material):
+    # Records a material a mesh draws with that places textures by world position, by its base
+    # material's nodes; the bake loses that, so the import says so.
+    package = package_of(material)
+    if not package or package in aligned:
+        return
+    base = call(None, material.get_base_material) if hasattr(material, 'get_base_material') \
+        else None
+    aligned[package] = base is not None and bool(call(False, world_aligned, base))
 
 
 def use_material(asset):
@@ -180,6 +366,7 @@ def use_material(asset):
     if not package or package in materials:
         return package
     entry = {'class': asset.get_class().get_name()}
+    check_aligned(asset)
     path = file_for(OUT + '/materials', package, '.glb')
     try:
         if export_gltf(asset, path):
@@ -256,140 +443,38 @@ def use_sound(asset):
 # --- Niagara ---
 
 niagara_systems = {}
-NIAGARA_SCRIPTS = ('emitter_spawn_script', 'emitter_update_script', 'particle_spawn_script',
-                   'particle_update_script')
+enum_names_read = {}
 
 
-def text_of(value):
-    # A struct's value as Unreal writes it as text, (Name=Value,...); nested values are kept.
-    exported = call(None, value.export_text) if hasattr(value, 'export_text') else None
-    return exported if exported is not None else str(value)
-
-
-def edit_call(name, *args):
-    # One of NiagaraExternalEditUtilities' functions; its result, the last of its outputs when it
-    # has several. Its editing context is an argument where Python asks for one.
-    utilities = getattr(unreal, 'NiagaraExternalEditUtilities', None)
-    function = getattr(utilities, name, None) if utilities is not None else None
-    if function is None:
-        return None
-    tries = [args]
-    context = getattr(unreal, 'NiagaraExternalEditContext', None)
-    if context is not None:
-        tries.append(args + (context(),))
-    for arguments in tries:
-        try:
-            result = function(*arguments)
-        except TypeError:
-            continue
-        except Exception:
-            return None
-        if isinstance(result, tuple):
-            result = result[-1] if result else None
-        return result
-    return None
-
-
-def stack_reference(system, emitter='', script='', module='', renderer=-1, inputs=()):
-    ref = unreal.NiagaraExt_StackItemReference()
-    for key, value in (('system', system), ('emitter_name', emitter), ('script_name', script),
-                       ('module_name', module), ('renderer_index', renderer)):
-        if value not in ('', -1) or key == 'system':
-            call(None, ref.set_editor_property, key, value)
-    if inputs:
-        call(None, ref.set_editor_property, 'input_name_stack', [unreal.Name(i) for i in inputs])
-    return ref
-
-
-def json_of(data):
-    # A Niagara schema's JSON values (PropertyValues), or their text when they don't parse.
-    values = prop(data, 'property_values', '') if data is not None else ''
-    try:
-        return json.loads(str(values))
-    except ValueError:
-        return {'text': str(values)}
-
-
-def asset_paths(value, out):
-    # The asset paths in a renderer's values: /Game/... and StaticMesh'/Game/...' alike.
-    if isinstance(value, dict):
-        for item in value.values():
-            asset_paths(item, out)
-    elif isinstance(value, list):
-        for item in value:
-            asset_paths(item, out)
-    elif isinstance(value, str) and '/' in value:
-        path = value.split("'")[1] if value.count("'") >= 2 else value
-        if path.startswith('/') and path not in out:
-            out.append(path)
-
-
-def renderer_of(system, emitter, ref):
-    cls = prop(ref, 'renderer_class')
-    index = prop(ref, 'renderer_index', 0)
-    out = {'class': cls.get_name() if cls is not None else ''}
-    data = edit_call('get_renderer_data', stack_reference(system, emitter, renderer=index))
-    out['data'] = json_of(data)
-    meshes_used = []
-    paths = []
-    asset_paths(out['data'], paths)
-    for path in paths:
-        asset = call(None, unreal.load_asset, path)
-        if isinstance(asset, unreal.StaticMesh):
-            meshes_used.append(use_mesh(asset, False))
-    if meshes_used:
-        out['meshes'] = meshes_used
-    return out
-
-
-def module_of(system, emitter, script, module):
-    name = str(prop(module, 'module_name', ''))
-    out = {'module': name, 'enabled': bool(prop(module, 'enabled', True))}
-    asset = prop(module, 'module_script')
-    if asset is not None:
-        out['script'] = package_of(asset)
-    if prop(module, 'is_set_parameters_module', False):
-        out['set_parameters'] = True
-    values = edit_call('get_module_input_values',
-                       stack_reference(system, emitter, script, name))
-    inputs = {}
-    for entry in (prop(values, 'inputs', []) or []) if values is not None else []:
-        input_name = str(prop(entry, 'name', ''))
-        value = prop(entry, 'value')
-        found = {'value': text_of(value) if value is not None else ''}
-        chain = edit_call('get_dynamic_input_chain',
-                          stack_reference(system, emitter, script, name, inputs=(input_name,)))
-        if chain is not None and (prop(chain, 'inputs', []) or []):
-            found['chain'] = text_of(chain)
-        inputs[input_name] = found
-    out['inputs'] = inputs
-    return out
-
-
-def emitter_of(system, summary):
-    name = str(prop(summary, 'emitter_name', ''))
-    out = {'name': name, 'enabled': bool(prop(summary, 'enabled', True)),
-           'sim_target': enum_name(prop(summary, 'sim_target', 'cpu_sim'))}
-    out['data'] = json_of(edit_call('get_emitter_data', stack_reference(system, name)))
-    topology = edit_call('get_emitter_topology', stack_reference(system, name))
-    if topology is None:
-        problem('Niagara emitter the editor did not describe', package_of(system) + ': ' + name)
-        return out
-    scripts = {}
-    for key in NIAGARA_SCRIPTS:
-        stack = prop(topology, key)
-        if stack is None:
-            continue
-        script = str(prop(stack, 'script_name', ''))
-        scripts[script] = [module_of(system, name, script, module)
-                           for module in (prop(stack, 'modules', []) or [])]
-    out['scripts'] = scripts
-    out['renderers'] = [renderer_of(system, name, ref)
-                        for ref in (prop(topology, 'renderers', []) or [])]
-    return out
+def enum_names(path):
+    # A user-defined enum's display names by enumerator name ("NewEnumerator1": "Random"), as a
+    # Niagara module's static switches name their values.
+    if path in enum_names_read:
+        return enum_names_read[path]
+    names = {}
+    enum = call(None, unreal.load_asset, path)
+    helper = getattr(unreal, 'KismetNodeHelperLibrary', None)
+    if enum is not None and helper is not None:
+        for value in range(64):
+            name = str(call('', helper.get_enumerator_name, enum, value)).split('::')[-1]
+            if name in ('', 'None') or name.endswith('_MAX'):
+                continue
+            shown = call('', helper.get_enumerator_user_friendly_name, enum, value)
+            names[name] = str(shown) if shown else name
+    if not names and enum is not None:
+        text = text_export(enum, 'enums/' + package_of(enum).lstrip('/')) or ''
+        for name, shown in re.findall(
+                r'"?(NewEnumerator\d+)"?\s*,\s*(?:NSLOCTEXT|LOCTEXT|INVTEXT)\((?:"[^"]*"\s*,\s*)*"([^"]*)"\)',
+                text):
+            names[name] = shown
+    enum_names_read[path] = names
+    return names
 
 
 def use_niagara(system):
+    # A Niagara system's own settings, and the system as text: Python can't reach its emitters'
+    # module stacks, which the importer reads from the text. The enums its static switches use
+    # and the meshes its renderers draw are read here, as only the editor can load them.
     package = package_of(system)
     if not package or package in niagara_systems:
         return package
@@ -400,20 +485,18 @@ def use_niagara(system):
     if isinstance(bounds, unreal.Box) and bool(getattr(bounds, 'is_valid', False)):
         out['fixed_bounds'] = {'min': vector(bounds.min), 'max': vector(bounds.max)}
     niagara_systems[package] = out
-    summary = edit_call('get_system_summary', system)
-    if summary is None:
-        problem('Niagara emitters', package,
-                "reading a Niagara system's emitters needs Unreal Engine 5.8 or later")
+    name = package.lstrip('/')
+    text = text_export(system, name)
+    if text is None:
+        problem('Niagara emitters', package, 'the editor did not write the system as text')
         return package
-    out['user_variables'] = [text_of(v) for v in (prop(summary, 'user_variables', []) or [])]
-    emitters = []
-    for emitter in prop(summary, 'emitters', []) or []:
-        try:
-            emitters.append(emitter_of(system, emitter))
-        except Exception as error:
-            problem('Niagara emitter the export could not read',
-                    package + ': ' + str(prop(emitter, 'emitter_name', '')), str(error))
-    out['emitters'] = emitters
+    out['text'] = 'text/' + name + '.t3d'
+    out['enums'] = {path: enum_names(path)
+                    for path in sorted(set(re.findall(r"UserDefinedEnum'(/[^']+)'", text)))}
+    for path in sorted(set(re.findall(r"Meshes\(\d+\)=\(Mesh=\"[^']*'(/[^'.]+)", text))):
+        asset = call(None, unreal.load_asset, path)
+        if isinstance(asset, unreal.StaticMesh):
+            use_mesh(asset, False)
     return package
 
 
@@ -718,9 +801,18 @@ def component_of(actor, comp):
                'height_falloff': float(prop(comp, 'fog_height_falloff', 0.2)),
                'start_distance': float(prop(comp, 'start_distance', 0.0)),
                'volumetric': bool(prop(comp, 'volumetric_fog', False))}
-        c = prop(comp, 'fog_inscattering_luminance') or prop(comp, 'fog_inscattering_color')
-        if c is not None:
-            fog['color'] = color(c)
+        # A LinearColor is never false, so each is looked at in turn: 5.8's luminance is black
+        # by default, and the fog takes its color from the sky atmosphere then.
+        for name in ('fog_inscattering_luminance', 'fog_inscattering_color'):
+            c = prop(comp, name)
+            if c is not None and (c.r > 0 or c.g > 0 or c.b > 0):
+                fog['color'] = color(c)
+                break
+        else:
+            fog['color'] = [0.0, 0.0, 0.0]
+        scale = prop(comp, 'sky_atmosphere_ambient_contribution_color_scale')
+        if scale is not None:
+            fog['sky_contribution'] = color(scale)
         out['fog'] = fog
     elif isinstance(comp, unreal.SpringArmComponent):
         out['spring_arm'] = {'length': float(prop(comp, 'target_arm_length', 300.0)),
@@ -729,7 +821,15 @@ def component_of(actor, comp):
     elif isinstance(comp, getattr(unreal, 'NiagaraComponent', ())):
         out['niagara'] = niagara_of(comp)
     elif isinstance(comp, unreal.SkyAtmosphereComponent):
-        out['sky_atmosphere'] = {}
+        sky = {}
+        rayleigh = prop(comp, 'rayleigh_scattering')
+        if rayleigh is not None:
+            sky['rayleigh_scattering'] = [float(rayleigh.r), float(rayleigh.g), float(rayleigh.b)]
+        for name in ('rayleigh_scattering_scale', 'mie_scattering_scale', 'mie_anisotropy'):
+            value = prop(comp, name)
+            if value is not None:
+                sky[name] = float(value)
+        out['sky_atmosphere'] = sky
     elif isinstance(comp, unreal.CharacterMovementComponent):
         out['character'] = {'max_walk_speed': float(prop(comp, 'max_walk_speed', 600.0)),
                             'jump_z_velocity': float(prop(comp, 'jump_z_velocity', 420.0)),
@@ -949,8 +1049,9 @@ def tag(data, name):
 
 
 def mappings_of(context):
+    # Unreal 5.8 keeps a context's mappings in default_key_mappings and leaves mappings empty.
     found = prop(context, 'mappings')
-    if found is None:
+    if not found:
         keys = prop(context, 'default_key_mappings')
         found = prop(keys, 'mappings') if keys is not None else None
     out = []
@@ -1010,6 +1111,7 @@ def main():
     result['animations'] = animations
     result['sounds'] = sounds
     result['niagara_systems'] = niagara_systems
+    result['world_aligned_materials'] = sorted(p for p, found in aligned.items() if found)
     result['problems'] = problems
     with open(os.path.join(OUT, 'export.json'), 'w', encoding='utf-8') as out:
         json.dump(result, out, indent=1, sort_keys=True)
