@@ -48,6 +48,9 @@ Result<Platform> Platform::create(const Config& config) {
     SDL_Window* window = nullptr;
     if (!config.headless) {
         SDL_WindowFlags window_flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+        if (config.hidden) {
+            window_flags |= SDL_WINDOW_HIDDEN;
+        }
 #ifdef __EMSCRIPTEN__
         const bool opengl = true;
         const bool opengl_es = true;
@@ -230,6 +233,12 @@ std::string Platform::clipboard_text() const {
 void Platform::set_clipboard_text(const std::string& text) const {
     if (!headless_ && !SDL_SetClipboardText(text.c_str())) {
         log::warn("the clipboard was not set", {{"error", SDL_GetError()}});
+    }
+}
+
+void Platform::show_window() const {
+    if (window_ != nullptr) {
+        SDL_ShowWindow(window_);
     }
 }
 
