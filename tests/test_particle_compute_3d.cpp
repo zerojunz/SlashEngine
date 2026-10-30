@@ -301,6 +301,13 @@ Image draw_particles(RenderDevice& device, std::uint32_t size) {
     auto system = device.create_particles_3d(kAmount);
     REQUIRE_MESSAGE(system.ok(), error_of(system));
     REQUIRE(device.process_particles_3d(system.value(), process, steps).ok());
+    {
+        // Reading the particles waits for the GPU, so a device lost while running them is
+        // reported here.
+        INFO("processing");
+        const auto read = device.read_particles_3d(system.value());
+        REQUIRE_MESSAGE(read.ok(), error_of(read));
+    }
     auto target = device.create_texture({.width = size, .height = size, .render_target = true});
     REQUIRE(target.ok());
     auto texture = device.create_texture(
@@ -310,9 +317,11 @@ Image draw_particles(RenderDevice& device, std::uint32_t size) {
     const slash::Vec3 eye{0.0F, 0.0F, 6.0F};
     const render::ParticleTransform camera{1, 0, 0, 0, 1, 0, 0, 0, 1, eye.x, eye.y, eye.z};
     const std::vector<Vertex3D> source = card(0.5F);
-    std::vector<render::MeshId> meshes;
     const std::vector<ParticleMeshDraw3D> draws = varied_draws(camera);
-    for (std::size_t i = 0; i < draws.size(); ++i) {
+    std::vector<render::MeshId> meshes(draws.size());
+    // The sorted draw (0) is filled last, so the draws before it show whether filling any mesh
+    // loses the device or only sorting does.
+    for (const std::size_t i : std::array<std::size_t, 5>{1, 2, 3, 4, 0}) {
         INFO("draw ", i);
         auto mesh = device.create_mesh(std::vector<Vertex3D>(source.size() * kAmount), {});
         REQUIRE(mesh.ok());
@@ -323,7 +332,7 @@ Image draw_particles(RenderDevice& device, std::uint32_t size) {
         // is reported at that draw.
         const auto read = device.read_particles_3d(system.value());
         REQUIRE_MESSAGE(read.ok(), error_of(read));
-        meshes.push_back(mesh.value());
+        meshes[i] = mesh.value();
     }
     render::Scene3D scene;
     scene.camera = render::look_at({eye.x, eye.y, eye.z}, {0.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F});
