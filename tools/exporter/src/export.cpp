@@ -1544,6 +1544,9 @@ ExportResult export_game(const ExportOptions& options) {
         configure.emplace_back("-DSLASH_GAME_MICROPHONE=ON");
         configure.push_back("-DSLASH_GAME_MICROPHONE_USAGE=" + sound.input_usage_description);
     }
+    // Games that enable XR ask Android for the OpenXR runtime in their manifest.
+    configure.emplace_back(project.value().xr.enabled ? "-DSLASH_GAME_XR=ON"
+                                                      : "-DSLASH_GAME_XR=OFF");
     if (platform == "macos") {
         toolchain_args.push_back("-DCMAKE_OSX_DEPLOYMENT_TARGET=" +
                                  std::string(kMacosDeploymentTarget));
