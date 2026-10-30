@@ -1623,6 +1623,11 @@ with those visible whose bounds touch its visibility box and whose `cull_mask` m
 texture is cut into slices by `particle_field` and read through the `ImageLoader`
 `canvas::install` gives it, and packed after the steps for the shaders
 (`src/particle_layout_3d.cpp`). `examples/particle-attractors-3d` gathers dust in a well.
+Colliders are Godot's `GPUParticlesCollisionSphere3D` and `Box3D`, paired as attractors are and
+placed by `collider_for_particles` (`render::ParticleCollider3D`); `collider_contact` in
+`engine/render/src/particles3d.cpp` and its twin in the shader find the way out and the depth
+as `particles.glsl`'s collider loop, and the process material's `collision_mode` bounces or
+hides the particle. `examples/particle-collision-3d` bounces sparks off a floor.
 
 ## Job system
 

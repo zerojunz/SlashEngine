@@ -100,6 +100,12 @@ struct ParticleProcess3D {
     float turbulence_noise_speed_random = 0.2F;
     // Attractors push the particles (Godot's attractor_interaction_enabled).
     bool attractor_interaction = true;
+    // What a particle does when it touches a collider, as Godot's collision_mode, and how it
+    // bounces and slides when Rigid.
+    ParticleCollision collision_mode = ParticleCollision::Disabled;
+    float collision_friction = 0.0F;  // of the speed along the surface lost, 0 to 1
+    float collision_bounce = 0.0F;    // of the speed into the surface sent back, 0 to 1
+    bool collision_use_scale = false; // the particle's scale multiplies its collision size
 
     bool operator==(const ParticleProcess3D&) const = default;
 };
@@ -138,6 +144,23 @@ struct ParticleAttractor3D {
     bool operator==(const ParticleAttractor3D&) const = default;
 };
 
+// The shapes of Godot's GPUParticlesCollision3D that collide in every device.
+enum class ColliderShape3D : std::uint8_t { Sphere, Box };
+
+// A collider a step's particles touch, as Godot's particles storage hands one to its particles
+// shader: its transform in the particles' space with its basis made orthonormal, and the half
+// size of its box (or its radius, in x, y and z) scaled by its transform.
+struct ParticleCollider3D {
+    ColliderShape3D shape = ColliderShape3D::Sphere;
+    ParticleTransform transform = kParticleIdentity;
+    Vec3 extents{1.0F, 1.0F, 1.0F};
+
+    bool operator==(const ParticleCollider3D&) const = default;
+};
+
+// The most colliders one step takes, as Godot's MAX_COLLIDERS.
+inline constexpr std::size_t kMaxParticleColliders3D = 32;
+
 // The most attractors one step takes, as Godot's MAX_ATTRACTORS.
 inline constexpr std::size_t kMaxParticleAttractors3D = 32;
 // The most texels a vector field holds.
@@ -166,6 +189,11 @@ struct ParticleStep3D {
     bool clear = false;
     // What pushes the particles in this step (Godot's FrameParams attractors).
     std::vector<ParticleAttractor3D> attractors;
+    // What the particles collide with in this step (Godot's FrameParams colliders), and how
+    // near a particle comes to one before it touches, in meters (GPUParticles3D's
+    // collision_base_size).
+    std::vector<ParticleCollider3D> colliders;
+    float collision_size = 0.01F;
 
     bool operator==(const ParticleStep3D&) const = default;
 };

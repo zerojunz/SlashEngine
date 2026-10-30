@@ -379,6 +379,15 @@ Result<void> check_particle_process_3d(const ParticleProcess3D& process,
                               "a particle step has at most " +
                                   std::to_string(kMaxParticleAttractors3D) + " attractors");
         }
+        if (step.colliders.size() > kMaxParticleColliders3D) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a particle step has at most " +
+                                  std::to_string(kMaxParticleColliders3D) + " colliders");
+        }
+        if (!(step.collision_size >= 0.0F) || !finite(step.collision_size)) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a particle step's collision size is 0 or more");
+        }
         for (const ParticleAttractor3D& attractor : step.attractors) {
             if (attractor.shape != AttractorShape3D::VectorField) {
                 continue;
