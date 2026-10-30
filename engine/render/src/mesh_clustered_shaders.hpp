@@ -14086,7 +14086,8 @@ R"hlsl(// The 3D shader's fragment stage as Godot's Forward+ renderer lights it:
 // (tools/shader_compiler) put its code before this file's, with GameSurface, game_surface and
 // game_specular, and its texture params in the StandardMaterial3D's slots. With GAME_VERTEX too,
 // its vertex() places the corners, through GameVertex and game_vertex, with its texture params
-// in the vertex stage's slots 0 to 4.
+// in the vertex stage's slots 0 to 4. With GAME_LIGHT, its light() lights the pixel once a light
+// through game_light, with game_albedo the surface's albedo, and may change ALPHA.
 
 cbuffer Camera : register(b0, space1) {
     float4x4 view_projection;          // world to clip space, with TAA's jitter
@@ -14288,11 +14289,11 @@ cbuffer Scene : register(b1, space3) {
     // Forward+'s clusters: tiles across, a tile's words of light bits, depth slices per unit of
     // view depth (how many over the far plane's distance).
     float4 cluster;
-    // 1 when screen_texture's layer 0 holds the frame's SSAO, its light affect and its AO channel
+)hlsl",
+R"hlsl(    // 1 when screen_texture's layer 0 holds the frame's SSAO, its light affect and its AO channel
     // affect, then 1 when its layer 1 holds its SSR.
     float4 ssao;
-)hlsl",
-R"hlsl(    float4 view_rows[3]; // the world to the camera's space, a row each, for normals
+    float4 view_rows[3]; // the world to the camera's space, a row each, for normals
     // Forward+'s reflection probes: how many in probes, the level the roughest surfaces read, and
     // the exposure their light is multiplied by.
     float4 reflections;
@@ -14528,12 +14529,12 @@ float4 fog_process(float3 world) {
     float distance = length(to_point);
     float3 color = fog_color.rgb;
     if (fog.y > 0.001) {
-        float3 view = distance > 0.0 ? to_point / distance : (float3)0.0;
+)hlsl",
+R"hlsl(        float3 view = distance > 0.0 ? to_point / distance : (float3)0.0;
         uint count = (uint)camera.w;
         for (uint i = 0u; i < count; ++i) {
             if (lights[i].direction.w == kDirectional) {
-)hlsl",
-R"hlsl(                float amount = pow(max(dot(view, normalize(lights[i].direction.xyz)), 0.0), 8.0);
+                float amount = pow(max(dot(view, normalize(lights[i].direction.xyz)), 0.0), 8.0);
                 color += lights[i].color.rgb * amount * fog.y;
             }
         }
@@ -14804,7 +14805,8 @@ float light_shadow(bool directional, uint slot, float3 world, float3 normal, flo
             texel = positional_shadows[slot].params.z;
             clamp_rect = positional_shadows[slot].rects[face];
         }
-        float sampled = sample_shadow(!directional, to_atlas, at, texel, taps, clamp_rect);
+)hlsl",
+R"hlsl(        float sampled = sample_shadow(!directional, to_atlas, at, texel, taps, clamp_rect);
         if (k == 0u) {
             shadow = sampled;
         } else {
@@ -14812,8 +14814,7 @@ float light_shadow(bool directional, uint slot, float3 world, float3 normal, flo
         }
     }
     if (!directional) {
-)hlsl",
-R"hlsl(        return lerp(1.0, shadow, positional_shadows[slot].params.y);
+        return lerp(1.0, shadow, positional_shadows[slot].params.y);
     }
     if (lookups == 2u) {
         shadow = lerp(shadow, next, blend);
@@ -14903,8 +14904,14 @@ void add_light(Light light, float3 world, float3 normal, float3 geometry, float3
     if (ray >= 0.0 && slot >= 0.0) {
         attenuation *= light_shadow(directional, (uint)slot, world, geometry, toward);
     }
+#ifdef GAME_LIGHT
+    // A game's light() lights the pixel in place of light_compute, as Godot's LIGHT_CODE_USED.
+    game_light(normal, toward, view, light.color.rgb, directional, attenuation, light.color.w,
+               game_albedo, metallic, roughness, diffuse_light, specular_light);
+#else
     light_compute(normal, toward, view, light.color.rgb, attenuation, f0, roughness, metallic,
                   light.color.w, diffuse_light, specular_light);
+#endif
 }
 
 #ifdef CLUSTERED
@@ -15071,7 +15078,8 @@ void apply_decal(Decal decal, float3 world, float3 geometry, float3 dx, float3 d
             // Y down, as most tools draw normal maps, and turned from the decal's space, whose up
             // is y, by its xzy.
             float3 n = texels[1].xyz;
-            n.xy = n.xy * float2(2.0, -2.0) - float2(1.0, -1.0);
+)hlsl",
+R"hlsl(            n.xy = n.xy * float2(2.0, -2.0) - float2(1.0, -1.0);
             n.z = sqrt(max(0.0, 1.0 - dot(n.xy, n.xy)));
             float3 turned = float3(dot(decal.normal_rows[0].xyz, n.xzy),
                                    dot(decal.normal_rows[1].xyz, n.xzy),
@@ -15081,8 +15089,7 @@ void apply_decal(Decal decal, float3 world, float3 geometry, float3 dx, float3 d
         if (has_rect(decal.rects[2])) {
             float3 orm = texels[2].xyz;
             ao = lerp(ao, orm.r, albedo.a);
-)hlsl",
-R"hlsl(            roughness = lerp(roughness, orm.g, albedo.a);
+            roughness = lerp(roughness, orm.g, albedo.a);
             metallic = lerp(metallic, orm.b, albedo.a);
         }
     }
@@ -15319,7 +15326,8 @@ void voxel_gi_compute(uint index, float3 world, float3 normal, float3 reflection
     }
     float3 blendv = abs(position / bounds * 2.0 - 1.0);
     float blend = saturate(1.0 - max(blendv.x, max(blendv.y, blendv.z)));
-    float max_distance = length(bounds);
+)hlsl",
+R"hlsl(    float max_distance = length(bounds);
     float3 cell_size = 1.0 / bounds;
     float4 light = (float4)0.0;
     if (scene_voxel_gi.y != 0.0) {
@@ -15328,8 +15336,7 @@ void voxel_gi_compute(uint index, float3 world, float3 normal, float3 reflection
             float3 turned = tangent * c.x + bitangent * c.y + normal * c.z;
             float3 dir = normalize(float3(dot(gi.rows[0].xyz, turned), dot(gi.rows[1].xyz, turned),
                                           dot(gi.rows[2].xyz, turned)));
-)hlsl",
-R"hlsl(            light += kHighQualityWeights[i] * voxel_cone_trace(index, cell_size, max_distance,
+            light += kHighQualityWeights[i] * voxel_cone_trace(index, cell_size, max_distance,
                                                                position, dir, 0.577, gi.params.y);
         }
     } else {
@@ -15455,6 +15462,9 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
 #else
     float specular = surface.z;
 #endif
+#ifdef GAME_LIGHT
+    game_albedo = base;
+#endif
     float3 view = normalize(camera.xyz - input.world);
     float3 f0 = lerp((float3)(0.16 * specular * specular), base, metallic);
 
@@ -15557,7 +15567,8 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
     float a004 = min(r.x * r.x, exp2(-9.28 * n_dot_v)) * r.x + r.y;
     float2 env = float2(-1.04, 1.04) * a004 + r.zw;
     if (ssr.a < 0.0) {
-        reflected *= occlusion * (env.x * f0 + env.y * clamp(50.0 * f0.g, metallic, 1.0));
+)hlsl",
+R"hlsl(        reflected *= occlusion * (env.x * f0 + env.y * clamp(50.0 * f0.g, metallic, 1.0));
     } else {
         // Godot's SSR: the reflection, faded out toward the trace's roughness cutoff, put over
         // the sky's by its premultiplied alpha.
@@ -15568,8 +15579,7 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
     }
 
     ambient_light *= base * (1.0 - metallic);
-)hlsl",
-R"hlsl(    diffuse_light *= base * ao_direct * (1.0 - metallic);
+    diffuse_light *= base * ao_direct * (1.0 - metallic);
     specular_light *= ao_direct;
     return diffuse_light + specular_light + reflected + emitted + ambient_light;
 }
@@ -15778,6 +15788,12 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
         lit = lit_color(input, base, normal, geometry, metallic, roughness, emitted, ao,
                         ao_direct, ssr, rays);
     }
+#ifdef GAME_LIGHT
+    // Its light() may change ALPHA, as Godot's.
+    if ((flags & kHasAlpha) != 0u && (flags & kAlphaScissor) == 0u) {
+        alpha = ALPHA;
+    }
+#endif
     // One call, so the tonemappers are inlined once and the shader stays small.
     return finish(lit, alpha, input.world, input.position.xy);
 #endif

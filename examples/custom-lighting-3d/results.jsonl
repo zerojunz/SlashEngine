@@ -1,0 +1,6 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":7,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"colors":[[0.925,0.365,0.318,1],[0.925,0.365,0.318,1],[0.251,0.086,0.098,1],[0.251,0.086,0.098,1],[0.894,0.439,0.294,1],[0.835,0.329,0.29,1],[0.922,0.369,0.325,1],[0.914,0.306,0.247,1],[0.851,0.247,0.184,1]],"drawn":{"meshes":3},"height":90,"width":160}}
+{"id":3,"jsonrpc":"2.0","result":{"changed":{"MeshInstance3D":{"material_params":{"steps":4}}},"id":"toon"}}
+{"id":4,"jsonrpc":"2.0","result":{"colors":[[0.824,0.318,0.282,1],[0.925,0.365,0.318,1],[0.533,0.2,0.184,1],[0.251,0.086,0.098,1]],"drawn":{"meshes":3},"height":90,"width":160}}
+{"id":5,"jsonrpc":"2.0","result":{"changed":{"OmniLight3D":{"light_energy":0.0}},"id":"lamp"}}
+{"id":6,"jsonrpc":"2.0","result":{"colors":[[0.698,0.267,0.239,1],[0.922,0.369,0.325,1]],"drawn":{"meshes":3},"height":90,"width":160}}

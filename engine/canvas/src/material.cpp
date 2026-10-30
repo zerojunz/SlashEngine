@@ -586,15 +586,16 @@ json::Value schema(bool list_ops) {
     compiled["required"] = json::Array{"cpu_fragment"};
     compiled["description"] = "The shader compiled for each backend, which exports write; never "
                               "written by hand.";
-    for (const char* key : {"spirv_vertex", "spirv_fragment", "cpu_vertex", "cpu_fragment"}) {
+    for (const char* key :
+         {"spirv_vertex", "spirv_fragment", "cpu_vertex", "cpu_fragment", "cpu_light"}) {
         compiled["properties"][key] = text_schema("SPIR-V, in base64.");
     }
     for (const char* key : {"msl_vertex", "msl_fragment", "glsl_vertex", "glsl_fragment",
                             "wgsl_vertex", "wgsl_fragment", "hlsl", "hlsl_vertex"}) {
         compiled["properties"][key] = text_schema("Source code.");
     }
-    for (const char* key :
-         {"normal_map_used", "specular_used", "alpha_used", "alpha_scissor_used", "vertex_used"}) {
+    for (const char* key : {"normal_map_used", "specular_used", "alpha_used", "alpha_scissor_used",
+                            "vertex_used", "light_used"}) {
         compiled["properties"][key]["type"] = "boolean";
     }
     compiled["properties"]["type"]["enum"] = json::Array{"canvas_item", "spatial"};
@@ -991,6 +992,7 @@ private:
         words("spirv_fragment", shader->spirv_fragment);
         words("cpu_vertex", shader->cpu_vertex);
         words("cpu_fragment", shader->cpu_fragment);
+        words("cpu_light", shader->cpu_light);
         text("msl_vertex", shader->msl_vertex);
         text("msl_fragment", shader->msl_fragment);
         text("glsl_vertex", shader->glsl_vertex);
@@ -1000,6 +1002,7 @@ private:
         text("hlsl", shader->hlsl);
         text("hlsl_vertex", shader->hlsl_vertex);
         shader->vertex_used = flag("vertex_used");
+        shader->light_used = flag("light_used");
         shader->normal_map_used = flag("normal_map_used");
         shader->specular_used = flag("specular_used");
         shader->alpha_used = flag("alpha_used");
@@ -1857,6 +1860,7 @@ json::Value compiled_shader_json(const render::CompiledShader& shader,
     }
     words("cpu_vertex", shader.cpu_vertex);
     words("cpu_fragment", shader.cpu_fragment);
+    words("cpu_light", shader.cpu_light);
     if (shader.type == render::ShaderType::Spatial) {
         out["type"] = "spatial";
         const auto stage = [&](const char* key, const render::ShaderStage& code) {
@@ -1885,7 +1889,8 @@ json::Value compiled_shader_json(const render::CompiledShader& shader,
         stage("shadow", shader.shadow);
         for (const auto& [key, used] : {std::pair{"alpha_used", shader.alpha_used},
                                         std::pair{"alpha_scissor_used", shader.alpha_scissor_used},
-                                        std::pair{"vertex_used", shader.vertex_used}}) {
+                                        std::pair{"vertex_used", shader.vertex_used},
+                                        std::pair{"light_used", shader.light_used}}) {
             if (used) {
                 out[key] = true;
             }
