@@ -4,6 +4,8 @@
 #include "particle_layout.hpp"
 #include "particle_math.hpp"
 
+#include "slash/render/device.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -489,16 +491,20 @@ Vec3 safe_normalize(Vec3 v) {
     return length(v) < 0.001F ? Vec3{} : normalize(v);
 }
 
+// Where a linear sampler that clamps to the edge reads along one axis of size texels at at (from
+// 0 to 1): the texels either side and how far it is from low to high.
+float filter_axis(float at, std::uint32_t size, std::uint32_t& low, std::uint32_t& high) {
+    const float texel =
+        std::clamp((at * static_cast<float>(size)) - 0.5F, 0.0F, static_cast<float>(size - 1U));
+    low = static_cast<std::uint32_t>(texel);
+    high = std::min(low + 1U, size - 1U);
+    return texel - static_cast<float>(low);
+}
+
 // A vector field's texel at uvw (each from 0 to 1), filtered as a linear sampler that clamps to
 // the edge filters a Texture3D's first level.
 Vec3 sample_field(const ParticleField3D& field, Vec3 uvw) {
-    const auto axis = [](float at, std::uint32_t size, std::uint32_t& low, std::uint32_t& high) {
-        const float texel =
-            std::clamp((at * static_cast<float>(size)) - 0.5F, 0.0F, static_cast<float>(size - 1U));
-        low = static_cast<std::uint32_t>(texel);
-        high = std::min(low + 1U, size - 1U);
-        return texel - static_cast<float>(low);
-    };
+    const auto axis = filter_axis;
     std::uint32_t x0 = 0;
     std::uint32_t x1 = 0;
     std::uint32_t y0 = 0;
@@ -516,6 +522,46 @@ Vec3 sample_field(const ParticleField3D& field, Vec3 uvw) {
     const Vec3 far =
         mix(mix(at(x0, y0, z1), at(x1, y0, z1), tx), mix(at(x0, y1, z1), at(x1, y1, z1), tx), ty);
     return mix(near, far, tz);
+}
+
+// An SDF's distance from a half float's bits; subnormal halves, which GPUs may flush, read as 0.
+float sdf_value(std::uint16_t bits) {
+    return (bits & 0x7C00U) == 0 ? 0.0F : half_to_float(bits);
+}
+
+// An SDF's distance at uvw, filtered as sample_field filters a field's texels.
+float sample_sdf(const ParticleSdf3D& sdf, Vec3 uvw) {
+    std::uint32_t x0 = 0;
+    std::uint32_t x1 = 0;
+    std::uint32_t y0 = 0;
+    std::uint32_t y1 = 0;
+    std::uint32_t z0 = 0;
+    std::uint32_t z1 = 0;
+    const float tx = filter_axis(uvw.x, sdf.width, x0, x1);
+    const float ty = filter_axis(uvw.y, sdf.height, y0, y1);
+    const float tz = filter_axis(uvw.z, sdf.depth, z0, z1);
+    const auto at = [&](std::uint32_t x, std::uint32_t y, std::uint32_t z) {
+        return sdf_value(sdf.distances[(((z * sdf.height) + y) * sdf.width) + x]);
+    };
+    const float near =
+        mix(mix(at(x0, y0, z0), at(x1, y0, z0), tx), mix(at(x0, y1, z0), at(x1, y1, z0), tx), ty);
+    const float far =
+        mix(mix(at(x0, y0, z1), at(x1, y0, z1), tx), mix(at(x0, y1, z1), at(x1, y1, z1), tx), ty);
+    return mix(near, far, tz);
+}
+
+// A height field's height at uv, filtered as a linear sampler that clamps to the edge.
+float sample_heights(const ParticleHeightField3D& field, float u, float v) {
+    std::uint32_t x0 = 0;
+    std::uint32_t x1 = 0;
+    std::uint32_t z0 = 0;
+    std::uint32_t z1 = 0;
+    const float tx = filter_axis(u, field.width, x0, x1);
+    const float tz = filter_axis(v, field.height, z0, z1);
+    const auto at = [&](std::uint32_t x, std::uint32_t z) {
+        return field.heights[(z * field.width) + x];
+    };
+    return mix(mix(at(x0, z0), at(x1, z0), tx), mix(at(x0, z1), at(x1, z1), tx), tz);
 }
 
 // What a step's attractors push a particle at pos with, as particles.glsl's attractor loop (its
@@ -581,8 +627,8 @@ float collision_size(const Particle3D& particle, const ParticleProcess3D& p,
     return step.collision_size * (scale * 0.33333333333F);
 }
 
-// particles.glsl's collider loop: each sphere and box the particle at pos of the given size
-// touches, their ways out added up so it leaves them all.
+// particles.glsl's collider loop: each sphere, box, SDF and height field the particle at pos of
+// the given size touches, their ways out added up so it leaves them all.
 Contact collider_contact(const ParticleStep3D& step, Vec3 pos, float size) {
     // Particles just touching a collider count as touching it.
     constexpr float kEpsilon = 0.001F;
@@ -599,6 +645,63 @@ Contact collider_contact(const ParticleStep3D& step, Vec3 pos, float size) {
                 touches = true;
                 depth = -d;
                 normal = normalize(rel);
+            }
+        } else if (collider.shape == ColliderShape3D::Sdf) {
+            const Vec3 local{dot(rel, place.x), dot(rel, place.y), dot(rel, place.z)};
+            const Vec3 ext = collider.extents;
+            const Vec3 abs_pos{std::abs(local.x), std::abs(local.y), std::abs(local.z)};
+            float extra = 0.0F;
+            if (abs_pos.x > ext.x || abs_pos.y > ext.y || abs_pos.z > ext.z) {
+                // Outside the box: as far again as its nearest point.
+                const Vec3 closest{std::min(abs_pos.x, ext.x), std::min(abs_pos.y, ext.y),
+                                   std::min(abs_pos.z, ext.z)};
+                extra = length(abs_pos - closest);
+            }
+            if (extra > size || collider.sdf == nullptr) {
+                continue;
+            }
+            const ParticleSdf3D& sdf = *collider.sdf;
+            const Vec3 uvw{((local.x / ext.x) + 1.0F) * 0.5F, ((local.y / ext.y) + 1.0F) * 0.5F,
+                           ((local.z / ext.z) + 1.0F) * 0.5F};
+            const float d = (sample_sdf(sdf, uvw) * collider.scale) + extra;
+            if (d <= size + kEpsilon) {
+                touches = true;
+                depth = size - d;
+                const auto across = [&](Vec3 offset) {
+                    return sample_sdf(sdf, uvw + offset) - sample_sdf(sdf, uvw - offset);
+                };
+                normal = place.basis(
+                    normalize(Vec3{across({kEpsilon, 0.0F, 0.0F}), across({0.0F, kEpsilon, 0.0F}),
+                                   across({0.0F, 0.0F, kEpsilon})}));
+            }
+        } else if (collider.shape == ColliderShape3D::HeightField) {
+            // Godot reads the height field's normal and depth in its space and leaves them
+            // there, unturned.
+            const Vec3 local{dot(rel, place.x), dot(rel, place.y), dot(rel, place.z)};
+            const Vec3 ext = collider.extents;
+            const Vec3 bottom{local.x, local.y - size, local.z};
+            if (std::abs(bottom.x) > ext.x || std::abs(bottom.y) > ext.y ||
+                std::abs(bottom.z) > ext.z || collider.heights == nullptr) {
+                continue;
+            }
+            constexpr float kDelta = 1.0F / 8192.0F;
+            const ParticleHeightField3D& field = *collider.heights;
+            const Vec3 uvw{((bottom.x / ext.x) + 1.0F) * 0.5F, ((bottom.y / ext.y) + 1.0F) * 0.5F,
+                           ((bottom.z / ext.z) + 1.0F) * 0.5F};
+            const float y = sample_heights(field, uvw.x, uvw.z);
+            if (y + kEpsilon >= uvw.y) {
+                const auto point = [&](float u, float v, float h) {
+                    return times(Vec3{(u * 2.0F) - 1.0F, (h * 2.0F) - 1.0F, (v * 2.0F) - 1.0F},
+                                 ext);
+                };
+                const Vec3 pos1 = point(uvw.x, uvw.z, y);
+                const Vec3 pos2 =
+                    point(uvw.x + kDelta, uvw.z, sample_heights(field, uvw.x + kDelta, uvw.z));
+                const Vec3 pos3 =
+                    point(uvw.x, uvw.z + kDelta, sample_heights(field, uvw.x, uvw.z + kDelta));
+                touches = true;
+                normal = normalize(cross(pos1 - pos2, pos1 - pos3));
+                depth = dot(normal, pos1) - dot(normal, bottom);
             }
         } else {
             const Vec3 local{dot(rel, place.x), dot(rel, place.y), dot(rel, place.z)};

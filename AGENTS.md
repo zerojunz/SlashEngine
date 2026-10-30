@@ -1637,6 +1637,15 @@ placed by `collider_for_particles` (`render::ParticleCollider3D`); `collider_con
 `engine/render/src/particles3d.cpp` and its twin in the shader find the way out and the depth
 as `particles.glsl`'s collider loop, and the process material's `collision_mode` bounces or
 hides the particle. `examples/particle-collision-3d` bounces sparks off a floor.
+`GPUParticlesCollisionSDF3D` and `HeightField3D` are Godot's too
+(`slash/scene3d/particle_collision.hpp`, `src/particle_collision.cpp`): `bake_particle_sdf`
+ports `GPUParticlesCollisionSDF3D::bake` (its bounding volume hierarchy and distance code, cells
+on the job pool), `particles.bake_sdf` (`engine/command/src/lightmap.cpp`) writes the `.sdf.png`
+file of half floats it makes, and `particle_height_field` draws the ground under a box on the
+CPU as Godot's height field camera does, which the system draws again when the box moves and
+steps after the camera with `follow_camera_enabled`. Both go to the devices in the step's words
+(`src/particle_layout_3d.cpp`; an SDF's distances as halves, read with filtering in code).
+`examples/particle-sdf-collision-3d` settles snow on a yard and sparks on a statue.
 
 ## Job system
 
