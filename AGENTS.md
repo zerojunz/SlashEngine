@@ -1333,6 +1333,15 @@ header's test in `tests/test_upscaler.cpp` fail if the two differ:
 cmake --build --preset dev --target shaders
 ```
 
+Direct3D 12's ray tracing shaders need shader model 6.5, which Windows' d3dcompiler can't
+compile, so their HLSL (`engine/render/src/*_hlsl.hpp`) is compiled to signed DXIL
+(`*_dxil.hpp`) by Microsoft's DXC, which no one needs locally: the "DXIL shaders" workflow
+(`.github/workflows/dxil.yml`) builds DXC from the source `cmake/dependencies.json` pins and runs
+`cmake/compile_ray_dxil.cmake`, a DXIL shader per value of a shader's `kPass` (its header's
+`// passes:` line), as Direct3D 12 has no specialization constants. On a pull request it checks the committed DXIL; run by hand on a
+branch (`workflow_dispatch` with `ref`), it pushes a commit of the new DXIL to the branch
+`dxil-shaders` to cherry-pick (`git fetch origin dxil-shaders && git cherry-pick FETCH_HEAD`).
+
 The GPU tests in `tests/test_render.cpp` skip when no backend starts; `tests/devices.hpp` gives
 them every device that works (`drawing_devices()`, `hardware_devices()`). On Linux, Mesa's
 software Vulkan (`mesa-vulkan-drivers`), OpenGL and OpenGL ES (`libgl1`, `libgles2`,
