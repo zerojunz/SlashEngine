@@ -39,23 +39,29 @@ add_custom_target(fsr_shaders
     VERBATIM)
 add_dependencies(shaders fsr_shaders)
 
-# Compiles the GLSL compute shaders that trace rays into the MSL the GPU device runs on Metal,
-# into headers engine/render commits (src/ray_msl.cpp). tests/test_ray_tracing.cpp checks each
+# Compiles the GLSL compute shaders that trace rays into the MSL the GPU device runs on Metal and
+# the HLSL it runs on Direct3D 12 (as DXIL, cmake/compile_ray_dxil.cmake), into headers
+# engine/render commits (src/ray_msl.cpp). tests/test_ray_tracing.cpp checks each
 # header against its shader.
 add_executable(slash-ray-msl src/ray_msl.cpp)
 target_link_libraries(slash-ray-msl PRIVATE glslang::glslang
-    glslang::glslang-default-resource-limits glslang::SPIRV spirv-cross-core spirv-cross-msl)
+    glslang::glslang-default-resource-limits glslang::SPIRV spirv-cross-core spirv-cross-msl
+    spirv-cross-hlsl)
 slash_target_warnings(slash-ray-msl)
 set(_slash_ray_msl_commands "")
-foreach(entry IN ITEMS ray_shadows:RayShadows ray_light:RayLight lightmap_light:LightmapLight)
+# Each with its passes, the values of its specialization constant kPass.
+foreach(entry IN ITEMS ray_shadows:RayShadows:1 ray_light:RayLight:5 lightmap_light:LightmapLight:3)
     string(REPLACE ":" ";" parts ${entry})
     list(GET parts 0 shader)
     list(GET parts 1 name)
+    list(GET parts 2 passes)
     list(APPEND _slash_ray_msl_commands
         COMMAND slash-ray-msl ${PROJECT_SOURCE_DIR}/engine/render/shaders/${shader}.comp
-            ${PROJECT_SOURCE_DIR}/engine/render/src/${shader}_msl.hpp ${name})
+            ${PROJECT_SOURCE_DIR}/engine/render/src/${shader}_msl.hpp ${name}
+        COMMAND slash-ray-msl --hlsl ${PROJECT_SOURCE_DIR}/engine/render/shaders/${shader}.comp
+            ${PROJECT_SOURCE_DIR}/engine/render/src/${shader}_hlsl.hpp ${name} ${passes})
 endforeach()
 add_custom_target(ray_msl_shaders ${_slash_ray_msl_commands}
-    COMMENT "Compiling the ray shaders' MSL"
+    COMMENT "Compiling the ray shaders' MSL and HLSL"
     VERBATIM)
 add_dependencies(shaders ray_msl_shaders)
