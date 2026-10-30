@@ -390,7 +390,7 @@ rendering on top.
       each sprite, tile map layer, particle emitter and control that shows, in drawing order,
       with its rect, its text and how much of it shows; what is covered, offscreen or clear;
       what can't draw; and, with `map`, a text picture of the frame
-- [ ] Importing games made with other engines: `project.import` (and `slash-cli import`)
+- [x] Importing games made with other engines: `project.import` (and `slash-cli import`)
       converts another engine's project into this one in one call and reports what didn't
       convert and why. Godot first, then Unity; Unreal follows the 3D work in milestone 7
   - [x] Godot 4 projects: scenes (nodes to entities and components), `SpriteFrames`, textures, sounds and fonts, the input map and
@@ -914,7 +914,7 @@ Exit: an agent builds a small 3D sample end to end.
 
 ### Milestone 8: Systems and platform services (Planned)
 
-- [ ] Networking: ENet transport, replication driven by reflection, WebSocket for web, following
+- [x] Networking: ENet transport, replication driven by reflection, WebSocket for web, following
       Godot's high-level multiplayer ([reference](reference/networking.md))
   - [x] Peers, as Godot's `MultiplayerPeer`: the ENet transport (`ENetMultiplayerPeer`) and an
         offline peer
@@ -994,14 +994,14 @@ Exit: an agent builds a small 3D sample end to end.
         (`EXT_mesh_gpu_instancing`) from Blender's geometry nodes and Houdini, and heightmaps
         from World Machine, Gaea and World Creator (16-bit PNG, RAW and EXR). Substance's
         `.sbsar` is closed, so its exported maps come in as textures
-- [ ] Platform services, like Unity's Analytics, Ads and In-App Purchasing: one cross-platform C++
+- [x] Platform services, like Unity's Analytics, Ads and In-App Purchasing: one cross-platform C++
       API and command set, with the store or network chosen per export preset
   - [x] Analytics: custom events, sessions and funnels, batched and sent as JSON to an endpoint
         the developer chooses, such as a self-hosted open-source server
   - [x] In-app purchases: products, purchase, restore and receipts, on StoreKit for iOS and
         macOS and Google Play Billing for Android (the `storekit` and `play-billing` packages)
-  - [ ] Ads: banner, interstitial and rewarded placements behind one interface; each ad network
-        is an adapter (see the note below)
+  - [x] Ads: banner, interstitial and rewarded placements behind one interface, banners placed
+        as Unity's `BannerPosition`; each ad network is an adapter (see the note below)
   - [x] Consent and privacy: one consent state that gates analytics and ads, with Apple's App
         Tracking Transparency prompt on iOS
   - [x] A test backend for all three, so agents and CI can run purchases, ads and events
@@ -1092,7 +1092,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Video playback | AV1 through dav1d | 8 | Done |
 | Accessibility | AccessKit | 8 | Done: the tree, and backends for Windows, macOS, Linux, the web, Android and iOS |
 | Storyboard | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | 5, 6 | Done: files, commands and checks, palette, texture and triangle budget checks included, model review, the project map, and the style refined from accepted assets |
-| Analytics, ads and in-app purchases | One API for analytics, ads and purchases; StoreKit, Play Billing and a developer-chosen analytics endpoint in the repo, ad networks as outside adapters | 8 | In progress: the API, its backend interfaces, analytics endpoints, consent with Apple's prompt, StoreKit, Play Billing and the test backend are done; ad networks are outside adapters |
+| Analytics, ads and in-app purchases | One API for analytics, ads and purchases; StoreKit, Play Billing and a developer-chosen analytics endpoint in the repo, ad networks as outside adapters | 8 | Done: the API and its backend interfaces, banner positions, analytics endpoints, consent with Apple's prompt, StoreKit, Play Billing and the test backend; ad networks are outside adapters |
 | Closed vendor SDKs | SDK packages: an `sdk.json` per SDK that exports fetch, check and link on all six platforms, with JNI and Objective-C bridges and engine interfaces for the glue | 6 | In progress: packages, exports, `sdk.add`, `sdk.check`, Android libraries and Maven, services and glue code |
 | One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | In progress: every platform exports (4a, 4b); building them all from one Mac is next |
 | Procedural generation | FastNoiseLite noise, noise and gradient textures, scatter rules agents write, and procedural content imported from other tools | 8 | Done |

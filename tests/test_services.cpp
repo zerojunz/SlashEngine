@@ -46,7 +46,7 @@ constexpr std::string_view kSettings = R"({
         "bonus": {"format": "rewarded", "reward": {"type": "coins", "amount": 50},
                   "ids": {"android": "ca-app-pub-1/1", "ios": "ca-app-pub-1/2"}},
         "between_levels": {"format": "interstitial", "auto_load": false},
-        "footer": {"format": "banner"}}},
+        "footer": {"format": "banner", "position": "top_center"}}},
     "purchases": {"products": {
         "coins_100": {"type": "consumable"},
         "remove_ads": {"type": "non_consumable"},
@@ -116,7 +116,12 @@ public:
         reports_->ad_loaded(unit.placement);
     }
     void show(const services::AdUnit& unit) override {
-        calls_->add("ads.show " + unit.placement);
+        calls_->add("ads.show " + unit.placement + " " +
+                    std::string(services::position_name(unit.position)));
+        if (unit.format == services::AdFormat::Banner) {
+            reports_->ad_shown(unit.placement);
+            return;
+        }
         // As an SDK calls back on its own thread.
         std::thread([reports = reports_, placement = unit.placement] {
             reports->ad_shown(placement);
@@ -125,6 +130,10 @@ public:
         }).join();
     }
     void hide(const services::AdUnit& unit) override { calls_->add("ads.hide " + unit.placement); }
+    void move(const services::AdUnit& unit) override {
+        calls_->add("ads.move " + unit.placement + " " +
+                    std::string(services::position_name(unit.position)));
+    }
 
 private:
     std::shared_ptr<Calls> calls_;
@@ -272,6 +281,8 @@ TEST_CASE("services settings validate and parse project.json's services") {
     CHECK(settings.placements[1].reward == services::Reward{.type = "coins", .amount = 50});
     CHECK(settings.placements[1].ids.at("ios") == "ca-app-pub-1/2");
     CHECK(settings.placements[2].format == services::AdFormat::Banner);
+    CHECK(settings.placements[2].position == services::BannerPosition::TopCenter);
+    CHECK(settings.placements[0].position == services::BannerPosition::BottomCenter);
     REQUIRE(settings.products.size() == 3);
     CHECK(settings.products[1].id == "remove_ads");
     CHECK(settings.products[1].type == services::ProductType::NonConsumable);
@@ -283,16 +294,19 @@ TEST_CASE("services settings validate and parse project.json's services") {
     const auto errors = services::validate_settings(parse(R"({
         "ads": {"placements": {
             "bad name": {"format": "banner"},
-            "pop": {"format": "interstitial", "ids": {"andriod": "x"}, "reward": {"type": "a", "amount": 1}}}},
+            "pop": {"format": "interstitial", "ids": {"andriod": "x"}, "reward": {"type": "a", "amount": 1},
+                    "position": "top_left"}}},
         "purchases": {"products": {"-coins": {"type": "consumable"}}}
     })"),
                                                     "/services");
-    REQUIRE(errors.size() == 4);
+    REQUIRE(errors.size() == 5);
     CHECK(errors[0].path == "/services/ads/placements/bad name");
     CHECK(errors[1].path == "/services/ads/placements/pop/ids/andriod");
     CHECK(errors[1].message == "no platform \"andriod\"; did you mean \"android\"?");
     CHECK(errors[2].path == "/services/ads/placements/pop/reward");
-    CHECK(errors[3].path == "/services/purchases/products/-coins");
+    CHECK(errors[3].path == "/services/ads/placements/pop/position");
+    CHECK(errors[3].message == "only banners have a position");
+    CHECK(errors[4].path == "/services/purchases/products/-coins");
     const auto schema_errors = services::validate_settings(
         parse(R"({"ads": {"placements": {"x": {"format": "video"}}}})"), "/services");
     REQUIRE(schema_errors.size() == 1);
@@ -635,10 +649,10 @@ TEST_CASE("backends get requests and report from any thread, at the next tick") 
     CHECK(services::events(world)[4].error == "network down");
     CHECK(services::owns(world, "remove_ads"));
     REQUIRE(services::finish(world, "GPA.2").ok());
-    CHECK(calls->list == std::vector<std::string>{"store.finish GPA.1 consumable",
-                                                  "store.purchase remove_ads", "ads.show bonus",
-                                                  "store.restore", "ads.load bonus " + bonus_id,
-                                                  "store.finish GPA.2 non_consumable"});
+    CHECK(calls->list == std::vector<std::string>{
+                             "store.finish GPA.1 consumable", "store.purchase remove_ads",
+                             "ads.show bonus bottom_center", "store.restore",
+                             "ads.load bonus " + bonus_id, "store.finish GPA.2 non_consumable"});
 
     // Analytics waits for consent, then gets what the game set before it.
     calls->list.clear();
@@ -1146,4 +1160,36 @@ TEST_CASE("services.test answers the tracking prompt in a session") {
     CHECK(compact(*reply.value.find("consent")) ==
           R"({"analytics":"unknown","personalized_ads":"denied","tracking":"restricted"})");
     std::filesystem::remove_all(root);
+}
+
+TEST_CASE("banners show where their placements say, and move there while they show") {
+    world::ComponentRegistry components;
+    world::World world(components);
+    services::install(world, test_settings());
+    auto calls = std::make_shared<Calls>();
+    services::Backends backends;
+    backends.ads = std::make_unique<FakeAds>(calls);
+    services::set_backends(world, std::move(backends));
+    (void)step(world);
+    calls->list.clear();
+
+    // Before it shows, a new position waits for show_ad; while it shows, the banner moves.
+    REQUIRE(services::set_banner_position(world, "footer", services::BannerPosition::TopLeft));
+    REQUIRE(services::show_ad(world, "footer"));
+    CHECK(step(world) == std::vector<std::string>{"ad_shown:footer"});
+    REQUIRE(services::set_banner_position(world, "footer", services::BannerPosition::Center));
+    REQUIRE(services::set_banner_position(world, "footer", services::BannerPosition::Center));
+    CHECK(calls->list ==
+          std::vector<std::string>{"ads.show footer top_left", "ads.move footer center"});
+    CHECK(compact(*services::state_json(world, 0).find("ads")->find("footer")) ==
+          R"({"format":"banner","position":"center","status":"showing"})");
+
+    const auto full_screen =
+        services::set_banner_position(world, "bonus", services::BannerPosition::TopLeft);
+    REQUIRE_FALSE(full_screen);
+    CHECK(full_screen.error().message ==
+          "only banners have a position; rewarded ads fill the screen");
+    CHECK_FALSE(services::set_banner_position(world, "header", services::BannerPosition::TopLeft));
+    CHECK(services::parse_position("top_right") == services::BannerPosition::TopRight);
+    CHECK_FALSE(services::parse_position("middle"));
 }
