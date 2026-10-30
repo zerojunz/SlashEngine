@@ -2225,7 +2225,8 @@ fight's music.
 `engine/services` is ads, analytics, in-app purchases, achievements and leaderboards behind one
 API, as Unity's services and Social API
 ([docs/reference/services.md](docs/reference/services.md)). `project.json`'s `services` names
-ad placements (banner, interstitial or rewarded, with each platform's ad unit ID), products
+ad placements (banner, interstitial or rewarded, with each platform's ad unit ID and a banner's
+`position`, as Unity's `BannerPosition`, which `set_banner_position` moves), products
 (consumable, non-consumable or subscription), achievements (unlocked at once or in `steps`) and
 leaderboards (`high_to_low` or `low_to_high`); games call `show_ad`, `log_event`, `buy`,
 `finish`, `unlock_achievement`, `increment_achievement` and `submit_score` by those names and

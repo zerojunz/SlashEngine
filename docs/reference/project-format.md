@@ -688,6 +688,7 @@ sells, unlocks and submits to by name, through [the services API](services.md):
 | `ads.placements.*.format` | required | `banner`, `interstitial` or `rewarded` |
 | `ads.placements.*.ids` | | The ad network's ad unit ID on each platform: `android`, `ios`, `macos`, `windows`, `linux` or `web`. The ads backend loads the one for the platform the game runs on |
 | `ads.placements.*.reward` | | What a watched rewarded ad gives when the network doesn't say: `{"type", "amount"}`. Only rewarded placements take one |
+| `ads.placements.*.position` | `bottom_center` | Where a banner shows: `bottom_center`, `bottom_left`, `bottom_right`, `top_center`, `top_left`, `top_right` or `center`, as Unity's `BannerPosition`. Only banners take one; `set_banner_position` moves it while the game runs |
 | `ads.placements.*.auto_load` | `true` | Load at start and again after each time the ad closes |
 | `purchases.products` | | Products by the store's product ID, the same on every store: a letter or digit, then letters, digits, `_` and `.` |
 | `purchases.products.*.type` | required | `consumable` (bought again once finished), `non_consumable` (owned for good) or `subscription` |

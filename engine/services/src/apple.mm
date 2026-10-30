@@ -395,9 +395,29 @@ public:
             fail(unit);
             return;
         }
+        if (unit.format == services::AdFormat::Banner &&
+            [object_.get() respondsToSelector:@selector(showBanner:unitID:position:)]) {
+            [object_.get() showBanner:to_ns(unit.placement)
+                               unitID:to_ns(unit.id)
+                             position:to_ns(services::position_name(unit.position))];
+            return;
+        }
         [object_.get() show:to_ns(unit.placement)
                      format:to_ns(services::format_name(unit.format))
                      unitID:to_ns(unit.id)];
+    }
+    void move(const services::AdUnit& unit) override {
+        if (object_.get() == nil) {
+            return;
+        }
+        if ([object_.get() respondsToSelector:@selector(moveBanner:unitID:position:)]) {
+            [object_.get() moveBanner:to_ns(unit.placement)
+                               unitID:to_ns(unit.id)
+                             position:to_ns(services::position_name(unit.position))];
+            return;
+        }
+        hide(unit);
+        show(unit);
     }
     void hide(const services::AdUnit& unit) override {
         if (object_.get() != nil) {

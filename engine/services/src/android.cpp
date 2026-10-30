@@ -561,10 +561,27 @@ public:
         }
     }
     void load(const AdUnit& unit) override { call("load", unit); }
-    void show(const AdUnit& unit) override { call("show", unit); }
+    void show(const AdUnit& unit) override {
+        if (unit.format == AdFormat::Banner) {
+            call_banner("showBanner", unit);
+        } else {
+            call("show", unit);
+        }
+    }
     void hide(const AdUnit& unit) override { call("hide", unit); }
+    void move(const AdUnit& unit) override { call_banner("moveBanner", unit); }
 
 private:
+    // A banner's calls, which take its position for the format.
+    void call_banner(const char* method_name, const AdUnit& unit) {
+        if (started_) {
+            object_.call(method_name, unit.placement, unit.id,
+                         std::string(position_name(unit.position)));
+        } else if (const auto reports = object_.reports(); reports != nullptr) {
+            reports->ad_failed(unit.placement, "the ads Java backend could not start");
+        }
+    }
+
     void call(const char* method_name, const AdUnit& unit) {
         if (started_) {
             object_.call(method_name, unit.placement, std::string(format_name(unit.format)),

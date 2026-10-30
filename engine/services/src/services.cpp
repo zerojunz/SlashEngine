@@ -296,8 +296,10 @@ ServiceEvent event_for(std::string_view id) {
 }
 
 AdUnit unit_of(const Placement& placement) {
-    return {
-        .placement = placement.name, .format = placement.format, .id = platform_id(placement.ids)};
+    return {.placement = placement.name,
+            .format = placement.format,
+            .id = platform_id(placement.ids),
+            .position = placement.position};
 }
 
 // "$1.99" for 1.99.
@@ -1426,6 +1428,33 @@ Result<void> hide_ad(world::World& world, std::string_view name) {
     return {};
 }
 
+Result<void> set_banner_position(world::World& world, std::string_view name,
+                                 BannerPosition position) {
+    State* state = state_of(world);
+    if (state == nullptr) {
+        return not_installed();
+    }
+    const auto it = std::ranges::find(state->settings.placements, name, &Placement::name);
+    if (it == state->settings.placements.end()) {
+        return unknown_placement(*state, name);
+    }
+    if (it->format != AdFormat::Banner) {
+        return make_error(ErrorCode::InvalidArgument, "only banners have a position; " +
+                                                          std::string(format_name(it->format)) +
+                                                          " ads fill the screen");
+    }
+    if (it->position == position) {
+        return {};
+    }
+    it->position = position;
+    if (!state->test && state->ads[it->name].status == AdStatus::Showing) {
+        if (AdsBackend* ads = holder_of(world).backends.ads.get(); ads != nullptr) {
+            ads->move(unit_of(*it));
+        }
+    }
+    return {};
+}
+
 AdStatus ad_status(const world::World& world, std::string_view placement) {
     const State* state = state_of(world);
     if (state == nullptr) {
@@ -2108,6 +2137,9 @@ json::Value state_json(const world::World& world, std::size_t analytics_events) 
     for (const Placement& placement : state->settings.placements) {
         json::Value ad;
         ad["format"] = format_name(placement.format);
+        if (placement.format == AdFormat::Banner) {
+            ad["position"] = position_name(placement.position);
+        }
         const auto found = state->ads.find(placement.name);
         const AdState current = found != state->ads.end() ? found->second : AdState{};
         ad["status"] = status_name(current.status);
