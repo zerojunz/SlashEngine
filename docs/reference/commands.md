@@ -3407,6 +3407,7 @@ A multiplayer already on the network is closed first.
 | `port` | integer, 0 to 65535 | `0` | The port to listen on; 0 picks a free one |
 | `max_clients` | integer, 1 to 4095 | `32` | ENet only: clients beyond it get no answer |
 | `bind_address` | string | `"*"` | An IPv4 address to listen on, such as `"127.0.0.1"` for this machine only, or `"*"` for any |
+| `certificate`, `key` | string | none | WebSocket only: PEM files in the project, the server's certificate chain and private key, which make it serve `wss://` |
 
 Needs: `run`, `network`.
 
@@ -3430,6 +3431,7 @@ already on the network is closed first.
 | `transport` | `"enet"` or `"websocket"` | `"enet"` | As the server's |
 | `address` | string | `"127.0.0.1"` | The server's IPv4 address or host name |
 | `path` | string | `"/"` | WebSocket only: the URL's path |
+| `tls` | string | none | WebSocket only: connect over `wss://`, trusting the `"system"` certificates, a PEM file's in the project, or `"any"` (tests only). A client checks that the certificate names `address` |
 
 Needs: `run`, `network`.
 

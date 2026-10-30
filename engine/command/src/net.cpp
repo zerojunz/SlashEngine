@@ -5,11 +5,13 @@
 #include "slash/net/enet.hpp"
 #include "slash/net/multiplayer.hpp"
 #include "slash/net/websocket.hpp"
+#include "slash/platform/file.hpp"
 
 #include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -126,6 +128,15 @@ Reply use_peer(world::World& world, std::shared_ptr<net::Peer> peer, Network inf
     return Reply::success(std::move(out));
 }
 
+// A PEM file in the project, for TLS.
+Result<std::string> read_pem(const Session& session, std::string_view path) {
+    auto file = session.resolve_path(path);
+    if (!file) {
+        return file.error();
+    }
+    return platform::read_file(file.value());
+}
+
 Reply net_host(Session& session, const json::Value& params) {
     const std::string transport = string_param(params, "transport", "enet");
     const int port = int_param(params, "port", 0);
@@ -136,8 +147,27 @@ Reply net_host(Session& session, const json::Value& params) {
             return param_error(code::kInvalidArgument, "/transport",
                                "this build can't host WebSocket servers");
         }
+        std::optional<net::TlsOptions> tls;
+        const json::Value* certificate_path = params.find("certificate");
+        const json::Value* key_path = params.find("key");
+        if (certificate_path != nullptr || key_path != nullptr) {
+            if (certificate_path == nullptr || key_path == nullptr) {
+                return param_error(code::kInvalidArgument,
+                                   certificate_path == nullptr ? "/certificate" : "/key",
+                                   "a wss:// server needs both a certificate and a key");
+            }
+            auto certificate = read_pem(session, certificate_path->as_string());
+            if (!certificate) {
+                return param_error(code::kNotFound, "/certificate", certificate.error().message);
+            }
+            auto key = read_pem(session, key_path->as_string());
+            if (!key) {
+                return param_error(code::kNotFound, "/key", key.error().message);
+            }
+            tls = net::TlsOptions::server(std::move(key.value()), std::move(certificate.value()));
+        }
         auto server = std::make_shared<net::WebSocketMultiplayerPeer>();
-        if (auto made = server->create_server(port, bind); !made) {
+        if (auto made = server->create_server(port, bind, std::move(tls)); !made) {
             return param_error(Reply::failure(made.error()).code, "/port", made.error().message);
         }
         const int local = server->local_port();
@@ -166,10 +196,21 @@ Reply net_join(Session& session, const json::Value& params) {
     const int port = int_param(params, "port", 0);
     world::World& world = session.world();
     if (transport == "websocket") {
+        const std::string trust = string_param(params, "tls", "");
+        net::TlsOptions tls;
+        if (trust == "any") {
+            tls = net::TlsOptions::client_unsafe();
+        } else if (!trust.empty() && trust != "system") {
+            auto trusted = read_pem(session, trust);
+            if (!trusted) {
+                return param_error(code::kNotFound, "/tls", trusted.error().message);
+            }
+            tls = net::TlsOptions::client(std::move(trusted.value()));
+        }
         auto client = std::make_shared<net::WebSocketMultiplayerPeer>();
-        const std::string url =
-            "ws://" + address + ":" + std::to_string(port) + string_param(params, "path", "/");
-        if (auto made = client->create_client(url); !made) {
+        const std::string url = (trust.empty() ? "ws://" : "wss://") + address + ":" +
+                                std::to_string(port) + string_param(params, "path", "/");
+        if (auto made = client->create_client(url, tls); !made) {
             return param_error(Reply::failure(made.error()).code, "/address", made.error().message);
         }
         return use_peer(world, std::move(client), {.transport = transport, .port = 0, .enet = {}});
@@ -317,6 +358,8 @@ void register_net_commands(Registry& registry) {
             {"port", integer_property("0 picks a free one. Default: 0.", 0, kMaxPort)},
             {"max_clients", integer_property("ENet only. Default: 32.", 1, kMaxClients)},
             {"bind_address", property("string", R"(An IPv4 address or "*". Default: "*".)")},
+            {"certificate", property("string", "WebSocket only: a PEM file; serves wss://.")},
+            {"key", property("string", "The certificate's PEM private key file.")},
         }),
         .handler = net_host,
     });
@@ -332,6 +375,8 @@ void register_net_commands(Registry& registry) {
                 {"address", property("string", "Default: \"127.0.0.1\".")},
                 {"port", integer_property("The server's port.", 1, kMaxPort)},
                 {"path", property("string", "WebSocket only. Default: \"/\".")},
+                {"tls", property("string", R"(WebSocket only: wss://, trusting "system" )"
+                                           R"(certificates, a PEM file's or "any".)")},
             },
             {"port"}),
         .handler = net_join,

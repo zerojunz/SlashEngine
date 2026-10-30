@@ -915,7 +915,7 @@ Exit: an agent builds a small 3D sample end to end.
         Godot's `MultiplayerSpawner` and `MultiplayerSynchronizer`
   - [x] WebSocket for the web, as Godot's `WebSocketMultiplayerPeer`: servers and clients
         natively, clients on the web through the browser's WebSocket
-  - [ ] `wss://` natively, as Godot's `StreamPeerTLS`
+  - [x] `wss://` natively, as Godot's `StreamPeerTLS`
   - [x] Commands that host, join and inspect a game's network, and examples that play a game on
         several sessions at once
 - [ ] XR through OpenXR, following Godot's XR nodes and OpenXR module

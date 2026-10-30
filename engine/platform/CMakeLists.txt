@@ -1,4 +1,5 @@
 add_library(slash_platform
+    src/certificates.cpp
     src/file.cpp
     src/fonts.cpp
     src/library.cpp
@@ -16,10 +17,13 @@ target_link_libraries(slash_platform
 slash_engine_target(slash_platform)
 # Installed fonts (src/fonts.cpp): CoreText on Apple platforms, DirectWrite on Windows, and
 # fontconfig on Linux, loaded at run time.
+# The system's certificates (src/certificates.cpp): Security on Apple platforms, the root store
+# through crypt32 on Windows.
 if(APPLE)
-    target_link_libraries(slash_platform PRIVATE "-framework CoreText" "-framework CoreFoundation")
+    target_link_libraries(slash_platform PRIVATE "-framework CoreText" "-framework CoreFoundation"
+        "-framework Security")
 elseif(WIN32)
-    target_link_libraries(slash_platform PRIVATE dwrite)
+    target_link_libraries(slash_platform PRIVATE dwrite crypt32)
 elseif(NOT EMSCRIPTEN AND NOT ANDROID)
     target_link_libraries(slash_platform PRIVATE ${CMAKE_DL_LIBS})
 endif()

@@ -148,7 +148,7 @@ int main() {
     }
     server.close();
 
-    std::printf("\nThree worlds play over WebSocket; alice's call reaches bob through the "
+    std::printf("\nThree worlds play over secure WebSocket; alice's call reaches bob through the "
                 "server:\n");
     world::ComponentRegistry components;
     world::register_builtin_components(components);
@@ -167,14 +167,26 @@ int main() {
                                 (sender == 1 ? "the server" : "a client"));
             });
     }
+    // The game's server speaks wss://, with a certificate it makes for itself, which the
+    // players are given to trust.
+    const auto certificate = net::generate_self_signed_certificate("CN=localhost");
+    if (!certificate) {
+        return fail(certificate.error().message.c_str());
+    }
+    const net::SelfSignedCertificate& own = certificate.value();
     auto host = std::make_shared<net::WebSocketMultiplayerPeer>();
-    if (!host->create_server(0, "127.0.0.1") || !net::multiplayer(*worlds[0]).set_peer(host)) {
+    if (!host->create_server(0, "127.0.0.1",
+                             net::TlsOptions::server(own.private_key, own.certificate)) ||
+        !net::multiplayer(*worlds[0]).set_peer(host)) {
         return fail("the game's server didn't start");
     }
-    const std::string game_url = "ws://127.0.0.1:" + std::to_string(host->local_port());
+    std::printf("  the server speaks wss://, with a certificate it made for itself\n");
+    const std::string game_url = "wss://localhost:" + std::to_string(host->local_port());
+    const net::TlsOptions trust = net::TlsOptions::client(own.certificate);
     for (std::size_t i = 1; i < worlds.size(); ++i) {
         auto client = std::make_shared<net::WebSocketMultiplayerPeer>();
-        if (!client->create_client(game_url) || !net::multiplayer(*worlds[i]).set_peer(client)) {
+        if (!client->create_client(game_url, trust) ||
+            !net::multiplayer(*worlds[i]).set_peer(client)) {
             return fail("a client didn't start");
         }
     }

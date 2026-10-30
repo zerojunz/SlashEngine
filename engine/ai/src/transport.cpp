@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -23,15 +24,11 @@
 #include <emscripten/eventloop.h>
 #include <map>
 #else
+#include "slash/platform/certificates.hpp"
 #include "slash/platform/file.hpp"
 
 #include <httplib.h>
 #include <mbedtls/x509_crt.h>
-#endif
-
-#if defined(__APPLE__)
-#include <CoreFoundation/CoreFoundation.h>
-#include <Security/Security.h>
 #endif
 
 #if defined(__EMSCRIPTEN__)
@@ -429,30 +426,11 @@ Result<Proxy> parse_proxy(const std::string& text) {
 // Whether the platform trusts a certificate chain (leaf first) for the host, by its own trust
 // settings, as Safari would.
 bool apple_trusts(const mbedtls_x509_crt* leaf, const std::string& host) {
-    CFMutableArrayRef certificates = CFArrayCreateMutable(nullptr, 0, &kCFTypeArrayCallBacks);
+    std::vector<std::span<const std::uint8_t>> chain;
     for (const mbedtls_x509_crt* item = leaf; item != nullptr; item = item->next) {
-        CFDataRef data = CFDataCreate(nullptr, item->raw.p, static_cast<CFIndex>(item->raw.len));
-        SecCertificateRef certificate = SecCertificateCreateWithData(nullptr, data);
-        CFRelease(data);
-        if (certificate != nullptr) {
-            CFArrayAppendValue(certificates, certificate);
-            CFRelease(certificate);
-        }
+        chain.emplace_back(item->raw.p, item->raw.len);
     }
-    CFStringRef name = CFStringCreateWithCString(nullptr, host.c_str(), kCFStringEncodingUTF8);
-    SecPolicyRef policy = SecPolicyCreateSSL(true, name);
-    SecTrustRef trust = nullptr;
-    const bool trusted =
-        CFArrayGetCount(certificates) > 0 &&
-        SecTrustCreateWithCertificates(certificates, policy, &trust) == errSecSuccess &&
-        SecTrustEvaluateWithError(trust, nullptr);
-    if (trust != nullptr) {
-        CFRelease(trust);
-    }
-    CFRelease(policy);
-    CFRelease(name);
-    CFRelease(certificates);
-    return trusted;
+    return platform::system_trusts(chain, host);
 }
 #endif
 

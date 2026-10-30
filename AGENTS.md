@@ -2133,7 +2133,10 @@ sends its root's properties, `"Component/field[/part]"` read and written through
 syncs and reliable deltas whose intervals count world time. `src/websocket.cpp` ports
 Godot's `WebSocketPeer` and `WebSocketMultiplayerPeer`: natively `WSLPeer` (the handshake, with
 Mbed TLS's SHA-1, and wslay's framing over TCP through ENet's socket calls, `TcpStream` and
-`TcpServer`; `ws://` only), on the web `EMWSPeer` (the browser's WebSocket through `EM_JS`, its
+`TcpServer`; `wss://` through `TlsStream`, Godot's `StreamPeerMbedTLS`, with `net::TlsOptions`
+as its `TLSOptions` and the system's certificates from `platform::system_ca_certificates`, or
+`platform::system_trusts` on Apple platforms, as `engine/ai`'s transport;
+`generate_self_signed_certificate` makes test certificates in code), on the web `EMWSPeer` (the browser's WebSocket through `EM_JS`, its
 events queued for `poll`). `tests/web/run.mjs` starts an echo server for the web build's test,
 `test_websocket_web.cpp`. Sessions and `runtime::Game` install a multiplayer in every world,
 offline; `engine/command/src/net.cpp` is `net.host`, `net.join`, `net.state`, `net.rpc` and
@@ -2225,7 +2228,7 @@ and a session without the `network` capability answers only from the replay file
 and `ai.complete` commands, which need the `network` capability. Tests talk to a fake
 `ai::Transport` or a local server, never a real model. `src/transport.cpp` is the HTTP client:
 httplib with Mbed TLS, which checks `https://` servers against the system's certificates
-(SecTrust on Apple platforms, which `apple_trusts` asks), or `SSL_CERT_FILE`'s, and reaches them
+(SecTrust on Apple platforms, which `apple_trusts` asks through `platform::system_trusts`), or `SSL_CERT_FILE`'s, and reaches them
 through the proxies curl's variables name (`ai::proxy_for`). Its tests make their certificates
 when they run, so no key is committed. The web has no threads, so there `Call` uses
 `Provider::start`, which the adapters, roles and replay files run on `Transport::post_async` and

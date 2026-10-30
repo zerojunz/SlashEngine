@@ -6,9 +6,20 @@
 #include "slash/core/log.hpp"
 
 #if SLASH_NET_WEBSOCKET
+#include "slash/platform/certificates.hpp"
+
 #include <enet/enet.h>
 #include <mbedtls/base64.h>
+#include <mbedtls/ctr_drbg.h>
+#include <mbedtls/ecp.h>
+#include <mbedtls/entropy.h>
+#include <mbedtls/error.h>
+#include <mbedtls/net_sockets.h>
+#include <mbedtls/pk.h>
 #include <mbedtls/sha1.h>
+#include <mbedtls/ssl.h>
+#include <mbedtls/x509_crt.h>
+#include <psa/crypto.h>
 #include <wslay/wslay.h>
 #elif defined(__EMSCRIPTEN__)
 #include <emscripten/em_js.h>
@@ -136,15 +147,38 @@ bool initialize_sockets() {
     return initialized;
 }
 
-// A TCP connection, as Godot's StreamPeerTCP, over ENet's socket calls.
-class TcpStream {
+// A connection a WebSocket talks over, as Godot's StreamPeer: TCP, or TLS over TCP.
+class Stream {
 public:
     enum class Status : std::uint8_t { None, Connecting, Connected, Error };
 
+    Stream() = default;
+    Stream(const Stream&) = delete;
+    Stream& operator=(const Stream&) = delete;
+    Stream(Stream&&) = delete;
+    Stream& operator=(Stream&&) = delete;
+    virtual ~Stream() = default;
+
+    // Moves connecting (and a TLS handshake) on.
+    virtual void poll() = 0;
+    [[nodiscard]] virtual Status status() const = 0;
+    // Reads what is there, up to size bytes: read is 0 when nothing is. Fails when the
+    // connection broke or the other side closed it.
+    virtual Result<void> get_partial(std::uint8_t* data, std::size_t size, std::size_t& read) = 0;
+    // Sends what the connection takes now: sent is 0 when it takes nothing.
+    virtual Result<void> put_partial(const std::uint8_t* data, std::size_t size,
+                                     std::size_t& sent) = 0;
+};
+
+// A TCP connection, as Godot's StreamPeerTCP, over ENet's socket calls.
+class TcpStream final : public Stream {
+public:
     TcpStream() = default;
     TcpStream(const TcpStream&) = delete;
     TcpStream& operator=(const TcpStream&) = delete;
-    ~TcpStream() { disconnect(); }
+    TcpStream(TcpStream&&) = delete;
+    TcpStream& operator=(TcpStream&&) = delete;
+    ~TcpStream() override { disconnect(); }
 
     // Takes a socket accepted by a server.
     void accept(ENetSocket socket) {
@@ -178,7 +212,7 @@ public:
     }
 
     // Moves a connection on, as StreamPeerTCP::poll.
-    void poll() {
+    void poll() override {
         if (status_ != Status::Connecting) {
             return;
         }
@@ -199,11 +233,9 @@ public:
         status_ = Status::Connected;
     }
 
-    [[nodiscard]] Status status() const { return status_; }
+    [[nodiscard]] Status status() const override { return status_; }
 
-    // Reads what is there, up to size bytes: read is 0 when nothing is. Fails when the
-    // connection broke or the other side closed it.
-    Result<void> get_partial(std::uint8_t* data, std::size_t size, std::size_t& read) {
+    Result<void> get_partial(std::uint8_t* data, std::size_t size, std::size_t& read) override {
         read = 0;
         if (status_ != Status::Connected) {
             return make_error(ErrorCode::InvalidArgument, "not connected");
@@ -229,8 +261,8 @@ public:
         return {};
     }
 
-    // Sends what the socket takes now: sent is 0 when it takes nothing.
-    Result<void> put_partial(const std::uint8_t* data, std::size_t size, std::size_t& sent) {
+    Result<void> put_partial(const std::uint8_t* data, std::size_t size,
+                             std::size_t& sent) override {
         sent = 0;
         if (status_ != Status::Connected) {
             return make_error(ErrorCode::InvalidArgument, "not connected");
@@ -260,6 +292,281 @@ public:
 private:
     ENetSocket socket_ = ENET_SOCKET_NULL;
     Status status_ = Status::None;
+};
+
+// TLS over a TCP connection, as Godot's StreamPeerMbedTLS (and TLSContextMbedTLS): a client
+// checks the server's certificate against the trusted chain, the system's certificates or, on
+// Apple platforms, the platform's own trust; a server shows its certificate.
+class TlsStream final : public Stream {
+public:
+    TlsStream() {
+        mbedtls_ssl_init(&ssl_);
+        mbedtls_ssl_config_init(&config_);
+        mbedtls_x509_crt_init(&trusted_);
+        mbedtls_x509_crt_init(&own_);
+        mbedtls_pk_init(&key_);
+        mbedtls_entropy_init(&entropy_);
+        mbedtls_ctr_drbg_init(&random_);
+    }
+    TlsStream(const TlsStream&) = delete;
+    TlsStream& operator=(const TlsStream&) = delete;
+    TlsStream(TlsStream&&) = delete;
+    TlsStream& operator=(TlsStream&&) = delete;
+    ~TlsStream() override {
+        if (status_ == Status::Connected) {
+            mbedtls_ssl_close_notify(&ssl_);
+        }
+        mbedtls_ssl_free(&ssl_);
+        mbedtls_ssl_config_free(&config_);
+        mbedtls_x509_crt_free(&trusted_);
+        mbedtls_x509_crt_free(&own_);
+        mbedtls_pk_free(&key_);
+        mbedtls_ctr_drbg_free(&random_);
+        mbedtls_entropy_free(&entropy_);
+    }
+
+    // As StreamPeerMbedTLS::connect_to_stream: the handshake starts once base connects.
+    Result<void> connect(std::unique_ptr<TcpStream> base, const std::string& host,
+                         const TlsOptions& options) {
+        if (auto set = setup(MBEDTLS_SSL_IS_CLIENT, options); !set) {
+            return set;
+        }
+        const std::string name = options.common_name.empty() ? host : options.common_name;
+        if (const int failed = mbedtls_ssl_set_hostname(&ssl_, name.c_str()); failed != 0) {
+            return tls_error("couldn't set the server's name", failed);
+        }
+        host_ = name;
+        base_ = std::move(base);
+        status_ = Status::Connecting;
+        return {};
+    }
+
+    // As StreamPeerMbedTLS::accept_stream.
+    Result<void> accept(std::unique_ptr<TcpStream> base, const TlsOptions& options) {
+        if (auto set = setup(MBEDTLS_SSL_IS_SERVER, options); !set) {
+            return set;
+        }
+        base_ = std::move(base);
+        status_ = Status::Connecting;
+        return {};
+    }
+
+    // As StreamPeerMbedTLS::_do_handshake, once a poll.
+    void poll() override {
+        if (status_ != Status::Connecting) {
+            return;
+        }
+        base_->poll();
+        if (base_->status() == Status::Connecting) {
+            return;
+        }
+        if (base_->status() != Status::Connected) {
+            status_ = Status::Error;
+            return;
+        }
+        const int result = mbedtls_ssl_handshake(&ssl_);
+        if (result == MBEDTLS_ERR_SSL_WANT_READ || result == MBEDTLS_ERR_SSL_WANT_WRITE) {
+            return;
+        }
+        if (result != 0) {
+            fail("the TLS handshake failed", result);
+            return;
+        }
+        if (apple_check_ && !trusted_by_platform()) {
+            log::warn("a server's TLS certificate isn't trusted", {{"host", host_}});
+            status_ = Status::Error;
+            return;
+        }
+        status_ = Status::Connected;
+    }
+
+    [[nodiscard]] Status status() const override { return status_; }
+
+    Result<void> get_partial(std::uint8_t* data, std::size_t size, std::size_t& read) override {
+        read = 0;
+        if (status_ == Status::Connecting) {
+            poll();
+            return {};
+        }
+        if (status_ != Status::Connected) {
+            return make_error(ErrorCode::InvalidArgument, "not connected");
+        }
+        const int got = mbedtls_ssl_read(&ssl_, data, size);
+        if (got == MBEDTLS_ERR_SSL_WANT_READ || got == MBEDTLS_ERR_SSL_WANT_WRITE ||
+            got == MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET) {
+            return {};
+        }
+        if (got <= 0) {
+            status_ = Status::Error;
+            return make_error(ErrorCode::PlatformFailure,
+                              got == 0 || got == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY
+                                  ? "the connection closed"
+                                  : "the connection broke");
+        }
+        read = static_cast<std::size_t>(got);
+        return {};
+    }
+
+    Result<void> put_partial(const std::uint8_t* data, std::size_t size,
+                             std::size_t& sent) override {
+        sent = 0;
+        if (status_ == Status::Connecting) {
+            poll();
+            return {};
+        }
+        if (status_ != Status::Connected) {
+            return make_error(ErrorCode::InvalidArgument, "not connected");
+        }
+        if (size == 0) {
+            return {};
+        }
+        const int put = mbedtls_ssl_write(&ssl_, data, size);
+        if (put == MBEDTLS_ERR_SSL_WANT_READ || put == MBEDTLS_ERR_SSL_WANT_WRITE) {
+            return {};
+        }
+        if (put < 0) {
+            status_ = Status::Error;
+            return make_error(ErrorCode::PlatformFailure, "the connection broke");
+        }
+        sent = static_cast<std::size_t>(put);
+        return {};
+    }
+
+private:
+    static Error tls_error(const std::string& what, int code) {
+        std::array<char, 128> text{};
+        mbedtls_strerror(code, text.data(), text.size());
+        return make_error(ErrorCode::PlatformFailure, "TLS: " + what + ": " + text.data());
+    }
+
+    void fail(const std::string& what, int code) {
+        std::string reason = tls_error(what, code).message;
+        if (code == MBEDTLS_ERR_X509_CERT_VERIFY_FAILED) {
+            reason += " (the server's certificate isn't trusted, or is for another name)";
+        }
+        if (host_.empty()) {
+            log::warn("a client's TLS connection failed", {{"error", reason}});
+        } else {
+            log::warn("a TLS connection failed", {{"host", host_}, {"error", reason}});
+        }
+        status_ = Status::Error;
+    }
+
+    // TLSContextMbedTLS::init_client and init_server.
+    Result<void> setup(int endpoint, const TlsOptions& options) {
+        if (const psa_status_t started = psa_crypto_init(); started != PSA_SUCCESS) {
+            return make_error(ErrorCode::PlatformFailure, "TLS: PSA crypto didn't start");
+        }
+        if (const int failed =
+                mbedtls_ctr_drbg_seed(&random_, mbedtls_entropy_func, &entropy_, nullptr, 0);
+            failed != 0) {
+            return tls_error("no random numbers", failed);
+        }
+        if (const int failed = mbedtls_ssl_config_defaults(
+                &config_, endpoint, MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT);
+            failed != 0) {
+            return tls_error("couldn't configure", failed);
+        }
+        mbedtls_ssl_conf_rng(&config_, mbedtls_ctr_drbg_random, &random_);
+        if (endpoint == MBEDTLS_SSL_IS_SERVER) {
+            if (options.mode != TlsOptions::Mode::Server) {
+                return make_error(ErrorCode::InvalidArgument,
+                                  "a TLS server needs TlsOptions::server's key and certificate");
+            }
+            if (const int failed = parse_certificates(own_, options.certificate); failed != 0) {
+                return tls_error("the server's certificate couldn't be read", failed);
+            }
+            if (const int failed = mbedtls_pk_parse_key(
+                    &key_, reinterpret_cast<const unsigned char*>(options.private_key.c_str()),
+                    options.private_key.size() + 1, nullptr, 0, mbedtls_ctr_drbg_random, &random_);
+                failed != 0) {
+                return tls_error("the server's key couldn't be read", failed);
+            }
+            if (const int failed = mbedtls_ssl_conf_own_cert(&config_, &own_, &key_); failed != 0) {
+                return tls_error("the server's key doesn't fit its certificate", failed);
+            }
+            mbedtls_ssl_conf_authmode(&config_, MBEDTLS_SSL_VERIFY_NONE);
+        } else if (options.mode == TlsOptions::Mode::ClientUnsafe) {
+            mbedtls_ssl_conf_authmode(&config_, MBEDTLS_SSL_VERIFY_NONE);
+        } else if (options.mode == TlsOptions::Mode::Server) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a TLS client takes TlsOptions::client or client_unsafe");
+        } else {
+            std::string chain = options.trusted_chain;
+            if (chain.empty()) {
+                chain = platform::system_ca_certificates();
+            }
+            if (!chain.empty()) {
+                if (const int failed = parse_certificates(trusted_, chain); failed != 0) {
+                    return tls_error("the certificates to trust couldn't be read", failed);
+                }
+                mbedtls_ssl_conf_ca_chain(&config_, &trusted_, nullptr);
+                mbedtls_ssl_conf_authmode(&config_, MBEDTLS_SSL_VERIFY_REQUIRED);
+            } else if (platform::system_trust_available()) {
+                // mbedTLS reads the chain; the platform decides whether to trust it.
+                mbedtls_ssl_conf_authmode(&config_, MBEDTLS_SSL_VERIFY_OPTIONAL);
+                apple_check_ = true;
+            } else {
+                return make_error(ErrorCode::NotFound,
+                                  "TLS: no certificates to trust; pass a trusted chain or set "
+                                  "SSL_CERT_FILE");
+            }
+        }
+        if (const int failed = mbedtls_ssl_setup(&ssl_, &config_); failed != 0) {
+            return tls_error("couldn't start", failed);
+        }
+        mbedtls_ssl_set_bio(&ssl_, this, &TlsStream::send_callback, &TlsStream::receive_callback,
+                            nullptr);
+        return {};
+    }
+
+    // PEM text (with its NUL, as mbedTLS wants) or DER: the number mbedTLS failed with, or 0.
+    static int parse_certificates(mbedtls_x509_crt& into, const std::string& text) {
+        const int failed = mbedtls_x509_crt_parse(
+            &into, reinterpret_cast<const unsigned char*>(text.c_str()), text.size() + 1);
+        // Positive: some certificates of a bundle couldn't be read, as old ones may not.
+        return failed > 0 && into.raw.p != nullptr ? 0 : failed;
+    }
+
+    // Whether the platform trusts the chain the server sent, for host_.
+    bool trusted_by_platform() {
+        const mbedtls_x509_crt* peer = mbedtls_ssl_get_peer_cert(&ssl_);
+        std::vector<std::span<const std::uint8_t>> chain;
+        for (const mbedtls_x509_crt* item = peer; item != nullptr; item = item->next) {
+            chain.emplace_back(item->raw.p, item->raw.len);
+        }
+        return platform::system_trusts(chain, host_);
+    }
+
+    // mbedTLS's input and output over the TCP connection (bio_send and bio_recv).
+    static int send_callback(void* context, const unsigned char* data, std::size_t size) {
+        auto* self = static_cast<TlsStream*>(context);
+        std::size_t sent = 0;
+        if (!self->base_->put_partial(data, size, sent)) {
+            return MBEDTLS_ERR_NET_SEND_FAILED;
+        }
+        return sent == 0 ? MBEDTLS_ERR_SSL_WANT_WRITE : static_cast<int>(sent);
+    }
+    static int receive_callback(void* context, unsigned char* data, std::size_t size) {
+        auto* self = static_cast<TlsStream*>(context);
+        std::size_t read = 0;
+        if (!self->base_->get_partial(data, size, read)) {
+            return MBEDTLS_ERR_NET_RECV_FAILED;
+        }
+        return read == 0 ? MBEDTLS_ERR_SSL_WANT_READ : static_cast<int>(read);
+    }
+
+    std::unique_ptr<TcpStream> base_;
+    mbedtls_ssl_context ssl_{};
+    mbedtls_ssl_config config_{};
+    mbedtls_x509_crt trusted_{};
+    mbedtls_x509_crt own_{};
+    mbedtls_pk_context key_{};
+    mbedtls_entropy_context entropy_{};
+    mbedtls_ctr_drbg_context random_{};
+    std::string host_;
+    Status status_ = Status::None;
+    bool apple_check_ = false;
 };
 
 // A listening TCP socket, as Godot's TCPServer.
@@ -392,7 +699,7 @@ struct WebSocketPeer::State {
     std::vector<std::string> handshake_headers;
 
     // The connection.
-    std::unique_ptr<TcpStream> tcp;
+    std::unique_ptr<Stream> stream;
     wslay_event_context_ptr ctx = nullptr;
     std::size_t handshake_at = 0;
     std::uint64_t last_heartbeat = 0;
@@ -436,7 +743,7 @@ struct WebSocketPeer::State {
         ready_state = WebSocketState::Closed;
         is_server = false;
         free_context();
-        tcp.reset();
+        stream.reset();
         requested_url.clear();
         requested_host.clear();
         pending_request = true;
@@ -469,13 +776,13 @@ struct WebSocketPeer::State {
                 ? static_cast<std::size_t>(self->max_queued_packets) - self->in_buffer.size()
                 : 0;
         const std::size_t to_read = std::min({length, space, packets_left * 2});
-        if (to_read == 0 || !self->tcp) {
+        if (to_read == 0 || !self->stream) {
             wslay_event_set_error(context,
-                                  self->tcp ? WSLAY_ERR_WOULDBLOCK : WSLAY_ERR_CALLBACK_FAILURE);
+                                  self->stream ? WSLAY_ERR_WOULDBLOCK : WSLAY_ERR_CALLBACK_FAILURE);
             return -1;
         }
         std::size_t read = 0;
-        if (!self->tcp->get_partial(data, to_read, read)) {
+        if (!self->stream->get_partial(data, to_read, read)) {
             wslay_event_set_error(context, WSLAY_ERR_CALLBACK_FAILURE);
             return -1;
         }
@@ -490,7 +797,7 @@ struct WebSocketPeer::State {
                                  std::size_t length, int /*flags*/, void* user) {
         auto* self = static_cast<State*>(user);
         std::size_t sent = 0;
-        if (!self->tcp || !self->tcp->put_partial(data, length, sent)) {
+        if (!self->stream || !self->stream->put_partial(data, length, sent)) {
             wslay_event_set_error(context, WSLAY_ERR_CALLBACK_FAILURE);
             return -1;
         }
@@ -591,7 +898,7 @@ struct WebSocketPeer::State {
             }
             std::uint8_t byte = 0;
             std::size_t read = 0;
-            if (!tcp->get_partial(&byte, 1, read)) {
+            if (!stream->get_partial(&byte, 1, read)) {
                 force_close();
                 return false;
             }
@@ -611,7 +918,7 @@ struct WebSocketPeer::State {
     bool write_handshake() {
         const std::size_t left = handshake.size() - handshake_at;
         std::size_t sent = 0;
-        if (!tcp->put_partial(handshake.data() + handshake_at, left, sent)) {
+        if (!stream->put_partial(handshake.data() + handshake_at, left, sent)) {
             force_close();
             return false;
         }
@@ -668,6 +975,14 @@ struct WebSocketPeer::State {
 
     // As _do_server_handshake.
     void server_handshake() {
+        stream->poll();
+        if (stream->status() == Stream::Status::Connecting) {
+            return; // the TLS handshake goes on
+        }
+        if (stream->status() != Stream::Status::Connected) {
+            force_close();
+            return;
+        }
         if (pending_request) {
             if (!read_handshake()) {
                 return;
@@ -738,11 +1053,11 @@ struct WebSocketPeer::State {
 
     // As _do_client_handshake.
     void client_handshake() {
-        tcp->poll();
-        if (tcp->status() == TcpStream::Status::Connecting) {
+        stream->poll();
+        if (stream->status() == Stream::Status::Connecting) {
             return;
         }
-        if (tcp->status() != TcpStream::Status::Connected) {
+        if (stream->status() != Stream::Status::Connected) {
             force_close(); // couldn't connect
             return;
         }
@@ -768,7 +1083,7 @@ struct WebSocketPeer::State {
 
     void force_close() {
         free_context();
-        tcp.reset();
+        stream.reset();
         ready_state = WebSocketState::Closed;
         heartbeat_waiting = false;
         in_buffer.clear();
@@ -841,7 +1156,7 @@ struct WebSocketPeer::State {
         }
     }
 
-    Result<void> connect_to_url(std::string_view text) {
+    Result<void> connect_to_url(std::string_view text, const TlsOptions& tls) {
         if (ready_state != WebSocketState::Closed && ready_state != WebSocketState::Closing) {
             return make_error(ErrorCode::InvalidArgument, "the WebSocket is already in use");
         }
@@ -850,24 +1165,35 @@ struct WebSocketPeer::State {
         if (!url) {
             return url.error();
         }
-        if (url.value().scheme == "wss://") {
+        const bool use_tls = url.value().scheme == "wss://";
+        if (use_tls && tls.mode == TlsOptions::Mode::Server) {
             return make_error(ErrorCode::InvalidArgument,
-                              "wss:// isn't available outside the web yet; use ws://");
+                              "a WebSocket client takes TlsOptions::client or client_unsafe");
         }
         if (!initialize_sockets()) {
             return make_error(ErrorCode::PlatformFailure, "couldn't start the network");
         }
-        tcp = std::make_unique<TcpStream>();
+        auto tcp = std::make_unique<TcpStream>();
         if (auto connected = tcp->connect(url.value().host, url.value().port); !connected) {
             clear();
             return connected;
+        }
+        if (use_tls) {
+            auto secure = std::make_unique<TlsStream>();
+            if (auto started = secure->connect(std::move(tcp), url.value().host, tls); !started) {
+                clear();
+                return started;
+            }
+            stream = std::move(secure);
+        } else {
+            stream = std::move(tcp);
         }
         requested_url = std::string(text);
         requested_host = url.value().host;
         session_key = generate_key();
         std::string request = "GET " + url.value().path + " HTTP/1.1\r\n";
         request += "Host: " + requested_host;
-        if (url.value().port != 80) {
+        if (url.value().port != (use_tls ? 443 : 80)) {
             request += ":" + std::to_string(url.value().port);
         }
         request += "\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n";
@@ -891,9 +1217,9 @@ struct WebSocketPeer::State {
         return {};
     }
 
-    void accept_stream(std::unique_ptr<TcpStream> stream) {
+    void accept_stream(std::unique_ptr<Stream> accepted) {
         clear();
-        tcp = std::move(stream);
+        stream = std::move(accepted);
         is_server = true;
         ready_state = WebSocketState::Connecting;
     }
@@ -1081,7 +1407,12 @@ struct WebSocketPeer::State {
         current = {};
     }
 
-    Result<void> connect_to_url(std::string_view text) {
+    // As EMWSPeer::connect_to_url: the browser checks the server's certificate itself.
+    Result<void> connect_to_url(std::string_view text, const TlsOptions& tls) {
+        if (tls.mode == TlsOptions::Mode::Server) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a WebSocket client takes TlsOptions::client or client_unsafe");
+        }
         if (ready_state != WebSocketState::Closed && ready_state != WebSocketState::Closing) {
             return make_error(ErrorCode::InvalidArgument, "the WebSocket is already in use");
         }
@@ -1210,7 +1541,7 @@ struct WebSocketPeer::State {
     int close_code = -1;
     std::string close_reason;
 
-    static Result<void> connect_to_url(std::string_view /*url*/) {
+    static Result<void> connect_to_url(std::string_view /*url*/, const TlsOptions& /*tls*/) {
         return make_error(ErrorCode::InvalidArgument, "this build has no WebSocket");
     }
     void poll() {}
@@ -1227,6 +1558,87 @@ bool websocket_server_supported() {
     return SLASH_NET_WEBSOCKET != 0;
 }
 
+Result<SelfSignedCertificate> generate_self_signed_certificate(std::string_view issuer_name,
+                                                               std::string_view not_before,
+                                                               std::string_view not_after) {
+#if SLASH_NET_WEBSOCKET
+    if (psa_crypto_init() != PSA_SUCCESS) {
+        return make_error(ErrorCode::PlatformFailure, "TLS: PSA crypto didn't start");
+    }
+    mbedtls_entropy_context entropy;
+    mbedtls_entropy_init(&entropy);
+    mbedtls_ctr_drbg_context random;
+    mbedtls_ctr_drbg_init(&random);
+    mbedtls_pk_context key;
+    mbedtls_pk_init(&key);
+    mbedtls_x509write_cert writer;
+    mbedtls_x509write_crt_init(&writer);
+    const std::string name(issuer_name);
+    const std::string from(not_before);
+    const std::string until(not_after);
+    std::array<unsigned char, 4096> certificate{};
+    std::array<unsigned char, 4096> private_key{};
+    std::array<unsigned char, 20> serial{};
+    random_bytes(serial.data(), serial.size());
+    serial[0] = static_cast<unsigned char>((serial[0] & 0x7FU) | 0x01U); // positive, not 0
+    int failed = mbedtls_ctr_drbg_seed(&random, mbedtls_entropy_func, &entropy, nullptr, 0);
+    std::string what = "no random numbers";
+    if (failed == 0) {
+        what = "couldn't make a key";
+        failed = mbedtls_pk_setup(&key, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY));
+    }
+    if (failed == 0) {
+        failed = mbedtls_ecp_gen_key(MBEDTLS_ECP_DP_SECP256R1, mbedtls_pk_ec(key),
+                                     mbedtls_ctr_drbg_random, &random);
+    }
+    if (failed == 0) {
+        what = "the issuer name isn't valid";
+        failed = mbedtls_x509write_crt_set_subject_name(&writer, name.c_str());
+    }
+    if (failed == 0) {
+        failed = mbedtls_x509write_crt_set_issuer_name(&writer, name.c_str());
+    }
+    if (failed == 0) {
+        what = "the dates aren't valid";
+        failed = mbedtls_x509write_crt_set_validity(&writer, from.c_str(), until.c_str());
+    }
+    if (failed == 0) {
+        what = "couldn't write the certificate";
+        failed = mbedtls_x509write_crt_set_serial_raw(&writer, serial.data(), serial.size());
+    }
+    if (failed == 0) {
+        failed = mbedtls_x509write_crt_set_basic_constraints(&writer, 1, -1);
+    }
+    if (failed == 0) {
+        mbedtls_x509write_crt_set_version(&writer, MBEDTLS_X509_CRT_VERSION_3);
+        mbedtls_x509write_crt_set_md_alg(&writer, MBEDTLS_MD_SHA256);
+        mbedtls_x509write_crt_set_subject_key(&writer, &key);
+        mbedtls_x509write_crt_set_issuer_key(&writer, &key);
+        failed = mbedtls_x509write_crt_pem(&writer, certificate.data(), certificate.size(),
+                                           mbedtls_ctr_drbg_random, &random);
+    }
+    if (failed == 0) {
+        failed = mbedtls_pk_write_key_pem(&key, private_key.data(), private_key.size());
+    }
+    mbedtls_x509write_crt_free(&writer);
+    mbedtls_pk_free(&key);
+    mbedtls_ctr_drbg_free(&random);
+    mbedtls_entropy_free(&entropy);
+    if (failed != 0) {
+        std::array<char, 128> text{};
+        mbedtls_strerror(failed, text.data(), text.size());
+        return make_error(ErrorCode::InvalidArgument, "TLS: " + what + ": " + text.data());
+    }
+    return SelfSignedCertificate{.private_key = reinterpret_cast<const char*>(private_key.data()),
+                                 .certificate = reinterpret_cast<const char*>(certificate.data())};
+#else
+    (void)issuer_name;
+    (void)not_before;
+    (void)not_after;
+    return make_error(ErrorCode::InvalidArgument, "this build has no TLS");
+#endif
+}
+
 // ----------------------------------------------------------------------------------------------
 // WebSocketPeer
 
@@ -1234,8 +1646,8 @@ WebSocketPeer::WebSocketPeer() : state_(std::make_unique<State>()) {}
 
 WebSocketPeer::~WebSocketPeer() = default;
 
-Result<void> WebSocketPeer::connect_to_url(std::string_view url) {
-    return state_->connect_to_url(url);
+Result<void> WebSocketPeer::connect_to_url(std::string_view url, const TlsOptions& tls) {
+    return state_->connect_to_url(url, tls);
 }
 
 void WebSocketPeer::poll() {
@@ -1376,6 +1788,7 @@ struct WebSocketMultiplayerPeer::State {
 #if SLASH_NET_WEBSOCKET
     std::unique_ptr<TcpServer> server;
 #endif
+    std::optional<TlsOptions> tls_server; // set when the server speaks wss://
 
     [[nodiscard]] bool is_server() const {
 #if SLASH_NET_WEBSOCKET
@@ -1402,6 +1815,7 @@ struct WebSocketMultiplayerPeer::State {
 #if SLASH_NET_WEBSOCKET
         server.reset();
 #endif
+        tls_server.reset();
         pending.clear();
         incoming.clear();
         current = {};
@@ -1424,13 +1838,19 @@ WebSocketMultiplayerPeer::WebSocketMultiplayerPeer() : state_(std::make_unique<S
 
 WebSocketMultiplayerPeer::~WebSocketMultiplayerPeer() = default;
 
-Result<void> WebSocketMultiplayerPeer::create_server(int port, std::string_view bind_address) {
+Result<void> WebSocketMultiplayerPeer::create_server(int port, std::string_view bind_address,
+                                                     std::optional<TlsOptions> tls) {
 #if SLASH_NET_WEBSOCKET
     State& s = *state_;
     if (s.status != ConnectionStatus::Disconnected) {
         return make_error(ErrorCode::InvalidArgument, "the peer is already in use");
     }
+    if (tls && tls->mode != TlsOptions::Mode::Server) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "a WebSocket server takes TlsOptions::server");
+    }
     s.clear();
+    s.tls_server = std::move(tls);
     s.server = std::make_unique<TcpServer>();
     if (auto listening = s.server->listen(port, bind_address); !listening) {
         s.server.reset();
@@ -1442,19 +1862,20 @@ Result<void> WebSocketMultiplayerPeer::create_server(int port, std::string_view 
 #else
     (void)port;
     (void)bind_address;
+    (void)tls;
     return make_error(ErrorCode::InvalidArgument,
                       "this build can't host a WebSocket server; browsers only connect to them");
 #endif
 }
 
-Result<void> WebSocketMultiplayerPeer::create_client(std::string_view url) {
+Result<void> WebSocketMultiplayerPeer::create_client(std::string_view url, const TlsOptions& tls) {
     State& s = *state_;
     if (s.status != ConnectionStatus::Disconnected) {
         return make_error(ErrorCode::InvalidArgument, "the peer is already in use");
     }
     s.clear();
     std::unique_ptr<WebSocketPeer> peer = s.create_peer();
-    if (auto connected = peer->connect_to_url(url); !connected) {
+    if (auto connected = peer->connect_to_url(url, tls); !connected) {
         return connected;
     }
     s.pending[1] = State::PendingPeer{.time = ticks_msec(), .ws = nullptr};
@@ -1583,15 +2004,29 @@ void WebSocketMultiplayerPeer::poll() {
     if (!is_refusing_new_connections()) {
         const ENetSocket socket = s.server->take_connection();
         if (socket != ENET_SOCKET_NULL) {
-            auto stream = std::make_unique<TcpStream>();
-            stream->accept(socket);
-            auto ws = s.create_peer();
-            ws->state_->accept_stream(std::move(stream));
-            int id = 0;
-            do {
-                id = static_cast<int>(generate_unique_id());
-            } while (s.pending.contains(id) || s.peers.contains(id));
-            s.pending[id] = State::PendingPeer{.time = ticks_msec(), .ws = std::move(ws)};
+            auto tcp = std::make_unique<TcpStream>();
+            tcp->accept(socket);
+            std::unique_ptr<Stream> stream;
+            if (s.tls_server) {
+                auto secure = std::make_unique<TlsStream>();
+                if (auto started = secure->accept(std::move(tcp), *s.tls_server); !started) {
+                    log::warn("couldn't start TLS with a WebSocket client",
+                              {{"error", started.error().message}});
+                } else {
+                    stream = std::move(secure);
+                }
+            } else {
+                stream = std::move(tcp);
+            }
+            if (stream) {
+                auto ws = s.create_peer();
+                ws->state_->accept_stream(std::move(stream));
+                int id = 0;
+                do {
+                    id = static_cast<int>(generate_unique_id());
+                } while (s.pending.contains(id) || s.peers.contains(id));
+                s.pending[id] = State::PendingPeer{.time = ticks_msec(), .ws = std::move(ws)};
+            }
         }
     }
     // Pending peers.
