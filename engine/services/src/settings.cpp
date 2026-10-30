@@ -151,6 +151,12 @@ std::string_view type_name(ProductType type) {
     return kTypes.at(static_cast<std::size_t>(type));
 }
 
+std::string_view tracking_name(TrackingStatus status) {
+    static constexpr std::array<std::string_view, 5> kNames{"not_determined", "restricted",
+                                                            "denied", "authorized", "unavailable"};
+    return kNames.at(static_cast<std::size_t>(status));
+}
+
 std::string_view consent_name(Consent consent) {
     return kConsents.at(static_cast<std::size_t>(consent));
 }
@@ -261,6 +267,9 @@ json::Value settings_schema() {
         enum_property(kConsents, "Ads are personalized only when granted. Default: unknown.");
     consent["properties"]["analytics"] = std::move(analytics_consent);
     consent["properties"]["personalized_ads"] = std::move(ads_consent);
+    consent["properties"]["tracking_usage"]["type"] = "string";
+    consent["properties"]["tracking_usage"]["description"] =
+        "Why the game asks to track the player, shown in Apple's tracking prompt.";
 
     json::Value achievement = object_schema("An achievement.");
     achievement["properties"]["ids"] =
@@ -500,6 +509,9 @@ Settings parse_settings(const json::Value& settings) {
         if (const json::Value* ads_consent = consent->find("personalized_ads");
             ads_consent != nullptr) {
             out.consent.personalized_ads = parse_consent(ads_consent->as_string());
+        }
+        if (const json::Value* usage = consent->find("tracking_usage"); usage != nullptr) {
+            out.tracking_usage = usage->as_string();
         }
     }
     if (const json::Value* games = settings.find("games"); games != nullptr) {

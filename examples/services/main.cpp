@@ -152,6 +152,13 @@ int main() {
     call(session, "step", R"({"ticks": 2})");
     call(session, "entity.get", R"({"id": "coins", "components": ["Wallet"]})");
 
+    // The player turns down Apple's tracking prompt, which a game shows with request_tracking:
+    // personalized ads, granted before, are denied.
+    call(session, "services.test", R"({"consent": {"personalized_ads": "granted"}})");
+    call(session, "services.test", R"({"tracking": "denied"})");
+    call(session, "step", "{}");
+    call(session, "services.state", R"({"events": 0})");
+
     // Mistakes are caught with the closest name, and a failed call changes nothing.
     call(session, "services.test", R"({"show": "bnous"})");
     call(session, "services.test", R"({"buy": "remove_ads"})");

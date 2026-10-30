@@ -18,5 +18,7 @@ if(ANDROID)
 elseif(APPLE)
     target_sources(slash_services PRIVATE src/apple.mm)
     set_source_files_properties(src/apple.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
-    target_link_libraries(slash_services PRIVATE "-framework Foundation")
+    # AppTrackingTransparency asks the player before a game tracks them.
+    target_link_libraries(slash_services PRIVATE "-framework Foundation"
+        "-framework AppTrackingTransparency")
 endif()

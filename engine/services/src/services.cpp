@@ -1,5 +1,7 @@
 #include "slash/services/services.hpp"
 
+#include "tracking.hpp"
+
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
 #include "slash/platform/platform.hpp"
@@ -99,6 +101,7 @@ struct State {
     bool test = false;
     bool restoring = false;
     bool games_ui = false;
+    TrackingStatus tracking = TrackingStatus::NotDetermined;
 };
 
 using Handle = std::shared_ptr<State>;
@@ -893,6 +896,22 @@ void apply(world::World& world, State& state, Report& report) {
     case Report::Kind::AchievementUnlocked:
         apply_games(world, state, report);
         return;
+    case Report::Kind::Tracking: {
+        state.tracking = report.tracking;
+        // Apple doesn't let a game personalize ads for a player who didn't allow tracking.
+        if (report.tracking != TrackingStatus::Authorized &&
+            report.tracking != TrackingStatus::Unavailable &&
+            state.consent.personalized_ads == Consent::Granted) {
+            state.consent.personalized_ads = Consent::Denied;
+            tell_consent(world, state.consent);
+        }
+        ServiceEvent tracked;
+        tracked.kind = "tracking_status";
+        json::Value status;
+        status["status"] = tracking_name(report.tracking);
+        emit(world, state, std::move(tracked), std::move(status));
+        return;
+    }
     }
 }
 
@@ -1076,6 +1095,13 @@ void Reports::games_ui_closed() {
     add(std::move(report));
 }
 
+void Reports::tracking(TrackingStatus status) {
+    Report report;
+    report.kind = Report::Kind::Tracking;
+    report.tracking = status;
+    add(std::move(report));
+}
+
 std::vector<Report> Reports::take() {
 
     const std::scoped_lock lock(mutex_);
@@ -1128,6 +1154,7 @@ void install(world::World& world, Settings settings) {
     auto state = std::make_shared<State>();
     state->settings = std::move(settings);
     state->consent = state->settings.consent;
+    state->tracking = detail::platform_tracking_status();
     State& current = *state;
     world.ecs().ctx().emplace<Handle>(std::move(state));
     world.ecs().ctx().emplace<BackendHolder>();
@@ -1141,6 +1168,8 @@ void install(world::World& world, Settings settings) {
         fresh.test = reset->test;
         fresh.test_settings = std::move(reset->test_settings);
         fresh.consent = fresh.settings.consent;
+        fresh.tracking =
+            fresh.test ? TrackingStatus::NotDetermined : detail::platform_tracking_status();
         *reset = std::move(fresh);
         tell_consent(in_world, reset->consent);
         start(in_world, *reset);
@@ -1239,6 +1268,7 @@ void use_test_backend(world::World& world, TestSettings settings) {
     holder.reports = std::make_shared<Reports>();
     state->test = true;
     state->test_settings = std::move(settings);
+    state->tracking = TrackingStatus::NotDetermined;
     state->owned.clear();
     state->unfinished.clear();
     state->pending.clear();
@@ -1893,6 +1923,62 @@ ConsentState consent(const world::World& world) {
     return state != nullptr ? state->consent : ConsentState{};
 }
 
+Result<void> request_tracking(world::World& world) {
+    State* state = state_of(world);
+    if (state == nullptr) {
+        return not_installed();
+    }
+    Report report;
+    report.kind = Report::Kind::Tracking;
+    if (state->test) {
+        report.tracking = state->test_settings.tracking;
+        schedule(world, *state, 1, std::move(report));
+        return {};
+    }
+    if (!detail::tracking_available()) {
+        report.tracking = TrackingStatus::Unavailable;
+        schedule(world, *state, 1, std::move(report));
+        return {};
+    }
+    if (state->settings.tracking_usage.empty()) {
+        // Apple stops a game that asks without saying why.
+        return make_error(ErrorCode::InvalidArgument,
+                          "Apple's tracking prompt needs a reason: set project.json's "
+                          "services.consent.tracking_usage");
+    }
+    const std::weak_ptr<Reports> reports = holder_of(world).reports;
+    detail::request_platform_tracking([reports](TrackingStatus status) {
+        if (const auto alive = reports.lock()) {
+            alive->tracking(status);
+        }
+    });
+    return {};
+}
+
+TrackingStatus tracking_status(const world::World& world) {
+    const State* state = state_of(world);
+    return state != nullptr ? state->tracking : TrackingStatus::NotDetermined;
+}
+
+#if !defined(__APPLE__)
+namespace detail {
+
+bool tracking_available() {
+    return false;
+}
+
+TrackingStatus platform_tracking_status() {
+    return TrackingStatus::Unavailable;
+}
+
+void request_platform_tracking(std::function<void(TrackingStatus status)> done) {
+    const auto answer = std::move(done);
+    answer(TrackingStatus::Unavailable);
+}
+
+} // namespace detail
+#endif
+
 // ---------------------------------------------------------------------------------------------
 // Events, state and snapshots
 
@@ -2017,6 +2103,7 @@ json::Value state_json(const world::World& world, std::size_t analytics_events) 
     out["backends"] = backends_json(world);
     out["consent"]["analytics"] = consent_name(state->consent.analytics);
     out["consent"]["personalized_ads"] = consent_name(state->consent.personalized_ads);
+    out["consent"]["tracking"] = tracking_name(state->tracking);
     json::Value ads = json::Object{};
     for (const Placement& placement : state->settings.placements) {
         json::Value ad;

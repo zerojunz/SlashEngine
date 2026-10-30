@@ -5,7 +5,7 @@ events.subscribe {"kinds":["achievement_unlocked","scores_loaded"]}
 step {"ticks":2}
 {"tick":2,"ticks":2}
 services.state {"events":0}
-{"ads":{},"analytics":{"enabled":true,"events":[],"logged":0},"backends":{"ads":"test","analytics":["test"],"games":"test","purchases":"test"},"consent":{"analytics":"unknown","personalized_ads":"unknown"},"games":{"achievements":{"first_finish":{"unlocked":false},"ten_laps":{"of":10,"steps":0,"unlocked":false}},"leaderboards":{"best_lap":{}},"player":{"id":"test-player","name":"Player"},"sign_in":"signed_in"},"owned":[],"pending":[],"products":{},"products_status":"none","tick":1,"unfinished":[]}
+{"ads":{},"analytics":{"enabled":true,"events":[],"logged":0},"backends":{"ads":"test","analytics":["test"],"games":"test","purchases":"test"},"consent":{"analytics":"unknown","personalized_ads":"unknown","tracking":"not_determined"},"games":{"achievements":{"first_finish":{"unlocked":false},"ten_laps":{"of":10,"steps":0,"unlocked":false}},"leaderboards":{"best_lap":{}},"player":{"id":"test-player","name":"Player"},"sign_in":"signed_in"},"owned":[],"pending":[],"products":{},"products_status":"none","tick":1,"unfinished":[]}
 ui.press {"id":"finish_lap"}
 {"tick":2}
 step {"ticks":2}
@@ -13,7 +13,7 @@ step {"ticks":2}
 entity.get {"components":["Label"],"id":"status"}
 {"components":{"Label":{"autowrap_mode":"off","clip_text":false,"ellipsis_char":"…","horizontal_alignment":"left","language":"","lines_skipped":0,"max_lines_visible":-1,"text":"Unlocked first_finish","text_direction":"auto","text_overrun_behavior":"no_trimming","uppercase":false,"vertical_alignment":"top","visible_characters":-1,"visible_characters_behavior":"chars_before_shaping"}},"id":"status"}
 services.test {"increment":{"achievement":"ten_laps","steps":8},"scores":{"best_lap":[{"name":"Ana","score":61000},{"name":"Bo","score":66500}]}}
-{"test":{"accept_sign_in":true,"error":"the payment was declined","fill":true,"games_ticks":1,"load_ticks":1,"outcome":"purchased","player":"Player","prices":{},"purchase_ticks":1,"scores":{"best_lap":[{"name":"Ana","score":61000},{"name":"Bo","score":66500}]},"show_ticks":1,"watch_to_end":true},"tick":4}
+{"test":{"accept_sign_in":true,"error":"the payment was declined","fill":true,"games_ticks":1,"load_ticks":1,"outcome":"purchased","player":"Player","prices":{},"purchase_ticks":1,"scores":{"best_lap":[{"name":"Ana","score":61000},{"name":"Bo","score":66500}]},"show_ticks":1,"tracking":"authorized","watch_to_end":true},"tick":4}
 ui.press {"id":"finish_lap"}
 {"tick":4}
 step {"ticks":2}
@@ -33,11 +33,11 @@ ui.press {"id":"trophies"}
 step {}
 {"tick":9,"ticks":1}
 services.state {"events":0}
-{"ads":{},"analytics":{"enabled":true,"events":[],"logged":0},"backends":{"ads":"test","analytics":["test"],"games":"test","purchases":"test"},"consent":{"analytics":"unknown","personalized_ads":"unknown"},"games":{"achievements":{"first_finish":{"unlocked":true},"ten_laps":{"of":10,"steps":10,"unlocked":true}},"leaderboards":{"best_lap":{"best":62500}},"player":{"id":"test-player","name":"Player"},"sign_in":"signed_in","ui_showing":true},"owned":[],"pending":[],"products":{},"products_status":"none","tick":8,"unfinished":[]}
+{"ads":{},"analytics":{"enabled":true,"events":[],"logged":0},"backends":{"ads":"test","analytics":["test"],"games":"test","purchases":"test"},"consent":{"analytics":"unknown","personalized_ads":"unknown","tracking":"not_determined"},"games":{"achievements":{"first_finish":{"unlocked":true},"ten_laps":{"of":10,"steps":10,"unlocked":true}},"leaderboards":{"best_lap":{"best":62500}},"player":{"id":"test-player","name":"Player"},"sign_in":"signed_in","ui_showing":true},"owned":[],"pending":[],"products":{},"products_status":"none","tick":8,"unfinished":[]}
 step {"ticks":2}
 {"tick":11,"ticks":2}
 services.state {"events":0}
-{"ads":{},"analytics":{"enabled":true,"events":[],"logged":0},"backends":{"ads":"test","analytics":["test"],"games":"test","purchases":"test"},"consent":{"analytics":"unknown","personalized_ads":"unknown"},"games":{"achievements":{"first_finish":{"unlocked":true},"ten_laps":{"of":10,"steps":10,"unlocked":true}},"leaderboards":{"best_lap":{"best":62500}},"player":{"id":"test-player","name":"Player"},"sign_in":"signed_in"},"owned":[],"pending":[],"products":{},"products_status":"none","tick":10,"unfinished":[]}
+{"ads":{},"analytics":{"enabled":true,"events":[],"logged":0},"backends":{"ads":"test","analytics":["test"],"games":"test","purchases":"test"},"consent":{"analytics":"unknown","personalized_ads":"unknown","tracking":"not_determined"},"games":{"achievements":{"first_finish":{"unlocked":true},"ten_laps":{"of":10,"steps":10,"unlocked":true}},"leaderboards":{"best_lap":{"best":62500}},"player":{"id":"test-player","name":"Player"},"sign_in":"signed_in"},"owned":[],"pending":[],"products":{},"products_status":"none","tick":10,"unfinished":[]}
 services.test {"unlock":"first_finsh"}
 "/unlock: no achievement \"first_finsh\"; did you mean \"first_finish\"?"
 services.test {"increment":{"achievement":"first_finish"}}
