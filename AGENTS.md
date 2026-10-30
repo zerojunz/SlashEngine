@@ -675,8 +675,8 @@ lights turn to face Godot's way), gives each mesh's `.glb` the collision Unreal 
 (`convert_animation`) and an Animation Blueprint's sequences with an `AnimationTree` state machine
 (`anim_tree`), makes each landscape an `HTerrain` from the `.r16` heights the script
 writes (`convert_landscape`), makes each Niagara emitter a `CPUParticles3D` or a `GPUParticles3D` with
-a `.process_material.json` from its module stack, which the script reads through Unreal 5.8's
-`NiagaraExternalEditUtilities` (`convert_niagara`), converts lights by Unreal's units, the sky, fog, bodies, shapes, volumes,
+a `.process_material.json` from its module stack, which the importer reads from the text (T3D)
+the script writes of the system (`niagara_from_text` in `src/unreal_text.cpp`, `convert_niagara`), converts lights by Unreal's units, the sky, fog, bodies, shapes, volumes,
 sounds and both input systems, and makes a task per Blueprint and `UCLASS`. Each `UCLASS` is
 also a C++ skeleton: `src/unreal_cpp.cpp` (`read_unreal_class`) reads its header and source into
 a `Script` for `src/scripts.cpp` to write, as C# scripts are, and the export's `request.json`
@@ -900,7 +900,9 @@ its `exposure_multiplier` scales lights, emission, the background and the sky in
 `forward_post.hlsl`'s luminance passes (`luminance_plan`, `run_luminance_pass`) into R32F
 textures down to a 1x1 brightness they keep between frames, moving `auto_exposure_adjust` of the
 way each frame, which `prepare` works out from game time; `auto_exposure_version` starts the
-measure over. `examples/auto-exposure-3d` walks out of a tunnel.
+measure over. `auto_exposure_metering`'s `"log_average"` (SlashEngine's own, `auto_exposure_log`,
+`options.y` in the luminance passes) averages the brightness's natural logarithm instead, as
+Unreal meters, which the Unreal importer sets. `examples/auto-exposure-3d` walks out of a tunnel.
 
 Depth of field is Godot 4.6's too: `CameraAttributesPractical`'s `dof_blur_*` fields set
 `PostProcess::dof_*`, and project.json's `rendering.camera.depth_of_field` the bokeh shape,
@@ -1099,7 +1101,9 @@ Skies and fog are the Compatibility renderer's too. `Scene3D::sky` (`render::Sky
 procedural, physical or panorama sky, from a `"sky"` background and the sky material on the
 `WorldEnvironment`'s entity) draws before the meshes, as one triangle over the target with no
 depth test: `shaders/sky.hlsl` works out each pixel's view direction and shades it as Godot's sky
-shaders do, with the suns of up to four `DirectionalLight3D`s. `Scene3D::fog` (`render::Fog3D`)
+shaders do, with the suns of up to four `DirectionalLight3D`s. In Forward+ (`kSkyLinear`) it
+works from linear colors and leaves the result linear, as Godot's RD sky does; in Compatibility
+it works in sRGB and makes the result linear, as `drivers/gles3` does. `Scene3D::fog` (`render::Fog3D`)
 fades meshes in `mesh.hlsl`'s `fog_process` and the sky by its `sky_affect`; fog over a color
 background draws that color as a sky, as Godot's fog sky does. `src/sky_shading.hpp` holds the
 uniforms, the checks and the CPU twins (`sky_ray`, `shade_sky`) the software device draws with;

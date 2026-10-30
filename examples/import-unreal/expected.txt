@@ -411,7 +411,9 @@ project.import {"source":"unreal"}
     },
     "environment": {
       "components": {
-        "PhysicalSkyMaterial": {},
+        "PhysicalSkyMaterial": {
+          "energy_multiplier": 2.901642
+        },
         "WorldEnvironment": {
           "ambient_light_source": "sky",
           "background_mode": "sky",
@@ -420,7 +422,9 @@ project.import {"source":"unreal"}
           "fog_height": -1.0,
           "fog_height_density": 0.2,
           "fog_light_color": [0.447, 0.638, 1.0, 1.0],
-          "reflected_light_source": "sky"
+          "reflected_light_source": "sky",
+          "tonemap_mode": "aces",
+          "tonemap_white": 6.0
         }
       }
     },

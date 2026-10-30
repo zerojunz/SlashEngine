@@ -1549,7 +1549,8 @@ private:
         detail::LuminanceImage level;
         detail::run_luminance_pass(
             detail::luminance_uniforms(post, detail::ForwardPass::LuminanceFirst,
-                                       {.width = world.width, .height = world.height}, plan[0]),
+                                       {.width = world.width, .height = world.height}, plan[0],
+                                       plan.size() == 1),
             world, level);
         for (std::size_t i = 1; i < plan.size(); ++i) {
             const bool last = i + 1 == plan.size() && !set;
@@ -1558,7 +1559,7 @@ private:
                 detail::luminance_uniforms(post,
                                            last ? detail::ForwardPass::LuminanceFinal
                                                 : detail::ForwardPass::Luminance,
-                                           plan.at(i - 1), plan.at(i)),
+                                           plan.at(i - 1), plan.at(i), i + 1 == plan.size()),
                 level, previous, next);
             level = std::move(next);
         }

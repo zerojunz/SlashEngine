@@ -33,6 +33,7 @@ add_library(slash_importer
     src/unreal_cpp.cpp
     src/unreal_editor.cpp
     src/unreal_import.cpp
+    src/unreal_text.cpp
     ${_slash_unreal_export_cpp})
 add_library(slash::importer ALIAS slash_importer)
 

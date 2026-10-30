@@ -17,9 +17,11 @@
 #include <SDL3/SDL_stdinc.h>
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <map>
 #include <numbers>
@@ -372,6 +374,7 @@ TEST_CASE("the Unreal Editor is the one given, then SLASH_UNREAL_EDITOR's") {
     CHECK(run.at(1) == project.generic_string());
     CHECK(run.at(2) == "-run=pythonscript");
     CHECK(run.at(3) == "-script=" + (folder / "unreal_export.py").generic_string());
+    CHECK(std::ranges::find(run, "-AllowCommandletRendering") != run.end());
     CHECK(unreal::export_script().find("SLASH_UNREAL_EXPORT") != std::string_view::npos);
 }
 
@@ -686,8 +689,10 @@ TEST_CASE("an Unreal import draws meshes' override materials and plays their ani
     // The crate draws M_Wood, and a second crate draws it red.
     write_model(exported / "meshes/Game/SM_Crate.glb",
                 painted_box({-50, -30, 0}, {50, 30, 100}, "M_Wood", {0.6F, 0.4F, 0.2F, 1.0F}));
-    write_model(exported / "materials/Game/M_Red.glb",
-                painted_box({-50, -50, -50}, {50, 50, 50}, "M_Red", {1.0F, 0.0F, 0.0F, 1.0F}));
+    // The exporter names a material after its preview mesh; the import names it as Unreal does.
+    write_model(
+        exported / "materials/Game/M_Red.glb",
+        painted_box({-50, -50, -50}, {50, 50, 50}, "M_Red_EditorSphere", {1.0F, 0.0F, 0.0F, 1.0F}));
     // A figure and a sequence that turns it, exported on its skeleton.
     const scene3d::Model figure = box_model({-20, -20, 0}, {20, 20, 180}, kGltfAxes);
     write_model(exported / "meshes/Game/SK_Figure.glb", figure);
@@ -1079,8 +1084,8 @@ TEST_CASE("an Unreal import turns Niagara emitters into Godot's particles") {
     const fs::path exported = project / "unreal/FakeExport";
     json::Value description =
         parse(slash::platform::read_file((exported / "export.json").string()).value());
-    // NS_Sparks, as Unreal 5.8's NiagaraExternalEditUtilities describes it: inputs as the text
-    // Unreal writes of their values, a random range as its dynamic input chain.
+    // NS_Sparks, as the importer reads a system from the text Unreal writes of it: inputs as the
+    // text Unreal writes of their values, a random range as its dynamic input chain.
     description["niagara_systems"] = parse(R"json({
       "/Game/FX/NS_Sparks": {
         "random_seed": 42, "determinism": true, "warmup_time": 0.5,
@@ -1173,7 +1178,7 @@ TEST_CASE("an Unreal import turns Niagara emitters into Godot's particles") {
         "transform": {"location": [0, 0, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]}})"));
     description["problems"].as_array().push_back(parse(R"({"what": "Niagara emitters",
         "where": "/Game/FX/NS_Old",
-        "why": "reading a Niagara system's emitters needs Unreal Engine 5.8 or later"})"));
+        "why": "the editor did not write the system as text"})"));
     write(exported / "export.json", json::write(description));
 
     auto planned = importer::plan_import({.source = (project / "unreal").string(),
@@ -1258,5 +1263,388 @@ TEST_CASE("an Unreal import turns Niagara emitters into Godot's particles") {
     CHECK(reported("Cascade particle system"));
     CHECK_FALSE(reported("invalid value"));
     CHECK(scene.find("entities")->find("torch_fire") == nullptr);
+    fs::remove_all(project);
+}
+
+// A parameter store's bytes as Unreal writes them as text: each float's four bytes, low first.
+std::string float_bytes(std::initializer_list<float> values) {
+    std::string out;
+    for (const float value : values) {
+        std::uint32_t bits = 0;
+        std::memcpy(&bits, &value, sizeof bits);
+        for (int i = 0; i < 4; ++i) {
+            out += (out.empty() ? "" : ",") + std::to_string((bits >> (8 * i)) & 0xFFU);
+        }
+    }
+    return out;
+}
+
+TEST_CASE("an Unreal import reads Niagara systems from the text Unreal writes of them") {
+    const fs::path project = fs::absolute("import_unreal_niagara_text");
+    fs::remove_all(project);
+    write_project(project / "unreal");
+    const fs::path exported = project / "unreal/FakeExport";
+    json::Value description =
+        parse(slash::platform::read_file((exported / "export.json").string()).value());
+    description["niagara_systems"] = parse(R"({"/Game/FX/NS_Fountain": {
+        "random_seed": 0, "determinism": false, "warmup_time": 0.0,
+        "text": "text/Game/FX/NS_Fountain.t3d",
+        "enums": {"/Niagara/Enums/ENiagara_LifetimeMode.ENiagara_LifetimeMode":
+                  {"NewEnumerator0": "Direct Set", "NewEnumerator1": "Random"}}}})");
+    json::Array& actors = description["levels"].as_array().at(0)["actors"].as_array();
+    actors.push_back(parse(R"({"name": "NiagaraActor_0", "label": "Fountain",
+        "class": "NiagaraActor", "class_path": "/Script/Niagara.NiagaraActor",
+        "root": "NiagaraComponent0",
+        "transform": {"location": [0, 0, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]},
+        "components": [{"name": "NiagaraComponent0", "class": "NiagaraComponent",
+          "niagara": {"auto_activate": true, "system": "/Game/FX/NS_Fountain"},
+          "transform": {"location": [0, 0, 0], "rotation": [0, 0, 0, 1],
+                        "scale": [1, 1, 1]}}]})"));
+    write(exported / "export.json", json::write(description));
+
+    // NS_Fountain as Unreal writes it as text: one emitter whose stacks are a graph of function
+    // calls joined by their parameter maps, the inputs set in the stack held by override nodes
+    // and the scripts' rapid iteration parameters.
+    const std::string system = "/Game/FX/NS_Fountain.NS_Fountain";
+    const std::string emitter = system + ":Water_0";
+    const std::string graph = emitter + ".NiagaraScriptSource_0.NiagaraGraph_0";
+    const auto begin = [](std::string_view cls, const std::string& path) {
+        return "Begin Object Class=/Script/" + std::string(cls) + " Name=\"" +
+               path.substr(path.find_last_of(".:") + 1) + "\" ExportPath=\"/Script/" +
+               std::string(cls) + "'" + path + "'\"\n";
+    };
+    const auto node = [&](std::string_view cls, std::string_view name, std::string_view body) {
+        return begin(cls, graph + "." + std::string(name)) + std::string(body) + "End Object\n";
+    };
+    const auto pin = [](std::string_view id, std::string_view name, std::string_view rest) {
+        return "CustomProperties Pin (PinId=" + std::string(id) + ",PinName=\"" +
+               std::string(name) + "\"" + std::string(rest) + ")\n";
+    };
+    const std::string out = ",Direction=\"EGPD_Output\"";
+    const auto call = [&](std::string_view name, std::string_view script, std::string_view input,
+                          std::string_view extra) {
+        return node("NiagaraEditor.NiagaraNodeFunctionCall", name,
+                    "FunctionScript=\"/Script/Niagara.NiagaraScript'" + std::string(script) +
+                        "'\"\nFunctionDisplayName=\"" +
+                        std::string(script.substr(script.rfind('.') + 1)) + "\"\n" +
+                        pin(std::string(name) + "_IN", "InputMap",
+                            ",LinkedTo=(" + std::string(input) + ",)") +
+                        std::string(extra) + pin(std::string(name) + "_OUT", "OutputMap", out));
+    };
+    const std::string constants = "RapidIterationParameters=(SortedParameterOffsets=("
+                                  "(Offset=0,Name=\"Constants.Water.SpawnRate.SpawnRate\","
+                                  "TypeDefHandle=(RegisteredTypeIndex=99)),"
+                                  "(Offset=4,Name=\"Constants.Water.InitializeParticle.Lifetime\","
+                                  "TypeDefHandle=(RegisteredTypeIndex=99)),"
+                                  "(Offset=8,Name=\"Constants.Water.InitializeParticle.Lifetime "
+                                  "Min\",TypeDefHandle=(RegisteredTypeIndex=99)),"
+                                  "(Offset=12,Name=\"Constants.Water.InitializeParticle.Lifetime "
+                                  "Max\",TypeDefHandle=(RegisteredTypeIndex=99)),"
+                                  "(Offset=16,Name=\"Constants.Water.UniformRangedVector.Minimum\","
+                                  "TypeDefHandle=(RegisteredTypeIndex=104)),"
+                                  "(Offset=28,Name=\"Constants.Water.UniformRangedVector.Maximum\","
+                                  "TypeDefHandle=(RegisteredTypeIndex=104)),"
+                                  "(Offset=40,Name=\"Constants.Water.GravityForce.Gravity\","
+                                  "TypeDefHandle=(RegisteredTypeIndex=104))),"
+                                  "ParameterData=(" +
+                                  float_bytes({25.0F, 9.0F, 1.0F, 2.0F, -50.0F, 0.0F, 400.0F, 50.0F,
+                                               0.0F, 600.0F, 0.0F, 0.0F, -980.0F}) +
+                                  "))\n";
+    std::string text = begin("Niagara.NiagaraSystem", system);
+    text += begin("Niagara.NiagaraEmitter", emitter);
+    text += "UniqueEmitterName=\"Water\"\n";
+    text +=
+        "VersionData(0)=(Version=(VersionGuid=0),RendererProperties=("
+        "\"/Script/Niagara.NiagaraSpriteRendererProperties'NiagaraSpriteRendererProperties_0'\","
+        "\"/Script/Niagara.NiagaraMeshRendererProperties'NiagaraMeshRendererProperties_0'\"),"
+        "GraphSource=\"/Script/NiagaraEditor.NiagaraScriptSource'NiagaraScriptSource_0'\")\n";
+    text += begin("NiagaraEditor.NiagaraScriptSource", emitter + ".NiagaraScriptSource_0");
+    text += begin("NiagaraEditor.NiagaraGraph", graph);
+    // The emitter update stack: Spawn Rate.
+    text += node("NiagaraEditor.NiagaraNodeInput", "NiagaraNodeInput_0",
+                 "Input=(Name=\"InputMap\")\n" + pin("I0", "Input", out));
+    text += call("NiagaraNodeFunctionCall_0", "/Niagara/Modules/Emitter/SpawnRate.SpawnRate",
+                 "NiagaraNodeInput_0 I0", "");
+    text += node("NiagaraEditor.NiagaraNodeOutput", "NiagaraNodeOutput_0",
+                 "ScriptType=EmitterUpdateScript\n" +
+                     pin("O0", "Out",
+                         ",LinkedTo=(NiagaraNodeFunctionCall_0 NiagaraNodeFunctionCall_0_OUT,)"));
+    // The particle spawn stack: Initialize Particle, its color from a user parameter and its
+    // lifetime random, then Add Velocity from a random range, then a Set Parameters module.
+    text += node("NiagaraEditor.NiagaraNodeInput", "NiagaraNodeInput_1",
+                 "Input=(Name=\"InputMap\")\n" + pin("I1", "Input", out));
+    text += node("NiagaraEditor.NiagaraNodeParameterMapGet", "NiagaraNodeParameterMapGet_0",
+                 pin("G0", "Source", ",LinkedTo=(NiagaraNodeInput_1 I1,)") +
+                     pin("G1", "User.Tint", out + ",LinkedTo=(NiagaraNodeParameterMapSet_0 S1,)"));
+    text += node(
+        "NiagaraEditor.NiagaraNodeParameterMapSet", "NiagaraNodeParameterMapSet_0",
+        pin("S0", "Source", ",LinkedTo=(NiagaraNodeInput_1 I1,)") +
+            pin("S1", "InitializeParticle.Color", ",LinkedTo=(NiagaraNodeParameterMapGet_0 G1,)") +
+            pin("S2", "Dest", out) + pin("S3", "Add", out));
+    text += call("NiagaraNodeFunctionCall_1",
+                 "/Niagara/Modules/Spawn/Initialization/V2/InitializeParticle.InitializeParticle",
+                 "NiagaraNodeParameterMapSet_0 S2",
+                 pin("L0", "Lifetime Mode",
+                     ",PinType.PinSubCategoryObject=\"/Script/Engine.UserDefinedEnum'/Niagara/"
+                     "Enums/ENiagara_LifetimeMode.ENiagara_LifetimeMode'\","
+                     "DefaultValue=\"NewEnumerator1\""));
+    text += call("NiagaraNodeFunctionCall_3",
+                 "/Niagara/DynamicInputs/Random/UniformRangedVector.UniformRangedVector",
+                 "NiagaraNodeFunctionCall_1 NiagaraNodeFunctionCall_1_OUT", "");
+    text += node("NiagaraEditor.NiagaraNodeParameterMapSet", "NiagaraNodeParameterMapSet_1",
+                 pin("T0", "Source",
+                     ",LinkedTo=(NiagaraNodeFunctionCall_1 NiagaraNodeFunctionCall_1_OUT,)") +
+                     pin("T1", "AddVelocity.Velocity",
+                         ",LinkedTo=(NiagaraNodeFunctionCall_3 NiagaraNodeFunctionCall_3_OUT,)") +
+                     pin("T2", "Dest", out));
+    text +=
+        call("NiagaraNodeFunctionCall_2", "/Niagara/Modules/Spawn/Velocity/AddVelocity.AddVelocity",
+             "NiagaraNodeParameterMapSet_1 T2", "");
+    text += node("NiagaraEditor.NiagaraNodeParameterMapSet", "NiagaraNodeParameterMapSet_2",
+                 pin("U0", "Source",
+                     ",LinkedTo=(NiagaraNodeFunctionCall_2 NiagaraNodeFunctionCall_2_OUT,)") +
+                     pin("U1", "Particles.SpriteSize", ",DefaultValue=\"4,4\"") +
+                     pin("U2", "Dest", out));
+    text += node("NiagaraEditor.NiagaraNodeOutput", "NiagaraNodeOutput_1",
+                 "ScriptType=ParticleSpawnScript\n" +
+                     pin("O1", "Out", ",LinkedTo=(NiagaraNodeParameterMapSet_2 U2,)"));
+    // The particle update stack: gravity, turned off in the stack.
+    text += node("NiagaraEditor.NiagaraNodeInput", "NiagaraNodeInput_2",
+                 "Input=(Name=\"InputMap\")\n" + pin("I2", "Input", out));
+    text += call("NiagaraNodeFunctionCall_4",
+                 "/Niagara/Modules/Update/Forces/GravityForce.GravityForce",
+                 "NiagaraNodeInput_2 I2", "EnabledState=Disabled\n");
+    text += node("NiagaraEditor.NiagaraNodeOutput", "NiagaraNodeOutput_2",
+                 "ScriptType=ParticleUpdateScript\n" +
+                     pin("O2", "Out",
+                         ",LinkedTo=(NiagaraNodeFunctionCall_4 NiagaraNodeFunctionCall_4_OUT,)"));
+    text += "End Object\nEnd Object\n";
+    text += begin("Niagara.NiagaraScript", emitter + ".SpawnScript") + constants + "End Object\n";
+    text += begin("Niagara.NiagaraSpriteRendererProperties",
+                  emitter + ".NiagaraSpriteRendererProperties_0") +
+            "bIsEnabled=False\nEnd Object\n";
+    text += begin("Niagara.NiagaraMeshRendererProperties",
+                  emitter + ".NiagaraMeshRendererProperties_0") +
+            "Meshes(0)=(Mesh=\"/Script/Engine.StaticMesh'/Game/SM_Crate.SM_Crate'\")\nEnd Object\n";
+    text += "End Object\n";
+    text += "EmitterHandles(0)=(Name=\"Water\",VersionedInstance=(Emitter=\"/Script/Niagara."
+            "NiagaraEmitter'Water_0'\"))\n";
+    text += "ExposedParameters=(SortedParameterOffsets=((Offset=0,Name=\"User.Tint\","
+            "TypeDefHandle=(RegisteredTypeIndex=106))),ParameterData=(" +
+            float_bytes({0.2F, 0.4F, 0.8F, 1.0F}) + "))\n";
+    text += "End Object\n";
+    write(exported / "text/Game/FX/NS_Fountain.t3d", text);
+
+    auto planned = importer::plan_import({.source = (project / "unreal").string(),
+                                          .destination = project.string(),
+                                          .unpack_to = {},
+                                          .assetripper = {},
+                                          .unreal_editor = SLASH_FAKE_UNREAL});
+    REQUIRE_MESSAGE(planned.ok(), (planned.ok() ? std::string() : planned.error().message));
+    const importer::ImportPlan& plan = planned.value();
+    const json::Value scene = file_json(plan, "unreal/Content/Maps/Drop.scene.json");
+    const json::Value& water = component(scene, "fountain", "CPUParticles3D");
+    // 25 a second living one to two seconds: the random lifetime, not the direct one.
+    CHECK(water.find("lifetime")->as_double() == 2.0);
+    CHECK(water.find("amount")->as_int() == 50);
+    CHECK(*water.find("color") == parse("[0.2, 0.4, 0.8, 1.0]"));
+    // Up, Unreal's z, at 4 to 6 meters a second.
+    CHECK(*water.find("direction") == parse("[0.0, 1.0, 0.0]"));
+    CHECK(water.find("initial_velocity_min")->as_double() == doctest::Approx(4.031129));
+    CHECK(water.find("initial_velocity_max")->as_double() == doctest::Approx(6.020797));
+    // The gravity module is off, and the sprite renderer too.
+    CHECK(*water.find("gravity") == parse("[0.0, 0.0, 0.0]"));
+    CHECK(water.find("mesh")->as_string() == "unreal/Content/SM_Crate.glb");
+    const auto reported = [&](std::string_view what) {
+        for (const json::Value& entry : plan.report.find("unsupported")->as_array()) {
+            if (entry.find("what")->as_string() == what) {
+                return true;
+            }
+        }
+        return false;
+    };
+    CHECK(reported("Niagara module Set Parameters"));
+    CHECK_FALSE(reported("Niagara emitters"));
+    CHECK_FALSE(reported("Niagara emitter with several renderers"));
+    CHECK_FALSE(reported("Niagara module GravityForce"));
+    fs::remove_all(project);
+}
+
+TEST_CASE("an Unreal import keeps what a hidden component holds and black fog's sky color") {
+    const fs::path project = fs::absolute("import_unreal_hidden");
+    fs::remove_all(project);
+    write_project(project / "unreal");
+    const fs::path exported = project / "unreal/FakeExport/export.json";
+    json::Value document = parse(slash::platform::read_file(exported.string()).value());
+    json::Array& actors =
+        document.find("levels")->as_array()[0].as_object().at("actors").as_array();
+    const auto at = [](double x, double y, double z) {
+        json::Value transform;
+        transform["location"] = json::Array{x, y, z};
+        transform["rotation"] = json::Array{0.0, 0.0, 0.0, 1.0};
+        transform["scale"] = json::Array{1.0, 1.0, 1.0};
+        return transform;
+    };
+    // A character's capsule is hidden in game, but its mesh shows; a hidden mesh with nothing
+    // under it stays hidden.
+    json::Value hero = parse(R"({"name": "Hero_0", "label": "Hero", "class": "Character",
+        "class_path": "/Script/Engine.Character", "root": "CollisionCylinder", "components": [
+        {"name": "CollisionCylinder", "class": "CapsuleComponent", "visible": false,
+         "collision": "query_and_physics", "profile": "Pawn",
+         "shape": {"type": "capsule", "radius": 34.0, "half_height": 88.0}},
+        {"name": "Body", "class": "StaticMeshComponent", "parent": "CollisionCylinder",
+         "mesh": "/Game/SM_Crate"},
+        {"name": "Marker", "class": "StaticMeshComponent", "parent": "CollisionCylinder",
+         "mesh": "/Game/SM_Crate", "visible": false}]})");
+    hero["transform"] = at(0, 400, 100);
+    for (json::Value& comp : hero.find("components")->as_array()) {
+        comp["transform"] = at(0, 0, 0);
+    }
+    actors.push_back(std::move(hero));
+    // Fog whose own color is black takes the sky atmosphere's.
+    json::Value fog = parse(R"({"name": "Fog_0", "label": "Fog", "class": "ExponentialHeightFog",
+        "class_path": "/Script/Engine.ExponentialHeightFog", "root": "HeightFogComponent0",
+        "components": [{"name": "HeightFogComponent0", "class": "ExponentialHeightFogComponent",
+          "fog": {"density": 0.02, "height_falloff": 0.2, "color": [0, 0, 0],
+                  "sky_contribution": [1, 1, 1]}}]})");
+    fog["transform"] = at(0, 0, 0);
+    fog.find("components")->as_array()[0]["transform"] = at(0, 0, 0);
+    actors.push_back(std::move(fog));
+    REQUIRE(slash::platform::write_file(exported.string(), json::write(document)).ok());
+
+    auto planned = importer::plan_import({.source = (project / "unreal").string(),
+                                          .destination = project.string(),
+                                          .unpack_to = {},
+                                          .assetripper = {},
+                                          .unreal_editor = SLASH_FAKE_UNREAL});
+    REQUIRE_MESSAGE(planned.ok(), (planned.ok() ? std::string() : planned.error().message));
+    const json::Value scene = file_json(planned.value(), "unreal/Content/Maps/Drop.scene.json");
+    std::map<std::string, bool> shown;
+    for (const auto& [id, entity] : scene.find("entities")->as_object()) {
+        if (id.starts_with("hero")) {
+            const json::Value* transform = entity.find("components")->find("Transform3D");
+            const json::Value* visible =
+                transform != nullptr ? transform->find("visible") : nullptr;
+            shown[id] = visible == nullptr || visible->as_bool();
+        }
+    }
+    CHECK(shown ==
+          std::map<std::string, bool>{{"hero", true}, {"hero_body", true}, {"hero_marker", false}});
+    bool aerial = false;
+    for (const auto& [id, entity] : scene.find("entities")->as_object()) {
+        if (const json::Value* environment = entity.find("components")->find("WorldEnvironment")) {
+            aerial = environment->find("fog_aerial_perspective") != nullptr &&
+                     environment->find("fog_aerial_perspective")->as_double() == 1.0;
+            CHECK(environment->find("fog_light_color") == nullptr);
+        }
+    }
+    CHECK(aerial);
+    fs::remove_all(project);
+}
+
+TEST_CASE("an Unreal import lights its sky, exposes and tonemaps as Unreal does") {
+    const fs::path project = fs::absolute("import_unreal_exposure");
+    fs::remove_all(project);
+    write_project(project / "unreal");
+    write(project / "unreal/Config/DefaultEngine.ini", R"([/Script/EngineSettings.GameMapsSettings]
+GameDefaultMap=/Game/Maps/Drop.Drop
+
+[/Script/Engine.RendererSettings]
+r.DefaultFeature.AutoExposure.ExtendDefaultLuminanceRange=True
+r.DefaultFeature.AutoExposure.Bias=2.0
+)");
+    const fs::path exported = project / "unreal/FakeExport/export.json";
+    json::Value document = parse(slash::platform::read_file(exported.string()).value());
+    json::Array& actors =
+        document.find("levels")->as_array()[0].as_object().at("actors").as_array();
+    // An atmosphere with redder air than Unreal's and twice its haze.
+    json::Value sky = parse(R"({"name": "SkyAtmosphere_0", "label": "Sky",
+        "class": "SkyAtmosphere", "class_path": "/Script/Engine.SkyAtmosphere",
+        "root": "SkyAtmosphereComponent",
+        "components": [{"name": "SkyAtmosphereComponent", "class": "SkyAtmosphereComponent",
+          "sky_atmosphere": {"rayleigh_scattering": [0.5, 0.5, 1.0],
+                             "rayleigh_scattering_scale": 0.0331,
+                             "mie_scattering_scale": 0.007992, "mie_anisotropy": 0.8}}]})");
+    json::Value place;
+    place["location"] = json::Array{0.0, 0.0, 0.0};
+    place["rotation"] = json::Array{0.0, 0.0, 0.0, 1.0};
+    place["scale"] = json::Array{1.0, 1.0, 1.0};
+    sky["transform"] = place;
+    sky.find("components")->as_array()[0]["transform"] = place;
+    actors.push_back(std::move(sky));
+    document["world_aligned_materials"] =
+        json::Array{json::Value("/Game/M_Grid"), json::Value("/Game/M_Tiles")};
+    REQUIRE(slash::platform::write_file(exported.string(), json::write(document)).ok());
+
+    auto planned = importer::plan_import({.source = (project / "unreal").string(),
+                                          .destination = project.string(),
+                                          .unpack_to = {},
+                                          .assetripper = {},
+                                          .unreal_editor = SLASH_FAKE_UNREAL});
+    REQUIRE_MESSAGE(planned.ok(), (planned.ok() ? std::string() : planned.error().message));
+    const json::Value scene = file_json(planned.value(), "unreal/Content/Maps/Drop.scene.json");
+    const json::Value& environment = component(scene, "environment", "WorldEnvironment");
+    CHECK(environment.find("tonemap_mode")->as_string() == "aces");
+    CHECK(environment.find("background_mode")->as_string() == "sky");
+
+    // Unreal's air, made linear and as bright as Godot's default blue, and twice the haze.
+    const json::Value& physical = component(scene, "environment", "PhysicalSkyMaterial");
+    INFO(json::write(physical));
+    const json::Array& rayleigh = physical.find("rayleigh_color")->as_array();
+    CHECK(rayleigh[0].as_double() == doctest::Approx(0.436).epsilon(0.01));
+    CHECK(rayleigh[1].as_double() == doctest::Approx(0.436).epsilon(0.01));
+    CHECK(rayleigh[2].as_double() == doctest::Approx(0.6).epsilon(0.01));
+    CHECK(physical.find("rayleigh_coefficient") == nullptr);
+    CHECK(physical.find("mie_coefficient")->as_double() == doctest::Approx(0.01));
+    CHECK(physical.find("mie_eccentricity") == nullptr);
+    // The sun of 5 lux (energy 0.5) makes the zenith a sixth as bright as what it lights.
+    const double multiplier = physical.find("energy_multiplier")->as_double();
+    CHECK(multiplier > 1.0);
+    CHECK(multiplier < 10.0);
+
+    // Auto exposure over the extended range, two stops over Godot's default scale's one.
+    const json::Value& exposure = component(scene, "environment", "CameraAttributesPractical");
+    CHECK(exposure.find("auto_exposure_enabled")->as_bool());
+    CHECK(exposure.find("auto_exposure_scale")->as_double() == doctest::Approx(0.8));
+    CHECK(exposure.find("auto_exposure_min_sensitivity")->as_double() ==
+          doctest::Approx(std::numbers::pi / 10.0 * 100.0 * std::exp2(-10.0)));
+    CHECK(exposure.find("auto_exposure_max_sensitivity")->as_double() ==
+          doctest::Approx(std::numbers::pi / 10.0 * 100.0 * std::exp2(20.0)));
+    CHECK(exposure.find("auto_exposure_metering")->as_string() == "log_average");
+
+    bool aligned = false;
+    for (const json::Value& problem : planned.value().report.find("unsupported")->as_array()) {
+        // Each is named: the first as where, the others in also.
+        aligned = aligned || (problem.find("what")->as_string() == "world-aligned material" &&
+                              problem.find("where")->as_string() == "/Game/M_Grid" &&
+                              problem.find("also") != nullptr &&
+                              json::write(*problem.find("also")) == R"(["/Game/M_Tiles"])");
+    }
+    CHECK(aligned);
+    fs::remove_all(project);
+}
+
+TEST_CASE("an Unreal project with auto exposure turned off keeps a fixed exposure") {
+    const fs::path project = fs::absolute("import_unreal_no_exposure");
+    fs::remove_all(project);
+    write_project(project / "unreal");
+    write(project / "unreal/Config/DefaultEngine.ini", R"([/Script/EngineSettings.GameMapsSettings]
+GameDefaultMap=/Game/Maps/Drop.Drop
+
+[/Script/Engine.RendererSettings]
+r.DefaultFeature.AutoExposure=False
+)");
+    auto planned = importer::plan_import({.source = (project / "unreal").string(),
+                                          .destination = project.string(),
+                                          .unpack_to = {},
+                                          .assetripper = {},
+                                          .unreal_editor = SLASH_FAKE_UNREAL});
+    REQUIRE_MESSAGE(planned.ok(), (planned.ok() ? std::string() : planned.error().message));
+    const json::Value scene = file_json(planned.value(), "unreal/Content/Maps/Drop.scene.json");
+    const json::Value* entity = scene.find("entities")->find("environment");
+    REQUIRE(entity != nullptr);
+    CHECK(entity->find("components")->find("CameraAttributesPractical") == nullptr);
+    CHECK(entity->find("components")->find("WorldEnvironment")->find("tonemap_mode")->as_string() ==
+          "aces");
     fs::remove_all(project);
 }

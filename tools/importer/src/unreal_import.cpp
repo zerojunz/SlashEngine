@@ -2,6 +2,7 @@
 
 #include "common.hpp"
 #include "skeletons.hpp"
+#include "unreal_text.hpp"
 
 #include "slash/animation/animation.hpp"
 #include "slash/animation/tree.hpp"
@@ -153,103 +154,8 @@ const json::Array& items(const json::Value& value, std::string_view key) {
 
 // --- Unreal's text values ---
 
-std::string_view trimmed(std::string_view text) {
-    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.front())) != 0) {
-        text.remove_prefix(1);
-    }
-    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back())) != 0) {
-        text.remove_suffix(1);
-    }
-    return text;
-}
-
-// Where each of text's top-level parts ends: at commas outside quotes and parentheses.
-std::vector<std::string_view> top_level_parts(std::string_view text) {
-    std::vector<std::string_view> out;
-    std::size_t start = 0;
-    int depth = 0;
-    bool quoted = false;
-    for (std::size_t i = 0; i <= text.size(); ++i) {
-        const char c = i < text.size() ? text[i] : ',';
-        if (c == '"' && (i == 0 || text[i - 1] != '\\')) {
-            quoted = !quoted;
-        } else if (!quoted && c == '(') {
-            ++depth;
-        } else if (!quoted && c == ')') {
-            --depth;
-        } else if (!quoted && depth == 0 && c == ',') {
-            if (const std::string_view part = trimmed(text.substr(start, i - start));
-                !part.empty()) {
-                out.push_back(part);
-            }
-            start = i + 1;
-        }
-    }
-    return out;
-}
-
-// Where a part's '=' is, outside quotes and parentheses; npos for an item with no key.
-std::size_t key_end(std::string_view part) {
-    int depth = 0;
-    bool quoted = false;
-    for (std::size_t i = 0; i < part.size(); ++i) {
-        const char c = part[i];
-        if (c == '"') {
-            quoted = !quoted;
-        } else if (!quoted && c == '(') {
-            ++depth;
-        } else if (!quoted && c == ')') {
-            --depth;
-        } else if (!quoted && depth == 0 && c == '=') {
-            return i;
-        }
-    }
-    return std::string_view::npos;
-}
-
-// A value as Unreal writes it as text (ExportText: (Key=Value,...), (Item,Item), "quoted" or a
-// bare word) as JSON: structs as objects, lists as arrays, the rest as strings. Keys written with
-// an index, Inputs(0)=..., gather into arrays.
-json::Value text_tree(std::string_view text) {
-    text = trimmed(text);
-    if (text.size() >= 2 && text.front() == '"' && text.back() == '"') {
-        return std::string(text.substr(1, text.size() - 2));
-    }
-    if (text.size() < 2 || text.front() != '(' || text.back() != ')') {
-        return std::string(text);
-    }
-    const std::vector<std::string_view> parts = top_level_parts(text.substr(1, text.size() - 2));
-    const bool keyed = std::ranges::any_of(
-        parts, [](std::string_view part) { return key_end(part) != std::string_view::npos; });
-    if (!keyed) {
-        json::Array list;
-        for (const std::string_view part : parts) {
-            list.push_back(text_tree(part));
-        }
-        return list;
-    }
-    json::Object out;
-    for (const std::string_view part : parts) {
-        const std::size_t equals = key_end(part);
-        if (equals == std::string_view::npos) {
-            continue;
-        }
-        std::string key(trimmed(part.substr(0, equals)));
-        json::Value value = text_tree(part.substr(equals + 1));
-        if (const std::size_t open = key.find('(');
-            open != std::string::npos && key.back() == ')') {
-            key.resize(open);
-            json::Value& list = out[key];
-            if (!list.is_array()) {
-                list = json::Array{};
-            }
-            list.as_array().push_back(std::move(value));
-            continue;
-        }
-        out[key] = std::move(value);
-    }
-    return out;
-}
+using unreal_text::text_tree;
+using unreal_text::trimmed;
 
 // A name's letters and digits, lowercased: "Spawn Rate", "SpawnRate" and "spawn_rate" alike.
 std::string plain_name(std::string_view name) {
@@ -861,6 +767,7 @@ public:
         for (const json::Value& entry : items(export_, "problems")) {
             problems_.add(text(entry, "what"), text(entry, "where"), text(entry, "why"));
         }
+        read_niagara_text();
         read_meshes();
         detect_axes();
         mark_mesh_uses();
@@ -881,6 +788,33 @@ public:
     }
 
 private:
+    // Niagara systems the export wrote as text (T3D) rather than reading them through
+    // NiagaraExternalEditUtilities: their emitters and user parameters, read from the text.
+    void read_niagara_text() {
+        json::Value* systems = export_.find("niagara_systems");
+        if (systems == nullptr || !systems->is_object()) {
+            return;
+        }
+        for (auto& [package, system] : systems->as_object()) {
+            const std::string file = text(system, "text");
+            if (file.empty() || member(system, "emitters") != nullptr) {
+                continue;
+            }
+            auto read = platform::read_file((work_ / file).string());
+            const json::Value* enums = member(system, "enums");
+            json::Value found = read ? unreal_text::niagara_from_text(
+                                           read.value(), enums != nullptr ? *enums : json::Object{})
+                                     : json::Value(json::Object{});
+            if (member(found, "emitters") == nullptr) {
+                problems_.add("Niagara emitters", package,
+                              "the system Unreal wrote as text (" + file + ") couldn't be read");
+                continue;
+            }
+            system["emitters"] = std::move(found["emitters"]);
+            system["user_variables"] = std::move(found["user_variables"]);
+        }
+    }
+
     // --- Paths ---
 
     void add_file(std::string path, std::string contents) {
@@ -1096,6 +1030,14 @@ private:
     // The materials components draw meshes with in place of the meshes' own: each was exported on
     // a mesh of its own, and its file's first material is it.
     void read_materials() {
+        for (const json::Value& package : items(export_, "world_aligned_materials")) {
+            if (package.is_string()) {
+                problems_.add("world-aligned material", package.as_string(),
+                              "it places its textures by where each pixel is in the world, which "
+                              "the bake can't keep: it is drawn over the mesh's texture "
+                              "coordinates, so its pattern doesn't keep its size");
+            }
+        }
         const json::Value* materials = member(export_, "materials");
         if (materials == nullptr || !materials->is_object()) {
             return;
@@ -1123,6 +1065,8 @@ private:
                               "it holds no material");
                 continue;
             }
+            // Named as Unreal names it, not after the exporter's preview mesh.
+            model.value().materials.front().name = package_stem(package);
             materials_[package] = std::move(model.value());
         }
     }
@@ -1422,6 +1366,8 @@ private:
         std::string possessed; // the first pawn a player possesses as the level starts
         double sky_light = -1.0;
         json::Array sky_color;
+        json::Value sky_atmosphere; // the SkyAtmosphere component's settings
+        double sun_energy = -1.0;   // the first directional light's, which lights the sky
         // Entities left out when nothing but a transform is left of them: editor-only
         // components, and actors the environment took in.
         std::set<std::string> droppable;
@@ -1551,9 +1497,11 @@ private:
         const std::string root = text(actor, "root");
         std::map<std::string, const json::Value*> components;
         std::vector<const json::Value*> others;
+        std::set<std::string> parents;
         for (const json::Value& comp : items(actor, "components")) {
             if (member(comp, "transform") != nullptr) {
                 components[text(comp, "name")] = &comp;
+                parents.insert(text(comp, "parent"));
             } else {
                 others.push_back(&comp);
             }
@@ -1618,8 +1566,18 @@ private:
                 }
             }
             json::Value placed = transform_3d(*transform, parent_turn, entity.turn, offset);
-            if (!flag(comp, "visible", true) || (is_root && !flag(actor, "visible", true))) {
+            // A hidden actor hides all of it, but a hidden component hides only itself in
+            // Unreal, where a Transform3D's visible hides its children too: a hidden component
+            // with children (a character's capsule) stays shown.
+            if (is_root && !flag(actor, "visible", true)) {
                 placed["visible"] = false;
+            } else if (!flag(comp, "visible", true)) {
+                if (!parents.contains(comp_name)) {
+                    placed["visible"] = false;
+                } else if (!text(comp, "mesh").empty()) {
+                    problems_.add("hidden mesh with children", where,
+                                  "it shows, since hiding it would hide what hangs from it");
+                }
             }
             entity.components["Transform3D"] = std::move(placed);
             if (parent_entity.empty()) {
@@ -2138,8 +2096,15 @@ private:
             level.environment["fog_enabled"] = true;
             level.environment["fog_density"] = tidy(number(*fog, "density", 0.02) / 10.0);
             const V3 color = vec(*fog, "color", {0.447, 0.638, 1.0});
-            level.environment["fog_light_color"] =
-                json::Array{tidy(color[0]), tidy(color[1]), tidy(color[2]), 1.0};
+            const V3 sky = vec(*fog, "sky_contribution", {1.0, 1.0, 1.0});
+            if (color[0] + color[1] + color[2] <= 0.0 && sky[0] + sky[1] + sky[2] > 0.0) {
+                // Black fog takes its color from the sky atmosphere, as Godot's fog does from
+                // the sky with all of its aerial perspective.
+                level.environment["fog_aerial_perspective"] = 1.0;
+            } else {
+                level.environment["fog_light_color"] =
+                    json::Array{tidy(color[0]), tidy(color[1]), tidy(color[2]), 1.0};
+            }
             level.environment["fog_height"] = tidy(at[1] * axes_.scale);
             level.environment["fog_height_density"] = tidy(number(*fog, "height_falloff", 0.2));
             if (flag(*fog, "volumetric")) {
@@ -2150,8 +2115,9 @@ private:
                           "same falloff");
             return;
         }
-        if (member(comp, "sky_atmosphere") != nullptr) {
+        if (const json::Value* sky = member(comp, "sky_atmosphere"); sky != nullptr) {
             level.sky = true;
+            level.sky_atmosphere = *sky;
             return;
         }
         if (cls == "ArrowComponent" || cls == "BillboardComponent" ||
@@ -2296,7 +2262,10 @@ private:
                                                        std::string_view name) {
         const auto ends =
             niagara_ends<std::vector<double>>(emitter, module, name, [](const json::Value& tree) {
-                return fields_in(tree, {"r", "g", "b", "a"}, 3);
+                // A four-float value read from a parameter store, whose bytes don't say it is a
+                // color, comes as (X=..,Y=..,Z=..,W=..).
+                auto found = fields_in(tree, {"r", "g", "b", "a"}, 3);
+                return found ? found : fields_in(tree, {"x", "y", "z", "w"}, 4);
             });
         if (!ends) {
             return std::nullopt;
@@ -2509,8 +2478,20 @@ private:
                 continue;
             }
             if (kind == "initializeparticle") {
-                if (const auto found = niagara_numbers(context, module, "Lifetime")) {
-                    lifetime = *found;
+                // Its modes are static switches: Direct Set or Random lifetimes, and Uniform,
+                // Random Uniform, Non-Uniform or Random Non-Uniform sizes.
+                const bool random_lifetime =
+                    has_word(niagara_words(context, module, "Lifetime Mode"), "random");
+                const std::vector<std::string> size_mode =
+                    niagara_words(context, module, "Sprite Size Mode");
+                const bool random_size = has_word(size_mode, "random");
+                const bool square = !has_word(size_mode, "nonuniform");
+                std::optional<std::pair<double, double>> direct;
+                if (!random_lifetime) {
+                    direct = niagara_numbers(context, module, "Lifetime");
+                }
+                if (direct) {
+                    lifetime = *direct;
                 } else {
                     const auto low = niagara_numbers(context, module, "Lifetime Min");
                     const auto high = niagara_numbers(context, module, "Lifetime Max");
@@ -2522,9 +2503,11 @@ private:
                     settings["color"] = json::Array{tidy((*color)[0]), tidy((*color)[1]),
                                                     tidy((*color)[2]), tidy((*color)[3])};
                 }
-                std::optional<std::pair<double, double>> size =
-                    niagara_numbers(context, module, "Uniform Sprite Size");
-                if (!size) {
+                std::optional<std::pair<double, double>> size;
+                if (square && !random_size) {
+                    size = niagara_numbers(context, module, "Uniform Sprite Size");
+                }
+                if (!size && square) {
                     const auto low = niagara_numbers(context, module, "Uniform Sprite Size Min");
                     const auto high = niagara_numbers(context, module, "Uniform Sprite Size Max");
                     if (low && high) {
@@ -2976,6 +2959,9 @@ private:
             }
         }
         out["light_energy"] = tidy(energy);
+        if (type == "directional" && level.sun_energy < 0.0) {
+            level.sun_energy = energy;
+        }
         const V3 color = vec(light, "color", {255, 255, 255});
         if (color != V3{255, 255, 255}) {
             out["light_color"] = json::Array{tidy(color[0] / 255.0), tidy(color[1] / 255.0),
@@ -3068,17 +3054,161 @@ private:
                 level.environment["reflected_light_source"] = "sky";
             }
         }
-        if (level.environment.empty()) {
-            return;
-        }
+        // Unreal tonemaps with its filmic curve, ACES's, always.
+        level.environment["tonemap_mode"] = "aces";
+        level.environment["tonemap_white"] = 6.0;
         const std::string id = take(level.used, "environment");
         Entity& entity = level.entities[id];
         entity.components["WorldEnvironment"] = json::Value(level.environment);
         if (level.sky) {
-            // Unreal's sky atmosphere scatters sunlight as Godot's physical sky does.
-            entity.components["PhysicalSkyMaterial"] = json::Object{};
+            entity.components["PhysicalSkyMaterial"] = physical_sky(level);
+        }
+        if (json::Value exposure = auto_exposure(); !exposure.is_null()) {
+            entity.components["CameraAttributesPractical"] = std::move(exposure);
         }
         level.roots.push_back(id);
+    }
+
+    // Unreal's sky atmosphere scatters sunlight as Godot's physical sky does. Godot's defaults
+    // are Unreal's air in its color space (Unreal's Rayleigh scattering of 0.175, 0.41 and 1 is
+    // Godot's 0.3, 0.405 and 0.6 made linear, nearly), so only what an atmosphere changes is
+    // written. Godot's sky is far dimmer for a sun: energy_multiplier makes its zenith, with the
+    // sun 45 degrees up, a sixth as bright as a white surface facing the sun, as a clear sky is.
+    [[nodiscard]] json::Value physical_sky(const Level& level) const {
+        json::Value out = json::Object{};
+        const json::Value& sky = level.sky_atmosphere;
+        if (const json::Value* rayleigh = member(sky, "rayleigh_scattering");
+            rayleigh != nullptr && rayleigh->is_array() && rayleigh->as_array().size() == 3) {
+            const V3 color = vec(sky, "rayleigh_scattering", {0.175287, 0.409607, 1.0});
+            const double most = std::max({color[0], color[1], color[2]});
+            const V3 standard{0.175287, 0.409607, 1.0};
+            bool same = most > 0.0;
+            for (std::size_t i = 0; i < 3 && same; ++i) {
+                same = std::abs((color[i] / most) - standard[i]) < 0.01;
+            }
+            if (!same && most > 0.0) {
+                // Linear, as Unreal's, at Godot's default's brightness, then as Godot keeps it.
+                out["rayleigh_color"] =
+                    json::Array{tidy(linear_to_srgb(color[0] / most * kSkyBlue)),
+                                tidy(linear_to_srgb(color[1] / most * kSkyBlue)),
+                                tidy(linear_to_srgb(color[2] / most * kSkyBlue)), 1.0};
+            }
+        }
+        if (const double scale = number(sky, "rayleigh_scattering_scale", 0.0331);
+            std::abs(scale - 0.0331) > 1e-4) {
+            out["rayleigh_coefficient"] = tidy(2.0 * scale / 0.0331);
+        }
+        if (const double scale = number(sky, "mie_scattering_scale", 0.003996);
+            std::abs(scale - 0.003996) > 1e-5) {
+            out["mie_coefficient"] = tidy(0.005 * scale / 0.003996);
+        }
+        if (const double g = number(sky, "mie_anisotropy", 0.8); std::abs(g - 0.8) > 1e-4) {
+            out["mie_eccentricity"] = tidy(g);
+        }
+        if (level.sun_energy > 0.0) {
+            const double zenith = physical_sky_zenith(out, level.sun_energy);
+            if (zenith > 0.0) {
+                out["energy_multiplier"] = tidy(kClearSky * level.sun_energy / zenith);
+            }
+        }
+        return out;
+    }
+
+    // The default sky's blue, Godot's 0.6 made linear.
+    static constexpr double kSkyBlue = 0.318547; // NOLINT(modernize-use-std-numbers): not 1/pi
+    // A clear sky's zenith over a white surface facing the sun: about 0.055 candelas a square
+    // meter a lux of sunlight, times pi.
+    static constexpr double kClearSky = 0.17;
+
+    static double srgb_to_linear(double c) {
+        return c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);
+    }
+
+    static double linear_to_srgb(double c) {
+        return c <= 0.0031308 ? c * 12.92 : (1.055 * std::pow(c, 1.0 / 2.4)) - 0.055;
+    }
+
+    // The luminance of Godot's physical sky straight up with the sun 45 degrees above the
+    // horizon, as its Forward+ renderer draws it: PhysicalSkyMaterial's shader
+    // (scene/resources/3d/sky_material.cpp), with its colors made linear and before
+    // energy_multiplier.
+    static double physical_sky_zenith(const json::Value& sky, double sun_energy) {
+        const auto field = [&](const char* name, double fallback) {
+            return number(sky, name, fallback);
+        };
+        const auto color = [&](const char* name, V3 fallback) {
+            const V3 c = vec(sky, name, fallback);
+            return V3{srgb_to_linear(c[0]), srgb_to_linear(c[1]), srgb_to_linear(c[2])};
+        };
+        const double up = std::sqrt(0.5); // the sun's height, and the cosine to it from the zenith
+        const double energy = std::max(0.0, 0.757 * up) * sun_energy;
+        const double sun_fade = 1.0 - std::clamp(1.0 - std::exp(up), 0.0, 1.0);
+        const double rayleigh_coefficient = field("rayleigh_coefficient", 2.0) - (1.0 - sun_fade);
+        const V3 rayleigh = color("rayleigh_color", {0.3, 0.405, 0.6});
+        const V3 mie = color("mie_color", {0.69, 0.729, 0.812});
+        const double mie_scale =
+            field("turbidity", 10.0) * field("mie_coefficient", 0.005) * 0.000434;
+        const double optical_mass = 1.0 / (1.0 + (0.15 * std::pow(3.885 + 54.5, -1.253)));
+        const double rayleigh_phase =
+            (3.0 / (16.0 * std::numbers::pi)) * (1.0 + std::pow((up * 0.5) + 0.5, 2.0));
+        const double g = field("mie_eccentricity", 0.8);
+        const double mie_phase =
+            0.0795774715459 * (1.0 - (g * g)) / std::pow(1.0 + (g * g) - (2.0 * g * up), 1.5);
+        const double horizon = std::clamp(std::pow(1.0 - up, 5.0), 0.0, 1.0);
+        const V3 weights{0.2126, 0.7152, 0.0722};
+        double luminance = 0.0;
+        for (std::size_t i = 0; i < 3; ++i) {
+            const double beta_r = rayleigh_coefficient * rayleigh[i] * 0.0001;
+            const double beta_m = mie_scale * mie[i];
+            const double extinction =
+                std::exp(-((beta_r * 8.4e3) + (beta_m * 1.25e3)) * optical_mass);
+            const double scattered =
+                energy * (((beta_r * rayleigh_phase) + (beta_m * mie_phase)) / (beta_r + beta_m));
+            double lin = std::pow(scattered * (1.0 - extinction), 1.5);
+            lin *= 1.0 + ((std::sqrt(scattered * extinction) - 1.0) * horizon);
+            luminance += weights[i] * std::pow(lin, 1.0 / (1.2 + (1.2 * sun_fade)));
+        }
+        return luminance;
+    }
+
+    // Unreal's auto exposure, on by default (r.DefaultFeature.AutoExposure), as Godot's: its
+    // exposure compensation (Bias, 1 by default) scales Godot's default scale, and its range,
+    // EV100 from -10 to 20 with the extended luminance range or 0.03 to 8 candelas a square
+    // meter without, becomes ISO sensitivities over the import's light units (a sun of 10 lux is
+    // energy 1, so a white surface it lights is 1 where Unreal's is 10 / pi). It meters in log
+    // space, as Unreal's histogram does, so a few bright pools don't darken the rest.
+    [[nodiscard]] json::Value auto_exposure() const {
+        static constexpr std::string_view kSection = "/Script/Engine.RendererSettings";
+        const auto on = [&](std::string_view key, bool fallback) {
+            std::string value = engine_ini_.value(kSection, key);
+            std::ranges::transform(value, value.begin(), [](unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+            return value.empty() ? fallback : (value == "true" || value == "1");
+        };
+        if (!on("r.DefaultFeature.AutoExposure", true)) {
+            return {};
+        }
+        const double bias =
+            parse_double(engine_ini_.value(kSection, "r.DefaultFeature.AutoExposure.Bias"))
+                .value_or(1.0);
+        // From Unreal's luminance in candelas a square meter to Godot's sensitivity in ISO.
+        const auto sensitivity = [](double luminance) {
+            return luminance * (std::numbers::pi / 10.0) * 100.0 / 0.125;
+        };
+        double least = sensitivity(0.03);
+        double most = sensitivity(8.0);
+        if (on("r.DefaultFeature.AutoExposure.ExtendDefaultLuminanceRange", false)) {
+            least = sensitivity(std::exp2(-10.0) * 0.125);
+            most = sensitivity(std::exp2(20.0) * 0.125);
+        }
+        json::Value out;
+        out["auto_exposure_enabled"] = true;
+        out["auto_exposure_scale"] = tidy(0.4 * std::exp2(bias - 1.0));
+        out["auto_exposure_min_sensitivity"] = tidy(least);
+        out["auto_exposure_max_sensitivity"] = tidy(most);
+        out["auto_exposure_metering"] = "log_average";
+        return out;
     }
 
     // Leaves out the droppable entities that hold nothing but a transform.
