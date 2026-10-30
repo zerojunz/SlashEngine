@@ -1,5 +1,6 @@
 #include "slash/render/particles3d.hpp"
 
+#include "checks.hpp"
 #include "particle_layout.hpp"
 #include "particle_math.hpp"
 
@@ -9,7 +10,6 @@
 #include <cstdint>
 #include <numeric>
 #include <optional>
-#include <string>
 #include <vector>
 
 // Godot's particles shader (servers/rendering/renderer_rd/shaders/particles.glsl), the code
@@ -890,11 +890,8 @@ void particle_mesh_vertices_3d(std::span<const Particle3D> particles,
 namespace detail {
 
 Result<Particles3DId> ParticleStore3D::create(std::uint32_t amount) {
-    if (amount == 0 || amount > kMaxParticles3D) {
-        return make_error(ErrorCode::InvalidArgument, "a 3D particle system holds from 1 to " +
-                                                          std::to_string(kMaxParticles3D) +
-                                                          " particles, not " +
-                                                          std::to_string(amount));
+    if (auto checked = check_particle_amount_3d(amount); !checked) {
+        return checked.error();
     }
     const std::uint32_t id = ++next_;
     systems_[id].assign(amount, Particle3D{});
@@ -910,6 +907,9 @@ Result<void> ParticleStore3D::process(Particles3DId particles, const ParticlePro
     const auto found = systems_.find(static_cast<std::uint32_t>(particles));
     if (found == systems_.end()) {
         return make_error(ErrorCode::NotFound, "no such 3D particle system");
+    }
+    if (auto checked = check_particle_process_3d(process, steps); !checked) {
+        return checked;
     }
     process_particles_3d(found->second, process, steps);
     return {};

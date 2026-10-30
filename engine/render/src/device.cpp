@@ -194,29 +194,37 @@ Result<void> check_particle_amount(std::uint32_t amount, std::uint32_t trail) {
     return {};
 }
 
-Result<void> check_particle_process(const ParticleProcess& process,
-                                    std::span<const ParticleStep> steps,
-                                    std::span<const ParticleShape> shapes) {
-    const auto finite = [](float value) { return std::isfinite(value); };
-    const auto check_offsets = [&](std::string_view what, std::size_t count,
-                                   const auto& offset_at) -> Result<void> {
-        if (count > kMaxParticleCurvePoints) {
+namespace {
+
+bool finite(float value) {
+    return std::isfinite(value);
+}
+
+// That a curve or gradient has at most kMaxParticleCurvePoints points, their offsets in order.
+template <typename OffsetAt>
+Result<void> check_offsets(std::string_view what, std::size_t count, const OffsetAt& offset_at) {
+    if (count > kMaxParticleCurvePoints) {
+        return make_error(ErrorCode::InvalidArgument, std::string(what) + " has more than " +
+                                                          std::to_string(kMaxParticleCurvePoints) +
+                                                          " points");
+    }
+    for (std::size_t i = 0; i < count; ++i) {
+        const float offset = offset_at(i);
+        if (!finite(offset) || (i > 0 && offset < offset_at(i - 1))) {
             return make_error(ErrorCode::InvalidArgument,
-                              std::string(what) + " has more than " +
-                                  std::to_string(kMaxParticleCurvePoints) + " points");
+                              std::string(what) + "'s offsets must be numbers in order");
         }
-        for (std::size_t i = 0; i < count; ++i) {
-            const float offset = offset_at(i);
-            if (!finite(offset) || (i > 0 && offset < offset_at(i - 1))) {
-                return make_error(ErrorCode::InvalidArgument,
-                                  std::string(what) + "'s offsets must be numbers in order");
-            }
-        }
-        return {};
-    };
-    const auto check_curve = [&](std::string_view what, const ParticleCurve& curve) {
-        return check_offsets(what, curve.size(), [&](std::size_t i) { return curve[i].x; });
-    };
+    }
+    return {};
+}
+
+Result<void> check_curve(std::string_view what, const ParticleCurve& curve) {
+    return check_offsets(what, curve.size(), [&](std::size_t i) { return curve[i].x; });
+}
+
+// The curves and gradients 2D and 3D process materials share.
+template <typename Process>
+Result<void> check_curves(const Process& process) {
     for (const ParticleCurve& curve : process.param_curve) {
         if (auto checked = check_curve("a parameter's curve", curve); !checked) {
             return checked;
@@ -240,6 +248,20 @@ Result<void> check_particle_process(const ParticleProcess& process,
             return checked;
         }
     }
+    return {};
+}
+
+// The most emission points a process material has.
+constexpr std::size_t kMaxEmissionPoints = 65536;
+
+} // namespace
+
+Result<void> check_particle_process(const ParticleProcess& process,
+                                    std::span<const ParticleStep> steps,
+                                    std::span<const ParticleShape> shapes) {
+    if (auto checked = check_curves(process); !checked) {
+        return checked;
+    }
     if (process.sub_emitter_mode == SubEmitterMode::Constant &&
         (!(process.sub_emitter_frequency > 0.0F) || !finite(process.sub_emitter_frequency))) {
         return make_error(ErrorCode::InvalidArgument, "sub_emitter_frequency is more than 0");
@@ -262,10 +284,9 @@ Result<void> check_particle_process(const ParticleProcess& process,
                               std::string(what) + ": " + checked.error().message);
         }
     }
-    constexpr std::size_t kMaxPoints = 65536;
-    if (process.emission_points.size() > kMaxPoints) {
+    if (process.emission_points.size() > kMaxEmissionPoints) {
         return make_error(ErrorCode::InvalidArgument, "a process material has at most " +
-                                                          std::to_string(kMaxPoints) +
+                                                          std::to_string(kMaxEmissionPoints) +
                                                           " emission points");
     }
     for (const ParticleStep& step : steps) {
@@ -312,6 +333,57 @@ Result<void> check_particle_process(const ParticleProcess& process,
                               "a particle step's shapes have at most " +
                                   std::to_string(kMaxParticleShapePoints) + " points");
         }
+    }
+    return {};
+}
+
+Result<void> check_particle_amount_3d(std::uint32_t amount) {
+    if (amount == 0 || amount > kMaxParticles3D) {
+        return make_error(ErrorCode::InvalidArgument, "a 3D particle system holds from 1 to " +
+                                                          std::to_string(kMaxParticles3D) +
+                                                          " particles, not " +
+                                                          std::to_string(amount));
+    }
+    return {};
+}
+
+Result<void> check_particle_process_3d(const ParticleProcess3D& process,
+                                       std::span<const ParticleStep3D> steps) {
+    if (auto checked = check_curves(process); !checked) {
+        return checked;
+    }
+    for (const auto& [what, curve] :
+         {std::pair{"scale_curve", &process.scale_curve},
+          std::pair{"orbit_velocity_curve", &process.orbit_velocity_curve},
+          std::pair{"directional_velocity_curve", &process.directional_velocity_curve},
+          std::pair{"scale_over_velocity_curve", &process.scale_over_velocity_curve}}) {
+        for (const ParticleCurve& axis : curve->axes) {
+            if (auto checked = check_curve(what, axis); !checked) {
+                return checked;
+            }
+        }
+    }
+    if (process.emission_points.size() > kMaxEmissionPoints) {
+        return make_error(ErrorCode::InvalidArgument, "a process material has at most " +
+                                                          std::to_string(kMaxEmissionPoints) +
+                                                          " emission points");
+    }
+    for (const ParticleStep3D& step : steps) {
+        if (!(step.lifetime > 0.0F) || !finite(step.lifetime) || !(step.delta >= 0.0F) ||
+            !finite(step.delta)) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a particle step's lifetime is more than 0 and its delta 0 or more");
+        }
+    }
+    return {};
+}
+
+Result<void> check_particle_mesh(std::size_t amount, std::size_t corners,
+                                 std::size_t mesh_vertices) {
+    if (corners == 0 || mesh_vertices != amount * corners) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "a particle mesh needs the system's amount times the draw pass's "
+                          "vertices, and the pass some");
     }
     return {};
 }
@@ -593,12 +665,12 @@ public:
         particles_3d_.erase(particles);
     }
 
-    Result<void> process_particles_3d(Particles3DId particles, const ParticleProcess3D& /*process*/,
-                                      std::span<const ParticleStep3D> /*steps*/) override {
+    Result<void> process_particles_3d(Particles3DId particles, const ParticleProcess3D& process,
+                                      std::span<const ParticleStep3D> steps) override {
         if (!particles_3d_.contains(particles)) {
             return make_error(ErrorCode::NotFound, "no such 3D particle system");
         }
-        return {};
+        return detail::check_particle_process_3d(process, steps);
     }
 
     Result<void> fill_particle_mesh(Particles3DId particles, MeshId mesh,
@@ -615,12 +687,7 @@ public:
         if (counts == meshes_.end()) {
             return detail::unknown_mesh(mesh);
         }
-        if (counts->second.vertices != std::size_t{it->second} * source.size()) {
-            return make_error(ErrorCode::InvalidArgument,
-                              "a particle mesh needs the system's amount times the draw pass's "
-                              "vertices");
-        }
-        return {};
+        return detail::check_particle_mesh(it->second, source.size(), counts->second.vertices);
     }
 
     Result<std::vector<Particle3D>> read_particles_3d(Particles3DId particles) override {
