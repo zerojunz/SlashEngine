@@ -52,6 +52,7 @@ add_library(slash_render
     src/light.cpp
     src/material.cpp
     src/mesh.cpp
+    src/native_copy.cpp
     src/particle_layout.cpp
     src/particles.cpp
     src/particle_layout_3d.cpp

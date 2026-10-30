@@ -226,7 +226,8 @@ target_compile_definitions(slash_tests PRIVATE SLASH_FAKE_UNREAL="$<TARGET_FILE:
 if(TARGET slash_openxr)
     add_library(fake-openxr MODULE fake_openxr_runtime.cpp)
     target_include_directories(fake-openxr SYSTEM PRIVATE
-        $<TARGET_PROPERTY:slash_openxr,INTERFACE_INCLUDE_DIRECTORIES>)
+        $<TARGET_PROPERTY:slash_openxr,INTERFACE_INCLUDE_DIRECTORIES>
+        ${SDL3_SOURCE_DIR}/src/video/khronos)
     target_compile_definitions(fake-openxr PRIVATE
         $<TARGET_PROPERTY:slash_openxr,INTERFACE_COMPILE_DEFINITIONS>)
     set_target_properties(fake-openxr PROPERTIES CXX_VISIBILITY_PRESET hidden)

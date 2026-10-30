@@ -97,6 +97,8 @@ public:
 private:
     Game(Project project, platform::Platform platform, const std::string& data_dir);
     void draw();
+    void draw_headset(const canvas::CanvasOptions& window);
+    void warn_headset(const std::string& message);
 
     Project project_;
     std::string data_dir_;
@@ -117,6 +119,7 @@ private:
     std::unique_ptr<audio::SdlOutput> audio_output_;
     std::unique_ptr<audio::SdlInput> audio_input_;
     bool draw_failed_ = false;
+    bool headset_failed_ = false;
 };
 
 } // namespace slash::runtime

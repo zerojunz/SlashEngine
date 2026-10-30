@@ -3536,7 +3536,7 @@ headset's runtime delivers them; a failed command or a dry run puts the headset 
 Returns the interfaces (each one's capabilities, play area, blend mode, `view_count` and
 `render_target_size` when it is initialized; OpenXR's adds `openxr`: the runtime and its
 version, the API version, the system, the session's state, whether it is `running` and
-`headless`, the reference space and the frames it has waited for), the world scale, origin and reference frame when they aren't the defaults, the
+`headless`, the reference space, the frames it has waited for and, when it draws into the headset, the `graphics` driver it draws with), the world scale, origin and reference frame when they aren't the defaults, the
 trackers with their poses (position, and rotation when it turns; `tracking` only when lost) and
 inputs, the XR nodes with their tracker and whether they are tracked, the test headset's last
 haptic pulses and the XR nodes' problems.
