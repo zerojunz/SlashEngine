@@ -12,6 +12,7 @@
 #   SLASH_GAME_MICROPHONE_USAGE  why, shown when macOS and iOS ask for the microphone
 #   SLASH_GAME_AI       ON if the game calls language models (it has a providers.json)
 #   SLASH_GAME_ANALYTICS  ON if project.json's services.analytics names an endpoint
+#   SLASH_GAME_TRACKING_USAGE  why the game asks to track the player, for Apple's prompt
 #   SLASH_GAME_SOURCES  the game's own C++ code (project.json's gameplay.sources): absolute
 #                       paths of folders, whose .cpp files are compiled in, and files
 #   SLASH_GAME_SDKS     a CMake file of slash_game_sdk() calls for the SDK packages the game
@@ -86,6 +87,15 @@ if(SLASH_GAME_MICROPHONE)
         "<key>NSMicrophoneUsageDescription</key>\n    <string>${usage_xml}</string>")
     set(SLASH_ANDROID_PERMISSIONS
         "<uses-permission android:name=\"android.permission.RECORD_AUDIO\" />")
+endif()
+
+# A game that asks to track the player says why in Apple's prompt (NSUserTrackingUsageDescription,
+# project.json's services.consent.tracking_usage).
+set(SLASH_TRACKING_PLIST "")
+if(SLASH_GAME_TRACKING_USAGE)
+    slash_escape_xml(tracking_xml "${SLASH_GAME_TRACKING_USAGE}")
+    set(SLASH_TRACKING_PLIST
+        "<key>NSUserTrackingUsageDescription</key>\n    <string>${tracking_xml}</string>")
 endif()
 
 # Linux builds use a glibc 2.31 sysroot (see tools/exporter), whose Wayland 1.18 headers fit only

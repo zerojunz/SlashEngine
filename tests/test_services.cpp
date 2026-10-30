@@ -1078,3 +1078,72 @@ TEST_CASE("services.test signs in, unlocks, submits and loads scores in a sessio
 
     std::filesystem::remove_all(root);
 }
+
+TEST_CASE("Apple's tracking prompt answers once, and a refusal denies personalized ads") {
+    const json::Value doc = parse(R"({"consent": {"personalized_ads": "granted",
+        "tracking_usage": "Ads that fit what you play."}})");
+    REQUIRE(services::validate_settings(doc, "/services").empty());
+    const services::Settings settings = services::parse_settings(doc);
+    CHECK(settings.tracking_usage == "Ads that fit what you play.");
+
+    world::ComponentRegistry components;
+    world::World world(components);
+    services::install(world, settings);
+    services::use_test_backend(world);
+    CHECK(services::tracking_status(world) == services::TrackingStatus::NotDetermined);
+    services::TestSettings test;
+    test.tracking = services::TrackingStatus::Denied;
+    REQUIRE(services::set_test_settings(world, test).ok());
+    REQUIRE(services::request_tracking(world).ok());
+    CHECK(step(world) == std::vector<std::string>{"tracking_status"});
+    CHECK(compact(world.event_queues().next.back().data) == R"({"status":"denied"})");
+    CHECK(services::tracking_status(world) == services::TrackingStatus::Denied);
+    CHECK(services::consent(world).personalized_ads == services::Consent::Denied);
+    CHECK(services::state_json(world, 0).find("consent")->find("tracking")->as_string() ==
+          "denied");
+
+    // An answer that allows tracking leaves the game's consent as it was.
+    services::set_consent(world, {.analytics = services::Consent::Unknown,
+                                  .personalized_ads = services::Consent::Granted});
+    test.tracking = services::TrackingStatus::Authorized;
+    REQUIRE(services::set_test_settings(world, test).ok());
+    REQUIRE(services::request_tracking(world).ok());
+    (void)step(world);
+    CHECK(services::consent(world).personalized_ads == services::Consent::Granted);
+
+    // Off Apple platforms there is no prompt: the answer is unavailable, and consent stays.
+#if !defined(__APPLE__)
+    world::World game(components);
+    services::install(game, settings);
+    CHECK(services::tracking_status(game) == services::TrackingStatus::Unavailable);
+    REQUIRE(services::request_tracking(game).ok());
+    CHECK(step(game) == std::vector<std::string>{"tracking_status"});
+    CHECK(services::tracking_status(game) == services::TrackingStatus::Unavailable);
+    CHECK(services::consent(game).personalized_ads == services::Consent::Granted);
+#endif
+}
+
+TEST_CASE("services.test answers the tracking prompt in a session") {
+    const std::filesystem::path root = "services_tracking_project";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    REQUIRE(slash::platform::write_file(
+                (root / "project.json").string(),
+                R"({"format": 1, "name": "Shop", "main_scene": "main.scene.json", "services": )"
+                R"({"consent": {"personalized_ads": "granted"}}})")
+                .ok());
+    world::ComponentRegistry components;
+    world::register_builtin_components(components);
+    command::Registry commands;
+    command::register_builtin_commands(commands);
+    command::Session session(components, commands, {.project_root = root.string()});
+    REQUIRE(session.call("scene.new", parse("{}")).ok);
+    command::Reply reply = session.call("services.test", parse(R"({"tracking": "restricted"})"));
+    REQUIRE_MESSAGE(reply.ok, reply.message);
+    CHECK(reply.value.find("test")->find("tracking")->as_string() == "restricted");
+    REQUIRE(session.call("step", parse(R"({"ticks": 1})")).ok);
+    reply = session.call("services.state", parse(R"({"events": 0})"));
+    CHECK(compact(*reply.value.find("consent")) ==
+          R"({"analytics":"unknown","personalized_ads":"denied","tracking":"restricted"})");
+    std::filesystem::remove_all(root);
+}

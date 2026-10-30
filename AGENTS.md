@@ -2105,7 +2105,9 @@ purchases, sign-in and leaderboards behave as `services.test` says, and put its 
 the world when a command fails or is a dry run; games with no backend fail ads, purchases and
 sign-in and only keep events, progress and scores. Analytics events are checked against the
 strictest common rules and sent only with the player's consent (`set_consent`); the steps of
-`analytics.funnels` reached in order are `funnel_step` events. With `analytics.endpoint`,
+`analytics.funnels` reached in order are `funnel_step` events, and `request_tracking` asks
+Apple's App Tracking Transparency prompt (`src/apple.mm`; `src/tracking.hpp` elsewhere answers
+`unavailable`), whose refusal denies personalized ads. With `analytics.endpoint`,
 windowed games also send them to a server the developer runs: `src/endpoint.cpp`
 (`make_endpoint_analytics`) batches them as the engine's JSON or PostHog's, with Firebase's
 sessions, keeps what is unsent in the user folder and retries, POSTing through the
