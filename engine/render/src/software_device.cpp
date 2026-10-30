@@ -131,7 +131,8 @@ struct ShadedVertex {
 struct SoftwareShader {
     ShaderType type = ShaderType::Canvas;
     std::optional<ShaderVm> vertex;
-    ShaderVm fragment; // a spatial shader's gives a mesh's surface (cpu_spatial)
+    ShaderVm fragment;             // a spatial shader's gives a mesh's surface (cpu_spatial)
+    std::optional<ShaderVm> light; // a spatial shader's light(), if it has one
     bool normal_used = false;
     bool specular_used = false;
 };
@@ -432,6 +433,13 @@ public:
                 return vertex.error();
             }
             made->vertex = std::move(vertex).value();
+        }
+        if (shader.light_used) {
+            auto light = ShaderVm::load(shader.cpu_light);
+            if (!light) {
+                return light.error();
+            }
+            made->light = std::move(light).value();
         }
         const auto id = static_cast<ShaderId>(next_shader_++);
         shaders_[id] = std::move(made);
@@ -2895,6 +2903,55 @@ private:
         }
     }
 
+    // What game_surface reads at a fragment of a draw with a game's spatial shader, at pixel x, y
+    // (render::cpu_spatial).
+    static void surface_inputs(const MeshShader& shader, const MeshFragment& fragment,
+                               std::int64_t x, std::int64_t y,
+                               std::array<Float4, ShaderVm::kLocations>& in) {
+        const bool flip = shader.material->cull == CullMode::Disabled && !fragment.front;
+        const auto v = [&](std::size_t k) { return fragment.varying(k); };
+        in.at(cpu_spatial::kWorld) = {v(0), v(1), v(2), flip ? 1.0F : 0.0F};
+        in.at(cpu_spatial::kNormal) = {v(3), v(4), v(5), fragment.front ? 1.0F : 0.0F};
+        in.at(cpu_spatial::kTangent) = {v(6), v(7), v(8), 0.0F};
+        in.at(cpu_spatial::kBinormal) = {v(9), v(10), v(11), 0.0F};
+        in.at(cpu_spatial::kUv) = {v(12), v(13), v(18), v(19)};
+        in.at(cpu_spatial::kVertexColor) = {v(14), v(15), v(16), v(17)};
+        in.at(cpu_spatial::kFragCoord) = {static_cast<float>(x) + 0.5F,
+                                          static_cast<float>(y) + 0.5F, 0.0F, 1.0F};
+    }
+
+    // Runs a game's spatial shader's light() for one light at a fragment, as add_light in
+    // shaders/mesh.hlsl calls game_light: one invocation, so its ddx and ddy are 0.
+    static bool game_light(const MeshShader& shader, ShaderVm& module, const MeshFragment& fragment,
+                           std::array<std::uint32_t, 2> at, const detail::GameLightInput& light,
+                           detail::Float3& diffuse, detail::Float3& specular, float& alpha) {
+        ShaderVm::Lanes lanes;
+        auto& in = lanes.inputs[0];
+        surface_inputs(shader, fragment, at[0], at[1], in);
+        const auto with = [](const detail::Float3& v, float w) {
+            return Float4{v[0], v[1], v[2], w};
+        };
+        in.at(cpu_spatial::kLightNormal) = with(light.normal, light.attenuation);
+        in.at(cpu_spatial::kLightToward) = with(light.toward, light.directional ? 1.0F : 0.0F);
+        in.at(cpu_spatial::kLightView) = with(light.view, light.specular_amount);
+        in.at(cpu_spatial::kLightColor) = with(light.color, alpha);
+        in.at(cpu_spatial::kLightAlbedo) = with(light.albedo, light.metallic);
+        in.at(cpu_spatial::kLightDiffuse) = with(diffuse, light.roughness);
+        in.at(cpu_spatial::kLightSpecular) = with(specular, 0.0F);
+        const std::array<std::span<const std::byte>, 1> uniforms{
+            std::as_bytes(std::span(&shader.game_uniforms, 1))};
+        module.run(lanes, uniforms, game_textures(shader));
+        if (lanes.discarded[0]) {
+            return false;
+        }
+        const Float4& lit = lanes.outputs[0].at(cpu_spatial::kOutDiffuse);
+        const Float4& shine = lanes.outputs[0].at(cpu_spatial::kOutSpecular);
+        diffuse = {lit[0], lit[1], lit[2]};
+        specular = {shine[0], shine[1], shine[2]};
+        alpha = lit[3];
+        return true;
+    }
+
     // Runs a game's spatial shader on a quad of a triangle's fragments, its top left pixel at qx,
     // qy, as mesh.hlsl's game_surface: each fragment gets the surface it gives, or none where it
     // discards.
@@ -2903,20 +2960,9 @@ private:
         ShaderVm::Lanes lanes;
         lanes.count = 4;
         lanes.quad = true;
-        const bool flip = shader.material->cull == CullMode::Disabled && !quad[0].front;
         for (std::size_t lane = 0; lane < 4; ++lane) {
-            const MeshFragment& fragment = quad.at(lane);
-            const auto v = [&](std::size_t k) { return fragment.varying(k); };
-            auto& in = lanes.inputs.at(lane);
-            in.at(cpu_spatial::kWorld) = {v(0), v(1), v(2), flip ? 1.0F : 0.0F};
-            in.at(cpu_spatial::kNormal) = {v(3), v(4), v(5), fragment.front ? 1.0F : 0.0F};
-            in.at(cpu_spatial::kTangent) = {v(6), v(7), v(8), 0.0F};
-            in.at(cpu_spatial::kBinormal) = {v(9), v(10), v(11), 0.0F};
-            in.at(cpu_spatial::kUv) = {v(12), v(13), v(18), v(19)};
-            in.at(cpu_spatial::kVertexColor) = {v(14), v(15), v(16), v(17)};
-            in.at(cpu_spatial::kFragCoord) = {
-                static_cast<float>(qx + static_cast<std::int64_t>(lane & 1U)) + 0.5F,
-                static_cast<float>(qy + static_cast<std::int64_t>(lane >> 1U)) + 0.5F, 0.0F, 1.0F};
+            surface_inputs(shader, quad.at(lane), qx + static_cast<std::int64_t>(lane & 1U),
+                           qy + static_cast<std::int64_t>(lane >> 1U), lanes.inputs.at(lane));
         }
         const std::array<std::span<const std::byte>, 1> uniforms{
             std::as_bytes(std::span(&shader.game_uniforms, 1))};
@@ -2970,9 +3016,16 @@ private:
     static std::optional<Float4> shade_mesh_pixel(const MeshShader& shader,
                                                   const MeshFragment& fragment,
                                                   std::array<std::uint32_t, 2> at) {
-        return detail::shade_mesh(
-            shader.surface, *shader.scene, *shader.maps,
-            mesh_pixel(shader, fragment.varyings(), fragment.front, at, fragment.game));
+        detail::MeshPixel pixel =
+            mesh_pixel(shader, fragment.varyings(), fragment.front, at, fragment.game);
+        if (shader.game != nullptr && shader.game->light) {
+            ShaderVm& module = *shader.game->light;
+            pixel.game_light = [&](const detail::GameLightInput& light, detail::Float3& diffuse,
+                                   detail::Float3& specular, float& alpha) {
+                return game_light(shader, module, fragment, at, light, diffuse, specular, alpha);
+            };
+        }
+        return detail::shade_mesh(shader.surface, *shader.scene, *shader.maps, pixel);
     }
 
     // Writes a mesh pixel as the GPU device's mesh pipelines do: opaque ones replace the pixel,

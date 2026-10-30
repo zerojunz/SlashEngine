@@ -175,7 +175,8 @@ Result<void> check_compiled_shader(const CompiledShader& shader, Backend backend
                       all([](const ShaderStage* stage) { return !stage->wgsl.empty(); });
             break;
         case Backend::Software:
-            present = !shader.cpu_fragment.empty() && (!vertex || !shader.cpu_vertex.empty());
+            present = !shader.cpu_fragment.empty() && (!vertex || !shader.cpu_vertex.empty()) &&
+                      (!shader.light_used || !shader.cpu_light.empty());
             break;
         case Backend::Null:
             break;

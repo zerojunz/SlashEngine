@@ -926,9 +926,14 @@ buffer (the third vertex one) and its textures take the material's first five sl
 software device runs `game_surface` with `ShaderVm` on 2x2 quads (`game_surfaces` in
 `software_device.cpp`), so derivatives work, and `game_vertex` per corner (`game_corners`), and
 `shade_mesh` takes the surface (`MeshPixel::game`); a change to how `mesh.hlsl` or `shadow.hlsl`
-uses the shader goes in both.
+uses the shader goes in both. A `light()` becomes `game_light`, which `add_light` calls with
+`GAME_LIGHT` defined in place of `light_compute`, once a light, with Godot's light built-ins in
+view space (`CompiledShader::light_used`); on the software device `shade_mesh` calls
+`MeshPixel::game_light`, which runs the `cpu_light` module (`game_surface`, then `game_light`)
+for the pixel and light.
 `tests/test_spatial_shader.cpp` holds every device to the software device's pixels;
-`examples/spatial-shaders` has a crystal, a fence and a glass ball.
+`examples/spatial-shaders` has a crystal, a fence and a glass ball, and
+`examples/custom-lighting-3d` cel-shades a ball with `light()`.
 
 Tile maps follow Godot's TileSet and TileMapLayer (`tilemap.hpp` in `engine/canvas`). A
 `.tileset.json` file (`$cli schema tileset`) cuts atlas textures into tiles and names terrain

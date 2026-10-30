@@ -2275,7 +2275,8 @@ R"hlsl(// The 3D shader for Forward+'s prepass in a frame with TAA, as Godot's
 // (tools/shader_compiler) put its code before this file's, with GameSurface, game_surface and
 // game_specular, and its texture params in the StandardMaterial3D's slots. With GAME_VERTEX too,
 // its vertex() places the corners, through GameVertex and game_vertex, with its texture params
-// in the vertex stage's slots 0 to 4.
+// in the vertex stage's slots 0 to 4. With GAME_LIGHT, its light() lights the pixel once a light
+// through game_light, with game_albedo the surface's albedo, and may change ALPHA.
 
 cbuffer Camera : register(b0, space1) {
     float4x4 view_projection;          // world to clip space, with TAA's jitter
@@ -2480,9 +2481,9 @@ cbuffer Scene : register(b1, space3) {
     // 1 when screen_texture's layer 0 holds the frame's SSAO, its light affect and its AO channel
     // affect, then 1 when its layer 1 holds its SSR.
     float4 ssao;
-    float4 view_rows[3]; // the world to the camera's space, a row each, for normals
 )hlsl",
-R"hlsl(    // Forward+'s reflection probes: how many in probes, the level the roughest surfaces read, and
+R"hlsl(    float4 view_rows[3]; // the world to the camera's space, a row each, for normals
+    // Forward+'s reflection probes: how many in probes, the level the roughest surfaces read, and
     // the exposure their light is multiplied by.
     float4 reflections;
     // 1 when meshes trace their VoxelGIs (Forward+, and not a reflection probe's capture), then 1
@@ -3092,8 +3093,14 @@ void add_light(Light light, float3 world, float3 normal, float3 geometry, float3
     if (ray >= 0.0 && slot >= 0.0) {
         attenuation *= light_shadow(directional, (uint)slot, world, geometry, toward);
     }
+#ifdef GAME_LIGHT
+    // A game's light() lights the pixel in place of light_compute, as Godot's LIGHT_CODE_USED.
+    game_light(normal, toward, view, light.color.rgb, directional, attenuation, light.color.w,
+               game_albedo, metallic, roughness, diffuse_light, specular_light);
+#else
     light_compute(normal, toward, view, light.color.rgb, attenuation, f0, roughness, metallic,
                   light.color.w, diffuse_light, specular_light);
+#endif
 }
 
 #ifdef CLUSTERED
@@ -3263,15 +3270,15 @@ void apply_decal(Decal decal, float3 world, float3 geometry, float3 dx, float3 d
             n.xy = n.xy * float2(2.0, -2.0) - float2(1.0, -1.0);
             n.z = sqrt(max(0.0, 1.0 - dot(n.xy, n.xy)));
             float3 turned = float3(dot(decal.normal_rows[0].xyz, n.xzy),
-                                   dot(decal.normal_rows[1].xyz, n.xzy),
+)hlsl",
+R"hlsl(                                   dot(decal.normal_rows[1].xyz, n.xzy),
                                    dot(decal.normal_rows[2].xyz, n.xzy));
             normal = normalize(lerp(normal, turned, albedo.a));
         }
         if (has_rect(decal.rects[2])) {
             float3 orm = texels[2].xyz;
             ao = lerp(ao, orm.r, albedo.a);
-)hlsl",
-R"hlsl(            roughness = lerp(roughness, orm.g, albedo.a);
+            roughness = lerp(roughness, orm.g, albedo.a);
             metallic = lerp(metallic, orm.b, albedo.a);
         }
     }
@@ -3513,12 +3520,12 @@ void voxel_gi_compute(uint index, float3 world, float3 normal, float3 reflection
     float4 light = (float4)0.0;
     if (scene_voxel_gi.y != 0.0) {
         for (uint i = 0u; i < 6u; ++i) {
-            float3 c = kHighQualityCones[i];
+)hlsl",
+R"hlsl(            float3 c = kHighQualityCones[i];
             float3 turned = tangent * c.x + bitangent * c.y + normal * c.z;
             float3 dir = normalize(float3(dot(gi.rows[0].xyz, turned), dot(gi.rows[1].xyz, turned),
                                           dot(gi.rows[2].xyz, turned)));
-)hlsl",
-R"hlsl(            light += kHighQualityWeights[i] * voxel_cone_trace(index, cell_size, max_distance,
+            light += kHighQualityWeights[i] * voxel_cone_trace(index, cell_size, max_distance,
                                                                position, dir, 0.577, gi.params.y);
         }
     } else {
@@ -3644,6 +3651,9 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
 #else
     float specular = surface.z;
 #endif
+#ifdef GAME_LIGHT
+    game_albedo = base;
+#endif
     float3 view = normalize(camera.xyz - input.world);
     float3 f0 = lerp((float3)(0.16 * specular * specular), base, metallic);
 
@@ -3749,7 +3759,8 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
         reflected *= occlusion * (env.x * f0 + env.y * clamp(50.0 * f0.g, metallic, 1.0));
     } else {
         // Godot's SSR: the reflection, faded out toward the trace's roughness cutoff, put over
-        // the sky's by its premultiplied alpha.
+)hlsl",
+R"hlsl(        // the sky's by its premultiplied alpha.
         reflected *= occlusion;
         float4 faded = ssr * smoothstep(0.0, 1.0, 1.0 - saturate((roughness - 0.6) / 0.1));
         reflected = reflected * (1.0 - faded.a) + faded.rgb;
@@ -3757,8 +3768,7 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
     }
 
     ambient_light *= base * (1.0 - metallic);
-)hlsl",
-R"hlsl(    diffuse_light *= base * ao_direct * (1.0 - metallic);
+    diffuse_light *= base * ao_direct * (1.0 - metallic);
     specular_light *= ao_direct;
     return diffuse_light + specular_light + reflected + emitted + ambient_light;
 }
@@ -3967,6 +3977,12 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
         lit = lit_color(input, base, normal, geometry, metallic, roughness, emitted, ao,
                         ao_direct, ssr, rays);
     }
+#ifdef GAME_LIGHT
+    // Its light() may change ALPHA, as Godot's.
+    if ((flags & kHasAlpha) != 0u && (flags & kAlphaScissor) == 0u) {
+        alpha = ALPHA;
+    }
+#endif
     // One call, so the tonemappers are inlined once and the shader stays small.
     return finish(lit, alpha, input.world, input.position.xy);
 #endif

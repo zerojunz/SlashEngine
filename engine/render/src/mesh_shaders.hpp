@@ -6608,7 +6608,8 @@ R"hlsl(// The 3D shader: meshes lit by a frame's lights as Godot's Compatibility
 // (tools/shader_compiler) put its code before this file's, with GameSurface, game_surface and
 // game_specular, and its texture params in the StandardMaterial3D's slots. With GAME_VERTEX too,
 // its vertex() places the corners, through GameVertex and game_vertex, with its texture params
-// in the vertex stage's slots 0 to 4.
+// in the vertex stage's slots 0 to 4. With GAME_LIGHT, its light() lights the pixel once a light
+// through game_light, with game_albedo the surface's albedo, and may change ALPHA.
 
 cbuffer Camera : register(b0, space1) {
     float4x4 view_projection;          // world to clip space, with TAA's jitter
@@ -6817,11 +6818,11 @@ cbuffer Scene : register(b1, space3) {
     // Forward+'s reflection probes: how many in probes, the level the roughest surfaces read, and
     // the exposure their light is multiplied by.
     float4 reflections;
-    // 1 when meshes trace their VoxelGIs (Forward+, and not a reflection probe's capture), then 1
+)hlsl",
+R"hlsl(    // 1 when meshes trace their VoxelGIs (Forward+, and not a reflection probe's capture), then 1
     // for high quality.
     float4 scene_voxel_gi;
-)hlsl",
-R"hlsl(    // Forward+'s decals: how many, the filter, the atlas's width and height in texels.
+    // Forward+'s decals: how many, the filter, the atlas's width and height in texels.
     float4 decal_info;
     float4 screen; // the target's width and height in pixels, then the ray-traced layers' flags
     // The camera's view-projection without TAA's jitter: its x, y and w rows.
@@ -7061,11 +7062,11 @@ float4 fog_process(float3 world) {
     }
     float amount;
     if (fog_color.w == 2.0) {
-        float z = smoothstep(fog_depth.x, fog_depth.y, distance);
+)hlsl",
+R"hlsl(        float z = smoothstep(fog_depth.x, fog_depth.y, distance);
         amount = pow(z, fog_depth.z) * fog.x;
     } else {
-)hlsl",
-R"hlsl(        amount = 1.0 - exp(min(0.0, -distance * fog.x));
+        amount = 1.0 - exp(min(0.0, -distance * fog.x));
     }
     if (abs(fog.w) >= 0.0001) {
         amount = max(amount, 1.0 - exp(min(0.0, (world.y - fog.z) * fog.w)));
@@ -7340,12 +7341,12 @@ float light_shadow(bool directional, uint slot, float3 world, float3 normal, flo
         shadow = lerp(shadow, next, blend);
     }
     float4 params = directional_shadows[slot].params;
-    shadow = lerp(shadow, 1.0, smooth(params.x, params.y, view_z));
+)hlsl",
+R"hlsl(    shadow = lerp(shadow, 1.0, smooth(params.x, params.y, view_z));
     return lerp(1.0, shadow, params.z);
 }
 
-)hlsl",
-R"hlsl(// get_depth_blended_weights in HTerrain's shader: the splat map's weights, sharpened where one
+// get_depth_blended_weights in HTerrain's shader: the splat map's weights, sharpened where one
 // layer's bump stands above the others.
 float4 depth_blended_weights(float4 splat, float4 bumps) {
     float dh = 0.2;
@@ -7425,8 +7426,14 @@ void add_light(Light light, float3 world, float3 normal, float3 geometry, float3
     if (ray >= 0.0 && slot >= 0.0) {
         attenuation *= light_shadow(directional, (uint)slot, world, geometry, toward);
     }
+#ifdef GAME_LIGHT
+    // A game's light() lights the pixel in place of light_compute, as Godot's LIGHT_CODE_USED.
+    game_light(normal, toward, view, light.color.rgb, directional, attenuation, light.color.w,
+               game_albedo, metallic, roughness, diffuse_light, specular_light);
+#else
     light_compute(normal, toward, view, light.color.rgb, attenuation, f0, roughness, metallic,
                   light.color.w, diffuse_light, specular_light);
+#endif
 }
 
 #ifdef CLUSTERED
@@ -7601,7 +7608,8 @@ void apply_decal(Decal decal, float3 world, float3 geometry, float3 dx, float3 d
             normal = normalize(lerp(normal, turned, albedo.a));
         }
         if (has_rect(decal.rects[2])) {
-            float3 orm = texels[2].xyz;
+)hlsl",
+R"hlsl(            float3 orm = texels[2].xyz;
             ao = lerp(ao, orm.r, albedo.a);
             roughness = lerp(roughness, orm.g, albedo.a);
             metallic = lerp(metallic, orm.b, albedo.a);
@@ -7613,8 +7621,7 @@ void apply_decal(Decal decal, float3 world, float3 geometry, float3 dx, float3 d
     }
 }
 
-)hlsl",
-R"hlsl(// Godot's decals (scene_forward_clustered.glsl): those of the pixel's tile within its slice's
+// Godot's decals (scene_forward_clustered.glsl): those of the pixel's tile within its slice's
 // range, each word's from its highest bit, that share a layer with the mesh, over its surface
 // before it is lit; geometry is its vertex normal, turned to its side, as Godot's geo_normal.
 void apply_decals(VertexOutput input, float3 geometry, inout float3 base, inout float3 normal,
@@ -7849,7 +7856,8 @@ void voxel_gi_compute(uint index, float3 world, float3 normal, float3 reflection
             float3 c = kHighQualityCones[i];
             float3 turned = tangent * c.x + bitangent * c.y + normal * c.z;
             float3 dir = normalize(float3(dot(gi.rows[0].xyz, turned), dot(gi.rows[1].xyz, turned),
-                                          dot(gi.rows[2].xyz, turned)));
+)hlsl",
+R"hlsl(                                          dot(gi.rows[2].xyz, turned)));
             light += kHighQualityWeights[i] * voxel_cone_trace(index, cell_size, max_distance,
                                                                position, dir, 0.577, gi.params.y);
         }
@@ -7857,8 +7865,7 @@ void voxel_gi_compute(uint index, float3 world, float3 normal, float3 reflection
         for (uint i = 0u; i < 4u; ++i) {
             float3 c = kCones[i];
             float3 turned = tangent * c.x + bitangent * c.y + normal * c.z;
-)hlsl",
-R"hlsl(            float3 dir = normalize(float3(dot(gi.rows[0].xyz, turned), dot(gi.rows[1].xyz, turned),
+            float3 dir = normalize(float3(dot(gi.rows[0].xyz, turned), dot(gi.rows[1].xyz, turned),
                                           dot(gi.rows[2].xyz, turned)));
             light += 0.25 * voxel_cone_trace_45_degrees(index, cell_size, max_distance, position,
                                                         dir, gi.params.y);
@@ -7977,6 +7984,9 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
 #else
     float specular = surface.z;
 #endif
+#ifdef GAME_LIGHT
+    game_albedo = base;
+#endif
     float3 view = normalize(camera.xyz - input.world);
     float3 f0 = lerp((float3)(0.16 * specular * specular), base, metallic);
 
@@ -8086,7 +8096,8 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
         reflected *= occlusion;
         float4 faded = ssr * smoothstep(0.0, 1.0, 1.0 - saturate((roughness - 0.6) / 0.1));
         reflected = reflected * (1.0 - faded.a) + faded.rgb;
-        reflected *= env.x * f0 + env.y * clamp(50.0 * f0.g, metallic, 1.0);
+)hlsl",
+R"hlsl(        reflected *= env.x * f0 + env.y * clamp(50.0 * f0.g, metallic, 1.0);
     }
 
     ambient_light *= base * (1.0 - metallic);
@@ -8100,8 +8111,7 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
 struct PrepassOutput {
     float4 normal_roughness : SV_Target0;
     float4 motion : SV_Target1;
-)hlsl",
-R"hlsl(};
+};
 PrepassOutput fs_main(VertexOutput input, bool front : SV_IsFrontFace) {
 #else
 float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
@@ -8300,6 +8310,12 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
         lit = lit_color(input, base, normal, geometry, metallic, roughness, emitted, ao,
                         ao_direct, ssr, rays);
     }
+#ifdef GAME_LIGHT
+    // Its light() may change ALPHA, as Godot's.
+    if ((flags & kHasAlpha) != 0u && (flags & kAlphaScissor) == 0u) {
+        alpha = ALPHA;
+    }
+#endif
     // One call, so the tonemappers are inlined once and the shader stays small.
     return finish(lit, alpha, input.world, input.position.xy);
 #endif

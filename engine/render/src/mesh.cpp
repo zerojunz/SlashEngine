@@ -1495,7 +1495,7 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     if (!found) {
         return std::nullopt;
     }
-    const float alpha = found->alpha;
+    float alpha = found->alpha;
     // Fogged unless the material disables it, then linear for Forward+, or times the exposure,
     // tonemapped unless the post pass does it, and as sRGB.
     const auto finish = [&](Float3 lit) {
@@ -1608,6 +1608,32 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     const Float3 f0 = lerp3({dielectric, dielectric, dielectric}, base, metallic);
 
     LightSum light_sum;
+    // A game's light() lights the pixel in place of light_compute, as Godot's LIGHT_CODE_USED,
+    // from the ALPHA its fragment() gave, which it may change; it may also discard the pixel.
+    float light_alpha = pixel.game ? pixel.game->albedo[3] : alpha;
+    bool discarded = false;
+    const auto compute = [&](const Float3& toward, const Float3& light_color, float attenuation,
+                             float specular_amount, bool directional) {
+        if (!pixel.game_light) {
+            light_compute(normal, toward, view, light_color, attenuation, f0, roughness, metallic,
+                          specular_amount, light_sum);
+            return;
+        }
+        if (discarded) {
+            return;
+        }
+        discarded = !pixel.game_light({.normal = normal,
+                                       .toward = toward,
+                                       .view = view,
+                                       .color = light_color,
+                                       .directional = directional,
+                                       .attenuation = attenuation,
+                                       .specular_amount = specular_amount,
+                                       .albedo = base,
+                                       .metallic = metallic,
+                                       .roughness = roughness},
+                                      light_sum.diffuse, light_sum.specular, light_alpha);
+    };
     // add_light in shaders/mesh.hlsl.
     const bool lightmapped = (flags & kMeshLightmap) != 0;
     const bool captured = (flags & kMeshLightmapCapture) != 0;
@@ -1635,8 +1661,7 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
                                      ? directional_shadow(maps, static_cast<std::size_t>(slot),
                                                           pixel.world, geometry, toward)
                                      : traced_shadow;
-            light_compute(normal, toward, view, light_color, shadow, f0, roughness, metallic,
-                          light.color[3], light_sum);
+            compute(toward, light_color, shadow, light.color[3], true);
             return;
         }
         const Float3 to_light =
@@ -1657,8 +1682,7 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
                 positional_shadow(maps, static_cast<std::size_t>(slot), pixel.world, geometry);
         }
         attenuation *= traced_shadow;
-        light_compute(normal, normalize(to_light), view, light_color, attenuation, f0, roughness,
-                      metallic, light.color[3], light_sum);
+        compute(normalize(to_light), light_color, attenuation, light.color[3], false);
     };
     const auto count = static_cast<std::size_t>(scene.camera[3]);
     for (std::size_t i = 0; i < count && i < kMaxLights3D; ++i) {
@@ -1666,6 +1690,12 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     }
     if (maps.clusters != nullptr && maps.uniforms != nullptr) {
         add_cluster_lights(*maps.clusters, *maps.uniforms, pixel, add_light);
+    }
+    if (discarded) {
+        return std::nullopt;
+    }
+    if (pixel.game_light && (flags & kMeshHasAlpha) != 0 && (flags & kMeshAlphaScissor) == 0) {
+        alpha = light_alpha;
     }
 
     // Light from the sky's radiance, as Godot's scene.glsl takes it: reflections by roughness

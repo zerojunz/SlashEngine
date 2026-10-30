@@ -1,0 +1,6 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture","params":{"points":[[50,42],[54,34],[62,48],[66,50],[64,40],[90,42],[94,34],[102,48],[106,50]]}}
+{"jsonrpc":"2.0","id":3,"method":"component.set","params":{"id":"toon","components":{"MeshInstance3D":{"material_params":{"steps":4}}}}}
+{"jsonrpc":"2.0","id":4,"method":"frame.capture","params":{"points":[[50,42],[54,34],[62,48],[66,50]]}}
+{"jsonrpc":"2.0","id":5,"method":"component.set","params":{"id":"lamp","components":{"OmniLight3D":{"light_energy":0}}}}
+{"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"points":[[64,40],[94,34]]}}
