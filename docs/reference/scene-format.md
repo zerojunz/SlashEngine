@@ -5746,7 +5746,15 @@ so an agent can check a game can be played without seeing it.
   asked through `ui.accessibility_action`'s actions. `auto` serves one while Windows' screen
   reader flag or VoiceOver is on, or while AT-SPI reads on Linux. Builds made where cargo isn't
   installed leave AccessKit out and serve none.
-- Not yet: Android's TalkBack, iOS's VoiceOver and the web's screen readers, text runs and
+- On the web, which has no AccessKit adapter, the tree is a DOM of WAI-ARIA elements (roles such
+  as `button`, `checkbox`, `slider`, `textbox` and `menuitem`, with `aria-label`,
+  `aria-checked`, `aria-valuenow` and the rest) placed over the canvas inside a
+  `#slash-accessibility` element, unseen and taking no pointer events, so the page's screen reader
+  reads and works the controls. Focus follows the game's while the page's focus is on the game,
+  and a screen reader's click or focus on an element runs as `ui.accessibility_action`'s `click`
+  or `focus`. A page can't tell whether a screen reader is running, so `auto` counts one as in use
+  from the first click or focus it gives an element.
+- Not yet: Android's TalkBack and iOS's VoiceOver, text runs and
   selections in a `TextEdit`, keyboard drag and drop (`ui_accessibility_drag_and_drop`) and
   announcements.
 
