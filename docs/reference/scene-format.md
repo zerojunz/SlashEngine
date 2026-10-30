@@ -1719,11 +1719,11 @@ lights each pixel with only the omni and spot lights whose range reaches it, and
 | `directional_shadow_fade_start` | `0.8` | directional | Where shadows start fading out, as a fraction of their reach |
 | `directional_shadow_max_distance` | `100` | directional | How far from the camera shadows reach, in meters (the camera's `far` if nearer) |
 | `directional_shadow_pancake_size` | `20` | directional | How far behind each cascade casters still cast, in meters |
-| `light_angular_distance` | `0` | directional | Degrees across its sun's radius in the [sky](#skies), 0 to 90 |
+| `light_angular_distance` | `0` | directional | Degrees across its sun's radius in the [sky](#skies), 0 to 90; [ray-traced shadows](#ray-traced-shadows) spread their rays over a disk this many degrees across, so they soften with distance from what casts them |
 | `sky_mode` | `"light_and_sky"` | directional | `"light_only"` lights meshes and shows no sun in the sky; `"sky_only"` shows a sun and lights nothing |
 | `light_bake_mode` | `"dynamic"` | all | How a [LightmapGI](#baked-lightmaps) bakes it: `"disabled"` leaves it out, `"dynamic"` bakes only its bounces and it lights live, `"static"` bakes it whole and it doesn't light lightmapped meshes live. [VoxelGIs](#voxelgi) leave out omni and spot lights that are `"disabled"` |
 | `light_indirect_energy` | `1` | all | Times its light in baked bounces |
-| `light_size` | `0` | omni, spot | Its radius when baked, for soft shadows (a directional light's is `light_angular_distance`) |
+| `light_size` | `0` | omni, spot | Its radius when baked and in [ray-traced shadows](#ray-traced-shadows), for soft shadows (a directional light's is `light_angular_distance`) |
 | `shadow_blur` | `1` | all | How much its baked shadows soften |
 | `light_volumetric_fog_energy` | `1` | all | `forward_plus`: how much it lights [volumetric fog](#volumetric-fog), times `light_energy` |
 
@@ -1732,6 +1732,25 @@ Shadows are Godot's Compatibility renderer's shadow maps, drawn on every device 
 directional lights that cast (up to 4); omni and spot lights (up to 16) share the positional
 atlas, an omni light's cube taking six tiles and a spot light's one. Edges are filtered by the
 project's `rendering.lights_and_shadows` ([project-format.md](project-format.md#shadows)).
+
+### Ray-traced shadows
+
+With the project's `rendering.ray_tracing.shadows` on
+([project-format.md](project-format.md#ray-tracing)), a frame in `forward_plus` traces its lights'
+shadows instead of taking them from shadow maps, which Godot 4.6 can't. After the depth and normal
+prepass, each pixel sends `shadow_samples` rays toward each of the first 8 lights the frame draws
+with `shadow_enabled` and a `shadow_opacity` above 0, to points spread over the light's disk:
+`light_angular_distance` degrees across for a directional light, `light_size` meters in radius for
+an omni or spot light. The share of rays that reach it, through `shadow_opacity`, is the light's
+shadow there. Rays hit every mesh the frame draws whose `cast_shadow` isn't `"off"` and whose
+layers are in the light's `shadow_caster_mask`, alpha-tested ones by their textures, so shadows
+reach as far as the camera sees, past `directional_shadow_max_distance`. Lights past the first 8
+keep their shadow maps, and so do transparent meshes, which the prepass doesn't draw.
+
+Rays are traced on the CPU by the software device, so `frame.capture` returns them, the same on
+every machine and any number of threads. GPUs that can't trace rays yet (`RenderDevice::ray_tracing`
+is false) draw with shadow maps; native ray queries on Vulkan, Direct3D 12 and Metal come next.
+[examples/ray-traced-shadows-3d](../../examples/ray-traced-shadows-3d) traces an avenue.
 
 ### WorldEnvironment
 

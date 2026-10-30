@@ -120,7 +120,7 @@ struct MeshLightUniforms {
     Float4 color{};
     Float4 params{};
     // Its slot in MeshShadowUniforms' directional or positional, or -1; then 1 when it is baked,
-    // then its volumetric fog energy.
+    // then its volumetric fog energy, then its ray-traced shadow slot plus 1 (0 for none).
     Float4 shadow{};
 };
 struct MeshSceneUniforms {
@@ -148,7 +148,10 @@ struct MeshSceneUniforms {
     // Forward+'s decals (set_cluster_uniforms): how many, the filter (DecalFilter), the atlas's
     // width and height in texels.
     Float4 decal_info{};
-    Float4 screen{}; // the target's width and height in pixels, then 0, 0
+    // The target's width and height in pixels, then 1 when the screen texture's layers from 2 on
+    // hold the frame's ray-traced shadows (a light's visibility a channel, four lights a layer),
+    // then 0.
+    Float4 screen{};
     // The camera's view-projection without TAA's jitter: its x, y and w rows, from which decals
     // work out how far their textures move across a pixel.
     std::array<Float4, 3> clip_rows{};
@@ -248,7 +251,8 @@ mesh_instance_uniforms(const Mat4& transform, const Material3D& material, const 
 // directional ones, which every pixel takes; its omni and spot lights are in its LightClusters.
 [[nodiscard]] MeshSceneUniforms mesh_scene_uniforms(const Scene3D& scene);
 // A light as the shaders take it, with its shadow slot or -1.
-[[nodiscard]] MeshLightUniforms mesh_light_uniforms(const Light3D& light, int shadow_slot);
+[[nodiscard]] MeshLightUniforms mesh_light_uniforms(const Light3D& light, int shadow_slot,
+                                                    int ray_slot = -1);
 // How many of the scene's lights a frame draws, from the first: all of them in Forward+, at most
 // kMaxLights3D in Compatibility.
 [[nodiscard]] std::size_t lights_drawn(const Scene3D& scene);
@@ -316,6 +320,10 @@ struct MeshDraw {
 // with shadow set take the directional or positional slots in order while there are some; the
 // rest, and lights without shadows, have -1.
 [[nodiscard]] std::vector<int> shadow_slots(const Scene3D& scene);
+// Each light's ray-traced shadow slot (RayTracing3D), or -1: in Forward+ with ray-traced shadows,
+// drawn lights with shadow set and a shadow opacity take the first kMaxRayShadowLights slots in
+// order. Every device works them out, whether or not it traces rays.
+[[nodiscard]] std::vector<int> ray_shadow_slots(const Scene3D& scene);
 
 // A rect of a shadow atlas, in texels from its top left.
 struct AtlasRect {
@@ -483,7 +491,7 @@ struct MeshMaps {
     // (RGB premultiplied, then how much of the sky's they replace) when they say it draws them.
     std::span<const float> ao;
     std::span<const float> ssr;
-    std::uint32_t ao_width = 0; // the target's width, for both
+    std::uint32_t ao_width = 0; // the target's width, for these and ray_shadows
     // Forward+'s reflection probes, when the scene's uniforms say the frame has some, and each
     // atlas cube's levels.
     std::span<const MeshProbeUniforms> probes;
@@ -493,7 +501,15 @@ struct MeshMaps {
     // Forward+'s volumetric fog (sample_fog_volume), when the scene's uniforms say the frame has
     // it.
     std::span<const Float4> fog;
+    // Forward+'s ray-traced shadows, when the scene's uniforms say the frame has them: what the
+    // screen texture's layers from 2 on hold, as run_ray_shadows makes them (src/ray_shadows.hpp),
+    // kMaxRayShadowLights values a pixel in rows from the top.
+    std::span<const float> ray_shadows;
 };
+// A pixel's visibility of the light in a ray-traced shadow slot, from MeshMaps::ray_shadows, as
+// add_light in shaders/mesh.hlsl loads it.
+[[nodiscard]] float ray_shadow(const MeshMaps& maps, std::size_t slot, std::uint32_t x,
+                               std::uint32_t y);
 
 // A half-float texture's texels, as floats: RGBA, in rows from the top.
 struct FloatImage {

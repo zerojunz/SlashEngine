@@ -341,6 +341,31 @@ json::Value mesh_lod_schema() {
     return out;
 }
 
+// rendering.ray_tracing: the ray-traced effects devices that trace rays draw.
+json::Value ray_tracing_schema() {
+    json::Value shadows;
+    shadows["type"] = "boolean";
+    shadows["default"] = false;
+    shadows["description"] =
+        "Opaque meshes take their lights' shadows from rays through every mesh, in Forward+, on "
+        "devices that trace rays; others use shadow maps.";
+    json::Value samples;
+    samples["type"] = "integer";
+    samples["minimum"] = 1;
+    samples["maximum"] = render::kMaxRayShadowSamples;
+    samples["default"] = render::RayTracing3D{}.shadow_samples;
+    samples["description"] =
+        "Rays a pixel sends toward each light, spread across its size (light_size, "
+        "light_angular_distance): more makes soft shadows less noisy and costs more.";
+    json::Value out;
+    out["type"] = "object";
+    out["additionalProperties"] = false;
+    out["description"] = "Ray-traced effects, drawn by devices that trace rays.";
+    out["properties"]["shadows"] = std::move(shadows);
+    out["properties"]["shadow_samples"] = std::move(samples);
+    return out;
+}
+
 // rendering.occlusion_culling, as Godot's rendering/occlusion_culling settings.
 json::Value occlusion_culling_schema() {
     json::Value use;
@@ -550,6 +575,7 @@ json::Value project_schema() {
     rendering["properties"]["anti_aliasing"] = anti_aliasing_schema();
     rendering["properties"]["mesh_lod"] = mesh_lod_schema();
     rendering["properties"]["occlusion_culling"] = occlusion_culling_schema();
+    rendering["properties"]["ray_tracing"] = ray_tracing_schema();
     json::Value compress_mode;
     compress_mode["enum"] = json::Array{"lossless", "vram_compressed", "vram_uncompressed"};
     compress_mode["description"] =
@@ -907,6 +933,7 @@ Result<Project> parse_project(const json::Value& project) {
         out.decal_filter = render::decal_filter(*rendering);
         out.mesh_lod_threshold = render::mesh_lod_threshold(*rendering);
         out.occlusion_culling = render::occlusion_culling(*rendering);
+        out.ray_tracing = render::ray_tracing(*rendering);
         if (const json::Value* textures = rendering->find("textures"); textures != nullptr) {
             if (const json::Value* mode = textures->find("compress_mode"); mode != nullptr) {
                 out.texture_import.compress_mode = mode->as_string();

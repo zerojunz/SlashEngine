@@ -1,0 +1,6 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":6,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"colors":[[0.2,0.235,0.29,1],[0.2,0.235,0.29,1],[0.651,0.608,0.533,1]],"drawn":{"meshes":3},"height":90,"width":160}}
+{"id":3,"jsonrpc":"2.0","result":{"changed":{"DirectionalLight3D":{"light_angular_distance":10.0}},"id":"sun"}}
+{"id":4,"jsonrpc":"2.0","result":{"colors":[[0.2,0.235,0.29,1],[0.514,0.486,0.447,1],[0.533,0.506,0.459,1]],"drawn":{"meshes":3},"height":90,"width":160}}
+{"id":5,"jsonrpc":"2.0","result":{"changed":{"MeshInstance3D":{"cast_shadow":"off"}},"id":"far_pillar"}}
+{"id":6,"jsonrpc":"2.0","result":{"colors":[[0.671,0.627,0.545,1]],"drawn":{"meshes":3},"height":90,"path":"shots/avenue.png","width":160}}

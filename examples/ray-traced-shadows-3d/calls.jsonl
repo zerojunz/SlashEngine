@@ -1,0 +1,6 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture","params":{"points":[[75,20],[75,61],[100,40]]}}
+{"jsonrpc":"2.0","id":3,"method":"component.set","params":{"id":"sun","components":{"DirectionalLight3D":{"light_angular_distance":10}}}}
+{"jsonrpc":"2.0","id":4,"method":"frame.capture","params":{"points":[[75,61],[84,57],[86,59]]}}
+{"jsonrpc":"2.0","id":5,"method":"component.set","params":{"id":"far_pillar","components":{"MeshInstance3D":{"cast_shadow":"off"}}}}
+{"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"points":[[75,20]],"path":"shots/avenue.png"}}

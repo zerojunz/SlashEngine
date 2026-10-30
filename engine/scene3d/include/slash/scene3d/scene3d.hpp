@@ -238,6 +238,7 @@ public:
     // than mesh_lod_threshold pixels, as Godot's rendering/mesh_lod/lod_change/threshold_pixels.
     // With occlusion on, meshes the OccluderInstance3Ds hide from the camera aren't drawn, though
     // they still cast shadows and show in reflection probes, as Godot's raycast occlusion culling.
+    // ray_tracing sets the frame's ray-traced effects, which devices that trace rays draw.
     [[nodiscard]] std::optional<Frame3D>
     prepare(const world::World& world, float width, float height, double interpolation,
             render::Color clear, const render::ShadowSettings& shadows = {}, double time = 0.0,
@@ -249,7 +250,8 @@ public:
             const std::optional<render::Fsr2Scaling>& fsr2 = std::nullopt,
             render::DecalFilter decal_filter = render::DecalFilter::LinearMipmaps,
             const render::VolumetricFogSettings& volumetric_fog = {},
-            float mesh_lod_threshold = 1.0F, const render::OcclusionCulling& occlusion = {});
+            float mesh_lod_threshold = 1.0F, const render::OcclusionCulling& occlusion = {},
+            const render::RayTracing3D& ray_tracing = {});
     // Where GPUParticles3D's process materials load from, and the seconds a tick lasts, which
     // particles drawn between ticks are moved back by.
     void set_particle_processes(ParticleProcessSource processes) {

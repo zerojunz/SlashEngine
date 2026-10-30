@@ -1,0 +1,82 @@
+{
+  "entities": {
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 60.0
+        },
+        "Transform3D": {
+          "position": [0.0, 9.0, 7.0],
+          "rotation": [-0.7, 0.0, 0.0]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "WorldEnvironment": {
+          "ambient_light_color": [0.5, 0.6, 0.8, 1.0],
+          "ambient_light_energy": 0.3,
+          "ambient_light_source": "color",
+          "background_color": [0.4, 0.6, 0.9, 1.0],
+          "background_mode": "color"
+        }
+      }
+    },
+    "far_pillar": {
+      "components": {
+        "BoxMesh": {
+          "size": [1.0, 3.0, 1.0]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.85, 0.85, 0.8, 1.0]
+        },
+        "Transform3D": {
+          "position": [-3.0, 1.5, -14.0]
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "MeshInstance3D": {},
+        "PlaneMesh": {
+          "size": [30.0, 60.0]
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.75, 0.72, 0.65, 1.0]
+        },
+        "Transform3D": {
+          "position": [0.0, 0.0, -15.0]
+        }
+      }
+    },
+    "near_pillar": {
+      "components": {
+        "BoxMesh": {
+          "size": [1.0, 3.0, 1.0]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.85, 0.85, 0.8, 1.0]
+        },
+        "Transform3D": {
+          "position": [-3.0, 1.5, 1.0]
+        }
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {
+          "directional_shadow_max_distance": 14.0,
+          "light_color": [1.0, 0.95, 0.85, 1.0],
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "rotation": [-0.7, -1.2, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}
