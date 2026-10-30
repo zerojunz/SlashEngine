@@ -1,5 +1,6 @@
 // The graphics extensions OpenXR sessions draw with, ported from Godot's modules/openxr/extensions
-// (OpenXRVulkanExtension, OpenXRD3D12Extension): each function names the one it follows.
+// (OpenXRVulkanExtension, OpenXRD3D12Extension, OpenXROpenGLExtension): each function names the
+// one it follows.
 #include "openxr_graphics.hpp"
 
 #include <vulkan/vulkan_core.h>
@@ -10,6 +11,12 @@
 #if !defined(XR_USE_PLATFORM_WIN32) // the loader's target defines it for what links it
 #define XR_USE_PLATFORM_WIN32
 #endif
+#elif defined(__ANDROID__)
+// Android is Linux too, so it comes first. The loader's build defines XR_USE_PLATFORM_ANDROID,
+// whose declarations name JNI's types.
+#include <EGL/egl.h>
+#include <jni.h>
+#define XR_USE_GRAPHICS_API_OPENGL_ES
 #elif defined(__linux__)
 // EGL's types, from the headers SDL carries, without X11's; and the few of Xlib and GLX the Xlib
 // binding names, as handles of their size, so building needs neither's headers.
@@ -248,7 +255,7 @@ private:
 };
 #endif
 
-#if defined(_WIN32) || defined(__linux__)
+#if defined(_WIN32) || (defined(__linux__) && !defined(__ANDROID__))
 class OpenGL final : public OpenXRGraphics {
 public:
     [[nodiscard]] std::string_view extension() const override {
@@ -372,14 +379,105 @@ private:
 };
 #endif
 
+#if defined(__ANDROID__)
+class OpenGLES final : public OpenXRGraphics {
+public:
+    [[nodiscard]] std::string_view extension() const override {
+        return XR_KHR_OPENGL_ES_ENABLE_EXTENSION_NAME;
+    }
+    [[nodiscard]] std::string_view driver() const override { return "opengl_es"; }
+
+    // OpenXROpenGLExtension::check_graphics_api_support under ANDROID_ENABLED: the runtime's
+    // OpenGL ES versions. The device's context is OpenGL ES 3.0 or later.
+    Result<void> prepare(XrInstance instance, XrSystemId system,
+                         render::XrDeviceHooks& /*hooks*/) override {
+        const auto requirements = instance_call<PFN_xrGetOpenGLESGraphicsRequirementsKHR>(
+            instance, "xrGetOpenGLESGraphicsRequirementsKHR");
+        if (requirements == nullptr) {
+            return make_error(ErrorCode::PlatformFailure,
+                              "OpenXR: the runtime lacks XR_KHR_opengl_es_enable's functions");
+        }
+        auto needed =
+            made<XrGraphicsRequirementsOpenGLESKHR>(XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_ES_KHR);
+        if (const XrResult result = requirements(instance, system, &needed); XR_FAILED(result)) {
+            return failed("the runtime's OpenGL ES requirements couldn't be read", result);
+        }
+        if (needed.minApiVersionSupported > XR_MAKE_VERSION(3, 2, 0)) {
+            return make_error(ErrorCode::PlatformFailure,
+                              "OpenXR: the runtime needs an OpenGL ES newer than 3.2");
+        }
+        return {};
+    }
+
+    // OpenXROpenGLExtension::set_session_create_and_get_next_pointer under ANDROID_ENABLED: the
+    // context's EGL display, config and context.
+    Result<const void*> binding(const render::NativeDevice& device,
+                                const std::set<std::string, std::less<>>& /*enabled*/) override {
+        if (device.gl != render::NativeDevice::GlSystem::Egl) {
+            return make_error(ErrorCode::PlatformFailure,
+                              "OpenXR: the OpenGL ES context isn't EGL's");
+        }
+        binding_ = made<XrGraphicsBindingOpenGLESAndroidKHR>(
+            XR_TYPE_GRAPHICS_BINDING_OPENGL_ES_ANDROID_KHR);
+        binding_.display = static_cast<EGLDisplay>(device.instance);
+        binding_.config = static_cast<EGLConfig>(device.physical_device);
+        binding_.context = static_cast<EGLContext>(device.device);
+        return static_cast<const void*>(&binding_);
+    }
+
+    [[nodiscard]] std::vector<std::int64_t> formats() const override {
+        constexpr std::int64_t kSrgb8Alpha8 = 0x8C43; // GL_SRGB8_ALPHA8
+        constexpr std::int64_t kRgba8 = 0x8058;       // GL_RGBA8
+        return {kSrgb8Alpha8, kRgba8};
+    }
+
+    // OpenXROpenGLExtension::get_swapchain_image_data under ANDROID_ENABLED.
+    Result<std::vector<void*>> images(XrSwapchain swapchain) override {
+        std::uint32_t count = 0;
+        if (const XrResult result = xrEnumerateSwapchainImages(swapchain, 0, &count, nullptr);
+            XR_FAILED(result)) {
+            return failed("failed to get swapchain image count", result);
+        }
+        std::vector<XrSwapchainImageOpenGLESKHR> images(
+            count, made<XrSwapchainImageOpenGLESKHR>(XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_ES_KHR));
+        if (const XrResult result = xrEnumerateSwapchainImages(
+                swapchain, count, &count,
+                reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
+            XR_FAILED(result)) {
+            return failed("failed to get swapchain images", result);
+        }
+        std::vector<void*> out;
+        out.reserve(images.size());
+        for (const XrSwapchainImageOpenGLESKHR& image : images) {
+            // A texture's name, carried as native images are.
+            out.push_back(reinterpret_cast<void*>( // NOLINT(performance-no-int-to-ptr)
+                std::uintptr_t{image.image}));
+        }
+        return out;
+    }
+
+private:
+    XrGraphicsBindingOpenGLESAndroidKHR binding_ =
+        made<XrGraphicsBindingOpenGLESAndroidKHR>(XR_TYPE_GRAPHICS_BINDING_OPENGL_ES_ANDROID_KHR);
+};
+#endif
+
 } // namespace
+
+std::unique_ptr<OpenXRGraphics> make_opengl_es_graphics() {
+#if defined(__ANDROID__)
+    return std::make_unique<OpenGLES>();
+#else
+    return nullptr;
+#endif
+}
 
 std::unique_ptr<OpenXRGraphics> make_vulkan_graphics() {
     return std::make_unique<Vulkan>();
 }
 
 std::unique_ptr<OpenXRGraphics> make_opengl_graphics() {
-#if defined(_WIN32) || defined(__linux__)
+#if defined(_WIN32) || (defined(__linux__) && !defined(__ANDROID__))
     return std::make_unique<OpenGL>();
 #else
     return nullptr;

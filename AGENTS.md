@@ -2219,7 +2219,7 @@ camera, which `frame.capture`'s `xr_view` does at the view's render target size.
 
 OpenXR is Godot's `OpenXRAPI` and `OpenXRInterface` (`slash/xr/openxr.hpp`, `src/openxr.cpp`),
 on the Khronos loader built from its sources as `slash_openxr` (`cmake/Dependencies.cmake`; not
-on the web, Android or iOS yet, where `src/openxr_none.cpp` says so): the instance (1.1, then
+on the web or iOS yet, where `src/openxr_none.cpp` says so): the instance (1.1, then
 1.0), the system, the session's state machine (begun on `READY`, ended on `STOPPING`), the play
 space (`local_floor` emulated from the stage and local spaces), Godot's default action map
 (`src/action_map.cpp`, `xr::default_action_map`; vendor profiles only with their extension),
@@ -2246,6 +2246,15 @@ lost poses, recentering, exit, eye sizes and pixels to read back) and logging th
 (`FAKE_OPENXR_LOG`); offered `XR_KHR_vulkan_enable2`, or `XR_KHR_opengl_enable` and
 `XR_MNDX_egl_enable`, it hands out Vulkan or OpenGL swapchains and logs the probed pixels of each
 eye it is shown. `examples/openxr-runtime` runs a session on it.
+
+On Android the loader is built with its JNI parts (jnipp and android-jni-wrappers, which need
+exceptions) and asks the system's runtime broker for the runtime; `src/openxr_platform.cpp`
+(Godot's `OpenXRAndroidExtension`) gives `xrInitializeLoaderKHR` and
+`XR_KHR_android_create_instance` the Java VM and SDL's activity, and the `OpenGLES` graphics
+binds the `opengl_es` driver's EGL context (`XR_KHR_opengl_es_enable`). Exports of games with
+`xr.openxr.enabled` (`SLASH_GAME_XR`) add the loader's permissions and queries, head tracking and
+the immersive categories to the manifest. No runtime reaches CI's emulator, so a headless game
+only looks for one (`xr::openxr_runtime_extensions`) and reports it in its summary's `xr`.
 
 ## AI providers
 

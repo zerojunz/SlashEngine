@@ -1,4 +1,4 @@
-// Builds without the OpenXR loader (the web, Android and iOS): no OpenXR interface.
+// Builds without the OpenXR loader (the web and iOS): no OpenXR interface.
 #include "slash/xr/openxr.hpp"
 
 namespace slash::xr {
@@ -8,6 +8,10 @@ bool openxr_available() {
 }
 
 void set_openxr_runtime(std::string_view /*manifest*/) {}
+
+Result<std::vector<std::string>> openxr_runtime_extensions() {
+    return make_error(ErrorCode::NotFound, "OpenXR: this platform's build has no OpenXR loader");
+}
 
 std::shared_ptr<Interface> make_openxr_interface() {
     return nullptr;
