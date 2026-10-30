@@ -19,7 +19,8 @@ The guest closes with a code and reason:
   guest: closed, code 4000, reason "see you"
   server: peer_disconnected the guest
 
-Three worlds play over WebSocket; alice's call reaches bob through the server:
+Three worlds play over secure WebSocket; alice's call reaches bob through the server:
+  the server speaks wss://, with a certificate it made for itself
   alice and bob each know 2 peers: the server and the other client
   bob heard "hi, bob" from a client
   the server heard "hi, bob" from a client

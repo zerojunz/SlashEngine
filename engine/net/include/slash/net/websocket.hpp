@@ -1,9 +1,11 @@
 #pragma once
 
 #include "slash/net/peer.hpp"
+#include "slash/net/tls.hpp"
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -21,8 +23,9 @@ enum class WebSocketState : std::uint8_t { Connecting, Open, Closing, Closed };
 // How a message is sent: as UTF-8 text or as bytes.
 enum class WriteMode : std::uint8_t { Text, Binary };
 
-// One WebSocket connection, as Godot's WebSocketPeer: ws:// URLs over TCP with wslay's framing
-// everywhere but the web, where the browser's WebSocket connects (to ws:// and wss:// URLs).
+// One WebSocket connection, as Godot's WebSocketPeer: ws:// and wss:// URLs over TCP, wss:// with
+// TLS by mbedTLS (as Godot's StreamPeerMbedTLS), and wslay's framing everywhere but the web, where
+// the browser's WebSocket connects.
 // poll() sends and receives; messages wait in order until get_packet() takes them. IPv4 only.
 class WebSocketPeer {
 public:
@@ -31,8 +34,10 @@ public:
     WebSocketPeer(const WebSocketPeer&) = delete;
     WebSocketPeer& operator=(const WebSocketPeer&) = delete;
 
-    // Starts connecting to a ws:// URL ("ws://host:port/path"); open once ready_state() says so.
-    Result<void> connect_to_url(std::string_view url);
+    // Starts connecting to a ws:// or wss:// URL ("ws://host:port/path"); open once
+    // ready_state() says so. tls says what a wss:// connection trusts (the system's certificates
+    // by default); the browser decides on the web.
+    Result<void> connect_to_url(std::string_view url, const TlsOptions& tls = {});
     // Takes in what arrived and sends what is waiting; call it once a frame or tick.
     void poll();
     [[nodiscard]] WebSocketState ready_state() const;
@@ -92,10 +97,11 @@ public:
     ~WebSocketMultiplayerPeer() override;
 
     // Listens on a port (0 picks a free one; local_port() says which) on an IPv4 address ("*"
-    // for any).
-    Result<void> create_server(int port, std::string_view bind_address = "*");
-    // Connects to a server's ws:// URL; connected once poll() reports peer 1.
-    Result<void> create_client(std::string_view url);
+    // for any), speaking TLS (wss://) with a server's TlsOptions.
+    Result<void> create_server(int port, std::string_view bind_address = "*",
+                               std::optional<TlsOptions> tls = std::nullopt);
+    // Connects to a server's ws:// or wss:// URL; connected once poll() reports peer 1.
+    Result<void> create_client(std::string_view url, const TlsOptions& tls = {});
     [[nodiscard]] int local_port() const;
     // A connected peer's WebSocket (on a client, peer 1's), or null, as Godot's get_peer.
     [[nodiscard]] WebSocketPeer* peer(int id) const;
