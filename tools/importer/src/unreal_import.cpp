@@ -5,6 +5,8 @@
 
 #include "slash/animation/animation.hpp"
 #include "slash/animation/tree.hpp"
+#include "slash/canvas/gpu_particles.hpp"
+#include "slash/core/text.hpp"
 #include "slash/importer/scripts.hpp"
 #include "slash/importer/unreal.hpp"
 #include "slash/platform/file.hpp"
@@ -147,6 +149,252 @@ const json::Array& items(const json::Value& value, std::string_view key) {
     static const json::Array kNone;
     const json::Value* found = member(value, key);
     return found != nullptr && found->is_array() ? found->as_array() : kNone;
+}
+
+// --- Unreal's text values ---
+
+std::string_view trimmed(std::string_view text) {
+    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.front())) != 0) {
+        text.remove_prefix(1);
+    }
+    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back())) != 0) {
+        text.remove_suffix(1);
+    }
+    return text;
+}
+
+// Where each of text's top-level parts ends: at commas outside quotes and parentheses.
+std::vector<std::string_view> top_level_parts(std::string_view text) {
+    std::vector<std::string_view> out;
+    std::size_t start = 0;
+    int depth = 0;
+    bool quoted = false;
+    for (std::size_t i = 0; i <= text.size(); ++i) {
+        const char c = i < text.size() ? text[i] : ',';
+        if (c == '"' && (i == 0 || text[i - 1] != '\\')) {
+            quoted = !quoted;
+        } else if (!quoted && c == '(') {
+            ++depth;
+        } else if (!quoted && c == ')') {
+            --depth;
+        } else if (!quoted && depth == 0 && c == ',') {
+            if (const std::string_view part = trimmed(text.substr(start, i - start));
+                !part.empty()) {
+                out.push_back(part);
+            }
+            start = i + 1;
+        }
+    }
+    return out;
+}
+
+// Where a part's '=' is, outside quotes and parentheses; npos for an item with no key.
+std::size_t key_end(std::string_view part) {
+    int depth = 0;
+    bool quoted = false;
+    for (std::size_t i = 0; i < part.size(); ++i) {
+        const char c = part[i];
+        if (c == '"') {
+            quoted = !quoted;
+        } else if (!quoted && c == '(') {
+            ++depth;
+        } else if (!quoted && c == ')') {
+            --depth;
+        } else if (!quoted && depth == 0 && c == '=') {
+            return i;
+        }
+    }
+    return std::string_view::npos;
+}
+
+// A value as Unreal writes it as text (ExportText: (Key=Value,...), (Item,Item), "quoted" or a
+// bare word) as JSON: structs as objects, lists as arrays, the rest as strings. Keys written with
+// an index, Inputs(0)=..., gather into arrays.
+json::Value text_tree(std::string_view text) {
+    text = trimmed(text);
+    if (text.size() >= 2 && text.front() == '"' && text.back() == '"') {
+        return std::string(text.substr(1, text.size() - 2));
+    }
+    if (text.size() < 2 || text.front() != '(' || text.back() != ')') {
+        return std::string(text);
+    }
+    const std::vector<std::string_view> parts = top_level_parts(text.substr(1, text.size() - 2));
+    const bool keyed = std::ranges::any_of(
+        parts, [](std::string_view part) { return key_end(part) != std::string_view::npos; });
+    if (!keyed) {
+        json::Array list;
+        for (const std::string_view part : parts) {
+            list.push_back(text_tree(part));
+        }
+        return list;
+    }
+    json::Object out;
+    for (const std::string_view part : parts) {
+        const std::size_t equals = key_end(part);
+        if (equals == std::string_view::npos) {
+            continue;
+        }
+        std::string key(trimmed(part.substr(0, equals)));
+        json::Value value = text_tree(part.substr(equals + 1));
+        if (const std::size_t open = key.find('(');
+            open != std::string::npos && key.back() == ')') {
+            key.resize(open);
+            json::Value& list = out[key];
+            if (!list.is_array()) {
+                list = json::Array{};
+            }
+            list.as_array().push_back(std::move(value));
+            continue;
+        }
+        out[key] = std::move(value);
+    }
+    return out;
+}
+
+// A name's letters and digits, lowercased: "Spawn Rate", "SpawnRate" and "spawn_rate" alike.
+std::string plain_name(std::string_view name) {
+    std::string out;
+    for (const char c : name) {
+        if (std::isalnum(static_cast<unsigned char>(c)) != 0) {
+            out += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+    }
+    return out;
+}
+
+// Keys that name or describe a value rather than hold it.
+bool describing_key(std::string_view key) {
+    static constexpr std::array<std::string_view, 14> kKeys{
+        "name",  "type",       "typedef", "typedefinition", "mode", "kind", "script",
+        "class", "structtype", "struct",  "version",        "guid", "id",   "valuemode"};
+    return contains(kKeys, std::string_view(plain_name(key)));
+}
+
+std::optional<double> number_text(const json::Value& value) {
+    if (!value.is_string()) {
+        return std::nullopt;
+    }
+    std::string_view text = trimmed(value.as_string());
+    if (text.ends_with('f') || text.ends_with('F')) {
+        text.remove_suffix(1);
+    }
+    return parse_decimal(text);
+}
+
+// The first number in a tree, depth first, past keys that only describe it.
+std::optional<double> number_in(const json::Value& tree) {
+    if (const auto found = number_text(tree)) {
+        return found;
+    }
+    if (tree.is_array()) {
+        for (const json::Value& item : tree.as_array()) {
+            if (const auto found = number_in(item)) {
+                return found;
+            }
+        }
+    }
+    if (tree.is_object()) {
+        for (const auto& [key, item] : tree.as_object()) {
+            if (describing_key(key)) {
+                continue;
+            }
+            if (const auto found = number_in(item)) {
+                return found;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+// The fields of a struct in a tree whose keys are all of names (X, Y, Z, say), as numbers.
+std::optional<std::vector<double>> fields_in(const json::Value& tree,
+                                             std::initializer_list<std::string_view> names,
+                                             std::size_t needed) {
+    if (tree.is_object()) {
+        std::vector<double> out;
+        for (const std::string_view name : names) {
+            const json::Value* found = nullptr;
+            for (const auto& [key, item] : tree.as_object()) {
+                if (plain_name(key) == name) {
+                    found = &item;
+                }
+            }
+            const auto value = found != nullptr ? number_text(*found) : std::nullopt;
+            if (!value) {
+                break;
+            }
+            out.push_back(*value);
+        }
+        if (out.size() >= needed) {
+            return out;
+        }
+        for (const auto& [key, item] : tree.as_object()) {
+            if (auto found = fields_in(item, names, needed)) {
+                return found;
+            }
+        }
+    }
+    if (tree.is_array()) {
+        for (const json::Value& item : tree.as_array()) {
+            if (auto found = fields_in(item, names, needed)) {
+                return found;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+// Every word a tree holds, depth first.
+void words_in(const json::Value& tree, std::vector<std::string>& out) {
+    if (tree.is_string()) {
+        out.push_back(tree.as_string());
+    } else if (tree.is_array()) {
+        for (const json::Value& item : tree.as_array()) {
+            words_in(item, out);
+        }
+    } else if (tree.is_object()) {
+        for (const auto& [key, item] : tree.as_object()) {
+            words_in(item, out);
+        }
+    }
+}
+
+// The node of a tree whose name, a "Name" field, is one of names (as plain names).
+const json::Value* named_node(const json::Value& tree,
+                              std::initializer_list<std::string_view> names) {
+    if (tree.is_object()) {
+        for (const auto& [key, item] : tree.as_object()) {
+            if (plain_name(key) == "name" && item.is_string() &&
+                contains(names, std::string_view(plain_name(item.as_string())))) {
+                return &tree;
+            }
+        }
+        for (const auto& [key, item] : tree.as_object()) {
+            if (const json::Value* found = named_node(item, names)) {
+                return found;
+            }
+        }
+    }
+    if (tree.is_array()) {
+        for (const json::Value& item : tree.as_array()) {
+            if (const json::Value* found = named_node(item, names)) {
+                return found;
+            }
+        }
+    }
+    return nullptr;
+}
+
+// A node's own value: its "Value" field where it has one.
+const json::Value& value_field(const json::Value& node) {
+    if (node.is_object()) {
+        for (const auto& [key, item] : node.as_object()) {
+            if (plain_name(key) == "value") {
+                return item;
+            }
+        }
+    }
+    return node;
 }
 
 // --- Axes ---
@@ -1268,8 +1516,9 @@ private:
             problems_.add(cls, where, "it doesn't convert");
             return true;
         }
-        if (cls.find("Niagara") != std::string::npos || cls == "Emitter") {
-            problems_.add("particle system " + cls, where, "particles don't convert yet");
+        if (cls == "Emitter") {
+            problems_.add("Cascade particle system", where,
+                          "Cascade particles don't convert; Niagara systems do");
             return true;
         }
         return false;
@@ -1875,6 +2124,10 @@ private:
             convert_light(*light, entity, level, where);
             return;
         }
+        if (const json::Value* niagara = member(comp, "niagara")) {
+            convert_niagara(*niagara, level, id, where);
+            return;
+        }
         if (const json::Value* audio = member(comp, "audio")) {
             convert_audio(*audio, entity, where);
             return;
@@ -1910,6 +2163,675 @@ private:
             return; // places things
         }
         problems_.add("component " + cls, where, "it has no counterpart yet");
+    }
+
+    // --- Niagara ---
+
+    // A module input as the export read it: its value, and the chain of dynamic inputs that
+    // makes it where one does, each as a tree of the text Unreal writes of it.
+    struct NiagaraInput {
+        json::Value value;
+        json::Value chain;
+    };
+
+    struct NiagaraModule {
+        std::string kind;   // its script's name, else its own, as a plain name
+        std::string label;  // as Unreal shows it
+        std::string script; // the stack it runs in: ParticleSpawnScript, say
+        std::map<std::string, NiagaraInput> inputs; // by plain name
+    };
+
+    // The emitter being converted: its system's user parameters by plain name ("userrate" for
+    // User.Rate), and where it is, for the report.
+    struct NiagaraEmitter {
+        std::map<std::string, json::Value> user;
+        std::string where;
+    };
+
+    // What a module's input holds: its own value's tree, or that of the user parameter it reads;
+    // null, reported, for one linked to anything else.
+    const json::Value* niagara_tree(const NiagaraEmitter& emitter, const NiagaraModule& module,
+                                    const NiagaraInput& input, std::string_view name) {
+        std::vector<std::string> words;
+        words_in(input.value, words);
+        static constexpr std::array<std::string_view, 7> kNamespaces{
+            "User.", "Particles.", "Emitter.", "System.", "Engine.", "Module.", "Transient."};
+        for (const std::string& word : words) {
+            if (!std::ranges::any_of(
+                    kNamespaces, [&](std::string_view space) { return word.starts_with(space); })) {
+                continue;
+            }
+            if (const auto user = emitter.user.find(plain_name(word)); user != emitter.user.end()) {
+                return &user->second;
+            }
+            problems_.add("Niagara input linked to " + word, emitter.where,
+                          module.label + "'s " + std::string(name) +
+                              " takes its value from a parameter; it keeps the default");
+            return nullptr;
+        }
+        return &input.value;
+    }
+
+    [[nodiscard]] const NiagaraInput* niagara_input(const NiagaraModule& module,
+                                                    std::string_view name) const {
+        const auto found = module.inputs.find(plain_name(name));
+        return found == module.inputs.end() ? nullptr : &found->second;
+    }
+
+    // An input's two ends, by the fields read of each: the same twice for a value, a random range
+    // dynamic input's Minimum and Maximum. Nullopt, reported, for what can't be read.
+    template <typename T, typename Read>
+    std::optional<std::pair<T, T>> niagara_ends(const NiagaraEmitter& emitter,
+                                                const NiagaraModule& module, std::string_view name,
+                                                const Read& read) {
+        const NiagaraInput* input = niagara_input(module, name);
+        if (input == nullptr) {
+            return std::nullopt;
+        }
+        const std::string what = module.label + "'s " + std::string(name);
+        if (!input->chain.is_null()) {
+            const json::Value* low = named_node(input->chain, {"minimum", "min"});
+            const json::Value* high = named_node(input->chain, {"maximum", "max"});
+            if (low != nullptr && high != nullptr) {
+                auto a = read(value_field(*low));
+                auto b = read(value_field(*high));
+                if (a && b) {
+                    return std::pair<T, T>{std::move(*a), std::move(*b)};
+                }
+            }
+            problems_.add("Niagara dynamic input", emitter.where,
+                          what + " is made by a dynamic input other than a random range; it "
+                                 "keeps the default");
+            return std::nullopt;
+        }
+        const json::Value* tree = niagara_tree(emitter, module, *input, name);
+        if (tree == nullptr) {
+            return std::nullopt;
+        }
+        if (auto value = read(*tree)) {
+            return std::pair<T, T>{*value, *value};
+        }
+        problems_.add("Niagara input that couldn't be read", emitter.where,
+                      what + ": " + json::write(input->value, json::Style::Compact));
+        return std::nullopt;
+    }
+
+    std::optional<std::pair<double, double>> niagara_numbers(const NiagaraEmitter& emitter,
+                                                             const NiagaraModule& module,
+                                                             std::string_view name) {
+        return niagara_ends<double>(emitter, module, name,
+                                    [](const json::Value& tree) { return number_in(tree); });
+    }
+
+    std::optional<std::pair<V3, V3>> niagara_vectors(const NiagaraEmitter& emitter,
+                                                     const NiagaraModule& module,
+                                                     std::string_view name) {
+        return niagara_ends<V3>(emitter, module, name,
+                                [](const json::Value& tree) -> std::optional<V3> {
+                                    const auto found = fields_in(tree, {"x", "y", "z"}, 3);
+                                    if (!found) {
+                                        return std::nullopt;
+                                    }
+                                    return V3{(*found)[0], (*found)[1], (*found)[2]};
+                                });
+    }
+
+    // A two-number input (a sprite's size), as x and y.
+    std::optional<std::pair<double, double>> niagara_pair(const NiagaraEmitter& emitter,
+                                                          const NiagaraModule& module,
+                                                          std::string_view name) {
+        const auto ends =
+            niagara_ends<std::vector<double>>(emitter, module, name, [](const json::Value& tree) {
+                return fields_in(tree, {"x", "y"}, 2);
+            });
+        if (!ends) {
+            return std::nullopt;
+        }
+        return std::pair<double, double>{(ends->first[0] + ends->second[0]) / 2.0,
+                                         (ends->first[1] + ends->second[1]) / 2.0};
+    }
+
+    std::optional<std::array<double, 4>> niagara_color(const NiagaraEmitter& emitter,
+                                                       const NiagaraModule& module,
+                                                       std::string_view name) {
+        const auto ends =
+            niagara_ends<std::vector<double>>(emitter, module, name, [](const json::Value& tree) {
+                return fields_in(tree, {"r", "g", "b", "a"}, 3);
+            });
+        if (!ends) {
+            return std::nullopt;
+        }
+        std::array<double, 4> out{0.0, 0.0, 0.0, 1.0};
+        for (std::size_t i = 0; i < ends->first.size() && i < 4; ++i) {
+            out.at(i) = ends->first[i];
+        }
+        if (ends->first != ends->second) {
+            problems_.add("Niagara random color", emitter.where,
+                          "particles start at the range's first color");
+        }
+        return out;
+    }
+
+    // The plain words an input holds, an enum's among them.
+    std::vector<std::string> niagara_words(const NiagaraEmitter& emitter,
+                                           const NiagaraModule& module, std::string_view name) {
+        std::vector<std::string> out;
+        const NiagaraInput* input = niagara_input(module, name);
+        if (input == nullptr) {
+            return out;
+        }
+        if (const json::Value* tree = niagara_tree(emitter, module, *input, name)) {
+            std::vector<std::string> words;
+            words_in(*tree, words);
+            for (const std::string& word : words) {
+                out.push_back(plain_name(word));
+            }
+        }
+        return out;
+    }
+
+    static bool has_word(const std::vector<std::string>& words, std::string_view word) {
+        return std::ranges::any_of(
+            words, [&](const std::string& w) { return w.find(word) != std::string::npos; });
+    }
+
+    // A direction or offset in Unreal's axes as one in the world's, in meters when it is a length.
+    [[nodiscard]] json::Array niagara_vector(const V3& v, bool length) const {
+        V3 out = transform_point(axes_matrix_, v);
+        if (length) {
+            for (double& value : out) {
+                value *= axes_.scale;
+            }
+        }
+        return triple(out);
+    }
+
+    // A Niagara system as Godot's particles: each enabled emitter becomes a CPUParticles3D, or a
+    // GPUParticles3D with a .process_material.json file when Unreal simulates it on the GPU, on
+    // the component's entity, or on an entity of its own under it when there are several.
+    void convert_niagara(const json::Value& niagara, Level& level, const std::string& id,
+                         const std::string& where) {
+        const std::string package = text(niagara, "system");
+        const json::Value* systems = member(export_, "niagara_systems");
+        const json::Value* system =
+            systems != nullptr && !package.empty() ? member(*systems, package) : nullptr;
+        if (system == nullptr) {
+            problems_.add("Niagara component with no system", where, "it emits nothing");
+            return;
+        }
+        if (member(*system, "emitters") == nullptr) {
+            return; // the export reported why
+        }
+        NiagaraEmitter context;
+        for (const json::Value& variable : items(*system, "user_variables")) {
+            const json::Value tree =
+                variable.is_string() ? text_tree(variable.as_string()) : variable;
+            // Its name is its "Name" field.
+            if (tree.is_object()) {
+                for (const auto& [key, item] : tree.as_object()) {
+                    if (plain_name(key) == "name" && item.is_string()) {
+                        std::string name = item.as_string();
+                        if (!name.starts_with("User.")) {
+                            name.insert(0, "User.");
+                        }
+                        context.user[plain_name(name)] = tree;
+                    }
+                }
+            }
+        }
+        std::vector<const json::Value*> emitters;
+        for (const json::Value& emitter : items(*system, "emitters")) {
+            if (flag(emitter, "enabled", true)) {
+                emitters.push_back(&emitter);
+            }
+        }
+        if (emitters.empty()) {
+            problems_.add("Niagara system with no enabled emitter", where + " (" + package + ")",
+                          "it emits nothing");
+            return;
+        }
+        for (const json::Value* emitter : emitters) {
+            std::string target = id;
+            if (emitters.size() > 1) {
+                target = take(level.used, id + "_" + snake_case(text(*emitter, "name"), 40));
+                level.entities[target].components["Transform3D"] = json::Object{};
+                level.entities[id].children.push_back(target);
+            }
+            context.where = where;
+            context.where += " (";
+            context.where += package;
+            context.where += ": ";
+            context.where += text(*emitter, "name");
+            context.where += ")";
+            convert_emitter(*emitter, *system, niagara, context, level.entities[target], package);
+        }
+        ++converted_particle_systems_;
+    }
+
+    // Niagara's modules that need nothing of their own here: they move, age and kill particles
+    // as Godot's particles do anyway.
+    static constexpr std::array<std::string_view, 6> kQuietModules{
+        "solveforcesandvelocity", "particlestate",          "systemstate",
+        "emitterlifecycle",       "emitterspawnshapeburst", "updatemeshorientation"};
+
+    // Over-life modules, which change particles by curves the export doesn't read yet.
+    static constexpr std::array<std::string_view, 8> kCurveModules{
+        "scalecolor",    "colorfromcurve", "scalespritesize",           "scalespritesizebyspeed",
+        "scalemeshsize", "subuvanimation", "dynamicmaterialparameters", "colorbyspeed"};
+
+    void convert_emitter(const json::Value& emitter, const json::Value& system,
+                         const json::Value& niagara, const NiagaraEmitter& context, Entity& entity,
+                         const std::string& package) {
+        const std::string& where = context.where;
+        std::vector<NiagaraModule> modules;
+        if (const json::Value* scripts = member(emitter, "scripts");
+            scripts != nullptr && scripts->is_object()) {
+            for (const auto& [script, list] : scripts->as_object()) {
+                if (!list.is_array()) {
+                    continue;
+                }
+                for (const json::Value& entry : list.as_array()) {
+                    if (!flag(entry, "enabled", true)) {
+                        continue;
+                    }
+                    NiagaraModule module;
+                    module.label = text(entry, "module");
+                    module.script = script;
+                    const std::string path = text(entry, "script");
+                    module.kind =
+                        plain_name(path.empty() ? module.label : path.substr(path.rfind('/') + 1));
+                    if (flag(entry, "set_parameters")) {
+                        module.kind = "setparameters";
+                    }
+                    if (const json::Value* inputs = member(entry, "inputs");
+                        inputs != nullptr && inputs->is_object()) {
+                        for (const auto& [name, input] : inputs->as_object()) {
+                            NiagaraInput read;
+                            const std::string value = text(input, "value");
+                            read.value = text_tree(value);
+                            if (const std::string chain = text(input, "chain"); !chain.empty()) {
+                                read.chain = text_tree(chain);
+                            }
+                            module.inputs[plain_name(name)] = std::move(read);
+                        }
+                    }
+                    modules.push_back(std::move(module));
+                }
+            }
+        }
+
+        // Niagara's particles have no gravity, spread or speed but what modules give them.
+        json::Object settings;
+        settings["gravity"] = json::Array{0.0, 0.0, 0.0};
+        settings["spread"] = 0.0;
+        double rate = 0.0;
+        double burst = 0.0;
+        bool once = false;
+        std::pair<double, double> lifetime{1.0, 1.0};
+        bool turbulence = false;
+        for (const NiagaraModule& module : modules) {
+            const std::string& kind = module.kind;
+            const bool spawn = module.script.find("Spawn") != std::string::npos;
+            if (contains(kQuietModules, std::string_view(kind))) {
+                continue;
+            }
+            if (contains(kCurveModules, std::string_view(kind))) {
+                problems_.add("Niagara module " + module.label, where,
+                              "curves over a particle's life don't convert yet");
+                continue;
+            }
+            if (kind == "emitterstate") {
+                const std::vector<std::string> loop =
+                    niagara_words(context, module, "Loop Behavior");
+                if (has_word(loop, "once")) {
+                    once = true;
+                } else if (has_word(loop, "multiple")) {
+                    problems_.add("Niagara emitter looping a number of times", where,
+                                  "it loops for ever");
+                }
+                continue;
+            }
+            if (kind == "spawnrate") {
+                if (const auto found = niagara_numbers(context, module, "SpawnRate")) {
+                    rate += (found->first + found->second) / 2.0;
+                }
+                continue;
+            }
+            if (kind == "spawnburstinstantaneous") {
+                if (const auto found = niagara_numbers(context, module, "Spawn Count")) {
+                    burst += std::round((found->first + found->second) / 2.0);
+                }
+                if (const auto time = niagara_numbers(context, module, "Spawn Time");
+                    time && time->first > 0.0) {
+                    problems_.add("Niagara burst after its emitter starts", where,
+                                  "it bursts as the emitter starts");
+                }
+                continue;
+            }
+            if (kind == "initializeparticle") {
+                if (const auto found = niagara_numbers(context, module, "Lifetime")) {
+                    lifetime = *found;
+                } else {
+                    const auto low = niagara_numbers(context, module, "Lifetime Min");
+                    const auto high = niagara_numbers(context, module, "Lifetime Max");
+                    if (low && high) {
+                        lifetime = {low->first, high->first};
+                    }
+                }
+                if (const auto color = niagara_color(context, module, "Color")) {
+                    settings["color"] = json::Array{tidy((*color)[0]), tidy((*color)[1]),
+                                                    tidy((*color)[2]), tidy((*color)[3])};
+                }
+                std::optional<std::pair<double, double>> size =
+                    niagara_numbers(context, module, "Uniform Sprite Size");
+                if (!size) {
+                    const auto low = niagara_numbers(context, module, "Uniform Sprite Size Min");
+                    const auto high = niagara_numbers(context, module, "Uniform Sprite Size Max");
+                    if (low && high) {
+                        size = std::pair<double, double>{low->first, high->first};
+                    }
+                }
+                if (!size) {
+                    if (const auto both = niagara_pair(context, module, "Sprite Size")) {
+                        const double middle = (both->first + both->second) / 2.0;
+                        size = std::pair<double, double>{middle, middle};
+                        if (both->first != both->second) {
+                            problems_.add("Niagara sprite size that isn't square", where,
+                                          "particles are squares as wide as its average");
+                        }
+                    }
+                }
+                if (size) {
+                    settings["scale_min"] = tidy(size->first * axes_.scale);
+                    settings["scale_max"] = tidy(size->second * axes_.scale);
+                }
+                if (const auto scale = niagara_numbers(context, module, "Mesh Uniform Scale")) {
+                    settings["scale_min"] = tidy(scale->first);
+                    settings["scale_max"] = tidy(scale->second);
+                }
+                if (const auto angle = niagara_numbers(context, module, "Sprite Rotation Angle")) {
+                    settings["angle_min"] = tidy(angle->first);
+                    settings["angle_max"] = tidy(angle->second);
+                }
+                continue;
+            }
+            if (kind == "addvelocity" && spawn) {
+                if (const auto found = niagara_vectors(context, module, "Velocity")) {
+                    const V3 middle{(found->first[0] + found->second[0]) / 2.0,
+                                    (found->first[1] + found->second[1]) / 2.0,
+                                    (found->first[2] + found->second[2]) / 2.0};
+                    const auto length = [](const V3& v) {
+                        return std::sqrt((v[0] * v[0]) + (v[1] * v[1]) + (v[2] * v[2]));
+                    };
+                    const double speed = length(middle);
+                    if (speed > 0.0) {
+                        settings["direction"] = niagara_vector(
+                            {middle[0] / speed, middle[1] / speed, middle[2] / speed}, false);
+                    }
+                    const double low = length(found->first);
+                    const double high = length(found->second);
+                    settings["initial_velocity_min"] = tidy(std::min(low, high) * axes_.scale);
+                    settings["initial_velocity_max"] = tidy(std::max(low, high) * axes_.scale);
+                    if (found->first != found->second && speed > 0.0) {
+                        // A box of velocities as a cone through its corners.
+                        const double reach =
+                            length({found->second[0] - middle[0], found->second[1] - middle[1],
+                                    found->second[2] - middle[2]});
+                        settings["spread"] =
+                            tidy(std::atan2(reach, speed) * 180.0 / std::numbers::pi);
+                        problems_.add("Niagara random velocity", where,
+                                      "a cone through the range's corners stands for its box");
+                    }
+                }
+                continue;
+            }
+            if (kind == "addvelocityincone" && spawn) {
+                if (const auto speed = niagara_numbers(context, module, "Velocity Strength")) {
+                    settings["initial_velocity_min"] = tidy(speed->first * axes_.scale);
+                    settings["initial_velocity_max"] = tidy(speed->second * axes_.scale);
+                }
+                const auto axis = niagara_vectors(context, module, "Cone Axis");
+                const V3 direction = axis ? axis->first : V3{0.0, 0.0, 1.0};
+                settings["direction"] = niagara_vector(direction, false);
+                if (const auto angle = niagara_numbers(context, module, "Cone Angle")) {
+                    settings["spread"] = tidy(std::clamp(angle->first / 2.0, 0.0, 180.0));
+                }
+                continue;
+            }
+            if (kind == "gravityforce") {
+                const auto found = niagara_vectors(context, module, "Gravity");
+                settings["gravity"] =
+                    niagara_vector(found ? found->first : V3{0.0, 0.0, -980.0}, true);
+                continue;
+            }
+            if (kind == "shapelocation" || kind == "spherelocation" || kind == "boxlocation" ||
+                kind == "cylinderlocation") {
+                std::string shape = kind.substr(0, kind.size() - 8);
+                if (kind == "shapelocation") {
+                    const std::vector<std::string> words =
+                        niagara_words(context, module, "Shape Primitive");
+                    shape = "sphere";
+                    for (const std::string_view candidate :
+                         {"box", "plane", "cylinder", "ring", "disc", "torus", "sphere"}) {
+                        if (has_word(words, candidate)) {
+                            shape = std::string(candidate);
+                            break;
+                        }
+                    }
+                }
+                convert_niagara_shape(context, module, shape, settings);
+                continue;
+            }
+            if (kind == "spriterotationrate") {
+                if (const auto found = niagara_numbers(context, module, "Rotation Rate")) {
+                    settings["angular_velocity_min"] = tidy(found->first);
+                    settings["angular_velocity_max"] = tidy(found->second);
+                }
+                continue;
+            }
+            if (kind == "curlnoiseforce") {
+                turbulence = true;
+                continue;
+            }
+            problems_.add("Niagara module " + module.label, where, "it has no counterpart yet");
+        }
+
+        const bool gpu = text(emitter, "sim_target").find("gpu") != std::string::npos;
+        json::Object particles;
+        const double longest = std::max(lifetime.first, lifetime.second);
+        particles["lifetime"] = tidy(longest > 0.0 ? longest : 1.0);
+        if (longest > 0.0 && lifetime.first != lifetime.second) {
+            settings["lifetime_randomness"] =
+                tidy(1.0 - (std::min(lifetime.first, lifetime.second) / longest));
+        }
+        double amount = std::ceil(rate * longest) + burst;
+        if (rate == 0.0 && burst > 0.0) {
+            particles["explosiveness"] = 1.0;
+        } else if (burst > 0.0) {
+            problems_.add("Niagara burst with a spawn rate", where,
+                          "the burst's particles are spread over the emitter's cycle");
+        }
+        if (once) {
+            particles["one_shot"] = true;
+        }
+        if (amount < 1.0) {
+            problems_.add("Niagara emitter that spawns nothing", where,
+                          "it has no spawn rate or burst the export could read");
+            amount = 1.0;
+            particles["emitting"] = false;
+        }
+        particles["amount"] = static_cast<std::int64_t>(amount);
+        if (!flag(niagara, "auto_activate", true)) {
+            particles["emitting"] = false;
+        }
+        if (const double warmup = number(system, "warmup_time"); warmup > 0.0) {
+            particles["preprocess"] = tidy(warmup);
+        }
+        if (flag(system, "determinism")) {
+            particles["seed"] = static_cast<std::int64_t>(number(system, "random_seed"));
+            if (gpu) {
+                particles["use_fixed_seed"] = true;
+            }
+        }
+        // The emitter's own settings, as the schema's JSON names them.
+        if (const json::Value* data = member(emitter, "data");
+            data != nullptr && data->is_object()) {
+            for (const auto& [key, value] : data->as_object()) {
+                // Unreal's JSON names a bool bLocalSpace, as its C++ does.
+                const std::string name =
+                    key.size() > 1 && key[0] == 'b' &&
+                            std::isupper(static_cast<unsigned char>(key[1])) != 0
+                        ? key.substr(1)
+                        : key;
+                if (plain_name(name) == "localspace" && value.is_bool() && value.as_bool()) {
+                    particles["local_coords"] = true;
+                }
+            }
+        }
+        convert_niagara_renderers(emitter, context, entity, particles, gpu);
+        if (gpu) {
+            if (turbulence) {
+                settings["turbulence_enabled"] = true;
+                problems_.add("Niagara curl noise force", where,
+                              "Godot's turbulence stands for it, at its own strength and scale");
+            }
+            if (const json::Value* bounds = member(system, "fixed_bounds")) {
+                V3 low = transform_point(axes_matrix_, vec(*bounds, "min"));
+                V3 high = transform_point(axes_matrix_, vec(*bounds, "max"));
+                for (std::size_t i = 0; i < 3; ++i) {
+                    low[i] *= axes_.scale;
+                    high[i] *= axes_.scale;
+                    if (low[i] > high[i]) {
+                        std::swap(low[i], high[i]);
+                    }
+                }
+                particles["visibility_aabb_position"] = triple(low);
+                particles["visibility_aabb_size"] =
+                    triple({high[0] - low[0], high[1] - low[1], high[2] - low[2]});
+            }
+            settings["format"] = 1;
+            const std::string file =
+                content_path(package + "_" + snake_case(text(emitter, "name"), 40),
+                             std::string(canvas::kProcessMaterialSuffix));
+            if (!niagara_files_.contains(file)) {
+                niagara_files_.insert(file);
+                add_file(file, json::write(json::Value(std::move(settings))) + "\n");
+            }
+            particles["process_material"] = file;
+            entity.components["GPUParticles3D"] = std::move(particles);
+            return;
+        }
+        if (turbulence) {
+            problems_.add("Niagara curl noise force on the CPU", where,
+                          "only GPU particles have Godot's turbulence; simulate the emitter on the "
+                          "GPU in Unreal first");
+        }
+        // CPUParticles3D keeps the process material's settings itself, its scale as
+        // scale_amount.
+        for (auto& [key, value] : settings) {
+            if (key == "scale_min" || key == "scale_max") {
+                particles["scale_amount_" + key.substr(6)] = std::move(value);
+            } else {
+                particles[key] = std::move(value);
+            }
+        }
+        entity.components["CPUParticles3D"] = std::move(particles);
+    }
+
+    // Where a shape location module starts particles, as Godot's emission shapes.
+    void convert_niagara_shape(const NiagaraEmitter& context, const NiagaraModule& module,
+                               const std::string& shape, json::Object& settings) {
+        const std::string& where = context.where;
+        if (shape == "sphere") {
+            const auto radius = niagara_numbers(context, module, "Sphere Radius");
+            settings["emission_shape"] =
+                has_word(niagara_words(context, module, "Surface Only"), "true") ? "sphere_surface"
+                                                                                 : "sphere";
+            settings["emission_sphere_radius"] =
+                tidy((radius ? radius->first : 100.0) * axes_.scale);
+            return;
+        }
+        if (shape == "box" || shape == "plane") {
+            const auto size = niagara_vectors(context, module, "Box Size");
+            const V3 extent = size_of(size ? size->first : V3{100.0, 100.0, 100.0});
+            settings["emission_shape"] = "box";
+            settings["emission_box_extents"] =
+                triple({extent[0] / 2.0, extent[1] / 2.0, extent[2] / 2.0});
+            if (shape == "plane") {
+                problems_.add("Niagara plane location", where, "a flat box stands for it");
+            }
+            return;
+        }
+        if (shape == "cylinder" || shape == "ring" || shape == "disc") {
+            const bool cylinder = shape == "cylinder";
+            const auto radius =
+                niagara_numbers(context, module, cylinder ? "Cylinder Radius" : "Ring Radius");
+            settings["emission_shape"] = "ring";
+            settings["emission_ring_axis"] = niagara_vector({0.0, 0.0, 1.0}, false);
+            settings["emission_ring_radius"] = tidy((radius ? radius->first : 100.0) * axes_.scale);
+            settings["emission_ring_inner_radius"] = 0.0;
+            if (cylinder) {
+                const auto height = niagara_numbers(context, module, "Cylinder Height");
+                settings["emission_ring_height"] =
+                    tidy((height ? height->first : 100.0) * axes_.scale);
+            } else {
+                settings["emission_ring_height"] = 0.0;
+            }
+            return;
+        }
+        problems_.add("Niagara " + shape + " location", where,
+                      "Godot has no such emission shape; particles start at the emitter");
+    }
+
+    // An emitter's first renderer: a sprite renderer draws a quad facing the camera, a mesh
+    // renderer its first mesh. Others, and every renderer after the first, are reported.
+    void convert_niagara_renderers(const json::Value& emitter, const NiagaraEmitter& context,
+                                   Entity& entity, json::Object& particles, bool gpu) {
+        const std::string& where = context.where;
+        const json::Array& renderers = items(emitter, "renderers");
+        if (renderers.empty()) {
+            problems_.add("Niagara emitter with no renderer", where, "its particles draw nothing");
+            return;
+        }
+        if (renderers.size() > 1) {
+            problems_.add("Niagara emitter with several renderers", where,
+                          "its particles draw with the first");
+        }
+        const json::Value& renderer = renderers.front();
+        const std::string cls = text(renderer, "class");
+        json::Object material;
+        material["vertex_color_use_as_albedo"] = true;
+        if (cls.find("Sprite") != std::string::npos) {
+            entity.components["QuadMesh"] = json::Object{};
+            material["billboard_mode"] = "particles";
+            material["billboard_keep_scale"] = true;
+            material["shading_mode"] = "unshaded";
+            material["transparency"] = "alpha";
+            if (gpu) {
+                particles["draw_pass_1"] = "";
+            }
+            problems_.add("Niagara sprite material", where,
+                          "particles draw in their color; Unreal's material graph doesn't convert");
+        } else if (cls.find("Mesh") != std::string::npos) {
+            const json::Array& meshes = items(renderer, "meshes");
+            const auto found = meshes.empty() || !meshes.front().is_string()
+                                   ? meshes_.end()
+                                   : meshes_.find(meshes.front().as_string());
+            if (found == meshes_.end()) {
+                problems_.add("Niagara mesh renderer with no mesh", where,
+                              "its particles draw nothing");
+                return;
+            }
+            particles[gpu ? "draw_pass_1" : "mesh"] = found->second.path;
+            if (meshes.size() > 1) {
+                problems_.add("Niagara mesh renderer with several meshes", where,
+                              "each particle draws the first");
+            }
+        } else {
+            problems_.add("Niagara " + cls, where, "only sprite and mesh renderers convert");
+            return;
+        }
+        entity.components["StandardMaterial3D"] = std::move(material);
     }
 
     [[nodiscard]] static bool has_character(const json::Value& actor) {
@@ -2938,6 +3860,7 @@ private:
         out["converted"]["animations"] = converted_animations_;
         out["converted"]["material_variants"] = converted_variants_;
         out["converted"]["landscapes"] = converted_landscapes_;
+        out["converted"]["particle_systems"] = converted_particle_systems_;
         out["converted"]["animation_trees"] = converted_anim_trees_;
         out["converted"]["input_actions"] = input_actions_;
         out["converted"]["blueprints"] = blueprints_;
@@ -2993,6 +3916,8 @@ private:
     int converted_animations_ = 0;
     int converted_variants_ = 0;
     int converted_landscapes_ = 0;
+    int converted_particle_systems_ = 0;
+    std::set<std::string> niagara_files_; // process materials written once per emitter
     int input_actions_ = 0;
     int blueprints_ = 0;
     Problems problems_;
