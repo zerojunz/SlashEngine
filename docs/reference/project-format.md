@@ -88,6 +88,7 @@ checks it.
 | `sdks` | No | | [SDK packages](sdk-format.md) exports link: folders relative to the project, each with an `sdk.json`. `slash-cli sdk add` adds one |
 | `services` | No | | [Ad placements, products, analytics, consent, achievements and leaderboards](#services) |
 | `internationalization` | No | | [Translation files, the fallback locale, pseudo-localization and layout direction](#internationalization) |
+| `xr` | No | | [The headset's runtime: whether XR starts, the reference space and how the picture blends with the room](#xr) |
 | `threading.max_threads` | No | `-1` | Worker threads the [job system](../concepts.md#world-entities-and-components) runs threaded systems, particles and physics on beside the main thread, 0 to 63, as Godot's `threading/worker_pool/max_threads`. `-1` is one per CPU core; `0` runs everything on the main thread, as the web does. Every count gives the same results |
 | `input` | No | Godot's `ui_*` actions | [Input actions](#input-actions) by name, each with the events that press it |
 | `input_devices.pointing.emulate_mouse_from_touch` | No | `true` | A touch also clicks the left mouse button and dragging it moves the mouse, so mouse code works on phones, as Godot's setting of the same name |
@@ -624,6 +625,25 @@ The files read as Godot reads them:
 Plural forms follow the file's rule, else the locale's own (Godot's table of gettext rules, such
 as Polish's three forms), else English's. Placeholders such as `%d` stay in the translated text
 for the game's code to fill.
+
+## XR
+
+`xr` holds Godot's `xr/openxr` and `xr/shaders` settings:
+
+```json
+"xr": {
+  "openxr": {"enabled": true, "reference_space": "local_floor"}
+}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `openxr.enabled` | `false` | Start the headset when the game starts. Sessions start the [test headset](scene-format.md#xr) instead, which agents move with `xr.set` |
+| `openxr.form_factor` | `"head_mounted"` | Or `"handheld"`: a phone or tablet held up to the room |
+| `openxr.view_configuration` | `"stereo"` | Or `"mono"`: one view instead of one for each eye |
+| `openxr.reference_space` | `"stage"` | Where the play space's origin is: where the head started (`local`, the `sitting` play area), the room's center on the floor (`stage`) or the floor under where the head started (`local_floor`, `roomscale`). `center_on_hmd` does nothing on a stage, which is the room's own |
+| `openxr.environment_blend_mode` | `"opaque"` | How the picture blends with the room: not at all (virtual reality), `"additive"` or by its `"alpha"` (augmented reality) |
+| `shaders.enabled` | `false` | Draw for headsets, each eye's view in one pass |
 
 ## Services
 

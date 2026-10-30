@@ -1293,7 +1293,7 @@ TEST_CASE("engine.describe lists systems in the order they run") {
     world.add_system("movement", [](world::World& /*w*/, double /*dt*/) {},
                      {.doc = "Moves things by their velocity."});
     world.add_system("controls", [](world::World& /*w*/, double /*dt*/) {}, {.priority = -1});
-    // Every session applies input, network and service events first and plays animations, steps
+    // Every session applies input, network, XR and service events first and plays animations, steps
     // 2D and 3D physics, checks synchronizers' visibility, steps navigation, moves the camera and
     // parallax, runs particles, hands over models' replies and plays sound with built-in systems
     // that run late. The particle systems are threaded: the CPU ones and GPUParticles2D's run at
@@ -1302,7 +1302,7 @@ TEST_CASE("engine.describe lists systems in the order they run") {
     CHECK(
         *engine.ok("engine.describe").find("systems") ==
         parse(
-            R"(["input", "multiplayer", "gui", "services", "controls", "movement", "animation_player",
+            R"(["input", "multiplayer", "gui", "xr", "services", "controls", "movement", "animation_player",
                     "animation_tree", "skeleton_modifiers", "path_follow", "physics2d", "physics3d", "multiplayer_visibility", "navigation", "animated_sprite_2d",
                     "camera_2d", "parallax_2d", "cpu_particles_2d", "cpu_particles_3d", "gpu_particles_2d", "gpu_particles_3d", "video", "ai", "audio"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
@@ -1313,6 +1313,9 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "priority": -950},
         {"name": "gui", "doc": "Sends input events to controls: hover, focus, buttons, sliders and text fields.",
          "priority": -900},
+        {"name": "xr",
+         "doc": "Has each XR interface update its trackers and places the XR nodes by their poses.",
+         "priority": -850},
         {"name": "services",
          "doc": "Hands what the ads, analytics, purchases and games backends reported to the game as events.",
          "priority": -800},
@@ -1352,19 +1355,19 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "priority": 1060},
         {"name": "cpu_particles_2d",
          "doc": "Emits, moves and ages each CPUParticles2D's particles.", "priority": 1100,
-         "threaded": true, "stage": 17, "reads": ["Transform2D"], "writes": ["CPUParticles2D"]},
+         "threaded": true, "stage": 18, "reads": ["Transform2D"], "writes": ["CPUParticles2D"]},
         {"name": "cpu_particles_3d",
          "doc": "Emits, moves and ages each CPUParticles3D's particles.", "priority": 1100,
-         "threaded": true, "stage": 17, "reads": ["Transform3D"], "writes": ["CPUParticles3D"]},
+         "threaded": true, "stage": 18, "reads": ["Transform3D"], "writes": ["CPUParticles3D"]},
         {"name": "gpu_particles_2d",
          "doc": "Steps each GPUParticles2D's emission for renderers to run.", "priority": 1110,
-         "threaded": true, "stage": 17,
+         "threaded": true, "stage": 18,
          "reads": ["Transform2D", "LightOccluder2D", "TileMapLayer", "CanvasLayer", "Control",
                    "Camera2D"],
          "writes": ["GPUParticles2D", "assets"]},
         {"name": "gpu_particles_3d",
          "doc": "Steps each GPUParticles3D's emission for renderers to run.", "priority": 1110,
-         "threaded": true, "stage": 18,
+         "threaded": true, "stage": 19,
          "reads": ["GPUParticlesAttractorSphere3D", "GPUParticlesAttractorBox3D",
                    "GPUParticlesAttractorVectorField3D", "GPUParticlesCollisionSphere3D",
                    "GPUParticlesCollisionBox3D", "GPUParticlesCollisionSDF3D",

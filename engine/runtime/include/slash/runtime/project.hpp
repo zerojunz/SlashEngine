@@ -14,6 +14,7 @@
 #include "slash/render/upscaler.hpp"
 #include "slash/services/services.hpp"
 #include "slash/world/scene.hpp"
+#include "slash/xr/xr.hpp"
 
 #include <array>
 #include <cstdint>
@@ -152,6 +153,7 @@ struct Project {
     services::Settings services;
     // Translation files, the fallback and test locales and pseudo-localization.
     l10n::Settings internationalization;
+    xr::Settings xr; // as Godot's xr settings
     // Folders and .cpp files of the game's own C++ code (slash/world/game_module.hpp); empty if
     // it has none.
     std::vector<std::string> gameplay_sources;
