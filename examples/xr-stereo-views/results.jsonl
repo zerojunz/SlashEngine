@@ -1,0 +1,9 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":5,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"tick":0}}
+{"id":3,"jsonrpc":"2.0","result":{"tick":1,"ticks":1}}
+{"id":4,"jsonrpc":"2.0","result":{"interfaces":[{"capabilities":["stereo","vr","ar"],"environment_blend_mode":"opaque","initialized":true,"name":"Test","play_area":[[-1.0,0.0,-1.0],[1.0,0.0,-1.0],[1.0,0.0,1.0],[-1.0,0.0,1.0]],"play_area_mode":"stage","primary":true,"render_target_size":[64,32],"tracking_status":"normal","view_count":2}],"nodes":{"head":{"tracker":"head","tracking":true}},"trackers":{"head":{"poses":{"default":{"position":[0.0,1.6,0.0]}},"type":"head"}}}}
+{"id":5,"jsonrpc":"2.0","result":{"colors":[[0.102,0.102,0.2,1],[0.102,0.102,0.2,1],[0.196,0.8,0.196,1],[0.898,0.196,0.09,1]],"drawn":{"meshes":2},"height":32,"width":64}}
+{"id":6,"jsonrpc":"2.0","result":{"colors":[[0.898,0.196,0.09,1],[0.196,0.8,0.196,1],[0.102,0.102,0.2,1],[0.102,0.102,0.2,1]],"drawn":{"meshes":2},"height":32,"width":64}}
+{"id":7,"jsonrpc":"2.0","result":{"tick":1}}
+{"id":8,"jsonrpc":"2.0","result":{"colors":[[0.196,0.8,0.196,1],[0.898,0.196,0.09,1],[0.196,0.8,0.196,1]],"drawn":{"meshes":2},"height":32,"width":64}}
+{"error":{"code":-32002,"data":{"path":"/xr_view"},"message":"/xr_view: the headset has 2 views"},"id":9,"jsonrpc":"2.0"}

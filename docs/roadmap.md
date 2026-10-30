@@ -923,7 +923,9 @@ Exit: an agent builds a small 3D sample end to end.
         world scale and `center_on_hmd`; `XROrigin3D`, `XRCamera3D`, `XRController3D` and
         `XRAnchor3D` placed by their trackers, with their signals as events; a test headset
         agents move with `xr.set`
-  - [ ] Stereo rendering: each eye's view and projection through `XRCamera3D`
+  - [x] Stereo rendering: each eye's view and projection through `XRCamera3D`, as Godot's
+        `get_transform_for_view` and `get_projection_for_view` (`render::frustum`), drawn by
+        `frame.capture`'s `xr_view`
   - [ ] OpenXR through the Khronos loader: sessions, swapchains on each GPU backend, action maps
         and a stand-in runtime for tests
 - [x] Localization, following Godot ([design](design.md#languages))
@@ -1047,7 +1049,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Terrain | Heightmap terrain with splat materials and LOD | 7 | Planned |
 | Level geometry | CSG and grid-based tile placement | 7 | In progress: CSG shapes, paths and `GridMap` done; heightmap terrain planned |
 | LOD and culling | Generated LODs with meshoptimizer, occlusion culling | 7 | Done, imported from Godot |
-| XR | OpenXR | 8 | XR server and nodes done; rendering and OpenXR to come |
+| XR | OpenXR | 8 | XR server, nodes and stereo views done; OpenXR to come |
 | Localization | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | 8 | In progress: translation tables, the language setting, auto-translated controls, pseudo-localization, `l10n.extract` and `l10n.check` are done |
 | Video playback | AV1 through dav1d | 8 | Done (sound to come) |
 | Accessibility | AccessKit | 8 | Tree done, backend to come |

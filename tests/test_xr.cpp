@@ -259,6 +259,39 @@ TEST_CASE("xr: center_on_hmd makes the head the play space's center, as Godot's"
     check_near(area[2], {1.0F, 0.0F, 1.0F});
 }
 
+TEST_CASE("xr: each eye's view is the head's moved half the IPD, with its own field of view") {
+    Rig rig;
+    rig.world->ecs().get<world::Transform3D>(rig.origin).position = {2.0F, 0.0F, 0.0F};
+    rig.test().set_ipd(0.06F);
+    rig.world->step(kTick); // the origin reaches the server
+    const std::vector<xr::View> views = xr::views(*rig.world);
+    REQUIRE(views.size() == 2);
+    // The stage's head stands 1.6 m up, under the origin.
+    check_near(views[0].transform.origin, {1.97F, 1.6F, 0.0F});
+    check_near(views[1].transform.origin, {2.03F, 1.6F, 0.0F});
+    // Each eye sees further out than in, as headsets' canted views do.
+    CHECK(-views[0].fov.left > views[0].fov.right);
+    CHECK(views[1].fov.right > -views[1].fov.left);
+    CHECK(views[0].fov.up == views[1].fov.up);
+    CHECK(rig.test().render_target_size() == Vec2i{1024, 1024});
+
+    // A turned head turns the eyes about it.
+    world::Transform3D head;
+    head.position = {0.0F, 1.6F, 0.0F};
+    head.rotation = {0.0F, 1.5707963F, 0.0F};
+    rig.test().trackers()["head"].poses["default"].transform = world::affine(head);
+    const std::vector<xr::View> turned = xr::views(*rig.world);
+    check_near(turned[0].transform.origin, {2.0F, 1.6F, 0.03F});
+
+    // Mono has one view, at the head; a headset not started has none.
+    Rig mono({.enabled = true, .view_configuration = "mono"});
+    REQUIRE(xr::views(*mono.world).size() == 1);
+    check_near(xr::views(*mono.world)[0].transform.origin, {0.0F, 1.6F, 0.0F});
+    CHECK(xr::views(*mono.world)[0].fov.left == -xr::views(*mono.world)[0].fov.right);
+    mono.test().uninitialize(*mono.world);
+    CHECK(xr::views(*mono.world).empty());
+}
+
 TEST_CASE("xr: problems name XR nodes outside an origin and origins without a camera") {
     world::ComponentRegistry components;
     world::register_builtin_components(components);

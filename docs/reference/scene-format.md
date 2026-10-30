@@ -5842,6 +5842,16 @@ controller. `xr.state` lists what Godot's configuration warnings would say: XR n
 children of an `XROrigin3D`, nodes with no tracker or pose, an `XRCamera3D` without a
 `Camera3D` and an `XROrigin3D` without an `XRCamera3D` child.
 
+A headset draws a view for each eye, as Godot's `XRInterface` gives them: `xr::views` returns
+each one's place (`get_transform_for_view`: the head's pose with the eye half the distance
+between the eyes to its side, its position times the world scale, under the reference frame and
+the origin) and its field of view as the tangents of its four edges, which
+`render::frustum` makes a projection of with the current camera's `near` and `far`, as Godot's
+`Projection::set_frustum`. The test headset's eyes see 50 degrees out, 40 in and 45 up and down,
+0.064 m apart, in 1024 by 1024 images; `xr.set`'s `ipd` and `render_target_size` change them,
+and `view_configuration` `"mono"` gives one view at the head. [`frame.capture`](commands.md#framecapture)'s
+`xr_view` draws one.
+
 ## Video
 
 `VideoStreamPlayer` is Godot's, with AV1 in place of Theora: its `stream` is an IVF file of AV1

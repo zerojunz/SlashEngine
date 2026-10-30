@@ -439,6 +439,21 @@ std::array<float, 16> perspective(float fov_y, float aspect, float near, float f
     return m;
 }
 
+std::array<float, 16> frustum(float tan_left, float tan_right, float tan_down, float tan_up,
+                              float near, float far) {
+    const float width = tan_right - tan_left;
+    const float height = tan_up - tan_down;
+    std::array<float, 16> m{};
+    m[0] = 2.0F / width;
+    m[5] = 2.0F / height;
+    m[8] = (tan_right + tan_left) / width;
+    m[9] = (tan_up + tan_down) / height;
+    m[10] = near / (far - near);
+    m[11] = -1.0F;
+    m[14] = (near * far) / (far - near);
+    return m;
+}
+
 std::array<float, 16> orthogonal(float size, float aspect, float near, float far) {
     std::array<float, 16> m{};
     m[0] = 2.0F / (size * aspect);

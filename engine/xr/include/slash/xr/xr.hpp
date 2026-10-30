@@ -112,6 +112,17 @@ enum class TrackingStatus : std::uint8_t {
 };
 [[nodiscard]] std::string_view tracking_status_name(TrackingStatus status);
 
+// A view's field of view as the tangents of the angles from its center to its edges, as OpenXR's
+// XrFovf: left and down below zero.
+struct Fov {
+    float left = -1.0F;
+    float right = 1.0F;
+    float down = -1.0F;
+    float up = 1.0F;
+
+    friend bool operator==(const Fov&, const Fov&) = default;
+};
+
 // Something that talks to a headset, as Godot's XRInterface. Interfaces update the server's
 // trackers in process(), which the xr system calls once a tick while they are initialized.
 class Interface {
@@ -138,6 +149,21 @@ public:
     // The headset's place in the play space with the world scale and reference frame applied, as
     // Godot's get_camera_transform.
     [[nodiscard]] virtual world::Affine3D camera_transform(const world::World& world) const = 0;
+    // The views it draws, as Godot's get_view_count: 2 for a headset's eyes.
+    [[nodiscard]] virtual std::uint32_t view_count() const { return 1; }
+    // Each view's image size in pixels, as Godot's get_render_target_size.
+    [[nodiscard]] virtual Vec2i render_target_size() const { return {}; }
+    // Where a view is, as Godot's get_transform_for_view: cam_transform (the world origin) times
+    // the reference frame times the view's place in the play space, its position times the
+    // world scale.
+    [[nodiscard]] virtual world::Affine3D
+    transform_for_view(const world::World& world, std::uint32_t view,
+                       const world::Affine3D& cam_transform) const {
+        (void)view;
+        return cam_transform * camera_transform(world);
+    }
+    // A view's field of view, which Godot's get_projection_for_view makes its projection of.
+    [[nodiscard]] virtual Fov fov_for_view(std::uint32_t /*view*/) const { return {}; }
     [[nodiscard]] virtual PlayArea play_area_mode() const { return PlayArea::Unknown; }
     [[nodiscard]] virtual bool supports_play_area_mode(PlayArea mode) const {
         return mode == PlayArea::Unknown;
@@ -231,6 +257,15 @@ void set_profile(world::World& world, std::string_view tracker, std::string_view
 // XRPose::get_adjusted_transform: where its XR node goes under the XROrigin3D.
 [[nodiscard]] world::Affine3D adjusted_transform(const world::World& world, const Pose& pose);
 
+// What a frame of the primary interface sees: each view's place in the world (from the world
+// origin) and field of view, as Godot's viewport asks an XR interface; none without an
+// initialized primary interface.
+struct View {
+    world::Affine3D transform;
+    Fov fov;
+};
+[[nodiscard]] std::vector<View> views(const world::World& world);
+
 // An XR node's tracker and pose: XRCamera3D's are "head" and "default".
 struct NodeBinding {
     std::string tracker;
@@ -313,6 +348,15 @@ public:
     [[nodiscard]] std::vector<Vec3> play_area(const world::World& world) const override;
     [[nodiscard]] std::vector<BlendMode> supported_environment_blend_modes() const override;
     [[nodiscard]] BlendMode environment_blend_mode() const override { return state_.blend_mode; }
+    [[nodiscard]] std::uint32_t view_count() const override { return state_.stereo ? 2U : 1U; }
+    [[nodiscard]] Vec2i render_target_size() const override { return state_.render_target_size; }
+    [[nodiscard]] world::Affine3D
+    transform_for_view(const world::World& world, std::uint32_t view,
+                       const world::Affine3D& cam_transform) const override;
+    [[nodiscard]] Fov fov_for_view(std::uint32_t view) const override;
+    // The distance between the eyes in meters; 0.064 at first.
+    void set_ipd(float meters) { state_.ipd = meters; }
+    void set_render_target_size(Vec2i size) { state_.render_target_size = size; }
     bool set_environment_blend_mode(BlendMode mode) override;
     void trigger_haptic_pulse(world::World& world, std::string_view action_name,
                               std::string_view tracker_name, double frequency, double amplitude,
@@ -337,6 +381,8 @@ public:
         PlayArea play_area_mode = PlayArea::Stage;
         BlendMode blend_mode = BlendMode::Opaque;
         Vec2 play_area_size{2.0F, 2.0F};
+        float ipd = 0.064F;
+        Vec2i render_target_size{1024, 1024};
         std::map<std::string, TestTracker, std::less<>> trackers;
         std::vector<std::string> published; // the trackers it added to the server
         std::vector<HapticPulse> pulses;
