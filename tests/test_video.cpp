@@ -1,6 +1,8 @@
 #include "slash/command/builtin.hpp"
 #include "slash/command/session.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/render/image.hpp"
+#include "slash/video/commands.hpp"
 #include "slash/video/lossy_encoder.hpp"
 #include "slash/video/video.hpp"
 #include "slash/world/component_registry.hpp"
@@ -390,4 +392,86 @@ TEST_CASE("video: a VideoStreamPlayer plays in its control and on sprites, then 
         "problems": [{"id": "tv", "path": "/components/VideoStreamPlayer/stream",
                       "message": "asset \"missing.ivf\" could not be read: no such file"}],
         "viewport": [160, 90]})"));
+}
+
+TEST_CASE("video: video.encode turns captured frames into a cutscene") {
+    const std::string root = "video_encode_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(platform::create_directories(root).ok());
+    REQUIRE(platform::write_file(root + "/project.json", R"({"format": 1, "name": "Cutscene",
+        "main_scene": "main.scene.json", "version": "1.0.0", "window": {"width": 64, "height": 32},
+        "rendering": {"clear_color": [0.1, 0.2, 0.6, 1]}})")
+                .ok());
+    world::ComponentRegistry components;
+    command::Registry commands;
+    world::register_builtin_components(components);
+    command::register_builtin_commands(commands);
+    command::register_run_commands(commands);
+    video::register_commands(commands);
+    command::SessionOptions options;
+    options.project_root = root;
+    options.capture_logs = false;
+    command::Session session(components, commands, std::move(options));
+    const auto ok = [&session](std::string_view name, std::string_view params) {
+        command::Reply reply = session.call(name, parse_json(params));
+        REQUIRE_MESSAGE(reply.ok, reply.message);
+        return std::move(reply.value);
+    };
+    const auto fails = [&session](std::string_view name, std::string_view params) {
+        command::Reply reply = session.call(name, parse_json(params));
+        REQUIRE_FALSE(reply.ok);
+        return reply;
+    };
+
+    // A red box sliding right, captured each step.
+    (void)ok("entity.create", R"({"id": "box", "components": {"Control": {"offset_left": 0,
+        "offset_top": 8, "offset_right": 16, "offset_bottom": 24},
+        "ColorRect": {"color": [0.9, 0.2, 0.1, 1]}}})");
+    for (int i = 0; i < 6; ++i) {
+        const std::string x = std::to_string(i * 8);
+        (void)ok("component.set", R"({"id": "box", "components": {"Control": {"offset_left": )" +
+                                      x + R"(, "offset_right": )" + std::to_string((i * 8) + 16) +
+                                      "}}}");
+        (void)ok("frame.capture", R"({"path": "shots/f0)" + std::to_string(i) + R"(.png"})");
+    }
+    CHECK(ok("video.encode",
+             R"({"frames": ["shots/"], "out": "cut.ivf", "fps": 10, "kf_interval": 3})") ==
+          parse_json(R"({"path": "cut.ivf", "frames": 6, "size": [64, 32], "seconds": 0.6,
+                         "key_frames": [0, 3]})"));
+
+    // The last frame plays back close to what was captured.
+    const auto bytes = platform::read_file(root + "/cut.ivf");
+    REQUIRE(bytes);
+    const std::vector<std::uint8_t> ivf(bytes.value().begin(), bytes.value().end());
+    const auto file = video::read_ivf(ivf);
+    REQUIRE(file);
+    video::Decoder decoder;
+    render::Image out;
+    REQUIRE(decoder.decode(file.value(), 5, out));
+    const auto shot = platform::read_file(root + "/shots/f05.png");
+    REQUIRE(shot);
+    const auto captured = render::decode_image(shot.value());
+    REQUIRE(captured);
+    CHECK(mean_difference(through_yuv(captured.value()), out) <= 200);
+
+    // Files by name, and what's wrong with each request.
+    CHECK(ok("video.encode", R"({"frames": ["shots/f00.png", "shots/f01.png"], "out": "two.ivf",
+                                 "kf_interval": 0})")
+              .find("key_frames")
+              ->as_array()
+              .size() == 1);
+    CHECK(fails("video.encode", R"({"frames": ["shots/"], "out": "cut.mp4"})").message ==
+          "/out: expected an .ivf file");
+    CHECK(fails("video.encode", R"({"frames": ["shots/f00.png", "shots/f09.png"],
+                                    "out": "x.ivf"})")
+              .message == "/frames/1: no file shots/f09.png");
+    REQUIRE(platform::create_directories(root + "/empty").ok());
+    REQUIRE(platform::create_directories(root + "/small").ok());
+    REQUIRE(platform::write_file(root + "/small/a.png", "not a png").ok());
+    CHECK(fails("video.encode", R"({"frames": ["empty/"], "out": "x.ivf"})").message ==
+          "/frames/0: no .png, .jpg or .bmp files in empty/");
+    command::Reply bad = fails("video.encode", R"({"frames": ["small/"], "out": "x.ivf"})");
+    CHECK(bad.message.starts_with("/frames/0: small/a.png: "));
+    CHECK_FALSE(platform::exists(root + "/x.ivf"));
+    std::filesystem::remove_all(root);
 }

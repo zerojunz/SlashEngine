@@ -62,6 +62,7 @@
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/text/text.hpp"
 #include "slash/ui/ui.hpp"
+#include "slash/video/commands.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
@@ -401,6 +402,7 @@ struct Engine {
         slash::ai::register_commands(commands);
         slash::library::register_commands(commands);
         slash::soundtrack::register_commands(commands);
+        slash::video::register_commands(commands);
         slash::exporter::register_api_commands(commands);
         if (running) {
             command::register_run_commands(commands);
