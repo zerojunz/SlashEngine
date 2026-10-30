@@ -196,6 +196,7 @@ constexpr GLuint kInvalidIndex = 0xFFFFFFFF;
     X(DrawElements, draw_elements, void, (GLenum, GLsizei, GLenum, const void*))                   \
     X(Enable, enable, void, (GLenum))                                                              \
     X(EnableVertexAttribArray, enable_vertex_attrib_array, void, (GLuint))                         \
+    X(Flush, flush, void, ())                                                                      \
     X(FramebufferRenderbuffer, framebuffer_renderbuffer, void, (GLenum, GLenum, GLenum, GLuint))   \
     X(FramebufferTexture2D, framebuffer_texture_2d, void, (GLenum, GLenum, GLenum, GLuint, GLint)) \
     X(FrontFace, front_face, void, (GLenum))                                                       \
@@ -1212,6 +1213,79 @@ public:
         return image;
     }
 
+    // The context and what an OpenXR runtime's graphics binding needs of it (XR_KHR_opengl_enable,
+    // XR_MNDX_egl_enable), as Godot's OpenXROpenGLExtension reads them from its display server.
+    [[nodiscard]] NativeDevice native_device() const override {
+        make_current();
+        NativeDevice native{.backend = backend(), .device = context_};
+        if (SDL_EGL_GetCurrentDisplay() != nullptr) {
+            native.gl = NativeDevice::GlSystem::Egl;
+            native.instance = SDL_EGL_GetCurrentDisplay();
+            native.physical_device = SDL_EGL_GetCurrentConfig();
+            native.get_proc_address = reinterpret_cast<void (*(*)(const char*))()>(
+                SDL_EGL_GetProcAddress("eglGetProcAddress"));
+            return native;
+        }
+        const SDL_PropertiesID properties = SDL_GetWindowProperties(window_);
+#if defined(_WIN32)
+        native.gl = NativeDevice::GlSystem::Wgl;
+        native.instance =
+            SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_WIN32_HDC_POINTER, nullptr);
+#else
+        void* const display =
+            SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_X11_DISPLAY_POINTER, nullptr);
+        if (display != nullptr) {
+            glx_config(native, display,
+                       static_cast<std::uint64_t>(SDL_GetNumberProperty(
+                           properties, SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0)));
+        }
+#endif
+        return native;
+    }
+
+    // Turned over, since OpenXR's rows go from the bottom up and frames draw upside down (see
+    // kFlipY), and with no sRGB conversion: desktop GL converts in blits only with
+    // GL_FRAMEBUFFER_SRGB on, which this device never turns on.
+    Result<void> copy_to_native(TextureId source, const NativeTexture& target) override {
+        if (in_frame_) {
+            return frame_in_progress("copy_to_native");
+        }
+        const auto it = textures_.find(source);
+        if (it == textures_.end()) {
+            return unknown_texture(source);
+        }
+        if (!it->second.desc.render_target) {
+            return not_a_render_target(source);
+        }
+        make_current();
+        auto from = attach(it->second);
+        if (!from) {
+            return from.error();
+        }
+        GLuint to = 0;
+        gl_.gen_framebuffers(1, &to);
+        gl_.bind_framebuffer(gl::kDrawFramebuffer, to);
+        gl_.framebuffer_texture_2d(
+            gl::kDrawFramebuffer, gl::kColorAttachment0, gl::kTexture2D,
+            static_cast<GLuint>(reinterpret_cast<std::uintptr_t>(target.image)), 0);
+        const GLenum status = gl_.check_framebuffer_status(gl::kDrawFramebuffer);
+        if (status == gl::kFramebufferComplete) {
+            const auto w = static_cast<GLint>(std::min(target.width, it->second.desc.width));
+            const auto h = static_cast<GLint>(std::min(target.height, it->second.desc.height));
+            gl_.bind_framebuffer(gl::kReadFramebuffer, from.value());
+            gl_.blit_framebuffer(0, 0, w, h, 0, h, w, 0, gl::kColorBufferBit, gl::kNearest);
+        }
+        gl_.bind_framebuffer(gl::kFramebuffer, 0);
+        gl_.delete_framebuffers(1, &to);
+        gl_.flush();
+        if (status != gl::kFramebufferComplete) {
+            return make_error(ErrorCode::PlatformFailure,
+                              "OpenGL can't draw into the native texture: framebuffer status " +
+                                  hex(status));
+        }
+        return check_errors("copying into a native texture");
+    }
+
     VsyncMode set_vsync(VsyncMode mode) override {
         if (!presents_) {
             vsync_ = mode;
@@ -1376,6 +1450,52 @@ private:
         version_ = version;
         return {};
     }
+
+#if !defined(_WIN32)
+    // A GLX context's framebuffer config and visual, which XR_KHR_opengl_enable's Xlib binding
+    // names, asked of GLX through the functions SDL loaded it with.
+    void glx_config(NativeDevice& native, void* display, std::uint64_t window) const {
+        using QueryContext = int (*)(void*, void*, int, int*);
+        using ChooseConfig = void** (*)(void*, int, const int*, int*);
+        using ConfigAttrib = int (*)(void*, void*, int, int*);
+        const auto query = reinterpret_cast<QueryContext>(SDL_GL_GetProcAddress("glXQueryContext"));
+        const auto choose =
+            reinterpret_cast<ChooseConfig>(SDL_GL_GetProcAddress("glXChooseFBConfig"));
+        const auto attribute =
+            reinterpret_cast<ConfigAttrib>(SDL_GL_GetProcAddress("glXGetFBConfigAttrib"));
+        if (query == nullptr || choose == nullptr || attribute == nullptr) {
+            return; // not GLX
+        }
+        constexpr int kScreen = 0x800C;   // GLX_SCREEN
+        constexpr int kConfigId = 0x8013; // GLX_FBCONFIG_ID
+        constexpr int kVisualId = 0x800B; // GLX_VISUAL_ID
+        int screen = 0;
+        int id = 0;
+        query(display, context_, kScreen, &screen);
+        query(display, context_, kConfigId, &id);
+        const std::array<int, 3> wanted{kConfigId, id, 0};
+        int count = 0;
+        void** configs = choose(display, screen, wanted.data(), &count);
+        if (configs == nullptr || count == 0) {
+            return;
+        }
+        native.gl = NativeDevice::GlSystem::Glx;
+        native.instance = display;
+        native.physical_device = configs[0];
+        native.drawable = window;
+        int visual = 0;
+        attribute(display, configs[0], kVisualId, &visual);
+        native.visual = static_cast<std::uint32_t>(visual);
+        // The array is Xlib's to free; libX11 is loaded, since GLX came from it.
+        if (SDL_SharedObject* x11 = SDL_LoadObject("libX11.so.6"); x11 != nullptr) {
+            if (const auto free =
+                    reinterpret_cast<int (*)(void*)>(SDL_LoadFunction(x11, "XFree"))) {
+                free(reinterpret_cast<void*>(configs));
+            }
+            SDL_UnloadObject(x11);
+        }
+    }
+#endif
 
     void make_current() const {
         if (SDL_GL_GetCurrentContext() != context_) {
