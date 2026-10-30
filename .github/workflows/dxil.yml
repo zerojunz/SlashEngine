@@ -64,7 +64,10 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y ninja-build
           git clone --depth 1 --branch "$TAG" "$REPOSITORY" "$RUNNER_TEMP/dxc-src"
-          git -C "$RUNNER_TEMP/dxc-src" submodule update --init --depth 1 external/DirectX-Headers
+          # DXC turns SPIR-V code generation on for every build off Windows, so it needs SPIRV-Headers
+          # and SPIRV-Tools besides DirectX-Headers.
+          git -C "$RUNNER_TEMP/dxc-src" submodule update --init --depth 1 \
+            external/DirectX-Headers external/SPIRV-Headers external/SPIRV-Tools
           # The licence reviewed when it was pinned, as the licenses test checks the others'.
           hash=$(tr -d '\r' < "$RUNNER_TEMP/dxc-src/$LICENSE_FILE" | sha256sum | cut -d' ' -f1)
           if [ "$hash" != "$LICENSE_SHA256" ]; then
@@ -72,7 +75,7 @@ jobs:
           fi
           cmake -S "$RUNNER_TEMP/dxc-src" -B "$RUNNER_TEMP/dxc-build" -G Ninja \
             -C "$RUNNER_TEMP/dxc-src/cmake/caches/PredefinedParams.cmake" \
-            -DCMAKE_BUILD_TYPE=Release -DENABLE_SPIRV_CODEGEN=OFF -DSPIRV_BUILD_TESTS=OFF \
+            -DCMAKE_BUILD_TYPE=Release -DSPIRV_BUILD_TESTS=OFF \
             -DHLSL_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_TESTS=OFF -DCLANG_INCLUDE_TESTS=OFF
           # dxc, its libdxcompiler, and libdxil, the validator that signs what it makes.
           ninja -C "$RUNNER_TEMP/dxc-build" dxc dxildll
