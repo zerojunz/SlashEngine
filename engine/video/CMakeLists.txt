@@ -18,4 +18,11 @@ if(TARGET slash_aom)
     add_library(slash::video_encoder ALIAS slash_video_encoder)
     target_link_libraries(slash_video_encoder PUBLIC slash::video PRIVATE slash_aom)
     slash_engine_target(slash_video_encoder)
+
+    # video.encode, registered by slash-cli and slash-mcp.
+    add_library(slash_video_commands STATIC src/commands.cpp)
+    add_library(slash::video_commands ALIAS slash_video_commands)
+    target_link_libraries(slash_video_commands PUBLIC slash::command
+                          PRIVATE slash::platform slash::video_encoder)
+    slash_engine_target(slash_video_commands)
 endif()

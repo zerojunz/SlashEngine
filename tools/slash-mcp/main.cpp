@@ -20,6 +20,7 @@
 #include "slash/server/server.hpp"
 #include "slash/shader_compiler/shader_compiler.hpp"
 #include "slash/soundtrack/commands.hpp"
+#include "slash/video/commands.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 
@@ -147,6 +148,7 @@ int main(int argc, char** argv) {
     slash::ai::register_commands(commands);
     slash::library::register_commands(commands);
     slash::soundtrack::register_commands(commands);
+    slash::video::register_commands(commands);
     // The project's own C++ code, loaded again whenever gameplay.build rebuilds it.
     slash::gameplay::Host gameplay(components, slash::gameplay::library_path(options.project_root));
     options.gameplay = &gameplay;

@@ -2013,8 +2013,11 @@ and tests only by its own CMake as a separate project (generic C, one thread; `c
 keeps its cache flags out of the engine's) into `slash::video_encoder`: `video::encode_lossy`
 (`src/lossy_encoder.cpp`) codes key frames every `kf_interval` frames and predicted frames
 between, whose bytes can differ a little between machines, so tests compare the pictures dav1d
-decodes rather than bytes. `examples/video-playback` plays a clip in a control and on a sprite,
-and `examples/lossy-video` a libaom cutscene.
+decodes rather than bytes. `video.encode` (`src/commands.cpp`, `slash::video_commands`,
+registered by slash-cli and slash-mcp) codes a project's image files, such as `frame.capture`'s
+PNGs, that way and returns no bytes. `examples/video-playback` plays a clip in a control and on
+a sprite, `examples/lossy-video` a libaom cutscene and `examples/captured-cutscene` one captured
+from a scene with `frame.capture` and `video.encode`.
 
 ## Soundtracks
 

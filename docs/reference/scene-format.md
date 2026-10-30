@@ -5805,7 +5805,8 @@ frames between are predicted from those before, at a quantizer of `cq_level` (0 
 32) and a speed of `cpu_used` (0 to 9, default 6). Each temporal unit shows one frame, so the
 player seeks to any of them. libaom runs as generic C on one thread, but decides with floating
 point and the C library's math, so its bytes can differ a little between machines; dav1d shows
-the same pixels for the same bytes.
+the same pixels for the same bytes. The [`video.encode`](commands.md#videoencode) command codes image files
+this way, so frames captured with `frame.capture` become a clip.
 
 ## Audio
 

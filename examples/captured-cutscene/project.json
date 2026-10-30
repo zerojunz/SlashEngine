@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "main_scene": "main.scene.json",
+  "name": "Captured cutscene",
+  "rendering": {"clear_color": [0.2, 0.4, 0.8, 1]},
+  "version": "1.0.0",
+  "window": {"height": 48, "width": 96}
+}

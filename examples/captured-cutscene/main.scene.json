@@ -1,0 +1,29 @@
+{
+  "entities": {
+    "ball": {
+      "components": {
+        "ColorRect": {
+          "color": [0.95, 0.75, 0.1, 1.0]
+        },
+        "Control": {
+          "offset_bottom": 32.0,
+          "offset_right": 16.0,
+          "offset_top": 16.0
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "ColorRect": {
+          "color": [0.3, 0.6, 0.2, 1.0]
+        },
+        "Control": {
+          "anchor_right": 1.0,
+          "offset_bottom": 48.0,
+          "offset_top": 32.0
+        }
+      }
+    }
+  },
+  "format": 1
+}
