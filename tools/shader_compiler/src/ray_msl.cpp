@@ -213,7 +213,7 @@ std::string to_hlsl(const std::vector<std::uint32_t>& spirv, std::map<std::uint3
     options.shader_model = 65; // ray queries
     compiler.set_hlsl_options(options);
 
-    enum class Kind { Cbv, Srv, Uav, Unbounded };
+    enum class Kind : std::uint8_t { Cbv, Srv, Uav, Unbounded };
     struct Resource {
         std::uint32_t binding = 0;
         std::uint32_t count = 1;
@@ -343,8 +343,9 @@ std::string pieces(std::string_view text, std::string_view delimiter) {
 int main(int argc, char** argv) {
     const bool hlsl = argc == 6 && std::string_view(argv[1]) == "--hlsl";
     if (argc != (hlsl ? 6 : 4)) {
-        std::fprintf(stderr, "usage: slash-ray-msl <shader.comp> <header> <Name>\n"
-                             "       slash-ray-msl --hlsl <shader.comp> <header> <Name> <passes>\n");
+        std::fprintf(stderr,
+                     "usage: slash-ray-msl <shader.comp> <header> <Name>\n"
+                     "       slash-ray-msl --hlsl <shader.comp> <header> <Name> <passes>\n");
         return 2;
     }
     const int first = hlsl ? 2 : 1;

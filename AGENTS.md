@@ -1106,7 +1106,8 @@ post passes; it keys the sums by `path_scene_key` and a hash of the draws. `disp
 Ray tracing is SlashEngine's own (Godot 4.6 has none): project.json's `rendering.ray_tracing`
 (`render::RayTracing3D`, `Scene3D::ray_tracing`) turns on ray-traced shadows in Forward+ on
 devices whose `RenderDevice::ray_tracing()` says so: the software device, and the GPU device on
-Vulkan where the GPU has ray queries and on Metal where it supports ray tracing.
+Vulkan where the GPU has ray queries, on Metal where it supports ray tracing and on Direct3D 12
+where it has DXR 1.1's inline ray queries.
 `ray_shadow_slots` (`src/shadow.cpp`) gives the first `kMaxRayShadowLights` (8) shadowed lights a
 slot (`MeshLightUniforms::shadow.w`, slot + 1). After the prepass, `run_ray_shadows`
 (`src/ray_shadows.cpp`, built with `-ffp-contract=off`) puts each pixel back in the world from its
@@ -1142,10 +1143,18 @@ run as MSL that `slash-ray-msl` (`tools/shader_compiler/src/ray_msl.cpp`) makes 
 with glslang and SPIRV-Cross into `*_msl.hpp`, set 0 an argument buffer whose ids by binding it
 writes beside it (`k<Name>MslIds`) and the prepass's depth a `depth2d`; Metal's encoders build the
 structures (user ID instances) and dispatch into SDL's command buffer, reaching mesh copies by
-`gpuAddress` (`SDL_SlashGPUNativeBuffer`, which the patch adds for Metal too). Both backends
-implement `GpuRays` (`src/gpu_rays.hpp`) and pack the same uniforms and records
-(`src/ray_records.cpp`). `tests/test_ray_tracing.cpp` holds Vulkan and Metal to the software
-device, `tests/test_ray_records.cpp` the MSL to its GLSL, `examples/ray-traced-shadows-3d` traces an avenue, `examples/ray-traced-ao-3d` a room and
+`gpuAddress` (`SDL_SlashGPUNativeBuffer`, which the patch adds for Metal and Direct3D 12 too).
+On Direct3D 12 (`src/d3d12_rays.cpp`, ray tracing tier 1.1 and shader model 6.5) they run as
+inline ray queries: `slash-ray-msl --hlsl` compiles the GLSL with `SLASH_D3D12` (the meshes an
+unbounded array of buffers, an address's x its place there, as HLSL has no buffer addresses) into
+shader model 6.5 HLSL in `*_hlsl.hpp` with its root signature (a descriptor table of views, then
+one of samplers, places by binding in `k<Name>HlslSlots`), DXC compiles each `kPass` to signed
+DXIL in `*_dxil.hpp` (see Shaders), and the rays bind heaps of their own around their dispatches,
+mark each frame's slot done with `WriteBufferImmediate` and put SDL's heaps back with
+`SDL_SlashGPURestoreState`. The backends implement `GpuRays` (`src/gpu_rays.hpp`) and pack the
+same uniforms and records (`src/ray_records.cpp`). `tests/test_ray_tracing.cpp` holds Vulkan,
+Metal and Direct3D 12 to the software device, `tests/test_ray_records.cpp` the MSL and HLSL to
+their GLSL and the DXIL to its HLSL, `examples/ray-traced-shadows-3d` traces an avenue, `examples/ray-traced-ao-3d` a room and
 `examples/ray-traced-reflections-3d` a hall's floor and `examples/ray-traced-gi-3d` a room's walls.
 
 TAA is Godot 4.6's `use_taa` (project.json's `rendering.anti_aliasing.quality.use_taa`,

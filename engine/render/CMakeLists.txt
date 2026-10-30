@@ -40,6 +40,7 @@ target_compile_options(slash_image_codecs PRIVATE
 
 add_library(slash_render
     src/clusters.cpp
+    src/d3d12_rays.cpp
     src/decal.cpp
     src/device.cpp
     src/forward_post.cpp

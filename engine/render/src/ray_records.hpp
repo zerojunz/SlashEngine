@@ -9,9 +9,9 @@
 #include <utility>
 #include <vector>
 
-// What the GPU device's rays hand their shaders, the same on Vulkan and Metal: the uniforms and
-// records of shaders/ray_shadows.comp, ray_light.comp and lightmap_light.comp, packed from a
-// frame's draws and work, and the order a lightmap bake's dispatches run in.
+// What the GPU device's rays hand their shaders, the same on Vulkan, Metal and Direct3D 12: the
+// uniforms and records of shaders/ray_shadows.comp, ray_light.comp and lightmap_light.comp, packed
+// from a frame's draws and work, and the order a lightmap bake's dispatches run in.
 namespace slash::render::detail {
 
 inline constexpr std::uint32_t kRayGroupSize = 8;
