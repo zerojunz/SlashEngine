@@ -139,6 +139,7 @@ add_executable(slash_tests
     test_procedural.cpp
     test_project_map.cpp
     test_ragdoll.cpp
+    test_ray_records.cpp
     test_ray_tracing.cpp
     test_reflect.cpp
     test_reflection.cpp
