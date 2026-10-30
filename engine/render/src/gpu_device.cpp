@@ -2248,7 +2248,8 @@ public:
         if (in_frame_) {
             return frame_in_progress("copy_to_native");
         }
-        if (backend_ != Backend::Vulkan && backend_ != Backend::D3D12) {
+        if (backend_ != Backend::Vulkan && backend_ != Backend::D3D12 &&
+            backend_ != Backend::Metal) {
             return RenderDevice::copy_to_native(source, target);
         }
         const auto it = textures_.find(source);
@@ -2273,10 +2274,14 @@ public:
         const NativeTexture from =
             detail::native_texture(device_, it->second.gpu, desc.width, desc.height);
         void* native = SDL_SlashGPUNativeCommandBuffer(commands);
-        Result<void> copied =
-            backend_ == Backend::Vulkan
-                ? detail::copy_native_vulkan(native_device(), native, from, target)
-                : detail::copy_native_d3d12(native, from, target);
+        Result<void> copied = make_error(ErrorCode::PlatformFailure, "no native copy");
+        if (backend_ == Backend::Vulkan) {
+            copied = detail::copy_native_vulkan(native_device(), native, from, target);
+        } else if (backend_ == Backend::D3D12) {
+            copied = detail::copy_native_d3d12(native, from, target);
+        } else {
+            copied = detail::copy_native_metal(native, from, target);
+        }
         if (!SDL_SubmitGPUCommandBuffer(commands) && copied) {
             return sdl_error("copying into a native image failed");
         }
@@ -7208,6 +7213,9 @@ SDL_GPUDevice* create_sdl_device(const DeviceOptions& options) {
         if (options.xr->d3d12_adapter != 0) {
             SDL_SetNumberProperty(props, "SlashEngine.gpu.d3d12.adapter_luid",
                                   options.xr->d3d12_adapter);
+        }
+        if (options.xr->metal_device != nullptr) {
+            SDL_SetPointerProperty(props, "SlashEngine.gpu.metal.device", options.xr->metal_device);
         }
         if (rays.options() != nullptr) {
             SDL_SetPointerProperty(props, SDL_PROP_GPU_DEVICE_CREATE_VULKAN_OPTIONS_POINTER,
