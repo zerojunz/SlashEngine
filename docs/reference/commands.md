@@ -134,6 +134,13 @@ is loaded or failed to load: the `library` it came from, whether it is `loaded`,
 {"components":["Wallet"],"library":".slash/gameplay/game.so","loaded":true,"systems":["earn"]}
 ```
 
+`plugins` lists the project's [plugins](project-format.md#plugins) that loaded, with the
+components and systems each added:
+
+```json
+[{"components":["Orbit"],"name":"orbit","systems":["orbit"]}]
+```
+
 `systems` lists the systems in the order they run. With `"full": true`, each is an object:
 
 ```json

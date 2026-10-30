@@ -8,6 +8,7 @@
 #include "slash/input/sdl.hpp"
 #include "slash/platform/platform.hpp"
 #include "slash/platform/run.hpp"
+#include "slash/plugin/plugins.hpp"
 #include "slash/render/device.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/services/endpoint.hpp"
@@ -112,6 +113,8 @@ private:
     asset::Assets assets_;
     world::ComponentRegistry components_;
     world::World world_;
+    // Declared after the world, so it takes its systems out of the world before the world goes.
+    std::unique_ptr<plugin::Plugins> plugins_;
     std::unique_ptr<gameplay::Host> gameplay_;
     platform::Platform platform_;
     // Declared after the platform, so it closes the gamepads before SDL quits.

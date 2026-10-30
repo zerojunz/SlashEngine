@@ -2,12 +2,13 @@ add_library(slash_runtime
     src/game.cpp
     src/gameplay.cpp
     src/icon.cpp
+    src/plugins.cpp
     src/project.cpp)
 add_library(slash::runtime ALIAS slash_runtime)
 
 target_include_directories(slash_runtime PUBLIC include)
 target_link_libraries(slash_runtime
-    PUBLIC slash::accessibility slash::animation slash::asset slash::audio slash::canvas slash::core slash::gameplay slash::input slash::l10n slash::navigation slash::net slash::physics2d slash::physics3d slash::platform slash::procedural
+    PUBLIC slash::accessibility slash::animation slash::asset slash::audio slash::canvas slash::core slash::gameplay slash::input slash::l10n slash::navigation slash::net slash::physics2d slash::physics3d slash::platform slash::plugin slash::procedural
            slash::render slash::services slash::ui slash::world slash::xr
     PRIVATE SDL3::SDL3-static)
 slash_engine_target(slash_runtime)

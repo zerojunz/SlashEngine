@@ -85,6 +85,7 @@ checks it.
 | `audio.enable_input` | No | `false` | Let [microphone](scene-format.md#microphone) players record, as Godot's `audio/driver/enable_input`. Exports then ask for the microphone: `NSMicrophoneUsageDescription` in macOS and iOS apps, the `RECORD_AUDIO` permission on Android, and the `com.apple.security.device.audio-input` entitlement for a Mac app signed with a Developer ID and no `entitlements` file of its own (one that has its own needs that key) |
 | `audio.input_usage_description` | No | "*name* listens to the microphone." | Why the game records, which macOS and iOS show when they ask the player for the microphone. App Store review expects it to say what the game does with it |
 | `gameplay.sources` | No | | The game's own [C++ code](#gameplay-code): folders and files relative to the project, at least one |
+| `plugins` | No | | [Plugin](#plugins) files, relative to the project, each ending in `.plugin.json` |
 | `sdks` | No | | [SDK packages](sdk-format.md) exports link: folders relative to the project, each with an `sdk.json`. `slash-cli sdk add` adds one |
 | `services` | No | | [Ad placements, products, analytics, consent, achievements and leaderboards](#services) |
 | `internationalization` | No | | [Translation files, the fallback locale, pseudo-localization and layout direction](#internationalization) |
@@ -477,6 +478,90 @@ components, so scenes save it, `undo` restores it and rebuilding keeps it: value
 the code never registered, and anything kept in globals, are lost when the code is rebuilt, and
 the world's context (`World::ecs().ctx()`) must hold no values of the game's own types. A
 component or system named like one of the engine's is refused.
+
+## Plugins
+
+A plugin is a library built apart from the engine that adds components and systems to a game, as
+Godot's GDExtension. It is built against `engine/plugin/include/slash/plugin/slash_plugin.h`
+alone: a C interface that only grows, so a plugin built once loads into later engines, written in
+any language that calls C and linked to nothing of the engine's. `plugins` lists `.plugin.json`
+files (`slash-cli schema plugin`), Godot's `.gdextension` files:
+
+```json
+{
+  "abi": 1,
+  "entry": "orbit_plugin_entry",
+  "libraries": {"linux": "bin/orbit.so", "macos": "bin/orbit.so", "windows": "bin/orbit.dll"}
+}
+```
+
+| Field | Required | Default | Meaning |
+| --- | --- | --- | --- |
+| `entry` | Yes | | The C name of the entry function, unique among the plugins a game links |
+| `abi` | No | `1` | The `SLASH_PLUGIN_ABI_VERSION` it was built against; an engine loads plugins of its version or older |
+| `libraries` | Yes | | The library for each platform, keyed `<os>.<arch>` or `<os>` (`android`, `ios`, `linux`, `macos`, `web`, `windows`; `arm64`, `wasm32`, `x86_64`), relative to the file. The `<os>.<arch>` key wins |
+
+slash-cli, slash-mcp and games load the plugins before scenes open, and the plugin's name is its
+file's name before the first dot. The entry function is handed `get_proc`, which gives each
+engine function by name, and returns 1 once it registered what it adds or 0 to refuse:
+
+```c
+#include "slash/plugin/slash_plugin.h"
+
+typedef struct Orbit { float center[2]; float radius; float speed; float angle; } Orbit;
+static SlashComponent orbit;
+static SlashWorldEach world_each;
+
+static void move(void* userdata, SlashEntity entity, void** components) {
+    Orbit* it = (Orbit*)components[0];
+    it->angle += (float)(it->speed * *(double*)userdata);
+}
+
+static void run(void* userdata, SlashWorld* world, double seconds) {
+    world_each(world, &orbit, 1, move, &seconds);
+}
+
+SLASH_PLUGIN_EXPORT int orbit_plugin_entry(SlashGetProc get_proc, SlashPlugin* plugin,
+                                           SlashPluginInit* init) {
+    static const SlashField fields[] = {
+        {"center", SLASH_FIELD_VEC2, offsetof(Orbit, center), 0, "What it circles.", 0, 0, 0, 0},
+        {"radius", SLASH_FIELD_FLOAT, offsetof(Orbit, radius), 0, "Pixels.", 1, 0, 0, 0},
+        {"speed", SLASH_FIELD_FLOAT, offsetof(Orbit, speed), 0, "Radians a second.", 0, 0, 0, 0},
+        {"angle", SLASH_FIELD_FLOAT, offsetof(Orbit, angle), 0, "Radians.", 0, 0, 0, 0},
+    };
+    static const SlashComponentInfo info = {"Orbit", "Moves round a circle.", sizeof(Orbit),
+                                            _Alignof(Orbit), NULL, fields, 4};
+    SlashSystemInfo system = {"orbit", "Moves Orbit entities.", 100, run, NULL};
+    world_each = (SlashWorldEach)get_proc("slash_world_each");
+    orbit = ((SlashRegisterComponent)get_proc("slash_register_component"))(plugin, &info);
+    return orbit != 0 &&
+           ((SlashRegisterSystem)get_proc("slash_register_system"))(plugin, &system);
+}
+```
+
+- **Components** are C structs of at most 4096 bytes, aligned to at most 16, whose fields the
+  plugin lists with their offsets: `SLASH_FIELD_BOOL` (`uint8_t`), `INT32`, `INT64`, `FLOAT`,
+  `DOUBLE`, `VEC2` to `VEC4` (floats), `STRING` (a `char` array of the field's `size`, UTF-8 ending
+  in 0) and `ENTITY` (a `SlashEntity`, saved as the entity's ID). Each has a doc and, for
+  numbers, a range. The engine stores the structs, and scenes, prefabs, `undo`, `world.query`,
+  `schema.get` and the scene schema treat them as the engine's own components, saving only the
+  fields that differ from the struct of defaults the plugin gives.
+- **Systems** are C functions the world calls each tick, by `priority` as engine systems are.
+  `slash_world_each` hands them the entities with a set of the plugin's components;
+  `slash_component_get_json` and `slash_component_set_json` read and write any component, the
+  engine's too; `slash_world_emit` and `slash_world_events` send and read world events;
+  `slash_input_pressed`, `slash_input_just_pressed` and `slash_input_strength` read input
+  actions; `slash_entity_create`, `find`, `destroy` and `id` work with entities by their IDs.
+- A plugin that registers anything wrong (fields that overlap or leave the struct, a name that
+  isn't PascalCase or snake_case, a name another component or system has) adds nothing, and the
+  error says which. A component's name is the same in every game, so prefix it with the plugin's.
+- `engine.describe` lists each plugin with its components and systems. Plugins stay loaded until
+  the program exits, and the engine calls the `deinitialize` the entry function sets as it lets
+  go of them.
+
+The libraries a file names are loaded on macOS, Windows and Linux. Shipping them in exports, and
+linking them into iOS and web games, comes next. [examples/plugins](../../examples/plugins/) is
+a plugin in C.
 
 ## Input actions
 

@@ -2,6 +2,7 @@
 #
 #   cmake -DEXAMPLE=<folder> -DWORKDIR=<dir> -DCLI=<slash-cli> [-DPROGRAM=<exe>]
 #         [-DASSETRIPPER=<fake-assetripper>] [-DBLENDER=<fake-blender>] [-DOPENXR=<manifest>] [-DUNREAL=<fake-unreal>]
+#         [-DPLUGINS=<folder of built plugins, laid out as the example>]
 #         -P run_example.cmake
 
 set(update "$ENV{SLASH_UPDATE_EXAMPLES}")
@@ -70,6 +71,9 @@ endfunction()
 
 file(REMOVE_RECURSE "${WORKDIR}")
 file(COPY "${EXAMPLE}/" DESTINATION "${WORKDIR}")
+if(PLUGINS)
+    file(COPY "${PLUGINS}/" DESTINATION "${WORKDIR}")
+endif()
 set(input "")
 
 if(EXISTS "${WORKDIR}/project.json")

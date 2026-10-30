@@ -42,6 +42,7 @@
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/plugin/plugins.hpp"
 #include "slash/procedural/scatter.hpp"
 #include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
@@ -409,6 +410,11 @@ Reply engine_describe(Session& session, const json::Value& params) {
         if (code->loaded() || status.find("error") != nullptr) {
             result["gameplay"] = std::move(status);
         }
+    }
+    // The plugins the project loaded, with what each added.
+    if (const plugin::Plugins* plugins = session.options().plugins;
+        plugins != nullptr && plugins->size() > 0) {
+        result["plugins"] = plugins->status();
     }
 
     result["scene"]["path"] = session.scene_path();

@@ -41,7 +41,8 @@
 // "gui" ({"theme"}), "input" (actions by name), "input_devices" ({"pointing"}), "audio"
 // ({"bus_layout", "mix_rate", "output_latency", "panning_strength_2d"}), "services" (ad
 // placements, products, analytics and consent), "gameplay" ({"sources"}, the game's own C++
-// code), "sdks" (folders of SDK packages) and "threading" ({"max_threads"}).
+// code), "plugins" (.plugin.json files), "sdks" (folders of SDK packages) and "threading"
+// ({"max_threads"}).
 namespace slash::runtime {
 
 inline constexpr std::string_view kProjectFile = "project.json";
@@ -157,6 +158,9 @@ struct Project {
     // Folders and .cpp files of the game's own C++ code (slash/world/game_module.hpp); empty if
     // it has none.
     std::vector<std::string> gameplay_sources;
+    // Plugin files (slash/plugin/plugins.hpp), as Godot lists extensions in
+    // extension_list.cfg: libraries built against slash_plugin.h that add components and systems.
+    std::vector<std::string> plugins;
     // Folders of SDK packages (tools/exporter's slash/exporter/sdk.hpp), which exports link.
     std::vector<std::string> sdks;
     // The job system's worker threads (slash/core/jobs.hpp), as Godot's

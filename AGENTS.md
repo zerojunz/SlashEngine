@@ -140,7 +140,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, sdk)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, sdk, plugin)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -668,6 +668,23 @@ the swap goes through JSON, gameplay state belongs in registered components. Res
 saved under older code (`undo`, `world.restore`) leaves out what no longer fits.
 `examples/gameplay-code` builds, changes and breaks a game's code while it runs, and
 `examples/build-check` checks it as it is edited and applies the compiler's fix.
+
+Plugins are Godot's GDExtension: libraries built apart from the engine against
+`engine/plugin/include/slash/plugin/slash_plugin.h`, a C interface that only grows, so they load
+into later engines and can be written in any language that calls C. `engine/plugin` loads them
+(`plugin::Plugins`, `src/plugins.cpp`): project.json's `plugins` lists `.plugin.json` files
+(`$cli schema plugin`, `parse_plugin_file`) naming the entry function and the library per
+platform, and `runtime::load_plugins` loads them for slash-cli, slash-mcp, `scene validate` and
+`runtime::Game` before scenes open; `SessionOptions::plugins` attaches a session's world, so
+their systems run in it, and `engine.describe` lists them. The entry function is handed
+`get_proc` (`detail::proc` in `src/interface.cpp`, functions only ever added). A plugin's
+component is a C struct described by its fields (`SlashField`): `src/components.cpp` keeps its
+`Layout` for the whole process (the same plugin loaded for another registry keeps its ID) and
+stores the structs as `Blob<N>` in an EnTT storage named by the type's hash, with
+`ComponentType::Ops` that save, assign, describe and rename them as reflected components are
+(the world's `Ops` take the type's hash for this). A plugin that registers anything wrong adds
+nothing. `examples/plugins` is a plugin in C, built by `examples/CMakeLists.txt` from
+`addons/<p>/<p>.c`, which `tests/test_plugin.cpp` also loads and links in.
 
 ## Importing games from other engines
 
@@ -2477,8 +2494,8 @@ CI rejects unformatted code and any clang-tidy finding.
   `debug` (the debug overlay over a running game), `autopilot` (Autopilot's agent service, or SlashEngine's own agent, playing a game), `server` (localhost HTTP over a session),
   `ai` (language model providers, their adapters, `providers.json`, replay and the `ai.*`
   commands),
-  `gameplay` (loading and reloading a game's own code) and `runtime` (project files and the game
-  executable).
+  `gameplay` (loading and reloading a game's own code), `plugin` (plugins over the C interface
+  in `slash_plugin.h`) and `runtime` (project files and the game executable).
   Tool-only libraries such as `tools/exporter`, `tools/importer` and `tools/shader_compiler` use
   the same layout and may use exceptions.
 - New dependencies are pinned in `cmake/dependencies.json` (repository, tag, SPDX license and

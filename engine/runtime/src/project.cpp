@@ -750,6 +750,13 @@ json::Value project_schema() {
         "file in it and its subfolders. gameplay.build makes the library the tools load, and "
         "exports link the code in.";
     properties["gameplay"] = std::move(gameplay);
+    json::Value& plugins = properties["plugins"];
+    plugins["type"] = "array";
+    plugins["items"]["type"] = "string";
+    plugins["description"] =
+        "Plugin files, relative to the project, as Godot's GDExtensions: each names a library "
+        "built against slash_plugin.h (\"slash-cli schema plugin\") that adds components and "
+        "systems. They load before scenes open.";
     json::Value& sdks = properties["sdks"];
     sdks["type"] = "array";
     sdks["items"]["type"] = "string";
@@ -853,6 +860,19 @@ std::vector<json::ValidationError> validate_project(const json::Value& project) 
                 errors.push_back({"/gameplay/sources/" + std::to_string(i),
                                   "expected a path inside the project folder, separated by '/', "
                                   "with no \".\" or \"..\" parts"});
+            }
+        }
+    }
+    if (const json::Value* plugins = project.find("plugins"); plugins != nullptr) {
+        const json::Array& files = plugins->as_array();
+        for (std::size_t i = 0; i < files.size(); ++i) {
+            const std::string& file = files[i].as_string();
+            if (!is_project_path(file)) {
+                errors.push_back({"/plugins/" + std::to_string(i),
+                                  "expected a path inside the project folder, separated by '/', "
+                                  "with no \".\" or \"..\" parts"});
+            } else if (!file.ends_with(".plugin.json")) {
+                errors.push_back({"/plugins/" + std::to_string(i), "expected a .plugin.json file"});
             }
         }
     }
@@ -1067,6 +1087,11 @@ Result<Project> parse_project(const json::Value& project) {
     if (const json::Value* gameplay = project.find("gameplay"); gameplay != nullptr) {
         for (const json::Value& source : gameplay->find("sources")->as_array()) {
             out.gameplay_sources.push_back(source.as_string());
+        }
+    }
+    if (const json::Value* plugins = project.find("plugins"); plugins != nullptr) {
+        for (const json::Value& file : plugins->as_array()) {
+            out.plugins.push_back(file.as_string());
         }
     }
     if (const json::Value* sdks = project.find("sdks"); sdks != nullptr) {
