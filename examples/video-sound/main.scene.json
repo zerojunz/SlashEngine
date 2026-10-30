@@ -1,0 +1,18 @@
+{
+  "entities": {
+    "tv": {
+      "components": {
+        "Control": {
+          "offset_left": 8.0,
+          "offset_top": 8.0
+        },
+        "VideoStreamPlayer": {
+          "autoplay": true,
+          "bus": "Cutscenes",
+          "stream": "clip.mkv"
+        }
+      }
+    }
+  },
+  "format": 1
+}
