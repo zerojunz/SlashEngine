@@ -76,6 +76,7 @@ add_executable(slash_tests
     test_forward_post.cpp
     test_fsr2.cpp
     test_fsr3.cpp
+    test_frame_generation.cpp
     test_frame_summary.cpp
     test_gameplay.cpp
     test_generators.cpp

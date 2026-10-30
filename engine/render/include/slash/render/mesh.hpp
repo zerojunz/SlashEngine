@@ -959,6 +959,10 @@ struct Scene3D {
     // FSR 2 upscaling, which takes TAA's place, as Godot turns TAA off with it. Only a scale under
     // 1 upscales with it; the canvas renderer scales the frame bilinearly otherwise.
     std::optional<Fsr2Scaling> fsr2{}; // NOLINT(readability-redundant-member-init)
+    // Frame generation, as AMD's FSR 3 (Forward+ only; Godot has none): the frame keeps its
+    // prepass's depth and motion vectors so RenderDevice::generate_frame can make the frame
+    // halfway between it and the target's frame before.
+    bool frame_generation = false;
     // Set for a frame that draws a face of a reflection probe (ProbeCapture).
     std::optional<ProbeCapture> capture{}; // NOLINT(readability-redundant-member-init)
     // Set for a frame whose 3D is path traced (PathTrace3D).
