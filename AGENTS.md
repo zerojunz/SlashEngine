@@ -2494,7 +2494,10 @@ A game's own components are registered the same way in its `SLASH_GAME_MODULE` f
 `game.add_component<Health>()` (see [Gameplay code](#gameplay-code)).
 
 Supported field types are listed in `engine/world/include/slash/world/serialize.hpp`. Use
-`SLASH_REFLECT` for structs that appear inside components. Built-in components are in
+`SLASH_REFLECT` for structs that appear inside components, and describe their members by path
+(`.describe("items[].text", ...)`, `{}` for a map's values). `slash-cli docs` writes the
+reference from these descriptions (`engine/command/src/reference.cpp`), and the
+`cli_docs_strict` test fails on any component, field, command or param without one. Built-in components are in
 `engine/world/include/slash/world/components.hpp`.
 
 ## Examples

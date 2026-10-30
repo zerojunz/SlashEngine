@@ -4015,12 +4015,7 @@ void register_commands(command::Registry& registry) {
     json::Value cleanup = property("object", "Model: import it cleaned up with model.cleanup's "
                                              "options. Default for a new version: the last "
                                              "one's.");
-    // model.cleanup's options, described there.
-    json::Object options = command::cleanup_properties();
-    for (auto& [name, option] : options) {
-        option.as_object().erase("description");
-    }
-    cleanup["properties"] = std::move(options);
+    cleanup["properties"] = command::cleanup_properties();
     cleanup["additionalProperties"] = false;
     registry.add({
         .name = "asset.add",

@@ -20,6 +20,7 @@
 #include "slash/canvas/tilemap.hpp"
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
+#include "slash/command/reference.hpp"
 #include "slash/command/replay.hpp"
 #include "slash/command/rpc.hpp"
 #include "slash/command/session.hpp"
@@ -204,6 +205,12 @@ Usage:
                                      params is a JSON object, or - to read it from stdin
       --scene <file>                 Open this scene first (or start a new one saved there)
       --save                         Save the scene after the command succeeds
+  slash-cli docs                     Write the engine's reference as Markdown from
+                                     engine.describe: components, commands and systems,
+                                     with a game's own when run on it (--project)
+      --out <dir>                    Folder for the pages (default "api-docs")
+      --strict                       Exit 1 if a component, field, command or param has no
+                                     description
   slash-cli rpc                      Serve engine commands as JSON-RPC 2.0, one message per
                                      line on stdin and stdout
       --scene <file>                 Open this scene first
@@ -2058,6 +2065,56 @@ int cmd_call(const std::vector<std::string>& args) {
     return kExitOk;
 }
 
+int cmd_docs(const std::vector<std::string>& args) {
+    SessionArgs session_args;
+    std::string out = "api-docs";
+    bool strict = false;
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        std::string error;
+        if (parse_session_arg(args, i, session_args, error)) {
+            if (!error.empty()) {
+                return usage_error(error);
+            }
+        } else if (args[i] == "--out") {
+            if (i + 1 >= args.size()) {
+                return usage_error("--out needs a folder");
+            }
+            out = args[++i];
+        } else if (args[i] == "--strict") {
+            strict = true;
+        } else {
+            return usage_error("unexpected argument for docs: " + args[i]);
+        }
+    }
+    Engine engine(session_args.options);
+    const command::Reply reply =
+        engine.session->call("engine.describe", json::parse(R"({"full": true})").value());
+    if (!reply.ok) {
+        print(error_json(reply));
+        return kExitFailure;
+    }
+    if (auto made = slash::platform::create_directories(out); !made) {
+        return failure("could not make the folder for the docs", made.error());
+    }
+    json::Array pages;
+    for (const command::ReferencePage& page : command::reference_pages(reply.value)) {
+        const std::string path = out + "/" + page.path;
+        if (auto written = slash::platform::write_file(path, page.text); !written) {
+            return failure("could not write a docs page", written.error());
+        }
+        pages.emplace_back(path);
+    }
+    json::Array missing;
+    for (std::string& name : command::undocumented(reply.value)) {
+        missing.emplace_back(std::move(name));
+    }
+    json::Value result;
+    result["pages"] = std::move(pages);
+    result["undocumented"] = missing;
+    print(result);
+    return strict && !missing.empty() ? kExitFailure : kExitOk;
+}
+
 int cmd_rpc(const std::vector<std::string>& args) {
     SessionArgs session_args;
     for (std::size_t i = 0; i < args.size(); ++i) {
@@ -2693,6 +2750,9 @@ int main(int argc, char** argv) {
     }
     if (name == "rpc") {
         return cmd_rpc(args);
+    }
+    if (name == "docs") {
+        return cmd_docs(args);
     }
     if (name == "serve") {
         return cmd_serve(args);

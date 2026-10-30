@@ -12,6 +12,7 @@ real commands and real output, and no screenshots.
 | Build the engine and drive your first scene | [getting-started.md](getting-started.md) |
 | Understand how the pieces fit together | [concepts.md](concepts.md) |
 | Look up a command, its params and what it returns | [reference/commands.md](reference/commands.md) |
+| Read every component's fields and every command's params, as this engine describes them | `slash-cli docs` ([reference/cli.md](reference/cli.md#docs)) |
 | Copy code or command calls that are known to work | [../examples/](../examples/README.md) |
 | Look up a `slash-cli`, `slash-mcp` or `slash-game` flag | [reference/cli.md](reference/cli.md) |
 | Write or check a `.scene.json` file | [reference/scene-format.md](reference/scene-format.md) |

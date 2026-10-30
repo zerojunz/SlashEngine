@@ -3752,9 +3752,9 @@ anchor the headset found. Returns the tick the server has the changes at.
 | `interface` | `"test"` or `"openxr"` | | Switches to the test headset or to the machine's OpenXR runtime, which then moves the trackers as a headset does. Only on its own; a runtime that can't start says why at `/interface` |
 | `initialize` | boolean | | Starts or stops the test headset, which adds or takes away its trackers |
 | `trackers` | object | | Changes by tracker name: `type`, `hand`, `profile`, `position`, `rotation`, `tracking`, `poses` (by name, each with `position`, `rotation`, `linear_velocity`, `angular_velocity`, `tracking` and `confidence`), `inputs` (by action name: a boolean button, a number trigger or an `[x, y]` thumbstick) and `remove` |
-| `play_area_mode` | `"sitting"`, `"roomscale"` or `"stage"` | | |
+| `play_area_mode` | `"sitting"`, `"roomscale"` or `"stage"` | | The play area the headset tracks in, as Godot's `XRInterface` |
 | `play_area_size` | `[x, z]` | `[2, 2]` | Meters |
-| `environment_blend_mode` | `"opaque"`, `"additive"` or `"alpha"` | | |
+| `environment_blend_mode` | `"opaque"`, `"additive"` or `"alpha"` | | How the picture blends with the world: `opaque` for VR, the others for AR |
 | `ipd` | number, 0 to 0.2 | `0.064` | Meters between the eyes |
 | `render_target_size` | `[width, height]`, 1 to 4096 | `[1024, 1024]` | Each view's image, in pixels |
 | `center_on_hmd` | `"reset_full_rotation"`, `"reset_but_keep_tilt"` or `"dont_reset_rotation"` | | Makes where the head is now the play space's center, as Godot's `center_on_hmd`; nothing on a stage |
