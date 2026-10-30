@@ -33,9 +33,13 @@
 #include "mesh_shaders.hpp"
 #include "mesh_shading.hpp"
 #include "particle_layout.hpp"
+#include "particle_layout_3d.hpp"
 #include "particles_draw_shaders.hpp"
 #include "particles_emit_shaders.hpp"
+#include "particles_mesh_3d_shaders.hpp"
+#include "particles_process_3d_shaders.hpp"
 #include "particles_process_shaders.hpp"
+#include "particles_sort_3d_shaders.hpp"
 #include "post_shaders.hpp"
 #include "post_shading.hpp"
 #include "radiance_shaders.hpp"
@@ -315,7 +319,8 @@ constexpr std::uint32_t kCopyRowAlignment = 256;
 constexpr std::uint32_t kParticleThreads = 64;
 // The largest of the compute shaders' uniforms, which their binding reads.
 constexpr std::uint64_t kComputeUniformBytes =
-    std::max({sizeof(ProcessUniforms), sizeof(EmitUniforms), sizeof(DrawUniforms)});
+    std::max({sizeof(ProcessUniforms), sizeof(EmitUniforms), sizeof(DrawUniforms),
+              sizeof(ProcessUniforms3D), sizeof(SortUniforms3D), sizeof(MeshUniforms3D)});
 // The most bytes any binding of the uniform buffer reads.
 constexpr std::uint64_t kLargestUniforms = std::max<std::uint64_t>(
     {sizeof(Mat4), sizeof(VertexProgramUniforms), sizeof(ProgramUniforms), sizeof(LightsUniforms),
@@ -339,7 +344,8 @@ constexpr std::uint32_t kMeshSamplerBinding = 16;
 enum class ShaderKind : std::uint8_t { Sprite, Material };
 // The compute shaders: running particle steps, turning particles into quads, and numbering what a
 // sub-emitter takes.
-enum class ComputeKind : std::uint8_t { Process, Draw, Emit };
+enum class ComputeKind : std::uint8_t { Process, Draw, Emit, Process3D, Sort3D, Mesh3D };
+constexpr std::size_t kComputeKinds = 6;
 
 WGPUStringView text_view(std::string_view text) {
     return {.data = text.data(), .length = text.size()};
@@ -676,6 +682,7 @@ public:
                                            draw_inputs_layout_,
                                            draw_outputs_layout_,
                                            emit_outputs_layout_,
+                                           mesh_3d_inputs_layout_,
                                            compute_uniforms_layout_,
                                            mesh_vertex_layout_,
                                            mesh_textures_layout_,
@@ -1114,6 +1121,195 @@ public:
         return out;
     }
 
+    // 3D systems run on the GPU, as the GPU device runs them.
+    Result<Particles3DId> create_particles_3d(std::uint32_t amount) override {
+        if (auto checked = check_particle_amount_3d(amount); !checked) {
+            return checked.error();
+        }
+        if (auto pipeline = compute_pipeline(ComputeKind::Process3D); !pipeline) {
+            return pipeline.error();
+        }
+        WGPUBuffer buffer = create_buffer(WGPUBufferUsage_Storage | WGPUBufferUsage_CopySrc,
+                                          std::uint64_t{amount} * sizeof(Particle3D));
+        // WebGPU starts buffers as zeros, but a system starts with the shader's own reset.
+        if (auto queued = queue_particle_job({.kind = ComputeKind::Process3D,
+                                              .particles = buffer,
+                                              .amount = amount,
+                                              .reset = true});
+            !queued) {
+            destroy_buffer(buffer);
+            return queued.error();
+        }
+        const auto id = static_cast<Particles3DId>(next_particles_3d_++);
+        particle_systems_3d_[id] = {.buffer = buffer, .amount = amount};
+        return id;
+    }
+
+    void destroy_particles_3d(Particles3DId particles) override {
+        const auto it = particle_systems_3d_.find(particles);
+        if (it == particle_systems_3d_.end()) {
+            return;
+        }
+        // Jobs waiting for the frame may still use it, so it goes once they are sent.
+        for (WGPUBuffer buffer : {it->second.buffer, it->second.keys}) {
+            if (buffer == nullptr) {
+                continue;
+            }
+            if (particle_jobs_.empty()) {
+                destroy_buffer(buffer);
+            } else {
+                pending_buffers_.push_back(buffer);
+            }
+        }
+        particle_systems_3d_.erase(it);
+    }
+
+    Result<void> process_particles_3d(Particles3DId particles, const ParticleProcess3D& process,
+                                      std::span<const ParticleStep3D> steps) override {
+        const auto it = particle_systems_3d_.find(particles);
+        if (it == particle_systems_3d_.end()) {
+            return unknown_particles_3d();
+        }
+        if (auto checked = check_particle_process_3d(process, steps); !checked) {
+            return checked;
+        }
+        if (steps.empty()) {
+            return {};
+        }
+        ParticleJob job{.kind = ComputeKind::Process3D,
+                        .particles = it->second.buffer,
+                        .amount = it->second.amount};
+        job.material = material_words_3d(process);
+        job.steps = static_cast<std::uint32_t>(particle_words_.size());
+        job.step_count = static_cast<std::uint32_t>(steps.size());
+        pack_particle_steps_3d(steps, particle_words_);
+        return queue_particle_job(job);
+    }
+
+    Result<void> fill_particle_mesh(Particles3DId particles, MeshId mesh,
+                                    std::span<const Vertex3D> source,
+                                    const ParticleMeshDraw3D& draw) override {
+        if (in_frame_) {
+            return frame_in_progress("fill_particle_mesh");
+        }
+        const auto system = particle_systems_3d_.find(particles);
+        if (system == particle_systems_3d_.end()) {
+            return unknown_particles_3d();
+        }
+        const auto it = meshes_.find(mesh);
+        if (it == meshes_.end()) {
+            return unknown_mesh(mesh);
+        }
+        Mesh& found = it->second;
+        const std::uint32_t amount = system->second.amount;
+        if (auto checked = check_particle_mesh(amount, source.size(), found.vertex_count);
+            !checked) {
+            return checked;
+        }
+        if (!draw.has_box()) {
+            // Without a box to draw in, the vertices are placed on the CPU, which measures them.
+            auto live = read_particles_3d(particles);
+            if (!live) {
+                return live.error();
+            }
+            std::vector<Vertex3D> placed(found.vertex_count);
+            particle_mesh_vertices_3d(live.value(), source, draw, placed);
+            return update_mesh(mesh, placed);
+        }
+        const bool sorted = draw.order == ParticleOrder3D::ViewDepth;
+        for (const ComputeKind kind : {ComputeKind::Mesh3D, ComputeKind::Sort3D}) {
+            if (kind == ComputeKind::Sort3D && !sorted) {
+                continue;
+            }
+            if (auto pipeline = compute_pipeline(kind); !pipeline) {
+                return pipeline.error();
+            }
+        }
+        // The vertices are written where update_mesh writes them, into a buffer the shader can
+        // write, the ones drawn before kept for TAA as update_mesh keeps them.
+        const std::uint64_t bytes = found.vertex_count * sizeof(Vertex3D);
+        const WGPUBufferUsage usage =
+            WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst | WGPUBufferUsage_Storage;
+        if (!found.moved) {
+            if (found.previous == nullptr) {
+                found.previous = create_buffer(usage, bytes);
+                found.previous_storage = true;
+            }
+            std::swap(found.vertices, found.previous);
+            std::swap(found.storage, found.previous_storage);
+            found.moved = true;
+        }
+        if (!found.storage) {
+            // Commands sent before still draw the old buffer, which WebGPU keeps until then.
+            destroy_buffer(found.vertices);
+            found.vertices = create_buffer(usage, bytes);
+            found.storage = true;
+        }
+        ParticleSystem3D& emitter = system->second;
+        WGPUBuffer keys = emitter.buffer; // bound, but unread, unless the pass is sorted
+        if (sorted) {
+            if (emitter.keys == nullptr) {
+                emitter.keys =
+                    create_buffer(WGPUBufferUsage_Storage,
+                                  std::uint64_t{sort_size(amount)} * 2 * sizeof(std::uint32_t));
+            }
+            keys = emitter.keys;
+            SortUniforms3D sort{.amount = amount, .size = sort_size(amount)};
+            sort.sort_direction = {draw.sort_direction.x, draw.sort_direction.y,
+                                   draw.sort_direction.z, 0.0F};
+            particle_jobs_.push_back({.kind = ComputeKind::Sort3D,
+                                      .particles = emitter.buffer,
+                                      .target = keys,
+                                      .sort = sort});
+            for (const auto& [j, k] : bitonic_steps(sort.size)) {
+                sort.j = j;
+                sort.k = k;
+                sort.stage = 1;
+                particle_jobs_.push_back({.kind = ComputeKind::Sort3D,
+                                          .particles = emitter.buffer,
+                                          .target = keys,
+                                          .sort = sort});
+            }
+        }
+        const auto source_at = static_cast<std::uint32_t>(particle_words_.size());
+        pack_particle_vertices_3d(source, particle_words_);
+        particle_jobs_.push_back(
+            {.kind = ComputeKind::Mesh3D,
+             .particles = emitter.buffer,
+             .source = keys,
+             .target = found.vertices,
+             .mesh = mesh_uniforms_3d(draw, amount, static_cast<std::uint32_t>(source.size()),
+                                      source_at)});
+        if (auto flushed = flush_particle_jobs(); !flushed) {
+            return flushed;
+        }
+        found.bounds = {.low = draw.box_low, .high = draw.box_high};
+        return {};
+    }
+
+    Result<std::vector<Particle3D>> read_particles_3d(Particles3DId particles) override {
+        if (in_frame_) {
+            return frame_in_progress("read_particles_3d");
+        }
+        const auto it = particle_systems_3d_.find(particles);
+        if (it == particle_systems_3d_.end()) {
+            return unknown_particles_3d();
+        }
+        const std::uint64_t size = std::uint64_t{it->second.amount} * sizeof(Particle3D);
+        WGPUBuffer readback =
+            create_buffer(WGPUBufferUsage_MapRead | WGPUBufferUsage_CopyDst, size);
+        WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, nullptr);
+        wgpuCommandEncoderCopyBufferToBuffer(encoder, it->second.buffer, 0, readback, 0, size);
+        submit(encoder);
+        std::vector<Particle3D> out(it->second.amount);
+        auto mapped = map_and_read(readback, std::as_writable_bytes(std::span(out)));
+        destroy_buffer(readback);
+        if (!mapped) {
+            return mapped.error();
+        }
+        return out;
+    }
+
     Result<MeshId> create_mesh(std::span<const Vertex3D> vertices,
                                std::span<const std::uint32_t> indices,
                                std::span<const std::span<const std::uint32_t>> lods) override {
@@ -1134,7 +1330,9 @@ public:
                         .vertex_count = vertices.size(),
                         .bounds = mesh_bounds(vertices),
                         .previous = nullptr,
-                        .moved = false};
+                        .moved = false,
+                        .storage = false,
+                        .previous_storage = false};
         wgpuQueueWriteBuffer(queue_, mesh.vertices, 0, vertices.data(), vertices.size_bytes());
         wgpuQueueWriteBuffer(queue_, mesh.indices, 0, indices.data(), indices.size_bytes());
         const auto id = static_cast<MeshId>(next_mesh_++);
@@ -1162,6 +1360,7 @@ public:
                                                vertices.size_bytes());
             }
             std::swap(found.vertices, found.previous);
+            std::swap(found.storage, found.previous_storage);
             found.moved = true;
         }
         // Queue writes land after the command buffers sent before them, so frames already sent
@@ -1169,6 +1368,13 @@ public:
         wgpuQueueWriteBuffer(queue_, found.vertices, 0, vertices.data(), vertices.size_bytes());
         found.bounds = mesh_bounds(vertices);
         return {};
+    }
+
+    void set_mesh_bounds(MeshId mesh, std::array<float, 3> low,
+                         std::array<float, 3> high) override {
+        if (const auto it = meshes_.find(mesh); it != meshes_.end()) {
+            it->second.bounds = {.low = low, .high = high};
+        }
     }
 
     void destroy_mesh(MeshId mesh) override {
@@ -1940,6 +2146,10 @@ private:
         Bounds bounds;
         WGPUBuffer previous = nullptr;
         bool moved = false;
+        // Whether vertices and previous can be written by a compute shader, as
+        // fill_particle_mesh makes them.
+        bool storage = false;
+        bool previous_storage = false;
     };
 
     // What a mesh draw binds, found when it is made: its mesh may be destroyed before end_frame.
@@ -2077,8 +2287,16 @@ private:
         WGPUBuffer emissions = nullptr;
     };
 
+    struct ParticleSystem3D {
+        WGPUBuffer buffer = nullptr; // its particles
+        // Its slots' keys sorted by view depth, made when a pass is first drawn in that order.
+        WGPUBuffer keys = nullptr;
+        std::uint32_t amount = 0;
+    };
+
     // A compute pass for the GPU to run ahead of the frame's draws, in the order called: steps
-    // of a system, numbering what a sub-emitter takes, or a draw turning a system into quads.
+    // of a system, numbering what a sub-emitter takes, or a draw turning a system into quads;
+    // steps of a 3D system, a step of its sort, or a draw pass's mesh placed at it.
     struct ParticleJob {
         ComputeKind kind = ComputeKind::Process;
         WGPUBuffer particles = nullptr;
@@ -2095,7 +2313,9 @@ private:
         WGPUBuffer target = nullptr;
         std::uint32_t chain = 0; // kChainTakes and kChainEmits
         EmitUniforms emit{};
-        DrawUniforms look{}; // for a draw; its first vertex is in the particle quads
+        DrawUniforms look{};   // for a draw; its first vertex is in the particle quads
+        SortUniforms3D sort{}; // a sort's step, writing the keys in target
+        MeshUniforms3D mesh{}; // a mesh, written to target from the keys in source
     };
 
     static std::size_t sampler_index(Filter filter, bool repeat) {
@@ -2332,6 +2552,11 @@ private:
         draw_outputs_layout_ = layout(draw_outputs);
         // The emissions, and the sub-emitter whose first particle keeps its count.
         emit_outputs_layout_ = layout(process_outputs);
+        // A 3D draw pass's source vertices' words, the particles and their keys. The 3D
+        // process and sort passes bind as the 2D draw does: what they read, what they write.
+        const std::array mesh_3d_inputs{storage_entry(0, true), storage_entry(1, true),
+                                        storage_entry(2, true)};
+        mesh_3d_inputs_layout_ = layout(mesh_3d_inputs);
         const std::array compute{uniform_entry(0, WGPUShaderStage_Compute, kComputeUniformBytes)};
         compute_uniforms_layout_ = layout(compute);
         const std::array mesh_vertex{
@@ -2536,6 +2761,8 @@ private:
             pipeline_layout({draw_inputs_layout_, draw_outputs_layout_, compute_uniforms_layout_});
         pipeline_layouts_.at(kEmitLayout) =
             pipeline_layout({empty_layout_, emit_outputs_layout_, compute_uniforms_layout_});
+        pipeline_layouts_.at(kMesh3DLayout) = pipeline_layout(
+            {mesh_3d_inputs_layout_, draw_outputs_layout_, compute_uniforms_layout_});
         pipeline_layouts_.at(kMeshLayout) = pipeline_layout(
             {empty_layout_, mesh_vertex_layout_, mesh_textures_layout_, mesh_fragment_layout_});
         pipeline_layouts_.at(kMeshClusteredLayout) =
@@ -2625,6 +2852,21 @@ private:
             info.layout = pipeline_layouts_.at(kEmitLayout);
             info.compute.module = module(kEmitModule, joined(shaders::kParticlesEmitComputeWgsl));
             break;
+        case ComputeKind::Process3D:
+            info.layout = pipeline_layouts_.at(kDrawLayout);
+            info.compute.module =
+                module(kProcess3DModule, joined(shaders::kParticlesProcess3DComputeWgsl));
+            break;
+        case ComputeKind::Sort3D:
+            info.layout = pipeline_layouts_.at(kDrawLayout);
+            info.compute.module =
+                module(kSort3DModule, joined(shaders::kParticlesSort3DComputeWgsl));
+            break;
+        case ComputeKind::Mesh3D:
+            info.layout = pipeline_layouts_.at(kMesh3DLayout);
+            info.compute.module =
+                module(kMesh3DModule, joined(shaders::kParticlesMesh3DComputeWgsl));
+            break;
         }
         info.compute.entryPoint = text_view("cs_main");
         slot = wgpuDeviceCreateComputePipeline(device_, &info);
@@ -2641,6 +2883,21 @@ private:
         pack_particle_process(process, particle_words_);
         last_material_.emplace(process, at);
         return at;
+    }
+
+    // Where a 3D process material's words are, as material_words.
+    std::uint32_t material_words_3d(const ParticleProcess3D& process) {
+        if (last_material_3d_ && last_material_3d_->first == process) {
+            return last_material_3d_->second;
+        }
+        const auto at = static_cast<std::uint32_t>(particle_words_.size());
+        pack_particle_process_3d(process, particle_words_);
+        last_material_3d_.emplace(process, at);
+        return at;
+    }
+
+    static Error unknown_particles_3d() {
+        return make_error(ErrorCode::NotFound, "no such 3D particle system");
     }
 
     // The buffers a process pass binds where it takes or writes no emissions, made once.
@@ -2702,6 +2959,21 @@ private:
                 break;
             case ComputeKind::Emit:
                 at.push_back(uniforms_.add(job.emit));
+                break;
+            case ComputeKind::Process3D:
+                at.push_back(uniforms_.add(
+                    ProcessUniforms3D{.amount = job.amount,
+                                      .material = job.material,
+                                      .steps = job.steps,
+                                      .step_count = job.step_count,
+                                      .reset = job.reset ? 1U : 0U,
+                                      .phase_step = particle_phase_step(job.amount)}));
+                break;
+            case ComputeKind::Sort3D:
+                at.push_back(uniforms_.add(job.sort));
+                break;
+            case ComputeKind::Mesh3D:
+                at.push_back(uniforms_.add(job.mesh));
                 break;
             }
         }
@@ -2841,6 +3113,7 @@ private:
         for (std::size_t i = 0; i < particle_jobs_.size(); ++i) {
             const ParticleJob& job = particle_jobs_[i];
             std::uint32_t groups = (job.amount + kParticleThreads - 1) / kParticleThreads;
+            std::uint32_t rows = 1;
             WGPUBindGroup inputs = nullptr;
             WGPUBindGroup outputs = nullptr;
             switch (job.kind) {
@@ -2870,6 +3143,33 @@ private:
                 groups = 1;
                 break;
             }
+            case ComputeKind::Process3D: {
+                const std::array in{buffer_entry(0, particle_data_)};
+                inputs = bind_group(draw_inputs_layout_, in);
+                const std::array out{buffer_entry(0, job.particles)};
+                outputs = bind_group(draw_outputs_layout_, out);
+                break;
+            }
+            case ComputeKind::Sort3D: {
+                const std::array in{buffer_entry(0, job.particles)};
+                inputs = bind_group(draw_inputs_layout_, in);
+                const std::array out{buffer_entry(0, job.target)};
+                outputs = bind_group(draw_outputs_layout_, out);
+                groups = (job.sort.size + kParticleThreads - 1) / kParticleThreads;
+                break;
+            }
+            case ComputeKind::Mesh3D: {
+                const std::array in{buffer_entry(0, particle_data_), buffer_entry(1, job.particles),
+                                    buffer_entry(2, job.source)};
+                inputs = bind_group(mesh_3d_inputs_layout_, in);
+                const std::array out{buffer_entry(0, job.target)};
+                outputs = bind_group(draw_outputs_layout_, out);
+                const std::array<std::uint32_t, 2> grid =
+                    mesh_groups(job.mesh.counts[0] * job.mesh.counts[1]);
+                groups = grid[0];
+                rows = grid[1];
+                break;
+            }
             }
             WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
             wgpuComputePassEncoderSetPipeline(
@@ -2880,7 +3180,7 @@ private:
             wgpuComputePassEncoderSetBindGroup(pass, 1, outputs, 0, nullptr);
             const std::uint32_t offset = uniforms[i];
             wgpuComputePassEncoderSetBindGroup(pass, 2, compute_uniforms_group_, 1, &offset);
-            wgpuComputePassEncoderDispatchWorkgroups(pass, groups, 1, 1);
+            wgpuComputePassEncoderDispatchWorkgroups(pass, groups, rows, 1);
             wgpuComputePassEncoderEnd(pass);
             wgpuComputePassEncoderRelease(pass);
             if (inputs != nullptr) {
@@ -2894,6 +3194,7 @@ private:
         particle_jobs_.clear();
         particle_words_.clear();
         last_material_.reset();
+        last_material_3d_.reset();
     }
 
     void release_pending_buffers() {
@@ -5833,6 +6134,9 @@ private:
     // FSR 3's passes' vertex and fragment modules in Fsr3Pass's order, then its reconstruct pass's.
     static constexpr std::size_t kFsr3Modules = kFogSkyFragmentModule + 1;
     static constexpr std::size_t kFsr3ReconstructModule = kFsr3Modules + (2 * kFsr3Passes);
+    static constexpr std::size_t kProcess3DModule = kFsr3ReconstructModule + 1;
+    static constexpr std::size_t kSort3DModule = kProcess3DModule + 1;
+    static constexpr std::size_t kMesh3DModule = kSort3DModule + 1;
     static constexpr std::size_t kSpriteLayout = 0;
     static constexpr std::size_t kMaterialLayout = 1;
     static constexpr std::size_t kProcessLayout = 2;
@@ -5854,6 +6158,7 @@ private:
     static constexpr std::size_t kFogSkyLayout = kFogLayout + 1;
     static constexpr std::size_t kFsr3Layout = kFogSkyLayout + 1; // one for each Fsr3Pass
     static constexpr std::size_t kFsr3ReconstructLayout = kFsr3Layout + kFsr3Passes;
+    static constexpr std::size_t kMesh3DLayout = kFsr3ReconstructLayout + 1;
 
     WGPUInstance instance_;
     WGPUDevice device_;
@@ -5866,11 +6171,11 @@ private:
     bool can_wait_ = false; // Asyncify lets read_texture wait for the GPU
     // Which formats the GPU samples, by TextureFormat.
     std::array<bool, 4> sampled_{true, false, false, true};
-    std::array<WGPUShaderModule, kFsr3ReconstructModule + 1> modules_{};
+    std::array<WGPUShaderModule, kMesh3DModule + 1> modules_{};
     std::vector<Pipeline> pipelines_;
     std::unordered_map<ShaderId, GameShader> game_shaders_;
     std::uint32_t next_shader_ = 1;
-    std::array<WGPUComputePipeline, 3> compute_pipelines_{}; // by ComputeKind
+    std::array<WGPUComputePipeline, kComputeKinds> compute_pipelines_{}; // by ComputeKind
     WGPUBindGroupLayout empty_layout_ = nullptr;
     WGPUBindGroupLayout vertex_uniforms_layout_ = nullptr;
     WGPUBindGroupLayout sprite_textures_layout_ = nullptr;
@@ -5881,6 +6186,7 @@ private:
     WGPUBindGroupLayout draw_inputs_layout_ = nullptr;
     WGPUBindGroupLayout draw_outputs_layout_ = nullptr;
     WGPUBindGroupLayout emit_outputs_layout_ = nullptr;
+    WGPUBindGroupLayout mesh_3d_inputs_layout_ = nullptr;
     WGPUBindGroupLayout compute_uniforms_layout_ = nullptr;
     WGPUBindGroupLayout mesh_vertex_layout_ = nullptr;
     WGPUBindGroupLayout mesh_textures_layout_ = nullptr;
@@ -5915,7 +6221,7 @@ private:
     WGPUBindGroupLayout fog_uniforms_layout_ = nullptr;
     WGPUBindGroupLayout fog_sky_storage_layout_ = nullptr;
     WGPUBindGroupLayout fog_sky_uniforms_layout_ = nullptr;
-    std::array<WGPUPipelineLayout, kFsr3ReconstructLayout + 1> pipeline_layouts_{};
+    std::array<WGPUPipelineLayout, kMesh3DLayout + 1> pipeline_layouts_{};
     std::array<WGPUSampler, 4> samplers_{}; // by sampler_index
     GpuTexture white_;
     std::unordered_map<TextureId, Texture> textures_;
@@ -5956,6 +6262,9 @@ private:
     std::vector<ParticleJob> particle_jobs_;
     std::vector<Word> particle_words_;
     std::optional<std::pair<ParticleProcess, std::uint32_t>> last_material_;
+    std::optional<std::pair<ParticleProcess3D, std::uint32_t>> last_material_3d_;
+    std::unordered_map<Particles3DId, ParticleSystem3D> particle_systems_3d_;
+    std::uint32_t next_particles_3d_ = 1;
     WGPUBuffer particle_data_ = nullptr;
     std::uint64_t particle_capacity_ = 0;
     // Bound where a process pass takes or writes no emissions.

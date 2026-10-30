@@ -681,9 +681,10 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
     - [x] `GPUParticles3D` stepped as Godot's (emission cycles, `fixed_fps`, preprocess,
           one-shots), process materials read with Godot's 3D fields (ring emission, flatness,
           directional velocity, scale over velocity, per-axis curves), up to four draw passes
-          with draw orders, transform alignment and visibility boxes, and `particles.eval`;
-          devices run the steps on the CPU for now
-    - [ ] The steps in compute shaders on Metal, Direct3D 12, Vulkan and WebGPU
+          with draw orders, transform alignment and visibility boxes, and `particles.eval`
+    - [x] The steps, the view depth sort and the draw passes' meshes in compute shaders on
+          Metal, Direct3D 12, Vulkan and WebGPU, with the CPU twin on the software and OpenGL
+          devices
     - [ ] Attractors (sphere, box and vector field) and collision shapes (sphere, box, SDF,
           height field)
     - [ ] Godot's `GPUParticles3D` nodes and 3D process materials imported
@@ -958,7 +959,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Keyframe animation | Keyframe tracks on any reflected property | 5 | Done |
 | Skeletal animation | Skinned meshes, blending, root motion | 7 | Done |
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Done |
-| Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles and GPU particles with process materials, particle graphs, turbulence, collision, sub-emitters and trails are done, `CPUParticles3D` and `GPUParticles3D` on the CPU; compute shaders in 3D and attractors in 7 |
+| Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles and GPU particles with process materials, particle graphs, turbulence, collision, sub-emitters and trails are done, `CPUParticles3D`, and `GPUParticles3D` in compute shaders; 3D attractors and collision in 7 |
 | Soundtracks | Music planned in the storyboard, written as scores or generated, arranged into interactive music and checked by analysis, all through commands | 6 | Done |
 | Audio | miniaudio: buses, effects, 3D spatial audio | 5, 7 | Done |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Done |

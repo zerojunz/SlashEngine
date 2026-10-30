@@ -54,6 +54,7 @@ add_library(slash_render
     src/mesh.cpp
     src/particle_layout.cpp
     src/particles.cpp
+    src/particle_layout_3d.cpp
     src/particles3d.cpp
     src/path_trace.cpp
     src/post.cpp
@@ -112,7 +113,8 @@ endif()
 # every platform: no fused multiply-adds, which arm64 compilers would otherwise emit and x86-64
 # ones not.
 set_source_files_properties(src/clusters.cpp src/decal.cpp src/device.cpp src/forward_post.cpp
-    src/fsr2.cpp src/fsr3.cpp src/material.cpp src/mesh.cpp src/particles.cpp src/particles3d.cpp
+    src/fsr2.cpp src/fsr3.cpp src/material.cpp src/mesh.cpp src/particle_layout_3d.cpp
+    src/particles.cpp src/particles3d.cpp
     src/path_trace.cpp
     src/post.cpp src/resize.cpp src/shader_vm.cpp src/shadow.cpp src/reflection.cpp src/sky.cpp
     src/software_device.cpp
@@ -126,8 +128,9 @@ find_program(SLASH_GLSLANG NAMES glslangValidator glslang)
 find_program(SLASH_SPIRV_CROSS NAMES spirv-cross)
 find_program(SLASH_TINT NAMES tint)
 set(slash_shader_headers "")
-# Each shader as file:Name, then compute for compute shaders, and 3d for the mesh shader and
-# depth for the shadow pass shader, whose varyings GLSL names apart from the canvas shaders' and
+# Each shader as file:Name, then compute for compute shaders (compute3d for the 3D particle
+# shaders, which include particles_3d.hlsl), and 3d for the mesh shader and depth for the shadow
+# pass shader, whose varyings GLSL names apart from the canvas shaders' and
 # whose depth it maps to OpenGL's, and post for the post passes, the sky and the radiance filter,
 # which have no varyings. The mesh shader's code is long enough to come in pieces, and its fifteen
 # textures put its WGSL samplers 16 bindings after them instead of 8, as the thirteen textures of
@@ -157,6 +160,8 @@ set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
     fsr3_accumulate:Fsr3Accumulate:fsr3
     particles_process:ParticlesProcess:compute
     particles_emit:ParticlesEmit:compute particles_draw:ParticlesDraw:compute
+    particles_process_3d:ParticlesProcess3D:compute3d particles_sort_3d:ParticlesSort3D:compute3d
+    particles_mesh_3d:ParticlesMesh3D:compute3d
     volumetric_fog:VolumetricFog:fog_compute volumetric_fog_sky:VolumetricFogSky:fog_sky)
 foreach(entry IN LISTS slash_shaders)
     string(REPLACE ":" ";" parts ${entry})
@@ -177,6 +182,9 @@ foreach(entry IN LISTS slash_shaders)
         if(kind STREQUAL "compute")
             set(compute ON)
             set(include particles)
+        elseif(kind STREQUAL "compute3d")
+            set(compute ON)
+            set(include particles_3d)
         elseif(kind STREQUAL "fog_compute")
             set(compute ON)
             set(include tonemap)

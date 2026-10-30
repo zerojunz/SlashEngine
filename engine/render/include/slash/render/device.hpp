@@ -497,8 +497,9 @@ public:
     [[nodiscard]] virtual Result<std::vector<Particle>> read_particles(ParticlesId particles) = 0;
 
     // A 3D particle system (particles3d.hpp) of amount particles, from 1 to kMaxParticles3D, none
-    // of them live. Every device keeps and runs 3D systems on the CPU, with
-    // process_particles_3d and particle_mesh_vertices_3d; the null device keeps none.
+    // of them live. The GPU and WebGPU devices run 3D systems in compute shaders; these
+    // definitions keep and run them on the CPU, with process_particles_3d and
+    // particle_mesh_vertices_3d, for the others. The null device keeps none.
     // Defined here so RenderDevice still has no key function (see metalfx_spatial).
     [[nodiscard]] virtual Result<Particles3DId> create_particles_3d(std::uint32_t amount) {
         return particles_3d_.create(amount);
@@ -523,7 +524,13 @@ public:
         }
         particle_vertices_.assign(live.value().size() * source.size(), Vertex3D{});
         particle_mesh_vertices_3d(live.value(), source, draw, particle_vertices_);
-        return update_mesh(mesh, particle_vertices_);
+        if (auto updated = update_mesh(mesh, particle_vertices_); !updated) {
+            return updated;
+        }
+        if (draw.has_box()) {
+            set_mesh_bounds(mesh, draw.box_low, draw.box_high);
+        }
+        return {};
     }
     // Returns a 3D system's particles as they are after the steps run so far; not during a
     // frame. The null device's are none live.
@@ -604,6 +611,12 @@ public:
                           "this device has no MetalFX scaler: only the GPU device on Metal does, "
                           "on macOS 13 and iOS 16 or later");
     }
+
+protected:
+    // Gives a mesh made here the box round it from low to high in place of its vertices', until
+    // its vertices change: fill_particle_mesh's box (ParticleMeshDraw3D::box_low and box_high).
+    virtual void set_mesh_bounds(MeshId /*mesh*/, std::array<float, 3> /*low*/,
+                                 std::array<float, 3> /*high*/) {}
 
 private:
     detail::ParticleStore3D particles_3d_;
