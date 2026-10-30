@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=3 uid="uid://courtyard0main"]
+[gd_scene load_steps=20 format=3 uid="uid://courtyard0main"]
 
 [ext_resource type="ArrayMesh" path="res://models/lamp.obj" id="1_lamp"]
 [ext_resource type="PackedScene" path="res://models/statue.gltf" id="2_statue"]
@@ -34,6 +34,25 @@ size = Vector2(0.3, 0.3)
 
 [sub_resource type="Gradient" id="Gradient_fade"]
 colors = PackedColorArray(0.8, 0.8, 0.8, 0.8, 0.5, 0.5, 0.5, 0)
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_flies"]
+emission_shape = 1
+emission_sphere_radius = 0.8
+direction = Vector3(0, 1, 0)
+spread = 180.0
+initial_velocity_min = 0.2
+initial_velocity_max = 0.4
+gravity = Vector3(0, 0, 0)
+color = Color(1, 0.9, 0.3, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_glow"]
+shading_mode = 0
+vertex_color_use_as_albedo = true
+billboard_mode = 3
+
+[sub_resource type="QuadMesh" id="QuadMesh_fly"]
+material = SubResource("StandardMaterial3D_glow")
+size = Vector2(0.06, 0.06)
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_day"]
 sky_top_color = Color(0.25, 0.45, 0.8, 1)
@@ -99,6 +118,19 @@ color_ramp = SubResource("Gradient_fade")
 [node name="Fireflies" type="GPUParticles3D" parent="Lamp"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.6, 0)
 amount = 12
+lifetime = 3.0
+visibility_aabb = AABB(-3, -3, -3, 6, 6, 6)
+process_material = SubResource("ParticleProcessMaterial_flies")
+draw_pass_1 = SubResource("QuadMesh_fly")
+
+[node name="Lure" type="GPUParticlesAttractorSphere3D" parent="Lamp"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.6, 0)
+strength = 0.5
+radius = 2.0
+
+[node name="Roof" type="GPUParticlesCollisionBox3D" parent="Lamp"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.6, 0)
+size = Vector3(2, 0.2, 2)
 
 [node name="Sun" type="DirectionalLight3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.642788, 0.766044, 0, -0.766044, 0.642788, 0, 8, 0)
