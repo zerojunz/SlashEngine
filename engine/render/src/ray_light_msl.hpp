@@ -1501,6 +1501,6 @@ kernel void main0(constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0
 inline constexpr int kRayLightMslIds[][2] = {{0, -1}, {1, 2}, {3, 4}, {5, -1}, {6, -1}, {7, -1}, {8, -1}, {9, 10}, {11, 75}, {139, -1}, {140, -1}, {141, -1}, {142, 143}};
 
 // The FNV-1a hash of the GLSL it was made from.
-inline constexpr std::uint64_t kRayLightMslFrom = 0x432223453b0d7e18ULL;
+inline constexpr std::uint64_t kRayLightMslFrom = 0x61e213f6daa26dabULL;
 
 } // namespace slash::render::shaders

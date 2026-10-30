@@ -632,8 +632,8 @@ if((SLASH_BUILD_TOOLS OR SLASH_BUILD_TESTS) AND NOT EMSCRIPTEN)
     endif()
 
     # A game's own shaders, compiled by the tools (tools/shader_compiler): glslang turns HLSL into
-    # SPIR-V, and SPIRV-Cross turns that into MSL and GLSL ES. Games get the compiled code, never
-    # the compilers.
+    # SPIR-V, and SPIRV-Cross turns that into MSL and GLSL ES (and the ray shaders into HLSL for
+    # Direct3D 12, in slash-ray-msl). Games get the compiled code, never the compilers.
     slash_add_dependency(glslang
         SYSTEM TRUE
         EXCLUDE_FROM_ALL TRUE
@@ -653,7 +653,7 @@ if((SLASH_BUILD_TOOLS OR SLASH_BUILD_TESTS) AND NOT EMSCRIPTEN)
             "SPIRV_CROSS_ENABLE_TESTS OFF"
             "SPIRV_CROSS_ENABLE_GLSL ON"
             "SPIRV_CROSS_ENABLE_MSL ON"
-            "SPIRV_CROSS_ENABLE_HLSL OFF"
+            "SPIRV_CROSS_ENABLE_HLSL ON"
             "SPIRV_CROSS_ENABLE_CPP OFF"
             "SPIRV_CROSS_ENABLE_REFLECT OFF"
             "SPIRV_CROSS_ENABLE_C_API OFF"
