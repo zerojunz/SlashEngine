@@ -1769,8 +1769,9 @@ is to the pixel's plane, so edges stay sharp. The result is the pixel's ambient 
 the `WorldEnvironment`'s, the sky's, VoxelGIs' and reflection probes' (lightmapped meshes keep
 their lightmaps), still darkened by ambient occlusion. Out in the open it is the environment's
 light, as before; in corners and beside walls it is darker and takes their colors. Transparent
-meshes, which the prepass doesn't draw, keep the ambient light. Only the software device traces
-it for now, so `frame.capture` returns it; GPUs light pixels as before.
+meshes, which the prepass doesn't draw, keep the ambient light. The software device traces it, so
+`frame.capture` returns it, and so does the GPU device on Vulkan where the GPU has ray queries,
+which matches it; other GPUs light pixels as before.
 [examples/ray-traced-gi-3d](../../examples/ray-traced-gi-3d) bounces a red wall's light.
 
 ### WorldEnvironment

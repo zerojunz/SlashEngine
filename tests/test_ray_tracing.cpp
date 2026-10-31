@@ -758,3 +758,34 @@ TEST_CASE("open sky gives traced ambient light as the ambient light does") {
     // Beside the cube, part of it is hidden, so it is darker, as ambient occlusion would make it.
     CHECK(at(with, kBeside) < at(without, kBeside));
 }
+
+TEST_CASE("devices trace global illumination as the software device does") {
+    const auto software = render::create_software_device();
+    for (const auto& device : slash::test::hardware_devices()) {
+        CAPTURE(static_cast<int>(device->backend()));
+        CAPTURE(device->ray_tracing());
+        if (!device->ray_tracing()) {
+            // Elsewhere the ambient light is as without it.
+            CHECK(draw_shadow(*device, bounced()).pixels ==
+                  draw_shadow(*device, bounced(false)).pixels);
+            continue;
+        }
+        render::Scene3D open = bounced();
+        open.lights.clear();
+        open.ambient = {0.3F, 0.3F, 0.3F};
+        render::Scene3D few = bounced();
+        few.ray_tracing.global_illumination_samples = 2;
+        const std::array scenes{bounced(), open, few};
+        for (std::size_t i = 0; i < scenes.size(); ++i) {
+            CAPTURE(i);
+            const Image traced = draw_shadow(*device, scenes[i], {}, 48);
+            const Image twin = draw_shadow(*software, scenes[i], {}, 48);
+            CHECK(differing(traced, twin, 3) <= 12);
+            CHECK(differing(traced, twin, 40) <= 4);
+        }
+        // The cube's lit red face bounces onto the floor beside it.
+        const Image traced = draw_shadow(*device, bounced());
+        CHECK(channel(traced, kBounce[0], kBounce[1], 0) >
+              channel(traced, kBounce[0], kBounce[1], 1) + 4);
+    }
+}

@@ -6790,7 +6790,7 @@ cbuffer Scene : register(b1, space3) {
     float4 scene_voxel_gi;
     // Forward+'s decals: how many, the filter, the atlas's width and height in texels.
     float4 decal_info;
-    float4 screen; // the target's width and height in pixels
+    float4 screen; // the target's width and height in pixels, then the ray-traced layers' flags
     // The camera's view-projection without TAA's jitter: its x, y and w rows.
     float4 clip_rows[3];
     // Forward+'s volumetric fog: 1 when the frame has it, 1 over its length, 1 over its detail
@@ -6839,9 +6839,10 @@ R"hlsl(    float4 filters;  // samples a directional and a spot shadow takes: 1,
 // group of their own, the mesh pipeline's otherwise empty group 0. The screen's layers are the
 // frame's size, white when the frame draws neither: layer 0 the screen-space ambient occlusion,
 // layer 1 the screen-space reflections (each pixel's reflection in RGB, premultiplied by how much
-// of the sky's it replaces, in A), and with ray-traced shadows (screen.z) layers 2 and 3 their
+// of the sky's it replaces, in A), with ray-traced shadows (screen.z) layers 2 and 3 their
 // lights' visibility, a light a channel in order of its ray slot (light.shadow.w - 1), four a layer
-// (src/ray_shadows.hpp). The reflection probes' cubes are in probe_atlas, mirrored along
+// (src/ray_shadows.hpp), and with ray-traced global illumination (screen.w) layer 4 each pixel's
+// ambient light in RGB. The reflection probes' cubes are in probe_atlas, mirrored along
 // z (src/reflection.cpp), each linear, its levels filtered as radiance.hlsl filters the sky's.
 Texture2DArray<float4> screen_texture : register(t14, space2);
 TextureCubeArray<float4> probe_atlas : register(t15, space2);
@@ -7070,9 +7071,9 @@ float4 volumetric_fog_process(float2 uv, float view_depth) {
 // A lit color at a point in the world, linear, as the frame's target takes it: fogged unless the
 // material disables it, then left linear for Forward+, or times the exposure, tonemapped unless
 // the post pass does it, and as sRGB, as Godot's scene.glsl ends. In Forward+ with volumetric
-// fog, the plain fog is seen through the volumetric fog in front of it, as Godot's
 )hlsl",
-R"hlsl(// scene_forward_clustered.glsl blends them; pixel is the fragment's place on the target.
+R"hlsl(// fog, the plain fog is seen through the volumetric fog in front of it, as Godot's
+// scene_forward_clustered.glsl blends them; pixel is the fragment's place on the target.
 float4 finish(float3 color, float alpha, float3 world, float2 pixel) {
     bool fog_on = (options.x & kDisableFog) == 0u;
 #ifdef CLUSTERED
@@ -7351,11 +7352,11 @@ void add_light(Light light, float3 world, float3 normal, float3 geometry, float3
     }
     // A baked light's light is in the lightmap already, as Godot skips BAKE_STATIC lights.
     if (light.shadow.y != 0.0 && (options.x & kLightmap) != 0u) {
-        return;
+)hlsl",
+R"hlsl(        return;
     }
     float type = light.direction.w;
-)hlsl",
-R"hlsl(    float slot = light.shadow.x;
+    float slot = light.shadow.x;
     bool directional = type == kDirectional;
     float3 to_light = light.position.xyz - world;
     float3 toward = directional ? normalize(light.direction.xyz) : normalize(to_light);
@@ -8016,6 +8017,11 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
                                 : ambient_accum.rgb;
         }
     }
+    if (screen.w != 0.0 && !lightmapped &&
+        ((options.x & kHasAlpha) == 0u || (options.x & kAlphaScissor) != 0u)) {
+        // Its ray-traced ambient light stands in for all of those but a lightmap's.
+        ambient_light = screen_texture.Load(int4((int2)input.position.xy, 4, 0)).rgb;
+    }
 #endif
     ambient_light *= ao;
     float occlusion =
@@ -8095,12 +8101,12 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
         // HTerrain's Classic4 shader: each layer tinted by the color map, weighed by the splat
         // map (depth-blended by the bumps), its normal added to the terrain's.
         uint terrain_flags = options.w;
-        float4 normal_roughness[4] = {normal_0, normal_1, normal_2, normal_3};
+)hlsl",
+R"hlsl(        float4 normal_roughness[4] = {normal_0, normal_1, normal_2, normal_3};
         float4 albedo_bump[4] = {emission_texel, mapped_texel, ground_2, ground_3};
         float4 bumps = float4(albedo_bump[0].a, albedo_bump[1].a, albedo_bump[2].a,
                               albedo_bump[3].a);
-)hlsl",
-R"hlsl(        float4 weights = (terrain_flags & kTerrainDepthBlending) != 0u
+        float4 weights = (terrain_flags & kTerrainDepthBlending) != 0u
                              ? depth_blended_weights(metallic_texel, bumps)
                              : metallic_texel;
         // Splat weights that are all 0 leave the ground black rather than undefined.

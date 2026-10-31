@@ -16,10 +16,20 @@
 // mirror direction. The light the rays bring back, divided by the rays sent, and the share that
 // met something go in reflection_image, which the screen texture's layer 1 takes as SSR's.
 //
+// Built as three pipelines by kPass. The first traces the reflections. The second traces each
+// pixel's ambient light, the twin of run_ray_gi's first step: gi.x rays cosine weighted over the
+// half of the sphere its surface faces, each bringing back what it meets, shaded as a reflection
+// ray's, or the environment's light, averaged into gi_traced. The third smooths that over the
+// pixels within kSmoothRadius on the same surface into gi_image, which the screen texture's layer
+// 4 takes.
+//
 // GLSL rather than HLSL, as glslang's HLSL has no ray queries; cmake/compile_ray_shaders.cmake
 // compiles it into ray_light_shaders.hpp.
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// 0 the reflections, 1 the global illumination's rays, 2 their smoothing.
+layout(constant_id = 0) const uint kPass = 0u;
 
 // One instance a draw, its custom index the draw's place in draws: mask 1 for the draws rays
 // from the camera's side see, 2 for those that cast shadows.
@@ -36,6 +46,7 @@ layout(set = 0, binding = 4, std140) uniform Frame {
     uvec4 size;        // width, height, rays a pixel, lights
     vec4 ambient;      // the ambient light, then 1 when the environment is the sky's radiance
     vec4 sky_rows[3];  // the world to the sky's space, a row each; w: the sky's scale, its share
+    uvec4 gi;          // the global illumination's rays a pixel
 };
 
 // A draw as rays meet it: RayDrawRecord in src/vulkan_rays.cpp.
@@ -74,6 +85,9 @@ layout(set = 0, binding = 6, std430) readonly buffer Lights {
 layout(set = 0, binding = 7) uniform samplerCube environment_map;
 // The draws' textures; kNoTexture reads white.
 layout(set = 0, binding = 8) uniform sampler2D textures[64];
+// The global illumination's ambient light: as traced, then smoothed.
+layout(set = 0, binding = 9, rgba16f) uniform image2D gi_traced;
+layout(set = 0, binding = 10, rgba16f) uniform writeonly image2D gi_image;
 
 // A mesh's vertices (Vertex3D, 15 words each) and triangles, by device address.
 layout(buffer_reference, std430, buffer_reference_align = 4) readonly buffer Words {
@@ -91,6 +105,14 @@ const float kR2X = 0.7548776662;
 const float kR2Y = 0.5698402910;
 const float kPi = 3.14159265358979;
 const uint kReflectionSeed = 0xB0u;
+const uint kLightSeed = 0xC0u;
+// How far around a pixel its traced ambient light is smoothed, and how sharply neighbors facing
+// other ways (as squarings of their normals' cosine) and off its plane count less: as
+// src/ray_shadows.cpp's.
+const int kSmoothRadius = 2;
+const int kNormalSquarings = 3;
+const float kPlaneShare = 0.02;
+const float kPlaneLeast = 0.01;
 const float kReflectionCutoff = 0.7;
 const float kMinBounceRoughness = 0.03;
 const float kFar = 3.402823466e38;
@@ -464,60 +486,150 @@ vec4 reflection(vec3 origin, vec3 direction, uint seed) {
     return vec4(light, 1.0);
 }
 
+// A pixel's surface as ray_surface finds it: its place moved off it along its normal, the normal
+// turned to face the camera, and its point on the near plane. False where the prepass drew
+// nothing.
+bool surface_at(uvec2 pixel, out vec3 origin, out vec3 normal, out vec3 near) {
+    origin = vec3(0.0);
+    normal = vec3(0.0);
+    near = vec3(0.0);
+    float depth = texelFetch(depth_texture, ivec2(pixel), 0).r;
+    if (!(depth > 0.0)) {
+        return false;
+    }
+    vec2 ndc = vec2(((float(pixel.x) + 0.5) / float(size.x) * 2.0) - 1.0,
+                    1.0 - ((float(pixel.y) + 0.5) / float(size.y) * 2.0));
+    vec4 clip = to_world * vec4(ndc, depth, 1.0);
+    vec3 world = clip.xyz / clip.w;
+    vec4 near_clip = to_world * vec4(ndc, 1.0, 1.0);
+    near = near_clip.xyz / near_clip.w;
+    vec3 seen = vec3(dot(view_rows[0].xyz, world) + view_rows[0].w,
+                     dot(view_rows[1].xyz, world) + view_rows[1].w,
+                     dot(view_rows[2].xyz, world) + view_rows[2].w);
+    vec3 facing = (texelFetch(normal_texture, ivec2(pixel), 0).rgb * 2.0) - 1.0;
+    if (dot(facing, seen) > 0.0) {
+        facing = -facing;
+    }
+    float normal_size = length(facing);
+    if (!(normal_size > 0.0)) {
+        return false;
+    }
+    normal = (view_rows[0].xyz * (facing.x / normal_size)) +
+             (view_rows[1].xyz * (facing.y / normal_size)) +
+             (view_rows[2].xyz * (facing.z / normal_size));
+    origin = world + (normal * ((kOffsetShare * length(seen)) + kOffsetLeast));
+    return true;
+}
+
+// A pixel's reflections: run_ray_reflections.
+vec4 reflections(uvec2 pixel) {
+    float roughness = texelFetch(normal_texture, ivec2(pixel), 0).a * (255.0 / 127.0);
+    vec3 origin;
+    vec3 normal;
+    vec3 near;
+    if (!(roughness < kReflectionCutoff) || !surface_at(pixel, origin, normal, near)) {
+        return vec4(0.0);
+    }
+    vec3 view = normalize(near - origin);
+    uint at = (pixel.y * size.x) + pixel.x;
+    uint seed = mix_bits(at ^ mix_bits(kReflectionSeed));
+    float rough = max(roughness, kMinBounceRoughness);
+    vec3 sum = vec3(0.0);
+    uint met = 0u;
+    for (uint s = 0u; s < size.z; ++s) {
+        float u = fract(unit_of(seed) + (float(s) * kR2X));
+        float v = fract(unit_of(mix_bits(seed)) + (float(s) * kR2Y));
+        vec3 h = sample_visible_normal(normal, view, rough * rough, u, v);
+        vec3 way = normalize((h * (2.0 * dot(view, h))) - view);
+        if (dot(way, normal) <= 0.0) {
+            continue; // into the surface: the environment's reflection stays
+        }
+        vec4 light = reflection(origin, way, mix_bits(at ^ mix_bits((kReflectionSeed << 16u) ^ s)));
+        if (light.w > 0.0) {
+            sum += light.rgb;
+            ++met;
+        }
+    }
+    float share = 1.0 / float(size.z);
+    return vec4(sum * share, float(met) * share);
+}
+
+// A pixel's ambient light as its rays bring it back: run_ray_gi's first step.
+vec3 traced_light(uvec2 pixel) {
+    vec3 origin;
+    vec3 normal;
+    vec3 near;
+    if (!surface_at(pixel, origin, normal, near)) {
+        return vec3(0.0);
+    }
+    uint at = (pixel.y * size.x) + pixel.x;
+    uint seed = mix_bits(at ^ mix_bits(kLightSeed));
+    vec3 t;
+    vec3 b;
+    basis(normal, t, b);
+    vec3 sum = vec3(0.0);
+    for (uint s = 0u; s < gi.x; ++s) {
+        // cosine_ray: a point of the unit disk lifted onto the half sphere.
+        float u = fract(unit_of(seed) + (float(s) * kR2X));
+        float v = fract(unit_of(mix_bits(seed)) + (float(s) * kR2Y));
+        float reach = sqrt(u);
+        float turn = 2.0 * kPi * v;
+        vec3 way = normalize((t * (reach * cos(turn))) + (b * (reach * sin(turn))) +
+                             (normal * sqrt(max(0.0, 1.0 - u))));
+        vec4 light = reflection(origin, way, mix_bits(at ^ mix_bits((kLightSeed << 16u) ^ s)));
+        sum += light.w > 0.0 ? light.rgb : environment(way);
+    }
+    return sum / float(gi.x);
+}
+
+// A pixel's traced ambient light smoothed across its neighbors on the same surface, weighed by
+// how alike their normals are and how near they are to its plane: run_ray_gi's second step.
+vec3 smoothed_light(uvec2 pixel) {
+    vec3 origin;
+    vec3 normal;
+    vec3 near;
+    if (!surface_at(pixel, origin, normal, near)) {
+        return vec3(0.0);
+    }
+    float reach = (kPlaneShare * length(near - origin)) + kPlaneLeast;
+    vec3 sum = vec3(0.0);
+    float total = 0.0;
+    for (int dy = -kSmoothRadius; dy <= kSmoothRadius; ++dy) {
+        for (int dx = -kSmoothRadius; dx <= kSmoothRadius; ++dx) {
+            ivec2 other = ivec2(pixel) + ivec2(dx, dy);
+            if (other.x < 0 || other.y < 0 || other.x >= int(size.x) || other.y >= int(size.y)) {
+                continue;
+            }
+            vec3 other_origin;
+            vec3 other_normal;
+            vec3 other_near;
+            if (!surface_at(uvec2(other), other_origin, other_normal, other_near)) {
+                continue;
+            }
+            float facing = max(0.0, dot(normal, other_normal));
+            for (int i = 0; i < kNormalSquarings; ++i) {
+                facing *= facing;
+            }
+            float off = abs(dot(normal, other_origin - origin));
+            float weight = facing * max(0.0, 1.0 - (off / reach));
+            sum += imageLoad(gi_traced, other).rgb * weight;
+            total += weight;
+        }
+    }
+    // The pixel itself always counts fully, so total is at least 1.
+    return sum / total;
+}
+
 void main() {
     uvec2 pixel = gl_GlobalInvocationID.xy;
     if (pixel.x >= size.x || pixel.y >= size.y) {
         return;
     }
-    vec4 result = vec4(0.0);
-    float depth = texelFetch(depth_texture, ivec2(pixel), 0).r;
-    vec4 normal_texel = texelFetch(normal_texture, ivec2(pixel), 0);
-    float roughness = normal_texel.a * (255.0 / 127.0);
-    if (depth > 0.0 && roughness < kReflectionCutoff) {
-        // Its place in the world, then its normal turned to face the camera: ray_surface.
-        vec2 ndc = vec2(((float(pixel.x) + 0.5) / float(size.x) * 2.0) - 1.0,
-                        1.0 - ((float(pixel.y) + 0.5) / float(size.y) * 2.0));
-        vec4 clip = to_world * vec4(ndc, depth, 1.0);
-        vec3 world = clip.xyz / clip.w;
-        vec4 near_clip = to_world * vec4(ndc, 1.0, 1.0);
-        vec3 near = near_clip.xyz / near_clip.w;
-        vec3 seen = vec3(dot(view_rows[0].xyz, world) + view_rows[0].w,
-                         dot(view_rows[1].xyz, world) + view_rows[1].w,
-                         dot(view_rows[2].xyz, world) + view_rows[2].w);
-        vec3 normal = (normal_texel.rgb * 2.0) - 1.0;
-        if (dot(normal, seen) > 0.0) {
-            normal = -normal;
-        }
-        float normal_size = length(normal);
-        if (normal_size > 0.0) {
-            vec3 out_normal = (view_rows[0].xyz * (normal.x / normal_size)) +
-                              (view_rows[1].xyz * (normal.y / normal_size)) +
-                              (view_rows[2].xyz * (normal.z / normal_size));
-            vec3 origin = world + (out_normal * ((kOffsetShare * length(seen)) + kOffsetLeast));
-            vec3 view = normalize(near - origin);
-            uint at = (pixel.y * size.x) + pixel.x;
-            uint seed = mix_bits(at ^ mix_bits(kReflectionSeed));
-            float rough = max(roughness, kMinBounceRoughness);
-            vec3 sum = vec3(0.0);
-            uint met = 0u;
-            for (uint s = 0u; s < size.z; ++s) {
-                float u = fract(unit_of(seed) + (float(s) * kR2X));
-                float v = fract(unit_of(mix_bits(seed)) + (float(s) * kR2Y));
-                vec3 h = sample_visible_normal(out_normal, view, rough * rough, u, v);
-                vec3 way = normalize((h * (2.0 * dot(view, h))) - view);
-                if (dot(way, out_normal) <= 0.0) {
-                    continue; // into the surface: the environment's reflection stays
-                }
-                vec4 light = reflection(origin, way,
-                                        mix_bits(at ^ mix_bits((kReflectionSeed << 16u) ^ s)));
-                if (light.w > 0.0) {
-                    sum += light.rgb;
-                    ++met;
-                }
-            }
-            float share = 1.0 / float(size.z);
-            result = vec4(sum * share, float(met) * share);
-        }
+    if (kPass == 0u) {
+        imageStore(reflection_image, ivec2(pixel), reflections(pixel));
+    } else if (kPass == 1u) {
+        imageStore(gi_traced, ivec2(pixel), vec4(traced_light(pixel), 1.0));
+    } else {
+        imageStore(gi_image, ivec2(pixel), vec4(smoothed_light(pixel), 1.0));
     }
-    imageStore(reflection_image, ivec2(pixel), result);
 }
