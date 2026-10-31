@@ -1,0 +1,6 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture","params":{"points":[[60,150],[175,100],[250,140],[160,40]],"path":"shots/room.png"}}
+{"jsonrpc":"2.0","id":3,"method":"component.set","params":{"id":"red_wall","components":{"StandardMaterial3D":{"albedo_color":[0.1,0.2,0.9,1.0]}}}}
+{"jsonrpc":"2.0","id":4,"method":"frame.capture","params":{"points":[[60,150],[175,100],[250,140],[160,40]],"path":"shots/blue.png"}}
+{"jsonrpc":"2.0","id":5,"method":"component.set","params":{"id":"sun","components":{"DirectionalLight3D":{"light_energy":0.0}}}}
+{"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"points":[[60,150],[175,100],[250,140],[160,40]]}}

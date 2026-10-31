@@ -150,7 +150,8 @@ struct MeshSceneUniforms {
     Float4 decal_info{};
     // The target's width and height in pixels, then 1 when the screen texture's layers from 2 on
     // hold the frame's ray-traced shadows (a light's visibility a channel, four lights a layer),
-    // then 0.
+    // then 1 when the frame's opaque pixels take their ambient light from MeshMaps::gi (the
+    // software device only, for now).
     Float4 screen{};
     // The camera's view-projection without TAA's jitter: its x, y and w rows, from which decals
     // work out how far their textures move across a pixel.
@@ -505,6 +506,9 @@ struct MeshMaps {
     // screen texture's layers from 2 on hold, as run_ray_shadows makes them (src/ray_shadows.hpp),
     // kMaxRayShadowLights values a pixel in rows from the top.
     std::span<const float> ray_shadows;
+    // Forward+'s ray-traced ambient light, when the scene's uniforms say the frame has it
+    // (screen's w): three values a pixel in rows from the top, as run_ray_gi makes them.
+    std::span<const float> gi;
 };
 // A pixel's visibility of the light in a ray-traced shadow slot, from MeshMaps::ray_shadows, as
 // add_light in shaders/mesh.hlsl loads it.

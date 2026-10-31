@@ -519,6 +519,15 @@ RayTracing3D ray_tracing(const json::Value& rendering) {
         out.reflection_samples = static_cast<std::uint32_t>(
             std::clamp(samples->as_double(), 1.0, static_cast<double>(kMaxRayShadowSamples)));
     }
+    if (const json::Value* gi = found->find("global_illumination");
+        gi != nullptr && gi->is_bool()) {
+        out.global_illumination = gi->as_bool();
+    }
+    if (const json::Value* samples = found->find("global_illumination_samples");
+        samples != nullptr && samples->is_number()) {
+        out.global_illumination_samples = static_cast<std::uint32_t>(
+            std::clamp(samples->as_double(), 1.0, static_cast<double>(kMaxRayShadowSamples)));
+    }
     return out;
 }
 
@@ -1600,6 +1609,11 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
                     a[3] < 1.0F ? (ambient_light.at(i) * (1.0F - a[3])) + a.at(i) : a.at(i);
             }
         }
+    }
+    // Its ray-traced ambient light stands in for all of those but a lightmap's.
+    if (scene.screen[3] != 0.0F && opaque && !maps.gi.empty() && !lightmapped) {
+        const std::size_t at = ((std::size_t{pixel.y} * maps.ao_width) + pixel.x) * 3;
+        ambient_light = {maps.gi[at], maps.gi[at + 1], maps.gi[at + 2]};
     }
     ambient_light = scale(ambient_light, ao);
     float occlusion =

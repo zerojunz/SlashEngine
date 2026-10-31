@@ -142,6 +142,11 @@ void trace_paths(const PathScene& scene, const PathTextures& textures, std::uint
                                                     const Float3& origin, const Float3& direction,
                                                     std::uint32_t seed);
 
+// The environment's light along direction (unit length), as a path's bounce that meets nothing
+// takes it: the sky's radiance or the ambient light.
+[[nodiscard]] Float3 path_environment(const PathScene& scene, const PathTextures& textures,
+                                      const Float3& direction);
+
 // What a ray meets: the triangle (index into PathScene::triangles), how far along it, and where
 // on the triangle (the second and third corners' shares).
 struct PathHit {
