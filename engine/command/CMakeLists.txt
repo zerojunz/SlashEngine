@@ -14,6 +14,7 @@ add_library(slash_command
     src/replay.cpp
     src/rpc.cpp
     src/l10n.cpp
+    src/l10n_extract.cpp
     src/services.cpp
     src/session.cpp
     src/terrain.cpp

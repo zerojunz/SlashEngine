@@ -12,3 +12,5 @@
 {"jsonrpc":"2.0","id":12,"method":"l10n.set_locale","params":{"locale":"french"}}
 {"jsonrpc":"2.0","id":13,"method":"step","params":{}}
 {"jsonrpc":"2.0","id":14,"method":"events.read","params":{"subscription":"events_1"}}
+{"jsonrpc":"2.0","id":15,"method":"l10n.extract","params":{"list":true}}
+{"jsonrpc":"2.0","id":16,"method":"l10n.extract","params":{"pot":"translations/menu.pot","add_to":["translations/menu.csv","translations/pl.po"]}}

@@ -76,7 +76,7 @@ as `entity.get`, reject it as an unknown param.
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
 | Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.analyze`](#audioanalyze), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus), [`audio.spectrum`](#audiospectrum), [`audio.record`](#audiorecord), [`audio.input`](#audioinput) |
 | Soundtrack | [`score.import`](#scoreimport), [`score.export`](#scoreexport), [`soundtrack.render`](#soundtrackrender), [`soundtrack.plan`](#soundtrackplan), [`soundtrack.arrange`](#soundtrackarrange), [`soundtrack.check`](#soundtrackcheck) |
-| Localization | [`l10n.state`](#l10nstate), [`l10n.set_locale`](#l10nset_locale) |
+| Localization | [`l10n.state`](#l10nstate), [`l10n.set_locale`](#l10nset_locale), [`l10n.extract`](#l10nextract) |
 | Services | [`services.state`](#servicesstate), [`services.test`](#servicestest) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.review`](#storyboardreview), [`storyboard.edit`](#storyboardedit) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
@@ -3040,6 +3040,36 @@ Needs: `run`.
 `was` is the locale before, when it changed. A locale no translation answers still switches, with
 a `warning`: texts show in the fallback or as written. A string whose language isn't two or
 three letters fails with `-32602` at `/locale`.
+
+### l10n.extract
+
+Collects the messages the game shows, as Godot's Generate POT does with its scene parser: each
+control's `text` (`Label`, `Button`, `CheckBox`, `CheckButton`, `MenuButton`), `LineEdit` and
+`TextEdit` placeholders, `tooltip_text` and the `items` of option buttons, menu buttons and popups
+in every scene and prefab, then the string literals passed to `l10n::tr` (and its context) and
+`tr_n` (and its plural and context) in the C++ files under `project.json`'s `gameplay.sources`.
+Controls that `auto_translate_mode` keeps as written are left out, as they would show; the open
+scene is read as it is now. Each message (by context and text) comes once, in the order found:
+files in path order, and in a scene, entities in ID order.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `list` | boolean | false | Return each message (`message`, `context`, `plural`) with `where` it is: a scene or prefab, or a source file and line |
+| `pot` | string | none | A `.pot` file to write every message to, as Godot's POT generator writes one: the files, then each message with `#:` lines saying where |
+| `add_to` | array of up to 64 | none | Translation files `project.json` lists to add the messages they lack to, untranslated: a CSV row (its `?context` and `?plural` columns filled), or a `.po` entry with as many `msgstr[n]` as its plural rule has forms |
+
+Needs: `read`, `edit` and `filesystem`. Returns `messages`, the count, and `added`, each file's
+count (`skipped` for messages a CSV file has no `?context` or `?plural` column for). Undo puts
+the files back. A file `project.json` doesn't list fails at `/add_to/<i>` with the closest one
+it does; a `.mo` file is compiled, so add to its `.po` file instead.
+
+```json
+{"pot": "translations/menu.pot", "add_to": ["translations/menu.csv", "translations/pl.po"]}
+```
+
+```json
+{"added":{"translations/menu.csv":{"added":1,"skipped":2},"translations/pl.po":{"added":2}},"messages":7,"pot":"translations/menu.pot"}
+```
 
 ## Services
 
