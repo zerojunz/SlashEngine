@@ -7,7 +7,7 @@ Godot's CSV translations, and [translations/pl.po](translations/pl.po) holds Pol
 file, with Polish's three plural forms and two meanings of "Open" told apart by context.
 [main.scene.json](main.scene.json) is the menu in a 320x180 window ([project.json](project.json)).
 [calls.jsonl](calls.jsonl) switches its language the way an agent does over MCP (tools
-`l10n_state`, `l10n_set_locale`, `l10n_extract`, `ui_layout`) or JSON-RPC, and [results.jsonl](results.jsonl)
+`l10n_state`, `l10n_set_locale`, `l10n_extract`, `l10n_check`, `ui_layout`) or JSON-RPC, and [results.jsonl](results.jsonl)
 holds the replies.
 
 ```text
@@ -38,3 +38,8 @@ ui.layout {"ids":["title","start","quit","version"]}
   file lacks, untranslated: "Thanks for shopping!" to the CSV file (which has no `?context` or
   `?plural` column, so the shop's "Open" and the coin count are skipped there), and "Options"
   and "Thanks for shopping!" to the Polish file.
+- `l10n.check` holds the translations to the game: no placeholder is wrong, but the shop's
+  messages are missing in French and Arabic, "Options" in Polish, and the Polish door's "Open"
+  is translated but nothing shows it. Laid out in Arabic, the menu's text needs glyphs the
+  built-in font lacks: errors, which `test.run` would fail on until the menu gets a font with
+  Arabic letters.
