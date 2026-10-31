@@ -728,6 +728,7 @@ json::Value project_schema() {
     properties["input_devices"] = input::settings_schema();
     properties["audio"] = audio::settings_schema();
     properties["services"] = services::settings_schema();
+    properties["internationalization"] = l10n::settings_schema();
     json::Value gameplay;
     gameplay["type"] = "object";
     gameplay["additionalProperties"] = false;
@@ -870,6 +871,11 @@ std::vector<json::ValidationError> validate_project(const json::Value& project) 
     }
     if (const json::Value* services = project.find("services"); services != nullptr) {
         auto found = services::validate_settings(*services, "/services");
+        errors.insert(errors.end(), std::make_move_iterator(found.begin()),
+                      std::make_move_iterator(found.end()));
+    }
+    if (const json::Value* settings = project.find("internationalization"); settings != nullptr) {
+        auto found = l10n::validate_settings(*settings, "/internationalization");
         errors.insert(errors.end(), std::make_move_iterator(found.begin()),
                       std::make_move_iterator(found.end()));
     }
@@ -1036,6 +1042,9 @@ Result<Project> parse_project(const json::Value& project) {
     }
     if (const json::Value* services = project.find("services"); services != nullptr) {
         out.services = services::parse_settings(*services);
+    }
+    if (const json::Value* settings = project.find("internationalization"); settings != nullptr) {
+        out.internationalization = l10n::parse_settings(*settings);
     }
     if (const json::Value* gameplay = project.find("gameplay"); gameplay != nullptr) {
         for (const json::Value& source : gameplay->find("sources")->as_array()) {

@@ -320,6 +320,7 @@ struct LineEditView {
     std::optional<Vec2> right_icon; // the right icon's size in pixels, when it loads
     bool rtl = false;               // laid out right to left
     std::string error;              // why its font didn't load, so the default font drew it
+    std::string language;           // its text shapes in: its own, else the locale's
     // What it shows: the text scrolled left (scroll_offset, 0 or less) to keep the caret in
     // view, the characters drawn [visible_start, visible_end), and where the caret is across its
     // rect.
@@ -361,6 +362,10 @@ struct CodeEditView {
 // A TextEdit as laid out: its theme items and what it shows. Lines and columns count from 0,
 // columns in characters (code points); rows are lines as wrapped.
 struct TextEditView {
+    // Its placeholder_text as it shows, translated when the control auto-translates; nullopt
+    // for placeholder_text as written.
+    std::optional<std::string> placeholder_text;
+    std::optional<std::string> language; // shapes in it instead of the TextEdit's
     StyleBox normal;
     StyleBox read_only;
     StyleBox focus;

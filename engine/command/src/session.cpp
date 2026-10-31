@@ -13,6 +13,7 @@
 #include "slash/core/text.hpp"
 #include "slash/gameplay/host.hpp"
 #include "slash/input/input.hpp"
+#include "slash/l10n/l10n.hpp"
 #include "slash/navigation/navigation.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/physics3d/physics3d.hpp"
@@ -143,6 +144,16 @@ services::Settings services_settings(const json::Value& project) {
         return {};
     }
     return services::parse_settings(*settings);
+}
+
+// The project's translations and locale settings, or none if they don't validate.
+l10n::Settings l10n_settings(const json::Value& project) {
+    const json::Value* settings =
+        project.is_object() ? project.find("internationalization") : nullptr;
+    if (settings == nullptr || !l10n::validate_settings(*settings, "").empty()) {
+        return {};
+    }
+    return l10n::parse_settings(*settings);
 }
 
 // The viewport controls are laid out in: the project's window size, or the default.
@@ -291,6 +302,9 @@ Session::Session(const world::ComponentRegistry& component_registry,
     // Ads load and purchases complete as services.test says, with no store account.
     services::install(world_, services_settings(project));
     services::use_test_backend(world_);
+    // Sessions run in the project's test locale or its fallback, never the machine's, so they
+    // repeat everywhere.
+    l10n::install(world_, assets_, l10n_settings(project));
     // Gameplay code asks the models providers.json names. Ticks wait for replies, so runs
     // repeat; a session without the network capability answers only from the replay file.
     ai::OpenOptions open;
@@ -937,6 +951,7 @@ void Session::poll_project() {
     input::install(world_, input_map(project), input_settings(project));
     audio::set_settings(world_, audio_settings(project));
     services::install(world_, services_settings(project));
+    l10n::install(world_, assets_, l10n_settings(project));
 }
 
 std::optional<gameplay::Load> Session::poll_gameplay() {

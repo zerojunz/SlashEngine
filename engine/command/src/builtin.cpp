@@ -16,6 +16,7 @@
 #include "slash/canvas/particles.hpp"
 #include "slash/canvas/sprite_frames.hpp"
 #include "slash/canvas/tilemap.hpp"
+#include "slash/command/l10n.hpp"
 #include "slash/command/lightmap.hpp"
 #include "slash/command/model_cleanup.hpp"
 #include "slash/command/navigation.hpp"
@@ -7928,6 +7929,7 @@ void register_builtin_commands(Registry& registry) {
     register_lightmap_commands(registry);
     register_model_cleanup_commands(registry);
     register_services_commands(registry);
+    register_l10n_commands(registry);
 }
 
 void register_run_commands(Registry& registry) {

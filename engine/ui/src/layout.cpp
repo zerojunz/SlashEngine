@@ -3,6 +3,7 @@
 #include "text_edit.hpp"
 
 #include "slash/core/assert.hpp"
+#include "slash/l10n/l10n.hpp"
 #include "slash/render/image.hpp"
 #include "slash/ui/ui.hpp"
 
@@ -1063,7 +1064,8 @@ struct Node {
     std::vector<std::string_view> classes;
     Kind kind = Kind::None;
     Depends depends = Depends::None;
-    bool rtl = false; // it lays out right to left
+    bool rtl = false;      // it lays out right to left
+    bool translate = true; // its text shows translated (Node::can_auto_translate)
 
     // Theme items and what doesn't change between passes.
     const world::BoxContainer* box = nullptr;
@@ -1077,6 +1079,7 @@ struct Node {
     std::optional<StyleBox> panel;           // Panel's or PanelContainer's
     std::optional<StyleBox> container_panel; // PanelContainer's, for its children's rect
     std::optional<LabelWork> label;
+    std::unique_ptr<world::Label> shown_label; // its Label with the text translated
     const world::ProgressBar* bar = nullptr;
     StyleBox bar_background;
     StyleBox bar_fill;
@@ -1331,6 +1334,25 @@ struct Builder {
 
     // ---- Nodes ----
 
+    // Text as a control shows it: translated when the control auto-translates, as Godot's
+    // Node::atr.
+    [[nodiscard]] std::string shown_text(const Node& node, const std::string& text) const {
+        return node.translate && !text.empty() ? l10n::tr(world, text) : text;
+    }
+
+    // An item's text as it shows, as PopupMenu::_atr: "inherit" translates as its owner does.
+    // The language a control's text shapes in: its own, else the locale's once the project
+    // localizes, as Godot's text server.
+    [[nodiscard]] std::string shown_language(const std::string& language) const {
+        return language.empty() ? l10n::text_language(world) : language;
+    }
+
+    [[nodiscard]] std::string item_shown_text(bool owner, const std::string& mode,
+                                              const std::string& text) const {
+        const bool translate = mode == "inherit" ? owner : mode == "always";
+        return translate && !text.empty() ? l10n::tr(world, text) : text;
+    }
+
     void start(Node& node) {
         const auto& ecs = world.ecs();
         const entt::entity entity = node.entity;
@@ -1409,6 +1431,13 @@ struct Builder {
             start_bar(node, *bar, resolver("ProgressBar"));
         }
         if (const auto* label = ecs.try_get<world::Label>(entity); label != nullptr) {
+            const std::string language = shown_language(label->language);
+            if ((node.translate && !label->text.empty()) || language != label->language) {
+                node.shown_label = std::make_unique<world::Label>(*label);
+                node.shown_label->text = shown_text(node, label->text);
+                node.shown_label->language = language;
+                label = node.shown_label.get();
+            }
             node.label = start_label(*label, resolver("Label"), node.rtl);
             if (node.label->autowrap == text::Autowrap::Off) {
                 shape(fonts, *node.label, std::nullopt);
@@ -1420,6 +1449,12 @@ struct Builder {
             const std::string_view type = button_type(world, entity);
             if (const auto* option = ecs.try_get<world::OptionButton>(entity); option != nullptr) {
                 start_option(node, *option, resolver(type));
+            } else if (const std::string language = shown_language(button->language);
+                       (node.translate && !button->text.empty()) || language != button->language) {
+                node.shown_button = std::make_unique<world::Button>(*button);
+                node.shown_button->text = shown_text(node, button->text);
+                node.shown_button->language = language;
+                start_button_node(node, *node.shown_button, resolver(type), type);
             } else {
                 start_button_node(node, *button, resolver(type), type);
             }
@@ -1520,7 +1555,12 @@ struct Builder {
         world::Button& shown = *node.shown_button;
         const bool selected =
             option.selected >= 0 && std::cmp_less(option.selected, option.items.size());
-        shown.text = selected ? option.items[static_cast<std::size_t>(option.selected)].text : "";
+        // Each option's text as it shows, OptionButton::_get_translated_text.
+        const auto item_text = [&](const world::OptionButtonItem& item) {
+            return item_shown_text(node.translate, item.auto_translate_mode, item.text);
+        };
+        shown.text =
+            selected ? item_text(option.items[static_cast<std::size_t>(option.selected)]) : "";
         shown.icon = selected ? option.items[static_cast<std::size_t>(option.selected)].icon : "";
         ButtonWork& work = start_button_node(node, shown, theme, "OptionButton");
         OptionWork& made = node.option.emplace();
@@ -1564,7 +1604,7 @@ struct Builder {
         for (const world::OptionButtonItem& item : option.items) {
             world::Button each_button = shown;
             if (!item.text.empty()) {
-                each_button.text = item.text;
+                each_button.text = item_text(item);
             }
             each_button.icon = item.icon;
             ButtonWork each = work;
@@ -1770,6 +1810,9 @@ struct Builder {
             }
         }
         node.line_edit = edit;
+        node.line_edit->placeholder_text = shown_text(node, edit.placeholder_text);
+        node.line_edit->language = shown_language(edit.language);
+        view->language = node.line_edit->language;
         const auto length = static_cast<int>(characters(edit).size());
         node.line_edit->caret_column = std::clamp(edit.caret_column, 0, length);
         if (const EditState* state = edit_state(world, node.entity); state != nullptr) {
@@ -1816,6 +1859,12 @@ struct Builder {
         view->h_bar_minimum = bar_minimum(bars->at(0));
         view->v_bar_minimum = bar_minimum(bars->at(1));
         view->rtl = node.rtl;
+        if (node.translate && !edit.placeholder_text.empty()) {
+            view->placeholder_text = shown_text(node, edit.placeholder_text);
+        }
+        if (std::string language = shown_language(edit.language); language != edit.language) {
+            view->language = std::move(language);
+        }
         start_gutters(node, edit, theme, *view);
         node.text_edit = &edit;
         node.text_view = std::move(view);
@@ -3796,6 +3845,16 @@ struct Builder {
         const StyleBox panel = Resolver(link, kDefaultControl, "TooltipPanel").style("panel");
         world::Label label;
         label.text = shown.text;
+        // As the owner's tooltip_auto_translate_mode says; an item's as its menu.
+        bool translate = true;
+        if (const auto node = std::ranges::find(nodes, shown.owner, &Node::entity);
+            node != nodes.end()) {
+            const std::string& mode = node->control->tooltip_auto_translate_mode;
+            translate = mode == "inherit" ? node->translate : mode == "always";
+        }
+        if (translate) {
+            label.text = l10n::tr(world, label.text);
+        }
         LabelWork work = start_label(label, label_theme, false);
         shape(fonts, work, std::nullopt);
         // PopupPanel::_get_contents_minimum_size, ceiled.
@@ -3819,7 +3878,7 @@ struct Builder {
         fit(position.y, rest.y, size.y, offset.y, room.y);
         TooltipView& view = out.tooltip.emplace();
         view.owner = shown.owner;
-        view.text = shown.text;
+        view.text = label.text;
         view.position = {std::trunc(position.x), std::trunc(position.y)};
         view.size = size;
         view.panel.push_back({.style = panel, .position = {}, .size = size, .texture_size = {}});
@@ -3894,7 +3953,7 @@ struct Builder {
                         ThemeLink{.theme = loaded, .path = menu->theme, .parent = project_link});
                 }
             }
-            rtl = menu->layout_direction == "rtl";
+            rtl = l10n::is_layout_rtl(world, menu->layout_direction, nullptr);
             origin = menu->position;
         } else {
             const auto node = std::ranges::find(nodes, owner, &Node::entity);
@@ -3911,7 +3970,16 @@ struct Builder {
                       node->placed.size.y * std::hypot(t.c, t.d)};
         }
         const PopupTheme look = popup_theme(Resolver(link, kDefaultControl, "PopupMenu"));
-        const std::vector<world::PopupMenuItem> items = popup_items(world, owner);
+        // Items with their text as it shows: a PopupMenu's own translates as one at the root, a
+        // button's as the button.
+        std::vector<world::PopupMenuItem> items = popup_items(world, owner);
+        {
+            const auto node = std::ranges::find(nodes, owner, &Node::entity);
+            const bool translate = node == nodes.end() || node->translate;
+            for (world::PopupMenuItem& item : items) {
+                item.text = item_shown_text(translate, item.auto_translate_mode, item.text);
+            }
+        }
         std::vector<PopupItemWork> works(items.size());
         for (std::size_t i = 0; i < items.size(); ++i) {
             const world::PopupMenuItem& item = items[i];
@@ -4301,10 +4369,15 @@ void build(Builder& builder, const std::vector<entt::entity>& controls) {
             }
         }
         builder.nodes[index].themes = themes;
-        const std::string& direction = node.control->layout_direction;
-        builder.nodes[index].rtl = direction == "inherited"
-                                       ? parent != kNone && builder.nodes[parent].rtl
-                                       : direction == "rtl";
+        const bool* parent_rtl = parent != kNone ? &builder.nodes[parent].rtl : nullptr;
+        builder.nodes[index].rtl =
+            l10n::is_layout_rtl(builder.world, node.control->layout_direction, parent_rtl);
+        // Node::can_auto_translate: inheriting takes the nearest parent's that doesn't, and
+        // translating at the root.
+        const std::string& mode = node.control->auto_translate_mode;
+        builder.nodes[index].translate = mode == "inherit"
+                                             ? parent == kNone || builder.nodes[parent].translate
+                                             : mode == "always";
         if (parent != kNone) {
             builder.nodes[parent].kids.push_back(index);
         }

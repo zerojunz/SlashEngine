@@ -13,6 +13,7 @@ add_library(slash_command
     src/project_map.cpp
     src/replay.cpp
     src/rpc.cpp
+    src/l10n.cpp
     src/services.cpp
     src/session.cpp
     src/terrain.cpp
@@ -21,7 +22,7 @@ add_library(slash::command ALIAS slash_command)
 
 target_include_directories(slash_command PUBLIC include)
 target_link_libraries(slash_command PUBLIC slash::asset slash::core slash::world
-    PRIVATE slash::ai slash::animation slash::audio slash::canvas slash::gameplay slash::input slash::navigation slash::physics2d slash::physics3d slash::platform slash::render
+    PRIVATE slash::ai slash::animation slash::audio slash::canvas slash::gameplay slash::input slash::l10n slash::navigation slash::physics2d slash::physics3d slash::platform slash::render
             slash::scene3d slash::services slash::soundtrack slash::storyboard slash::ui)
 slash_engine_target(slash_command)
 # Placing is the same everywhere, as the navigation geometry it reads.

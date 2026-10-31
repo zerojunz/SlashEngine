@@ -101,7 +101,7 @@ void Field::shape(const world::LineEdit& edit, const EditState& state) {
                                 .autowrap = text::Autowrap::Off,
                                 .width = 0.0F,
                                 .direction = direction_of(edit, view_->rtl),
-                                .language = edit.language};
+                                .language = view_->language};
     auto laid = fonts_->layout(shown_, options);
     if (!laid && !options.font.empty()) {
         error_ = laid.error().message;

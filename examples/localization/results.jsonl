@@ -1,0 +1,14 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":6,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"fallback":"en","locale":"en","locales":["fr","ar","pl"]}}
+{"id":3,"jsonrpc":"2.0","result":{"controls":[{"id":"title","lines":["Treasure Hunt"],"rect":[0,0,320,22]},{"draw_mode":"normal","id":"start","lines":["Start game"],"rect":[0,26,320,30]},{"draw_mode":"normal","id":"quit","lines":["Quit"],"rect":[0,94,320,30]},{"id":"version","lines":["Version 1.0"],"rect":[0,128,79,22]}],"viewport":[320,180]}}
+{"id":4,"jsonrpc":"2.0","result":{"subscription":"events_1"}}
+{"id":5,"jsonrpc":"2.0","result":{"locale":"fr_CA","was":"en"}}
+{"id":6,"jsonrpc":"2.0","result":{"controls":[{"id":"title","lines":["Chasse au trésor"],"rect":[0,0,320,22]},{"draw_mode":"normal","id":"start","lines":["Commencer"],"rect":[0,26,320,30]},{"draw_mode":"normal","id":"quit","lines":["Quitter"],"rect":[0,94,320,30]},{"id":"version","lines":["Version 1.0"],"rect":[0,128,79,22]}],"viewport":[320,180]}}
+{"id":7,"jsonrpc":"2.0","result":{"locale":"pl","was":"fr_CA"}}
+{"id":8,"jsonrpc":"2.0","result":{"fallback":"en","locale":"pl","locales":["fr","ar","pl"],"system_locale":"en","tr":["Options","%d moneta","%d monety","%d monet","%d monety","Otwórz","Otwarte"]}}
+{"id":9,"jsonrpc":"2.0","result":{"locale":"ar","was":"pl"}}
+{"id":10,"jsonrpc":"2.0","result":{"controls":[{"id":"title","lines":["البحث عن الكنز"],"missing_glyphs":12,"rect":[0,0,320,22],"rtl":true},{"draw_mode":"normal","id":"start","lines":["ابدأ اللعب"],"missing_glyphs":9,"rect":[0,26,320,30],"rtl":true}],"viewport":[320,180]}}
+{"id":11,"jsonrpc":"2.0","result":{"locale":"de","warning":"no translation is in de; texts show in en or as written","was":"ar"}}
+{"error":{"code":-32602,"data":{"path":"/locale"},"message":"/locale: expected a locale such as \"fr\" or \"pt_BR\""},"id":12,"jsonrpc":"2.0"}
+{"id":13,"jsonrpc":"2.0","result":{"tick":1,"ticks":1}}
+{"id":14,"jsonrpc":"2.0","result":{"dropped":0,"events":[{"data":{"locale":"fr_CA"},"kind":"translation_changed","seq":1,"tick":0},{"data":{"locale":"pl"},"kind":"translation_changed","seq":2,"tick":0},{"data":{"locale":"ar"},"kind":"translation_changed","seq":3,"tick":0},{"data":{"locale":"de"},"kind":"translation_changed","seq":4,"tick":0}],"more":false}}
