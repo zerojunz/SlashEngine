@@ -626,23 +626,8 @@ Result<TranslationFile> read_mo(std::string_view bytes) {
 
 namespace {
 
-// The next record of a CSV file from line, as Godot's FileAccess::get_csv_line: lines are joined
-// while a quote is open, a delimiter outside quotes ends a field and "" inside quotes is a quote.
-std::vector<std::string> csv_line(const std::vector<std::string>& lines, std::size_t& next,
-                                  char delimiter, bool& unclosed) {
-    std::string line;
-    std::size_t quotes = 0;
-    do {
-        if (next >= lines.size()) {
-            break;
-        }
-        line += lines[next++];
-        line += '\n';
-        quotes = static_cast<std::size_t>(std::ranges::count(line, '"'));
-    } while (quotes % 2 != 0);
-    if (!line.empty()) {
-        line.pop_back(); // the '\n' added
-    }
+// A CSV record's fields: a delimiter outside quotes ends a field and "" inside quotes is a quote.
+std::vector<std::string> csv_fields(std::string_view line, char delimiter, bool& unclosed) {
     std::vector<std::string> fields;
     bool in_quote = false;
     std::string current;
@@ -665,6 +650,26 @@ std::vector<std::string> csv_line(const std::vector<std::string>& lines, std::si
     unclosed = unclosed || in_quote;
     fields.push_back(std::move(current));
     return fields;
+}
+
+// The next record of a CSV file from line, as Godot's FileAccess::get_csv_line: lines are joined
+// while a quote is open, a delimiter outside quotes ends a field and "" inside quotes is a quote.
+std::vector<std::string> csv_line(const std::vector<std::string>& lines, std::size_t& next,
+                                  char delimiter, bool& unclosed) {
+    std::string line;
+    std::size_t quotes = 0;
+    do {
+        if (next >= lines.size()) {
+            break;
+        }
+        line += lines[next++];
+        line += '\n';
+        quotes = static_cast<std::size_t>(std::ranges::count(line, '"'));
+    } while (quotes % 2 != 0);
+    if (!line.empty()) {
+        line.pop_back(); // the '\n' added
+    }
+    return csv_fields(line, delimiter, unclosed);
 }
 
 } // namespace
@@ -891,6 +896,97 @@ std::string placeholder_problem(std::string_view source, std::string_view transl
         }
     }
     return {};
+}
+
+std::string po_escape(std::string_view text) {
+    std::string out;
+    for (const char c : text) {
+        switch (c) {
+        case '\\':
+            out += "\\\\";
+            break;
+        case '"':
+            out += "\\\"";
+            break;
+        case '\n':
+            out += "\\n";
+            break;
+        case '\t':
+            out += "\\t";
+            break;
+        default:
+            out += c;
+        }
+    }
+    return out;
+}
+
+std::string po_string(std::string_view keyword, std::string_view text) {
+    std::string out(keyword);
+    out += ' ';
+    if (text.empty()) {
+        return out + "\"\"\n";
+    }
+    std::vector<std::string_view> lines;
+    for (std::size_t start = 0;;) {
+        const std::size_t end = text.find('\n', start);
+        lines.push_back(text.substr(start, end == std::string_view::npos ? end : end - start));
+        if (end == std::string_view::npos) {
+            break;
+        }
+        start = end + 1;
+    }
+    const bool ends_in_break = text.ends_with('\n');
+    const std::size_t printed = ends_in_break ? lines.size() - 1 : lines.size();
+    if (printed > 1) {
+        out += "\"\"\n";
+    }
+    for (std::size_t i = 0; i + 1 < printed; ++i) {
+        out += "\"" + po_escape(lines[i]) + "\\n\"\n";
+    }
+    out += "\"" + po_escape(lines[printed - 1]) + (ends_in_break ? "\\n" : "") + "\"\n";
+    return out;
+}
+
+std::string csv_field(std::string_view text, char delimiter) {
+    const bool quote =
+        text.find_first_of(std::string{'"', '\n', '\r', delimiter}) != std::string_view::npos;
+    if (!quote) {
+        return std::string(text);
+    }
+    std::string out = "\"";
+    for (const char c : text) {
+        if (c == '"') {
+            out += '"';
+        }
+        out += c;
+    }
+    return out + "\"";
+}
+
+std::vector<CsvRow> csv_rows(std::string_view text, char delimiter) {
+    std::vector<CsvRow> out;
+    std::size_t at = 0;
+    while (at < text.size()) {
+        const std::size_t begin = at;
+        std::size_t quotes = 0;
+        std::size_t end = 0;
+        do {
+            const std::size_t newline = text.find('\n', at);
+            end = newline == std::string_view::npos ? text.size() : newline;
+            quotes += static_cast<std::size_t>(
+                std::count(text.begin() + static_cast<std::ptrdiff_t>(at),
+                           text.begin() + static_cast<std::ptrdiff_t>(end), '"'));
+            at = newline == std::string_view::npos ? text.size() : newline + 1;
+        } while (quotes % 2 != 0 && at < text.size());
+        std::string_view line = text.substr(begin, end - begin);
+        if (line.ends_with('\r')) {
+            line.remove_suffix(1);
+        }
+        bool unclosed = false;
+        out.push_back({begin, begin + line.size(), csv_fields(line, delimiter, unclosed)});
+    }
+    return out;
 }
 
 } // namespace slash::l10n
