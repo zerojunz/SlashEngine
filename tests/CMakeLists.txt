@@ -105,6 +105,7 @@ add_executable(slash_tests
     test_mcp.cpp
     test_mesh.cpp
     test_model.cpp
+    test_multiplayer.cpp
     test_navigation.cpp
     test_net.cpp
     test_occlusion.cpp
