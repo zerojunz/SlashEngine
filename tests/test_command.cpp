@@ -2655,6 +2655,19 @@ TEST_CASE("lightmap.bake writes a LightmapGI's lightmap and texels, and undo tak
     CHECK(reply.message == "/id: \"floor\" has no LightmapGI");
     reply = engine.fails("lightmap.bake", R"({"id": "g"})", command::code::kNotFound);
     CHECK(reply.message == "/id: no entity has the id \"g\"; did you mean \"gi\"?");
+
+    // device "gpu" traces on a GPU that traces rays where there is one, and says which did.
+    bool rays = false;
+    for (const char* driver : {"auto", "vulkan"}) {
+        auto device = render::create_device({.window = nullptr, .driver = driver, .debug = false});
+        rays = rays || (device && device.value()->ray_tracing());
+    }
+    const json::Value on_gpu =
+        engine.ok("lightmap.bake", R"({"id": "gi", "file": "gpu.lightmap.json", "device": "gpu"})");
+    CHECK(*on_gpu.find("device") == (rays ? "gpu" : "cpu"));
+    CHECK(*on_gpu.find("size") == *baked.find("size"));
+    CHECK(read("gpu.lightmap.hdr"));
+    CHECK_FALSE(engine.ok("lightmap.bake", R"({"id": "gi", "device": "cpu"})").find("device"));
     std::filesystem::remove_all(root);
 }
 

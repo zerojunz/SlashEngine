@@ -44,6 +44,11 @@ lightmap.bake {"id":"lightmap"}
 - A bake of a scene that hasn't changed since reports `"unchanged": true` and records no undo
   step.
 
+With `"device": "gpu"`, `lightmap.bake` traces the light and the probes on a GPU that traces
+rays (Vulkan with ray queries, as Godot's LightmapperRD bakes on the GPU) and returns
+`"device": "gpu"`; elsewhere the CPU traces it and it returns `"cpu"`. The light comes out the
+same but for rounding, so this example bakes on the CPU, whose bake is the same everywhere.
+
 `lightmap.bake` changes project files, so it needs the `edit` and `filesystem` capabilities.
 Undo removes the files it made, or puts back the ones it replaced. `slash-cli scene validate`
 checks a LightmapGI's `light_data`, and exports ship both files.

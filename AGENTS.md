@@ -951,7 +951,12 @@ with xatlas (`unwrap_lightmap`; `src/xatlas_build.cpp` builds xatlas and stb_rec
 engine's sines and a stable sort, so charts are the same everywhere), then `src/lightmapper.cpp`
 packs them into an atlas's slices and traces them on the CPU, following Godot's `LightmapperRD`
 and its `lm_compute.glsl` pass by pass (direct light with soft shadows, bounces, the environment,
-JNLM denoising, seams) on the job pool; results don't depend on the thread count. A
+JNLM denoising, seams) on the job pool; results don't depend on the thread count. With
+`LightmapSettings::device` (`lightmap.bake`'s `device` `"gpu"`), the direct light, bounces and
+probes are traced by `RenderDevice::trace_lightmap` (`slash/render/bake.hpp`) instead: on Vulkan
+with ray queries, `shaders/lightmap_light.comp` ports those three passes with the same random
+numbers over one structure of the bake's triangles, a dispatch per region of 512x512 texels or
+pass of rays, waited for so none runs long; a change to those passes goes in both. A
 `.lightmap.json` file (`$cli schema lightmap`) is its `LightmapGIData`, with the texels in an
 `.hdr` beside it; `lightmap.bake` (`engine/command/src/lightmap.cpp`) writes both. `scene3d::Renderer::find_lightmaps` loads them, gives each lightmapped mesh its UVs (`uv2`)
 by the unwrap stored for its mesh's hash, and draws it with `Material3D::lightmap`
