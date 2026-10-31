@@ -1,6 +1,7 @@
 #pragma once
 
 #include "slash/core/result.hpp"
+#include "slash/render/bake.hpp"
 #include "slash/render/light.hpp"
 #include "slash/render/material.hpp"
 #include "slash/render/mesh.hpp"
@@ -604,6 +605,12 @@ public:
     // Whether it traces rays for a frame's ray-traced effects (Scene3D::ray_tracing) and paths
     // (Scene3D::path_trace); one that doesn't draws them the raster way.
     [[nodiscard]] virtual bool ray_tracing() const { return false; }
+    // Traces a lightmap's light (bake.hpp) on the GPU, outside any frame, waiting for it: the GPU
+    // device on Vulkan with ray queries. Elsewhere an error, and scene3d traces the bake on the
+    // CPU.
+    virtual Result<LightmapTraced> trace_lightmap(const LightmapTrace& /*trace*/) {
+        return Error{ErrorCode::NotFound, "this device doesn't trace rays"};
+    }
     // Scales source, a render target, over target, a larger one made scaled_into, with MetalFX's
     // spatial scaler, outside any frame. Its colors are taken as they are drawn, not linear.
     // Fails where metalfx() has no spatial scaler.

@@ -2239,6 +2239,15 @@ public:
 
     [[nodiscard]] MetalFxSupport metalfx() const override { return metalfx_; }
     [[nodiscard]] bool ray_tracing() const override { return rays_ != nullptr; }
+    Result<LightmapTraced> trace_lightmap(const LightmapTrace& trace) override {
+        if (rays_ == nullptr) {
+            return Error{ErrorCode::NotFound, "this device doesn't trace rays"};
+        }
+        if (in_frame_) {
+            return Error{ErrorCode::InvalidArgument, "trace_lightmap is called outside frames"};
+        }
+        return rays_->trace_lightmap(trace);
+    }
 
     Result<void> metalfx_spatial(TextureId source, TextureId target) override {
         if (!metalfx_.spatial) {

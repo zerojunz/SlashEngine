@@ -1,0 +1,701 @@
+#version 460
+#extension GL_EXT_ray_query : require
+
+// A lightmap's light on a GPU that traces rays (RenderDevice::trace_lightmap): the hardware twin of
+// the direct_light, bounce_light and light_probes passes of scene3d's lightmapper
+// (engine/scene3d/src/lightmapper.cpp), which ports Godot 4.6's lm_compute.glsl and holds the
+// steps' reasons. Rays find the nearest triangle as its Bvh::trace does: every triangle comes to
+// the query as a candidate, is tested with lm_compute.glsl's ray_hits_triangle (a front face's
+// distance less the bias, so it wins over a back face in its plane) and kept when nearer than the
+// best so far; front faces are committed, so the query stops looking beyond them. The random
+// numbers and the order light is summed in are the CPU's, so a bake comes out as the CPU's but
+// for rounding.
+//
+// Built as three pipelines by kPass: 0 the direct light of a region of a slice's texels, 1 a pass
+// of their bounces, adding to accum, 2 a pass of the light probes' rays, adding to probe_sums.
+//
+// GLSL rather than HLSL, as glslang's HLSL has no ray queries; cmake/compile_ray_shaders.cmake
+// compiles it into lightmap_light_shaders.hpp.
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(constant_id = 0) const uint kPass = 0u;
+
+const float kPi = 3.14159265358979323846;
+const uint kTransparencyRays = 8u;
+const uint kAaSamples = 16u;
+
+const uint kMiss = 0u;
+const uint kFront = 1u;
+const uint kBack = 2u;
+
+// Every triangle of the bake, in the world, as one instance.
+layout(set = 0, binding = 0) uniform accelerationStructureEXT scene;
+
+// LightmapParams in src/vulkan_rays.cpp.
+layout(set = 0, binding = 1, std430) readonly buffer Params {
+    uvec4 size;   // the atlas's width, height and slices, the environment's width
+    uvec4 counts; // the environment's height, the lights, a texel's rays, the bounces
+    uvec4 step;   // the slice, the first ray of this pass and the one after its last, the probes
+    uvec4 flags;  // 1 to take bounces' direct light from light_source, then the texels of
+                  // the slice this dispatch lights: the first and the one after its last
+    vec4 values;  // the bias, the supersampling, the exposure, the world's size
+    vec4 more;    // the bounces' indirect energy
+    vec4 space[3]; // the probes' space, a column each
+};
+
+// render::BakeVertex: the position and u, the normal and v.
+struct Vertex {
+    vec4 position_u;
+    vec4 normal_v;
+};
+layout(set = 0, binding = 2, std430) readonly buffer Vertices {
+    Vertex vertices[];
+};
+layout(set = 0, binding = 3, std430) readonly buffer Indices {
+    uint indices[];
+};
+// A triangle's slice, then its cull mode: 0 back, 1 front, 2 none.
+layout(set = 0, binding = 4, std430) readonly buffer Triangles {
+    uvec2 triangles[];
+};
+
+// LightmapLight in src/vulkan_rays.cpp.
+struct Light {
+    vec4 position;  // xyz, then its kind: 0 directional, 1 omni, 2 spot
+    vec4 direction; // xyz, then its energy
+    vec4 color;     // xyz, then its indirect energy
+    vec4 shape;     // its size, range, attenuation and spot cosine
+    vec4 more;      // its inverse spot attenuation, shadow blur, 1 when it bakes whole
+};
+layout(set = 0, binding = 5, std430) readonly buffer Lights {
+    Light lights[];
+};
+
+layout(set = 0, binding = 6, std430) readonly buffer Albedo {
+    vec4 albedo[];
+};
+layout(set = 0, binding = 7, std430) readonly buffer Emission {
+    vec4 emission[];
+};
+layout(set = 0, binding = 8, std430) readonly buffer Positions {
+    vec4 positions[];
+};
+layout(set = 0, binding = 9, std430) readonly buffer Normals {
+    vec4 normals[];
+};
+layout(set = 0, binding = 10, std430) readonly buffer Environment {
+    vec4 environment[];
+};
+layout(set = 0, binding = 11, std430) buffer LightSource {
+    vec4 light_source[];
+};
+layout(set = 0, binding = 12, std430) buffer Accum {
+    vec4 accum[];
+};
+layout(set = 0, binding = 13, std430) readonly buffer Probes {
+    vec4 probes[];
+};
+layout(set = 0, binding = 14, std430) buffer ProbeSums {
+    vec4 probe_sums[]; // nine a probe
+};
+
+const vec2 kHalton[16] = vec2[16](
+    vec2(0.5, 0.33333333), vec2(0.25, 0.66666667), vec2(0.75, 0.11111111),
+    vec2(0.125, 0.44444444), vec2(0.625, 0.77777778), vec2(0.375, 0.22222222),
+    vec2(0.875, 0.55555556), vec2(0.0625, 0.88888889), vec2(0.5625, 0.03703704),
+    vec2(0.3125, 0.37037037), vec2(0.8125, 0.7037037), vec2(0.1875, 0.14814815),
+    vec2(0.6875, 0.48148148), vec2(0.4375, 0.81481481), vec2(0.9375, 0.25925926),
+    vec2(0.03125, 0.59259259));
+
+// ---- Vectors and random numbers, as the lightmapper's
+
+// A unit vector; the zero vector stays zero.
+vec3 unit(vec3 v) {
+    float l = length(v);
+    return l > 0.0 ? v / l : vec3(0.0);
+}
+
+float max3(vec3 v) {
+    return max(max(v.x, v.y), v.z);
+}
+
+float power(float base, float exponent) {
+    return base > 0.0 ? exp(exponent * log(base)) : 0.0;
+}
+
+uint hash(uint value) {
+    uint state = value * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
+uint random_seed(uint x, uint y, uint z) {
+    return hash(x ^ hash(y ^ hash(z)));
+}
+
+float randomize(inout uint value) {
+    value = hash(value);
+    return float(value) / 4294967296.0;
+}
+
+vec3 hemisphere_cosine_weighted_direction(inout uint noise) {
+    float noise1 = randomize(noise);
+    float noise2 = randomize(noise) * 2.0 * kPi;
+    return vec3(sqrt(noise1) * cos(noise2), sqrt(noise1) * sin(noise2), sqrt(1.0 - noise1));
+}
+
+vec3 sphere_uniform_direction(inout uint noise) {
+    float theta = 2.0 * kPi * randomize(noise);
+    float z = 1.0 - (2.0 * randomize(noise));
+    float sin_phi = sqrt(max(0.0, (1.0 - z) * (1.0 + z)));
+    return vec3(sin_phi * cos(theta), sin_phi * sin(theta), z);
+}
+
+vec3 ray_dir_from_normal(vec3 normal, inout uint noise) {
+    vec3 v0 = abs(normal.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
+    vec3 tangent = unit(cross(v0, normal));
+    vec3 bitangent = unit(cross(tangent, normal));
+    vec3 h = hemisphere_cosine_weighted_direction(noise);
+    return tangent * h.x + bitangent * h.y + normal * h.z;
+}
+
+// ---- The atlas
+
+uint texel_at(int slice, int x, int y) {
+    return uint((slice * int(size.y) + y) * int(size.x) + x);
+}
+
+bool inside(int x, int y) {
+    return x >= 0 && y >= 0 && x < int(size.x) && y < int(size.y);
+}
+
+vec4 fetch_position(int slice, int x, int y) {
+    return inside(x, y) ? positions[texel_at(slice, x, y)] : vec4(0.0);
+}
+
+int wrap(int i, int count) {
+    return int(mod(float(i), float(count)));
+}
+
+// The lightmapper's linear sampler, which repeats: of albedo (0), emission (1) or light_source (2).
+vec4 sample_atlas(uint layer, int slice, float u, float v) {
+    float x = u * float(size.x) - 0.5;
+    float y = v * float(size.y) - 0.5;
+    float fx = floor(x);
+    float fy = floor(y);
+    float tx = x - fx;
+    float ty = y - fy;
+    int x0 = wrap(int(fx), int(size.x));
+    int y0 = wrap(int(fy), int(size.y));
+    int x1 = wrap(x0 + 1, int(size.x));
+    int y1 = wrap(y0 + 1, int(size.y));
+    uint a = texel_at(slice, x0, y0);
+    uint b = texel_at(slice, x1, y0);
+    uint c = texel_at(slice, x0, y1);
+    uint d = texel_at(slice, x1, y1);
+    vec4 ta;
+    vec4 tb;
+    vec4 tc;
+    vec4 td;
+    if (layer == 0u) {
+        ta = albedo[a];
+        tb = albedo[b];
+        tc = albedo[c];
+        td = albedo[d];
+    } else if (layer == 1u) {
+        ta = emission[a];
+        tb = emission[b];
+        tc = emission[c];
+        td = emission[d];
+    } else {
+        ta = light_source[a];
+        tb = light_source[b];
+        tc = light_source[c];
+        td = light_source[d];
+    }
+    vec4 top = ta + (tb - ta) * tx;
+    vec4 bottom = tc + (td - tc) * tx;
+    return top + (bottom - top) * ty;
+}
+
+// trace_environment_color, from the panorama with the same sampler.
+vec3 environment_color(vec3 ray_dir) {
+    vec3 sky_dir = unit(ray_dir);
+    float s = atan(sky_dir.x, sky_dir.z);
+    float y = clamp(sky_dir.y, -1.0, 1.0);
+    float t = atan(sqrt((1.0 - y) * (1.0 + y)), y);
+    if (s < 0.0) {
+        s += kPi * 2.0;
+    }
+    int w = int(size.w);
+    int h = int(counts.x);
+    float x = (s / (kPi * 2.0)) * float(w) - 0.5;
+    float yy = (t / kPi) * float(h) - 0.5;
+    float fx = floor(x);
+    float fy = floor(yy);
+    float tx = x - fx;
+    float ty = yy - fy;
+    int x0 = wrap(int(fx), w);
+    int y0 = wrap(int(fy), h);
+    int x1 = wrap(x0 + 1, w);
+    int y1 = wrap(y0 + 1, h);
+    vec4 ta = environment[y0 * w + x0];
+    vec4 tb = environment[y0 * w + x1];
+    vec4 tc = environment[y1 * w + x0];
+    vec4 td = environment[y1 * w + x1];
+    vec4 top = ta + (tb - ta) * tx;
+    vec4 bottom = tc + (td - tc) * tx;
+    return (top + (bottom - top) * ty).rgb;
+}
+
+// ---- Rays
+
+struct Hit {
+    uint kind;
+    float distance;
+    uint triangle;
+    vec3 barycentric;
+};
+
+// lm_compute.glsl's ray_hits_triangle and the rest of trace_ray's test of one triangle: whether
+// it is now the nearest.
+bool test(uint index, vec3 from, vec3 dir, float max_distance, float bias, inout float best,
+          inout Hit hit) {
+    vec3 p0 = vertices[indices[index * 3u]].position_u.xyz;
+    vec3 p1 = vertices[indices[index * 3u + 1u]].position_u.xyz;
+    vec3 p2 = vertices[indices[index * 3u + 2u]].position_u.xyz;
+    const float kEpsilon = 0.00001;
+    vec3 e0 = p1 - p0;
+    vec3 e1 = p0 - p2;
+    vec3 triangle_normal = cross(e1, e0);
+    float n_dot_dir = dot(triangle_normal, dir);
+    if (abs(n_dot_dir) < kEpsilon) {
+        return false;
+    }
+    vec3 e2 = (p0 - from) * (1.0 / n_dot_dir);
+    vec3 i = cross(dir, e2);
+    vec3 barycentric;
+    barycentric.y = dot(i, e1);
+    barycentric.z = dot(i, e0);
+    barycentric.x = 1.0 - (barycentric.z + barycentric.y);
+    float distance = dot(triangle_normal, e2);
+    bool hits = distance > bias && distance < max_distance && barycentric.x >= 0.0 &&
+                barycentric.y >= 0.0 && barycentric.z >= 0.0;
+    if (!hits) {
+        return false;
+    }
+    vec3 normal = unit(cross(p0 - p1, p0 - p2)) * -1.0;
+    bool backface = dot(normal, dir) >= 0.0;
+    if (!backface) {
+        distance = max(bias, distance - bias);
+    }
+    if (distance >= best) {
+        return false;
+    }
+    uint cull = triangles[index].y;
+    if (cull == 2u) {
+        backface = false;
+    } else if (cull == 1u) {
+        backface = !backface;
+    }
+    hit.kind = backface ? kBack : kFront;
+    best = distance;
+    hit.distance = distance;
+    hit.triangle = index;
+    hit.barycentric = barycentric;
+    return true;
+}
+
+// The nearest hit from from toward to, no nearer than the bias.
+Hit trace(vec3 from, vec3 to) {
+    Hit hit;
+    hit.kind = kMiss;
+    hit.distance = 0.0;
+    hit.triangle = 0u;
+    hit.barycentric = vec3(0.0);
+    vec3 rel = to - from;
+    float rel_len = length(rel);
+    if (!(rel_len > 0.0)) {
+        return hit; // no way to go, which meets nothing on the CPU either
+    }
+    vec3 dir = unit(rel);
+    float best = 1e20;
+    rayQueryEXT query;
+    rayQueryInitializeEXT(query, scene, gl_RayFlagsNoOpaqueEXT, 0xFF, from, 0.0, dir, rel_len);
+    while (rayQueryProceedEXT(query)) {
+        uint index = uint(rayQueryGetIntersectionPrimitiveIndexEXT(query, false));
+        if (test(index, from, dir, rel_len, values.x, best, hit) && hit.kind == kFront) {
+            rayQueryConfirmIntersectionEXT(query);
+        }
+    }
+    return hit;
+}
+
+struct Surface {
+    vec3 position;
+    vec3 normal;
+    float u;
+    float v;
+    int slice;
+};
+
+Surface surface_of(Hit hit) {
+    Vertex a = vertices[indices[hit.triangle * 3u]];
+    Vertex b = vertices[indices[hit.triangle * 3u + 1u]];
+    Vertex c = vertices[indices[hit.triangle * 3u + 2u]];
+    vec3 w = hit.barycentric;
+    Surface s;
+    s.u = (w.x * a.position_u.w) + (w.y * b.position_u.w) + (w.z * c.position_u.w);
+    s.v = (w.x * a.normal_v.w) + (w.y * b.normal_v.w) + (w.z * c.normal_v.w);
+    s.position = (a.position_u.xyz * w.x) + (b.position_u.xyz * w.y) + (c.position_u.xyz * w.z);
+    s.normal = (a.normal_v.xyz * w.x) + (b.normal_v.xyz * w.y) + (c.normal_v.xyz * w.z);
+    s.slice = int(triangles[hit.triangle].x);
+    return s;
+}
+
+// ---- Direct light
+
+float omni_attenuation(float distance, float inv_range, float decay) {
+    float nd = distance * inv_range;
+    nd *= nd;
+    nd *= nd;
+    nd = max(1.0 - nd, 0.0);
+    nd *= nd;
+    return nd * power(max(distance, 0.0001), -decay);
+}
+
+vec2 vogel_disk(float i, float rotation, float sample_count_sqrt) {
+    const float kGoldenAngle = 2.4;
+    float r = sqrt(i + 0.5) / sample_count_sqrt;
+    float theta = (i * kGoldenAngle) + rotation;
+    return vec2(cos(theta) * r, sin(theta) * r);
+}
+
+// One shadow ray's light, through surfaces that let some through: its power, then its color.
+vec4 shadow_ray(vec3 from, vec3 to, vec3 light_dir, vec3 light_color, bool count,
+                inout uint hits) {
+    const float kEpsilon = 0.00001;
+    float power_left = 0.0;
+    vec3 color = light_color;
+    bool did_hit = false;
+    vec3 origin = from;
+    for (uint iter = 0u; iter < kTransparencyRays; ++iter) {
+        Hit hit = trace(origin, to);
+        if (hit.kind == kMiss) {
+            if (!did_hit) {
+                power_left = 1.0;
+            }
+            if (count) {
+                ++hits;
+            }
+            break;
+        }
+        Surface s = surface_of(hit);
+        vec4 hit_albedo = sample_atlas(0u, s.slice, s.u, s.v);
+        bool contribute = hit.kind == kFront || !did_hit;
+        if (!did_hit) {
+            power_left = 1.0;
+            did_hit = true;
+        }
+        if (count) {
+            ++hits;
+        }
+        if (contribute) {
+            color = mix(color, color * hit_albedo.rgb, hit_albedo.a);
+            power_left *= 1.0 - hit_albedo.a;
+        }
+        origin = s.position + (light_dir * values.x);
+        if (power_left - kEpsilon <= 0.0) {
+            break;
+        }
+    }
+    return vec4(power_left, color);
+}
+
+// trace_direct_light: a light's light reaching a point, shadowed.
+vec3 direct_light(vec3 position, vec3 normal, uint index, bool soft_shadowing, inout uint noise,
+                  float texel_size) {
+    Light light = lights[index];
+    uint type = uint(light.position.w);
+    float light_size = light.shape.x;
+    float range = light.shape.y;
+    float shadow_blur = light.more.y;
+    vec3 light_pos;
+    vec3 light_dir;
+    float dist = 0.0;
+    float attenuation = 1.0;
+    float disk_size = 0.0;
+    if (type == 0u) {
+        light_pos = position - (light.direction.xyz * values.w);
+        light_dir = unit(light_pos - position);
+        dist = values.w;
+        disk_size = light_size;
+    } else {
+        light_pos = light.position.xyz;
+        light_dir = unit(light_pos - position);
+        dist = length(position - light_pos);
+        if (dist > range) {
+            return vec3(0.0);
+        }
+        disk_size = light_size / dist;
+        attenuation = omni_attenuation(dist, 1.0 / range, light.shape.z);
+        if (type == 2u) {
+            vec3 rel = unit(position - light_pos);
+            float cos_angle = dot(rel, light.direction.xyz);
+            if (cos_angle < light.shape.w) {
+                return vec3(0.0);
+            }
+            float scos = max(cos_angle, light.shape.w);
+            float spot_rim = max(0.0001, (1.0 - scos) / (1.0 - light.shape.w));
+            attenuation *= 1.0 - power(spot_rim, light.more.x);
+        }
+    }
+    attenuation *= max(0.0, dot(normal, light_dir));
+    if (attenuation <= 0.0001) {
+        return vec3(0.0);
+    }
+    float penumbra = 0.0;
+    vec3 penumbra_color = vec3(0.0);
+    uint unused = 0u;
+    if (soft_shadowing) {
+        bool use_soft_shadows = light_size > 0.0;
+        uint ray_count = kAaSamples;
+        uint total_ray_count = use_soft_shadows ? counts.z : ray_count;
+        uint shadowing_ray_count = max(1u, counts.z / ray_count);
+        float shadowing_ray_count_sqrt = sqrt(float(total_ray_count));
+        vec3 aux = normal.y < 0.777 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+        vec3 tangent = unit(cross(normal, aux));
+        vec3 bitan = unit(cross(normal, tangent));
+        vec3 light_to_point = light_dir * -1.0;
+        vec3 light_aux = light_to_point.y < 0.777 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+        vec3 light_to_point_tan = unit(cross(light_to_point, light_aux));
+        vec3 light_to_point_bitan = unit(cross(light_to_point, light_to_point_tan));
+        float aa_power = 0.0;
+        for (uint i = 0u; i < ray_count; ++i) {
+            vec2 halton = kHalton[i];
+            vec2 disk_sample = vec2((halton.x - 0.5) * texel_size * shadow_blur,
+                                    (halton.y - 0.5) * texel_size * shadow_blur);
+            vec3 disk_aligned = (tangent * disk_sample.x) + (bitan * disk_sample.y);
+            vec3 origin = position - disk_aligned;
+            float disk_length = sqrt((disk_sample.x * disk_sample.x) +
+                                     (disk_sample.y * disk_sample.y));
+            float power_sum = 0.0;
+            vec3 light_color = vec3(0.0);
+            uint power_accm = 0u;
+            if (use_soft_shadows) {
+                uint soft_shadow_hits = 0u;
+                for (uint j = 0u; j < shadowing_ray_count; ++j) {
+                    if (j > 0u && j == shadowing_ray_count / 2u) {
+                        if (soft_shadow_hits == j || soft_shadow_hits == 0u) {
+                            break;
+                        }
+                    }
+                    float a = randomize(noise) * 2.0 * kPi;
+                    float vogel_index =
+                        float(total_ray_count - 1u - ((i * shadowing_ray_count) + j));
+                    vec2 d = vogel_disk(vogel_index, a, shadowing_ray_count_sqrt);
+                    vec2 light_disk = vec2(d.x * disk_size * shadow_blur,
+                                           d.y * disk_size * shadow_blur);
+                    vec3 light_disk_to_point =
+                        unit(light_to_point + (light_to_point_tan * light_disk.x) +
+                             (light_to_point_bitan * light_disk.y));
+                    vec4 shadow = shadow_ray(
+                        origin - (light_disk_to_point * (values.x + disk_length)),
+                        position - (light_disk_to_point * dist), light_dir, light.color.xyz, true,
+                        soft_shadow_hits);
+                    power_sum += shadow.x;
+                    light_color = light_color + shadow.yzw;
+                    ++power_accm;
+                }
+            } else {
+                vec3 to_light = unit(light_pos - origin);
+                vec4 shadow = shadow_ray(origin + (to_light * (values.x + disk_length)), light_pos,
+                                         light_dir, light.color.xyz, false, unused);
+                power_sum = shadow.x;
+                light_color = shadow.yzw;
+                power_accm = 1u;
+            }
+            aa_power += power_sum / float(power_accm);
+            penumbra_color = penumbra_color + (light_color * (1.0 / float(power_accm)));
+        }
+        penumbra = aa_power / float(ray_count);
+        penumbra_color = penumbra_color * (1.0 / float(ray_count));
+    } else {
+        vec4 shadow = shadow_ray(position + (light_dir * values.x), light_pos, light_dir,
+                                 light.color.xyz, false, unused);
+        penumbra = clamp(shadow.x, 0.0, 1.0);
+        penumbra_color = shadow.yzw;
+    }
+    return penumbra_color * (light.direction.w * attenuation * penumbra);
+}
+
+// ---- Bounces
+
+vec3 bounce_direct(Surface s, vec3 position, vec3 normal, inout uint noise, float texel_size) {
+    if (flags.x != 0u) {
+        return sample_atlas(2u, s.slice, s.u, s.v).rgb;
+    }
+    vec3 direct = vec3(0.0);
+    for (uint i = 0u; i < counts.y; ++i) {
+        vec3 lit = direct_light(position, normal, i, false, noise, texel_size);
+        direct = direct + (lit * lights[i].color.w);
+    }
+    return direct * values.z;
+}
+
+// trace_indirect_light: the light a path brings back from a direction.
+vec3 indirect_light(vec3 start, vec3 start_dir, inout uint noise, float texel_size) {
+    vec3 position = start;
+    vec3 ray_dir = start_dir;
+    int max_depth = max(int(counts.w), 1);
+    int transparency_rays_left = int(kTransparencyRays);
+    vec3 throughput = vec3(1.0);
+    vec3 light = vec3(0.0);
+    for (int depth = 0; depth < max_depth; ++depth) {
+        Hit hit = trace(position + (ray_dir * values.x), position + (ray_dir * values.w));
+        if (hit.kind == kMiss) {
+            light = light + throughput * environment_color(ray_dir);
+            break;
+        }
+        Surface s = surface_of(hit);
+        position = s.position;
+        vec3 normal = s.normal;
+        vec4 albedo_alpha = sample_atlas(0u, s.slice, s.u, s.v);
+        float alpha = albedo_alpha.a;
+        if (hit.kind == kFront) {
+            vec3 prev_normal = ray_dir;
+            vec3 direct = bounce_direct(s, position, normal, noise, texel_size);
+            vec3 emissive = sample_atlas(1u, s.slice, s.u, s.v).rgb * values.z;
+            light = light + (throughput * emissive) * alpha;
+            throughput = mix(throughput, throughput * albedo_alpha.rgb, alpha);
+            light = light + (throughput * direct) * (more.x * alpha);
+            if (alpha < 1.0) {
+                --transparency_rays_left;
+                --depth;
+                if (transparency_rays_left <= 0) {
+                    break;
+                }
+                float pa = alpha * alpha;
+                if (randomize(noise) > pa) {
+                    normal = prev_normal;
+                }
+                position = position + (normal * values.x);
+            }
+            float p = max3(throughput);
+            if (randomize(noise) > p) {
+                break;
+            }
+            throughput = throughput * (1.0 / p);
+            ray_dir = ray_dir_from_normal(normal, noise);
+            continue;
+        }
+        --transparency_rays_left;
+        --depth;
+        if (transparency_rays_left <= 0) {
+            break;
+        }
+        vec3 direct = bounce_direct(s, position, normal, noise, texel_size);
+        vec3 emissive = sample_atlas(1u, s.slice, s.u, s.v).rgb * values.z;
+        light = light + (throughput * emissive) * alpha;
+        throughput = mix(mix(throughput, throughput * albedo_alpha.rgb, alpha), vec3(0.0), alpha);
+        light = light + (throughput * direct) * (more.x * alpha);
+        position = position + (ray_dir * values.x);
+    }
+    return light;
+}
+
+// ---- The passes
+
+void direct_pass(int slice, int x, int y) {
+    uint at = texel_at(slice, x, y);
+    vec3 normal = normals[at].xyz;
+    if (length(normal) < 0.5) {
+        return;
+    }
+    vec3 position = positions[at].xyz;
+    vec4 neighbor = fetch_position(slice, x + 1, y);
+    if (neighbor.w < 0.001) {
+        vec4 left = fetch_position(slice, x - 1, y);
+        neighbor = vec4(left.xyz, neighbor.w);
+    }
+    float texel_size = length(position - neighbor.xyz) * values.y;
+    vec3 light_for_texture = vec3(0.0);
+    vec3 light_for_bounces = vec3(0.0);
+    uint noise = random_seed(uint(x), uint(y), 43573547u);
+    for (uint i = 0u; i < counts.y; ++i) {
+        vec3 lit = direct_light(position, normal, i, true, noise, texel_size);
+        if (lights[i].more.z != 0.0) {
+            light_for_texture = light_for_texture + lit;
+        }
+        light_for_bounces = light_for_bounces + (lit * lights[i].color.w);
+    }
+    light_for_bounces = light_for_bounces * values.z;
+    light_for_texture = light_for_texture * values.z;
+    light_source[at] = vec4(light_for_bounces, 1.0);
+    accum[at] = vec4(light_for_texture, 1.0);
+}
+
+void bounce_pass(int slice, int x, int y) {
+    uint at = texel_at(slice, x, y);
+    vec3 normal = normals[at].xyz;
+    if (length(normal) < 0.5) {
+        return;
+    }
+    vec3 position = positions[at].xyz;
+    int neighbor_offset = x < int(size.x) - 1 ? 1 : -1;
+    float texel_size = length(position - fetch_position(slice, x + neighbor_offset, y).xyz);
+    uint noise = random_seed(step.y, uint(x), uint(y));
+    vec3 light_accum = vec3(0.0);
+    for (uint i = step.y; i < step.z; ++i) {
+        vec3 ray_dir = ray_dir_from_normal(normal, noise);
+        light_accum = light_accum + indirect_light(position, ray_dir, noise, texel_size);
+    }
+    vec3 added = light_accum * (1.0 / float(counts.z));
+    accum[at] = vec4(accum[at].xyz + added, accum[at].w);
+}
+
+void probe_pass(uint probe) {
+    vec3 position = probes[probe].xyz;
+    uint noise = random_seed(step.y, probe, 49502741u);
+    vec3 sums[9];
+    for (uint j = 0u; j < 9u; ++j) {
+        sums[j] = probe_sums[probe * 9u + j].xyz;
+    }
+    for (uint i = step.y; i < step.z; ++i) {
+        vec3 d = sphere_uniform_direction(noise);
+        vec3 ray_dir = space[0].xyz * d.x + space[1].xyz * d.y + space[2].xyz * d.z;
+        vec3 light = indirect_light(position, ray_dir, noise, 0.0);
+        float c[9] = float[9](0.282095, 0.488603 * d.y, 0.488603 * d.z, 0.488603 * d.x,
+                              1.092548 * d.x * d.y, 1.092548 * d.y * d.z,
+                              0.315392 * ((3.0 * d.z * d.z) - 1.0), 1.092548 * d.x * d.z,
+                              0.546274 * ((d.x * d.x) - (d.y * d.y)));
+        for (uint j = 0u; j < 9u; ++j) {
+            sums[j] = sums[j] + (light * c[j]);
+        }
+    }
+    for (uint j = 0u; j < 9u; ++j) {
+        probe_sums[probe * 9u + j] = vec4(sums[j], 0.0);
+    }
+}
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (kPass == 2u) {
+        if (id < step.w) {
+            probe_pass(id);
+        }
+        return;
+    }
+    id += flags.y;
+    if (id >= flags.z) {
+        return;
+    }
+    int x = int(id % size.x);
+    int y = int(id / size.x);
+    if (kPass == 0u) {
+        direct_pass(int(step.x), x, y);
+    } else {
+        bounce_pass(int(step.x), x, y);
+    }
+}

@@ -2,6 +2,7 @@
 
 #include "slash/core/json.hpp"
 #include "slash/core/result.hpp"
+#include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/mesh.hpp"
 #include "slash/scene3d/model.hpp"
@@ -163,6 +164,9 @@ struct LightmapSettings {
     std::uint32_t max_texture_size = 16384;
     float supersampling = 1.0F; // supersampling_factor when supersampling, else 1
     float exposure = 1.0F;      // the camera attributes' exposure multiplier
+    // A device that traces the light on its GPU (RenderDevice::trace_lightmap), as Godot's
+    // LightmapperRD does; with none, or one that can't, the CPU traces it.
+    render::RenderDevice* device = nullptr;
 };
 
 // A point on a mesh's surface, where a bake asks what it is made of: its texture coordinate
@@ -221,6 +225,7 @@ struct LightmapBake {
     std::size_t lights = 0;
     std::vector<LightmapSh> probe_sh;
     std::vector<Problem> problems;
+    bool traced_on_gpu = false; // whether LightmapSettings::device traced its light
 };
 
 // Where a bake traces light probes, as LightmapperRD::add_probe, each traced with rays rays: the
@@ -236,7 +241,8 @@ struct LightmapProbeRequest {
 // empty for none) with settings, as Godot's LightmapperRD::bake on the CPU: each mesh unwrapped
 // (meshes of equal hashes once), the unwraps packed into slices, and every texel traced, then the
 // probes, on pool's threads where given. The same texels and probes on every platform and for any
-// number of threads.
+// number of threads. With settings' device, its GPU traces the direct light, bounces and probes
+// (traced_on_gpu): the same light but for rounding, and the noise that follows from it.
 [[nodiscard]] Result<LightmapBake>
 bake_lightmap(const std::vector<LightmapMesh>& meshes, const std::vector<LightmapLight>& lights,
               const render::HdrImage& environment, const LightmapSettings& settings,
@@ -297,6 +303,7 @@ lightmap_capture(std::span<const LightmapCaptureSource> lightmaps, std::array<fl
 struct LightmapSources {
     std::function<Result<std::shared_ptr<const render::Image>>(const std::string& path)> images;
     ModelLoader models;
+    render::RenderDevice* device = nullptr; // LightmapSettings::device
 };
 
 // Bakes the lightmap of a LightmapGI entity, as Godot's LightmapGI::bake: the static
