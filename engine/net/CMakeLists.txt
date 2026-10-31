@@ -1,10 +1,11 @@
 add_library(slash_net
     src/enet.cpp
+    src/multiplayer.cpp
     src/peer.cpp)
 add_library(slash::net ALIAS slash_net)
 
 target_include_directories(slash_net PUBLIC include)
-target_link_libraries(slash_net PUBLIC slash::core)
+target_link_libraries(slash_net PUBLIC slash::core slash::world)
 slash_engine_target(slash_net)
 
 # ENet everywhere but the web (cmake/Dependencies.cmake).
