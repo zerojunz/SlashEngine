@@ -19,7 +19,8 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
-// One instance a draw, its custom index the draw's place in layers.
+// One instance a draw, its custom index the draw's place in layers: mask 2 for the draws that
+// cast shadows (1 is for those rays from the camera's side see, ray_light.comp's).
 layout(set = 0, binding = 0) uniform accelerationStructureEXT scene;
 layout(set = 0, binding = 1) uniform sampler2D depth_texture;   // the prepass's depth, reversed
 layout(set = 0, binding = 2) uniform sampler2D normal_texture;  // its view-space normals, 0 to 1
@@ -93,7 +94,7 @@ bool blocked(vec3 origin, vec3 direction, float distance, uint caster_mask) {
     if (options.x != 0u) {
         flags |= gl_RayFlagsOpaqueEXT;
     }
-    rayQueryInitializeEXT(query, scene, flags, 0xFFu, origin, 0.0, direction, distance);
+    rayQueryInitializeEXT(query, scene, flags, 2u, origin, 0.0, direction, distance);
     while (rayQueryProceedEXT(query)) {
         uint draw = uint(rayQueryGetIntersectionInstanceCustomIndexEXT(query, false));
         if ((draw_layers[draw] & caster_mask) != 0u) {

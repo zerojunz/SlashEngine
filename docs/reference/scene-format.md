@@ -2103,8 +2103,12 @@ and its mirror direction. The light the rays bring back, and the share of them t
 go where SSR's reflections go, so the color pass covers the sky's reflections with them as above,
 fading them out from roughness 0.6. Rays find what the screen doesn't show: what is off it or behind
 something nearer. `ssr_enabled` still turns them on and off, and the other `ssr_*` fields and
-`rendering.environment.screen_space_reflection` don't apply. Only the software device traces
-reflections for now, so `frame.capture` returns them; GPUs draw SSR.
+`rendering.environment.screen_space_reflection` don't apply. The software device traces them, so
+`frame.capture` returns them, and so does the GPU device on Vulkan where the GPU traces rays,
+shading what rays meet from its material's colors and its albedo, metallic, roughness, emission and
+normal textures (the first 64 textures a frame's draws use; the rest read white), its vertex
+colors and the sky's radiance at its sharpest. Hits on terrains, lightmapped meshes and VoxelGIs
+are lit as plain materials. Other GPUs draw SSR.
 [examples/ray-traced-reflections-3d](../../examples/ray-traced-reflections-3d) reflects a banner
 above the screen.
 
