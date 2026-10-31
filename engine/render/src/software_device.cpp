@@ -1858,7 +1858,9 @@ private:
                          }
                          return true;
                      });
-            if (!traced.empty()) {
+            // The environment's SSAO, traced by rays where the project asks.
+            const std::optional<detail::RayOcclusion> occlusion = detail::ray_occlusion(scene);
+            if (!traced.empty() || occlusion) {
                 // Rays from each pixel the prepass drew, through every mesh the frame draws.
                 const std::vector<detail::PathMesh> meshes = path_meshes();
                 const detail::PathScene paths =
@@ -1866,18 +1868,26 @@ private:
                                              detail::forward_clear(frame_.clear));
                 PathBindings bindings;
                 bind_path_textures(scene, bindings);
-                ray_shadows = detail::run_ray_shadows(
-                    paths, &bindings, traced,
-                    detail::ray_shadow_frame(scene, camera.view_projection, target.width(),
-                                             target.height()),
-                    prepass_depth, normals.values, pool_);
-                maps.ray_shadows = ray_shadows;
-                maps.ao_width = target.width();
-                lights->screen[2] = 1.0F;
+                const detail::RayShadowFrame rays = detail::ray_shadow_frame(
+                    scene, camera.view_projection, target.width(), target.height());
+                if (!traced.empty()) {
+                    ray_shadows = detail::run_ray_shadows(paths, &bindings, traced, rays,
+                                                          prepass_depth, normals.values, pool_);
+                    maps.ray_shadows = ray_shadows;
+                    maps.ao_width = target.width();
+                    lights->screen[2] = 1.0F;
+                }
+                if (occlusion) {
+                    ao.values = detail::run_ray_occlusion(paths, &bindings, *occlusion, rays,
+                                                          prepass_depth, normals.values, pool_);
+                }
             }
             if (lights->ssao[0] != 0.0F) {
-                ao = detail::run_ssao(scene.ssao, scene.projection, target.width(), target.height(),
-                                      {.depth = prepass_depth, .normals = &normals});
+                if (!occlusion) {
+                    ao = detail::run_ssao(scene.ssao, scene.projection, target.width(),
+                                          target.height(),
+                                          {.depth = prepass_depth, .normals = &normals});
+                }
                 maps.ao = ao.values;
                 maps.ao_width = target.width();
             }

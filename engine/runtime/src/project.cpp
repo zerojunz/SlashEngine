@@ -357,12 +357,27 @@ json::Value ray_tracing_schema() {
     samples["description"] =
         "Rays a pixel sends toward each light, spread across its size (light_size, "
         "light_angular_distance): more makes soft shadows less noisy and costs more.";
+    json::Value occlusion;
+    occlusion["type"] = "boolean";
+    occlusion["default"] = false;
+    occlusion["description"] =
+        "The environment's SSAO is traced by rays over each opaque pixel's half of the sphere, up "
+        "to ssao_radius, in Forward+, on devices that trace rays; others draw SSAO.";
+    json::Value occlusion_samples;
+    occlusion_samples["type"] = "integer";
+    occlusion_samples["minimum"] = 1;
+    occlusion_samples["maximum"] = render::kMaxRayShadowSamples;
+    occlusion_samples["default"] = render::RayTracing3D{}.ambient_occlusion_samples;
+    occlusion_samples["description"] =
+        "Rays a pixel sends for its ambient occlusion: more is less noisy and costs more.";
     json::Value out;
     out["type"] = "object";
     out["additionalProperties"] = false;
     out["description"] = "Ray-traced effects, drawn by devices that trace rays.";
     out["properties"]["shadows"] = std::move(shadows);
     out["properties"]["shadow_samples"] = std::move(samples);
+    out["properties"]["ambient_occlusion"] = std::move(occlusion);
+    out["properties"]["ambient_occlusion_samples"] = std::move(occlusion_samples);
     return out;
 }
 

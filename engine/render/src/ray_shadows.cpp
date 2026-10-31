@@ -24,6 +24,10 @@ constexpr float kShortOfLight = 1e-4F;
 // The R2 sequence's steps (Martin Roberts'), which spread a pixel's samples over a light.
 constexpr float kR2X = 0.7548776662F;
 constexpr float kR2Y = 0.5698402910F;
+// What occlusion rays' hashes take in place of a light's slot.
+constexpr std::uint32_t kOcclusionSeed = 0xA0U;
+// The most a pixel's occlusion takes away, as Godot's SSAO holds it.
+constexpr float kMostObscurance = 0.98F;
 
 Float3 add(const Float3& a, const Float3& b) {
     return {a[0] + b[0], a[1] + b[1], a[2] + b[2]};
@@ -125,8 +129,8 @@ RayShadowFrame ray_shadow_frame(const Scene3D& scene, const Mat4& view_projectio
                       Float4{c[2], c[6], c[10], c[14]}}};
 }
 
-std::optional<Float3> ray_shadow_origin(const RayShadowFrame& frame, std::uint32_t x,
-                                        std::uint32_t y, float depth, const Float3& normal_texel) {
+std::optional<RaySurface> ray_surface(const RayShadowFrame& frame, std::uint32_t x, std::uint32_t y,
+                                      float depth, const Float3& normal_texel) {
     if (!(depth > 0.0F)) {
         return std::nullopt;
     }
@@ -156,7 +160,7 @@ std::optional<Float3> ray_shadow_origin(const RayShadowFrame& frame, std::uint32
     }
     const float size = length(normal);
     if (!(size > 0.0F)) {
-        return world;
+        return RaySurface{.origin = world, .normal = {}};
     }
     // Back to the world: the rows' transpose.
     Float3 out{};
@@ -165,7 +169,16 @@ std::optional<Float3> ray_shadow_origin(const RayShadowFrame& frame, std::uint32
         out = add(out, scale(Float3{r[0], r[1], r[2]}, normal.at(row) / size));
     }
     const float amount = (kOffsetShare * length(seen)) + kOffsetLeast;
-    return add(world, scale(out, amount));
+    return RaySurface{.origin = add(world, scale(out, amount)), .normal = out};
+}
+
+std::optional<Float3> ray_shadow_origin(const RayShadowFrame& frame, std::uint32_t x,
+                                        std::uint32_t y, float depth, const Float3& normal_texel) {
+    const std::optional<RaySurface> surface = ray_surface(frame, x, y, depth, normal_texel);
+    if (!surface) {
+        return std::nullopt;
+    }
+    return surface->origin;
 }
 
 std::optional<ShadowRay> ray_shadow_ray(const RayShadowFrame& frame, const RayShadowLight& light,
@@ -232,6 +245,75 @@ std::vector<float> run_ray_shadows(const PathScene& scene, const PathTextures* t
                 out[(at * kMaxRayShadowLights) + light.slot] =
                     round_half(1.0F - (light.opacity * share));
             }
+        }
+    };
+    if (pool != nullptr) {
+        pool->parallel_for(frame.height, row);
+    } else {
+        for (std::size_t y = 0; y < frame.height; ++y) {
+            row(y);
+        }
+    }
+    return out;
+}
+
+std::optional<RayOcclusion> ray_occlusion(const Scene3D& scene) {
+    if (scene.method != RenderMethod::ForwardPlus || !scene.ssao.enabled ||
+        !scene.ray_tracing.ambient_occlusion) {
+        return std::nullopt;
+    }
+    return RayOcclusion{.samples = std::clamp<std::uint32_t>(
+                            scene.ray_tracing.ambient_occlusion_samples, 1, kMaxRayShadowSamples),
+                        .radius = std::max(0.0F, scene.ssao.radius),
+                        .intensity = std::max(0.0F, scene.ssao.intensity),
+                        .power = std::max(0.0F, scene.ssao.power)};
+}
+
+Float3 occlusion_ray(const Float3& normal, std::uint32_t x, std::uint32_t y, std::uint32_t width,
+                     std::uint32_t sample) {
+    // Its own seed, apart from the lights' (whose slots are below 8).
+    const std::uint32_t seed = mix(((y * width) + x) ^ mix(kOcclusionSeed));
+    const float u = fraction(unit(seed) + (static_cast<float>(sample) * kR2X));
+    const float v = fraction(unit(mix(seed)) + (static_cast<float>(sample) * kR2Y));
+    // Malley's method: a point of the unit disk lifted onto the half sphere.
+    const Float3 across = disk_point(normal, 1.0F, u, v);
+    const float up = std::sqrt(std::max(0.0F, 1.0F - u));
+    return normalize(add(across, scale(normal, up)));
+}
+
+std::vector<float> run_ray_occlusion(const PathScene& scene, const PathTextures* textures,
+                                     const RayOcclusion& occlusion, const RayShadowFrame& frame,
+                                     std::span<const float> depth, std::span<const float> normals,
+                                     jobs::Pool* pool) {
+    std::vector<float> out(std::size_t{frame.width} * frame.height, 1.0F);
+    if (!(occlusion.radius > 0.0F)) {
+        return out;
+    }
+    const auto row = [&](std::size_t y) {
+        for (std::uint32_t x = 0; x < frame.width; ++x) {
+            const std::size_t at = (y * frame.width) + x;
+            const std::optional<RaySurface> surface =
+                ray_surface(frame, x, static_cast<std::uint32_t>(y), depth[at],
+                            {normals[at * 4], normals[(at * 4) + 1], normals[(at * 4) + 2]});
+            if (!surface || dot(surface->normal, surface->normal) == 0.0F) {
+                continue;
+            }
+            std::uint32_t blocked = 0;
+            for (std::uint32_t s = 0; s < occlusion.samples; ++s) {
+                const Float3 way = occlusion_ray(surface->normal, x, static_cast<std::uint32_t>(y),
+                                                 frame.width, s);
+                const std::uint32_t seed =
+                    mix(static_cast<std::uint32_t>(at) ^ mix((kOcclusionSeed << 16U) ^ s));
+                if (path_blocked(scene, textures, surface->origin, way, occlusion.radius,
+                                 0xFFFFFFFFU, seed)) {
+                    ++blocked;
+                }
+            }
+            const float share = static_cast<float>(blocked) / static_cast<float>(occlusion.samples);
+            // As ssao.cpp's gather: the obscurance held below 0.98, so nothing turns black.
+            const float open = 1.0F - std::min(occlusion.intensity * share, kMostObscurance);
+            // slash::exp and ln, the same bits everywhere, rather than std::pow.
+            out[at] = round_half(slash::exp(occlusion.power * slash::ln(open)));
         }
     };
     if (pool != nullptr) {

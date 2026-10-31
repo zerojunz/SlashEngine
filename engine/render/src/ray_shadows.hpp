@@ -62,6 +62,16 @@ struct RayShadowFrame {
                                                       std::uint32_t y, float depth,
                                                       const Float3& normal_texel);
 
+// A pixel's surface as its rays leave it: ray_shadow_origin's point, and its normal in the world
+// (unit length, facing the camera), or zero where the prepass wrote none.
+struct RaySurface {
+    Float3 origin{};
+    Float3 normal{};
+};
+[[nodiscard]] std::optional<RaySurface> ray_surface(const RayShadowFrame& frame, std::uint32_t x,
+                                                    std::uint32_t y, float depth,
+                                                    const Float3& normal_texel);
+
 // A pixel's sample-th ray toward a light from origin: its way (unit length) and how far it goes.
 struct ShadowRay {
     Float3 direction{};
@@ -81,5 +91,31 @@ struct ShadowRay {
 run_ray_shadows(const PathScene& scene, const PathTextures* textures,
                 std::span<const RayShadowLight> lights, const RayShadowFrame& frame,
                 std::span<const float> depth, std::span<const float> normals, jobs::Pool* pool);
+
+// Ray-traced ambient occlusion (RayTracing3D::ambient_occlusion), traced in place of the
+// environment's SSAO: whether a frame asks for it (Forward+ with SSAO), and what its rays take
+// from the SSAO.
+struct RayOcclusion {
+    std::uint32_t samples = 4;
+    float radius = 1.0F;    // how far the rays go
+    float intensity = 2.0F; // how dark the share they find blocked makes it
+    float power = 1.5F;     // the occlusion's curve
+};
+[[nodiscard]] std::optional<RayOcclusion> ray_occlusion(const Scene3D& scene);
+
+// A pixel's sample-th occlusion ray from a surface facing normal (unit length): cosine weighted
+// over the half of the sphere it faces, by the R2 sequence from a hash of the pixel.
+[[nodiscard]] Float3 occlusion_ray(const Float3& normal, std::uint32_t x, std::uint32_t y,
+                                   std::uint32_t width, std::uint32_t sample);
+
+// The frame's ray-traced ambient occlusion through scene's triangles (those that cast shadows),
+// as half floats, a value a pixel in rows from the top, as Godot's SSAO makes its occlusion from
+// the obscurance it gathers: 1 less intensity times the share of its rays that something stops
+// within radius (at most 0.98), to the power; 1 where a pixel has no rays. As run_ray_shadows
+// takes depth and normals.
+[[nodiscard]] std::vector<float>
+run_ray_occlusion(const PathScene& scene, const PathTextures* textures,
+                  const RayOcclusion& occlusion, const RayShadowFrame& frame,
+                  std::span<const float> depth, std::span<const float> normals, jobs::Pool* pool);
 
 } // namespace slash::render::detail
