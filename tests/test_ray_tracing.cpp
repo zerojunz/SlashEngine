@@ -410,5 +410,101 @@ TEST_CASE("project.json's rendering.ray_tracing sets the ray-traced effects") {
     const render::RayTracing3D read = render::ray_tracing(rendering.value());
     CHECK(read.shadows);
     CHECK(read.shadow_samples == render::kMaxRayShadowSamples);
+    CHECK_FALSE(read.ambient_occlusion);
+    CHECK(read.ambient_occlusion_samples == 4);
     CHECK(render::ray_tracing(slash::json::Value{}) == render::RayTracing3D{});
+    auto occluded = slash::json::parse(
+        R"({"ray_tracing": {"ambient_occlusion": true, "ambient_occlusion_samples": 0}})");
+    REQUIRE(occluded.ok());
+    const render::RayTracing3D occlusion = render::ray_tracing(occluded.value());
+    CHECK(occlusion.ambient_occlusion);
+    CHECK(occlusion.ambient_occlusion_samples == 1);
+}
+
+namespace {
+
+// The floor beside the cube, within its SSAO radius of it.
+constexpr std::array<std::uint32_t, 2> kBeside{19, 16};
+
+// The camera above the floor and cube, lit only by ambient light, with SSAO traced by rays.
+render::Scene3D occluded(bool traced = true) {
+    render::Scene3D scene = above(shadowed(LightType::Directional), false);
+    scene.lights.clear();
+    scene.ambient = {1.0F, 1.0F, 1.0F};
+    scene.ssao.enabled = true;
+    scene.ssao.radius = 1.0F;
+    scene.ssao.power = 1.0F;
+    scene.ssao.intensity = 1.0F;
+    scene.ray_tracing.ambient_occlusion = traced;
+    scene.ray_tracing.ambient_occlusion_samples = 16;
+    return scene;
+}
+
+} // namespace
+
+TEST_CASE("occlusion rays spread over the half of the sphere a surface faces") {
+    const Float3 normal{0.0F, 0.6F, 0.8F};
+    std::set<float> ways;
+    float facing = 0.0F;
+    constexpr std::uint32_t kSamples = 256;
+    for (std::uint32_t s = 0; s < kSamples; ++s) {
+        const Float3 way = render::detail::occlusion_ray(normal, 5, 7, 32, s);
+        const float size = std::sqrt((way[0] * way[0]) + (way[1] * way[1]) + (way[2] * way[2]));
+        CHECK(size == doctest::Approx(1.0F).epsilon(1e-4));
+        const float cosine = (way[0] * normal[0]) + (way[1] * normal[1]) + (way[2] * normal[2]);
+        CHECK(cosine >= 0.0F);
+        facing += cosine;
+        ways.insert(way[0]);
+    }
+    CHECK(ways.size() == kSamples);
+    // Cosine weighted: the mean cosine is 2/3.
+    CHECK(facing / kSamples == doctest::Approx(2.0F / 3.0F).epsilon(0.02));
+}
+
+TEST_CASE("ray-traced ambient occlusion darkens the floor beside the cube") {
+    auto device = render::create_software_device();
+    render::Scene3D scene = occluded();
+    // Only with SSAO on, in Forward+.
+    CHECK(render::detail::ray_occlusion(scene).has_value());
+    scene.ssao.enabled = false;
+    CHECK_FALSE(render::detail::ray_occlusion(scene).has_value());
+    const Image traced = draw_shadow(*device, occluded());
+    const Image plain = draw_shadow(*device, scene);
+    CHECK(at(traced, kBeside) < at(plain, kBeside) - 10);
+    // Open sky over the floor far away and the cube's top: nothing to darken.
+    CHECK(at(traced, kLit) == at(plain, kLit));
+    CHECK(at(traced, kTop) == at(plain, kTop));
+    // More power, darker.
+    render::Scene3D strong = occluded();
+    strong.ssao.power = 3.0F;
+    CHECK(at(draw_shadow(*device, strong), kBeside) < at(traced, kBeside));
+    // Meshes that cast no shadow occlude nothing.
+    const Image off = draw_shadow(*device, occluded(), {.shadows = ShadowCasting::Off});
+    CHECK(at(off, kBeside) == at(plain, kBeside));
+    // The same on any number of threads.
+    slash::jobs::Pool pool(4);
+    auto shared = render::create_software_device(&pool);
+    CHECK(draw_shadow(*shared, occluded()).pixels == traced.pixels);
+}
+
+TEST_CASE("devices trace ambient occlusion as the software device does, or draw SSAO") {
+    const auto software = render::create_software_device();
+    for (const auto& device : slash::test::hardware_devices()) {
+        CAPTURE(static_cast<int>(device->backend()));
+        if (!device->ray_tracing()) {
+            // SSAO's own passes.
+            CHECK(draw_shadow(*device, occluded()).pixels ==
+                  draw_shadow(*device, occluded(false)).pixels);
+            continue;
+        }
+        render::Scene3D both = occluded();
+        both.lights = {shadowed(LightType::Omni)};
+        both.ray_tracing.shadows = true;
+        for (const render::Scene3D& scene : {occluded(), both}) {
+            const Image traced = draw_shadow(*device, scene, {}, 48);
+            const Image twin = draw_shadow(*software, scene, {}, 48);
+            CHECK(differing(traced, twin, 3) <= 12);
+            CHECK(differing(traced, twin, 40) <= 4);
+        }
+    }
 }
