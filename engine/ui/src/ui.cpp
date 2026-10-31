@@ -425,6 +425,7 @@ std::vector<world::PopupMenuItem> popup_items(const world::World& world, entt::e
             item.id = each.id;
             item.disabled = each.disabled;
             item.separator = each.separator;
+            item.auto_translate_mode = each.auto_translate_mode;
         }
     }
     return items;

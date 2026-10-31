@@ -317,7 +317,9 @@ slash-cli schema bench
 ### project validate
 
 Checks a folder's `project.json`, its `export_presets.json` if there is one, the theme its
-`gui.theme` names, the bus layout its `audio.bus_layout` names, the [icons](project-format.md#icons)
+`gui.theme` names, the bus layout its `audio.bus_layout` names, the [translation
+files](project-format.md#internationalization) its `internationalization` lists (each must load,
+with its problems by line), the [icons](project-format.md#icons)
 it and its presets name (each must be a square image), its storyboard with [`storyboard.check`](commands.md#storyboardcheck), and
 its [SDK packages](sdk-format.md#sdk-check) (their `sdk.json` files, the presets' `sdks` and the
 files in the packages, not keys or downloads) and its [`providers.json`](providers.md) if

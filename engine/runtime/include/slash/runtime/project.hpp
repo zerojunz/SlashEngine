@@ -6,6 +6,7 @@
 #include "slash/core/result.hpp"
 #include "slash/core/text.hpp"
 #include "slash/input/input.hpp"
+#include "slash/l10n/l10n.hpp"
 #include "slash/navigation/navigation.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/physics3d/physics3d.hpp"
@@ -148,6 +149,8 @@ struct Project {
     audio::Settings audio;
     // Ad placements, products, analytics and the player's consent until the game sets it.
     services::Settings services;
+    // Translation files, the fallback and test locales and pseudo-localization.
+    l10n::Settings internationalization;
     // Folders and .cpp files of the game's own C++ code (slash/world/game_module.hpp); empty if
     // it has none.
     std::vector<std::string> gameplay_sources;
