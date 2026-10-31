@@ -1,0 +1,31 @@
+A server on a free port, for up to 2 clients with 1 extra channel:
+  is_server 1, unique_id 1, listening: 1
+
+Two clients connect to 127.0.0.1; each picks a random ID above 1:
+  alice is connecting until the server answers
+  the server saw 2 clients connect
+  alice hears: the server connected
+  bob hears: the server connected
+
+The server sends to alice, to everyone, then to all but alice:
+  alice got "welcome, alice" from the server on channel 0, reliable
+  alice got "round one" from the server on channel 0, reliable
+  bob got "round one" from the server on channel 0, reliable
+  bob got "bob, you're up" from the server on channel 0, reliable
+
+Alice sends a reliable packet, then a position on channel 1 that may be lost:
+  the server got "ready" from alice on channel 0, reliable
+  the server got "x=12 y=40" from alice on channel 1, unreliable
+  channel 2 is past what the server allows:
+  refused: transfer channel 2 is past the last one the server allows, 1
+
+The server is full, so a third client gets no answer:
+  carol is still connecting; ENet gives up on her after its timeout
+
+Bob leaves:
+  the server hears: bob disconnected
+  bob hears: the server disconnected
+  bob's unique_id is now 0
+
+The server closes, and alice is disconnected:
+  alice hears: the server disconnected
