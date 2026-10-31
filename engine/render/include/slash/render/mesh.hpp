@@ -869,7 +869,8 @@ struct Fsr2Scaling {
 // frame (RenderDevice::path_samples), and start over when anything changes. Path tracing stands in
 // for the meshes' lightmaps, light probes, VoxelGIs, reflection probes, SSAO, SSR and shadow maps,
 // leaves out fog, decals and depth of field, and is post-processed as Forward+ post-processes.
-// Only the software device traces paths for now; other devices draw the frame as usual.
+// The software device traces paths, and the GPU device on Vulkan where the GPU has ray queries
+// (RenderDevice::ray_tracing); other devices draw the frame as usual.
 inline constexpr std::uint32_t kMaxPathSamples = 4096;
 inline constexpr std::uint32_t kMaxPathBounces = 32;
 struct PathTrace3D {
