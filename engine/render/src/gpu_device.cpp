@@ -3598,9 +3598,11 @@ private:
             if (traced) {
                 const std::vector<RayShadowLight> traced_lights = ray_shadow_lights(scene);
                 bool reflected = false;
+                bool lit = false;
                 if (trace_rays(commands, scene, traced_lights, occlusion, camera.view_projection,
-                               reflected)) {
+                               reflected, lit)) {
                     lights->screen[2] = traced_lights.empty() ? 0.0F : 1.0F;
+                    lights->screen[3] = lit ? 1.0F : 0.0F;
                     if (traced_reflections && !reflected) {
                         lights->ssao[3] = 0.0F;
                     }
@@ -4190,9 +4192,10 @@ private:
         if (screen_.texture != nullptr) {
             pending_release_.push_back(std::exchange(screen_.texture, nullptr));
         }
-        // Layers 2 and 3 hold the ray-traced shadows on a device with rays.
+        // Layers 2 and 3 hold the ray-traced shadows on a device with rays, and 4 the traced
+        // ambient light.
         auto texture = pass_texture(width, height, kHdrFormat, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, 1,
-                                    "SSAO", rays_ != nullptr ? 4 : 2);
+                                    "SSAO", rays_ != nullptr ? 5 : 2);
         if (!texture) {
             return texture.error();
         }
@@ -4201,16 +4204,17 @@ private:
     }
 
     // Whether a frame traces rays: on a device with rays, in Forward+ with ray-traced shadows and
-    // a light that has a ray slot, with ray-traced ambient occlusion and SSAO, or with ray-traced
-    // reflections and SSR.
+    // a light that has a ray slot, with ray-traced ambient occlusion and SSAO, with ray-traced
+    // reflections and SSR, or with ray-traced global illumination.
     [[nodiscard]] bool traces_rays(const Scene3D& scene) const {
         return rays_ != nullptr &&
                (!ray_shadow_lights(scene).empty() || ray_occlusion(scene).has_value() ||
-                ray_reflection(scene).has_value());
+                ray_reflection(scene).has_value() || ray_gi(scene).has_value());
     }
 
     // The textures the rays write (lights' visibilities, then the occlusion, then the
-    // reflections), for a frame of width x height.
+    // reflections, then the ambient light as traced and as smoothed), for a frame of width x
+    // height.
     Result<void> prepare_ray_shadows(std::uint32_t width, std::uint32_t height) {
         if (ray_shadows_.textures[0] != nullptr && ray_shadows_.width == width &&
             ray_shadows_.height == height) {
@@ -4241,22 +4245,28 @@ private:
         ray_shadows_.height = 0;
     }
 
-    // After the prepass: the frame's lights' shadows, its occlusion and its reflections traced
-    // through its draws, into the screen array's layers 2 and 3, 0 and 1, with reflected set to
-    // whether there were reflections to trace. False, with the shadow maps left to light the
-    // frame and no occlusion or reflections, where the rays failed.
+    // After the prepass: the frame's lights' shadows, its occlusion, its reflections and its
+    // ambient light traced through its draws, into the screen array's layers 2 and 3, 0, 1 and 4,
+    // with reflected and lit set to whether there were reflections and ambient light to trace.
+    // False, with the shadow maps left to light the frame and no occlusion, reflections or
+    // ambient light, where the rays failed.
     bool trace_rays(SDL_GPUCommandBuffer* commands, const Scene3D& scene,
                     std::span<const RayShadowLight> lights,
                     const std::optional<RayOcclusion>& occlusion, const Mat4& view_projection,
-                    bool& reflected) {
-        RayWork work{.lights = lights, .occlusion = occlusion, .reflection = ray_reflection(scene)};
+                    bool& reflected, bool& lit) {
+        RayWork work{.lights = lights,
+                     .occlusion = occlusion,
+                     .reflection = ray_reflection(scene),
+                     .gi = ray_gi(scene)};
         RayLighting lighting;
         SDL_GPUTexture* environment = radiance_used(scene) ? radiance_.filtered : no_radiance_;
-        if (work.reflection && environment == nullptr) {
+        if (environment == nullptr) {
             work.reflection.reset();
+            work.gi.reset();
         }
         reflected = work.reflection.has_value();
-        if (work.reflection) {
+        lit = work.gi.has_value();
+        if (work.reflection || work.gi) {
             // The lights and the environment as the path tracer takes them, the sky's from the
             // radiance cube the meshes sample.
             const PathScene path = build_path_scene(scene, {}, 1, 1, {});
@@ -4286,7 +4296,7 @@ private:
                    .layers = draw.layers,
                    .shadows = draw.shadows,
                    .cull = draw.material.cull};
-            if (!work.reflection) {
+            if (!work.reflection && !work.gi) {
                 continue;
             }
             ray.surface = mesh_surface_uniforms(draw.material, draw.layers);
@@ -4332,6 +4342,9 @@ private:
         }
         if (work.reflection) {
             copy_to_screen(commands, ray_shadows_.textures[3], 1);
+        }
+        if (work.gi) {
+            copy_to_screen(commands, ray_shadows_.textures[5], 4);
         }
         return true;
     }
@@ -6628,10 +6641,11 @@ private:
     Screen screen_;
     SDL_GPUTexture* no_screen_ = nullptr;
     // Ray queries on Vulkan where the GPU has them (src/vulkan_rays.hpp), the textures they
-    // write a frame's shadows and occlusion into, and whether this frame traces them.
+    // write a frame's shadows, occlusion, reflections and ambient light into, and whether this
+    // frame traces them.
     std::unique_ptr<VulkanRays> rays_;
     struct RayShadowTextures {
-        std::array<SDL_GPUTexture*, 4> textures{};
+        std::array<SDL_GPUTexture*, 6> textures{};
         std::uint32_t width = 0;
         std::uint32_t height = 0;
     };
