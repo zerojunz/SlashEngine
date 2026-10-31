@@ -1,5 +1,7 @@
 #include "slash/command/l10n.hpp"
 
+#include "l10n_extract.hpp"
+
 #include "slash/command/session.hpp"
 #include "slash/l10n/l10n.hpp"
 #include "slash/l10n/locale.hpp"
@@ -173,6 +175,7 @@ void register_l10n_commands(Registry& registry) {
         .params = std::move(set),
         .handler = l10n_set_locale,
     });
+    register_l10n_extract(registry);
 }
 
 } // namespace slash::command

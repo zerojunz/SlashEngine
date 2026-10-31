@@ -7,7 +7,7 @@ Godot's CSV translations, and [translations/pl.po](translations/pl.po) holds Pol
 file, with Polish's three plural forms and two meanings of "Open" told apart by context.
 [main.scene.json](main.scene.json) is the menu in a 320x180 window ([project.json](project.json)).
 [calls.jsonl](calls.jsonl) switches its language the way an agent does over MCP (tools
-`l10n_state`, `l10n_set_locale`, `ui_layout`) or JSON-RPC, and [results.jsonl](results.jsonl)
+`l10n_state`, `l10n_set_locale`, `l10n_extract`, `ui_layout`) or JSON-RPC, and [results.jsonl](results.jsonl)
 holds the replies.
 
 ```text
@@ -31,3 +31,10 @@ ui.layout {"ids":["title","start","quit","version"]}
   the locale. The built-in font has no Arabic letters (`missing_glyphs`); a game gives one with
   a font whose `language_support` names Arabic, which controls pick once the game is in it.
 - Switching emits `translation_changed`, and a locale no translation has gets a warning.
+- `l10n.extract` collects every message the game shows, as Godot's Generate POT: the menu's
+  labels and buttons (not the version label, which stays as written) and the `l10n::tr` and
+  `tr_n` calls in [src/shop.cpp](src/shop.cpp), each with where it is. It writes them to
+  `translations/menu.pot`, as Godot's POT generator writes one, and adds what each translation
+  file lacks, untranslated: "Thanks for shopping!" to the CSV file (which has no `?context` or
+  `?plural` column, so the shop's "Open" and the coin count are skipped there), and "Options"
+  and "Thanks for shopping!" to the Polish file.
