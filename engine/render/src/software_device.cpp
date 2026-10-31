@@ -596,8 +596,10 @@ public:
             !checked) {
             return checked.error();
         }
-        // The frames before are kept only while the target's frames draw SSR, or TAA.
-        if (!frame.scene || !detail::uses_ssr(*frame.scene)) {
+        // The frames before are kept only while the target's frames draw SSR (not traced), or
+        // TAA.
+        if (!frame.scene || !detail::uses_ssr(*frame.scene) ||
+            detail::ray_reflection(*frame.scene)) {
             forget_ssr_history(frame.target);
         }
         if (!frame.scene || !detail::uses_taa(*frame.scene)) {
@@ -1815,6 +1817,7 @@ private:
         std::vector<float> prepass_depth;
         std::vector<float> velocity;
         std::vector<float> ray_shadows;
+        std::vector<float> ray_reflections;
         const std::vector<detail::RayShadowLight> traced =
             clustered ? detail::ray_shadow_lights(scene) : std::vector<detail::RayShadowLight>{};
         if (lights->ssao[0] != 0.0F || ssr || motion || !traced.empty()) {
@@ -1860,7 +1863,10 @@ private:
                      });
             // The environment's SSAO, traced by rays where the project asks.
             const std::optional<detail::RayOcclusion> occlusion = detail::ray_occlusion(scene);
-            if (!traced.empty() || occlusion) {
+            // And its SSR.
+            const std::optional<detail::RayReflection> reflection =
+                ssr ? detail::ray_reflection(scene) : std::nullopt;
+            if (!traced.empty() || occlusion || reflection) {
                 // Rays from each pixel the prepass drew, through every mesh the frame draws.
                 const std::vector<detail::PathMesh> meshes = path_meshes();
                 const detail::PathScene paths =
@@ -1881,6 +1887,10 @@ private:
                     ao.values = detail::run_ray_occlusion(paths, &bindings, *occlusion, rays,
                                                           prepass_depth, normals.values, pool_);
                 }
+                if (reflection) {
+                    ray_reflections = detail::run_ray_reflections(
+                        paths, bindings, *reflection, rays, prepass_depth, normals.values, pool_);
+                }
             }
             if (lights->ssao[0] != 0.0F) {
                 if (!occlusion) {
@@ -1891,7 +1901,10 @@ private:
                 maps.ao = ao.values;
                 maps.ao_width = target.width();
             }
-            if (ssr) {
+            if (reflection) {
+                maps.ssr = ray_reflections;
+                maps.ao_width = target.width();
+            } else if (ssr) {
                 // SSR reflects the frame before, which a target's first frame draws first
                 // without it, over the sky alone.
                 history = &ssr_history(frame_.target, scene.ssr.settings, target.width(),

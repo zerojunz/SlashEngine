@@ -118,4 +118,36 @@ run_ray_occlusion(const PathScene& scene, const PathTextures* textures,
                   const RayOcclusion& occlusion, const RayShadowFrame& frame,
                   std::span<const float> depth, std::span<const float> normals, jobs::Pool* pool);
 
+// Ray-traced reflections (RayTracing3D::reflections), traced in place of the environment's SSR:
+// whether a frame asks for them (Forward+ with SSR) and how many rays a pixel reflects.
+struct RayReflection {
+    std::uint32_t samples = 1;
+};
+[[nodiscard]] std::optional<RayReflection> ray_reflection(const Scene3D& scene);
+
+// Pixels this rough or rougher reflect nothing traced, as SSR's trace leaves them out (shade_mesh
+// fades reflections out from 0.6 to it).
+inline constexpr float kRayReflectionCutoff = 0.7F;
+
+// The way from a pixel's surface toward the eye that sees it (unit length), for a pixel at depth.
+[[nodiscard]] Float3 ray_view(const RayShadowFrame& frame, std::uint32_t x, std::uint32_t y,
+                              const Float3& origin);
+
+// A pixel's sample-th reflection ray off a surface facing normal seen along view, for roughness:
+// path_reflection_ray's, picked by the R2 sequence from a hash of the pixel.
+[[nodiscard]] Float3 reflection_ray(const Float3& normal, const Float3& view, float roughness,
+                                    std::uint32_t x, std::uint32_t y, std::uint32_t width,
+                                    std::uint32_t sample);
+
+// The frame's ray-traced reflections through scene, as half floats, four a pixel in rows from the
+// top, as SSR's resolve gives them: the light the rays that meet something bring back
+// (path_reflection), summed and divided by the rays sent, and the share of them that met
+// something; nothing (0, 0, 0, 0) for a pixel with no surface or from kRayReflectionCutoff rough.
+// The prepass's normals carry each pixel's roughness in their alpha. As run_ray_shadows takes
+// depth and normals.
+[[nodiscard]] std::vector<float>
+run_ray_reflections(const PathScene& scene, const PathTextures& textures,
+                    const RayReflection& reflection, const RayShadowFrame& frame,
+                    std::span<const float> depth, std::span<const float> normals, jobs::Pool* pool);
+
 } // namespace slash::render::detail
