@@ -328,7 +328,7 @@ these settings are SlashEngine's own. Devices that can't trace rays draw as if t
 | `shadow_samples` | `1` | Rays a pixel sends toward each light, from 1 to 64: more smooth the penumbras of lights with a size |
 | `ambient_occlusion` | `false` | Traces the environment's [SSAO](scene-format.md#ambient-occlusion) by rays over each pixel's half of the sphere instead of gathering it from the screen |
 | `ambient_occlusion_samples` | `4` | Rays a pixel sends for its ambient occlusion, from 1 to 64: more is less noisy |
-| `reflections` | `false` | Traces the environment's [SSR](scene-format.md#screen-space-reflections) by rays reflected off each pixel instead of finding reflections on the screen; the software device only, for now |
+| `reflections` | `false` | Traces the environment's [SSR](scene-format.md#screen-space-reflections) by rays reflected off each pixel instead of finding reflections on the screen; the software device, and Vulkan where the GPU traces rays |
 | `reflection_samples` | `1` | Rays a pixel reflects, from 1 to 64: more make rough reflections less grainy |
 | `global_illumination` | `false` | Traces each opaque pixel's [ambient light](scene-format.md#ray-traced-global-illumination) by rays bouncing off what is near it; the software device only, for now |
 | `global_illumination_samples` | `4` | Rays a pixel sends for its ambient light, from 1 to 64: more is less noisy |

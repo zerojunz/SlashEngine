@@ -1021,9 +1021,13 @@ environment's SSAO instead (`ray_occlusion` and `run_ray_occlusion` in `src/ray_
 `ambient_occlusion_samples` cosine-weighted rays a pixel up to `ssao_radius`, made occlusion with
 Godot's intensity and power), into the screen's layer 0 where SSAO's goes; the compute shader
 writes it to a third texture. A change to the ray math goes in both.
-`reflections` traces the environment's SSR on the software device (`run_ray_reflections`: rays
-reflected about GGX's visible normals, lit by `path_reflection` in `src/path_trace.cpp` as a path's
-bounce), into the SSR layer; the GPU device draws SSR for now. `global_illumination` traces each
+`reflections` traces the environment's SSR (`run_ray_reflections`: rays reflected about GGX's
+visible normals, lit by `path_reflection` in `src/path_trace.cpp` as a path's bounce), into the SSR
+layer. On Vulkan `shaders/ray_light.comp` is its twin: every draw is an instance (mask 1 for rays
+from the camera's side, 2 for shadow rays), each with a `RayDrawRecord` of its material, its
+textures' places in an array of 64 and the device addresses of the vertex and index copies its
+structure was built from (`GL_EXT_buffer_reference`), and it lights hits as `path_reflection`
+does, the sky from the radiance cube; the GPU device copies its texture into the screen's layer 1. `global_illumination` traces each
 pixel's ambient light there too (`run_ray_gi`: cosine-weighted rays lit by `path_reflection` or
 `path_environment`, smoothed by normal and plane), which `MeshMaps::gi` hands the shading when
 `screen.w` is set.
