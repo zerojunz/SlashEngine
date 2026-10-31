@@ -1754,6 +1754,25 @@ edges; there alpha-tested meshes cast whole shadows for now. Other GPUs (`Render
 is false: Direct3D 12 and Metal, which come next, OpenGL and the web) draw with shadow maps.
 [examples/ray-traced-shadows-3d](../../examples/ray-traced-shadows-3d) traces an avenue.
 
+### Ray-traced global illumination
+
+With the project's `rendering.ray_tracing.global_illumination` on
+([project-format.md](project-format.md#ray-tracing)), a frame in `forward_plus` traces each opaque
+pixel's ambient light, so light bounces off what is near it, which Godot 4.6 does with SDFGI. After
+the depth and normal prepass, each pixel sends `global_illumination_samples` rays over the half of
+the sphere its normal faces, cosine weighted, through every mesh the frame draws. What a ray meets
+is lit as [ray-traced reflections](#screen-space-reflections) light it: what it gives off, the
+lights through ray-traced shadows, and the environment's light; a ray that meets nothing brings
+the environment's light (the sky's radiance or the ambient light) from its way. Their average is
+smoothed over the pixels within two of it, each counted by how alike its normal is and how near it
+is to the pixel's plane, so edges stay sharp. The result is the pixel's ambient light in place of
+the `WorldEnvironment`'s, the sky's, VoxelGIs' and reflection probes' (lightmapped meshes keep
+their lightmaps), still darkened by ambient occlusion. Out in the open it is the environment's
+light, as before; in corners and beside walls it is darker and takes their colors. Transparent
+meshes, which the prepass doesn't draw, keep the ambient light. Only the software device traces
+it for now, so `frame.capture` returns it; GPUs light pixels as before.
+[examples/ray-traced-gi-3d](../../examples/ray-traced-gi-3d) bounces a red wall's light.
+
 ### WorldEnvironment
 
 The first `WorldEnvironment` made sets the background a 3D frame clears to or the sky behind

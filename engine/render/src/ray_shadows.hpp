@@ -150,4 +150,26 @@ run_ray_reflections(const PathScene& scene, const PathTextures& textures,
                     const RayReflection& reflection, const RayShadowFrame& frame,
                     std::span<const float> depth, std::span<const float> normals, jobs::Pool* pool);
 
+// Ray-traced global illumination (RayTracing3D::global_illumination): whether a frame asks for it
+// (Forward+) and how many rays a pixel sends.
+struct RayGI {
+    std::uint32_t samples = 4;
+};
+[[nodiscard]] std::optional<RayGI> ray_gi(const Scene3D& scene);
+
+// A pixel's sample-th light ray off a surface facing normal (unit length): cosine weighted over
+// the half of the sphere it faces, as occlusion_ray's, from a seed of its own.
+[[nodiscard]] Float3 light_ray(const Float3& normal, std::uint32_t x, std::uint32_t y,
+                               std::uint32_t width, std::uint32_t sample);
+
+// The frame's ray-traced ambient light through scene, as half floats, three a pixel in rows from
+// the top: the light its rays bring back (path_reflection where they meet something, else
+// path_environment), averaged, then smoothed over the pixels within two of it, each weighed by how
+// alike its normal is and how near it is to the pixel's plane; 0 where a pixel has no surface. As
+// run_ray_shadows takes depth and normals.
+[[nodiscard]] std::vector<float> run_ray_gi(const PathScene& scene, const PathTextures& textures,
+                                            const RayGI& gi, const RayShadowFrame& frame,
+                                            std::span<const float> depth,
+                                            std::span<const float> normals, jobs::Pool* pool);
+
 } // namespace slash::render::detail

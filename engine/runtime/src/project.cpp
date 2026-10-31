@@ -383,6 +383,19 @@ json::Value ray_tracing_schema() {
     reflection_samples["default"] = render::RayTracing3D{}.reflection_samples;
     reflection_samples["description"] =
         "Rays a pixel reflects: more make rough reflections less noisy and cost more.";
+    json::Value gi;
+    gi["type"] = "boolean";
+    gi["default"] = false;
+    gi["description"] =
+        "Each opaque pixel's ambient light is traced by rays bouncing off what is near it, in "
+        "Forward+, on devices that trace it; others light it as before.";
+    json::Value gi_samples;
+    gi_samples["type"] = "integer";
+    gi_samples["minimum"] = 1;
+    gi_samples["maximum"] = render::kMaxRayShadowSamples;
+    gi_samples["default"] = render::RayTracing3D{}.global_illumination_samples;
+    gi_samples["description"] =
+        "Rays a pixel sends for its ambient light: more is less noisy and costs more.";
     json::Value out;
     out["type"] = "object";
     out["additionalProperties"] = false;
@@ -393,6 +406,8 @@ json::Value ray_tracing_schema() {
     out["properties"]["ambient_occlusion_samples"] = std::move(occlusion_samples);
     out["properties"]["reflections"] = std::move(reflections);
     out["properties"]["reflection_samples"] = std::move(reflection_samples);
+    out["properties"]["global_illumination"] = std::move(gi);
+    out["properties"]["global_illumination_samples"] = std::move(gi_samples);
     return out;
 }
 

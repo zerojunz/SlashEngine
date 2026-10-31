@@ -896,6 +896,12 @@ struct PathTrace3D {
 // GGX's microfacet normals for its roughness, through every mesh the frame draws; what each meets
 // is lit as a path tracer's bounce (what it gives off, the lights through ray-traced shadows and
 // the environment), and the share that meets something covers the sky's reflections as SSR's do.
+// With global_illumination, each opaque pixel's ambient light is traced:
+// global_illumination_samples rays, cosine weighted over the half of the sphere it faces, bring
+// back what they meet lit as those reflections' (or the environment's light where they meet
+// nothing), averaged and smoothed across neighbors on the same surface. It stands in for the
+// ambient light, the sky's, VoxelGIs' and probes' (but not a lightmap's), so light bounces off what
+// is near.
 inline constexpr std::size_t kMaxRayShadowLights = 8;
 inline constexpr std::uint32_t kMaxRayShadowSamples = 64;
 struct RayTracing3D {
@@ -905,11 +911,14 @@ struct RayTracing3D {
     std::uint32_t ambient_occlusion_samples = 4; // 1 to kMaxRayShadowSamples
     bool reflections = false;
     std::uint32_t reflection_samples = 1; // 1 to kMaxRayShadowSamples
+    bool global_illumination = false;
+    std::uint32_t global_illumination_samples = 4; // 1 to kMaxRayShadowSamples
 
     bool operator==(const RayTracing3D&) const = default;
 };
 // Reads project.json's rendering object's ray_tracing: shadows, shadow_samples,
-// ambient_occlusion, ambient_occlusion_samples, reflections and reflection_samples. What is missing
+// ambient_occlusion, ambient_occlusion_samples, reflections, reflection_samples,
+// global_illumination and global_illumination_samples. What is missing
 // or of the wrong type keeps its default, and samples are held to their range.
 [[nodiscard]] RayTracing3D ray_tracing(const json::Value& rendering);
 
