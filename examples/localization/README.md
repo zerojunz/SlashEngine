@@ -7,8 +7,8 @@ Godot's CSV translations, and [translations/pl.po](translations/pl.po) holds Pol
 file, with Polish's three plural forms and two meanings of "Open" told apart by context.
 [main.scene.json](main.scene.json) is the menu in a 320x180 window ([project.json](project.json)).
 [calls.jsonl](calls.jsonl) switches its language the way an agent does over MCP (tools
-`l10n_state`, `l10n_set_locale`, `l10n_extract`, `l10n_check`, `ui_layout`) or JSON-RPC, and [results.jsonl](results.jsonl)
-holds the replies.
+`l10n_state`, `l10n_set_locale`, `l10n_extract`, `l10n_check`, `l10n_translate`, `ui_layout`)
+or JSON-RPC, and [results.jsonl](results.jsonl) holds the replies.
 
 ```text
 l10n.set_locale {"locale":"fr-CA"}
@@ -43,3 +43,10 @@ ui.layout {"ids":["title","start","quit","version"]}
   is translated but nothing shows it. Laid out in Arabic, the menu's text needs glyphs the
   built-in font lacks: errors, which `test.run` would fail on until the menu gets a font with
   Arabic letters.
+- `l10n.translate` has a model draft what Polish lacks, told the storyboard's
+  [glossary](storyboard/glossary.json) and the translations Polish already has. Its answer comes
+  from [translations/ai.replay.jsonl](translations/ai.replay.jsonl), as
+  [providers.json](providers.json)'s `replay` says, so the example runs with no model; delete
+  the file and point `url` at a model to draft again. The drafts go into the Polish file marked
+  `#, fuzzy`, so the game still shows "Options" in English until someone reviews "Opcje" and
+  takes the mark off.

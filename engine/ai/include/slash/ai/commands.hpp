@@ -24,7 +24,7 @@ namespace slash::ai {
 [[nodiscard]] std::vector<Message> run_tool_calls(command::Session& session,
                                                   const Message& message);
 
-// ai.providers and ai.complete.
+// ai.providers, ai.complete, storyboard.review and l10n.translate.
 void register_commands(command::Registry& registry);
 
 } // namespace slash::ai

@@ -390,6 +390,7 @@ void register_commands(command::Registry& registry) {
         .handler = ai_complete,
     });
     detail::register_review(registry);
+    detail::register_translate(registry);
 }
 
 } // namespace slash::ai
