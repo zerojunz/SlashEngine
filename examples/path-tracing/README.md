@@ -41,4 +41,5 @@ frame.capture {"points":[[60,42],[89,42],[85,45],[80,65],[57,51]],"path_trace":{
 
 A path-traced capture turns off TAA, FSR 2 and occlusion culling and draws every mesh at its
 full detail. It runs on the CPU's threads (`threading.max_threads`), and the pixels are the
-same on every machine and any number of threads.
+same on every machine and any number of threads. A running game shows the same still in its
+window, traced on the GPU where it has ray queries, with `display.set`'s `path_trace`.

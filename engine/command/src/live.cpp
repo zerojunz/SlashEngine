@@ -10,12 +10,14 @@
 #include "slash/platform/platform.hpp"
 #include "slash/platform/run.hpp"
 #include "slash/render/device.hpp"
+#include "slash/render/mesh.hpp"
 #include "slash/render/upscaler.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -108,6 +110,19 @@ json::Value frame_settings(const LiveGame& game, const Session& session) {
         }
     }
     out["scaling"] = std::move(scaling);
+    if (game.path_trace != nullptr) {
+        // The paths each pixel holds says whether the device traces them, and how far the
+        // still has come.
+        if (const std::optional<render::PathTrace3D>& paths = *game.path_trace; paths) {
+            json::Value traced;
+            traced["samples"] = paths->samples;
+            traced["bounces"] = paths->bounces;
+            traced["path_samples"] = game.canvas != nullptr ? game.canvas->path_samples() : 0U;
+            out["path_trace"] = std::move(traced);
+        } else {
+            out["path_trace"] = nullptr;
+        }
+    }
     return out;
 }
 
@@ -165,6 +180,24 @@ Reply display_set(const LiveGame& game, Session& session, const json::Value& par
     if (const json::Value* scaling = params.find("scaling"); scaling != nullptr) {
         if (Reply set = set_scaling(session, *scaling); !set.ok) {
             return set;
+        }
+    }
+    if (const json::Value* paths = params.find("path_trace"); paths != nullptr) {
+        if (game.path_trace == nullptr) {
+            return param_error(code::kInvalidArgument, "/path_trace",
+                               "this game's frames can't be path traced");
+        }
+        if (paths->is_null()) {
+            game.path_trace->reset();
+        } else {
+            render::PathTrace3D traced = game.path_trace->value_or(render::PathTrace3D{});
+            if (const json::Value* samples = paths->find("samples"); samples != nullptr) {
+                traced.samples = static_cast<std::uint32_t>(samples->as_int());
+            }
+            if (const json::Value* bounces = paths->find("bounces"); bounces != nullptr) {
+                traced.bounces = static_cast<std::uint32_t>(bounces->as_int());
+            }
+            *game.path_trace = traced;
         }
     }
     if (const json::Value* vsync = params.find("vsync_mode"); vsync != nullptr) {
@@ -231,6 +264,19 @@ void register_live_commands(Registry& registry, const LiveGame& game) {
     });
     scaling["description"] = "The render scale, as project.json's rendering.scaling; fields left "
                              "out stay as they are.";
+    json::Value path_samples = property("integer", "Paths a pixel each frame.");
+    path_samples["minimum"] = 1;
+    path_samples["maximum"] = render::kMaxPathSamples;
+    json::Value path_bounces = property("integer", "Bounces after the first surface.");
+    path_bounces["minimum"] = 0;
+    path_bounces["maximum"] = render::kMaxPathBounces;
+    json::Value path_trace = params_schema({
+        {"samples", std::move(path_samples)},
+        {"bounces", std::move(path_bounces)},
+    });
+    path_trace["type"] = json::Array{"object", "null"};
+    path_trace["description"] = "Path trace the 3D world, frames adding up while it looks the "
+                                "same, on devices that trace rays; null draws it live again.";
 
     registry.add({
         .name = "display.list",
@@ -248,14 +294,15 @@ void register_live_commands(Registry& registry, const LiveGame& game) {
     });
     registry.add({
         .name = "display.set",
-        .description = "Changes the game's V-Sync mode, frame cap or render scale while it runs, "
-                       "and returns the settings in effect.",
+        .description = "Changes the game's V-Sync mode, frame cap, render scale or path tracing "
+                       "while it runs, and returns the settings in effect.",
         .capabilities = {Run},
         .effect = Effect::Read,
         .params = params_schema({
             {"vsync_mode", std::move(vsync_mode)},
             {"max_fps", std::move(max_fps)},
             {"scaling", std::move(scaling)},
+            {"path_trace", std::move(path_trace)},
         }),
         .handler = [game](Session& session,
                           const json::Value& params) { return display_set(game, session, params); },

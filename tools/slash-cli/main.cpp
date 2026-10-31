@@ -678,12 +678,14 @@ int cmd_run(const std::vector<std::string>& args) {
     // Sprites from the project folder, drawn between ticks. The null device draws nothing, so
     // it gets no frame callback and the loop yields instead.
     slash::canvas::CanvasRenderer canvas(*renderer, engine.session->assets());
-    // Displays, V-Sync, the frame cap, the render scale and frame pacing, for agents driving the
-    // game with --serve.
+    // Displays, V-Sync, the frame cap, the render scale, path tracing and frame pacing, for
+    // agents driving the game with --serve.
+    std::optional<slash::render::PathTrace3D> path_trace;
     command::register_live_commands(engine.commands, {.platform = &platform.value(),
                                                       .loop = &loop.value(),
                                                       .renderer = renderer.get(),
-                                                      .canvas = &canvas});
+                                                      .canvas = &canvas,
+                                                      .path_trace = &path_trace});
 
     // With --serve, requests run on this thread between ticks, so they never race the game, and
     // pause stops the world while the loop keeps serving.
@@ -713,6 +715,7 @@ int cmd_run(const std::vector<std::string>& args) {
                 game.tick(), 1.0 / loop.value().tick_hz(), canvas_options.interpolation);
             canvas_options.collisions = overlay.collisions();
             canvas_options.overlay = overlay.world();
+            canvas_options.path_trace = path_trace;
             auto drawn = canvas.draw(game, canvas_options);
             if (!drawn && !draw_failed) {
                 draw_failed = true;

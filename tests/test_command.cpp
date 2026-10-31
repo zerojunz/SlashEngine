@@ -3,6 +3,7 @@
 #include "humanoid.hpp"
 
 #include "slash/audio/audio.hpp"
+#include "slash/canvas/canvas.hpp"
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
 #include "slash/command/session.hpp"
@@ -32,6 +33,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -56,6 +58,7 @@ namespace json = slash::json;
 namespace world = slash::world;
 namespace command = slash::command;
 namespace render = slash::render;
+namespace canvas = slash::canvas;
 namespace scene3d = slash::scene3d;
 using command::Capability;
 
@@ -1471,6 +1474,67 @@ TEST_CASE("a running game lists displays, changes V-Sync and the frame cap, and 
     CHECK(observer.call("display.list", json::Value()).ok);
     CHECK(observer.call("display.set", parse(R"({"max_fps": 60})")).code ==
           command::code::kPermissionDenied);
+}
+
+TEST_CASE("a running game path traces its frames while display.set's path_trace says to") {
+    auto platform = slash::platform::Platform::create({.headless = true});
+    REQUIRE(platform.ok());
+    auto loop = slash::platform::Loop::create(platform.value(), {.tick_hz = 60.0, .max_ticks = 10});
+    REQUIRE(loop.ok());
+    const auto device = render::create_software_device();
+    Engine engine;
+    canvas::CanvasRenderer renderer(*device, engine.session->assets());
+    std::optional<render::PathTrace3D> path_trace;
+    command::register_live_commands(engine.commands, {.platform = &platform.value(),
+                                                      .loop = &loop.value(),
+                                                      .renderer = device.get(),
+                                                      .canvas = &renderer,
+                                                      .path_trace = &path_trace});
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "camera", "components": {
+            "Transform3D": {"position": [0, 0, 3]}, "Camera3D": {}}}},
+        {"command": "entity.create", "params": {"id": "box", "components": {
+            "Transform3D": {}, "MeshInstance3D": {}, "BoxMesh": {}, "StandardMaterial3D": {}}}},
+        {"command": "entity.create", "params": {"id": "sun", "components": {
+            "Transform3D": {"rotation": [-0.8, 0.3, 0]}, "DirectionalLight3D": {}}}}]})");
+    const render::TextureId target =
+        device->create_texture({.width = 16, .height = 16, .render_target = true}).value();
+    const auto draw = [&] {
+        canvas::CanvasOptions options;
+        options.target = target;
+        options.path_trace = path_trace;
+        REQUIRE(renderer.draw(engine.session->world(), options).ok());
+    };
+
+    CHECK(engine.ok("display.list").find("path_trace")->is_null());
+    const json::Value set =
+        engine.ok("display.set", R"({"path_trace": {"samples": 2, "bounces": 1}})");
+    CHECK(*set.find("path_trace") == parse(R"({"samples": 2, "bounces": 1, "path_samples": 0})"));
+    REQUIRE(path_trace == render::PathTrace3D{.samples = 2, .bounces = 1});
+    // Each frame adds its paths to the still while the world looks the same.
+    draw();
+    draw();
+    CHECK(*engine.ok("display.list").find("path_trace") ==
+          parse(R"({"samples": 2, "bounces": 1, "path_samples": 4})"));
+    // Fields left out stay as they were; null draws the world live again.
+    engine.ok("display.set", R"({"path_trace": {"samples": 3}})");
+    CHECK(path_trace == render::PathTrace3D{.samples = 3, .bounces = 1});
+    engine.fails("display.set", R"({"path_trace": {"samples": 0}})", command::code::kInvalidParams);
+    engine.ok("display.set", R"({"path_trace": null})");
+    CHECK_FALSE(path_trace.has_value());
+    draw();
+    CHECK(renderer.path_samples() == 0);
+    device->destroy_texture(target);
+
+    // A game whose frames can't be path traced says so.
+    Engine other;
+    command::register_live_commands(
+        other.commands,
+        {.platform = &platform.value(), .loop = &loop.value(), .renderer = device.get()});
+    CHECK(other.ok("display.list").find("path_trace") == nullptr);
+    const command::Reply refused =
+        other.fails("display.set", R"({"path_trace": {}})", command::code::kInvalidArgument);
+    CHECK(contains(refused.message, "/path_trace"));
 }
 
 TEST_CASE("perf.stats lists tick and system times in any session, the slowest systems first") {

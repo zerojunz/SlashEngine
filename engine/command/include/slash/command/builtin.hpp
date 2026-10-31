@@ -2,6 +2,7 @@
 
 #include "slash/command/command.hpp"
 
+#include <optional>
 #include <string_view>
 
 namespace slash::platform {
@@ -11,6 +12,7 @@ class Platform;
 
 namespace slash::render {
 class RenderDevice;
+struct PathTrace3D;
 } // namespace slash::render
 
 namespace slash::canvas {
@@ -49,10 +51,13 @@ struct LiveGame {
     render::RenderDevice* renderer = nullptr;
     // What draws the game's frames, for the upscaler and render size in effect.
     const canvas::CanvasRenderer* canvas = nullptr;
+    // How the game's frames path trace its 3D world (canvas::CanvasOptions::path_trace), which
+    // display.set changes; null when they can't.
+    std::optional<render::PathTrace3D>* path_trace = nullptr;
 };
 
-// Adds display.list (displays and refresh rates), display.set (V-Sync, the frame cap and the
-// render scale) and perf.stats (frame pacing) for a running game.
+// Adds display.list (displays and refresh rates), display.set (V-Sync, the frame cap, the
+// render scale and path tracing) and perf.stats (frame pacing) for a running game.
 void register_live_commands(Registry& registry, const LiveGame& game);
 
 // Opens a scene file if it exists, or else starts an empty scene that scene.save will write

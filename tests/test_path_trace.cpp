@@ -1,4 +1,5 @@
 #include "../engine/render/src/path_trace.hpp"
+#include "devices.hpp"
 
 #include "slash/core/jobs.hpp"
 #include "slash/core/math.hpp"
@@ -85,6 +86,24 @@ std::array<int, 4> pixel(const Image& image, std::uint32_t x, std::uint32_t y) {
     const std::size_t at = (std::size_t{y} * image.width + x) * 4;
     return {image.pixels.at(at), image.pixels.at(at + 1), image.pixels.at(at + 2),
             image.pixels.at(at + 3)};
+}
+
+// How many pixels of a and b differ by more than tolerance in a color channel.
+int differing(const Image& a, const Image& b, int tolerance) {
+    int count = 0;
+    for (std::uint32_t y = 0; y < a.height; ++y) {
+        for (std::uint32_t x = 0; x < a.width; ++x) {
+            const std::array<int, 4> p = pixel(a, x, y);
+            const std::array<int, 4> q = pixel(b, x, y);
+            for (std::size_t c = 0; c < 3; ++c) {
+                if (std::abs(p.at(c) - q.at(c)) > tolerance) {
+                    ++count;
+                    break;
+                }
+            }
+        }
+    }
+    return count;
 }
 
 // A white floor two units across at y 0, a red wall standing at its left edge, a gray box on it
@@ -394,4 +413,39 @@ TEST_CASE("devices refuse path-traced frames of no samples or too many bounces")
         CHECK(began.error().message.find("1 to 4096 samples") != std::string::npos);
     }
     device->destroy_texture(target.value());
+}
+
+TEST_CASE("devices that trace rays path trace as the software device does") {
+    const auto software = render::create_software_device();
+    for (const auto& device : slash::test::hardware_devices()) {
+        CAPTURE(static_cast<int>(device->backend()));
+        CAPTURE(device->ray_tracing());
+        Room room(*device, 32);
+        const render::PathTrace3D four{.samples = 4, .bounces = 2};
+        if (!device->ray_tracing()) {
+            // Elsewhere a path-traced frame is drawn the raster way.
+            CHECK(room.draw(four).pixels == room.draw(std::nullopt).pixels);
+            CHECK(device->path_samples(room.target) == 0);
+            continue;
+        }
+        Room twin(*software, 32);
+        static_cast<void>(room.draw(four));
+        const Image summed = room.draw(four);
+        CHECK(device->path_samples(room.target) == 8);
+        const Image at_once = twin.draw(render::PathTrace3D{.samples = 8, .bounces = 2});
+        // The same paths, but for those a float's rounding sends another way.
+        CHECK(differing(summed, at_once, 3) <= 8);
+        CHECK(differing(summed, at_once, 40) <= 2);
+        // Moving the sun starts the sums over; a rasterized frame leaves them be.
+        room.scene.lights[0].direction = {0.0F, -1.0F, -0.3F};
+        twin.scene.lights[0].direction = room.scene.lights[0].direction;
+        static_cast<void>(room.draw(four));
+        CHECK(device->path_samples(room.target) == 4);
+        static_cast<void>(room.draw(std::nullopt));
+        const Image moved_sun = room.draw(four);
+        CHECK(device->path_samples(room.target) == 8);
+        const Image twin_moved = twin.draw(render::PathTrace3D{.samples = 8, .bounces = 2});
+        CHECK(differing(moved_sun, twin_moved, 3) <= 8);
+        CHECK(differing(moved_sun, twin_moved, 40) <= 2);
+    }
 }
