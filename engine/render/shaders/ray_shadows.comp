@@ -1,0 +1,170 @@
+#version 460
+#extension GL_EXT_ray_query : require
+
+// Ray-traced shadows on a GPU that traces rays (RenderDevice::ray_tracing), after Forward+'s
+// prepass: the hardware twin of run_ray_shadows in src/ray_shadows.cpp, which the software device
+// runs and which holds the steps' reasons. Each pixel the prepass drew is put back in the world
+// from its depth, moved off its surface along its normal, and sends samples rays toward each light
+// with a ray slot, to points spread over the light's size, through the frame's acceleration
+// structure. The share of rays that nothing stops, through the light's shadow opacity, is the
+// light's visibility there: lights 0 to 3 in low's channels and 4 to 7 in high's, which the mesh
+// pass reads from the screen texture's layers 2 and 3 (add_light in mesh.hlsl).
+//
+// GLSL rather than HLSL, as glslang's HLSL has no ray queries; cmake/compile_ray_shaders.cmake
+// compiles it into ray_shadows_shaders.hpp.
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// One instance a draw, its custom index the draw's place in layers.
+layout(set = 0, binding = 0) uniform accelerationStructureEXT scene;
+layout(set = 0, binding = 1) uniform sampler2D depth_texture;   // the prepass's depth, reversed
+layout(set = 0, binding = 2) uniform sampler2D normal_texture;  // its view-space normals, 0 to 1
+layout(set = 0, binding = 3, rgba16f) uniform writeonly image2D low;
+layout(set = 0, binding = 4, rgba16f) uniform writeonly image2D high;
+
+// RayShadowsUniforms in src/ray_shadows.hpp.
+struct Light {
+    vec4 place;  // xyz: an omni or spot light's position, or a directional light's way toward it;
+                 // w: its size (a radius, or the tangent of half its angle)
+    vec4 params; // x: shadow opacity, y: 1 for a directional light, z: its ray slot
+    uvec4 mask;  // x: its shadow caster mask
+};
+layout(set = 0, binding = 5, std140) uniform Frame {
+    mat4 to_world;     // the prepass's clip space to the world
+    vec4 view_rows[3]; // the world to the camera's space, a row each
+    uvec4 size;        // width, height, samples a light, lights
+    uvec4 options;     // x: 1 when every draw is opaque to every light's rays
+    Light lights[8];
+};
+layout(set = 0, binding = 6, std430) readonly buffer Draws {
+    uint draw_layers[]; // each draw's render layers
+};
+
+const float kOffsetShare = 0.003;
+const float kOffsetLeast = 0.002;
+const float kShortOfLight = 1e-4;
+const float kR2X = 0.7548776662;
+const float kR2Y = 0.5698402910;
+const float kPi = 3.14159265358979;
+
+uint mix_bits(uint x) {
+    x ^= x >> 16u;
+    x *= 0x7FEB352Du;
+    x ^= x >> 15u;
+    x *= 0x846CA68Bu;
+    x ^= x >> 16u;
+    return x;
+}
+
+float unit_of(uint bits) {
+    return float(bits >> 8u) * (1.0 / 16777216.0);
+}
+
+void basis(vec3 n, out vec3 t, out vec3 b) {
+    float sign_z = n.z >= 0.0 ? 1.0 : -1.0;
+    float a = -1.0 / (sign_z + n.z);
+    float c = n.x * n.y * a;
+    t = vec3(1.0 + (sign_z * n.x * n.x * a), sign_z * c, -sign_z * n.x);
+    b = vec3(c, sign_z + (n.y * n.y * a), -n.y);
+}
+
+vec3 disk_point(vec3 n, float r, float u, float v) {
+    vec3 t;
+    vec3 b;
+    basis(n, t, b);
+    float reach = sqrt(u) * r;
+    float turn = 2.0 * kPi * v;
+    return (t * (reach * cos(turn))) + (b * (reach * sin(turn)));
+}
+
+// Whether something casting the light's shadows stops the ray within distance.
+bool blocked(vec3 origin, vec3 direction, float distance, uint caster_mask) {
+    rayQueryEXT query;
+    uint flags = gl_RayFlagsTerminateOnFirstHitEXT;
+    if (options.x != 0u) {
+        flags |= gl_RayFlagsOpaqueEXT;
+    }
+    rayQueryInitializeEXT(query, scene, flags, 0xFFu, origin, 0.0, direction, distance);
+    while (rayQueryProceedEXT(query)) {
+        uint draw = uint(rayQueryGetIntersectionInstanceCustomIndexEXT(query, false));
+        if ((draw_layers[draw] & caster_mask) != 0u) {
+            rayQueryConfirmIntersectionEXT(query);
+        }
+    }
+    return rayQueryGetIntersectionTypeEXT(query, true) !=
+           gl_RayQueryCommittedIntersectionNoneEXT;
+}
+
+void main() {
+    uvec2 pixel = gl_GlobalInvocationID.xy;
+    if (pixel.x >= size.x || pixel.y >= size.y) {
+        return;
+    }
+    vec4 visible[2] = vec4[2](vec4(1.0), vec4(1.0));
+    float depth = texelFetch(depth_texture, ivec2(pixel), 0).r;
+    if (depth > 0.0) {
+        // Its place in the world, then its normal turned to face the camera.
+        vec2 ndc = vec2(((float(pixel.x) + 0.5) / float(size.x) * 2.0) - 1.0,
+                        1.0 - ((float(pixel.y) + 0.5) / float(size.y) * 2.0));
+        vec4 clip = to_world * vec4(ndc, depth, 1.0);
+        vec3 world = clip.xyz / clip.w;
+        vec3 seen = vec3(dot(view_rows[0].xyz, world) + view_rows[0].w,
+                         dot(view_rows[1].xyz, world) + view_rows[1].w,
+                         dot(view_rows[2].xyz, world) + view_rows[2].w);
+        vec3 normal = (texelFetch(normal_texture, ivec2(pixel), 0).rgb * 2.0) - 1.0;
+        if (dot(normal, seen) > 0.0) {
+            normal = -normal;
+        }
+        vec3 origin = world;
+        float normal_size = length(normal);
+        if (normal_size > 0.0) {
+            vec3 out_normal = (view_rows[0].xyz * (normal.x / normal_size)) +
+                              (view_rows[1].xyz * (normal.y / normal_size)) +
+                              (view_rows[2].xyz * (normal.z / normal_size));
+            origin += out_normal * ((kOffsetShare * length(seen)) + kOffsetLeast);
+        }
+        for (uint k = 0u; k < size.w; ++k) {
+            Light light = lights[k];
+            uint slot = uint(light.params.z);
+            uint seed = mix_bits(((pixel.y * size.x) + pixel.x) ^ mix_bits(slot));
+            uint hits = 0u;
+            for (uint s = 0u; s < size.z; ++s) {
+                float u = fract(unit_of(seed) + (float(s) * kR2X));
+                float v = fract(unit_of(mix_bits(seed)) + (float(s) * kR2Y));
+                vec3 direction;
+                float distance;
+                if (light.params.y != 0.0) {
+                    direction = light.place.xyz;
+                    if (light.place.w > 0.0) {
+                        direction = normalize(direction + disk_point(direction, light.place.w, u, v));
+                    }
+                    distance = 3.402823466e38;
+                } else {
+                    vec3 target = light.place.xyz;
+                    vec3 to = target - origin;
+                    float reach = length(to);
+                    if (!(reach > 0.0)) {
+                        continue;
+                    }
+                    if (light.place.w > 0.0) {
+                        target += disk_point(to / reach, light.place.w, u, v);
+                    }
+                    vec3 way = target - origin;
+                    distance = length(way);
+                    if (!(distance > 0.0)) {
+                        continue;
+                    }
+                    direction = way / distance;
+                    distance *= 1.0 - kShortOfLight;
+                }
+                if (blocked(origin, direction, distance, light.mask.x)) {
+                    ++hits;
+                }
+            }
+            float share = float(hits) / float(size.z);
+            visible[slot >> 2u][slot & 3u] = 1.0 - (light.params.x * share);
+        }
+    }
+    imageStore(low, ivec2(pixel), visible[0]);
+    imageStore(high, ivec2(pixel), visible[1]);
+}
