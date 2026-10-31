@@ -44,7 +44,7 @@ checks it.
 | `rendering.environment.ssao` | No | `medium`, half size, 2 blur passes | The quality and cost of 3D [ambient occlusion](scene-format.md#ambient-occlusion): see [SSAO](#ssao) |
 | `rendering.environment.screen_space_reflection` | No | half size | The resolution of 3D [screen-space reflections](scene-format.md#screen-space-reflections): see [Screen-space reflections](#screen-space-reflections) |
 | `rendering.environment.volumetric_fog` | No | 64 x 64 x 64, filtered | The froxels of 3D [volumetric fog](scene-format.md#volumetric-fog): see [Volumetric fog](#volumetric-fog) |
-| `rendering.ray_tracing` | No | off | 3D shadows and ambient occlusion traced by rays: see [Ray tracing](#ray-tracing) |
+| `rendering.ray_tracing` | No | off | 3D shadows, ambient occlusion and reflections traced by rays: see [Ray tracing](#ray-tracing) |
 | `rendering.reflections.reflection_atlas` | No | 256 texels, 64 probes | The size of 3D [reflection probes'](scene-format.md#reflection-probes) cubes and how many a frame draws: see [Reflection probes](#reflection-probes) |
 | `rendering.global_illumination.voxel_gi.quality` | No | `low` | How many cones meshes trace through [VoxelGIs](scene-format.md#voxelgi): see [VoxelGI](#voxelgi) |
 | `rendering.occlusion_culling` | No | off | Leave out 3D meshes that [occluders](scene-format.md#occlusion-culling) hide: see [Occlusion culling](#occlusion-culling) |
@@ -328,6 +328,8 @@ these settings are SlashEngine's own. Devices that can't trace rays draw as if t
 | `shadow_samples` | `1` | Rays a pixel sends toward each light, from 1 to 64: more smooth the penumbras of lights with a size |
 | `ambient_occlusion` | `false` | Traces the environment's [SSAO](scene-format.md#ambient-occlusion) by rays over each pixel's half of the sphere instead of gathering it from the screen |
 | `ambient_occlusion_samples` | `4` | Rays a pixel sends for its ambient occlusion, from 1 to 64: more is less noisy |
+| `reflections` | `false` | Traces the environment's [SSR](scene-format.md#screen-space-reflections) by rays reflected off each pixel instead of finding reflections on the screen; the software device only, for now |
+| `reflection_samples` | `1` | Rays a pixel reflects, from 1 to 64: more make rough reflections less grainy |
 
 ## Reflection probes
 

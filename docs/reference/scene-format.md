@@ -2073,6 +2073,22 @@ isn't, as in Godot. Surfaces from roughness 0.7 up and transparent meshes take n
 ([project-format.md](project-format.md#screen-space-reflections)) sets its resolution. The
 software device draws the same passes on the CPU, so `frame.capture` shows them too.
 
+With the project's `rendering.ray_tracing.reflections` on
+([project-format.md](project-format.md#ray-tracing)), devices that trace reflections trace them
+instead of finding them on the screen. After the prepass, each opaque pixel smoother than roughness
+0.7 sends `reflection_samples` rays off its surface, each reflected about one of GGX's microfacet
+normals for its roughness, through every mesh the frame draws. What a ray meets is lit as the [path
+tracer](commands.md#framecapture)'s bounces light it: what it gives off, the lights through
+ray-traced shadows (for those with `shadow_enabled`), and the environment's light along its normal
+and its mirror direction. The light the rays bring back, and the share of them that meet something,
+go where SSR's reflections go, so the color pass covers the sky's reflections with them as above,
+fading them out from roughness 0.6. Rays find what the screen doesn't show: what is off it or behind
+something nearer. `ssr_enabled` still turns them on and off, and the other `ssr_*` fields and
+`rendering.environment.screen_space_reflection` don't apply. Only the software device traces
+reflections for now, so `frame.capture` returns them; GPUs draw SSR.
+[examples/ray-traced-reflections-3d](../../examples/ray-traced-reflections-3d) reflects a banner
+above the screen.
+
 ### Reflection probes
 
 A `ReflectionProbe` is a box whose meshes reflect a cube drawn from inside it, as Godot 4.6's

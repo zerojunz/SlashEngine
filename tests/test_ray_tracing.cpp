@@ -508,3 +508,135 @@ TEST_CASE("devices trace ambient occlusion as the software device does, or draw 
         }
     }
 }
+
+TEST_CASE("project.json's rendering.ray_tracing turns ray-traced reflections on") {
+    auto rendering =
+        slash::json::parse(R"({"ray_tracing": {"reflections": true, "reflection_samples": 100}})");
+    REQUIRE(rendering.ok());
+    const render::RayTracing3D read = render::ray_tracing(rendering.value());
+    CHECK(read.reflections);
+    CHECK(read.reflection_samples == render::kMaxRayShadowSamples);
+    CHECK_FALSE(render::RayTracing3D{}.reflections);
+    CHECK(render::RayTracing3D{}.reflection_samples == 1);
+}
+
+namespace {
+
+// A camera looking down -Z at a mirror wall 2 meters off, with SSR, and a green cube 2 meters
+// across behind the camera, off the screen, lit by a sun from behind the camera (its face toward
+// the mirror only by ambient light); SSR traced by rays where traced.
+render::Scene3D mirrored(bool traced = true) {
+    render::Scene3D scene;
+    scene.camera = render::look_at({0.0F, 1.0F, 3.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 1.0F, 0.0F});
+    scene.projection = render::perspective(60.0F, 1.0F, 0.1F, 20.0F);
+    scene.ambient = {0.3F, 0.3F, 0.3F};
+    Light3D sun{.type = LightType::Directional, .shadow = true};
+    sun.direction = {0.0F, -0.70710677F, -0.70710677F};
+    sun.up = {0.0F, 0.70710677F, -0.70710677F};
+    scene.lights = {sun};
+    scene.shadows = {.directional_size = 2048, .positional_size = 2048};
+    scene.ssr.enabled = true;
+    scene.ray_tracing.reflections = traced;
+    return scene;
+}
+
+// The mirror wall (white, metallic, as rough as roughness) and the cube behind the camera, size
+// pixels across.
+Image draw_mirror(RenderDevice& device, const render::Scene3D& scene, float roughness = 0.0F,
+                  ShadowCasting cube_shadows = ShadowCasting::On, std::uint32_t size = 32) {
+    auto target = device.create_texture({.width = size, .height = size, .render_target = true});
+    REQUIRE(target.ok());
+    auto box = device.create_mesh(cube(), {});
+    REQUIRE(box.ok());
+    auto wall = device.create_mesh(quad({0, 1, 1}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, 8.0F), {});
+    REQUIRE(wall.ok());
+    for (std::uint32_t frame = 0; frame < 2; ++frame) {
+        // SSR reflects the frame before, so it is drawn twice for the two to compare.
+        const auto begun =
+            device.begin_frame({.target = target.value(), .clear = {}, .scene = scene});
+        REQUIRE_MESSAGE(begun.ok(), error_of(begun));
+        render::Material3D mirror{.albedo = {0.9F, 0.9F, 0.9F, 1.0F}};
+        mirror.metallic = 1.0F;
+        mirror.roughness = roughness;
+        const auto wall_drawn = device.draw_mesh(wall.value(), moved(0, 0, 0), mirror);
+        REQUIRE_MESSAGE(wall_drawn.ok(), error_of(wall_drawn));
+        const auto box_drawn =
+            device.draw_mesh(box.value(), {2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 0, 1.0F, 5.0F, 1},
+                             {.albedo = {0.2F, 0.9F, 0.2F, 1.0F}}, 1, cube_shadows);
+        REQUIRE_MESSAGE(box_drawn.ok(), error_of(box_drawn));
+        const auto ended = device.end_frame();
+        REQUIRE_MESSAGE(ended.ok(), error_of(ended));
+    }
+    auto image = device.read_texture(target.value());
+    REQUIRE_MESSAGE(image.ok(), error_of(image));
+    device.destroy_mesh(box.value());
+    device.destroy_mesh(wall.value());
+    device.destroy_texture(target.value());
+    return image.value();
+}
+
+int channel(const Image& image, std::uint32_t x, std::uint32_t y, std::size_t c) {
+    return image.pixels.at(((std::size_t{y} * image.width + x) * 4) + c);
+}
+
+} // namespace
+
+TEST_CASE("ray-traced reflections show what is off the screen") {
+    auto device = render::create_software_device();
+    render::Scene3D scene = mirrored();
+    // Only with SSR on, in Forward+.
+    CHECK(render::detail::ray_reflection(scene).has_value());
+    scene.ssr.enabled = false;
+    CHECK_FALSE(render::detail::ray_reflection(scene).has_value());
+    scene.ssr.enabled = true;
+    scene.method = render::RenderMethod::Compatibility;
+    CHECK_FALSE(render::detail::ray_reflection(scene).has_value());
+
+    // The cube behind the camera fills the middle of the mirror, green; SSR can't see it.
+    const Image traced = draw_mirror(*device, mirrored());
+    const Image screen = draw_mirror(*device, mirrored(false));
+    CHECK(channel(traced, 16, 16, 1) > channel(traced, 16, 16, 0) + 40);
+    CHECK(channel(screen, 16, 16, 1) <= channel(screen, 16, 16, 0) + 2);
+    // Its edge: the mirror's corner reflects the sky in both.
+    CHECK(channel(traced, 1, 1, 1) == channel(screen, 1, 1, 1));
+    // From SSR's roughness cutoff up, nothing is traced.
+    CHECK(draw_mirror(*device, mirrored(), 0.8F).pixels ==
+          draw_mirror(*device, mirrored(false), 0.8F).pixels);
+    // A rough mirror blurs the cube: with more rays, less noise along its edge.
+    render::Scene3D many = mirrored();
+    many.ray_tracing.reflection_samples = 16;
+    const Image rough = draw_mirror(*device, many, 0.3F);
+    CHECK(channel(rough, 16, 16, 1) > channel(rough, 16, 16, 0) + 10);
+    CHECK(channel(rough, 4, 16, 1) - channel(rough, 4, 16, 0) <
+          channel(rough, 16, 16, 1) - channel(rough, 16, 16, 0));
+    // The same on any number of threads.
+    slash::jobs::Pool pool(4);
+    auto shared = render::create_software_device(&pool);
+    CHECK(draw_mirror(*shared, many, 0.3F).pixels == rough.pixels);
+}
+
+TEST_CASE("reflected surfaces are lit by the frame's lights") {
+    auto device = render::create_software_device();
+    render::Scene3D scene = mirrored();
+    const Image ambient = draw_mirror(*device, scene);
+    // A steep sun from beyond the mirror lights the cube's face toward it, over the mirror's top.
+    scene.lights[0].direction = {0.0F, -0.9397F, 0.3420F};
+    scene.lights[0].up = {0.0F, 0.3420F, 0.9397F};
+    const Image lit = draw_mirror(*device, scene);
+    CHECK(channel(lit, 16, 16, 1) > channel(ambient, 16, 16, 1) + 20);
+    // Its rays to the sun are traced: with the cube casting no shadow the face is no brighter,
+    // and with the sun below the mirror's top, the mirror (which casts shadows from both sides)
+    // shades it again.
+    CHECK(draw_mirror(*device, scene, 0.0F, ShadowCasting::Off).pixels == lit.pixels);
+    scene.lights[0].direction = {0.0F, -0.3420F, 0.9397F};
+    scene.lights[0].up = {0.0F, 0.9397F, 0.3420F};
+    CHECK(channel(draw_mirror(*device, scene), 16, 16, 1) < channel(lit, 16, 16, 1) - 20);
+}
+
+TEST_CASE("hardware devices draw SSR where reflections would be traced, for now") {
+    for (const auto& device : slash::test::hardware_devices()) {
+        CAPTURE(static_cast<int>(device->backend()));
+        CHECK(draw_mirror(*device, mirrored()).pixels ==
+              draw_mirror(*device, mirrored(false)).pixels);
+    }
+}
