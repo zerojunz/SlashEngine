@@ -14,3 +14,4 @@
 {"jsonrpc":"2.0","id":14,"method":"events.read","params":{"subscription":"events_1"}}
 {"jsonrpc":"2.0","id":15,"method":"l10n.extract","params":{"list":true}}
 {"jsonrpc":"2.0","id":16,"method":"l10n.extract","params":{"pot":"translations/menu.pot","add_to":["translations/menu.csv","translations/pl.po"]}}
+{"jsonrpc":"2.0","id":17,"method":"l10n.check","params":{"max":3}}

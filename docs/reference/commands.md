@@ -76,7 +76,7 @@ as `entity.get`, reject it as an unknown param.
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
 | Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.analyze`](#audioanalyze), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus), [`audio.spectrum`](#audiospectrum), [`audio.record`](#audiorecord), [`audio.input`](#audioinput) |
 | Soundtrack | [`score.import`](#scoreimport), [`score.export`](#scoreexport), [`soundtrack.render`](#soundtrackrender), [`soundtrack.plan`](#soundtrackplan), [`soundtrack.arrange`](#soundtrackarrange), [`soundtrack.check`](#soundtrackcheck) |
-| Localization | [`l10n.state`](#l10nstate), [`l10n.set_locale`](#l10nset_locale), [`l10n.extract`](#l10nextract) |
+| Localization | [`l10n.state`](#l10nstate), [`l10n.set_locale`](#l10nset_locale), [`l10n.extract`](#l10nextract), [`l10n.check`](#l10ncheck) |
 | Services | [`services.state`](#servicesstate), [`services.test`](#servicestest) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.review`](#storyboardreview), [`storyboard.edit`](#storyboardedit) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
@@ -3071,6 +3071,46 @@ it does; a `.mo` file is compiled, so add to its `.po` file instead.
 {"added":{"translations/menu.csv":{"added":1,"skipped":2},"translations/pl.po":{"added":2}},"messages":7,"pot":"translations/menu.pot"}
 ```
 
+### l10n.check
+
+Checks the translations against the game, as an agent would before a release, since Godot
+leaves this to a play in each language. Errors are what shows wrong; warnings are what shows in
+the fallback or as written.
+
+- `file` (error): what in a listed translation file didn't load, by line.
+- `placeholders` (error): a translation whose `sprintf` conversions (`%d`, `%.2f`, `%s`) aren't
+  the source's in the same order, which they take their values in, or with a `{name}` of
+  `String.format`'s the source lacks. The source is the fallback locale's translation where it
+  has one (for projects that key messages by ID), else the message; every form of a plural
+  message is held to its plural.
+- `missing` (warning): a message [`l10n.extract`](#l10nextract) finds that a locale doesn't
+  translate, nor its language's translation (`fr` for `fr_CA`).
+- `stale` (warning): a message translated that no scene or `tr` call shows, which may be one
+  gameplay code builds at run time.
+- `overflow` (error): every scene laid out in each locale, a label or button whose text fits as
+  written but not translated: wider or taller than its control, trimmed or lines hidden.
+- `glyphs` (error): translated text needing glyphs its control's font lacks.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `locales` | array of up to 64 | every one translated | Locales to check; one no file has fails at `/locales/<i>` with the closest |
+| `layout` | boolean | true | Lay out every scene in each locale for `overflow` and `glyphs` |
+| `pseudolocalization` | boolean | false | Lay them out pseudolocalized too, as the project's `pseudolocalization` settings make it (with `expansion_ratio`, longer), reported with no `locale` |
+| `max` | integer, 1 to 500 | 50 | Errors and warnings to return, each; `errors_more` and `warnings_more` count the rest |
+
+Needs: `read`. Each finding has `check`, `file`, `path` (`/entities/<id>` and `id` for a
+control, else `""`), `locale` and `message`; `counts` counts each check and `checked` says what
+was. [`test.run`](#testrun) runs it on a project that lists translations and fails on its
+errors.
+
+```json
+{"max": 1}
+```
+
+```json
+{"checked":{"locales":["fr","ar","pl"],"messages":7,"scenes":1},"counts":{"glyphs":4,"missing":8,"stale":1},"errors":[{"check":"glyphs","file":"main.scene.json","id":"options","locale":"ar","message":"\"الخيارات\" needs 8 glyphs its font lacks in ar; give the control a font with them","path":"/entities/options"}],"errors_more":3,"warnings":[{"check":"missing","file":"translations/menu.csv","locale":"fr","message":"\"Open\" (shop) has no translation","path":""}],"warnings_more":8}
+```
+
 ## Services
 
 Ads, analytics, in-app purchases, achievements and leaderboards, as Unity's services and Social
@@ -3838,7 +3878,8 @@ can't write files. Tests start from scene files, so save a scene before testing 
 Needs: `run`, `filesystem`. With neither `paths` nor `tests`, it also runs
 [`storyboard.check`](#storyboardcheck) and adds its errors, runs
 [`soundtrack.check`](#soundtrackcheck) where the soundtrack's commands are registered (as in
-`slash-cli` and `slash-mcp`) and adds its errors, and, where the session may, runs
+`slash-cli` and `slash-mcp`) and adds its errors, runs [`l10n.check`](#l10ncheck) on a project
+that lists translations and adds its errors, and, where the session may, runs
 [`asset.check`](#assetcheck) on the files the project took from the asset library, which
 records what it sees as their feedback: its problems come back as `assets` without failing a
 test, but for a model that fails the checks it was kept with, which fails at its `check` in
