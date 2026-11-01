@@ -28,6 +28,13 @@
       "repository": "https://github.com/jrouwe/JoltPhysics.git",
       "tag": "v5.6.0"
     },
+    "OpenXR-SDK": {
+      "license": "Apache-2.0 AND MIT",
+      "license_file": "LICENSE",
+      "license_sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "repository": "https://github.com/KhronosGroup/OpenXR-SDK.git",
+      "tag": "release-1.1.65"
+    },
     "SDL3": {
       "license": "Zlib",
       "license_file": "LICENSE.txt",

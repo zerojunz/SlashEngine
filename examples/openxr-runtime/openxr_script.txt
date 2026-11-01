@@ -1,0 +1,7 @@
+profile /interaction_profiles/oculus/touch_controller
+bounds 4 3
+frame 0 head 0 1.65 0 0 0 0 1
+frame 0 /user/hand/right/input/aim/pose 0.25 1.2 -0.4 0 0 0 1
+frame 2 /user/hand/right/input/trigger/value 0.9
+frame 2 /user/hand/right/input/a/click 1
+frame 7 exit
