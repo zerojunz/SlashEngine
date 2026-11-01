@@ -1,0 +1,32 @@
+The server hosts on a free port; alice and bob join it:
+  alice: connecting, bob: connecting
+  the server: connected over enet as the server, peers: alice, bob
+  alice: connected over enet as alice, peers: bob, the server
+  bob: connected over enet as bob, peers: alice, the server
+
+Alice says hello with net.rpc; it runs on her session and reaches the others through the server:
+  alice hears alice say "hello"
+  the server hears alice say "hello"
+  bob hears alice say "hello"
+
+The server places a bullet under the spawner's arena; both players get it:
+  the server: the bullet is at [10.0,20.0]
+  alice: the bullet is at [10.0,20.0]
+  bob: the bullet is at [10.0,20.0]
+
+The server saves a snapshot, then moves it; its synchronizer sends the position every tick:
+  bob: the bullet is at [50.0,60.0]
+
+world.restore on the server puts its entities back from the snapshot; the bullet goes back and stays spawned:
+  bob: the bullet is at [10.0,20.0]
+  bob's net.state: spawned {"bullet":"spawner"}
+
+The server destroys it; it is despawned everywhere:
+  the server: no bullet
+  alice: no bullet
+  bob: no bullet
+
+Bob leaves with net.close; the others hear him go:
+  the server: connected over enet as the server, peers: alice
+  alice: connected over enet as alice, peers: the server
+  bob: offline, a server alone

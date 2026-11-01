@@ -916,7 +916,7 @@ Exit: an agent builds a small 3D sample end to end.
   - [x] WebSocket for the web, as Godot's `WebSocketMultiplayerPeer`: servers and clients
         natively, clients on the web through the browser's WebSocket
   - [ ] `wss://` natively, as Godot's `StreamPeerTLS`
-  - [ ] Commands that host, join and inspect a game's network, and examples that play a game on
+  - [x] Commands that host, join and inspect a game's network, and examples that play a game on
         several sessions at once
 - [ ] XR through OpenXR
 - [x] Localization, following Godot ([design](design.md#languages))

@@ -7,6 +7,7 @@
 #include "slash/gameplay/host.hpp"
 #include "slash/input/input.hpp"
 #include "slash/l10n/l10n.hpp"
+#include "slash/net/multiplayer.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/runtime/icon.hpp"
 #include "slash/ui/ui.hpp"
@@ -205,6 +206,8 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
     audio::install(world_, assets_, project_.audio);
     // With no backends until an SDK package's glue code gives some.
     services::install(world_, project_.services);
+    // Offline until the game's code puts its multiplayer on the network.
+    net::install(world_);
     // In the player's language, unless the project tests another.
     l10n::install(world_, assets_, project_.internationalization, l10n::preferred_locale());
     platform_.set_event_handler([this](const SDL_Event& event) { handle_event(event); });

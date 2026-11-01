@@ -108,6 +108,7 @@ add_executable(slash_tests
     test_model.cpp
     test_multiplayer.cpp
     test_replication.cpp
+    test_net_commands.cpp
     test_websocket.cpp
     test_navigation.cpp
     test_net.cpp
