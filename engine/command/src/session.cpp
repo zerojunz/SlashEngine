@@ -15,6 +15,7 @@
 #include "slash/input/input.hpp"
 #include "slash/l10n/l10n.hpp"
 #include "slash/navigation/navigation.hpp"
+#include "slash/net/multiplayer.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/platform/file.hpp"
@@ -302,6 +303,8 @@ Session::Session(const world::ComponentRegistry& component_registry,
     // Ads load and purchases complete as services.test says, with no store account.
     services::install(world_, services_settings(project));
     services::use_test_backend(world_);
+    // Offline until net.host or net.join puts it on the network.
+    net::install(world_);
     // Sessions run in the project's test locale or its fallback, never the machine's, so they
     // repeat everywhere.
     l10n::install(world_, assets_, l10n_settings(project));
@@ -1035,6 +1038,8 @@ void Session::restore(const SavedWorld& saved) {
     const auto loaded = world::restore_scene(world_, saved.scene, saved.links);
     muted_events_ = false;
     SLASH_ASSERT(loaded.ok(), "a session snapshot failed to load");
+    // The entities put back are the ones the other peers know.
+    net::multiplayer(world_).rebind();
 }
 
 Result<std::string> Session::subscribe(std::vector<std::string> kinds,

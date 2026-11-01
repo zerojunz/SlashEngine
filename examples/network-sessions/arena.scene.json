@@ -1,0 +1,19 @@
+{
+  "entities": {
+    "arena": {
+      "components": {
+        "Transform2D": {}
+      }
+    },
+    "spawner": {
+      "components": {
+        "MultiplayerSpawner": {
+          "spawn_path": "arena",
+          "spawnable_scenes": ["bullet.prefab.json"]
+        }
+      }
+    },
+    "table": {}
+  },
+  "format": 1
+}

@@ -1,0 +1,15 @@
+{
+  "components": {
+    "MultiplayerSynchronizer": {
+      "properties": [
+        {
+          "path": "Transform2D/position"
+        }
+      ]
+    },
+    "Transform2D": {
+      "position": [10.0, 20.0]
+    }
+  },
+  "format": 1
+}

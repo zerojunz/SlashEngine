@@ -12,8 +12,9 @@ Transports are kinds of peer, so code written against `net::Peer` runs over any 
 
 A world's multiplayer runs on a peer: it admits the peers that join, tells clients about each
 other through the server, relays their packets and calls remote procedures on entities, as
-Godot's `SceneMultiplayer`, and replicates entities and their fields. Commands that host, join
-and inspect a game's network are next on the [roadmap](../roadmap.md).
+Godot's `SceneMultiplayer`, and replicates entities and their fields. Sessions and exported
+games give every world one, offline until it hosts or joins, and agents drive it with the `net.*`
+commands.
 
 ## Peers
 
@@ -279,3 +280,29 @@ calls on an entity with synchronizers go only to the peers that can see it.
 
 As in Godot, spawns and their synchronizers carry network IDs, and a synchronizer on an entity
 nothing spawned is named by the same short number remote calls use.
+
+## Commands
+
+Sessions (`slash-cli`, `slash-mcp`, `test.run`) and exported games install a multiplayer in their
+world, offline. Game code reaches it with `net::multiplayer(world)`, as Godot's scripts reach
+`multiplayer`, and agents with [`net.host`](commands.md#nethost),
+[`net.join`](commands.md#netjoin), [`net.state`](commands.md#netstate),
+[`net.rpc`](commands.md#netrpc) and [`net.close`](commands.md#netclose). Each `step` polls it, so
+several sessions, in one program or several, play one game as their agents step them:
+
+```bash
+cli=./build/dev/tools/slash-cli/slash-cli
+$cli serve --scene arena.scene.json        # the server's session; prints its URL and token
+# then, through that session: net.host {"port": 7000}, and step as the game goes
+$cli rpc --project .                       # a player's session, one JSON-RPC message per line
+# scene.open {"path": "arena.scene.json"}, net.join {"port": 7000}, step
+```
+
+Network traffic is outside undo: undo, a failed command or a dry run puts the session's entities
+back, and the other peers keep what they were sent. `Multiplayer::rebind` points what the
+multiplayer tracks at the entities put back, which sessions call after each, so they aren't
+despawned and spawned again on the other peers. `perf.stats` with `memory` counts its caches and
+tracking as the `multiplayer` part.
+
+[`examples/network-sessions`](../../examples/network-sessions/) plays a game on three sessions
+with these commands.

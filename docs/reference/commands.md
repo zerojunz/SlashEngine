@@ -78,6 +78,7 @@ as `entity.get`, reject it as an unknown param.
 | Soundtrack | [`score.import`](#scoreimport), [`score.export`](#scoreexport), [`soundtrack.render`](#soundtrackrender), [`soundtrack.plan`](#soundtrackplan), [`soundtrack.arrange`](#soundtrackarrange), [`soundtrack.check`](#soundtrackcheck) |
 | Localization | [`l10n.state`](#l10nstate), [`l10n.set_locale`](#l10nset_locale), [`l10n.extract`](#l10nextract), [`l10n.check`](#l10ncheck) |
 | Services | [`services.state`](#servicesstate), [`services.test`](#servicestest) |
+| Network | [`net.host`](#nethost), [`net.join`](#netjoin), [`net.state`](#netstate), [`net.rpc`](#netrpc), [`net.close`](#netclose) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.review`](#storyboardreview), [`storyboard.edit`](#storyboardedit) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
 | Query | [`world.query`](#worldquery) |
@@ -3280,6 +3281,141 @@ A misspelled name gets the closest one:
 ```
 
 Outside a session, as in an exported game, there is no test backend, and `services.test` fails.
+
+## Network
+
+A session's world has a multiplayer, as Godot's `SceneMultiplayer`
+([networking](networking.md)): offline at first, a server alone, until `net.host` or `net.join`
+puts it on the network. Each `step` polls it, so a session takes in what arrived, runs remote
+calls, spawns and synchronizes only as it steps; sessions in other processes, or a running game
+served with `--serve`, play on at their own pace. Network traffic can't be undone: undo, a failed
+command or a dry run puts the entities back, and the other peers keep what they were sent. The
+multiplayer keeps tracking the entities put back, so they aren't despawned and spawned again.
+
+### net.host
+
+Puts the world's multiplayer on the network as its server, peer 1, as Godot's `create_server`.
+A multiplayer already on the network is closed first.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `transport` | `"enet"` or `"websocket"` | `"enet"` | ENet's reliable UDP, or WebSocket over TCP for web players. Neither hosts on the web |
+| `port` | integer, 0 to 65535 | `0` | The port to listen on; 0 picks a free one |
+| `max_clients` | integer, 1 to 4095 | `32` | ENet only: clients beyond it get no answer |
+| `bind_address` | string | `"*"` | An IPv4 address to listen on, such as `"127.0.0.1"` for this machine only, or `"*"` for any |
+
+Needs: `run`, `network`.
+
+```json
+{"transport": "websocket", "port": 9080}
+```
+
+```json
+{"id":1,"port":9080,"status":"connected","transport":"websocket"}
+```
+
+### net.join
+
+Connects the world's multiplayer to a server, as Godot's `create_client`. It is `connecting`
+until steps have polled the server's answer; `net.state` then says `connected`. A multiplayer
+already on the network is closed first.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `port` | integer, 1 to 65535 | required | The server's port |
+| `transport` | `"enet"` or `"websocket"` | `"enet"` | As the server's |
+| `address` | string | `"127.0.0.1"` | The server's IPv4 address or host name |
+| `path` | string | `"/"` | WebSocket only: the URL's path |
+
+Needs: `run`, `network`.
+
+```json
+{"port": 9080, "transport": "websocket"}
+```
+
+```json
+{"id":0,"status":"connecting","transport":"websocket"}
+```
+
+An ENet client picks its ID at once (a random number above 1); a WebSocket client is `0` until
+the server's first message gives it one.
+
+### net.state
+
+Returns the world's multiplayer: its transport (`offline`, `enet` or `websocket`), status
+(`connecting`, `connected` or `disconnected`), its ID, whether it is the server, the server's
+`port`, the connected peers' IDs and, where there are any, ENet's mean round trip to each peer it
+talks to directly in milliseconds (a client's is the server's alone), peers still authenticating, the entities spawners spawned (by ID, with each one's
+spawner) and the synchronizers replicating.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `authority` | array of entity IDs | | Also return each one's multiplayer authority, the peer it answers to |
+
+Needs: `read`. On a player after the server spawned a bullet:
+
+```json
+{"authority": ["bullet"]}
+```
+
+```json
+{"authority":{"bullet":1},"id":1593348125,"peers":[1,2087416063],"round_trip_ms":{"1":1},"server":false,"spawned":{"bullet":"spawner"},"status":"connected","synchronizers":["bullet"],"transport":"enet"}
+```
+
+### net.rpc
+
+Calls a remote procedure the game's code registered with `add_rpc` on an entity, as Godot's
+`rpc` and `rpc_id`: on every peer, one peer or every peer but one, and here too if the procedure
+calls locally. The other peers run it when their steps take it in. A dry run checks the entity
+and the procedure and sends nothing.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `entity` | string | required | The entity's ID |
+| `method` | string | required | The procedure's name |
+| `args` | any JSON value | `null` | Its arguments |
+| `peer` | integer | `0` | 0 for every peer, an ID for one, minus an ID for all but it |
+
+Needs: `run`, `network`. Takes `dry_run`.
+
+```json
+{"entity": "table", "method": "say", "args": "hello"}
+```
+
+```json
+{}
+```
+
+The procedure's own checks apply: a call from a peer that isn't the entity's authority, to a
+procedure only its authority may call, fails with the reason.
+
+```json
+{"code":-32001,"data":{"path":"/method"},"message":"/method: no remote procedure \"shout\" is registered; the game's code adds them with add_rpc"}
+```
+
+### net.close
+
+Closes the connection and goes back offline, as Godot's `close`; with `peer`, a server drops that
+peer instead, as `disconnect_peer`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `peer` | integer, 2 or more | | A connected peer for the server to drop |
+
+Needs: `run`, `network`.
+
+```json
+{"peer": 2087416063}
+```
+
+```json
+{"dropped":2087416063}
+```
+
+Without `peer`: `{"transport":"offline"}`.
+
+[`examples/network-sessions`](../../examples/network-sessions/) plays a game on three sessions
+with these commands.
 
 ## Storyboard
 
