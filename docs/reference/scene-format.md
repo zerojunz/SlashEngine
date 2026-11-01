@@ -376,12 +376,16 @@ A reference must name an entity that exists in the same scene.
 | | `texture_filter` | `std::string` | `"inherit"` | How its textures are sampled when scaled: `linear`, `nearest`, or `inherit` its parent's, then the project's `rendering.texture_filter` |
 | | `mouse_filter` | `std::string` | `""` | Whether a click, tap or the mouse [stops at it](#buttons) (`stop`), goes on to its parent too (`pass`) or passes it by (`ignore`); `""` takes its type's: `ignore` for `Label` and `NinePatchRect`, `pass` for `TextureRect` and containers other than `PanelContainer`, `stop` for the rest |
 | | `tooltip_text` | `std::string` | `""` | Shown in a box beside the pointer once it [rests on the control](#tooltips-and-drag-and-drop); a parent's shows over children that pass the mouse on |
-| | `focus_mode` | `std::string` | `""` | Whether clicks and the keyboard or a gamepad give it [focus](#buttons) (`all`), clicks only (`click`) or nothing (`none`); `""` takes its type's: `all` for buttons, `none` for the rest |
+| | `focus_mode` | `std::string` | `""` | Whether clicks and the keyboard or a gamepad give it [focus](#buttons) (`all`), clicks only (`click`), both only while a [screen reader](#accessibility) is served (`accessibility`) or nothing (`none`); `""` takes its type's: `all` for buttons, `LineEdit`, `TextEdit` and sliders, `accessibility` for `MenuButton` and `ScrollBar`, `none` for the rest |
 | | `focus_neighbor_left`, `_top`, `_right`, `_bottom` | `entity` | `null` | The control `ui_left`, `ui_up`, `ui_right` or `ui_down` moves focus to; `null` finds the closest one that way |
 | | `focus_next`, `focus_previous` | `entity` | `null` | The control `ui_focus_next` (Tab) or `ui_focus_prev` (Shift+Tab) moves focus to; `null` takes the next or previous in the tree |
 | | `layout_direction` | `std::string` | `"inherited"` | Which way it [lays out](#right-to-left-layout): `ltr`, `rtl` (anchors, offsets, containers and alignment mirrored), `application_locale` or `system_locale` (right to left in Arabic, Hebrew, Persian and the rest), or `inherited` from its parent, at the root as project.json's `root_node_layout_direction` says |
 | | `auto_translate_mode` | `std::string` | `"inherit"` | Whether its text, placeholder and items show [translated](#translated-text): `always`, `disabled`, or `inherit` its parent's, always at the root |
 | | `tooltip_auto_translate_mode` | `std::string` | `"inherit"` | Whether its `tooltip_text` shows translated: `always`, `disabled`, or `inherit` the control's |
+| | `accessibility_name` | `std::string` | `""` | What a [screen reader](#accessibility) calls it, translated as its text is; a button's text, a text field's placeholder or a button's tooltip stands in when it's `""` |
+| | `accessibility_description` | `std::string` | `""` | What a screen reader says about it after its name |
+| | `accessibility_live` | `std::string` | `"off"` | Whether a screen reader reads changes to it out: `polite` (when it's done speaking), `assertive` (at once) or `off` |
+| | `accessibility_controls_nodes`, `_described_by_nodes`, `_labeled_by_nodes`, `_flow_to_nodes` | `std::vector<entity>` | `[]` | The controls it changes, that describe it, that name it, and that a screen reader reads after it |
 | `DragAndDrop` | `drag_data` | `json` | `null` | What [dragging the control](#tooltips-and-drag-and-drop) carries; `null`: it can't be dragged |
 | | `can_drop` | `std::vector<json>` | `[]` | What it takes when dropped on it: data matching one of these, where an object needs only the members given and anything else must be equal |
 | | `drag_preview` | `entity` | `null` | A control with no parent shown at the pointer while a drag from it goes on, even if hidden |
@@ -479,7 +483,7 @@ A reference must name an entity that exists in the same scene.
 | | `flat` … `language` | | | As `Button`'s but `text` and `icon`, which are the option's; `toggle_mode` is `true`, `alignment` `"left"` and `action_mode` `"press"` |
 | `MenuButton` | `items` | `std::vector<PopupMenuItem>` | `[]` | The [menu](#menus) it opens: items as `PopupMenu`'s |
 | | `switch_on_hover` | `bool` | `false` | While another menu button's menu is open, moving onto this one opens its menu instead |
-| | `text` … `language` | | | As `Button`'s, but `flat` and `toggle_mode` are `true` and `action_mode` `"press"`; it takes no focus unless `focus_mode` says so |
+| | `text` … `language` | | | As `Button`'s, but `flat` and `toggle_mode` are `true` and `action_mode` `"press"`; its `focus_mode` is `accessibility`, so it takes focus only while a [screen reader](#accessibility) is served |
 | `PopupMenu` | `items` | `std::vector<PopupMenuItem>` | `[]` | The [menu](#menus)'s items: `text`, `icon`, `checkable` (`none`, `check` or `radio`), `checked`, `id` (-1 for its index), `disabled`, `separator`, `indent`, `tooltip` (shown once the pointer rests on the item) and `auto_translate_mode` (`inherit` its owner's, `always` or `disabled`) |
 | | `position` | `Vec2` | `[0, 0]` | Its top left corner in the viewport; moved to fit inside it |
 | | `visible` | `bool` | `false` | Open: set it to open the menu; closing it clears it |
@@ -5476,6 +5480,43 @@ and line length guidelines.
   rows' `line_height`. `scene validate` reports a `CodeEdit` with no `TextEdit`, a gutter `type`
   other than `string` or `icon`, a negative `width`, and lines below 0 or past the text's last.
 - A `CodeEdit` uses its own theme type, which falls back to `TextEdit`'s.
+
+### Accessibility
+
+Controls describe themselves to a screen reader as Godot 4.5's do in
+`NOTIFICATION_ACCESSIBILITY_UPDATE` (`engine/ui/src/accessibility.cpp`): each is an element of
+the accessibility tree with a role, a name, a value, states, its bounds and the actions it takes,
+in the controls' tree. [`ui.accessibility`](commands.md#uiaccessibility) returns the tree and
+[`ui.accessibility_action`](commands.md#uiaccessibility_action) does what a screen reader asks,
+so an agent can check a game can be played without seeing it.
+
+| Control | Role | What it adds |
+| --- | --- | --- |
+| Any | `container` | `accessibility_name`, `_description` and `_live`, `tooltip_text`, the related controls, flags `hidden` (its own `visible` off), `clips_children` and `touch_passthrough` (`mouse_filter` `pass`), and the actions `focus`, `blur`, `show_tooltip`, `hide_tooltip` and `scroll_into_view` |
+| `Button`, `CheckBox`, `CheckButton`, `OptionButton`, `MenuButton`, `TextureButton` | `button`, `check_box` (`radio_button` in a `button_group`), `check_button` | `click`; `checked` in toggle mode; `disabled`; the other buttons of its group; a `Button`'s text names it (`"name: text"` with an `accessibility_name`; its tooltip when it has neither); an `OptionButton` opens a `list` popup, a `MenuButton` a `menu` |
+| `Label` | `static_text` | Its text as the value |
+| `LineEdit` | `text_field` | Its text as the value (a `secret` one's as its secret characters), the selection or caret, `readonly`, the placeholder (shown while empty, naming it when unnamed) and `set_value` |
+| `TextEdit`, `CodeEdit` | `multiline_text_field` | As `LineEdit` |
+| `Slider`, `ScrollBar`, `ProgressBar` | `slider`, `scroll_bar`, `progress_indicator` | The range `[value, min, max, step]` (a step of 1 when it has none), `increment`, `decrement` and `set_value` |
+| `ScrollContainer` | `scroll_view` | `scroll_up`, `scroll_down`, `scroll_left`, `scroll_right` (a page, or an eighth of one for an item) and `set_scroll_offset` |
+| `Panel` | `panel` | |
+| `ColorRect` | `container` | Its color |
+| `VideoStreamPlayer` | `video` | |
+| An open popup menu | `menu`, its items `menu_item`, `menu_item_check_box` or `menu_item_radio` | Under the button that opened it, or a root for a `PopupMenu`; items say `checked`, `disabled`, `selected` (the one hovered or moved to) and take `click` |
+
+- The control with focus is focused, or while a popup menu is open, its item moved to (or the
+  menu).
+- A control is served to a screen reader as project.json's
+  [`gui.accessibility_support`](project-format.md) says, Godot's
+  `accessibility/general/accessibility_support`: `auto` (while one is in use, which a platform's
+  backend reports), `always` or `disabled`. While it is, `focus_mode` `accessibility` takes focus
+  as `all` does, as Godot's `FOCUS_ACCESSIBILITY`.
+- `ui.accessibility` reports as problems a control that can take focus with no name, an
+  `accessibility_name` holding its class name or a control character (Godot's accessibility
+  warnings), and related controls that aren't controls.
+- Not yet: the platform backend that hands the tree to VoiceOver, Narrator, Orca, TalkBack and
+  the web's screen readers, text runs and selections in a `TextEdit`, keyboard drag and drop
+  (`ui_accessibility_drag_and_drop`) and announcements.
 
 ### Theme items
 

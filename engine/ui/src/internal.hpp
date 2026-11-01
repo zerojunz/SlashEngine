@@ -1,10 +1,12 @@
 #pragma once
 
+#include "slash/ui/accessibility.hpp"
 #include "slash/ui/ui.hpp"
 
 #include <array>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -35,6 +37,21 @@ namespace slash::ui {
 // Which component button_of found: "Button", "CheckBox", "CheckButton", "OptionButton" or
 // "MenuButton"; "" for none.
 [[nodiscard]] std::string_view button_type(const world::World& world, entt::entity entity);
+
+// A control's mouse_filter: its own, or its type's as Godot's constructors set them ("stop",
+// "pass" or "ignore").
+[[nodiscard]] std::string_view mouse_filter_name(const world::World& world, entt::entity entity);
+// A control's focus_mode: its own, or its type's as Godot's constructors set them ("none",
+// "click", "all" or "accessibility").
+[[nodiscard]] std::string_view focus_mode_name(const world::World& world, entt::entity entity);
+
+// Scrolls the ScrollContainer a control is in to show it, as ensure_control_visible; false if
+// its parent isn't one.
+bool scroll_into_view(world::World& world, entt::entity control);
+// Sets a ScrollContainer's scroll on the axes given, [horizontal, vertical], kept in its bars'
+// ranges; false for one that isn't laid out.
+bool scroll_container_to(world::World& world, entt::entity container,
+                         std::array<std::optional<double>, 2> to);
 
 // A Range's fields, as Godot's Range keeps them: max_value at least min_value, page at most the
 // span between them.

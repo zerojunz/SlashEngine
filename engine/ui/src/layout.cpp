@@ -2950,6 +2950,7 @@ struct Builder {
         // The clip it draws in, as RendererCanvasCull finds each item's final_clip_rect: its
         // parent's, cut to its own rect on screen when it clips, rounded to whole pixels.
         placed.clips = control.clip_contents || node.kind == Kind::Scroll;
+        placed.translate = node.translate;
         placed.clip = parent != nullptr ? parent->placed.clip : std::nullopt;
         if (placed.clips) {
             float x0 = std::numeric_limits<float>::max();

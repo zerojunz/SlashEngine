@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "gui": {"accessibility_support": "always"},
+  "main_scene": "main.scene.json",
+  "name": "Accessibility",
+  "version": "0.1.0",
+  "window": {"height": 240, "width": 320}
+}
