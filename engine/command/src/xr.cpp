@@ -3,6 +3,7 @@
 #include "slash/command/session.hpp"
 #include "slash/core/text.hpp"
 #include "slash/world/tree3d.hpp"
+#include "slash/xr/openxr.hpp"
 #include "slash/xr/xr.hpp"
 
 #include <array>
@@ -207,11 +208,48 @@ Reply set_tracker(xr::TestInterface& test, const std::string& name, const json::
     return Reply::success({});
 }
 
+// Switches the session between the test headset and the machine's OpenXR runtime. A failed
+// command puts the server's trackers back, which only matches the interfaces when nothing else
+// changed with them, so the switch is a command of its own.
+Reply use_interface(world::World& world, xr::TestInterface& test, const std::string& name,
+                    const json::Value& params) {
+    if (params.as_object().size() != 1) {
+        return param_error(code::kInvalidArgument, "/interface",
+                           "interface switches on its own; send the other changes after it");
+    }
+    xr::Interface* openxr = xr::find_interface(world, "OpenXR");
+    if (name == "test") {
+        if (openxr != nullptr && openxr->is_initialized()) {
+            openxr->uninitialize(world);
+        }
+        if (!test.is_initialized()) {
+            if (auto started = test.initialize(world); !started) {
+                return Reply::failure(started.error());
+            }
+        }
+    } else if (openxr == nullptr || !openxr->is_initialized()) {
+        const bool was_running = test.is_initialized();
+        test.uninitialize(world);
+        if (auto started = xr::use_openxr_interface(world); !started) {
+            if (was_running) {
+                (void)test.initialize(world);
+            }
+            return param_error(code::kPlatformFailure, "/interface", started.error().message);
+        }
+    }
+    json::Value out;
+    out["tick"] = world.tick();
+    return Reply::success(std::move(out));
+}
+
 Reply xr_set(Session& session, const json::Value& params) {
     world::World& world = session.world();
     xr::TestInterface* test = xr::test_interface(world);
     if (test == nullptr) {
         return Reply::failure(code::kNotFound, "this session has no test headset");
+    }
+    if (const json::Value* use = params.find("interface")) {
+        return use_interface(world, *test, use->as_string(), params);
     }
     if (const json::Value* initialize = params.find("initialize")) {
         if (initialize->as_bool()) {
@@ -318,6 +356,9 @@ void register_xr_commands(Registry& registry) {
         .capabilities = {Run},
         .effect = Effect::Read,
         .params = object_schema({
+            {"interface",
+             choice({"test", "openxr"},
+                    "Switches to the test headset or the machine's OpenXR runtime; alone.")},
             {"initialize", property("boolean", "Starts or stops the test headset.")},
             {"trackers", std::move(trackers)},
             {"play_area_mode", choice({"sitting", "roomscale", "stage"}, "")},

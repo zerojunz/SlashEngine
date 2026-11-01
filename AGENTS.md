@@ -2155,6 +2155,23 @@ field of view as its edges' tangents (`xr::Fov`), which `render::frustum` makes 
 camera, which `frame.capture`'s `xr_view` does at the view's render target size.
 `examples/xr-stereo-views` sees a post move between the eyes.
 
+OpenXR is Godot's `OpenXRAPI` and `OpenXRInterface` (`slash/xr/openxr.hpp`, `src/openxr.cpp`),
+on the Khronos loader built from its sources as `slash_openxr` (`cmake/Dependencies.cmake`; not
+on the web, Android or iOS yet, where `src/openxr_none.cpp` says so): the instance (1.1, then
+1.0), the system, the session's state machine (begun on `READY`, ended on `STOPPING`), the play
+space (`local_floor` emulated from the stage and local spaces), Godot's default action map
+(`src/action_map.cpp`, `xr::default_action_map`; vendor profiles only with their extension),
+poses, inputs, views and haptics, its session states as world events. `use_openxr_interface`
+starts it; games do when `xr.openxr.enabled` is set and they have a window, and `xr.set`'s
+`interface` switches a session to it. Swapchains aren't written yet, so sessions start only on
+runtimes with `XR_MND_headless` and end each frame with no layers. `tests/fake_openxr_runtime.cpp`
+is a stand-in runtime the loader loads through the manifest the build writes
+(`tests/fake_openxr.json`), handed to it with `xr::set_openxr_runtime` (slash-cli's
+`--openxr-runtime`, as the loader's init properties, since it ignores `XR_RUNTIME_JSON` in the
+elevated processes Windows CI runs), playing a script (`FAKE_OPENXR_SCRIPT`: poses and inputs by frame,
+lost poses, recentering, exit) and logging the calls it gets (`FAKE_OPENXR_LOG`);
+`examples/openxr-runtime` runs a session on it.
+
 ## AI providers
 
 `engine/ai` calls language models through `ai::Provider`, one interface over any vendor
@@ -2264,7 +2281,7 @@ CI rejects unformatted code and any clang-tidy finding.
   (controls, containers and themes: layout, draw calls, buttons, focus and text fields), `animation` (`.anim.json` keyframe
   animations, `.animtree.json` animation trees and the systems that play them),
   `scene3d` (3D nodes: primitive meshes, glTF, OBJ, FBX and Blender models, CSG shapes, grid maps, materials, cameras, lights and environments,
-  and drawing them), `physics2d` (2D bodies, areas, joints and queries on Box2D), `physics3d` (3D bodies, areas, character movement and queries on Jolt), `navigation` (navigation meshes, maps, paths and agents), `net` (multiplayer peers, the ENet transport, a world's multiplayer and RPCs), `xr` (the XR server, interfaces, trackers, XR nodes and the test headset), `library` (the asset library, its
+  and drawing them), `physics2d` (2D bodies, areas, joints and queries on Box2D), `physics3d` (3D bodies, areas, character movement and queries on Jolt), `navigation` (navigation meshes, maps, paths and agents), `net` (multiplayer peers, the ENet transport, a world's multiplayer and RPCs), `xr` (the XR server, interfaces, trackers, XR nodes, the test headset and OpenXR), `library` (the asset library, its
   generators and commands), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `soundtrack` (`.score.json` scores, MIDI files, rendering stems, drafting cue sheets and arranging them),
   `command` (commands, sessions with undo, JSON-RPC and MCP),

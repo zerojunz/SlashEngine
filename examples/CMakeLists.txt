@@ -39,6 +39,11 @@ foreach(name IN LISTS examples)
         endif()
     endif()
     set(program "")
+    # The stand-in OpenXR runtime tests/CMakeLists.txt builds, for the openxr-runtime example.
+    set(openxr "")
+    if(TARGET slash_openxr)
+        set(openxr -DOPENXR=${CMAKE_BINARY_DIR}/tests/fake_openxr.json)
+    endif()
     if(EXISTS ${dir}/main.cpp)
         add_executable(example-${name} ${name}/main.cpp)
         target_link_libraries(example-${name} PRIVATE
@@ -59,7 +64,7 @@ foreach(name IN LISTS examples)
         COMMAND ${CMAKE_COMMAND} -DEXAMPLE=${dir} -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/${name}
             -DCLI=$<TARGET_FILE:slash-cli> -DASSETRIPPER=$<TARGET_FILE:fake-assetripper>
             -DBLENDER=$<TARGET_FILE:fake-blender> -DUNREAL=$<TARGET_FILE:fake-unreal>
-            ${program} -P ${run_example})
+            ${openxr} ${program} -P ${run_example})
 endforeach()
 
 # README.md lists every example, so agents find them.

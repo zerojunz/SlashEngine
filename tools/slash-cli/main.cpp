@@ -67,6 +67,7 @@
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
 #include "slash/world/world.hpp"
+#include "slash/xr/openxr.hpp"
 
 #include <algorithm>
 #include <array>
@@ -270,6 +271,9 @@ call, rpc and serve also take:
       --project <dir>                Folder that scene paths are relative to (default ".")
       --allow <list>                 Capabilities: read, edit, run, filesystem, build,
                                      network or all (default all)
+      --openxr-runtime <manifest>    An OpenXR runtime's .json manifest to use in place of
+                                     the active runtime, as XR_RUNTIME_JSON (which the
+                                     loader ignores in elevated processes on Windows)
 
 slash-cli call engine.describe lists every command. Agents with MCP should use slash-mcp.
 A server writes its URL and token to .slash/server.json in the project for other tools.
@@ -343,6 +347,14 @@ bool parse_session_arg(const std::vector<std::string>& args, std::size_t& i, Ses
                        std::string& error) {
     const std::string& arg = args[i];
     const bool has_value = i + 1 < args.size();
+    if (arg == "--openxr-runtime") {
+        if (!has_value) {
+            error = arg + " needs a value";
+            return true;
+        }
+        slash::xr::set_openxr_runtime(args[++i]);
+        return true;
+    }
     if (arg == "--project" || arg == "--scene" || arg == "--allow") {
         if (!has_value) {
             error = arg + " needs a value";

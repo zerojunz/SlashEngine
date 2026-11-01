@@ -299,6 +299,59 @@ if(NOT EMSCRIPTEN)
     endif()
 endif()
 
+# The Khronos OpenXR loader, which finds the headset's runtime (engine/xr), built from its
+# sources as Godot builds its thirdparty/openxr copy: on Windows, Linux and macOS, with jsoncpp
+# and without exceptions. Android's loader comes with the runtime, iOS has none and the web
+# has WebXR instead.
+if(NOT EMSCRIPTEN AND NOT ANDROID AND NOT IOS)
+    slash_add_dependency(OpenXR-SDK DOWNLOAD_ONLY TRUE)
+    if(OpenXR-SDK_ADDED)
+        set(_slash_openxr ${OpenXR-SDK_SOURCE_DIR})
+        add_library(slash_openxr STATIC
+            ${_slash_openxr}/src/xr_generated_dispatch_table_core.c
+            ${_slash_openxr}/src/common/filesystem_utils.cpp
+            ${_slash_openxr}/src/common/object_info.cpp
+            ${_slash_openxr}/src/loader/api_layer_interface.cpp
+            ${_slash_openxr}/src/loader/loader_core.cpp
+            ${_slash_openxr}/src/loader/loader_init_data.cpp
+            ${_slash_openxr}/src/loader/loader_instance.cpp
+            ${_slash_openxr}/src/loader/loader_logger_recorders.cpp
+            ${_slash_openxr}/src/loader/loader_logger.cpp
+            ${_slash_openxr}/src/loader/loader_properties.cpp
+            ${_slash_openxr}/src/loader/manifest_file.cpp
+            ${_slash_openxr}/src/loader/runtime_interface.cpp
+            ${_slash_openxr}/src/loader/xr_generated_loader.cpp
+            ${_slash_openxr}/src/external/jsoncpp/src/lib_json/json_reader.cpp
+            ${_slash_openxr}/src/external/jsoncpp/src/lib_json/json_value.cpp
+            ${_slash_openxr}/src/external/jsoncpp/src/lib_json/json_writer.cpp)
+        target_include_directories(slash_openxr SYSTEM PUBLIC ${_slash_openxr}/include)
+        target_include_directories(slash_openxr PRIVATE ${_slash_openxr}/src
+            ${_slash_openxr}/src/common ${_slash_openxr}/src/loader
+            ${_slash_openxr}/src/external/jsoncpp/include)
+        target_compile_definitions(slash_openxr PRIVATE DISABLE_STD_FILESYSTEM
+            XRLOADER_DISABLE_EXCEPTION_HANDLING JSON_USE_EXCEPTION=0)
+        if(WIN32)
+            target_compile_definitions(slash_openxr PUBLIC XR_OS_WINDOWS NOMINMAX
+                XR_USE_PLATFORM_WIN32)
+            target_link_libraries(slash_openxr PRIVATE advapi32)
+        elseif(APPLE)
+            target_compile_definitions(slash_openxr PUBLIC XR_OS_APPLE)
+        else()
+            target_compile_definitions(slash_openxr PUBLIC XR_OS_LINUX)
+            target_compile_definitions(slash_openxr PRIVATE HAVE_SECURE_GETENV
+                FALLBACK_CONFIG_DIRS="/etc/xdg" FALLBACK_DATA_DIRS="/usr/local/share:/usr/share"
+                SYSCONFDIR="/etc")
+            target_link_libraries(slash_openxr PRIVATE ${CMAKE_DL_LIBS})
+        endif()
+        find_package(Threads REQUIRED)
+        target_link_libraries(slash_openxr PRIVATE Threads::Threads)
+        if(NOT MSVC)
+            target_compile_options(slash_openxr PRIVATE -w)
+        endif()
+        set_target_properties(slash_openxr PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    endif()
+endif()
+
 # AV1 video, decoded by dav1d (engine/video) on every platform. Its own build is Meson's, so its
 # C files are built here, without assembly so frames come out the same everywhere (dav1d is
 # bit exact either way), with the config.h its Meson build would write: 8- and 16-bit pixels,
