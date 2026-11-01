@@ -1794,6 +1794,60 @@ safe_margin = 0.5
     fs::remove_all(project);
 }
 
+TEST_CASE("importing Godot XR nodes and settings keeps the play space") {
+    const fs::path project = "import_godot_xr";
+    fs::remove_all(project);
+    write(project / "godot/project.godot", R"(config_version=5
+
+[application]
+
+config/name="Sword"
+
+[xr]
+
+openxr/enabled=true
+openxr/reference_space=2
+openxr/environment_blend_mode=2
+shaders/enabled=true
+)");
+    write(project / "godot/level.tscn", R"([gd_scene format=3]
+
+[node name="Level" type="Node3D"]
+
+[node name="Player" type="XROrigin3D" parent="."]
+world_scale = 2.0
+current = true
+
+[node name="Head" type="XRCamera3D" parent="Player"]
+fov = 90.0
+
+[node name="Right" type="XRController3D" parent="Player"]
+tracker = &"right_hand"
+pose = &"grip"
+show_when_tracked = true
+
+[node name="Table" type="XRAnchor3D" parent="Player"]
+tracker = &"table"
+)");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    const std::string level = "godot/level.scene.json";
+    REQUIRE(files.contains(level));
+    CHECK(*entity(files, level, "player").find("XROrigin3D") ==
+          parse(R"({"world_scale": 2.0, "current": true})"));
+    const json::Value head = entity(files, level, "head");
+    CHECK(*head.find("Camera3D") == parse(R"({"fov": 90.0})"));
+    CHECK(head.find("XRCamera3D") != nullptr);
+    CHECK(*entity(files, level, "right").find("XRController3D") ==
+          parse(R"({"tracker": "right_hand", "pose": "grip", "show_when_tracked": true})"));
+    CHECK(*entity(files, level, "table").find("XRAnchor3D") == parse(R"({"tracker": "table"})"));
+    const json::Value settings = parse(files.at("project.json"));
+    CHECK(*settings.find("xr") ==
+          parse(R"({"openxr": {"enabled": true, "reference_space": "local_floor",
+        "environment_blend_mode": "alpha"}, "shaders": {"enabled": true}})"));
+    fs::remove_all(project);
+}
+
 // A Godot 3D project: a level of meshes, models, lights, a sky and bodies.
 fs::path make_3d_project(const fs::path& folder) {
     fs::remove_all(folder);

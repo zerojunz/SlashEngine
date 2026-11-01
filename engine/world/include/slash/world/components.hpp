@@ -425,6 +425,47 @@ struct Camera3D {
 SLASH_COMPONENT(Camera3D, projection, keep_aspect, fov, size, near, far, h_offset, v_offset,
                 current, cull_mask, doppler_tracking)
 
+// Where the player's play space is in the world, as Godot's XROrigin3D: XR nodes under it are
+// placed by their trackers' poses in its space. The current one is the first with current set,
+// else the first.
+struct XROrigin3D {
+    float world_scale = 1.0F; // the play space's meters per world unit, as XRServer's world_scale
+    bool current = false;
+
+    friend bool operator==(const XROrigin3D&, const XROrigin3D&) = default;
+};
+SLASH_COMPONENT(XROrigin3D, world_scale, current)
+
+// Placed by a tracker's pose under its XROrigin3D, as Godot's XRNode3D: tracker names the tracker
+// ("head", "left_hand", "right_hand" or an anchor's), pose which of its poses.
+struct XRNode3D {
+    std::string tracker;
+    std::string pose = "default";
+    bool show_when_tracked = false; // hidden while the pose isn't tracked
+
+    friend bool operator==(const XRNode3D&, const XRNode3D&) = default;
+};
+
+// A hand controller, as Godot's XRController3D: an XR node that sends its tracker's buttons,
+// triggers and thumbsticks as events.
+struct XRController3D : XRNode3D {
+    friend bool operator==(const XRController3D&, const XRController3D&) = default;
+};
+SLASH_COMPONENT(XRController3D, tracker, pose, show_when_tracked)
+
+// Something the headset found in the room, such as a wall or a table, as Godot's XRAnchor3D.
+struct XRAnchor3D : XRNode3D {
+    friend bool operator==(const XRAnchor3D&, const XRAnchor3D&) = default;
+};
+SLASH_COMPONENT(XRAnchor3D, tracker, pose, show_when_tracked)
+
+// The headset, as Godot's XRCamera3D: the entity's Camera3D follows the "head" tracker's
+// "default" pose.
+struct XRCamera3D {
+    friend bool operator==(const XRCamera3D&, const XRCamera3D&) = default;
+};
+SLASH_COMPONENT(XRCamera3D)
+
 // Light from one direction over the whole world, as Godot's DirectionalLight3D, such as the sun:
 // it shines down its entity's -z.
 struct DirectionalLight3D {

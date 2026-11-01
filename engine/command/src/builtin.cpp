@@ -28,6 +28,7 @@
 #include "slash/command/session.hpp"
 #include "slash/command/terrain.hpp"
 #include "slash/command/test.hpp"
+#include "slash/command/xr.hpp"
 #include "slash/core/assert.hpp"
 #include "slash/core/json_schema.hpp"
 #include "slash/core/log.hpp"
@@ -8180,6 +8181,7 @@ void register_builtin_commands(Registry& registry) {
     register_services_commands(registry);
     register_l10n_commands(registry);
     register_net_commands(registry);
+    register_xr_commands(registry);
 }
 
 void register_run_commands(Registry& registry) {

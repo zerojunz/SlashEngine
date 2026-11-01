@@ -5801,6 +5801,47 @@ names one and says how it draws, as Godot's font import options (`slash-cli sche
   with the built-in font.
 - Fonts reload when their files change, as every asset does.
 
+## XR
+
+Virtual and augmented reality, as Godot's XR nodes and `XRServer`
+([`slash/xr/xr.hpp`](../../engine/xr/include/slash/xr/xr.hpp)). An `XROrigin3D` is where the
+player's play space is in the world; the XR nodes under it are placed in its space by the poses
+of the trackers they follow, each tick, by the `xr` system (priority -850, after input and the
+gui). Trackers are kept up to date by an XR interface: sessions use the test headset, a head
+(`head`) and two hand controllers (`left_hand`, `right_hand`, each with the poses `default`,
+`aim`, `grip` and `palm` of Godot's default action map) that [`xr.set`](commands.md#xrset) moves
+and presses; it starts when project.json's [`xr.openxr.enabled`](project-format.md#xr) is set.
+
+| Component | Fields | Meaning |
+| --- | --- | --- |
+| `XROrigin3D` | `world_scale` (`1`), `current` (`false`) | The play space. The current one is the first with `current` set, else the first; `world_scale` is world units per meter of the room, so 2 makes the player a giant |
+| `XRCamera3D` | none | The headset: with a `Camera3D` on the same entity, it follows the `head` tracker's `default` pose |
+| `XRController3D` | `tracker` (`""`), `pose` (`"default"`), `show_when_tracked` (`false`) | A hand controller: follows the pose and sends its tracker's inputs as events |
+| `XRAnchor3D` | the same | Something the headset found in the room, such as a table |
+
+A node's `Transform3D` becomes the pose's transform with its position times the world scale,
+then the reference frame `center_on_hmd` set applied, as Godot's `XRPose::get_adjusted_transform`.
+A pose that loses tracking leaves its nodes where they were; `show_when_tracked` hides them until
+it comes back. Each node gets its tracker's signals as world events with its ID, as Godot's
+`XRNode3D` and `XRController3D` emit them:
+
+| Event | Data | When |
+| --- | --- | --- |
+| `tracking_changed` | `tracking` | The pose is found or lost |
+| `button_pressed`, `button_released` | `name` | A button input turns on or off (a new input that is off is a release) |
+| `input_float_changed` | `name`, `value` | A trigger or grip's value changes |
+| `input_vector2_changed` | `name`, `value` (`[x, y]`) | A thumbstick moves |
+| `profile_changed` | `role` | The controller's interaction profile changes |
+
+The server's own events have no entity: `interface_added` and `interface_removed`
+(`interface`), `tracker_added`, `tracker_updated` and `tracker_removed` (`tracker`, `type`) and
+`reference_frame_changed`. Gameplay code reads inputs as Godot's `XRController3D` does:
+`xr::is_button_pressed`, `get_float` and `get_vector2` convert between buttons (1 or 0),
+triggers and thumbsticks (a trigger is `[value, 0]`), and `xr::trigger_haptic_pulse` shakes a
+controller. `xr.state` lists what Godot's configuration warnings would say: XR nodes that aren't
+children of an `XROrigin3D`, nodes with no tracker or pose, an `XRCamera3D` without a
+`Camera3D` and an `XROrigin3D` without an `XRCamera3D` child.
+
 ## Video
 
 `VideoStreamPlayer` is Godot's, with AV1 in place of Theora: its `stream` is an IVF file of AV1

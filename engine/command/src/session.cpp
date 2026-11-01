@@ -24,6 +24,7 @@
 #include "slash/ui/ui.hpp"
 #include "slash/world/scene.hpp"
 #include "slash/world/tree2d.hpp"
+#include "slash/xr/xr.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -155,6 +156,14 @@ l10n::Settings l10n_settings(const json::Value& project) {
         return {};
     }
     return l10n::parse_settings(*settings);
+}
+
+xr::Settings xr_settings(const json::Value& project) {
+    const json::Value* settings = project.is_object() ? project.find("xr") : nullptr;
+    if (settings == nullptr || !xr::validate_settings(*settings, "").empty()) {
+        return {};
+    }
+    return xr::parse_settings(*settings);
 }
 
 // The viewport controls are laid out in: the project's window size, or the default.
@@ -305,6 +314,9 @@ Session::Session(const world::ComponentRegistry& component_registry,
     services::use_test_backend(world_);
     // Offline until net.host or net.join puts it on the network.
     net::install(world_);
+    // A headset agents move with xr.set, started when the project enables XR.
+    xr::install(world_, xr_settings(project));
+    xr::use_test_interface(world_);
     // Sessions run in the project's test locale or its fallback, never the machine's, so they
     // repeat everywhere.
     l10n::install(world_, assets_, l10n_settings(project));
@@ -437,6 +449,7 @@ Reply Session::call_command(std::string_view name, const json::Value& params) {
     const ui::Snapshot ui_before = ui::save(world_);
     const audio::Snapshot audio_before = audio::save(world_);
     const services::Snapshot services_before = services::save(world_);
+    const xr::Snapshot xr_before = xr::save(world_);
     const ai::Snapshot ai_before = ai::save(world_);
     const navigation::Snapshot navigation_before = navigation::save(world_);
     const std::string path_before = scene_path_;
@@ -480,6 +493,7 @@ Reply Session::call_command(std::string_view name, const json::Value& params) {
         ui::restore(world_, ui_before);
         audio::restore(world_, audio_before);
         services::restore(world_, services_before);
+        xr::restore(world_, xr_before);
         ai::restore(world_, ai_before);
         navigation::restore(world_, navigation_before);
         scene_path_ = path_before;
@@ -955,6 +969,7 @@ void Session::poll_project() {
     audio::set_settings(world_, audio_settings(project));
     services::install(world_, services_settings(project));
     l10n::install(world_, assets_, l10n_settings(project));
+    xr::install(world_, xr_settings(project));
 }
 
 std::optional<gameplay::Load> Session::poll_gameplay() {
