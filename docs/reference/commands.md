@@ -76,6 +76,7 @@ as `entity.get`, reject it as an unknown param.
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
 | Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.analyze`](#audioanalyze), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus), [`audio.spectrum`](#audiospectrum), [`audio.record`](#audiorecord), [`audio.input`](#audioinput) |
 | Soundtrack | [`score.import`](#scoreimport), [`score.export`](#scoreexport), [`soundtrack.render`](#soundtrackrender), [`soundtrack.plan`](#soundtrackplan), [`soundtrack.arrange`](#soundtrackarrange), [`soundtrack.check`](#soundtrackcheck) |
+| Video | [`video.encode`](#videoencode) |
 | Localization | [`l10n.state`](#l10nstate), [`l10n.set_locale`](#l10nset_locale), [`l10n.extract`](#l10nextract), [`l10n.check`](#l10ncheck) |
 | Services | [`services.state`](#servicesstate), [`services.test`](#servicestest) |
 | Network | [`net.host`](#nethost), [`net.join`](#netjoin), [`net.state`](#netstate), [`net.rpc`](#netrpc), [`net.close`](#netclose) |
@@ -2982,6 +2983,43 @@ Needs: `read`.
 ```json
 {"checked":13,"errors":[{"file":"music/chime.audio.json","message":"16 beats at 96 bpm last 10 s, longer than the sound's 3.34 s, so the music's beats run past its end; the sound holds 5 beats","path":"/beat_count"},{"file":"music/reef.audio.json","message":"measures -25.9 LUFS; loudness/music asks for -20 ± 3, so raise it 5.9 dB","path":""}],"warnings":[{"file":"music/soundtrack.audio.json","message":"harbor (E minor) and reef (Bb major) are 3 steps apart round the circle of fifths, and the music goes straight from one to the other; a filler clip, or a nearer key, joins them","path":"/clips/1"},{"file":"music/soundtrack.audio.json","message":"reef (Bb major) and storm (E minor) are 3 steps apart round the circle of fifths, and the music goes straight from one to the other; a filler clip, or a nearer key, joins them","path":"/clips/2"}]}
 ```
+
+## Video
+
+[Video](scene-format.md#video) a `VideoStreamPlayer` plays, made from frames. From
+[examples/captured-cutscene](../../examples/captured-cutscene/).
+
+### video.encode
+
+Codes image files as a lossy AV1 `.ivf` video with libaom (`video::encode_lossy`): key frames
+every `kf_interval` frames, which seeking starts from, and frames predicted from the ones before
+between them, so a staged scene captured with [`frame.capture`](#framecapture)'s `path` becomes
+a cutscene. Registered by slash-cli and slash-mcp (`slash::video_commands`), whose builds have
+libaom; games don't.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `frames` | array of strings | required | Image files (`.png`, `.jpg`, `.bmp`) in order, or folders ending in `/` whose images go in name order. All one size |
+| `out` | string | required | The `.ivf` file to write |
+| `fps` | integer | 30 | Frames a second, 1 to 240 |
+| `cq_level` | integer | 32 | The quantizer, 0 (finest) to 63 (smallest) |
+| `cpu_used` | integer | 6 | libaom's speed, 0 (slowest, smallest) to 9 (fastest) |
+| `kf_interval` | integer | two seconds' worth | A key frame every this many frames; 0 for the first only |
+
+Needs: `read`, `filesystem`.
+
+```json
+{"frames": ["shots/"], "out": "cutscene.ivf", "fps": 12, "kf_interval": 4}
+```
+
+```json
+{"frames":6,"key_frames":[0,4],"path":"cutscene.ivf","seconds":0.5,"size":[96,48]}
+```
+
+It returns the frames, their size, the clip's length and its key frames, not the bytes, which
+can differ a little between machines (libaom's math goes through libm). An `out` not ending in
+`.ivf` is an error at `/out`; a missing file, an image that doesn't decode, a folder with no
+images or a frame of another size is an error at its `/frames/<i>`. Nothing is written then.
 
 ## Localization
 

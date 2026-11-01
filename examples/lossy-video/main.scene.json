@@ -1,0 +1,11 @@
+{
+  "entities": {
+    "cutscene": {
+      "components": {
+        "Control": {"anchor_bottom": 1, "anchor_right": 1},
+        "VideoStreamPlayer": {"autoplay": true, "expand": true, "stream": "sunset.ivf"}
+      }
+    }
+  },
+  "format": 1
+}

@@ -41,7 +41,7 @@ Set up once per machine:
 | --- | --- |
 | Linux | `sudo apt-get install` the `LINUX_SDL_DEPS` in `.github/workflows/ci.yml`, plus `mesa-vulkan-drivers libgl1 libgles2 libegl-mesa0 libgl1-mesa-dri` for the GPU tests and `ccache clang-format-18 clang-tidy-18` |
 | macOS | Xcode's command line tools, then `brew install ninja ccache` |
-| Windows | Visual Studio 2022's C++ tools, `choco install ninja`; run everything from a Developer PowerShell (x64) |
+| Windows | Visual Studio 2022's C++ tools, `choco install ninja` and Git for Windows (libaom's build runs its Perl); run everything from a Developer PowerShell (x64) |
 | Claude Code cloud session | Nothing: `.claude/hooks/session-start.sh` installs the Linux packages, then configures `dev` with ccache, builds the tools and `slash_tests`, installs the web toolchain and, where dl.google.com is reachable, the Android SDK in the background (Wayland comes from Ubuntu's archive where gitlab.freedesktop.org is blocked). Wait for it with `flock /tmp/slash-session-setup.lock true`; it logs to `.slash/session-setup.log`. Build only the examples you need (`--target example-<folder>`): all of them take some 20 GB in a Debug build |
 
 The loop, the same everywhere (add `-DCMAKE_C_COMPILER_LAUNCHER=ccache
@@ -2008,8 +2008,16 @@ system (priority 1140, `src/video.cpp`), which plays each `VideoStreamPlayer` as
 texture, so sprites and materials show it too. `src/encoder.cpp` is the engine's own AV1
 encoder (`encode_frame`, `encode_ivf`): lossless key frames of palette blocks with symbol
 adaptation off, written in the order dav1d's parser reads them and with integer math only, so
-tests and examples make their videos in code. `examples/video-playback` plays a clip in a
-control and on a sprite.
+tests and examples make their videos in code. Lossy clips come from libaom, built for the tools
+and tests only by its own CMake as a separate project (generic C, one thread; `cmake/Dependencies.cmake`
+keeps its cache flags out of the engine's) into `slash::video_encoder`: `video::encode_lossy`
+(`src/lossy_encoder.cpp`) codes key frames every `kf_interval` frames and predicted frames
+between, whose bytes can differ a little between machines, so tests compare the pictures dav1d
+decodes rather than bytes. `video.encode` (`src/commands.cpp`, `slash::video_commands`,
+registered by slash-cli and slash-mcp) codes a project's image files, such as `frame.capture`'s
+PNGs, that way and returns no bytes. `examples/video-playback` plays a clip in a control and on
+a sprite, `examples/lossy-video` a libaom cutscene and `examples/captured-cutscene` one captured
+from a scene with `frame.capture` and `video.encode`.
 
 ## Soundtracks
 
@@ -2210,7 +2218,8 @@ CI rejects unformatted code and any clang-tidy finding.
   the input state and reading SDL's events), `l10n` (translation files, locales, plural rules,
   lookups and pseudo-localization), `audio` (sound files and streams, the mixer, buses
   and effects, players and SDL's audio output), `video` (AV1 video files, decoding with dav1d,
-  the engine's palette AV1 encoder and the system that plays `VideoStreamPlayer`s), `services` (ads, analytics, in-app
+  the engine's palette AV1 encoder, lossy encoding with libaom for the tools and the system that
+  plays `VideoStreamPlayer`s), `services` (ads, analytics, in-app
   purchases, achievements and leaderboards, their backends and the test backend), `canvas` (sprites, `.frames.json`
   animations, `.material.json` materials, `.tileset.json` tile maps, 2D lights and shadows, CPU
   particles, GPU particles' steps and drawing them), `text` (fonts, shaping, line breaking, carets and selections, and glyph atlases), `ui`

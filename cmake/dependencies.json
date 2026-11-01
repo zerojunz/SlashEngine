@@ -175,6 +175,13 @@
       "repository": "https://github.com/yhirose/cpp-httplib.git",
       "tag": "v0.58.0"
     },
+    "libaom": {
+      "license": "BSD-2-Clause",
+      "license_file": "LICENSE",
+      "license_sha256": "4764a286d8b2faeaf42f4418e7d7a28d58fc8fd4d00a3d0a7f44b0a4099de7f2",
+      "repository": "https://aomedia.googlesource.com/aom",
+      "tag": "v3.15.2"
+    },
     "libebur128": {
       "license": "MIT AND BSD-3-Clause",
       "license_file": "COPYING",
