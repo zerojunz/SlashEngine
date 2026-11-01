@@ -248,7 +248,8 @@ bool is_control(const world::World& world, entt::entity entity) {
     return world.valid(entity) &&
            (world.ecs()
                 .any_of<world::Control, world::Label, world::ColorRect, world::Panel,
-                        world::TextureRect, world::NinePatchRect, world::ProgressBar>(entity) ||
+                        world::TextureRect, world::NinePatchRect, world::ProgressBar,
+                        world::VideoStreamPlayer>(entity) ||
             world.ecs()
                 .any_of<world::Button, world::CheckBox, world::CheckButton, world::OptionButton,
                         world::MenuButton, world::TextureButton, world::LineEdit, world::TextEdit,
@@ -303,6 +304,9 @@ std::vector<std::string_view> control_classes(const world::World& world, entt::e
     }
     if (ecs.all_of<world::NinePatchRect>(entity)) {
         classes.emplace_back("NinePatchRect");
+    }
+    if (ecs.all_of<world::VideoStreamPlayer>(entity)) {
+        classes.emplace_back("VideoStreamPlayer");
     }
     if (ecs.all_of<world::ProgressBar>(entity)) {
         classes.emplace_back("ProgressBar");

@@ -1992,6 +1992,25 @@ around a listener, `examples/audio-areas-and-analysis` a bat in a cave's reverb,
 by its spectrum and recorded, `examples/interactive-music` a score that follows a fight and
 `examples/surround-sound` a bee flying round a listener in 7.1.
 
+## Video
+
+`engine/video` is video playback, as Godot's `VideoStreamPlayer`, with AV1 in place of Theora:
+`.ivf` files of AV1 temporal units (`read_ivf`, `src/ivf.cpp`, which marks key frames from the
+OBU headers) load as `video::VideoFile` assets, and `video::Decoder` (`src/decoder.cpp`) decodes
+a frame with dav1d, built from its C files with no assembly and one thread
+(`cmake/Dependencies.cmake`), going on from the frame before or from the key frame before a
+seek; `to_rgba` (`src/convert.cpp`) turns its YUV into RGBA8 with integer math by the sequence
+header's matrix and range. `video::install` (called by `canvas::install`) adds the `video`
+system (priority 1140, `src/video.cpp`), which plays each `VideoStreamPlayer` as Godot's
+`NOTIFICATION_INTERNAL_PROCESS` and keeps each player's decoder and frame by entity ID
+(`video::shown`). `ui::layout` sizes and draws a player as a control, and the texture path
+`video:<id>` (`video::kTexturePrefix`) is that player's frame wherever `CanvasRenderer` takes a
+texture, so sprites and materials show it too. `src/encoder.cpp` is the engine's own AV1
+encoder (`encode_frame`, `encode_ivf`): lossless key frames of palette blocks with symbol
+adaptation off, written in the order dav1d's parser reads them and with integer math only, so
+tests and examples make their videos in code. `examples/video-playback` plays a clip in a
+control and on a sprite.
+
 ## Soundtracks
 
 `engine/soundtrack` turns music into text agents read and write. The storyboard's
@@ -2190,7 +2209,8 @@ CI rejects unformatted code and any clang-tidy finding.
   `world` (EnTT world, components, scenes and prefabs, 2D and 3D trees), `input` (input events, action maps,
   the input state and reading SDL's events), `l10n` (translation files, locales, plural rules,
   lookups and pseudo-localization), `audio` (sound files and streams, the mixer, buses
-  and effects, players and SDL's audio output), `services` (ads, analytics, in-app
+  and effects, players and SDL's audio output), `video` (AV1 video files, decoding with dav1d,
+  the engine's palette AV1 encoder and the system that plays `VideoStreamPlayer`s), `services` (ads, analytics, in-app
   purchases, achievements and leaderboards, their backends and the test backend), `canvas` (sprites, `.frames.json`
   animations, `.material.json` materials, `.tileset.json` tile maps, 2D lights and shadows, CPU
   particles, GPU particles' steps and drawing them), `text` (fonts, shaping, line breaking, carets and selections, and glyph atlases), `ui`

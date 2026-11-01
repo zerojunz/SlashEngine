@@ -299,6 +299,90 @@ if(NOT EMSCRIPTEN)
     endif()
 endif()
 
+# AV1 video, decoded by dav1d (engine/video) on every platform. Its own build is Meson's, so its
+# C files are built here, without assembly so frames come out the same everywhere (dav1d is
+# bit exact either way), with the config.h its Meson build would write: 8- and 16-bit pixels,
+# no logging, one decoding thread unless asked.
+slash_add_dependency(dav1d DOWNLOAD_ONLY TRUE)
+if(dav1d_ADDED)
+    set(_slash_dav1d_config ${CMAKE_BINARY_DIR}/dav1d-config)
+    set(_slash_dav1d_defines
+        ARCH_AARCH64=0 ARCH_ARM=0 ARCH_LOONGARCH=0 ARCH_LOONGARCH32=0 ARCH_LOONGARCH64=0
+        ARCH_PPC64LE=0 ARCH_RISCV=0 ARCH_RV32=0 ARCH_RV64=0 ARCH_X86=0 ARCH_X86_32=0
+        ARCH_X86_64=0 CONFIG_16BPC=1 CONFIG_8BPC=1 CONFIG_LOG=0 CONFIG_MACOS_KPERF=0
+        ENDIANNESS_BIG=0 HAVE_ASM=0 HAVE_C11_GENERIC=0 HAVE_DLSYM=0 HAVE_ELF_AUX_INFO=0
+        HAVE_GETAUXVAL=0 HAVE_MEMALIGN=0 HAVE_PTHREAD_GETAFFINITY_NP=0 HAVE_PTHREAD_NP_H=0
+        HAVE_PTHREAD_SETAFFINITY_NP=0 HAVE_PTHREAD_SETNAME_NP=0 HAVE_PTHREAD_SET_NAME_NP=0
+        HAVE_SYS_TYPES_H=1 TRIM_DSP_FUNCTIONS=0)
+    if(WIN32)
+        list(APPEND _slash_dav1d_defines HAVE_ALIGNED_ALLOC=0 HAVE_CLOCK_GETTIME=0 HAVE_IO_H=1
+            HAVE_POSIX_MEMALIGN=0 HAVE_UNISTD_H=0 _WIN32_WINNT=0x0601 UNICODE=1 _UNICODE=1
+            _CRT_DECLARE_NONSTDC_NAMES=1 __USE_MINGW_ANSI_STDIO=1)
+    else()
+        list(APPEND _slash_dav1d_defines HAVE_ALIGNED_ALLOC=0 HAVE_CLOCK_GETTIME=1 HAVE_IO_H=0
+            HAVE_POSIX_MEMALIGN=1 HAVE_UNISTD_H=1)
+    endif()
+    set(_slash_dav1d_config_h "/* Written by cmake/Dependencies.cmake, as dav1d's Meson build would. */\n#pragma once\n")
+    foreach(define IN LISTS _slash_dav1d_defines)
+        string(REPLACE "=" " " define "${define}")
+        string(APPEND _slash_dav1d_config_h "#define ${define}\n")
+    endforeach()
+    file(WRITE ${_slash_dav1d_config}/config.h.new "${_slash_dav1d_config_h}")
+    file(WRITE ${_slash_dav1d_config}/vcs_version.h.new
+        "/* auto-generated, do not edit */\n#define DAV1D_VERSION \"1.5.3\"\n")
+    foreach(header IN ITEMS config.h vcs_version.h)
+        file(COPY_FILE ${_slash_dav1d_config}/${header}.new ${_slash_dav1d_config}/${header}
+            ONLY_IF_DIFFERENT)
+    endforeach()
+
+    set(_slash_dav1d_sources cdf.c cpu.c ctx.c data.c decode.c dequant_tables.c getbits.c
+        intra_edge.c itx_1d.c lf_mask.c lib.c log.c mem.c msac.c obu.c pal.c picture.c qm.c ref.c
+        refmvs.c scan.c tables.c thread_task.c warpmv.c wedge.c)
+    if(WIN32)
+        list(APPEND _slash_dav1d_sources win32/thread.c)
+    endif()
+    set(_slash_dav1d_bitdepth_sources cdef_apply_tmpl.c cdef_tmpl.c fg_apply_tmpl.c
+        filmgrain_tmpl.c ipred_prepare_tmpl.c ipred_tmpl.c itx_tmpl.c lf_apply_tmpl.c
+        loopfilter_tmpl.c looprestoration_tmpl.c lr_apply_tmpl.c mc_tmpl.c recon_tmpl.c)
+    list(TRANSFORM _slash_dav1d_sources PREPEND ${dav1d_SOURCE_DIR}/src/)
+    list(TRANSFORM _slash_dav1d_bitdepth_sources PREPEND ${dav1d_SOURCE_DIR}/src/)
+    set(_slash_dav1d_includes ${_slash_dav1d_config} ${dav1d_SOURCE_DIR}
+        ${dav1d_SOURCE_DIR}/include ${dav1d_SOURCE_DIR}/include/dav1d)
+    if(MSVC)
+        # MSVC's C has no <stdatomic.h>; dav1d carries one over its intrinsics.
+        list(APPEND _slash_dav1d_includes ${dav1d_SOURCE_DIR}/include/compat/msvc)
+    endif()
+    add_library(slash_dav1d STATIC ${_slash_dav1d_sources})
+    foreach(bitdepth IN ITEMS 8 16)
+        # The templates once for each pixel size, as dav1d's build compiles them.
+        add_library(slash_dav1d_${bitdepth} OBJECT ${_slash_dav1d_bitdepth_sources})
+        target_compile_definitions(slash_dav1d_${bitdepth} PRIVATE BITDEPTH=${bitdepth})
+        target_include_directories(slash_dav1d_${bitdepth} PRIVATE ${_slash_dav1d_includes})
+        target_sources(slash_dav1d PRIVATE $<TARGET_OBJECTS:slash_dav1d_${bitdepth}>)
+        set_target_properties(slash_dav1d_${bitdepth} PROPERTIES C_STANDARD 99
+            POSITION_INDEPENDENT_CODE ON)
+        if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR ANDROID OR EMSCRIPTEN)
+            target_compile_definitions(slash_dav1d_${bitdepth} PRIVATE _GNU_SOURCE)
+        endif()
+    endforeach()
+    target_include_directories(slash_dav1d PRIVATE ${_slash_dav1d_includes})
+    target_include_directories(slash_dav1d SYSTEM PUBLIC ${dav1d_SOURCE_DIR}/include)
+    set_target_properties(slash_dav1d PROPERTIES C_STANDARD 99 POSITION_INDEPENDENT_CODE ON)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR ANDROID OR EMSCRIPTEN)
+        target_compile_definitions(slash_dav1d PRIVATE _GNU_SOURCE)
+    endif()
+    if(NOT WIN32 AND NOT EMSCRIPTEN)
+        find_package(Threads REQUIRED)
+        target_link_libraries(slash_dav1d PRIVATE Threads::Threads)
+    endif()
+    if(NOT MSVC)
+        target_compile_options(slash_dav1d PRIVATE -w)
+        foreach(bitdepth IN ITEMS 8 16)
+            target_compile_options(slash_dav1d_${bitdepth} PRIVATE -w)
+        endforeach()
+    endif()
+endif()
+
 # 3D models, as Godot imports glTF 2.0: cgltf parses .gltf and .glb files and MikkTSpace makes
 # the tangents a model leaves out, as Godot's SurfaceTool does (engine/scene3d); stb_image decodes
 # the JPEG textures models carry, which SDL can't (engine/render, beside PNG and BMP).
