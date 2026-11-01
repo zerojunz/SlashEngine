@@ -3660,4 +3660,45 @@ SLASH_COMPONENT(ScrollContainer, follow_focus, draw_focus_border, scroll_horizon
                 horizontal_scroll_mode, vertical_scroll_mode, scroll_horizontal_by_default,
                 scroll_deadzone)
 
+// A property a MultiplayerSynchronizer replicates, as an entry of Godot's
+// SceneReplicationConfig.
+struct ReplicationProperty {
+    // "Component/field", or part of one ("Transform2D/position/x"), on the synchronizer's root.
+    std::string path;
+    bool spawn = true; // sent with the entity when a MultiplayerSpawner spawns it
+    // "never", "always" (in every sync, unreliably) or "on_change" (reliably, when it changes).
+    std::string replication_mode = "always";
+
+    friend bool operator==(const ReplicationProperty&, const ReplicationProperty&) = default;
+};
+SLASH_REFLECT(ReplicationProperty, path, spawn, replication_mode)
+
+// Spawns, on every peer, the entities its multiplayer authority places under spawn_path that
+// extend one of its spawnable scenes, and despawns them when they go, as Godot's
+// MultiplayerSpawner.
+struct MultiplayerSpawner {
+    std::vector<std::string> spawnable_scenes;
+    entt::entity spawn_path{entt::null}; // the entity whose Transform2D or 3D children it watches
+    int spawn_limit = 0;                 // 0 for none
+
+    friend bool operator==(const MultiplayerSpawner&, const MultiplayerSpawner&) = default;
+};
+SLASH_COMPONENT(MultiplayerSpawner, spawnable_scenes, spawn_path, spawn_limit)
+
+// Replicates its root entity's properties from its multiplayer authority to the other peers, as
+// Godot's MultiplayerSynchronizer.
+struct MultiplayerSynchronizer {
+    entt::entity root_path{entt::null}; // the entity it replicates; null for its own
+    double replication_interval = 0.0;  // seconds between syncs; 0 for every tick
+    double delta_interval = 0.0;        // seconds between looks for changes; 0 for every tick
+    bool public_visibility = true;
+    std::string visibility_update_mode = "idle"; // "idle", "physics" or "none"
+    std::vector<ReplicationProperty> properties;
+
+    friend bool operator==(const MultiplayerSynchronizer&,
+                           const MultiplayerSynchronizer&) = default;
+};
+SLASH_COMPONENT(MultiplayerSynchronizer, root_path, replication_interval, delta_interval,
+                public_visibility, visibility_update_mode, properties)
+
 } // namespace slash::world

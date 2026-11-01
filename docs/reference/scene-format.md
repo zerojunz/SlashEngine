@@ -577,6 +577,15 @@ A reference must name an entity that exists in the same scene.
 | | `panning_strength` | `float` | `1` | Times the project's `audio.panning_strength_2d`; 0 for no panning |
 | | `area_mask` | `int` | `1` | `Area2D` layers, as bits, whose `audio_bus_override` changes its bus while it is inside one; 0 ignores areas |
 | `AudioListener2D` | `current` | `bool` | `false` | Hear `AudioStreamPlayer2D` sounds from this entity's `Transform2D`, turned with it. The first current one by ID is used; with none, the middle of the viewport |
+| `MultiplayerSpawner` | `spawnable_scenes` | Array of strings | `[]` | Prefab or scene files whose instances it [spawns](networking.md#replication) on every peer |
+| | `spawn_path` | Entity reference | `null` | The entity whose `Transform2D` or `Transform3D` children it spawns and despawns |
+| | `spawn_limit` | `int` | `0` | How many it may have spawned at once; 0 for no limit |
+| `MultiplayerSynchronizer` | `root_path` | Entity reference | `null` | The entity whose properties it [replicates](networking.md#replication); null for its own |
+| | `replication_interval` | `double` | `0` | Seconds of world time between syncs of its `"always"` properties; 0 for every tick |
+| | `delta_interval` | `double` | `0` | Seconds of world time between looks for changes to its `"on_change"` properties; 0 for every tick |
+| | `public_visibility` | `bool` | `true` | Visible to every peer, not only those set visible in code |
+| | `visibility_update_mode` | `std::string` | `"idle"` | When visibility filters are checked again: `"idle"` (each tick), `"physics"` (after physics) or `"none"` |
+| | `properties` | Array of objects | `[]` | Each `{"path": "Component/field", "spawn": true, "replication_mode": "always"}`; `replication_mode` is `"never"`, `"always"` or `"on_change"` |
 
 `engine.describe` lists every registered component with its defaults, including ones a game adds.
 
