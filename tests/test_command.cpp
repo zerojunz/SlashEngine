@@ -1304,7 +1304,7 @@ TEST_CASE("engine.describe lists systems in the order they run") {
         parse(
             R"(["input", "multiplayer", "gui", "services", "controls", "movement", "animation_player",
                     "animation_tree", "skeleton_modifiers", "path_follow", "physics2d", "physics3d", "multiplayer_visibility", "navigation", "animated_sprite_2d",
-                    "camera_2d", "parallax_2d", "cpu_particles_2d", "cpu_particles_3d", "gpu_particles_2d", "gpu_particles_3d", "ai", "audio"])"));
+                    "camera_2d", "parallax_2d", "cpu_particles_2d", "cpu_particles_3d", "gpu_particles_2d", "gpu_particles_3d", "video", "ai", "audio"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
         {"name": "input", "doc": "Applies the input events queued since the last tick.",
          "priority": -1000},
@@ -1371,6 +1371,9 @@ TEST_CASE("engine.describe lists systems in the order they run") {
                    "GPUParticlesCollisionHeightField3D", "Camera3D", "MeshInstance3D", "GridMap",
                    "HTerrain", "csg"],
          "writes": ["GPUParticles3D", "Transform3D", "assets"]},
+        {"name": "video",
+         "doc": "Plays each VideoStreamPlayer and decodes the frame it shows.",
+         "priority": 1140},
         {"name": "ai",
          "doc": "Hands each finished reply from a language model to the game as an ai_reply or ai_failed event.",
          "priority": 1150},

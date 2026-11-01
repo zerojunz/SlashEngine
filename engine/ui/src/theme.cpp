@@ -20,7 +20,7 @@ namespace slash::ui {
 namespace {
 
 // Each control type and the type it is built on, as Godot's classes.
-constexpr std::array<std::pair<std::string_view, std::string_view>, 39> kTypes{{
+constexpr std::array<std::pair<std::string_view, std::string_view>, 40> kTypes{{
     {"Control", ""},
     {"Label", "Control"},
     {"TooltipLabel", "Label"},
@@ -38,6 +38,7 @@ constexpr std::array<std::pair<std::string_view, std::string_view>, 39> kTypes{{
     {"Panel", "Control"},
     {"TextureRect", "Control"},
     {"NinePatchRect", "Control"},
+    {"VideoStreamPlayer", "Control"},
     {"Range", "Control"},
     {"ProgressBar", "Range"},
     {"Slider", "Range"},
