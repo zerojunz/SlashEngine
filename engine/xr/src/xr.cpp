@@ -715,6 +715,20 @@ world::Affine3D adjusted_transform(const world::World& world, const Pose& pose) 
     return reference_frame(world) * adjusted;
 }
 
+std::vector<View> views(const world::World& world) {
+    std::vector<View> out;
+    const Interface* primary = primary_interface(world);
+    if (primary == nullptr || !primary->is_initialized()) {
+        return out;
+    }
+    const world::Affine3D origin = world_origin(world);
+    for (std::uint32_t view = 0; view < primary->view_count(); ++view) {
+        out.push_back({.transform = primary->transform_for_view(world, view, origin),
+                       .fov = primary->fov_for_view(view)});
+    }
+    return out;
+}
+
 std::optional<NodeBinding> binding(const world::World& world, entt::entity node) {
     if (!world.valid(node)) {
         return std::nullopt;
@@ -914,6 +928,9 @@ json::Value state_json(const world::World& world, const std::vector<std::string>
                 entry["play_area"] = std::move(area);
             }
             entry["environment_blend_mode"] = blend_mode_name(interface->environment_blend_mode());
+            entry["view_count"] = static_cast<std::int64_t>(interface->view_count());
+            const Vec2i target = interface->render_target_size();
+            entry["render_target_size"] = json::Array{target.x, target.y};
         }
         listed.push_back(std::move(entry));
     }

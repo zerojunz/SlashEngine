@@ -973,6 +973,11 @@ struct Scene3D {
 // Godot's Projection::set_perspective, with reversed depth: fov_y degrees across the target's
 // height, aspect its width over its height, from near to far.
 [[nodiscard]] std::array<float, 16> perspective(float fov_y, float aspect, float near, float far);
+// An off-center perspective with reversed depth, as an XR runtime gives each eye (OpenXR's XrFovf,
+// which Godot's OpenXR module makes a projection of): the tangents of the angles from the view's
+// center to its left, right, bottom and top edges, left and bottom below zero.
+[[nodiscard]] std::array<float, 16> frustum(float tan_left, float tan_right, float tan_down,
+                                            float tan_up, float near, float far);
 // Godot's Projection::set_orthogonal, with reversed depth: size across the target's height.
 [[nodiscard]] std::array<float, 16> orthogonal(float size, float aspect, float near, float far);
 // The world to the space of a camera at eye looking at target, with up as near its up as it can

@@ -181,6 +181,9 @@ struct CanvasOptions {
     // Path trace the 3D world (render::Scene3D::path_trace), with every mesh at its own LOD,
     // none hidden by occluders, and neither TAA nor FSR 2.
     std::optional<render::PathTrace3D> path_trace{}; // NOLINT(readability-redundant-member-init)
+    // Sees the 3D world through this view instead of the current camera's, as a headset's eye
+    // (scene3d::Renderer::set_view).
+    std::optional<scene3d::CameraView> view3d{}; // NOLINT(readability-redundant-member-init)
     // Another world whose controls draw over everything, laid out in the same viewport with
     // this world's fonts, such as the debug overlay's.
     const world::World* overlay = nullptr;
@@ -524,6 +527,10 @@ struct CaptureOptions {
     // Path trace the 3D world (CanvasOptions::path_trace), each frame adding its samples to the
     // samples of the captures before it while the world looks the same.
     std::optional<render::PathTrace3D> path_trace{}; // NOLINT(readability-redundant-member-init)
+    // Draws a viewport this size instead of ui::settings', as a headset's render target.
+    std::optional<Vec2> viewport{}; // NOLINT(readability-redundant-member-init)
+    // As CanvasOptions::view3d.
+    std::optional<scene3d::CameraView> view3d{}; // NOLINT(readability-redundant-member-init)
 };
 
 struct Capture {
