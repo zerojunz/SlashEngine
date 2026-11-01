@@ -22,9 +22,10 @@ if(EMSCRIPTEN)
         test_ssr.cpp
         test_taa.cpp
         test_upscaler.cpp
-        test_volumetric_fog.cpp)
+        test_volumetric_fog.cpp
+        test_websocket_web.cpp)
     target_link_libraries(slash_web_tests PRIVATE slash::core slash::platform slash::render
-        doctest::doctest SDL3::SDL3-static)
+        slash::net doctest::doctest SDL3::SDL3-static)
     target_compile_definitions(slash_web_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS
         SLASH_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
     slash_target_warnings(slash_web_tests)
@@ -107,6 +108,7 @@ add_executable(slash_tests
     test_model.cpp
     test_multiplayer.cpp
     test_replication.cpp
+    test_websocket.cpp
     test_navigation.cpp
     test_net.cpp
     test_occlusion.cpp

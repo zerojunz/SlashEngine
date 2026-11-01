@@ -7,12 +7,13 @@ Transports are kinds of peer, so code written against `net::Peer` runs over any 
 | Peer | Godot's | Where |
 | --- | --- | --- |
 | `net::ENetPeer` | `ENetMultiplayerPeer` | Reliable UDP over [ENet](https://github.com/lsalzman/enet): macOS, Windows, Linux, iOS and Android. Not on the web, whose browsers have no UDP sockets. IPv4 only |
+| `net::WebSocketMultiplayerPeer` | `WebSocketMultiplayerPeer` | Messages over WebSocket, reliable and in order: servers and clients on every platform but the web, where games join as clients through the browser's WebSocket |
 | `net::OfflinePeer` | `OfflineMultiplayerPeer` | A server with no one else, always connected: a game played alone runs the same code it runs online |
 
 A world's multiplayer runs on a peer: it admits the peers that join, tells clients about each
 other through the server, relays their packets and calls remote procedures on entities, as
-Godot's `SceneMultiplayer`. Replication, WebSocket and commands are next on the
-[roadmap](../roadmap.md).
+Godot's `SceneMultiplayer`, and replicates entities and their fields. Commands that host, join
+and inspect a game's network are next on the [roadmap](../roadmap.md).
 
 ## Peers
 
@@ -80,6 +81,52 @@ the web.
 
 [`examples/enet-peers`](../../examples/enet-peers/) runs a server and three clients on one
 machine.
+
+## WebSocket
+
+```cpp
+#include "slash/net/websocket.hpp"
+
+auto server = std::make_shared<net::WebSocketMultiplayerPeer>();
+(void)server->create_server(9080);                         // every platform but the web
+
+auto client = std::make_shared<net::WebSocketMultiplayerPeer>();
+(void)client->create_client("ws://game.example.com:9080/play"); // the web too
+```
+
+`WebSocketMultiplayerPeer` is Godot's: a server listens on a TCP port (`create_server(port,
+bind_address = "*")`; port 0 picks a free one, which `local_port()` reports) and gives each
+client that finishes its handshake an ID in a first binary message of four bytes; a client
+counts as connected, and hears peer 1 connect, once that arrives. Every packet travels
+reliably and in order on channel 0, whatever transfer mode it asks for, and clients reach each
+other through the server's relay. A client that doesn't finish its handshake within
+`set_handshake_timeout` seconds (3) is dropped. `peer(id)` gives a connected peer's
+`WebSocketPeer`.
+
+`net::WebSocketPeer` is one connection, as Godot's `WebSocketPeer`, for games that talk to a
+WebSocket service of their own: `connect_to_url(url)`, then `poll()` once a tick, `ready_state()`
+(`Connecting`, `Open`, `Closing`, `Closed`), `send_text` and `put_packet` (binary), and
+`get_packet` with `was_string_packet()` to tell text from bytes. `close(code, reason)` starts a
+clean close, which `close_code()` and `close_reason()` report once the other side answers (-1
+and `""` after one that wasn't clean). Settings are taken when a connection starts, on a peer or
+on a multiplayer peer for each of its connections:
+
+| Setting | Default | Means |
+| --- | --- | --- |
+| `set_supported_protocols` | none | Subprotocols this side speaks. A server that lists some refuses a client that shares none of them; a client gets the one the server picked in `selected_protocol()` |
+| `set_handshake_headers` | none | Extra `Name: value` lines in a client's handshake (not on the web, whose browsers send their own) |
+| `set_inbound_buffer_size` | 65535 | The largest message taken in, in bytes; a bigger one closes the connection with code 1009 |
+| `set_outbound_buffer_size` | 65535 | Bytes that may wait to be sent; a send past them fails |
+| `set_max_queued_packets` | 4096 | Messages that may wait in either direction |
+| `set_heartbeat_interval` | 0 | Seconds between pings; a ping unanswered by the next closes the connection (not on the web) |
+
+Natively, connections are `ws://` over TCP with [wslay](https://github.com/tatsuhiro-t/wslay)'s
+framing, on the sockets ENet brings, and IPv4 only; `wss://` URLs are refused for now. On the
+web, the browser's WebSocket connects to `ws://` and `wss://` URLs alike, and
+`net::websocket_server_supported()` is false.
+
+[`examples/websocket-peers`](../../examples/websocket-peers/) runs a server and two clients over
+WebSocket, and a world's remote calls through them.
 
 ## A world's multiplayer
 
