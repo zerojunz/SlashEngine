@@ -1,0 +1,14 @@
+sunset: 48 frames of 128x72, 24 a second
+video::encode_ivf, the palette encoder: every frame a lossless key frame
+video::encode_lossy, libaom at cq_level 28, kf_interval 24:
+  48 frames, key frames at 0, 24
+  under a tenth of the palette clip's size: yes
+  every frame within 3 levels of its source on average: yes
+tick 1: autoplay starts the cutscene
+  position 0.00 s, playing, frame 0 shown, looks like its source: yes
+12 ticks on, frames predicted from the key frame
+  position 0.60 s, playing, frame 14 shown, looks like its source: yes
+paused and seeked to 1.5 s: decoded on from the key frame at 1 s
+  position 1.50 s, playing, frame 36 shown, looks like its source: yes
+12 ticks later: past its 2 s, it stops on the last frame
+  position 2.00 s, stopped, frame 47 shown, looks like its source: yes

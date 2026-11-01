@@ -667,6 +667,76 @@ if((SLASH_BUILD_TOOLS OR SLASH_BUILD_TESTS) AND NOT EMSCRIPTEN)
             target_link_libraries(slash_vorbis PRIVATE m)
         endif()
     endif()
+
+    # Lossy AV1 video (slash::video_encoder): libaom's encoder, for the tools and tests to make
+    # clips the engine's own palette encoder can't. Games only decode, with dav1d. libaom's own
+    # CMake writes its compiler flags into the cache, where every other target would get them,
+    # so it builds as a project of its own, from a custom command: generic C (no assembly, so no NASM), one thread, 8-bit,
+    # without its decoder, apps, examples or tests, and optimized even in Debug builds, with the C
+    # runtime the rest of the build links. It needs Perl, which Git for Windows carries.
+    slash_add_dependency(libaom DOWNLOAD_ONLY TRUE)
+    if(libaom_ADDED)
+        find_program(PERL_EXECUTABLE perl PATHS "$ENV{ProgramFiles}/Git/usr/bin")
+        if(NOT PERL_EXECUTABLE)
+            message(FATAL_ERROR "libaom's build needs Perl: install it, or Git for Windows")
+        endif()
+        set(_slash_aom_build ${CMAKE_BINARY_DIR}/_deps/libaom-build)
+        set(_slash_aom_library
+            ${_slash_aom_build}/${CMAKE_STATIC_LIBRARY_PREFIX}aom${CMAKE_STATIC_LIBRARY_SUFFIX})
+        set(_slash_aom_args
+            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+            -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+            -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
+            -DPERL_EXECUTABLE=${PERL_EXECUTABLE}
+            -DAOM_TARGET_CPU=generic
+            -DCONFIG_AV1_DECODER=0
+            -DCONFIG_AV1_HIGHBITDEPTH=0
+            -DCONFIG_LIBYUV=0
+            -DCONFIG_MULTITHREAD=0
+            -DCONFIG_PIC=1
+            -DCONFIG_RUNTIME_CPU_DETECT=0
+            -DCONFIG_WEBM_IO=0
+            -DENABLE_APPS=0
+            -DENABLE_DOCS=0
+            -DENABLE_EXAMPLES=0
+            -DENABLE_TESTDATA=0
+            -DENABLE_TESTS=0
+            -DENABLE_TOOLS=0)
+        foreach(_slash_var IN ITEMS CMAKE_C_COMPILER_LAUNCHER CMAKE_CXX_COMPILER_LAUNCHER
+                CMAKE_OSX_ARCHITECTURES CMAKE_OSX_DEPLOYMENT_TARGET CMAKE_OSX_SYSROOT)
+            if(${_slash_var})
+                list(APPEND _slash_aom_args "-D${_slash_var}=${${_slash_var}}")
+            endif()
+        endforeach()
+        if(MSVC)
+            if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+                list(APPEND _slash_aom_args -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDebugDLL)
+            else()
+                list(APPEND _slash_aom_args -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL)
+            endif()
+        else()
+            # No fused multiply-adds, which arm64 compilers would emit and x86-64 ones not.
+            list(APPEND _slash_aom_args -DCMAKE_C_FLAGS=-ffp-contract=off
+                -DCMAKE_CXX_FLAGS=-ffp-contract=off)
+        endif()
+        # Configured and built when its library is first needed, and again when these settings
+        # (and so the command) change. Not ExternalProject: nothing is downloaded here.
+        add_custom_command(OUTPUT ${_slash_aom_library}
+            COMMAND ${CMAKE_COMMAND} -G ${CMAKE_GENERATOR} -S ${libaom_SOURCE_DIR}
+                -B ${_slash_aom_build} ${_slash_aom_args}
+            COMMAND ${CMAKE_COMMAND} --build ${_slash_aom_build} --target aom
+            COMMENT "Building libaom"
+            VERBATIM)
+        add_custom_target(slash_aom_build DEPENDS ${_slash_aom_library})
+        add_library(slash_aom STATIC IMPORTED GLOBAL)
+        set_target_properties(slash_aom PROPERTIES IMPORTED_LOCATION ${_slash_aom_library})
+        target_include_directories(slash_aom SYSTEM INTERFACE ${libaom_SOURCE_DIR})
+        if(UNIX AND NOT APPLE)
+            target_link_libraries(slash_aom INTERFACE m)
+        endif()
+        add_dependencies(slash_aom slash_aom_build)
+    endif()
 endif()
 
 # Linux exports build SDL's Wayland support against the glibc 2.31 sysroot's Wayland 1.18, whose

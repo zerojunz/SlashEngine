@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "main_scene": "main.scene.json",
+  "name": "Lossy video",
+  "rendering": {"clear_color": [0, 0, 0, 1]},
+  "version": "1.0.0",
+  "window": {"height": 72, "width": 128}
+}

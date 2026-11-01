@@ -1,6 +1,9 @@
 #include "slash/command/builtin.hpp"
 #include "slash/command/session.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/render/image.hpp"
+#include "slash/video/commands.hpp"
+#include "slash/video/lossy_encoder.hpp"
 #include "slash/video/video.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
@@ -139,6 +142,134 @@ TEST_CASE("video: the palette encoder's frames decode with dav1d") {
 
 namespace {
 
+// A clip that palettes can't keep: a sky gradient that brightens, with a ball rolling across.
+std::vector<render::Image> rolling_ball(std::size_t count) {
+    std::vector<render::Image> frames;
+    for (std::size_t i = 0; i < count; ++i) {
+        const int ball_x = 12 + static_cast<int>(i * 3);
+        frames.push_back(image_of(96, 64, [i, ball_x](std::uint32_t x, std::uint32_t y) {
+            const int dx = static_cast<int>(x) - ball_x;
+            const int dy = static_cast<int>(y) - 40;
+            if ((dx * dx) + (dy * dy) <= 100) {
+                return std::array<std::uint8_t, 3>{static_cast<std::uint8_t>(220 - (dy * 4)),
+                                                   static_cast<std::uint8_t>(60),
+                                                   static_cast<std::uint8_t>(40 + (dx * 3) + 30)};
+            }
+            return std::array<std::uint8_t, 3>{static_cast<std::uint8_t>(40 + (i * 2) + x),
+                                               static_cast<std::uint8_t>(90 + y + i),
+                                               static_cast<std::uint8_t>(200 - y)};
+        }));
+    }
+    return frames;
+}
+
+} // namespace
+
+TEST_CASE("video: libaom's lossy clips decode with dav1d in order and after seeks") {
+    const std::vector<render::Image> frames = rolling_ball(24);
+    video::LossyOptions options;
+    options.cq_level = 20;
+    options.kf_interval = 8;
+    const auto bytes = video::encode_lossy(frames, 24, 1, options);
+    if (!bytes) {
+        FAIL(bytes.error().message);
+    }
+    const auto file = video::read_ivf(bytes.value());
+    REQUIRE(file);
+    CHECK(file.value().width == 96);
+    CHECK(file.value().height == 64);
+    REQUIRE(file.value().frames.size() == 24);
+    // Key frames where kf_interval puts them, and frames predicted from them between.
+    for (std::size_t i = 0; i < 24; ++i) {
+        CAPTURE(i);
+        CHECK(file.value().frames[i].key == (i % 8 == 0));
+    }
+    // Far smaller than the palette encoder's key frames of the same clip.
+    const auto palette = video::encode_ivf(frames, 24);
+    REQUIRE(palette);
+    CHECK(bytes.value().size() * 4 < palette.value().size());
+
+    // Each frame close to what 4:2:0 keeps of it.
+    video::Decoder decoder;
+    std::vector<render::Image> in_order(24);
+    for (std::size_t i = 0; i < 24; ++i) {
+        CAPTURE(i);
+        const auto decoded = decoder.decode(file.value(), i, in_order[i]);
+        if (!decoded) {
+            FAIL(decoded.error().message);
+        }
+        CHECK(mean_difference(through_yuv(frames[i]), in_order[i]) <= 150);
+        CHECK(largest_difference(through_yuv(frames[i]), in_order[i]) <= 48);
+    }
+    // Seeking back, and on past a key frame, decodes from the key frame before: the same pixels.
+    for (const std::size_t index : {std::size_t{5}, std::size_t{21}, std::size_t{9},
+                                    std::size_t{10}, std::size_t{0}, std::size_t{23}}) {
+        CAPTURE(index);
+        video::Decoder seeking;
+        render::Image out;
+        REQUIRE(decoder.decode(file.value(), index, out));
+        CHECK(out.pixels == in_order[index].pixels);
+        REQUIRE(seeking.decode(file.value(), index, out));
+        CHECK(out.pixels == in_order[index].pixels);
+    }
+}
+
+TEST_CASE("video: libaom's settings and their errors") {
+    const std::vector<render::Image> frames = rolling_ball(6);
+    // With no interval only the first frame is a key frame.
+    video::LossyOptions once;
+    once.kf_interval = 0;
+    once.cpu_used = 9;
+    const auto bytes = video::encode_lossy(frames, 30, 1, once);
+    REQUIRE(bytes);
+    const auto file = video::read_ivf(bytes.value());
+    REQUIRE(file);
+    REQUIRE(file.value().frames.size() == 6);
+    CHECK(file.value().frames[0].key);
+    for (std::size_t i = 1; i < 6; ++i) {
+        CHECK_FALSE(file.value().frames[i].key);
+    }
+    // A finer quantizer costs more bytes.
+    video::LossyOptions fine = once;
+    fine.cq_level = 4;
+    const auto finer = video::encode_lossy(frames, 30, 1, fine);
+    REQUIRE(finer);
+    CHECK(finer.value().size() > bytes.value().size());
+
+    video::LossyOptions bad;
+    bad.cq_level = 64;
+    const auto quantizer = video::encode_lossy(frames, 30, 1, bad);
+    REQUIRE_FALSE(quantizer);
+    CHECK(quantizer.error().message == "cq_level must be 0 to 63, not 64");
+    bad = {};
+    bad.cpu_used = -1;
+    CHECK(video::encode_lossy(frames, 30, 1, bad).error().message ==
+          "cpu_used must be 0 to 9, not -1");
+    CHECK(video::encode_lossy({}, 30).error().message == "a video needs at least one frame");
+    std::vector<render::Image> mixed = frames;
+    mixed.push_back(image_of(
+        32, 32, [](std::uint32_t, std::uint32_t) { return std::array<std::uint8_t, 3>{0, 0, 0}; }));
+    CHECK(video::encode_lossy(mixed, 30).error().message ==
+          "frame 6 is 32x32, not 96x64 as the first is");
+    // Any size, odd ones included, which the palette encoder refuses.
+    const std::vector<render::Image> odd{image_of(37, 21, [](std::uint32_t x, std::uint32_t y) {
+        return std::array<std::uint8_t, 3>{static_cast<std::uint8_t>(x * 6),
+                                           static_cast<std::uint8_t>(y * 12), 128};
+    })};
+    const auto odd_bytes = video::encode_lossy(odd, 30);
+    REQUIRE(odd_bytes);
+    const auto odd_file = video::read_ivf(odd_bytes.value());
+    REQUIRE(odd_file);
+    video::Decoder decoder;
+    render::Image out;
+    REQUIRE(decoder.decode(odd_file.value(), 0, out));
+    CHECK(out.width == 37);
+    CHECK(out.height == 21);
+    CHECK(mean_difference(through_yuv(odd[0]), out) <= 300);
+}
+
+namespace {
+
 json::Value parse_json(std::string_view text) {
     auto parsed = json::parse(text);
     REQUIRE_MESSAGE(parsed.ok(), (parsed.ok() ? std::string() : parsed.error().message));
@@ -261,4 +392,86 @@ TEST_CASE("video: a VideoStreamPlayer plays in its control and on sprites, then 
         "problems": [{"id": "tv", "path": "/components/VideoStreamPlayer/stream",
                       "message": "asset \"missing.ivf\" could not be read: no such file"}],
         "viewport": [160, 90]})"));
+}
+
+TEST_CASE("video: video.encode turns captured frames into a cutscene") {
+    const std::string root = "video_encode_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(platform::create_directories(root).ok());
+    REQUIRE(platform::write_file(root + "/project.json", R"({"format": 1, "name": "Cutscene",
+        "main_scene": "main.scene.json", "version": "1.0.0", "window": {"width": 64, "height": 32},
+        "rendering": {"clear_color": [0.1, 0.2, 0.6, 1]}})")
+                .ok());
+    world::ComponentRegistry components;
+    command::Registry commands;
+    world::register_builtin_components(components);
+    command::register_builtin_commands(commands);
+    command::register_run_commands(commands);
+    video::register_commands(commands);
+    command::SessionOptions options;
+    options.project_root = root;
+    options.capture_logs = false;
+    command::Session session(components, commands, std::move(options));
+    const auto ok = [&session](std::string_view name, std::string_view params) {
+        command::Reply reply = session.call(name, parse_json(params));
+        REQUIRE_MESSAGE(reply.ok, reply.message);
+        return std::move(reply.value);
+    };
+    const auto fails = [&session](std::string_view name, std::string_view params) {
+        command::Reply reply = session.call(name, parse_json(params));
+        REQUIRE_FALSE(reply.ok);
+        return reply;
+    };
+
+    // A red box sliding right, captured each step.
+    (void)ok("entity.create", R"({"id": "box", "components": {"Control": {"offset_left": 0,
+        "offset_top": 8, "offset_right": 16, "offset_bottom": 24},
+        "ColorRect": {"color": [0.9, 0.2, 0.1, 1]}}})");
+    for (int i = 0; i < 6; ++i) {
+        const std::string x = std::to_string(i * 8);
+        (void)ok("component.set", R"({"id": "box", "components": {"Control": {"offset_left": )" +
+                                      x + R"(, "offset_right": )" + std::to_string((i * 8) + 16) +
+                                      "}}}");
+        (void)ok("frame.capture", R"({"path": "shots/f0)" + std::to_string(i) + R"(.png"})");
+    }
+    CHECK(ok("video.encode",
+             R"({"frames": ["shots/"], "out": "cut.ivf", "fps": 10, "kf_interval": 3})") ==
+          parse_json(R"({"path": "cut.ivf", "frames": 6, "size": [64, 32], "seconds": 0.6,
+                         "key_frames": [0, 3]})"));
+
+    // The last frame plays back close to what was captured.
+    const auto bytes = platform::read_file(root + "/cut.ivf");
+    REQUIRE(bytes);
+    const std::vector<std::uint8_t> ivf(bytes.value().begin(), bytes.value().end());
+    const auto file = video::read_ivf(ivf);
+    REQUIRE(file);
+    video::Decoder decoder;
+    render::Image out;
+    REQUIRE(decoder.decode(file.value(), 5, out));
+    const auto shot = platform::read_file(root + "/shots/f05.png");
+    REQUIRE(shot);
+    const auto captured = render::decode_image(shot.value());
+    REQUIRE(captured);
+    CHECK(mean_difference(through_yuv(captured.value()), out) <= 200);
+
+    // Files by name, and what's wrong with each request.
+    CHECK(ok("video.encode", R"({"frames": ["shots/f00.png", "shots/f01.png"], "out": "two.ivf",
+                                 "kf_interval": 0})")
+              .find("key_frames")
+              ->as_array()
+              .size() == 1);
+    CHECK(fails("video.encode", R"({"frames": ["shots/"], "out": "cut.mp4"})").message ==
+          "/out: expected an .ivf file");
+    CHECK(fails("video.encode", R"({"frames": ["shots/f00.png", "shots/f09.png"],
+                                    "out": "x.ivf"})")
+              .message == "/frames/1: no file shots/f09.png");
+    REQUIRE(platform::create_directories(root + "/empty").ok());
+    REQUIRE(platform::create_directories(root + "/small").ok());
+    REQUIRE(platform::write_file(root + "/small/a.png", "not a png").ok());
+    CHECK(fails("video.encode", R"({"frames": ["empty/"], "out": "x.ivf"})").message ==
+          "/frames/0: no .png, .jpg or .bmp files in empty/");
+    command::Reply bad = fails("video.encode", R"({"frames": ["small/"], "out": "x.ivf"})");
+    CHECK(bad.message.starts_with("/frames/0: small/a.png: "));
+    CHECK_FALSE(platform::exists(root + "/x.ivf"));
+    std::filesystem::remove_all(root);
 }

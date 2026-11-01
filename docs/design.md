@@ -166,6 +166,7 @@ Every line in the repo is Apache 2.0 or comes from a dependency under a permissi
 | ENet | Networking | MIT |
 | OpenXR SDK | XR | Apache 2.0 |
 | dav1d | Video | BSD |
+| libaom | Encoding lossy video in the tools and tests | BSD |
 | AccessKit | Accessibility | MIT or Apache 2.0 |
 | Tracy | Profiling | BSD |
 | TinySoundFont | Rendering music scores | MIT |

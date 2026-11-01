@@ -5797,6 +5797,17 @@ palettes of up to 8 colors per plane (AV1's screen content tools), so flat art a
 recordings come out exactly and busier blocks are reduced to 8 colors. Frames must be a multiple
 of 8 pixels wide and high, up to 4096x2304.
 
+The tools and tests code lossy video with libaom (`video::encode_lossy` in
+`slash/video/lossy_encoder.hpp`, the `slash::video_encoder` library; games never link it), as
+aomenc's good quality mode with `--end-usage=q`: frames of any size become 8-bit 4:2:0 at limited
+range in BT.709, a key frame comes every `kf_interval` frames (0 for the first only) and the
+frames between are predicted from those before, at a quantizer of `cq_level` (0 to 63, default
+32) and a speed of `cpu_used` (0 to 9, default 6). Each temporal unit shows one frame, so the
+player seeks to any of them. libaom runs as generic C on one thread, but decides with floating
+point and the C library's math, so its bytes can differ a little between machines; dav1d shows
+the same pixels for the same bytes. The [`video.encode`](commands.md#videoencode) command codes image files
+this way, so frames captured with `frame.capture` become a clip.
+
 ## Audio
 
 Sound follows Godot's `AudioServer` and its players. An `AudioStreamPlayer` plays a sound the

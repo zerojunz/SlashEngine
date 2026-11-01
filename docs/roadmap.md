@@ -937,7 +937,9 @@ Exit: an agent builds a small 3D sample end to end.
 - [x] Video playback with dav1d (AV1): `VideoStreamPlayer` in controls, `video:<id>` textures
       on sprites and materials, and the engine's own palette AV1 encoder for tests
   - [ ] Sound in videos (Opus in WebM or Matroska)
-  - [ ] A full AV1 encoder for the tools, so agents turn captured frames into cutscenes
+  - [x] Lossy AV1 for the tools and tests with libaom (`video::encode_lossy`): key frames at an
+        interval and predicted frames between
+  - [x] A `video.encode` command, so agents turn captured frames into cutscenes
 - [ ] Accessibility through AccessKit
 - [ ] Platform services, like Unity's Analytics, Ads and In-App Purchasing: one cross-platform C++
       API and command set, with the store or network chosen per export preset
