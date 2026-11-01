@@ -2147,6 +2147,14 @@ trackers `xr.set` moves and presses (`engine/command/src/xr.cpp`), started by pr
 run (`xr::save`, `restore`). `xr::check_nodes` holds Godot's configuration warnings, which
 `xr.state` reports. `examples/xr-tracking` raises a sword and centers the play space.
 
+Each eye is a view, as Godot's `XRInterface::get_transform_for_view` and
+`get_projection_for_view`: `xr::views` gives the primary interface's views, each a place and a
+field of view as its edges' tangents (`xr::Fov`), which `render::frustum` makes a projection of
+(Godot's `Projection::set_frustum`). `scene3d::Renderer::set_view` (`CanvasOptions::view3d`,
+`CaptureOptions::view3d` and `viewport`) draws the 3D world from one instead of the current
+camera, which `frame.capture`'s `xr_view` does at the view's render target size.
+`examples/xr-stereo-views` sees a post move between the eyes.
+
 ## AI providers
 
 `engine/ai` calls language models through `ai::Provider`, one interface over any vendor

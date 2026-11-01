@@ -2967,8 +2967,9 @@ std::optional<Frame3D> Renderer::prepare(
     frame.camera = camera;
     const auto& lens = ecs.get<const world::Camera3D>(camera);
     const float aspect = width > 0.0F && height > 0.0F ? width / height : 1.0F;
-    const CameraView view = camera_view(lens, global(camera), aspect);
-    camera_place_ = global(camera);
+    const CameraView view = view_ ? *view_ : camera_view(lens, global(camera), aspect);
+    const world::Affine3D camera_global = view_ ? view_->eye : global(camera);
+    camera_place_ = camera_global;
     frame.scene.camera = view.view;
     frame.scene.projection = view.projection;
     const Environment env = environment(world, clear, camera);
@@ -3137,7 +3138,7 @@ std::optional<Frame3D> Renderer::prepare(
     // CPUParticles3Ds draw their meshes at their particles.
     for (const entt::entity entity : made<world::CPUParticles3D>(world)) {
         if (tree.visible(entity)) {
-            add_particles(world, entity, global(entity), global(camera), lens.cull_mask, t);
+            add_particles(world, entity, global(entity), camera_global, lens.cull_mask, t);
         }
     }
     // GPUParticles3Ds run the steps their device hasn't, then draw their draw passes there.
@@ -3149,7 +3150,7 @@ std::optional<Frame3D> Renderer::prepare(
     // Terrains draw the chunks their quad trees settle on for the camera.
     for (const entt::entity entity : made<world::HTerrain>(world)) {
         if (tree.visible(entity)) {
-            add_terrain(world, entity, global(entity), global(camera), lens);
+            add_terrain(world, entity, global(entity), camera_global, lens);
         }
     }
     if (method == render::RenderMethod::ForwardPlus) {
@@ -3232,7 +3233,7 @@ std::optional<Frame3D> Renderer::prepare(
     }
     cull_occluded(world, tree, view, lens, width, height, occlusion);
     // Model surfaces draw at the LODs the camera picks, into shadow maps too, as Godot's.
-    pick_lods(global(camera).origin, view.projection, lens.projection == "orthogonal", width,
+    pick_lods(camera_global.origin, view.projection, lens.projection == "orthogonal", width,
               mesh_lod_threshold);
     return frame;
 }

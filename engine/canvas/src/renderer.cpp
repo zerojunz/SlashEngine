@@ -1204,6 +1204,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         fsr2.reset();
     }
     scene3d_.set_tick_seconds(settings(world).tick_seconds);
+    scene3d_.set_view(options.view3d);
     std::optional<scene3d::Frame3D> scene = scene3d_.prepare(
         world, viewport.x, viewport.y, options.interpolation, options.clear,
         settings(world).shadows, options.time, settings(world).depth_of_field, settings(world).ssao,
