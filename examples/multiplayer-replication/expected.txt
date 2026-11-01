@@ -1,0 +1,31 @@
+Alice and bob joined the server.
+
+The server spawns a player for each, made by the spawn function everywhere:
+  alice: spawned alice_player
+  alice: spawned bob_player
+  bob: spawned alice_player
+  bob: spawned bob_player
+  on bob's world, alice_player answers to alice and is at 100, 100
+
+Alice moves her player; her synchronizer sends it to the others:
+  the server sees her at 140, 90, bob at 140, 90
+  bob moves alice's player on his own world, and the next sync puts it back:
+  bob sees her at 140, 90
+
+The server fires a bullet: placed under the arena, it spawns everywhere:
+  alice: spawned bullet1
+  bob: spawned bullet1
+  it starts at 100, 200 on alice's world
+  it flies on the server, and alice sees it at 200, 200
+  it hits and turns red; the change reaches bob reliably
+
+A treasure only alice can see:
+  alice: spawned treasure
+  bob has it: 0
+
+The bullet is gone on the server, so it despawns everywhere:
+  alice: despawned bullet1
+  bob: despawned bullet1
+
+Bob leaves; the server destroys his player, which despawns on alice's:
+  alice: despawned bob_player
