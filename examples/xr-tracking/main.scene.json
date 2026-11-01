@@ -1,0 +1,37 @@
+{
+  "entities": {
+    "player": {
+      "components": {
+        "Transform3D": {"children": ["head", "left", "right"]},
+        "XROrigin3D": {}
+      }
+    },
+    "head": {
+      "components": {
+        "Camera3D": {},
+        "Transform3D": {},
+        "XRCamera3D": {}
+      }
+    },
+    "left": {
+      "components": {
+        "Transform3D": {},
+        "XRController3D": {"tracker": "left_hand"}
+      }
+    },
+    "right": {
+      "components": {
+        "Transform3D": {"children": ["sword"]},
+        "XRController3D": {"pose": "grip", "show_when_tracked": true, "tracker": "right_hand"}
+      }
+    },
+    "sword": {
+      "components": {
+        "BoxMesh": {"size": [0.05, 0.05, 0.9]},
+        "MeshInstance3D": {},
+        "Transform3D": {"position": [0.0, 0.0, -0.45]}
+      }
+    }
+  },
+  "format": 1
+}

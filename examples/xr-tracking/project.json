@@ -1,0 +1,7 @@
+{
+  "format": 1,
+  "main_scene": "main.scene.json",
+  "name": "XR Tracking",
+  "version": "0.1.0",
+  "xr": {"openxr": {"enabled": true, "reference_space": "local_floor"}}
+}

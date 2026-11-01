@@ -2130,6 +2130,23 @@ server and three clients, `examples/multiplayer-rpc` three worlds' game,
 `examples/websocket-peers` the same game's calls over WebSocket, and `examples/network-sessions`
 plays a game on three sessions through the commands.
 
+## XR
+
+`engine/xr` is virtual and augmented reality, as Godot's `XRServer`, `XRInterface` and XR nodes
+(`slash/xr/xr.hpp`). `xr::install` gives a world its server (in the world's context): interfaces
+(`xr::Interface`, Godot's `XRInterface`), trackers (`xr::Tracker`, Godot's
+`XRPositionalTracker`: poses and inputs by name), the world scale, origin and reference frame
+(`center_on_hmd` ports Godot's). The `xr` system (priority -850) sets the origin and scale from
+the current `XROrigin3D`, has each initialized interface `process` its trackers, then places
+`XRCamera3D`, `XRController3D` and `XRAnchor3D` entities by their poses' adjusted transforms
+under it and sends them their trackers' signals (kept as `detail::Signal`s in `src/xr.cpp`) as
+world events, as Godot's `XRNode3D` binds to a tracker; each node's binding and tracking are
+kept by entity ID. Sessions add `xr::TestInterface` (`src/test_interface.cpp`), a headset whose
+trackers `xr.set` moves and presses (`engine/command/src/xr.cpp`), started by project.json's
+`xr.openxr.enabled`, and put the server back with the world when a command fails or is a dry
+run (`xr::save`, `restore`). `xr::check_nodes` holds Godot's configuration warnings, which
+`xr.state` reports. `examples/xr-tracking` raises a sword and centers the play space.
+
 ## AI providers
 
 `engine/ai` calls language models through `ai::Provider`, one interface over any vendor
@@ -2239,7 +2256,7 @@ CI rejects unformatted code and any clang-tidy finding.
   (controls, containers and themes: layout, draw calls, buttons, focus and text fields), `animation` (`.anim.json` keyframe
   animations, `.animtree.json` animation trees and the systems that play them),
   `scene3d` (3D nodes: primitive meshes, glTF, OBJ, FBX and Blender models, CSG shapes, grid maps, materials, cameras, lights and environments,
-  and drawing them), `physics2d` (2D bodies, areas, joints and queries on Box2D), `physics3d` (3D bodies, areas, character movement and queries on Jolt), `navigation` (navigation meshes, maps, paths and agents), `net` (multiplayer peers, the ENet transport, a world's multiplayer and RPCs), `library` (the asset library, its
+  and drawing them), `physics2d` (2D bodies, areas, joints and queries on Box2D), `physics3d` (3D bodies, areas, character movement and queries on Jolt), `navigation` (navigation meshes, maps, paths and agents), `net` (multiplayer peers, the ENet transport, a world's multiplayer and RPCs), `xr` (the XR server, interfaces, trackers, XR nodes and the test headset), `library` (the asset library, its
   generators and commands), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `soundtrack` (`.score.json` scores, MIDI files, rendering stems, drafting cue sheets and arranging them),
   `command` (commands, sessions with undo, JSON-RPC and MCP),
