@@ -2991,8 +2991,9 @@ struct Control {
     // by ("ignore"); "" takes its type's, as in Godot: ignore for Label and NinePatchRect, pass
     // for containers and TextureRect, stop for the rest.
     std::string mouse_filter;
-    // Whether it takes focus from clicks and the keyboard ("all"), clicks only ("click") or
-    // never ("none"); "" takes its type's: all for buttons, none for the rest.
+    // Whether it takes focus from clicks and the keyboard ("all"), clicks only ("click"), only
+    // while a screen reader is in use ("accessibility") or never ("none"); "" takes its type's:
+    // all for buttons, accessibility for MenuButtons and ScrollBars, none for the rest.
     std::string focus_mode;
     // Which way it lays out, as Godot's: "inherited" (its parent's; at the root, as
     // project.json's internationalization.rendering.root_node_layout_direction says),
@@ -3006,6 +3007,20 @@ struct Control {
     std::string auto_translate_mode = "inherit";
     // The same for its tooltip_text; "inherit" takes auto_translate_mode's.
     std::string tooltip_auto_translate_mode = "inherit";
+    // What a screen reader calls it and says about it, as Godot's accessibility_name and
+    // accessibility_description; translated as its text is. Buttons, Labels and text fields add
+    // their own text.
+    std::string accessibility_name;
+    std::string accessibility_description;
+    // Whether a screen reader reads changes to it out: "off", "polite" (when it's done
+    // speaking) or "assertive" (at once), as Godot's accessibility_live.
+    std::string accessibility_live = "off";
+    // Controls this one changes, the ones that describe it, the ones that name it and the one a
+    // screen reader goes to after it, as Godot's accessibility_*_nodes.
+    std::vector<entt::entity> accessibility_controls_nodes;
+    std::vector<entt::entity> accessibility_described_by_nodes;
+    std::vector<entt::entity> accessibility_labeled_by_nodes;
+    std::vector<entt::entity> accessibility_flow_to_nodes;
     std::map<std::string, Vec4> theme_override_colors;
     std::map<std::string, int> theme_override_constants;
     std::map<std::string, std::string> theme_override_fonts;
@@ -3058,7 +3073,9 @@ SLASH_COMPONENT(Control, children, anchor_left, anchor_top, anchor_right, anchor
                 visible, modulate, self_modulate, top_level, z_index, z_as_relative, texture_filter,
                 theme, theme_type_variation, theme_override_colors, theme_override_constants,
                 theme_override_fonts, theme_override_font_sizes, theme_override_icons,
-                theme_override_styles)
+                theme_override_styles, accessibility_name, accessibility_description,
+                accessibility_live, accessibility_controls_nodes, accessibility_described_by_nodes,
+                accessibility_labeled_by_nodes, accessibility_flow_to_nodes)
 
 // Lets a control be dragged and take what is dropped on it, as a Godot script's _get_drag_data,
 // _can_drop_data and _drop_data. Moving the mouse past the drag threshold with the left button

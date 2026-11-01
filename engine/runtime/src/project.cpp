@@ -723,6 +723,12 @@ json::Value project_schema() {
     gui["properties"]["drag_threshold"]["default"] = 10;
     gui["properties"]["drag_threshold"]["description"] =
         "Pixels the mouse moves with the left button held before a drag and drop starts.";
+    gui["properties"]["accessibility_support"]["enum"] = json::Array{"auto", "always", "disabled"};
+    gui["properties"]["accessibility_support"]["default"] = "auto";
+    gui["properties"]["accessibility_support"]["description"] =
+        "When controls serve a screen reader, as Godot's accessibility/general/"
+        "accessibility_support: while one is in use (auto), always, or never (disabled). "
+        "Serving one, controls with focus_mode accessibility take focus.";
     properties["gui"] = std::move(gui);
     properties["input"] = input::map_schema();
     properties["input_devices"] = input::settings_schema();
@@ -1017,6 +1023,9 @@ Result<Project> parse_project(const json::Value& project) {
         }
         if (const json::Value* delay = gui->find("tooltip_delay_sec"); delay != nullptr) {
             out.tooltip_delay_sec = delay->as_double();
+        }
+        if (const json::Value* support = gui->find("accessibility_support"); support != nullptr) {
+            out.accessibility_support = support->as_string();
         }
         if (const json::Value* offset = gui->find("tooltip_position_offset"); offset != nullptr) {
             out.tooltip_position_offset = {static_cast<float>(offset->as_array()[0].as_double()),

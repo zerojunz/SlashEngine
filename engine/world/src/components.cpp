@@ -1029,9 +1029,11 @@ void register_ui_components(ComponentRegistry& registry) {
                           "for none. Theme types TooltipPanel and TooltipLabel style it."})
         .describe("focus_mode",
                   {.doc = "Whether clicks and the keyboard or gamepad give it focus (all), only "
-                          "clicks (click) or nothing (none); \"\" takes its type's: all for "
-                          "buttons, none for the rest.",
-                   .choices = {"", "none", "click", "all"}})
+                          "clicks (click), both only while a screen reader is in use "
+                          "(accessibility) or nothing (none); \"\" takes its type's: all for "
+                          "buttons, accessibility for MenuButtons and ScrollBars, none for the "
+                          "rest.",
+                   .choices = {"", "none", "click", "all", "accessibility"}})
         .describe("layout_direction",
                   {.doc = "Which way it lays out; right to left mirrors its anchors, offsets, "
                           "grow directions, its children's order in containers and its text's "
@@ -1059,7 +1061,25 @@ void register_ui_components(ComponentRegistry& registry) {
                           "the tree."})
         .describe("focus_previous",
                   {.doc = "The control ui_focus_prev (Shift+Tab) moves focus to; null for the "
-                          "previous in the tree."});
+                          "previous in the tree."})
+        .describe("accessibility_name",
+                  {.doc = "What a screen reader calls it, translated as its text is; a "
+                          "button's text, a text field's placeholder or a tooltip stands in "
+                          "when it's \"\"."})
+        .describe("accessibility_description",
+                  {.doc = "What a screen reader says about it after its name."})
+        .describe("accessibility_live",
+                  {.doc = "Whether a screen reader reads changes to it out: when it's done "
+                          "speaking (polite), at once (assertive) or not (off).",
+                   .choices = {"off", "polite", "assertive"}})
+        .describe("accessibility_controls_nodes",
+                  {.doc = "Controls whose content or presence this one changes."})
+        .describe("accessibility_described_by_nodes",
+                  {.doc = "Controls whose text describes this one."})
+        .describe("accessibility_labeled_by_nodes", {.doc = "Controls whose text names this one."})
+        .describe("accessibility_flow_to_nodes",
+                  {.doc = "The controls a screen reader reads after this one, out of tree "
+                          "order."});
     registry.add<DragAndDrop>()
         .set_doc("Lets a control be dragged and take drops, as a Godot script's _get_drag_data, "
                  "_can_drop_data and _drop_data. Moving the mouse past the project's "

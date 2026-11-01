@@ -110,6 +110,7 @@ add_executable(slash_tests
     test_replication.cpp
     test_net_commands.cpp
     test_video.cpp
+    test_accessibility.cpp
     test_websocket.cpp
     test_navigation.cpp
     test_net.cpp

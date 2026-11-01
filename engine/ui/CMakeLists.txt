@@ -1,4 +1,5 @@
 add_library(slash_ui
+    src/accessibility.cpp
     src/draw.cpp
     src/gui.cpp
     src/icons.cpp
