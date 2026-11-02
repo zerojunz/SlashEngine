@@ -2164,7 +2164,9 @@ space (`local_floor` emulated from the stage and local spaces), Godot's default 
 poses, inputs, views and haptics, its session states as world events. `use_openxr_interface`
 starts it; games do when `xr.openxr.enabled` is set and they have a window, and `xr.set`'s
 `interface` switches a session to it. Windowed games draw into the headset as Godot's
-`OpenXRVulkanExtension` and `OpenXRD3D12Extension` do (`src/openxr_graphics.cpp`):
+`OpenXRVulkanExtension`, `OpenXRD3D12Extension` and `OpenXROpenGLExtension` do
+(`src/openxr_graphics.cpp`; OpenGL binds the context SDL made on WGL, GLX or EGL, from the GL
+device's `native_device`, and its copy turns the picture over, as OpenXR's GL rows go up):
 `prepare_openxr_device` makes the instance with the graphics extension before the render device,
 which `render::DeviceOptions::xr` makes as the runtime asks, through hooks
 `cmake/patches/sdl-openxr.cmake` adds to SDL (the runtime makes Vulkan's instance and device and
@@ -2179,8 +2181,9 @@ is a stand-in runtime the loader loads through the manifest the build writes
 `--openxr-runtime`, as the loader's init properties, since it ignores `XR_RUNTIME_JSON` in the
 elevated processes Windows CI runs), playing a script (`FAKE_OPENXR_SCRIPT`: poses and inputs by frame,
 lost poses, recentering, exit, eye sizes and pixels to read back) and logging the calls it gets
-(`FAKE_OPENXR_LOG`); offered `XR_KHR_vulkan_enable2`, it hands out Vulkan swapchains and logs the
-probed pixels of each eye it is shown. `examples/openxr-runtime` runs a session on it.
+(`FAKE_OPENXR_LOG`); offered `XR_KHR_vulkan_enable2`, or `XR_KHR_opengl_enable` and
+`XR_MNDX_egl_enable`, it hands out Vulkan or OpenGL swapchains and logs the probed pixels of each
+eye it is shown. `examples/openxr-runtime` runs a session on it.
 
 ## AI providers
 
