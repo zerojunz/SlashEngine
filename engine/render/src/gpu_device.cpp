@@ -31,6 +31,7 @@
 #include "mesh_shading.hpp"
 #include "metalfx.hpp"
 #include "native.hpp"
+#include "native_copy.hpp"
 #include "particle_layout.hpp"
 #include "particle_layout_3d.hpp"
 #include "particles_draw_shaders.hpp"
@@ -2239,6 +2240,48 @@ public:
 
     [[nodiscard]] MetalFxSupport metalfx() const override { return metalfx_; }
     [[nodiscard]] bool ray_tracing() const override { return rays_ != nullptr; }
+    [[nodiscard]] NativeDevice native_device() const override {
+        return detail::native_device(device_, backend_);
+    }
+
+    Result<void> copy_to_native(TextureId source, const NativeTexture& target) override {
+        if (in_frame_) {
+            return frame_in_progress("copy_to_native");
+        }
+        if (backend_ != Backend::Vulkan && backend_ != Backend::D3D12) {
+            return RenderDevice::copy_to_native(source, target);
+        }
+        const auto it = textures_.find(source);
+        if (it == textures_.end()) {
+            return unknown_texture(source);
+        }
+        const TextureDesc& desc = it->second.desc;
+        if (!desc.render_target || desc.format != TextureFormat::Rgba8) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "copy_to_native copies RGBA8 render targets");
+        }
+        if (target.image == nullptr || target.width != desc.width || target.height != desc.height) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "copy_to_native's target is " + std::to_string(target.width) + "x" +
+                                  std::to_string(target.height) + ", the texture " +
+                                  std::to_string(desc.width) + "x" + std::to_string(desc.height));
+        }
+        SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(device_);
+        if (commands == nullptr) {
+            return sdl_error("copying into a native image failed");
+        }
+        const NativeTexture from =
+            detail::native_texture(device_, it->second.gpu, desc.width, desc.height);
+        void* native = SDL_SlashGPUNativeCommandBuffer(commands);
+        Result<void> copied =
+            backend_ == Backend::Vulkan
+                ? detail::copy_native_vulkan(native_device(), native, from, target)
+                : detail::copy_native_d3d12(native, from, target);
+        if (!SDL_SubmitGPUCommandBuffer(commands) && copied) {
+            return sdl_error("copying into a native image failed");
+        }
+        return copied;
+    }
     Result<LightmapTraced> trace_lightmap(const LightmapTrace& trace) override {
         if (rays_ == nullptr) {
             return Error{ErrorCode::NotFound, "this device doesn't trace rays"};
@@ -5769,7 +5812,7 @@ private:
         Result<void> scaled;
         if (frames.temporal != nullptr) {
             const TemporalFrame frame{
-                .device = native_device(device_, backend_),
+                .device = detail::native_device(device_, backend_),
                 .commands = SDL_SlashGPUNativeCommandBuffer(commands),
                 .size = {.render_width = scene_width_,
                          .render_height = scene_height_,
@@ -7112,6 +7155,38 @@ bool gpu_backend_works(const std::string& driver) {
 
 // SDL's device for options: on Vulkan, with ray queries where the GPU has them
 // (VulkanRayOptions), else as SDL makes it.
+// cmake/patches/sdl-openxr.cmake's SDL_SlashVulkanXrHooks, whose functions call options.xr's.
+struct SdlVulkanXrHooks {
+    void* userdata = nullptr;
+    int (*create_instance)(void* userdata, const void* create_info, void* get_instance_proc_addr,
+                           void** instance) = nullptr;
+    int (*choose_physical_device)(void* userdata, void* instance, void** physical_device) = nullptr;
+    int (*create_device)(void* userdata, void* physical_device, const void* create_info,
+                         void* get_instance_proc_addr, void** device) = nullptr;
+};
+
+SdlVulkanXrHooks sdl_xr_hooks(const XrDeviceHooks& hooks) {
+    return {
+        .userdata = const_cast<XrDeviceHooks*>(&hooks),
+        .create_instance =
+            [](void* userdata, const void* create_info, void* procs, void** instance) {
+                return static_cast<const XrDeviceHooks*>(userdata)->create_vulkan_instance(
+                    create_info, procs, instance);
+            },
+        .choose_physical_device =
+            [](void* userdata, void* instance, void** physical_device) {
+                return static_cast<const XrDeviceHooks*>(userdata)->vulkan_physical_device(
+                    instance, physical_device);
+            },
+        .create_device =
+            [](void* userdata, void* physical_device, const void* create_info, void* procs,
+               void** device) {
+                return static_cast<const XrDeviceHooks*>(userdata)->create_vulkan_device(
+                    physical_device, create_info, procs, device);
+            },
+    };
+}
+
 SDL_GPUDevice* create_sdl_device(const DeviceOptions& options) {
     const VulkanRayOptions rays;
     const SDL_PropertiesID props = SDL_CreateProperties();
@@ -7123,6 +7198,25 @@ SDL_GPUDevice* create_sdl_device(const DeviceOptions& options) {
     SDL_SetStringProperty(props, SDL_PROP_GPU_DEVICE_CREATE_NAME_STRING,
                           sdl_driver_name(options.driver));
     SDL_GPUDevice* device = nullptr;
+    if (options.xr != nullptr) {
+        // An OpenXR runtime's GPU, device or nothing: the headset shows only what it draws.
+        SdlVulkanXrHooks hooks;
+        if (options.xr->create_vulkan_instance) {
+            hooks = sdl_xr_hooks(*options.xr);
+            SDL_SetPointerProperty(props, "SlashEngine.gpu.vulkan.xr_hooks", &hooks);
+        }
+        if (options.xr->d3d12_adapter != 0) {
+            SDL_SetNumberProperty(props, "SlashEngine.gpu.d3d12.adapter_luid",
+                                  options.xr->d3d12_adapter);
+        }
+        if (rays.options() != nullptr) {
+            SDL_SetPointerProperty(props, SDL_PROP_GPU_DEVICE_CREATE_VULKAN_OPTIONS_POINTER,
+                                   rays.options());
+        }
+        device = SDL_CreateGPUDeviceWithProperties(props);
+        SDL_DestroyProperties(props);
+        return device;
+    }
     if (rays.options() != nullptr) {
         SDL_SetPointerProperty(props, SDL_PROP_GPU_DEVICE_CREATE_VULKAN_OPTIONS_POINTER,
                                rays.options());

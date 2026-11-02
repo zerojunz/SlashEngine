@@ -57,6 +57,11 @@ struct CameraView {
 // spanning fov (or size) across the axis keep_aspect names. The same bits on every platform.
 [[nodiscard]] CameraView camera_view(const world::Camera3D& camera, const world::Affine3D& global,
                                      float aspect);
+// The view from a headset's eye, as Godot's XRCamera3D draws one: placed at eye and seeing the
+// field of view whose edges' tangents are left, right, down and up (render::frustum), with the
+// current camera's near and far, 0.05 and 4000 without one.
+[[nodiscard]] CameraView eye_view(const world::World& world, const world::Affine3D& eye, float left,
+                                  float right, float down, float up);
 
 // Something that couldn't draw, such as a mesh whose texture is missing: path is the JSON
 // Pointer of the bad value in the entity, e.g. "/components/StandardMaterial3D/albedo_texture".

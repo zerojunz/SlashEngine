@@ -5874,9 +5874,21 @@ runtime. The session's states are the interface's events, with `interface` `"Ope
 `session_stopping`, `session_loss_pending`, `instance_exiting`, `pose_recentered` and
 `play_area_changed`. `xr.state` reports the runtime, its version and the session's state.
 
-Drawing into the headset's swapchains is not written yet, so a session starts only on a runtime
-with `XR_MND_headless` and submits frames with no layers; others say so. Web, Android and iOS
-builds have no loader yet. [examples/openxr-runtime](../../examples/openxr-runtime/) runs a
+A windowed game draws into the headset, as Godot's OpenXR module does before it makes its
+rendering device: `xr::prepare_openxr_device` makes the instance with the graphics extension
+(`XR_KHR_vulkan_enable2`, or `XR_KHR_D3D12_enable` on Windows), and the render device is made
+the way the runtime asks: on Vulkan the runtime makes the instance and the device and names the
+GPU, on Direct3D 12 it names the adapter, through hooks a small patch adds to SDL
+(`cmake/patches/sdl-openxr.cmake`). The session then makes a swapchain for each view at the
+runtime's recommended size, in the first 8-bit RGBA format the runtime lists, sRGB first. Each
+drawn frame, `xr::begin_openxr_frame` waits for the runtime's frame and acquires the images, the
+game draws each eye into a render target of that size from the eye's place
+(`scene3d::eye_view`), and `xr::end_openxr_frame` copies them into the images and ends the frame
+with a projection layer of the views. The window still shows the current camera. A game with no
+window, or a session, makes a headless session instead, which needs a runtime with
+`XR_MND_headless` and submits frames with no layers; a runtime that can do neither says so.
+`xr.state`'s `openxr` says which driver it draws with (`graphics`). OpenGL and Metal sessions,
+and the web, Android and iOS, which have no loader yet, come later. [examples/openxr-runtime](../../examples/openxr-runtime/) runs a
 session on the engine's stand-in runtime.
 
 ## Video

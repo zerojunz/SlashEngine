@@ -1,6 +1,7 @@
 #pragma once
 
 #include "slash/core/result.hpp"
+#include "slash/render/device.hpp"
 #include "slash/world/world.hpp"
 #include "slash/xr/xr.hpp"
 
@@ -93,15 +94,40 @@ struct OpenXRInfo {
     std::string reference_space;         // "local", "stage" or "local_floor"
     std::vector<std::string> extensions; // the instance's enabled extensions
     std::uint64_t frames = 0;            // frames waited for and ended
+    std::string graphics;                // the render driver it draws with, "" when headless
 };
 
 // Makes the interface, named "OpenXR"; null where this build has no loader.
 [[nodiscard]] std::shared_ptr<Interface> make_openxr_interface();
-// What an interface made by make_openxr_interface found; null for any other interface.
 [[nodiscard]] const OpenXRInfo* openxr_info(const Interface& interface);
-// Adds the OpenXR interface to the world's server and initializes it with the world's settings,
-// as Godot does at start when xr/openxr/enabled is set. Fails, leaving it added but not
-// initialized, when there is no loader, no runtime or the runtime refuses the settings.
-Result<void> use_openxr_interface(world::World& world);
+
+// What the render device that draws into the headset is made with: driver, "vulkan" or "d3d12",
+// and the runtime's part in making it (render::DeviceOptions's driver and xr).
+struct OpenXRDevice {
+    std::string driver;
+    const render::XrDeviceHooks* hooks = nullptr;
+};
+// Starts OpenXR to draw into the headset, as Godot does before it makes its rendering device:
+// the instance and system, with the graphics extension driver needs ("auto" is "d3d12" on
+// Windows and "vulkan" elsewhere). Make the render device with what it returns, which lives as
+// long as the interface, then call use_openxr_interface with it.
+Result<OpenXRDevice> prepare_openxr_device(world::World& world, std::string_view driver);
+// Starts the OpenXR interface and makes it the primary one, adding it when the world has none.
+// With the device made after prepare_openxr_device, the session draws with it; without one it is
+// headless, which needs a runtime with XR_MND_headless.
+Result<void> use_openxr_interface(world::World& world, render::RenderDevice* device = nullptr);
+
+// A frame drawn into the headset: whether the runtime shows it, and a render target of
+// render_target_size() for each view to draw it into (xr::views places them).
+struct OpenXRFrame {
+    bool render = false;
+    std::vector<render::TextureId> targets;
+};
+// Waits for the headset's next frame and begins it, as Godot's pre_render: once a drawn frame,
+// before drawing the views. Nothing to draw where OpenXR isn't the primary interface drawing.
+Result<OpenXRFrame> begin_openxr_frame(world::World& world);
+// Copies the views' targets into the headset's swapchains and ends the frame, as Godot's
+// end_frame, after drawing them.
+Result<void> end_openxr_frame(world::World& world);
 
 } // namespace slash::xr

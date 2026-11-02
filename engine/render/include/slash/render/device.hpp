@@ -11,6 +11,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
@@ -432,6 +433,35 @@ struct Stats {
     std::uint64_t texture_bytes = 0; // what they take on the GPU (texture_bytes)
 };
 
+// The objects of the native API a GPU device draws with, each unretained, as Godot's
+// RenderingDevice::get_driver_resource hands them over: on Vulkan, instance, physical_device,
+// device and queue are the VkInstance, VkPhysicalDevice, VkDevice and VkQueue, and queue_family
+// is the queue's family; on Direct3D 12, device and queue are the ID3D12Device and
+// ID3D12CommandQueue; on Metal, the id<MTLDevice> and id<MTLCommandQueue>. The software device
+// has none.
+struct NativeDevice {
+    Backend backend = Backend::Null;
+    void* instance = nullptr;
+    void* physical_device = nullptr;
+    void* device = nullptr;
+    void* queue = nullptr;
+    std::uint32_t queue_family = 0;
+};
+
+// A texture as the native API holds it: one of a temporal upscaler's textures, or an OpenXR
+// swapchain's image. On a GPU device, image is the VkImage (and view its
+// VkImageView of the whole image), the ID3D12Resource or the id<MTLTexture>, and format its
+// VkFormat, DXGI_FORMAT or MTLPixelFormat; pixels is empty. On the software device, pixels holds
+// its values, rows top to bottom and each pixel's channels together, and the rest is empty.
+struct NativeTexture {
+    void* image = nullptr;
+    void* view = nullptr;
+    std::uint32_t format = 0;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::span<float> pixels{}; // NOLINT(readability-redundant-member-init)
+};
+
 class RenderDevice {
 public:
     RenderDevice() = default;
@@ -622,6 +652,22 @@ public:
                           "on macOS 13 and iOS 16 or later");
     }
 
+    // The device's native objects, as an OpenXR runtime's session binds them (Godot hands its
+    // graphics extension the rendering device's): the GPU device's, else empty.
+    [[nodiscard]] virtual NativeDevice native_device() const { return {}; }
+    // Copies source, a render target, into target, a native image of its size such as an OpenXR
+    // swapchain's, after what the device sent before, outside any frame. The copy is of the
+    // bits: on Vulkan target's format is VK_FORMAT_R8G8B8A8_SRGB or _UNORM, on Direct3D 12
+    // DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, _UNORM or _TYPELESS, and an sRGB one shows the colors as
+    // the window does. target is in the state OpenXR hands a color swapchain image over in
+    // (VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, D3D12_RESOURCE_STATE_RENDER_TARGET) and is left
+    // so. Only the GPU device on Vulkan and Direct3D 12 copies.
+    virtual Result<void> copy_to_native(TextureId /*source*/, const NativeTexture& /*target*/) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "this device can't copy into native images: only the GPU device on "
+                          "Vulkan and Direct3D 12 can");
+    }
+
 protected:
     // Gives a mesh made here the box round it from low to high in place of its vertices', until
     // its vertices change: fill_particle_mesh's box (ParticleMeshDraw3D::box_low and box_high).
@@ -631,6 +677,22 @@ protected:
 private:
     detail::ParticleStore3D particles_3d_;
     std::vector<Vertex3D> particle_vertices_;
+};
+
+// What an OpenXR runtime asks of the GPU device it shows, as Godot's OpenXRVulkanExtension and
+// OpenXRD3D12Extension ask it of the rendering device. On Vulkan the runtime makes the instance
+// and the device and names the GPU (xrCreateVulkanInstanceKHR, xrCreateVulkanDeviceKHR and
+// xrGetVulkanGraphicsDevice2KHR): each hook takes the Vulkan structures and handles as pointers,
+// and get_instance_proc_addr is vkGetInstanceProcAddr, and returns a VkResult. On Direct3D 12 the
+// runtime names the adapter by its LUID, HighPart in the upper 32 bits.
+struct XrDeviceHooks {
+    std::function<int(const void* create_info, void* get_instance_proc_addr, void** instance)>
+        create_vulkan_instance;
+    std::function<int(void* instance, void** physical_device)> vulkan_physical_device;
+    std::function<int(void* physical_device, const void* create_info, void* get_instance_proc_addr,
+                      void** device)>
+        create_vulkan_device;
+    std::int64_t d3d12_adapter = 0;
 };
 
 struct DeviceOptions {
@@ -646,6 +708,9 @@ struct DeviceOptions {
     std::string driver = "auto";
     // Turns on the GPU API's validation, which is slow.
     bool debug = false;
+    // An OpenXR runtime's part in making the device, for "vulkan" or "d3d12"; the device then
+    // shows in the runtime's headset.
+    const XrDeviceHooks* xr = nullptr;
 };
 
 // Creates a device. Fails if the driver is unknown, or no GPU backend works for a GPU driver.
