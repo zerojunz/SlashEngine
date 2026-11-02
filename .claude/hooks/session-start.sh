@@ -25,7 +25,7 @@ log=$project/.slash/session-setup.log
 packages=(ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev
     libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev libegl-dev libgl-dev libdrm-dev
     libgbm-dev libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
-    mesa-vulkan-drivers libgl1 libgles2 libegl-mesa0 libgl1-mesa-dri
+    mesa-vulkan-drivers libgl1 libgles2 libegl-mesa0 libgl1-mesa-dri at-spi2-core
     ccache clang-format-18 clang-tidy-18 pkgconf jq)
 
 sudo=
