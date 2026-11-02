@@ -88,6 +88,12 @@ struct HttpOptions {
 // The transport every adapter given none shares, with the default options.
 [[nodiscard]] std::shared_ptr<Transport> http_transport();
 
+// Sends the request without waiting for it, then calls done with what post() returns: on a
+// thread that sends requests one after another, or on the web through post_async. Requests still
+// waiting when the program ends are cancelled. For fire-and-forget calls such as analytics.
+void post_in_background(std::shared_ptr<Transport> transport, HttpRequest request,
+                        ResponseCallback done);
+
 // A transport that reaches nothing and fails each request with the message, for sessions that
 // may not use the network: replay files still answer what they recorded.
 [[nodiscard]] std::shared_ptr<Transport> refusing_transport(std::string message);

@@ -2104,10 +2104,15 @@ sent once they sign in. Sessions run on the test backend (`use_test_backend`), w
 purchases, sign-in and leaderboards behave as `services.test` says, and put its state back with
 the world when a command fails or is a dry run; games with no backend fail ads, purchases and
 sign-in and only keep events, progress and scores. Analytics events are checked against the
-strictest common rules and sent only with the player's consent (`set_consent`).
+strictest common rules and sent only with the player's consent (`set_consent`); the steps of
+`analytics.funnels` reached in order are `funnel_step` events. With `analytics.endpoint`,
+windowed games also send them to a server the developer runs: `src/endpoint.cpp`
+(`make_endpoint_analytics`) batches them as the engine's JSON or PostHog's, with Firebase's
+sessions, keeps what is unsent in the user folder and retries, POSTing through the
+`HttpPoster` that `main.cpp` builds on `ai::post_in_background` (`SLASH_GAME_ANALYTICS`).
 `services.state` shows it all. `examples/services` is a shop selling coins for watched ads and
-purchases, and `examples/achievements-and-leaderboards` a race with lap achievements and a
-best-lap leaderboard.
+purchases, `examples/achievements-and-leaderboards` a race with lap achievements and a
+best-lap leaderboard, and `examples/analytics-endpoint` a tutorial funnel sent to a collector.
 
 ## Networking
 

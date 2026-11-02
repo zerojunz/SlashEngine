@@ -653,8 +653,10 @@ once and cached in the asset library. Every platform's [icons](project-format.md
 made from `project.json`'s `icon`, or the engine's, and the result's `icon` names which. A
 project's
 [`providers.json`](providers.md#gameplay) is checked and staged without its `replay` settings,
-and the game then installs [`ai::ask`](providers.md#gameplay); Android exports of it get the
-`INTERNET` permission. A Mac builds every
+and the game then installs [`ai::ask`](providers.md#gameplay); Android exports of it, and of
+a game whose `services.analytics` names an
+[`endpoint`](services.md#sending-to-your-own-server), get the `INTERNET` permission. A Mac
+builds every
 platform: macOS and iOS with Xcode's command-line tools and SDKs, and Windows and Linux with the
 toolchains in [toolchain](#toolchain), which the first such export downloads. A Linux machine
 builds Linux and Windows the same way, and a Windows machine builds Windows with MSVC. Web

@@ -77,6 +77,7 @@ struct State {
     std::uint64_t logged_count = 0;
     std::map<std::string, std::string, std::less<>> user_properties;
     std::string user_id;
+    std::map<std::string, int, std::less<>> funnels; // steps reached, by funnel
     std::vector<Scheduled> scheduled;
     std::vector<ServiceEvent> events;
     // The test store's own records.
@@ -934,7 +935,15 @@ void run(world::World& world) {
     }
 }
 
-// Names as the strictest analytics services take them.
+Error bad_name(std::string_view what, std::string_view name) {
+    return make_error(ErrorCode::InvalidArgument,
+                      std::string(what) + " " + quoted(name) +
+                          " must start with a letter and hold only letters, digits and '_', at "
+                          "most 40 of them");
+}
+
+} // namespace
+
 bool valid_event_name(std::string_view name) {
     return !name.empty() && name.size() <= kMaxEventName &&
            ((name.front() >= 'a' && name.front() <= 'z') ||
@@ -944,15 +953,6 @@ bool valid_event_name(std::string_view name) {
                       c == '_';
            });
 }
-
-Error bad_name(std::string_view what, std::string_view name) {
-    return make_error(ErrorCode::InvalidArgument,
-                      std::string(what) + " " + quoted(name) +
-                          " must start with a letter and hold only letters, digits and '_', at "
-                          "most 40 of them");
-}
-
-} // namespace
 
 // ---------------------------------------------------------------------------------------------
 // Reports
@@ -1450,6 +1450,21 @@ Result<void> log_event(world::World& world, std::string_view name, const json::V
                              .name = std::string(name),
                              .params = params.is_object() ? params : json::Value(),
                              .sent = sent});
+    // A funnel moves on when its next step is logged, as Unity Analytics' funnels count players.
+    for (const Funnel& funnel : state->settings.funnels) {
+        int& reached = state->funnels[funnel.name];
+        if (reached < static_cast<int>(funnel.steps.size()) &&
+            funnel.steps[static_cast<std::size_t>(reached)] == name) {
+            ++reached;
+            ServiceEvent event = event_for(funnel.name);
+            event.kind = "funnel_step";
+            event.step = reached;
+            json::Value data;
+            data["step"] = reached;
+            data["steps"] = static_cast<std::int64_t>(funnel.steps.size());
+            emit(world, *state, std::move(event), std::move(data));
+        }
+    }
     if (state->logged.size() > kMaxLogged) {
         state->logged.pop_front();
     }
@@ -1973,10 +1988,17 @@ json::Value backends_json(const world::World& world) {
         return backend ? std::string(backend->name()) : std::string("none");
     };
     json::Array analytics;
+    json::Value statuses;
     if (holder != nullptr) {
         for (const auto& backend : holder->backends.analytics) {
             analytics.emplace_back(std::string(backend->name()));
+            if (json::Value status = backend->status(); !status.is_null()) {
+                statuses[backend->name()] = std::move(status);
+            }
         }
+    }
+    if (!statuses.is_null()) {
+        backends["analytics_status"] = std::move(statuses);
     }
     backends["ads"] = holder != nullptr ? name(holder->backends.ads) : "none";
     backends["analytics"] = std::move(analytics);
@@ -2056,6 +2078,15 @@ json::Value state_json(const world::World& world, std::size_t analytics_events) 
         logged.push_back(std::move(entry));
     }
     analytics["events"] = std::move(logged);
+    if (!state->settings.funnels.empty()) {
+        json::Value funnels;
+        for (const Funnel& funnel : state->settings.funnels) {
+            const auto found = state->funnels.find(funnel.name);
+            funnels[funnel.name]["step"] = found != state->funnels.end() ? found->second : 0;
+            funnels[funnel.name]["steps"] = static_cast<std::int64_t>(funnel.steps.size());
+        }
+        analytics["funnels"] = std::move(funnels);
+    }
     out["analytics"] = std::move(analytics);
     if (!state->settings.achievements.empty() || !state->settings.leaderboards.empty() ||
         state->sign_in != SignIn::SignedOut) {
