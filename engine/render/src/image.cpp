@@ -118,6 +118,24 @@ Result<Image> decode_image(std::string_view bytes) {
     return image;
 }
 
+Result<std::string> encode_jpeg(const Image& image, int quality) {
+    if (image.width == 0 || image.height == 0 ||
+        image.pixels.size() != std::size_t{image.width} * image.height * 4) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "the image needs width * height * 4 bytes of pixels");
+    }
+    int size = 0;
+    unsigned char* bytes =
+        slash_encode_jpeg(image.pixels.data(), static_cast<int>(image.width),
+                          static_cast<int>(image.height), std::clamp(quality, 1, 100), &size);
+    if (bytes == nullptr) {
+        return make_error(ErrorCode::PlatformFailure, "could not encode the image as a JPEG");
+    }
+    std::string out(reinterpret_cast<const char*>(bytes), static_cast<std::size_t>(size));
+    std::free(bytes); // NOLINT(cppcoreguidelines-no-malloc)
+    return out;
+}
+
 Result<std::string> encode_png(const Image& image) {
     if (image.width == 0 || image.height == 0 ||
         image.pixels.size() != std::size_t{image.width} * image.height * 4) {

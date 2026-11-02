@@ -53,7 +53,13 @@ slash-cli run [options]
 | `--serve` | Serve the running game over HTTP between ticks (see [serve](#serve)) |
 | `--port <n>` | Port for `--serve` (default: any free port) |
 | `--token <token>` | Bearer token for `--serve` (default: random) |
-| `--project <dir>` | Project folder for `--serve` and `--record` (default `.`) |
+| `--project <dir>` | Project folder for `--serve`, `--record` and `--autopilot` (default `.`) |
+| `--autopilot` | Connect to [Autopilot](autopilot.md)'s agent service, which plays the game; ticks keep to real time, so `--headless` needs no `--ticks` |
+| `--autopilot-run <kind>` | Ask it for a run (`verify`, `goal`, `explore` or `auto`), then exit with the run's code: 0 passed, 2 denied or bugs, 3 inconclusive, 1 error |
+| `--autopilot-prompt <text>`, `--autopilot-minutes <n>` | The run's claim, goal, brief or prompt, and how long it plays |
+| `--autopilot-url <url>`, `--autopilot-token <token>` | Where the agent service listens and the bearer token to send; see [autopilot.md](autopilot.md#running-it) |
+| `--autopilot-report-dir <dir>` | Where `result.json` and the report go (default `.slash/autopilot/<time>/` in the project) |
+| `--autopilot-connect-timeout <s>`, `--autopilot-stay-open`, `--autopilot-share`, `--autopilot-no-media` | How long to wait for it, staying open after the result, sharing the run with Autopilot's developers and sending no pictures |
 
 Without `--headless` it opens a window and runs until the window is closed or `--ticks` is
 reached. With no display, set `SDL_VIDEO_DRIVER=dummy` to run the windowed path anyway.
@@ -88,6 +94,19 @@ the debug overlay.
 Every 15 ticks it checks the files the game has loaded and reloads the ones that changed: an
 edited prefab or instanced scene updates its instances and keeps their overrides (see
 [hot reload](../concepts.md#assets)).
+
+With `--autopilot`, [Autopilot](autopilot.md), an agent that plays games to find bugs, check
+claims and reach goals, plays the game through SlashEngine's port of its Godot plugin. With
+`--autopilot-run`, the run's result ends the game, the result carries `autopilot` (its
+`exit_code`, `report_dir` and the agent service's `result`) and the exit code is the run's:
+
+```bash
+slash-cli run --headless --project . --autopilot-run verify --autopilot-prompt "Start starts the game"
+```
+
+```json
+{"autopilot":{"exit_code":0,"report_dir":".slash/autopilot/20261102T171500Z","result":{"kind":"verify","verdict":"CONFIRMED"}},"entities":8,"headless":true,"quit_requested":true,"renderer":"null","ticks":2214}
+```
 
 With `--record`, everything the player and any served agent do is recorded from the first tick,
 and the result carries the [`replay.stop`](commands.md#replaystop) reply as `replay`.
@@ -897,6 +916,7 @@ drawn, but the sprites are still checked and counted, so a test can see that the
 | --- | --- |
 | `SDL_VIDEO_DRIVER` | SDL3's video driver. `dummy` runs the windowed path with no display; on Linux, `offscreen` does too and still draws on the GPU |
 | `SDL_GPU_DRIVER` | SDL3's GPU backend (`vulkan`, `metal` or `direct3d12`), overriding the project's `rendering.driver` |
+| `AUTOPILOT_PLAYTEST_URL`, `AUTOPILOT_PLAYTEST_TOKEN` | [Autopilot](autopilot.md)'s agent service address and bearer token for `run --autopilot`, as its Godot plugin reads them |
 | `SLASH_ENGINE_DIR` | Engine sources `slash-cli export` and `slash-cli build` build against |
 | `EMSDK` | The Emscripten SDK, needed for web exports |
 | `SLASH_TOOLCHAINS_DIR` | Where `slash-cli toolchain` installs cross toolchains (default `~/.slash/toolchains`) |
