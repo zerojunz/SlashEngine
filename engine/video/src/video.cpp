@@ -148,9 +148,11 @@ const VideoSystem* system_of(const world::World& world) {
 
 void add_asset_types(asset::Assets& assets) {
     assets.add_type<VideoFile>(
-        "video", {".ivf"},
-        [](std::string_view text, std::string_view /*path*/) {
-            return read_ivf({reinterpret_cast<const std::uint8_t*>(text.data()), text.size()});
+        "video", {".ivf", ".webm", ".mkv"},
+        [](std::string_view text, std::string_view path) {
+            const std::span<const std::uint8_t> bytes{
+                reinterpret_cast<const std::uint8_t*>(text.data()), text.size()};
+            return path.ends_with(".ivf") ? read_ivf(bytes) : read_matroska(bytes);
         },
         [](const VideoFile& video) {
             return sizeof(VideoFile) + video.data.capacity() +
@@ -203,6 +205,18 @@ double stream_length(const world::World& world, std::string_view entity) {
     const auto found = system->players.find(entity);
     return found != system->players.end() && found->second.file ? found->second.file->length()
                                                                 : 0.0;
+}
+
+Playing playing(const world::World& world, std::string_view entity) {
+    const VideoSystem* system = system_of(world);
+    if (system == nullptr) {
+        return {};
+    }
+    const auto found = system->players.find(entity);
+    if (found == system->players.end()) {
+        return {};
+    }
+    return {.file = found->second.file, .version = found->second.file_version};
 }
 
 } // namespace slash::video

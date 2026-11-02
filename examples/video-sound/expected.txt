@@ -1,0 +1,29 @@
+clip.mkv: 4 frames of 64x32, 1.00 s, 177212 bytes; audio A_PCM/INT/LIT, 44100 Hz, 2 channels, 16 bits
+tick 1: autoplay starts the picture and its sound together
+  picture at 0.00 s
+  audio.state: {"bus":"Cutscenes","id":"tv","kind":"VideoStreamPlayer","length":1,"position":0.061,"stream":"clip.mkv","voices":1,"volume":[1,1]}
+  Cutscenes over the last 0.02 s: peak -12.0 dB
+tick 6: the second frame, its sound 6 dB quieter
+  picture at 0.25 s
+  audio.state: {"bus":"Cutscenes","id":"tv","kind":"VideoStreamPlayer","length":1,"position":0.3048,"stream":"clip.mkv","voices":1,"volume":[1,1]}
+  Cutscenes over the last 0.02 s: peak -18.0 dB
+volume_db -10: 10 dB quieter again
+  picture at 0.30 s
+  audio.state: {"bus":"Cutscenes","id":"tv","kind":"VideoStreamPlayer","length":1,"position":0.3628,"stream":"clip.mkv","voices":1,"volume":[0.3162,0.3162]}
+  Cutscenes over the last 0.02 s: peak -28.0 dB
+paused: the sound fades out and holds where it got to
+  picture at 0.30 s
+  audio.state: {"bus":"Cutscenes","id":"tv","kind":"VideoStreamPlayer","length":1,"paused":true,"position":0.3744,"stream":"clip.mkv","voices":1,"volume":[0.3162,0.3162]}
+  Cutscenes over the last 0.02 s: silent
+seeked to 0.75 s: the last frame's sound
+  picture at 0.80 s
+  audio.state: {"bus":"Cutscenes","id":"tv","kind":"VideoStreamPlayer","length":1,"position":0.861,"stream":"clip.mkv","voices":1,"volume":[1,1]}
+  Cutscenes over the last 0.02 s: peak -30.1 dB
+past the end: both stop
+  picture at 1.00 s
+  audio.state: {"bus":"Cutscenes","id":"tv","kind":"VideoStreamPlayer","length":1,"stream":"clip.mkv","voices":0,"volume":[1,1]}
+  Cutscenes over the last 0.02 s: silent
+audio_track 1, which the clip doesn't have
+  picture at 0.00 s
+  audio.state: {"bus":"Cutscenes","error":"audio_track 1 isn't one of the 1 audio tracks of the video","id":"tv","kind":"VideoStreamPlayer","stream":"clip.mkv","voices":0,"volume":[1,1]}
+  Cutscenes over the last 0.02 s: silent

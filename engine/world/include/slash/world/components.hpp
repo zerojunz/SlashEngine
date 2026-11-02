@@ -3195,7 +3195,8 @@ SLASH_COMPONENT(TextureRect, texture, expand_mode, stretch_mode, flip_h, flip_v)
 // it from stream_position, and the video system sets it back to false at the end, emitting
 // finished, unless it loops. Stopped or paused, it shows the frame at stream_position.
 struct VideoStreamPlayer {
-    std::string stream; // project path of an .ivf file of AV1 video; "" plays nothing
+    std::string
+        stream; // project path of an .ivf, .webm or .mkv file of AV1 video; "" plays nothing
     bool playing = false;
     bool autoplay = false; // play from the start once the video system first sees it
     bool paused = false;
@@ -3203,11 +3204,14 @@ struct VideoStreamPlayer {
     bool expand = false;          // stretch to the rect, else drawn at the video's size
     float speed_scale = 1.0F;     // how fast it plays
     double stream_position = 0.0; // seconds into the video
+    std::string bus = "Master";   // the audio bus its sound plays on
+    float volume_db = 0.0F;
+    int audio_track = 0; // which of the video's audio tracks plays
 
     friend bool operator==(const VideoStreamPlayer&, const VideoStreamPlayer&) = default;
 };
 SLASH_COMPONENT(VideoStreamPlayer, stream, playing, autoplay, paused, loop, expand, speed_scale,
-                stream_position)
+                stream_position, volume_db, bus, audio_track)
 
 // A texture cut into nine parts that stretch to the control's rect without stretching its
 // corners, as Godot's NinePatchRect.
