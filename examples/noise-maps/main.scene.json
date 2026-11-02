@@ -1,0 +1,23 @@
+{
+  "entities": {
+    "dunes": {
+      "components": {
+        "HTerrain": {
+          "heightmap": "dunes.height.png",
+          "resolution": 65
+        },
+        "Transform3D": {}
+      }
+    },
+    "sea": {
+      "components": {
+        "TileMapLayer": {
+          "texture_filter": "nearest",
+          "tile_set": "ground.tileset.json"
+        },
+        "Transform2D": {}
+      }
+    }
+  },
+  "format": 1
+}

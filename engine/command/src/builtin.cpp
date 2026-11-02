@@ -1495,6 +1495,142 @@ Reply tilemap_paint(Session& session, const json::Value& params) {
     return Reply::success(changed_json(id, changed.value()));
 }
 
+// The terrain a band of tilemap.generate paints, by name, or the reply to fail with.
+std::optional<Reply> band_terrain(const canvas::TileSet& set, const json::Value& name,
+                                  const std::string& at, int& out) {
+    out = -1;
+    if (name.is_null()) {
+        return std::nullopt;
+    }
+    out = set.terrain(name.as_string());
+    if (out >= 0) {
+        return std::nullopt;
+    }
+    if (set.terrains.empty()) {
+        return param_error(code::kNotFound, at,
+                           "the tile set has no terrains; its terrain_sets name them");
+    }
+    std::vector<std::string_view> names;
+    names.reserve(set.terrains.size());
+    for (const canvas::Terrain& each : set.terrains) {
+        names.emplace_back(each.name);
+    }
+    std::string message = "the tile set has no terrain " + quoted(name.as_string());
+    add_hint(message, name.as_string(), names);
+    return param_error(code::kNotFound, at, message);
+}
+
+// Fills a rect of a TileMapLayer by noise: each cell takes the first band whose "below" its
+// noise value, 0 to 1, is under, and each band's terrain is painted on its cells in turn, as
+// tilemap.paint paints, or its tile set.
+Reply tilemap_generate(Session& session, const json::Value& params) {
+    const std::string id = text(params, "id");
+    LayerTarget target;
+    if (auto failed = find_layer(session, id, target)) {
+        return std::move(*failed);
+    }
+    std::vector<Vec2i> cells;
+    if (auto failed = target_cells(params, cells)) {
+        return std::move(*failed);
+    }
+    NoiseSource source;
+    if (auto failed = read_noise_source(session, *params.find("noise"), "/noise", source)) {
+        return std::move(*failed);
+    }
+    const canvas::TileSet& set = *target.set;
+    struct Band {
+        float below = std::numeric_limits<float>::infinity();
+        bool is_terrain = false;
+        int terrain = -1;
+        std::optional<canvas::TileRef> tile;
+        std::vector<Vec2i> cells;
+    };
+    std::vector<Band> bands;
+    const json::Array& given = params.find("bands")->as_array();
+    for (std::size_t i = 0; i < given.size(); ++i) {
+        const json::Value& item = given[i];
+        const std::string at = "/bands/" + std::to_string(i);
+        Band band;
+        const json::Value* terrain = item.find("terrain");
+        const json::Value* tile = item.find("tile");
+        if ((terrain == nullptr) == (tile == nullptr)) {
+            return param_error(code::kInvalidParams, at,
+                               "give terrain, a terrain to paint, or tile, a tile to set");
+        }
+        if (const json::Value* below = item.find("below"); below != nullptr) {
+            band.below = static_cast<float>(below->as_double());
+            if (!bands.empty() && band.below <= bands.back().below) {
+                return param_error(code::kInvalidParams, at + "/below",
+                                   "bands go from low to high: this is not above the band "
+                                   "before's");
+            }
+        } else if (i + 1 < given.size()) {
+            return param_error(code::kInvalidParams, at,
+                               "only the last band may leave out below, taking the rest");
+        }
+        if (terrain != nullptr) {
+            band.is_terrain = true;
+            if (auto failed = band_terrain(set, *terrain, at + "/terrain", band.terrain)) {
+                return std::move(*failed);
+            }
+        } else if (!tile->is_null()) {
+            auto found = canvas::find_tile(set, tile->as_string());
+            if (!found) {
+                return param_error(found.error(), at + "/tile");
+            }
+            band.tile = std::move(found).value();
+        }
+        bands.push_back(std::move(band));
+    }
+    const json::Array& rect = params.find("rect")->as_array();
+    const int x = static_cast<int>(rect[0].as_int());
+    const int y = static_cast<int>(rect[1].as_int());
+    const int width = static_cast<int>(rect[2].as_int());
+    const int height = static_cast<int>(rect[3].as_int());
+    const std::vector<float> values = sample_noise_source(source, x, y, width, height);
+    for (std::size_t i = 0; i < cells.size(); ++i) {
+        for (Band& band : bands) {
+            if (values[i] < band.below) {
+                band.cells.push_back(cells[i]);
+                break;
+            }
+        }
+    }
+    std::size_t changed = 0;
+    json::Array counts;
+    for (const Band& band : bands) {
+        counts.emplace_back(band.cells.size());
+        if (band.cells.empty()) {
+            continue;
+        }
+        if (band.is_terrain) {
+            auto painted = canvas::paint_terrain(target.cells, set, band.cells, band.terrain);
+            if (!painted) {
+                return param_error(painted.error(), "/bands");
+            }
+            changed += painted.value();
+            continue;
+        }
+        for (const Vec2i cell : band.cells) {
+            if (!band.tile) {
+                changed += target.cells.erase(cell);
+                continue;
+            }
+            const auto it = target.cells.find(cell);
+            if (it == target.cells.end() || !(it->second == *band.tile)) {
+                target.cells.insert_or_assign(cell, *band.tile);
+                ++changed;
+            }
+        }
+    }
+    if (changed > 0) {
+        store_cells(session, target);
+    }
+    json::Value result = changed_json(id, changed);
+    result["bands"] = std::move(counts);
+    return Reply::success(std::move(result));
+}
+
 Reply tilemap_get(Session& session, const json::Value& params) {
     const std::string id = text(params, "id");
     LayerTarget target;
@@ -6925,6 +7061,8 @@ void register_builtin_commands(Registry& registry) {
     tile["type"] = json::Array{"string", "null"};
     json::Value terrain = any_property("A terrain name; null erases.");
     terrain["type"] = json::Array{"string", "null"};
+    json::Value band_terrain_schema = terrain;
+    json::Value band_tile_schema = tile;
     const json::Value layer_id = id_property("An entity with a TileMapLayer.");
     registry.add({
         .name = "tilemap.set",
@@ -6952,6 +7090,42 @@ void register_builtin_commands(Registry& registry) {
                                  {"terrain", std::move(terrain)}},
                                 {"id", "terrain"}),
         .handler = tilemap_paint,
+    });
+    json::Value below = property("number", "Cells whose noise is under this, 0 to 1, and over "
+                                           "the band before's. The last band may leave it out "
+                                           "to take the rest.");
+    below["minimum"] = 0.0;
+    below["maximum"] = 1.0;
+    json::Value band;
+    band["type"] = "object";
+    band["additionalProperties"] = false;
+    band["properties"]["below"] = std::move(below);
+    band["properties"]["terrain"] = std::move(band_terrain_schema);
+    band["properties"]["tile"] = std::move(band_tile_schema);
+    json::Value bands = property("array", "Bands from low noise to high, each a terrain to "
+                                          "paint or a tile to set.");
+    bands["items"] = std::move(band);
+    bands["minItems"] = 1;
+    bands["maxItems"] = 16;
+    json::Value generate_rect = tile_rect;
+    generate_rect["description"] = "[column, row, width, height]: the cells to fill.";
+    registry.add({
+        .name = "tilemap.generate",
+        .description = "Fills cells of a TileMapLayer from noise, as terrains painted by "
+                       "thresholds: each cell takes the band its noise falls in, sampled a cell "
+                       "apart. Returns how many cells changed and each band's count.",
+        .capabilities = {Edit},
+        .effect = Effect::Edit,
+        .params = params_schema(
+            {{"id", layer_id},
+             {"rect", std::move(generate_rect)},
+             {"noise", noise_source_property("A NoiseTexture2D's .texture.json file, "
+                                             "normalized and inverted as it says, or "
+                                             "FastNoiseLite settings, normalized over the "
+                                             "rect.")},
+             {"bands", std::move(bands)}},
+            {"id", "rect", "noise", "bands"}),
+        .handler = tilemap_generate,
     });
     tile_rect["description"] = "[column, row, width, height]: only these cells. Default: all.";
     json::Value data_cells = tile_cells;

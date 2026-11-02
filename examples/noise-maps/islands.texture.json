@@ -1,0 +1,11 @@
+{
+  "format": 1,
+  "height": 32,
+  "noise": {
+    "fractal_octaves": 3,
+    "frequency": 0.09,
+    "seed": 12
+  },
+  "type": "NoiseTexture2D",
+  "width": 48
+}

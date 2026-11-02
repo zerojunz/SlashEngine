@@ -67,7 +67,7 @@ as `entity.get`, reject it as an unknown param.
 | Paths | [`path.get`](#pathget) |
 | Grid maps | [`gridmap.set`](#gridmapset), [`gridmap.get`](#gridmapget) |
 | Terrains | [`terrain.generate`](#terraingenerate), [`terrain.brush`](#terrainbrush), [`terrain.get`](#terrainget) |
-| Tile maps | [`tilemap.paint`](#tilemappaint), [`tilemap.set`](#tilemapset), [`tilemap.get`](#tilemapget), [`tilemap.convert`](#tilemapconvert) |
+| Tile maps | [`tilemap.paint`](#tilemappaint), [`tilemap.generate`](#tilemapgenerate), [`tilemap.set`](#tilemapset), [`tilemap.get`](#tilemapget), [`tilemap.convert`](#tilemapconvert) |
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity) |
 | Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent), [`navigation.bake`](#navigationbake) |
 | Particles | [`particles.eval`](#particleseval), [`particles.bake_sdf`](#particlesbake_sdf) |
@@ -1109,6 +1109,7 @@ and highest.
 | `island_height_ratio` | number | `-1` | The edges' height, `-1` (lowest) to `1` (highest, a canyon) |
 | `island_shape` | number | `0` | `0` round to `1` square |
 | `additive` | boolean | `false` | Add the noise to the current heights |
+| `noise` | string or object | | Noise in place of the Perlin noise: a `NoiseTexture2D`'s [`.texture.json`](scene-format.md#procedural-textures) file, or [FastNoiseLite settings](scene-format.md#noise) |
 
 Needs: `edit`, `filesystem`. The same seed makes the same heights on every machine. From
 [examples/terrain](../../examples/terrain/):
@@ -1119,6 +1120,18 @@ Needs: `edit`, `filesystem`. The same seed makes the same heights on every machi
 
 ```json
 {"files":["terrain/land.height.png"],"heights":[-6,26.6482],"id":"land"}
+```
+
+With `noise`, the generator samples a [FastNoiseLite](scene-format.md#noise) a cell apart, as
+Godot's `Noise.get_image` does, in place of HTerrain's Perlin noise: normalized over the map, so
+heights fill `base_height` to `base_height + height_range`, unless the file's `normalize` is
+off (then `-1` to `1` maps to the range), and turned over when its `invert` is on. Tune the noise
+with [`texture.generate`](#texturegenerate) and use the same file here. `scale`, `roughness`
+and `octaves` then do nothing, `seed` replaces the noise's seed and `offset` adds to its; the
+curve, the island and erosion shape it as before.
+
+```json
+{"id": "land", "noise": "terrain/dunes.texture.json", "base_height": 0, "height_range": 12, "island_weight": 1}
 ```
 
 `height_range` is in the reply only when it widened. A terrain that can't be made (a map that
@@ -1230,6 +1243,38 @@ own terrain stops and then which terrain lies beyond; empty cells count as no te
 painting in empty space draws edges. Equal fits are picked by the cell's position, weighted by
 `probability`, so the same paint gives the same tiles. An unknown terrain fails with the
 closest name.
+
+### tilemap.generate
+
+Fills a rect of cells from noise, as terrains painted by thresholds: each cell's noise, from 0
+to 1, picks the first band whose `below` it is under, then each band's terrain is painted on its
+cells in turn, as [`tilemap.paint`](#tilemappaint) paints, or its tile is set, as
+[`tilemap.set`](#tilemapset) sets. Returns how many cells changed and how many each band took.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | An entity with a `TileMapLayer` |
+| `rect` | `[column, row, width, height]` | required | The cells to fill |
+| `noise` | string or object | required | A `NoiseTexture2D`'s [`.texture.json`](scene-format.md#procedural-textures) file, or [FastNoiseLite settings](scene-format.md#noise) |
+| `bands` | array | required | From low noise to high, 1 to 16 of them, each `{"below": <0 to 1>, "terrain": <name or null>}` or `{"below": ..., "tile": <tile or null>}` |
+
+Needs: `edit`. From [examples/noise-maps](../../examples/noise-maps/):
+
+```json
+{"id": "sea", "rect": [0, 0, 24, 12], "noise": "islands.texture.json",
+ "bands": [{"below": 0.5, "terrain": "water"}, {"terrain": "grass"}]}
+```
+
+```json
+{"bands":[121,167],"changed":288,"id":"sea"}
+```
+
+Cells' noise is sampled at their columns and rows, as Godot's `Noise.get_image` samples pixels,
+normalized over the rect and turned over by a file's `normalize` and `invert` as its texture
+is; inline settings are normalized. Only the last band may leave out `below`, taking the rest;
+cells above every band's `below` keep what they have. `null` erases. The same noise always
+fills the same cells, so a seed makes a map again. Bands out of order, a band with neither a
+terrain nor a tile, and an unknown terrain or tile fail with the band's path.
 
 ### tilemap.set
 
