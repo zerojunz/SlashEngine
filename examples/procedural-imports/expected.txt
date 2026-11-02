@@ -1,0 +1,122 @@
+project.import {"source":"godot"}
+{
+  "converted": {
+    "animation_libraries": 0,
+    "animation_trees": 0,
+    "assets": 0,
+    "audio_streams": 0,
+    "bus_layouts": 0,
+    "input_actions": 0,
+    "mesh_libraries": 0,
+    "navigation_meshes": 0,
+    "procedural_textures": 2,
+    "process_materials": 0,
+    "scenes": 1,
+    "sprite_frames": 0,
+    "themes": 0,
+    "tile_sets": 0
+  },
+  "engine": "godot",
+  "files": 5,
+  "main_scene": "godot/pond.scene.json",
+  "project": "Pond",
+  "report": "import/godot.json",
+  "scripts": [],
+  "unsupported": []
+}
+--- godot/pond_noise_texture2d_water.texture.json
+{
+  "color_ramp": {
+    "points": [
+      {
+        "color": [0.05, 0.2, 0.35, 1.0],
+        "offset": 0.0
+      },
+      {
+        "color": [0.5, 0.8, 0.9, 1.0],
+        "offset": 1.0
+      }
+    ]
+  },
+  "format": 1,
+  "height": 64,
+  "noise": {
+    "fractal_octaves": 3,
+    "frequency": 0.05,
+    "noise_type": "perlin",
+    "seed": 11
+  },
+  "seamless": true,
+  "type": "NoiseTexture2D",
+  "width": 64
+}
+--- godot/pond_gradient_texture2d_glow.texture.json
+{
+  "fill": "radial",
+  "fill_from": [0.5, 0.5],
+  "fill_to": [1.0, 0.5],
+  "format": 1,
+  "gradient": {
+    "points": [
+      {
+        "color": [1.0, 0.9, 0.6, 1.0],
+        "offset": 0.0
+      },
+      {
+        "color": [1.0, 0.9, 0.6, 0.0],
+        "offset": 1.0
+      }
+    ]
+  },
+  "height": 32,
+  "type": "GradientTexture2D",
+  "width": 32
+}
+texture.generate {"path":"godot/pond_noise_texture2d_water.texture.json"}
+{
+  "channels": {
+    "a": [255, 255, 255],
+    "b": [90, 152.85, 225],
+    "g": [52, 120.52, 199],
+    "r": [14, 64.71, 124]
+  },
+  "height": 64,
+  "width": 64,
+  "wrap": {
+    "inside": 3.44,
+    "x": 2.77,
+    "y": 2.59
+  }
+}
+entity.create {"components":{"HTerrain":{"heightmap":"terrain/valley.height.png","resolution":65,"splatmap":"terrain/valley.splat.png"},"Transform3D":{}},"id":"valley"}
+{
+  "id": "valley"
+}
+terrain.import {"heightmap":"terrain/valley.r16","id":"valley","max_height":120,"min_height":-5,"splatmap":"terrain/valley_splat.png"}
+{
+  "files": ["terrain/valley.height.png", "terrain/valley.splat.png"],
+  "height_range": [-5, 120],
+  "heights": [-5, 90.7046],
+  "id": "valley",
+  "resolution": 129
+}
+terrain.get {"id":"valley","points":[[64,0],[64,128],[10,64]]}
+{
+  "points": [
+    {
+      "normal": [0, 1, -0.0076],
+      "position": [64, -5, 0],
+      "splat": [1, 0, 0, 0]
+    },
+    {
+      "normal": [0, 1, -0.0076],
+      "position": [64, -3.0468, 128],
+      "splat": [1, 0, 0, 0]
+    },
+    {
+      "normal": [0.927, 0.375, -0.0057],
+      "position": [10, 62.7195, 64],
+      "splat": [0, 1, 0, 0]
+    }
+  ]
+}

@@ -3,6 +3,7 @@
 #include "procedural.hpp"
 
 #include "slash/command/session.hpp"
+#include "slash/core/bits.hpp"
 #include "slash/core/math.hpp"
 #include "slash/core/text.hpp"
 #include "slash/render/image.hpp"
@@ -19,10 +20,16 @@
 #include <memory>
 #include <numbers>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
+
+#if SLASH_HAS_TINYEXR
+#include <cstdlib>
+#include <tinyexr.h>
+#endif
 
 namespace slash::command {
 namespace {
@@ -653,6 +660,308 @@ Reply terrain_brush(Session& session, const json::Value& params) {
     return finish(session, std::move(result), std::move(written));
 }
 
+// A heightmap file as terrain.import reads it: its size and values a pixel, rows from the top,
+// from 0 to 1 or, when absolute, in meters.
+struct SourceHeights {
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::vector<float> values;
+    bool absolute = false;
+};
+
+// HTerrain's _get_adjusted_map_size: each side's next power of two plus one, the smaller of the
+// two, from 65 to 4097.
+int adjusted_map_size(std::uint32_t width, std::uint32_t height) {
+    const auto side = [](std::uint32_t size) {
+        std::uint32_t power = 1;
+        while (power < size - 1 && power < 4096) {
+            power *= 2;
+        }
+        return power + 1;
+    };
+    const std::uint32_t size = std::min(side(std::max(width, 2U)), side(std::max(height, 2U)));
+    return static_cast<int>(std::clamp(size, 65U, 4097U));
+}
+
+std::optional<Reply> source_error(std::string_view at, const std::string& path,
+                                  std::string_view why) {
+    return param_error(code::kInvalidArgument, at, quoted(path) + " " + std::string(why));
+}
+
+// A RAW file's square of heights: 16-bit unsigned values (.raw and .r16) or 32-bit floats from 0
+// to 1 (.r32), little-endian unless big_endian, as World Machine, Gaea and World Creator write
+// them.
+std::optional<Reply> read_raw(const std::string& path, const std::string& bytes, bool big_endian,
+                              SourceHeights& out) {
+    const std::size_t size = path.ends_with(".r32") ? 4 : 2;
+    const std::size_t count = bytes.size() / size;
+    auto side = static_cast<std::size_t>(std::sqrt(static_cast<double>(count)));
+    while (side * side > count) {
+        --side;
+    }
+    while ((side + 1) * (side + 1) <= count) {
+        ++side;
+    }
+    if (side < 2 || side * side * size != bytes.size()) {
+        return source_error("/heightmap", path,
+                            "is " + std::to_string(bytes.size()) + " bytes, not a square of " +
+                                (size == 4 ? "32-bit floats" : "16-bit values"));
+    }
+    out.width = static_cast<std::uint32_t>(side);
+    out.height = out.width;
+    out.values.resize(side * side);
+    for (std::size_t i = 0; i < out.values.size(); ++i) {
+        std::uint32_t word = 0;
+        for (std::size_t b = 0; b < size; ++b) {
+            const auto byte = static_cast<std::uint8_t>(bytes[(i * size) + b]);
+            const std::size_t shift = big_endian ? (size - 1 - b) * 8 : b * 8;
+            word |= static_cast<std::uint32_t>(byte) << shift;
+        }
+        out.values[i] = size == 4 ? bit_cast<float>(word) : static_cast<float>(word) / 65535.0F;
+    }
+    return std::nullopt;
+}
+
+// An OpenEXR file's first channel, in meters as it is, as HTerrain imports EXR heightmaps.
+std::optional<Reply> read_exr(const std::string& path, const std::string& bytes,
+                              SourceHeights& out) {
+#if SLASH_HAS_TINYEXR
+    float* rgba = nullptr;
+    int width = 0;
+    int height = 0;
+    const char* error = nullptr;
+    const int status = LoadEXRFromMemory(&rgba, &width, &height,
+                                         reinterpret_cast<const unsigned char*>(bytes.data()),
+                                         bytes.size(), &error);
+    if (status != TINYEXR_SUCCESS) {
+        const std::string why = error != nullptr ? error : "can't be read";
+        FreeEXRErrorMessage(error);
+        return source_error("/heightmap", path, "is not an EXR image tinyexr reads: " + why);
+    }
+    out.width = static_cast<std::uint32_t>(width);
+    out.height = static_cast<std::uint32_t>(height);
+    out.values.resize(out.width * static_cast<std::size_t>(out.height));
+    const std::span<const float> pixels(rgba, out.values.size() * 4);
+    for (std::size_t i = 0; i < out.values.size(); ++i) {
+        out.values[i] = pixels[i * 4];
+    }
+    std::free(rgba); // NOLINT(cppcoreguidelines-no-malloc): tinyexr allocates with malloc
+    out.absolute = true;
+    return std::nullopt;
+#else
+    (void)bytes;
+    (void)out;
+    return source_error("/heightmap", path,
+                        "is an EXR image, which this build reads none of: it was made without "
+                        "tinyexr");
+#endif
+}
+
+// Reads a heightmap file of any kind terrain.import takes.
+std::optional<Reply> read_source_heights(Session& session, const std::string& path, bool big_endian,
+                                         SourceHeights& out) {
+    auto read = session.read_project_file(path);
+    if (!read) {
+        return Reply::failure(read.error());
+    }
+    if (!read.value()) {
+        return param_error(code::kNotFound, "/heightmap",
+                           "the project has no file " + quoted(path));
+    }
+    const std::string& bytes = read.value().value_or(std::string());
+    if (path.ends_with(kPng)) {
+        auto decoded = render::decode_gray16(bytes);
+        if (!decoded) {
+            return source_error("/heightmap", path, ": " + decoded.error().message);
+        }
+        out.width = decoded.value().width;
+        out.height = decoded.value().height;
+        out.values.reserve(decoded.value().values.size());
+        for (const std::uint16_t v : decoded.value().values) {
+            out.values.push_back(static_cast<float>(v) / 65535.0F);
+        }
+    } else if (path.ends_with(".exr")) {
+        if (auto failed = read_exr(path, bytes, out)) {
+            return failed;
+        }
+    } else if (path.ends_with(".raw") || path.ends_with(".r16") || path.ends_with(".r32")) {
+        if (auto failed = read_raw(path, bytes, big_endian, out)) {
+            return failed;
+        }
+    } else {
+        return source_error("/heightmap", path,
+                            "is not a heightmap terrain.import reads: use a .png, .exr, .raw, "
+                            ".r16 or .r32 file");
+    }
+    if (out.width < 2 || out.height < 2) {
+        return source_error("/heightmap", path, "has fewer than 2 pixels a side");
+    }
+    for (const float v : out.values) {
+        if (!std::isfinite(v)) {
+            return source_error("/heightmap", path, "holds a height that isn't a number");
+        }
+    }
+    return std::nullopt;
+}
+
+// A splat map or color map to import: a PNG of the terrain's resolution, as HTerrain's
+// _import_map takes it.
+std::optional<Reply> read_source_map(Session& session, const json::Value& params,
+                                     std::string_view key, int resolution,
+                                     std::vector<std::uint8_t>& pixels) {
+    const std::string& path = params.find(key)->as_string();
+    const std::string at = "/" + std::string(key);
+    auto read = session.read_project_file(path);
+    if (!read) {
+        return Reply::failure(read.error());
+    }
+    if (!read.value()) {
+        return param_error(code::kNotFound, at, "the project has no file " + quoted(path));
+    }
+    auto decoded = render::decode_image(read.value().value_or(std::string()));
+    if (!decoded || decoded.value().pixels.empty()) {
+        return source_error(at, path, "is not an image to read: use a PNG");
+    }
+    const render::Image& image = decoded.value();
+    const auto r = static_cast<std::uint32_t>(resolution);
+    if (image.width != r || image.height != r) {
+        return source_error(at, path,
+                            "is " + std::to_string(image.width) + "x" +
+                                std::to_string(image.height) +
+                                " pixels, but the terrain's maps are " + std::to_string(r) + "x" +
+                                std::to_string(r));
+    }
+    pixels = image.pixels;
+    return std::nullopt;
+}
+
+// Stretches a map to a new resolution, as HTerrain's resize does when an import changes it.
+std::vector<std::uint8_t> stretch_map(const std::vector<std::uint8_t>& pixels, int from, int to) {
+    render::Image image;
+    image.width = static_cast<std::uint32_t>(from);
+    image.height = image.width;
+    image.pixels = pixels;
+    const auto size = static_cast<std::uint32_t>(to);
+    return render::resize_image(image, size, size).pixels;
+}
+
+// Imports maps made by other tools into an HTerrain, as its import dialog does: a heightmap sizes
+// the terrain to the smaller side's next power of two plus one (65 to 4097), cropping the file or
+// repeating its last row and column, and stretches the maps it keeps; PNG and RAW heights go from
+// min_height to max_height, EXR heights are meters as they are.
+Reply terrain_import(Session& session, const json::Value& params) {
+    Target target;
+    if (auto failed = find_terrain(session, params, target)) {
+        return std::move(*failed);
+    }
+    const json::Value* heightmap = params.find("heightmap");
+    const bool splat = params.find("splatmap") != nullptr;
+    const bool color = params.find("colormap") != nullptr;
+    if (heightmap == nullptr && !splat && !color) {
+        return param_error(code::kInvalidParams, "",
+                           "give heightmap, splatmap or colormap: a file to import");
+    }
+    json::Value result;
+    result["id"] = target.id;
+    json::Array written;
+    world::HTerrain& terrain = session.world().ecs().get<world::HTerrain>(target.entity);
+    if (heightmap != nullptr) {
+        if (auto failed = need_heightmap(target)) {
+            return std::move(*failed);
+        }
+        const float low = number(params, "min_height", 0.0F);
+        const float high = number(params, "max_height", 400.0F);
+        if (!(high > low)) {
+            return param_error(code::kInvalidArgument, "/max_height",
+                               "max_height must be above min_height");
+        }
+        SourceHeights source;
+        if (auto failed = read_source_heights(session, heightmap->as_string(),
+                                              flag(params, "big_endian"), source)) {
+            return std::move(*failed);
+        }
+        const int from = target.maps.resolution;
+        const int r = adjusted_map_size(source.width, source.height);
+        const auto cells = static_cast<std::size_t>(r) * static_cast<std::size_t>(r);
+        target.maps.heights.resize(cells);
+        float lowest = std::numeric_limits<float>::max();
+        float highest = std::numeric_limits<float>::lowest();
+        for (int y = 0; y < r; ++y) {
+            const auto sy = std::min(static_cast<std::uint32_t>(y), source.height - 1);
+            for (int x = 0; x < r; ++x) {
+                const auto sx = std::min(static_cast<std::uint32_t>(x), source.width - 1);
+                const float v = source.values[(sy * static_cast<std::size_t>(source.width)) + sx];
+                const float h =
+                    source.absolute ? v : std::clamp(low + ((high - low) * v), low, high);
+                target.maps.heights[(static_cast<std::size_t>(y) * static_cast<std::size_t>(r)) +
+                                    static_cast<std::size_t>(x)] = h;
+                lowest = std::min(lowest, h);
+                highest = std::max(highest, h);
+            }
+        }
+        Vec2 range{low, high};
+        if (source.absolute) {
+            range = {std::floor(lowest), std::ceil(highest)};
+            if (range.y <= range.x) {
+                range.y = range.x + 1.0F;
+            }
+        }
+        terrain.height_range = range;
+        target.terrain.height_range = range;
+        result["height_range"] = point_value(range);
+        if (r != from) {
+            terrain.resolution = r;
+            target.terrain.resolution = r;
+            target.maps.resolution = r;
+            result["resolution"] = r;
+            if (target.splatmap.before && !splat) {
+                target.maps.splat = stretch_map(target.maps.splat, from, r);
+                if (auto failed =
+                        write_image(session, target, target.splatmap, target.maps.splat, written)) {
+                    return std::move(*failed);
+                }
+            }
+            if (target.colormap.before && !color) {
+                target.maps.color = stretch_map(target.maps.color, from, r);
+                if (auto failed =
+                        write_image(session, target, target.colormap, target.maps.color, written)) {
+                    return std::move(*failed);
+                }
+            }
+        }
+        if (source.width != static_cast<std::uint32_t>(r) ||
+            source.height != static_cast<std::uint32_t>(r)) {
+            result["source_size"] = json::Array{source.width, source.height};
+        }
+        if (auto failed = write_heights(session, target, result, written)) {
+            return std::move(*failed);
+        }
+    }
+    const auto import_map = [&](std::string_view key, MapFile& file,
+                                std::vector<std::uint8_t>& pixels,
+                                std::string_view example) -> std::optional<Reply> {
+        if (params.find(key) == nullptr) {
+            return std::nullopt;
+        }
+        if (auto failed = need_map(target, key, file.path, kPng, example)) {
+            return failed;
+        }
+        if (auto failed = read_source_map(session, params, key, target.maps.resolution, pixels)) {
+            return failed;
+        }
+        return write_image(session, target, file, pixels, written);
+    };
+    if (auto failed =
+            import_map("splatmap", target.splatmap, target.maps.splat, "terrain/land.splat.png")) {
+        return std::move(*failed);
+    }
+    if (auto failed =
+            import_map("colormap", target.colormap, target.maps.color, "terrain/land.color.png")) {
+        return std::move(*failed);
+    }
+    return finish(session, std::move(result), std::move(written));
+}
+
 } // namespace
 
 void register_terrain_commands(Registry& registry) {
@@ -736,6 +1045,32 @@ void register_terrain_commands(Registry& registry) {
             },
             {"id"}),
         .handler = terrain_generate,
+    });
+    registry.add({
+        .name = "terrain.import",
+        .description = "Imports maps from other tools into an HTerrain, as HTerrain's import "
+                       "dialog: a heightmap sizes the terrain to its smaller side's next power "
+                       "of two plus one; then a splatmap and colormap of that size. Writes the "
+                       "HTerrain's own maps.",
+        .capabilities = {Edit, Filesystem},
+        .effect = Effect::Edit,
+        .params = params_schema(
+            {
+                {"id", id_property()},
+                {"heightmap",
+                 property("string", "A project file of heights, as World Machine, Gaea and World "
+                                    "Creator export them: a gray .png, .r16 or .raw (16-bit), .r32 "
+                                    "(floats 0 to 1) or .exr (meters as they are).")},
+                {"min_height", number_property("PNG and RAW: the height of black. Default 0.",
+                                               -100000.0, 100000.0)},
+                {"max_height", number_property("PNG and RAW: the height of white. Default 400.",
+                                               -100000.0, 100000.0)},
+                {"big_endian", property("boolean", "RAW: big-endian values. Default false.")},
+                {"splatmap", property("string", "A PNG of texture weights, one channel each.")},
+                {"colormap", property("string", "A PNG of colors; alpha under 0.5 is a hole.")},
+            },
+            {"id"}),
+        .handler = terrain_import,
     });
     json::Value mode;
     mode["enum"] = json::Array{"raise", "lower", "smooth", "flatten", "level",

@@ -17,6 +17,7 @@
 #include "slash/importer/import.hpp"
 #include "slash/importer/scripts.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
 #include "slash/runtime/gameplay.hpp"
 #include "slash/runtime/project.hpp"
@@ -975,6 +976,7 @@ TEST_CASE("importing Godot tile maps, themes and bus layouts writes their SlashE
           parse(R"({"scenes": 2, "sprite_frames": 0, "tile_sets": 1, "themes": 1,
                     "bus_layouts": 1, "animation_libraries": 0, "animation_trees": 0,
                     "process_materials": 0, "mesh_libraries": 0, "navigation_meshes": 0,
+                    "procedural_textures": 0,
                     "audio_streams": 0, "input_actions": 1, "assets": 3})"));
     const std::string level = "godot/scenes/level.scene.json";
 
@@ -5784,5 +5786,113 @@ delimiter=1
           "res://text/gone.po");
     CHECK(unsupported(report, "CSV translation delimiter").find("where")->as_string() ==
           "text/menu.csv.import");
+    fs::remove_all(project);
+}
+
+TEST_CASE("importing Godot's noise and gradient textures writes .texture.json files") {
+    const fs::path project = "import_godot_procedural";
+    fs::remove_all(project);
+    const fs::path folder = make_project(project / "godot");
+    write(folder / "sky.tres", R"([gd_resource type="GradientTexture2D" load_steps=2 format=3]
+
+[sub_resource type="Gradient" id="Gradient_sky"]
+interpolation_mode = 2
+interpolation_color_space = 2
+offsets = PackedFloat32Array(1, 0)
+colors = PackedColorArray(1, 0.8, 0.5, 1, 0.1, 0.1, 0.3, 1)
+
+[resource]
+gradient = SubResource("Gradient_sky")
+width = 32
+height = 16
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
+repeat = 2
+use_hdr = true
+)");
+    write(folder / "scenes/water.tscn", R"([gd_scene load_steps=5 format=3]
+
+[ext_resource type="Texture2D" path="res://sky.tres" id="1_sky"]
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_waves"]
+noise_type = 2
+seed = 7
+frequency = 0.04
+offset = Vector3(3, 4, 0)
+fractal_type = 2
+cellular_return_type = 3
+domain_warp_enabled = true
+domain_warp_fractal_type = 2
+spooky = 3
+
+[sub_resource type="Gradient" id="Gradient_blue"]
+offsets = PackedFloat32Array(0, 1)
+colors = PackedColorArray(0.1, 0.2, 0.5, 1, 0.8, 0.9, 1, 1)
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_water"]
+width = 64
+height = 32
+seamless = true
+seamless_blend_skirt = 0.2
+invert = true
+generate_mipmaps = false
+color_ramp = SubResource("Gradient_blue")
+noise = SubResource("FastNoiseLite_waves")
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_bar"]
+width = 8
+
+[node name="Water" type="Node2D"]
+
+[node name="Waves" type="Sprite2D" parent="."]
+texture = SubResource("NoiseTexture2D_water")
+
+[node name="Sky" type="Sprite2D" parent="."]
+texture = ExtResource("1_sky")
+
+[node name="Bar" type="Sprite2D" parent="."]
+texture = SubResource("GradientTexture1D_bar")
+)");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    const json::Value scene = parse(files.at("godot/scenes/water.scene.json"));
+    const auto texture_of = [&](std::string_view entity) {
+        return scene.find("entities")
+            ->find(entity)
+            ->find("components")
+            ->find("Sprite2D")
+            ->find("texture")
+            ->as_string();
+    };
+    // Each texture is a file beside what declared it, which the sprite draws.
+    const std::string waves = texture_of("waves");
+    CHECK(waves == "godot/scenes/water_noise_texture2d_water.texture.json");
+    CHECK(texture_of("sky") == "godot/sky.texture.json");
+    const json::Value noise = parse(files.at(waves));
+    CHECK(slash::procedural::validate_texture(noise).empty());
+    CHECK(noise == parse(R"({"format": 1, "type": "NoiseTexture2D", "width": 64, "height": 32,
+        "invert": true, "seamless": true, "seamless_blend_skirt": 0.2,
+        "color_ramp": {"points": [{"offset": 0, "color": [0.1, 0.2, 0.5, 1]},
+                                  {"offset": 1, "color": [0.8, 0.9, 1, 1]}]},
+        "noise": {"noise_type": "cellular", "seed": 7, "frequency": 0.04, "offset": [3, 4],
+                  "fractal_type": "ridged", "cellular_return_type": "distance2_add",
+                  "domain_warp_enabled": true, "domain_warp_fractal_type": "independent"}})"));
+    // Points come sorted, with Godot's cubic Oklab blending.
+    const json::Value sky = parse(files.at("godot/sky.texture.json"));
+    CHECK(sky == parse(R"({"format": 1, "type": "GradientTexture2D", "width": 32, "height": 16,
+        "fill": "radial", "fill_from": [0.5, 0.5], "fill_to": [1, 0.5], "repeat": "mirror",
+        "gradient": {"interpolation_mode": "cubic", "interpolation_color_space": "oklab",
+                     "points": [{"offset": 0, "color": [0.1, 0.1, 0.3, 1]},
+                                {"offset": 1, "color": [1, 0.8, 0.5, 1]}]}})"));
+    // A texture with no gradient keeps Godot's black to white.
+    const json::Value bar = parse(files.at(texture_of("bar")));
+    CHECK(bar == parse(R"({"format": 1, "type": "GradientTexture1D", "width": 8})"));
+    const json::Value& report = plan.report;
+    CHECK(report.find("converted")->find("procedural_textures")->as_int() == 3);
+    CHECK(unsupported(report, "FastNoiseLite.spooky").is_object());
+    CHECK(unsupported(report, "GradientTexture2D.use_hdr").find("why")->as_string() ==
+          "textures are 8 bits a channel");
+    CHECK(unsupported(report, "NoiseTexture2D.generate_mipmaps").is_object());
     fs::remove_all(project);
 }

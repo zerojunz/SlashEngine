@@ -19,6 +19,9 @@
 #include "slash/importer/scripts.hpp"
 #include "slash/navigation/navigation.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/procedural/gradient.hpp"
+#include "slash/procedural/noise.hpp"
+#include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/mesh.hpp"
 #include "slash/render/upscaler.hpp"
@@ -55,7 +58,9 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace slash::importer {
@@ -2809,6 +2814,10 @@ private:
         if (type == "MeshLibrary") {
             return mesh_library_file(file, section, base);
         }
+        if (type == "NoiseTexture2D" || type == "GradientTexture1D" ||
+            type == "GradientTexture2D") {
+            return procedural_texture_file(file, section, base, type, why);
+        }
         why = type + " resources";
         return {};
     }
@@ -4634,6 +4643,259 @@ private:
             }
         }
         return json::Value(std::move(points));
+    }
+
+    // A Gradient resource as procedural::Gradient, Godot's: black to white when there is none.
+    std::optional<procedural::Gradient>
+    procedural_gradient(const Value& reference, const TextFile& file, std::string& why) {
+        // Named, not bound, since the lambdas below capture section.
+        const auto found = resource_section(reference, file);
+        const Section* section = found.first;
+        const TextFile* owner = found.second;
+        if (section == nullptr || resource_type(*section, *owner) != "Gradient") {
+            why = "a gradient that isn't a Gradient";
+            return std::nullopt;
+        }
+        procedural::Gradient gradient;
+        std::vector<double> offsets{0.0, 1.0};
+        std::vector<double> colors{0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+        if (const Value* value = section->property("offsets"); value != nullptr) {
+            offsets = value->numbers().value_or(std::vector<double>{});
+        }
+        if (const Value* value = section->property("colors"); value != nullptr) {
+            colors = value->numbers().value_or(std::vector<double>{});
+        }
+        if (colors.size() != offsets.size() * 4) {
+            why = "a Gradient whose offsets and colors don't match";
+            return std::nullopt;
+        }
+        gradient.points.clear();
+        for (std::size_t i = 0; i < offsets.size(); ++i) {
+            gradient.points.push_back({.offset = static_cast<float>(offsets[i]),
+                                       .color = {static_cast<float>(colors[i * 4]),
+                                                 static_cast<float>(colors[(i * 4) + 1]),
+                                                 static_cast<float>(colors[(i * 4) + 2]),
+                                                 static_cast<float>(colors[(i * 4) + 3])}});
+        }
+        // Godot keeps its points sorted by offset.
+        std::ranges::stable_sort(gradient.points, {}, &procedural::GradientStop::offset);
+        const auto choice = [&](std::string_view name, int count) {
+            const Value* value = section->property(name);
+            return value != nullptr && value->kind == Value::Kind::Int && value->integer >= 0 &&
+                           value->integer < count
+                       ? static_cast<int>(value->integer)
+                       : 0;
+        };
+        gradient.interpolation_mode =
+            static_cast<procedural::GradientInterpolation>(choice("interpolation_mode", 3));
+        gradient.interpolation_color_space =
+            static_cast<procedural::GradientColorSpace>(choice("interpolation_color_space", 3));
+        return gradient;
+    }
+
+    // A FastNoiseLite resource's settings. Its enums count as Godot's do, in the order
+    // procedural's enums list them.
+    std::optional<procedural::NoiseSettings>
+    procedural_noise(const Value& reference, const TextFile& file, std::string& why) {
+        // Named, not bound, since the lambdas below capture section.
+        const auto found = resource_section(reference, file);
+        const Section* section = found.first;
+        const TextFile* owner = found.second;
+        if (section == nullptr || resource_type(*section, *owner) != "FastNoiseLite") {
+            why = "noise that isn't a FastNoiseLite";
+            return std::nullopt;
+        }
+        procedural::NoiseSettings noise;
+        const std::string where = resource_where(*section, *owner);
+        for (const auto& property : section->properties) {
+            const auto& name = property.first;
+            const auto& value = property.second;
+            const auto as_int = [&] { return static_cast<int>(value.number()); };
+            const auto as_float = [&] { return static_cast<float>(value.number()); };
+            const auto as_enum = [&](auto& field, int count) {
+                using Enum = std::remove_reference_t<decltype(field)>;
+                if (value.kind == Value::Kind::Int && value.integer >= 0 && value.integer < count) {
+                    field = static_cast<Enum>(value.integer);
+                    return true;
+                }
+                return false;
+            };
+            bool used = value.is_number();
+            if (name == "noise_type") {
+                used = as_enum(noise.noise_type, 6);
+            } else if (name == "seed") {
+                noise.seed = as_int();
+            } else if (name == "frequency") {
+                noise.frequency = as_float();
+            } else if (name == "offset") {
+                const auto xyz = value.numbers().value_or(std::vector<double>{});
+                used = xyz.size() == 3;
+                if (used) {
+                    noise.offset = {static_cast<float>(xyz[0]), static_cast<float>(xyz[1]),
+                                    static_cast<float>(xyz[2])};
+                }
+            } else if (name == "fractal_type") {
+                used = as_enum(noise.fractal_type, 4);
+            } else if (name == "fractal_octaves") {
+                noise.fractal_octaves = as_int();
+            } else if (name == "fractal_lacunarity") {
+                noise.fractal_lacunarity = as_float();
+            } else if (name == "fractal_gain") {
+                noise.fractal_gain = as_float();
+            } else if (name == "fractal_weighted_strength") {
+                noise.fractal_weighted_strength = as_float();
+            } else if (name == "fractal_ping_pong_strength") {
+                noise.fractal_ping_pong_strength = as_float();
+            } else if (name == "cellular_distance_function") {
+                used = as_enum(noise.cellular_distance_function, 4);
+            } else if (name == "cellular_return_type") {
+                used = as_enum(noise.cellular_return_type, 7);
+            } else if (name == "cellular_jitter") {
+                noise.cellular_jitter = as_float();
+            } else if (name == "domain_warp_enabled") {
+                used = value.kind == Value::Kind::Bool;
+                noise.domain_warp_enabled = value.boolean;
+            } else if (name == "domain_warp_type") {
+                used = as_enum(noise.domain_warp_type, 3);
+            } else if (name == "domain_warp_amplitude") {
+                noise.domain_warp_amplitude = as_float();
+            } else if (name == "domain_warp_frequency") {
+                noise.domain_warp_frequency = as_float();
+            } else if (name == "domain_warp_fractal_type") {
+                used = as_enum(noise.domain_warp_fractal_type, 3);
+            } else if (name == "domain_warp_fractal_octaves") {
+                noise.domain_warp_fractal_octaves = as_int();
+            } else if (name == "domain_warp_fractal_lacunarity") {
+                noise.domain_warp_fractal_lacunarity = as_float();
+            } else if (name == "domain_warp_fractal_gain") {
+                noise.domain_warp_fractal_gain = as_float();
+            } else {
+                used = name == "resource_name" || name == "resource_local_to_scene";
+            }
+            if (!used) {
+                problems_.add("FastNoiseLite." + name, where);
+            }
+        }
+        return noise;
+    }
+
+    // A NoiseTexture2D, GradientTexture1D or GradientTexture2D as a .texture.json file, made
+    // into the same pixels as it loads. "" with why when its noise or gradient doesn't convert.
+    std::string procedural_texture_file(const TextFile& file, const Section& section,
+                                        const std::string& base, const std::string& type,
+                                        std::string& why) {
+        const std::string key = file.path + "#" + base;
+        if (const auto done = textures_written_.find(key); done != textures_written_.end()) {
+            return done->second;
+        }
+        resources_used_.insert(type);
+        const std::string where = resource_where(section, file);
+        const auto number = [](const Value& value, auto fallback) {
+            return value.is_number() ? static_cast<decltype(fallback)>(value.number()) : fallback;
+        };
+        const auto flag = [](const Value& value, bool fallback) {
+            return value.kind == Value::Kind::Bool ? value.boolean : fallback;
+        };
+        procedural::ProceduralTexture texture;
+        if (type == "GradientTexture1D") {
+            texture.emplace<procedural::GradientTexture1D>();
+        } else if (type == "GradientTexture2D") {
+            texture.emplace<procedural::GradientTexture2D>();
+        }
+        for (const auto& [name, value] : section.properties) {
+            const std::string what = std::string(type).append(".").append(name);
+            std::string item_why;
+            bool used = true;
+            if (name == "resource_name" || name == "resource_local_to_scene") {
+                continue;
+            }
+            if (name == "generate_mipmaps" || name == "use_hdr") {
+                problems_.add(what, where,
+                              name == "use_hdr" ? "textures are 8 bits a channel"
+                                                : "textures have one level");
+                continue;
+            }
+            if (auto* found = std::get_if<procedural::NoiseTexture2D>(&texture)) {
+                procedural::NoiseTexture2D& noise = *found;
+                if (name == "width") {
+                    noise.width = number(value, noise.width);
+                } else if (name == "height") {
+                    noise.height = number(value, noise.height);
+                } else if (name == "invert") {
+                    noise.invert = flag(value, noise.invert);
+                } else if (name == "in_3d_space") {
+                    noise.in_3d_space = flag(value, noise.in_3d_space);
+                } else if (name == "seamless") {
+                    noise.seamless = flag(value, noise.seamless);
+                } else if (name == "seamless_blend_skirt") {
+                    noise.seamless_blend_skirt = number(value, noise.seamless_blend_skirt);
+                } else if (name == "as_normal_map") {
+                    noise.as_normal_map = flag(value, noise.as_normal_map);
+                } else if (name == "bump_strength") {
+                    noise.bump_strength = number(value, noise.bump_strength);
+                } else if (name == "normalize") {
+                    noise.normalize = flag(value, noise.normalize);
+                } else if (name == "color_ramp") {
+                    noise.color_ramp = procedural_gradient(value, file, item_why);
+                    used = noise.color_ramp.has_value();
+                } else if (name == "noise") {
+                    auto settings = procedural_noise(value, file, item_why);
+                    used = settings.has_value();
+                    if (settings) {
+                        noise.noise = *settings;
+                    }
+                } else {
+                    used = false;
+                }
+            } else {
+                auto* one = std::get_if<procedural::GradientTexture1D>(&texture);
+                auto* two = std::get_if<procedural::GradientTexture2D>(&texture);
+                procedural::Gradient& gradient = one != nullptr ? one->gradient : two->gradient;
+                const std::vector<double> xy = value.numbers().value_or(std::vector<double>{});
+                if (name == "gradient") {
+                    auto converted = procedural_gradient(value, file, item_why);
+                    used = converted.has_value();
+                    if (converted) {
+                        gradient = std::move(*converted);
+                    }
+                } else if (name == "width") {
+                    if (one != nullptr) {
+                        one->width = number(value, one->width);
+                    } else {
+                        two->width = number(value, two->width);
+                    }
+                } else if (two != nullptr && name == "height") {
+                    two->height = number(value, two->height);
+                } else if (two != nullptr && name == "fill" && value.kind == Value::Kind::Int &&
+                           value.integer >= 0 && value.integer < 3) {
+                    two->fill = static_cast<procedural::GradientFill>(value.integer);
+                } else if (two != nullptr && name == "repeat" && value.kind == Value::Kind::Int &&
+                           value.integer >= 0 && value.integer < 3) {
+                    two->repeat = static_cast<procedural::GradientRepeat>(value.integer);
+                } else if (two != nullptr && name == "fill_from" && xy.size() == 2) {
+                    two->fill_from = {static_cast<float>(xy[0]), static_cast<float>(xy[1])};
+                } else if (two != nullptr && name == "fill_to" && xy.size() == 2) {
+                    two->fill_to = {static_cast<float>(xy[0]), static_cast<float>(xy[1])};
+                } else {
+                    used = false;
+                }
+            }
+            if (!used) {
+                problems_.add(what, where, item_why);
+            }
+        }
+        if (type == "NoiseTexture2D" && section.property("noise") == nullptr) {
+            // Godot draws nothing without a noise; the file's default noise stands in.
+            problems_.add(type + ".noise", where, "a NoiseTexture2D with no noise");
+        }
+        const std::string path = destination(base + std::string(procedural::kTextureSuffix));
+        textures_written_[key] = path;
+        json::Value doc = procedural::texture_to_json(texture);
+        keep_valid(doc, path, [](const json::Value& d) { return procedural::validate_texture(d); });
+        add_file(path, json::write(doc) + "\n");
+        ++procedural_textures_;
+        why.clear();
+        return path;
     }
 
     // A Gradient resource as GradientPoint values.
@@ -10844,6 +11106,7 @@ private:
         out["converted"]["process_materials"] = process_files_;
         out["converted"]["mesh_libraries"] = mesh_library_files_;
         out["converted"]["navigation_meshes"] = navigation_files_;
+        out["converted"]["procedural_textures"] = procedural_textures_;
         out["converted"]["audio_streams"] = stream_files_;
         out["converted"]["input_actions"] = input_actions_;
         out["converted"]["assets"] = assets_;
@@ -10870,6 +11133,7 @@ private:
     std::map<std::string, std::string> process_written_;
     std::map<std::string, std::string> mesh_libraries_written_;
     std::map<std::string, std::string> navigation_written_;
+    std::map<std::string, std::string> textures_written_;
     std::map<std::string, std::string> voxel_gis_written_; // by file and resource, its file or ""
     // Each converted mesh library's item names by Godot's item IDs, by the library's path.
     std::map<std::string, std::map<std::int64_t, std::string>> mesh_library_items_;
@@ -10912,6 +11176,7 @@ private:
     int process_files_ = 0;
     int mesh_library_files_ = 0;
     int navigation_files_ = 0;
+    int procedural_textures_ = 0;
     int stream_files_ = 0;
     int input_actions_ = 0;
     int assets_ = 0;

@@ -66,7 +66,7 @@ as `entity.get`, reject it as an unknown param.
 | Models | [`model.inspect`](#modelinspect), [`model.cleanup`](#modelcleanup), [`model.retarget`](#modelretarget), [`skeleton.get`](#skeletonget), [`csg.get`](#csgget) |
 | Paths | [`path.get`](#pathget) |
 | Grid maps | [`gridmap.set`](#gridmapset), [`gridmap.get`](#gridmapget) |
-| Terrains | [`terrain.generate`](#terraingenerate), [`terrain.brush`](#terrainbrush), [`terrain.get`](#terrainget) |
+| Terrains | [`terrain.generate`](#terraingenerate), [`terrain.import`](#terrainimport), [`terrain.brush`](#terrainbrush), [`terrain.get`](#terrainget) |
 | Tile maps | [`tilemap.paint`](#tilemappaint), [`tilemap.generate`](#tilemapgenerate), [`tilemap.set`](#tilemapset), [`tilemap.get`](#tilemapget), [`tilemap.convert`](#tilemapconvert) |
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity) |
 | Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent), [`navigation.bake`](#navigationbake) |
@@ -1137,6 +1137,43 @@ curve, the island and erosion shape it as before.
 `height_range` is in the reply only when it widened. A terrain that can't be made (a map that
 doesn't load, or a resolution HTerrain refuses) fails at `/id` saying why, as
 [`scene validate`](cli.md#scene-validate) reports it.
+
+### terrain.import
+
+Imports maps made in other tools into an `HTerrain`, as HTerrain's import dialog does: a
+heightmap from World Machine, Gaea, World Creator or any tool that exports one, then a splat map
+and a color map. Each goes into the terrain's own map files, which it must name.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | | The entity with the `HTerrain` |
+| `heightmap` | string | | A project file of heights: a gray `.png` (16 bits, or 8), `.r16` or `.raw` (16-bit unsigned values), `.r32` (32-bit floats from `0` to `1`) or `.exr` (the first channel, in meters) |
+| `min_height`, `max_height` | number | `0`, `400` | PNG and RAW: the heights of the lowest and highest values; `max_height` must be above `min_height` |
+| `big_endian` | boolean | `false` | RAW: the values are big-endian |
+| `splatmap` | string | | A PNG of texture weights, a channel each, at the terrain's resolution |
+| `colormap` | string | | A PNG of colors at the terrain's resolution; alpha under `0.5` cuts a hole |
+
+Needs: `edit`, `filesystem`. Give at least one file. A heightmap sizes the terrain as HTerrain's
+`_get_adjusted_map_size` does: each side's next power of two plus one, the smaller of the two,
+from 65 to 4097. A larger file is cropped from its top left; a smaller one (a 1024 by 1024 file
+makes a 1025 terrain) repeats its last row and column, where HTerrain reads black. RAW files must
+be square. PNG and RAW heights go from `min_height` to `max_height`, which becomes
+`height_range`; EXR heights are meters as they are, and `height_range` becomes the whole meters
+around them. Where the resolution changes, the splat and color maps the terrain has are stretched
+to it, unless the call imports them too; the reply gives the new `resolution`, and `source_size`
+when the file wasn't the terrain's size. From
+[examples/procedural-imports](../../examples/procedural-imports/):
+
+```json
+{"id": "valley", "heightmap": "terrain/valley.r16", "min_height": -5, "max_height": 120, "splatmap": "terrain/valley_splat.png"}
+```
+
+```json
+{"files":["terrain/valley.height.png","terrain/valley.splat.png"],"height_range":[-5,120],"heights":[-5,90.7046],"id":"valley","resolution":129}
+```
+
+Undo puts back the maps and the component. EXR files are read with tinyexr; a build made without
+it says so.
 
 ### terrain.brush
 
