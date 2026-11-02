@@ -1,0 +1,7 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"scatter.run","params":{"path":"forest.scatter.json","into":"forest"}}
+{"jsonrpc":"2.0","id":3,"method":"world.query","params":{"with":["SphereMesh"]}}
+{"jsonrpc":"2.0","id":4,"method":"frame.capture","params":{"points":[[80,60],[100,30],[5,5]]}}
+{"jsonrpc":"2.0","id":5,"method":"scatter.run","params":{"into":"forest","rules":{"format":1,"seed":3,"layers":[{"name":"trees","mesh":"models/tree.model.json","as":"multimesh","on":["ground","hill"],"count":200,"spacing":2.5,"slope":[0,20]}]}}}
+{"jsonrpc":"2.0","id":6,"method":"undo","params":{}}
+{"jsonrpc":"2.0","id":7,"method":"scatter.run","params":{"into":"forest","rules":{"format":1,"layers":[{"name":"trees","mesh":"models/tree.model.json","on":["grond"],"count":5}]}}}

@@ -42,6 +42,7 @@
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/procedural/scatter.hpp"
 #include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/light.hpp"
@@ -494,6 +495,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "texture") {
         return Reply::success(procedural::texture_schema());
+    }
+    if (kind == "scatter") {
+        return Reply::success(procedural::scatter_schema());
     }
     if (name.empty()) {
         return param_error(code::kInvalidParams, "/name",
@@ -6638,7 +6642,7 @@ void register_builtin_commands(Registry& registry) {
                     "audio",    "bus_layout",       "navmesh",   "navpoly",  "meshlib",
                     "lightmap", "voxel_gi",         "model",     "replay",   "test",
                     "score",    "storyboard",       "component", "command",  "standard_material",
-                    "texture"};
+                    "texture",  "scatter"};
     registry.add({
         .name = "schema.get",
         .description =
@@ -6646,7 +6650,7 @@ void register_builtin_commands(Registry& registry) {
             ".anim.json, .animtree.json, .process_material.json, .tileset.json, .font.json, "
             ".theme.json, .audio.json, "
             ".bus_layout.json, .navmesh.json, .navpoly.json, .meshlib.json, .lightmap.json, "
-            ".voxelgi.json, .model.json, .standard_material.json, .texture.json, "
+            ".voxelgi.json, .model.json, .standard_material.json, .texture.json, .scatter.json, "
             ".replay.json, "
             ".test.json, "
             ".score.json or storyboard "
@@ -8214,6 +8218,7 @@ void register_builtin_commands(Registry& registry) {
     register_place_commands(registry);
     register_terrain_commands(registry);
     register_procedural_commands(registry);
+    register_scatter_commands(registry);
     register_lightmap_commands(registry);
     register_model_cleanup_commands(registry);
     register_services_commands(registry);

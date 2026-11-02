@@ -1,0 +1,14 @@
+{
+  "components": {
+    "MeshInstance3D": {},
+    "SphereMesh": {
+      "height": 0.5,
+      "radius": 0.3
+    },
+    "StandardMaterial3D": {
+      "albedo_color": [0.5, 0.5, 0.52, 1.0]
+    },
+    "Transform3D": {}
+  },
+  "format": 1
+}

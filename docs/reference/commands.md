@@ -61,6 +61,7 @@ as `entity.get`, reject it as an unknown param.
 | Assets | [`asset.list`](#assetlist) |
 | Materials | [`material.eval`](#materialeval) |
 | Textures | [`texture.generate`](#texturegenerate) |
+| Scatter | [`scatter.run`](#scatterrun) |
 | Animations | [`animation.eval`](#animationeval) |
 | Models | [`model.inspect`](#modelinspect), [`model.cleanup`](#modelcleanup), [`model.retarget`](#modelretarget), [`skeleton.get`](#skeletonget), [`csg.get`](#csgget) |
 | Paths | [`path.get`](#pathget) |
@@ -160,12 +161,13 @@ Returns a JSON Schema: for scene, prefab, [`.frames.json`](scene-format.md#sprit
 [`.navmesh.json` or `.navpoly.json`](scene-format.md#navigation-meshes-and-polygons),
 [`.meshlib.json`](scene-format.md#mesh-libraries), [`.model.json`](scene-format.md#model-recipes),
 [`.standard_material.json`](scene-format.md#material-files),
-[`.texture.json`](scene-format.md#procedural-textures) or storyboard files, one component or one
+[`.texture.json`](scene-format.md#procedural-textures),
+[`.scatter.json`](scene-format.md#scatter-rules) or storyboard files, one component or one
 command.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"standard_material"`, `"texture"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"standard_material"`, `"texture"`, `"scatter"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -592,6 +594,49 @@ nothing. From [examples/procedural-textures](../../examples/procedural-textures/
 The same noise without `seamless` jumps at its edges, `"wrap":{"inside":13.99,"x":43.44,"y":37.04}`.
 Inline settings' errors are at their JSON Pointer under `/texture`, a file's at `/path`, and a
 pixel outside the texture at its place in `/pixels`.
+
+## Scatter
+
+### scatter.run
+
+Places what [scatter rules](scene-format.md#scatter-rules) ask for over the ground, as Unreal's PCG
+graphs and Godot's MultiMesh *Populate Surface* do: trees over a terrain, rocks between them,
+flowers on a tile map's grass. Each layer's places go under the `into` entity, which is made if it
+is missing: a `"multimesh"` layer as one [`MultiMeshInstance3D`](scene-format.md#multimeshinstance3d)
+`<into>_<layer>`, an `"entities"` layer as entities `<into>_<layer>_<n>` that extend its prefab or
+draw its mesh. Running again replaces everything `into` held, so rules can be tuned and run until
+they look right; the run is one undo step.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | | A `.scatter.json` file |
+| `rules` | object | | A `.scatter.json` document, to try rules without a file |
+| `into` | string | required | ID of the parent the places go under, with a `Transform3D` (or `Transform2D` in 2D); made if missing |
+
+Give `path` or `rules`, not both. The 3D ground is what navigation bakes read under each layer's
+`on` entities (meshes, CSG, terrains, grid maps, static bodies' shapes), placed in the world;
+what `into` held before isn't ground. In 2D it is the cells of the `on` TileMapLayers. Places are
+written in `into`'s space. Returns each layer's count placed; a layer that placed fewer than it
+wanted adds `wanted` and `rejected`, how many tries each rule threw away (`outside`, `slope`,
+`height`, `noise`, `spacing`), or `problem` when it had no ground at all. Needs: `edit`. From
+[examples/scatter-rules](../../examples/scatter-rules/):
+
+```json
+{"path": "forest.scatter.json", "into": "forest"}
+```
+
+```json
+{"into":"forest","layers":[{"name":"trees","placed":78},{"name":"rocks","placed":10}]}
+```
+
+Asking for more than fits:
+
+```json
+{"into":"forest","layers":[{"name":"trees","placed":52,"rejected":{"slope":579,"spacing":5369},"wanted":200}]}
+```
+
+Errors in inline rules are at their JSON Pointer under `/rules`, a file's at `/path`, and an `on`
+ID that isn't there names the closest one.
 
 ## Animations
 

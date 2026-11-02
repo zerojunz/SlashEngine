@@ -2656,6 +2656,20 @@ void register_3d_components(ComponentRegistry& registry) {
                                .min = 0.001})
         .describe("ignore_occlusion_culling",
                   {.doc = "Always drawn: OccluderInstance3Ds never hide it."});
+    registry.add<MultiMeshInstance3D>()
+        .set_doc("Draws a model once per instance, each placed by its own transform in the "
+                 "entity's space, as Godot's MultiMeshInstance3D; scatter.run makes them.")
+        .describe("mesh", {.doc = "Project path of the model each instance draws, as "
+                                  "MeshInstance3D's mesh."})
+        .describe("instances", {.doc = "Each instance as {\"position\", \"rotation\", "
+                                       "\"scale\"}, a Transform3D's fields in the entity's "
+                                       "space."})
+        .describe("visible_instance_count",
+                  {.doc = "How many instances draw, from the first; -1 for all.", .min = -1})
+        .describe("layers", {.doc = "Render layers, as MeshInstance3D's."})
+        .describe("cast_shadow", {.doc = "Which shadows it casts, as MeshInstance3D's.",
+                                  .choices = {"off", "on", "double_sided", "shadows_only"}})
+        .describe("lod_bias", {.doc = "As MeshInstance3D's.", .min = 0.001});
     registry.add<Skeleton3D>()
         .set_doc("Poses bones of the model the entity's MeshInstance3D draws, by name, in place of "
                  "their animation or rest pose, as Godot's Skeleton3D bone poses.")
