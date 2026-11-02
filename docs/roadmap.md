@@ -962,7 +962,7 @@ Exit: an agent builds a small 3D sample end to end.
   - [ ] TalkBack on Android, VoiceOver on iOS and the web's screen readers
 - [ ] Platform services, like Unity's Analytics, Ads and In-App Purchasing: one cross-platform C++
       API and command set, with the store or network chosen per export preset
-  - [ ] Analytics: custom events, sessions and funnels, batched and sent as JSON to an endpoint
+  - [x] Analytics: custom events, sessions and funnels, batched and sent as JSON to an endpoint
         the developer chooses, such as a self-hosted open-source server
   - [ ] In-app purchases: products, purchase, restore and receipts, on StoreKit for iOS and
         macOS and Google Play Billing for Android

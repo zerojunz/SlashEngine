@@ -1,0 +1,75 @@
+The player goes through the tutorial; each step is a funnel_step event:
+  tutorial_start: tutorial, step 1 of 3
+  first_jump: tutorial, step 2 of 3
+  tutorial_done: tutorial, step 3 of 3
+
+With first_open and session_start, five events make a batch, but the server is down:
+  it answered 503; 6 events wait
+
+A minute later the server is up, and the batch goes again:
+  it answered 204; 6 sent, 0 wait
+
+What the server received:
+{
+  "app": {
+    "name": "Dungeon",
+    "platform": "linux",
+    "version": "1.2.0"
+  },
+  "device": "id1",
+  "events": [
+    {
+      "event": "first_open",
+      "seq": 1,
+      "session": "id2",
+      "time": "2026-09-21T14:13:20.000Z"
+    },
+    {
+      "event": "session_start",
+      "seq": 2,
+      "session": "id2",
+      "time": "2026-09-21T14:13:20.000Z"
+    },
+    {
+      "event": "tutorial_start",
+      "seq": 3,
+      "session": "id2",
+      "time": "2026-09-21T14:13:20.000Z"
+    },
+    {
+      "event": "first_jump",
+      "seq": 4,
+      "session": "id2",
+      "time": "2026-09-21T14:13:24.000Z"
+    },
+    {
+      "event": "tutorial_done",
+      "seq": 5,
+      "session": "id2",
+      "time": "2026-09-21T14:13:28.000Z"
+    }
+  ],
+  "sent_at": "2026-09-21T14:14:32.000Z"
+}
+{
+  "app": {
+    "name": "Dungeon",
+    "platform": "linux",
+    "version": "1.2.0"
+  },
+  "device": "id1",
+  "events": [
+    {
+      "event": "level_start",
+      "params": {
+        "level": 1
+      },
+      "seq": 6,
+      "session": "id2",
+      "time": "2026-09-21T14:13:32.000Z"
+    }
+  ],
+  "sent_at": "2026-09-21T14:14:32.000Z"
+}
+
+The server refused 1 batch while it was down.

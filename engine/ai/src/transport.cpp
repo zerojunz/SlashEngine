@@ -7,9 +7,12 @@
 #include <algorithm>
 #include <charconv>
 #include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <span>
 #include <string>
@@ -583,6 +586,10 @@ public:
             return make_error(ErrorCode::PlatformFailure,
                               reach_error(request.url, result.error(), *untrusted));
         }
+        if (out.status == 0) {
+            // A reply with no body, such as 204, skips the handler.
+            out.status = result->status;
+        }
         return out;
     }
 
@@ -708,6 +715,86 @@ std::shared_ptr<Transport> http_transport() {
     static const std::shared_ptr<Transport> transport = make_http_transport({});
     return transport;
 }
+
+#if defined(__EMSCRIPTEN__)
+void post_in_background(std::shared_ptr<Transport> transport, HttpRequest request,
+                        ResponseCallback done) {
+    transport->post_async(request, nullptr, std::move(done), nullptr);
+}
+#else
+namespace {
+
+// One thread that sends requests in the order they came, stopped and joined when the program
+// ends, cancelling what it is sending.
+class BackgroundPoster {
+public:
+    BackgroundPoster() = default;
+    BackgroundPoster(const BackgroundPoster&) = delete;
+    BackgroundPoster& operator=(const BackgroundPoster&) = delete;
+    BackgroundPoster(BackgroundPoster&&) = delete;
+    BackgroundPoster& operator=(BackgroundPoster&&) = delete;
+    ~BackgroundPoster() {
+        {
+            const std::scoped_lock lock(mutex_);
+            stopping_ = true;
+        }
+        cancel_ = true;
+        wake_.notify_all();
+        if (thread_.joinable()) {
+            thread_.join();
+        }
+    }
+
+    void add(std::shared_ptr<Transport> transport, HttpRequest request, ResponseCallback done) {
+        {
+            const std::scoped_lock lock(mutex_);
+            jobs_.push_back({std::move(transport), std::move(request), std::move(done)});
+            if (!thread_.joinable()) {
+                thread_ = std::thread([this] { run(); });
+            }
+        }
+        wake_.notify_all();
+    }
+
+private:
+    struct Job {
+        std::shared_ptr<Transport> transport;
+        HttpRequest request;
+        ResponseCallback done;
+    };
+
+    void run() {
+        while (true) {
+            Job job;
+            {
+                std::unique_lock lock(mutex_);
+                wake_.wait(lock, [this] { return stopping_ || !jobs_.empty(); });
+                if (stopping_) {
+                    return;
+                }
+                job = std::move(jobs_.front());
+                jobs_.pop_front();
+            }
+            job.done(job.transport->post(job.request, nullptr, &cancel_));
+        }
+    }
+
+    std::mutex mutex_;
+    std::condition_variable wake_;
+    std::deque<Job> jobs_;
+    std::thread thread_;
+    CancelFlag cancel_ = false;
+    bool stopping_ = false;
+};
+
+} // namespace
+
+void post_in_background(std::shared_ptr<Transport> transport, HttpRequest request,
+                        ResponseCallback done) {
+    static BackgroundPoster poster;
+    poster.add(std::move(transport), std::move(request), std::move(done));
+}
+#endif
 
 std::shared_ptr<Transport> refusing_transport(std::string message) {
     class Refusing final : public Transport {

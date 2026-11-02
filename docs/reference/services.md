@@ -70,6 +70,70 @@ says whether each was sent. Events go to the analytics backends only while
 and properties set before the player agrees are sent when they do. `flush_analytics` sends what
 a backend has batched, as when the game goes to the background.
 
+### Funnels
+
+A funnel is the events a player goes through in order, as Unity Analytics' funnels, named in
+`services.analytics.funnels`:
+
+```json
+"analytics": {"funnels": {"tutorial": ["tutorial_start", "first_jump", "tutorial_done"]}}
+```
+
+Each time the funnel's next step is logged, whether or not it is sent, the services emit a
+`funnel_step` world event about the funnel (its ID) with `{"step", "steps"}`, step counting from
+1, so a `playtest.run` counts how many runs finished a funnel. `services.state` gives each
+funnel's `step` and `steps` under `analytics.funnels`. A step logged out of order doesn't count.
+Servers work out funnels from the events themselves.
+
+### Sending to your own server
+
+With no SDK package, an exported game can send its events to a server the developer runs, such
+as a self-hosted [PostHog](https://posthog.com) (MIT), or one of their own:
+
+```json
+"analytics": {"endpoint": {"url": "https://stats.example.com/v1/events", "batch_size": 20}}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `url` | required | Where batches are POSTed: an `https://` URL, or `http://` for a server on the same machine |
+| `format` | `json` | `json`, the engine's own (below), or `posthog`, PostHog's batch API (`/batch/`) |
+| `api_key` | | PostHog's project API key, which only writes events, so it may ship in the game. Needed for `posthog` |
+| `headers` | | More HTTP headers. They ship in the game, so no secrets |
+| `batch_size` | `20` | Events sent together, 1 to 1000 |
+| `flush_seconds` | `30` | The longest an event waits for its batch |
+| `session_minutes` | `30` | A new session starts after this long without events |
+| `max_queued` | `1000` | Unsent events kept; the oldest go first |
+
+The endpoint backend (`services::make_endpoint_analytics`, `slash/services/endpoint.hpp`) runs
+next to any SDK package's analytics backends, in windowed games only, so test runs send nothing.
+It sends one batch at a time, when `batch_size` events wait, when the oldest has waited
+`flush_seconds`, and when the game goes to the background. One the server doesn't take (it can't
+be reached, or answers 408, 429 or 5xx) goes again after 1, 2, 4 and 8 minutes, then every 10;
+one it refuses otherwise is dropped. Unsent events and the install's random device ID are kept in
+`analytics.json` in the game's user folder (SDL's preferences path), so they survive a restart.
+When the player takes back their consent, what waits is dropped.
+
+Sessions are counted as Firebase counts them: the first event of a run, or the first after
+`session_minutes` without events, starts one and logs `session_start` before it, and the
+install's first session logs `first_open` before that. The `json` format's body:
+
+```json
+{"app": {"name": "Dungeon", "version": "1.2.0", "platform": "android"},
+ "device": "7f3c...", "sent_at": "2026-10-30T12:00:05.000Z",
+ "events": [{"event": "level_end", "params": {"won": true}, "time": "2026-10-30T12:00:04.512Z",
+             "session": "a91e...", "seq": 42, "user_id": "player-7",
+             "user_properties": {"class": "mage"}}]}
+```
+
+`seq` counts the install's events, so a server can tell a batch sent twice. In the `posthog`
+format each event's `distinct_id` is the user ID or else the device's, its params are its
+properties, with `$session_id`, `$device_id`, `$os`, `$app_name`, `$app_version` and the user
+properties as `$set`. Web games POST through the browser, so the server must allow the game's
+origin (CORS). Android exports of such games get the `INTERNET` permission. A game's summary
+(`--ticks` runs) lists the backend's `device`, `session`, `queued`, `in_flight`, `sent`,
+`dropped` and `last_status` under `services.analytics_status.endpoint`.
+
 ## Purchases
 
 ```cpp

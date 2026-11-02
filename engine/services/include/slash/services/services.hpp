@@ -12,6 +12,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace slash::world {
@@ -110,11 +111,43 @@ struct Leaderboard {
     friend bool operator==(const Leaderboard&, const Leaderboard&) = default;
 };
 
+// Where analytics events go when no SDK package sends them: batched JSON POSTed to a server the
+// developer runs, such as a self-hosted PostHog (make_endpoint_analytics).
+struct AnalyticsEndpoint {
+    enum class Format : std::uint8_t {
+        Json,    // the engine's own: {"app", "device", "events": [{"event", "params", ...}]}
+        PostHog, // PostHog's batch API: {"api_key", "batch": [...]}
+    };
+
+    std::string url; // https:// (or http:// for a server on this machine)
+    Format format = Format::Json;
+    // PostHog's project API key, which only writes events, so it may ship in the game.
+    std::string api_key;
+    // More HTTP headers, such as {"X-Game": "dungeon"}. Not for secrets: they ship in the game.
+    std::vector<std::pair<std::string, std::string>> headers;
+    int batch_size = 20;         // events sent together
+    double flush_seconds = 30.0; // the longest an event waits for its batch
+    double session_minutes = 30; // a new session starts after this long without events
+    int max_queued = 1000;       // unsent events kept; the oldest go first
+
+    friend bool operator==(const AnalyticsEndpoint&, const AnalyticsEndpoint&) = default;
+};
+
+// A funnel: the events a player goes through in order, as Unity Analytics' funnels.
+struct Funnel {
+    std::string name;
+    std::vector<std::string> steps; // event names
+
+    friend bool operator==(const Funnel&, const Funnel&) = default;
+};
+
 // project.json's "services".
 struct Settings {
     std::vector<Placement> placements; // by name
     std::vector<Product> products;     // their IDs and types
     bool analytics_enabled = true;
+    std::optional<AnalyticsEndpoint> analytics_endpoint;
+    std::vector<Funnel> funnels;           // by name
     ConsentState consent;                  // until the game sets it
     std::vector<Achievement> achievements; // by name
     std::vector<Leaderboard> leaderboards; // by name
@@ -132,6 +165,10 @@ struct Settings {
                                                                    std::string_view at);
 // The settings in a valid "services" object.
 [[nodiscard]] Settings parse_settings(const json::Value& settings);
+
+// Whether a name fits event, param and user property names as the strictest analytics services
+// take them: a letter, then letters, digits and '_', at most 40 of them.
+[[nodiscard]] bool valid_event_name(std::string_view name);
 
 [[nodiscard]] std::string_view format_name(AdFormat format);
 [[nodiscard]] std::string_view type_name(ProductType type);
@@ -339,6 +376,8 @@ public:
     virtual void set_user_id(std::string_view id) { (void)id; }
     // Sends what is batched now, as when the game goes to the background.
     virtual void flush() {}
+    // What it has sent and holds, for a game's summary; null for nothing to say.
+    [[nodiscard]] virtual json::Value status() const { return {}; }
 };
 
 class PurchasesBackend : public Backend {
@@ -571,12 +610,14 @@ struct ServiceEvent {
     std::vector<std::string> unlocked;
     std::int64_t score = 0;
     services::Scores scores;
+    int step = 0; // a funnel_step's step, from 1
 };
 // The events of the tick the "services" system last ran (inside a system: this tick).
 [[nodiscard]] std::span<const ServiceEvent> events(const world::World& world);
 
 // The backends the services run on, by name: {"ads", "analytics": [...], "purchases", "games"},
-// with "none" for a service with no backend and "test" for the test backend's.
+// with "none" for a service with no backend and "test" for the test backend's, and
+// "analytics_status" with what analytics backends say of themselves (AnalyticsBackend::status).
 [[nodiscard]] json::Value backends_json(const world::World& world);
 
 // What services.state returns: the backends, consent, each placement's status, the products,

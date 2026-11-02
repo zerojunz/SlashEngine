@@ -3292,7 +3292,8 @@ Needs: `read`. After the shop's system logged an event for a watched ad:
 
 `tick` is the tick the `services` system last ran. The rewarded ad is `loading` again because it
 auto-loads after it closes. The event was not `sent` because the player hasn't granted
-analytics consent; `logged` counts every event so far. `products_status` is `none` (no
+analytics consent; `logged` counts every event so far. A game with `funnels` gets
+`analytics.funnels`, each funnel's `step` (reached) and `steps`. `products_status` is `none` (no
 products), `fetching`, `fetched` or `failed` with `products_error`, e.g. `no store` in a game
 with no store backend. `unfinished` and `pending` list `{"product", "transaction", "state"}`.
 
