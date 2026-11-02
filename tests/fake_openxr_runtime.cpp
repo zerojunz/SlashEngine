@@ -23,7 +23,9 @@
 // Offered XR_KHR_vulkan_enable2 (extensions XR_KHR_vulkan_enable2 ...), it also takes sessions
 // that draw with Vulkan: it makes the instance and device the application asks for, gives it
 // swapchains of Vulkan images, and at each ended frame with a projection layer reads the probed
-// pixels back from the images the layer shows.
+// pixels back from the images the layer shows. Offered XR_KHR_opengl_enable and, on Linux,
+// XR_MNDX_egl_enable, it does the same for OpenGL contexts on EGL, with textures made in the
+// application's context, which is current when it calls.
 //
 // Frames are counted by xrWaitFrame from 1; a value holds until a later frame changes it. What
 // the application did goes to the file FAKE_OPENXR_LOG names, a line a call: instance, session
@@ -40,16 +42,23 @@
 #include <vulkan/vulkan_core.h>
 
 // openxr_platform.h's Win32 parts (XR_USE_PLATFORM_WIN32, which the loader's target sets) name
-// LARGE_INTEGER and IUnknown.
+// LARGE_INTEGER, IUnknown, HDC and HGLRC.
 #if defined(_WIN32)
 #include <unknwn.h>
 #include <windows.h>
 #endif
+#if defined(__linux__)
+#define EGL_NO_X11
+#include <EGL/egl.h>
+#define XR_USE_PLATFORM_EGL
+#endif
+#define XR_USE_GRAPHICS_API_OPENGL
 #define XR_USE_GRAPHICS_API_VULKAN
 #include <openxr/openxr.h>
 #include <openxr/openxr_loader_negotiation.h>
 #include <openxr/openxr_platform.h>
 #include <set>
+#include <span>
 #include <sstream>
 #include <string>
 #include <type_traits>
@@ -171,9 +180,17 @@ struct SwapchainObject {
     std::uint32_t height = 0;
     std::vector<VkImage> images;
     std::vector<VkDeviceMemory> memory;
+    std::vector<std::uint32_t> textures; // an OpenGL session's
     std::uint32_t next = 0;
     std::deque<std::uint32_t> acquired;
     std::int64_t released = -1; // the image last released, which layers show
+};
+
+// An OpenGL session's context's functions.
+struct OpenGl {
+    bool requirements = false; // xrGetOpenGLGraphicsRequirementsKHR was called
+    bool session = false;
+    PFN_xrVoidFunction (*get_proc_address)(const char*) = nullptr;
 };
 
 // The Vulkan objects a drawing session uses, the application's.
@@ -227,6 +244,7 @@ struct Runtime {
     std::size_t applied = 0;
     std::uint64_t session_id = 0;
     Vulkan vulkan;
+    OpenGl gl;
     std::map<std::uint64_t, SwapchainObject> swapchains;
 };
 
@@ -605,6 +623,20 @@ XrResult XRAPI_CALL create_session(XrInstance /*instance*/, const XrSessionCreat
         if (!r.enabled.contains("XR_MND_headless")) {
             return XR_ERROR_GRAPHICS_DEVICE_INVALID;
         }
+#if defined(__linux__)
+    } else if (binding->type == XR_TYPE_GRAPHICS_BINDING_EGL_MNDX &&
+               r.enabled.contains("XR_MNDX_egl_enable") &&
+               r.enabled.contains("XR_KHR_opengl_enable")) {
+        if (!r.gl.requirements) {
+            return XR_ERROR_GRAPHICS_REQUIREMENTS_CALL_MISSING;
+        }
+        const auto* egl = reinterpret_cast<const XrGraphicsBindingEGLMNDX*>(binding);
+        if (egl->getProcAddress == nullptr || egl->display == nullptr || egl->context == nullptr) {
+            return XR_ERROR_GRAPHICS_DEVICE_INVALID;
+        }
+        r.gl.get_proc_address = egl->getProcAddress;
+        r.gl.session = true;
+#endif
     } else if (binding->type == XR_TYPE_GRAPHICS_BINDING_VULKAN2_KHR &&
                r.enabled.contains("XR_KHR_vulkan_enable2")) {
         if (!r.vulkan.requirements) {
@@ -631,7 +663,9 @@ XrResult XRAPI_CALL create_session(XrInstance /*instance*/, const XrSessionCreat
     queue_state(XR_SESSION_STATE_IDLE);
     r.state = XR_SESSION_STATE_READY;
     queue_state(XR_SESSION_STATE_READY);
-    log_line(binding == nullptr ? "create session" : "create session vulkan");
+    log_line(binding == nullptr ? "create session"
+             : r.gl.session     ? "create session egl"
+                                : "create session vulkan");
     return XR_SUCCESS;
 }
 
@@ -786,6 +820,27 @@ F vk(const char* name) {
     return reinterpret_cast<F>(rt().vulkan.procs(rt().vulkan.instance, name));
 }
 
+// An OpenGL function of the application's context.
+template <typename F>
+F gl(const char* name) {
+    return reinterpret_cast<F>(rt().gl.get_proc_address(name));
+}
+using GlGen = void (*)(int, std::uint32_t*);
+using GlBind = void (*)(std::uint32_t, std::uint32_t);
+constexpr std::uint32_t kGlTexture2D = 0x0DE1;
+constexpr std::uint32_t kGlFramebuffer = 0x8D40;
+constexpr std::uint32_t kGlColorAttachment0 = 0x8CE0;
+constexpr std::uint32_t kGlRgba = 0x1908;
+constexpr std::uint32_t kGlUnsignedByte = 0x1401;
+
+XrResult XRAPI_CALL opengl_requirements(XrInstance /*instance*/, XrSystemId /*system*/,
+                                        XrGraphicsRequirementsOpenGLKHR* requirements) {
+    requirements->minApiVersionSupported = XR_MAKE_VERSION(3, 3, 0);
+    requirements->maxApiVersionSupported = XR_MAKE_VERSION(4, 6, 0);
+    rt().gl.requirements = true;
+    return XR_SUCCESS;
+}
+
 XrResult XRAPI_CALL vulkan_requirements(XrInstance /*instance*/, XrSystemId /*system*/,
                                         XrGraphicsRequirementsVulkan2KHR* requirements) {
     requirements->minApiVersionSupported = XR_MAKE_VERSION(1, 0, 0);
@@ -925,24 +980,42 @@ void move_image(VkCommandBuffer commands, VkImage image, VkImageLayout from, VkI
 constexpr std::array<std::int64_t, 3> kSwapchainFormats{
     VK_FORMAT_B8G8R8A8_SRGB, VK_FORMAT_R8G8B8A8_SRGB, VK_FORMAT_R8G8B8A8_UNORM};
 
+// GL_RGBA16F first, which the application can't copy into, then GL_SRGB8_ALPHA8 and GL_RGBA8.
+constexpr std::array<std::int64_t, 3> kGlSwapchainFormats{0x881A, 0x8C43, 0x8058};
+
+// The formats of the session's API.
+std::span<const std::int64_t> swapchain_formats() {
+    if (rt().gl.session) {
+        return kGlSwapchainFormats;
+    }
+    if (rt().vulkan.device != VK_NULL_HANDLE) {
+        return kSwapchainFormats;
+    }
+    return {};
+}
+
 XrResult XRAPI_CALL enumerate_swapchain_formats(XrSession /*session*/, uint32_t capacity,
                                                 uint32_t* count, int64_t* formats) {
-    if (rt().vulkan.device == VK_NULL_HANDLE) {
-        *count = 0;
+    const std::span<const std::int64_t> offered = swapchain_formats();
+    *count = static_cast<uint32_t>(offered.size());
+    if (capacity == 0 || offered.empty()) {
         return XR_SUCCESS;
     }
-    *count = static_cast<uint32_t>(kSwapchainFormats.size());
-    if (capacity == 0) {
-        return XR_SUCCESS;
-    }
-    if (capacity < kSwapchainFormats.size()) {
+    if (capacity < offered.size()) {
         return XR_ERROR_SIZE_INSUFFICIENT;
     }
-    std::copy(kSwapchainFormats.begin(), kSwapchainFormats.end(), formats);
+    std::copy(offered.begin(), offered.end(), formats);
     return XR_SUCCESS;
 }
 
 void free_swapchain(SwapchainObject& swapchain) {
+    if (rt().gl.session) {
+        using GlDelete = void (*)(int, const std::uint32_t*);
+        gl<GlDelete>("glDeleteTextures")(static_cast<int>(swapchain.textures.size()),
+                                         swapchain.textures.data());
+        swapchain.textures.clear();
+        return;
+    }
     const VkDevice device = rt().vulkan.device;
     vk<PFN_vkDeviceWaitIdle>("vkDeviceWaitIdle")(device);
     for (std::size_t i = 0; i < swapchain.images.size(); ++i) {
@@ -957,17 +1030,37 @@ void free_swapchain(SwapchainObject& swapchain) {
 XrResult XRAPI_CALL create_swapchain(XrSession /*session*/, const XrSwapchainCreateInfo* info,
                                      XrSwapchain* made) {
     Runtime& r = rt();
-    if (r.vulkan.device == VK_NULL_HANDLE) {
+    const std::span<const std::int64_t> offered = swapchain_formats();
+    if (offered.empty()) {
         return XR_ERROR_FUNCTION_UNSUPPORTED;
     }
-    if (std::find(kSwapchainFormats.begin(), kSwapchainFormats.end(), info->format) ==
-        kSwapchainFormats.end()) {
+    if (std::find(offered.begin(), offered.end(), info->format) == offered.end()) {
         return XR_ERROR_SWAPCHAIN_FORMAT_UNSUPPORTED;
     }
     SwapchainObject swapchain;
     swapchain.format = info->format;
     swapchain.width = info->width;
     swapchain.height = info->height;
+    if (r.gl.session) {
+        // Three textures, made in the application's context, which is current.
+        using GlImage = void (*)(std::uint32_t, int, int, int, int, int, std::uint32_t,
+                                 std::uint32_t, const void*);
+        swapchain.textures.resize(3);
+        gl<GlGen>("glGenTextures")(3, swapchain.textures.data());
+        for (const std::uint32_t texture : swapchain.textures) {
+            gl<GlBind>("glBindTexture")(kGlTexture2D, texture);
+            gl<GlImage>("glTexImage2D")(
+                kGlTexture2D, 0, static_cast<int>(info->format), static_cast<int>(info->width),
+                static_cast<int>(info->height), 0, kGlRgba, kGlUnsignedByte, nullptr);
+        }
+        gl<GlBind>("glBindTexture")(kGlTexture2D, 0);
+        const std::uint64_t id = r.next_id++;
+        r.swapchains[id] = std::move(swapchain);
+        *made = handle<XrSwapchain>(id);
+        log_line("swapchain " + std::to_string(info->width) + "x" + std::to_string(info->height) +
+                 " format " + std::to_string(info->format));
+        return XR_SUCCESS;
+    }
     const VkDevice device = r.vulkan.device;
     for (int i = 0; i < 3; ++i) {
         VkImageCreateInfo image_info{};
@@ -1041,6 +1134,22 @@ XrResult XRAPI_CALL enumerate_swapchain_images(XrSwapchain made, uint32_t capaci
     if (found == rt().swapchains.end()) {
         return XR_ERROR_HANDLE_INVALID;
     }
+    if (rt().gl.session) {
+        const std::vector<std::uint32_t>& textures = found->second.textures;
+        *count = static_cast<uint32_t>(textures.size());
+        if (capacity == 0) {
+            return XR_SUCCESS;
+        }
+        if (capacity < textures.size() || images->type != XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_KHR) {
+            return capacity < textures.size() ? XR_ERROR_SIZE_INSUFFICIENT
+                                              : XR_ERROR_VALIDATION_FAILURE;
+        }
+        auto* opengl = reinterpret_cast<XrSwapchainImageOpenGLKHR*>(images);
+        for (std::size_t i = 0; i < textures.size(); ++i) {
+            opengl[i].image = textures[i];
+        }
+        return XR_SUCCESS;
+    }
     const std::vector<VkImage>& own = found->second.images;
     *count = static_cast<uint32_t>(own.size());
     if (capacity == 0) {
@@ -1066,7 +1175,9 @@ XrResult XRAPI_CALL acquire_swapchain_image(XrSwapchain made,
     SwapchainObject& swapchain = found->second;
     *index = swapchain.next;
     swapchain.acquired.push_back(swapchain.next);
-    swapchain.next = (swapchain.next + 1) % static_cast<std::uint32_t>(swapchain.images.size());
+    const std::size_t count =
+        swapchain.textures.empty() ? swapchain.images.size() : swapchain.textures.size();
+    swapchain.next = (swapchain.next + 1) % static_cast<std::uint32_t>(count);
     return XR_SUCCESS;
 }
 
@@ -1096,9 +1207,51 @@ XrResult XRAPI_CALL release_swapchain_image(XrSwapchain made,
 
 // Reads the probed pixels of a swapchain's last released image and logs them as "eye N x y r g
 // b a".
+// Logs the probed pixels of an image read back as RGBA or BGRA rows, from the top or the bottom.
+void log_pixels(std::uint32_t eye, const SwapchainObject& swapchain, const std::uint8_t* pixels,
+                bool bgra, bool bottom_up) {
+    for (const auto& [x, y] : rt().probes) {
+        if (x >= swapchain.width || y >= swapchain.height) {
+            continue;
+        }
+        const std::uint32_t row = bottom_up ? swapchain.height - 1 - y : y;
+        const std::uint8_t* p = pixels + ((std::size_t{row} * swapchain.width) + x) * 4;
+        const int red = bgra ? p[2] : p[0];
+        const int blue = bgra ? p[0] : p[2];
+        log_line("eye " + std::to_string(eye) + " " + std::to_string(x) + " " + std::to_string(y) +
+                 " " + std::to_string(red) + " " + std::to_string(p[1]) + " " +
+                 std::to_string(blue) + " " + std::to_string(p[3]));
+    }
+}
+
+// An OpenGL image's pixels, read through a framebuffer of the application's context; its rows
+// go from the bottom up, as OpenGL's do.
+void log_gl_probes(std::uint32_t eye, const SwapchainObject& swapchain) {
+    using GlRead = void (*)(int, int, int, int, std::uint32_t, std::uint32_t, void*);
+    using GlAttach = void (*)(std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t, int);
+    using GlDelete = void (*)(int, const std::uint32_t*);
+    std::uint32_t framebuffer = 0;
+    gl<GlGen>("glGenFramebuffers")(1, &framebuffer);
+    gl<GlBind>("glBindFramebuffer")(kGlFramebuffer, framebuffer);
+    gl<GlAttach>("glFramebufferTexture2D")(
+        kGlFramebuffer, kGlColorAttachment0, kGlTexture2D,
+        swapchain.textures.at(static_cast<std::size_t>(swapchain.released)), 0);
+    std::vector<std::uint8_t> pixels(std::size_t{swapchain.width} * swapchain.height * 4);
+    gl<GlRead>("glReadPixels")(0, 0, static_cast<int>(swapchain.width),
+                               static_cast<int>(swapchain.height), kGlRgba, kGlUnsignedByte,
+                               pixels.data());
+    gl<GlBind>("glBindFramebuffer")(kGlFramebuffer, 0);
+    gl<GlDelete>("glDeleteFramebuffers")(1, &framebuffer);
+    log_pixels(eye, swapchain, pixels.data(), false, true);
+}
+
 void log_probes(std::uint32_t eye, const SwapchainObject& swapchain) {
     const Vulkan& v = rt().vulkan;
     if (swapchain.released < 0 || rt().probes.empty()) {
+        return;
+    }
+    if (rt().gl.session) {
+        log_gl_probes(eye, swapchain);
         return;
     }
     const VkImage image = swapchain.images.at(static_cast<std::size_t>(swapchain.released));
@@ -1142,19 +1295,8 @@ void log_probes(std::uint32_t eye, const SwapchainObject& swapchain) {
         }) &&
         vk<PFN_vkMapMemory>("vkMapMemory")(v.device, memory, 0, bytes, 0, &mapped) == VK_SUCCESS;
     if (ready) {
-        const auto* pixels = static_cast<const std::uint8_t*>(mapped);
-        const bool bgra = swapchain.format == VK_FORMAT_B8G8R8A8_SRGB;
-        for (const auto& [x, y] : rt().probes) {
-            if (x >= swapchain.width || y >= swapchain.height) {
-                continue;
-            }
-            const std::uint8_t* p = pixels + ((std::size_t{y} * swapchain.width) + x) * 4;
-            const int red = bgra ? p[2] : p[0];
-            const int blue = bgra ? p[0] : p[2];
-            log_line("eye " + std::to_string(eye) + " " + std::to_string(x) + " " +
-                     std::to_string(y) + " " + std::to_string(red) + " " + std::to_string(p[1]) +
-                     " " + std::to_string(blue) + " " + std::to_string(p[3]));
-        }
+        log_pixels(eye, swapchain, static_cast<const std::uint8_t*>(mapped),
+                   swapchain.format == VK_FORMAT_B8G8R8A8_SRGB, false);
         vk<PFN_vkUnmapMemory>("vkUnmapMemory")(v.device, memory);
     } else {
         log_line("eye " + std::to_string(eye) + " unreadable");
@@ -1412,6 +1554,8 @@ XrResult XRAPI_CALL get_instance_proc_addr(XrInstance instance, const char* name
         {"xrGetActionStatePose", reinterpret_cast<PFN_xrVoidFunction>(&get_pose)},
         {"xrApplyHapticFeedback", reinterpret_cast<PFN_xrVoidFunction>(&apply_haptic)},
         {"xrStopHapticFeedback", reinterpret_cast<PFN_xrVoidFunction>(&stop_haptic)},
+        {"xrGetOpenGLGraphicsRequirementsKHR",
+         reinterpret_cast<PFN_xrVoidFunction>(&opengl_requirements)},
         {"xrGetVulkanGraphicsRequirements2KHR",
          reinterpret_cast<PFN_xrVoidFunction>(&vulkan_requirements)},
         {"xrCreateVulkanInstanceKHR",
