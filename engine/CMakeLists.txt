@@ -1,6 +1,7 @@
 add_subdirectory(core)
 add_subdirectory(platform)
 add_subdirectory(render)
+add_subdirectory(procedural)
 add_subdirectory(asset)
 add_subdirectory(world)
 add_subdirectory(video)

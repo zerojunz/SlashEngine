@@ -46,6 +46,7 @@
 #include "slash/platform/platform.hpp"
 #include "slash/platform/process.hpp"
 #include "slash/platform/run.hpp"
+#include "slash/procedural/texture.hpp"
 #include "slash/render/device.hpp"
 #include "slash/runtime/gameplay.hpp"
 #include "slash/runtime/icon.hpp"
@@ -148,8 +149,8 @@ Usage:
                                      .animtree.json, .tileset.json, .font.json, .theme.json,
                                      .audio.json, .bus_layout.json, .navmesh.json,
                                      .navpoly.json, .meshlib.json, .standard_material.json,
-                                     .lightmap.json, .voxelgi.json, .replay.json, .test.json or
-                                     .score.json
+                                     .lightmap.json, .voxelgi.json, .texture.json, .replay.json,
+                                     .test.json or .score.json
                                      file; lists every error
   slash-cli scene format <file>      Rewrite one of those files in canonical form
       --check                        Only report whether it is canonical; change nothing
@@ -161,7 +162,8 @@ Usage:
                                      (.bus_layout.json), navmesh (.navmesh.json), navpoly
                                      (.navpoly.json), meshlib (.meshlib.json), standard_material
                                      (.standard_material.json), lightmap
-                                     (.lightmap.json), voxel_gi (.voxelgi.json), replay
+                                     (.lightmap.json), voxel_gi (.voxelgi.json), texture
+                                     (.texture.json), replay
                                      (.replay.json), test (.test.json), score
                                      (.score.json), storyboard, project
                                      (project.json), presets (export_presets.json), sdk
@@ -1115,6 +1117,7 @@ int cmd_scene_validate(const std::string& path) {
     const bool replay = path.ends_with(command::kReplaySuffix);
     const bool test = path.ends_with(command::kTestSuffix);
     const bool score = path.ends_with(slash::soundtrack::kScoreSuffix);
+    const bool texture = path.ends_with(slash::procedural::kTextureSuffix);
     json::Value result;
     auto parsed = json::parse(text.value());
     std::vector<json::ValidationError> errors;
@@ -1161,6 +1164,8 @@ int cmd_scene_validate(const std::string& path) {
         errors = command::validate_test(parsed.value());
     } else if (score) {
         errors = slash::soundtrack::validate_score(parsed.value());
+    } else if (texture) {
+        errors = slash::procedural::validate_texture(parsed.value());
     } else {
         errors = prefab ? world::validate_prefab(registry, parsed.value(), prefab_reader(path))
                         : world::validate_scene(registry, parsed.value(), prefab_reader(path));
@@ -1189,7 +1194,7 @@ int cmd_scene_validate(const std::string& path) {
     }
     if (parsed && !frames && !material && !process && !animation && !tree && !tileset && !font &&
         !theme && !stream && !buses && !navmesh && !navpoly && !meshlib && !standard && !lightmap &&
-        !replay && !test && !score) {
+        !replay && !test && !score && !texture) {
         check_story_refs(path, parsed.value(), errors);
     }
     result["valid"] = errors.empty();
@@ -1198,6 +1203,12 @@ int cmd_scene_validate(const std::string& path) {
     } else if (font || stream || process || standard) {
         print(result);
         return kExitOk;
+    } else if (texture) {
+        // Its size.
+        const auto image =
+            slash::procedural::make_image(slash::procedural::parse_texture(parsed.value()).value());
+        result["width"] = image.width;
+        result["height"] = image.height;
     } else if (score) {
         // Its length, tracks and notes.
         const auto parsed_score = slash::soundtrack::parse_score(parsed.value());
@@ -1350,6 +1361,9 @@ int cmd_scene_format(const std::string& path, bool check) {
         if (path.ends_with(slash::scene3d::kVoxelGISuffix)) {
             return format_checked(text.value(), slash::scene3d::parse_voxel_gi);
         }
+        if (path.ends_with(slash::procedural::kTextureSuffix)) {
+            return format_checked(text.value(), slash::procedural::parse_texture);
+        }
         const auto checked_by = [](auto validate) {
             return [validate](const json::Value& doc) -> slash::Result<void> {
                 const auto errors = validate(doc);
@@ -1434,7 +1448,7 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 28> kKinds = {"scene",
+    constexpr std::array<std::string_view, 29> kKinds = {"scene",
                                                          "prefab",
                                                          "frames",
                                                          "material",
@@ -1461,13 +1475,14 @@ int cmd_schema(const std::vector<std::string>& args) {
                                                          "sdk",
                                                          "providers",
                                                          "bench",
-                                                         "standard_material"};
+                                                         "standard_material",
+                                                         "texture"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
         return usage_error(
             "schema takes one argument: scene, prefab, frames, material, "
             "process_material, animation, animtree, tileset, font, theme, audio, "
             "bus_layout, navmesh, navpoly, meshlib, lightmap, voxel_gi, model, standard_material, "
-            "replay, test, "
+            "texture, replay, test, "
             "score, "
             "storyboard, "
             "project, presets, sdk, providers or bench");
@@ -1511,6 +1526,8 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = slash::scene3d::model_recipe_schema();
     } else if (args[0] == "standard_material") {
         schema = slash::scene3d::standard_material_schema();
+    } else if (args[0] == "texture") {
+        schema = slash::procedural::texture_schema();
     } else if (args[0] == "replay") {
         schema = command::replay_schema();
     } else if (args[0] == "test") {

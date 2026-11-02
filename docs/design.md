@@ -118,9 +118,9 @@ SlashEngine covers nearly every Godot 4 feature area at launch and adds UE5 feat
 | Analytics, ads and in-app purchases | Plugins (Google Play Billing, StoreKit) | Online Subsystem, in-app purchase APIs | One cross-platform API and command set, like Unity's Analytics, Ads and IAP; StoreKit, Play Billing and a developer-chosen analytics endpoint in the repo, ad networks as adapters outside it | Launch |
 | Closed vendor SDKs | Android and iOS plugins, GDExtension | Plugins, ThirdParty modules, UPL | SDK packages: an `sdk.json` per SDK naming its binaries for each platform, fetched, checked and linked by exports, with JNI and Objective-C bridges and engine interfaces for the glue code | Launch |
 | One-command export | Export templates per platform | Packaging per platform | slash-cli export to macOS, Windows, Linux, iOS, Android and web | Launch |
+| Procedural generation | Noise textures | PCG framework | FastNoiseLite noise and noise and gradient textures, scatter rules agents write, and procedural content imported from Blender, Houdini and terrain tools | Launch |
 | Large worlds | Double-precision builds | World Partition, large world coordinates | Double-precision transforms, world streaming | After launch |
 | Cinematics | AnimationPlayer, cameras | Sequencer | Timeline tracks for cameras and events | After launch |
-| Procedural generation | Noise textures | PCG framework | FastNoiseLite plus rule graphs agents write | After launch |
 | Cloth and soft bodies | SoftBody3D | Chaos Cloth | Jolt soft bodies | After launch |
 | Destruction | None built in | Chaos Destruction | Fracture and debris on Jolt | After launch |
 | Virtualized geometry | None built in | Nanite | Meshlet rendering research | Research |
@@ -409,6 +409,16 @@ A game's music has to fit its story, change with play and loop cleanly, and an a
 - **Arranged into interactive music.** `soundtrack.arrange` turns a cue sheet into the `.audio.json` files the runtime plays. Cues become interactive clips, intensity levels become synchronized layers, transitions land on the bar, and stingers become filler clips. The game steers it through the player's `parameters`, as it does today.
 - **Checked without ears.** `audio.analyze` measures tempo and beat grid, key, loudness (LUFS, with libebur128) and true peak, clipping, silence, frequency balance and how cleanly a loop joins. `soundtrack.check` reports missing cues, beat counts that don't match a file, loops that click, transitions off the bar, keys that clash across a transition and loudness off target, in the headless test command and CI. `run.until` and `playtest.run` report a music timeline (which clip played when, and every transition), so an agent can confirm the music follows the game. With `ai::Provider`, a model that accepts audio can add an advisory review.
 
+## Procedural generation
+
+Games often make their textures, terrain and props from rules rather than by hand, and agents are good at writing rules: a few numbers in a text file describe a whole forest or a marble texture, and changing one number is cheaper than generating an asset again. The engine follows Godot's noise module and adds the scatter rules Godot leaves to plugins (UE5's PCG framework is the model for those).
+
+- **Noise as Godot has it.** `procedural::Noise` is Godot's `FastNoiseLite` resource on Auburn's FastNoiseLite (MIT): simplex, cellular, Perlin and value noise, fractals and domain warping, with Godot's settings and defaults. Gameplay code calls it while a game runs, and its numbers are the same on every machine.
+- **Procedural textures are files.** A `.texture.json` file is Godot's `NoiseTexture2D`, `GradientTexture1D` or `GradientTexture2D` as text, made when it loads, so it works wherever a texture path does (sprites, tile sets, materials, controls) and ships as a few lines rather than an image. `texture.generate` returns its size and per-channel statistics, samples given pixels and can bake it to a PNG, so an agent tunes a texture without looking at it.
+- **Made while the game runs.** Gameplay code can make textures and meshes at run time, as Godot's `ImageTexture`, `ArrayMesh` and `SurfaceTool`.
+- **Scatter rules.** Agents write rules that place prefabs or meshes over terrain, meshes, tile maps and areas by noise, density, slope and spacing, seeded so they repeat. A command writes the result as entities an agent can then edit, or a game runs the rules itself. Tile maps and terrains generate from noise files too.
+- **Imported from other tools.** Godot's noise and gradient resources convert with the Godot importer. Blender's geometry nodes and Houdini export instances through glTF's `EXT_mesh_gpu_instancing`, and terrain tools (World Machine, Gaea, World Creator) export heightmaps as 16-bit PNG, RAW or EXR, which become HTerrain maps. Closed formats such as Substance's `.sbsar` are left out; their exported texture maps import as any texture.
+
 ## Languages
 
 Games ship in many languages, and the people and agents making them work in many languages too. Following Godot, the engine treats no language as special.
@@ -463,7 +473,7 @@ SlashEngine/
 5. **2D feature set.** Systems, play and pause, event subscriptions, prefabs, asset handles with hot reload, the storyboard, dry runs, world snapshots and diffs, verified examples and the CI license check first; then the renderer, materials, sprites, keyframe animation, tilemaps, 2D lights, Box2D physics, particles, UI and text with IME input, audio, input injection, frame capture, replays with time travel, `run.until`, the debug overlay, `test.run` and frame summaries. Exit: an agent builds `samples/pong` and exports it to all six platforms.
 6. **Hot reload, AI and profiling.** Hot-reloadable C++ game module with `build.check`, SDK packages for closed vendor SDKs, `api.search`, `playtest.run` with tuning sweeps, Autopilot playtests, `ai::Provider` with three adapters and `ReplayProvider`, the asset library and generator for images and audio, storyboard review by a model and the project map, soundtracks, the job system, Tracy, `perf.stats` and the per-system memory report.
 7. **3D feature set.** Forward+ PBR renderer, shadows, post-processing, GI, ray tracing, path-traced lightmaps and reference stills, upscalers, sky, decals, LODs, Jolt physics, skeletal animation and blending, navigation, terrain, CSG, glTF and FBX import, and 3D in the asset library: parametric models, game-ready cleanup, automatic review, rigging and scene assembly. Exit: an agent builds a small 3D sample end to end.
-8. **Systems and platform services.** Networking, XR, localization, video, accessibility, and analytics, ads and in-app purchases behind one API with a headless test backend.
+8. **Systems and platform services.** Networking, XR, localization, video, accessibility, procedural generation, and analytics, ads and in-app purchases behind one API with a headless test backend.
 9. **Launch.** Every Launch row of the parity table done, the Mac engine and tools released, exports for all six platforms, reference docs generated from `engine.describe`.
 
 After launch: Windows and Linux hosts for the engine and tools, then the After launch rows.

@@ -1,0 +1,37 @@
+{
+  "entities": {
+    "glow": {
+      "components": {
+        "Sprite2D": {
+          "texture": "textures/glow.texture.json"
+        },
+        "Transform2D": {
+          "position": [120.0, 55.0]
+        }
+      }
+    },
+    "sky": {
+      "components": {
+        "Control": {
+          "anchor_right": 1.0,
+          "offset_bottom": 16.0
+        },
+        "TextureRect": {
+          "expand_mode": "ignore_size",
+          "texture": "textures/dusk.texture.json"
+        }
+      }
+    },
+    "water": {
+      "components": {
+        "Sprite2D": {
+          "texture": "textures/water.texture.json"
+        },
+        "Transform2D": {
+          "position": [40.0, 55.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}
