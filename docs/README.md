@@ -21,6 +21,7 @@ real commands and real output, and no screenshots.
 | Show ads, log analytics events, sell in-app purchases, or unlock achievements and submit scores | [reference/services.md](reference/services.md) |
 | Send packets between the machines in a multiplayer game | [reference/networking.md](reference/networking.md) |
 | Call a language model from a game, a tool or a test | [reference/providers.md](reference/providers.md) |
+| Have Autopilot's agent play a game to find bugs, verify a claim or reach a goal | [reference/autopilot.md](reference/autopilot.md) |
 | Bring a game over from Godot | [reference/godot-import.md](reference/godot-import.md) |
 | Bring a game over from Unity | [reference/unity-import.md](reference/unity-import.md) |
 | Bring a game over from Unreal Engine | [reference/unreal-import.md](reference/unreal-import.md) |
