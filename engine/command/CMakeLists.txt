@@ -10,6 +10,7 @@ add_library(slash_command
     src/perf.cpp
     src/place.cpp
     src/procedural.cpp
+    src/scatter.cpp
     src/playtest.cpp
     src/project_map.cpp
     src/replay.cpp

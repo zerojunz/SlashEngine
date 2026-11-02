@@ -1408,6 +1408,29 @@ or name that entity in `external_skeleton` to follow a model from anywhere in th
 `Transform3D` parent or `external_skeleton` draws no model file.
 [examples/bone-attachment](../../examples/bone-attachment/) puts a sword in a waving hand.
 
+### MultiMeshInstance3D
+
+`MultiMeshInstance3D` draws one model many times, as Godot's `MultiMeshInstance3D` with a
+`MultiMesh` of 3D transforms: its `mesh` (a model file, as `MeshInstance3D`'s, or a
+[made mesh](#made-textures-and-meshes)) at each of its `instances`, each placed in the entity's
+space by a `position`, `rotation` (radians, YXZ) and `scale`, as a `Transform3D`'s fields.
+`visible_instance_count` (default `-1`, all) draws only the first ones, as Godot's; `layers`,
+`cast_shadow` and `lod_bias` are `MeshInstance3D`'s, and a `StandardMaterial3D` on the entity
+replaces the model's materials. [`scatter.run`](commands.md#scatterrun) makes them from
+[scatter rules](#scatter-rules).
+
+```json
+"trees": {"components": {
+  "Transform3D": {},
+  "MultiMeshInstance3D": {"mesh": "models/tree.model.json", "instances": [
+    {"position": [-2, 0, 1], "rotation": [0, 1.2, 0]},
+    {"position": [3, 0, -1], "scale": [1.3, 1.3, 1.3]}]}
+}}
+```
+
+`scene validate` checks the mesh as `MeshInstance3D`'s, and a mesh that can't draw is a problem
+at `/components/MultiMeshInstance3D/mesh` once, not once an instance.
+
 ### CSG shapes
 
 Seven components are Godot 4.6's CSG nodes: shapes that add to, cut from or intersect each other
@@ -2731,6 +2754,74 @@ A gradient object is Godot's `Gradient`: colors at offsets from 0 to 1. Colors a
 | `interpolation_color_space` | `srgb` | `srgb`, `linear_srgb` or `oklab`, the space colors blend in |
 
 Before the first point and after the last, the gradient holds their colors.
+
+## Scatter rules
+
+A `.scatter.json` file says what to place over terrains, meshes, tile maps and areas and how
+thickly, a layer at a time, as Unreal's PCG graphs and Godot's MultiMesh *Populate Surface* do
+(Godot has no scatter rules of its own). [`scatter.run`](commands.md#scatterrun) places what it
+asks for; the same rules over the same ground place the same things on every machine, since
+places come from a seeded random number generator (PCG32) and the module builds with no fused
+multiply-adds. `slash-cli schema scatter` prints the schema, and `scene validate` and
+`scene format` take the files. Scatter rules are a game's source: what they placed is saved in
+its scenes, and exports leave the rules out.
+
+```json
+{
+  "format": 1,
+  "seed": 3,
+  "layers": [
+    {"name": "trees", "mesh": "models/tree.model.json", "as": "multimesh",
+     "on": ["ground", "hill"], "density": 0.15, "spacing": 1.2, "slope": [0, 20],
+     "noise": {"frequency": 0.15}, "noise_range": [-0.1, 1],
+     "rotate_random": 1, "scale_random": 0.25},
+    {"name": "rocks", "prefab": "props/rock.prefab.json", "on": ["ground"], "count": 10,
+     "spacing": 1, "avoid": ["trees"], "rotate_random": 1, "scale_random": 0.3}
+  ]
+}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `format` | required | `1` |
+| `space` | `"3d"` | `"3d"` places `Transform3D`s, `"2d"` places `Transform2D`s |
+| `seed` | `0` | Seed of the random places; each layer draws from its own stream |
+| `layers` | required | What to scatter, in order: later layers can avoid earlier ones |
+
+Each layer:
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `name` | required | Up to 32 letters, digits, `_` and `-`; names the entities it makes |
+| `mesh` | | The model each place draws (3D) |
+| `prefab` | | The `.prefab.json` each place's entity extends, its `Transform3D` or `Transform2D` set to the place |
+| `as` | `"entities"` | An entity a place, or `"multimesh"`: one [`MultiMeshInstance3D`](#multimeshinstance3d) drawing `mesh` at every place (3D) |
+| `on` | | IDs of the entities to scatter over, with those under them: in 3D their geometry as navigation bakes read it (meshes, CSG, terrains, grid maps, static bodies' shapes); in 2D `TileMapLayer`s' cells, each its rectangle. Without, the `area` itself, on y = 0 in 3D |
+| `area` | | `[min x, min z, max x, max z]` in 3D, `[min x, min y, max x, max y]` in 2D, in world space: only within it |
+| `tiles` | | 2D: only cells whose legend key or tile is one of these |
+| `count` | | How many places |
+| `density` | | Places per square unit of ground within the area (meter in 3D, pixel in 2D) |
+| `spacing` | `0` | Least distance across the ground between two places of the layer, and from those of the layers it avoids |
+| `avoid` | | Earlier layers whose places keep `spacing` away |
+| `slope` | `[0, 90]` | 3D: `[min, max]` degrees of the ground's slope from flat |
+| `height` | | 3D: `[min, max]` world height of the ground |
+| `noise` | | [Noise settings](#noise), sampled at (x, z) in 3D or (x, y) in 2D |
+| `noise_range` | `[0, 1]` | Only where the noise, about -1 to 1, is within this |
+| `align_to_normal` | `false` | 3D: stand along the ground's normal, as Godot's populate; else upright |
+| `rotate_random` | `0` | Turn about the up axis by up to this many half turns either way: `1` is any heading |
+| `tilt_random` | `0` | 3D: tilt by up to this many half turns either way |
+| `scale` | `1` | Uniform scale |
+| `scale_random` | `0` | Add up to this much to the scale either way |
+| `offset` | `0` | Move along the up axis by this much; negative sinks it |
+
+Give `mesh` or `prefab`, and `count` or `density`, one of each; and `on`, `area` or both. A layer
+picks a triangle of its ground by area, then a point in it as Godot's
+`Face3::get_random_point_inside` does, and keeps it when it is in the area, on a slope and at a
+height in range, where the noise is in range and `spacing` from every place kept before; kept
+places turn and scale as Godot's `MultiMeshEditor::_populate` turns them. It stops at the count
+wanted or after 30 tries a place, so rules that leave too little room place fewer, and
+`scatter.run` says which rules threw tries away. [examples/scatter-rules](../../examples/scatter-rules/)
+grows a forest over a field and a hill.
 
 ## Made textures and meshes
 

@@ -1,0 +1,7 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":4,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"into":"forest","layers":[{"name":"trees","placed":78},{"name":"rocks","placed":10}]}}
+{"id":3,"jsonrpc":"2.0","result":{"count":10,"entities":["forest_rocks_1","forest_rocks_10","forest_rocks_2","forest_rocks_3","forest_rocks_4","forest_rocks_5","forest_rocks_6","forest_rocks_7","forest_rocks_8","forest_rocks_9"],"truncated":false}}
+{"id":4,"jsonrpc":"2.0","result":{"colors":[[0.498,0.631,0.322,1],[0.549,0.502,0.369,1],[0.302,0.302,0.302,1]],"drawn":{"lods":46,"meshes":168},"height":90,"width":160}}
+{"id":5,"jsonrpc":"2.0","result":{"into":"forest","layers":[{"name":"trees","placed":52,"rejected":{"slope":579,"spacing":5369},"wanted":200}]}}
+{"id":6,"jsonrpc":"2.0","result":{"can_redo":1,"can_undo":1,"undone":"scatter.run"}}
+{"error":{"code":-32001,"data":{"path":"/rules/layers/0/on/0"},"message":"/rules/layers/0/on/0: no entity has the id \"grond\"; did you mean \"ground\"?"},"id":7,"jsonrpc":"2.0"}

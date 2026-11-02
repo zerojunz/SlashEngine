@@ -968,7 +968,7 @@ Exit: an agent builds a small 3D sample end to end.
         texture path is; `texture.generate` measures, samples and bakes them
   - [x] Textures and meshes made by gameplay code while a game runs, as Godot's `ImageTexture`,
         `ArrayMesh` and `SurfaceTool`
-  - [ ] Scatter rules agents write: prefabs or meshes placed over terrains, meshes, tile maps and
+  - [x] Scatter rules agents write: prefabs or meshes placed over terrains, meshes, tile maps and
         areas by noise, density, slope and spacing, seeded so they repeat, as entities or as one
         multi-mesh
   - [ ] Tile maps and terrains from noise: terrains painted by noise thresholds, and HTerrain's

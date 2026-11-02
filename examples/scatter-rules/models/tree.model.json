@@ -1,0 +1,31 @@
+{
+  "format": 1,
+  "materials": {
+    "bark": {
+      "albedo_color": [0.4, 0.26, 0.14, 1.0],
+      "roughness": 0.9
+    },
+    "leaves": {
+      "albedo_color": [0.16, 0.45, 0.18, 1.0],
+      "roughness": 0.8
+    }
+  },
+  "parts": [
+    {
+      "height": 1.2,
+      "material": "bark",
+      "name": "trunk",
+      "position": [0, 0.6, 0],
+      "radius": 0.12,
+      "shape": "cylinder",
+      "sides": 8
+    },
+    {
+      "material": "leaves",
+      "name": "crown",
+      "position": [0, 1.5, 0],
+      "radius": 0.6,
+      "shape": "sphere"
+    }
+  ]
+}

@@ -83,6 +83,36 @@ struct MeshInstance3D {
 SLASH_COMPONENT(MeshInstance3D, mesh, layers, cast_shadow, gi_mode, gi_lightmap_texel_scale,
                 lod_bias, ignore_occlusion_culling)
 
+// One instance of a MultiMeshInstance3D's mesh: where it is in the entity's space, as a
+// Transform3D's position, rotation (radians, Godot's YXZ order) and scale.
+struct MultiMeshInstance {
+    Vec3 position;
+    Vec3 rotation;
+    Vec3 scale{1.0F, 1.0F, 1.0F};
+
+    friend bool operator==(const MultiMeshInstance&, const MultiMeshInstance&) = default;
+};
+SLASH_REFLECT(MultiMeshInstance, position, rotation, scale)
+
+// Draws a model many times, as Godot's MultiMeshInstance3D with a MultiMesh of 3D transforms:
+// each instance where its transform puts it in the entity's space. Scatter rules make them.
+struct MultiMeshInstance3D {
+    // A .gltf, .glb, .obj, .fbx, .blend or .model.json file, as MeshInstance3D's mesh. A
+    // StandardMaterial3D on the entity replaces its materials.
+    std::string mesh;
+    std::vector<MultiMeshInstance> instances;
+    // How many of the instances draw, from the first, as Godot's visible_instance_count; -1 for
+    // all of them.
+    int visible_instance_count = -1;
+    std::uint32_t layers = 1;       // as MeshInstance3D's
+    std::string cast_shadow = "on"; // as MeshInstance3D's
+    float lod_bias = 1.0F;          // as MeshInstance3D's
+
+    friend bool operator==(const MultiMeshInstance3D&, const MultiMeshInstance3D&) = default;
+};
+SLASH_COMPONENT(MultiMeshInstance3D, mesh, instances, visible_instance_count, layers, cast_shadow,
+                lod_bias)
+
 // Poses the skeleton of the model the entity's MeshInstance3D draws by hand, as Godot's Skeleton3D
 // bone poses: each bone, or other node of the model, named in these maps takes the position, the
 // rotation (radians about each axis, in Transform3D's order) or the scale given, in its parent's
