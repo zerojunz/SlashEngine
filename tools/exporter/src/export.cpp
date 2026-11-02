@@ -846,6 +846,7 @@ json::Value run_test(const std::string& platform, const std::string& arch, const
     process.working_directory = output.string();
     process.log_path = log_path.string();
     process.tail_lines = 20;
+    process.max_line_length = 0; // the summary is read as JSON, whatever its length
     auto result = platform::run_process(args, process);
     if (!result) {
         test["passed"] = false;
