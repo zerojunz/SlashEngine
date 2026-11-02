@@ -2649,6 +2649,9 @@ Needs: `read`. With the footsteps playing:
   `"sends": [{"bus", "volume"}]`, the buses it mixes into beside `bus`.
 - `paused` is listed when `stream_paused` holds the player, and `error` when its stream did not
   load, such as a missing or corrupt file.
+- A `VideoStreamPlayer` whose file has sound ([sound in videos](scene-format.md#sound-in-videos))
+  is listed with kind `VideoStreamPlayer`: its `stream` is the video, `position` where its sound
+  is and `length` the video's. `error` says why its `audio_track` can't play, such as Opus.
 - A player's `bus` is the one it plays on now: an `Area2D` with `audio_bus_override` that holds
   an `AudioStreamPlayer2D` sends it to its own bus ([buses by area](scene-format.md#buses-by-area)),
   as an `Area3D` does an `AudioStreamPlayer3D`.
@@ -5090,7 +5093,7 @@ From [examples/import-godot](../../examples/import-godot/):
 ```
 
 ```json
-{"converted":{"animation_libraries":1,"animation_trees":0,"assets":8,"audio_streams":2,"bus_layouts":1,"input_actions":3,"mesh_libraries":0,"navigation_meshes":0,"process_materials":0,"scenes":2,"sprite_frames":2,"themes":1,"tile_sets":1},"engine":"godot","files":18,"main_scene":"godot/main.scene.json","module":"src/game.cpp","project":"Coin Run","report":"import/godot.json","scripts":[{"code":"src/imported/game_state.cpp","component":"GameState","entities":0,"script":"godot/game_state.gd","task":"task/port-game-state"},{"code":"src/imported/main.cpp","component":"Main","entities":1,"script":"godot/main.gd","task":"task/port-main"},{"code":"src/imported/player.cpp","component":"Player","entities":2,"script":"godot/player.gd","task":"task/port-player"}],"unsupported":[{"count":1,"what":"autoload","where":"project.godot: GameState","why":"autoloads are gameplay code; see the storyboard task"},{"count":1,"what":"file type .svg","where":"icon.svg","why":"textures are PNG, JPEG or BMP files; save it as PNG"},{"count":1,"what":"node type Timer","where":"main.tscn: Timer","why":"timers are gameplay code: count the ticks in a C++ system"}]}
+{"converted":{"animation_libraries":1,"animation_trees":0,"assets":8,"audio_streams":2,"bus_layouts":1,"input_actions":3,"mesh_libraries":0,"navigation_meshes":0,"procedural_textures":0,"process_materials":0,"scenes":2,"sprite_frames":2,"themes":1,"tile_sets":1},"engine":"godot","files":18,"main_scene":"godot/main.scene.json","module":"src/game.cpp","project":"Coin Run","report":"import/godot.json","scripts":[{"code":"src/imported/game_state.cpp","component":"GameState","entities":0,"script":"godot/game_state.gd","task":"task/port-game-state"},{"code":"src/imported/main.cpp","component":"Main","entities":1,"script":"godot/main.gd","task":"task/port-main"},{"code":"src/imported/player.cpp","component":"Player","entities":2,"script":"godot/player.gd","task":"task/port-player"}],"unsupported":[{"count":1,"what":"autoload","where":"project.godot: GameState","why":"autoloads are gameplay code; see the storyboard task"},{"count":1,"what":"file type .svg","where":"icon.svg","why":"textures are PNG, JPEG or BMP files; save it as PNG"},{"count":1,"what":"node type Timer","where":"main.tscn: Timer","why":"timers are gameplay code: count the ticks in a C++ system"}]}
 ```
 
 From [examples/import-unity](../../examples/import-unity/), where `pixels_per_unit` is the
@@ -5126,7 +5129,7 @@ own `unsupported`. From [examples/unpack-godot](../../examples/unpack-godot/):
 ```
 
 ```json
-{"converted":{"animation_libraries":0,"animation_trees":0,"assets":2,"audio_streams":0,"bus_layouts":0,"input_actions":1,"mesh_libraries":0,"navigation_meshes":0,"process_materials":0,"scenes":1,"sprite_frames":0,"themes":0,"tile_sets":0},"engine":"godot","files":15,"main_scene":"godot/main.scene.json","module":"src/game.cpp","project":"Jumper","report":"import/godot.json","scripts":[{"code":"src/imported/player.cpp","component":"Player","entities":1,"script":"godot/player.gd","task":"task/port-player"}],"unpacked":{"files":8,"folder":"godot","fonts":0,"pack":{"embedded":false,"files":10,"format":3,"godot":"4.5.0"},"resources":0,"scenes":1,"scripts":1,"scripts_from_tokens":1,"sounds":1,"textures":1,"unsupported":[]},"unsupported":[]}
+{"converted":{"animation_libraries":0,"animation_trees":0,"assets":2,"audio_streams":0,"bus_layouts":0,"input_actions":1,"mesh_libraries":0,"navigation_meshes":0,"procedural_textures":0,"process_materials":0,"scenes":1,"sprite_frames":0,"themes":0,"tile_sets":0},"engine":"godot","files":15,"main_scene":"godot/main.scene.json","module":"src/game.cpp","project":"Jumper","report":"import/godot.json","scripts":[{"code":"src/imported/player.cpp","component":"Player","entities":1,"script":"godot/player.gd","task":"task/port-player"}],"unpacked":{"files":8,"folder":"godot","fonts":0,"pack":{"embedded":false,"files":10,"format":3,"godot":"4.5.0"},"resources":0,"scenes":1,"scripts":1,"scripts_from_tokens":1,"sounds":1,"textures":1,"unsupported":[]},"unsupported":[]}
 ```
 
 For a Unity build, `unpacked` names the build's `platform`, scripting `backend` and `unity`
