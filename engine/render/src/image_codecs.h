@@ -1,6 +1,6 @@
 #pragma once
 
-// stb_image's JPEG and PNG decoders and a 16-bit gray PNG encoder (image_codecs.c), kept to one C
+// stb_image's JPEG and PNG decoders, stb_image_write's JPEG encoder and a 16-bit gray PNG encoder (image_codecs.c), kept to one C
 // file so the headers are compiled once.
 #ifdef __cplusplus
 extern "C" {
@@ -19,6 +19,10 @@ void slash_free_image(void* pixels);
 // with free().
 unsigned char* slash_encode_gray16_png(const unsigned short* pixels, int width, int height,
                                        int* size);
+// A baseline JPEG file of RGBA pixels (alpha left out) at quality 1 to 100, *size bytes long, or
+// null if it fails. Free it with free().
+unsigned char* slash_encode_jpeg(const unsigned char* pixels, int width, int height, int quality,
+                                 int* size);
 
 #ifdef __cplusplus
 }

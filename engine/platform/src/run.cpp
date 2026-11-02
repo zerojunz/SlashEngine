@@ -16,7 +16,7 @@ Result<Loop> Loop::create(Platform& platform, const RunOptions& options) {
     if (!(options.tick_hz > 0.0) || !std::isfinite(options.tick_hz)) {
         return make_error(ErrorCode::InvalidArgument, "tick_hz must be a positive number");
     }
-    if (platform.headless() && options.max_ticks == 0) {
+    if (platform.headless() && options.max_ticks == 0 && !options.real_time) {
         return make_error(ErrorCode::InvalidArgument,
                           "headless runs need max_ticks, or they would never end");
     }
@@ -49,7 +49,7 @@ bool Loop::frame(const TickFn& on_tick) {
         request_quit();
         return false;
     }
-    if (platform_->headless()) {
+    if (!real_time()) {
         record_frame(platform_->now_seconds(), 1);
         return tick(on_tick, step_.tick_seconds());
     }
@@ -155,7 +155,7 @@ RunStats run(Loop& loop, const TickFn& on_tick, const FrameFn& on_frame) {
     while (loop.frame(on_tick)) {
         if (on_frame) {
             on_frame(); // a renderer waits for the display here, unless V-Sync is off
-        } else if (!loop.headless() && loop.max_fps() == 0) {
+        } else if (loop.real_time() && loop.max_fps() == 0) {
             // Nothing paces the frames, so yield instead of spinning.
             SDL_Delay(1);
         }
