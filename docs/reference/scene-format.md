@@ -409,7 +409,7 @@ A reference must name an entity that exists in the same scene.
 | | `expand_mode` | `std::string` | `"keep_size"` | Its minimum size: `keep_size` (the texture's), `ignore_size` (none), `fit_width` (the rect's height as its width), `fit_height` (its width as its height), or `fit_width_proportional` / `fit_height_proportional`, keeping the texture's aspect |
 | | `stretch_mode` | `std::string` | `"scale"` | How the texture fills the rect: `scale`, `tile`, `keep` (its own size), `keep_centered`, `keep_aspect` (scaled to fit inside), `keep_aspect_centered` or `keep_aspect_covered` (scaled to cover it, cut to the rect) |
 | | `flip_h`, `flip_v` | `bool` | `false` | Draw it mirrored left to right, or upside down |
-| `VideoStreamPlayer` | `stream` | `std::string` | `""` | Project path of an `.ivf` file of AV1 video, played in the rect ([video](#video)) |
+| `VideoStreamPlayer` | `stream` | `std::string` | `""` | Project path of an `.ivf`, `.webm` or `.mkv` file of AV1 video, played in the rect ([video](#video)) |
 | | `playing` | `bool` | `false` | Whether it plays: set it to start from `stream_position`; the video system clears it at the end and emits `finished` |
 | | `autoplay` | `bool` | `false` | Play from the start once the video system first sees it |
 | | `paused` | `bool` | `false` | Hold the video where it is |
@@ -417,6 +417,9 @@ A reference must name an entity that exists in the same scene.
 | | `expand` | `bool` | `false` | Stretch the video to the rect; else it is drawn at its own size, which is the control's minimum size |
 | | `speed_scale` | `float` | `1` | How fast it plays: 2 is twice as fast |
 | | `stream_position` | `double` | `0` | Seconds into the video |
+| | `volume_db` | `float` | `0` | The volume of the video's sound, in decibels |
+| | `bus` | `std::string` | `"Master"` | The [audio bus](#audio) its sound plays on |
+| | `audio_track` | `int` | `0` | Which of the file's audio tracks plays, from 0 |
 | `NinePatchRect` | `texture` | `std::string` | `""` | Project path of a PNG, BMP or KTX2 file, cut into nine parts |
 | | `region_rect` | `Vec4` | `[0, 0, 0, 0]` | The part of the texture to use, [x, y, width, height] in pixels; a zero size uses the whole texture |
 | | `patch_margin_left`, `_top`, `_right`, `_bottom` | `int` | `0` | Pixels of the texture on each side that keep their size; the sides stretch along, the middle both ways |
@@ -6115,7 +6118,8 @@ session on the engine's stand-in runtime.
 ## Video
 
 `VideoStreamPlayer` is Godot's, with AV1 in place of Theora: its `stream` is an IVF file of AV1
-video (what `ffmpeg -c:v libaom-av1` or SVT-AV1 write as `.ivf`), which dav1d decodes, the same
+video (what `ffmpeg -c:v libaom-av1` or SVT-AV1 write as `.ivf`), or a WebM or Matroska file
+(`.webm`, `.mkv`) whose first AV1 track is the picture, which dav1d decodes, the same
 pixels on every machine, and turns into RGBA with integer math by the color matrix and range
 its sequence header gives (BT.709 when it gives none). The `video` system (priority 1140)
 plays each player as Godot's `NOTIFICATION_INTERNAL_PROCESS` does: `autoplay` starts it on the
@@ -6141,7 +6145,26 @@ problem at `/components/VideoStreamPlayer/stream`, which `scene validate` report
 
 Frames must be key frames or follow one: a file whose first frame isn't a key frame doesn't
 load. The video system's players, their decoders and frames show in `perf.stats`'s memory as
-`video`. Sound in videos is not played yet.
+`video`.
+
+### Sound in videos
+
+A WebM or Matroska file's audio track plays with its picture, as Godot's player plays a
+stream's mix: the `audio` system starts the track `audio_track` names on the player's `bus` at
+`volume_db` and at `stream_position`, pitched by `speed_scale`, holds it while the player is
+paused or stopped and starts it again where the player seeks or loops, so the sound stays
+within a tenth of a second of the picture. `audio.state` lists it among the players with kind
+`VideoStreamPlayer`, and a track that can't be played is its `error` there. Blocks may be laced
+(Xiph, EBML or fixed) and clusters of unknown size, as live recordings write them.
+
+Tracks of uncompressed PCM play now: `A_PCM/INT/LIT` (8, 16, 24 or 32 bits) and
+`A_PCM/FLOAT/IEEE` (32 or 64 bits), in `.mkv` files, since WebM allows only Opus and Vorbis.
+More than two channels are mixed down to two as ITU-R BS.775 does. Opus, which WebM files and
+most encoders use, is read but not played yet. To make such a file from a video and a WAV:
+
+```bash
+ffmpeg -i intro.ivf -i intro.wav -c:v copy -c:a pcm_s16le intro.mkv
+```
 
 The engine also writes AV1 itself, for tests and placeholders: `video::encode_ivf` and
 `video::encode_frame` code every frame as a key frame, losslessly, each block drawn from

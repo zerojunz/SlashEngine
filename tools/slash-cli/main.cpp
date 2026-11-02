@@ -10,6 +10,7 @@
 #include "slash/animation/animation.hpp"
 #include "slash/animation/tree.hpp"
 #include "slash/audio/audio.hpp"
+#include "slash/autopilot/bridge.hpp"
 #include "slash/bench/bench.hpp"
 #include "slash/canvas/canvas.hpp"
 #include "slash/canvas/gpu_particles.hpp"
@@ -126,6 +127,24 @@ Usage:
       --port <n>                     Port for --serve (default: any free port)
       --token <token>                Bearer token for --serve (default: random)
       --project <dir>                Project folder for --serve and --record (default ".")
+      --autopilot                    Connect to Autopilot's agent service, which plays the
+                                     game (ticks keep to real time, so --ticks may be left out)
+      --autopilot-run <kind>         Ask it for a run, then exit with the run's code (0 passed,
+                                     2 bugs or denied, 3 inconclusive, 1 error): verify, goal,
+                                     explore or auto
+      --autopilot-prompt <text>      The claim to verify, goal to reach, brief to explore by
+                                     or prompt for auto
+      --autopilot-minutes <n>        How long an explore run plays, or a run's time limit
+      --autopilot-url <url>          Its address (default: AUTOPILOT_PLAYTEST_URL, the one
+                                     `autopilot serve` announces, else
+                                     ws://127.0.0.1:8765/v1/bridge)
+      --autopilot-token <token>      Bearer token (default: AUTOPILOT_PLAYTEST_TOKEN)
+      --autopilot-report-dir <dir>   Where result.json and the report go (default
+                                     .slash/autopilot/<time> in the project)
+      --autopilot-connect-timeout <s>  Seconds to wait for it to take the run (default 120)
+      --autopilot-stay-open          Keep running after the run's result
+      --autopilot-share              Share the run's data with Autopilot's developers
+      --autopilot-no-media           Send it no pictures of the game
   slash-cli scene validate <file>    Check a scene, .prefab.json, .frames.json,
                                      .material.json, .process_material.json, .anim.json,
                                      .animtree.json, .tileset.json, .font.json, .theme.json,
@@ -519,11 +538,57 @@ int cmd_run(const std::vector<std::string>& args) {
     bool debug_collisions = false;
     command::SessionOptions session_options;
     slash::server::ServerOptions server_options;
+    bool autopilot = false;
+    std::string autopilot_url;
+    std::string autopilot_token;
+    std::string autopilot_kind;
+    std::string autopilot_prompt;
+    double autopilot_minutes = 0.0;
+    slash::autopilot::Options autopilot_options;
+    std::optional<bool> autopilot_share;
 
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string& arg = args[i];
         const bool has_value = i + 1 < args.size();
-        if (arg == "--headless") {
+        if (arg == "--autopilot") {
+            autopilot = true;
+        } else if (arg.starts_with("--autopilot-")) {
+            autopilot = true;
+            if (arg == "--autopilot-stay-open") {
+                autopilot_options.stay_open = true;
+            } else if (arg == "--autopilot-share") {
+                autopilot_share = true;
+            } else if (arg == "--autopilot-no-media") {
+                autopilot_options.media = false;
+            } else if (!has_value) {
+                return usage_error(arg + " needs a value");
+            } else if (arg == "--autopilot-url") {
+                autopilot_url = args[++i];
+            } else if (arg == "--autopilot-token") {
+                autopilot_token = args[++i];
+            } else if (arg == "--autopilot-run") {
+                autopilot_kind = args[++i];
+                if (autopilot_kind != "verify" && autopilot_kind != "goal" &&
+                    autopilot_kind != "explore" && autopilot_kind != "auto") {
+                    return usage_error("--autopilot-run needs verify, goal, explore or auto");
+                }
+            } else if (arg == "--autopilot-prompt") {
+                autopilot_prompt = args[++i];
+            } else if (arg == "--autopilot-minutes") {
+                if (!parse_double(args[++i], autopilot_minutes) || !(autopilot_minutes > 0.0)) {
+                    return usage_error("--autopilot-minutes needs a number above 0");
+                }
+            } else if (arg == "--autopilot-report-dir") {
+                autopilot_options.report_dir = args[++i];
+            } else if (arg == "--autopilot-connect-timeout") {
+                if (!parse_double(args[++i], autopilot_options.connect_timeout) ||
+                    !(autopilot_options.connect_timeout > 0.0)) {
+                    return usage_error("--autopilot-connect-timeout needs a number of seconds");
+                }
+            } else {
+                return usage_error("unknown option for run: " + arg);
+            }
+        } else if (arg == "--headless") {
             config.headless = true;
         } else if (arg == "--ticks") {
             if (!has_value || !parse_u64(args[++i], options.max_ticks)) {
@@ -584,6 +649,40 @@ int cmd_run(const std::vector<std::string>& args) {
     }
     if (server_args && !serve) {
         return usage_error("--port and --token need --serve");
+    }
+    if (autopilot) {
+        // Autopilot plays the game as a player would, at its speed.
+        options.real_time = true;
+        if (!autopilot_kind.empty()) {
+            json::Value run;
+            run["kind"] = autopilot_kind;
+            if (autopilot_kind == "verify") {
+                if (autopilot_prompt.empty()) {
+                    return usage_error(
+                        "--autopilot-run verify needs --autopilot-prompt, the claim");
+                }
+                run["claim"] = autopilot_prompt;
+            } else if (autopilot_kind == "goal") {
+                if (autopilot_prompt.empty()) {
+                    return usage_error("--autopilot-run goal needs --autopilot-prompt, the goal");
+                }
+                run["goal"] = autopilot_prompt;
+            } else if (autopilot_kind == "explore") {
+                if (!autopilot_prompt.empty()) {
+                    run["brief"] = autopilot_prompt;
+                }
+            } else {
+                run["prompt"] = autopilot_prompt;
+            }
+            if (autopilot_minutes > 0.0) {
+                run[autopilot_kind == "explore" ? "minutes" : "time_limit_minutes"] =
+                    autopilot_minutes;
+            }
+            autopilot_options.run = std::move(run);
+        } else if (!autopilot_prompt.empty() || autopilot_minutes > 0.0) {
+            return usage_error("--autopilot-prompt and --autopilot-minutes need --autopilot-run");
+        }
+        autopilot_options.share = autopilot_share.value_or(slash::autopilot::default_share());
     }
     if (!record_path.empty()) {
         // Replays are project files, like the scenes they start from. The file and its folder
@@ -764,6 +863,14 @@ int cmd_run(const std::vector<std::string>& args) {
             return failure("could not record", started.error());
         }
     }
+    // Autopilot's agent service, which plays the game: it connects out, and answers and presses
+    // keys between ticks, as --serve's requests run.
+    std::unique_ptr<slash::autopilot::Bridge> autopilot_bridge;
+    if (autopilot) {
+        autopilot_bridge = std::make_unique<slash::autopilot::Bridge>(
+            *engine.session, slash::autopilot::websocket_connector(autopilot_url, autopilot_token),
+            std::move(autopilot_options));
+    }
     const slash::platform::RunStats stats = slash::platform::run(
         loop.value(),
         [&](std::uint64_t tick, double tick_seconds) {
@@ -773,6 +880,12 @@ int cmd_run(const std::vector<std::string>& args) {
             }
             if (server) {
                 server->poll();
+            }
+            if (autopilot_bridge) {
+                autopilot_bridge->poll(tick_seconds);
+                if (autopilot_bridge->finished()) {
+                    loop.value().request_quit();
+                }
             }
             // After commands, so a sprite an agent moved jumps there instead of sliding.
             canvas.before_tick(game);
@@ -847,8 +960,18 @@ int cmd_run(const std::vector<std::string>& args) {
     if (!recorded.is_null()) {
         result["replay"] = std::move(recorded);
     }
+    int exit_code = kExitOk;
+    if (autopilot_bridge && autopilot_bridge->finished()) {
+        json::Value run;
+        run["exit_code"] = autopilot_bridge->exit_code();
+        run["report_dir"] = autopilot_bridge->report_dir();
+        run["result"] = autopilot_bridge->result();
+        result["autopilot"] = std::move(run);
+        exit_code = autopilot_bridge->exit_code();
+    }
+    autopilot_bridge.reset();
     print(result);
-    return kExitOk;
+    return exit_code;
 }
 
 // The project a file belongs to: the nearest folder above it with a project.json, else ".".

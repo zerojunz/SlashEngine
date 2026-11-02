@@ -3,6 +3,7 @@ add_library(slash_video
     src/decoder.cpp
     src/encoder.cpp
     src/ivf.cpp
+    src/matroska.cpp
     src/video.cpp)
 add_library(slash::video ALIAS slash_video)
 
