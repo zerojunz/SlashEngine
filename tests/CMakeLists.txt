@@ -112,6 +112,7 @@ add_executable(slash_tests
     test_video.cpp
     test_xr.cpp
     test_accessibility.cpp
+    test_accesskit.cpp
     test_websocket.cpp
     test_navigation.cpp
     test_net.cpp
@@ -317,6 +318,34 @@ list(JOIN SLASH_DEPENDENCIES "|" fetched_dependencies)
 add_test(NAME licenses
     COMMAND ${CMAKE_COMMAND} -DROOT=${PROJECT_SOURCE_DIR} -DDEPENDENCIES=${fetched_dependencies}
         ${license_args} -P ${PROJECT_SOURCE_DIR}/cmake/check_licenses.cmake)
+# AccessKit's Rust crates, for every platform games link it on, have allowed licenses, and those
+# that ship are in THIRD_PARTY.md. cargo fetches their manifests from crates.io.
+if(TARGET slash_accesskit)
+    set(crate_targets x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-pc-windows-msvc
+        aarch64-pc-windows-msvc x86_64-pc-windows-gnullvm aarch64-pc-windows-gnullvm
+        x86_64-apple-darwin aarch64-apple-darwin)
+    list(JOIN crate_targets "|" crate_targets)
+    add_test(NAME crate_licenses
+        COMMAND ${CMAKE_COMMAND} -DROOT=${PROJECT_SOURCE_DIR} -DCARGO=${SLASH_CARGO}
+            -DCRATE_MANIFEST=${accesskit-c_SOURCE_DIR}/Cargo.toml "-DCRATE_TARGETS=${crate_targets}"
+            -P ${PROJECT_SOURCE_DIR}/cmake/check_licenses.cmake)
+endif()
+# Orca's view of a game, through AT-SPI's bus under a D-Bus session of its own
+# (tests/test_accesskit.cpp). Linux only, where dbus-run-session and AT-SPI (at-spi2-core) are
+# installed.
+if(TARGET slash_accesskit AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_program(SLASH_DBUS_RUN_SESSION dbus-run-session)
+    find_program(SLASH_GDBUS gdbus)
+    find_file(SLASH_ATSPI_LAUNCHER at-spi-bus-launcher PATHS /usr/libexec /usr/lib/at-spi2-core
+        /usr/lib/x86_64-linux-gnu/at-spi2-core /usr/lib/aarch64-linux-gnu/at-spi2-core)
+    if(SLASH_DBUS_RUN_SESSION AND SLASH_GDBUS AND SLASH_ATSPI_LAUNCHER)
+        add_test(NAME atspi_screen_reader
+            COMMAND ${SLASH_DBUS_RUN_SESSION} -- $<TARGET_FILE:slash_tests>
+                "-tc=Screen readers read and press a game's controls through AT-SPI")
+        set_tests_properties(atspi_screen_reader PROPERTIES TIMEOUT 120
+            ENVIRONMENT "SLASH_ATSPI_TEST=1;SDL_VIDEO_DRIVER=offscreen")
+    endif()
+endif()
 # A fixture that breaks every rule, to show the check catches each one.
 set(license_fixture ${CMAKE_CURRENT_SOURCE_DIR}/data/licenses)
 add_test(NAME licenses_fixture
