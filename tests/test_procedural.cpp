@@ -4,12 +4,15 @@
 #include "slash/command/command.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/json.hpp"
+#include "slash/core/log.hpp"
 #include "slash/core/math.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/procedural/gradient.hpp"
 #include "slash/procedural/noise.hpp"
 #include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
+#include "slash/scene3d/surface_tool.hpp"
+#include "slash/ui/ui.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 
@@ -20,6 +23,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <functional>
 #include <map>
 #include <memory>
@@ -40,6 +44,8 @@ namespace procedural = slash::procedural;
 namespace render = slash::render;
 namespace world = slash::world;
 
+using slash::Vec2;
+using slash::Vec3;
 using slash::Vec4;
 
 namespace {
@@ -492,4 +498,219 @@ TEST_CASE("texture.generate makes and measures a texture") {
         reader->call("texture.generate", parse(R"({"path": "ramp.texture.json", "out": "x.png"})"));
     CHECK(denied.code == command::code::kPermissionDenied);
     CHECK(reader->call("texture.generate", parse(R"({"path": "ramp.texture.json"})")).ok);
+    std::filesystem::remove_all(root);
+}
+
+namespace {
+
+// A world with the built-in components and the canvas installed, on a 32x32 screen.
+struct MadeScene {
+    MemoryFiles files;
+    asset::Assets assets{files.source()};
+    world::ComponentRegistry components;
+    world::World world{components};
+
+    MadeScene() {
+        world::register_builtin_components(components);
+        canvas::install(world, assets);
+        slash::ui::Settings ui = slash::ui::settings(world);
+        ui.viewport = {32.0F, 32.0F};
+        slash::ui::set_settings(world, ui);
+        canvas::Settings settings;
+        settings.clear_color = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+        settings.texture_filter = render::Filter::Nearest;
+        canvas::set_settings(world, settings);
+    }
+
+    void create(std::string_view id, std::string_view components_json) {
+        const entt::entity entity = world.create(id).value();
+        const json::Value all = parse(components_json);
+        for (const auto& [name, fields] : all.as_object()) {
+            std::string path;
+            const auto assigned = components.find(name)->assign(world, entity, fields, path);
+            REQUIRE_MESSAGE(assigned.ok(), name << path << ": "
+                                                << (assigned.ok() ? "" : assigned.error().message));
+        }
+    }
+
+    canvas::Capture capture() {
+        auto captured = canvas::capture(world, assets);
+        REQUIRE_MESSAGE(captured.ok(), captured.error().message);
+        return std::move(captured).value();
+    }
+};
+
+render::Image solid(std::uint32_t size, std::vector<std::uint8_t> rgba) {
+    render::Image image;
+    image.width = size;
+    image.height = size;
+    for (std::uint32_t i = 0; i < size * size; ++i) {
+        image.pixels.insert(image.pixels.end(), rgba.begin(), rgba.end());
+    }
+    return image;
+}
+
+// Two clockwise triangles of a square in the xy plane, facing +z, as Godot's front faces.
+void add_square(slash::scene3d::SurfaceTool& tool, float half) {
+    const std::array<Vec3, 4> corners{Vec3{-half, -half, 0.0F}, Vec3{half, -half, 0.0F},
+                                      Vec3{half, half, 0.0F}, Vec3{-half, half, 0.0F}};
+    const std::array<Vec2, 4> uvs{Vec2{0.0F, 1.0F}, Vec2{1.0F, 1.0F}, Vec2{1.0F, 0.0F},
+                                  Vec2{0.0F, 0.0F}};
+    for (const int i : {0, 2, 1, 0, 3, 2}) {
+        tool.set_uv(uvs.at(static_cast<std::size_t>(i)));
+        tool.add_vertex(corners.at(static_cast<std::size_t>(i)));
+    }
+}
+
+} // namespace
+
+TEST_CASE("SurfaceTool builds surfaces as Godot's") {
+    using slash::scene3d::SurfaceTool;
+    SurfaceTool tool;
+    add_square(tool, 1.0F);
+    CHECK(tool.vertex_count() == 6);
+    // index merges the corners the triangles share.
+    tool.index();
+    CHECK(tool.vertex_count() == 4);
+    CHECK(tool.indices() == std::vector<std::uint32_t>{0, 1, 2, 0, 3, 1});
+    // Normals face the viewer of clockwise triangles, here +z; flipped, -z.
+    tool.generate_normals();
+    tool.generate_tangents();
+    CHECK(tool.vertex_count() == 4);
+    slash::scene3d::Model model;
+    REQUIRE(tool.commit(model).ok());
+    CHECK(tool.vertex_count() == 0);
+    REQUIRE(model.meshes.size() == 1);
+    REQUIRE(model.parts.size() == 1);
+    const slash::scene3d::ModelSurface& surface = model.meshes[0].surfaces.at(0);
+    CHECK(surface.indices.size() == 6);
+    for (const slash::render::Vertex3D& vertex : surface.vertices) {
+        CHECK(vertex.normal == std::array<float, 3>{0.0F, 0.0F, 1.0F});
+        // MikkTSpace's tangent runs along u, here +x.
+        CHECK(vertex.tangent[0] == doctest::Approx(1.0F));
+        CHECK(std::abs(vertex.tangent[3]) == 1.0F);
+    }
+    CHECK(surface.material == -1);
+
+    // A second surface with a material; flipped normals.
+    add_square(tool, 0.5F);
+    tool.generate_normals(true);
+    slash::world::StandardMaterial3D red;
+    red.albedo_color = {1.0F, 0.0F, 0.0F, 1.0F};
+    tool.set_material(red);
+    REQUIRE(tool.commit(model).ok());
+    REQUIRE(model.meshes[0].surfaces.size() == 2);
+    CHECK(model.meshes[0].surfaces[1].vertices[0].normal ==
+          std::array<float, 3>{0.0F, 0.0F, -1.0F});
+    CHECK(model.meshes[0].surfaces[1].material == 0);
+    CHECK(model.materials.at(0).standard.albedo_color == red.albedo_color);
+
+    // Smooth groups: two faces of a roof meeting at a ridge share normals there; flat ones don't.
+    const auto roof = [&](std::uint32_t group) {
+        tool.set_smooth_group(group);
+        for (const Vec3 p : {Vec3{0, 1, 0}, Vec3{1, 0, -1}, Vec3{1, 0, 1}, Vec3{0, 1, 0},
+                             Vec3{-1, 0, 1}, Vec3{-1, 0, -1}}) {
+            tool.add_vertex(p);
+        }
+        tool.generate_normals();
+        slash::scene3d::Model out;
+        REQUIRE(tool.commit(out).ok());
+        return out.meshes[0].surfaces[0].vertices;
+    };
+    const auto smooth = roof(0);
+    CHECK(smooth[0].normal[0] == doctest::Approx(0.0F));
+    CHECK(smooth[0].normal[1] == doctest::Approx(1.0F));
+    const auto flat = roof(SurfaceTool::kFlat);
+    CHECK(flat[0].normal[0] == doctest::Approx(0.7071068F));
+    CHECK(flat[3].normal[0] == doctest::Approx(-0.7071068F));
+
+    // Colors are stored as bytes; one vertex is no triangle.
+    tool.set_color({1.0F, 0.5F, 0.0F, 1.0F});
+    tool.add_vertex({});
+    CHECK_FALSE(tool.commit(model).ok());
+    tool.clear();
+    add_square(tool, 1.0F);
+    tool.index();
+    tool.add_index(9);
+    tool.add_index(0);
+    tool.add_index(1);
+    const auto bad = tool.commit(model);
+    REQUIRE_FALSE(bad.ok());
+    CHECK(bad.error().message.find("past the 4 vertices") != std::string::npos);
+    CHECK(model.meshes[0].surfaces.size() == 2);
+}
+
+TEST_CASE("gameplay code makes textures and meshes that draw") {
+    // Renderers draw nothing for a made asset not made yet, and log no warning about it.
+    int warnings = 0;
+    slash::log::set_sink([&warnings](slash::log::Level level, std::string_view /*line*/) {
+        warnings += level == slash::log::Level::Warn ? 1 : 0;
+    });
+    struct ResetSink {
+        ResetSink() = default;
+        ResetSink(const ResetSink&) = delete;
+        ResetSink& operator=(const ResetSink&) = delete;
+        ResetSink(ResetSink&&) = delete;
+        ResetSink& operator=(ResetSink&&) = delete;
+        ~ResetSink() { slash::log::reset_sink(); }
+    } reset_sink;
+    MadeScene scene;
+    scene.create("sprite", R"({"Sprite2D": {"texture": "made:dot"},
+                              "Transform2D": {"position": [8, 8]}})");
+    // Not made yet, it draws nothing.
+    CHECK(scene.capture().sprites == 0);
+
+    auto path = slash::procedural::make_texture(scene.world, "dot", solid(4, {0, 255, 0, 255}));
+    REQUIRE_MESSAGE(path.ok(), path.error().message);
+    CHECK(path.value() == "made:dot");
+    canvas::Capture captured = scene.capture();
+    CHECK(captured.sprites == 1);
+    CHECK(pixel(captured.image, 8, 8) == std::vector<int>{0, 255, 0, 255});
+    // Made again, the sprite shows the new pixels.
+    REQUIRE(slash::procedural::make_texture(scene.world, "dot", solid(4, {0, 0, 255, 255})).ok());
+    CHECK(pixel(scene.capture().image, 8, 8) == std::vector<int>{0, 0, 255, 255});
+    // A noise texture made with the game's own settings.
+    slash::procedural::NoiseTexture2D noise;
+    noise.width = 8;
+    noise.height = 8;
+    noise.noise.seed = 12;
+    REQUIRE(
+        slash::procedural::make_texture(scene.world, "noise", slash::procedural::make_image(noise))
+            .ok());
+    CHECK(scene.assets.load<render::Image>("made:noise").value()->width == 8);
+
+    CHECK_FALSE(
+        slash::procedural::make_texture(scene.world, "bad name", solid(1, {0, 0, 0, 0})).ok());
+    render::Image short_pixels = solid(2, {0, 0, 0, 0});
+    short_pixels.pixels.pop_back();
+    CHECK_FALSE(slash::procedural::make_texture(scene.world, "short", short_pixels).ok());
+    world::ComponentRegistry bare_components;
+    world::World bare{bare_components};
+    CHECK_FALSE(slash::procedural::make_texture(bare, "dot", solid(1, {0, 0, 0, 0})).ok());
+
+    // A mesh drawn by a MeshInstance3D in front of the camera.
+    MadeScene three;
+    three.create("camera", R"({"Camera3D": {"current": true},
+                               "Transform3D": {"position": [0, 0, 3]}})");
+    three.create("square", R"({"MeshInstance3D": {"mesh": "made:square"}, "Transform3D": {}})");
+    CHECK(three.capture().meshes == 0);
+    slash::scene3d::SurfaceTool tool;
+    add_square(tool, 1.0F);
+    tool.generate_normals();
+    slash::world::StandardMaterial3D red;
+    red.albedo_color = {1.0F, 0.0F, 0.0F, 1.0F};
+    red.shading_mode = "unshaded";
+    tool.set_material(red);
+    slash::scene3d::Model mesh;
+    REQUIRE(tool.commit(mesh).ok());
+    auto made = slash::scene3d::make_mesh(three.world, "square", std::move(mesh));
+    REQUIRE_MESSAGE(made.ok(), made.error().message);
+    CHECK(made.value() == "made:square");
+    captured = three.capture();
+    CHECK(captured.meshes == 1);
+    const std::vector<int> middle = pixel(captured.image, 16, 16);
+    CHECK(middle[0] > 200);
+    CHECK(middle[1] < 30);
+    CHECK(pixel(captured.image, 1, 1)[0] < 30);
+    CHECK(warnings == 0);
 }

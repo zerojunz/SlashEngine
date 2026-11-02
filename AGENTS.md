@@ -335,8 +335,17 @@ and `ui::add_asset_types` register it as a texture, and code that reads texture 
 and `is_texture_path`, so any texture field takes one. Exports ship the file and validate it.
 `texture.generate` (`engine/command/src/procedural.cpp`) makes one from a file or inline settings
 and measures it (channels' range, and `wrap`, which says whether it tiles), returns pixels and
-writes a PNG. `examples/procedural-textures` tunes water that tiles. The rest of the roadmap
-item (runtime meshes, scatter rules, imports from other tools) is in `docs/roadmap.md`.
+writes a PNG. `examples/procedural-textures` tunes water that tiles.
+
+Gameplay code makes textures and meshes while a game runs, as Godot's `ImageTexture` and
+`ArrayMesh`: `asset::Assets::put` keeps a value at a `made:<name>` path (`asset::is_made_path`)
+until `drop`, bumping its version when put again so renderers upload it again, and never reloads
+it; `canvas::install` attaches a world's assets (`asset::attach`, `asset::assets_of`), so
+`procedural::make_texture` and `scene3d::make_mesh` reach them from a system. `scene3d::SurfaceTool`
+(`src/surface_tool.cpp`) is Godot's for triangles (`generate_normals` with smooth groups, MikkTSpace
+`generate_tangents`, `index`, `commit` into a `Model`). Validators skip `made:` paths (only the
+running game has them). `examples/runtime-meshes` grows hills from noise. The rest of the roadmap
+item (scatter rules, imports from other tools) is in `docs/roadmap.md`.
 
 ## Commands, MCP and JSON-RPC
 

@@ -4,6 +4,7 @@
 #include "slash/core/text.hpp"
 
 #include <algorithm>
+#include <entt/entity/registry.hpp>
 #include <utility>
 
 namespace slash::asset {
@@ -14,6 +15,16 @@ std::string quoted(std::string_view text) {
 }
 
 } // namespace
+
+bool is_made_path(std::string_view path) noexcept {
+    if (!path.starts_with(kMadePrefix) || path.size() == kMadePrefix.size()) {
+        return false;
+    }
+    return std::ranges::all_of(path.substr(kMadePrefix.size()), [](char c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+               c == '_' || c == '-' || c == '.' || c == '/';
+    });
+}
 
 FileSource folder_source(std::string folder) {
     if (!folder.empty() && folder.back() != '/' && folder.back() != '\\') {
@@ -78,8 +89,70 @@ Result<detail::Loaded> Assets::run_loader(const Type& type, std::string_view tex
     return loaded;
 }
 
+std::string Assets::type_name(entt::id_type id) const {
+    for (const Type& type : types_) {
+        if (type.id == id) {
+            return type.name;
+        }
+    }
+    return "made";
+}
+
+Result<void> Assets::put_record(std::string_view path, entt::id_type id, detail::Value value,
+                                std::size_t bytes) {
+    if (!is_made_path(path)) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "made assets are named \"made:\" and a name of letters, digits and "
+                          "\"_-./\"; got " +
+                              quoted(path));
+    }
+    auto it = made_.find(path);
+    if (it != made_.end() && it->second.id == id) {
+        // The same type: handles to it see the new value.
+        it->second.record->value = std::move(value);
+        it->second.record->bytes = bytes;
+        ++it->second.record->version;
+        return {};
+    }
+    // New, or another type: a record of its own, so handles to the old one keep their type.
+    const std::uint64_t version = it != made_.end() ? it->second.record->version + 1 : 1;
+    auto record = std::make_shared<detail::Record>(detail::Record{
+        .path = std::string(path),
+        .type = type_name(id),
+        .value = std::move(value),
+        .version = version,
+        .stamp = std::nullopt,
+        .bytes = bytes,
+    });
+    made_.insert_or_assign(std::string(path), Made{std::move(record), id});
+    return {};
+}
+
+bool Assets::drop(std::string_view path) {
+    const auto it = made_.find(path);
+    if (it == made_.end()) {
+        return false;
+    }
+    made_.erase(it);
+    return true;
+}
+
 Result<std::shared_ptr<detail::Record>> Assets::load_record(std::string_view path,
                                                             entt::id_type id) {
+    if (path.starts_with(kMadePrefix)) {
+        const auto it = made_.find(path);
+        if (it == made_.end()) {
+            return make_error(ErrorCode::NotFound,
+                              std::string(kNotMadeYet) + quoted(path) +
+                                  " yet: gameplay code makes it while the game runs");
+        }
+        if (it->second.id != id) {
+            return make_error(ErrorCode::InvalidArgument, quoted(path) + " is a " +
+                                                              it->second.record->type +
+                                                              " asset, not the type asked for");
+        }
+        return it->second.record;
+    }
     const std::string_view file = file_of(path);
     if (!is_project_path(file)) {
         return make_error(ErrorCode::InvalidArgument,
@@ -235,8 +308,31 @@ std::vector<Assets::Info> Assets::list() const {
     for (const auto& [path, watched] : watched_) {
         infos.push_back({path, watched.type, 0, watched.version, 0});
     }
+    for (const auto& [path, made] : made_) {
+        // The map holds one reference of its own.
+        infos.push_back({path, made.record->type,
+                         static_cast<std::size_t>(made.record.use_count() - 1),
+                         made.record->version, made.record->bytes});
+    }
     std::ranges::sort(infos, {}, &Info::path);
     return infos;
+}
+
+namespace {
+
+struct AttachedAssets {
+    Assets* assets = nullptr;
+};
+
+} // namespace
+
+void attach(entt::registry& registry, Assets& assets) {
+    registry.ctx().insert_or_assign(AttachedAssets{&assets});
+}
+
+Assets* assets_of(const entt::registry& registry) {
+    const auto* attached = registry.ctx().find<AttachedAssets>();
+    return attached != nullptr ? attached->assets : nullptr;
 }
 
 } // namespace slash::asset

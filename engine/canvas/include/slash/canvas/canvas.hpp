@@ -61,7 +61,8 @@ with_texture_forms(const asset::FileSource& files,
 // last read files through assets, which must outlive the world.
 void add_systems(world::World& world, asset::Assets& assets);
 
-// Both of the above, and ui::install, for a world and the assets it loads from.
+// Both of the above, and ui::install, for a world and the assets it loads from, which it attaches
+// to the world (asset::attach) so gameplay code can make textures and meshes in them.
 void install(world::World& world, asset::Assets& assets);
 
 // The two triangles a sprite draws, in world pixels, for a texture of the given size: the frame

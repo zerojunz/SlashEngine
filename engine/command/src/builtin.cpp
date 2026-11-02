@@ -7,6 +7,7 @@
 
 #include "slash/animation/animation.hpp"
 #include "slash/animation/tree.hpp"
+#include "slash/asset/assets.hpp"
 #include "slash/audio/analysis.hpp"
 #include "slash/audio/audio.hpp"
 #include "slash/audio/effects.hpp"
@@ -2759,11 +2760,10 @@ Reply model_inspect(Session& session, const json::Value& params) {
                                                  : "'s MeshInstance3D draws no model"));
         }
         path = instance->mesh;
-    } else if (!scene3d::is_model_path(path)) {
-        return param_error(
-            code::kInvalidParams, "/path",
-            quoted(path) +
-                " isn't a model: give a .gltf, .glb, .obj, .fbx, .blend or .model.json file");
+    } else if (!scene3d::is_model_path(path) && !asset::is_made_path(path)) {
+        return param_error(code::kInvalidParams, "/path",
+                           quoted(path) + " isn't a model: give a .gltf, .glb, .obj, .fbx, "
+                                          ".blend or .model.json file, or a made mesh");
     }
     auto loaded = session.assets().load<scene3d::Model>(path);
     if (!loaded) {
