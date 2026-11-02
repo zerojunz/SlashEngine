@@ -6,8 +6,10 @@
 #include "slash/exporter/maven.hpp"
 #include "slash/exporter/presets.hpp"
 
+#include <array>
 #include <filesystem>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -268,10 +270,20 @@ struct SdkPlaces {
                                      std::string_view platform, bool fetch, bool keys = true,
                                      const std::string& log_path = {});
 
+// The packages the engine ships for stores that are part of a platform, by the name sdk.add
+// takes: "storekit" (Apple's StoreKit on iOS and macOS) and "play-billing" (Google Play Billing,
+// whose library sdk lock fetches). Their glue code is the engine's own.
+inline constexpr std::array<std::string_view, 2> kBuiltinSdks = {"storekit", "play-billing"};
+
+// A built-in package's folder in the engine (export/sdks/<name>), or nullopt if name isn't one
+// or the engine's files can't be found.
+[[nodiscard]] std::optional<std::filesystem::path> builtin_sdk(std::string_view name);
+
 struct AddSdkOptions {
     std::filesystem::path project;
-    // A package's folder; a git repository (ending in .git, or git@ or ssh://); or an https://
-    // address of a .zip or .tar archive with sdk.json at its root or in its one folder.
+    // A package's folder; a built-in package's name (kBuiltinSdks); a git repository (ending in
+    // .git, or git@ or ssh://); or an https:// address of a .zip or .tar archive with sdk.json
+    // at its root or in its one folder.
     std::string source;
     std::string name;   // the folder under sdks/; "" means the package's name
     std::string ref;    // a git branch or tag; "" for the default branch

@@ -228,7 +228,8 @@ Usage:
       --engine <dir>                 Engine sources (default: SLASH_ENGINE_DIR or built in)
   slash-cli sdk add <source>         Add an SDK package (a folder with sdk.json) to
                                      project.json's "sdks", so exports link it: a folder in
-                                     the project where it is; any other folder, a git
+                                     the project where it is; any other folder, a built-in
+                                     store's package (storekit, play-billing), a git
                                      repository or an https:// .zip or .tar archive is copied
                                      into sdks/<name>
       --project <dir>                Game folder with project.json (default ".")
@@ -2085,7 +2086,9 @@ int cmd_sdk(const std::vector<std::string>& args) {
     }
     if (adding) {
         if (options.source.empty()) {
-            return usage_error("sdk add needs a package folder, git repository or archive URL");
+            return usage_error(
+                "sdk add needs a package folder, built-in store package, git repository or archive "
+                "URL");
         }
         auto added = slash::exporter::add_sdk(options);
         if (!added) {

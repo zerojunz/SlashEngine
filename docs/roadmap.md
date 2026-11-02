@@ -981,8 +981,8 @@ Exit: an agent builds a small 3D sample end to end.
       API and command set, with the store or network chosen per export preset
   - [x] Analytics: custom events, sessions and funnels, batched and sent as JSON to an endpoint
         the developer chooses, such as a self-hosted open-source server
-  - [ ] In-app purchases: products, purchase, restore and receipts, on StoreKit for iOS and
-        macOS and Google Play Billing for Android
+  - [x] In-app purchases: products, purchase, restore and receipts, on StoreKit for iOS and
+        macOS and Google Play Billing for Android (the `storekit` and `play-billing` packages)
   - [ ] Ads: banner, interstitial and rewarded placements behind one interface; each ad network
         is an adapter (see the note below)
   - [x] Consent and privacy: one consent state that gates analytics and ads, with Apple's App
@@ -1075,7 +1075,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Video playback | AV1 through dav1d | 8 | Done (sound to come) |
 | Accessibility | AccessKit | 8 | Tree and the Windows, macOS and Linux backends done; Android, iOS and the web to come |
 | Storyboard | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | 5, 6 | Done: files, commands and checks, palette, texture and triangle budget checks included, model review, the project map, and the style refined from accepted assets |
-| Analytics, ads and in-app purchases | One API for analytics, ads and purchases; StoreKit, Play Billing and a developer-chosen analytics endpoint in the repo, ad networks as outside adapters | 8 | In progress: the API, its backend interfaces, consent and the test backend are done |
+| Analytics, ads and in-app purchases | One API for analytics, ads and purchases; StoreKit, Play Billing and a developer-chosen analytics endpoint in the repo, ad networks as outside adapters | 8 | In progress: the API, its backend interfaces, analytics endpoints, consent with Apple's prompt, StoreKit, Play Billing and the test backend are done; ad networks are outside adapters |
 | Closed vendor SDKs | SDK packages: an `sdk.json` per SDK that exports fetch, check and link on all six platforms, with JNI and Objective-C bridges and engine interfaces for the glue | 6 | In progress: packages, exports, `sdk.add`, `sdk.check`, Android libraries and Maven, services and glue code |
 | One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | In progress: every platform exports (4a, 4b); building them all from one Mac is next |
 | Procedural generation | FastNoiseLite noise, noise and gradient textures, scatter rules agents write, and procedural content imported from other tools | 8 | In progress |
