@@ -2630,7 +2630,8 @@ inside the scene follow them, so `hero`'s `Transform2D` `children` are `hero/spr
 
 ## Textures
 
-Fields that name a texture take a PNG, JPEG (`.jpg` or `.jpeg`), BMP or KTX2 file. PNG, JPEG and
+Fields that name a texture take a PNG, JPEG (`.jpg` or `.jpeg`), BMP or KTX2 file, or a
+[`.texture.json`](#procedural-textures) file the engine makes as it loads. PNG, JPEG and
 BMP files are RGBA8 texels. JPEG files, baseline or progressive, decode with stb_image's integer
 decoder, so they give the same texels on every machine. A
 KTX2 file holds texels the way GPUs take them: RGBA8 (Vulkan format 37 or 43), BC7 (145 or 146)
@@ -2643,6 +2644,95 @@ ASTC on phones, Apple GPUs and browsers with `WEBGL_compressed_texture_astc`. An
 gets the texels decoded, exactly as the format specifies, so a texture looks the same everywhere;
 the software device behind `frame.capture` always decodes. `perf.stats` counts each texture's
 bytes in the form the device keeps it.
+
+## Procedural textures
+
+A `.texture.json` file is a texture made from settings as it loads, as Godot's `NoiseTexture2D`,
+`GradientTexture1D` and `GradientTexture2D` resources. Any field that names a texture can name
+one: a sprite, a tile set's atlas, a material's or style box's texture, a `TextureRect`, a
+`StandardMaterial3D`'s maps and a terrain's textures. The pixels are the same on every machine,
+so a game ships settings rather than images and [`texture.generate`](commands.md#texturegenerate)
+measures them without drawing a frame. `slash-cli schema texture` prints the schema, and
+`slash-cli scene validate` and `scene format` accept them; exports ship the file as it is.
+
+```json
+{
+  "color_ramp": {
+    "points": [
+      {"color": [0.05, 0.2, 0.45, 1], "offset": 0},
+      {"color": [0.3, 0.7, 0.9, 1], "offset": 1}
+    ]
+  },
+  "format": 1,
+  "height": 64,
+  "noise": {"frequency": 0.08, "noise_type": "cellular", "seed": 3},
+  "seamless": true,
+  "type": "NoiseTexture2D",
+  "width": 64
+}
+```
+
+Every key but `format` and `type` is optional, with Godot's default.
+
+| Key | Types | Default | Meaning |
+| --- | --- | --- | --- |
+| `format` | all | required | Format version. Must be `1` |
+| `type` | all | required | `NoiseTexture2D`, `GradientTexture1D` or `GradientTexture2D` |
+| `width`, `height` | all | `512` (noise), `256` x 1 (1D), `64` (2D) | Size in pixels, 1 to 16384; a 1D gradient is one pixel high |
+| `noise` | noise | Godot's `FastNoiseLite` | The [noise](#noise) to draw |
+| `invert` | noise | `false` | Light becomes dark and dark light |
+| `in_3d_space` | noise | `false` | Sample 3D noise at z 0 rather than 2D noise |
+| `seamless` | noise | `false` | Tile without seams, as Godot's: noise a skirt larger, its quarters swapped and the skirt blended over the seams |
+| `seamless_blend_skirt` | noise | `0.1` | The share of the size blended across the seams, 0.05 to 1 |
+| `normalize` | noise | `true` | Stretch the values over 0 to 255; off, -1 to 1 maps onto them |
+| `color_ramp` | noise | none | A [gradient](#gradients) each pixel's brightness picks its color from; left out, gray |
+| `as_normal_map` | noise | `false` | Turn the result into a tangent-space normal map, as Godot's `bump_map_to_normal_map`, wrapping at the edges |
+| `bump_strength` | noise | `8` | How steep the normal map's bumps are |
+| `gradient` | 1D, 2D | black to white | The [gradient](#gradients) to fill with |
+| `fill` | 2D | `linear` | `linear` along `fill_from` to `fill_to`, `radial` out from `fill_from`, or `square` out from it as squares |
+| `fill_from`, `fill_to` | 2D | `[0, 0]`, `[1, 0]` | Where offsets 0 and 1 are, in UV (0 to 1 across the texture) |
+| `repeat` | 2D | `none` | Past `fill_to`: `none` holds the last color, `repeat` starts again, `mirror` comes back |
+
+Godot's `generate_mipmaps` and `use_hdr` are left out: textures here are one level of 8 bits a
+channel. An error names the bad value's JSON Pointer, and an unknown `type` lists the three.
+
+### Noise
+
+A noise object is Godot's `FastNoiseLite` resource, on Auburn's FastNoiseLite, by Godot's
+property names with its enums in snake case. Gameplay code samples the same noise with
+`procedural::Noise` (`slash/procedural/noise.hpp`): `get_noise_2d(x, y)`, about -1 to 1.
+
+| Key | Default | Values |
+| --- | --- | --- |
+| `noise_type` | `simplex_smooth` | `simplex`, `simplex_smooth`, `cellular`, `perlin`, `value_cubic`, `value` |
+| `seed` | `0` | Any integer |
+| `frequency` | `0.01` | Higher is busier |
+| `offset` | `[0, 0, 0]` | Added to every point before sampling |
+| `fractal_type` | `fbm` | `none`, `fbm`, `ridged`, `ping_pong` |
+| `fractal_octaves` | `5` | 1 to 16 layers, as Godot allows |
+| `fractal_lacunarity`, `fractal_gain` | `2`, `0.5` | Each layer's frequency and strength against the last |
+| `fractal_weighted_strength`, `fractal_ping_pong_strength` | `0`, `2` | As Godot's |
+| `cellular_distance_function` | `euclidean` | `euclidean`, `euclidean_squared`, `manhattan`, `hybrid` |
+| `cellular_return_type` | `distance` | `cell_value`, `distance`, `distance2`, `distance2_add`, `distance2_sub`, `distance2_mul`, `distance2_div` |
+| `cellular_jitter` | `1` | How far cell points stray from the grid |
+| `domain_warp_enabled` | `false` | Warp each point before sampling |
+| `domain_warp_type` | `simplex` | `simplex`, `simplex_reduced`, `basic_grid` |
+| `domain_warp_amplitude`, `domain_warp_frequency` | `30`, `0.05` | How far and how busily it warps |
+| `domain_warp_fractal_type` | `progressive` | `none`, `progressive`, `independent` |
+| `domain_warp_fractal_octaves`, `domain_warp_fractal_lacunarity`, `domain_warp_fractal_gain` | `5`, `6`, `0.5` | As the noise's fractal |
+
+### Gradients
+
+A gradient object is Godot's `Gradient`: colors at offsets from 0 to 1. Colors are sRGB
+`[r, g, b]` or `[r, g, b, a]`, each 0 to 1.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `points` | black at 0, white at 1 | `{"offset", "color"}` objects, sorted by offset as they load |
+| `interpolation_mode` | `linear` | `linear`, `constant` (each color until the next point) or `cubic` |
+| `interpolation_color_space` | `srgb` | `srgb`, `linear_srgb` or `oklab`, the space colors blend in |
+
+Before the first point and after the last, the gradient holds their colors.
 
 ## Sprite frames
 

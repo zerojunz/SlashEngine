@@ -21,6 +21,13 @@
       "repository": "https://github.com/skypjack/entt.git",
       "tag": "v3.16.0"
     },
+    "FastNoiseLite": {
+      "license": "MIT",
+      "license_file": "LICENSE",
+      "license_sha256": "c08da3239b919c12f4ec616b457a8dd0fc923c8102c8a742c4006fcb5de28fb0",
+      "repository": "https://github.com/Auburn/FastNoiseLite.git",
+      "tag": "v1.1.1"
+    },
     "JoltPhysics": {
       "license": "MIT",
       "license_file": "LICENSE",

@@ -1,6 +1,7 @@
 #include "slash/command/builtin.hpp"
 
 #include "playtest.hpp"
+#include "procedural.hpp"
 #include "project_map.hpp"
 #include "selection.hpp"
 
@@ -40,6 +41,7 @@
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/light.hpp"
 #include "slash/render/mesh.hpp"
@@ -488,6 +490,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "score") {
         return Reply::success(soundtrack::score_schema());
+    }
+    if (kind == "texture") {
+        return Reply::success(procedural::texture_schema());
     }
     if (name.empty()) {
         return param_error(code::kInvalidParams, "/name",
@@ -6622,6 +6627,7 @@ void register_builtin_commands(Registry& registry) {
                                           "\"lightmap\" (.lightmap.json), \"voxel_gi\" "
                                           "(.voxelgi.json), \"model\" (.model.json), "
                                           "\"standard_material\" (.standard_material.json), "
+                                          "\"texture\" (.texture.json), "
                                           "\"replay\" (.replay.json), \"score\" (.score.json) "
                                           "or \"storyboard\" for those files, \"component\" for "
                                           "one component's fields, \"command\" for a command's "
@@ -6631,7 +6637,8 @@ void register_builtin_commands(Registry& registry) {
                     "animtree", "process_material", "tileset",   "font",     "theme",
                     "audio",    "bus_layout",       "navmesh",   "navpoly",  "meshlib",
                     "lightmap", "voxel_gi",         "model",     "replay",   "test",
-                    "score",    "storyboard",       "component", "command",  "standard_material"};
+                    "score",    "storyboard",       "component", "command",  "standard_material",
+                    "texture"};
     registry.add({
         .name = "schema.get",
         .description =
@@ -6639,7 +6646,7 @@ void register_builtin_commands(Registry& registry) {
             ".anim.json, .animtree.json, .process_material.json, .tileset.json, .font.json, "
             ".theme.json, .audio.json, "
             ".bus_layout.json, .navmesh.json, .navpoly.json, .meshlib.json, .lightmap.json, "
-            ".voxelgi.json, .model.json, .standard_material.json, "
+            ".voxelgi.json, .model.json, .standard_material.json, .texture.json, "
             ".replay.json, "
             ".test.json, "
             ".score.json or storyboard "
@@ -8206,6 +8213,7 @@ void register_builtin_commands(Registry& registry) {
     register_navigation_commands(registry);
     register_place_commands(registry);
     register_terrain_commands(registry);
+    register_procedural_commands(registry);
     register_lightmap_commands(registry);
     register_model_cleanup_commands(registry);
     register_services_commands(registry);

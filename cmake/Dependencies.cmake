@@ -444,6 +444,9 @@ endif()
 slash_add_dependency(cgltf DOWNLOAD_ONLY TRUE)
 slash_add_dependency(mikktspace DOWNLOAD_ONLY TRUE)
 slash_add_dependency(stb DOWNLOAD_ONLY TRUE)
+# Noise, as Godot's FastNoiseLite resource uses it (engine/procedural builds its one header with
+# no fused multiply-adds; it calls libm only for sqrtf, so noise is the same everywhere).
+slash_add_dependency(FastNoiseLite DOWNLOAD_ONLY TRUE)
 # FBX models, read with ufbx as Godot 4.3's importer reads them (engine/scene3d builds its one
 # source file).
 slash_add_dependency(ufbx DOWNLOAD_ONLY TRUE)

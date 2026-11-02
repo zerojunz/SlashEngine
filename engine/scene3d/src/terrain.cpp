@@ -24,6 +24,7 @@
 #include "slash/scene3d/terrain.hpp"
 
 #include "slash/core/log.hpp"
+#include "slash/procedural/texture.hpp"
 #include "slash/world/world.hpp"
 
 #include <algorithm>
@@ -283,7 +284,7 @@ ImageLoader file_images(const world::World& world) {
         if (!bytes) {
             return bytes.error();
         }
-        auto decoded = render::decode_image(bytes.value());
+        auto decoded = procedural::decode_texture(path, bytes.value());
         if (!decoded) {
             return Error{.code = decoded.error().code,
                          .message = "\"" + path + "\": " + decoded.error().message};

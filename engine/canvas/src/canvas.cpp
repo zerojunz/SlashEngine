@@ -8,6 +8,7 @@
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
 #include "slash/physics2d/physics2d.hpp"
+#include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
 #include "slash/scene3d/collision.hpp"
 #include "slash/scene3d/csg.hpp"
@@ -210,6 +211,13 @@ void add_asset_types(asset::Assets& assets) {
         [](const render::Image& image) {
             return sizeof(render::Image) + image.pixels.capacity() + image.blocks.capacity();
         });
+    // A procedural texture (.texture.json), made into pixels as it loads.
+    assets.add_type<render::Image>(
+        "procedural_texture", {std::string(procedural::kTextureSuffix)},
+        [](std::string_view text, std::string_view path) {
+            return procedural::decode_texture(path, text);
+        },
+        [](const render::Image& image) { return sizeof(render::Image) + image.pixels.capacity(); });
     assets.add_type<SpriteFrames>(
         "sprite_frames", {std::string(kSpriteFramesSuffix)},
         [](std::string_view text, std::string_view /*path*/) -> Result<SpriteFrames> {

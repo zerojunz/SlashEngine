@@ -1,0 +1,7 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":3,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"channels":{"a":[255,255,255],"b":[114,151.04,220],"g":[51,91.62,168],"r":[12,32.79,71]},"height":64,"width":64,"wrap":{"inside":5.51,"x":5.63,"y":4.86}}}
+{"id":3,"jsonrpc":"2.0","result":{"channels":{"a":[255,255,255],"b":[0,82.99,255],"g":[0,82.99,255],"r":[0,82.99,255]},"height":64,"width":64,"wrap":{"inside":13.99,"x":43.44,"y":37.04}}}
+{"id":4,"jsonrpc":"2.0","result":{"channels":{"a":[0,64,247],"b":[26,44.84,100],"g":[128,150,214],"r":[255,255,255]},"height":48,"pixels":[[255,214,100,247],[255,128,26,0],[255,128,26,0]],"width":48,"wrap":{"inside":2.18,"x":0,"y":0}}}
+{"id":5,"jsonrpc":"2.0","result":{"colors":[[0.094,0.29,0.529,1],[0.976,0.824,0.388,1],[0.11,0.106,0.302,1],[0.988,0.733,0.463,1]],"drawn":{"controls":1,"sprites":2},"height":90,"width":160}}
+{"id":6,"jsonrpc":"2.0","result":{"channels":{"a":[255,255,255],"b":[184,231.07,255],"g":[18,126.89,240],"r":[18,127.03,239]},"height":64,"out":"build/water_normal.png","width":64,"wrap":{"inside":23.35,"x":20.24,"y":27.15}}}
+{"error":{"code":-32602,"data":{"path":"/texture/noise/noise_type"},"message":"/texture/noise/noise_type: expected one of \"simplex\", \"simplex_smooth\", \"cellular\", \"perlin\", \"value_cubic\", \"value\", got \"celular\""},"id":7,"jsonrpc":"2.0"}

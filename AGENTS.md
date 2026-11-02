@@ -140,7 +140,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, meshlib, lightmap, voxel_gi, model, standard_material, sdk)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, meshlib, lightmap, voxel_gi, model, standard_material, texture, sdk)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -150,7 +150,7 @@ Validate after editing a scene or prefab by hand, and format before committing o
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
-`.score.json`, `.navmesh.json`, `.navpoly.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json` and `.standard_material.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
+`.score.json`, `.navmesh.json`, `.navpoly.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json` and `.texture.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -317,6 +317,26 @@ integer math. `asset.add` takes a composer's track with its `stems`, each a musi
 by `track`; using music writes its `.audio.json` settings beside it, and `asset.use` with
 `stems` lays the stems out with a synchronized stream, as `soundtrack.render` does.
 `examples/generated-music` generates a theme's music and adds a track with stems.
+
+## Procedural generation
+
+`engine/procedural` is Godot's noise module and procedural texture resources. `procedural::Noise`
+(`slash/procedural/noise.hpp`) is Godot's `FastNoiseLite` resource on Auburn's FastNoiseLite
+(header-only, MIT): settings by Godot's names and defaults, sampled as Godot samples them (offset,
+then domain warp, then noise), the same bits everywhere since FastNoiseLite calls libm only for
+square roots and the module builds with `-ffp-contract=off`. Gameplay code samples it while a game
+runs. `procedural::Gradient` (`gradient.hpp`) is Godot's `Gradient`, with its sRGB, linear and
+Oklab blending through `slash::exp` and `ln`. A `.texture.json` file (`texture.hpp`;
+`$cli schema texture`) is a `NoiseTexture2D` (`Noise::_get_image` and
+`_generate_seamless_image`, the color ramp and `bump_map_to_normal_map` ported line for line),
+`GradientTexture1D` or `GradientTexture2D`, made into pixels as it loads: `canvas::add_asset_types`
+and `ui::add_asset_types` register it as a texture, and code that reads texture files itself
+(scene3d's material, terrain and vector field checks) goes through `procedural::decode_texture`
+and `is_texture_path`, so any texture field takes one. Exports ship the file and validate it.
+`texture.generate` (`engine/command/src/procedural.cpp`) makes one from a file or inline settings
+and measures it (channels' range, and `wrap`, which says whether it tiles), returns pixels and
+writes a PNG. `examples/procedural-textures` tunes water that tiles. The rest of the roadmap
+item (runtime meshes, scatter rules, imports from other tools) is in `docs/roadmap.md`.
 
 ## Commands, MCP and JSON-RPC
 
@@ -2342,7 +2362,7 @@ CI rejects unformatted code and any clang-tidy finding.
   `kPascalCase` constants.
 - Headers live in `engine/<module>/include/slash/<module>/`, sources in `engine/<module>/src/`.
   Modules: `core` (Result, logging, JSON, reflection, math, the job system), `platform` (SDL3 window, run loop,
-  files and folder listings, child processes), `render` (the render device over SDL3's GPU API and OpenGL 3.3 / OpenGL ES 3.0 / WebGL 2,
+  files and folder listings, child processes), `procedural` (FastNoiseLite noise, gradients and `.texture.json` procedural textures), `render` (the render device over SDL3's GPU API and OpenGL 3.3 / OpenGL ES 3.0 / WebGL 2,
   the software and null devices, HLSL shaders, material programs, 2D light shading, particles and 3D meshes), `asset` (asset handles, loaders, hot reload),
   `world` (EnTT world, components, scenes and prefabs, 2D and 3D trees), `input` (input events, action maps,
   the input state and reading SDL's events), `l10n` (translation files, locales, plural rules,

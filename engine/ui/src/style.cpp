@@ -1,4 +1,5 @@
 #include "slash/core/text.hpp"
+#include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
 #include "slash/ui/ui.hpp"
 
@@ -373,8 +374,9 @@ std::vector<json::ValidationError> validate_style_box(const json::Value& doc) {
         } else if (const std::string& path = texture->as_string(); !is_project_path(path)) {
             errors.push_back({"/texture", "expected a path inside the project folder, separated "
                                           "by '/', with no \".\" or \"..\" parts"});
-        } else if (!render::is_image_path(path)) {
-            errors.push_back({"/texture", "expected a .png, .bmp, .jpg, .jpeg or .ktx2 file"});
+        } else if (!procedural::is_texture_path(path)) {
+            errors.push_back(
+                {"/texture", "expected a .png, .bmp, .jpg, .jpeg, .ktx2 or .texture.json file"});
         }
     }
     return errors;
