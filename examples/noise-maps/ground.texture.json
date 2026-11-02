@@ -1,0 +1,22 @@
+{
+  "color_ramp": {
+    "points": [
+      {
+        "color": [0.2, 0.5, 0.2, 1],
+        "offset": 0
+      },
+      {
+        "color": [0.3, 0.7, 0.3, 1],
+        "offset": 1
+      }
+    ]
+  },
+  "format": 1,
+  "height": 64,
+  "noise": {
+    "frequency": 0.25,
+    "noise_type": "cellular"
+  },
+  "type": "NoiseTexture2D",
+  "width": 64
+}

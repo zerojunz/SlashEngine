@@ -1672,7 +1672,8 @@ Each texture is HTerrain's Classic4 ground layer:
   where the color map has them. [`physics.raycast`](commands.md#physicsraycast) hits it.
 - **Navigation.** [Baking](#baking) a navigation mesh takes the terrain's triangles at full
   detail, leaving out those touching a hole.
-- **Commands.** [`terrain.generate`](commands.md#terraingenerate) makes heights from noise,
+- **Commands.** [`terrain.generate`](commands.md#terraingenerate) makes heights from noise
+  (HTerrain's, or a [FastNoiseLite](#noise) of one's own),
   [`terrain.brush`](commands.md#terrainbrush) raises, lowers, smooths, flattens, levels, paints
   textures and colors and cuts holes, and [`terrain.get`](commands.md#terrainget) reads heights,
   normals, texture weights and colors at points. Each writes the map files it changes, and
@@ -3504,7 +3505,8 @@ the rows that changed:
   peering fits its neighbors best, first where its own terrain stops and then which terrain lies
   beyond. Empty cells and terrains of other sets count as none, so painting in empty space draws
   edges. Among equal fits the cell's position picks, weighted by `probability`, so the same
-  paint always gives the same tiles. [`tilemap.set`](commands.md#tilemapset) places tiles
+  paint always gives the same tiles. [`tilemap.generate`](commands.md#tilemapgenerate) paints
+  terrains by [noise](#noise) thresholds. [`tilemap.set`](commands.md#tilemapset) places tiles
   without changing their neighbors, and [`tilemap.get`](commands.md#tilemapget) reads the rows.
 - A layer draws at its entity's `Transform2D` if it has one, each tile's region centered on its
   cell, less its `texture_origin` (a square cell `(c, r)` spans `c × tile_size` to `(c + 1) × tile_size`; other shapes are

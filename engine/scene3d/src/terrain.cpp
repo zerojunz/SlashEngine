@@ -403,9 +403,9 @@ float squareish_distance(Vec2 a, Vec2 b, float r, float s) {
     return std::max(std::max(da, db), std::max(dc, dd));
 }
 
-float noise_height(const TerrainNoise& noise, Vec2 pos, float terrain_size, float noise_scale) {
-    const Vec2 uv{(pos.x / terrain_size) * noise_scale, (pos.y / terrain_size) * noise_scale};
-    float h = 0.5F + (0.5F * fractal_noise(noise, uv));
+// A height from noise h, 0 to 1, at a cell: curved, shaped into an island and put between
+// base_height and base_height + height_range, as HTerrain's perlin_noise shader does.
+float shape_height(const TerrainNoise& noise, float h, Vec2 pos, float terrain_size) {
     // pow(h, curve), with h kept from going below 0, where GLSL's pow is undefined.
     h = h > 0.0F ? slash::exp(noise.curve * slash::ln(h)) : 0.0F;
     const Vec2 center{0.5F * terrain_size, 0.5F * terrain_size};
@@ -420,6 +420,11 @@ float noise_height(const TerrainNoise& noise, Vec2 pos, float terrain_size, floa
         smoothstep(std::min(0.999F, noise.island_sharpness), 1.0F, distance_ratio);
     h = lerp(h, height_ratio, island_ratio);
     return noise.base_height + (h * noise.height_range);
+}
+
+float noise_height(const TerrainNoise& noise, Vec2 pos, float terrain_size, float noise_scale) {
+    const Vec2 uv{(pos.x / terrain_size) * noise_scale, (pos.y / terrain_size) * noise_scale};
+    return shape_height(noise, 0.5F + (0.5F * fractal_noise(noise, uv)), pos, terrain_size);
 }
 
 // A height between cells, bilinear, the map's edges stretched on, as a GPU samples a texture
@@ -1073,9 +1078,16 @@ std::vector<float> generate_heights(const TerrainNoise& noise, int resolution,
     std::size_t i = 0;
     for (int z = 0; z < resolution; ++z) {
         for (int x = 0; x < resolution; ++x) {
-            const Vec2 pos{static_cast<float>(x) + noise.offset.x,
-                           static_cast<float>(z) + noise.offset.y};
-            float h = noise_height(noise, pos, size, noise_scale);
+            float h = 0.0F;
+            if (noise.values.empty()) {
+                const Vec2 pos{static_cast<float>(x) + noise.offset.x,
+                               static_cast<float>(z) + noise.offset.y};
+                h = noise_height(noise, pos, size, noise_scale);
+            } else {
+                const float value = i < noise.values.size() ? noise.values[i] : 0.0F;
+                h = shape_height(noise, std::clamp(value, 0.0F, 1.0F),
+                                 {static_cast<float>(x), static_cast<float>(z)}, size);
+            }
             if (additive != nullptr && i < additive->size()) {
                 h += (*additive)[i];
             }

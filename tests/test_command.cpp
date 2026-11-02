@@ -3791,6 +3791,162 @@ TEST_CASE("tilemap commands set, paint and read a TileMapLayer's cells") {
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("tilemap.generate fills a TileMapLayer from noise by bands") {
+    const std::string root = "tilemap_generate_test_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    REQUIRE(slash::platform::write_file(root + "/ground.tileset.json", sides_tileset()).ok());
+    REQUIRE(slash::platform::write_file(root + "/islands.texture.json", R"({"format": 1,
+        "type": "NoiseTexture2D", "invert": true, "noise": {"frequency": 0.2}})")
+                .ok());
+    REQUIRE(slash::platform::write_file(root + "/sky.texture.json", R"({"format": 1,
+        "type": "GradientTexture1D"})")
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("entity.create", R"({"id": "map", "components": {
+        "TileMapLayer": {"tile_set": "ground.tileset.json"}}})");
+    const auto water_cells = [&] {
+        std::string cells;
+        for (int row = 0; row < 8; ++row) {
+            for (int column = 0; column < 8; ++column) {
+                cells += (cells.empty() ? "" : ", ") +
+                         ("[" + std::to_string(column) + ", " + std::to_string(row) + "]");
+            }
+        }
+        const json::Value got =
+            engine.ok("tilemap.get", R"({"id": "map", "cells": [)" + cells + "]}");
+        std::vector<std::string> water;
+        for (const json::Value& cell : got.find("cells")->as_array()) {
+            if (cell.find("tile")->is_string() && cell.find("tile")->as_string() == "water") {
+                water.push_back(
+                    slash::json::write(*cell.find("cell"), slash::json::Style::Compact));
+            }
+        }
+        return water;
+    };
+
+    // Each cell takes the band its noise is in; terrains are painted so edges connect.
+    const json::Value filled = engine.ok("tilemap.generate", R"({"id": "map", "rect": [0, 0, 8, 8],
+        "noise": {"frequency": 0.2}, "bands": [{"below": 0.5, "terrain": "water"},
+                                               {"terrain": "grass"}]})");
+    CHECK(filled.find("changed")->as_int() == 64);
+    const json::Array& counts = filled.find("bands")->as_array();
+    REQUIRE(counts.size() == 2);
+    const std::int64_t water = counts[0].as_int();
+    CHECK(water > 8);
+    CHECK(water < 56);
+    CHECK(water + counts[1].as_int() == 64);
+    const std::vector<std::string> first = water_cells();
+    CHECK(static_cast<std::int64_t>(first.size()) == water);
+    // The same noise gives the same cells.
+    CHECK(*engine
+               .ok("tilemap.generate", R"({"id": "map", "rect": [0, 0, 8, 8],
+        "noise": {"frequency": 0.2}, "bands": [{"below": 0.5, "terrain": "water"},
+                                               {"terrain": "grass"}]})")
+               .find("changed") == parse("0"));
+    // A NoiseTexture2D's file brings its noise and inverts it as it says, so water and land
+    // swap but for the cells right at the middle.
+    engine.ok("tilemap.generate", R"({"id": "map", "rect": [0, 0, 8, 8],
+        "noise": "islands.texture.json", "bands": [{"below": 0.5, "terrain": "water"},
+                                                   {"terrain": "grass"}]})");
+    const std::vector<std::string> inverted = water_cells();
+    std::size_t both = 0;
+    for (const std::string& cell : inverted) {
+        both += static_cast<std::size_t>(std::ranges::count(first, cell));
+    }
+    CHECK(both <= 1);
+    CHECK(inverted.size() + first.size() >= 63);
+    // Tile bands set a tile or erase; cells over every band's below keep what they have.
+    const json::Value erased = engine.ok("tilemap.generate", R"({"id": "map", "rect": [0, 0, 8, 8],
+        "noise": {"frequency": 0.2}, "bands": [{"below": 0.5, "tile": null}]})");
+    CHECK(erased.find("bands")->as_array()[0].as_int() == water);
+    CHECK(erased.find("changed")->as_int() == water);
+
+    auto reply = engine.fails("tilemap.generate", R"({"id": "map", "rect": [0, 0, 2, 2],
+        "noise": {}, "bands": [{"below": 0.6, "terrain": "water"},
+                               {"below": 0.4, "terrain": "grass"}]})",
+                              command::code::kInvalidParams);
+    CHECK(reply.message ==
+          "/bands/1/below: bands go from low to high: this is not above the band before's");
+    reply = engine.fails("tilemap.generate", R"({"id": "map", "rect": [0, 0, 2, 2],
+        "noise": {}, "bands": [{"terrain": "water"}, {"terrain": "grass"}]})",
+                         command::code::kInvalidParams);
+    CHECK(reply.message == "/bands/0: only the last band may leave out below, taking the rest");
+    reply = engine.fails("tilemap.generate", R"({"id": "map", "rect": [0, 0, 2, 2],
+        "noise": {}, "bands": [{"terrain": "watr"}]})",
+                         command::code::kNotFound);
+    CHECK(reply.message ==
+          "/bands/0/terrain: the tile set has no terrain \"watr\"; did you mean \"water\"?");
+    reply = engine.fails("tilemap.generate", R"({"id": "map", "rect": [0, 0, 2, 2],
+        "noise": {}, "bands": [{"below": 0.5}]})",
+                         command::code::kInvalidParams);
+    CHECK(reply.message == "/bands/0: give terrain, a terrain to paint, or tile, a tile to set");
+    reply = engine.fails("tilemap.generate", R"({"id": "map", "rect": [0, 0, 2, 2],
+        "noise": {"frequncy": 0.1}, "bands": [{"tile": null}]})",
+                         command::code::kInvalidParams);
+    CHECK(contains(reply.message, "/noise"));
+    CHECK(contains(reply.message, "frequency"));
+    reply = engine.fails("tilemap.generate", R"({"id": "map", "rect": [0, 0, 2, 2],
+        "noise": "sky.texture.json", "bands": [{"tile": null}]})",
+                         command::code::kInvalidArgument);
+    CHECK(reply.message ==
+          "/noise: \"sky.texture.json\" is a gradient texture; name a NoiseTexture2D");
+    reply = engine.fails("tilemap.generate", R"({"id": "map", "rect": [0, 0, 2, 2],
+        "noise": "ground.png", "bands": [{"tile": null}]})",
+                         command::code::kInvalidArgument);
+    CHECK(contains(reply.message, "expected a .texture.json file"));
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("terrain.generate makes heights from a FastNoiseLite of one's own") {
+    const std::string root = "terrain_noise_test_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    REQUIRE(slash::platform::write_file(root + "/hills.texture.json", R"({"format": 1,
+        "type": "NoiseTexture2D", "invert": true, "noise": {"frequency": 0.05}})")
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("entity.create", R"({"id": "land", "components": {"Transform3D": {},
+        "HTerrain": {"heightmap": "land.height.png", "resolution": 65,
+                     "height_range": [0, 10]}}})");
+    const auto height_at = [&](std::string_view point) {
+        const json::Value got =
+            engine.ok("terrain.get", R"({"id": "land", "points": [)" + std::string(point) + "]}");
+        return got.find("points")->as_array()[0].find("position")->as_array()[1].as_double();
+    };
+
+    // Normalized noise fills base_height to base_height + height_range exactly.
+    const json::Value made = engine.ok("terrain.generate", R"({"id": "land", "base_height": 0,
+        "height_range": 10, "noise": {"frequency": 0.05}})");
+    CHECK(*made.find("heights") == parse("[0, 10]"));
+    const double at = height_at("[5, 7]");
+    // The file's noise is the same but inverted, so heights turn upside down.
+    engine.ok("terrain.generate", R"({"id": "land", "base_height": 0, "height_range": 10,
+                                      "noise": "hills.texture.json"})");
+    CHECK(height_at("[5, 7]") == doctest::Approx(10.0 - at).epsilon(2.0e-3));
+    // seed replaces the noise's seed; the island and curve shape it as they shape HTerrain's.
+    engine.ok("terrain.generate", R"({"id": "land", "base_height": 0, "height_range": 10,
+                                      "noise": {"frequency": 0.05}, "seed": 3})");
+    CHECK(height_at("[5, 7]") != doctest::Approx(at).epsilon(1.0e-3));
+    const json::Value island = engine.ok("terrain.generate", R"({"id": "land",
+        "base_height": 0, "height_range": 10, "noise": {"frequency": 0.05},
+        "island_weight": 1, "island_sharpness": 0.5})");
+    CHECK(height_at("[0, 0]") == doctest::Approx(0.0).epsilon(1.0e-3));
+    CHECK(island.find("heights")->as_array()[0].as_double() == 0.0);
+
+    auto reply = engine.fails("terrain.generate", R"({"id": "land", "noise": {"noise_type": "x"}})",
+                              command::code::kInvalidParams);
+    CHECK(contains(reply.message, "/noise/noise_type"));
+    reply = engine.fails("terrain.generate", R"({"id": "land", "noise": "missing.texture.json"})",
+                         command::code::kNotFound);
+    CHECK(reply.message == "/noise: the project has no file \"missing.texture.json\"");
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("tilemap.convert finds where cells are and which cell a point is in") {
     const std::string root = "tilemap_convert_project";
     std::filesystem::remove_all(root);
