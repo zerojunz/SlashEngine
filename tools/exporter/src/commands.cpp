@@ -9,6 +9,7 @@
 #include "slash/gameplay/host.hpp"
 #include "slash/library/library.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <string>
 #include <utility>
@@ -159,15 +160,19 @@ Reply sdk_add(command::Session& session, const json::Value& params) {
     options.source = params.find("source")->as_string();
     const bool remote =
         options.source.find("://") != std::string::npos || options.source.starts_with("git@");
+    // A built-in package is copied from the engine's export/sdks/ folder.
+    const bool builtin = std::ranges::find(kBuiltinSdks, options.source) != kBuiltinSdks.end();
     if (remote) {
         if (!session.allowed(Capability::Build)) {
             return needs_build("adding an SDK from a URL", "/source");
         }
-    } else if (auto folder = session.resolve_path(options.source); !folder) {
-        Reply reply = Reply::failure(folder.error());
-        reply.data["path"] = "/source";
-        return reply;
-    } else {
+    } else if (!builtin) {
+        auto folder = session.resolve_path(options.source);
+        if (!folder) {
+            Reply reply = Reply::failure(folder.error());
+            reply.data["path"] = "/source";
+            return reply;
+        }
         options.source = folder.value();
     }
     if (const json::Value* name = params.find("name"); name != nullptr) {
@@ -307,9 +312,10 @@ void register_export_commands(command::Registry& registry) {
     add_params["additionalProperties"] = false;
     add_params["required"] = json::Array{"source"};
     add_params["properties"]["source"] =
-        property("string", "A package folder in the project (added where it is), a git "
-                           "repository URL, or the https:// URL of a .zip or .tar archive "
-                           "(copied into sdks/; URLs need the build capability).");
+        property("string", "A package folder in the project (added where it is), a built-in "
+                           "store's package (storekit, play-billing), a git repository URL, or "
+                           "the https:// URL of a .zip or .tar archive (copied into sdks/; URLs "
+                           "need the build capability).");
     add_params["properties"]["name"] =
         property("string", "Folder under sdks/ for a copied package; default its name.");
     add_params["properties"]["ref"] = property("string", "Git branch or tag to clone.");

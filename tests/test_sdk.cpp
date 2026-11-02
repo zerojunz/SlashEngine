@@ -680,6 +680,65 @@ TEST_CASE("sdk.add lists a package in project.json, copying it in from elsewhere
     fs::remove_all(elsewhere);
 }
 
+TEST_CASE("the engine's store packages: StoreKit and Google Play Billing") {
+    // Both ship with the engine, are valid packages and give the game its purchases backend.
+    const auto storekit_folder = exporter::builtin_sdk("storekit");
+    const auto billing_folder = exporter::builtin_sdk("play-billing");
+    REQUIRE(storekit_folder);
+    REQUIRE(billing_folder);
+    CHECK_FALSE(exporter::builtin_sdk("hello"));
+    std::vector<exporter::SdkProblem> problems;
+    auto storekit = exporter::load_sdk(*storekit_folder);
+    REQUIRE_MESSAGE(storekit.ok(), (storekit.ok() ? std::string() : storekit.error().message));
+    for (const std::string_view platform : {"ios", "macos"}) {
+        const exporter::ResolvedSdk apple =
+            exporter::resolve_sdk(storekit.value(), platform, "arm64", {}, true, problems);
+        CHECK(apple.backends.purchases == "SlashStoreKitPurchases");
+        CHECK(apple.system_frameworks == std::vector<std::string>{"StoreKit"});
+        REQUIRE(apple.sources.size() == 1);
+        CHECK(apple.sources[0].ends_with("/SlashStoreKitPurchases.m"));
+    }
+    CHECK(storekit.value().platforms.size() == 2);
+    auto billing = exporter::load_sdk(*billing_folder);
+    REQUIRE_MESSAGE(billing.ok(), (billing.ok() ? std::string() : billing.error().message));
+    const exporter::ResolvedSdk android =
+        exporter::resolve_sdk(billing.value(), "android", "arm64", {}, true, problems);
+    CHECK(problems.empty());
+    CHECK(android.backends.purchases == "org.slashengine.billing.PlayBillingPurchases");
+    CHECK(android.java == std::vector<std::string>{(*billing_folder / "android").generic_string()});
+    CHECK(billing.value().platforms.at("android").maven ==
+          std::vector<std::string>{"com.android.billingclient:billing:8.0.0"});
+
+    // sdk.add takes them by name and copies them into the project.
+    const fs::path folder = fs::absolute("sdk_store_project");
+    fs::remove_all(folder);
+    write(folder / "project.json",
+          R"({"format": 1, "name": "Shop", "main_scene": "main.scene.json"})");
+    write(folder / "main.scene.json", R"({"format": 1, "entities": {}})");
+    command::SessionOptions session_options;
+    session_options.project_root = folder.string();
+    session_options.capabilities = {command::Capability::Read, command::Capability::Filesystem};
+    Engine engine(session_options);
+    command::Reply reply = engine.session->call("sdk.add", parse(R"({"source": "storekit"})"));
+    REQUIRE_MESSAGE(reply.ok, json::write(reply.data));
+    CHECK(reply.value.find("folder")->as_string() == "sdks/storekit");
+    CHECK(*reply.value.find("platforms") == json::Value(json::Array{"ios", "macos"}));
+    CHECK(fs::is_regular_file(folder / "sdks" / "storekit" / "apple" / "SlashStoreKitPurchases.m"));
+    reply = engine.session->call("sdk.add", parse(R"({"source": "play-billing"})"));
+    REQUIRE_MESSAGE(reply.ok, json::write(reply.data));
+    CHECK(reply.value.find("folder")->as_string() == "sdks/play-billing");
+
+    // Play Billing's library is Google's, so the package needs locking before Android exports.
+    const json::Value checked = exporter::check_sdks(folder, "android", false);
+    INFO(json::write(checked));
+    bool needs_lock = false;
+    for (const json::Value& problem : checked.find("problems")->as_array()) {
+        needs_lock = needs_lock || contains(problem.find("message")->as_string(), "sdk lock");
+    }
+    CHECK(needs_lock);
+    fs::remove_all(folder);
+}
+
 #ifndef _WIN32
 TEST_CASE("SDK downloads are fetched once, checked against their SHA-256 and unpacked") {
     const fs::path folder = fs::absolute("sdk_downloads");
