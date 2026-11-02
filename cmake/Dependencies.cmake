@@ -31,12 +31,14 @@ macro(slash_add_dependency name)
 endmacro()
 
 # Vulkan shaders see 16 KiB of each uniform push, as the other backends see all of it, MetalFX
-# gets Metal's objects and ray tracing turns on Vulkan's ray query features (cmake/patches).
+# gets Metal's objects, ray tracing turns on Vulkan's ray query features and an OpenXR runtime
+# picks the GPU and makes Vulkan's instance and device (cmake/patches).
 slash_add_dependency(SDL3
     SYSTEM TRUE
     PATCH_COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_LIST_DIR}/patches/sdl-vulkan-uniform-range.cmake
         COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_LIST_DIR}/patches/sdl-native-handles.cmake
         COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_LIST_DIR}/patches/sdl-ray-tracing.cmake
+        COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_LIST_DIR}/patches/sdl-openxr.cmake
     OPTIONS
         "SDL_SHARED OFF"
         "SDL_STATIC ON"
