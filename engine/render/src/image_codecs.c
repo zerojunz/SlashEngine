@@ -171,3 +171,41 @@ unsigned char* slash_encode_gray16_png(const unsigned short* pixels, int width, 
     *size = (int)(end - png);
     return png;
 }
+
+typedef struct {
+    unsigned char* data;
+    size_t size;
+    size_t capacity;
+    int failed;
+} JpegBuffer;
+
+static void jpeg_write(void* context, void* data, int size) {
+    JpegBuffer* buffer = (JpegBuffer*)context;
+    if (buffer->failed || size <= 0) {
+        return;
+    }
+    if (buffer->size + (size_t)size > buffer->capacity) {
+        size_t capacity = buffer->capacity * 2 + (size_t)size + 4096;
+        unsigned char* grown = (unsigned char*)realloc(buffer->data, capacity);
+        if (grown == NULL) {
+            buffer->failed = 1;
+            return;
+        }
+        buffer->data = grown;
+        buffer->capacity = capacity;
+    }
+    memcpy(buffer->data + buffer->size, data, (size_t)size);
+    buffer->size += (size_t)size;
+}
+
+unsigned char* slash_encode_jpeg(const unsigned char* pixels, int width, int height, int quality,
+                                 int* size) {
+    JpegBuffer buffer = {NULL, 0, 0, 0};
+    if (!stbi_write_jpg_to_func(jpeg_write, &buffer, width, height, 4, pixels, quality) ||
+        buffer.failed) {
+        free(buffer.data);
+        return NULL;
+    }
+    *size = (int)buffer.size;
+    return buffer.data;
+}

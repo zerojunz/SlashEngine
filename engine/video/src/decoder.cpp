@@ -65,15 +65,21 @@ struct Decoder::State {
         return {};
     }
 
-    // Sends one temporal unit and takes the picture it shows.
-    Result<void> send(const VideoFile& file, std::size_t index, Dav1dPicture& picture) const {
+    // Sends one temporal unit and takes the picture it shows; a decoder starting over gets the
+    // file's sequence header first, which Matroska keeps in the track rather than the frames.
+    Result<void> send(const VideoFile& file, std::size_t index, bool starting,
+                      Dav1dPicture& picture) const {
         const VideoFile::Frame& frame = file.frames[index];
+        const std::size_t config = starting ? file.config.size() : 0;
         Dav1dData data{};
-        std::uint8_t* bytes = dav1d_data_create(&data, frame.size);
+        std::uint8_t* bytes = dav1d_data_create(&data, config + frame.size);
         if (bytes == nullptr) {
             return make_error(ErrorCode::InvalidArgument, "out of memory for a video frame");
         }
-        std::memcpy(bytes, file.data.data() + frame.offset, frame.size);
+        if (config > 0) {
+            std::memcpy(bytes, file.config.data(), config);
+        }
+        std::memcpy(bytes + config, file.data.data() + frame.offset, frame.size);
         bool have = false;
         while (data.sz > 0) {
             const int sent = dav1d_send_data(context, &data);
@@ -123,9 +129,11 @@ Result<void> Decoder::decode(const VideoFile& video, std::size_t index, render::
         --start;
     }
     const bool same_video = state.video == &video && state.context != nullptr;
+    bool starting = false;
     if (same_video && state.decoded && *state.decoded < index && *state.decoded >= start) {
         start = *state.decoded + 1;
     } else {
+        starting = true;
         if (auto opened = state.open(); !opened) {
             return opened.error();
         }
@@ -133,7 +141,7 @@ Result<void> Decoder::decode(const VideoFile& video, std::size_t index, render::
     }
     for (std::size_t i = start; i <= index; ++i) {
         Dav1dPicture picture{};
-        if (auto sent = state.send(video, i, picture); !sent) {
+        if (auto sent = state.send(video, i, starting && i == start, picture); !sent) {
             state.decoded.reset();
             return sent.error();
         }
