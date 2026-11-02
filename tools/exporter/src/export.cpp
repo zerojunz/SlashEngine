@@ -1931,6 +1931,16 @@ ExportResult export_game(const ExportOptions& options) {
         if (const json::Value* passed = test.find("passed");
             passed != nullptr && !passed->as_bool()) {
             result.ok = false;
+            // Say why on stderr too, for scripts that keep only stdout's result.
+            const json::Value* message = test.find("message");
+            const json::Value* tail = test.find("tail");
+            log::error(
+                "export test failed",
+                {{"platform", platform},
+                 {"message", message != nullptr && message->is_string() ? message->as_string()
+                                                                        : std::string()},
+                 {"tail",
+                  tail != nullptr && tail->is_string() ? tail->as_string() : std::string()}});
         }
         out["test"] = std::move(test);
     }
