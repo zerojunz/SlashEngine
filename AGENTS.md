@@ -461,6 +461,26 @@ sees by wrapping the log sink (`log::sink`). Run with no `paths` or `tests`, it 
 `storyboard.check`, `soundtrack.check` where it is registered, and `l10n.check` once the project lists translations. Games made by `$cli init` start with `tests/main.test.json`, and their
 workflow runs `$cli test`. `examples/headless-tests` breaks a scene and reads the failures.
 
+## Autopilot playtests
+
+`engine/autopilot` lets [Autopilot](https://github.com/ramenvr/autopilot) (Apache 2.0), an agent
+that plays a game to explore it for bugs, verify a claim or reach a goal, play SlashEngine games
+([docs/reference/autopilot.md](docs/reference/autopilot.md)). Its agent service listens on a
+WebSocket and engine plugins connect out to it; `autopilot::Bridge` (`src/bridge.cpp`) is a port
+of its Godot addon's game side, saying `"engine": "godot"` in its hello so Autopilot plays with
+what it knows of Godot games, and answering in its kit frame (Unreal's axes and centimeters;
+2D as `(x, 0, -y)`). `poll` runs before each tick: it connects through a `Connector` (a
+`websocket_connector` over `net::WebSocketPeer`, again with a backoff), answers requests (taps
+and moves through `input::push` and `input::action_press`, the player, view, finds and watches in
+`src/world.cpp`, screen text and controls through `ui::layout` in `src/ui.cpp`, `rc` over
+components and commands in `src/rc.cpp`, pictures through `canvas::capture` and
+`render::encode_jpeg`, the project's files under `.godot/autopilot_codex/` in `src/codex.cpp`),
+runs the addon's detectors (log errors through a `log::sink` wrapper, NaNs, falls, hitches, HUD
+fractions) and writes the run's result and report files. `slash-cli run --autopilot-run` keeps
+ticks to real time (`RunOptions::real_time`) and exits with the run's code. Tests drive it with
+a scripted agent service on a fake `Transport` and a clock of their own (`Options::clock`);
+`examples/autopilot-playtest` finds a HUD that counts 4 coins out of 3.
+
 ## Game projects and exports
 
 A game is a folder with a `project.json` (name, version, main scene; `$cli schema project`) and
@@ -2358,7 +2378,7 @@ CI rejects unformatted code and any clang-tidy finding.
   generators and commands), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `soundtrack` (`.score.json` scores, MIDI files, rendering stems, drafting cue sheets and arranging them),
   `command` (commands, sessions with undo, JSON-RPC and MCP),
-  `debug` (the debug overlay over a running game), `server` (localhost HTTP over a session),
+  `debug` (the debug overlay over a running game), `autopilot` (Autopilot's agent service playing a game), `server` (localhost HTTP over a session),
   `ai` (language model providers, their adapters, `providers.json`, replay and the `ai.*`
   commands),
   `gameplay` (loading and reloading a game's own code) and `runtime` (project files and the game

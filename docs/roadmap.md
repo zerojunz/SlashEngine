@@ -516,6 +516,11 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [x] Playtests and tuning sweeps: `playtest.run` runs many headless copies of a game at once,
       driven by simple scripted bots and each with different values (jump height, enemy speed),
       and returns a summary of the results per value
+- [x] Autopilot playtests: [Autopilot](https://github.com/ramenvr/autopilot) (Apache 2.0), an
+      agent that plays a game to explore it for bugs, verify a claim or reach a goal, plays
+      SlashEngine games through `slash::autopilot::Bridge`, a port of its Godot plugin's game side
+      (`slash-cli run --autopilot-run`, with the run's verdict as the exit code and its report in
+      the project; [reference](reference/autopilot.md))
 - [x] Asset library and generator, so agents reuse generated assets instead of making them again
       ([design](design.md#asset-library-and-generation))
   - [x] A library shared by every project on the machine: each asset stored once by content
@@ -1110,6 +1115,7 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | `build.check`: C++ compile errors as data from an incremental build | 6 | Done |
 | `api.search`: real signatures and examples instead of guessed function names | 6 | Done |
 | `playtest.run`: many headless bot runs and tuning sweeps in one call | 6 | Done |
+| Autopilot playtests: an agent plays the game and reports bugs and a verdict, as an exit code | 6 | Done |
 | `audio.analyze`: tempo, key, loudness and loop seams as data instead of listening | 6 | Done |
 | `project.map`: where things are in a large project, without reading the source | 6 | Done |
 | A scheduled benchmark of standard agent tasks counting calls and tokens | 6 | Done |
