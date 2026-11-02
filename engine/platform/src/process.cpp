@@ -19,7 +19,8 @@ namespace {
 // Keeps the last lines of a stream without holding all of it.
 class Tail {
 public:
-    explicit Tail(int lines) : lines_(std::max(lines, 0)) {}
+    explicit Tail(int lines, std::size_t max_line = 300)
+        : lines_(std::max(lines, 0)), max_line_(max_line) {}
 
     void append(const char* data, std::size_t size) {
         text_.append(data, size);
@@ -42,8 +43,8 @@ public:
                 break;
             }
         }
-        // Minified scripts and compiler commands make very long lines; keep the start of each.
-        constexpr std::size_t kMaxLine = 300;
+        // Minified scripts and compiler commands make very long lines; keep the start of each,
+        // unless the caller reads the lines as data.
         std::string out;
         while (start < end) {
             std::size_t line_end = text_.find('\n', start);
@@ -53,8 +54,8 @@ public:
             if (!out.empty()) {
                 out += '\n';
             }
-            if (line_end - start > kMaxLine) {
-                out.append(text_, start, kMaxLine);
+            if (max_line_ != 0 && line_end - start > max_line_) {
+                out.append(text_, start, max_line_);
                 out += "...";
             } else {
                 out.append(text_, start, line_end - start);
@@ -66,6 +67,7 @@ public:
 
 private:
     int lines_;
+    std::size_t max_line_;
     std::string text_;
 };
 
@@ -187,7 +189,7 @@ Result<ProcessResult> run_process(const std::vector<std::string>& args,
     if (!options.log_path.empty()) {
         log = SDL_IOFromFile(options.log_path.c_str(), "ab");
     }
-    Tail tail(options.tail_lines);
+    Tail tail(options.tail_lines, options.max_line_length);
     read_output(process, [&](const char* data, std::size_t size) {
         tail.append(data, size);
         if (log != nullptr) {
@@ -263,7 +265,7 @@ Result<std::unique_ptr<ChildProcess>> start_process(const std::vector<std::strin
     }
     auto impl = std::make_unique<ChildProcess::Impl>();
     impl->process = created.value();
-    impl->tail = Tail(options.tail_lines);
+    impl->tail = Tail(options.tail_lines, options.max_line_length);
     if (!options.log_path.empty()) {
         impl->log = SDL_IOFromFile(options.log_path.c_str(), "ab");
     }
