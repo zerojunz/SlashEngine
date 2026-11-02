@@ -16,7 +16,7 @@
 {"id":16,"jsonrpc":"2.0","result":{"destroyed":"ground"}}
 {"id":17,"jsonrpc":"2.0","result":{"id":"cutscene"}}
 {"id":18,"jsonrpc":"2.0","result":{"tick":3,"ticks":3}}
-{"id":19,"jsonrpc":"2.0","result":{"components":{"VideoStreamPlayer":{"autoplay":true,"expand":true,"loop":false,"paused":false,"playing":true,"speed_scale":1.0,"stream":"cutscene.ivf","stream_position":0.2}},"id":"cutscene"}}
+{"id":19,"jsonrpc":"2.0","result":{"components":{"VideoStreamPlayer":{"audio_track":0,"autoplay":true,"bus":"Master","expand":true,"loop":false,"paused":false,"playing":true,"speed_scale":1.0,"stream":"cutscene.ivf","stream_position":0.2,"volume_db":0.0}},"id":"cutscene"}}
 {"id":20,"jsonrpc":"2.0","result":{"drawn":{"controls":1},"height":48,"width":96}}
 {"id":21,"jsonrpc":"2.0","result":{"tick":8,"ticks":5}}
-{"id":22,"jsonrpc":"2.0","result":{"components":{"VideoStreamPlayer":{"autoplay":true,"expand":true,"loop":false,"paused":false,"playing":false,"speed_scale":1.0,"stream":"cutscene.ivf","stream_position":0.5}},"id":"cutscene"}}
+{"id":22,"jsonrpc":"2.0","result":{"components":{"VideoStreamPlayer":{"audio_track":0,"autoplay":true,"bus":"Master","expand":true,"loop":false,"paused":false,"playing":false,"speed_scale":1.0,"stream":"cutscene.ivf","stream_position":0.5,"volume_db":0.0}},"id":"cutscene"}}

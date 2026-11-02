@@ -1,0 +1,18 @@
+hello: engine godot, project Coin Walk, run {"claim":"The HUD counts every coin the player takes","kind":"verify"}
+> context {}
+  character player, 2d, controls [{"action":"move_left","digital":true,"godot_keys":["A (Physical)"],"keys":["A"],"name":"move_left"},{"action":"move_right","digital":true,"godot_keys":["D (Physical)"],"keys":["D"],"name":"move_right"}]
+> ui {}
+  {"elements":[{"class":"Button","enabled":true,"id":"start","kind":"button","label":"Start","name":"start","owner":"Screen","path":"start","screen":{"x":160,"y":95}}]}
+> ui_act {"id":"start"}
+  {"via":"mouse"}
+> key {"key":"D","mode":"hold","seconds":2}
+  {}
+> pose {}
+  {"X":282.0,"Y":0.0,"Z":-120.0}
+> screen {}
+  {"texts":{"hud.coins":"Coins 4/3"}}
+finding: HUD text hud.coins shows 4/3: more than its stated maximum (hud_fraction)
+finished yes, exit code 2, report in report
+report.md: # Denied
+
+The level has 4 coins; the HUD counts out of 3.
