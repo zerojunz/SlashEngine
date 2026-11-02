@@ -150,6 +150,7 @@ json::Value test_json(const services::TestSettings& test) {
         scores[leaderboard] = std::move(list);
     }
     out["scores"] = std::move(scores);
+    out["tracking"] = services::tracking_name(test.tracking);
     return out;
 }
 
@@ -310,6 +311,16 @@ Reply test_services(world::World& world, const json::Value& params) {
             test.scores.insert_or_assign(leaderboard, std::move(list));
         }
     }
+    const json::Value* tracking = params.find("tracking");
+    if (tracking != nullptr) {
+        const std::string& answer = tracking->as_string();
+        test.tracking = services::TrackingStatus::Authorized;
+        if (answer == "denied") {
+            test.tracking = services::TrackingStatus::Denied;
+        } else if (answer == "restricted") {
+            test.tracking = services::TrackingStatus::Restricted;
+        }
+    }
     (void)services::set_test_settings(world, test);
     if (const json::Value* consent = params.find("consent"); consent != nullptr) {
         services::ConsentState state = services::consent(world);
@@ -346,6 +357,9 @@ Reply test_services(world::World& world, const json::Value& params) {
     }
     if (auto failed = call_games(world, params)) {
         return std::move(*failed);
+    }
+    if (tracking != nullptr) {
+        (void)services::request_tracking(world);
     }
     json::Value out;
     out["tick"] = world.tick();
@@ -458,6 +472,9 @@ void register_services_commands(Registry& registry) {
             {"load_scores", std::move(load_scores)},
             {"show_achievements", property("boolean", "Shows the achievements screen.")},
             {"show_leaderboards", std::move(show_leaderboards)},
+            {"tracking", enum_property({"authorized", "denied", "restricted"},
+                                       "Asks Apple's tracking prompt, as request_tracking, and "
+                                       "answers it so.")},
         }),
         .handler = services_test,
     });

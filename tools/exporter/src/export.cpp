@@ -1530,6 +1530,10 @@ ExportResult export_game(const ExportOptions& options) {
     } else {
         configure.emplace_back("-DSLASH_GAME_AI=OFF");
     }
+    // Apple's tracking prompt shows the game's reason, which iOS and macOS need before it asks.
+    if (const std::string& usage = project.value().services.tracking_usage; !usage.empty()) {
+        configure.push_back("-DSLASH_GAME_TRACKING_USAGE=" + usage);
+    }
     // Games that send analytics to their own server POST them with engine/ai's HTTP client.
     configure.emplace_back(project.value().services.analytics_endpoint
                                ? "-DSLASH_GAME_ANALYTICS=ON"
@@ -1653,6 +1657,9 @@ ExportResult export_game(const ExportOptions& options) {
                 template_plist_keys(engine_dir / "export" / platform / "Info.plist.in");
             if (project.value().audio.enable_input) {
                 reserved.emplace("NSMicrophoneUsageDescription");
+            }
+            if (!project.value().services.tracking_usage.empty()) {
+                reserved.emplace("NSUserTrackingUsageDescription");
             }
             for (const ResolvedSdk& sdk : resolved) {
                 if (!sdk.plist.is_object()) {

@@ -23,5 +23,8 @@ plays the shop the way an agent does over MCP (tools `services_state`, `services
   `complete_pending` ends it), `cancelled` or `failed`; `buy` buys as the game would.
 - `remove_ads` is owned once bought, so buying it again is refused with the reason, as the game
   itself would be told.
+- `services.test`'s `tracking` asks Apple's App Tracking Transparency prompt as the game's
+  `request_tracking` would, and answers it: a `denied` answer turns a granted
+  `personalized_ads` consent to `denied`, as Apple requires.
 - In an exported game the same code runs on backends an SDK package's glue code registers;
   with none, ads fail to load (`no ads backend`) and the store is unavailable (`no store`).

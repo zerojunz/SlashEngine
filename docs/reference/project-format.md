@@ -696,6 +696,7 @@ sells, unlocks and submits to by name, through [the services API](services.md):
 | `analytics.funnels` | | Funnels by name, each the event names a player goes through in order; each step reached is a `funnel_step` event ([services](services.md#funnels)) |
 | `consent.analytics` | `unknown` | The player's analytics consent until the game sets it: events are sent only when `granted` |
 | `consent.personalized_ads` | `unknown` | Ads are personalized only when `granted` |
+| `consent.tracking_usage` | | Why the game asks to track the player, shown in Apple's App Tracking Transparency prompt (`NSUserTrackingUsageDescription` in iOS and macOS exports). `request_tracking` needs it there |
 | `games.achievements` | | Achievements by name (letters, digits, `_` and `-`) |
 | `games.achievements.*.ids` | | Its ID in Google Play Games (`android`) and Game Center (`ios`, `macos`). The games backend gets the one for the platform the game runs on |
 | `games.achievements.*.steps` | | Steps that unlock an incremental achievement, 2 to 10000. Leave it out for one unlocked at once |
