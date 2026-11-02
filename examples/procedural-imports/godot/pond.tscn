@@ -1,0 +1,39 @@
+[gd_scene load_steps=5 format=3]
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_ripples"]
+noise_type = 3
+seed = 11
+frequency = 0.05
+fractal_octaves = 3
+
+[sub_resource type="Gradient" id="Gradient_water"]
+offsets = PackedFloat32Array(0, 1)
+colors = PackedColorArray(0.05, 0.2, 0.35, 1, 0.5, 0.8, 0.9, 1)
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_water"]
+width = 64
+height = 64
+seamless = true
+color_ramp = SubResource("Gradient_water")
+noise = SubResource("FastNoiseLite_ripples")
+
+[sub_resource type="Gradient" id="Gradient_glow"]
+offsets = PackedFloat32Array(0, 1)
+colors = PackedColorArray(1, 0.9, 0.6, 1, 1, 0.9, 0.6, 0)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_glow"]
+gradient = SubResource("Gradient_glow")
+width = 32
+height = 32
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
+
+[node name="Pond" type="Node2D"]
+
+[node name="Water" type="Sprite2D" parent="."]
+texture = SubResource("NoiseTexture2D_water")
+
+[node name="Moon" type="Sprite2D" parent="."]
+position = Vector2(40, -30)
+texture = SubResource("GradientTexture2D_glow")

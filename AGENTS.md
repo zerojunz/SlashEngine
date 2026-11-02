@@ -364,8 +364,16 @@ FastNoiseLite's values (`TerrainNoise::values`) in place of HTerrain's Perlin no
 curve, island and erosion. Both take a NoiseTexture2D's `.texture.json` file or inline settings
 (`read_noise_source` and `sample_noise_source` in `engine/command/src/procedural.cpp`, sampled
 and normalized as Godot's `Noise::_get_image`), so the noise an agent tuned with
-`texture.generate` makes the map. `examples/noise-maps` makes an archipelago and dunes. The rest
-of the roadmap item (imports from other tools) is in `docs/roadmap.md`.
+`texture.generate` makes the map. `examples/noise-maps` makes an archipelago and dunes.
+
+Procedural content from other tools comes in as those files. The Godot importer writes each
+`NoiseTexture2D`, `GradientTexture1D` and `GradientTexture2D` as a `.texture.json` file
+(`procedural_texture_file` in `tools/importer/src/godot_import.cpp`, its `FastNoiseLite` and
+`Gradient` by Godot's property names), and `terrain.import` (`engine/command/src/terrain.cpp`)
+reads a terrain tool's heightmap (16-bit PNG, `.r16`/`.raw`, `.r32` floats, or EXR through
+tinyexr, `slash_tinyexr`, tools only) and splat and color maps into an `HTerrain` as HTerrain's
+import dialog does, sizing it by `adjusted_map_size`. `examples/procedural-imports` brings in a
+pond's water and a valley. glTF instances are in `docs/roadmap.md`.
 
 ## Commands, MCP and JSON-RPC
 

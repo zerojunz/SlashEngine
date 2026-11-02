@@ -301,6 +301,13 @@
       "repository": "https://github.com/nothings/stb.git",
       "tag": "a7d4c2175630e1ea5b6f8dd00ab96fed0b97b96d"
     },
+    "tinyexr": {
+      "license": "BSD-3-Clause",
+      "license_file": "tinyexr.h",
+      "license_sha256": "e3eb50490af81dc3f5f067cf7f62955894d5db8f88a091c19bc4eef8e468095f",
+      "repository": "https://github.com/syoyo/tinyexr.git",
+      "tag": "v1.0.12"
+    },
     "tracy": {
       "license": "BSD-3-Clause",
       "license_file": "LICENSE",

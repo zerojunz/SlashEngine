@@ -9,6 +9,7 @@ project.import {"source":"godot"}
     "input_actions": 0,
     "mesh_libraries": 0,
     "navigation_meshes": 0,
+    "procedural_textures": 0,
     "process_materials": 0,
     "scenes": 1,
     "sprite_frames": 0,
