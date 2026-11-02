@@ -122,12 +122,40 @@ on a multiplayer peer for each of its connections:
 | `set_heartbeat_interval` | 0 | Seconds between pings; a ping unanswered by the next closes the connection (not on the web) |
 
 Natively, connections are `ws://` over TCP with [wslay](https://github.com/tatsuhiro-t/wslay)'s
-framing, on the sockets ENet brings, and IPv4 only; `wss://` URLs are refused for now. On the
-web, the browser's WebSocket connects to `ws://` and `wss://` URLs alike, and
-`net::websocket_server_supported()` is false.
+framing, on the sockets ENet brings, and IPv4 only. On the web, the browser's WebSocket connects
+to `ws://` and `wss://` URLs alike, and `net::websocket_server_supported()` is false.
+
+### wss://
+
+`wss://` is WebSocket over TLS, by Mbed TLS as Godot's `StreamPeerMbedTLS`. What a connection
+trusts and shows is a `net::TlsOptions` (`slash/net/tls.hpp`), as Godot's `TLSOptions`:
+
+```cpp
+// A server shows its certificate chain and private key (PEM).
+(void)server->create_server(9443, "*", net::TlsOptions::server(key_pem, certificate_pem));
+// A client checks the server's certificate against the system's certificates by default,
+(void)client->create_client("wss://game.example.com:9443/play");
+// against certificates it is given (and, optionally, another name than the URL's host),
+(void)client->create_client(url, net::TlsOptions::client(ca_pem, "game.example.com"));
+// or takes any, for tests only.
+(void)client->create_client(url, net::TlsOptions::client_unsafe());
+```
+
+`WebSocketPeer::connect_to_url(url, tls)` takes the same options. The system's certificates
+are `SSL_CERT_FILE`'s, the Windows root store, the usual bundle files on Linux and Android's
+folder; on macOS and iOS the platform's own trust (`SecTrust`) decides, as for `https://`. A
+client refuses a certificate that isn't trusted or doesn't name the host it asked for, and
+closes. On the web the browser checks certificates itself, so only a server's options are
+refused there.
+
+`net::generate_self_signed_certificate(issuer_name, not_before, not_after)` makes a certificate
+that is its own issuer and its key, as Godot's `Crypto.generate_self_signed_certificate`, with
+an elliptic curve key (P-256) where Godot's is RSA: for tests and servers on a local network,
+whose clients pass the certificate as their trusted chain. A client checks its `CN` against the
+host it connects to.
 
 [`examples/websocket-peers`](../../examples/websocket-peers/) runs a server and two clients over
-WebSocket, and a world's remote calls through them.
+WebSocket, and a world's remote calls through them over `wss://`.
 
 ## A world's multiplayer
 

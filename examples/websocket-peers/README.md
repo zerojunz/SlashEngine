@@ -12,8 +12,10 @@ polls each peer itself, as a game's multiplayer does once a tick:
 - Text and bytes each arrive as what they were sent as (`was_string_packet()`).
 - The client closes with code 4000 and a reason, which it reads back once the server answers;
   the server hears it go.
-- Three worlds then play over `WebSocketMultiplayerPeer`: the clients hear of each other through
-  the server, and alice's remote call reaches bob through the server's relay.
+- Three worlds then play over `WebSocketMultiplayerPeer` on `wss://`: the server makes its own
+  certificate (`generate_self_signed_certificate`) and shows it (`TlsOptions::server`), the
+  players trust it (`TlsOptions::client`), the clients hear of each other through the server, and
+  alice's remote call reaches bob through the server's relay.
 
 Web games join servers like this one as clients, through the browser's WebSocket. IDs and ports
 change each run, so the output names peers by role.

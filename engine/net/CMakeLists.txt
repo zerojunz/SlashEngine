@@ -19,7 +19,7 @@ endif()
 # WebSocket natively over wslay, ENet's sockets and Mbed TLS's SHA-1; on the web through the
 # browser's WebSocket.
 if(TARGET slash_wslay AND TARGET slash_enet AND TARGET slash_mbedtls)
-    target_link_libraries(slash_net PRIVATE slash_wslay slash_mbedtls)
+    target_link_libraries(slash_net PRIVATE slash_wslay slash_mbedtls slash::platform)
     target_compile_definitions(slash_net PRIVATE SLASH_NET_WEBSOCKET=1)
 else()
     target_compile_definitions(slash_net PRIVATE SLASH_NET_WEBSOCKET=0)
