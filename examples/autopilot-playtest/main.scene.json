@@ -1,0 +1,67 @@
+{
+  "entities": {
+    "coin_1": {
+      "components": {
+        "Transform2D": {
+          "position": [80.0, 120.0]
+        }
+      }
+    },
+    "coin_2": {
+      "components": {
+        "Transform2D": {
+          "position": [120.0, 120.0]
+        }
+      }
+    },
+    "coin_3": {
+      "components": {
+        "Transform2D": {
+          "position": [160.0, 120.0]
+        }
+      }
+    },
+    "coin_4": {
+      "components": {
+        "Transform2D": {
+          "position": [200.0, 120.0]
+        }
+      }
+    },
+    "coins": {
+      "components": {
+        "Label": {
+          "text": "Coins 0/3"
+        }
+      }
+    },
+    "hud": {
+      "components": {
+        "CanvasLayer": {
+          "children": ["coins"]
+        }
+      }
+    },
+    "player": {
+      "components": {
+        "Transform2D": {
+          "position": [40.0, 120.0]
+        }
+      }
+    },
+    "start": {
+      "components": {
+        "Button": {
+          "text": "Start"
+        },
+        "Control": {
+          "offset_bottom": 110.0,
+          "offset_left": 120.0,
+          "offset_right": 200.0,
+          "offset_top": 80.0
+        }
+      }
+    }
+  },
+  "format": 1
+}
