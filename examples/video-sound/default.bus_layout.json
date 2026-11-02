@@ -1,0 +1,12 @@
+{
+  "buses": [
+    {
+      "name": "Master"
+    },
+    {
+      "name": "Cutscenes",
+      "volume_db": -6
+    }
+  ],
+  "format": 1
+}
