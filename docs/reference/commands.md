@@ -573,7 +573,7 @@ each channel counted. A texture tiles without seams when `x` and `y` are near `i
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `path` | string | | A texture file: `.texture.json`, `.png`, `.jpg`, `.jpeg`, `.bmp` or `.ktx2` |
+| `path` | string | | A texture file: `.texture.json`, `.png`, `.jpg`, `.jpeg`, `.bmp` or `.ktx2`, or a texture gameplay code [made](scene-format.md#made-textures-and-meshes) (`made:<name>`) |
 | `texture` | object | | A `.texture.json` document, made without a file |
 | `pixels` | array of `[x, y]` | | Up to 256 pixels to return as `[r, g, b, a]` bytes, from the top left |
 | `out` | string | | A `.png` file to write the texture to |
@@ -704,7 +704,7 @@ animations, and its bounds.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `path` | string | | A `.gltf`, `.glb`, `.obj`, `.fbx`, `.blend` or `.model.json` file, or a recipe's [variant](scene-format.md#variants-and-quality-tiers) after `::` |
+| `path` | string | | A `.gltf`, `.glb`, `.obj`, `.fbx`, `.blend` or `.model.json` file, a recipe's [variant](scene-format.md#variants-and-quality-tiers) after `::`, or a mesh gameplay code [made](scene-format.md#made-textures-and-meshes) (`made:<name>`) |
 | `id` | string | | Or an entity whose `MeshInstance3D` draws a model |
 | `brief` | boolean | `false` | Only what it takes to place the model, as below |
 

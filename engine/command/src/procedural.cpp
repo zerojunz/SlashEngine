@@ -140,8 +140,10 @@ Reply texture_generate(Session& session, const json::Value& params) {
     if (path != nullptr) {
         const std::string& file = path->as_string();
         if (!procedural::is_texture_path(file)) {
-            return param_error(code::kInvalidArgument, "/path",
-                               "expected a .texture.json, .png, .bmp, .jpg, .jpeg or .ktx2 file");
+            return param_error(
+                code::kInvalidArgument, "/path",
+                "expected a .texture.json, .png, .bmp, .jpg, .jpeg or .ktx2 file, or a made "
+                "texture (\"made:<name>\")");
         }
         auto handle = session.assets().load<render::Image>(file);
         if (!handle) {

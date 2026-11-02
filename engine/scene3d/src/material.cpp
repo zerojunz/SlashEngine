@@ -2,6 +2,7 @@
 
 #include "model_internal.hpp"
 
+#include "slash/asset/assets.hpp"
 #include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
 #include "slash/world/component_registry.hpp"
@@ -94,8 +95,9 @@ check_material_textures(const json::Value& fields, const ModelReader& read, std:
     }
     for (const std::string_view field : kMaterialTextureFields) {
         const json::Value* file = fields.find(field);
-        if (file == nullptr || !file->is_string() || file->as_string().empty()) {
-            continue;
+        if (file == nullptr || !file->is_string() || file->as_string().empty() ||
+            asset::is_made_path(file->as_string())) {
+            continue; // nothing to read, or a texture gameplay code makes while the game runs
         }
         std::string where(at);
         where += '/';

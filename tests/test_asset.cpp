@@ -3,6 +3,7 @@
 
 #include <doctest/doctest.h>
 
+#include <entt/entity/registry.hpp>
 #include <map>
 #include <optional>
 #include <string>
@@ -266,4 +267,61 @@ TEST_CASE("a path names a form of its file after \"::\", which reloads with the 
           "\"levels/one.level::\" names nothing after \"::\"");
     CHECK(assets.load<int>("levels/../one.level::twice").error().code ==
           slash::ErrorCode::InvalidArgument);
+}
+
+TEST_CASE("code makes assets at made paths") {
+    MemoryFiles files;
+    asset::Assets assets(files.source());
+
+    CHECK(asset::is_made_path("made:minimap"));
+    CHECK(asset::is_made_path("made:levels/2.ground"));
+    CHECK_FALSE(asset::is_made_path("made:"));
+    CHECK_FALSE(asset::is_made_path("made:a b"));
+    CHECK_FALSE(asset::is_made_path("minimap.json"));
+
+    // Before it is made, loading it says so.
+    const auto missing = assets.load<std::string>("made:note");
+    REQUIRE_FALSE(missing.ok());
+    CHECK(missing.error().code == slash::ErrorCode::NotFound);
+    CHECK(missing.error().message.find("gameplay code makes it") != std::string::npos);
+
+    REQUIRE(assets.put<std::string>("made:note", "first", 5).ok());
+    auto note = assets.load<std::string>("made:note");
+    REQUIRE(note.ok());
+    CHECK(*note.value() == "first");
+    CHECK(note.value().version() == 1);
+
+    // Made again, every handle sees the new value and a new version, and poll leaves it alone.
+    REQUIRE(assets.put<std::string>("made:note", "second", 6).ok());
+    CHECK(*note.value() == "second");
+    CHECK(note.value().version() == 2);
+    CHECK(assets.poll().empty());
+    CHECK(*note.value() == "second");
+
+    // The type is checked; made as another type, it is a new asset.
+    CHECK_FALSE(assets.load<json::Value>("made:note").ok());
+    REQUIRE(assets.put<json::Value>("made:note", json::Value(3)).ok());
+    CHECK(*assets.load<json::Value>("made:note").value() == json::Value(3));
+    CHECK(*note.value() == "second");
+
+    // list() shows it with its type and the handles to it.
+    const auto listed = assets.list();
+    REQUIRE(listed.size() == 1);
+    CHECK(listed[0].path == "made:note");
+    CHECK(listed[0].type == "json");
+    CHECK(listed[0].version == 3);
+
+    CHECK_FALSE(assets.put<std::string>("notes/made.txt", "x").ok());
+    CHECK(assets.drop("made:note"));
+    CHECK_FALSE(assets.drop("made:note"));
+    CHECK_FALSE(assets.load<json::Value>("made:note").ok());
+}
+
+TEST_CASE("a world keeps the assets its modules load from") {
+    MemoryFiles files;
+    asset::Assets assets(files.source());
+    entt::registry registry;
+    CHECK(asset::assets_of(registry) == nullptr);
+    asset::attach(registry, assets);
+    CHECK(asset::assets_of(registry) == &assets);
 }

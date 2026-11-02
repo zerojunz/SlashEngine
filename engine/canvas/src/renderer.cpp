@@ -448,6 +448,10 @@ void CanvasRenderer::before_tick(const world::World& world) {
 
 void CanvasRenderer::warn_once(const std::string& key, std::string_view message,
                                std::string_view what, std::string_view event) {
+    // Code makes made assets as the game runs, often after the first frame.
+    if (asset::not_made_yet(message)) {
+        return;
+    }
     if (warned_.insert(key + "\n" + std::string(message)).second) {
         log::warn(event, {{what, key}, {"error", message}});
     }

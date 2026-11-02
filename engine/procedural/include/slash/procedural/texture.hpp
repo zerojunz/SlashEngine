@@ -7,9 +7,11 @@
 #include "slash/procedural/gradient.hpp"
 #include "slash/procedural/noise.hpp"
 #include "slash/render/device.hpp"
+#include "slash/world/world.hpp"
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <variant>
 #include <vector>
@@ -93,8 +95,17 @@ using ProceduralTexture = std::variant<NoiseTexture2D, GradientTexture1D, Gradie
 // GradientTexture1D::_update and GradientTexture2D::_update.
 [[nodiscard]] render::Image make_image(const ProceduralTexture& texture);
 
-// Whether a path names a texture: an image file (render::is_image_path) or a .texture.json file.
+// Whether a path names a texture: an image file (render::is_image_path), a .texture.json file or
+// a texture gameplay code made (asset::is_made_path).
 [[nodiscard]] bool is_texture_path(std::string_view path);
+
+// Makes a texture from pixels gameplay code drew, as Godot's ImageTexture.create_from_image, an
+// asset at "made:<name>" in the assets the world's modules load from (canvas::install attaches
+// them): a sprite, tile set, TextureRect or StandardMaterial3D can name the path. Making it again
+// with the same name changes it in place, and renderers upload it again. Returns the path, or
+// fails when the world has no assets, name isn't letters, digits and "_-./", or the pixels aren't
+// width x height x 4 bytes.
+Result<std::string> make_texture(world::World& world, std::string_view name, render::Image image);
 
 // A texture file's pixels: a .texture.json file's made by make_image, any other decoded as an
 // image file by render::decode_image. For code that reads texture files outside assets, such as

@@ -2,6 +2,7 @@
 #include "line_edit.hpp"
 #include "text_edit.hpp"
 
+#include "slash/asset/assets.hpp"
 #include "slash/core/assert.hpp"
 #include "slash/l10n/l10n.hpp"
 #include "slash/render/image.hpp"
@@ -1314,7 +1315,9 @@ struct Builder {
             found = images.emplace(path, fonts.assets().load<render::Image>(path)).first;
         }
         if (!found->second) {
-            if (error != nullptr) {
+            // A made texture that gameplay code hasn't made yet is no problem: it draws once it
+            // is made.
+            if (error != nullptr && !asset::not_made_yet(found->second.error().message)) {
                 *error = found->second.error().message;
             }
             return std::nullopt;
@@ -1424,7 +1427,7 @@ struct Builder {
             if (!rect->texture.empty()) {
                 std::string error;
                 node.texture_size = texture_size(rect->texture, &error);
-                if (!node.texture_size) {
+                if (!node.texture_size && !error.empty()) {
                     problem(entity, "/components/TextureRect/texture", error);
                 }
             }
@@ -1439,7 +1442,7 @@ struct Builder {
             if (!patch->texture.empty()) {
                 std::string error;
                 node.patch_texture_size = texture_size(patch->texture, &error);
-                if (!node.patch_texture_size) {
+                if (!node.patch_texture_size && !error.empty()) {
                     problem(entity, "/components/NinePatchRect/texture", error);
                 }
             }

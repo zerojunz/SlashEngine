@@ -2627,8 +2627,9 @@ inside the scene follow them, so `hero`'s `Transform2D` `children` are `hero/spr
 
 ## Textures
 
-Fields that name a texture take a PNG, JPEG (`.jpg` or `.jpeg`), BMP or KTX2 file, or a
-[`.texture.json`](#procedural-textures) file the engine makes as it loads. PNG, JPEG and
+Fields that name a texture take a PNG, JPEG (`.jpg` or `.jpeg`), BMP or KTX2 file, a
+[`.texture.json`](#procedural-textures) file the engine makes as it loads, or a texture gameplay
+code [made](#made-textures-and-meshes) while the game runs. PNG, JPEG and
 BMP files are RGBA8 texels. JPEG files, baseline or progressive, decode with stb_image's integer
 decoder, so they give the same texels on every machine. A
 KTX2 file holds texels the way GPUs take them: RGBA8 (Vulkan format 37 or 43), BC7 (145 or 146)
@@ -2730,6 +2731,31 @@ A gradient object is Godot's `Gradient`: colors at offsets from 0 to 1. Colors a
 | `interpolation_color_space` | `srgb` | `srgb`, `linear_srgb` or `oklab`, the space colors blend in |
 
 Before the first point and after the last, the gradient holds their colors.
+
+## Made textures and meshes
+
+Gameplay code can make textures and meshes while a game runs, as a Godot script makes an
+`ImageTexture` or builds an `ArrayMesh` with `SurfaceTool`. Each is an asset named `made:` and a
+name of letters, digits and `_-./`, such as `made:minimap`, which any field that names a texture
+or a model can name: a `Sprite2D`'s `texture`, a `TextureRect`, a `StandardMaterial3D`'s maps, a
+`MeshInstance3D`'s `mesh` or a particle emitter's.
+
+- `procedural::make_texture(world, "minimap", image)` (`slash/procedural/texture.hpp`) makes a
+  texture of RGBA8 pixels; `procedural::make_image` gives a `.texture.json` texture's pixels for
+  it, with settings the code chose.
+- `scene3d::SurfaceTool` (`slash/scene3d/surface_tool.hpp`) is Godot's: `set_color`,
+  `set_normal`, `set_tangent`, `set_uv`, `set_uv2` and `set_smooth_group` before each
+  `add_vertex`, `add_index`, `index`, `deindex`, `generate_normals` and `generate_tangents`
+  (MikkTSpace, as models' importers), then `commit` adds the surface, with its `set_material`, to
+  a `scene3d::Model`. Triangles' front faces wind clockwise, as Godot's.
+  `scene3d::make_mesh(world, "ground", model)` makes the model an asset.
+
+Making one again with the same name changes it in place, and renderers draw the new one. Made
+assets stay until the code drops them (`asset::Assets::drop`). Until it is made, a sprite or mesh
+naming one draws nothing and logs no warning (`frame.summary` lists it as
+what can't draw); `scene validate` and exports don't look for them, since only the
+running game has them. `asset.list` lists them, and [`texture.generate`](commands.md#texturegenerate)
+and [`model.inspect`](commands.md#modelinspect) read them in a running game.
 
 ## Sprite frames
 
