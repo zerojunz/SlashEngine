@@ -78,7 +78,7 @@ add_library(slash::scene3d ALIAS slash_scene3d)
 target_include_directories(slash_scene3d PUBLIC include)
 # CSG shapes (src/csg.cpp) combine on Manifold, built in cmake/Dependencies.cmake.
 target_link_libraries(slash_scene3d PUBLIC slash::asset slash::core slash::render slash::world
-    PRIVATE slash::platform slash_cgltf slash_manifold slash_meshoptimizer slash_ufbx slash_vhacd
+    PRIVATE slash::platform slash::procedural slash_cgltf slash_manifold slash_meshoptimizer slash_ufbx slash_vhacd
     slash_xatlas)
 slash_engine_target(slash_scene3d)
 # Meshes and cameras are the same bits on every platform: no fused multiply-adds, which arm64

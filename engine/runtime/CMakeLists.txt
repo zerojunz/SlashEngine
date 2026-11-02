@@ -7,8 +7,8 @@ add_library(slash::runtime ALIAS slash_runtime)
 
 target_include_directories(slash_runtime PUBLIC include)
 target_link_libraries(slash_runtime
-    PUBLIC slash::accessibility slash::animation slash::asset slash::audio slash::canvas slash::core slash::gameplay slash::input slash::l10n slash::navigation slash::net slash::physics2d slash::physics3d slash::platform slash::render
-           slash::services slash::ui slash::world slash::xr
+    PUBLIC slash::accessibility slash::animation slash::asset slash::audio slash::canvas slash::core slash::gameplay slash::input slash::l10n slash::navigation slash::net slash::physics2d slash::physics3d slash::platform slash::procedural
+           slash::render slash::services slash::ui slash::world slash::xr
     PRIVATE SDL3::SDL3-static)
 slash_engine_target(slash_runtime)
 # The engine's icon is the same pixels on every machine.

@@ -60,6 +60,7 @@ as `entity.get`, reject it as an unknown param.
 | Prefabs | [`prefab.save`](#prefabsave) |
 | Assets | [`asset.list`](#assetlist) |
 | Materials | [`material.eval`](#materialeval) |
+| Textures | [`texture.generate`](#texturegenerate) |
 | Animations | [`animation.eval`](#animationeval) |
 | Models | [`model.inspect`](#modelinspect), [`model.cleanup`](#modelcleanup), [`model.retarget`](#modelretarget), [`skeleton.get`](#skeletonget), [`csg.get`](#csgget) |
 | Paths | [`path.get`](#pathget) |
@@ -158,12 +159,13 @@ Returns a JSON Schema: for scene, prefab, [`.frames.json`](scene-format.md#sprit
 [`.test.json`](scene-format.md#tests),
 [`.navmesh.json` or `.navpoly.json`](scene-format.md#navigation-meshes-and-polygons),
 [`.meshlib.json`](scene-format.md#mesh-libraries), [`.model.json`](scene-format.md#model-recipes),
-[`.standard_material.json`](scene-format.md#material-files) or storyboard files, one component or
-one command.
+[`.standard_material.json`](scene-format.md#material-files),
+[`.texture.json`](scene-format.md#procedural-textures) or storyboard files, one component or one
+command.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"standard_material"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"standard_material"`, `"texture"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -557,6 +559,39 @@ A material with a [shader](scene-format.md#shaders) runs its `fragment()` on the
 derivatives of 0 and no `vertex()`; a discarded pixel is `[0, 0, 0, 0]`. A shader that doesn't
 compile fails with its file and line. `color`, `frag_coord` and `time` are what `COLOR` (times
 the texture), `FRAGCOORD` and `TIME` read.
+
+## Textures
+
+### texture.generate
+
+Makes a texture and measures it, so an agent can tune a
+[procedural texture](scene-format.md#procedural-textures) without looking at it: a `.texture.json`
+file (or any texture file) by `path`, or settings given inline as `texture` to try them before
+writing a file. Returns its size, each channel's `[min, mean, max]` from 0 to 255, and `wrap`: the
+mean difference of neighboring pixels inside the texture and across its edges when it repeats,
+each channel counted. A texture tiles without seams when `x` and `y` are near `inside`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | | A texture file: `.texture.json`, `.png`, `.jpg`, `.jpeg`, `.bmp` or `.ktx2` |
+| `texture` | object | | A `.texture.json` document, made without a file |
+| `pixels` | array of `[x, y]` | | Up to 256 pixels to return as `[r, g, b, a]` bytes, from the top left |
+| `out` | string | | A `.png` file to write the texture to |
+
+Give `path` or `texture`, not both. Needs: `read`, and `filesystem` for `out`; a dry run writes
+nothing. From [examples/procedural-textures](../../examples/procedural-textures/):
+
+```json
+{"path": "textures/water.texture.json"}
+```
+
+```json
+{"channels":{"a":[255,255,255],"b":[114,151.04,220],"g":[51,91.62,168],"r":[12,32.79,71]},"height":64,"width":64,"wrap":{"inside":5.51,"x":5.63,"y":4.86}}
+```
+
+The same noise without `seamless` jumps at its edges, `"wrap":{"inside":13.99,"x":43.44,"y":37.04}`.
+Inline settings' errors are at their JSON Pointer under `/texture`, a file's at `/path`, and a
+pixel outside the texture at its place in `/pixels`.
 
 ## Animations
 

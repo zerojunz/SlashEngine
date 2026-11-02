@@ -2,6 +2,7 @@
 
 #include "model_internal.hpp"
 
+#include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/serialize.hpp"
@@ -103,7 +104,8 @@ check_material_textures(const json::Value& fields, const ModelReader& read, std:
         if (!text) {
             errors.push_back({std::move(where), quoted(file->as_string()) +
                                                     " could not be read: " + text.error().message});
-        } else if (auto image = render::decode_image(text.value()); !image) {
+        } else if (auto image = procedural::decode_texture(file->as_string(), text.value());
+                   !image) {
             errors.push_back({std::move(where), quoted(file->as_string()) +
                                                     " doesn't decode: " + image.error().message});
         }

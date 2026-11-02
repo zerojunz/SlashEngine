@@ -1,6 +1,7 @@
 #include "internal.hpp"
 
 #include "slash/core/text.hpp"
+#include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
 #include "slash/ui/ui.hpp"
 
@@ -528,8 +529,8 @@ std::string icon_path_error(const std::string& path) {
         return "expected a path inside the project folder, separated by '/', with no \".\" or "
                "\"..\" parts, or a built-in icon such as \"builtin:checked\"";
     }
-    if (!render::is_image_path(path)) {
-        return "expected a .png, .bmp, .jpg, .jpeg or .ktx2 file";
+    if (!procedural::is_texture_path(path)) {
+        return "expected a .png, .bmp, .jpg, .jpeg, .ktx2 or .texture.json file";
     }
     return "";
 }
@@ -611,9 +612,9 @@ json::Value theme_schema() {
     items["fonts"] = object_of(font, "Fonts by name: a .ttf, .otf or .font.json file; \"\" is "
                                      "the built-in font.");
     items["font_sizes"] = object_of(font_size, "Font sizes by name, in pixels.");
-    items["icons"] =
-        object_of(icon, "Icons by name: a .png, .bmp or .ktx2 file, a built-in icon such as "
-                        "\"builtin:radio_checked\", or \"\" for none.");
+    items["icons"] = object_of(
+        icon, "Icons by name: a .png, .bmp, .ktx2 or .texture.json file, a built-in icon such as "
+              "\"builtin:radio_checked\", or \"\" for none.");
     items["styles"] = object_of(style_box_schema(), "Style boxes by name.");
 
     json::Value schema;
@@ -805,6 +806,10 @@ void add_asset_types(asset::Assets& assets) {
                                    {render::kImageSuffixes.begin(), render::kImageSuffixes.end()},
                                    [](std::string_view bytes, std::string_view /*path*/) {
                                        return render::decode_image(bytes);
+                                   });
+    assets.add_type<render::Image>("procedural_texture", {std::string(procedural::kTextureSuffix)},
+                                   [](std::string_view text, std::string_view path) {
+                                       return procedural::decode_texture(path, text);
                                    });
     assets.add_type<Theme>("theme", {std::string(kThemeSuffix)},
                            [](std::string_view text, std::string_view /*path*/) -> Result<Theme> {

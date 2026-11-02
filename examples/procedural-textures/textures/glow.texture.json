@@ -1,0 +1,21 @@
+{
+  "fill": "radial",
+  "fill_from": [0.5, 0.5],
+  "fill_to": [1, 0.5],
+  "format": 1,
+  "gradient": {
+    "points": [
+      {
+        "color": [1, 0.85, 0.4, 1],
+        "offset": 0
+      },
+      {
+        "color": [1, 0.5, 0.1, 0],
+        "offset": 1
+      }
+    ]
+  },
+  "height": 48,
+  "type": "GradientTexture2D",
+  "width": 48
+}
