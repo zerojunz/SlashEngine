@@ -1,6 +1,6 @@
 // A world's sound: the "audio" system plays each AudioStreamPlayer, AudioStreamPlayer2D and
 // AudioStreamPlayer3D through the world's Server, as Godot's AudioStreamPlayerInternal and
-// _update_panning do, then mixes the tick's share of samples.
+// _update_panning do, and each VideoStreamPlayer's sound, then mixes the tick's share of samples.
 
 #include "slash/audio/audio.hpp"
 
@@ -11,6 +11,7 @@
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/ui/ui.hpp"
+#include "slash/video/video.hpp"
 #include "slash/world/camera2d.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/tree2d.hpp"
@@ -58,6 +59,30 @@ struct PlayerState {
 };
 
 using Request = Snapshot::Request;
+
+constexpr std::string_view kVideoPlayer = "VideoStreamPlayer";
+// How far a video's sound may be from its picture, in seconds, before it starts again where the
+// picture is: past this, the video jumped (a seek, a loop) rather than drifted.
+constexpr double kVideoResync = 0.1;
+
+// A VideoStreamPlayer's sound, as Godot's VideoStreamPlayer mixes its playback's audio into its
+// bus: the audio track decoded and the playback mixing it.
+struct VideoSound {
+    std::string id;
+    std::string stream;
+    std::uint64_t version = 0; // of the file the track was decoded from
+    int track = -1;
+    std::shared_ptr<const Sound> sound;
+    std::shared_ptr<const Stream> playable;
+    std::string error;
+    std::optional<Server::PlaybackId> playback;
+    std::string bus;
+    Volumes volume{};
+    float volume_db = 0.0F;
+    float pitch = 1.0F;
+    bool paused = false;
+    bool seen = false;
+};
 
 // The parameter interactive music reports back, as Godot's get_parameter does.
 constexpr std::string_view kSwitchToClip = "switch_to_clip";
@@ -162,6 +187,7 @@ struct State {
     std::uint64_t layout_version = 0;
     std::string layout_error;
     std::map<std::string, PlayerState, std::less<>> players;
+    std::map<std::string, VideoSound, std::less<>> videos;
     // Doppler: how fast 3D players, listeners and cameras that track it move, by
     // "<kind>/<entity ID>", and the ticks run.
     std::map<std::string, VelocityTracker, std::less<>> trackers;
@@ -221,6 +247,15 @@ struct State {
             part.bytes += bytes;
         }
         part.bytes += (out.capacity() + input_frames.capacity()) * sizeof(Frame);
+        if (!videos.empty()) {
+            // Videos' sound is decoded from the video files, so it counts here.
+            std::uint64_t bytes = 0;
+            for (const auto& [key, video] : videos) {
+                bytes += video.sound ? video.sound->samples.capacity() * sizeof(float) : 0;
+            }
+            part.items.push_back({"video sound", bytes, videos.size()});
+            part.bytes += bytes;
+        }
         part.counts = {{"buses", history.size()},
                        {"players", players.size()},
                        {"streams", streams.size() + played.size()}};
@@ -1152,6 +1187,111 @@ void feed_input(State& state, std::size_t frames) {
     server.push_input(state.input_frames);
 }
 
+void stop_video(Server& server, VideoSound& video) {
+    if (video.playback) {
+        server.stop(*video.playback);
+    }
+    video.playback.reset();
+}
+
+// Plays each VideoStreamPlayer's audio_track with its picture: from stream_position at
+// speed_scale on its bus at volume_db, held while paused, stopped with the picture, and started
+// again where the picture jumps. The video system runs first, so stream_position is this tick's.
+void play_videos(State& state, world::World& world) {
+    Server& server = *state.server;
+    for (auto& [key, video] : state.videos) {
+        video.seen = false;
+    }
+    auto& ecs = world.ecs();
+    for (const entt::entity entity : ecs.view<world::VideoStreamPlayer>()) {
+        const auto& component = ecs.get<world::VideoStreamPlayer>(entity);
+        VideoSound& video = state.videos[key_of(world, kVideoPlayer, entity)];
+        video.seen = true;
+        video.id = std::string(world.id_of(entity));
+        video.stream = component.stream;
+        const video::Playing playing = video::playing(world, key_of(world, "", entity).substr(1));
+        const video::VideoFile* file = playing.file.get();
+        const int track = component.audio_track;
+        if (file == nullptr || file->audio.empty() || track < 0 ||
+            static_cast<std::size_t>(track) >= file->audio.size()) {
+            stop_video(server, video);
+            video.sound.reset();
+            video.playable.reset();
+            video.track = -1;
+            video.error = file != nullptr && !file->audio.empty()
+                              ? "audio_track " + std::to_string(track) + " isn't one of the " +
+                                    std::to_string(file->audio.size()) +
+                                    " audio tracks of the video"
+                              : std::string();
+            continue;
+        }
+        if (video.track != track || video.version != playing.version) {
+            stop_video(server, video);
+            video.track = track;
+            video.version = playing.version;
+            video.sound.reset();
+            video.playable.reset();
+            video.error.clear();
+            auto decoded = video::decode_audio(*file, static_cast<std::size_t>(track));
+            if (!decoded) {
+                video.error = decoded.error().message;
+                continue;
+            }
+            Sound sound;
+            sound.format = Sound::Format::Wav;
+            sound.mix_rate = decoded.value().sample_rate;
+            sound.channels = decoded.value().channels;
+            sound.samples = std::move(decoded.value().samples);
+            sound.frames = static_cast<std::int64_t>(sound.samples.size() /
+                                                     static_cast<std::size_t>(sound.channels));
+            video.sound = std::make_shared<const Sound>(std::move(sound));
+            video.playable = sound_stream(video.sound);
+        }
+        if (!video.playable || !component.playing) {
+            stop_video(server, video);
+            continue;
+        }
+        // Godot's pitch scale must be above 0; a video at speed 0 holds its sound as if paused.
+        const float pitch = std::max(component.speed_scale, 0.01F);
+        const bool paused = component.paused || component.speed_scale <= 0.0F;
+        const float gain = db_to_linear(component.volume_db);
+        Volumes volume{};
+        volume[0] = {gain, gain};
+        const bool restart =
+            !video.playback || server.playback(*video.playback) == nullptr ||
+            std::abs(server.position(*video.playback) - component.stream_position) > kVideoResync;
+        if (restart) {
+            stop_video(server, video);
+            if (component.stream_position < video.sound->length()) {
+                video.playback =
+                    server.start(video.playable->instantiate(server.mix_rate(), 0), component.bus,
+                                 volume, std::max(component.stream_position, 0.0), pitch, paused);
+            }
+        } else {
+            if (component.bus != video.bus || component.volume_db != video.volume_db) {
+                server.set_bus_exclusive(*video.playback, component.bus, volume);
+            }
+            if (pitch != video.pitch) {
+                server.set_pitch_scale(*video.playback, pitch);
+            }
+            if (paused != video.paused) {
+                server.set_paused(*video.playback, paused);
+            }
+        }
+        video.bus = component.bus;
+        video.volume = volume;
+        video.volume_db = component.volume_db;
+        video.pitch = pitch;
+        video.paused = paused;
+    }
+    std::erase_if(state.videos, [&](auto& entry) {
+        if (!entry.second.seen) {
+            stop_video(server, entry.second);
+        }
+        return !entry.second.seen;
+    });
+}
+
 void run(State& state, world::World& world, double tick_seconds) {
     state.refresh_layout();
 
@@ -1200,6 +1340,7 @@ void run(State& state, world::World& world, double tick_seconds) {
         }
         return !entry.second.seen;
     });
+    play_videos(state, world);
 
     // This tick's share of frames, carrying the fraction to the next.
     const double exact = state.carry + state.server->mix_rate() * std::max(tick_seconds, 0.0);
@@ -1444,6 +1585,7 @@ void install(world::World& world, asset::Assets& assets, const Settings& setting
     world.add_reset([state](world::World& /*world*/) {
         state->server.reset();
         state->players.clear();
+        state->videos.clear();
         state->trackers.clear();
         state->played.clear();
         state->requests.clear();
@@ -1459,7 +1601,8 @@ void install(world::World& world, asset::Assets& assets, const Settings& setting
     world.add_system(
         "audio", [state](world::World& w, double tick_seconds) { run(*state, w, tick_seconds); },
         {.doc = "Plays each AudioStreamPlayer, AudioStreamPlayer2D and AudioStreamPlayer3D and "
-                "mixes the tick's sound through the bus layout.",
+                "each VideoStreamPlayer's sound, and mixes the tick's sound through the bus "
+                "layout.",
          .priority = 1200});
 }
 
@@ -1787,6 +1930,25 @@ std::vector<PlayerInfo> players(const world::World& world) {
             info.filter_db = player.highshelf > 0.0F ? linear_to_db(player.highshelf) : 0.0F;
         }
         info.error = player.error;
+        out.push_back(std::move(info));
+    }
+    for (const auto& [key, video] : state->videos) {
+        if (video.id.empty() || (video.track < 0 && video.error.empty())) {
+            continue;
+        }
+        PlayerInfo info;
+        info.id = video.id;
+        info.kind = kVideoPlayer;
+        info.stream = video.stream;
+        const bool playing = video.playback && state->server->playback(*video.playback) != nullptr;
+        info.bus = state->server->bus_index(video.bus) >= 0 ? video.bus : "Master";
+        info.voices = playing ? 1 : 0;
+        info.paused = playing && video.paused;
+        info.position = playing ? state->server->position(*video.playback) : 0.0;
+        info.length = video.sound ? video.sound->length() : 0.0;
+        info.volume = video.volume;
+        info.pitch_scale = video.pitch;
+        info.error = video.error;
         out.push_back(std::move(info));
     }
     std::ranges::sort(out, [](const PlayerInfo& a, const PlayerInfo& b) {
