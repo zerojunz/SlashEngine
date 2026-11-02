@@ -713,14 +713,15 @@ was wrong, and exits with 2:
 ### sdk
 
 ```bash
-slash-cli sdk add <folder|git URL|https archive> [--project <dir>] [--name <folder>] [--ref <ref>] [--sha256 <hash>] [--dry-run]
+slash-cli sdk add <folder|storekit|play-billing|git URL|https archive> [--project <dir>] [--name <folder>] [--ref <ref>] [--sha256 <hash>] [--dry-run]
 slash-cli sdk check [--project <dir>] [--platform <name>] [--fetch]
 slash-cli sdk lock [--project <dir>] [--sdk <name>] [--dry-run]
 ```
 
 `sdk add` adds an [SDK package](sdk-format.md#sdk-add) to `project.json`'s `sdks`: a folder in
-the project where it is, or copied into `sdks/<name>` from a folder elsewhere, a git repository
-(at `--ref`) or an `https://` archive (checked against `--sha256`). `--dry-run` checks the package
+the project where it is, or copied into `sdks/<name>` from a folder elsewhere, one of the
+engine's [store packages](services.md#stores) (`storekit`, `play-billing`), a git repository (at
+`--ref`) or an `https://` archive (checked against `--sha256`). `--dry-run` checks the package
 and prints what it would add. `sdk check` checks the [packages](sdk-format.md#sdk-check), the
 presets' `sdks`, keys in the environment and every file a platform links (`--platform` for one),
 and exits 1 on a problem, for CI; `--fetch` downloads what isn't fetched yet so it is checked too.

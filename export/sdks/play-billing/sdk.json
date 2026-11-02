@@ -1,0 +1,21 @@
+{
+  "description": "Google Play Billing as the game's purchases backend on Android: products, purchases, restore and purchase tokens. Its library is Google's, fetched from Google's Maven repository by slash-cli sdk lock.",
+  "format": 1,
+  "license": "Proprietary",
+  "name": "play-billing",
+  "platforms": {
+    "android": {
+      "backends": {
+        "purchases": "org.slashengine.billing.PlayBillingPurchases"
+      },
+      "java": [
+        "android"
+      ],
+      "maven": [
+        "com.android.billingclient:billing:8.0.0"
+      ]
+    }
+  },
+  "vendor": "Google",
+  "version": "8.0.0"
+}
