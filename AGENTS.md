@@ -2068,6 +2068,18 @@ PNGs, that way and returns no bytes. `examples/video-playback` plays a clip in a
 a sprite, `examples/lossy-video` a libaom cutscene and `examples/captured-cutscene` one captured
 from a scene with `frame.capture` and `video.encode`.
 
+WebM and Matroska files (`.webm`, `.mkv`) load too: `src/matroska.cpp` reads their EBML
+(`read_matroska`: the first `V_AV1` track, whose `CodecPrivate` sequence header the decoder
+starts each key frame with as `VideoFile::config`, and the audio tracks, through laced blocks
+and clusters of unknown size) and writes them (`write_matroska`, `encode_matroska`, with a PCM
+track). `decode_audio` turns a PCM track into float samples, mixing more than two channels down
+as BS.775; Opus is read but not decoded yet. The sound plays in the audio module, which links
+the video module (not the other way round, since ui links video): `play_videos` in
+`engine/audio/src/audio.cpp` starts each player's `audio_track` on its `bus` at `volume_db` and
+`stream_position` through `video::playing`, follows `paused` and `speed_scale`, and starts it
+again where the picture jumps, and `audio.state` lists it. `examples/video-sound` plays a
+clip's sound on a bus.
+
 ## Soundtracks
 
 `engine/soundtrack` turns music into text agents read and write. The storyboard's
@@ -2335,7 +2347,7 @@ CI rejects unformatted code and any clang-tidy finding.
   `world` (EnTT world, components, scenes and prefabs, 2D and 3D trees), `input` (input events, action maps,
   the input state and reading SDL's events), `l10n` (translation files, locales, plural rules,
   lookups and pseudo-localization), `audio` (sound files and streams, the mixer, buses
-  and effects, players and SDL's audio output), `video` (AV1 video files, decoding with dav1d,
+  and effects, players, videos' sound and SDL's audio output), `video` (AV1 video files in IVF, WebM and Matroska, decoding with dav1d,
   the engine's palette AV1 encoder, lossy encoding with libaom for the tools and the system that
   plays `VideoStreamPlayer`s), `services` (ads, analytics, in-app
   purchases, achievements and leaderboards, their backends and the test backend), `canvas` (sprites, `.frames.json`

@@ -111,6 +111,7 @@ add_executable(slash_tests
     test_replication.cpp
     test_net_commands.cpp
     test_video.cpp
+    test_video_sound.cpp
     test_xr.cpp
     test_accessibility.cpp
     test_accesskit.cpp

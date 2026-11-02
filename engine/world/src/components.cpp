@@ -1167,11 +1167,11 @@ void register_ui_components(ComponentRegistry& registry) {
         .describe("flip_v", {.doc = "Draw it upside down."});
 
     registry.add<VideoStreamPlayer>()
-        .set_doc("Plays an AV1 video in the control's rect, as Godot's VideoStreamPlayer. Emits "
-                 "finished at the end unless it loops; stopped or paused, it shows the frame at "
-                 "stream_position.")
-        .describe("stream", {.doc = "Project path of an .ivf file of AV1 video; \"\" plays "
-                                    "nothing."})
+        .set_doc("Plays an AV1 video in the control's rect, and its sound on an audio bus, as "
+                 "Godot's VideoStreamPlayer. Emits finished at the end unless it loops; stopped "
+                 "or paused, it shows the frame at stream_position.")
+        .describe("stream", {.doc = "Project path of an .ivf, .webm or .mkv file of AV1 video; "
+                                    "\"\" plays nothing."})
         .describe("playing", {.doc = "Whether it plays: set it to start from stream_position; "
                                      "the video system clears it at the end."})
         .describe("autoplay", {.doc = "Play from the start once the video system first sees it."})
@@ -1180,7 +1180,11 @@ void register_ui_components(ComponentRegistry& registry) {
         .describe("expand", {.doc = "Stretch the video to the rect; else it is drawn at its own "
                                     "size, which is the control's minimum size."})
         .describe("speed_scale", {.doc = "How fast it plays: 2 is twice as fast.", .min = 0.0})
-        .describe("stream_position", {.doc = "Seconds into the video.", .min = 0.0});
+        .describe("stream_position", {.doc = "Seconds into the video.", .min = 0.0})
+        .describe("volume_db", {.doc = "The sound's volume in decibels."})
+        .describe("bus", {.doc = "The audio bus the sound plays on."})
+        .describe("audio_track",
+                  {.doc = "Which of the video's audio tracks plays, from 0.", .min = 0});
 
     const FieldMeta patch_margin{.doc = "Pixels of the texture on this side that don't stretch.",
                                  .min = 0};

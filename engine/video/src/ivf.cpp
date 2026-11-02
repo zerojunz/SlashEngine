@@ -75,6 +75,9 @@ double VideoFile::frame_time(std::size_t index) const {
 }
 
 double VideoFile::length() const {
+    if (duration > 0.0) {
+        return duration;
+    }
     if (frames.empty() || rate == 0) {
         return 0.0;
     }

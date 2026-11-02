@@ -1381,7 +1381,7 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "doc": "Hands each finished reply from a language model to the game as an ai_reply or ai_failed event.",
          "priority": 1150},
         {"name": "audio",
-         "doc": "Plays each AudioStreamPlayer, AudioStreamPlayer2D and AudioStreamPlayer3D and mixes the tick's sound through the bus layout.",
+         "doc": "Plays each AudioStreamPlayer, AudioStreamPlayer2D and AudioStreamPlayer3D and each VideoStreamPlayer's sound, and mixes the tick's sound through the bus layout.",
          "priority": 1200}
     ])"));
 }
