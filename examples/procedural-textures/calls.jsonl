@@ -1,0 +1,7 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"texture.generate","params":{"path":"textures/water.texture.json"}}
+{"jsonrpc":"2.0","id":3,"method":"texture.generate","params":{"texture":{"format":1,"type":"NoiseTexture2D","width":64,"height":64,"noise":{"noise_type":"cellular","cellular_return_type":"distance2_sub","frequency":0.08,"seed":3}}}}
+{"jsonrpc":"2.0","id":4,"method":"texture.generate","params":{"path":"textures/glow.texture.json","pixels":[[24,24],[24,0],[47,47]]}}
+{"jsonrpc":"2.0","id":5,"method":"frame.capture","params":{"points":[[40,55],[120,55],[2,8],[150,8]]}}
+{"jsonrpc":"2.0","id":6,"method":"texture.generate","params":{"texture":{"format":1,"type":"NoiseTexture2D","width":64,"height":64,"seamless":true,"as_normal_map":true,"noise":{"noise_type":"cellular","frequency":0.08,"seed":3}},"out":"build/water_normal.png"}}
+{"jsonrpc":"2.0","id":7,"method":"texture.generate","params":{"texture":{"format":1,"type":"NoiseTexture2D","noise":{"noise_type":"celular"}}}}

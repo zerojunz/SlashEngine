@@ -28,6 +28,7 @@
 #include "slash/navigation/navigation.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/process.hpp"
+#include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/shader.hpp"
 #include "slash/runtime/gameplay.hpp"
@@ -172,6 +173,7 @@ enum class DataFile : std::uint8_t {
     TileSet,
     Heightmap,
     Texture,
+    ProceduralTexture,
     FontSettings,
     Font,
     Theme,
@@ -219,6 +221,10 @@ DataFile data_file(std::string_view name) {
     // in a texture's forms.
     if (name.ends_with(scene3d::kHeightmapSuffix) || name.ends_with(scene3d::kParticleSdfSuffix)) {
         return DataFile::Heightmap;
+    }
+    // A procedural texture ships as its file and is made as the game loads it.
+    if (name.ends_with(procedural::kTextureSuffix)) {
+        return DataFile::ProceduralTexture;
     }
     if (render::is_image_path(name)) {
         return DataFile::Texture;
@@ -362,6 +368,8 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         return animation::validate_tree(parsed.value());
     case DataFile::TileSet:
         return canvas::validate_tileset(parsed.value());
+    case DataFile::ProceduralTexture:
+        return procedural::validate_texture(parsed.value());
     case DataFile::FontSettings:
         return text::validate_font(parsed.value());
     case DataFile::Theme:

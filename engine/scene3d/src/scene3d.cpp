@@ -4,6 +4,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/math.hpp"
 #include "slash/core/text.hpp"
+#include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
 #include "slash/scene3d/bone_attachment.hpp"
 #include "slash/scene3d/csg.hpp"
@@ -855,7 +856,7 @@ std::vector<Problem> check_meshes(const world::World& world) {
                  "\"" + field.texture + "\" could not be read: " + bytes.error().message});
             continue;
         }
-        auto image = render::decode_image(bytes.value());
+        auto image = procedural::decode_texture(field.texture, bytes.value());
         if (!image) {
             problems.push_back({entity, std::string(kTextureField),
                                 "\"" + field.texture + "\": " + image.error().message});

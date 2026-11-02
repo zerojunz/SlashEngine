@@ -133,6 +133,7 @@ add_executable(slash_tests
     test_playtest.cpp
     test_platform.cpp
     test_post.cpp
+    test_procedural.cpp
     test_project_map.cpp
     test_ragdoll.cpp
     test_ray_tracing.cpp
@@ -184,7 +185,7 @@ add_executable(slash_tests
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
     slash::ai slash::ai_commands slash::animation slash::asset slash::audio slash::bench slash::canvas slash::command slash::core slash::debug slash::exporter slash::importer slash::input slash::l10n slash::library slash::library_commands slash::navigation slash::net slash::physics2d slash::physics3d
-    slash::platform slash::render slash::runtime slash::scene3d slash::server slash::services slash::shader_compiler slash::soundtrack slash::soundtrack_commands slash::storyboard slash::text slash::texture_encoder slash::ui slash::video slash::video_commands slash::video_encoder slash::world slash::xr doctest::doctest SDL3::SDL3-static
+    slash::platform slash::procedural slash::render slash::runtime slash::scene3d slash::server slash::services slash::shader_compiler slash::soundtrack slash::soundtrack_commands slash::storyboard slash::text slash::texture_encoder slash::ui slash::video slash::video_commands slash::video_encoder slash::world slash::xr doctest::doctest SDL3::SDL3-static
     slash_httplib # a stand-in model server for the AI provider tests
     webp) # WebP textures for the Godot unpacking tests
 # JPEG files for the image and model tests, made with stb_image_write's encoder.
