@@ -960,7 +960,7 @@ Exit: an agent builds a small 3D sample end to end.
   - [x] The platform backend on Windows, macOS and Linux: AccessKit's adapters hand the tree to
         Narrator, VoiceOver and Orca, built by cargo from accesskit-c's pinned crates
   - [ ] TalkBack on Android, VoiceOver on iOS and the web's screen readers
-- [ ] Procedural generation, following Godot's noise module and texture resources
+- [x] Procedural generation, following Godot's noise module and texture resources
       ([design](design.md#procedural-generation))
   - [x] Noise for gameplay code (`procedural::Noise`, Godot's `FastNoiseLite` on Auburn's
         FastNoiseLite) and procedural textures as `.texture.json` files, Godot's
@@ -973,7 +973,7 @@ Exit: an agent builds a small 3D sample end to end.
         multi-mesh
   - [x] Tile maps and terrains from noise: terrains painted by noise thresholds, and HTerrain's
         generator taking a noise file
-  - [ ] Procedural content from other tools: Godot's noise and gradient resources, glTF instances
+  - [x] Procedural content from other tools: Godot's noise and gradient resources, glTF instances
         (`EXT_mesh_gpu_instancing`) from Blender's geometry nodes and Houdini, and heightmaps
         from World Machine, Gaea and World Creator (16-bit PNG, RAW and EXR). Substance's
         `.sbsar` is closed, so its exported maps come in as textures
@@ -1078,7 +1078,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Analytics, ads and in-app purchases | One API for analytics, ads and purchases; StoreKit, Play Billing and a developer-chosen analytics endpoint in the repo, ad networks as outside adapters | 8 | In progress: the API, its backend interfaces, analytics endpoints, consent with Apple's prompt, StoreKit, Play Billing and the test backend are done; ad networks are outside adapters |
 | Closed vendor SDKs | SDK packages: an `sdk.json` per SDK that exports fetch, check and link on all six platforms, with JNI and Objective-C bridges and engine interfaces for the glue | 6 | In progress: packages, exports, `sdk.add`, `sdk.check`, Android libraries and Maven, services and glue code |
 | One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | In progress: every platform exports (4a, 4b); building them all from one Mac is next |
-| Procedural generation | FastNoiseLite noise, noise and gradient textures, scatter rules agents write, and procedural content imported from other tools | 8 | In progress |
+| Procedural generation | FastNoiseLite noise, noise and gradient textures, scatter rules agents write, and procedural content imported from other tools | 8 | Done |
 | Large worlds | Double-precision transforms, world streaming | After launch | After launch |
 | Cinematics | Timeline tracks for cameras and events | After launch | After launch |
 | Cloth and soft bodies | Jolt soft bodies | After launch | After launch |

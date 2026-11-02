@@ -795,6 +795,13 @@ draws the model's meshes in place of a primitive mesh, read as Godot's importers
 
 - Each node of the model's scene that has a mesh draws it where the node's transforms place it,
   in the entity's space. glTF's units are meters with y up, as Godot's are.
+- A node with `EXT_mesh_gpu_instancing`, as Blender's geometry nodes and Houdini export
+  scattered copies, draws its mesh at each instance's `TRANSLATION`, `ROTATION` and `SCALE` in
+  its space and never at itself: each instance is a node of its own under it, named after it and
+  its number (`Tree_0`, `Tree_1`), drawing the mesh as any other part, so collision hints, LODs,
+  lightmaps and [`model.cleanup`](commands.md#modelcleanup) take it and written models keep it
+  as a plain node. Other instance attributes are left out. Godot has no such import; this is
+  SlashEngine's own. [examples/gltf-instances](../../examples/gltf-instances/) loads an orchard.
 - Each glTF material becomes a `StandardMaterial3D` as Godot's importer makes it: the base color
   factor and texture as the albedo, the metallic and roughness factors times the
   metallic-roughness texture's blue and green channels, the normal map and its scale, the
