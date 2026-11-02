@@ -206,6 +206,109 @@ TEST_CASE("websocket: a peer's text, subprotocols and close codes") {
     CHECK(small.close_code() == 1009); // message too big
 }
 
+TEST_CASE("websocket: wss:// over TLS") {
+    if (!net::websocket_server_supported()) {
+        return;
+    }
+    CHECK_FALSE(net::generate_self_signed_certificate("CN=localhost", "yesterday"));
+    const auto made = net::generate_self_signed_certificate("CN=localhost,O=SlashEngine");
+    REQUIRE(made);
+    const net::SelfSignedCertificate& localhost = made.value();
+    CHECK(localhost.certificate.starts_with("-----BEGIN CERTIFICATE-----"));
+    net::WebSocketMultiplayerPeer server;
+    CHECK_FALSE(server.create_server(0, "127.0.0.1", net::TlsOptions::client()));
+    REQUIRE(server.create_server(
+        0, "127.0.0.1", net::TlsOptions::server(localhost.private_key, localhost.certificate)));
+    const std::string url = "wss://127.0.0.1:" + std::to_string(server.local_port()) + "/game";
+
+    // Whether a client with these options gets its ID.
+    const auto joins = [&](net::WebSocketPeer& client) {
+        const bool open = poll_until(
+            [&] {
+                server.poll();
+                client.poll();
+            },
+            [&] {
+                return client.available_packet_count() == 1 ||
+                       client.ready_state() == net::WebSocketState::Closed;
+            });
+        return open && client.available_packet_count() == 1;
+    };
+
+    // A client that trusts the server's certificate, under the name it carries, talks to it.
+    net::WebSocketPeer client;
+    REQUIRE(
+        client.connect_to_url(url, net::TlsOptions::client(localhost.certificate, "localhost")));
+    REQUIRE(joins(client));
+    int id = 0;
+    std::memcpy(&id, client.get_packet().value().data(), 4);
+    REQUIRE(server.peer(id) != nullptr);
+    CHECK(server.peer(id)->requested_url().ends_with("/game"));
+    REQUIRE(client.send_text(std::string(40000, 's'))); // more than one TLS record
+    REQUIRE(poll_until(
+        [&] {
+            server.poll();
+            client.poll();
+        },
+        [&] { return server.available_packet_count() == 1; }));
+    CHECK(text_of(server.get_packet().value()) == std::string(40000, 's'));
+    REQUIRE(server.peer(id)->send_text("sealed"));
+    REQUIRE(poll_until(
+        [&] {
+            server.poll();
+            client.poll();
+        },
+        [&] { return client.available_packet_count() == 1; }));
+    CHECK(text_of(client.get_packet().value()) == "sealed");
+
+    // Clients that trust another certificate, or expect another name, are refused.
+    const auto other = net::generate_self_signed_certificate("CN=localhost").value();
+    net::WebSocketPeer wary;
+    REQUIRE(wary.connect_to_url(url, net::TlsOptions::client(other.certificate, "localhost")));
+    CHECK_FALSE(joins(wary));
+    net::WebSocketPeer by_address; // the certificate is for localhost, not 127.0.0.1
+    REQUIRE(by_address.connect_to_url(url, net::TlsOptions::client(localhost.certificate)));
+    CHECK_FALSE(joins(by_address));
+    // Unless they take any certificate.
+    net::WebSocketPeer careless;
+    REQUIRE(careless.connect_to_url(url, net::TlsOptions::client_unsafe()));
+    CHECK(joins(careless));
+    // A client without TLS gets nowhere.
+    net::WebSocketPeer plain;
+    REQUIRE(plain.connect_to_url("ws://127.0.0.1:" + std::to_string(server.local_port())));
+    CHECK_FALSE(joins(plain));
+    CHECK_FALSE(plain.connect_to_url(
+        url, net::TlsOptions::server(localhost.private_key, localhost.certificate)));
+
+    // A multiplayer client joins over it too.
+    net::WebSocketMultiplayerPeer player;
+    REQUIRE(player.create_client(url, net::TlsOptions::client(localhost.certificate, "localhost")));
+    REQUIRE(poll_until(
+        [&] {
+            server.poll();
+            player.poll();
+        },
+        [&] {
+            return player.connection_status() == net::ConnectionStatus::Connected &&
+                   server.peer(player.unique_id()) != nullptr;
+        }));
+    REQUIRE(player.put_packet(bytes_of("over tls")));
+    REQUIRE(poll_until(
+        [&] {
+            server.poll();
+            player.poll();
+        },
+        [&] {
+            while (server.available_packet_count() > 0) {
+                if (server.packet_peer() == player.unique_id()) {
+                    return text_of(server.get_packet().value()) == "over tls";
+                }
+                (void)server.get_packet();
+            }
+            return false;
+        }));
+}
+
 TEST_CASE("websocket: a world's multiplayer runs over it") {
     if (!net::websocket_server_supported()) {
         return;

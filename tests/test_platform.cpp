@@ -1,3 +1,4 @@
+#include "slash/platform/certificates.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/platform.hpp"
 #include "slash/platform/run.hpp"
@@ -273,4 +274,22 @@ TEST_CASE("paths with a name Windows keeps for a device are refused") {
     CHECK(refused.error().message ==
           "path \"prefabs/con.prefab.json\" uses \"con\", a name Windows keeps for a device; "
           "choose another name");
+}
+
+TEST_CASE("system_ca_certificates reads SSL_CERT_FILE when it names a file") {
+    const std::filesystem::path file = std::filesystem::absolute("certificates_test/roots.pem");
+    std::filesystem::create_directories(file.parent_path());
+    const std::string roots = "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n";
+    REQUIRE(slash::platform::write_file(file.string(), roots));
+    REQUIRE(SDL_setenv_unsafe("SSL_CERT_FILE", file.string().c_str(), 1) == 0);
+    CHECK(slash::platform::system_ca_certificates() == roots);
+    SDL_unsetenv_unsafe("SSL_CERT_FILE");
+    std::filesystem::remove_all(file.parent_path());
+    // Only Apple platforms check chains themselves.
+#if defined(__APPLE__)
+    CHECK(slash::platform::system_trust_available());
+#else
+    CHECK_FALSE(slash::platform::system_trust_available());
+    CHECK_FALSE(slash::platform::system_trusts({}, "localhost"));
+#endif
 }

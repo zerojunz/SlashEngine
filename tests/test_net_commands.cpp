@@ -1,6 +1,7 @@
 #include "slash/command/builtin.hpp"
 #include "slash/command/session.hpp"
 #include "slash/net/multiplayer.hpp"
+#include "slash/net/tls.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 
@@ -111,16 +112,32 @@ TEST_CASE("net commands host, join, call and inspect a game on several sessions"
         CHECK(state == parse(R"({"id":1,"peers":[],"server":true,"status":"connected",
                                  "transport":"offline"})"));
 
-        for (const char* transport : {"enet", "websocket"}) {
+        // wss:// with a certificate the players trust.
+        const auto certificate = net::generate_self_signed_certificate("CN=localhost").value();
+        std::ofstream(root / "server.crt") << certificate.certificate;
+        std::ofstream(root / "server.key") << certificate.private_key;
+        struct Transport {
+            const char* transport;
+            const char* host; // more net.host params
+            const char* join; // more net.join params
+        };
+        for (const Transport& way : {
+                 Transport{"enet", "", ""},
+                 Transport{"websocket", "", ""},
+                 Transport{"websocket", R"(, "certificate": "server.crt", "key": "server.key")",
+                           R"(, "address": "localhost", "tls": "server.crt")"},
+             }) {
+            const std::string transport = way.transport;
             CAPTURE(transport);
+            CAPTURE(way.join);
             const json::Value hosted =
-                server.ok("net.host", R"({"transport": ")" + std::string(transport) +
-                                          R"(", "bind_address": "127.0.0.1"})");
+                server.ok("net.host", R"({"transport": ")" + transport +
+                                          R"(", "bind_address": "127.0.0.1")" + way.host + "}");
             CHECK(hosted.find("id")->as_int() == 1);
             const std::int64_t port = hosted.find("port")->as_int();
             REQUIRE(port > 0);
-            const std::string join = R"({"transport": ")" + std::string(transport) +
-                                     R"(", "port": )" + std::to_string(port) + "}";
+            const std::string join = R"({"transport": ")" + transport + R"(", "port": )" +
+                                     std::to_string(port) + way.join + "}";
             CHECK(alice.ok("net.join", join).find("status")->as_string() == "connecting");
             (void)bob.ok("net.join", join);
             REQUIRE(step_until({&server, &alice, &bob}, [&] {
@@ -166,6 +183,13 @@ TEST_CASE("net commands host, join, call and inspect a game on several sessions"
         CHECK_FALSE(reply.ok);
         reply = alice.call("net.join", R"({"transport": "carrier pigeon", "port": 1})");
         CHECK(reply.code == command::code::kInvalidParams);
+        reply =
+            server.call("net.host", R"({"transport": "websocket", "certificate": "server.crt"})");
+        CHECK(reply.code == command::code::kInvalidArgument);
+        CHECK(reply.message.starts_with("/key"));
+        reply =
+            alice.call("net.join", R"({"transport": "websocket", "port": 1, "tls": "nope.crt"})");
+        CHECK(reply.code == command::code::kNotFound);
     }
     std::filesystem::remove_all(root);
 }
