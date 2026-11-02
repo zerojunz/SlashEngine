@@ -15,8 +15,12 @@ inline constexpr int kMaxFps = 1000;
 
 struct RunOptions {
     double tick_hz = 60.0;
-    // Stop after this many ticks; 0 runs until quit. Headless runs must set it.
+    // Stop after this many ticks; 0 runs until quit. Headless runs must set it, unless they
+    // keep to real time.
     std::uint64_t max_ticks = 0;
+    // Headless runs tick as real time says, as windowed runs do, instead of as fast as they can:
+    // for a game played headless by someone at the other end of a connection, such as an agent.
+    bool real_time = false;
     // Frames per second at most, from 0 (no cap, Godot's default) to kMaxFps. Windowed runs wait
     // between frames to keep to it, and on the web the browser calls frames at this rate;
     // headless runs never wait.
@@ -48,7 +52,7 @@ using TickFn = std::function<void(std::uint64_t tick, double tick_seconds)>;
 // The main loop, one frame at a time, for hosts that own the loop themselves: SDL's main
 // callbacks on the web and on phones call frame() once per iteration. Windowed frames run the
 // ticks that real time says are due; headless frames run one tick each, with no waiting, so a
-// headless run of N ticks is fast and fully deterministic.
+// headless run of N ticks is fast and fully deterministic (unless RunOptions::real_time).
 class Loop {
 public:
     [[nodiscard]] static Result<Loop> create(Platform& platform, const RunOptions& options);
@@ -70,6 +74,11 @@ public:
     [[nodiscard]] bool finished() const noexcept { return finished_; }
     [[nodiscard]] double tick_hz() const noexcept { return options_.tick_hz; }
     [[nodiscard]] bool headless() const noexcept { return platform_->headless(); }
+    // Whether ticks follow real time: windowed runs, and headless ones with
+    // RunOptions::real_time.
+    [[nodiscard]] bool real_time() const noexcept {
+        return !platform_->headless() || options_.real_time;
+    }
 
     // How far real time is into the next tick, from 0 to 1, for drawing state interpolated
     // between the last two ticks. Always 0 headless, where frames and ticks are one to one.

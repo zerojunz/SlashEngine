@@ -55,6 +55,8 @@ inline constexpr std::array<std::string_view, 5> kImageSuffixes{".png", ".bmp", 
 
 // Encodes an image as a PNG file's bytes.
 [[nodiscard]] Result<std::string> encode_png(const Image& image);
+// Encodes an image as a baseline JPEG file's bytes at quality 1 to 100, its alpha left out.
+[[nodiscard]] Result<std::string> encode_jpeg(const Image& image, int quality = 90);
 
 // A grid of 16-bit values, rows from the top, as a heightmap's PNG file holds them.
 struct Gray16 {
