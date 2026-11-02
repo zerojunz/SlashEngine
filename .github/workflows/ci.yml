@@ -55,11 +55,13 @@ jobs:
 
       # Mesa's software Vulkan (lavapipe), OpenGL and OpenGL ES (llvmpipe) let the renderer's GPU
       # tests run with no GPU, so a broken GPU or OpenGL path fails here instead of being skipped.
+      # AT-SPI's bus lets the screen reader test read a game as Orca does; the runners' cargo
+      # builds AccessKit.
       - name: Install tools (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update && sudo apt-get install -y $LINUX_SDL_DEPS mesa-vulkan-drivers \
-            libgl1 libgles2 libegl-mesa0 libgl1-mesa-dri
+            libgl1 libgles2 libegl-mesa0 libgl1-mesa-dri at-spi2-core
           echo "SLASH_EXPECT_GPU=1" >> "$GITHUB_ENV"
 
       - name: Install tools (Windows)

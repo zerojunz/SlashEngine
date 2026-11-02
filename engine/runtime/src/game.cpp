@@ -96,6 +96,9 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
     config.video_drivers =
         project.value().linux_display_driver == "wayland" ? "wayland,x11" : "x11,wayland";
 #endif
+    // Made hidden where a screen reader's adapter attaches first, as Windows needs.
+    config.hidden = !options.headless && accessibility::available() &&
+                    project.value().accessibility_support != "disabled";
     auto platform = platform::Platform::create(config);
     if (!platform) {
         return platform.error();
@@ -262,6 +265,12 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
             audio_input_ = std::make_unique<audio::SdlInput>();
             audio::set_input_device(world_, audio_input_.get());
         }
+        // Screen readers read and work the controls, as Godot's AccessKit driver serves them,
+        // unless the project's gui.accessibility_support turns that off.
+        if (project_.accessibility_support != "disabled") {
+            screen_reader_ = accessibility::Backend::attach(platform_.window(), project_.name);
+        }
+        platform_.show_window();
         // LineEdits cut, copy and paste with the system's clipboard.
         ui::set_clipboard_backend(
             world_,
@@ -299,6 +308,10 @@ bool Game::frame() {
         // The input method and on-screen keyboard follow the LineEdit being edited.
         if (!platform_.headless()) {
             input_reader_.set_text_input(platform_.window(), ui::text_input(world_));
+        }
+        // What screen readers asked, and the controls as they now are.
+        if (screen_reader_ != nullptr) {
+            screen_reader_->update(world_);
         }
     });
     // The frame that runs the last tick is drawn too.
@@ -380,6 +393,9 @@ void Game::handle_event(const SDL_Event& event) {
         services::flush_analytics(world_);
     }
     input_reader_.read(event, world_);
+    if (screen_reader_ != nullptr) {
+        screen_reader_->handle_event(event);
+    }
 }
 
 void Game::request_quit() noexcept {
