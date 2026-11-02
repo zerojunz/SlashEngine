@@ -3287,12 +3287,14 @@ Needs: `read`. After the shop's system logged an event for a watched ad:
 ```
 
 ```json
-{"ads":{"bonus":{"format":"rewarded","status":"loading"},"footer":{"format":"banner","status":"showing"}},"analytics":{"enabled":true,"events":[{"name":"coins_earned","params":{"coins":25,"source":"ad"},"sent":false,"tick":4}],"logged":1},"backends":{"ads":"test","analytics":["test"],"games":"test","purchases":"test"},"consent":{"analytics":"unknown","personalized_ads":"unknown"},"owned":[],"pending":[],"products":{"coins_100":{"available":true,"price":"$0.99","type":"consumable"},"remove_ads":{"available":true,"price":"$0.99","type":"non_consumable"}},"products_status":"fetched","tick":4,"unfinished":[]}
+{"ads":{"bonus":{"format":"rewarded","status":"loading"},"footer":{"format":"banner","status":"showing"}},"analytics":{"enabled":true,"events":[{"name":"coins_earned","params":{"coins":25,"source":"ad"},"sent":false,"tick":4}],"logged":1},"backends":{"ads":"test","analytics":["test"],"games":"test","purchases":"test"},"consent":{"analytics":"unknown","personalized_ads":"unknown","tracking":"not_determined"},"owned":[],"pending":[],"products":{"coins_100":{"available":true,"price":"$0.99","type":"consumable"},"remove_ads":{"available":true,"price":"$0.99","type":"non_consumable"}},"products_status":"fetched","tick":4,"unfinished":[]}
 ```
 
 `tick` is the tick the `services` system last ran. The rewarded ad is `loading` again because it
 auto-loads after it closes. The event was not `sent` because the player hasn't granted
-analytics consent; `logged` counts every event so far. A game with `funnels` gets
+analytics consent; `logged` counts every event so far. `consent.tracking` is the answer to
+Apple's tracking prompt: `not_determined`, `restricted`, `denied`, `authorized`, or
+`unavailable` off Apple platforms. A game with `funnels` gets
 `analytics.funnels`, each funnel's `step` (reached) and `steps`. `products_status` is `none` (no
 products), `fetching`, `fetched` or `failed` with `products_error`, e.g. `no store` in a game
 with no store backend. `unfinished` and `pending` list `{"product", "transaction", "state"}`.
@@ -3341,6 +3343,7 @@ backend.
 | `load_scores` | `{"leaderboard", "time", "collection", "count"}` | | Loads a leaderboard's best scores: `time` `all_time`, `week` or `today`; `collection` `global` or `friends`; `count` 1 to 25 (default 10) |
 | `show_achievements` | boolean | | Shows the achievements screen |
 | `show_leaderboards` | string | | Shows a leaderboard's screen, or every leaderboard's for `""` |
+| `tracking` | `authorized`, `denied` or `restricted` | | Asks Apple's App Tracking Transparency prompt, as the game's `request_tracking` does, and answers it so. Anything but `authorized` turns a granted `personalized_ads` to `denied` |
 
 Settings apply first, then `consent`, `complete_pending`, `load`, `show`, `hide`, `buy`,
 `finish`, `restore`, `sign_in`, `unlock`, `increment`, `submit`, `load_scores`,

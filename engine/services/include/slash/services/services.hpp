@@ -79,6 +79,16 @@ struct Product {
 
 enum class Consent : std::uint8_t { Unknown, Granted, Denied };
 
+// Apple's App Tracking Transparency answer, as ATTrackingManagerAuthorizationStatus;
+// Unavailable where the platform has no such prompt.
+enum class TrackingStatus : std::uint8_t {
+    NotDetermined,
+    Restricted,
+    Denied,
+    Authorized,
+    Unavailable,
+};
+
 // What the player agreed to, as one state that gates analytics and ads.
 struct ConsentState {
     Consent analytics = Consent::Unknown;        // events are sent only when Granted
@@ -154,6 +164,9 @@ struct Settings {
     // Sign the player in when the services start, as Play Games and Game Center do, if the game
     // has achievements or leaderboards or a games backend.
     bool sign_in_at_start = true;
+    // Why the game asks to track the player, which Apple's tracking prompt shows
+    // (NSUserTrackingUsageDescription); request_tracking needs it on iOS and macOS.
+    std::string tracking_usage;
 
     friend bool operator==(const Settings&, const Settings&) = default;
 };
@@ -173,6 +186,8 @@ struct Settings {
 [[nodiscard]] std::string_view format_name(AdFormat format);
 [[nodiscard]] std::string_view type_name(ProductType type);
 [[nodiscard]] std::string_view consent_name(Consent consent);
+// "not_determined", "restricted", "denied", "authorized" or "unavailable".
+[[nodiscard]] std::string_view tracking_name(TrackingStatus status);
 [[nodiscard]] std::string_view sort_order_name(SortOrder order);
 
 // ---------------------------------------------------------------------------------------------
@@ -270,6 +285,7 @@ struct Report {
         GamesUiClosed,
         // Made by the services themselves when progress unlocks an achievement.
         AchievementUnlocked,
+        Tracking, // the player answered the tracking prompt
     };
     Kind kind = Kind::AdLoaded;
     std::string placement;
@@ -278,6 +294,7 @@ struct Report {
     std::vector<Product> products;
     services::Purchase purchase;
     std::string name; // an achievement or leaderboard
+    TrackingStatus tracking = TrackingStatus::NotDetermined;
     services::Player player;
     std::vector<AchievementProgress> achievements;
     std::int64_t score = 0;
@@ -316,6 +333,8 @@ public:
     void scores_failed(std::string_view leaderboard, std::string_view error);
     // The player closed the achievements or leaderboards screen.
     void games_ui_closed();
+    // The player's answer to Apple's tracking prompt.
+    void tracking(TrackingStatus status);
 
     // The reports so far, oldest first, leaving none.
     [[nodiscard]] std::vector<Report> take();
@@ -459,6 +478,8 @@ struct TestSettings {
     int games_ticks = 1;           // ticks signing in, submitting a score and loading scores take
     // Other players' scores on each leaderboard, by its name: their names and values.
     std::map<std::string, std::vector<Score>, std::less<>> scores;
+    // How the player answers the tracking prompt, a tick after request_tracking.
+    TrackingStatus tracking = TrackingStatus::Authorized;
 
     friend bool operator==(const TestSettings&, const TestSettings&) = default;
 };
@@ -573,6 +594,15 @@ enum class SignIn : std::uint8_t { SignedOut, SigningIn, SignedIn, Failed };
 // The player's consent, which the game asks for and keeps; it starts as project.json's.
 void set_consent(world::World& world, ConsentState consent);
 [[nodiscard]] ConsentState consent(const world::World& world);
+// Asks the player whether the game may track them across other companies' apps and websites,
+// as Unity's ATTrackingStatusBinding.RequestAuthorizationTracking: Apple's App Tracking
+// Transparency prompt on iOS and macOS, which shows once, while the game is in front. The answer
+// comes as a tracking_status event; anything but authorized turns a granted personalized_ads
+// consent to denied, as Apple requires. Elsewhere the answer is unavailable. Fails on Apple
+// platforms when project.json's services.consent.tracking_usage is empty.
+Result<void> request_tracking(world::World& world);
+// The answer so far: on Apple platforms what the player said before, even in an earlier run.
+[[nodiscard]] TrackingStatus tracking_status(const world::World& world);
 
 // What happened at a tick, also emitted as a world event of the same kind with the placement or
 // product as its ID:

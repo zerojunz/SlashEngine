@@ -231,6 +231,27 @@ Both start as `project.json`'s `services.consent` (`unknown` unless set). The ga
 player, keeps the answer in its save data and calls `set_consent` at each start; backends get
 it at once.
 
+```cpp
+(void)services::request_tracking(world); // Apple's prompt, once, while the game is in front
+for (const services::ServiceEvent& event : services::events(world)) {
+    if (event.kind == "tracking_status") {
+        // services::tracking_status(world) has the answer
+    }
+}
+```
+
+On iOS and macOS, a game that tracks the player across other companies' apps and websites (an
+ad network's advertising ID, say) must first ask with Apple's App Tracking Transparency prompt,
+as Unity's iOS 14 Support package's `RequestAuthorizationTracking` does. `request_tracking` shows
+it; Apple shows it once per install, so later calls answer at once with what the player said.
+The prompt shows `project.json`'s `services.consent.tracking_usage`, which exports put in the
+app's `Info.plist` as `NSUserTrackingUsageDescription`, and without which `request_tracking`
+fails there. The answer arrives as a `tracking_status` event with `status` (`authorized`,
+`denied` or `restricted`), and `tracking_status(world)` keeps it, starting from what the player
+said in an earlier run. Anything but `authorized` turns a granted `personalized_ads` consent to
+`denied`. Other platforms have no prompt: the answer is `unavailable` a tick later, and consent
+stays as the game set it. The test backend answers as `services.test`'s `tracking` says.
+
 ## The test backend
 
 Sessions run every service on the test backend. It loads ads after `load_ticks` (1), or

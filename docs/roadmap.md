@@ -968,7 +968,7 @@ Exit: an agent builds a small 3D sample end to end.
         macOS and Google Play Billing for Android
   - [ ] Ads: banner, interstitial and rewarded placements behind one interface; each ad network
         is an adapter (see the note below)
-  - [ ] Consent and privacy: one consent state that gates analytics and ads, with Apple's App
+  - [x] Consent and privacy: one consent state that gates analytics and ads, with Apple's App
         Tracking Transparency prompt on iOS
   - [x] A test backend for all three, so agents and CI can run purchases, ads and events
         headless with no store account, plus commands to inspect and drive it

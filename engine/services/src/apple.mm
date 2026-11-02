@@ -3,11 +3,15 @@
 
 #import "slash/services/apple.h"
 
+#include "tracking.hpp"
+
 #include "slash/core/json.hpp"
 #include "slash/core/log.hpp"
 #include "slash/services/bridges.hpp"
 
+#import <AppTrackingTransparency/AppTrackingTransparency.h>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <span>
 #include <string>
@@ -615,8 +619,7 @@ public:
                 reports->games_ui_closed();
             }
         } else if (unit != nullptr) {
-            [object_.get() showLeaderboard:to_ns(unit->leaderboard)
-                             leaderboardID:to_ns(unit->id)];
+            [object_.get() showLeaderboard:to_ns(unit->leaderboard) leaderboardID:to_ns(unit->id)];
         } else {
             [object_.get() showLeaderboard:nil leaderboardID:nil];
         }
@@ -646,5 +649,44 @@ std::unique_ptr<PurchasesBackend> objc_purchases_backend(std::string_view class_
 std::unique_ptr<GamesBackend> objc_games_backend(std::string_view class_name) {
     return std::make_unique<ObjcGames>(class_name);
 }
+
+namespace detail {
+
+namespace {
+
+TrackingStatus tracking_of(ATTrackingManagerAuthorizationStatus status) {
+    switch (status) {
+    case ATTrackingManagerAuthorizationStatusRestricted:
+        return TrackingStatus::Restricted;
+    case ATTrackingManagerAuthorizationStatusDenied:
+        return TrackingStatus::Denied;
+    case ATTrackingManagerAuthorizationStatusAuthorized:
+        return TrackingStatus::Authorized;
+    case ATTrackingManagerAuthorizationStatusNotDetermined:
+    default:
+        return TrackingStatus::NotDetermined;
+    }
+}
+
+} // namespace
+
+// App Tracking Transparency came in iOS 14 and macOS 11, the oldest systems games run on.
+bool tracking_available() {
+    return true;
+}
+
+TrackingStatus platform_tracking_status() {
+    return tracking_of([ATTrackingManager trackingAuthorizationStatus]);
+}
+
+void request_platform_tracking(std::function<void(TrackingStatus status)> done) {
+    auto shared = std::make_shared<std::function<void(TrackingStatus)>>(std::move(done));
+    [ATTrackingManager requestTrackingAuthorizationWithCompletionHandler:^(
+                           ATTrackingManagerAuthorizationStatus status) {
+      (*shared)(tracking_of(status));
+    }];
+}
+
+} // namespace detail
 
 } // namespace slash::services
