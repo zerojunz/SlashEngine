@@ -8,9 +8,9 @@
 #include <SDL3/SDL_system.h>
 
 #include <jni.h>
-#endif
 #include <openxr/openxr_platform.h>
 #include <string>
+#endif
 
 namespace slash::xr::detail {
 
