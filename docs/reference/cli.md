@@ -717,7 +717,9 @@ runs only on a Linux machine of that architecture. Android exports also return `
 connected the test is skipped and says so. iOS exports return `ios`: the `bundle_id` and
 `destination`. Their `--test` installs a Simulator build on a booted iPhone Simulator, else boots
 the one with the newest iOS and shuts it down afterwards, runs the game headless and reads its
-summary; device builds and Macs with no Simulator skip the test and say so.
+summary; device builds and Macs with no Simulator skip the test and say so. A game that enables
+[XR](scene-format.md#openxr) adds `xr` to its `test`: headless it starts no headset, so it says
+whether the OpenXR loader found a `runtime`, with the `error` when it found none.
 
 The full build log is at `log`. A failure names the step that failed (`options`, `validate`,
 `toolchain`, `stage`, `icons`, `sdks`, `configure`, `build`, `install`, `package`, `sign`, `notarize` or `publish`; Android
