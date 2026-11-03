@@ -1,4 +1,5 @@
-#include "vulkan_rays.hpp"
+#include "gpu_rays.hpp"
+#include "ray_records.hpp"
 
 #if !defined(__EMSCRIPTEN__)
 
@@ -33,110 +34,9 @@ namespace slash::render::detail {
 
 namespace {
 
-constexpr std::uint32_t kGroupSize = 8;
 // Frames whose rays can be in flight at once, each with its own descriptors, uniforms and
 // top-level structure; a frame waits for the GPU when all are busy.
 constexpr std::size_t kSlots = 4;
-// The textures the shadows' shader writes: two of lights' visibilities, then the ambient
-// occlusion.
-constexpr std::size_t kOutputs = 3;
-// The passes of the light's shader (ray_light.comp's kPass): the reflections, the global
-// illumination's rays and their smoothing, the paths and their average.
-constexpr std::size_t kLightPasses = 5;
-constexpr std::size_t kTracePaths = 3;
-constexpr std::size_t kAveragePaths = 4;
-// The textures the light's shader writes: the reflections (or the paths' average), then the
-// ambient light as traced and as smoothed.
-constexpr std::size_t kLightOutputs = 3;
-// The most textures the light's shader samples (its textures array); the rest read white.
-constexpr std::uint32_t kRayTextures = 64;
-constexpr std::uint32_t kNoTexture = 0xFFFFFFFFU;
-// Instance masks: the draws rays from the camera's side see, and those that cast shadows.
-constexpr std::uint8_t kSeeMask = 1;
-constexpr std::uint8_t kCastMask = 2;
-
-// The uniforms of shaders/ray_shadows.comp's Frame, in std140.
-struct RayLightUniforms {
-    std::array<float, 4> place{};
-    std::array<float, 4> params{};
-    std::array<std::uint32_t, 4> mask{};
-};
-struct RayShadowsUniforms {
-    std::array<float, 16> to_world{};
-    std::array<std::array<float, 4>, 3> view_rows{};
-    std::array<std::uint32_t, 4> size{};
-    std::array<std::uint32_t, 4> options{};
-    std::array<float, 4> occlusion{}; // radius, power, samples, then intensity
-    std::array<RayLightUniforms, kMaxRayShadowLights> lights{};
-};
-static_assert(sizeof(RayShadowsUniforms) == 64 + 48 + 16 + 16 + 16 + (48 * kMaxRayShadowLights));
-
-// shaders/ray_light.comp's Frame, in std140.
-struct RayLightFrame {
-    std::array<float, 16> to_world{};
-    std::array<std::array<float, 4>, 3> view_rows{};
-    std::array<std::uint32_t, 4> size{};
-    Float4 ambient{};
-    std::array<Float4, 3> sky_rows{};
-    std::array<std::uint32_t, 4> gi{};
-    std::array<std::uint32_t, 4> paths{}; // the first path's number, paths a pixel, bounces
-};
-static_assert(sizeof(RayLightFrame) == 64 + 48 + 16 + 16 + 48 + 16 + 16);
-
-// Its Draw and Light, in std430.
-struct RayDrawRecord {
-    Float4 albedo{};
-    Float4 emission{};
-    Float4 surface{};
-    Float4 metallic_channel{};
-    Float4 roughness_channel{};
-    std::array<std::uint32_t, 4> options{};
-    std::array<Float4, 3> normal_rows{};
-    Float4 uv1{};
-    std::array<std::uint32_t, 4> buffers{};
-    std::array<std::uint32_t, 4> textures{};
-    std::array<std::uint32_t, 4> more{};
-};
-static_assert(sizeof(RayDrawRecord) == std::size_t{13} * 16);
-struct RayLightRecord {
-    Float4 position{};
-    Float4 direction{};
-    Float4 color{};
-    Float4 params{};
-    std::array<std::uint32_t, 4> masks{};
-    Float4 shadow{};
-};
-static_assert(sizeof(RayLightRecord) == std::size_t{6} * 16);
-
-// shaders/lightmap_light.comp's passes (its kPass): the direct light, a pass of bounces, a pass
-// of the probes' rays.
-constexpr std::size_t kBakePasses = 3;
-constexpr std::uint32_t kBakeGroupSize = 64;
-// Godot's rendering/lightmapping/bake_performance/region_size, squared: the texels a dispatch
-// lights at most; max_rays_per_pass and max_rays_per_probe_pass, the rays.
-constexpr std::uint32_t kBakeRegionTexels = 512U * 512U;
-constexpr std::uint32_t kBakeRaysPerPass = 32;
-constexpr std::uint32_t kBakeRaysPerProbePass = 64;
-
-// Its Params and Light, in std430.
-struct LightmapParams {
-    std::array<std::uint32_t, 4> size{};
-    std::array<std::uint32_t, 4> counts{};
-    std::array<std::uint32_t, 4> step{};
-    std::array<std::uint32_t, 4> flags{};
-    std::array<float, 4> values{};
-    std::array<float, 4> more{};
-    std::array<std::array<float, 4>, 3> space{};
-};
-static_assert(sizeof(LightmapParams) == std::size_t{9} * 16);
-struct LightmapLightRecord {
-    std::array<float, 4> position{};
-    std::array<float, 4> direction{};
-    std::array<float, 4> color{};
-    std::array<float, 4> shape{};
-    std::array<float, 4> more{};
-};
-static_assert(sizeof(LightmapLightRecord) == std::size_t{5} * 16);
 
 // Vulkan's calls this needs, from the device SDL made.
 struct Calls {
@@ -310,7 +210,7 @@ struct Slot {
     VkDeviceSize top_size = 0;
 };
 
-class VulkanRaysImpl final : public VulkanRays {
+class VulkanRaysImpl final : public GpuRays {
 public:
     VulkanRaysImpl(SDL_GPUDevice* sdl, VkInstance instance, VkPhysicalDevice physical,
                    VkDevice device, const Calls& calls)
@@ -539,7 +439,7 @@ public:
         bool copied = false;
         std::vector<std::pair<MeshStructure*, const RayDraw*>> to_build;
         for (const RayDraw& draw : draws) {
-            if (draw.index_count < 3 || draw.vertex_count == 0 || mask_of(draw, lit) == 0) {
+            if (draw.index_count < 3 || draw.vertex_count == 0 || ray_mask(draw, lit) == 0) {
                 placed.push_back(nullptr);
                 continue;
             }
@@ -589,14 +489,14 @@ public:
                 }
             }
             instance.instanceCustomIndex = static_cast<std::uint32_t>(layers.size()) & 0xFFFFFFU;
-            instance.mask = mask_of(draws[i], lit);
+            instance.mask = ray_mask(draws[i], lit);
             instance.instanceShaderBindingTableRecordOffset = 0;
             instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
             instance.accelerationStructureReference = placed[i]->built.address;
             instances.push_back(instance);
             layers.push_back(draws[i].layers);
             instanced.push_back(i);
-            if ((instance.mask & kCastMask) != 0) {
+            if ((instance.mask & kRayCastMask) != 0) {
                 every_layer = every_layer && draws[i].layers != 0;
             }
         }
@@ -640,56 +540,17 @@ public:
 private:
     using MeshKey = std::tuple<std::uint64_t, std::uint32_t, std::uint32_t>;
 
-    // Which rays meet a draw: those from the camera's side, when lit, unless it only casts
-    // shadows, and shadow rays unless it casts none.
-    static std::uint8_t mask_of(const RayDraw& draw, bool lit) {
-        std::uint8_t mask = draw.shadows != ShadowCasting::Off ? kCastMask : 0;
-        if (lit && draw.shadows != ShadowCasting::ShadowsOnly) {
-            mask |= kSeeMask;
-        }
-        return mask;
-    }
-
     // The visibilities of the lights with ray slots and the ambient occlusion, into targets'
     // first three outputs.
     Result<void> trace_shadows(VkCommandBuffer native, Slot& slot, const RayWork& work,
                                const RayShadowFrame& frame, const RayTargets& targets,
                                VkImageView depth, VkImageView normals, bool every_layer) {
-        RayShadowsUniforms uniforms{};
-        for (std::size_t i = 0; i < 16; ++i) {
-            uniforms.to_world.at(i) = static_cast<float>(frame.to_world.at(i));
-        }
-        for (std::size_t row = 0; row < 3; ++row) {
-            for (std::size_t column = 0; column < 4; ++column) {
-                uniforms.view_rows.at(row).at(column) = frame.view_rows.at(row).at(column);
-            }
-        }
-        const auto light_count = static_cast<std::uint32_t>(
-            std::min<std::size_t>(work.lights.size(), kMaxRayShadowLights));
-        uniforms.size = {frame.width, frame.height, frame.samples, light_count};
-        bool every_mask = true;
-        for (std::uint32_t k = 0; k < light_count; ++k) {
-            const RayShadowLight& light = work.lights[k];
-            const Float3& place = light.directional ? light.toward : light.position;
-            uniforms.lights.at(k) = {.place = {place[0], place[1], place[2], light.size},
-                                     .params = {light.opacity, light.directional ? 1.0F : 0.0F,
-                                                static_cast<float>(light.slot), 0.0F},
-                                     .mask = {light.caster_mask, 0, 0, 0}};
-            every_mask = every_mask && light.caster_mask == 0xFFFFFFFFU;
-        }
-        // Every draw casts for every light: rays need not ask which draw they meet.
-        uniforms.options = {every_mask && every_layer ? 1U : 0U, 0, 0, 0};
-        if (work.occlusion) {
-            uniforms.options[1] = 1;
-            uniforms.occlusion = {work.occlusion->radius, work.occlusion->power,
-                                  static_cast<float>(work.occlusion->samples),
-                                  work.occlusion->intensity};
-        }
+        const RayShadowsUniforms uniforms = ray_shadows_uniforms(work, frame, every_layer);
         std::memcpy(slot.uniforms.mapped, &uniforms, sizeof(uniforms));
 
-        std::array<VkImageView, kOutputs> outputs{};
-        std::array<VkImage, kOutputs> output_images{};
-        for (std::size_t i = 0; i < kOutputs; ++i) {
+        std::array<VkImageView, kRayShadowOutputs> outputs{};
+        std::array<VkImage, kRayShadowOutputs> output_images{};
+        for (std::size_t i = 0; i < kRayShadowOutputs; ++i) {
             auto found = native_texture(targets.outputs.at(i));
             if (!found) {
                 return found.error();
@@ -707,8 +568,8 @@ private:
         calls_.bind_pipeline(native, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_);
         calls_.bind_sets(native, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_layout_, 0, 1, &slot.set,
                          0, nullptr);
-        calls_.dispatch(native, (frame.width + kGroupSize - 1) / kGroupSize,
-                        (frame.height + kGroupSize - 1) / kGroupSize, 1);
+        calls_.dispatch(native, (frame.width + kRayGroupSize - 1) / kRayGroupSize,
+                        (frame.height + kRayGroupSize - 1) / kRayGroupSize, 1);
         image_barriers(native, output_images, VK_IMAGE_LAYOUT_GENERAL,
                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
@@ -727,71 +588,14 @@ private:
                              const RayShadowFrame& frame, const RayTargets& targets,
                              VkImageView depth, VkImageView normals) {
         const RayLighting& lighting = *work.lighting;
-        // Each texture once, with the sampler its draws sample it with; past kRayTextures, white.
-        std::vector<std::pair<SDL_GPUTexture*, std::size_t>> used;
-        const auto texture_index = [&](const RayTexture& texture) {
-            if (texture.texture == nullptr) {
-                return kNoTexture;
-            }
-            const std::size_t sampler = (texture.nearest ? 1U : 0U) | (texture.repeat ? 2U : 0U);
-            const std::pair<SDL_GPUTexture*, std::size_t> key{texture.texture, sampler};
-            const auto found = std::find(used.begin(), used.end(), key);
-            if (found != used.end()) {
-                return static_cast<std::uint32_t>(found - used.begin());
-            }
-            if (used.size() >= kRayTextures) {
-                return kNoTexture;
-            }
-            used.push_back(key);
-            return static_cast<std::uint32_t>(used.size() - 1);
-        };
+        RayTextureTable textures;
         std::vector<RayDrawRecord> records;
         records.reserve(instanced.size());
         for (const std::size_t i : instanced) {
-            const RayDraw& draw = draws[i];
-            const MeshSurfaceUniforms& surface = draw.surface;
-            RayDrawRecord& record = records.emplace_back();
-            record.albedo = surface.albedo;
-            record.emission = surface.emission;
-            record.surface = surface.surface;
-            record.metallic_channel = surface.metallic_channel;
-            record.roughness_channel = surface.roughness_channel;
-            record.options = {surface.options[0], surface.options[1], draw.layers, 0};
-            for (std::size_t row = 0; row < 3; ++row) {
-                for (std::size_t column = 0; column < 3; ++column) {
-                    record.normal_rows.at(row).at(column) =
-                        draw.normal_model.at((column * 4) + row);
-                }
-            }
-            record.uv1 = draw.uv1;
-            const VkDeviceAddress vertices = placed[i]->vertices.address;
-            const VkDeviceAddress indices = placed[i]->indices.address;
-            record.buffers = {
-                static_cast<std::uint32_t>(vertices), static_cast<std::uint32_t>(vertices >> 32U),
-                static_cast<std::uint32_t>(indices), static_cast<std::uint32_t>(indices >> 32U)};
-            record.textures = {texture_index(draw.textures[0]), texture_index(draw.textures[1]),
-                               texture_index(draw.textures[2]), texture_index(draw.textures[3])};
-            std::uint32_t cull = 2;
-            if (draw.cull == CullMode::Back) {
-                cull = 0;
-            } else if (draw.cull == CullMode::Front) {
-                cull = 1;
-            }
-            record.more = {texture_index(draw.textures[4]), cull, 0, 0};
+            records.push_back(ray_draw_record(draws[i], placed[i]->vertices.address,
+                                              placed[i]->indices.address, textures));
         }
-        std::vector<RayLightRecord> light_records;
-        light_records.reserve(lighting.lights.size());
-        for (const PathLight& light : lighting.lights) {
-            light_records.push_back(
-                {.position = light.uniforms.position,
-                 .direction = light.uniforms.direction,
-                 .color = light.uniforms.color,
-                 .params = light.uniforms.params,
-                 // As direct_light in src/path_trace.cpp reads the layers it lights.
-                 .masks = {static_cast<std::uint32_t>(light.uniforms.params[3]), light.caster_mask,
-                           light.shadow ? 1U : 0U, 0},
-                 .shadow = {light.shadow_opacity, 0.0F, 0.0F, 0.0F}});
-        }
+        const std::vector<RayLightRecord> light_records = ray_light_records(lighting);
         for (const auto& [buffer, bytes] :
              {std::pair{&slot.draw_records,
                         std::max<std::size_t>(1, records.size()) * sizeof(RayDrawRecord)},
@@ -811,34 +615,12 @@ private:
                         light_records.size() * sizeof(RayLightRecord));
         }
 
-        RayLightFrame uniforms{};
-        for (std::size_t i = 0; i < 16; ++i) {
-            uniforms.to_world.at(i) = static_cast<float>(frame.to_world.at(i));
-        }
-        for (std::size_t row = 0; row < 3; ++row) {
-            for (std::size_t column = 0; column < 4; ++column) {
-                uniforms.view_rows.at(row).at(column) = frame.view_rows.at(row).at(column);
-            }
-        }
-        uniforms.size = {frame.width, frame.height, work.reflection ? work.reflection->samples : 0,
-                         static_cast<std::uint32_t>(light_records.size())};
-        uniforms.gi = {work.gi ? work.gi->samples : 0, 0, 0, 0};
-        if (work.paths) {
-            uniforms.paths = {work.paths->first, work.paths->samples, work.paths->bounces, 0};
-        }
-        uniforms.ambient = {lighting.ambient[0], lighting.ambient[1], lighting.ambient[2],
-                            lighting.sky ? 1.0F : 0.0F};
-        for (std::size_t row = 0; row < 3; ++row) {
-            const Float3& r = lighting.to_sky.at(row);
-            uniforms.sky_rows.at(row) = {r[0], r[1], r[2], 0.0F};
-        }
-        uniforms.sky_rows[0][3] = lighting.sky_energy;
-        uniforms.sky_rows[1][3] = lighting.sky_share;
+        const RayLightFrame uniforms = ray_light_frame(work, frame, light_records.size());
         std::memcpy(slot.light_frame.mapped, &uniforms, sizeof(uniforms));
 
-        std::array<VkImageView, kLightOutputs> outputs{};
-        std::array<VkImage, kLightOutputs> output_images{};
-        for (std::size_t i = 0; i < kLightOutputs; ++i) {
+        std::array<VkImageView, kRayLightOutputs> outputs{};
+        std::array<VkImage, kRayLightOutputs> output_images{};
+        for (std::size_t i = 0; i < kRayLightOutputs; ++i) {
             auto found = native_texture(targets.outputs.at(3 + i));
             if (!found) {
                 return found.error();
@@ -860,6 +642,7 @@ private:
                                    .imageView = white.value().second,
                                    .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
         }
+        const auto& used = textures.used();
         for (std::size_t i = 0; i < used.size(); ++i) {
             auto found = native_texture(used[i].first);
             if (!found) {
@@ -914,8 +697,8 @@ private:
                          &slot.light_set, 0, nullptr);
         const auto run = [&](std::size_t pass) {
             calls_.bind_pipeline(native, VK_PIPELINE_BIND_POINT_COMPUTE, light_pipelines_.at(pass));
-            calls_.dispatch(native, (frame.width + kGroupSize - 1) / kGroupSize,
-                            (frame.height + kGroupSize - 1) / kGroupSize, 1);
+            calls_.dispatch(native, (frame.width + kRayGroupSize - 1) / kRayGroupSize,
+                            (frame.height + kRayGroupSize - 1) / kRayGroupSize, 1);
         };
         if (work.reflection) {
             run(0);
@@ -928,10 +711,10 @@ private:
             run(2);
         }
         if (work.paths) {
-            run(kTracePaths);
+            run(kRayTracePathsPass);
             memory_barrier(native, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-            run(kAveragePaths);
+            run(kRayAveragePathsPass);
         }
         image_barriers(native, output_images, VK_IMAGE_LAYOUT_GENERAL,
                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -943,18 +726,11 @@ private:
     }
 
     Result<LightmapTraced> trace_lightmap(const LightmapTrace& trace) override {
-        const std::size_t texels = std::size_t{trace.width} * trace.height * trace.slices;
-        if (trace.indices.empty() || trace.indices.size() != trace.triangles.size() * 3 ||
-            texels == 0 || trace.albedo.size() != texels || trace.emission.size() != texels ||
-            trace.position.size() != texels || trace.normal.size() != texels ||
-            trace.environment.size() !=
-                std::size_t{trace.environment_width} * trace.environment_height ||
-            trace.environment.empty()) {
+        if (!lightmap_trace_fits(trace)) {
             return Error{ErrorCode::InvalidArgument, "a lightmap trace's layers don't fit it"};
         }
-        const VkDeviceSize texel_bytes = VkDeviceSize{texels} * sizeof(std::array<float, 4>);
-        const VkDeviceSize probe_bytes =
-            VkDeviceSize{trace.probe_points.size()} * 9 * sizeof(std::array<float, 4>);
+        const VkDeviceSize texel_bytes = lightmap_texel_bytes(trace);
+        const VkDeviceSize probe_bytes = lightmap_probe_bytes(trace);
         if (texel_bytes > max_storage_range_ || probe_bytes > max_storage_range_) {
             return Error{ErrorCode::PlatformFailure,
                          "the lightmap's atlas is larger than this GPU's storage buffers"};
@@ -965,48 +741,9 @@ private:
         Bake bake(*this);
 
         // The inputs, through staging buffers into the GPU's memory; the outputs, cleared.
-        std::vector<std::array<float, 4>> probes(trace.probe_points.size());
-        for (std::size_t i = 0; i < probes.size(); ++i) {
-            probes[i] = {trace.probe_points[i][0], trace.probe_points[i][1],
-                         trace.probe_points[i][2], 0.0F};
-        }
-        std::vector<std::array<std::uint32_t, 2>> triangles(trace.triangles.size());
-        for (std::size_t i = 0; i < triangles.size(); ++i) {
-            const BakeTriangle& t = trace.triangles[i];
-            // CullMode's order is the shader's: back, front, none.
-            triangles[i] = {t.slice, static_cast<std::uint32_t>(t.cull)};
-        }
-        std::vector<LightmapLightRecord> lights(trace.lights.size());
-        for (std::size_t i = 0; i < lights.size(); ++i) {
-            const BakeLight& l = trace.lights[i];
-            // LightType's order is the shader's: directional, omni, spot.
-            const auto kind = static_cast<float>(l.type);
-            lights[i] = {
-                .position = {l.position[0], l.position[1], l.position[2], kind},
-                .direction = {l.direction[0], l.direction[1], l.direction[2], l.energy},
-                .color = {l.color[0], l.color[1], l.color[2], l.indirect_energy},
-                .shape = {l.size, l.range, l.attenuation, l.cos_spot_angle},
-                .more = {l.inv_spot_attenuation, l.shadow_blur, l.static_bake ? 1.0F : 0.0F, 0.0F}};
-        }
-        struct Input {
-            const void* data;
-            VkDeviceSize bytes;
-        };
-        // By binding, from 2: vertices, indices, triangles, lights, albedo, emission, positions,
-        // normals, environment, then 13: the probes.
-        const std::array<Input, 10> inputs{{
-            {trace.vertices.data(), trace.vertices.size() * sizeof(BakeVertex)},
-            {trace.indices.data(), trace.indices.size() * sizeof(std::uint32_t)},
-            {triangles.data(), triangles.size() * sizeof(triangles[0])},
-            {lights.data(), lights.size() * sizeof(LightmapLightRecord)},
-            {trace.albedo.data(), trace.albedo.size_bytes()},
-            {trace.emission.data(), trace.emission.size_bytes()},
-            {trace.position.data(), trace.position.size_bytes()},
-            {trace.normal.data(), trace.normal.size_bytes()},
-            {trace.environment.data(), trace.environment.size_bytes()},
-            {probes.data(), probes.size() * sizeof(probes[0])},
-        }};
-        static_assert(sizeof(BakeVertex) == 32);
+        LightmapInputs given;
+        lightmap_inputs(trace, given);
+        const auto& inputs = given.inputs;
         constexpr VkBufferUsageFlags kInput =
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
             VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
@@ -1233,73 +970,30 @@ private:
         calls_.update_sets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0,
                            nullptr);
 
-        LightmapParams params;
-        params.size = {trace.width, trace.height, trace.slices, trace.environment_width};
-        params.counts = {trace.environment_height, static_cast<std::uint32_t>(lights.size()),
-                         trace.rays, trace.bounces};
-        params.flags = {trace.use_texture_for_bounces ? 1U : 0U, 0, 0, 0};
-        params.values = {trace.bias, trace.supersampling, trace.exposure, trace.world_size};
-        params.more = {trace.bounce_indirect_energy, 0.0F, 0.0F, 0.0F};
-        for (std::size_t c = 0; c < 3; ++c) {
-            params.space.at(c) = {trace.probe_space.at(c)[0], trace.probe_space.at(c)[1],
-                                  trace.probe_space.at(c)[2], 0.0F};
-        }
         // One dispatch of a pass over count invocations, its Params set first.
-        const auto dispatch = [&](std::size_t pass, std::uint32_t count) -> Result<void> {
-            std::memcpy(params_buffer.mapped, &params, sizeof(params));
-            return run_commands([&](VkCommandBuffer native) -> Result<void> {
-                memory_barrier(native,
-                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_HOST_BIT,
-                               VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_HOST_WRITE_BIT,
-                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                               VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
-                calls_.bind_pipeline(native, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                     bake_pipelines_.at(pass));
-                calls_.bind_sets(native, VK_PIPELINE_BIND_POINT_COMPUTE, bake_pipeline_layout_, 0,
-                                 1, &set, 0, nullptr);
-                calls_.dispatch(native, (count + kBakeGroupSize - 1) / kBakeGroupSize, 1, 1);
-                return {};
-            });
-        };
-        // Each slice's texels a region at a time: the direct light, then each pass of bounces.
-        const std::uint32_t slice_texels = trace.width * trace.height;
-        const auto each_region = [&](std::size_t pass) -> Result<void> {
-            for (std::uint32_t slice = 0; slice < trace.slices; ++slice) {
-                for (std::uint32_t first = 0; first < slice_texels; first += kBakeRegionTexels) {
-                    const std::uint32_t end = std::min(first + kBakeRegionTexels, slice_texels);
-                    params.step[0] = slice;
-                    params.flags[1] = first;
-                    params.flags[2] = end;
-                    if (auto ran = dispatch(pass, end - first); !ran) {
-                        return ran;
-                    }
-                }
-            }
-            return {};
-        };
-        if (auto ran = each_region(0); !ran) {
+        if (auto ran = run_lightmap_passes(
+                trace, given.lights.size(),
+                [&](std::size_t pass, std::uint32_t count,
+                    const LightmapParams& params) -> Result<void> {
+                    std::memcpy(params_buffer.mapped, &params, sizeof(params));
+                    return run_commands([&](VkCommandBuffer native) -> Result<void> {
+                        memory_barrier(native,
+                                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                                           VK_PIPELINE_STAGE_HOST_BIT,
+                                       VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_HOST_WRITE_BIT,
+                                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+                        calls_.bind_pipeline(native, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                             bake_pipelines_.at(pass));
+                        calls_.bind_sets(native, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                         bake_pipeline_layout_, 0, 1, &set, 0, nullptr);
+                        calls_.dispatch(native, (count + kBakeGroupSize - 1) / kBakeGroupSize, 1,
+                                        1);
+                        return {};
+                    });
+                });
+            !ran) {
             return ran.error();
-        }
-        if (trace.bounces > 0) {
-            for (std::uint32_t from = 0; from < trace.rays; from += kBakeRaysPerPass) {
-                params.step[1] = from;
-                params.step[2] = std::min(from + kBakeRaysPerPass, trace.rays);
-                if (auto ran = each_region(1); !ran) {
-                    return ran.error();
-                }
-            }
-        }
-        const auto probe_count = static_cast<std::uint32_t>(trace.probe_points.size());
-        const std::uint32_t probe_rays = std::clamp(trace.probe_rays, 16U, 8192U);
-        if (probe_count > 0) {
-            params.step[3] = probe_count;
-            for (std::uint32_t from = 0; from < probe_rays; from += kBakeRaysPerProbePass) {
-                params.step[1] = from;
-                params.step[2] = std::min(from + kBakeRaysPerProbePass, probe_rays);
-                if (auto ran = dispatch(2, probe_count); !ran) {
-                    return ran.error();
-                }
-            }
         }
 
         // Back to the CPU.
@@ -1329,21 +1023,7 @@ private:
             !read) {
             return read.error();
         }
-        LightmapTraced traced;
-        traced.light_source.resize(texels);
-        traced.accum.resize(texels);
-        std::memcpy(traced.light_source.data(), back[0].mapped, texel_bytes);
-        std::memcpy(traced.accum.data(), back[1].mapped, texel_bytes);
-        traced.probe_sh.resize(probe_count);
-        const float scale = 4.0F / static_cast<float>(probe_rays);
-        const auto* sums = static_cast<const std::array<float, 4>*>(back[2].mapped);
-        for (std::size_t probe = 0; probe < probe_count; ++probe) {
-            for (std::size_t j = 0; j < 9; ++j) {
-                const std::array<float, 4>& sum = sums[(probe * 9) + j];
-                traced.probe_sh[probe].at(j) = {sum[0] * scale, sum[1] * scale, sum[2] * scale};
-            }
-        }
-        return traced;
+        return lightmap_traced(trace, back[0].mapped, back[1].mapped, back[2].mapped);
     }
 
     // An SDL texture's Vulkan image and view.
@@ -1794,7 +1474,7 @@ private:
     }
 
     void write_descriptors(Slot& slot, VkImageView depth, VkImageView normals,
-                           const std::array<VkImageView, kOutputs>& outputs) {
+                           const std::array<VkImageView, kRayShadowOutputs>& outputs) {
         VkWriteDescriptorSetAccelerationStructureKHR structure{};
         structure.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
         structure.accelerationStructureCount = 1;
@@ -1846,7 +1526,7 @@ private:
     }
 
     void write_light_descriptors(Slot& slot, VkImageView depth, VkImageView normals,
-                                 const std::array<VkImageView, kLightOutputs>& outputs,
+                                 const std::array<VkImageView, kRayLightOutputs>& outputs,
                                  VkImageView environment,
                                  const std::array<VkDescriptorImageInfo, kRayTextures>& textures,
                                  VkBuffer sums, VkImageView background) {
@@ -2100,7 +1780,7 @@ private:
     VkPipeline pipeline_ = VK_NULL_HANDLE;
     VkDescriptorSetLayout light_set_layout_ = VK_NULL_HANDLE;
     VkPipelineLayout light_pipeline_layout_ = VK_NULL_HANDLE;
-    std::array<VkPipeline, kLightPasses> light_pipelines_{};
+    std::array<VkPipeline, kRayLightPasses> light_pipelines_{};
     VkDescriptorSetLayout bake_set_layout_ = VK_NULL_HANDLE;
     VkPipelineLayout bake_pipeline_layout_ = VK_NULL_HANDLE;
     std::array<VkPipeline, kBakePasses> bake_pipelines_{};
@@ -2156,7 +1836,7 @@ void* VulkanRayOptions::options() const {
     return &storage_->options;
 }
 
-std::unique_ptr<VulkanRays> make_vulkan_rays(SDL_GPUDevice* device) {
+std::unique_ptr<GpuRays> make_vulkan_rays(SDL_GPUDevice* device) {
     if (device == nullptr || std::strcmp(SDL_GetGPUDeviceDriver(device), "vulkan") != 0) {
         return nullptr;
     }
@@ -2196,7 +1876,7 @@ void* VulkanRayOptions::options() const {
     return nullptr;
 }
 
-std::unique_ptr<VulkanRays> make_vulkan_rays(SDL_GPUDevice* /*device*/) {
+std::unique_ptr<GpuRays> make_vulkan_rays(SDL_GPUDevice* /*device*/) {
     return nullptr;
 }
 

@@ -59,6 +59,7 @@ add_library(slash_render
     src/particles3d.cpp
     src/path_trace.cpp
     src/post.cpp
+    src/ray_records.cpp
     src/ray_shadows.cpp
     src/resize.cpp
     src/shader.cpp
@@ -105,6 +106,16 @@ if(APPLE)
     target_sources(slash_render PRIVATE src/native_copy_metal.mm)
     set_source_files_properties(src/native_copy_metal.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
     target_link_libraries(slash_render PRIVATE "-framework Metal")
+endif()
+
+# Ray tracing on macOS's Metal (src/metal_rays.mm), on GPUs that support it from macOS 13, which
+# make_metal_rays checks once for the whole file.
+if(APPLE AND CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    target_sources(slash_render PRIVATE src/metal_rays.mm)
+    set_source_files_properties(src/metal_rays.mm PROPERTIES
+        COMPILE_OPTIONS "-fobjc-arc;-Wno-unguarded-availability-new")
+else()
+    target_sources(slash_render PRIVATE src/metal_rays_none.cpp)
 endif()
 
 # Web builds draw with WebGPU where the browser has it, through Dawn's webgpu.h for Emscripten

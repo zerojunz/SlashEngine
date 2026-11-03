@@ -15,10 +15,12 @@
 #include <span>
 #include <vector>
 
-// Ray tracing on the GPU device's Vulkan backend, which SDL3's GPU API has none of: the device
-// is made with VK_KHR_acceleration_structure and VK_KHR_ray_query where they are
-// (vulkan_ray_options), and the frame's rays are recorded into SDL's command buffer with Vulkan's
-// own calls, as the temporal upscalers are. Each mesh a frame draws gets a bottom-level
+// Ray tracing on the GPU device's Vulkan and Metal backends, which SDL3's GPU API has none of.
+// On Vulkan the device is made with VK_KHR_acceleration_structure and VK_KHR_ray_query where they
+// are (VulkanRayOptions), and the frame's rays are recorded into SDL's command buffer with
+// Vulkan's own calls, as the temporal upscalers are (src/vulkan_rays.cpp); on Metal, where the
+// GPU supports ray tracing, with Metal's own encoders, the shaders' MSL made by slash-ray-msl
+// with set 0 as an argument buffer (src/metal_rays.mm). Each mesh a frame draws gets a bottom-level
 // acceleration structure built from a copy of its SDL buffers, kept until the mesh changes, and
 // each frame a top-level one with an instance a draw, placed by its transform; then
 // shaders/ray_shadows.comp traces the shadows into two textures the GPU device copies into the
@@ -127,15 +129,15 @@ struct RayTargets {
     SDL_GPUTexture* background = nullptr;
 };
 
-// The GPU device's rays on Vulkan.
-class VulkanRays {
+// The GPU device's rays on Vulkan or Metal.
+class GpuRays {
 public:
-    VulkanRays() = default;
-    VulkanRays(const VulkanRays&) = delete;
-    VulkanRays& operator=(const VulkanRays&) = delete;
-    VulkanRays(VulkanRays&&) = delete;
-    VulkanRays& operator=(VulkanRays&&) = delete;
-    virtual ~VulkanRays() = default;
+    GpuRays() = default;
+    GpuRays(const GpuRays&) = delete;
+    GpuRays& operator=(const GpuRays&) = delete;
+    GpuRays(GpuRays&&) = delete;
+    GpuRays& operator=(GpuRays&&) = delete;
+    virtual ~GpuRays() = default;
 
     // Records the frame's rays into commands, between SDL's passes: the structures of draws, the
     // shader writing targets' visibilities of lights, as run_ray_shadows does on the CPU, and the
@@ -155,6 +157,9 @@ public:
 
 // The rays of a device made with VulkanRayOptions, or null where it has no ray queries (another
 // backend, or a device made without them).
-[[nodiscard]] std::unique_ptr<VulkanRays> make_vulkan_rays(SDL_GPUDevice* device);
+[[nodiscard]] std::unique_ptr<GpuRays> make_vulkan_rays(SDL_GPUDevice* device);
+// The rays of a Metal device whose GPU supports ray tracing (MTLDevice's supportsRaytracing), on
+// macOS 13 or later, whose buffers have GPU addresses; null elsewhere.
+[[nodiscard]] std::unique_ptr<GpuRays> make_metal_rays(SDL_GPUDevice* device);
 
 } // namespace slash::render::detail
