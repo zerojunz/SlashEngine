@@ -2292,11 +2292,12 @@ device's `native_device`, and its copy turns the picture over, as OpenXR's GL ro
 `prepare_openxr_device` makes the instance with the graphics extension before the render device,
 which `render::DeviceOptions::xr` makes as the runtime asks, through hooks
 `cmake/patches/sdl-openxr.cmake` adds to SDL (the runtime makes Vulkan's instance and device and
-names the GPU, or names Direct3D 12's adapter); the session makes a swapchain and a render
+names the GPU, or names Direct3D 12's adapter or Metal's `MTLDevice`); the session makes a
+swapchain and a render
 target per view, `begin_openxr_frame` waits, begins and acquires, `Game::draw_headset` draws each
 eye with `scene3d::eye_view`, and `end_openxr_frame` copies the targets in with
 `RenderDevice::copy_to_native` (`src/native_copy.cpp`: barriers and a copy recorded into SDL's
-command buffer) and ends the frame with a projection layer. Without a device, sessions need
+command buffer; a blit encoder on Metal, `src/native_copy_metal.mm`) and ends the frame with a projection layer. Without a device, sessions need
 `XR_MND_headless` and end each frame with no layers. `tests/fake_openxr_runtime.cpp`
 is a stand-in runtime the loader loads through the manifest the build writes
 (`tests/fake_openxr.json`), handed to it with `xr::set_openxr_runtime` (slash-cli's
@@ -2304,8 +2305,8 @@ is a stand-in runtime the loader loads through the manifest the build writes
 elevated processes Windows CI runs), playing a script (`FAKE_OPENXR_SCRIPT`: poses and inputs by frame,
 lost poses, recentering, exit, eye sizes and pixels to read back) and logging the calls it gets
 (`FAKE_OPENXR_LOG`); offered `XR_KHR_vulkan_enable2`, or `XR_KHR_opengl_enable` and
-`XR_MNDX_egl_enable`, it hands out Vulkan or OpenGL swapchains and logs the probed pixels of each
-eye it is shown. `examples/openxr-runtime` runs a session on it.
+`XR_MNDX_egl_enable`, or on macOS `XR_KHR_metal_enable` (`tests/fake_openxr_metal.mm`), it hands
+out Vulkan, OpenGL or Metal swapchains and logs the probed pixels of each eye it is shown. `examples/openxr-runtime` runs a session on it.
 
 On Android the loader is built with its JNI parts (jnipp and android-jni-wrappers, which need
 exceptions) and asks the system's runtime broker for the runtime; `src/openxr_platform.cpp`

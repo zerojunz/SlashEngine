@@ -1366,6 +1366,8 @@ Result<OpenXRDevice> OpenXR::prepare_device(world::World& world, std::string_vie
     const std::string_view wanted =
 #if defined(_WIN32)
         driver == "auto" ? std::string_view("d3d12") : driver;
+#elif defined(__APPLE__)
+        driver == "auto" ? std::string_view("metal") : driver;
 #else
         driver == "auto" ? std::string_view("vulkan") : driver;
 #endif
@@ -1378,6 +1380,8 @@ Result<OpenXRDevice> OpenXR::prepare_device(world::World& world, std::string_vie
         graphics_ = detail::make_opengl_graphics();
     } else if (wanted == "opengl_es") {
         graphics_ = detail::make_opengl_es_graphics();
+    } else if (wanted == "metal") {
+        graphics_ = detail::make_metal_graphics();
     }
     if (graphics_ == nullptr) {
         std::string drivers = "\"vulkan\"";
@@ -1389,6 +1393,9 @@ Result<OpenXRDevice> OpenXR::prepare_device(world::World& world, std::string_vie
         }
         if (detail::make_opengl_es_graphics() != nullptr) {
             drivers += ", \"opengl_es\"";
+        }
+        if (detail::make_metal_graphics() != nullptr) {
+            drivers += ", \"metal\"";
         }
         return make_error(ErrorCode::InvalidArgument,
                           "OpenXR draws with " + drivers + ", not \"" + std::string(driver) + "\"");
