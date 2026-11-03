@@ -1,12 +1,25 @@
+#include "../engine/render/src/lightmap_light_hlsl.hpp"
 #include "../engine/render/src/lightmap_light_msl.hpp"
 #include "../engine/render/src/lightmap_light_shaders.hpp"
+#include "../engine/render/src/ray_light_hlsl.hpp"
 #include "../engine/render/src/ray_light_msl.hpp"
 #include "../engine/render/src/ray_light_shaders.hpp"
 #include "../engine/render/src/ray_records.hpp"
+#include "../engine/render/src/ray_shadows_hlsl.hpp"
 #include "../engine/render/src/ray_shadows_msl.hpp"
 #include "../engine/render/src/ray_shadows_shaders.hpp"
 
 #include <doctest/doctest.h>
+
+#include <slash/core/sha256.hpp>
+
+// The DXIL headers come from the "DXIL shaders" workflow (.github/workflows/dxil.yml).
+#if __has_include("../engine/render/src/ray_shadows_dxil.hpp")
+#include "../engine/render/src/lightmap_light_dxil.hpp"
+#include "../engine/render/src/ray_light_dxil.hpp"
+#include "../engine/render/src/ray_shadows_dxil.hpp"
+#define SLASH_HAS_RAY_DXIL 1
+#endif
 
 #include <array>
 #include <cstddef>
@@ -44,6 +57,41 @@ TEST_CASE("the ray shaders' MSL was made from the GLSL their SPIR-V was") {
     // Metal samples the prepass's depth as a depth texture.
     CHECK(std::string_view(shaders::kRayShadowsMsl).find("depth2d<float> depth_texture") !=
           std::string_view::npos);
+}
+
+TEST_CASE("the ray shaders' HLSL was made from their GLSL, and their DXIL from the HLSL") {
+    CHECK(fnv1a(shaders::kRayShadowsGlsl) == shaders::kRayShadowsHlslFrom);
+    CHECK(fnv1a(shaders::kRayLightGlsl) == shaders::kRayLightHlslFrom);
+    CHECK(fnv1a(shaders::kLightmapLightGlsl) == shaders::kLightmapLightHlslFrom);
+    // Each names the root signature Direct3D 12 makes from its DXIL.
+    for (const std::string_view hlsl :
+         {std::string_view(shaders::kRayShadowsHlsl), std::string_view(shaders::kRayLightHlsl),
+          std::string_view(shaders::kLightmapLightHlsl)}) {
+        CHECK(hlsl.find("[RootSignature(\"DescriptorTable(") != std::string_view::npos);
+        CHECK(hlsl.find("RayQuery<") != std::string_view::npos);
+    }
+#ifdef SLASH_HAS_RAY_DXIL
+    CHECK(slash::sha256_hex(shaders::kRayShadowsHlsl) == shaders::kRayShadowsDxilFrom);
+    CHECK(slash::sha256_hex(shaders::kRayLightHlsl) == shaders::kRayLightDxilFrom);
+    CHECK(slash::sha256_hex(shaders::kLightmapLightHlsl) == shaders::kLightmapLightDxilFrom);
+#endif
+}
+
+TEST_CASE("the ray shaders' descriptor tables hold each binding in its range") {
+    // The light's shader: one constant buffer, then its 71 read-only views (its 64 textures among
+    // them, then the sky's cube), its 4 storage textures and the meshes' unbounded buffers.
+    const auto& light = shaders::kRayLightHlslSlots;
+    REQUIRE(std::size(light) == 14);
+    CHECK(light[4][0] == 0);
+    CHECK(light[12][0] - light[8][0] == static_cast<int>(kRayTextures));
+    CHECK(light[12][1] - light[8][1] == static_cast<int>(kRayTextures));
+    CHECK(light[13][0] == 76);
+    CHECK(shaders::kRayLightHlslSamplers == 68);
+    for (const auto& slot : shaders::kRayShadowsHlslSlots) {
+        CHECK(slot[0] >= 0);
+    }
+    CHECK(shaders::kRayShadowsHlslSamplers == 2);
+    CHECK(shaders::kLightmapLightHlslSamplers == 0);
 }
 
 TEST_CASE("the ray shaders' argument buffers place each binding where Metal's side sets it") {

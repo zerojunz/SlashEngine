@@ -1,7 +1,9 @@
 #version 460
 #extension GL_EXT_ray_query : require
+#ifndef SLASH_D3D12
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_buffer_reference_uvec2 : require
+#endif
 #extension GL_EXT_nonuniform_qualifier : require
 
 // Ray-traced reflections on a GPU that traces rays (RenderDevice::ray_tracing), after Forward+'s
@@ -99,10 +101,18 @@ layout(set = 0, binding = 11, std430) buffer Sums {
 // color.
 layout(set = 0, binding = 12) uniform sampler2D background;
 
+#ifdef SLASH_D3D12
+// Direct3D 12 has no buffer addresses: a mesh's vertices (Vertex3D, 15 words each) and triangles
+// are buffers in a descriptor array, and an address's x their place in it.
+layout(set = 0, binding = 13, std430) readonly buffer Meshes {
+    uint words[];
+} meshes[];
+#else
 // A mesh's vertices (Vertex3D, 15 words each) and triangles, by device address.
 layout(buffer_reference, std430, buffer_reference_align = 4) readonly buffer Words {
     uint words[];
 };
+#endif
 
 const uint kVertexWords = 15u;
 const uint kNoTexture = 0xFFFFFFFFu;
@@ -191,7 +201,11 @@ float power(float x, float y) {
 
 // A vertex's words.
 uint word(uvec2 address, uint at) {
+#ifdef SLASH_D3D12
+    return meshes[nonuniformEXT(address.x)].words[at];
+#else
     return Words(address).words[at];
+#endif
 }
 vec3 vector_at(uvec2 address, uint at) {
     return vec3(uintBitsToFloat(word(address, at)), uintBitsToFloat(word(address, at + 1u)),

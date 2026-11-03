@@ -35,6 +35,6 @@ frame.capture {"points":[[96,20],[272,90],[208,130],[160,165]],"path":"shots/roo
 - Turning `ssao_enabled` off turns the traced occlusion off too, so the last capture matches
   ssao-3d's last.
 
-Run as a game (`slash-cli run`), the rays are traced on the GPU with Vulkan's ray queries where
-the GPU has them, matching the capture to a few levels. GPUs that can't trace rays yet draw the
-room with SSAO.
+Run as a game (`slash-cli run`), the rays are traced on the GPU with Vulkan's, Metal's or
+Direct3D 12's ray queries where the GPU has them, matching the capture to a few levels. GPUs that
+can't trace rays draw the room with SSAO.

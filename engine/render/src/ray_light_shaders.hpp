@@ -6575,8 +6575,10 @@ alignas(4) inline constexpr unsigned char kRayLightSpirv[] = {
 // The GLSL it was compiled from, which the shaders_up_to_date test compares with the shader.
 inline constexpr char kRayLightGlsl[] = R"glsl(#version 460
 #extension GL_EXT_ray_query : require
+#ifndef SLASH_D3D12
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_buffer_reference_uvec2 : require
+#endif
 #extension GL_EXT_nonuniform_qualifier : require
 
 // Ray-traced reflections on a GPU that traces rays (RenderDevice::ray_tracing), after Forward+'s
@@ -6674,10 +6676,18 @@ layout(set = 0, binding = 11, std430) buffer Sums {
 // color.
 layout(set = 0, binding = 12) uniform sampler2D background;
 
+#ifdef SLASH_D3D12
+// Direct3D 12 has no buffer addresses: a mesh's vertices (Vertex3D, 15 words each) and triangles
+// are buffers in a descriptor array, and an address's x their place in it.
+layout(set = 0, binding = 13, std430) readonly buffer Meshes {
+    uint words[];
+} meshes[];
+#else
 // A mesh's vertices (Vertex3D, 15 words each) and triangles, by device address.
 layout(buffer_reference, std430, buffer_reference_align = 4) readonly buffer Words {
     uint words[];
 };
+#endif
 
 const uint kVertexWords = 15u;
 const uint kNoTexture = 0xFFFFFFFFu;
@@ -6735,15 +6745,15 @@ void basis(vec3 n, out vec3 t, out vec3 b) {
 }
 
 // GGX's microfacet normals as v sees them, about n: sample_visible_normal in src/path_trace.cpp.
-vec3 sample_visible_normal(vec3 n, vec3 v, float alpha, float u1, float u2) {
+vec3 s)glsl"
+    R"glsl(ample_visible_normal(vec3 n, vec3 v, float alpha, float u1, float u2) {
     vec3 t;
     vec3 b;
     basis(n, t, b);
     vec3 vl = vec3(dot(v, t), dot(v, b), dot(v, n));
     vec3 vh = normalize(vec3(alpha * vl.x, alpha * vl.y, vl.z));
     float lensq = (vh.x * vh.x) + (vh.y * vh.y);
-    vec3 t1 = lensq > 0.0 ? vec3(-vh.y, vh.)glsl"
-    R"glsl(x, 0.0) / sqrt(lensq) : vec3(1.0, 0.0, 0.0);
+    vec3 t1 = lensq > 0.0 ? vec3(-vh.y, vh.x, 0.0) / sqrt(lensq) : vec3(1.0, 0.0, 0.0);
     vec3 t2 = cross(vh, t1);
     float r = sqrt(u1);
     float turn = 2.0 * kPi * u2;
@@ -6767,7 +6777,11 @@ float power(float x, float y) {
 
 // A vertex's words.
 uint word(uvec2 address, uint at) {
+#ifdef SLASH_D3D12
+    return meshes[nonuniformEXT(address.x)].words[at];
+#else
     return Words(address).words[at];
+#endif
 }
 vec3 vector_at(uvec2 address, uint at) {
     return vec3(uintBitsToFloat(word(address, at)), uintBitsToFloat(word(address, at + 1u)),
@@ -6931,7 +6945,8 @@ vec3 light_compute(vec3 n, vec3 l, vec3 v, vec3 light_color, float attenuation, 
     if (metallic < 1.0) {
         float fd90_minus_1 = (2.0 * c_l_dot_h * c_l_dot_h * roughness) - 0.5;
         float fd_v = 1.0 + (fd90_minus_1 * schlick_fresnel(c_n_dot_v));
-        float fd_l = 1.0 + (fd90_minus_1 * schlick_fresnel(c_n_dot_l));
+)glsl"
+    R"glsl(        float fd_l = 1.0 + (fd90_minus_1 * schlick_fresnel(c_n_dot_l));
         diffuse = light_color * ((1.0 / kPi) * fd_v * fd_l * c_n_dot_l * attenuation);
     }
     if (roughness > 0.0) {
@@ -6939,8 +6954,7 @@ vec3 light_compute(vec3 n, vec3 l, vec3 v, vec3 light_color, float attenuation, 
         float a = c_n_dot_h * alpha;
         float k = alpha / (1.0 - (c_n_dot_h * c_n_dot_h) + (a * a));
         float d = k * k * (1.0 / kPi);
-        float g = 0.5 / mix(2.0)glsl"
-    R"glsl( * c_n_dot_l * c_n_dot_v, c_n_dot_l + c_n_dot_v, alpha);
+        float g = 0.5 / mix(2.0 * c_n_dot_l * c_n_dot_v, c_n_dot_l + c_n_dot_v, alpha);
         float f90 = clamp(50.0 * f0.y, 0.0, 1.0);
         vec3 f = f0 + ((f90 - f0) * schlick_fresnel(c_l_dot_h));
         specular = f * (c_n_dot_l * d * g) * light_color * (attenuation * specular_amount);
@@ -7139,15 +7153,15 @@ bool surface_at(uvec2 pixel, out vec3 origin, out vec3 normal, out vec3 near) {
     if (!(depth > 0.0)) {
         return false;
     }
-    vec2 ndc = vec2(((float(pixel.x) + 0.5) / float(size.x) * 2.0) - 1.0,
+    vec2 ndc = vec2()glsl"
+    R"glsl(((float(pixel.x) + 0.5) / float(size.x) * 2.0) - 1.0,
                     1.0 - ((float(pixel.y) + 0.5) / float(size.y) * 2.0));
     vec4 clip = to_world * vec4(ndc, depth, 1.0);
     vec3 world = clip.xyz / clip.w;
     vec4 near_clip = to_world * vec4(ndc, 1.0, 1.0);
     near = near_clip.xyz / near_clip.w;
     vec3 seen = vec3(dot(view_rows[0].xyz, world) + view_rows[0].w,
-                     dot(view_rows[1])glsl"
-    R"glsl(.xyz, world) + view_rows[1].w,
+                     dot(view_rows[1].xyz, world) + view_rows[1].w,
                      dot(view_rows[2].xyz, world) + view_rows[2].w);
     vec3 facing = (texelFetch(normal_texture, ivec2(pixel), 0).rgb * 2.0) - 1.0;
     if (dot(facing, seen) > 0.0) {
@@ -7337,7 +7351,8 @@ vec4 trace_path(float x, float y, uint seed, inout uint counter) {
              (met.f0.z + ((1.0 - met.f0.z) * fresnel))) /
             3.0;
         float total = diffuse_weight + specular_weight;
-        if (!(total > 0.0)) {
+        if (!(total > 0.0)))glsl"
+    R"glsl( {
             break;
         }
         float specular_share = specular_weight / total;
@@ -7349,8 +7364,7 @@ vec4 trace_path(float x, float y, uint seed, inout uint counter) {
         float u2 = next_random(seed, counter);
         vec3 bounced;
         if (pick < specular_share) {
-            vec)glsl"
-    R"glsl(3 h = sample_visible_normal(n, met.v, alpha, u1, u2);
+            vec3 h = sample_visible_normal(n, met.v, alpha, u1, u2);
             bounced = (h * (2.0 * dot(met.v, h))) - met.v;
         } else {
             vec3 t;

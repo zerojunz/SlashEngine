@@ -823,6 +823,8 @@ public:
             rays_ = make_vulkan_rays(device_);
         } else if (backend_ == Backend::Metal) {
             rays_ = make_metal_rays(device_);
+        } else if (backend_ == Backend::D3D12) {
+            rays_ = make_d3d12_rays(device_);
         }
         if (auto made = make_shaders(ShaderKind::Sprite); !made) {
             return made;
@@ -6910,9 +6912,9 @@ private:
     };
     Screen screen_;
     SDL_GPUTexture* no_screen_ = nullptr;
-    // Ray queries on Vulkan and Metal where the GPU has them (src/gpu_rays.hpp), the textures they
-    // write a frame's shadows, occlusion, reflections and ambient light into, and whether this
-    // frame traces them.
+    // Ray queries on Vulkan, Metal and Direct3D 12 where the GPU has them (src/gpu_rays.hpp), the
+    // textures they write a frame's shadows, occlusion, reflections and ambient light into, and
+    // whether this frame traces them.
     std::unique_ptr<GpuRays> rays_;
     struct RayShadowTextures {
         std::array<SDL_GPUTexture*, 6> textures{};
