@@ -6111,9 +6111,22 @@ game draws each eye into a render target of that size from the eye's place
 with a projection layer of the views. The window still shows the current camera. A game with no
 window, or a session, makes a headless session instead, which needs a runtime with
 `XR_MND_headless` and submits frames with no layers; a runtime that can do neither says so.
-`xr.state`'s `openxr` says which driver it draws with (`graphics`). OpenGL ES, and with it
-Android, Metal, the web and iOS, which have no loader yet, come later. [examples/openxr-runtime](../../examples/openxr-runtime/) runs a
-session on the engine's stand-in runtime.
+`xr.state`'s `openxr` says which driver it draws with (`graphics`). [examples/openxr-runtime](../../examples/openxr-runtime/)
+runs a session on the engine's stand-in runtime.
+
+On Android (Meta Quest, Pico, Android XR and other standalone headsets) the loader is the same
+Khronos loader, built into the game as Godot's `openxr_loader_for_android` package is: it is given
+the app's Java VM and activity (`xrInitializeLoaderKHR`, then `XR_KHR_android_create_instance`)
+and asks the system's runtime broker for the active runtime. The game draws with Vulkan
+(`XR_KHR_vulkan_enable2`), or with `XR_KHR_opengl_es_enable` on the `opengl_es` driver's EGL
+context. An export of a game that enables XR adds what Godot's export adds in XR mode to the
+manifest: the `org.khronos.openxr.permission.OPENXR` and `OPENXR_SYSTEM` permissions, the queries
+for the runtime broker and the runtime's and API layers' services, the
+`android.hardware.vr.headtracking` feature, and the `org.khronos.openxr.intent.category.IMMERSIVE_HMD`
+and `com.oculus.intent.category.VR` categories that start the game in the headset. Metal, the web
+and iOS have no loader yet. Headless, a game starts no headset, but looks for the runtime and
+reports it in its summary's `xr` (`runtime`, and the `error` when none is found), which an
+export's `--test` shows.
 
 ## Video
 
