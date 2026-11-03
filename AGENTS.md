@@ -2019,8 +2019,13 @@ NSWindow, or the AT-SPI adapter on Linux. Games and `slash-cli run` call `Backen
 each tick, which runs queued requests through `ui::accessibility_action` and sets
 `ui::Settings::screen_reader_active`. The `crate_licenses` test holds every crate to the allowed
 licenses and THIRD_PARTY.md's crate table; `atspi_screen_reader` reads and presses a menu through
-AT-SPI under `dbus-run-session` (needs `at-spi2-core`). `examples/accessibility` works a pause
-menu as a screen reader would.
+AT-SPI under `dbus-run-session` (needs `at-spi2-core`). Browsers have no AccessKit adapter, so on
+the web `Backend::attach` mirrors the tree as WAI-ARIA elements over the canvas (`src/web.cpp`),
+hidden and out of the pointer's way, which the page's screen reader reads: `dom_element` maps a
+node to its role and attributes and `dom_changes` says what the page adds, changes and removes
+(`slash/accessibility/web.hpp`, `src/dom.cpp`, the same on every platform so tests read it
+natively), and the clicks and focus the elements get come back through `dom_requests`.
+`examples/accessibility` works a pause menu as a screen reader would.
 
 ## Localization
 
