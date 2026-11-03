@@ -9,10 +9,12 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <filesystem>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -151,6 +153,12 @@ Bytes file_of(const Bytes& tracks, const Bytes& clusters) {
                                                    element(0x1654AE6B, tracks), clusters}))});
 }
 
+// A cluster of a black key frame.
+Bytes cluster_of_silence() {
+    return element(0x1F43B675,
+                   join({number(0xE7, 0), block(0xA3, 1, 0x80, {}, key_frame({0, 0, 0}))}));
+}
+
 std::string error_of(const Bytes& bytes) {
     auto read = video::read_matroska(bytes);
     return read ? std::string() : read.error().message;
@@ -246,7 +254,8 @@ TEST_CASE("video: Matroska's laced blocks, clusters of unknown size and what can
     CHECK(decoded.value().samples[0] * 32768.0F == doctest::Approx(1000 + (0.70710678 * 7000)));
     CHECK(decoded.value().samples[1] * 32768.0F == doctest::Approx(2000 + (0.70710678 * 8000)));
 
-    // Opus is read, and waits for its decoder.
+    // Opus is read and decoded: this packet is 20 milliseconds of stereo CELT, the first 312
+    // samples of which are the pre-skip.
     Bytes opus_head{'O',  'p',  'u',  's',  'H', 'e', 'a', 'd', 1, 2,
                     0x38, 0x01, 0x80, 0xBB, 0,   0,   0,   0,   0};
     const Bytes with_opus = file_of(
@@ -259,9 +268,22 @@ TEST_CASE("video: Matroska's laced blocks, clusters of unknown size and what can
     CHECK(read.value().audio[0].codec == video::AudioTrack::Codec::Opus);
     CHECK(read.value().audio[0].pre_skip == 312);
     CHECK(read.value().audio[0].sample_rate == 48000);
+    decoded = video::decode_audio(read.value(), 0);
+    REQUIRE_MESSAGE(decoded, (decoded ? std::string() : decoded.error().message));
+    CHECK(decoded.value().sample_rate == 48000);
+    CHECK(decoded.value().samples.size() == std::size_t{(960 - 312) * 2});
+    // An OpusHead that isn't one, and a codec nothing plays.
+    opus_head[0] = 'X';
+    read = video::read_matroska(file_of(
+        join({video_track("V_AV1"), audio_track(2, "A_OPUS", 2, element(0x63A2, opus_head))}),
+        cluster_of_silence()));
     CHECK(video::decode_audio(read.value(), 0).error().message ==
-          "the video's audio is A_OPUS, which can't be played yet; videos play PCM audio "
-          "(A_PCM/INT/LIT or A_PCM/FLOAT/IEEE) in .mkv files");
+          "the video's Opus track's CodecPrivate isn't an OpusHead of version 0");
+    read = video::read_matroska(
+        file_of(join({video_track("V_AV1"), audio_track(2, "A_VORBIS", 2)}), cluster_of_silence()));
+    CHECK(video::decode_audio(read.value(), 0).error().message ==
+          "the video's audio is A_VORBIS, which can't be played; videos play Opus (A_OPUS) and "
+          "PCM (A_PCM/INT/LIT or A_PCM/FLOAT/IEEE) audio");
 
     // What can't be read says why.
     const Bytes cluster = element(
@@ -279,6 +301,178 @@ TEST_CASE("video: Matroska's laced blocks, clusters of unknown size and what can
     Bytes cut = file_of(video_track("V_AV1"), cluster);
     cut.resize(cut.size() - 10);
     CHECK(error_of(cut).starts_with("the file is cut short at byte "));
+}
+
+namespace {
+
+// frames of 48 kHz sound in WAV's order of channels, with a sine of amplitude at hz in channel
+// on, the rest silent.
+video::PcmAudio tone_in(int channels, int on, int frames, double hz, double amplitude) {
+    video::PcmAudio audio;
+    audio.channels = channels;
+    audio.samples.assign(static_cast<std::size_t>(frames) * static_cast<std::size_t>(channels), 0);
+    for (int i = 0; i < frames; ++i) {
+        audio.samples[(static_cast<std::size_t>(i) * static_cast<std::size_t>(channels)) +
+                      static_cast<std::size_t>(on)] =
+            static_cast<std::int16_t>(
+                std::lround(amplitude * std::sin(2.0 * 3.14159265358979 * hz * i / 48000.0)));
+    }
+    return audio;
+}
+
+// The RMS of one channel of interleaved samples, from frame first for count frames.
+double rms(const std::vector<float>& samples, int channels, int channel, std::size_t first,
+           std::size_t count) {
+    double sum = 0.0;
+    for (std::size_t i = first; i < first + count; ++i) {
+        const double value =
+            samples[(i * static_cast<std::size_t>(channels)) + static_cast<std::size_t>(channel)];
+        sum += value * value;
+    }
+    return std::sqrt(sum / static_cast<double>(count));
+}
+
+std::uint64_t fnv1a(std::span<const std::uint8_t> bytes,
+                    std::uint64_t hash = 14695981039346656037ULL) {
+    for (const std::uint8_t byte : bytes) {
+        hash = (hash ^ byte) * 1099511628211ULL;
+    }
+    return hash;
+}
+
+} // namespace
+
+TEST_CASE("video: Opus sound in WebM files, encoded and decoded with libopus") {
+    // Half a second of a 1 kHz tone on the left and 500 Hz at half the level on the right.
+    video::PcmAudio audio = tone_in(2, 0, 24000, 1000.0, 8000.0);
+    const video::PcmAudio right = tone_in(2, 1, 24000, 500.0, 4000.0);
+    for (std::size_t i = 1; i < audio.samples.size(); i += 2) {
+        audio.samples[i] = right.samples[i];
+    }
+    auto opus = video::encode_opus(audio);
+    REQUIRE_MESSAGE(opus, (opus ? std::string() : opus.error().message));
+    CHECK(opus.value().channels == 2);
+    CHECK(opus.value().pre_skip == 312);
+    CHECK(opus.value().head.size() == 19);
+    // The sound and the pre-skip after it, in packets of 20 milliseconds.
+    CHECK(opus.value().packets.size() == (24000 + 312 + 959) / 960);
+    CHECK(opus.value().end_padding == (26 * 960) - 24000 - 312);
+    // Fixed point: the same bytes on every platform, and the same each time.
+    std::uint64_t hash = 14695981039346656037ULL;
+    for (const auto& packet : opus.value().packets) {
+        hash = fnv1a(packet, hash);
+    }
+    auto again = video::encode_opus(audio);
+    REQUIRE(again);
+    CHECK(again.value().packets == opus.value().packets);
+    CHECK(hash == 117929826942146053ULL);
+
+    const std::vector<render::Image> frames{flat({255, 0, 0}), flat({0, 0, 255})};
+    const auto bytes = video::encode_matroska(frames, 4, 1, nullptr, &opus.value());
+    REQUIRE(bytes);
+    // All Opus, so the file is WebM.
+    const std::string_view webm("webm");
+    CHECK(std::search(bytes.value().begin(), bytes.value().end(), webm.begin(), webm.end()) !=
+          bytes.value().end());
+    auto read = video::read_matroska(bytes.value());
+    REQUIRE_MESSAGE(read, (read ? std::string() : read.error().message));
+    REQUIRE(read.value().audio.size() == 1);
+    const video::AudioTrack& track = read.value().audio[0];
+    CHECK(track.codec == video::AudioTrack::Codec::Opus);
+    CHECK(track.pre_skip == 312);
+    CHECK(track.packets.size() == opus.value().packets.size());
+    auto decoded = video::decode_audio(read.value(), 0);
+    REQUIRE_MESSAGE(decoded, (decoded ? std::string() : decoded.error().message));
+    CHECK(decoded.value().sample_rate == 48000);
+    CHECK(decoded.value().channels == 2);
+    const std::vector<float>& sound = decoded.value().samples;
+    // As long as the sound: the pre-skip and the last block's DiscardPadding are left out.
+    REQUIRE(sound.size() == audio.samples.size());
+    CHECK(track.packets.back().discard_padding ==
+          std::int64_t{(26 * 960) - 24000 - 312} * 1000000000 / 48000);
+    std::uint64_t decoded_hash = 14695981039346656037ULL;
+    for (const float sample : sound) {
+        const auto bits = slash::bit_cast<std::uint32_t>(sample);
+        const std::array<std::uint8_t, 4> word{static_cast<std::uint8_t>(bits & 0xFFU),
+                                               static_cast<std::uint8_t>((bits >> 8U) & 0xFFU),
+                                               static_cast<std::uint8_t>((bits >> 16U) & 0xFFU),
+                                               static_cast<std::uint8_t>(bits >> 24U)};
+        decoded_hash = fnv1a(word, decoded_hash);
+    }
+    CHECK(decoded_hash == 13699003354829908551ULL);
+    // As loud as the tones, a sine's RMS being its amplitude over the square root of 2.
+    CHECK(rms(sound, 2, 0, 2400, 19200) ==
+          doctest::Approx(8000.0 / 32768.0 / std::sqrt(2.0)).epsilon(0.05));
+    CHECK(rms(sound, 2, 1, 2400, 19200) ==
+          doctest::Approx(4000.0 / 32768.0 / std::sqrt(2.0)).epsilon(0.05));
+    // And in time with them: the pre-skip leaves the sound where it was, best matched at no
+    // shift.
+    const auto match = [&](int shift) {
+        double sum = 0.0;
+        for (std::size_t i = 2400; i < 21600; ++i) {
+            sum += sound[(i + static_cast<std::size_t>(shift)) * 2] * audio.samples[i * 2];
+        }
+        return sum;
+    };
+    for (const int shift : {1, 2, 3, 6, 12}) {
+        CAPTURE(shift);
+        CHECK(match(0) > match(shift));
+    }
+
+    // The output gain in the OpusHead (Q7.8 dB) is applied: 6 dB about doubles it.
+    video::OpusAudio louder = opus.value();
+    louder.head[16] = 0x00;
+    louder.head[17] = 0x06;
+    decoded = video::decode_audio(
+        video::read_matroska(video::encode_matroska(frames, 4, 1, nullptr, &louder).value())
+            .value(),
+        0);
+    CHECK(rms(decoded.value().samples, 2, 0, 2400, 19200) ==
+          doctest::Approx(2.0 * 8000.0 / 32768.0 / std::sqrt(2.0)).epsilon(0.05));
+
+    // Surround in Vorbis's order, folded to stereo as PCM is: the center at -3 dB into each
+    // side, the LFE left out.
+    const auto surround = [&](int on) {
+        auto encoded = video::encode_opus(tone_in(6, on, 9600, 1000.0, 8000.0), 256000);
+        REQUIRE(encoded);
+        CHECK(encoded.value().head.size() == 19 + 2 + 6);
+        auto file = video::read_matroska(
+            video::encode_matroska(frames, 4, 1, nullptr, &encoded.value()).value());
+        REQUIRE(file);
+        auto out = video::decode_audio(file.value(), 0);
+        REQUIRE(out);
+        CHECK(out.value().channels == 2);
+        return std::array<double, 2>{rms(out.value().samples, 2, 0, 1200, 7200),
+                                     rms(out.value().samples, 2, 1, 1200, 7200)};
+    };
+    const double tone = 8000.0 / 32768.0 / std::sqrt(2.0);
+    const std::array<double, 2> center = surround(2);
+    CHECK(center[0] == doctest::Approx(0.70710678 * tone).epsilon(0.08));
+    CHECK(center[1] == doctest::Approx(0.70710678 * tone).epsilon(0.08));
+    const std::array<double, 2> front_right = surround(1);
+    CHECK(front_right[0] < 0.1 * tone);
+    CHECK(front_right[1] == doctest::Approx(tone).epsilon(0.08));
+    const std::array<double, 2> lfe = surround(3);
+    CHECK(lfe[0] < 0.05 * tone);
+    CHECK(lfe[1] < 0.05 * tone);
+
+    // PCM and Opus together: two tracks, in that order, in a Matroska file.
+    const video::PcmAudio pcm = stereo_tone(14400, 8000);
+    const auto both = video::encode_matroska(frames, 4, 1, &pcm, &opus.value());
+    REQUIRE(both);
+    read = video::read_matroska(both.value());
+    REQUIRE(read);
+    REQUIRE(read.value().audio.size() == 2);
+    CHECK(read.value().audio[0].codec == video::AudioTrack::Codec::Pcm);
+    CHECK(read.value().audio[1].codec == video::AudioTrack::Codec::Opus);
+    CHECK(video::decode_audio(read.value(), 1).value().samples.size() == sound.size());
+
+    // What Opus can't encode.
+    video::PcmAudio slow = audio;
+    slow.sample_rate = 44100;
+    CHECK(video::encode_opus(slow).error().message == "Opus encodes 48000 Hz audio, not 44100 Hz");
+    video::PcmAudio nine = tone_in(9, 0, 960, 1000.0, 1000.0);
+    CHECK(video::encode_opus(nine).error().message == "Opus encodes 1 to 8 channels here, not 9");
 }
 
 namespace {

@@ -273,6 +273,13 @@
       "repository": "https://github.com/Chlumsky/msdfgen.git",
       "tag": "v1.13"
     },
+    "opus": {
+      "license": "BSD-3-Clause",
+      "license_file": "COPYING",
+      "license_sha256": "01e1167d54a096d123cf6dfbbeb19587278845c6481d2d66d545669846079551",
+      "repository": "https://github.com/xiph/opus.git",
+      "tag": "v1.6.1"
+    },
     "polypartition": {
       "license": "MIT",
       "license_file": "LICENSE.md",

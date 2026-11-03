@@ -4,12 +4,13 @@ add_library(slash_video
     src/encoder.cpp
     src/ivf.cpp
     src/matroska.cpp
+    src/opus.cpp
     src/video.cpp)
 add_library(slash::video ALIAS slash_video)
 
 target_include_directories(slash_video PUBLIC include)
 target_link_libraries(slash_video PUBLIC slash::core slash::render slash::asset slash::world
-                      PRIVATE slash_dav1d)
+                      PRIVATE slash_dav1d opus)
 slash_engine_target(slash_video)
 
 # Lossy encoding through libaom (cmake/Dependencies.cmake), for the tools and tests only: games

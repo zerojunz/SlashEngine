@@ -14,7 +14,9 @@ no change on its side. Where Godot has nodes, the bridge has entities: object pa
 IDs, `rc` reads and writes components, and the codex is the project's own files.
 
 Nothing in SlashEngine depends on Autopilot: the bridge is SlashEngine's own code speaking
-Autopilot's protocol, and a game that never connects is unchanged.
+Autopilot's protocol, and a game that never connects is unchanged. SlashEngine also has its own
+agent, which plays through the same bridge with a model from `providers.json` and needs no
+Autopilot install or account: see [SlashEngine's own agent](#slashengines-own-agent).
 
 ## Running it
 
@@ -61,6 +63,93 @@ settings folder (`%LOCALAPPDATA%\Autopilot`, `~/Library/Application Support/Auto
 `$XDG_CONFIG_HOME/Autopilot`), and else `ws://127.0.0.1:8765/v1/bridge`. Only addresses on this
 machine are taken from those files. It is looked up again at each try, and a connection that
 fails or closes is tried again after 1 second, doubling to 15.
+
+## SlashEngine's own agent
+
+Autopilot plays with a hosted decision model that its service bills through an Aura plan.
+`--autopilot-agent <role>` plays the run with SlashEngine's own agent instead, on a role or
+provider from [providers.json](providers.md): Claude, GPT or Gemini with your own key, or a local
+model through Ollama, llama.cpp or LM Studio with none.
+
+```bash
+slash-cli run --project path/to/game --headless --autopilot-run verify \
+    --autopilot-prompt "The door opens when the player has the key" --autopilot-agent playtester
+```
+
+```json
+{"providers": {"hosted": {"type": "anthropic", "model": "<model id>",
+                          "api_key_env": "ANTHROPIC_API_KEY"},
+               "local": {"type": "openai", "model": "llama3.2", "url": "http://localhost:11434/v1"}},
+ "roles": {"playtester": {"provider": "hosted"}}}
+```
+
+The agent (`slash::autopilot::agent_connector`, `engine/autopilot/src/agent.cpp`) is an agent
+service inside the game: it talks to the bridge over an in-process connection, so it asks for
+everything Autopilot asks for, and the detectors, report files and exit codes are the same. Its
+instructions, request kinds and rules of play follow Autopilot's agent session
+(`autopilot/agents/session.py`), cut to a model that plays through tools itself where Autopilot's
+writes a harness for its decision model.
+
+- The game is paused while the model thinks and runs only inside the tools that take time, so a
+  slow model plays as well as a fast one. Time is game time (`autopilot::game_clock`): keys held
+  for seconds, waits and the play budget count only play, and headless runs tick as fast as they
+  can.
+- The first turn's brief holds the request, the game's `context`, the text and controls on
+  screen, the codex's `summary.txt` and the notes earlier runs saved in
+  `.slash/autopilot/notes.md`.
+- Each turn's results end with what the detectors found since the last turn and the turns and
+  seconds of play left. A turn with no tool calls is asked to go on; the last turn, and a turn
+  once the play time, the turns or the tokens are spent, may only report. A run that ends without
+  a report is `INCONCLUSIVE` (exit code 3), and a model that fails ends it with exit code 1.
+- `rc` writes and calls need a reason, and the report lists them as direct changes to the game.
+
+| Flag | Meaning |
+| --- | --- |
+| `--autopilot-agent <role>` | Play `--autopilot-run`'s run with the built-in agent on this role or provider from providers.json |
+| `--autopilot-turns <n>` | The most turns (model replies), 60 by default |
+| `--autopilot-minutes <n>` | Seconds of play, as for Autopilot (default 10 minutes) |
+| `--autopilot-no-media` | Send the model no pictures |
+
+| Tool | What it does (the op it asks for) |
+| --- | --- |
+| `look` | The player's pose, the text and controls on screen, and in 3D what the camera sees (`pose`, `screen`, `view`) |
+| `context`, `find`, `transforms`, `ui` | As the ops of those names |
+| `key`, `action` | A tap, a hold for `seconds` of play while the game runs, or a release, of a key by Unreal's name or an input action (`key`, `input`) |
+| `move` | Walks the player along a kit direction for `seconds` (`move`) |
+| `wait`, `watch` | Plays for `seconds`, and says what changed on the named entities (`watch`) |
+| `ui_act` | Works a control (`ui_act`) |
+| `screenshot` | A JPEG of the game, sent to a model that takes images (`capture`) |
+| `files`, `read_files` | The project's text files, by project path (`codex_manifest`, `codex_read`) |
+| `rc` | Reads, or with a reason writes, components and calls commands (`rc`) |
+| `restart` | Starts the scene, or another, over (`session`) |
+| `note` | Adds a line to `.slash/autopilot/notes.md` for later runs |
+| `report` | Ends the run: `outcome` (`CONFIRMED`, `DENIED`, `INCONCLUSIVE`, `achieved`, `not_achieved` or `explored`), `summary`, `evidence` and `findings` |
+
+The exit code is 0 for `CONFIRMED`, `achieved` and `explored` with no findings, 2 for `DENIED`,
+`not_achieved` and `explored` with findings, and 3 for `INCONCLUSIVE`. `result.json` adds
+`outcome`, `detector_findings`, `direct_changes` and `agent` (the model, turns, seconds of play
+and tokens), and `report.md` is written from the report. In C++:
+
+```cpp
+#include "slash/autopilot/agent.hpp"
+
+slash::autopilot::AgentOptions agent;
+agent.provider = slash::ai::open(config, "playtester").value().provider;
+agent.project_root = session.options().project_root;
+agent.wait = true; // headless: wait for each reply, so runs repeat
+slash::autopilot::Options options;
+options.run = json::parse(R"({"kind": "goal", "goal": "Reach the flag"})").value();
+options.clock = slash::autopilot::game_clock(session.world(), 1.0 / 60.0);
+slash::autopilot::Bridge bridge(session, slash::autopilot::agent_connector(agent), options);
+while (!bridge.finished()) {
+    bridge.poll(1.0 / 60.0);
+    if (session.playing()) {
+        session.world().step(1.0 / 60.0);
+    }
+}
+```
+
+[examples/playtest-agent](../../examples/playtest-agent/) plays a run with a stand-in model.
 
 ## What the agent service asks
 

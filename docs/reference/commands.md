@@ -2651,7 +2651,8 @@ Needs: `read`. With the footsteps playing:
   load, such as a missing or corrupt file.
 - A `VideoStreamPlayer` whose file has sound ([sound in videos](scene-format.md#sound-in-videos))
   is listed with kind `VideoStreamPlayer`: its `stream` is the video, `position` where its sound
-  is and `length` the video's. `error` says why its `audio_track` can't play, such as Opus.
+  is and `length` the video's. `error` says why its `audio_track` can't play, such as Vorbis or a track
+  the video doesn't have.
 - A player's `bus` is the one it plays on now: an `Area2D` with `audio_bus_override` that holds
   an `AudioStreamPlayer2D` sends it to its own bus ([buses by area](scene-format.md#buses-by-area)),
   as an `Area3D` does an `AudioStreamPlayer3D`.

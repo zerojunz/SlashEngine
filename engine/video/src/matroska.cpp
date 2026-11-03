@@ -1,5 +1,7 @@
 // WebM and Matroska files (RFC 9559), read for their AV1 video and audio tracks and written with
-// PCM audio, as Godot's video players read the containers of their codecs.
+// PCM or Opus audio, as Godot's video players read the containers of their codecs.
+
+#include "opus.hpp"
 
 #include "slash/core/bits.hpp"
 #include "slash/video/video.hpp"
@@ -40,6 +42,8 @@ constexpr std::uint32_t kTrackType = 0x83;
 constexpr std::uint32_t kFlagLacing = 0x9C;
 constexpr std::uint32_t kCodecId = 0x86;
 constexpr std::uint32_t kCodecPrivate = 0x63A2;
+constexpr std::uint32_t kCodecDelay = 0x56AA;
+constexpr std::uint32_t kSeekPreRoll = 0x56BB;
 constexpr std::uint32_t kName = 0x536E;
 constexpr std::uint32_t kLanguage = 0x22B59C;
 constexpr std::uint32_t kContentEncodings = 0x6D80;
@@ -55,6 +59,7 @@ constexpr std::uint32_t kTimestamp = 0xE7;
 constexpr std::uint32_t kSimpleBlock = 0xA3;
 constexpr std::uint32_t kBlockGroup = 0xA0;
 constexpr std::uint32_t kBlock = 0xA1;
+constexpr std::uint32_t kDiscardPadding = 0x75A2;
 constexpr std::uint32_t kCues = 0x1C53BB6B;
 constexpr std::uint32_t kTags = 0x1254C367;
 constexpr std::uint32_t kChapters = 0x1043A770;
@@ -141,6 +146,16 @@ public:
             value = (value << 8U) | bytes_[i];
         }
         return value;
+    }
+
+    [[nodiscard]] std::int64_t signed_value(const Element& element) const {
+        const std::size_t size = std::min<std::size_t>(element.end - element.start, 8);
+        const std::uint64_t value = unsigned_value(element);
+        if (size == 0 || size == 8) {
+            return static_cast<std::int64_t>(value);
+        }
+        const unsigned shift = 64U - (8U * static_cast<unsigned>(size));
+        return static_cast<std::int64_t>(value << shift) >> shift;
     }
 
     [[nodiscard]] double float_value(const Element& element) const {
@@ -282,7 +297,8 @@ struct Parse {
 // A block's frames: its track, its time relative to the cluster's, and each frame's bytes
 // (more than one when it is laced).
 Result<void> read_block(const Reader& reader, std::size_t start, std::size_t end,
-                        std::int64_t cluster_ticks, Parse& parse) {
+                        std::int64_t cluster_ticks, Parse& parse,
+                        AudioTrack::Packet** last_audio = nullptr) {
     std::size_t at = start;
     const auto number = reader.vint(at, end);
     if (!number || at + 3 > end) {
@@ -382,9 +398,13 @@ Result<void> read_block(const Reader& reader, std::size_t start, std::size_t end
     const auto audio = std::ranges::find(parse.audio_tracks, *number,
                                          &std::pair<std::uint64_t, std::size_t>::first);
     if (audio != parse.audio_tracks.end()) {
+        auto& packets = parse.file.audio[audio->second].packets;
         for (const std::size_t size : sizes) {
-            parse.file.audio[audio->second].packets.push_back({.offset = at, .size = size});
+            packets.push_back({.offset = at, .size = size});
             at += size;
+        }
+        if (last_audio != nullptr) {
+            *last_audio = &packets.back();
         }
     }
     return {};
@@ -416,12 +436,22 @@ Result<std::size_t> read_cluster(const Reader& reader, const Element& cluster, P
                 return read.error();
             }
         } else if (element.id == kBlockGroup) {
+            // A block of audio may say how much of its end isn't sound (DiscardPadding).
+            AudioTrack::Packet* packet = nullptr;
+            std::int64_t padding = 0;
             auto read = children(reader, element, [&](const Element& field) -> Result<void> {
-                return field.id == kBlock ? read_block(reader, field.start, field.end, ticks, parse)
-                                          : Result<void>{};
+                if (field.id == kDiscardPadding) {
+                    padding = reader.signed_value(field);
+                }
+                return field.id == kBlock
+                           ? read_block(reader, field.start, field.end, ticks, parse, &packet)
+                           : Result<void>{};
             });
             if (!read) {
                 return read.error();
+            }
+            if (packet != nullptr && padding > 0) {
+                packet->discard_padding = padding;
             }
         }
         at = element.end;
@@ -671,6 +701,24 @@ public:
         bytes(element, data);
     }
 
+    // A signed integer in as few bytes as hold it, its top bit its sign.
+    void signed_value(std::uint32_t element, std::int64_t value) {
+        unsigned length = 1;
+        while (length < 8) {
+            const std::int64_t half = std::int64_t{1} << ((8U * length) - 1U);
+            if (value >= -half && value < half) {
+                break;
+            }
+            ++length;
+        }
+        const auto bits = static_cast<std::uint64_t>(value);
+        std::vector<std::uint8_t> data;
+        for (unsigned i = length; i > 0; --i) {
+            data.push_back(static_cast<std::uint8_t>((bits >> (8U * (i - 1U))) & 0xFFU));
+        }
+        bytes(element, data);
+    }
+
     void float_value(std::uint32_t element, double value) {
         const auto bits = slash::bit_cast<std::uint64_t>(value);
         std::vector<std::uint8_t> data;
@@ -759,6 +807,7 @@ struct Block {
     std::uint8_t track = 0;
     std::span<const std::uint8_t> data;
     bool key = true;
+    std::int64_t discard_padding = 0; // nanoseconds at its end that aren't sound
 };
 
 } // namespace
@@ -766,10 +815,12 @@ struct Block {
 std::vector<std::uint8_t> write_matroska(std::uint32_t width, std::uint32_t height,
                                          std::uint32_t rate, std::uint32_t scale,
                                          std::span<const std::vector<std::uint8_t>> frames,
-                                         const PcmAudio* audio) {
+                                         const PcmAudio* audio, const OpusAudio* opus) {
     constexpr std::int64_t kClusterMilliseconds = 5000;
     constexpr std::uint8_t kVideoTrack = 1;
+    const bool pcm = audio != nullptr && audio->channels > 0 && audio->sample_rate > 0;
     constexpr std::uint8_t kAudioTrack = 2;
+    const std::uint8_t opus_track = pcm ? kAudioTrack + 1 : kAudioTrack;
     const auto milliseconds_of = [&](std::uint64_t frame) {
         return static_cast<std::int64_t>((frame * scale * 1000U + (rate / 2U)) / rate);
     };
@@ -779,7 +830,7 @@ std::vector<std::uint8_t> write_matroska(std::uint32_t width, std::uint32_t heig
     ebml.unsigned_value(kEbmlReadVersion, 1);
     ebml.unsigned_value(kEbmlMaxIdLength, 4);
     ebml.unsigned_value(kEbmlMaxSizeLength, 8);
-    ebml.string_value(kDocType, "matroska");
+    ebml.string_value(kDocType, pcm ? "matroska" : "webm");
     ebml.unsigned_value(kDocTypeVersion, 4);
     ebml.unsigned_value(kDocTypeReadVersion, 2);
 
@@ -818,7 +869,7 @@ std::vector<std::uint8_t> write_matroska(std::uint32_t width, std::uint32_t heig
                           .key = is_key_frame(frames[i])});
     }
     std::vector<std::uint8_t> samples;
-    if (audio != nullptr && audio->channels > 0 && audio->sample_rate > 0) {
+    if (pcm) {
         Writer sound;
         sound.unsigned_value(kTrackNumber, kAudioTrack);
         sound.unsigned_value(kTrackUid, kAudioTrack);
@@ -850,6 +901,41 @@ std::vector<std::uint8_t> write_matroska(std::uint32_t width, std::uint32_t heig
                               .key = true});
         }
     }
+    if (opus != nullptr && opus->channels > 0) {
+        // As RFC 7845's Matroska mapping: the OpusHead, the pre-skip as the codec's delay and 80
+        // milliseconds of pre-roll; each 20 millisecond packet a block at its first sample's
+        // time, counted from before the pre-skip.
+        constexpr std::uint64_t kOpusRate = 48000;
+        constexpr std::uint64_t kPreRollNanoseconds = 80000000;
+        constexpr std::size_t kPacketMilliseconds = 20;
+        Writer sound;
+        sound.unsigned_value(kTrackNumber, opus_track);
+        sound.unsigned_value(kTrackUid, opus_track);
+        sound.unsigned_value(kTrackType, kTrackTypeAudio);
+        sound.unsigned_value(kFlagLacing, 0);
+        sound.string_value(kCodecId, "A_OPUS");
+        sound.bytes(kCodecPrivate, opus->head);
+        sound.unsigned_value(kCodecDelay, static_cast<std::uint64_t>(opus->pre_skip) *
+                                              static_cast<std::uint64_t>(kNanoseconds) / kOpusRate);
+        sound.unsigned_value(kSeekPreRoll, kPreRollNanoseconds);
+        Writer settings;
+        settings.float_value(kSamplingFrequency, static_cast<double>(kOpusRate));
+        settings.unsigned_value(kChannels, static_cast<std::uint64_t>(opus->channels));
+        sound.master(kAudio, settings);
+        tracks.master(kTrackEntry, sound);
+        for (std::size_t i = 0; i < opus->packets.size(); ++i) {
+            const bool last = i + 1 == opus->packets.size();
+            blocks.push_back(
+                {.milliseconds = static_cast<std::int64_t>(i * kPacketMilliseconds),
+                 .track = opus_track,
+                 .data = opus->packets[i],
+                 .key = true,
+                 .discard_padding = last ? static_cast<std::int64_t>(opus->end_padding) *
+                                               static_cast<std::int64_t>(kNanoseconds) /
+                                               static_cast<std::int64_t>(kOpusRate)
+                                         : 0});
+        }
+    }
     segment.master(kTracks, tracks);
     std::ranges::stable_sort(blocks, [](const Block& a, const Block& b) {
         return a.milliseconds != b.milliseconds ? a.milliseconds < b.milliseconds
@@ -877,7 +963,16 @@ std::vector<std::uint8_t> write_matroska(std::uint32_t width, std::uint32_t heig
                 static_cast<std::uint8_t>(static_cast<std::uint16_t>(relative) & 0xFFU),
                 static_cast<std::uint8_t>(block.key ? 0x80U : 0x00U)};
             body.insert(body.end(), block.data.begin(), block.data.end());
-            cluster.bytes(kSimpleBlock, body);
+            if (block.discard_padding > 0) {
+                // A Block in a BlockGroup has no key flag; its DiscardPadding trims its end.
+                body[3] = 0;
+                Writer group;
+                group.bytes(kBlock, body);
+                group.signed_value(kDiscardPadding, block.discard_padding);
+                cluster.master(kBlockGroup, group);
+            } else {
+                cluster.bytes(kSimpleBlock, body);
+            }
             ++next;
         }
         segment.master(kCluster, cluster);
@@ -891,7 +986,7 @@ std::vector<std::uint8_t> write_matroska(std::uint32_t width, std::uint32_t heig
 
 Result<std::vector<std::uint8_t>> encode_matroska(std::span<const render::Image> frames,
                                                   std::uint32_t rate, std::uint32_t scale,
-                                                  const PcmAudio* audio) {
+                                                  const PcmAudio* audio, const OpusAudio* opus) {
     if (frames.empty() || rate == 0 || scale == 0) {
         return make_error(ErrorCode::InvalidArgument,
                           "a video needs frames and a frame rate above 0");
@@ -907,38 +1002,16 @@ Result<std::vector<std::uint8_t>> encode_matroska(std::span<const render::Image>
         }
         units.push_back(std::move(unit).value());
     }
-    return write_matroska(frames.front().width, frames.front().height, rate, scale, units, audio);
+    return write_matroska(frames.front().width, frames.front().height, rate, scale, units, audio,
+                          opus);
 }
 
-Result<DecodedAudio> decode_audio(const VideoFile& video, std::size_t track) {
-    if (track >= video.audio.size()) {
-        return make_error(ErrorCode::NotFound,
-                          "the video has " + std::to_string(video.audio.size()) +
-                              " audio tracks, not " + std::to_string(track + 1));
-    }
-    const AudioTrack& source = video.audio[track];
-    const bool pcm =
-        source.codec == AudioTrack::Codec::Pcm &&
-        (source.bits == 8 || source.bits == 16 || source.bits == 24 || source.bits == 32);
-    const bool floats =
-        source.codec == AudioTrack::Codec::Float && (source.bits == 32 || source.bits == 64);
-    if (!pcm && !floats) {
-        return make_error(ErrorCode::InvalidArgument,
-                          "the video's audio is " + source.codec_id +
-                              (source.bits != 0 && (source.codec == AudioTrack::Codec::Pcm ||
-                                                    source.codec == AudioTrack::Codec::Float)
-                                   ? " at " + std::to_string(source.bits) + " bits"
-                                   : std::string()) +
-                              ", which can't be played yet; videos play PCM audio "
-                              "(A_PCM/INT/LIT or A_PCM/FLOAT/IEEE) in .mkv files");
-    }
-    if (source.channels < 1 || source.sample_rate < 1) {
-        return make_error(ErrorCode::InvalidArgument,
-                          "the video's audio track has no channels or sample rate");
-    }
-    const auto bytes_per_sample = static_cast<std::size_t>(source.bits / 8);
-    const auto channels = static_cast<std::size_t>(source.channels);
+namespace {
+
+// A PCM track's samples, from -1 to 1.
+std::vector<float> read_pcm(const VideoFile& video, const AudioTrack& source) {
     std::vector<float> input;
+    const auto bytes_per_sample = static_cast<std::size_t>(source.bits / 8);
     for (const AudioTrack::Packet& packet : source.packets) {
         const std::uint8_t* data = video.data.data() + packet.offset;
         for (std::size_t at = 0; at + bytes_per_sample <= packet.size; at += bytes_per_sample) {
@@ -947,7 +1020,7 @@ Result<DecodedAudio> decode_audio(const VideoFile& video, std::size_t track) {
                 bits |= static_cast<std::uint64_t>(data[at + i]) << (8U * i);
             }
             float value = 0.0F;
-            if (floats) {
+            if (source.codec == AudioTrack::Codec::Float) {
                 value = source.bits == 32 ? slash::bit_cast<float>(static_cast<std::uint32_t>(bits))
                                           : static_cast<float>(slash::bit_cast<double>(bits));
             } else if (source.bits == 8) {
@@ -960,6 +1033,49 @@ Result<DecodedAudio> decode_audio(const VideoFile& video, std::size_t track) {
             }
             input.push_back(value);
         }
+    }
+    return input;
+}
+
+} // namespace
+
+Result<DecodedAudio> decode_audio(const VideoFile& video, std::size_t track) {
+    if (track >= video.audio.size()) {
+        return make_error(ErrorCode::NotFound,
+                          "the video has " + std::to_string(video.audio.size()) +
+                              " audio tracks, not " + std::to_string(track + 1));
+    }
+    const AudioTrack& source = video.audio[track];
+    const bool opus = source.codec == AudioTrack::Codec::Opus;
+    const bool pcm =
+        source.codec == AudioTrack::Codec::Pcm &&
+        (source.bits == 8 || source.bits == 16 || source.bits == 24 || source.bits == 32);
+    const bool floats =
+        source.codec == AudioTrack::Codec::Float && (source.bits == 32 || source.bits == 64);
+    if (!opus && !pcm && !floats) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "the video's audio is " + source.codec_id +
+                              (source.bits != 0 && (source.codec == AudioTrack::Codec::Pcm ||
+                                                    source.codec == AudioTrack::Codec::Float)
+                                   ? " at " + std::to_string(source.bits) + " bits"
+                                   : std::string()) +
+                              ", which can't be played; videos play Opus (A_OPUS) and PCM "
+                              "(A_PCM/INT/LIT or A_PCM/FLOAT/IEEE) audio");
+    }
+    if (source.channels < 1 || source.sample_rate < 1) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "the video's audio track has no channels or sample rate");
+    }
+    const auto channels = static_cast<std::size_t>(source.channels);
+    std::vector<float> input;
+    if (opus) {
+        auto decoded = detail::decode_opus(video, source);
+        if (!decoded) {
+            return decoded.error();
+        }
+        input = std::move(decoded).value();
+    } else {
+        input = read_pcm(video, source);
     }
     DecodedAudio sound;
     sound.sample_rate = source.sample_rate;
