@@ -613,6 +613,7 @@ TEST_CASE("exports compile plugins in from their sources, or ship their librarie
     json::Value built = parse(R"({"entry": "built_entry", "libraries": {}})");
     built["libraries"][here] = "lib/built.so";
     write("addons/built.plugin.json", json::write(built));
+    fs::create_directories(root / "addons/lib");
     write("addons/lib/built.so", "");
     json::Value unbuilt = parse(R"({"entry": "unbuilt_entry", "libraries": {},
                                     "sources": ["orbit/src"]})");
