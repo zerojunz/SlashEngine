@@ -29,4 +29,18 @@ public interface AdsBackend {
 
     /** Hides a banner. */
     void hide(String placement, String format, String unitId);
+
+    /**
+     * Shows a loaded banner at position: "bottom_center", "bottom_left", "bottom_right",
+     * "top_center", "top_left", "top_right" or "center". By default, show.
+     */
+    default void showBanner(String placement, String unitId, String position) {
+        show(placement, "banner", unitId);
+    }
+
+    /** Moves a banner that shows. By default it hides it and shows it again at position. */
+    default void moveBanner(String placement, String unitId, String position) {
+        hide(placement, "banner", unitId);
+        showBanner(placement, unitId, position);
+    }
 }

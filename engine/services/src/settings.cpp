@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -15,6 +16,10 @@ namespace {
 constexpr std::array<std::string_view, 6> kPlatforms{"android", "ios",   "macos",
                                                      "windows", "linux", "web"};
 constexpr std::array<std::string_view, 3> kFormats{"banner", "interstitial", "rewarded"};
+// In BannerPosition's order.
+constexpr std::array<std::string_view, 7> kPositions{"bottom_center", "bottom_left", "bottom_right",
+                                                     "top_center",    "top_left",    "top_right",
+                                                     "center"};
 constexpr std::array<std::string_view, 3> kTypes{"consumable", "non_consumable", "subscription"};
 constexpr std::array<std::string_view, 3> kConsents{"unknown", "granted", "denied"};
 constexpr std::array<std::string_view, 2> kSortOrders{"high_to_low", "low_to_high"};
@@ -147,6 +152,19 @@ std::string_view format_name(AdFormat format) {
     return kFormats.at(static_cast<std::size_t>(format));
 }
 
+std::string_view position_name(BannerPosition position) {
+    return kPositions.at(static_cast<std::size_t>(position));
+}
+
+std::optional<BannerPosition> parse_position(std::string_view name) {
+    for (std::size_t i = 0; i < kPositions.size(); ++i) {
+        if (kPositions.at(i) == name) {
+            return static_cast<BannerPosition>(i);
+        }
+    }
+    return std::nullopt;
+}
+
 std::string_view type_name(ProductType type) {
     return kTypes.at(static_cast<std::size_t>(type));
 }
@@ -180,6 +198,9 @@ json::Value settings_schema() {
     json::Value placement = object_schema("An ad placement.");
     placement["required"] = json::Array{"format"};
     placement["properties"]["format"] = enum_property(kFormats, "The kind of ad.");
+    placement["properties"]["position"] =
+        enum_property(kPositions, "Where a banner shows on the screen.");
+    placement["properties"]["position"]["default"] = "bottom_center";
     placement["properties"]["ids"] = std::move(ids);
     placement["properties"]["reward"] = std::move(reward);
     placement["properties"]["auto_load"]["type"] = "boolean";
@@ -383,6 +404,10 @@ std::vector<json::ValidationError> validate_settings(const json::Value& settings
                 placement.find("format")->as_string() != "rewarded") {
                 errors.push_back({path + "/reward", "only rewarded placements give a reward"});
             }
+            if (placement.find("position") != nullptr &&
+                placement.find("format")->as_string() != "banner") {
+                errors.push_back({path + "/position", "only banners have a position"});
+            }
         }
     }
     const json::Value* purchases = settings.find("purchases");
@@ -437,6 +462,10 @@ Settings parse_settings(const json::Value& settings) {
             const std::string& format = item.find("format")->as_string();
             placement.format = parse_format(format);
             placement.ids = parse_ids(item);
+            if (const json::Value* position = item.find("position"); position != nullptr) {
+                placement.position =
+                    parse_position(position->as_string()).value_or(BannerPosition::BottomCenter);
+            }
             if (const json::Value* reward = item.find("reward"); reward != nullptr) {
                 placement.reward = {.type = reward->find("type")->as_string(),
                                     .amount = reward->find("amount")->as_double()};
