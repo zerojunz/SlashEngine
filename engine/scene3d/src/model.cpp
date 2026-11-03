@@ -35,9 +35,13 @@ namespace {
 
 // The extensions a model may require: those load_model reads, and Godot's lights, which it
 // leaves out as it leaves out cameras.
-constexpr std::array<std::string_view, 6> kRequirable{
-    "KHR_lights_punctual", "KHR_materials_emissive_strength", "KHR_materials_pbrSpecularGlossiness",
-    "KHR_materials_unlit", "KHR_mesh_quantization",           "KHR_texture_transform"};
+constexpr std::array<std::string_view, 7> kRequirable{"EXT_mesh_gpu_instancing",
+                                                      "KHR_lights_punctual",
+                                                      "KHR_materials_emissive_strength",
+                                                      "KHR_materials_pbrSpecularGlossiness",
+                                                      "KHR_materials_unlit",
+                                                      "KHR_mesh_quantization",
+                                                      "KHR_texture_transform"};
 
 std::string result_message(cgltf_result result) {
     switch (result) {
@@ -509,14 +513,73 @@ struct SceneReader {
         if (node.mesh != nullptr) {
             std::array<float, 16> matrix{};
             cgltf_node_transform_world(&node, matrix.data());
-            model.parts.push_back({.node = name,
-                                   .mesh = static_cast<std::size_t>(node.mesh - data.meshes),
-                                   .transform = affine_of(matrix),
-                                   .node_index = static_cast<int>(index)});
-            part_nodes.push_back(&node);
+            if (node.has_mesh_gpu_instancing != 0) {
+                add_instances(node, index, affine_of(matrix));
+            } else {
+                model.parts.push_back({.node = name,
+                                       .mesh = static_cast<std::size_t>(node.mesh - data.meshes),
+                                       .transform = affine_of(matrix),
+                                       .node_index = static_cast<int>(index)});
+                part_nodes.push_back(&node);
+            }
         }
         for (cgltf_size i = 0; i < node.children_count; ++i) {
             add(*node.children[i], static_cast<int>(index));
+        }
+    }
+
+    // EXT_mesh_gpu_instancing, as Blender's geometry nodes and Houdini export scattered copies:
+    // the node draws its mesh at each instance's translation, rotation and scale in its space,
+    // never at itself. Each instance becomes a child node of its own drawing the mesh, named
+    // after the node and its number, so posing, collision, LODs and writing treat it as any
+    // other part. Attributes other than the three are left out, as is a skin.
+    void add_instances(const cgltf_node& node, std::size_t index, const world::Affine3D& global) {
+        const cgltf_mesh_gpu_instancing& instancing = node.mesh_gpu_instancing;
+        const cgltf_accessor* translation = nullptr;
+        const cgltf_accessor* rotation = nullptr;
+        const cgltf_accessor* scale = nullptr;
+        cgltf_size count = 0;
+        for (cgltf_size a = 0; a < instancing.attributes_count; ++a) {
+            const cgltf_attribute& attribute = instancing.attributes[a];
+            const std::string_view attribute_name = attribute.name != nullptr ? attribute.name : "";
+            count = attribute.data->count;
+            if (attribute_name == "TRANSLATION") {
+                translation = attribute.data;
+            } else if (attribute_name == "ROTATION") {
+                rotation = attribute.data;
+            } else if (attribute_name == "SCALE") {
+                scale = attribute.data;
+            }
+        }
+        const std::string base = model.nodes[index].name;
+        for (cgltf_size i = 0; i < count; ++i) {
+            ModelNode out;
+            out.name = unique_name(names, base + "_" + std::to_string(i));
+            out.parent = static_cast<int>(index);
+            std::array<float, 4> v{};
+            if (translation != nullptr &&
+                cgltf_accessor_read_float(translation, i, v.data(), 3) != 0) {
+                out.position = {v[0], v[1], v[2]};
+            }
+            if (rotation != nullptr && cgltf_accessor_read_float(rotation, i, v.data(), 4) != 0) {
+                const float length =
+                    std::sqrt((v[0] * v[0]) + (v[1] * v[1]) + (v[2] * v[2]) + (v[3] * v[3]));
+                out.rotation =
+                    length > 0.0F ? Quat{v[0] / length, v[1] / length, v[2] / length, v[3] / length}
+                                  : Quat{};
+            }
+            if (scale != nullptr && cgltf_accessor_read_float(scale, i, v.data(), 3) != 0) {
+                out.scale = {v[0], v[1], v[2]};
+            }
+            const world::Affine3D local = node_transform(
+                NodePose{.position = out.position, .rotation = out.rotation, .scale = out.scale});
+            const auto at = static_cast<int>(model.nodes.size());
+            model.parts.push_back({.node = out.name,
+                                   .mesh = static_cast<std::size_t>(node.mesh - data.meshes),
+                                   .transform = global * local,
+                                   .node_index = at});
+            part_nodes.push_back(nullptr);
+            model.nodes.push_back(std::move(out));
         }
     }
 };
@@ -554,7 +617,7 @@ void read_skins(const cgltf_data& data, const SceneReader& scene, Model& model) 
     }
     for (std::size_t p = 0; p < model.parts.size(); ++p) {
         const cgltf_node* node = scene.part_nodes[p];
-        if (node->skin != nullptr) {
+        if (node != nullptr && node->skin != nullptr) {
             model.parts[p].skin = made[static_cast<std::size_t>(node->skin - data.skins)];
         }
     }
