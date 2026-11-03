@@ -204,6 +204,54 @@ std::string to_msl(const std::vector<std::uint32_t>& spirv, std::map<std::uint32
     return msl;
 }
 
+// SPIRV-Cross makes each ray query a static global, which DXC allocates as the shader starts
+// whether or not the pass reaches the code tracing it, and then declares the ray tracing flag a
+// pass that traces nothing doesn't use, which its validator refuses ("Flags must match usage").
+// So each ray query only one function uses becomes a local of that function.
+std::string localize_ray_queries(std::string hlsl) {
+    const std::string marker = "\nstatic RayQuery<";
+    std::size_t search = 0;
+    while (true) {
+        const std::size_t at = hlsl.find(marker, search);
+        if (at == std::string::npos) {
+            return hlsl;
+        }
+        const std::size_t line_end = hlsl.find('\n', at + 1);
+        const std::string declaration = hlsl.substr(at + 8, line_end - at - 8); // after "static "
+        const std::size_t space = declaration.rfind(' ');
+        const std::string name = declaration.substr(space + 1, declaration.size() - space - 2);
+        const auto is_word = [](char c) {
+            return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                   c == '_';
+        };
+        // Every use of the name as a word, after its declaration.
+        std::vector<std::size_t> uses;
+        for (std::size_t use = hlsl.find(name, line_end); use != std::string::npos;
+             use = hlsl.find(name, use + name.size())) {
+            const bool before = use > 0 && is_word(hlsl[use - 1]);
+            const bool after = use + name.size() < hlsl.size() && is_word(hlsl[use + name.size()]);
+            if (!before && !after) {
+                uses.push_back(use);
+            }
+        }
+        search = line_end;
+        if (uses.empty()) {
+            continue;
+        }
+        // The function around the first use: its body opens with "{" alone on a line at the
+        // margin and closes with "}" likewise.
+        const std::size_t open = hlsl.rfind("\n{\n", uses.front());
+        const std::size_t close = hlsl.find("\n}\n", uses.front());
+        if (open == std::string::npos || close == std::string::npos || open < line_end ||
+            uses.back() > close) {
+            continue;
+        }
+        hlsl.insert(open + 3, "    " + declaration + "\n");
+        hlsl.erase(at, line_end - at);
+        search = at;
+    }
+}
+
 // The HLSL of spirv, with each binding's places in its descriptor tables and the number of
 // samplers.
 std::string to_hlsl(const std::vector<std::uint32_t>& spirv, std::map<std::uint32_t, Ids>& slots,
@@ -289,7 +337,7 @@ std::string to_hlsl(const std::vector<std::uint32_t>& spirv, std::map<std::uint3
         }
         compiler.add_hlsl_resource_binding(binding);
     }
-    std::string hlsl = compiler.compile();
+    std::string hlsl = localize_ray_queries(compiler.compile());
 
     // The root signature, in the shader so DXC puts it in the DXIL: what the host binds may change
     // between dispatches, and unused places may be empty.

@@ -108,8 +108,6 @@ struct SPIRV_Cross_Input
     uint3 gl_GlobalInvocationID : SV_DispatchThreadID;
 };
 
-static RayQuery<RAY_FLAG_NONE> query;
-static RayQuery<RAY_FLAG_NONE> query_1;
 
 uint spvPackUnorm4x8(float4 value)
 {
@@ -266,10 +264,10 @@ Pixel pixel_at(Draw draw, uint primitive, float2 shares, float4x3 to_world)
         uint2 param_4 = _vertices;
         uint param_5 = at + 3u;
         float3 normal = vector_at(param_4, param_5);
-        uint2 param_6)hlsl"
-    R"hlsl( = _vertices;
+        uint2 param_6 = _vertices;
         uint param_7 = at + 6u;
-        float3 tangent = vector_at(param_6, param_7);
+        float3 tangent = vector_)hlsl"
+    R"hlsl(at(param_6, param_7);
         uint2 param_8 = _vertices;
         uint param_9 = at + 9u;
         float handed = asfloat(word(param_8, param_9));
@@ -451,6 +449,7 @@ float3 offset(float3 _point, float3 face, float3 direction)
 
 bool blocked(float3 origin, float3 direction, float _distance, uint caster_mask)
 {
+    RayQuery<RAY_FLAG_NONE> query;
     RayDesc _5ident = {origin, 0.0f, direction, _distance};
     query.TraceRayInline(scene, 4u, 2u, _5ident);
     for (;;)
@@ -520,9 +519,9 @@ float3 direct_light(uint layers, float3 _point, float3 face, float3 n, float3 v,
 {
     float3 sum = 0.0f.xxx;
     float3 toward;
-  )hlsl"
-    R"hlsl(  float _distance;
-    for (uint k = 0u; k < _1023_size.w; k++)
+    float _distance;
+    for (uint k = 0u; k )hlsl"
+    R"hlsl(< _1023_size.w; k++)
     {
         Light _1260;
         _1260.position = _1256.Load<float4>(k * 96 + 0);
@@ -633,6 +632,7 @@ float3 direct_light(uint layers, float3 _point, float3 face, float3 n, float3 v,
 
 Met meet(float3 origin, float3 direction, float limit, uint seed, inout uint counter)
 {
+    RayQuery<RAY_FLAG_NONE> query_1;
     Met met;
     met.hit = false;
     met.unshaded = false;
@@ -760,9 +760,9 @@ Met meet(float3 origin, float3 direction, float limit, uint seed, inout uint cou
         float2 param_16 = pixel.uv;
         emitted += texel(param_15, param_16).xyz;
     }
-    float3 param_17 = emit)hlsl"
-    R"hlsl(ted;
-    met.emitted = srgb_to_linear(param_17) * draw.emission.w;
+    float3 param_17 = emitted;
+ )hlsl"
+    R"hlsl(   met.emitted = srgb_to_linear(param_17) * draw.emission.w;
     met.v = -direction;
     met.face = normalize(pixel.face);
     if (dot(met.face, met.v) < 0.0f)
@@ -1027,8 +1027,8 @@ float3 smoothed_light(uint2 pixel)
             {
                 continue;
             }
-            uint2 param_4 =)hlsl"
-    R"hlsl( uint2(other);
+            uint2 param_4 = uint2)hlsl"
+    R"hlsl((other);
             bool _2397 = surface_at(param_4, param_5, param_6, param_7);
             float3 other_origin = param_5;
             float3 other_normal = param_6;
@@ -1278,8 +1278,8 @@ float4 trace_path(float x, float y, uint seed, inout uint counter)
         }
         float3 param_40 = met._point;
         float3 param_41 = met.face;
-        float3 param_42)hlsl"
-    R"hlsl( = bounced;
+        float3 param_42 = bou)hlsl"
+    R"hlsl(nced;
         origin = offset(param_40, param_41, param_42);
         direction = bounced;
         limit = 3.4028234663852885981170418348452e+38f;
