@@ -316,6 +316,7 @@ constexpr std::string_view kNoMesh =
     "CylinderMesh, "
     "CapsuleMesh, PlaneMesh, QuadMesh, PrismMesh or TorusMesh";
 constexpr std::string_view kMeshField = "/components/MeshInstance3D/mesh";
+constexpr std::string_view kMultiMeshField = "/components/MultiMeshInstance3D/mesh";
 constexpr std::string_view kNoParticleMesh =
     "has no mesh to draw at its particles: set mesh to a model file, or add a QuadMesh or "
     "another primitive mesh";
@@ -784,6 +785,35 @@ std::vector<Problem> check_meshes(const world::World& world) {
                 check_ik(entity, &model.value());
                 loaded.emplace(entity, std::move(model.value()));
             }
+        }
+    }
+    // A MultiMeshInstance3D draws its model at each instance.
+    for (const entt::entity entity : made<world::MultiMeshInstance3D>(world)) {
+        const std::string& path = world.ecs().get<const world::MultiMeshInstance3D>(entity).mesh;
+        if (path.empty()) {
+            problems.push_back(
+                {entity, std::string(kMultiMeshField), "has no mesh: set mesh to a model file"});
+            continue;
+        }
+        if (std::string problem = mesh_path_problem(world, entity, path); !problem.empty()) {
+            problems.push_back({entity, std::string(kMultiMeshField), std::move(problem)});
+            continue;
+        }
+        const world::FileReader& reader = world.file_reader();
+        if (!reader || asset::is_made_path(path)) {
+            continue;
+        }
+        auto bytes = reader(asset::file_of(path));
+        if (!bytes) {
+            problems.push_back({entity, std::string(kMultiMeshField),
+                                "\"" + path + "\" could not be read: " + bytes.error().message});
+            continue;
+        }
+        for (const json::ValidationError& error : check_model(bytes.value(), path, reader)) {
+            problems.push_back({entity, std::string(kMultiMeshField),
+                                "\"" + path + "\"" +
+                                    (error.path.empty() ? "" : " at " + error.path) + ": " +
+                                    error.message});
         }
     }
     // A CPUParticles3D draws its model or its primitive mesh at each particle.
@@ -1703,6 +1733,56 @@ void Renderer::add_csg(const world::World& world, const world::Tree3D& tree, ent
         draw.layers = settings.layers;
         draw.shadows = casting;
         draws_.push_back(draw);
+    }
+}
+
+void Renderer::add_multimesh(const world::World& world, entt::entity entity,
+                             const world::Affine3D& place,
+                             const std::function<world::Affine3D(entt::entity)>& global,
+                             std::uint32_t cull_mask, float interpolation) {
+    const auto& multimesh = world.ecs().get<const world::MultiMeshInstance3D>(entity);
+    if (multimesh.mesh.empty()) {
+        problems_.push_back(
+            {entity, std::string(kMultiMeshField), "has no mesh: set mesh to a model file"});
+        return;
+    }
+    render::ShadowCasting casting = casting_of(multimesh.cast_shadow);
+    if ((multimesh.layers & cull_mask) == 0) {
+        if (casting == render::ShadowCasting::Off) {
+            return;
+        }
+        casting = render::ShadowCasting::ShadowsOnly;
+    }
+    // Each instance draws as a MeshInstance3D of the model would, where it puts it.
+    world::MeshInstance3D instance;
+    instance.mesh = multimesh.mesh;
+    instance.layers = multimesh.layers;
+    instance.cast_shadow = multimesh.cast_shadow;
+    instance.gi_mode = "disabled";
+    instance.lod_bias = multimesh.lod_bias;
+    const std::size_t count =
+        multimesh.visible_instance_count < 0
+            ? multimesh.instances.size()
+            : std::min(multimesh.instances.size(),
+                       static_cast<std::size_t>(multimesh.visible_instance_count));
+    for (std::size_t i = 0; i < count; ++i) {
+        const world::MultiMeshInstance& each = multimesh.instances[i];
+        world::Transform3D local;
+        local.position = each.position;
+        local.rotation = each.rotation;
+        local.scale = each.scale;
+        const std::size_t before = problems_.size();
+        add_model(world, entity, instance, place * world::affine(local), global, casting,
+                  interpolation);
+        if (problems_.size() > before) {
+            // The model can't draw: say so once, at the MultiMeshInstance3D's field.
+            for (std::size_t p = before; p < problems_.size(); ++p) {
+                if (problems_[p].path == kMeshField) {
+                    problems_[p].path = kMultiMeshField;
+                }
+            }
+            return;
+        }
     }
 }
 
@@ -3143,6 +3223,12 @@ std::optional<Frame3D> Renderer::prepare(
         draw.layers = instance.layers;
         draw.shadows = casting;
         draws_.push_back(draw);
+    }
+    // MultiMeshInstance3Ds draw their model at each instance.
+    for (const entt::entity entity : made<world::MultiMeshInstance3D>(world)) {
+        if (tree.visible(entity)) {
+            add_multimesh(world, entity, global(entity), global, lens.cull_mask, t);
+        }
     }
     // CSG roots draw their results; the shapes under them draw nothing of their own.
     for (const entt::entity root : csg_roots(world, tree)) {

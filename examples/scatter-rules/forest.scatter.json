@@ -1,0 +1,31 @@
+{
+  "format": 1,
+  "layers": [
+    {
+      "as": "multimesh",
+      "density": 0.15,
+      "mesh": "models/tree.model.json",
+      "name": "trees",
+      "noise": {
+        "frequency": 0.15
+      },
+      "noise_range": [-0.1, 1],
+      "on": ["ground", "hill"],
+      "rotate_random": 1,
+      "scale_random": 0.25,
+      "slope": [0, 20],
+      "spacing": 1.2
+    },
+    {
+      "avoid": ["trees"],
+      "count": 10,
+      "name": "rocks",
+      "on": ["ground"],
+      "prefab": "props/rock.prefab.json",
+      "rotate_random": 1,
+      "scale_random": 0.3,
+      "spacing": 1
+    }
+  ],
+  "seed": 3
+}

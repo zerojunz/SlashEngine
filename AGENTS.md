@@ -140,7 +140,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, meshlib, lightmap, voxel_gi, model, standard_material, texture, sdk)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, sdk)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -150,7 +150,7 @@ Validate after editing a scene or prefab by hand, and format before committing o
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
-`.score.json`, `.navmesh.json`, `.navpoly.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json` and `.texture.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
+`.score.json`, `.navmesh.json`, `.navpoly.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json` and `.scatter.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -344,8 +344,19 @@ it; `canvas::install` attaches a world's assets (`asset::attach`, `asset::assets
 `procedural::make_texture` and `scene3d::make_mesh` reach them from a system. `scene3d::SurfaceTool`
 (`src/surface_tool.cpp`) is Godot's for triangles (`generate_normals` with smooth groups, MikkTSpace
 `generate_tangents`, `index`, `commit` into a `Model`). Validators skip `made:` paths (only the
-running game has them). `examples/runtime-meshes` grows hills from noise. The rest of the roadmap
-item (scatter rules, imports from other tools) is in `docs/roadmap.md`.
+running game has them). `examples/runtime-meshes` grows hills from noise.
+
+Scatter rules are `.scatter.json` files (`scatter.hpp`; `$cli schema scatter`), layers of what to
+place over terrains, meshes, tile maps and areas, as Unreal's PCG and Godot's MultiMesh *Populate
+Surface*: `procedural::scatter` picks a triangle by area and a point in it as Godot's
+`Face3::get_random_point_inside`, keeps it by area, slope, height, noise and spacing (from its own
+places and the layers it `avoid`s), and turns and scales it as `MultiMeshEditor::_populate`, with a
+seeded PCG32 so places repeat everywhere. `scatter.run` (`engine/command/src/scatter.cpp`) reads
+the ground as `navigation::world_geometry` (3D) or tile map cells (2D) and puts each layer under
+`into` as entities extending a prefab or drawing a mesh, or as one `MultiMeshInstance3D`, Godot's
+(`Renderer::add_multimesh` draws its model at each instance), replacing what `into` held.
+`examples/scatter-rules` grows a forest. The rest of the roadmap item (tile maps and terrains from
+noise, imports from other tools) is in `docs/roadmap.md`.
 
 ## Commands, MCP and JSON-RPC
 

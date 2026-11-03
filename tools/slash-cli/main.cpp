@@ -46,6 +46,7 @@
 #include "slash/platform/platform.hpp"
 #include "slash/platform/process.hpp"
 #include "slash/platform/run.hpp"
+#include "slash/procedural/scatter.hpp"
 #include "slash/procedural/texture.hpp"
 #include "slash/render/device.hpp"
 #include "slash/runtime/gameplay.hpp"
@@ -1118,6 +1119,7 @@ int cmd_scene_validate(const std::string& path) {
     const bool test = path.ends_with(command::kTestSuffix);
     const bool score = path.ends_with(slash::soundtrack::kScoreSuffix);
     const bool texture = path.ends_with(slash::procedural::kTextureSuffix);
+    const bool scatter = path.ends_with(slash::procedural::kScatterSuffix);
     json::Value result;
     auto parsed = json::parse(text.value());
     std::vector<json::ValidationError> errors;
@@ -1166,6 +1168,8 @@ int cmd_scene_validate(const std::string& path) {
         errors = slash::soundtrack::validate_score(parsed.value());
     } else if (texture) {
         errors = slash::procedural::validate_texture(parsed.value());
+    } else if (scatter) {
+        errors = slash::procedural::validate_scatter(parsed.value());
     } else {
         errors = prefab ? world::validate_prefab(registry, parsed.value(), prefab_reader(path))
                         : world::validate_scene(registry, parsed.value(), prefab_reader(path));
@@ -1203,6 +1207,10 @@ int cmd_scene_validate(const std::string& path) {
     } else if (font || stream || process || standard) {
         print(result);
         return kExitOk;
+    } else if (scatter) {
+        // Its layers.
+        result["layers"] = static_cast<std::int64_t>(
+            slash::procedural::parse_scatter(parsed.value()).value().layers.size());
     } else if (texture) {
         // Its size.
         const auto image =
@@ -1388,6 +1396,9 @@ int cmd_scene_format(const std::string& path, bool check) {
         if (path.ends_with(slash::soundtrack::kScoreSuffix)) {
             return format_checked(text.value(), slash::soundtrack::parse_score);
         }
+        if (path.ends_with(slash::procedural::kScatterSuffix)) {
+            return format_checked(text.value(), slash::procedural::parse_scatter);
+        }
         if (path.ends_with(world::kPrefabSuffix)) {
             return world::format_prefab(registry, text.value(), prefab_reader(path));
         }
@@ -1448,7 +1459,7 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 29> kKinds = {"scene",
+    constexpr std::array<std::string_view, 30> kKinds = {"scene",
                                                          "prefab",
                                                          "frames",
                                                          "material",
@@ -1476,13 +1487,14 @@ int cmd_schema(const std::vector<std::string>& args) {
                                                          "providers",
                                                          "bench",
                                                          "standard_material",
-                                                         "texture"};
+                                                         "texture",
+                                                         "scatter"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
         return usage_error(
             "schema takes one argument: scene, prefab, frames, material, "
             "process_material, animation, animtree, tileset, font, theme, audio, "
             "bus_layout, navmesh, navpoly, meshlib, lightmap, voxel_gi, model, standard_material, "
-            "texture, replay, test, "
+            "texture, scatter, replay, test, "
             "score, "
             "storyboard, "
             "project, presets, sdk, providers or bench");
@@ -1528,6 +1540,8 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = slash::scene3d::standard_material_schema();
     } else if (args[0] == "texture") {
         schema = slash::procedural::texture_schema();
+    } else if (args[0] == "scatter") {
+        schema = slash::procedural::scatter_schema();
     } else if (args[0] == "replay") {
         schema = command::replay_schema();
     } else if (args[0] == "test") {

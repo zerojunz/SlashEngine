@@ -403,6 +403,10 @@ private:
     // A CSG root's result, drawn as Godot draws its root shape's mesh.
     void add_csg(const world::World& world, const world::Tree3D& tree, entt::entity root,
                  const world::Affine3D& place, std::uint32_t cull_mask);
+    // A MultiMeshInstance3D's model at each instance, as Godot draws a MultiMesh.
+    void add_multimesh(const world::World& world, entt::entity entity, const world::Affine3D& place,
+                       const std::function<world::Affine3D(entt::entity)>& global,
+                       std::uint32_t cull_mask, float interpolation);
     // A GridMap's octants, drawn as Godot draws their MultiMeshes.
     void add_gridmap(const world::World& world, entt::entity entity, const world::Affine3D& place,
                      std::uint32_t cull_mask);

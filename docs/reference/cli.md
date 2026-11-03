@@ -156,7 +156,8 @@ file, a [`.theme.json`](scene-format.md#themes) file, an
 [`.meshlib.json`](scene-format.md#mesh-libraries) file, a
 [`.lightmap.json`](scene-format.md#baked-lightmaps) file, a
 [`.standard_material.json`](scene-format.md#material-files) file (and that its textures
-decode), a [`.texture.json`](scene-format.md#procedural-textures) file, or a [model](scene-format.md#models)
+decode), a [`.texture.json`](scene-format.md#procedural-textures) file, a
+[`.scatter.json`](scene-format.md#scatter-rules) file, or a [model](scene-format.md#models)
 (`.gltf`, `.glb`, `.obj`, `.fbx` or `.blend`), and lists every error, each with its JSON Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) and
 [scenes](scene-format.md#instanced-scenes) a file extends, the tile sets its layers use, the animation libraries and trees its players and trees use, the navigation meshes and polygons its regions place, the mesh libraries its grid maps use, the maps its terrains read and the project's window size and theme are read from its
 project: the nearest folder above it with a `project.json`, else the current folder. A `.blend`
@@ -176,7 +177,7 @@ For a prefab the result counts its `components` instead of `entities`, for a `.f
 output node among them), for a `.tileset.json` file its `tiles`, for a `.theme.json`
 file its `types`, for a `.bus_layout.json` file its `buses`, for a `.replay.json` file the
 `ticks` it covers, for a `.test.json` file its `tests`, for a `.score.json` file its `bars`,
-`tracks` and `notes`, for a `.navmesh.json` or `.navpoly.json` file its `polygons`, for a `.meshlib.json` file its `items`, for a `.lightmap.json` file its `users`, for a `.texture.json` file the `width` and `height` it makes, for a model its `meshes`, `materials`, `images` and `bounds` (the corners
+`tracks` and `notes`, for a `.navmesh.json` or `.navpoly.json` file its `polygons`, for a `.meshlib.json` file its `items`, for a `.lightmap.json` file its `users`, for a `.texture.json` file the `width` and `height` it makes, for a `.scatter.json` file its `layers`, for a model its `meshes`, `materials`, `images` and `bounds` (the corners
 of the box its parts fill, in meters), for a `.font.json`, `.audio.json` or `.process_material.json` file nothing more, and for a `.material.json` file the
 `instructions` its graph compiles to, of the 64 a material can run. A material with a
 [shader](scene-format.md#shaders) has no graph: its shader is compiled, and each error in it is
@@ -264,8 +265,8 @@ When the project has a
 Rewrites a scene, prefab, `.frames.json`, `.material.json`, `.anim.json`, `.animtree.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
-`.score.json`, `.navmesh.json`, `.navpoly.json`, `.meshlib.json`, `.lightmap.json` or
-`.texture.json` file in [canonical form](scene-format.md#canonical-form).
+`.score.json`, `.navmesh.json`, `.navpoly.json`, `.meshlib.json`, `.lightmap.json`,
+`.texture.json` or `.scatter.json` file in [canonical form](scene-format.md#canonical-form).
 
 ```bash
 slash-cli scene format <file>
@@ -298,7 +299,8 @@ for [`.score.json` files](scene-format.md#scores), for
 [`.voxelgi.json` files](scene-format.md#voxelgi), for
 [`.model.json` recipes](scene-format.md#model-recipes), for
 [`.standard_material.json` files](scene-format.md#material-files), for
-[`.texture.json` files](scene-format.md#procedural-textures), for [storyboard files](storyboard-format.md),
+[`.texture.json` files](scene-format.md#procedural-textures), for
+[`.scatter.json` files](scene-format.md#scatter-rules), for [storyboard files](storyboard-format.md),
 for [`project.json`](project-format.md), for [`export_presets.json`](project-format.md#export-presets),
 for [`sdk.json`](sdk-format.md), for [`providers.json`](providers.md) or for a
 [benchmark task's `task.json`](benchmark.md#tasks).
@@ -327,6 +329,7 @@ slash-cli schema voxel_gi
 slash-cli schema model
 slash-cli schema standard_material
 slash-cli schema texture
+slash-cli schema scatter
 slash-cli schema storyboard
 slash-cli schema project
 slash-cli schema presets
