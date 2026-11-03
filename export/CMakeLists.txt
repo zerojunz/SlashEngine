@@ -348,6 +348,9 @@ elseif(ANDROID)
     # The interfaces Java services backends implement (slash/services/bridges.hpp).
     install(DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/../engine/services/android/
         DESTINATION java COMPONENT game)
+    # The bridge TalkBack reads the controls through (slash/accessibility/mobile.hpp).
+    install(DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/../engine/accessibility/android/
+        DESTINATION java COMPONENT game)
 elseif(IOS)
     # What Xcode records about the build in Info.plist, which App Store Connect checks.
     if(CMAKE_OSX_SYSROOT MATCHES "[Ss]imulator")

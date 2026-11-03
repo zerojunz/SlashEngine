@@ -1,11 +1,11 @@
+#include "changes.hpp"
+
 #include "slash/accessibility/web.hpp"
 
 #include <algorithm>
 #include <array>
-#include <charconv>
-#include <cmath>
 #include <cstdint>
-#include <unordered_map>
+#include <optional>
 
 namespace slash::accessibility {
 namespace {
@@ -42,14 +42,6 @@ std::string_view aria_role(std::string_view role) {
     return {};
 }
 
-// A number as ARIA's attributes take it: whole numbers without a point.
-std::string number_text(double value) {
-    if (std::abs(value) < 1e15 && value == static_cast<double>(static_cast<std::int64_t>(value))) {
-        return std::to_string(static_cast<std::int64_t>(value));
-    }
-    return json::write(json::Value(value), json::Style::Compact);
-}
-
 std::string id_list(const std::vector<std::uint64_t>& ids) {
     std::string out;
     for (const std::uint64_t id : ids) {
@@ -63,36 +55,6 @@ std::string id_list(const std::vector<std::uint64_t>& ids) {
 
 bool has_flag(const Node& node, std::string_view flag) {
     return std::ranges::find(node.flags, flag) != node.flags.end();
-}
-
-std::string text_of(std::uint64_t id) {
-    return std::to_string(id);
-}
-
-json::Value element_json(std::uint64_t id, const Node& node) {
-    const DomElement element = dom_element(node);
-    json::Object attributes;
-    for (const auto& [name, value] : element.attributes) {
-        attributes.emplace(name, value);
-    }
-    json::Array bounds;
-    if (node.bounds) {
-        for (const double edge : *node.bounds) {
-            bounds.emplace_back(edge);
-        }
-    }
-    json::Array children;
-    for (const std::uint64_t child : node.children) {
-        children.emplace_back(text_of(child));
-    }
-    json::Object out;
-    out.emplace("id", text_of(id));
-    out.emplace("role", element.role);
-    out.emplace("attributes", std::move(attributes));
-    out.emplace("text", element.text);
-    out.emplace("bounds", std::move(bounds));
-    out.emplace("children", std::move(children));
-    return {std::move(out)};
 }
 
 } // namespace
@@ -148,9 +110,9 @@ DomElement dom_element(const Node& node) {
     if (node.range) {
         const auto& [value, low, high, step] = *node.range;
         (void)step;
-        set("aria-valuenow", number_text(value));
-        set("aria-valuemin", number_text(low));
-        set("aria-valuemax", number_text(high));
+        set("aria-valuenow", detail::number_text(value));
+        set("aria-valuemin", detail::number_text(low));
+        set("aria-valuemax", detail::number_text(high));
         if (!node.value.empty() && !field) {
             set("aria-valuetext", node.value);
         }
@@ -191,32 +153,18 @@ DomElement dom_element(const Node& node) {
 }
 
 json::Value dom_changes(const Snapshot& before, const Snapshot& now) {
-    std::unordered_map<std::uint64_t, const Node*> kept;
-    kept.reserve(now.nodes.size());
-    for (const auto& [id, node] : now.nodes) {
-        kept.emplace(id, &node);
-    }
-    json::Array removed;
-    for (const auto& [id, node] : before.nodes) {
-        if (!kept.contains(id)) {
-            removed.emplace_back(text_of(id));
+    return detail::changes(before, now, [](const Node& node) {
+        const DomElement element = dom_element(node);
+        json::Object attributes;
+        for (const auto& [name, value] : element.attributes) {
+            attributes.emplace(name, value);
         }
-    }
-    json::Array set;
-    for (const std::size_t at : changed(before, now)) {
-        set.push_back(element_json(now.nodes[at].first, now.nodes[at].second));
-    }
-    json::Object out;
-    if (!removed.empty()) {
-        out.emplace("remove", std::move(removed));
-    }
-    if (!set.empty()) {
-        out.emplace("set", std::move(set));
-    }
-    if (before.nodes.empty() || before.focus != now.focus) {
-        out.emplace("focus", text_of(now.focus));
-    }
-    return {std::move(out)};
+        json::Object out;
+        out.emplace("role", element.role);
+        out.emplace("attributes", std::move(attributes));
+        out.emplace("text", element.text);
+        return out;
+    });
 }
 
 std::vector<Request> dom_requests(const json::Value& queued) {
@@ -231,13 +179,11 @@ std::vector<Request> dom_requests(const json::Value& queued) {
             (action->as_string() != "click" && action->as_string() != "focus")) {
             continue;
         }
-        const std::string& text = node->as_string();
-        std::uint64_t id = 0;
-        const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), id);
-        if (error != std::errc{} || end != text.data() + text.size() || id == kWindowNode) {
+        const std::optional<std::uint64_t> id = detail::id_of(node->as_string());
+        if (!id || *id == kWindowNode) {
             continue;
         }
-        out.push_back(Request{.node = id, .action = action->as_string(), .data = {}});
+        out.push_back(Request{.node = *id, .action = action->as_string(), .data = {}});
     }
     return out;
 }
