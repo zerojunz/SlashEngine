@@ -607,6 +607,21 @@ if((SLASH_BUILD_TOOLS OR SLASH_BUILD_TESTS) AND NOT EMSCRIPTEN)
         target_compile_definitions(slash_zstd PRIVATE ZSTD_DISABLE_ASM ZSTD_MULTITHREAD=0)
     endif()
 
+    # OpenEXR heightmaps for terrain.import, read with tinyexr as Godot reads EXR images, its zlib
+    # stb_image's (cmake/tinyexr_zlib.c) rather than the miniz it brings.
+    slash_add_dependency(tinyexr DOWNLOAD_ONLY TRUE)
+    if(tinyexr_ADDED)
+        add_library(slash_tinyexr STATIC ${tinyexr_SOURCE_DIR}/tinyexr.cc
+            ${PROJECT_SOURCE_DIR}/cmake/tinyexr_zlib.c)
+        target_include_directories(slash_tinyexr SYSTEM PUBLIC ${tinyexr_SOURCE_DIR})
+        target_include_directories(slash_tinyexr PRIVATE ${stb_SOURCE_DIR})
+        target_compile_definitions(slash_tinyexr PUBLIC TINYEXR_USE_MINIZ=0 TINYEXR_USE_STB_ZLIB=1
+            TINYEXR_USE_THREAD=0 TINYEXR_USE_OPENMP=0 TINYEXR_USE_PIZ=1 TINYEXR_USE_ZFP=0)
+        set_source_files_properties(${tinyexr_SOURCE_DIR}/tinyexr.cc PROPERTIES
+            COMPILE_DEFINITIONS
+            "stbi_zlib_decode_buffer=slash_exr_zlib_decode;stbi_zlib_compress=slash_exr_zlib_compress")
+    endif()
+
     slash_add_dependency(brotli DOWNLOAD_ONLY TRUE)
     if(brotli_ADDED)
         file(GLOB _slash_brotli_sources ${brotli_SOURCE_DIR}/c/common/*.c

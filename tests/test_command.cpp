@@ -38,6 +38,10 @@
 #include <string_view>
 #include <vector>
 
+#if SLASH_HAS_TINYEXR
+#include <tinyexr.h>
+#endif
+
 namespace cmdtest {
 
 struct Health {
@@ -3944,6 +3948,125 @@ TEST_CASE("terrain.generate makes heights from a FastNoiseLite of one's own") {
     reply = engine.fails("terrain.generate", R"({"id": "land", "noise": "missing.texture.json"})",
                          command::code::kNotFound);
     CHECK(reply.message == "/noise: the project has no file \"missing.texture.json\"");
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("terrain.import reads heightmaps and maps other tools export") {
+    const std::string root = "terrain_import_test_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    // A 16-bit PNG 100 by 80 rising to the east; a 65 by 65 red color map the terrain has.
+    render::Gray16 ramp{.width = 100, .height = 80, .values = {}};
+    for (std::uint32_t y = 0; y < 80; ++y) {
+        for (std::uint32_t x = 0; x < 100; ++x) {
+            ramp.values.push_back(static_cast<std::uint16_t>(x * 600));
+        }
+    }
+    REQUIRE(slash::platform::write_file(root + "/ramp.png", render::encode_gray16_png(ramp).value())
+                .ok());
+    render::Image red{.width = 65, .height = 65, .pixels = {}};
+    red.pixels.resize(65 * 65 * 4, 255);
+    for (std::size_t i = 0; i < red.pixels.size(); i += 4) {
+        red.pixels[i + 1] = 0;
+        red.pixels[i + 2] = 0;
+    }
+    REQUIRE(slash::platform::write_file(root + "/land.color.png", render::encode_png(red).value())
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("entity.create", R"({"id": "land", "components": {"Transform3D": {},
+        "HTerrain": {"heightmap": "land.height.png", "splatmap": "land.splat.png",
+                     "colormap": "land.color.png", "resolution": 65}}})");
+    const auto height_at = [&](std::string_view point) {
+        const json::Value got =
+            engine.ok("terrain.get", R"({"id": "land", "points": [)" + std::string(point) + "]}");
+        return got.find("points")->as_array()[0].find("position")->as_array()[1].as_double();
+    };
+
+    // The terrain grows to 129, the smaller side's next power of two plus one, and the PNG's
+    // values go from min_height to max_height; past the file its last column repeats.
+    const json::Value png = engine.ok("terrain.import", R"({"id": "land", "heightmap": "ramp.png",
+                                                            "min_height": -10, "max_height": 30})");
+    CHECK(png.find("resolution")->as_int() == 129);
+    CHECK(*png.find("height_range") == parse("[-10, 30]"));
+    CHECK(*png.find("source_size") == parse("[100, 80]"));
+    CHECK(*png.find("files") == parse(R"(["land.color.png", "land.height.png"])"));
+    CHECK(height_at("[10, 5]") == doctest::Approx(-10.0 + (40.0 * 6000.0 / 65535.0)).epsilon(1e-3));
+    CHECK(height_at("[120, 100]") == height_at("[99, 79]"));
+    // The color map it had is stretched to the new size.
+    const auto color =
+        render::decode_image(slash::platform::read_file(root + "/land.color.png").value());
+    REQUIRE(color.ok());
+    CHECK(color.value().width == 129);
+    CHECK(color.value().pixels[(64 * 129 + 64) * 4] == 255);
+    CHECK(color.value().pixels[((64 * 129 + 64) * 4) + 1] == 0);
+
+    // A big-endian .r16 file of 65 by 65 values shrinks it back.
+    std::string r16;
+    for (int y = 0; y < 65; ++y) {
+        for (int x = 0; x < 65; ++x) {
+            const auto v = static_cast<std::uint16_t>((x + y) * 256);
+            r16.push_back(static_cast<char>(v >> 8));
+            r16.push_back(static_cast<char>(v & 0xFF));
+        }
+    }
+    REQUIRE(slash::platform::write_file(root + "/dunes.r16", r16).ok());
+    const json::Value raw = engine.ok("terrain.import", R"({"id": "land", "heightmap": "dunes.r16",
+        "big_endian": true, "max_height": 100})");
+    CHECK(raw.find("resolution")->as_int() == 65);
+    CHECK(height_at("[3, 4]") == doctest::Approx(100.0 * 7.0 * 256.0 / 65535.0).epsilon(1e-3));
+
+#if SLASH_HAS_TINYEXR
+    // EXR heights are meters as they are, and height_range widens to whole meters around them.
+    std::vector<float> meters;
+    for (int y = 0; y < 65; ++y) {
+        for (int x = 0; x < 65; ++x) {
+            meters.push_back(2.5F + (static_cast<float>(x) * 0.1F));
+        }
+    }
+    const std::string exr_path = root + "/peaks.exr";
+    REQUIRE(SaveEXR(meters.data(), 65, 65, 1, 0, exr_path.c_str(), nullptr) == TINYEXR_SUCCESS);
+    const json::Value exr =
+        engine.ok("terrain.import", R"({"id": "land", "heightmap": "peaks.exr"})");
+    CHECK(*exr.find("height_range") == parse("[2, 9]"));
+    CHECK(height_at("[10, 30]") == doctest::Approx(3.5).epsilon(1e-3));
+#endif
+
+    // Splat maps come in at the terrain's size; undo puts each import back.
+    render::Image splat{.width = 65, .height = 65, .pixels = {}};
+    splat.pixels.resize(65 * 65 * 4, 0);
+    for (std::size_t i = 1; i < splat.pixels.size(); i += 4) {
+        splat.pixels[i] = 255;
+    }
+    REQUIRE(
+        slash::platform::write_file(root + "/rocks.png", render::encode_png(splat).value()).ok());
+    CHECK(
+        *engine.ok("terrain.import", R"({"id": "land", "splatmap": "rocks.png"})").find("files") ==
+        parse(R"(["land.splat.png"])"));
+    engine.ok("undo");
+    engine.ok("undo");
+    CHECK(engine.ok("terrain.get", R"({"id": "land"})").find("resolution")->as_int() == 65);
+    engine.ok("undo");
+    CHECK(engine.ok("terrain.get", R"({"id": "land"})").find("resolution")->as_int() == 129);
+
+    auto reply = engine.fails("terrain.import", R"({"id": "land", "splatmap": "red.png"})",
+                              command::code::kNotFound);
+    CHECK(reply.message == "/splatmap: the project has no file \"red.png\"");
+    reply = engine.fails("terrain.import", R"({"id": "land", "splatmap": "rocks.png"})",
+                         command::code::kInvalidArgument);
+    CHECK(contains(reply.message, "is 65x65 pixels, but the terrain's maps are 129x129"));
+    REQUIRE(slash::platform::write_file(root + "/odd.raw", std::string(7, '\0')).ok());
+    reply = engine.fails("terrain.import", R"({"id": "land", "heightmap": "odd.raw"})",
+                         command::code::kInvalidArgument);
+    CHECK(contains(reply.message, "is 7 bytes, not a square of 16-bit values"));
+    reply = engine.fails("terrain.import", R"({"id": "land", "heightmap": "ramp.png",
+                                               "min_height": 5, "max_height": 5})",
+                         command::code::kInvalidArgument);
+    CHECK(reply.message == "/max_height: max_height must be above min_height");
+    CHECK(contains(
+        engine.fails("terrain.import", R"({"id": "land"})", command::code::kInvalidParams).message,
+        "give heightmap"));
     std::filesystem::remove_all(root);
 }
 
