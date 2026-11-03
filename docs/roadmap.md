@@ -972,7 +972,7 @@ Exit: an agent builds a small 3D sample end to end.
         FastNoiseLite) and procedural textures as `.texture.json` files, Godot's
         `NoiseTexture2D`, `GradientTexture1D` and `GradientTexture2D`, usable wherever a
         texture path is; `texture.generate` measures, samples and bakes them
-  - [ ] Textures and meshes made by gameplay code while a game runs, as Godot's `ImageTexture`,
+  - [x] Textures and meshes made by gameplay code while a game runs, as Godot's `ImageTexture`,
         `ArrayMesh` and `SurfaceTool`
   - [ ] Scatter rules agents write: prefabs or meshes placed over terrains, meshes, tile maps and
         areas by noise, density, slope and spacing, seeded so they repeat, as entities or as one

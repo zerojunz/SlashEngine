@@ -1,0 +1,7 @@
+before: {"colors":[[0.302,0.302,0.302,1],[0.302,0.302,0.302,1]],"drawn":{},"height":720,"width":1280}
+made: [{"path":"made:ground","type":"model","version":1},{"path":"made:minimap","type":"texture","version":1}]
+ground: {"materials":["surface_0"],"parts":[{"center":[0,0.7557,0],"materials":["surface_0"],"name":"mesh","size":[8,0.8367,8],"triangles":512}],"pivot":[0.5,-0.4032,0.5],"size":[8,0.8367,8],"triangles":512}
+minimap: {"channels":{"a":[255,255,255],"b":[38,38,38],"g":[103,121.29,138],"r":[83,106.96,133]},"height":17,"width":17,"wrap":{"inside":2.94,"x":2.76,"y":4.34}}
+seed 1: {"colors":[[0.325,0.498,0.153,1],[0.345,0.486,0.153,1],[0.412,0.478,0.149,1]],"drawn":{"meshes":1,"sprites":1},"height":720,"width":1280}
+minimap: {"channels":{"a":[255,255,255],"b":[38,38,38],"g":[101,120.22,145],"r":[73,108.45,135]},"height":17,"width":17,"wrap":{"inside":2.93,"x":6.84,"y":3.93}}
+seed 2: {"colors":[[0.451,0.392,0.149,1],[0.38,0.459,0.153,1],[0.51,0.408,0.149,1]],"drawn":{"meshes":1,"sprites":1},"height":720,"width":1280}

@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <entt/core/type_info.hpp>
+#include <entt/entity/fwd.hpp>
 #include <functional>
 #include <map>
 #include <memory>
@@ -41,6 +42,23 @@ inline constexpr std::string_view kSubresource = "::";
     const std::size_t at = path.find(kSubresource);
     return at == std::string_view::npos ? std::string_view()
                                         : path.substr(at + kSubresource.size());
+}
+
+// Assets made by code rather than read from a file, as Godot's ImageTexture and ArrayMesh made
+// by a script, are named by this prefix and a name: "made:minimap". Assets::put makes one.
+inline constexpr std::string_view kMadePrefix = "made:";
+
+// Whether a path names a made asset: the prefix, then a name of letters, digits and "_-./".
+[[nodiscard]] bool is_made_path(std::string_view path) noexcept;
+
+// The start of the error loading a made path gives before code has made it. Renderers draw
+// nothing for such an asset and say so in frame summaries, but log no warning, since code
+// usually makes it on the first tick.
+inline constexpr std::string_view kNotMadeYet = "nothing has made ";
+
+// Whether an error message is the one loading a made path gives before code has made it.
+[[nodiscard]] inline bool not_made_yet(std::string_view message) noexcept {
+    return message.starts_with(kNotMadeYet);
 }
 
 using platform::FileStamp;
@@ -147,6 +165,18 @@ public:
         return Handle<T>(std::move(record).value());
     }
 
+    // Makes or replaces the asset at a made path (kMadePrefix): every handle to it sees the new
+    // value and a version one higher, so renderers upload it again. Made assets stay until
+    // dropped and never reload; loading one before it is made fails with NotFound. bytes is
+    // what it holds in memory, for list() and perf.stats.
+    template <typename T>
+    Result<void> put(std::string_view path, T value, std::size_t bytes = sizeof(T)) {
+        return put_record(path, entt::type_hash<T>::value(),
+                          std::make_shared<const T>(std::move(value)), bytes);
+    }
+    // Forgets a made asset; handles still held keep its last value. False if there was none.
+    bool drop(std::string_view path);
+
     // Reads a file that other code parses, such as a prefab, and watches it so poll() reports
     // edits. type names it in list(). A file read while an asset loads, such as a texture or part
     // a model names, is that asset's too: an edit to it reloads the asset.
@@ -200,12 +230,26 @@ private:
                     detail::Loader load);
     [[nodiscard]] const Type* type_for(std::string_view path) const;
     Result<std::shared_ptr<detail::Record>> load_record(std::string_view path, entt::id_type id);
+    Result<void> put_record(std::string_view path, entt::id_type id, detail::Value value,
+                            std::size_t bytes);
+    [[nodiscard]] std::string type_name(entt::id_type id) const;
+
+    struct Made {
+        std::shared_ptr<detail::Record> record;
+        entt::id_type id = 0;
+    };
 
     FileSource source_;
     std::vector<Type> types_;
     std::map<std::string, std::weak_ptr<detail::Record>, std::less<>> loaded_;
     std::map<std::string, Watched, std::less<>> watched_;
+    std::map<std::string, Made, std::less<>> made_;
     std::vector<std::string> loading_; // the assets loading now, innermost last
 };
+
+// The assets a world's modules load from, kept in its registry's context so gameplay code can
+// make assets (canvas::install attaches them). Null if none were attached.
+void attach(entt::registry& registry, Assets& assets);
+[[nodiscard]] Assets* assets_of(const entt::registry& registry);
 
 } // namespace slash::asset

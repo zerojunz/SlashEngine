@@ -501,5 +501,7 @@ TEST_CASE("CPUParticles3D without a mesh is reported") {
     REQUIRE(problems.size() == 2);
     CHECK(problems[0].path == "/components/CPUParticles3D/mesh");
     CHECK(problems[0].message.starts_with("has no mesh to draw at its particles"));
-    CHECK(problems[1].message == "expected a .gltf, .glb, .obj, .fbx, .blend or .model.json file");
+    CHECK(problems[1].message ==
+          "expected a .gltf, .glb, .obj, .fbx, .blend or .model.json file, or a mesh gameplay "
+          "code made (\"made:<name>\")");
 }
