@@ -2,6 +2,7 @@
 
 #include "slash/core/result.hpp"
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <utility>
@@ -20,6 +21,9 @@ struct ProcessOptions {
     std::string log_path;
     // How many trailing lines of output to keep in ProcessResult::tail.
     int tail_lines = 40;
+    // The longest line the tail keeps whole; longer ones keep their start, then "...".
+    // 0 keeps every line whole, for output read as data, such as a game's JSON summary.
+    std::size_t max_line_length = 300;
     // Written to the child's standard input, which is then closed, before its output is read;
     // keep it short, such as answers to its prompts. Empty gives the child no input.
     std::string input;

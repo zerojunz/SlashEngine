@@ -415,6 +415,9 @@ bool OpenXR::check(XrResult result, std::string_view what) const {
 // get_system_info, load_supported_view_configuration_types, _views and
 // load_supported_environmental_blend_modes.
 Result<void> OpenXR::create_instance(const Settings& settings, std::string_view application) {
+    if (auto loader = detail::initialize_platform_loader(); !loader) {
+        return fail(loader.error().message);
+    }
     if (const XrResult result = hand_runtime_to_loader(); XR_FAILED(result)) {
         return fail("OpenXR: the loader didn't take the runtime set_openxr_runtime names [" +
                     error_string(XR_NULL_HANDLE, result) + "]");
@@ -439,6 +442,10 @@ Result<void> OpenXR::create_instance(const Settings& settings, std::string_view 
     // The extensions Godot's wrappers ask for that this interface uses: the graphics API's when
     // it draws into the headset, else a headless session where the runtime allows one.
     std::vector<std::string> wanted{std::string(kLocalFloor), std::string(kPalmPose)};
+    const std::string_view platform = detail::platform_instance_extension();
+    if (!platform.empty()) {
+        wanted.emplace_back(platform);
+    }
     if (graphics_ != nullptr) {
         if (!available_.contains(graphics_->extension())) {
             return fail("OpenXR: the runtime can't draw with " + std::string(graphics_->driver()) +
@@ -475,6 +482,9 @@ Result<void> OpenXR::create_instance(const Settings& settings, std::string_view 
         info.applicationInfo.apiVersion = version;
         info.enabledExtensionCount = static_cast<std::uint32_t>(names.size());
         info.enabledExtensionNames = names.data();
+        if (!platform.empty() && enabled_.contains(platform)) {
+            info.next = detail::platform_instance_info(nullptr);
+        }
         return xrCreateInstance(&info, &instance_);
     };
     version_ = XR_API_VERSION_1_1;
@@ -1366,6 +1376,8 @@ Result<OpenXRDevice> OpenXR::prepare_device(world::World& world, std::string_vie
         graphics_ = detail::make_vulkan_graphics();
     } else if (wanted == "opengl") {
         graphics_ = detail::make_opengl_graphics();
+    } else if (wanted == "opengl_es") {
+        graphics_ = detail::make_opengl_es_graphics();
     }
     if (graphics_ == nullptr) {
         std::string drivers = "\"vulkan\"";
@@ -1374,6 +1386,9 @@ Result<OpenXRDevice> OpenXR::prepare_device(world::World& world, std::string_vie
         }
         if (detail::make_opengl_graphics() != nullptr) {
             drivers += ", \"opengl\"";
+        }
+        if (detail::make_opengl_es_graphics() != nullptr) {
+            drivers += ", \"opengl_es\"";
         }
         return make_error(ErrorCode::InvalidArgument,
                           "OpenXR draws with " + drivers + ", not \"" + std::string(driver) + "\"");
@@ -1661,6 +1676,41 @@ void set_openxr_runtime(std::string_view manifest) {
     RuntimeOverride& override = runtime_override();
     const std::scoped_lock lock(override.mutex);
     override.manifest = std::string(manifest);
+}
+
+Result<std::vector<std::string>> openxr_runtime_extensions() {
+    if (auto loader = detail::initialize_platform_loader(); !loader) {
+        return loader.error();
+    }
+    if (const XrResult result = hand_runtime_to_loader(); XR_FAILED(result)) {
+        return make_error(ErrorCode::PlatformFailure,
+                          "OpenXR: the loader didn't take the runtime set_openxr_runtime names [" +
+                              error_string(XR_NULL_HANDLE, result) + "]");
+    }
+    std::uint32_t count = 0;
+    if (const XrResult result = xrEnumerateInstanceExtensionProperties(nullptr, 0, &count, nullptr);
+        XR_FAILED(result)) {
+        return make_error(ErrorCode::NotFound,
+                          "OpenXR: no runtime found, is a headset's OpenXR runtime installed and "
+                          "active? [" +
+                              error_string(XR_NULL_HANDLE, result) + "]");
+    }
+    std::vector<XrExtensionProperties> properties(
+        count, made<XrExtensionProperties>(XR_TYPE_EXTENSION_PROPERTIES));
+    if (const XrResult result =
+            xrEnumerateInstanceExtensionProperties(nullptr, count, &count, properties.data());
+        XR_FAILED(result)) {
+        return make_error(ErrorCode::PlatformFailure,
+                          "OpenXR: the runtime didn't list its extensions [" +
+                              error_string(XR_NULL_HANDLE, result) + "]");
+    }
+    std::vector<std::string> names;
+    names.reserve(count);
+    for (std::uint32_t i = 0; i < count; ++i) {
+        names.emplace_back(properties[i].extensionName);
+    }
+    std::sort(names.begin(), names.end());
+    return names;
 }
 
 std::shared_ptr<Interface> make_openxr_interface() {

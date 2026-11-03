@@ -5,6 +5,7 @@
 #include "slash/core/json.hpp"
 #include "slash/platform/process.hpp"
 #include "slash/render/device.hpp"
+#include "slash/runtime/game.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
@@ -453,6 +454,47 @@ TEST_CASE("openxr: xr.set switches a session between the test headset and the ru
         log << file.rdbuf();
         CHECK(log.str().find("destroy instance") != std::string::npos);
     }
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("openxr: the runtime is found without an instance, and headless games report it") {
+    const std::filesystem::path root = "openxr_probe";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root / "game");
+    std::ofstream(root / "script.txt") << "extensions XR_MND_headless XR_EXT_palm_pose\n";
+    set_env("FAKE_OPENXR_SCRIPT", std::filesystem::absolute(root / "script.txt").string());
+    set_env("FAKE_OPENXR_LOG", std::filesystem::absolute(root / "log.txt").string());
+    std::ofstream(root / "game" / "project.json")
+        << R"({"format": 1, "name": "XR", "main_scene": "main.scene.json", "version": "1.0.0",
+              "xr": {"openxr": {"enabled": true}}})";
+    std::ofstream(root / "game" / "main.scene.json") << R"({"entities": {}, "format": 1})";
+    const auto summary_of = [&] {
+        auto game = runtime::Game::start(
+            {.data_dir = (root / "game").string(), .headless = true, .max_ticks = 1});
+        REQUIRE_MESSAGE(game.ok(), (game.ok() ? std::string() : game.error().message));
+        return game.value()->summary();
+    };
+
+    // No runtime: a game with no window starts no headset, and says why there is none. (The
+    // loader keeps a runtime it finds loaded, so this comes first.)
+    xr::set_openxr_runtime(std::filesystem::absolute(root / "no_runtime.json").string());
+    const auto missing = xr::openxr_runtime_extensions();
+    REQUIRE_FALSE(missing.ok());
+    CHECK(missing.error().message.starts_with("OpenXR: no runtime found"));
+    json::Value summary = summary_of();
+    REQUIRE(summary.find("xr") != nullptr);
+    CHECK_FALSE(summary.find("xr")->find("runtime")->as_bool());
+    CHECK(summary.find("xr")->find("error")->as_string() == missing.error().message);
+
+    // The stand-in's extensions, and the loader's own.
+    xr::set_openxr_runtime(SLASH_FAKE_OPENXR);
+    const auto found = xr::openxr_runtime_extensions();
+    REQUIRE_MESSAGE(found.ok(), (found.ok() ? std::string() : found.error().message));
+    CHECK(found.value() ==
+          std::vector<std::string>{"XR_EXT_debug_utils", "XR_EXT_palm_pose", "XR_MND_headless"});
+    summary = summary_of();
+    REQUIRE(summary.find("xr") != nullptr);
+    CHECK(json::write(*summary.find("xr"), json::Style::Compact) == R"({"runtime":true})");
     std::filesystem::remove_all(root);
 }
 

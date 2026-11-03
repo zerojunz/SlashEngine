@@ -225,6 +225,10 @@ jobs:
             cat build/empty-game/sdks/androidx/sdk.lock.json
           fi
           if [ "${{ matrix.platform }}" = android ]; then
+            # A game that enables XR: its manifest asks for OpenXR, and on the emulator the
+            # loader starts through JNI and finds no runtime.
+            jq '.xr = {"openxr": {"enabled": true}}' build/empty-game/project.json > build/project.json
+            mv build/project.json build/empty-game/project.json
             # The first export uses the JDK and SDK slash-cli installs, not the runner's.
             $cli toolchain install android --accept-android-sdk-license
             env -u ANDROID_HOME -u ANDROID_SDK_ROOT -u ANDROID_NDK_HOME -u ANDROID_NDK_ROOT \
@@ -388,6 +392,11 @@ jobs:
           grep -q "androidx.core.app.CoreComponentFactory" <<< "$manifest"
           grep -Eq "\.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" <<< "$manifest"
           ! grep -q 'applicationId' <<< "$manifest"
+          # OpenXR: the loader's permission and broker query, and the category that starts the
+          # game in a headset.
+          grep -q "uses-permission: name='org.khronos.openxr.permission.OPENXR'" <<< "$badging"
+          grep -q "org.khronos.openxr.runtime_broker" <<< "$manifest"
+          grep -q "org.khronos.openxr.intent.category.IMMERSIVE_HMD" <<< "$manifest"
           # Play Billing: the engine's glue and Google's library dexed, its permission merged.
           unzip -p "$apk" 'classes*.dex' | grep -aq "Lorg/slashengine/billing/PlayBillingPurchases;"
           unzip -p "$apk" 'classes*.dex' | grep -aq "Lcom/android/billingclient/api/BillingClient;"
@@ -424,6 +433,7 @@ jobs:
             jq -e '.test.passed == true' build/android-test.json
             jq -e '.test.services.analytics == ["hello", "hello_java"]' build/android-test.json
             jq -e '.test.services.purchases == "google_play"' build/android-test.json
+            jq -e '.test.xr.runtime == false and (.test.xr.error | contains("no runtime found"))' build/android-test.json
 
       - name: Upload the export log
         if: failure()
