@@ -1106,7 +1106,7 @@ post passes; it keys the sums by `path_scene_key` and a hash of the draws. `disp
 Ray tracing is SlashEngine's own (Godot 4.6 has none): project.json's `rendering.ray_tracing`
 (`render::RayTracing3D`, `Scene3D::ray_tracing`) turns on ray-traced shadows in Forward+ on
 devices whose `RenderDevice::ray_tracing()` says so: the software device, and the GPU device on
-Vulkan where the GPU has ray queries.
+Vulkan where the GPU has ray queries and on Metal where it supports ray tracing.
 `ray_shadow_slots` (`src/shadow.cpp`) gives the first `kMaxRayShadowLights` (8) shadowed lights a
 slot (`MeshLightUniforms::shadow.w`, slot + 1). After the prepass, `run_ray_shadows`
 (`src/ray_shadows.cpp`, built with `-ffp-contract=off`) puts each pixel back in the world from its
@@ -1137,8 +1137,15 @@ pixel's ambient light there too (`run_ray_gi`: cosine-weighted rays lit by `path
 `path_environment`, smoothed by normal and plane), which `MeshMaps::gi` hands the shading when
 `screen.w` is set; on Vulkan `ray_light.comp` traces and smooths it in two more pipelines (its
 `kPass` specialization constant) into the screen's layer 4, which `mesh.hlsl` reads then.
-`tests/test_ray_tracing.cpp` holds Vulkan to the software device,
-`examples/ray-traced-shadows-3d` traces an avenue, `examples/ray-traced-ao-3d` a room and
+On Metal (`src/metal_rays.mm`, macOS 13 or later, where `supportsRaytracing`) the same shaders
+run as MSL that `slash-ray-msl` (`tools/shader_compiler/src/ray_msl.cpp`) makes from the GLSL
+with glslang and SPIRV-Cross into `*_msl.hpp`, set 0 an argument buffer whose ids by binding it
+writes beside it (`k<Name>MslIds`) and the prepass's depth a `depth2d`; Metal's encoders build the
+structures (user ID instances) and dispatch into SDL's command buffer, reaching mesh copies by
+`gpuAddress` (`SDL_SlashGPUNativeBuffer`, which the patch adds for Metal too). Both backends
+implement `GpuRays` (`src/gpu_rays.hpp`) and pack the same uniforms and records
+(`src/ray_records.cpp`). `tests/test_ray_tracing.cpp` holds Vulkan and Metal to the software
+device, `tests/test_ray_records.cpp` the MSL to its GLSL, `examples/ray-traced-shadows-3d` traces an avenue, `examples/ray-traced-ao-3d` a room and
 `examples/ray-traced-reflections-3d` a hall's floor and `examples/ray-traced-gi-3d` a room's walls.
 
 TAA is Godot 4.6's `use_taa` (project.json's `rendering.anti_aliasing.quality.use_taa`,
