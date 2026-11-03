@@ -74,7 +74,6 @@ struct SPIRV_Cross_Input
     uint3 gl_GlobalInvocationID : SV_DispatchThreadID;
 };
 
-static RayQuery<RAY_FLAG_NONE> query;
 
 float mod(float x, float y)
 {
@@ -233,6 +232,7 @@ bool test(uint index, float3 from, float3 dir, float max_distance, float bias, i
 
 Hit trace(float3 from, float3 to)
 {
+    RayQuery<RAY_FLAG_NONE> query;
     Hit hit;
     hit.kind = 0u;
     hit._distance = 0.0f;
@@ -315,8 +315,8 @@ float3 environment_color(float3 ray_dir)
     float ty = yy - fy;
     int param_1 = int(fx);
     int param_2 = w;
-    int x0 = wrap(param_1, param_)hlsl"
-    R"hlsl(2);
+    int x0 = wrap(param_1, param_2);)hlsl"
+    R"hlsl(
     int param_3 = int(fy);
     int param_4 = h;
     int y0 = wrap(param_3, param_4);
@@ -569,9 +569,9 @@ float3 direct_light(float3 position, float3 normal, uint index, bool soft_shadow
         light_dir = unit(param_1);
         dist = length(position - light_pos);
         if (dist > range)
-       )hlsl"
-    R"hlsl( {
-            return 0.0f.xxx;
+        {
+)hlsl"
+    R"hlsl(            return 0.0f.xxx;
         }
         disk_size = light_size / dist;
         float param_2 = dist;
@@ -767,8 +767,8 @@ float3 hemisphere_cosine_weighted_direction(inout uint _noise)
     _noise = param;
     float _noise1 = _267;
     uint param_1 = _noise;
-    float _272 = ran)hlsl"
-    R"hlsl(domize(param_1);
+    float _272 = random)hlsl"
+    R"hlsl(ize(param_1);
     _noise = param_1;
     float _noise2 = (_272 * 2.0f) * 3.1415927410125732421875f;
     return float3(sqrt(_noise1) * cos(_noise2), sqrt(_noise1) * sin(_noise2), sqrt(1.0f - _noise1));
@@ -1005,8 +1005,8 @@ void direct_pass(int slice, int x, int y)
         float4 left = fetch_position(param_6, param_7, param_8);
         neighbor = float4(left.xyz, neighbor.w);
     }
-    )hlsl"
-    R"hlsl(float texel_size = length(position - neighbor.xyz) * _377.Load<float>(68);
+    flo)hlsl"
+    R"hlsl(at texel_size = length(position - neighbor.xyz) * _377.Load<float>(68);
     float3 light_for_texture = 0.0f.xxx;
     float3 light_for_bounces = 0.0f.xxx;
     uint param_9 = uint(x);

@@ -47,7 +47,6 @@ struct SPIRV_Cross_Input
     uint3 gl_GlobalInvocationID : SV_DispatchThreadID;
 };
 
-static RayQuery<RAY_FLAG_NONE> query;
 
 uint mix_bits(inout uint x)
 {
@@ -88,6 +87,7 @@ float3 disk_point(float3 n, float r, float u, float v)
 
 bool blocked(float3 origin, float3 direction, float _distance, uint caster_mask)
 {
+    RayQuery<RAY_FLAG_NONE> query;
     uint flags = 4u;
     if (_174_options.x != 0u)
     {
@@ -243,8 +243,8 @@ void comp_main()
                     float3 target = light.place.xyz;
                     float3 to = target - origin;
                     float reach = length(to);
-                    if (!)hlsl"
-    R"hlsl((reach > 0.0f))
+                    if (!(re)hlsl"
+    R"hlsl(ach > 0.0f))
                     {
                         continue;
                     }
