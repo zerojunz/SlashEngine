@@ -110,7 +110,7 @@ std::optional<json::Value> find_summary(const std::string& output) {
 }
 
 void add_summary(json::Value& test, const json::Value& summary) {
-    for (const std::string_view key : {"ticks", "entities", "services"}) {
+    for (const std::string_view key : {"ticks", "entities", "services", "xr"}) {
         if (const json::Value* value = summary.find(key); value != nullptr) {
             test[std::string(key)] = *value;
         }

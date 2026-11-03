@@ -89,6 +89,25 @@ if(SLASH_GAME_MICROPHONE)
         "<uses-permission android:name=\"android.permission.RECORD_AUDIO\" />")
 endif()
 
+# A game that enables XR draws into a headset through OpenXR. On Android it asks for the OpenXR
+# runtime as Godot's export does in XR mode: the Khronos loader's permissions and queries (from
+# its openxr_loader_for_android manifest), head tracking, and the categories that start the
+# activity in the headset (Khronos's, and Meta's for Quest runtimes that predate it).
+set(SLASH_ANDROID_XR_CATEGORIES "")
+if(SLASH_GAME_XR)
+    string(APPEND SLASH_ANDROID_PERMISSIONS
+        "\n    <uses-permission android:name=\"org.khronos.openxr.permission.OPENXR\" />"
+        "\n    <uses-permission android:name=\"org.khronos.openxr.permission.OPENXR_SYSTEM\" />"
+        "\n    <uses-feature android:name=\"android.hardware.vr.headtracking\" android:required=\"true\" android:version=\"1\" />"
+        "\n    <queries>"
+        "\n        <provider android:authorities=\"org.khronos.openxr.runtime_broker;org.khronos.openxr.system_runtime_broker\" />"
+        "\n        <intent><action android:name=\"org.khronos.openxr.OpenXRRuntimeService\" /></intent>"
+        "\n        <intent><action android:name=\"org.khronos.openxr.OpenXRApiLayerService\" /></intent>"
+        "\n    </queries>")
+    set(SLASH_ANDROID_XR_CATEGORIES
+        "<category android:name=\"org.khronos.openxr.intent.category.IMMERSIVE_HMD\" />\n                <category android:name=\"com.oculus.intent.category.VR\" />")
+endif()
+
 # A game that asks to track the player says why in Apple's prompt (NSUserTrackingUsageDescription,
 # project.json's services.consent.tracking_usage).
 set(SLASH_TRACKING_PLIST "")

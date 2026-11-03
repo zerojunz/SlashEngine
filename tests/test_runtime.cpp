@@ -369,6 +369,20 @@ TEST_CASE("processes run with their output logged") {
     CHECK_FALSE(platform::run_process({}).ok());
 }
 
+TEST_CASE("process tails trim long lines unless asked to keep them whole") {
+    // A game's summary is one line of JSON that can run past the trimmed length.
+    const std::string line(400, 'x');
+    auto result = platform::run_process({SLASH_TEST_CMAKE, "-E", "echo", line});
+    REQUIRE(result.ok());
+    CHECK(result.value().tail == std::string(300, 'x') + "...");
+
+    platform::ProcessOptions whole;
+    whole.max_line_length = 0;
+    result = platform::run_process({SLASH_TEST_CMAKE, "-E", "echo", line}, whole);
+    REQUIRE(result.ok());
+    CHECK(result.value().tail == line);
+}
+
 TEST_CASE("processes read the input they are given to its end") {
     platform::ProcessOptions options;
     options.input = "b\na\n";

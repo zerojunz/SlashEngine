@@ -139,6 +139,7 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
     // A game that enables XR draws into the headset through OpenXR, as Godot starts its OpenXR
     // interface: the runtime picks the GPU and makes the device. One whose headset won't start
     // goes on without it; headless runs have none.
+    // Headless, it only looks for the runtime, so exports' tests show whether one is found.
     std::optional<xr::OpenXRDevice> headset;
     if (game->project_.xr.enabled && !game->platform_.headless()) {
         auto prepared = xr::prepare_openxr_device(game->world_, driver);
@@ -146,6 +147,15 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
             headset = std::move(prepared).value();
         } else {
             log::warn("no headset", {{"error", prepared.error().message}});
+            game->xr_["headset"] = false;
+            game->xr_["error"] = prepared.error().message;
+        }
+    } else if (game->project_.xr.enabled) {
+        auto runtime = xr::openxr_runtime_extensions();
+        game->xr_["runtime"] = runtime.ok();
+        if (!runtime) {
+            log::info("no OpenXR runtime", {{"error", runtime.error().message}});
+            game->xr_["error"] = runtime.error().message;
         }
     }
     if (game->platform_.headless()) {
@@ -160,11 +170,18 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
             if (auto started = xr::use_openxr_interface(game->world_, game->renderer_.get());
                 !started) {
                 log::warn("no headset", {{"error", started.error().message}});
+                game->xr_["headset"] = false;
+                game->xr_["error"] = started.error().message;
+            } else {
+                game->xr_["headset"] = true;
+                game->xr_["graphics"] = headset->driver;
             }
         } else {
             log::warn("no headset: the runtime's GPU device didn't start",
                       {{"error", made.error().message}});
             xr::find_interface(game->world_, "OpenXR")->uninitialize(game->world_);
+            game->xr_["headset"] = false;
+            game->xr_["error"] = made.error().message;
         }
     }
     if (game->renderer_ == nullptr) {
@@ -437,6 +454,9 @@ json::Value Game::summary() const {
         !backends.find("analytics")->as_array().empty() ||
         backends.find("purchases")->as_string() != "none") {
         summary["services"] = std::move(backends);
+    }
+    if (!xr_.is_null()) {
+        summary["xr"] = xr_;
     }
     return summary;
 }

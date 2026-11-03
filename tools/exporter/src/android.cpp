@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <iterator>
 #include <optional>
 #include <string_view>
@@ -315,7 +316,8 @@ std::string java_sources(const fs::path& folder) {
 
 // Runs adb with the given arguments, returning its output, or nullopt if it failed.
 std::optional<std::string> adb(const AndroidTools& tools, const std::string& serial,
-                               std::vector<std::string> args, int tail_lines = 40) {
+                               std::vector<std::string> args, int tail_lines = 40,
+                               std::size_t max_line_length = 300) {
     std::vector<std::string> command{adb_path(tools)};
     if (!serial.empty()) {
         command.insert(command.end(), {"-s", serial});
@@ -324,6 +326,7 @@ std::optional<std::string> adb(const AndroidTools& tools, const std::string& ser
                    std::make_move_iterator(args.end()));
     platform::ProcessOptions process;
     process.tail_lines = tail_lines;
+    process.max_line_length = max_line_length;
     auto result = platform::run_process(command, process);
     if (!result || result.value().exit_code != 0) {
         return std::nullopt;
@@ -738,8 +741,9 @@ json::Value test_apk(const AndroidTools& tools, const fs::path& apk, const std::
     std::optional<json::Value> summary;
     bool seen_running = false;
     while (std::chrono::steady_clock::now() < launched + kTestTimeout) {
-        const std::optional<std::string> lines = adb(
-            tools, serial, {"logcat", "-d", "-v", "raw", "-s", std::string(kLogTag) + ":I"}, 200);
+        const std::optional<std::string> lines =
+            adb(tools, serial, {"logcat", "-d", "-v", "raw", "-s", std::string(kLogTag) + ":I"},
+                200, 0);
         if (lines) {
             summary = detail::find_summary(*lines);
         }
@@ -758,7 +762,7 @@ json::Value test_apk(const AndroidTools& tools, const fs::path& apk, const std::
         // One more look, in case the game wrote its summary and exited between checks.
         if (const auto lines =
                 adb(tools, serial, {"logcat", "-d", "-v", "raw", "-s", std::string(kLogTag) + ":I"},
-                    200)) {
+                    200, 0)) {
             summary = detail::find_summary(*lines);
         }
     }
