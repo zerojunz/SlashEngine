@@ -4,6 +4,13 @@
 // shader's root signature, in its DXIL, is a descriptor table of its views and one of its
 // samplers, in heaps of the rays' own that are bound around the dispatches; SDL's are bound again
 // after (SDL_SlashGPURestoreState).
+#if defined(_WIN32)
+// Before anything includes windows.h, whose min and max macros break std::max.
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#endif
+
 #include "gpu_rays.hpp"
 
 #if defined(_WIN32)
