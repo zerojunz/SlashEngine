@@ -1,0 +1,12 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":2,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"channels":{"a":[255,255,255],"b":[0,130.6,255],"g":[0,130.6,255],"r":[0,130.6,255]},"height":32,"pixels":[[127,127,127,255],[203,203,203,255]],"width":48,"wrap":{"inside":16.47,"x":41.18,"y":36.55}}}
+{"id":3,"jsonrpc":"2.0","result":{"bands":[121,167],"changed":288,"id":"sea"}}
+{"id":4,"jsonrpc":"2.0","result":{"legend":{"G":"grass_s","a":"grass_nw","b":"grass_n","c":"grass_w","d":"grass_ne","e":"grass_e","f":"flowers","g":"grass","h":"grass_se","i":"grass_sw","j":"grass_in_nw","k":"grass_in_ne","l":"grass_in_se","m":"grass_in_sw","w":"water"},"origin":[0,0],"rows":["ahwwwwabbbbbdwwiwwwwwwad","ewwwwwcgggglhwwwwwwwwwce","cdwwwajggglhwwwwwwwwwwch","cewwajgfglhwwwwwwwawawiw","ihwwimgfgewwwwadwakbhwww","wwwwwiGmgkbbbbjkbjgewwww","wwwwwwwcggggfgfggggkdwww","wwwwwwwcfgggggggfggfewww","wwwwwwwcggffgfgfggfgewww","wwwwwwwcggggggggggfgewww","adwwwwajgggggfgfgfggkdww","wiwwwaGGGGGGGGGGGGGGGGdw"]}}
+{"id":5,"jsonrpc":"2.0","result":{"bands":[121,167],"changed":0,"id":"sea"}}
+{"id":6,"jsonrpc":"2.0","result":{"bands":[36],"changed":36,"id":"sea"}}
+{"id":7,"jsonrpc":"2.0","result":{"can_redo":1,"can_undo":2,"undone":"tilemap.generate"}}
+{"id":8,"jsonrpc":"2.0","result":{"files":["dunes.height.png"],"heights":[0,12],"id":"dunes"}}
+{"id":9,"jsonrpc":"2.0","result":{"points":[{"normal":[-0.431,0.8572,0.2819],"position":[10,1.1749,10]},{"normal":[-0.3347,0.9121,0.2366],"position":[32,1.8967,32]},{"normal":[-0.1276,0.9665,-0.2227],"position":[50,2.7527,20]}]}}
+{"id":10,"jsonrpc":"2.0","result":{"files":["dunes.height.png"],"heights":[0,11.0034],"id":"dunes"}}
+{"id":11,"jsonrpc":"2.0","result":{"points":[{"normal":[0,1,0],"position":[0,0,0]},{"normal":[-0.6906,0.522,-0.5006],"position":[32,5.8045,32]}]}}
+{"error":{"code":-32001,"data":{"path":"/bands/0/terrain"},"message":"/bands/0/terrain: the tile set has no terrain \"sand\""},"id":12,"jsonrpc":"2.0"}

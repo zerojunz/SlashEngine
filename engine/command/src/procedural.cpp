@@ -1,6 +1,7 @@
 #include "procedural.hpp"
 
 #include "slash/command/session.hpp"
+#include "slash/platform/file.hpp"
 #include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
 
@@ -10,9 +11,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <limits>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace slash::command {
@@ -40,6 +44,10 @@ Reply param_error(int error_code, std::string_view path, const std::string& mess
     json::Value data;
     data["path"] = path;
     return Reply::failure(error_code, std::string(path) + ": " + message, std::move(data));
+}
+
+std::string quoted(std::string_view name) {
+    return "\"" + std::string(name) + "\"";
 }
 
 // A byte average rounded to two decimals, with no ".0" on whole ones.
@@ -210,6 +218,92 @@ Reply texture_generate(Session& session, const json::Value& params) {
 }
 
 } // namespace
+
+json::Value noise_source_property(std::string_view description) {
+    json::Value schema;
+    schema["type"] = json::Array{"string", "object"};
+    schema["description"] = description;
+    return schema;
+}
+
+std::optional<Reply> read_noise_source(Session& session, const json::Value& value,
+                                       const std::string& at, NoiseSource& out) {
+    if (value.is_object()) {
+        const std::vector<json::ValidationError> errors = procedural::validate_noise(value, at);
+        if (!errors.empty()) {
+            return Reply::invalid_params(errors);
+        }
+        out = NoiseSource{.settings = procedural::parse_noise(value).value()};
+        return std::nullopt;
+    }
+    const std::string& file = value.as_string();
+    if (!file.ends_with(procedural::kTextureSuffix)) {
+        return param_error(code::kInvalidArgument, at,
+                           "expected a .texture.json file of a NoiseTexture2D, or noise settings "
+                           "as an object");
+    }
+    // Read as text: the asset of a .texture.json path is its image.
+    auto resolved = session.resolve_path(file);
+    auto text =
+        resolved ? platform::read_file(resolved.value()) : Result<std::string>(resolved.error());
+    if (!text) {
+        if (text.error().code == ErrorCode::NotFound) {
+            return param_error(code::kNotFound, at, "the project has no file " + quoted(file));
+        }
+        return param_error(code::kInvalidArgument, at, text.error().message);
+    }
+    auto doc = json::parse(text.value());
+    if (!doc) {
+        return param_error(code::kInvalidArgument, at,
+                           quoted(file) + " is not valid JSON: " + doc.error().message);
+    }
+    const std::vector<json::ValidationError> errors = procedural::validate_texture(doc.value());
+    if (!errors.empty()) {
+        const json::ValidationError& first = errors.front();
+        return param_error(code::kInvalidArgument, at,
+                           quoted(file) + (first.path.empty() ? "" : " at " + first.path) + ": " +
+                               first.message);
+    }
+    const procedural::ProceduralTexture texture = procedural::parse_texture(doc.value()).value();
+    const auto* noise = std::get_if<procedural::NoiseTexture2D>(&texture);
+    if (noise == nullptr) {
+        return param_error(code::kInvalidArgument, at,
+                           quoted(file) + " is a gradient texture; name a NoiseTexture2D");
+    }
+    out = NoiseSource{
+        .settings = noise->noise, .normalize = noise->normalize, .invert = noise->invert};
+    return std::nullopt;
+}
+
+std::vector<float> sample_noise_source(const NoiseSource& source, int x, int y, int width,
+                                       int height) {
+    const procedural::Noise noise(source.settings);
+    std::vector<float> values;
+    values.reserve(static_cast<std::size_t>(width) * static_cast<std::size_t>(height));
+    float low = std::numeric_limits<float>::max();
+    float high = std::numeric_limits<float>::lowest();
+    for (int row = 0; row < height; ++row) {
+        for (int column = 0; column < width; ++column) {
+            const float value =
+                noise.get_noise_2d(static_cast<float>(x + column), static_cast<float>(y + row));
+            low = std::min(low, value);
+            high = std::max(high, value);
+            values.push_back(value);
+        }
+    }
+    // As Godot's Noise::_get_image, in floats rather than bytes.
+    for (float& value : values) {
+        if (source.normalize) {
+            value = high == low ? 0.0F : std::clamp((value - low) / (high - low), 0.0F, 1.0F);
+        } else {
+            value = std::clamp((value * 0.5F) + 0.5F, 0.0F, 1.0F);
+        }
+        if (source.invert) {
+            value = 1.0F - value;
+        }
+    }
+    return values;
+}
 
 void register_procedural_commands(Registry& registry) {
     using enum Capability;

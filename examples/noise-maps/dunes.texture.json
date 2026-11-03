@@ -1,0 +1,13 @@
+{
+  "format": 1,
+  "height": 65,
+  "noise": {
+    "domain_warp_amplitude": 12,
+    "domain_warp_enabled": true,
+    "fractal_octaves": 3,
+    "fractal_type": "ridged",
+    "frequency": 0.03
+  },
+  "type": "NoiseTexture2D",
+  "width": 65
+}

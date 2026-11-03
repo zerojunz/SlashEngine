@@ -979,7 +979,7 @@ Exit: an agent builds a small 3D sample end to end.
   - [x] Scatter rules agents write: prefabs or meshes placed over terrains, meshes, tile maps and
         areas by noise, density, slope and spacing, seeded so they repeat, as entities or as one
         multi-mesh
-  - [ ] Tile maps and terrains from noise: terrains painted by noise thresholds, and HTerrain's
+  - [x] Tile maps and terrains from noise: terrains painted by noise thresholds, and HTerrain's
         generator taking a noise file
   - [ ] Procedural content from other tools: Godot's noise and gradient resources, glTF instances
         (`EXT_mesh_gpu_instancing`) from Blender's geometry nodes and Houdini, and heightmaps

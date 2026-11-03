@@ -1,0 +1,12 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"texture.generate","params":{"path":"islands.texture.json","pixels":[[4,4],[20,10]]}}
+{"jsonrpc":"2.0","id":3,"method":"tilemap.generate","params":{"id":"sea","rect":[0,0,24,12],"noise":"islands.texture.json","bands":[{"below":0.5,"terrain":"water"},{"terrain":"grass"}]}}
+{"jsonrpc":"2.0","id":4,"method":"tilemap.get","params":{"id":"sea"}}
+{"jsonrpc":"2.0","id":5,"method":"tilemap.generate","params":{"id":"sea","rect":[0,0,24,12],"noise":"islands.texture.json","bands":[{"below":0.5,"terrain":"water"},{"terrain":"grass"}]}}
+{"jsonrpc":"2.0","id":6,"method":"tilemap.generate","params":{"id":"sea","rect":[0,0,24,12],"noise":{"seed":12,"frequency":0.09,"fractal_octaves":3},"bands":[{"below":0.3,"tile":null}]}}
+{"jsonrpc":"2.0","id":7,"method":"undo","params":{}}
+{"jsonrpc":"2.0","id":8,"method":"terrain.generate","params":{"id":"dunes","noise":"dunes.texture.json","base_height":0,"height_range":12,"curve":1.5}}
+{"jsonrpc":"2.0","id":9,"method":"terrain.get","params":{"id":"dunes","points":[[10,10],[32,32],[50,20]]}}
+{"jsonrpc":"2.0","id":10,"method":"terrain.generate","params":{"id":"dunes","noise":"dunes.texture.json","seed":5,"base_height":0,"height_range":12,"curve":1.5,"island_weight":1,"island_sharpness":0.3}}
+{"jsonrpc":"2.0","id":11,"method":"terrain.get","params":{"id":"dunes","points":[[0,0],[32,32]]}}
+{"jsonrpc":"2.0","id":12,"method":"tilemap.generate","params":{"id":"sea","rect":[0,0,4,4],"noise":"dunes.texture.json","bands":[{"below":0.5,"terrain":"sand"}]}}
