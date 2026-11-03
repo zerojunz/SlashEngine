@@ -9,7 +9,9 @@
 # device choosePhysicalDevice names (xrGetVulkanGraphicsDevice2KHR) when it is suitable, and makes
 # its device with createDevice (xrCreateVulkanDeviceKHR). On Direct3D 12, the
 # "SlashEngine.gpu.d3d12.adapter_luid" number property, when not 0, is the LUID of the adapter to
-# use (xrGetD3D12GraphicsRequirementsKHR's), its HighPart in the upper 32 bits.
+# use (xrGetD3D12GraphicsRequirementsKHR's), its HighPart in the upper 32 bits. On Metal, the
+# "SlashEngine.gpu.metal.device" pointer property, when set, is the id<MTLDevice> to draw with
+# (xrGetMetalGraphicsRequirementsKHR's), unretained.
 # slash_add_dependency(SDL3) runs it in SDL's source folder after the other SDL patches.
 
 function(patch_file file marker)
@@ -155,4 +157,18 @@ patch_file(src/gpu/d3d12/SDL_gpu_d3d12.c "SlashEngine.gpu.d3d12.adapter_luid"
         renderer->factory,
         D3D_GUID(D3D_IID_IDXGIFactory6),
         (void **)&factory6))) {
+]=])
+
+patch_file(src/gpu/metal/SDL_gpu_metal.m "SlashEngine.gpu.metal.device"
+[=[
+        if (device == NULL) {
+            device = MTLCreateSystemDefaultDevice();
+]=] [=[
+        // SlashEngine (cmake/patches/sdl-openxr.cmake): the GPU an OpenXR runtime names.
+        void *slashXrDevice = SDL_GetPointerProperty(props, "SlashEngine.gpu.metal.device", NULL);
+        if (slashXrDevice != NULL) {
+            device = (__bridge id<MTLDevice>)slashXrDevice;
+        }
+        if (device == NULL) {
+            device = MTLCreateSystemDefaultDevice();
 ]=])

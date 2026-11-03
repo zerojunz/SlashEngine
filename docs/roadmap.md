@@ -926,7 +926,7 @@ Exit: an agent builds a small 3D sample end to end.
   - [x] `wss://` natively, as Godot's `StreamPeerTLS`
   - [x] Commands that host, join and inspect a game's network, and examples that play a game on
         several sessions at once
-- [ ] XR through OpenXR, following Godot's XR nodes and OpenXR module
+- [x] XR through OpenXR, following Godot's XR nodes and OpenXR module
   - [x] The XR server, as Godot's `XRServer`: interfaces, trackers with poses and inputs, the
         world scale and `center_on_hmd`; `XROrigin3D`, `XRCamera3D`, `XRController3D` and
         `XRAnchor3D` placed by their trackers, with their signals as events; a test headset
@@ -934,14 +934,14 @@ Exit: an agent builds a small 3D sample end to end.
   - [x] Stereo rendering: each eye's view and projection through `XRCamera3D`, as Godot's
         `get_transform_for_view` and `get_projection_for_view` (`render::frustum`), drawn by
         `frame.capture`'s `xr_view`
-  - [ ] OpenXR through the Khronos loader
+  - [x] OpenXR through the Khronos loader
     - [x] Sessions, the play space, Godot's default action map, poses, views and haptics, with a
           stand-in runtime for tests; `xr.set`'s `interface` switches sessions to it
     - [x] Swapchains on Vulkan and Direct3D 12, so windowed games draw each eye into the headset
     - [x] Swapchains on OpenGL, on WGL, GLX and EGL contexts
     - [x] The loader on Android, started with the app's Java VM and activity, Vulkan and
           OpenGL ES swapchains, and the manifest entries that start a game in the headset
-    - [ ] Swapchains on Metal
+    - [x] Swapchains on Metal, with the MTLDevice the runtime names
 - [x] Localization, following Godot ([design](design.md#languages))
   - [x] Translation tables as CSV or gettext `.po` files, with plural forms, placeholders and a
         fallback chain (`es-MX`, then `es`, then the source language)
@@ -1081,7 +1081,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Terrain | Heightmap terrain with splat materials and LOD | 7 | Planned |
 | Level geometry | CSG and grid-based tile placement | 7 | In progress: CSG shapes, paths and `GridMap` done; heightmap terrain planned |
 | LOD and culling | Generated LODs with meshoptimizer, occlusion culling | 7 | Done, imported from Godot |
-| XR | OpenXR | 8 | XR server, nodes, stereo views, OpenXR sessions and drawing on Vulkan, Direct3D 12, OpenGL and Android done; Metal to come |
+| XR | OpenXR | 8 | Done: XR server, nodes, stereo views, OpenXR sessions and drawing on Vulkan, Direct3D 12, Metal, OpenGL and Android |
 | Localization | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | 8 | In progress: translation tables, the language setting, auto-translated controls, pseudo-localization, `l10n.extract` and `l10n.check` are done |
 | Video playback | AV1 through dav1d | 8 | Done (Opus sound to come) |
 | Accessibility | AccessKit | 8 | Tree and the Windows, macOS and Linux backends done; Android, iOS and the web to come |

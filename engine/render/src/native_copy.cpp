@@ -104,4 +104,11 @@ Result<void> copy_native_d3d12([[maybe_unused]] void* commands,
 #endif
 }
 
+#if !defined(__APPLE__)
+Result<void> copy_native_metal(void* /*commands*/, const NativeTexture& /*source*/,
+                               const NativeTexture& /*target*/) {
+    return make_error(ErrorCode::PlatformFailure, "Metal is only on Apple's platforms");
+}
+#endif
+
 } // namespace slash::render::detail
