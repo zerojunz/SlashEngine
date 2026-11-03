@@ -9,12 +9,14 @@
 #include "slash/platform/file.hpp"
 #include "slash/procedural/gradient.hpp"
 #include "slash/procedural/noise.hpp"
+#include "slash/procedural/scatter.hpp"
 #include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
 #include "slash/scene3d/surface_tool.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/tree3d.hpp"
 
 #include <doctest/doctest.h>
 
@@ -713,4 +715,438 @@ TEST_CASE("gameplay code makes textures and meshes that draw") {
     CHECK(middle[1] < 30);
     CHECK(pixel(captured.image, 1, 1)[0] < 30);
     CHECK(warnings == 0);
+}
+
+namespace {
+
+std::vector<procedural::ScatterTriangle> square_ground(float half, float y = 0.0F) {
+    const Vec3 a{-half, y, -half};
+    const Vec3 b{half, y, -half};
+    const Vec3 c{half, y, half};
+    const Vec3 d{-half, y, half};
+    return {{a, b, c}, {a, c, d}};
+}
+
+float distance_across(Vec3 a, Vec3 b) {
+    const float dx = a.x - b.x;
+    const float dz = a.z - b.z;
+    return std::sqrt((dx * dx) + (dz * dz));
+}
+
+} // namespace
+
+TEST_CASE("scatter rules are checked with the path of each mistake") {
+    const auto errors = [](std::string_view text) {
+        return procedural::validate_scatter(parse(text));
+    };
+    CHECK(errors(R"({"format": 1, "layers": [{"name": "trees", "mesh": "tree.glb",
+                     "area": [0, 0, 10, 10], "count": 5}]})")
+              .empty());
+    const auto first = [&](std::string_view text) {
+        const auto found = errors(text);
+        REQUIRE_FALSE(found.empty());
+        return found.front().path + ": " + found.front().message;
+    };
+    CHECK(
+        first(R"({"format": 1, "layers": [{"name": "a", "mesh": "m.glb", "prefab": "p.prefab.json",
+                    "area": [0, 0, 1, 1], "count": 1}]})") ==
+        "/layers/0: give mesh or prefab, one of them");
+    CHECK(first(R"({"format": 1, "layers": [{"name": "a", "mesh": "m.glb", "area": [0, 0, 1, 1],
+                    "count": 1, "density": 2}]})") ==
+          "/layers/0: give count or density, one of them");
+    CHECK(first(R"({"format": 1, "layers": [{"name": "a", "mesh": "m.glb", "count": 1}]})") ==
+          "/layers/0: say where: give on, area or both");
+    CHECK(first(R"({"format": 1, "layers": [{"name": "a", "mesh": "m.glb", "count": 1,
+                    "area": [2, 0, 1, 1]}]})") ==
+          "/layers/0/area: expected min below max on each axis");
+    CHECK(first(R"({"format": 1, "layers": [{"name": "a", "prefab": "p.prefab.json",
+                    "as": "multimesh", "area": [0, 0, 1, 1], "count": 1}]})") ==
+          "/layers/0/as: a multimesh draws a mesh: give mesh");
+    CHECK(first(R"({"format": 1, "space": "2d", "layers": [{"name": "a", "mesh": "m.glb",
+                    "area": [0, 0, 1, 1], "count": 1}]})") ==
+          "/layers/0/mesh: 2D places are entities: give a prefab");
+    CHECK(first(R"({"format": 1, "layers": [{"name": "a", "mesh": "m.glb", "on": ["g"],
+                    "tiles": ["x"], "count": 1}]})") ==
+          "/layers/0/tiles: tiles pick tile map cells, in 2D");
+    CHECK(first(R"({"format": 1, "layers": [{"name": "a", "mesh": "m.glb", "on": ["g"],
+                    "count": 1, "slope": [40, 10]}]})") == "/layers/0/slope: expected [min, max]");
+    CHECK(first(R"({"format": 1, "layers": [
+                    {"name": "a", "mesh": "m.glb", "on": ["g"], "count": 1, "avoid": ["b"]},
+                    {"name": "b", "mesh": "m.glb", "on": ["g"], "count": 1}]})") ==
+          "/layers/0/avoid/0: no earlier layer is named \"b\"");
+    CHECK(first(R"({"format": 1, "layers": [
+                    {"name": "a", "mesh": "m.glb", "on": ["g"], "count": 1},
+                    {"name": "a", "mesh": "m.glb", "on": ["g"], "count": 1}]})") ==
+          "/layers/1/name: \"a\" names an earlier layer too");
+    CHECK(first(R"({"format": 1, "layers": [{"name": "a b", "mesh": "m.glb", "on": ["g"],
+                    "count": 1}]})")
+              .starts_with("/layers/0/name"));
+    CHECK(first(R"({"format": 1, "layers": [{"name": "a", "mesh": "m.glb", "on": ["g"],
+                    "count": 1, "noise": {"frequncy": 1}}]})")
+              .starts_with("/layers/0/noise"));
+    CHECK_FALSE(procedural::parse_scatter(parse(R"({"format": 2, "layers": []})")).ok());
+
+    const auto rules = procedural::parse_scatter(parse(R"({"format": 1, "seed": 9, "layers": [
+        {"name": "trees", "mesh": "tree.glb", "as": "multimesh", "on": ["ground"],
+         "area": [-5, -5, 5, 5], "density": 0.5, "spacing": 1.5, "slope": [0, 30],
+         "height": [-1, 2], "noise": {"frequency": 0.1}, "noise_range": [-0.2, 1],
+         "align_to_normal": true, "rotate_random": 1, "tilt_random": 0.1, "scale": 2,
+         "scale_random": 0.5, "offset": -0.25},
+        {"name": "rocks", "prefab": "rock.prefab.json", "on": ["ground"], "count": 4,
+         "avoid": ["trees"]}]})"));
+    REQUIRE_MESSAGE(rules.ok(), rules.error().message);
+    CHECK(rules.value().seed == 9);
+    CHECK(rules.value().space == "3d");
+    const procedural::ScatterLayer& trees = rules.value().layers[0];
+    CHECK(trees.as == "multimesh");
+    CHECK(trees.area == std::array<float, 4>{-5.0F, -5.0F, 5.0F, 5.0F});
+    CHECK(trees.density == 0.5F);
+    CHECK(trees.slope == Vec2{0.0F, 30.0F});
+    CHECK(trees.height == Vec2{-1.0F, 2.0F});
+    CHECK(trees.noise->frequency == doctest::Approx(0.1F));
+    CHECK(trees.align_to_normal);
+    CHECK(trees.offset == -0.25F);
+    CHECK(rules.value().layers[1].count == 4);
+    CHECK(rules.value().layers[1].avoid == std::vector<std::string>{"trees"});
+}
+
+TEST_CASE("scatter places the same things for the same seed, within its rules") {
+    procedural::ScatterLayer layer;
+    layer.name = "trees";
+    layer.mesh = "tree.glb";
+    layer.count = 40;
+    layer.rotate_random = 1.0F;
+    layer.scale = 2.0F;
+    layer.scale_random = 0.5F;
+    const auto ground = square_ground(10.0F);
+    const procedural::ScatterResult a = procedural::scatter(layer, 0, 7, false, ground, {});
+    const procedural::ScatterResult b = procedural::scatter(layer, 0, 7, false, ground, {});
+    REQUIRE(a.places.size() == 40);
+    CHECK(a.wanted == 40);
+    CHECK(a.tries == 40);
+    CHECK(a.ground_area == doctest::Approx(400.0F));
+    for (std::size_t i = 0; i < a.places.size(); ++i) {
+        CHECK(a.places[i].position == b.places[i].position);
+        CHECK(a.places[i].rotation == b.places[i].rotation);
+        CHECK(a.places[i].scale == b.places[i].scale);
+        const procedural::ScatterPlace& place = a.places[i];
+        CHECK(std::abs(place.position.x) <= 10.0F);
+        CHECK(std::abs(place.position.z) <= 10.0F);
+        CHECK(place.position.y == 0.0F);
+        CHECK(place.scale >= 1.5F);
+        CHECK(place.scale <= 2.5F);
+        // Upright, turned only about y.
+        CHECK(place.rotation.x == doctest::Approx(0.0F).epsilon(1e-5));
+        CHECK(place.rotation.z == doctest::Approx(0.0F).epsilon(1e-5));
+    }
+    // Another seed, or another layer's stream, places them elsewhere.
+    CHECK(procedural::scatter(layer, 0, 8, false, ground, {}).places[0].position !=
+          a.places[0].position);
+    CHECK(procedural::scatter(layer, 1, 7, false, ground, {}).places[0].position !=
+          a.places[0].position);
+    // The places are pinned: the same bits on every machine.
+    CHECK(a.places[0].position.x == doctest::Approx(-2.365F).epsilon(1e-4));
+
+    // Density times the ground's area, within the area given.
+    layer.count.reset();
+    layer.density = 0.25F;
+    layer.area = std::array<float, 4>{0.0F, 0.0F, 4.0F, 2.0F};
+    const procedural::ScatterResult dense = procedural::scatter(layer, 0, 7, false, ground, {});
+    CHECK(dense.ground_area == doctest::Approx(8.0F));
+    CHECK(dense.places.size() == 2);
+    for (const procedural::ScatterPlace& place : dense.places) {
+        CHECK(place.position.x >= 0.0F);
+        CHECK(place.position.x <= 4.0F);
+        CHECK(place.position.z >= 0.0F);
+        CHECK(place.position.z <= 2.0F);
+    }
+
+    // Spacing keeps places apart, from each other and from those avoided; too much of it leaves
+    // the layer short and says why.
+    layer.area.reset();
+    layer.density.reset();
+    layer.count = 60;
+    layer.spacing = 1.5F;
+    const std::vector<Vec3> avoid{{0.0F, 0.0F, 0.0F}};
+    const procedural::ScatterResult apart = procedural::scatter(layer, 0, 7, false, ground, avoid);
+    CHECK(apart.places.size() == 60);
+    for (std::size_t i = 0; i < apart.places.size(); ++i) {
+        CHECK(distance_across(apart.places[i].position, avoid[0]) >= 1.5F);
+        for (std::size_t k = 0; k < i; ++k) {
+            CHECK(distance_across(apart.places[i].position, apart.places[k].position) >= 1.5F);
+        }
+    }
+    layer.count = 1000;
+    layer.spacing = 4.0F;
+    const procedural::ScatterResult crowded = procedural::scatter(layer, 0, 7, false, ground, {});
+    CHECK(crowded.places.size() < 1000);
+    CHECK(crowded.spacing > 0);
+    CHECK(crowded.tries == 30000);
+}
+
+TEST_CASE("scatter keeps to slopes, heights and noise, and stands on normals") {
+    // A flat floor and a ramp at 45 degrees.
+    std::vector<procedural::ScatterTriangle> ground = square_ground(5.0F);
+    ground.push_back({{10.0F, 0.0F, 0.0F}, {20.0F, 10.0F, 0.0F}, {10.0F, 0.0F, 10.0F}});
+    procedural::ScatterLayer layer;
+    layer.name = "grass";
+    layer.mesh = "grass.glb";
+    layer.count = 30;
+    layer.slope = {0.0F, 20.0F};
+    procedural::ScatterResult flat_only = procedural::scatter(layer, 0, 3, false, ground, {});
+    CHECK(flat_only.places.size() == 30);
+    CHECK(flat_only.slope > 0);
+    for (const procedural::ScatterPlace& place : flat_only.places) {
+        CHECK(place.position.x <= 5.0F);
+    }
+    layer.slope = {40.0F, 50.0F};
+    layer.align_to_normal = true;
+    const procedural::ScatterResult ramp_only = procedural::scatter(layer, 0, 3, false, ground, {});
+    REQUIRE(ramp_only.places.size() == 30);
+    for (const procedural::ScatterPlace& place : ramp_only.places) {
+        CHECK(place.position.x >= 10.0F);
+        // Its up axis is the ramp's normal.
+        world::Transform3D t;
+        t.rotation = place.rotation;
+        const world::Affine3D basis = world::affine(t);
+        CHECK(basis.y.x == doctest::Approx(-0.7071F).epsilon(1e-3));
+        CHECK(basis.y.y == doctest::Approx(0.7071F).epsilon(1e-3));
+        CHECK(basis.y.z == doctest::Approx(0.0F).epsilon(1e-3));
+    }
+    layer.slope = {0.0F, 90.0F};
+    layer.align_to_normal = false;
+    layer.height = Vec2{2.0F, 8.0F};
+    const procedural::ScatterResult high = procedural::scatter(layer, 0, 3, false, ground, {});
+    CHECK(high.height > 0);
+    for (const procedural::ScatterPlace& place : high.places) {
+        CHECK(place.position.y >= 2.0F);
+        CHECK(place.position.y <= 8.0F);
+    }
+
+    // Only where the noise is high enough.
+    layer.height.reset();
+    procedural::NoiseSettings noise;
+    noise.frequency = 0.3F;
+    layer.noise = noise;
+    layer.noise_range = {0.2F, 1.0F};
+    const procedural::ScatterResult patchy = procedural::scatter(layer, 0, 3, false, ground, {});
+    CHECK(patchy.noise > 0);
+    const procedural::Noise sampled(noise);
+    for (const procedural::ScatterPlace& place : patchy.places) {
+        CHECK(sampled.get_noise_2d(place.position.x, place.position.z) >= 0.2F);
+    }
+
+    // In 2D, over x and y, turned in the plane.
+    procedural::ScatterLayer flowers;
+    flowers.name = "flowers";
+    flowers.prefab = "flower.prefab.json";
+    flowers.count = 10;
+    flowers.rotate_random = 1.0F;
+    const std::vector<procedural::ScatterTriangle> rect{
+        {{0.0F, 0.0F, 0.0F}, {64.0F, 0.0F, 0.0F}, {64.0F, 32.0F, 0.0F}},
+        {{0.0F, 0.0F, 0.0F}, {64.0F, 32.0F, 0.0F}, {0.0F, 32.0F, 0.0F}}};
+    const procedural::ScatterResult flat = procedural::scatter(flowers, 0, 3, true, rect, {});
+    REQUIRE(flat.places.size() == 10);
+    bool turned = false;
+    for (const procedural::ScatterPlace& place : flat.places) {
+        CHECK(place.position.y >= 0.0F);
+        CHECK(place.position.y <= 32.0F);
+        CHECK(place.position.z == 0.0F);
+        turned = turned || place.rotation.z != 0.0F;
+    }
+    CHECK(turned);
+
+    // No ground, nothing placed.
+    CHECK(procedural::scatter(layer, 0, 3, false, {}, {}).places.empty());
+}
+
+TEST_CASE("MultiMeshInstance3D draws its mesh at each instance") {
+    MadeScene scene;
+    scene.create("camera", R"({"Camera3D": {"current": true, "projection": "orthogonal",
+                                            "size": 4},
+                               "Transform3D": {"position": [0, 0, 5]}})");
+    scene.create("many", R"({"MultiMeshInstance3D": {"mesh": "made:square", "instances": [
+                                 {"position": [-1, 0, 0]}, {"position": [1, 0, 0]},
+                                 {"position": [0, 1.2, 0], "scale": [0.5, 0.5, 0.5]}]},
+                             "Transform3D": {}})");
+    slash::scene3d::SurfaceTool tool;
+    add_square(tool, 0.4F);
+    tool.generate_normals();
+    slash::world::StandardMaterial3D red;
+    red.albedo_color = {1.0F, 0.0F, 0.0F, 1.0F};
+    red.shading_mode = "unshaded";
+    tool.set_material(red);
+    slash::scene3d::Model mesh;
+    REQUIRE(tool.commit(mesh).ok());
+    REQUIRE(slash::scene3d::make_mesh(scene.world, "square", std::move(mesh)).ok());
+    canvas::Capture captured = scene.capture();
+    CHECK(captured.meshes == 3);
+    // 4 meters across 32 pixels: x -1 and 1 are pixels 8 and 24, y 1.2 is pixel 6.
+    CHECK(pixel(captured.image, 8, 16)[0] > 200);
+    CHECK(pixel(captured.image, 24, 16)[0] > 200);
+    CHECK(pixel(captured.image, 16, 16)[0] < 30);
+    CHECK(pixel(captured.image, 16, 6)[0] > 200);
+
+    // visible_instance_count draws the first ones only.
+    scene.world.ecs()
+        .get<world::MultiMeshInstance3D>(scene.world.find("many"))
+        .visible_instance_count = 1;
+    captured = scene.capture();
+    CHECK(captured.meshes == 1);
+    CHECK(pixel(captured.image, 24, 16)[0] < 30);
+
+    // A mesh that isn't there is a problem at its field, once.
+    scene.create("broken", R"({"MultiMeshInstance3D": {"mesh": "tree.png",
+                                 "instances": [{}, {}]}, "Transform3D": {}})");
+    const auto problems = slash::scene3d::check_meshes(scene.world);
+    REQUIRE(problems.size() == 1);
+    CHECK(problems[0].path == "/components/MultiMeshInstance3D/mesh");
+}
+
+TEST_CASE("scatter.run places what scatter rules ask for") {
+    const std::string root = "scatter_test_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    const auto write = [&](const std::string& file, std::string_view text) {
+        REQUIRE(slash::platform::write_file(root + "/" + file, text).ok());
+    };
+    write("rock.prefab.json", R"({"format": 1, "components": {
+        "BoxMesh": {"size": [0.5, 0.5, 0.5]}, "MeshInstance3D": {},
+        "Transform3D": {"position": [0, 0.25, 0]}}})");
+    write("flower.prefab.json", R"({"format": 1, "components": {
+        "Sprite2D": {"texture": "flower.png"}, "Transform2D": {}}})");
+    write("ground.tileset.json", R"({"format": 1, "tile_size": [16, 16], "sources": {
+        "a": {"texture": "tiles.png", "tiles": {"0,0": {"name": "grass"},
+                                                "1,0": {"name": "rock"}}}}})");
+    write("yard.scatter.json", R"({"format": 1, "seed": 4, "layers": [
+        {"name": "trees", "mesh": "made:tree", "as": "multimesh", "on": ["ground"],
+         "count": 12, "spacing": 2, "rotate_random": 1},
+        {"name": "rocks", "prefab": "rock.prefab.json", "on": ["ground"], "count": 5,
+         "spacing": 1, "avoid": ["trees"], "area": [0, 0, 10, 10]}]})");
+
+    world::ComponentRegistry components;
+    world::register_builtin_components(components);
+    command::Registry commands;
+    command::register_builtin_commands(commands);
+    command::SessionOptions options;
+    options.project_root = root;
+    options.capture_logs = false;
+    command::Session session(components, commands, options);
+    world::World& world = session.world();
+    const auto call = [&](std::string_view name, std::string_view params) {
+        return session.call(name, parse(params));
+    };
+    REQUIRE(call("entity.create", R"({"id": "ground", "components": {
+        "PlaneMesh": {"size": [20, 20]}, "MeshInstance3D": {}, "Transform3D": {}}})")
+                .ok);
+
+    command::Reply reply = call("scatter.run", R"({"path": "yard.scatter.json", "into": "yard"})");
+    REQUIRE_MESSAGE(reply.ok, reply.message);
+    CHECK(reply.value == parse(R"({"into": "yard", "layers": [{"name": "trees", "placed": 12},
+                                                             {"name": "rocks", "placed": 5}]})"));
+    const entt::entity yard = world.find("yard");
+    REQUIRE(world.valid(yard));
+    const auto& children = world.ecs().get<world::Transform3D>(yard).children;
+    REQUIRE(children.size() == 6);
+    CHECK(world.id_of(children[0]) == "yard_trees");
+    CHECK(world.id_of(children[1]) == "yard_rocks_1");
+    const auto& trees = world.ecs().get<world::MultiMeshInstance3D>(children[0]);
+    CHECK(trees.mesh == "made:tree");
+    REQUIRE(trees.instances.size() == 12);
+    std::vector<Vec3> tree_places;
+    for (const world::MultiMeshInstance& instance : trees.instances) {
+        CHECK(std::abs(instance.position.x) <= 10.0F);
+        CHECK(std::abs(instance.position.z) <= 10.0F);
+        CHECK(instance.position.y == doctest::Approx(0.0F).epsilon(1e-4));
+        tree_places.push_back(instance.position);
+    }
+    // Rocks extend their prefab, in the area, apart from the trees.
+    for (std::size_t i = 1; i < children.size(); ++i) {
+        REQUIRE(world.prefab_of(children[i]) != nullptr);
+        CHECK(world.prefab_of(children[i])->path == "rock.prefab.json");
+        CHECK(world.ecs().all_of<world::BoxMesh>(children[i]));
+        const Vec3 at = world.ecs().get<world::Transform3D>(children[i]).position;
+        CHECK(at.x >= 0.0F);
+        CHECK(at.z <= 10.0F);
+        for (const Vec3 tree : tree_places) {
+            CHECK(distance_across(at, tree) >= 1.0F);
+        }
+    }
+
+    // Running again replaces what the run before made, and is one undo step; the old rocks
+    // aren't ground. A parent moved places them in its space.
+    REQUIRE(call("component.set", R"({"id": "yard", "components": {
+        "Transform3D": {"position": [5, 0, 0]}}})")
+                .ok);
+    reply = call("scatter.run", R"({"path": "yard.scatter.json", "into": "yard"})");
+    REQUIRE_MESSAGE(reply.ok, reply.message);
+    CHECK(world.ecs().get<world::Transform3D>(yard).children.size() == 6);
+    CHECK_FALSE(world.valid(world.find("yard_rocks_6")));
+    const auto& moved = world.ecs().get<world::MultiMeshInstance3D>(world.find("yard_trees"));
+    CHECK(moved.instances[0].position.x == doctest::Approx(tree_places[0].x - 5.0F));
+    REQUIRE(call("undo", "{}").ok);
+    CHECK(world.ecs()
+              .get<world::MultiMeshInstance3D>(world.find("yard_trees"))
+              .instances[0]
+              .position == tree_places[0]);
+
+    // Inline rules; a layer that can't fill up says why.
+    reply = call("scatter.run", R"({"into": "crowd", "rules": {"format": 1, "layers": [
+        {"name": "posts", "mesh": "made:tree", "area": [0, 0, 2, 2], "count": 50,
+         "spacing": 1}]}})");
+    REQUIRE_MESSAGE(reply.ok, reply.message);
+    const json::Value& posts = reply.value.find("layers")->as_array()[0];
+    CHECK(posts.find("placed")->as_int() < 50);
+    CHECK(posts.find("wanted")->as_int() == 50);
+    CHECK(posts.find("rejected")->find("spacing")->as_int() > 0);
+    CHECK(world.ecs().get<world::MeshInstance3D>(world.find("crowd_posts_1")).mesh == "made:tree");
+
+    // A dry run changes nothing.
+    const std::size_t before = world.ids().size();
+    reply = call("scatter.run", R"({"into": "dry", "dry_run": true, "rules": {"format": 1,
+        "layers": [{"name": "a", "mesh": "made:tree", "area": [0, 0, 2, 2], "count": 3}]}})");
+    REQUIRE_MESSAGE(reply.ok, reply.message);
+    CHECK(world.ids().size() == before);
+    CHECK_FALSE(world.valid(world.find("dry")));
+
+    // 2D: flowers on the grass cells of a tile map.
+    REQUIRE(call("entity.create", R"({"id": "map", "components": {
+        "TileMapLayer": {"tile_set": "ground.tileset.json", "legend": {"g": "grass", "r": "rock"},
+                         "rows": ["ggrr", "ggrr"]},
+        "Transform2D": {"position": [100, 0]}}})")
+                .ok);
+    reply = call("scatter.run", R"({"into": "meadow", "rules": {"format": 1, "space": "2d",
+        "layers": [{"name": "flowers", "prefab": "flower.prefab.json", "on": ["map"],
+                    "tiles": ["grass"], "count": 8, "rotate_random": 1}]}})");
+    REQUIRE_MESSAGE(reply.ok, reply.message);
+    const auto& flowers = world.ecs().get<world::Transform2D>(world.find("meadow")).children;
+    REQUIRE(flowers.size() == 8);
+    for (const entt::entity flower : flowers) {
+        const Vec2 at = world.ecs().get<world::Transform2D>(flower).position;
+        CHECK(at.x >= 100.0F);
+        CHECK(at.x <= 132.0F);
+        CHECK(at.y >= 0.0F);
+        CHECK(at.y <= 32.0F);
+        CHECK(world.ecs().all_of<world::Sprite2D>(flower));
+    }
+
+    // Mistakes point at what's wrong.
+    reply = call("scatter.run", R"({"into": "x", "rules": {"format": 1, "layers": [
+        {"name": "a", "mesh": "m.glb", "on": ["grond"], "count": 1}]}})");
+    CHECK_FALSE(reply.ok);
+    CHECK(reply.message.find("/rules/layers/0/on/0") != std::string::npos);
+    CHECK(reply.message.find("did you mean \"ground\"") != std::string::npos);
+    reply = call("scatter.run", R"({"into": "x", "rules": {"format": 1, "layers": [
+        {"name": "a", "count": 1, "area": [0, 0, 1, 1]}]}})");
+    CHECK_FALSE(reply.ok);
+    CHECK(reply.message.find("/rules/layers/0") != std::string::npos);
+    CHECK_FALSE(call("scatter.run", R"({"into": "x", "path": "yard.json"})").ok);
+    CHECK_FALSE(call("scatter.run", R"({"into": "x"})").ok);
+    CHECK_FALSE(call("scatter.run", R"({"into": "map", "path": "yard.scatter.json"})").ok);
+    reply = call("scatter.run", R"({"into": "y", "rules": {"format": 1, "space": "2d",
+        "layers": [{"name": "a", "prefab": "flower.prefab.json", "on": ["ground"],
+                    "count": 1}]}})");
+    CHECK_FALSE(reply.ok);
+    CHECK(reply.message.find("has no TileMapLayer") != std::string::npos);
+    std::filesystem::remove_all(root);
 }
