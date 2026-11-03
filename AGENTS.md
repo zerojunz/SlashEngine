@@ -2131,9 +2131,12 @@ from a scene with `frame.capture` and `video.encode`.
 WebM and Matroska files (`.webm`, `.mkv`) load too: `src/matroska.cpp` reads their EBML
 (`read_matroska`: the first `V_AV1` track, whose `CodecPrivate` sequence header the decoder
 starts each key frame with as `VideoFile::config`, and the audio tracks, through laced blocks
-and clusters of unknown size) and writes them (`write_matroska`, `encode_matroska`, with a PCM
-track). `decode_audio` turns a PCM track into float samples, mixing more than two channels down
-as BS.775; Opus is read but not decoded yet. The sound plays in the audio module, which links
+and clusters of unknown size) and writes them (`write_matroska`, `encode_matroska`, with PCM
+and Opus tracks). `decode_audio` turns a PCM or Opus track into float samples, mixing more than
+two channels down as BS.775; `src/opus.cpp` decodes Opus with libopus, built as fixed point with
+no intrinsics so samples are the same everywhere, after its `OpusHead`'s pre-skip and gain and
+before the last block's `DiscardPadding`, turning family 1's Vorbis order of speakers into WAV's,
+and `encode_opus` encodes it for tests and examples. The sound plays in the audio module, which links
 the video module (not the other way round, since ui links video): `play_videos` in
 `engine/audio/src/audio.cpp` starts each player's `audio_track` on its `bus` at `volume_db` and
 `stream_position` through `video::playing`, follows `paused` and `speed_scale`, and starts it
