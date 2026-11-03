@@ -501,6 +501,17 @@ ticks to real time (`RunOptions::real_time`) and exits with the run's code. Test
 a scripted agent service on a fake `Transport` and a clock of their own (`Options::clock`);
 `examples/autopilot-playtest` finds a HUD that counts 4 coins out of 3.
 
+`autopilot::agent_connector` (`src/agent.cpp`) is SlashEngine's own agent service, for
+`slash-cli run --autopilot-agent <role>`: a `Transport` the bridge connects to in-process, which
+plays the hello's run with an `ai::Provider` from providers.json, as Autopilot's agent session
+does with its instructions, kinds and rules. Its tools are the bridge's ops (with `look`, `wait`,
+`note` and `report` of its own), sent one at a time; it pauses the game (`pause`) while a reply
+comes, through `ai::Call` (waited for with `AgentOptions::wait` in headless runs), and the bridge
+runs on `game_clock`, so holds and the play budget count game time. `report` becomes the result
+frame, whose `report.md` it writes, and notes go to `.slash/autopilot/notes.md`.
+`tests/test_autopilot_agent.cpp` plays runs with a scripted provider, and
+`examples/playtest-agent` with a stand-in model.
+
 ## Game projects and exports
 
 A game is a folder with a `project.json` (name, version, main scene; `$cli schema project`) and
@@ -2419,7 +2430,7 @@ CI rejects unformatted code and any clang-tidy finding.
   generators and commands), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `soundtrack` (`.score.json` scores, MIDI files, rendering stems, drafting cue sheets and arranging them),
   `command` (commands, sessions with undo, JSON-RPC and MCP),
-  `debug` (the debug overlay over a running game), `autopilot` (Autopilot's agent service playing a game), `server` (localhost HTTP over a session),
+  `debug` (the debug overlay over a running game), `autopilot` (Autopilot's agent service, or SlashEngine's own agent, playing a game), `server` (localhost HTTP over a session),
   `ai` (language model providers, their adapters, `providers.json`, replay and the `ai.*`
   commands),
   `gameplay` (loading and reloading a game's own code) and `runtime` (project files and the game

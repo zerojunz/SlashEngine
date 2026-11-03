@@ -1,0 +1,31 @@
+turn 1 sees the brief: 18 tools, a Start button on screen: yes
+  > ui_act {"id":"start"}
+  > key {"key":"D","mode":"hold","seconds":2}
+  > look {}
+turn 2 sees:
+  {"via":"mouse"}
+  {"held_seconds":2.0}
+  {"pose":{"at":{"X":282.0,"Y":0.0,"Z":-120.0},"eye":{"X":282.0,"Y":0.0,"Z":-120.0},"feet":{"X":282.0,"Y":0.0,"Z":-120.0},"on_ground":null,"path":"player","pitch":0.0,"velocity":{"X":0.0,"Y":0.0,"Z":-0.0},"yaw":0.0},"screen":{"texts":{"hud.coins":"Coins 4/3"},"ui":[]}}
+  The detectors found:
+  - HUD text hud.coins shows 4/3: more than its stated maximum (hud_fraction)
+  > note {"text":"D walks right; the level has 4 coins."}
+  > report {"evidence":["At 2.0 s of play, after walking past the 4 coins, the HUD read Coins 4/3."],"outcome":"DENIED","summary":"After the agent took all 4 coins, the HUD read Coins 4/3."}
+exit code 2
+# Verify: The HUD counts every coin
+
+**Outcome: DENIED**
+
+After the agent took all 4 coins, the HUD read Coins 4/3.
+
+## Evidence
+
+- At 2.0 s of play, after walking past the 4 coins, the HUD read Coins 4/3.
+
+## What the detectors found
+
+- HUD text hud.coins shows 4/3: more than its stated maximum (hud_fraction)
+
+Played by rule-model in 2 turns and 2.1 seconds of play, with 0 tokens.
+notes: # Notes from playtests
+
+- D walks right; the level has 4 coins.
