@@ -355,8 +355,17 @@ seeded PCG32 so places repeat everywhere. `scatter.run` (`engine/command/src/sca
 the ground as `navigation::world_geometry` (3D) or tile map cells (2D) and puts each layer under
 `into` as entities extending a prefab or drawing a mesh, or as one `MultiMeshInstance3D`, Godot's
 (`Renderer::add_multimesh` draws its model at each instance), replacing what `into` held.
-`examples/scatter-rules` grows a forest. The rest of the roadmap item (tile maps and terrains from
-noise, imports from other tools) is in `docs/roadmap.md`.
+`examples/scatter-rules` grows a forest.
+
+Maps come from noise too: `tilemap.generate` (`engine/command/src/builtin.cpp`) samples a noise
+over a rect of cells and gives each the first band its value is under, painting each band's
+terrain with `paint_terrain` in turn or setting its tile, and `terrain.generate`'s `noise` puts a
+FastNoiseLite's values (`TerrainNoise::values`) in place of HTerrain's Perlin noise before its
+curve, island and erosion. Both take a NoiseTexture2D's `.texture.json` file or inline settings
+(`read_noise_source` and `sample_noise_source` in `engine/command/src/procedural.cpp`, sampled
+and normalized as Godot's `Noise::_get_image`), so the noise an agent tuned with
+`texture.generate` makes the map. `examples/noise-maps` makes an archipelago and dunes. The rest
+of the roadmap item (imports from other tools) is in `docs/roadmap.md`.
 
 ## Commands, MCP and JSON-RPC
 
@@ -861,7 +870,7 @@ sets; a terrain tile's `peering` names the terrain each side and corner must tou
 `TileMapLayer` stores its cells as text: `origin`, a `legend` of short keys and `rows` of keys,
 `.` for empty, which `decode_cells` and `encode_cells` read and write in canonical form.
 `paint_terrain` picks connecting tiles for painted cells and their neighbors; the commands are
-`tilemap.paint`, `tilemap.set` and `tilemap.get`. `CanvasRenderer` draws layers in runs of one
+`tilemap.paint`, `tilemap.generate` (by noise), `tilemap.set` and `tilemap.get`. `CanvasRenderer` draws layers in runs of one
 texture (`tiles_drawn()`), and `check_tile_layers` checks a scene's layers for `scene validate`
 and exports. `examples/tilemaps` paints an island with a pond. An atlas source's
 `normal_texture` and `specular_texture` are a Godot `CanvasTexture`'s, which lights shade its

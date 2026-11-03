@@ -1,5 +1,7 @@
 #include "slash/command/terrain.hpp"
 
+#include "procedural.hpp"
+
 #include "slash/command/session.hpp"
 #include "slash/core/math.hpp"
 #include "slash/core/text.hpp"
@@ -532,6 +534,19 @@ Reply terrain_generate(Session& session, const json::Value& params) {
     noise.island_sharpness = number(params, "island_sharpness", noise.island_sharpness);
     noise.island_height_ratio = number(params, "island_height_ratio", noise.island_height_ratio);
     noise.island_shape = number(params, "island_shape", noise.island_shape);
+    if (const json::Value* given = params.find("noise"); given != nullptr) {
+        NoiseSource source;
+        if (auto failed = read_noise_source(session, *given, "/noise", source)) {
+            return std::move(*failed);
+        }
+        if (params.find("seed") != nullptr) {
+            source.settings.seed = noise.seed;
+        }
+        source.settings.offset.x += noise.offset.x;
+        source.settings.offset.y += noise.offset.y;
+        noise.values =
+            sample_noise_source(source, 0, 0, target.maps.resolution, target.maps.resolution);
+    }
     const bool additive = flag(params, "additive");
     target.maps.heights = scene3d::generate_heights(noise, target.maps.resolution,
                                                     additive ? &target.maps.heights : nullptr);
@@ -713,6 +728,11 @@ void register_terrain_commands(Registry& registry) {
                 {"island_shape", number_property("0 round to 1 square. Default 0.", 0.0, 1.0)},
                 {"additive",
                  property("boolean", "Add the noise to the current heights. Default false.")},
+                {"noise", noise_source_property(
+                              "Noise in place of the Perlin noise: a NoiseTexture2D's "
+                              ".texture.json file or FastNoiseLite settings, sampled a cell "
+                              "apart and normalized as the texture is. Then scale, roughness "
+                              "and octaves do nothing, and seed replaces its seed.")},
             },
             {"id"}),
         .handler = terrain_generate,

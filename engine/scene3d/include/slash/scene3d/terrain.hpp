@@ -199,6 +199,11 @@ struct TerrainNoise {
     float island_sharpness = 0.0F;
     float island_height_ratio = -1.0F;
     float island_shape = 0.0F;
+    // Noise of one's own in place of the generator's Perlin noise, such as a FastNoiseLite's
+    // sampled by procedural::Noise: resolution * resolution values from 0 to 1, rows along x
+    // from z = 0. scale, roughness, octaves and offset then do nothing; curve, the island,
+    // the heights and erosion apply as before.
+    std::vector<float> values;
 };
 // Heights of a terrain of resolution cells each way made by noise, added to additive's when it
 // is given (its additive_heightmap), the same on every machine.
