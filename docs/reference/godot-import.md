@@ -19,6 +19,7 @@ from its `.pck` file or executable: see [Exported games](#exported-games).
 | `<name>.tileset.json` | Each `TileSet` resource, named the same way |
 | `<name>.theme.json` | Each `Theme` resource, named the same way |
 | `<name>.bus_layout.json` | Each `AudioBusLayout` resource, such as `default_bus_layout.tres` |
+| `<name>.texture.json` | Each `NoiseTexture2D`, `GradientTexture1D` and `GradientTexture2D` resource, named as frames are, as a [procedural texture](scene-format.md#procedural-textures) that makes the same pixels when it loads; its `FastNoiseLite` and `Gradient` come with it |
 | `<name>.process_material.json` | Each `ParticleProcessMaterial` resource, named as frames are (see [particles](#particles)) |
 | `<name>.audio.json` | Each `AudioStreamRandomizer`, `AudioStreamPlaylist`, `AudioStreamSynchronized`, `AudioStreamInteractive`, `AudioStreamGenerator`, `AudioStreamPolyphonic` and `AudioStreamMicrophone` resource, named as frames are, and `<sound>.audio.json` beside a sound whose import settings loop it or give it beats (see [sounds and music](#sounds-and-music)) |
 | `<name>.meshlib.json` | Each `MeshLibrary` resource, text or binary (`.meshlib`, `.res`), named as frames are (see [3D](#3d)) |

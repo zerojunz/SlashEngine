@@ -196,6 +196,11 @@ add_library(slash_test_jpeg STATIC jpeg_write.c)
 target_include_directories(slash_test_jpeg SYSTEM PRIVATE ${stb_SOURCE_DIR})
 target_compile_options(slash_test_jpeg PRIVATE "$<$<NOT:$<C_COMPILER_ID:MSVC>>:-w;-ffp-contract=off>")
 target_link_libraries(slash_tests PRIVATE slash_test_jpeg)
+# EXR heightmaps for terrain.import's test, written with tinyexr.
+if(TARGET slash_tinyexr)
+    target_link_libraries(slash_tests PRIVATE slash_tinyexr)
+    target_compile_definitions(slash_tests PRIVATE SLASH_HAS_TINYEXR=1)
+endif()
 # Vulkan's headers, which SDL carries, for the temporal upscaler test's native copy.
 target_include_directories(slash_tests SYSTEM PRIVATE ${SDL3_SOURCE_DIR}/src/video/khronos)
 # doctest forward-declares std::ostream by default, which breaks string_view checks on recent

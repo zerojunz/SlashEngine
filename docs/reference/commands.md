@@ -66,7 +66,7 @@ as `entity.get`, reject it as an unknown param.
 | Models | [`model.inspect`](#modelinspect), [`model.cleanup`](#modelcleanup), [`model.retarget`](#modelretarget), [`skeleton.get`](#skeletonget), [`csg.get`](#csgget) |
 | Paths | [`path.get`](#pathget) |
 | Grid maps | [`gridmap.set`](#gridmapset), [`gridmap.get`](#gridmapget) |
-| Terrains | [`terrain.generate`](#terraingenerate), [`terrain.brush`](#terrainbrush), [`terrain.get`](#terrainget) |
+| Terrains | [`terrain.generate`](#terraingenerate), [`terrain.import`](#terrainimport), [`terrain.brush`](#terrainbrush), [`terrain.get`](#terrainget) |
 | Tile maps | [`tilemap.paint`](#tilemappaint), [`tilemap.generate`](#tilemapgenerate), [`tilemap.set`](#tilemapset), [`tilemap.get`](#tilemapget), [`tilemap.convert`](#tilemapconvert) |
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity) |
 | Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent), [`navigation.bake`](#navigationbake) |
@@ -1137,6 +1137,43 @@ curve, the island and erosion shape it as before.
 `height_range` is in the reply only when it widened. A terrain that can't be made (a map that
 doesn't load, or a resolution HTerrain refuses) fails at `/id` saying why, as
 [`scene validate`](cli.md#scene-validate) reports it.
+
+### terrain.import
+
+Imports maps made in other tools into an `HTerrain`, as HTerrain's import dialog does: a
+heightmap from World Machine, Gaea, World Creator or any tool that exports one, then a splat map
+and a color map. Each goes into the terrain's own map files, which it must name.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | | The entity with the `HTerrain` |
+| `heightmap` | string | | A project file of heights: a gray `.png` (16 bits, or 8), `.r16` or `.raw` (16-bit unsigned values), `.r32` (32-bit floats from `0` to `1`) or `.exr` (the first channel, in meters) |
+| `min_height`, `max_height` | number | `0`, `400` | PNG and RAW: the heights of the lowest and highest values; `max_height` must be above `min_height` |
+| `big_endian` | boolean | `false` | RAW: the values are big-endian |
+| `splatmap` | string | | A PNG of texture weights, a channel each, at the terrain's resolution |
+| `colormap` | string | | A PNG of colors at the terrain's resolution; alpha under `0.5` cuts a hole |
+
+Needs: `edit`, `filesystem`. Give at least one file. A heightmap sizes the terrain as HTerrain's
+`_get_adjusted_map_size` does: each side's next power of two plus one, the smaller of the two,
+from 65 to 4097. A larger file is cropped from its top left; a smaller one (a 1024 by 1024 file
+makes a 1025 terrain) repeats its last row and column, where HTerrain reads black. RAW files must
+be square. PNG and RAW heights go from `min_height` to `max_height`, which becomes
+`height_range`; EXR heights are meters as they are, and `height_range` becomes the whole meters
+around them. Where the resolution changes, the splat and color maps the terrain has are stretched
+to it, unless the call imports them too; the reply gives the new `resolution`, and `source_size`
+when the file wasn't the terrain's size. From
+[examples/procedural-imports](../../examples/procedural-imports/):
+
+```json
+{"id": "valley", "heightmap": "terrain/valley.r16", "min_height": -5, "max_height": 120, "splatmap": "terrain/valley_splat.png"}
+```
+
+```json
+{"files":["terrain/valley.height.png","terrain/valley.splat.png"],"height_range":[-5,120],"heights":[-5,90.7046],"id":"valley","resolution":129}
+```
+
+Undo puts back the maps and the component. EXR files are read with tinyexr; a build made without
+it says so.
 
 ### terrain.brush
 
@@ -5057,7 +5094,7 @@ From [examples/import-godot](../../examples/import-godot/):
 ```
 
 ```json
-{"converted":{"animation_libraries":1,"animation_trees":0,"assets":8,"audio_streams":2,"bus_layouts":1,"input_actions":3,"mesh_libraries":0,"navigation_meshes":0,"process_materials":0,"scenes":2,"sprite_frames":2,"themes":1,"tile_sets":1},"engine":"godot","files":18,"main_scene":"godot/main.scene.json","module":"src/game.cpp","project":"Coin Run","report":"import/godot.json","scripts":[{"code":"src/imported/game_state.cpp","component":"GameState","entities":0,"script":"godot/game_state.gd","task":"task/port-game-state"},{"code":"src/imported/main.cpp","component":"Main","entities":1,"script":"godot/main.gd","task":"task/port-main"},{"code":"src/imported/player.cpp","component":"Player","entities":2,"script":"godot/player.gd","task":"task/port-player"}],"unsupported":[{"count":1,"what":"autoload","where":"project.godot: GameState","why":"autoloads are gameplay code; see the storyboard task"},{"count":1,"what":"file type .svg","where":"icon.svg","why":"textures are PNG, JPEG or BMP files; save it as PNG"},{"count":1,"what":"node type Timer","where":"main.tscn: Timer","why":"timers are gameplay code: count the ticks in a C++ system"}]}
+{"converted":{"animation_libraries":1,"animation_trees":0,"assets":8,"audio_streams":2,"bus_layouts":1,"input_actions":3,"mesh_libraries":0,"navigation_meshes":0,"procedural_textures":0,"process_materials":0,"scenes":2,"sprite_frames":2,"themes":1,"tile_sets":1},"engine":"godot","files":18,"main_scene":"godot/main.scene.json","module":"src/game.cpp","project":"Coin Run","report":"import/godot.json","scripts":[{"code":"src/imported/game_state.cpp","component":"GameState","entities":0,"script":"godot/game_state.gd","task":"task/port-game-state"},{"code":"src/imported/main.cpp","component":"Main","entities":1,"script":"godot/main.gd","task":"task/port-main"},{"code":"src/imported/player.cpp","component":"Player","entities":2,"script":"godot/player.gd","task":"task/port-player"}],"unsupported":[{"count":1,"what":"autoload","where":"project.godot: GameState","why":"autoloads are gameplay code; see the storyboard task"},{"count":1,"what":"file type .svg","where":"icon.svg","why":"textures are PNG, JPEG or BMP files; save it as PNG"},{"count":1,"what":"node type Timer","where":"main.tscn: Timer","why":"timers are gameplay code: count the ticks in a C++ system"}]}
 ```
 
 From [examples/import-unity](../../examples/import-unity/), where `pixels_per_unit` is the
@@ -5093,7 +5130,7 @@ own `unsupported`. From [examples/unpack-godot](../../examples/unpack-godot/):
 ```
 
 ```json
-{"converted":{"animation_libraries":0,"animation_trees":0,"assets":2,"audio_streams":0,"bus_layouts":0,"input_actions":1,"mesh_libraries":0,"navigation_meshes":0,"process_materials":0,"scenes":1,"sprite_frames":0,"themes":0,"tile_sets":0},"engine":"godot","files":15,"main_scene":"godot/main.scene.json","module":"src/game.cpp","project":"Jumper","report":"import/godot.json","scripts":[{"code":"src/imported/player.cpp","component":"Player","entities":1,"script":"godot/player.gd","task":"task/port-player"}],"unpacked":{"files":8,"folder":"godot","fonts":0,"pack":{"embedded":false,"files":10,"format":3,"godot":"4.5.0"},"resources":0,"scenes":1,"scripts":1,"scripts_from_tokens":1,"sounds":1,"textures":1,"unsupported":[]},"unsupported":[]}
+{"converted":{"animation_libraries":0,"animation_trees":0,"assets":2,"audio_streams":0,"bus_layouts":0,"input_actions":1,"mesh_libraries":0,"navigation_meshes":0,"procedural_textures":0,"process_materials":0,"scenes":1,"sprite_frames":0,"themes":0,"tile_sets":0},"engine":"godot","files":15,"main_scene":"godot/main.scene.json","module":"src/game.cpp","project":"Jumper","report":"import/godot.json","scripts":[{"code":"src/imported/player.cpp","component":"Player","entities":1,"script":"godot/player.gd","task":"task/port-player"}],"unpacked":{"files":8,"folder":"godot","fonts":0,"pack":{"embedded":false,"files":10,"format":3,"godot":"4.5.0"},"resources":0,"scenes":1,"scripts":1,"scripts_from_tokens":1,"sounds":1,"textures":1,"unsupported":[]},"unsupported":[]}
 ```
 
 For a Unity build, `unpacked` names the build's `platform`, scripting `backend` and `unity`

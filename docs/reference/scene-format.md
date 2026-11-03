@@ -1677,6 +1677,8 @@ Each texture is HTerrain's Classic4 ground layer:
   detail, leaving out those touching a hole.
 - **Commands.** [`terrain.generate`](commands.md#terraingenerate) makes heights from noise
   (HTerrain's, or a [FastNoiseLite](#noise) of one's own),
+  [`terrain.import`](commands.md#terrainimport) brings in heightmaps, splat maps and color maps
+  from World Machine, Gaea, World Creator and other tools (16-bit PNG, RAW or EXR),
   [`terrain.brush`](commands.md#terrainbrush) raises, lowers, smooths, flattens, levels, paints
   textures and colors and cuts holes, and [`terrain.get`](commands.md#terrainget) reads heights,
   normals, texture weights and colors at points. Each writes the map files it changes, and
