@@ -3956,7 +3956,7 @@ TEST_CASE("terrain.import reads heightmaps and maps other tools export") {
     std::filesystem::remove_all(root);
     REQUIRE(slash::platform::create_directories(root).ok());
     // A 16-bit PNG 100 by 80 rising to the east; a 65 by 65 red color map the terrain has.
-    render::Gray16 ramp{.width = 100, .height = 80};
+    render::Gray16 ramp{.width = 100, .height = 80, .values = {}};
     for (std::uint32_t y = 0; y < 80; ++y) {
         for (std::uint32_t x = 0; x < 100; ++x) {
             ramp.values.push_back(static_cast<std::uint16_t>(x * 600));
@@ -3964,7 +3964,7 @@ TEST_CASE("terrain.import reads heightmaps and maps other tools export") {
     }
     REQUIRE(slash::platform::write_file(root + "/ramp.png", render::encode_gray16_png(ramp).value())
                 .ok());
-    render::Image red{.width = 65, .height = 65};
+    render::Image red{.width = 65, .height = 65, .pixels = {}};
     red.pixels.resize(65 * 65 * 4, 255);
     for (std::size_t i = 0; i < red.pixels.size(); i += 4) {
         red.pixels[i + 1] = 0;
@@ -4034,7 +4034,7 @@ TEST_CASE("terrain.import reads heightmaps and maps other tools export") {
 #endif
 
     // Splat maps come in at the terrain's size; undo puts each import back.
-    render::Image splat{.width = 65, .height = 65};
+    render::Image splat{.width = 65, .height = 65, .pixels = {}};
     splat.pixels.resize(65 * 65 * 4, 0);
     for (std::size_t i = 1; i < splat.pixels.size(); i += 4) {
         splat.pixels[i] = 255;
