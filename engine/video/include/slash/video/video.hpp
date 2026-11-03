@@ -33,6 +33,9 @@ struct AudioTrack {
     struct Packet {
         std::size_t offset = 0; // of its bytes in the VideoFile's data
         std::size_t size = 0;
+        // Nanoseconds at its end that aren't sound (a Matroska block's DiscardPadding), which
+        // decoding leaves out: the padding of an Opus track's last packet.
+        std::int64_t discard_padding = 0;
     };
 
     Codec codec = Codec::Other;
@@ -92,20 +95,40 @@ write_ivf(std::uint32_t width, std::uint32_t height, std::uint32_t rate, std::ui
 // Blocks may be laced and clusters of unknown size; compressed or encrypted tracks are refused.
 [[nodiscard]] Result<VideoFile> read_matroska(std::span<const std::uint8_t> bytes);
 
-// Uncompressed audio to write into a video: interleaved 16-bit samples.
+// Uncompressed audio to write into a video: interleaved 16-bit samples, in WAV's order of
+// speakers.
 struct PcmAudio {
     int sample_rate = 48000;
     int channels = 2;
     std::vector<std::int16_t> samples;
 };
+// Opus audio to write into a video, as libopus encodes it: the OpusHead that sets up its decoder
+// (a Matroska track's CodecPrivate), its pre-skip (samples at the start that aren't sound),
+// packets of 20 milliseconds at 48 kHz and the samples at the end of the last that aren't sound
+// either, which Matroska files say with the last block's DiscardPadding.
+struct OpusAudio {
+    int channels = 2;
+    int pre_skip = 0;
+    int end_padding = 0;
+    std::vector<std::uint8_t> head;
+    std::vector<std::vector<std::uint8_t>> packets;
+};
+// Encodes 48 kHz audio of one to eight channels with libopus at bitrate bits a second: one or two
+// channels as one stream (channel mapping family 0), more as Vorbis's surround layouts (family
+// 1). libopus is built as fixed point, so the same samples make the same bytes everywhere.
+[[nodiscard]] Result<OpusAudio> encode_opus(const PcmAudio& audio, int bitrate = 96000);
 // Writes a Matroska file of AV1 temporal units, rate / scale seconds apart, with an audio track
-// of PCM (A_PCM/INT/LIT) if audio is given, its blocks interleaved with the frames in clusters,
-// times in milliseconds. WebM allows only Opus and Vorbis audio, so the file is Matroska (.mkv).
+// of PCM (A_PCM/INT/LIT) if audio is given and one of Opus (A_OPUS) if opus is, in that order,
+// their blocks interleaved with the frames in clusters, times in milliseconds. A file whose
+// sound is all Opus is WebM, which allows only Opus and Vorbis audio; one with PCM is Matroska
+// (.mkv).
 [[nodiscard]] std::vector<std::uint8_t>
 write_matroska(std::uint32_t width, std::uint32_t height, std::uint32_t rate, std::uint32_t scale,
-               std::span<const std::vector<std::uint8_t>> frames, const PcmAudio* audio = nullptr);
+               std::span<const std::vector<std::uint8_t>> frames, const PcmAudio* audio = nullptr,
+               const OpusAudio* opus = nullptr);
 // A video's audio track decoded: interleaved samples from -1 to 1 of one or two channels (more
-// are mixed down to two), with the video's time 0 at its first sample.
+// are mixed down to two), with the video's time 0 at its first sample. Opus decodes at 48 kHz
+// with libopus, after its pre-skip and with its output gain, the same samples everywhere.
 struct DecodedAudio {
     int sample_rate = 0;
     int channels = 0;
@@ -159,10 +182,10 @@ struct Yuv420 {
 // Encodes RGBA8 frames of one size as an IVF file of such key frames, rate / scale a second.
 [[nodiscard]] Result<std::vector<std::uint8_t>>
 encode_ivf(std::span<const render::Image> frames, std::uint32_t rate, std::uint32_t scale = 1);
-// And as a Matroska file, with audio if given.
+// And as a Matroska or WebM file, with audio if given (write_matroska).
 [[nodiscard]] Result<std::vector<std::uint8_t>>
 encode_matroska(std::span<const render::Image> frames, std::uint32_t rate, std::uint32_t scale = 1,
-                const PcmAudio* audio = nullptr);
+                const PcmAudio* audio = nullptr, const OpusAudio* opus = nullptr);
 
 // Decodes a VideoFile's frames with dav1d on the calling thread.
 class Decoder {

@@ -6170,12 +6170,18 @@ within a tenth of a second of the picture. `audio.state` lists it among the play
 `VideoStreamPlayer`, and a track that can't be played is its `error` there. Blocks may be laced
 (Xiph, EBML or fixed) and clusters of unknown size, as live recordings write them.
 
-Tracks of uncompressed PCM play now: `A_PCM/INT/LIT` (8, 16, 24 or 32 bits) and
-`A_PCM/FLOAT/IEEE` (32 or 64 bits), in `.mkv` files, since WebM allows only Opus and Vorbis.
-More than two channels are mixed down to two as ITU-R BS.775 does. Opus, which WebM files and
-most encoders use, is read but not played yet. To make such a file from a video and a WAV:
+Opus tracks (`A_OPUS`), which WebM files and most encoders use, play through libopus: its
+`OpusHead` (the track's `CodecPrivate`) sets up the decoder, with its output gain and channel
+mapping, and the pre-skip at the start and the last block's `DiscardPadding` at the end are
+left out, so the sound is as long as what was encoded. Opus always decodes at 48 kHz. libopus is
+built as fixed point, so a file's sound is the same samples on every platform. Tracks of
+uncompressed PCM play too: `A_PCM/INT/LIT` (8, 16, 24 or 32 bits) and `A_PCM/FLOAT/IEEE` (32 or
+64 bits), in `.mkv` files, since WebM allows only Opus and Vorbis. More than two channels are
+mixed down to two as ITU-R BS.775 does, from Opus's surround layouts (Vorbis's order of
+speakers) and WAV's alike. Vorbis tracks don't play. To make a file from a video and a WAV:
 
 ```bash
+ffmpeg -i intro.ivf -i intro.wav -c:v copy -c:a libopus -b:a 128k intro.webm
 ffmpeg -i intro.ivf -i intro.wav -c:v copy -c:a pcm_s16le intro.mkv
 ```
 
@@ -6183,7 +6189,9 @@ The engine also writes AV1 itself, for tests and placeholders: `video::encode_iv
 `video::encode_frame` code every frame as a key frame, losslessly, each block drawn from
 palettes of up to 8 colors per plane (AV1's screen content tools), so flat art and screen
 recordings come out exactly and busier blocks are reduced to 8 colors. Frames must be a multiple
-of 8 pixels wide and high, up to 4096x2304.
+of 8 pixels wide and high, up to 4096x2304. `video::encode_opus` encodes 48 kHz sound of one to
+eight channels as Opus, the same bytes everywhere, and `video::encode_matroska` writes frames
+with PCM or Opus tracks (a file whose sound is all Opus is WebM).
 
 The tools and tests code lossy video with libaom (`video::encode_lossy` in
 `slash/video/lossy_encoder.hpp`, the `slash::video_encoder` library; games never link it), as

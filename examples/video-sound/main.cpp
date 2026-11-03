@@ -1,8 +1,9 @@
 // Plays a video's sound with its picture. The clip is made here: four colors, a quarter of a
-// second each, written by the engine's own AV1 encoder into a Matroska file with a PCM audio
-// track whose square wave halves in loudness with each color. The VideoStreamPlayer "tv" plays
-// it on the "Cutscenes" bus, and the output is what audio.state and audio.capture say as it
-// plays, gets quieter, pauses, seeks and finishes.
+// second each, written by the engine's own AV1 encoder into a Matroska file with two audio
+// tracks of a square wave that halves in loudness with each color: PCM, then the same at 48 kHz
+// encoded as Opus. The VideoStreamPlayer "tv" plays it on the "Cutscenes" bus, and the output is
+// what audio.state and audio.capture say as it plays, gets quieter, pauses, seeks, finishes and
+// plays its Opus track.
 #include "slash/command/builtin.hpp"
 #include "slash/command/session.hpp"
 #include "slash/platform/file.hpp"
@@ -45,14 +46,14 @@ std::vector<render::Image> clip_frames() {
     return frames;
 }
 
-// Its sound: a 200 Hz square wave in stereo, at half of full scale for the first frame and
-// half as loud again for each frame after.
-video::PcmAudio clip_sound() {
+// Its sound at a rate: a square wave in stereo, its half period 120 samples, at half of full
+// scale for the first frame and half as loud again for each frame after.
+video::PcmAudio clip_sound(int rate) {
     video::PcmAudio audio;
-    audio.sample_rate = kRate;
+    audio.sample_rate = rate;
     audio.channels = 2;
-    for (int i = 0; i < kRate; ++i) {
-        const int frame = i / (kRate / 4);
+    for (int i = 0; i < rate; ++i) {
+        const int frame = i / (rate / 4);
         const auto level = static_cast<std::int16_t>(16384 >> frame);
         const auto sample = static_cast<std::int16_t>((i / 120) % 2 == 0 ? level : -level);
         audio.samples.push_back(sample);
@@ -121,8 +122,13 @@ struct Game {
 } // namespace
 
 int main() {
-    const video::PcmAudio sound = clip_sound();
-    const auto clip = video::encode_matroska(clip_frames(), 4, 1, &sound);
+    const video::PcmAudio sound = clip_sound(kRate);
+    const auto opus = video::encode_opus(clip_sound(48000), 128000);
+    if (!opus) {
+        std::printf("couldn't encode the Opus track: %s\n", opus.error().message.c_str());
+        return 1;
+    }
+    const auto clip = video::encode_matroska(clip_frames(), 4, 1, &sound, &opus.value());
     if (!clip ||
         !platform::write_file("clip.mkv", std::string(clip.value().begin(), clip.value().end()))) {
         std::printf("couldn't write clip.mkv\n");
@@ -133,12 +139,13 @@ int main() {
         std::printf("couldn't read clip.mkv: %s\n", file.error().message.c_str());
         return 1;
     }
-    const video::AudioTrack& track = file.value().audio.at(0);
-    std::printf("clip.mkv: %zu frames of %ux%u, %.2f s, %zu bytes; audio %s, %d Hz, %d channels, "
-                "%d bits\n",
-                file.value().frames.size(), file.value().width, file.value().height,
-                file.value().length(), clip.value().size(), track.codec_id.c_str(),
-                track.sample_rate, track.channels, track.bits);
+    std::printf("clip.mkv: %zu frames of %ux%u, %.2f s, %zu bytes\n", file.value().frames.size(),
+                file.value().width, file.value().height, file.value().length(),
+                clip.value().size());
+    for (const video::AudioTrack& track : file.value().audio) {
+        std::printf("  audio %s, %d Hz, %d channels, %zu packets\n", track.codec_id.c_str(),
+                    track.sample_rate, track.channels, track.packets.size());
+    }
 
     const Game game;
     (void)game.ok("scene.open", R"({"path": "main.scene.json"})");
@@ -164,6 +171,10 @@ int main() {
 
     game.set(R"({"audio_track": 1, "playing": true, "stream_position": 0})");
     game.step(1);
-    game.show("audio_track 1, which the clip doesn't have");
+    game.show("audio_track 1: the same sound as Opus, decoded by libopus");
+
+    game.set(R"({"audio_track": 2, "stream_position": 0})");
+    game.step(1);
+    game.show("audio_track 2, which the clip doesn't have");
     return 0;
 }
