@@ -35,6 +35,17 @@ namespace slash::services {
 
 enum class AdFormat : std::uint8_t { Banner, Interstitial, Rewarded };
 
+// Where a banner shows on the screen, as Unity's BannerPosition and AdMob's AdPosition.
+enum class BannerPosition : std::uint8_t {
+    BottomCenter,
+    BottomLeft,
+    BottomRight,
+    TopCenter,
+    TopLeft,
+    TopRight,
+    Center
+};
+
 // What a watched rewarded ad gives, as AdMob's RewardItem.
 struct Reward {
     std::string type; // e.g. "coins"
@@ -48,6 +59,8 @@ struct Reward {
 struct Placement {
     std::string name;
     AdFormat format = AdFormat::Interstitial;
+    // Where a banner shows; set_banner_position moves it.
+    BannerPosition position = BannerPosition::BottomCenter;
     // The ad network's ad unit ID on each platform ("android", "ios" and so on), which the ads
     // backend loads.
     std::map<std::string, std::string, std::less<>> ids;
@@ -184,6 +197,10 @@ struct Settings {
 [[nodiscard]] bool valid_event_name(std::string_view name);
 
 [[nodiscard]] std::string_view format_name(AdFormat format);
+// "bottom_center", "bottom_left", "bottom_right", "top_center", "top_left", "top_right" or
+// "center".
+[[nodiscard]] std::string_view position_name(BannerPosition position);
+[[nodiscard]] std::optional<BannerPosition> parse_position(std::string_view name);
 [[nodiscard]] std::string_view type_name(ProductType type);
 [[nodiscard]] std::string_view consent_name(Consent consent);
 // "not_determined", "restricted", "denied", "authorized" or "unavailable".
@@ -351,6 +368,7 @@ struct AdUnit {
     std::string placement;
     AdFormat format = AdFormat::Interstitial;
     std::string id; // the placement's ad unit ID on this platform, or "" if it has none
+    BannerPosition position = BannerPosition::BottomCenter; // where a banner shows
 };
 
 class Backend {
@@ -381,6 +399,12 @@ public:
     virtual void show(const AdUnit& unit) = 0;
     // Hides a banner.
     virtual void hide(const AdUnit& unit) = 0;
+    // Moves a banner that shows to unit.position. By default it hides the banner and shows it
+    // again there.
+    virtual void move(const AdUnit& unit) {
+        hide(unit);
+        show(unit);
+    }
 };
 
 class AnalyticsBackend : public Backend {
@@ -526,6 +550,10 @@ enum class AdStatus : std::uint8_t { Unloaded, Loading, Loaded, Showing, Failed 
 [[nodiscard]] Result<void> show_ad(world::World& world, std::string_view name);
 // Hides a banner that shows.
 [[nodiscard]] Result<void> hide_ad(world::World& world, std::string_view name);
+// Where a banner shows from its next show_ad on, as Unity's Banner.SetPosition; a banner that
+// shows moves there now (AdsBackend::move).
+[[nodiscard]] Result<void> set_banner_position(world::World& world, std::string_view name,
+                                               BannerPosition position);
 [[nodiscard]] AdStatus ad_status(const world::World& world, std::string_view placement);
 [[nodiscard]] bool is_ad_loaded(const world::World& world, std::string_view placement);
 

@@ -80,6 +80,11 @@ NS_ASSUME_NONNULL_BEGIN
 // Hides a banner.
 - (void)hide:(NSString*)placement format:(NSString*)format unitID:(NSString*)unitID;
 @optional
+// Shows a loaded banner at position: "bottom_center", "bottom_left", "bottom_right",
+// "top_center", "top_left", "top_right" or "center". Without it, show:format:unitID:.
+- (void)showBanner:(NSString*)placement unitID:(NSString*)unitID position:(NSString*)position;
+// Moves a banner that shows. Without it, the banner hides and shows again at position.
+- (void)moveBanner:(NSString*)placement unitID:(NSString*)unitID position:(NSString*)position;
 - (void)setConsentAnalytics:(NSString*)analytics personalizedAds:(NSString*)personalizedAds;
 // At the start of each tick, for SDKs that poll.
 - (void)poll;

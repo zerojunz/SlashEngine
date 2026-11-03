@@ -33,7 +33,10 @@ A placement is `banner`, `interstitial` or `rewarded`. Its status is `unloaded`,
 `loaded`, `showing` or `failed`. `load_ad` starts loading (nothing happens if it is loading or
 loaded already), `show_ad` shows a loaded ad and fails with a reason otherwise, and `hide_ad`
 hides a banner. Interstitial and rewarded ads close on their own; then they must load again,
-which placements with `auto_load` (the default) do by themselves. A banner shows until hidden.
+which placements with `auto_load` (the default) do by themselves. A banner shows until hidden,
+at its placement's `position` (`bottom_center` unless the placement says otherwise), as Unity's
+`BannerPosition`; `set_banner_position(world, placement, position)` changes where it shows next,
+and moves a banner that shows now. `services.state` reports each banner's `position`.
 
 Events, each also a world event with the placement as its ID:
 
@@ -327,7 +330,7 @@ game's thread, for SDKs that must be polled.
 
 | Interface | Calls | Reports |
 | --- | --- | --- |
-| `AdsBackend` | `load`, `show` and `hide` an `AdUnit`: the placement, its format and its ad unit ID on this platform from the placement's `ids` | `ad_loaded` or `ad_failed`; `ad_shown`, then `ad_rewarded` if earned and `ad_closed` |
+| `AdsBackend` | `load`, `show` and `hide` an `AdUnit`: the placement, its format, its ad unit ID on this platform from the placement's `ids` and a banner's `position`; `move` a banner that shows (by default it hides it and shows it again) | `ad_loaded` or `ad_failed`; `ad_shown`, then `ad_rewarded` if earned and `ad_closed` |
 | `AnalyticsBackend` | `log_event`, `set_user_property`, `set_user_id`, `flush` | Nothing |
 | `PurchasesBackend` | `fetch_products` with the catalog, `purchase`, `finish` (acknowledge, or consume a consumable), `restore` | `products` or `products_failed`, then any unfinished purchases; each purchase's outcome; restored purchases, then `restore_finished` |
 | `GamesBackend` | `sign_in` (`interactive` is false at start), `load_achievements`, `unlock` and `set_steps` an `AchievementUnit` (its name, its ID on this platform and its steps), `submit_score` and `load_scores` on a `LeaderboardUnit`, `show_achievements`, `show_leaderboards` | `signed_in` or `sign_in_failed`; the player's progress with `achievements`; `achievement_failed` if the platform refuses progress; `score_submitted` or `score_failed`; `scores` or `scores_failed`; `games_ui_closed` |
@@ -342,4 +345,7 @@ implementing `org.slashengine.services.AdsBackend`, `AnalyticsBackend`, `Purchas
 `SlashAnalyticsBackend`, `SlashPurchasesBackend` or `SlashGamesBackend`
 (`slash/services/apple.h`), which an SDK package names in its `backends`. The same calls reach
 them, through JNI or the Objective-C runtime, and they report to a `Reports` (Java) or
-`SlashServiceReports` (Objective-C) object from any thread.
+`SlashServiceReports` (Objective-C) object from any thread. A banner shows through
+`showBanner(placement, unitId, position)` (Java) or `showBanner:unitID:position:`
+(Objective-C) and moves through `moveBanner`, which by default call `show`, and `hide` then
+`showBanner`.
