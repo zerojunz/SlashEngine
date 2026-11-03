@@ -521,6 +521,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
       SlashEngine games through `slash::autopilot::Bridge`, a port of its Godot plugin's game side
       (`slash-cli run --autopilot-run`, with the run's verdict as the exit code and its report in
       the project; [reference](reference/autopilot.md))
+  - [x] SlashEngine's own playtest agent, which plays the same runs through the bridge with any
+        model providers.json names, so no Autopilot install or paid plan is needed
+        (`--autopilot-agent <role>`; [reference](reference/autopilot.md#slashengines-own-agent))
 - [x] Asset library and generator, so agents reuse generated assets instead of making them again
       ([design](design.md#asset-library-and-generation))
   - [x] A library shared by every project on the machine: each asset stored once by content
@@ -1119,6 +1122,7 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | `api.search`: real signatures and examples instead of guessed function names | 6 | Done |
 | `playtest.run`: many headless bot runs and tuning sweeps in one call | 6 | Done |
 | Autopilot playtests: an agent plays the game and reports bugs and a verdict, as an exit code | 6 | Done |
+| Built-in playtest agent: the same runs on any model from providers.json, no Autopilot plan | 6 | Done |
 | `audio.analyze`: tempo, key, loudness and loop seams as data instead of listening | 6 | Done |
 | `project.map`: where things are in a large project, without reading the source | 6 | Done |
 | A scheduled benchmark of standard agent tasks counting calls and tokens | 6 | Done |
