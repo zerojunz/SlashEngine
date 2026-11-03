@@ -82,7 +82,9 @@ public:
     // What ran: {"entities", "headless", "name", "quit_requested", "renderer", "scene",
     // "sprites", "ticks"}, and "services" (services::backends_json) when the services run on
     // backends. "sprites" counts the sprites the last frame drew, or would have drawn on the
-    // null device, so a headless run shows whether every sprite can draw.
+    // null device, so a headless run shows whether every sprite can draw. A project that enables
+    // XR adds "xr": in a window {"headset", "graphics"} or {"headset": false, "error"}, and
+    // headless {"runtime"} with the "error" when no OpenXR runtime is found.
     [[nodiscard]] json::Value summary() const;
 
     [[nodiscard]] const Project& project() const noexcept { return project_; }
@@ -127,6 +129,8 @@ private:
     std::unique_ptr<audio::SdlOutput> audio_output_;
     std::unique_ptr<audio::SdlInput> audio_input_;
     bool draw_failed_ = false;
+    // What became of XR when the project enables it, for summary().
+    json::Value xr_;
     bool headset_failed_ = false;
 };
 

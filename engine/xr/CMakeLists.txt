@@ -14,8 +14,12 @@ target_compile_options(slash_xr PRIVATE "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-c
 # The OpenXR interface, over the Khronos loader where this platform builds it
 # (cmake/Dependencies.cmake).
 if(TARGET slash_openxr)
-    target_sources(slash_xr PRIVATE src/openxr.cpp src/openxr_graphics.cpp)
+    target_sources(slash_xr PRIVATE src/openxr.cpp src/openxr_graphics.cpp src/openxr_platform.cpp)
     target_link_libraries(slash_xr PRIVATE slash_openxr)
+    if(ANDROID)
+        # SDL's JNI environment and activity, which the loader and the instance are given.
+        target_link_libraries(slash_xr PRIVATE SDL3::SDL3-static)
+    endif()
     # Vulkan's headers, which SDL carries, for the session's graphics binding.
     target_include_directories(slash_xr SYSTEM PRIVATE ${SDL3_SOURCE_DIR}/src/video/khronos)
 else()
