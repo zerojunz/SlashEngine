@@ -384,6 +384,10 @@ TEST_CASE("openxr: a game draws each eye into the runtime's swapchains") {
     // OpenGL on EGL, where tests make their contexts.
     draw_into_headset("opengl", "XR_KHR_opengl_enable XR_MNDX_egl_enable", "egl", "35907");
 #endif
+#if defined(__APPLE__)
+    // Metal: the runtime names the MTLDevice, and the session takes its command queue.
+    draw_into_headset("metal", "XR_KHR_metal_enable", "metal", "71");
+#endif
 }
 
 TEST_CASE("openxr: xr.set switches a session between the test headset and the runtime") {

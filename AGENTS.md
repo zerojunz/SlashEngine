@@ -512,6 +512,17 @@ ticks to real time (`RunOptions::real_time`) and exits with the run's code. Test
 a scripted agent service on a fake `Transport` and a clock of their own (`Options::clock`);
 `examples/autopilot-playtest` finds a HUD that counts 4 coins out of 3.
 
+`autopilot::agent_connector` (`src/agent.cpp`) is SlashEngine's own agent service, for
+`slash-cli run --autopilot-agent <role>`: a `Transport` the bridge connects to in-process, which
+plays the hello's run with an `ai::Provider` from providers.json, as Autopilot's agent session
+does with its instructions, kinds and rules. Its tools are the bridge's ops (with `look`, `wait`,
+`note` and `report` of its own), sent one at a time; it pauses the game (`pause`) while a reply
+comes, through `ai::Call` (waited for with `AgentOptions::wait` in headless runs), and the bridge
+runs on `game_clock`, so holds and the play budget count game time. `report` becomes the result
+frame, whose `report.md` it writes, and notes go to `.slash/autopilot/notes.md`.
+`tests/test_autopilot_agent.cpp` plays runs with a scripted provider, and
+`examples/playtest-agent` with a stand-in model.
+
 ## Game projects and exports
 
 A game is a folder with a `project.json` (name, version, main scene; `$cli schema project`) and
@@ -2131,9 +2142,12 @@ from a scene with `frame.capture` and `video.encode`.
 WebM and Matroska files (`.webm`, `.mkv`) load too: `src/matroska.cpp` reads their EBML
 (`read_matroska`: the first `V_AV1` track, whose `CodecPrivate` sequence header the decoder
 starts each key frame with as `VideoFile::config`, and the audio tracks, through laced blocks
-and clusters of unknown size) and writes them (`write_matroska`, `encode_matroska`, with a PCM
-track). `decode_audio` turns a PCM track into float samples, mixing more than two channels down
-as BS.775; Opus is read but not decoded yet. The sound plays in the audio module, which links
+and clusters of unknown size) and writes them (`write_matroska`, `encode_matroska`, with PCM
+and Opus tracks). `decode_audio` turns a PCM or Opus track into float samples, mixing more than
+two channels down as BS.775; `src/opus.cpp` decodes Opus with libopus, built as fixed point with
+no intrinsics so samples are the same everywhere, after its `OpusHead`'s pre-skip and gain and
+before the last block's `DiscardPadding`, turning family 1's Vorbis order of speakers into WAV's,
+and `encode_opus` encodes it for tests and examples. The sound plays in the audio module, which links
 the video module (not the other way round, since ui links video): `play_videos` in
 `engine/audio/src/audio.cpp` starts each player's `audio_track` on its `bus` at `volume_db` and
 `stream_position` through `video::playing`, follows `paused` and `speed_scale`, and starts it
@@ -2292,11 +2306,12 @@ device's `native_device`, and its copy turns the picture over, as OpenXR's GL ro
 `prepare_openxr_device` makes the instance with the graphics extension before the render device,
 which `render::DeviceOptions::xr` makes as the runtime asks, through hooks
 `cmake/patches/sdl-openxr.cmake` adds to SDL (the runtime makes Vulkan's instance and device and
-names the GPU, or names Direct3D 12's adapter); the session makes a swapchain and a render
+names the GPU, or names Direct3D 12's adapter or Metal's `MTLDevice`); the session makes a
+swapchain and a render
 target per view, `begin_openxr_frame` waits, begins and acquires, `Game::draw_headset` draws each
 eye with `scene3d::eye_view`, and `end_openxr_frame` copies the targets in with
 `RenderDevice::copy_to_native` (`src/native_copy.cpp`: barriers and a copy recorded into SDL's
-command buffer) and ends the frame with a projection layer. Without a device, sessions need
+command buffer; a blit encoder on Metal, `src/native_copy_metal.mm`) and ends the frame with a projection layer. Without a device, sessions need
 `XR_MND_headless` and end each frame with no layers. `tests/fake_openxr_runtime.cpp`
 is a stand-in runtime the loader loads through the manifest the build writes
 (`tests/fake_openxr.json`), handed to it with `xr::set_openxr_runtime` (slash-cli's
@@ -2304,8 +2319,8 @@ is a stand-in runtime the loader loads through the manifest the build writes
 elevated processes Windows CI runs), playing a script (`FAKE_OPENXR_SCRIPT`: poses and inputs by frame,
 lost poses, recentering, exit, eye sizes and pixels to read back) and logging the calls it gets
 (`FAKE_OPENXR_LOG`); offered `XR_KHR_vulkan_enable2`, or `XR_KHR_opengl_enable` and
-`XR_MNDX_egl_enable`, it hands out Vulkan or OpenGL swapchains and logs the probed pixels of each
-eye it is shown. `examples/openxr-runtime` runs a session on it.
+`XR_MNDX_egl_enable`, or on macOS `XR_KHR_metal_enable` (`tests/fake_openxr_metal.mm`), it hands
+out Vulkan, OpenGL or Metal swapchains and logs the probed pixels of each eye it is shown. `examples/openxr-runtime` runs a session on it.
 
 On Android the loader is built with its JNI parts (jnipp and android-jni-wrappers, which need
 exceptions) and asks the system's runtime broker for the runtime; `src/openxr_platform.cpp`
@@ -2430,7 +2445,7 @@ CI rejects unformatted code and any clang-tidy finding.
   generators and commands), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `soundtrack` (`.score.json` scores, MIDI files, rendering stems, drafting cue sheets and arranging them),
   `command` (commands, sessions with undo, JSON-RPC and MCP),
-  `debug` (the debug overlay over a running game), `autopilot` (Autopilot's agent service playing a game), `server` (localhost HTTP over a session),
+  `debug` (the debug overlay over a running game), `autopilot` (Autopilot's agent service, or SlashEngine's own agent, playing a game), `server` (localhost HTTP over a session),
   `ai` (language model providers, their adapters, `providers.json`, replay and the `ai.*`
   commands),
   `gameplay` (loading and reloading a game's own code) and `runtime` (project files and the game

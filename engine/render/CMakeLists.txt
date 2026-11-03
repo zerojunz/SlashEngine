@@ -100,6 +100,13 @@ else()
     target_sources(slash_render PRIVATE src/metalfx_none.cpp)
 endif()
 
+# Copies into OpenXR swapchains' Metal textures (src/native_copy_metal.mm).
+if(APPLE)
+    target_sources(slash_render PRIVATE src/native_copy_metal.mm)
+    set_source_files_properties(src/native_copy_metal.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    target_link_libraries(slash_render PRIVATE "-framework Metal")
+endif()
+
 # Web builds draw with WebGPU where the browser has it, through Dawn's webgpu.h for Emscripten
 # (emdawnwebgpu), which Emscripten fetches as a port pinned to its version. web/webgpu.js asks the
 # browser for the device before main() runs.

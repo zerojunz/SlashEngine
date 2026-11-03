@@ -706,6 +706,7 @@ struct XrDeviceHooks {
                       void** device)>
         create_vulkan_device;
     std::int64_t d3d12_adapter = 0;
+    void* metal_device = nullptr; // the id<MTLDevice> to draw with, unretained
 };
 
 struct DeviceOptions {
@@ -721,8 +722,8 @@ struct DeviceOptions {
     std::string driver = "auto";
     // Turns on the GPU API's validation, which is slow.
     bool debug = false;
-    // An OpenXR runtime's part in making the device, for "vulkan" or "d3d12"; the device then
-    // shows in the runtime's headset.
+    // An OpenXR runtime's part in making the device, for "vulkan", "d3d12" or "metal"; the device
+    // then shows in the runtime's headset.
     const XrDeviceHooks* xr = nullptr;
 };
 

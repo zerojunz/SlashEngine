@@ -42,7 +42,8 @@ public:
             const std::set<std::string, std::less<>>& enabled) = 0;
     // The swapchain formats it can copy into, the one to prefer first: 8-bit RGBA, sRGB first.
     [[nodiscard]] virtual std::vector<std::int64_t> formats() const = 0;
-    // A swapchain's images, as native images (VkImage, ID3D12Resource, a GL texture's name).
+    // A swapchain's images, as native images (VkImage, ID3D12Resource, a GL texture's name,
+    // id<MTLTexture>).
     virtual Result<std::vector<void*>> images(XrSwapchain swapchain) = 0;
 };
 
@@ -61,6 +62,8 @@ Result<void> initialize_platform_loader();
 // XR_KHR_opengl_enable, with XR_MNDX_egl_enable for EGL contexts (OpenXROpenGLExtension); null
 // but on Windows and Linux.
 [[nodiscard]] std::unique_ptr<OpenXRGraphics> make_opengl_graphics();
+// XR_KHR_metal_enable; null but on macOS.
+[[nodiscard]] std::unique_ptr<OpenXRGraphics> make_metal_graphics();
 // XR_KHR_opengl_es_enable on Android's EGL contexts (OpenXROpenGLExtension under ANDROID_ENABLED);
 // null but on Android.
 [[nodiscard]] std::unique_ptr<OpenXRGraphics> make_opengl_es_graphics();

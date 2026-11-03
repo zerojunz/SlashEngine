@@ -32,7 +32,7 @@ endmacro()
 
 # Vulkan shaders see 16 KiB of each uniform push, as the other backends see all of it, MetalFX
 # gets Metal's objects, ray tracing turns on Vulkan's ray query features and an OpenXR runtime
-# picks the GPU and makes Vulkan's instance and device (cmake/patches).
+# picks the GPU and makes Vulkan's instance and device or names Metal's (cmake/patches).
 slash_add_dependency(SDL3
     SYSTEM TRUE
     PATCH_COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_LIST_DIR}/patches/sdl-vulkan-uniform-range.cmake
@@ -452,6 +452,31 @@ if(dav1d_ADDED)
         foreach(bitdepth IN ITEMS 8 16)
             target_compile_options(slash_dav1d_${bitdepth} PRIVATE -w)
         endforeach()
+    endif()
+endif()
+
+# The Opus sound in WebM and Matroska videos (engine/video), with its own CMake build: fixed
+# point and no intrinsics, so it decodes with integer math only and the same samples come out on
+# every platform, and without the deep-learning extras (DRED, OSCE), whose models a clone lacks.
+slash_add_dependency(opus
+    SYSTEM TRUE
+    OPTIONS
+        "OPUS_BUILD_SHARED_LIBRARY OFF"
+        "OPUS_BUILD_TESTING OFF"
+        "OPUS_BUILD_PROGRAMS OFF"
+        "OPUS_FIXED_POINT ON"
+        "OPUS_DISABLE_INTRINSICS ON"
+        "OPUS_HARDENING OFF"
+        "OPUS_STACK_PROTECTOR OFF"
+        "OPUS_FORTIFY_SOURCE OFF"
+        "OPUS_DRED OFF"
+        "OPUS_OSCE OFF"
+        "OPUS_INSTALL_PKG_CONFIG_MODULE OFF"
+        "OPUS_INSTALL_CMAKE_CONFIG_MODULE OFF")
+if(opus_ADDED)
+    set_target_properties(opus PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    if(NOT MSVC)
+        target_compile_options(opus PRIVATE -w)
     endif()
 endif()
 

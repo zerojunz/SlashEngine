@@ -58,6 +58,7 @@ slash-cli run [options]
 | `--autopilot-run <kind>` | Ask it for a run (`verify`, `goal`, `explore` or `auto`), then exit with the run's code: 0 passed, 2 denied or bugs, 3 inconclusive, 1 error |
 | `--autopilot-prompt <text>`, `--autopilot-minutes <n>` | The run's claim, goal, brief or prompt, and how long it plays |
 | `--autopilot-url <url>`, `--autopilot-token <token>` | Where the agent service listens and the bearer token to send; see [autopilot.md](autopilot.md#running-it) |
+| `--autopilot-agent <role>`, `--autopilot-turns <n>` | Play the run with [SlashEngine's own agent](autopilot.md#slashengines-own-agent) on a role or provider from providers.json, in at most this many turns (default 60), instead of Autopilot's service; headless runs then tick as fast as they can |
 | `--autopilot-report-dir <dir>` | Where `result.json` and the report go (default `.slash/autopilot/<time>/` in the project) |
 | `--autopilot-connect-timeout <s>`, `--autopilot-stay-open`, `--autopilot-share`, `--autopilot-no-media` | How long to wait for it, staying open after the result, sharing the run with Autopilot's developers and sending no pictures |
 
@@ -106,6 +107,18 @@ slash-cli run --headless --project . --autopilot-run verify --autopilot-prompt "
 
 ```json
 {"autopilot":{"exit_code":0,"report_dir":".slash/autopilot/20261102T171500Z","result":{"kind":"verify","verdict":"CONFIRMED"}},"entities":8,"headless":true,"quit_requested":true,"renderer":"null","ticks":2214}
+```
+
+With `--autopilot-agent <role>`, SlashEngine's own agent plays the run instead, with a model from
+providers.json, and the result adds what it played with:
+
+```bash
+slash-cli run --headless --scene main.scene.json --autopilot-run verify \
+    --autopilot-prompt "The HUD counts every coin" --autopilot-agent playtester
+```
+
+```json
+{"autopilot":{"exit_code":2,"report_dir":".slash/autopilot/20261103T041200Z","result":{"agent":{"input_tokens":3000,"model":"llama3.2","output_tokens":150,"play_seconds":2.2,"turns":3},"bugs":[],"detector_findings":[],"direct_changes":[],"evidence":["After walking 2 s the HUD read Coins 4/3."],"exit_code":2,"kind":"verify","outcome":"DENIED","summary":"The HUD counts out of 3 but the level has 4 coins.","verdict":"DENIED"}},"entities":8,"headless":true,"quit_requested":true,"renderer":"null","ticks":142}
 ```
 
 With `--record`, everything the player and any served agent do is recorded from the first tick,
