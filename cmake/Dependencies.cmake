@@ -302,10 +302,11 @@ if(NOT EMSCRIPTEN)
 endif()
 
 # The Khronos OpenXR loader, which finds the headset's runtime (engine/xr), built from its
-# sources as Godot builds its thirdparty/openxr copy: on Windows, Linux and macOS, with jsoncpp
-# and without exceptions. Android's loader comes with the runtime, iOS has none and the web
-# has WebXR instead.
-if(NOT EMSCRIPTEN AND NOT ANDROID AND NOT IOS)
+# sources as Godot builds its thirdparty/openxr copy: on Windows, Linux, macOS and Android, with
+# jsoncpp. On Android it asks the runtime broker for the active runtime through JNI (jnipp and
+# Collabora's android-jni-wrappers, which throw, so only there it keeps exceptions), as the
+# openxr_loader_for_android package Godot ships does. iOS has none and the web has WebXR instead.
+if(NOT EMSCRIPTEN AND NOT IOS)
     slash_add_dependency(OpenXR-SDK DOWNLOAD_ONLY TRUE)
     if(OpenXR-SDK_ADDED)
         set(_slash_openxr ${OpenXR-SDK_SOURCE_DIR})
@@ -331,13 +332,29 @@ if(NOT EMSCRIPTEN AND NOT ANDROID AND NOT IOS)
             ${_slash_openxr}/src/common ${_slash_openxr}/src/loader
             ${_slash_openxr}/src/external/jsoncpp/include)
         target_compile_definitions(slash_openxr PRIVATE DISABLE_STD_FILESYSTEM
-            XRLOADER_DISABLE_EXCEPTION_HANDLING JSON_USE_EXCEPTION=0)
+            JSON_USE_EXCEPTION=0)
+        if(NOT ANDROID)
+            target_compile_definitions(slash_openxr PRIVATE XRLOADER_DISABLE_EXCEPTION_HANDLING)
+        endif()
         if(WIN32)
             target_compile_definitions(slash_openxr PUBLIC XR_OS_WINDOWS NOMINMAX
                 XR_USE_PLATFORM_WIN32)
             target_link_libraries(slash_openxr PRIVATE advapi32)
         elseif(APPLE)
             target_compile_definitions(slash_openxr PUBLIC XR_OS_APPLE)
+        elseif(ANDROID)
+            target_sources(slash_openxr PRIVATE
+                ${_slash_openxr}/src/loader/android_utilities.cpp
+                ${_slash_openxr}/src/external/jnipp/jnipp.cpp
+                ${_slash_openxr}/src/external/android-jni-wrappers/wrap/android.content.cpp
+                ${_slash_openxr}/src/external/android-jni-wrappers/wrap/android.database.cpp
+                ${_slash_openxr}/src/external/android-jni-wrappers/wrap/android.net.cpp)
+            target_include_directories(slash_openxr PRIVATE ${_slash_openxr}/src/external/jnipp
+                ${_slash_openxr}/src/external/android-jni-wrappers)
+            # The JNI calls throw, and the loader catches them where it asks the broker.
+            target_compile_definitions(slash_openxr PUBLIC XR_OS_ANDROID XR_USE_PLATFORM_ANDROID)
+            target_compile_options(slash_openxr PRIVATE -fexceptions)
+            target_link_libraries(slash_openxr PRIVATE android log)
         else()
             target_compile_definitions(slash_openxr PUBLIC XR_OS_LINUX)
             target_compile_definitions(slash_openxr PRIVATE HAVE_SECURE_GETENV

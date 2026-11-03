@@ -936,7 +936,9 @@ Exit: an agent builds a small 3D sample end to end.
           stand-in runtime for tests; `xr.set`'s `interface` switches sessions to it
     - [x] Swapchains on Vulkan and Direct3D 12, so windowed games draw each eye into the headset
     - [x] Swapchains on OpenGL, on WGL, GLX and EGL contexts
-    - [ ] OpenGL ES swapchains and the loader on Android, and Metal
+    - [x] The loader on Android, started with the app's Java VM and activity, Vulkan and
+          OpenGL ES swapchains, and the manifest entries that start a game in the headset
+    - [ ] Swapchains on Metal
 - [x] Localization, following Godot ([design](design.md#languages))
   - [x] Translation tables as CSV or gettext `.po` files, with plural forms, placeholders and a
         fallback chain (`es-MX`, then `es`, then the source language)
@@ -1076,7 +1078,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Terrain | Heightmap terrain with splat materials and LOD | 7 | Planned |
 | Level geometry | CSG and grid-based tile placement | 7 | In progress: CSG shapes, paths and `GridMap` done; heightmap terrain planned |
 | LOD and culling | Generated LODs with meshoptimizer, occlusion culling | 7 | Done, imported from Godot |
-| XR | OpenXR | 8 | XR server, nodes, stereo views, OpenXR sessions and drawing on Vulkan, Direct3D 12 and OpenGL done; Android and Metal to come |
+| XR | OpenXR | 8 | XR server, nodes, stereo views, OpenXR sessions and drawing on Vulkan, Direct3D 12, OpenGL and Android done; Metal to come |
 | Localization | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | 8 | In progress: translation tables, the language setting, auto-translated controls, pseudo-localization, `l10n.extract` and `l10n.check` are done |
 | Video playback | AV1 through dav1d | 8 | Done (Opus sound to come) |
 | Accessibility | AccessKit | 8 | Tree and the Windows, macOS and Linux backends done; Android, iOS and the web to come |
