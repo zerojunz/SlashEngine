@@ -1808,11 +1808,12 @@ keep their shadow maps, and so do transparent meshes, which the prepass doesn't 
 
 Rays are traced on the CPU by the software device, so `frame.capture` returns them, the same on
 every machine and any number of threads, and with ray queries on Vulkan GPUs that have
-`VK_KHR_ray_query` (and Mesa's software Vulkan) and on Macs whose Metal GPU supports ray tracing
-(`MTLDevice.supportsRaytracing`, as every Apple silicon Mac's does, on macOS 13 or later), which
-match it to a few pixels along shadows' edges; there alpha-tested meshes cast whole shadows for
-now. Other GPUs (`RenderDevice::ray_tracing` is false: Direct3D 12, which comes next, OpenGL and
-the web) draw with shadow maps.
+`VK_KHR_ray_query` (and Mesa's software Vulkan), on Macs whose Metal GPU supports ray tracing
+(`MTLDevice.supportsRaytracing`, as every Apple silicon Mac's does, on macOS 13 or later) and on
+Direct3D 12 GPUs with DXR 1.1's inline ray queries (ray tracing tier 1.1 and shader model 6.5),
+which match it to a few pixels along shadows' edges; there alpha-tested meshes cast whole shadows
+for now. Other GPUs (`RenderDevice::ray_tracing` is false: OpenGL, the web and GPUs without ray
+tracing) draw with shadow maps.
 [examples/ray-traced-shadows-3d](../../examples/ray-traced-shadows-3d) traces an avenue.
 
 ### Ray-traced global illumination
@@ -1831,8 +1832,8 @@ the `WorldEnvironment`'s, the sky's, VoxelGIs' and reflection probes' (lightmapp
 their lightmaps), still darkened by ambient occlusion. Out in the open it is the environment's
 light, as before; in corners and beside walls it is darker and takes their colors. Transparent
 meshes, which the prepass doesn't draw, keep the ambient light. The software device traces it, so
-`frame.capture` returns it, and so does the GPU device on Vulkan or Metal where the GPU traces
-rays, which matches it; other GPUs light pixels as before.
+`frame.capture` returns it, and so does the GPU device on Vulkan, Metal or Direct3D 12 where the
+GPU traces rays, which matches it; other GPUs light pixels as before.
 [examples/ray-traced-gi-3d](../../examples/ray-traced-gi-3d) bounces a red wall's light.
 
 ### WorldEnvironment
@@ -2130,7 +2131,7 @@ occlusion from what it gathers, and lights it as above. Rays find what the scree
 such as the backs of things and what is off the screen, so creases come out darker than SSAO's;
 there is no fade with distance, and `rendering.environment.ssao`'s settings don't apply.
 `ssao_enabled` still turns it on and off. As with [ray-traced shadows](#ray-traced-shadows), the
-software device traces it on the CPU and Vulkan and Metal GPUs that trace rays on the GPU, alpha-tested
+software device traces it on the CPU and Vulkan, Metal and Direct3D 12 GPUs that trace rays on the GPU, alpha-tested
 meshes there occluding whole; other devices draw SSAO.
 [examples/ray-traced-ao-3d](../../examples/ray-traced-ao-3d) traces a room's corners.
 
@@ -2166,8 +2167,8 @@ go where SSR's reflections go, so the color pass covers the sky's reflections wi
 fading them out from roughness 0.6. Rays find what the screen doesn't show: what is off it or behind
 something nearer. `ssr_enabled` still turns them on and off, and the other `ssr_*` fields and
 `rendering.environment.screen_space_reflection` don't apply. The software device traces them, so
-`frame.capture` returns them, and so does the GPU device on Vulkan or Metal where the GPU traces
-rays, shading what rays meet from its material's colors and its albedo, metallic, roughness, emission and
+`frame.capture` returns them, and so does the GPU device on Vulkan, Metal or Direct3D 12 where the
+GPU traces rays, shading what rays meet from its material's colors and its albedo, metallic, roughness, emission and
 normal textures (the first 64 textures a frame's draws use; the rest read white), its vertex
 colors and the sky's radiance at its sharpest. Hits on terrains, lightmapped meshes and VoxelGIs
 are lit as plain materials. Other GPUs draw SSR.

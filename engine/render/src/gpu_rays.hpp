@@ -15,20 +15,22 @@
 #include <span>
 #include <vector>
 
-// Ray tracing on the GPU device's Vulkan and Metal backends, which SDL3's GPU API has none of.
-// On Vulkan the device is made with VK_KHR_acceleration_structure and VK_KHR_ray_query where they
-// are (VulkanRayOptions), and the frame's rays are recorded into SDL's command buffer with
-// Vulkan's own calls, as the temporal upscalers are (src/vulkan_rays.cpp); on Metal, where the
-// GPU supports ray tracing, with Metal's own encoders, the shaders' MSL made by slash-ray-msl
-// with set 0 as an argument buffer (src/metal_rays.mm). Each mesh a frame draws gets a bottom-level
-// acceleration structure built from a copy of its SDL buffers, kept until the mesh changes, and
-// each frame a top-level one with an instance a draw, placed by its transform; then
-// shaders/ray_shadows.comp traces the shadows into two textures the GPU device copies into the
-// screen texture's layers 2 and 3, and shaders/ray_light.comp the reflections, shading what they
-// meet from the draws' materials, the copies of their vertices and their textures, into one the
-// GPU device copies into layer 1. The software device's twin is src/ray_shadows.cpp.
-// shaders/lightmap_light.comp traces a lightmap bake's light the same way, over one structure of
-// the bake's triangles; scene3d's lightmapper is its twin.
+// Ray tracing on the GPU device's Vulkan, Metal and Direct3D 12 backends, which SDL3's GPU API
+// has none of. On Vulkan the device is made with VK_KHR_acceleration_structure and
+// VK_KHR_ray_query where they are (VulkanRayOptions), and the frame's rays are recorded into
+// SDL's command buffer with Vulkan's own calls, as the temporal upscalers are
+// (src/vulkan_rays.cpp); on Metal, where the GPU supports ray tracing, with Metal's own encoders,
+// the shaders' MSL made by slash-ray-msl with set 0 as an argument buffer (src/metal_rays.mm); on
+// Direct3D 12, where the GPU has DXR 1.1's inline ray queries, with Direct3D 12's own calls, the
+// shaders' DXIL compiled by DXC from the HLSL slash-ray-msl makes (src/d3d12_rays.cpp). Each mesh a
+// frame draws gets a bottom-level acceleration structure built from a copy of its SDL buffers, kept
+// until the mesh changes, and each frame a top-level one with an instance a draw, placed by its
+// transform; then shaders/ray_shadows.comp traces the shadows into two textures the GPU device
+// copies into the screen texture's layers 2 and 3, and shaders/ray_light.comp the reflections,
+// shading what they meet from the draws' materials, the copies of their vertices and their
+// textures, into one the GPU device copies into layer 1. The software device's twin is
+// src/ray_shadows.cpp. shaders/lightmap_light.comp traces a lightmap bake's light the same way,
+// over one structure of the bake's triangles; scene3d's lightmapper is its twin.
 namespace slash::render::detail {
 
 // What SDL_GPUVulkanOptions points at to make a device with ray queries: Vulkan 1.2's buffer
@@ -129,7 +131,7 @@ struct RayTargets {
     SDL_GPUTexture* background = nullptr;
 };
 
-// The GPU device's rays on Vulkan or Metal.
+// The GPU device's rays on Vulkan, Metal or Direct3D 12.
 class GpuRays {
 public:
     GpuRays() = default;
@@ -161,5 +163,8 @@ public:
 // The rays of a Metal device whose GPU supports ray tracing (MTLDevice's supportsRaytracing), on
 // macOS 13 or later, whose buffers have GPU addresses; null elsewhere.
 [[nodiscard]] std::unique_ptr<GpuRays> make_metal_rays(SDL_GPUDevice* device);
+// The rays of a Direct3D 12 device with DXR 1.1 (ray tracing tier 1.1), shader model 6.5 and
+// resource binding tier 2, in a build with the shaders' DXIL; null elsewhere.
+[[nodiscard]] std::unique_ptr<GpuRays> make_d3d12_rays(SDL_GPUDevice* device);
 
 } // namespace slash::render::detail

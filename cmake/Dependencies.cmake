@@ -31,9 +31,9 @@ macro(slash_add_dependency name)
 endmacro()
 
 # Vulkan shaders see 16 KiB of each uniform push, as the other backends see all of it, MetalFX
-# gets Metal's objects, ray tracing turns on Vulkan's ray query features and gets Vulkan's and
-# Metal's buffers, and an OpenXR runtime picks the GPU and makes Vulkan's instance and device or
-# names Metal's (cmake/patches).
+# gets Metal's objects, ray tracing turns on Vulkan's ray query features and gets Vulkan's,
+# Metal's and Direct3D 12's buffers, and an OpenXR runtime picks the GPU and makes Vulkan's
+# instance and device or names Metal's (cmake/patches).
 slash_add_dependency(SDL3
     SYSTEM TRUE
     PATCH_COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_LIST_DIR}/patches/sdl-vulkan-uniform-range.cmake
@@ -632,8 +632,8 @@ if((SLASH_BUILD_TOOLS OR SLASH_BUILD_TESTS) AND NOT EMSCRIPTEN)
     endif()
 
     # A game's own shaders, compiled by the tools (tools/shader_compiler): glslang turns HLSL into
-    # SPIR-V, and SPIRV-Cross turns that into MSL and GLSL ES. Games get the compiled code, never
-    # the compilers.
+    # SPIR-V, and SPIRV-Cross turns that into MSL and GLSL ES (and the ray shaders into HLSL for
+    # Direct3D 12, in slash-ray-msl). Games get the compiled code, never the compilers.
     slash_add_dependency(glslang
         SYSTEM TRUE
         EXCLUDE_FROM_ALL TRUE
@@ -653,7 +653,7 @@ if((SLASH_BUILD_TOOLS OR SLASH_BUILD_TESTS) AND NOT EMSCRIPTEN)
             "SPIRV_CROSS_ENABLE_TESTS OFF"
             "SPIRV_CROSS_ENABLE_GLSL ON"
             "SPIRV_CROSS_ENABLE_MSL ON"
-            "SPIRV_CROSS_ENABLE_HLSL OFF"
+            "SPIRV_CROSS_ENABLE_HLSL ON"
             "SPIRV_CROSS_ENABLE_CPP OFF"
             "SPIRV_CROSS_ENABLE_REFLECT OFF"
             "SPIRV_CROSS_ENABLE_C_API OFF"

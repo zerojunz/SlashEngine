@@ -36,5 +36,5 @@ frame.capture {"points":[[118,92],[200,88],[60,84],[160,147]],"path":"shots/hall
 - `batch` makes the floor polished again and turns `ssr_enabled` off, which turns the traced
   reflections off too: the floor is grey, as ssr-3d's last capture.
 
-Run as a game (`slash-cli run`), a GPU that traces rays on Vulkan traces the reflections too;
-other GPUs draw the hall with SSR.
+Run as a game (`slash-cli run`), a GPU that traces rays on Vulkan, Metal or Direct3D 12 traces
+the reflections too; other GPUs draw the hall with SSR.
