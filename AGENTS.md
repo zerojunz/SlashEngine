@@ -373,7 +373,10 @@ Procedural content from other tools comes in as those files. The Godot importer 
 reads a terrain tool's heightmap (16-bit PNG, `.r16`/`.raw`, `.r32` floats, or EXR through
 tinyexr, `slash_tinyexr`, tools only) and splat and color maps into an `HTerrain` as HTerrain's
 import dialog does, sizing it by `adjusted_map_size`. `examples/procedural-imports` brings in a
-pond's water and a valley. glTF instances are in `docs/roadmap.md`.
+pond's water and a valley. glTF's `EXT_mesh_gpu_instancing`, as Blender's geometry nodes and
+Houdini export scattered copies, loads each instance as a child node drawing the mesh
+(`SceneReader::add_instances` in `engine/scene3d/src/model.cpp`); `examples/gltf-instances` is an
+orchard.
 
 ## Commands, MCP and JSON-RPC
 

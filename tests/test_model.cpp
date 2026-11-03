@@ -260,6 +260,62 @@ TEST_CASE("glTF models load as Godot's importer reads them") {
     CHECK(scene3d::model_bytes(m) > 4 * sizeof(render::Vertex3D));
 }
 
+TEST_CASE("glTF instances from EXT_mesh_gpu_instancing become parts of their own") {
+    MemoryFiles files;
+    // Three copies of the quad, as Blender's geometry nodes or Houdini export scattered things:
+    // where it is, four along x turned a quarter about z, and four up at twice the size, all
+    // under a node moved ten along z. The node itself draws nothing.
+    Gltf model = quad();
+    const std::int64_t at = model.floats({0, 0, 0, 4, 0, 0, 0, 4, 0}, "VEC3");
+    const std::int64_t turn =
+        model.floats({0, 0, 0, 1, 0, 0, 0.70710678F, 0.70710678F, 0, 0, 0, 1}, "VEC4");
+    const std::int64_t size = model.floats({1, 1, 1, 1, 1, 1, 2, 2, 2}, "VEC3");
+    json::Value node = parse(R"({"name": "Trees", "mesh": 0, "translation": [0, 0, 10]})");
+    json::Value& attributes = node["extensions"]["EXT_mesh_gpu_instancing"]["attributes"];
+    attributes["TRANSLATION"] = at;
+    attributes["ROTATION"] = turn;
+    attributes["SCALE"] = size;
+    model.document["nodes"] = json::Array{};
+    model.document["nodes"].push_back(std::move(node));
+    model.document["extensionsUsed"] = parse(R"(["EXT_mesh_gpu_instancing"])");
+    model.document["extensionsRequired"] = parse(R"(["EXT_mesh_gpu_instancing"])");
+    files.files["forest.gltf"] = model.gltf();
+
+    auto loaded = load(files, "forest.gltf");
+    REQUIRE_MESSAGE(loaded.ok(), error_of(loaded));
+    const scene3d::Model& m = loaded.value();
+    // Each instance is a node under Trees drawing the mesh.
+    REQUIRE(m.nodes.size() == 4);
+    REQUIRE(m.parts.size() == 3);
+    for (std::size_t i = 0; i < 3; ++i) {
+        CHECK(m.parts[i].node == "Trees_" + std::to_string(i));
+        CHECK(m.parts[i].mesh == 0);
+        CHECK(m.parts[i].node_index == static_cast<int>(i) + 1);
+        CHECK(m.nodes[i + 1].parent == 0);
+    }
+    CHECK(near(m.parts[0].transform.origin, {0.0F, 0.0F, 10.0F}));
+    CHECK(near(m.parts[1].transform.origin, {4.0F, 0.0F, 10.0F}));
+    CHECK(near(m.parts[1].transform.x, {0.0F, 1.0F, 0.0F}));
+    CHECK(near(m.parts[2].transform.origin, {0.0F, 4.0F, 10.0F}));
+    CHECK(near(m.parts[2].transform.x, {2.0F, 0.0F, 0.0F}));
+    const scene3d::Bounds box = scene3d::bounds(m);
+    CHECK(near(box.min, {-2.0F, -1.0F, 10.0F}));
+    CHECK(near(box.max, {5.0F, 6.0F, 10.0F}));
+
+    // Written out, the instances are nodes as any other, and load back where they were.
+    auto glb = scene3d::write_glb(m, "forest.glb", files.reader());
+    REQUIRE_MESSAGE(glb.ok(), error_of(glb));
+    files.files["forest.glb"] = glb.value();
+    auto back = load(files, "forest.glb");
+    REQUIRE_MESSAGE(back.ok(), error_of(back));
+    REQUIRE(back.value().parts.size() == 3);
+    for (std::size_t i = 0; i < 3; ++i) {
+        CHECK(back.value().parts[i].node == m.parts[i].node);
+        CHECK(near(back.value().parts[i].transform.origin, m.parts[i].transform.origin));
+        CHECK(near(back.value().parts[i].transform.x, m.parts[i].transform.x));
+    }
+}
+
 TEST_CASE("glTF primitives without normals get flat ones, and corner colors color them") {
     MemoryFiles files;
     Gltf model;
