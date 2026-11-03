@@ -75,6 +75,16 @@
 #define FAKE_EXPORT extern "C" __attribute__((visibility("default")))
 #endif
 
+#if defined(__APPLE__)
+// fake_openxr_metal.mm, outside the anonymous namespace so they link to it.
+void* fake_metal_device();
+std::vector<void*> fake_metal_textures(void* device, std::uint32_t width, std::uint32_t height,
+                                       std::int64_t format, int count);
+void fake_metal_release(std::vector<void*>& textures);
+bool fake_metal_read(void* queue, void* texture, std::uint32_t width, std::uint32_t height,
+                     std::vector<std::uint8_t>& pixels);
+#endif
+
 namespace {
 
 // An environment variable, or "" when it isn't set.
@@ -177,16 +187,6 @@ struct ActionObject {
     XrActionType type = XR_ACTION_TYPE_BOOLEAN_INPUT;
     std::string name;
 };
-
-#if defined(__APPLE__)
-// fake_openxr_metal.mm.
-void* fake_metal_device();
-std::vector<void*> fake_metal_textures(void* device, std::uint32_t width, std::uint32_t height,
-                                       std::int64_t format, int count);
-void fake_metal_release(std::vector<void*>& textures);
-bool fake_metal_read(void* queue, void* texture, std::uint32_t width, std::uint32_t height,
-                     std::vector<std::uint8_t>& pixels);
-#endif
 
 // A swapchain of Vulkan images, handed out in turn.
 struct SwapchainObject {
