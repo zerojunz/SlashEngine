@@ -133,6 +133,7 @@ add_executable(slash_tests
     test_physics3d.cpp
     test_playtest.cpp
     test_autopilot.cpp
+    test_autopilot_agent.cpp
     test_platform.cpp
     test_post.cpp
     test_procedural.cpp

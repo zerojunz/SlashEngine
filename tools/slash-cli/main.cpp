@@ -10,6 +10,7 @@
 #include "slash/animation/animation.hpp"
 #include "slash/animation/tree.hpp"
 #include "slash/audio/audio.hpp"
+#include "slash/autopilot/agent.hpp"
 #include "slash/autopilot/bridge.hpp"
 #include "slash/bench/bench.hpp"
 #include "slash/canvas/canvas.hpp"
@@ -85,6 +86,7 @@
 #include <functional>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -144,6 +146,10 @@ Usage:
       --autopilot-stay-open          Keep running after the run's result
       --autopilot-share              Share the run's data with Autopilot's developers
       --autopilot-no-media           Send it no pictures of the game
+      --autopilot-agent <role>       Play the run with SlashEngine's own agent instead, on a
+                                     role or provider from providers.json (no Autopilot
+                                     install or account needed)
+      --autopilot-turns <n>          The agent's turns at most (default 60)
   slash-cli scene validate <file>    Check a scene, .prefab.json, .frames.json,
                                      .material.json, .process_material.json, .anim.json,
                                      .animtree.json, .tileset.json, .font.json, .theme.json,
@@ -545,6 +551,8 @@ int cmd_run(const std::vector<std::string>& args) {
     double autopilot_minutes = 0.0;
     slash::autopilot::Options autopilot_options;
     std::optional<bool> autopilot_share;
+    std::optional<std::string> autopilot_agent;
+    int autopilot_turns = 0;
 
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string& arg = args[i];
@@ -579,6 +587,14 @@ int cmd_run(const std::vector<std::string>& args) {
                 }
             } else if (arg == "--autopilot-report-dir") {
                 autopilot_options.report_dir = args[++i];
+            } else if (arg == "--autopilot-agent") {
+                autopilot_agent = args[++i];
+            } else if (arg == "--autopilot-turns") {
+                std::uint64_t turns = 0;
+                if (!parse_u64(args[++i], turns) || turns < 1 || turns > 10000) {
+                    return usage_error("--autopilot-turns needs a whole number from 1 to 10000");
+                }
+                autopilot_turns = static_cast<int>(turns);
             } else if (arg == "--autopilot-connect-timeout") {
                 if (!parse_double(args[++i], autopilot_options.connect_timeout) ||
                     !(autopilot_options.connect_timeout > 0.0)) {
@@ -649,9 +665,19 @@ int cmd_run(const std::vector<std::string>& args) {
     if (server_args && !serve) {
         return usage_error("--port and --token need --serve");
     }
+    if (autopilot_turns > 0 && !autopilot_agent) {
+        return usage_error("--autopilot-turns needs --autopilot-agent");
+    }
+    if (autopilot_agent && autopilot_kind.empty()) {
+        return usage_error("--autopilot-agent needs --autopilot-run");
+    }
     if (autopilot) {
-        // Autopilot plays the game as a player would, at its speed.
-        options.real_time = true;
+        // Autopilot plays the game as a player would, at its speed. The built-in agent pauses
+        // the game while it thinks and counts play in game time, so headless runs needn't wait.
+        options.real_time = !autopilot_agent.has_value();
+        if (autopilot_agent && options.max_ticks == 0) {
+            options.max_ticks = std::numeric_limits<std::uint64_t>::max(); // until the run ends
+        }
         if (!autopilot_kind.empty()) {
             json::Value run;
             run["kind"] = autopilot_kind;
@@ -866,9 +892,35 @@ int cmd_run(const std::vector<std::string>& args) {
     // keys between ticks, as --serve's requests run.
     std::unique_ptr<slash::autopilot::Bridge> autopilot_bridge;
     if (autopilot) {
+        slash::autopilot::Connector connector =
+            slash::autopilot::websocket_connector(autopilot_url, autopilot_token);
+        if (autopilot_agent) {
+            // SlashEngine's own agent, in this process, on a model from providers.json.
+            auto providers = slash::ai::load_config(session_options.project_root);
+            if (!providers) {
+                return failure("could not read providers.json", providers.error());
+            }
+            auto opened = slash::ai::open(providers.value(), *autopilot_agent,
+                                          {.project_root = session_options.project_root});
+            if (!opened) {
+                return failure("could not open the agent's model", opened.error());
+            }
+            slash::autopilot::AgentOptions agent;
+            agent.provider = opened.value().provider;
+            agent.model = opened.value().model;
+            agent.project_root = session_options.project_root;
+            agent.pictures = autopilot_options.media;
+            // Headless runs wait for each reply, so they repeat; windows keep drawing.
+            agent.wait = config.headless;
+            if (autopilot_turns > 0) {
+                agent.max_turns = autopilot_turns;
+            }
+            connector = slash::autopilot::agent_connector(std::move(agent));
+            autopilot_options.clock =
+                slash::autopilot::game_clock(game, 1.0 / loop.value().tick_hz());
+        }
         autopilot_bridge = std::make_unique<slash::autopilot::Bridge>(
-            *engine.session, slash::autopilot::websocket_connector(autopilot_url, autopilot_token),
-            std::move(autopilot_options));
+            *engine.session, std::move(connector), std::move(autopilot_options));
     }
     const slash::platform::RunStats stats = slash::platform::run(
         loop.value(),
