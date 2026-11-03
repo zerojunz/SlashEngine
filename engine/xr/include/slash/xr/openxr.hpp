@@ -19,12 +19,16 @@
 //
 //   if (auto started = xr::use_openxr_interface(world); !started) { log the error }
 //
-// The loader is built into games on Windows, Linux and macOS; elsewhere openxr_available() is
-// false and use_openxr_interface fails.
+// The loader is built into games on Windows, Linux, macOS and Android; elsewhere
+// openxr_available() is false and use_openxr_interface fails.
 namespace slash::xr {
 
 // Whether this build has the OpenXR loader.
 [[nodiscard]] bool openxr_available();
+// The instance extensions of the active runtime the loader finds (on Android, through the
+// runtime broker), without starting an instance; an error saying why where none is found or the
+// build has no loader. Games without a window report it, since they start no headset.
+[[nodiscard]] Result<std::vector<std::string>> openxr_runtime_extensions();
 
 // Names a runtime's manifest (a .json file) for the loader to use in place of the active runtime,
 // as the XR_RUNTIME_JSON variable does, for the OpenXR interfaces the process starts after; ""
@@ -101,16 +105,18 @@ struct OpenXRInfo {
 [[nodiscard]] std::shared_ptr<Interface> make_openxr_interface();
 [[nodiscard]] const OpenXRInfo* openxr_info(const Interface& interface);
 
-// What the render device that draws into the headset is made with: driver, "vulkan", "d3d12" or
-// "opengl", and the runtime's part in making it (render::DeviceOptions's driver and xr).
+// What the render device that draws into the headset is made with: driver, "vulkan", "d3d12",
+// "opengl" or "opengl_es", and the runtime's part in making it (render::DeviceOptions's driver and
+// xr).
 struct OpenXRDevice {
     std::string driver;
     const render::XrDeviceHooks* hooks = nullptr;
 };
 // Starts OpenXR to draw into the headset, as Godot does before it makes its rendering device:
 // the instance and system, with the graphics extension driver needs ("auto" is "d3d12" on
-// Windows and "vulkan" elsewhere; "opengl" on Windows and Linux). Make the render device with what
-// it returns, which lives as long as the interface, then call use_openxr_interface with it.
+// Windows and "vulkan" elsewhere; "opengl" on Windows and Linux, "opengl_es" on Android). Make the
+// render device with what it returns, which lives as long as the interface, then call
+// use_openxr_interface with it.
 Result<OpenXRDevice> prepare_openxr_device(world::World& world, std::string_view driver);
 // Starts the OpenXR interface and makes it the primary one, adding it when the world has none.
 // With the device made after prepare_openxr_device, the session draws with it; without one it is

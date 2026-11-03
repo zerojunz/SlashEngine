@@ -46,6 +46,14 @@ public:
     virtual Result<std::vector<void*>> images(XrSwapchain swapchain) = 0;
 };
 
+// What the platform gives OpenXR before an instance (OpenXRAndroidExtension). On Android:
+// xrInitializeLoaderKHR with the app's Java VM and activity, once; the instance extension that
+// takes them, XR_KHR_android_create_instance; and its XrInstanceCreateInfoAndroidKHR, chained
+// before next, which lives as long as the process. Elsewhere: nothing, no extension and next.
+Result<void> initialize_platform_loader();
+[[nodiscard]] std::string_view platform_instance_extension();
+[[nodiscard]] const void* platform_instance_info(const void* next);
+
 // XR_KHR_vulkan_enable2 (OpenXRVulkanExtension).
 [[nodiscard]] std::unique_ptr<OpenXRGraphics> make_vulkan_graphics();
 // XR_KHR_D3D12_enable (OpenXRD3D12Extension); null but on Windows.
@@ -53,5 +61,8 @@ public:
 // XR_KHR_opengl_enable, with XR_MNDX_egl_enable for EGL contexts (OpenXROpenGLExtension); null
 // but on Windows and Linux.
 [[nodiscard]] std::unique_ptr<OpenXRGraphics> make_opengl_graphics();
+// XR_KHR_opengl_es_enable on Android's EGL contexts (OpenXROpenGLExtension under ANDROID_ENABLED);
+// null but on Android.
+[[nodiscard]] std::unique_ptr<OpenXRGraphics> make_opengl_es_graphics();
 
 } // namespace slash::xr::detail

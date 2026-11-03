@@ -854,6 +854,7 @@ json::Value run_test(const std::string& platform, const std::string& arch, const
     process.working_directory = output.string();
     process.log_path = log_path.string();
     process.tail_lines = 20;
+    process.max_line_length = 0; // the summary is read as JSON, whatever its length
     auto result = platform::run_process(args, process);
     if (!result) {
         test["passed"] = false;
@@ -1552,6 +1553,9 @@ ExportResult export_game(const ExportOptions& options) {
         configure.emplace_back("-DSLASH_GAME_MICROPHONE=ON");
         configure.push_back("-DSLASH_GAME_MICROPHONE_USAGE=" + sound.input_usage_description);
     }
+    // Games that enable XR ask Android for the OpenXR runtime in their manifest.
+    configure.emplace_back(project.value().xr.enabled ? "-DSLASH_GAME_XR=ON"
+                                                      : "-DSLASH_GAME_XR=OFF");
     if (platform == "macos") {
         toolchain_args.push_back("-DCMAKE_OSX_DEPLOYMENT_TARGET=" +
                                  std::string(kMacosDeploymentTarget));
@@ -1936,6 +1940,16 @@ ExportResult export_game(const ExportOptions& options) {
         if (const json::Value* passed = test.find("passed");
             passed != nullptr && !passed->as_bool()) {
             result.ok = false;
+            // Say why on stderr too, for scripts that keep only stdout's result.
+            const json::Value* message = test.find("message");
+            const json::Value* tail = test.find("tail");
+            log::error(
+                "export test failed",
+                {{"platform", platform},
+                 {"message", message != nullptr && message->is_string() ? message->as_string()
+                                                                        : std::string()},
+                 {"tail",
+                  tail != nullptr && tail->is_string() ? tail->as_string() : std::string()}});
         }
         out["test"] = std::move(test);
     }
