@@ -264,7 +264,7 @@ TEST_CASE("a plugin that registers anything wrong adds nothing") {
                    .align = alignof(Probe),
                    .defaults = &defaults,
                    .fields = kProbeFields.data(),
-                   .field_count = kProbeFields.size()};
+                   .field_count = static_cast<std::uint32_t>(kProbeFields.size())};
     g_system = {
         .name = "test_probe", .doc = nullptr, .priority = 0, .run = &no_op, .userdata = nullptr};
 
