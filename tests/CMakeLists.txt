@@ -115,6 +115,7 @@ add_executable(slash_tests
     test_xr.cpp
     test_accessibility.cpp
     test_accesskit.cpp
+    test_accessibility_mobile.cpp
     test_accessibility_web.cpp
     test_websocket.cpp
     test_navigation.cpp

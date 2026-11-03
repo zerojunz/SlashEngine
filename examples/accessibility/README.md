@@ -34,7 +34,8 @@ slash-cli run --project examples/accessibility --scene examples/accessibility/ma
 ```
 
 Exported for the web (`slash-cli export web`), the page holds the same tree as hidden ARIA
-elements over the canvas, which a browser's screen reader reads and clicks.
+elements over the canvas, which a browser's screen reader reads and clicks. Exported for Android
+or iOS, TalkBack and VoiceOver read and work it too.
 
 [Accessibility](../../docs/reference/scene-format.md#accessibility) in the scene format reference
 lists what each control reports.
