@@ -499,7 +499,7 @@ bool remove(world::World& world, const Layout& layout, entt::entity entity) {
         return false;
     }
     return with_blob(layout.size_class, [&]<class B>(B /*unused*/) {
-        return world.ecs().storage<B>(layout.hash).remove(entity) > 0;
+        return static_cast<bool>(world.ecs().storage<B>(layout.hash).remove(entity));
     });
 }
 

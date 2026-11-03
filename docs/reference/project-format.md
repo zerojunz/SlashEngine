@@ -561,8 +561,8 @@ SLASH_PLUGIN_EXPORT int orbit_plugin_entry(SlashGetProc get_proc, SlashPlugin* p
   go of them.
 
 The tools load the library a file names for the machine they run on (macOS, Windows and Linux),
-and so do exports' checks of the project's scenes; a plugin with no library for that machine
-leaves its components unchecked. [`slash-cli export`](cli.md#export) ships each plugin file in
+and so do exports' checks of the project's scenes; a plugin with no library for that machine,
+or with `sources` and its library not built there, leaves its components unchecked. [`slash-cli export`](cli.md#export) ships each plugin file in
 the game's data, and with it:
 
 - A plugin with `sources`: compiled into the game, on every platform. The export writes a

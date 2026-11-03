@@ -604,5 +604,30 @@ TEST_CASE("exports compile plugins in from their sources, or ship their librarie
     CHECK(exporter::plan_plugins(root, project, "android", "arm64-v8a", problems)[1].library_path ==
           "addons/vendor/lib/libvendor.so");
     CHECK(problems.empty());
+
+    // Exports check components with the libraries built on this machine: a plugin with sources
+    // and no library built here, or none named for it, goes unchecked, and one whose file can't
+    // be read is loaded all the same, so loading reports it.
+    const std::string here =
+        std::string(slash::platform::os_name()) + "." + std::string(plugin::cpu_name());
+    json::Value built = parse(R"({"entry": "built_entry", "libraries": {}})");
+    built["libraries"][here] = "lib/built.so";
+    write("addons/built.plugin.json", json::write(built));
+    write("addons/lib/built.so", "");
+    json::Value unbuilt = parse(R"({"entry": "unbuilt_entry", "libraries": {},
+                                    "sources": ["orbit/src"]})");
+    unbuilt["libraries"][here] = "bin/unbuilt.so";
+    write("addons/unbuilt.plugin.json", json::write(unbuilt));
+    write("addons/elsewhere.plugin.json", R"({"entry": "e", "libraries": {"web": "x.a"}})");
+    project.plugins = {"addons/built.plugin.json", "addons/unbuilt.plugin.json",
+                       "addons/elsewhere.plugin.json", "addons/missing.plugin.json"};
+    std::vector<exporter::PluginProblem> unchecked;
+    CHECK(exporter::plugins_to_check(root, project, unchecked) ==
+          std::vector<std::string>{"addons/built.plugin.json", "addons/missing.plugin.json"});
+    REQUIRE(unchecked.size() == 2);
+    CHECK(unchecked[0].file == "addons/unbuilt.plugin.json");
+    CHECK(contains(unchecked[0].message, "\"addons/bin/unbuilt.so\", isn't built"));
+    CHECK(unchecked[1].file == "addons/elsewhere.plugin.json");
+    CHECK(contains(unchecked[1].message, "no library for"));
     fs::remove_all(root);
 }
