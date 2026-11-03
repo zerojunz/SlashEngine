@@ -2,10 +2,12 @@
 
 #include "slash/core/json.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/platform/platform.hpp"
 #include "slash/plugin/plugins.hpp"
 
 #include <algorithm>
 #include <array>
+#include <optional>
 #include <system_error>
 
 namespace slash::exporter {
@@ -43,6 +45,42 @@ std::string_view plugin_arch(std::string_view platform, std::string_view arch) {
         return "arm64";
     }
     return arch;
+}
+
+std::vector<std::string> plugins_to_check(const fs::path& project_dir,
+                                          const runtime::Project& project,
+                                          std::vector<PluginProblem>& unchecked) {
+    std::vector<std::string> out;
+    for (const std::string& path : project.plugins) {
+        // A file that can't be read is loaded all the same, so loading reports it.
+        std::optional<plugin::PluginFile> file;
+        if (auto text = platform::read_file((project_dir / path).string())) {
+            if (auto document = json::parse(text.value())) {
+                if (auto parsed = plugin::parse_plugin_file(document.value(), path)) {
+                    file = std::move(parsed.value());
+                }
+            }
+        }
+        if (!file) {
+            out.push_back(path);
+            continue;
+        }
+        const std::string os(platform::os_name());
+        const std::string library = plugin::library_for(*file, os, plugin::cpu_name());
+        std::error_code error;
+        if (library.empty()) {
+            unchecked.push_back(
+                {path, "",
+                 "it names no library for " + os + "." + std::string(plugin::cpu_name())});
+        } else if (!file->sources.empty() && !fs::exists(project_dir / library, error)) {
+            unchecked.push_back({path, "/libraries",
+                                 "its library for this machine, \"" + library +
+                                     "\", isn't built; exports compile its sources"});
+        } else {
+            out.push_back(path);
+        }
+    }
+    return out;
 }
 
 std::vector<ShippedPlugin> plan_plugins(const fs::path& project_dir,

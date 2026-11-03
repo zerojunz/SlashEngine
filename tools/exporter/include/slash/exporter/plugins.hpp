@@ -50,6 +50,14 @@ struct PluginProblem {
                                                       std::string_view arch,
                                                       std::vector<PluginProblem>& problems);
 
+// The plugin files an export loads on this machine to check how the project uses their
+// components. A plugin whose file names no library for this machine, or one with sources whose
+// library isn't built here (exports compile its sources in anyway), goes unchecked: each such
+// file is in unchecked, with why. Files that can't be read are kept, so loading reports them.
+[[nodiscard]] std::vector<std::string> plugins_to_check(const std::filesystem::path& project_dir,
+                                                        const runtime::Project& project,
+                                                        std::vector<PluginProblem>& unchecked);
+
 // The plugin key's CPU for a build's arch: "arm64" for "arm64-v8a", "" where the platform's key
 // has none (macOS's universal libraries, iOS).
 [[nodiscard]] std::string_view plugin_arch(std::string_view platform, std::string_view arch);

@@ -34,7 +34,6 @@
 #include "slash/render/image.hpp"
 #include "slash/render/shader.hpp"
 #include "slash/runtime/gameplay.hpp"
-#include "slash/runtime/plugins.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/scene3d/blend.hpp"
 #include "slash/scene3d/gridmap.hpp"
@@ -630,16 +629,18 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
     // The game's own components, checked by the names and fields its sources declare.
     (void)runtime::add_gameplay_types(components, project_dir.string(), project, false);
     // The plugins' components, from their libraries for this machine. A plugin with none for it
-    // (one exported from another machine, or with only sources) leaves its components unchecked.
+    // (one exported from another machine, or with only sources), or with sources and no library
+    // built here, leaves its components unchecked.
     plugin::Plugins plugins(components);
+    std::vector<PluginProblem> unchecked;
+    const std::vector<std::string> checked = plugins_to_check(project_dir, project, unchecked);
+    for (const PluginProblem& skipped : unchecked) {
+        log::info("a plugin's components are not checked",
+                  {{"file", skipped.file}, {"reason", skipped.message}});
+    }
     std::vector<std::pair<std::string, std::string>> plugin_errors;
-    for (auto& [file, message] : runtime::load_plugins(plugins, project_dir.string())) {
-        if (message.starts_with("it names no library for")) {
-            log::info("a plugin's components are not checked",
-                      {{"file", file}, {"reason", message}});
-        } else {
-            plugin_errors.emplace_back(file, std::move(message));
-        }
+    for (auto& [file, message] : plugins.load_project(project_dir.string(), checked)) {
+        plugin_errors.emplace_back(file, std::move(message));
     }
     // .blend files are checked and shipped as the glTF the artist's Blender makes of them, so
     // games never need Blender.
