@@ -2,6 +2,7 @@
 
 #include "json_fields.hpp"
 
+#include "slash/asset/assets.hpp"
 #include "slash/render/image.hpp"
 
 #include <algorithm>
@@ -618,7 +619,8 @@ void bump_to_normal_map(render::Image& image, float bump_scale) {
 }
 
 bool is_texture_path(std::string_view path) {
-    return render::is_image_path(path) || path.ends_with(kTextureSuffix);
+    return render::is_image_path(path) || path.ends_with(kTextureSuffix) ||
+           asset::is_made_path(path);
 }
 
 Result<render::Image> decode_texture(std::string_view path, std::string_view bytes) {
@@ -644,6 +646,31 @@ render::Image make_image(const ProceduralTexture& texture) {
         return gradient_1d_image(*g1);
     }
     return gradient_2d_image(std::get<GradientTexture2D>(texture));
+}
+
+Result<std::string> make_texture(world::World& world, std::string_view name, render::Image image) {
+    asset::Assets* assets = asset::assets_of(world.ecs());
+    if (assets == nullptr) {
+        return make_error(ErrorCode::NotFound,
+                          "the world has no assets to make a texture in (canvas::install "
+                          "attaches them)");
+    }
+    const std::size_t expected =
+        static_cast<std::size_t>(image.width) * static_cast<std::size_t>(image.height) * 4;
+    if (image.width == 0 || image.height == 0 || image.pixels.size() != expected) {
+        return make_error(
+            ErrorCode::InvalidArgument,
+            "a texture's pixels are width x height x 4 bytes (RGBA8): " + std::to_string(expected) +
+                " for " + std::to_string(image.width) + " x " + std::to_string(image.height) +
+                ", not " + std::to_string(image.pixels.size()));
+    }
+    image.blocks.clear();
+    std::string path = std::string(asset::kMadePrefix) + std::string(name);
+    const std::size_t bytes = sizeof(render::Image) + image.pixels.capacity();
+    if (auto put = assets->put<render::Image>(path, std::move(image), bytes); !put) {
+        return put.error();
+    }
+    return path;
 }
 
 } // namespace slash::procedural

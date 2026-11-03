@@ -326,12 +326,15 @@ constexpr std::string_view kNoDrawPassMesh =
 // What's wrong with a MeshInstance3D's mesh path, without reading it; "" for nothing.
 std::string mesh_path_problem(const world::World& world, entt::entity entity,
                               const std::string& path) {
-    if (!is_project_path(asset::file_of(path))) {
+    // A made mesh (asset::Assets::put) is gameplay code's, made while the game runs.
+    const bool made = asset::is_made_path(path);
+    if (!made && !is_project_path(asset::file_of(path))) {
         return "expected a path inside the project folder, separated by '/', with no \".\" or "
                "\"..\" parts";
     }
-    if (!is_model_path(path)) {
-        return "expected a .gltf, .glb, .obj, .fbx, .blend or .model.json file";
+    if (!made && !is_model_path(path)) {
+        return "expected a .gltf, .glb, .obj, .fbx, .blend or .model.json file, or a mesh "
+               "gameplay code made (\"made:<name>\")";
     }
     if (asset::file_of(path) != path && asset::subresource_of(path).empty()) {
         return "names no variant after \"::\"";
@@ -758,8 +761,8 @@ std::vector<Problem> check_meshes(const world::World& world) {
             continue;
         }
         const world::FileReader& reader = world.file_reader();
-        if (!reader) {
-            continue;
+        if (!reader || asset::is_made_path(path)) {
+            continue; // a made mesh exists only while the game runs
         }
         auto bytes = reader(asset::file_of(path));
         if (!bytes) {
@@ -844,7 +847,7 @@ std::vector<Problem> check_meshes(const world::World& world) {
         const auto& field =
             world.ecs().get<const world::GPUParticlesAttractorVectorField3D>(entity);
         const world::FileReader& reader = world.file_reader();
-        if (field.texture.empty() || !reader) {
+        if (field.texture.empty() || !reader || asset::is_made_path(field.texture)) {
             continue;
         }
         constexpr std::string_view kTextureField =

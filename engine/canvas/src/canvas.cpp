@@ -399,6 +399,8 @@ void add_systems(world::World& world, asset::Assets& assets) {
 }
 
 void install(world::World& world, asset::Assets& assets) {
+    // Gameplay code makes textures and meshes into these (asset::Assets::put).
+    asset::attach(world.ecs(), assets);
     add_asset_types(assets);
     add_systems(world, assets);
     video::install(world, assets);
