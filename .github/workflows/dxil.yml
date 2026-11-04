@@ -88,6 +88,8 @@ jobs:
           export LD_LIBRARY_PATH="$PWD/dxc"
           dxc/dxc --version
           cmake -DDXC="$PWD/dxc/dxc" -DROOT="$PWD" -P cmake/compile_ray_dxil.cmake
+          # A new shader's DXIL is a new file, which git diff sees only once it is added.
+          git add --intent-to-add -- engine/render/src/*_dxil.hpp
 
       - name: Check the committed DXIL
         if: github.event_name == 'pull_request'
