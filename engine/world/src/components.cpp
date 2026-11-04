@@ -2889,6 +2889,11 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("instances", {.doc = "Each instance as {\"position\", \"rotation\", "
                                        "\"scale\"}, a Transform3D's fields in the entity's "
                                        "space."})
+        .describe("instances[].position", {.doc = "Where the instance is in the entity's space, "
+                                                  "as [x, y, z] meters."})
+        .describe("instances[].rotation", {.doc = "Its rotation in radians about each axis, in "
+                                                  "Godot's YXZ order, as [x, y, z]."})
+        .describe("instances[].scale", {.doc = "Its scale on each axis, as [x, y, z]."})
         .describe("visible_instance_count",
                   {.doc = "How many instances draw, from the first; -1 for all.", .min = -1})
         .describe("layers", {.doc = "Render layers, as MeshInstance3D's."})
