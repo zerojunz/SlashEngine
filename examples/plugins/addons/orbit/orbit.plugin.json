@@ -1,0 +1,12 @@
+{
+  "abi": 1,
+  "entry": "orbit_plugin_entry",
+  "libraries": {
+    "linux": "bin/orbit.so",
+    "macos": "bin/orbit.so",
+    "windows": "bin/orbit.dll"
+  },
+  "sources": [
+    "orbit.c"
+  ]
+}

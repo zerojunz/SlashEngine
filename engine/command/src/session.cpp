@@ -19,6 +19,7 @@
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/plugin/plugins.hpp"
 #include "slash/scene3d/blend.hpp"
 #include "slash/services/services.hpp"
 #include "slash/ui/ui.hpp"
@@ -346,9 +347,15 @@ Session::Session(const world::ComponentRegistry& component_registry,
         // Before any scene loads, so scenes may use the game's components.
         (void)options_.gameplay->attach(world_);
     }
+    if (options_.plugins != nullptr) {
+        options_.plugins->attach(world_);
+    }
 }
 
 Session::~Session() {
+    if (options_.plugins != nullptr) {
+        options_.plugins->detach(world_);
+    }
     if (options_.gameplay != nullptr) {
         options_.gameplay->detach(world_);
     }

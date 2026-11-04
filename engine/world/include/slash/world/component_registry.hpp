@@ -44,8 +44,8 @@ public:
         json::Value (*save)(const World& world, entt::id_type type, entt::entity entity);
         Result<void> (*assign)(World& world, entt::id_type type, entt::entity entity,
                                const json::Value& fields, std::string& path);
-        json::Value (*schema)(SchemaBuilder& builder);
-        void (*rename)(json::Value& fields, const EntityRename& rename);
+        json::Value (*schema)(SchemaBuilder& builder, entt::id_type type);
+        void (*rename)(entt::id_type type, json::Value& fields, const EntityRename& rename);
         void (*assure)(entt::registry& registry, entt::id_type type);
         // The bytes the type's components take in their storage's pages and hold on the heap.
         std::size_t (*bytes)(const entt::registry& registry, entt::id_type type);
@@ -97,7 +97,7 @@ public:
 
     // Renames the entity references in some of this component's fields, as JSON.
     void rename_entities(json::Value& fields, const EntityRename& rename) const {
-        ops_.rename(fields, rename);
+        ops_.rename(type_hash_, fields, rename);
     }
 
 private:
@@ -190,8 +190,8 @@ ComponentType& ComponentRegistry::add() {
             }
             return {};
         },
-        .schema = [](SchemaBuilder& builder) { return builder.ref<T>(); },
-        .rename = [](json::Value& fields,
+        .schema = [](SchemaBuilder& builder, entt::id_type /*type*/) { return builder.ref<T>(); },
+        .rename = [](entt::id_type /*type*/, json::Value& fields,
                      const EntityRename& rename) { world::rename_entities<T>(fields, rename); },
         .assure = [](entt::registry& registry,
                      entt::id_type /*type*/) { static_cast<void>(registry.storage<T>()); },

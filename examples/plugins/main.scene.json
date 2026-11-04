@@ -1,0 +1,26 @@
+{
+  "entities": {
+    "moon": {
+      "components": {
+        "Orbit": {
+          "center": [160, 90],
+          "label": "moon",
+          "notify": "sun",
+          "radius": 40,
+          "speed": 3.1415927
+        },
+        "Transform2D": {
+          "position": [200, 90]
+        }
+      }
+    },
+    "sun": {
+      "components": {
+        "Transform2D": {
+          "position": [160, 90]
+        }
+      }
+    }
+  },
+  "format": 1
+}

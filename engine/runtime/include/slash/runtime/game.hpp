@@ -8,6 +8,7 @@
 #include "slash/input/sdl.hpp"
 #include "slash/platform/platform.hpp"
 #include "slash/platform/run.hpp"
+#include "slash/plugin/plugins.hpp"
 #include "slash/render/device.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/services/endpoint.hpp"
@@ -17,6 +18,7 @@
 #include "slash/world/world.hpp"
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -47,6 +49,10 @@ struct GameOptions {
     // Sends analytics to project.json's services.analytics.endpoint, when it names one: main()
     // gives it engine/ai's HTTP client. Windowed games only, so test runs send nothing.
     services::HttpPoster analytics_post = nullptr;
+    // Plugins linked into the game, by entry function: those an export compiled from their
+    // sources, and iOS and web exports' libraries (the slash_game_plugins function it writes).
+    std::map<std::string, SlashPluginEntry, std::less<>>
+        plugins{}; // NOLINT(readability-redundant-member-init)
 };
 
 inline constexpr std::string_view kGameUsage =
@@ -112,6 +118,8 @@ private:
     asset::Assets assets_;
     world::ComponentRegistry components_;
     world::World world_;
+    // Declared after the world, so it takes its systems out of the world before the world goes.
+    std::unique_ptr<plugin::Plugins> plugins_;
     std::unique_ptr<gameplay::Host> gameplay_;
     platform::Platform platform_;
     // Declared after the platform, so it closes the gamepads before SDL quits.

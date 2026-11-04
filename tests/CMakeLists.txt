@@ -137,6 +137,7 @@ add_executable(slash_tests
     test_autopilot.cpp
     test_autopilot_agent.cpp
     test_platform.cpp
+    test_plugin.cpp
     test_post.cpp
     test_procedural.cpp
     test_project_map.cpp
@@ -190,7 +191,7 @@ add_executable(slash_tests
     test_voxel_gi.cpp
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
-    slash::ai slash::ai_commands slash::animation slash::asset slash::audio slash::autopilot slash::bench slash::canvas slash::command slash::core slash::debug slash::exporter slash::importer slash::input slash::l10n slash::library slash::library_commands slash::navigation slash::net slash::physics2d slash::physics3d
+    slash::ai slash::ai_commands slash::animation slash::asset slash::audio slash::autopilot slash::bench slash::canvas slash::command slash::core slash::debug slash::exporter slash::importer slash::input slash::l10n slash::library slash::library_commands slash::navigation slash::net slash::physics2d slash::physics3d slash::plugin
     slash::platform slash::procedural slash::render slash::runtime slash::scene3d slash::server slash::services slash::shader_compiler slash::soundtrack slash::soundtrack_commands slash::storyboard slash::text slash::texture_encoder slash::ui slash::video slash::video_commands slash::video_encoder slash::world slash::xr doctest::doctest SDL3::SDL3-static
     slash_httplib # a stand-in model server for the AI provider tests
     webp) # WebP textures for the Godot unpacking tests
@@ -212,6 +213,28 @@ target_compile_definitions(slash_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS
     SLASH_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data" SLASH_TEST_CMAKE="${CMAKE_COMMAND}")
 slash_target_warnings(slash_tests)
 slash_gameplay_host(slash_tests)
+
+# The plugins example's plugin, written in C against slash_plugin.h alone, for test_plugin.cpp:
+# loaded as a library where programs load plugins, and linked in as iOS and web exports link one.
+set(orbit_plugin ${PROJECT_SOURCE_DIR}/examples/plugins/addons/orbit/orbit.c)
+add_library(orbit-plugin-linked STATIC ${orbit_plugin})
+target_include_directories(orbit-plugin-linked PRIVATE ${PROJECT_SOURCE_DIR}/engine/plugin/include)
+set_target_properties(orbit-plugin-linked PROPERTIES C_STANDARD 11)
+if(NOT WIN32)
+    target_link_libraries(orbit-plugin-linked PRIVATE m)
+endif()
+target_link_libraries(slash_tests PRIVATE orbit-plugin-linked)
+if(NOT EMSCRIPTEN AND NOT ANDROID AND NOT IOS)
+    add_library(orbit-plugin MODULE ${orbit_plugin})
+    target_include_directories(orbit-plugin PRIVATE ${PROJECT_SOURCE_DIR}/engine/plugin/include)
+    set_target_properties(orbit-plugin PROPERTIES PREFIX "" C_STANDARD 11 C_VISIBILITY_PRESET hidden
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/plugins)
+    if(NOT WIN32)
+        target_link_libraries(orbit-plugin PRIVATE m)
+    endif()
+    add_dependencies(slash_tests orbit-plugin)
+    target_compile_definitions(slash_tests PRIVATE SLASH_TEST_PLUGIN="$<TARGET_FILE:orbit-plugin>")
+endif()
 
 # A stand-in for AssetRipper's web interface, so the Unity build tests and the unpack-unity
 # example run without downloading it.

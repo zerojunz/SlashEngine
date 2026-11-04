@@ -8,6 +8,8 @@
 #   project.json    the folder is a game project and must pass "slash-cli project validate"
 #   src/            the project's gameplay sources; the example runs on macOS and Linux only, as
 #                   does one whose main.cpp calls gameplay.build
+#   addons/<p>/<p>.c  a plugin's source, built into addons/<p>/bin/ of the copy as <p>.so (.dll
+#                   on Windows) before it runs
 #
 # Each runs in a copy of its folder, with AssetRipper's, Blender's and Unreal Editor's stand-ins
 # from tests/ as SLASH_ASSETRIPPER, SLASH_BLENDER_PATH and SLASH_UNREAL_EDITOR.
@@ -60,11 +62,44 @@ foreach(name IN LISTS examples)
         endif()
         set(program -DPROGRAM=$<TARGET_FILE:example-${name}>)
     endif()
+    # Plugins, built where the copy's plugin files look for them.
+    set(plugins "")
+    file(GLOB plugin_sources ${dir}/addons/*/*.c)
+    foreach(source IN LISTS plugin_sources)
+        get_filename_component(plugin ${source} NAME_WE)
+        get_filename_component(folder ${source} DIRECTORY)
+        get_filename_component(folder ${folder} NAME)
+        if(NOT plugin STREQUAL folder)
+            continue()
+        endif()
+        add_library(example-${name}-${plugin} MODULE ${source})
+        target_include_directories(example-${name}-${plugin} PRIVATE
+            ${PROJECT_SOURCE_DIR}/engine/plugin/include)
+        set(bin ${CMAKE_CURRENT_BINARY_DIR}/${name}-plugins/addons/${plugin}/bin)
+        set(suffix .so)
+        if(WIN32)
+            set(suffix .dll)
+        endif()
+        set_target_properties(example-${name}-${plugin} PROPERTIES OUTPUT_NAME ${plugin} PREFIX ""
+            SUFFIX ${suffix} C_STANDARD 11 C_VISIBILITY_PRESET hidden
+            LIBRARY_OUTPUT_DIRECTORY ${bin} RUNTIME_OUTPUT_DIRECTORY ${bin})
+        target_compile_options(example-${name}-${plugin} PRIVATE
+            $<$<NOT:$<C_COMPILER_ID:MSVC>>:-ffp-contract=off>)
+        if(NOT WIN32)
+            target_link_libraries(example-${name}-${plugin} PRIVATE m)
+        endif()
+        # --target example-<folder> builds them.
+        if(NOT TARGET example-${name})
+            add_custom_target(example-${name})
+        endif()
+        add_dependencies(example-${name} example-${name}-${plugin})
+        set(plugins -DPLUGINS=${CMAKE_CURRENT_BINARY_DIR}/${name}-plugins)
+    endforeach()
     add_test(NAME example_${name}
         COMMAND ${CMAKE_COMMAND} -DEXAMPLE=${dir} -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/${name}
             -DCLI=$<TARGET_FILE:slash-cli> -DASSETRIPPER=$<TARGET_FILE:fake-assetripper>
             -DBLENDER=$<TARGET_FILE:fake-blender> -DUNREAL=$<TARGET_FILE:fake-unreal>
-            ${openxr} ${program} -P ${run_example})
+            ${openxr} ${plugins} ${program} -P ${run_example})
 endforeach()
 
 # README.md lists every example, so agents find them.

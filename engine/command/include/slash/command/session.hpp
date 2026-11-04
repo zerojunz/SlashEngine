@@ -25,6 +25,10 @@ class Host;
 struct Load;
 } // namespace slash::gameplay
 
+namespace slash::plugin {
+class Plugins;
+} // namespace slash::plugin
+
 namespace slash::command {
 
 struct SessionOptions {
@@ -47,6 +51,10 @@ struct SessionOptions {
     // a rebuilt gameplay library is swapped in between commands and ticks. It must outlive the
     // session.
     gameplay::Host* gameplay = nullptr;
+    // The project's plugins (slash/plugin/plugins.hpp), loaded into the session's component
+    // types. The session attaches its world, so their systems run in it. It must outlive the
+    // session.
+    plugin::Plugins* plugins = nullptr;
     // The asset library's folder (slash/library/library.hpp); "" for SLASH_LIBRARY_DIR or
     // ~/.slash/library.
     std::string library_dir{}; // NOLINT(readability-redundant-member-init)
