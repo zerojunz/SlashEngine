@@ -30,9 +30,11 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
+#include <initializer_list>
 #include <map>
 #include <numbers>
 #include <optional>
@@ -53,11 +55,48 @@ namespace world = slash::world;
 
 namespace {
 
+// A test shader compiled for every backend, once per source: each takes a second or two.
 render::CompiledShader compiled(const render::ShaderSource& source) {
+    static std::vector<std::pair<render::ShaderSource, render::CompiledShader>> made;
+    for (const auto& [from, shader] : made) {
+        if (from == source) {
+            return shader;
+        }
+    }
     auto result = shader_compiler::compile(source);
     REQUIRE_MESSAGE(result.ok(), (result.ok() ? "" : result.error().message));
-    return std::move(result).value();
+    made.emplace_back(source, std::move(result).value());
+    return made.back().second;
 }
+
+// Spatial shaders made on a device once for every scene it draws, since a GPU device compiles
+// each of a shader's stages when it is made.
+class DeviceShaders {
+public:
+    DeviceShaders(render::RenderDevice& device, std::initializer_list<render::ShaderSource> sources)
+        : device_(&device) {
+        for (const render::ShaderSource& source : sources) {
+            auto made = device.create_shader(compiled(source));
+            REQUIRE_MESSAGE(made.ok(), (made.ok() ? "" : made.error().message));
+            ids_.push_back(made.value());
+        }
+    }
+    ~DeviceShaders() {
+        for (const render::ShaderId id : ids_) {
+            device_->destroy_shader(id);
+        }
+    }
+    DeviceShaders(const DeviceShaders&) = delete;
+    DeviceShaders& operator=(const DeviceShaders&) = delete;
+    DeviceShaders(DeviceShaders&&) = delete;
+    DeviceShaders& operator=(DeviceShaders&&) = delete;
+
+    [[nodiscard]] render::ShaderId operator[](std::size_t i) const { return ids_.at(i); }
+
+private:
+    render::RenderDevice* device_;
+    std::vector<render::ShaderId> ids_;
+};
 
 std::string error_of(const render::ShaderSource& source) {
     auto result = shader_compiler::compile(source);
@@ -331,11 +370,9 @@ render::Scene3D lit_scene(render::RenderMethod method) {
 
 // A frame of a lit cube, a cut card and a glass pane drawn with spatial shaders over a plain
 // floor, as the scene's renderer draws them.
-render::Image draw_surfaces(render::RenderDevice& device, const render::Scene3D& scene) {
-    auto lit = device.create_shader(compiled(surface()));
-    REQUIRE_MESSAGE(lit.ok(), (lit.ok() ? "" : lit.error().message));
-    auto see_through = device.create_shader(compiled(glass()));
-    REQUIRE(see_through.ok());
+// shaders are surface()'s and glass()'s.
+render::Image draw_surfaces(render::RenderDevice& device, const render::Scene3D& scene,
+                            const DeviceShaders& shaders) {
     auto target = device.create_texture({.width = 64, .height = 64, .render_target = true});
     REQUIRE(target.ok());
     // A checker of two colors, the left half see-through, and bumps in rows.
@@ -365,7 +402,7 @@ render::Image draw_surfaces(render::RenderDevice& device, const render::Scene3D&
     REQUIRE(floor.ok());
 
     render::Material3D material;
-    material.shader = lit.value();
+    material.shader = shaders[0];
     material.shader_constants[0] = {0.0F, 0.0F, 0.0F, 0.0F}; // cut
     material.shader_constants[1] = {0.6F, 0.6F, 0.6F, 0.6F}; // metal
     material.shader_constants[2] = {1.0F, 0.7F, 0.6F, 1.0F}; // tint
@@ -377,7 +414,7 @@ render::Image draw_surfaces(render::RenderDevice& device, const render::Scene3D&
     cutout.transparency = render::Transparency::AlphaScissor;
     cutout.cull = render::CullMode::Disabled;
     render::Material3D pane;
-    pane.shader = see_through.value();
+    pane.shader = shaders[1];
     pane.transparency = render::Transparency::Alpha;
 
     REQUIRE(device
@@ -397,8 +434,6 @@ render::Image draw_surfaces(render::RenderDevice& device, const render::Scene3D&
     for (const render::TextureId texture : {pattern.value(), bumpy.value(), target.value()}) {
         device.destroy_texture(texture);
     }
-    device.destroy_shader(lit.value());
-    device.destroy_shader(see_through.value());
     return image.value();
 }
 
@@ -685,8 +720,11 @@ TEST_CASE("every device draws spatial shaders' surfaces as the software device d
     const auto software = render::create_software_device();
     std::vector<render::Image> expected;
     expected.reserve(scenes.size());
-    for (const auto& [name, scene] : scenes) {
-        expected.push_back(draw_surfaces(*software, scene));
+    {
+        const DeviceShaders shaders(*software, {surface(), glass()});
+        for (const auto& [name, scene] : scenes) {
+            expected.push_back(draw_surfaces(*software, scene, shaders));
+        }
     }
     // The shader's own surface shows: the cube isn't the plain white a material without one is.
     const auto at = [&](std::uint32_t x, std::uint32_t y) {
@@ -697,13 +735,14 @@ TEST_CASE("every device draws spatial shaders' surfaces as the software device d
     CHECK(at(32, 30) != at(4, 60));
     for (auto& device : slash::test::hardware_devices()) {
         CAPTURE(render::backend_name(device->backend()));
+        const DeviceShaders shaders(*device, {surface(), glass()});
         const bool opengl = device->backend() == render::Backend::OpenGl ||
                             device->backend() == render::Backend::OpenGlEs;
         for (std::size_t i = 0; i < scenes.size(); ++i) {
             CAPTURE(scenes.at(i).first);
             // The OpenGL devices draw only as Compatibility.
             const render::Image& want = opengl ? expected.back() : expected.at(i);
-            const render::Image image = draw_surfaces(*device, scenes.at(i).second);
+            const render::Image image = draw_surfaces(*device, scenes.at(i).second, shaders);
             const auto [count, first] = differences(image, want);
             CAPTURE(first);
             CHECK(count <= 12);
@@ -822,11 +861,9 @@ TEST_CASE("vertex() moves a mesh's corners, in its shadows too, which fragment()
 
 // A frame of a sheet lifted into hills by vertex(), cut in a strip, and a box swelled in the
 // world, over a plain floor and lit by a shadowed sun, as the scene's renderer draws them.
-render::Image draw_hills(render::RenderDevice& device, const render::Scene3D& scene) {
-    auto lifted = device.create_shader(compiled(hills()));
-    REQUIRE_MESSAGE(lifted.ok(), (lifted.ok() ? "" : lifted.error().message));
-    auto swelled = device.create_shader(compiled(swell()));
-    REQUIRE_MESSAGE(swelled.ok(), (swelled.ok() ? "" : swelled.error().message));
+// shaders are hills()'s and swell()'s.
+render::Image draw_hills(render::RenderDevice& device, const render::Scene3D& scene,
+                         const DeviceShaders& shaders) {
     auto target = device.create_texture({.width = 64, .height = 64, .render_target = true});
     REQUIRE(target.ok());
     std::vector<std::uint8_t> rises;
@@ -846,14 +883,14 @@ render::Image draw_hills(render::RenderDevice& device, const render::Scene3D& sc
     REQUIRE(box.ok());
     REQUIRE(floor.ok());
     render::Material3D hilly;
-    hilly.shader = lifted.value();
+    hilly.shader = shaders[0];
     hilly.shader_constants[0] = {0.6F, 0.6F, 0.6F, 0.6F}; // lift
     hilly.shader_constants[render::kShaderTimeConstant] = {2.0F, 1.9F, 0.0F, 0.0F};
     hilly.shader_textures[0] = {.texture = heights.value()};
     hilly.transparency = render::Transparency::AlphaScissor;
     hilly.cull = render::CullMode::Disabled;
     render::Material3D swollen;
-    swollen.shader = swelled.value();
+    swollen.shader = shaders[1];
     REQUIRE(device
                 .begin_frame(
                     {.target = target.value(), .clear = {0.05F, 0.05F, 0.1F, 1.0F}, .scene = scene})
@@ -869,8 +906,6 @@ render::Image draw_hills(render::RenderDevice& device, const render::Scene3D& sc
     }
     device.destroy_texture(heights.value());
     device.destroy_texture(target.value());
-    device.destroy_shader(lifted.value());
-    device.destroy_shader(swelled.value());
     return image.value();
 }
 
@@ -889,18 +924,22 @@ TEST_CASE("every device draws spatial shaders' vertex() and shadows as the softw
     const auto software = render::create_software_device();
     std::vector<render::Image> expected;
     expected.reserve(scenes.size());
-    for (const auto& [name, scene] : scenes) {
-        expected.push_back(draw_hills(*software, scene));
+    {
+        const DeviceShaders shaders(*software, {hills(), swell()});
+        for (const auto& [name, scene] : scenes) {
+            expected.push_back(draw_hills(*software, scene, shaders));
+        }
     }
     for (auto& device : slash::test::hardware_devices()) {
         CAPTURE(render::backend_name(device->backend()));
+        const DeviceShaders shaders(*device, {hills(), swell()});
         const bool opengl = device->backend() == render::Backend::OpenGl ||
                             device->backend() == render::Backend::OpenGlEs;
         for (std::size_t i = 0; i < scenes.size(); ++i) {
             CAPTURE(scenes.at(i).first);
             // The OpenGL devices draw only as Compatibility.
             const render::Image& want = opengl ? expected.back() : expected.at(i);
-            const render::Image image = draw_hills(*device, scenes.at(i).second);
+            const render::Image image = draw_hills(*device, scenes.at(i).second, shaders);
             const auto [count, first] = differences(image, want);
             CAPTURE(first);
             // SSAO over the shadows' edges rounds a few scattered pixels a level or three apart.
