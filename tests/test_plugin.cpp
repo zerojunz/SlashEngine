@@ -27,6 +27,7 @@
 #include <filesystem>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <vector>
 
 namespace json = slash::json;
@@ -482,7 +483,10 @@ TEST_CASE("a project's plugin files load for this platform") {
                         R"({"format": 1, "name": "Orbits", "main_scene": "main.scene.json",
                         "plugins": ["addons/orbit.json"]})"))
                     .empty());
-    fs::remove_all(root);
+    // Windows keeps a loaded library's file open until the program exits, as plugins stay
+    // loaded, so what can't be removed now is removed by the next run.
+    std::error_code ignored;
+    fs::remove_all(root, ignored);
 }
 #endif
 
@@ -527,7 +531,10 @@ TEST_CASE("games enter linked plugins and find libraries where exports install t
                             {.linked = {}, .library_folders = {(root / "Frameworks").string()}})
               .empty());
 #endif
-    fs::remove_all(root);
+    // Windows keeps a loaded library's file open until the program exits, as plugins stay
+    // loaded, so what can't be removed now is removed by the next run.
+    std::error_code ignored;
+    fs::remove_all(root, ignored);
 }
 
 TEST_CASE("exports compile plugins in from their sources, or ship their libraries") {
