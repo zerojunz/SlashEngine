@@ -20,6 +20,7 @@
 #include "slash/exporter/forms.hpp"
 #include "slash/exporter/icons.hpp"
 #include "slash/exporter/maven.hpp"
+#include "slash/exporter/plugins.hpp"
 #include "slash/exporter/presets.hpp"
 #include "slash/exporter/sdk.hpp"
 #include "slash/exporter/toolchains.hpp"
@@ -28,6 +29,7 @@
 #include "slash/navigation/navigation.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/process.hpp"
+#include "slash/plugin/plugins.hpp"
 #include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/shader.hpp"
@@ -626,6 +628,20 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
     world::register_builtin_components(components);
     // The game's own components, checked by the names and fields its sources declare.
     (void)runtime::add_gameplay_types(components, project_dir.string(), project, false);
+    // The plugins' components, from their libraries for this machine. A plugin with none for it
+    // (one exported from another machine, or with only sources), or with sources and no library
+    // built here, leaves its components unchecked.
+    plugin::Plugins plugins(components);
+    std::vector<PluginProblem> unchecked;
+    const std::vector<std::string> checked = plugins_to_check(project_dir, project, unchecked);
+    for (const PluginProblem& skipped : unchecked) {
+        log::info("a plugin's components are not checked",
+                  {{"file", skipped.file}, {"reason", skipped.message}});
+    }
+    std::vector<std::pair<std::string, std::string>> plugin_errors;
+    for (auto& [file, message] : plugins.load_project(project_dir.string(), checked)) {
+        plugin_errors.emplace_back(file, std::move(message));
+    }
     // .blend files are checked and shipped as the glTF the artist's Blender makes of them, so
     // games never need Blender.
     const scene3d::BlendOptions blend_options{.project_root = project_dir.string(),
@@ -636,6 +652,13 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
     const world::FileReader reader =
         scene3d::with_blender(runtime::folder_reader(project_dir.string()), blend_options);
     json::Array problems;
+    for (auto& [file, message] : plugin_errors) {
+        json::Value item;
+        item["file"] = file;
+        item["path"] = "";
+        item["message"] = "the plugin did not load on this machine: " + message;
+        problems.push_back(std::move(item));
+    }
     bool found_main = false;
     FormCounts forms;
     const std::set<std::string, std::less<>> raw_textures = exact_textures(project_dir);
@@ -751,6 +774,31 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
                 return false;
             }
         }
+    }
+    // Plugin files, and their libraries where Windows and Linux games load them, in the data.
+    std::vector<PluginProblem> plugin_problems;
+    for (const ShippedPlugin& shipped : plan_plugins(project_dir, project, preset.platform,
+                                                     sdk_archs(preset).front(), plugin_problems)) {
+        std::vector<std::string> files{shipped.file};
+        if (!shipped.linked() && (preset.platform == "windows" || preset.platform == "linux")) {
+            files.push_back(shipped.library_path);
+        }
+        for (const std::string& file : files) {
+            fs::create_directories((data / file).parent_path(), error);
+            fs::copy_file(project_dir / file, data / file, fs::copy_options::overwrite_existing,
+                          error);
+            if (error) {
+                failure = {"stage", "could not copy " + file + ": " + error.message(), {}};
+                return false;
+            }
+        }
+    }
+    for (PluginProblem& problem : plugin_problems) {
+        json::Value item;
+        item["file"] = std::move(problem.file);
+        item["path"] = std::move(problem.path);
+        item["message"] = std::move(problem.message);
+        problems.push_back(std::move(item));
     }
     // A tier no recipe has is most likely misspelled.
     if (!preset.model_quality.empty() && !quality_used) {
@@ -1727,6 +1775,38 @@ ExportResult export_game(const ExportOptions& options) {
         return file.generic_string();
     };
 
+    // For one build of the game: the plugins it compiles in, links or installs, as the
+    // slash_game_plugin() calls export/CMakeLists.txt includes. Returns that file.
+    const auto link_plugins = [&](const fs::path& build,
+                                  std::string_view build_arch) -> std::optional<std::string> {
+        std::vector<PluginProblem> problems;
+        const std::vector<ShippedPlugin> shipped =
+            plan_plugins(project_dir, project.value(), platform, build_arch, problems);
+        if (!problems.empty()) {
+            failure = {"plugins",
+                       problems.front().file + problems.front().path + ": " +
+                           problems.front().message,
+                       {}};
+            return std::nullopt;
+        }
+        fs::create_directories(build, error);
+        std::string register_file;
+        if (const std::string source = plugins_register_source(shipped); !source.empty()) {
+            const fs::path path = fs::absolute(build / "plugins.cpp", error);
+            if (!platform::write_file(path.string(), source)) {
+                failure = {"plugins", "could not write " + display(path), {}};
+                return std::nullopt;
+            }
+            register_file = path.generic_string();
+        }
+        const fs::path file = fs::absolute(build / "plugins.cmake", error);
+        if (!platform::write_file(file.string(), plugins_cmake(shipped, register_file))) {
+            failure = {"plugins", "could not write " + display(file), {}};
+            return std::nullopt;
+        }
+        return file.generic_string();
+    };
+
     // Configures, builds and installs export/CMakeLists.txt in build, into prefix. build_arch is
     // what {arch} means in SDK packages' paths for this build.
     const auto build_into = [&](const fs::path& build, const std::vector<std::string>& extra,
@@ -1745,6 +1825,15 @@ ExportResult export_game(const ExportOptions& options) {
             sdk_file = std::move(*written);
         }
         args.push_back("-DSLASH_GAME_SDKS=" + sdk_file);
+        std::string plugins_file;
+        if (!project.value().plugins.empty()) {
+            std::optional<std::string> written = link_plugins(build, build_arch);
+            if (!written) {
+                return false;
+            }
+            plugins_file = std::move(*written);
+        }
+        args.push_back("-DSLASH_GAME_PLUGINS=" + plugins_file);
         std::vector<std::string> install{
             "cmake",    "--install", build.string(),
             "--config", config,      "--component",

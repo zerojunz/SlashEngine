@@ -27,6 +27,21 @@
 #include <utility>
 
 namespace slash::runtime {
+namespace {
+
+// Where exports install plugins' libraries, which games look for by name: the bundle's
+// Frameworks on macOS, and the loader's own search on Android.
+std::vector<std::string> plugin_library_folders() {
+#if defined(__ANDROID__)
+    return {""};
+#elif defined(__APPLE__)
+    return {platform::base_path() + "../Frameworks"};
+#else
+    return {};
+#endif
+}
+
+} // namespace
 
 Result<GameOptions> parse_game_args(const std::vector<std::string>& args) {
     constexpr std::array<std::string_view, 3> kOptions{"--headless", "--ticks", "--data"};
@@ -124,6 +139,19 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
             return make_error(ErrorCode::NotFound, "the game's code is not built; build it with "
                                                    "\"slash-cli build\"");
         }
+    }
+    // Plugins, as Godot loads extensions before the main scene: their components and systems.
+    if (!game->project_.plugins.empty()) {
+        game->plugins_ = std::make_unique<plugin::Plugins>(game->components_);
+        const plugin::LoadOptions load{.linked = options.plugins,
+                                       .library_folders = plugin_library_folders()};
+        const auto errors = game->plugins_->load_project(data_dir, game->project_.plugins, load);
+        if (!errors.empty()) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "the plugin " + errors.begin()->first +
+                                  " did not load: " + errors.begin()->second);
+        }
+        game->plugins_->attach(game->world_);
     }
     if (auto loaded = world::load_scene(game->world_, scene.value()); !loaded) {
         return make_error(loaded.error().code,
@@ -457,6 +485,9 @@ json::Value Game::summary() const {
     }
     if (!xr_.is_null()) {
         summary["xr"] = xr_;
+    }
+    if (plugins_ != nullptr) {
+        summary["plugins"] = plugins_->status();
     }
     return summary;
 }

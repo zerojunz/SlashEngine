@@ -209,6 +209,10 @@ jobs:
           # before main, so each export proves packages link, ship and load.
           $cli sdk add examples/sdk-package/sdks/hello --project build/empty-game
           cp .github/scripts/hello-sdk-check.cpp build/empty-game/src/
+          # A plugin compiled in from its C source, which the game enters at start.
+          mkdir -p build/empty-game/addons && cp -r examples/plugins/addons/orbit build/empty-game/addons/
+          jq '.plugins = ["addons/orbit/orbit.plugin.json"]' build/empty-game/project.json > build/project.json
+          mv build/project.json build/empty-game/project.json
           # The engine's store package for the platform, as a game selling things adds it.
           case "${{ matrix.platform }}" in
             macos|ios) $cli sdk add storekit --project build/empty-game ;;
@@ -243,6 +247,7 @@ jobs:
           fi
           cat build/export.json
           jq -e '.sdks[0].name == "hello"' build/export.json
+          jq -e '.test.skipped or .test.plugins[0].components == ["Orbit"]' build/export.json
           # The package's glue code registered its analytics backends: C++ everywhere, and
           # Objective-C on macOS and iOS (Android's Java one is checked on the emulator below).
           case "${{ matrix.platform }}" in
@@ -489,6 +494,9 @@ jobs:
           $cli init build/empty-game
           $cli sdk add examples/sdk-package/sdks/hello --project build/empty-game
           cp .github/scripts/hello-sdk-check.cpp build/empty-game/src/
+          mkdir -p build/empty-game/addons && cp -r examples/plugins/addons/orbit build/empty-game/addons/
+          jq '.plugins = ["addons/orbit/orbit.plugin.json"]' build/empty-game/project.json > build/project.json
+          mv build/project.json build/empty-game/project.json
           echo '{"format": 1, "presets": {"linux-arm64": {"platform": "linux", "linux": {"arch": "arm64"}}}}' \
             > build/empty-game/export_presets.json
           for preset in windows linux linux-arm64 web; do
@@ -499,7 +507,7 @@ jobs:
             cat build/$preset.json
             if [ $preset = web ]; then
               # Built with the downloaded Emscripten and Python, and run on the downloaded Node.js.
-              jq -e '.test.passed' build/$preset.json
+              jq -e '.test.passed and .test.plugins[0].name == "orbit"' build/$preset.json
             else
               jq -e '.test.skipped' build/$preset.json
             fi
@@ -588,6 +596,8 @@ jobs:
           $output
           'exit code 0x{0:X8}' -f $game.ExitCode
           if ($game.ExitCode -ne 0 -or -not ($output -match '"ticks":60')) { $headers; exit 1 }
+          # The plugin compiled into it registered its component.
+          if (-not ($output -match '"components":\["Orbit"\]')) { exit 1 }
 
       - name: Set up QEMU for arm64 (Linux)
         if: runner.os == 'Linux'

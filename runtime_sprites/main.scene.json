@@ -1,0 +1,6 @@
+{"entities": {
+        "hero": {"components": {"Transform2D": {}, "AnimatedSprite2D": {
+            "sprite_frames": "hero.frames.json"}}},
+        "rock": {"components": {"Transform2D": {}, "Sprite2D": {"texture": "hero.png"}}},
+        "ghost": {"components": {"Transform2D": {}, "Sprite2D": {"texture": "gone.png"}}}
+    }, "format": 1}

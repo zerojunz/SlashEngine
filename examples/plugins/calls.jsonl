@@ -1,0 +1,11 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"schema.get","params":{"kind":"component","name":"Orbit"}}
+{"jsonrpc":"2.0","id":3,"method":"step","params":{"ticks":30}}
+{"jsonrpc":"2.0","id":4,"method":"world.query","params":{"with":["Orbit"],"include":["Transform2D","Orbit"],"omit_defaults":true}}
+{"jsonrpc":"2.0","id":5,"method":"events.subscribe","params":{"kinds":["lap"]}}
+{"jsonrpc":"2.0","id":6,"method":"step","params":{"ticks":90}}
+{"jsonrpc":"2.0","id":7,"method":"events.read","params":{"subscription":"events_1"}}
+{"jsonrpc":"2.0","id":8,"method":"input.inject","params":{"events":[{"type":"action","action":"ui_accept","pressed":true}]}}
+{"jsonrpc":"2.0","id":9,"method":"step","params":{"ticks":1}}
+{"jsonrpc":"2.0","id":10,"method":"world.query","params":{"with":["Orbit"],"include":["Orbit"],"omit_defaults":true}}
+{"jsonrpc":"2.0","id":11,"method":"component.set","params":{"id":"moon","components":{"Orbit":{"radius":-5}}}}

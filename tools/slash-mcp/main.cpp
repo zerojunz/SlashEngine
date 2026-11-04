@@ -16,6 +16,7 @@
 #include "slash/library/commands.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/runtime/gameplay.hpp"
+#include "slash/runtime/plugins.hpp"
 #include "slash/server/client.hpp"
 #include "slash/server/server.hpp"
 #include "slash/shader_compiler/shader_compiler.hpp"
@@ -152,6 +153,10 @@ int main(int argc, char** argv) {
     // The project's own C++ code, loaded again whenever gameplay.build rebuilds it.
     slash::gameplay::Host gameplay(components, slash::gameplay::library_path(options.project_root));
     options.gameplay = &gameplay;
+    // The project's plugins, loaded before its scenes open.
+    slash::plugin::Plugins plugins(components);
+    (void)slash::runtime::load_plugins(plugins, options.project_root);
+    options.plugins = &plugins;
     command::Session session(components, commands, options);
     // Until the code is built, its components are stand-ins, so its scenes still open.
     slash::runtime::add_stand_ins(gameplay, options.project_root);
