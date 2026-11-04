@@ -12,21 +12,52 @@
 #include <string_view>
 #include <vector>
 
-// A game's own canvas shaders: Godot's canvas_item shaders, written in HLSL with fragment() and
-// vertex() functions. The engine's shader tools (slash-cli, slash-mcp and exports) compile one
-// into a CompiledShader for every backend, which RenderDevice::create_shader takes, and the CPU
-// runs it with ShaderVm: the software device draws with it, so frame captures show a game's
-// shaders on any machine, and material.eval reads its colors.
+// A game's own shaders: Godot's canvas_item shaders, written in HLSL with fragment() and vertex()
+// functions, and its spatial shaders, whose fragment() gives a mesh's surface. The engine's shader
+// tools (slash-cli, slash-mcp and exports) compile one into a CompiledShader for every backend,
+// which RenderDevice::create_shader takes, and the CPU runs it with ShaderVm: the software device
+// draws with it, so frame captures show a game's shaders on any machine, and material.eval reads
+// a canvas shader's colors.
 namespace slash::render {
 
 // A shader made with RenderDevice::create_shader.
 // NOLINTNEXTLINE(performance-enum-size): ids count up, past 255
 enum class ShaderId : std::uint32_t { None = 0 };
 
+// What a game's shader draws, as Godot's shader_type: sprites and controls (canvas_item), or
+// meshes (spatial), whose material it is (Material3D::shader).
+enum class ShaderType : std::uint8_t { Canvas, Spatial };
+
+// How many texture params a spatial shader takes: they take the slots of a StandardMaterial3D's
+// albedo, metallic, roughness, emission and normal textures, 0 to 4.
+inline constexpr std::uint32_t kSpatialShaderTextures = 5;
+
+// One stage of a spatial shader for every backend: OpenGL's only for the stages it draws, the
+// Compatibility renderer's and its shadow passes'.
+struct ShaderStage {
+    std::vector<std::uint32_t> spirv;
+    std::string msl;
+    std::string wgsl;
+    std::string hlsl;
+    std::string glsl;
+
+    bool operator==(const ShaderStage&) const = default;
+};
+
 // A game's shader compiled for every backend: the material shader's vs_main and fs_main with the
 // game's code in them, as SPIR-V for Vulkan, MSL for Metal, GLSL ES 3.00 for OpenGL ES and WebGL
 // 2, WGSL for WebGPU, and HLSL, which Direct3D 12 compiles when the shader is made.
+//
+// A spatial shader is the mesh shader's stages (shaders/mesh.hlsl) with the game's code in them:
+// the fragment fields hold the Compatibility renderer's fragment stage, and clustered,
+// normal_roughness and motion Forward+'s (mesh_clustered.hlsl, mesh_normal.hlsl and
+// mesh_motion.hlsl). With a vertex(), the vertex fields hold the vertex stage every pass but the
+// motion prepass draws with (whose is motion_vertex) and hlsl_vertex its HLSL; without one they
+// are empty, and meshes' corners are placed by the mesh shader's own. shadow_vertex and shadow are
+// shadows.hlsl's stages, for a shader with a vertex() or ALPHA_SCISSOR_THRESHOLD; without either
+// they are empty and its shadows are drawn as a mesh with no material's.
 struct CompiledShader {
+    ShaderType type = ShaderType::Canvas;
     std::vector<std::uint32_t> spirv_vertex;
     std::vector<std::uint32_t> spirv_fragment;
     std::string msl_vertex;
@@ -41,15 +72,34 @@ struct CompiledShader {
     std::vector<std::uint32_t> cpu_vertex;
     std::vector<std::uint32_t> cpu_fragment;
     // The shader uses NORMAL_MAP or SPECULAR_SHININESS, so lights use them even with no normal or
-    // specular map, as Godot's do.
+    // specular map, as Godot's do. A spatial shader's NORMAL_MAP bends its normal.
     bool normal_map_used = false;
     bool specular_used = false;
+    // A spatial shader's Forward+ fragment stages.
+    ShaderStage clustered;
+    ShaderStage normal_roughness;
+    ShaderStage motion;
+    // A spatial shader writes ALPHA, so its meshes are transparent, or ALPHA_SCISSOR_THRESHOLD,
+    // so they are cut out instead, as Godot's.
+    bool alpha_used = false;
+    bool alpha_scissor_used = false;
+    // A spatial shader has a vertex(), whose stages its vertex fields hold, and its shadow
+    // passes draw with shadow_vertex and shadow (shadows_used: it has a vertex() or writes
+    // ALPHA_SCISSOR_THRESHOLD).
+    bool vertex_used = false;
+    [[nodiscard]] bool shadows_used() const { return vertex_used || alpha_scissor_used; }
+    // A spatial shader's vertex() as the motion prepass draws it, and its shadow passes' stages.
+    std::string hlsl_vertex;
+    ShaderStage motion_vertex;
+    ShaderStage shadow_vertex;
+    ShaderStage shadow;
 
     bool operator==(const CompiledShader&) const = default;
 };
 
 // The constant a game's shader reads the time from, in x: the last of a material's constants.
-// Number params take the ones before it, so a shader has at most 31.
+// Number params take the ones before it, so a shader has at most 31. A spatial shader's y is the
+// time of the frame before, which its vertex() runs with again for the motion prepass.
 inline constexpr std::uint32_t kShaderTimeConstant = 31;
 
 // What a game's shader is compiled from: its code and the material params it reads, which the
@@ -57,24 +107,33 @@ inline constexpr std::uint32_t kShaderTimeConstant = 31;
 struct ShaderSource {
     std::string path; // the shader file's project path, which errors name
     std::string code;
+    ShaderType type = ShaderType::Canvas;
     struct Param {
         std::string name;
         // A number param's components, 1 to 4, read from constant slot; 0 for a texture param,
-        // bound at texture slot (1 to 3).
+        // bound at texture slot (1 to 3 in a canvas shader, 0 to 4 in a spatial one).
         std::uint32_t components = 1;
         std::uint32_t slot = 0;
+        // A spatial shader's texture param holds sRGB colors, which texture() makes linear, as
+        // Godot's source_color hint.
+        bool source_color = false;
 
         bool operator==(const Param&) const = default;
     };
     std::vector<Param> params;
+    // A spatial shader's vertex() works in the world rather than the mesh's space, as Godot's
+    // world_vertex_coords render mode.
+    bool world_vertex_coords = false;
 
     bool operator==(const ShaderSource&) const = default;
 };
 
 // Whether a material param can't take this name in a game's shader: the code around the shader
-// (shaders/canvas.hlsl and the shader tools' wrappers) declares it, or HLSL keeps it as a keyword,
-// type or intrinsic function. A texture param's sampler is also declared, as name_sampler.
-[[nodiscard]] bool shader_name_reserved(std::string_view name);
+// (shaders/canvas.hlsl, shaders/mesh.hlsl and the shader tools' wrappers) declares it, or HLSL
+// keeps it as a keyword, type or intrinsic function. A texture param's sampler is also declared,
+// as name_sampler, and in a spatial shader as name_srgb.
+[[nodiscard]] bool shader_name_reserved(std::string_view name,
+                                        ShaderType type = ShaderType::Canvas);
 
 // Compiles a game's shader, or fails with every error in its code, one per line, each starting
 // "<path>:<line>: ".
@@ -115,6 +174,69 @@ inline constexpr std::size_t kConstants = 32;
 inline constexpr std::size_t kUniformBytes = (kConstants + 1) * 16;
 
 } // namespace cpu_shader
+
+// The same for a spatial shader's cpu_fragment, which gives a mesh's surface at a pixel as the
+// fragment stage's game_surface does (shaders/mesh.hlsl). It reads the corners' values there, all
+// in the world: kWorld (xyz, then 1 to turn the normal around, for a back face of a mesh drawn
+// from both sides), kNormal (xyz, then 1 on a front face), kTangent, kBinormal, kUv (UV in xy, UV2
+// in zw), kVertexColor and kFragCoord. It writes kOutAlbedo (ALBEDO, linear, and ALPHA),
+// kOutMaterial (METALLIC, ROUGHNESS, SPECULAR and AO), kOutEmission (EMISSION, linear, and
+// AO_LIGHT_AFFECT) and kOutNormal (the shading normal in the world, normalized, and
+// ALPHA_SCISSOR_THRESHOLD). Its uniform buffer, binding 0, is SpatialUniforms; its texture params
+// are bindings 0 to 4.
+namespace cpu_spatial {
+
+inline constexpr std::uint32_t kWorld = 0;
+inline constexpr std::uint32_t kNormal = 1;
+inline constexpr std::uint32_t kTangent = 2;
+inline constexpr std::uint32_t kBinormal = 3;
+inline constexpr std::uint32_t kUv = 4;
+inline constexpr std::uint32_t kVertexColor = 5;
+inline constexpr std::uint32_t kFragCoord = 6;
+inline constexpr std::uint32_t kOutAlbedo = 0;
+inline constexpr std::uint32_t kOutMaterial = 1;
+inline constexpr std::uint32_t kOutEmission = 2;
+inline constexpr std::uint32_t kOutNormal = 3;
+
+// A spatial shader's cpu_vertex runs its vertex() on a mesh's corner as the vertex stage does. It
+// reads kCornerPosition (the corner's in the mesh's space, then 1 for where it was in the frame
+// before: the model and time of the frame before), kCornerNormal, kCornerTangent (xyz, and the
+// binormal's sign in w), kCornerUv (UV in xy, UV2 in zw) and kCornerColor. It writes them as
+// vertex() leaves them, in the world: kCornerOutWorld, kCornerOutNormal, kCornerOutTangent and
+// kCornerOutBinormal, then kCornerOutUv and kCornerOutColor. Its uniform buffer is the same.
+inline constexpr std::uint32_t kCornerPosition = 0;
+inline constexpr std::uint32_t kCornerNormal = 1;
+inline constexpr std::uint32_t kCornerTangent = 2;
+inline constexpr std::uint32_t kCornerUv = 3;
+inline constexpr std::uint32_t kCornerColor = 4;
+inline constexpr std::uint32_t kCornerOutWorld = 0;
+inline constexpr std::uint32_t kCornerOutNormal = 1;
+inline constexpr std::uint32_t kCornerOutTangent = 2;
+inline constexpr std::uint32_t kCornerOutBinormal = 3;
+inline constexpr std::uint32_t kCornerOutUv = 4;
+inline constexpr std::uint32_t kCornerOutColor = 5;
+
+} // namespace cpu_spatial
+
+// What a spatial shader's uniform buffer holds, b3 in space3 of the mesh shader's fragment stage,
+// b2 in space1 of its vertex stage and b1 in space3 of a shadow pass's fragment stage: its
+// material's constants (params, the time in kShaderTimeConstant's x and the time of the frame
+// before in its y), then Godot's MODEL_MATRIX, VIEW_MATRIX, INV_VIEW_MATRIX, PROJECTION_MATRIX and
+// INV_PROJECTION_MATRIX, column-major, VIEWPORT_SIZE, then MODEL_NORMAL_MATRIX (the inverse
+// transpose of the model's upper 3x3, in its upper 3x3) and the model of the frame before, which
+// the motion prepass places the corners where they were with.
+struct SpatialUniforms {
+    std::array<std::array<float, 4>, cpu_shader::kConstants> constants{};
+    std::array<float, 16> model{};
+    std::array<float, 16> view{};
+    std::array<float, 16> inv_view{};
+    std::array<float, 16> projection{};
+    std::array<float, 16> inv_projection{};
+    std::array<float, 4> viewport{};
+    std::array<float, 16> normal_model{};
+    std::array<float, 16> previous_model{};
+};
+static_assert(sizeof(SpatialUniforms) == 976);
 
 // Runs SPIR-V on the CPU, as a GPU runs it: the CPU twin of a game's shaders. It takes the part
 // of SPIR-V that glslang makes from HLSL for pixel and vertex work (arithmetic, vectors and

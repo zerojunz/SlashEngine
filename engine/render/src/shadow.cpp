@@ -583,8 +583,17 @@ CullMode shadow_cull(const ShadowPass& pass, const MeshDraw& draw) {
 
 Float4 shadow_vertex(const MeshShadowPassUniforms& pass, const MeshInstanceUniforms& instance,
                      const Vertex3D& vertex) {
-    const Float4 world = transform(
-        instance.model, {vertex.position[0], vertex.position[1], vertex.position[2], 1.0F});
+    return shadow_clip(pass, transform(instance.model, {vertex.position[0], vertex.position[1],
+                                                        vertex.position[2], 1.0F}));
+}
+
+SpatialUniforms shadow_spatial_uniforms(const ShadowPass& pass, const MeshDraw& draw) {
+    return spatial_uniforms(pass.uniforms.view, pass.uniforms.projection,
+                            mesh_instance_uniforms(draw.transform, draw.material), draw.material,
+                            pass.rect.width, pass.rect.height);
+}
+
+Float4 shadow_clip(const MeshShadowPassUniforms& pass, const Float4& world) {
     const Float4 seen = transform(pass.view, world);
     Float3 v{seen[0], seen[1], seen[2]};
     const float bias = pass.options[0];

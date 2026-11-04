@@ -164,6 +164,7 @@ add_executable(slash_tests
     test_server.cpp
     test_services.cpp
     test_shader.cpp
+    test_spatial_shader.cpp
     test_shadow.cpp
     test_sky.cpp
     test_ssao.cpp

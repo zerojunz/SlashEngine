@@ -2,6 +2,7 @@
 
 #include "graph.hpp"
 
+#include "slash/core/math.hpp"
 #include "slash/core/text.hpp"
 #include "slash/render/image.hpp"
 
@@ -325,6 +326,20 @@ constexpr GraphSpec kParticleSpec{.inputs = kParticleInputs,
 constexpr std::array<std::string_view, 6> kParamTypes = {"float", "vec2",  "vec3",
                                                          "vec4",  "color", "texture"};
 constexpr std::array<std::string_view, 3> kFilters = {"inherit", "linear", "nearest"};
+// An sRGB channel made linear, as Godot's Color::srgb_to_linear, with the engine's own exp and
+// ln so it is the same everywhere.
+float srgb_to_linear(float c) {
+    if (c <= 0.04045F) {
+        return c / 12.92F;
+    }
+    return slash::exp(2.4F * slash::ln((c + 0.055F) / 1.055F));
+}
+
+// The render modes a spatial material takes, as Godot's.
+constexpr std::array<std::string_view, 11> kRenderModes = {
+    "blend_mix",    "blend_add",        "blend_sub",          "blend_mul",
+    "cull_back",    "cull_front",       "cull_disabled",      "unshaded",
+    "fog_disabled", "shadows_disabled", "world_vertex_coords"};
 
 Kind param_kind(std::string_view type) {
     if (type == "float") {
@@ -494,6 +509,13 @@ json::Value param_schema(bool textures) {
         param["properties"]["filter"]["description"] =
             "Textures: how it is sampled; inherit uses the sprite's filter.";
     }
+    if (textures) {
+        param["properties"]["source_color"]["type"] = "boolean";
+        param["properties"]["source_color"]["default"] = false;
+        param["properties"]["source_color"]["description"] =
+            "Spatial materials' textures: it holds sRGB colors, which the shader reads linear, as "
+            "Godot's source_color hint.";
+    }
     param["properties"]["doc"] = text_schema("What the param does, for whoever sets it.");
     return param;
 }
@@ -540,7 +562,23 @@ json::Value schema(bool list_ops) {
                                          "the vertex color.";
     properties["shader"] = text_schema(
         "A game's own shader instead of nodes and color: an .hlsl file's project path, with "
-        "fragment() and vertex() functions as Godot's canvas_item shaders.");
+        "fragment() and vertex() functions as Godot's canvas_item shaders, or a fragment() that "
+        "gives a mesh's surface as its spatial shaders.");
+    properties["shader_type"]["enum"] = json::Array{"canvas_item", "spatial"};
+    properties["shader_type"]["default"] = "canvas_item";
+    properties["shader_type"]["description"] =
+        "What it draws, as Godot's shader_type: sprites and controls (canvas_item), or meshes "
+        "(spatial, which needs a shader; MeshInstance3D's material_override names it).";
+    json::Array modes;
+    for (const std::string_view mode : kRenderModes) {
+        modes.emplace_back(mode);
+    }
+    properties["render_mode"]["type"] = "array";
+    properties["render_mode"]["items"]["enum"] = std::move(modes);
+    properties["render_mode"]["description"] =
+        "A spatial material's render modes, as Godot's render_mode line: one blend_ mode (mix "
+        "by default), one cull_ mode (back by default), unshaded, fog_disabled, "
+        "shadows_disabled, world_vertex_coords.";
 
     json::Value compiled;
     compiled["type"] = "object";
@@ -552,11 +590,24 @@ json::Value schema(bool list_ops) {
         compiled["properties"][key] = text_schema("SPIR-V, in base64.");
     }
     for (const char* key : {"msl_vertex", "msl_fragment", "glsl_vertex", "glsl_fragment",
-                            "wgsl_vertex", "wgsl_fragment", "hlsl"}) {
+                            "wgsl_vertex", "wgsl_fragment", "hlsl", "hlsl_vertex"}) {
         compiled["properties"][key] = text_schema("Source code.");
     }
-    for (const char* key : {"normal_map_used", "specular_used"}) {
+    for (const char* key :
+         {"normal_map_used", "specular_used", "alpha_used", "alpha_scissor_used", "vertex_used"}) {
         compiled["properties"][key]["type"] = "boolean";
+    }
+    compiled["properties"]["type"]["enum"] = json::Array{"canvas_item", "spatial"};
+    json::Value stage;
+    stage["type"] = "object";
+    stage["additionalProperties"] = false;
+    stage["properties"]["spirv"] = text_schema("SPIR-V, in base64.");
+    for (const char* key : {"msl", "wgsl", "hlsl", "glsl"}) {
+        stage["properties"][key] = text_schema("Source code.");
+    }
+    for (const char* key :
+         {"clustered", "normal_roughness", "motion", "motion_vertex", "shadow_vertex", "shadow"}) {
+        compiled["properties"][key] = stage;
     }
     properties["compiled"] = std::move(compiled);
     out["$defs"]["node"] = std::move(node);
@@ -573,6 +624,15 @@ public:
         : doc_(doc), spec_(spec), stage_(stage) {}
 
     void run() {
+        if (const json::Value* type = doc_.find("shader_type"); type != nullptr) {
+            material_.shader_type = type->as_string() == "spatial" ? render::ShaderType::Spatial
+                                                                   : render::ShaderType::Canvas;
+        }
+        if (material_.shader_type == render::ShaderType::Spatial) {
+            read_spatial();
+        } else if (doc_.find("render_mode") != nullptr) {
+            fail("/render_mode", "only spatial materials have render modes");
+        }
         if (const json::Value* blend = doc_.find("blend"); blend != nullptr) {
             // The schema allows only known names.
             material_.blend =
@@ -706,11 +766,66 @@ public:
         check_limits();
     }
 
+    // A spatial material's: its render modes, and no canvas fields.
+    void read_spatial() {
+        if (doc_.find("shader") == nullptr) {
+            fail("/shader_type", "a spatial material needs a shader: an .hlsl file with a "
+                                 "fragment() that gives the surface");
+        }
+        for (const char* key : {"blend", "light_mode"}) {
+            if (doc_.find(key) != nullptr) {
+                fail(std::string("/") + key,
+                     std::string("spatial materials have no ") + key +
+                         (key == std::string_view("blend") ? "; use a blend_ render mode"
+                                                           : "; 3D lights light them"));
+            }
+        }
+        const json::Value* modes = doc_.find("render_mode");
+        if (modes == nullptr) {
+            return;
+        }
+        bool blend = false;
+        bool cull = false;
+        SpatialModes& out = material_.modes;
+        for (std::size_t i = 0; i < modes->as_array().size(); ++i) {
+            const std::string& mode = modes->as_array()[i].as_string();
+            const std::string at = "/render_mode/" + std::to_string(i);
+            if (mode.starts_with("blend_")) {
+                if (blend) {
+                    fail(at, "a material has one blend_ mode");
+                }
+                blend = true;
+                out.blend =
+                    render::parse_blend_mode(mode.substr(6)).value_or(render::BlendMode::Mix);
+            } else if (mode.starts_with("cull_")) {
+                if (cull) {
+                    fail(at, "a material has one cull_ mode");
+                }
+                cull = true;
+                out.cull = render::CullMode::Back;
+                if (mode == "cull_front") {
+                    out.cull = render::CullMode::Front;
+                } else if (mode == "cull_disabled") {
+                    out.cull = render::CullMode::Disabled;
+                }
+            } else if (mode == "unshaded") {
+                out.unshaded = true;
+            } else if (mode == "fog_disabled") {
+                out.fog_disabled = true;
+            } else if (mode == "world_vertex_coords") {
+                out.world_vertex_coords = true;
+            } else if (mode == "shadows_disabled") {
+                out.shadows_disabled = true;
+            }
+        }
+    }
+
     void read_params() {
         const json::Value* params = doc_.find("params");
         if (params == nullptr) {
             return;
         }
+        const bool spatial = material_.shader_type == render::ShaderType::Spatial;
         int textures = 0;
         for (const auto& [name, json_param] : params->as_object()) {
             const std::string at = "/params/" + json::pointer_escape(name);
@@ -727,7 +842,10 @@ public:
             const bool texture = param.type == "texture";
             if (texture) {
                 ++textures;
-                if (textures == render::kMaterialTextureSlots) {
+                if (spatial && textures == render::kSpatialShaderTextures + 1) {
+                    fail(at, "a spatial material samples at most " +
+                                 std::to_string(render::kSpatialShaderTextures) + " textures");
+                } else if (!spatial && textures == render::kMaterialTextureSlots) {
                     fail(at, "a material samples at most " +
                                  std::to_string(render::kMaterialTextureSlots - 1) +
                                  " textures of its own, besides the sprite's");
@@ -744,6 +862,14 @@ public:
                 if (texture && json_param.find(key) != nullptr) {
                     fail(at + "/" + key, "texture params have no " + std::string(key));
                 }
+            }
+            if (const json::Value* srgb = json_param.find("source_color"); srgb != nullptr) {
+                if (!texture || !spatial) {
+                    fail(at + "/source_color", "only a spatial material's texture params have "
+                                               "source_color; its color params are linear "
+                                               "always");
+                }
+                param.source_color = srgb->as_bool();
             }
             if (const json::Value* repeat = json_param.find("repeat"); repeat != nullptr) {
                 param.repeat = repeat->as_bool();
@@ -798,18 +924,22 @@ private:
         material_.shader = path;
         material_.time_constant = render::kShaderTimeConstant;
         material_.program.constants.assign(render::cpu_shader::kConstants, {});
+        const render::ShaderType type = material_.shader_type;
+        const bool spatial = type == render::ShaderType::Spatial;
         std::uint32_t constant = 0;
-        std::uint32_t texture = 0;
+        // A canvas shader's slot 0 is the sprite's texture.
+        std::uint32_t texture = spatial ? 0 : 1;
         for (auto& [name, param] : material_.params) {
             const std::string at = "/params/" + json::pointer_escape(name);
             const bool sampled = param.type == "texture";
-            if (render::shader_name_reserved(name) ||
-                (sampled && render::shader_name_reserved(name + "_sampler"))) {
+            if (render::shader_name_reserved(name, type) ||
+                (sampled && (render::shader_name_reserved(name + "_sampler", type) ||
+                             (spatial && render::shader_name_reserved(name + "_srgb", type))))) {
                 fail(at, "\"" + name +
                              "\" is taken in shaders, by HLSL or the code around the shader; "
                              "name the param something else");
             } else if (sampled) {
-                param.slot = ++texture;
+                param.slot = texture++;
             } else if (constant == render::kShaderTimeConstant) {
                 fail(at, "a shader reads at most " + std::to_string(render::kShaderTimeConstant) +
                              " number params");
@@ -823,26 +953,29 @@ private:
         }
     }
 
+    // SPIR-V in base64, at path in the file.
+    void read_words(const json::Value& value, const std::string& path,
+                    std::vector<std::uint32_t>& out) {
+        const std::optional<std::string> bytes = base64_decode(value.as_string());
+        if (!bytes || bytes->size() % 4 != 0) {
+            fail(path, "expected SPIR-V in base64");
+            return;
+        }
+        out.resize(bytes->size() / 4);
+        for (std::size_t i = 0; i < out.size(); ++i) {
+            std::uint32_t word = 0;
+            for (std::size_t k = 0; k < 4; ++k) {
+                word |= std::uint32_t{static_cast<unsigned char>((*bytes)[(i * 4) + k])} << (8 * k);
+            }
+            out[i] = word;
+        }
+    }
+
     void read_compiled(const json::Value& compiled) {
         auto shader = std::make_shared<render::CompiledShader>();
         const auto words = [&](const char* key, std::vector<std::uint32_t>& out) {
-            const json::Value* value = compiled.find(key);
-            if (value == nullptr) {
-                return;
-            }
-            const std::optional<std::string> bytes = base64_decode(value->as_string());
-            if (!bytes || bytes->size() % 4 != 0) {
-                fail("/compiled/" + std::string(key), "expected SPIR-V in base64");
-                return;
-            }
-            out.resize(bytes->size() / 4);
-            for (std::size_t i = 0; i < out.size(); ++i) {
-                std::uint32_t word = 0;
-                for (std::size_t k = 0; k < 4; ++k) {
-                    word |= std::uint32_t{static_cast<unsigned char>((*bytes)[(i * 4) + k])}
-                            << (8 * k);
-                }
-                out[i] = word;
+            if (const json::Value* value = compiled.find(key); value != nullptr) {
+                read_words(*value, "/compiled/" + std::string(key), out);
             }
         };
         const auto text = [&](const char* key, std::string& out) {
@@ -865,8 +998,41 @@ private:
         text("wgsl_vertex", shader->wgsl_vertex);
         text("wgsl_fragment", shader->wgsl_fragment);
         text("hlsl", shader->hlsl);
+        text("hlsl_vertex", shader->hlsl_vertex);
+        shader->vertex_used = flag("vertex_used");
         shader->normal_map_used = flag("normal_map_used");
         shader->specular_used = flag("specular_used");
+        shader->alpha_used = flag("alpha_used");
+        shader->alpha_scissor_used = flag("alpha_scissor_used");
+        if (const json::Value* type = compiled.find("type");
+            type != nullptr && type->as_string() == "spatial") {
+            shader->type = render::ShaderType::Spatial;
+        }
+        if (shader->type != material_.shader_type) {
+            fail("/compiled/type", "the compiled shader is for another shader_type");
+        }
+        const auto stage = [&](const char* key, render::ShaderStage& out) {
+            const json::Value* value = compiled.find(key);
+            if (value == nullptr) {
+                return;
+            }
+            if (const json::Value* spirv = value->find("spirv"); spirv != nullptr) {
+                read_words(*spirv, "/compiled/" + std::string(key) + "/spirv", out.spirv);
+            }
+            for (const auto& [name, field] :
+                 {std::pair{"msl", &out.msl}, std::pair{"wgsl", &out.wgsl},
+                  std::pair{"hlsl", &out.hlsl}, std::pair{"glsl", &out.glsl}}) {
+                if (const json::Value* found = value->find(name); found != nullptr) {
+                    *field = found->as_string();
+                }
+            }
+        };
+        stage("clustered", shader->clustered);
+        stage("normal_roughness", shader->normal_roughness);
+        stage("motion", shader->motion);
+        stage("motion_vertex", shader->motion_vertex);
+        stage("shadow_vertex", shader->shadow_vertex);
+        stage("shadow", shader->shadow);
         material_.compiled = std::move(shader);
     }
 
@@ -1595,7 +1761,11 @@ Result<CanvasMaterial> parse_material(const json::Value& doc) {
 }
 
 render::ShaderSource shader_source(const CanvasMaterial& material, std::string code) {
-    render::ShaderSource source{.path = material.shader, .code = std::move(code), .params = {}};
+    render::ShaderSource source{.path = material.shader,
+                                .code = std::move(code),
+                                .type = material.shader_type,
+                                .params = {},
+                                .world_vertex_coords = material.modes.world_vertex_coords};
     for (const auto& [name, param] : material.params) {
         if (!param.slot) {
             continue;
@@ -1603,7 +1773,10 @@ render::ShaderSource shader_source(const CanvasMaterial& material, std::string c
         const auto components = param.type == "texture"
                                     ? 0U
                                     : static_cast<std::uint32_t>(size_of(param_kind(param.type)));
-        source.params.push_back({.name = name, .components = components, .slot = *param.slot});
+        source.params.push_back({.name = name,
+                                 .components = components,
+                                 .slot = *param.slot,
+                                 .source_color = param.source_color});
     }
     return source;
 }
@@ -1642,17 +1815,20 @@ std::vector<json::ValidationError> check_material_shader(const json::Value& doc,
 json::Value compiled_shader_json(const render::CompiledShader& shader,
                                  const ShaderTargets& targets) {
     json::Value out = json::Object{};
-    const auto words = [&](const char* key, const std::vector<std::uint32_t>& code) {
-        if (code.empty()) {
-            return;
-        }
+    // SPIR-V in base64.
+    const auto base64_words = [](const std::vector<std::uint32_t>& code) {
         std::string bytes(code.size() * 4, '\0');
         for (std::size_t i = 0; i < code.size(); ++i) {
             for (std::size_t k = 0; k < 4; ++k) {
                 bytes[(i * 4) + k] = static_cast<char>((code[i] >> (8 * k)) & 0xFFU);
             }
         }
-        out[key] = base64_encode(bytes);
+        return base64_encode(bytes);
+    };
+    const auto words = [&](const char* key, const std::vector<std::uint32_t>& code) {
+        if (!code.empty()) {
+            out[key] = base64_words(code);
+        }
     };
     const auto text = [&](const char* key, const std::string& code) {
         if (!code.empty()) {
@@ -1677,9 +1853,44 @@ json::Value compiled_shader_json(const render::CompiledShader& shader,
     }
     if (targets.hlsl) {
         text("hlsl", shader.hlsl);
+        text("hlsl_vertex", shader.hlsl_vertex);
     }
     words("cpu_vertex", shader.cpu_vertex);
     words("cpu_fragment", shader.cpu_fragment);
+    if (shader.type == render::ShaderType::Spatial) {
+        out["type"] = "spatial";
+        const auto stage = [&](const char* key, const render::ShaderStage& code) {
+            json::Value value = json::Object{};
+            if (targets.spirv && !code.spirv.empty()) {
+                value["spirv"] = base64_words(code.spirv);
+            }
+            for (const auto& [name, text_code, wanted] :
+                 {std::tuple{"msl", &code.msl, targets.msl},
+                  std::tuple{"wgsl", &code.wgsl, targets.wgsl},
+                  std::tuple{"hlsl", &code.hlsl, targets.hlsl},
+                  std::tuple{"glsl", &code.glsl, targets.glsl}}) {
+                if (wanted && !text_code->empty()) {
+                    value[name] = *text_code;
+                }
+            }
+            if (!value.as_object().empty()) {
+                out[key] = std::move(value);
+            }
+        };
+        stage("clustered", shader.clustered);
+        stage("normal_roughness", shader.normal_roughness);
+        stage("motion", shader.motion);
+        stage("motion_vertex", shader.motion_vertex);
+        stage("shadow_vertex", shader.shadow_vertex);
+        stage("shadow", shader.shadow);
+        for (const auto& [key, used] : {std::pair{"alpha_used", shader.alpha_used},
+                                        std::pair{"alpha_scissor_used", shader.alpha_scissor_used},
+                                        std::pair{"vertex_used", shader.vertex_used}}) {
+            if (used) {
+                out[key] = true;
+            }
+        }
+    }
     if (shader.normal_map_used) {
         out["normal_map_used"] = true;
     }
@@ -1756,13 +1967,26 @@ Result<MaterialInstance> instantiate(const CanvasMaterial& material,
     instance.program = material.program;
     instance.shader = material.shader;
     instance.compiled = material.compiled;
+    instance.shader_type = material.shader_type;
+    instance.modes = material.modes;
+    const bool spatial = material.shader_type == render::ShaderType::Spatial;
     const auto place = [&](const MaterialParam& param) {
         if (!param.slot) {
             return;
         }
-        if (param.type == "texture") {
-            instance.textures.at(*param.slot - 1) = {
-                .path = param.texture, .repeat = param.repeat, .filter = param.filter};
+        const MaterialTextureRef texture{
+            .path = param.texture, .repeat = param.repeat, .filter = param.filter};
+        if (param.type == "texture" && spatial) {
+            instance.spatial_textures.at(*param.slot) = texture;
+        } else if (param.type == "texture") {
+            instance.textures.at(*param.slot - 1) = texture;
+        } else if (param.type == "color" && spatial) {
+            // Linear, as Godot's source_color hint makes a uniform's color.
+            std::array<float, 4> value = param.value;
+            for (std::size_t i = 0; i < 3; ++i) {
+                value.at(i) = srgb_to_linear(value.at(i));
+            }
+            instance.program.constants.at(*param.slot) = value;
         } else {
             instance.program.constants.at(*param.slot) = param.value;
         }
@@ -1809,6 +2033,11 @@ Result<std::vector<std::array<float, 4>>> evaluate(const MaterialInstance& insta
                                                    render::Filter filter, const PixelInputs& inputs,
                                                    std::span<const std::array<float, 2>> uvs,
                                                    const ImageSource& images) {
+    if (instance.shader_type == render::ShaderType::Spatial) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "a spatial material colors meshes, which the 3D lights shade; "
+                          "frame.capture shows them");
+    }
     struct Slot {
         const render::Image* image = nullptr;
         render::Filter filter = render::Filter::Linear;

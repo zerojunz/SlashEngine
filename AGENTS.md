@@ -910,6 +910,26 @@ games never do, and draw the `"compiled"` code their export wrote into each mate
 Renderers recompile a shader when its file changes. `examples/custom-shaders` has a dissolve and
 a sway.
 
+A material with `"shader_type": "spatial"` is Godot's spatial shader: its `fragment()` gives a
+mesh's surface (`ALBEDO`, `ROUGHNESS`, `NORMAL_MAP`, `EMISSION`, `ALPHA` and the rest, Godot's
+built-ins in view space), and `MeshInstance3D.material_override` draws it (`Renderer::override_material`
+in `engine/scene3d/src/scene3d.cpp`, through the `ShaderMaterialSource` `CanvasRenderer` gives it).
+The compiler puts the game's code, as `game_surface`, before `shaders/mesh.hlsl` with
+`GAME_SHADER` defined, and compiles that file's Compatibility, Forward+ and prepass fragment
+stages with it (`ShaderType::Spatial`, `CompiledShader::clustered`, `normal_roughness` and
+`motion`). A `vertex()` becomes `game_vertex`, which the mesh, motion (with the frame before's
+model and time, `SpatialUniforms::previous_model` and the time constant's y) and shadow vertex
+stages call with `GAME_VERTEX` defined; `shaders/shadow.hlsl` takes `game_surface` too, to cut
+out by `ALPHA_SCISSOR_THRESHOLD` (`CompiledShader::shadows_used`, `shadow_spatial_uniforms` in
+`src/shadow.cpp`). Its uniforms (`render::SpatialUniforms`) are the fourth fragment uniform
+buffer (the third vertex one) and its textures take the material's first five slots. The
+software device runs `game_surface` with `ShaderVm` on 2x2 quads (`game_surfaces` in
+`software_device.cpp`), so derivatives work, and `game_vertex` per corner (`game_corners`), and
+`shade_mesh` takes the surface (`MeshPixel::game`); a change to how `mesh.hlsl` or `shadow.hlsl`
+uses the shader goes in both.
+`tests/test_spatial_shader.cpp` holds every device to the software device's pixels;
+`examples/spatial-shaders` has a crystal, a fence and a glass ball.
+
 Tile maps follow Godot's TileSet and TileMapLayer (`tilemap.hpp` in `engine/canvas`). A
 `.tileset.json` file (`$cli schema tileset`) cuts atlas textures into tiles and names terrain
 sets; a terrain tile's `peering` names the terrain each side and corner must touch. A

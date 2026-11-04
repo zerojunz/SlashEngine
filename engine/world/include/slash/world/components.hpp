@@ -77,11 +77,17 @@ struct MeshInstance3D {
     // Always drawn, never hidden by OccluderInstance3Ds, as Godot's
     // GeometryInstance3D.ignore_occlusion_culling.
     bool ignore_occlusion_culling = false;
+    // A spatial .material.json file (a game's shader) or a .standard_material.json file that takes
+    // the place of every surface's material, as Godot's GeometryInstance3D.material_override; ""
+    // for none. It goes before a StandardMaterial3D on the entity.
+    std::string material_override;
+    // Values for the spatial material's params, as Sprite2D's material_params.
+    std::map<std::string, json::Value> material_params;
 
     friend bool operator==(const MeshInstance3D&, const MeshInstance3D&) = default;
 };
 SLASH_COMPONENT(MeshInstance3D, mesh, layers, cast_shadow, gi_mode, gi_lightmap_texel_scale,
-                lod_bias, ignore_occlusion_culling)
+                lod_bias, ignore_occlusion_culling, material_override, material_params)
 
 // One instance of a MultiMeshInstance3D's mesh: where it is in the entity's space, as a
 // Transform3D's position, rotation (radians, Godot's YXZ order) and scale.

@@ -331,6 +331,11 @@ private:
                                       double time, render::LightMode* light_mode);
     // A GPUParticles2D's process material.
     Result<const render::ParticleProcess*> process_material(const std::string& path);
+    // A MeshInstance3D's material_override, for scene3d::Renderer: a .standard_material.json
+    // file's material, or a spatial material's shader on the device and its params' values.
+    Result<scene3d::OverrideMaterial>
+    override_material(const std::string& path, const std::map<std::string, json::Value>& params,
+                      double time);
     // A GPUParticles2D's particle system on the device, and the steps run on it; and the same
     // on the CPU for FrameContents, run only when a frame asks for them.
     struct GpuSystem {

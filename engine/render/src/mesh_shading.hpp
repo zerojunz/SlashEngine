@@ -103,8 +103,8 @@ struct MeshSurfaceUniforms {
 };
 
 // A draw's textures in mesh.hlsl's slots. A StandardMaterial3D's albedo, metallic, roughness,
-// emission and normal textures, the rest None but the sixth, its VoxelGIs' atlas, and the last, its
-// lightmap; with terrain shading,
+// emission and normal textures (a game's shader's texture params in their place), the rest None
+// but the sixth, its VoxelGIs' atlas, and the last, its lightmap; with terrain shading,
 // the color map, splat map and normal map, then the four layers' albedo_bump and their
 // normal_roughness.
 [[nodiscard]] std::array<MaterialTexture, kMeshTextures>
@@ -246,6 +246,16 @@ static_assert(sizeof(MeshShadowPassUniforms) == 144);
                                                           const Material3D& material);
 [[nodiscard]] MeshInstanceUniforms
 mesh_instance_uniforms(const Mat4& transform, const Material3D& material, const Mat4& previous);
+// A spatial shader's uniforms for a draw at transform (and previous in the frame before) with a
+// material of a scene, onto a target of width by height pixels; or for a draw's instance seen
+// through a camera's view and projection, as a shadow pass's.
+[[nodiscard]] SpatialUniforms spatial_uniforms(const Mat4& view, const Mat4& projection,
+                                               const MeshInstanceUniforms& instance,
+                                               const Material3D& material, std::uint32_t width,
+                                               std::uint32_t height);
+[[nodiscard]] SpatialUniforms spatial_uniforms(const Scene3D& scene, const Mat4& transform,
+                                               const Material3D& material, std::uint32_t width,
+                                               std::uint32_t height, const Mat4& previous);
 [[nodiscard]] MeshSurfaceUniforms mesh_surface_uniforms(const Material3D& material,
                                                         std::uint32_t layers);
 // The scene's uniforms: in Compatibility its first kMaxLights3D lights, in Forward+ its
@@ -372,6 +382,11 @@ struct ShadowPlan {
 // vs_main in shaders/shadow.hlsl: where a corner lands in a shadow pass's clip space.
 [[nodiscard]] Float4 shadow_vertex(const MeshShadowPassUniforms& pass,
                                    const MeshInstanceUniforms& instance, const Vertex3D& vertex);
+// The same for a corner already in the world, as a spatial shader's vertex() puts it.
+[[nodiscard]] Float4 shadow_clip(const MeshShadowPassUniforms& pass, const Float4& world);
+// A spatial shader's uniforms in a shadow pass, which sees the draw from the light: its view,
+// projection and rect.
+[[nodiscard]] SpatialUniforms shadow_spatial_uniforms(const ShadowPass& pass, const MeshDraw& draw);
 
 // The order to draw a frame's meshes in, as Godot's: opaque and alpha scissor ones nearest
 // first, then alpha ones farthest first, each by how far its box's center is in front of the
@@ -411,6 +426,8 @@ template <typename Known>
                                              const Known& known);
 [[nodiscard]] Error unknown_mesh(MeshId mesh);
 [[nodiscard]] Error no_scene();
+// A 3D material's shader that isn't a spatial shader made on the device.
+[[nodiscard]] Error not_spatial_shader(ShaderId shader);
 // What draw_mesh checks in a frame: that it has a scene, the mesh exists (mesh_known), the
 // transform is finite and the material is usable.
 template <typename Known>
@@ -443,6 +460,33 @@ struct MeshCorner {
 [[nodiscard]] MeshCorner mesh_vertex(const MeshCameraUniforms& camera,
                                      const MeshInstanceUniforms& instance, const Vertex3D& vertex,
                                      const Float3& previous);
+// A corner where a spatial shader's vertex() put it, as its CPU module writes it (cpu_spatial's
+// kCornerOut values), all in the world.
+struct GameCorner {
+    Float3 world{};
+    Float3 normal{};
+    Float3 tangent{};
+    Float3 binormal{};
+    std::array<float, 2> uv{};
+    std::array<float, 2> uv2{};
+    Float4 color{};
+};
+// vs_main in shaders/mesh.hlsl with GAME_VERTEX: the corner vertex() gave, which it put at
+// previous_world in the frame before.
+[[nodiscard]] MeshCorner mesh_vertex(const MeshCameraUniforms& camera,
+                                     const MeshInstanceUniforms& instance, const GameCorner& corner,
+                                     const Float3& previous_world);
+
+// The surface a spatial shader's game_surface gives a pixel (shaders/mesh.hlsl), as its CPU module
+// writes it (cpu_spatial): ALBEDO (linear) and ALPHA; METALLIC, ROUGHNESS, SPECULAR and AO;
+// EMISSION (linear) and AO_LIGHT_AFFECT; the shading normal in the world and
+// ALPHA_SCISSOR_THRESHOLD.
+struct GameSurface {
+    Float4 albedo{};
+    Float4 material{};
+    Float4 emission{};
+    Float4 normal{};
+};
 
 // What the fragment stage reads at a pixel: where it is in the target, the corners' values there,
 // which face it is on, and what each texture holds there.
@@ -461,6 +505,8 @@ struct MeshPixel {
     Float3 lightmap{};
     // The draw's VoxelGI atlas, when it traces VoxelGIs.
     const Image* voxel_gi = nullptr;
+    // The surface its game's shader gives it, in place of the material's, when it has one.
+    std::optional<GameSurface> game{}; // NOLINT(readability-redundant-member-init): left out
 
     [[nodiscard]] static constexpr std::array<Float4, kMeshTextures> white_texels() {
         std::array<Float4, kMeshTextures> out{};
@@ -694,6 +740,18 @@ Result<void> check_material_3d(const Material3D& material, TextureId target, con
             if (!finite({layer.uv_scale, layer.colormap_opacity}) || !(layer.uv_scale > 0.0F)) {
                 return make_error(ErrorCode::InvalidArgument,
                                   "a terrain layer's uv_scale is above 0 and its numbers finite");
+            }
+        }
+    }
+    if (m.shader != ShaderId::None) {
+        if (m.terrain.enabled) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a 3D material drawn with a game's shader has no terrain shading");
+        }
+        for (const std::array<float, 4>& constant : m.shader_constants) {
+            if (!finite({constant[0], constant[1], constant[2], constant[3]})) {
+                return make_error(ErrorCode::InvalidArgument,
+                                  "a 3D material's shader constants are finite");
             }
         }
     }
