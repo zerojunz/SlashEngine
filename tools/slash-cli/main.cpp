@@ -109,7 +109,8 @@ constexpr int kExitUsage = 2;
 // How often a running game checks for edited asset files: every quarter second at 60 Hz.
 constexpr std::uint64_t kAssetPollTicks = 15;
 
-constexpr std::string_view kUsage = R"(slash-cli: the SlashEngine command-line tool
+constexpr std::string_view kUsage =
+    R"(slash-cli: the SlashEngine command-line tool
 
 Usage:
   slash-cli version                  Print the engine version
@@ -201,7 +202,9 @@ Usage:
       --role <name>                  The role or provider in that file (default: its
                                      "default" role, or its only provider)
       --max-turns <n>                Replies the model may take per task (default 20)
-  slash-cli call <command> [params]  Run one engine command and print its result
+)"
+    // Two literals: MSVC takes at most 16 KB in one.
+    R"(  slash-cli call <command> [params]  Run one engine command and print its result
                                      params is a JSON object, or - to read it from stdin
       --scene <file>                 Open this scene first (or start a new one saved there)
       --save                         Save the scene after the command succeeds
