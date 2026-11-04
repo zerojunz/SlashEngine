@@ -17,7 +17,8 @@
 // (tools/shader_compiler) put its code before this file's, with GameSurface, game_surface and
 // game_specular, and its texture params in the StandardMaterial3D's slots. With GAME_VERTEX too,
 // its vertex() places the corners, through GameVertex and game_vertex, with its texture params
-// in the vertex stage's slots 0 to 4.
+// in the vertex stage's slots 0 to 4. With GAME_LIGHT, its light() lights the pixel once a light
+// through game_light, with game_albedo the surface's albedo, and may change ALPHA.
 
 cbuffer Camera : register(b0, space1) {
     float4x4 view_projection;          // world to clip space, with TAA's jitter
@@ -721,8 +722,14 @@ void add_light(Light light, float3 world, float3 normal, float3 geometry, float3
     if (ray >= 0.0 && slot >= 0.0) {
         attenuation *= light_shadow(directional, (uint)slot, world, geometry, toward);
     }
+#ifdef GAME_LIGHT
+    // A game's light() lights the pixel in place of light_compute, as Godot's LIGHT_CODE_USED.
+    game_light(normal, toward, view, light.color.rgb, directional, attenuation, light.color.w,
+               game_albedo, metallic, roughness, diffuse_light, specular_light);
+#else
     light_compute(normal, toward, view, light.color.rgb, attenuation, f0, roughness, metallic,
                   light.color.w, diffuse_light, specular_light);
+#endif
 }
 
 #ifdef CLUSTERED
@@ -1271,6 +1278,9 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
 #else
     float specular = surface.z;
 #endif
+#ifdef GAME_LIGHT
+    game_albedo = base;
+#endif
     float3 view = normalize(camera.xyz - input.world);
     float3 f0 = lerp((float3)(0.16 * specular * specular), base, metallic);
 
@@ -1593,6 +1603,12 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
         lit = lit_color(input, base, normal, geometry, metallic, roughness, emitted, ao,
                         ao_direct, ssr, rays);
     }
+#ifdef GAME_LIGHT
+    // Its light() may change ALPHA, as Godot's.
+    if ((flags & kHasAlpha) != 0u && (flags & kAlphaScissor) == 0u) {
+        alpha = ALPHA;
+    }
+#endif
     // One call, so the tonemappers are inlined once and the shader stays small.
     return finish(lit, alpha, input.world, input.position.xy);
 #endif

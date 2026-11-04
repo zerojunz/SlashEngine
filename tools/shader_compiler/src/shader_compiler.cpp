@@ -44,6 +44,7 @@ constexpr std::string_view kWrapperName = "slash-wrapper";
 struct Scan {
     bool fragment = false; // defines fragment()
     bool vertex = false;   // defines vertex()
+    bool light = false;    // defines light(), a spatial shader's
     bool normal_map = false;
     bool specular = false;
     bool alpha = false;         // ALPHA
@@ -99,6 +100,8 @@ Scan scan(std::string_view code) {
             out.fragment = true;
         } else if (token == "vertex" && defined) {
             out.vertex = true;
+        } else if (token == "light" && defined) {
+            out.light = true;
         } else if (token == "NORMAL_MAP") {
             out.normal_map = true;
         } else if (token == "SPECULAR_SHININESS") {
@@ -332,7 +335,7 @@ constexpr SpatialBindings kCpuVertexBindings{
 
 // The globals a spatial shader's wrappers declare before its code: the uniform buffer, the
 // texture params, Godot's built-ins and texture().
-std::string spatial_declarations(const render::ShaderSource& source,
+std::string spatial_declarations(const render::ShaderSource& source, const Scan& found,
                                  const SpatialBindings& bindings) {
     std::string out = "cbuffer GameMaterial : register(" + std::string(bindings.uniforms) +
                       ") {\n"
@@ -401,8 +404,20 @@ std::string spatial_declarations(const render::ShaderSource& source,
            "static float3 NORMAL_MAP;\n"
            "static float NORMAL_MAP_DEPTH;\n"
            "static float ALPHA_SCISSOR_THRESHOLD;\n"
-           "static float game_specular;\n"
-           "static const float PI = 3.14159265358979323846;\n"
+           "static float game_specular;\n";
+    if (found.light) {
+        // light()'s own, as Godot's: LIGHT, VIEW and NORMAL in the camera's space.
+        out += "static float3 LIGHT;\n"
+               "static float3 LIGHT_COLOR;\n"
+               "static bool LIGHT_IS_DIRECTIONAL;\n"
+               "static float ATTENUATION;\n"
+               "static float SPECULAR_AMOUNT;\n"
+               "static float3 BACKLIGHT;\n"
+               "static float3 DIFFUSE_LIGHT;\n"
+               "static float3 SPECULAR_LIGHT;\n"
+               "static float3 game_albedo;\n";
+    }
+    out += "static const float PI = 3.14159265358979323846;\n"
            "static const float TAU = 6.28318530717958647692;\n"
            "static const float E = 2.71828182845904523536;\n";
     out += bindings.vertex
@@ -551,6 +566,36 @@ std::string game_surface(const render::ShaderSource& source, const Scan& found) 
     return out;
 }
 
+// game_light, which mesh.hlsl's add_light calls for each light in place of its own light model,
+// as Godot's LIGHT_CODE_USED, and the CPU's light module: Godot's light() built-ins from the light
+// and the surface in the world, its light(), then the light it sums. ALPHA, which it may change,
+// is game_surface's.
+std::string game_light() {
+    return "\nvoid game_light(float3 normal, float3 toward, float3 view, float3 color, bool "
+           "directional,\n"
+           "                float attenuation, float specular_amount, float3 albedo, float "
+           "metallic,\n"
+           "                float roughness, inout float3 diffuse_light, inout float3 "
+           "specular_light) {\n"
+           "    NORMAL = normalize(mul((float3x3)game_view, normal));\n"
+           "    LIGHT = normalize(mul((float3x3)game_view, toward));\n"
+           "    VIEW = normalize(mul((float3x3)game_view, view));\n"
+           "    LIGHT_COLOR = color;\n"
+           "    LIGHT_IS_DIRECTIONAL = directional;\n"
+           "    ATTENUATION = attenuation;\n"
+           "    SPECULAR_AMOUNT = specular_amount;\n"
+           "    ALBEDO = albedo;\n"
+           "    BACKLIGHT = (float3)0.0;\n"
+           "    METALLIC = metallic;\n"
+           "    ROUGHNESS = roughness;\n"
+           "    DIFFUSE_LIGHT = diffuse_light;\n"
+           "    SPECULAR_LIGHT = specular_light;\n"
+           "    light();\n"
+           "    diffuse_light = DIFFUSE_LIGHT;\n"
+           "    specular_light = SPECULAR_LIGHT;\n"
+           "}\n";
+}
+
 std::string_view shadow_hlsl() {
     return {reinterpret_cast<const char*>(detail::kShadowHlsl), detail::kShadowHlsl_size};
 }
@@ -563,6 +608,9 @@ Parts spatial_parts(const render::ShaderSource& source, const Scan& found, MeshS
     parts.before = "#define GAME_SHADER\n";
     if (found.vertex) {
         parts.before += "#define GAME_VERTEX\n";
+    }
+    if (found.light && stage != MeshStage::Shadow) {
+        parts.before += "#define GAME_LIGHT\n";
     }
     switch (stage) {
     case MeshStage::Compatibility:
@@ -590,11 +638,14 @@ Parts spatial_parts(const render::ShaderSource& source, const Scan& found, MeshS
     } else if (stage == MeshStage::Shadow) {
         bindings = &kShadowFragmentBindings;
     }
-    parts.before += spatial_declarations(source, *bindings);
+    parts.before += spatial_declarations(source, found, *bindings);
     if (found.vertex) {
         parts.after = game_vertex(source);
     }
     parts.after += game_surface(source, found) + "\n";
+    if (found.light && stage != MeshStage::Shadow) {
+        parts.after += game_light() + "\n";
+    }
     if (stage == MeshStage::Shadow) {
         parts.after += shadow_hlsl();
     } else {
@@ -605,7 +656,7 @@ Parts spatial_parts(const render::ShaderSource& source, const Scan& found, MeshS
 
 Parts cpu_spatial_parts(const render::ShaderSource& source, const Scan& found) {
     Parts parts;
-    parts.before = spatial_declarations(source, kCpuFragmentBindings);
+    parts.before = spatial_declarations(source, found, kCpuFragmentBindings);
     parts.after = game_surface(source, found);
     parts.after += "\nstruct CpuSurfaceInput {\n"
                    "    [[vk::location(0)]] float4 world : TEXCOORD0;\n"
@@ -639,9 +690,9 @@ Parts cpu_spatial_parts(const render::ShaderSource& source, const Scan& found) {
 }
 
 // The CPU's module for a spatial shader's vertex() (render::cpu_spatial's corners).
-Parts cpu_spatial_vertex_parts(const render::ShaderSource& source) {
+Parts cpu_spatial_vertex_parts(const render::ShaderSource& source, const Scan& found) {
     Parts parts;
-    parts.before = spatial_declarations(source, kCpuVertexBindings);
+    parts.before = spatial_declarations(source, found, kCpuVertexBindings);
     parts.after = game_vertex(source);
     parts.after += "\nstruct CpuCornerInput {\n"
                    "    [[vk::location(0)]] float4 position : TEXCOORD0;\n"
@@ -669,6 +720,53 @@ Parts cpu_spatial_vertex_parts(const render::ShaderSource& source) {
                    "    output.binormal = float4(moved.binormal, 0.0);\n"
                    "    output.uv = float4(moved.uv, moved.uv2);\n"
                    "    output.color = moved.color;\n"
+                   "    return output;\n"
+                   "}\n";
+    return parts;
+}
+
+// The CPU's module for a spatial shader's light() (render::cpu_spatial's lights): game_surface
+// first, on cpu_fragment's inputs, then game_light.
+Parts cpu_spatial_light_parts(const render::ShaderSource& source, const Scan& found) {
+    Parts parts;
+    parts.before = spatial_declarations(source, found, kCpuFragmentBindings);
+    parts.after = game_surface(source, found) + game_light();
+    parts.after += "\nstruct CpuLightInput {\n"
+                   "    [[vk::location(0)]] float4 world : TEXCOORD0;\n"
+                   "    [[vk::location(1)]] float4 normal : TEXCOORD1;\n"
+                   "    [[vk::location(2)]] float4 tangent : TEXCOORD2;\n"
+                   "    [[vk::location(3)]] float4 binormal : TEXCOORD3;\n"
+                   "    [[vk::location(4)]] float4 uv : TEXCOORD4;\n"
+                   "    [[vk::location(5)]] float4 color : TEXCOORD5;\n"
+                   "    [[vk::location(6)]] float4 frag_coord : TEXCOORD6;\n"
+                   "    [[vk::location(7)]] float4 light_normal : TEXCOORD7;\n"
+                   "    [[vk::location(8)]] float4 toward : TEXCOORD8;\n"
+                   "    [[vk::location(9)]] float4 view : TEXCOORD9;\n"
+                   "    [[vk::location(10)]] float4 light_color : TEXCOORD10;\n"
+                   "    [[vk::location(11)]] float4 albedo : TEXCOORD11;\n"
+                   "    [[vk::location(12)]] float4 diffuse : TEXCOORD12;\n"
+                   "    [[vk::location(13)]] float4 specular : TEXCOORD13;\n"
+                   "};\n\n"
+                   "struct CpuLight {\n"
+                   "    [[vk::location(0)]] float4 diffuse : SV_Target0;\n"
+                   "    [[vk::location(1)]] float4 specular : SV_Target1;\n"
+                   "};\n\n"
+                   "CpuLight cpu_light(CpuLightInput input) {\n"
+                   "    game_surface(input.world.xyz, input.normal.xyz, input.tangent.xyz,\n"
+                   "        input.binormal.xyz, input.uv.xy, input.uv.zw, input.color, "
+                   "input.frag_coord,\n"
+                   "        input.normal.w != 0.0, input.world.w != 0.0);\n"
+                   "    ALPHA = input.light_color.w;\n"
+                   "    float3 diffuse = input.diffuse.rgb;\n"
+                   "    float3 specular = input.specular.rgb;\n"
+                   "    game_light(input.light_normal.xyz, input.toward.xyz, input.view.xyz,\n"
+                   "        input.light_color.rgb, input.toward.w != 0.0, input.light_normal.w, "
+                   "input.view.w,\n"
+                   "        input.albedo.rgb, input.albedo.w, input.diffuse.w, diffuse, "
+                   "specular);\n"
+                   "    CpuLight output;\n"
+                   "    output.diffuse = float4(diffuse, ALPHA);\n"
+                   "    output.specular = float4(specular, 0.0);\n"
                    "    return output;\n"
                    "}\n";
     return parts;
@@ -933,6 +1031,7 @@ Result<render::CompiledShader> compile_spatial(const render::ShaderSource& sourc
     out.alpha_used = found.alpha;
     out.alpha_scissor_used = found.alpha_scissor;
     out.vertex_used = found.vertex;
+    out.light_used = found.light;
     std::vector<std::string> errors;
     const auto stage = [&](MeshStage which, bool vertex, render::ShaderStage& into, bool glsl) {
         if (errors.empty()) {
@@ -959,8 +1058,12 @@ Result<render::CompiledShader> compile_spatial(const render::ShaderSource& sourc
                                     "cpu_fragment", errors);
     }
     if (errors.empty() && found.vertex) {
-        out.cpu_vertex =
-            to_spirv(cpu_spatial_vertex_parts(source), source, EShLangVertex, "cpu_vertex", errors);
+        out.cpu_vertex = to_spirv(cpu_spatial_vertex_parts(source, found), source, EShLangVertex,
+                                  "cpu_vertex", errors);
+    }
+    if (errors.empty() && found.light) {
+        out.cpu_light = to_spirv(cpu_spatial_light_parts(source, found), source, EShLangFragment,
+                                 "cpu_light", errors);
     }
     if (!errors.empty()) {
         return compile_errors(errors);
@@ -975,7 +1078,7 @@ Result<render::CompiledShader> compile_spatial(const render::ShaderSource& sourc
     out.glsl_vertex = std::move(vertex.glsl);
     out.wgsl_vertex = std::move(vertex.wgsl);
     out.hlsl_vertex = std::move(vertex.hlsl);
-    for (const auto* module : {&out.cpu_vertex, &out.cpu_fragment}) {
+    for (const auto* module : {&out.cpu_vertex, &out.cpu_fragment, &out.cpu_light}) {
         if (module->empty()) {
             continue;
         }
@@ -997,9 +1100,12 @@ Wrapped wrap(const render::ShaderSource& source) {
         out.gpu =
             join(spatial_parts(source, found, MeshStage::Compatibility, MeshTarget::Other, false));
         if (found.vertex) {
-            out.cpu_vertex = join(cpu_spatial_vertex_parts(source));
+            out.cpu_vertex = join(cpu_spatial_vertex_parts(source, found));
         }
         out.cpu_fragment = join(cpu_spatial_parts(source, found));
+        if (found.light) {
+            out.cpu_light = join(cpu_spatial_light_parts(source, found));
+        }
         return out;
     }
     out.gpu = join(gpu_parts(source, found));

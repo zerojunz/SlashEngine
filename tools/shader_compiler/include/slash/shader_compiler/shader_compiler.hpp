@@ -15,7 +15,8 @@
 // A spatial shader (ShaderType::Spatial), as Godot's, has a fragment() that gives a mesh's surface
 // (ALBEDO, ROUGHNESS, NORMAL_MAP and the rest): its code goes before the mesh shader's
 // (engine/render/shaders/mesh.hlsl, with GAME_SHADER defined), whose fragment stages call it
-// through game_surface, and the CPU runs game_surface alone.
+// through game_surface, and the CPU runs game_surface alone. Its light(), as Godot's, lights the
+// surface once a light in place of the engine's light model, through game_light.
 //
 // slash-cli, slash-mcp and exports link it; games never do, and draw what their export compiled.
 namespace slash::shader_compiler {
@@ -26,11 +27,12 @@ namespace slash::shader_compiler {
 
 // The HLSL compile wraps the code in: for the GPU's two stages (also what Direct3D 12 compiles),
 // and for the CPU's vertex and fragment modules. A spatial shader's gpu is its Compatibility
-// fragment stage, and it has no cpu_vertex.
+// fragment stage, and with a light() it has its cpu_light.
 struct Wrapped {
     std::string gpu;
     std::string cpu_vertex;
     std::string cpu_fragment;
+    std::string cpu_light;
 };
 [[nodiscard]] Wrapped wrap(const render::ShaderSource& source);
 

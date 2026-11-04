@@ -3178,6 +3178,46 @@ In `vertex()`, which runs once a corner:
 
 `texture()` works in `vertex()` too, reading the texture's largest level.
 
+A `light()`, as Godot's, lights the surface in place of the engine's light model: it runs once for
+each light that reaches the pixel, adding what that light gives to `DIFFUSE_LIGHT` and
+`SPECULAR_LIGHT`. The engine then multiplies `DIFFUSE_LIGHT` by `ALBEDO` and by 1 minus
+`METALLIC`, and adds the ambient light, reflections and `EMISSION`, which `light()` doesn't
+change. A light the shader adds nothing for leaves the surface dark but for those.
+[examples/custom-lighting-3d](../../examples/custom-lighting-3d/) cel-shades a ball.
+
+```hlsl
+// shaders/toon.hlsl, with params tint (a color) and steps (a float).
+void fragment() {
+    ALBEDO = tint.rgb;
+}
+
+void light() {
+    float lit = saturate(dot(NORMAL, LIGHT)) * ATTENUATION;
+    DIFFUSE_LIGHT += floor(lit * steps + 0.5) / steps * LIGHT_COLOR / PI;
+}
+```
+
+In `light()`:
+
+| Built-in | Type | Value |
+| --- | --- | --- |
+| `DIFFUSE_LIGHT`, `SPECULAR_LIGHT` | float3 | In and out: the light summed over the lights before this one; `(0, 0, 0)` at the first |
+| `ALPHA` | float | In and out: the opacity `fragment()` gave, which a transparent mesh draws with |
+| `LIGHT` | float3 | The direction from the pixel to the light, in view space |
+| `LIGHT_COLOR` | float3 | The light's color times its energy times pi, as Godot's, linear |
+| `LIGHT_IS_DIRECTIONAL` | bool | Whether it is a `DirectionalLight3D` |
+| `ATTENUATION` | float | How much of it reaches the pixel: its fade with distance and a spot light's cone, times its shadow |
+| `SPECULAR_AMOUNT` | float | The light's `light_specular`, doubled for omni and spot lights, as Godot's |
+| `NORMAL` | float3 | The surface's normal in view space, after `NORMAL_MAP` and decals |
+| `VIEW` | float3 | The direction from the pixel to the camera, in view space |
+| `ALBEDO`, `METALLIC`, `ROUGHNESS` | | The surface `fragment()` gave, after decals |
+| `BACKLIGHT` | float3 | `(0, 0, 0)` |
+| `UV`, `UV2`, `FRAGCOORD`, `SCREEN_UV`, `TIME`, the matrices and `VIEWPORT_SIZE` | | As in `fragment()` |
+
+Globals `fragment()` sets keep their values in `light()`, as Godot's varyings between the two
+do. `discard` in `light()` drops the pixel. `DIFFUSE_LIGHT`, `LIGHT` and the rest of `light()`'s
+own built-ins are refused in `fragment()` and `vertex()`, as Godot's.
+
 - Params are globals as in canvas shaders. A spatial shader takes up to 5 textures, and a
   texture param with `"source_color": true` holds sRGB colors that `texture()` makes linear, as
   Godot's `source_color` hint. A `color` param's value is made linear before the shader reads
@@ -3194,7 +3234,9 @@ In `vertex()`, which runs once a corner:
 - A mesh whose material's shader writes `ALPHA` draws after the opaque ones, farthest first, and
   casts no shadow; one that writes `ALPHA_SCISSOR_THRESHOLD` runs its `fragment()` in the shadow
   pass too and casts only what it keeps.
-- Not yet: `light()`.
+- `light()` runs in the Compatibility and Forward+ color stages, for every light, the clustered
+  ones included; the prepasses and shadow passes don't light anything, so they leave it out. On
+  the CPU, `frame.capture` runs it once a pixel and light, where `ddx` and `ddy` give 0.
 
 ## Animations
 
