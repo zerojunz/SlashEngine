@@ -346,6 +346,17 @@ struct Material3D {
     LightmapCapture capture{}; // NOLINT(readability-redundant-member-init): may be left out
     // VoxelGIs' light, for a mesh with neither.
     VoxelGIShading voxel_gi{}; // NOLINT(readability-redundant-member-init): may be left out
+    // A game's spatial shader (create_shader with ShaderType::Spatial), as Godot's
+    // ShaderMaterial: its fragment() gives each pixel's albedo, alpha, metallic, roughness,
+    // specular, emission, ambient occlusion and normal in place of the fields and textures above,
+    // which still say how the mesh draws (transparency, blend, cull, unshaded, disable_fog) and
+    // what lights it (lightmap, capture, voxel_gi). Not with terrain shading.
+    ShaderId shader = ShaderId::None;
+    // The shader's params, at the constants and slots its source gave them, and the time in
+    // kShaderTimeConstant's x.
+    std::array<std::array<float, 4>, 32> shader_constants{};
+    // NOLINTNEXTLINE(readability-redundant-member-init): may be left out
+    std::array<MaterialTexture, kSpatialShaderTextures> shader_textures{};
 
     bool operator==(const Material3D&) const = default;
 };

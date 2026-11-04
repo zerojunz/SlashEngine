@@ -1,0 +1,5 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture","params":{"points":[[56,44],[66,44],[80,47],[80,80],[94,45],[96,45],[102,54],[104,54]],"time":0}}
+{"jsonrpc":"2.0","id":3,"method":"frame.capture","params":{"points":[[56,44],[66,44],[94,45],[96,45],[102,54],[104,54]],"time":0.5}}
+{"jsonrpc":"2.0","id":4,"method":"component.set","params":{"id":"crystal","components":{"MeshInstance3D":{"material_params":{"tint":[0.9,0.3,0.1]}}}}}
+{"jsonrpc":"2.0","id":5,"method":"frame.capture","params":{"points":[[56,44],[66,44]],"time":0}}

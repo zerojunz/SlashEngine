@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "params": {
+    "tint": {"type": "color", "value": [0.7, 0.9, 1.0, 0.35]}
+  },
+  "render_mode": ["shadows_disabled"],
+  "shader": "shaders/glass.hlsl",
+  "shader_type": "spatial"
+}

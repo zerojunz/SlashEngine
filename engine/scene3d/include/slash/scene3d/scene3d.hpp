@@ -188,6 +188,35 @@ using ModelSource = std::function<Result<SourceModel>(const std::string& path)>;
 check_meshes(const world::ComponentRegistry& components, const json::Value& scene,
              const world::FileReader& reader);
 
+// The material a MeshInstance3D's material_override names, as ShaderMaterialSource reads it: a
+// StandardMaterial3D's file, or a spatial material, Godot's ShaderMaterial, its shader made on the
+// device and its params' values and the time filled in.
+struct OverrideMaterial {
+    std::optional<world::StandardMaterial3D> standard; // a .standard_material.json file's
+    render::ShaderId shader = render::ShaderId::None;
+    std::array<std::array<float, 4>, 32> constants{};
+    // Its texture params' project paths by slot, "" for white, and how each is sampled:
+    // "inherit" samples linearly, as 3D textures do.
+    struct Texture {
+        std::string path;
+        bool repeat = false;
+        std::string filter = "inherit";
+    };
+    std::array<Texture, render::kSpatialShaderTextures> textures{};
+    // Its render modes, and whether its shader writes ALPHA (transparent) or
+    // ALPHA_SCISSOR_THRESHOLD (cut out).
+    render::BlendMode blend = render::BlendMode::Mix;
+    render::CullMode cull = render::CullMode::Back;
+    bool unshaded = false;
+    bool fog_disabled = false;
+    bool shadows_disabled = false;
+    render::Transparency transparency = render::Transparency::Disabled;
+};
+// Reads a material_override's file with the MeshInstance3D's material_params, at time seconds of
+// game time. Errors about a param name it as "material_params/<name>: ...".
+using ShaderMaterialSource = std::function<Result<OverrideMaterial>(
+    const std::string& path, const std::map<std::string, json::Value>& params, double time)>;
+
 // A StandardMaterial3D as the render device takes it, its textures made by textures. A texture
 // that can't load is left out, with a problem.
 [[nodiscard]] render::Material3D material(const world::StandardMaterial3D& standard,
@@ -267,6 +296,11 @@ public:
     // particles drawn between ticks are moved back by.
     void set_particle_processes(ParticleProcessSource processes) {
         processes_ = std::move(processes);
+    }
+    // Where MeshInstance3Ds' material_override files load from: without a source, they draw
+    // with their own materials, and each is a problem.
+    void set_override_materials(ShaderMaterialSource materials) {
+        override_materials_ = std::move(materials);
     }
     void set_tick_seconds(double seconds) { tick_seconds_ = seconds; }
     // Draws the meshes prepare found into the frame begun with its scene.
@@ -586,6 +620,14 @@ private:
     };
     std::unordered_map<entt::entity, GpuParticles3D> gpu_particles_;
     ParticleProcessSource processes_;
+    ShaderMaterialSource override_materials_;
+    // The material in place of an entity's surfaces': its material_override's, else its
+    // StandardMaterial3D's; nullopt for neither, or for an override that can't load, with a
+    // problem. shadows_disabled says its material casts none.
+    std::optional<render::Material3D> override_material(const world::World& world,
+                                                        entt::entity entity,
+                                                        const world::MeshInstance3D& instance,
+                                                        bool& shadows_disabled);
     double tick_seconds_ = 1.0 / 60.0;
     world::Affine3D camera_place_; // where the current camera is, for billboards
     std::unordered_map<std::string, std::pair<MeshData, std::uint64_t>> particle_shapes_;
@@ -603,6 +645,8 @@ private:
     // Where each entity's draws were drawn in the last frame with TAA, by the entity and the
     // draw's place among its draws.
     std::map<std::pair<entt::entity, std::size_t>, std::array<float, 16>> drawn_;
+    // The time of the frame drawn before, for spatial shaders' vertex() in the motion prepass.
+    std::optional<double> drawn_time_;
     std::vector<Problem> problems_;
     // The reflection probes' atlas, its cubes' size and count, and each probe's cube.
     render::TextureId atlas_ = render::TextureId::None;

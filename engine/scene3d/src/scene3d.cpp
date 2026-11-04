@@ -12,6 +12,7 @@
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/ik.hpp"
 #include "slash/scene3d/lightmap.hpp"
+#include "slash/scene3d/material.hpp"
 #include "slash/scene3d/particle_collision.hpp"
 #include "slash/scene3d/particles.hpp"
 #include "slash/scene3d/terrain.hpp"
@@ -720,6 +721,42 @@ sky_lights(const world::World& world, const world::Tree3D& tree,
     return out;
 }
 
+namespace {
+
+// Why a MeshInstance3D's material_override can't draw, as far as can be told without loading it:
+// it isn't a material file, can't be read, or (a .material.json file) isn't a spatial material;
+// "" for none. Its file's own mistakes are its file's to report.
+std::string override_problem(const world::World& world, const std::string& path) {
+    if (path.empty()) {
+        return {};
+    }
+    const bool standard = path.ends_with(kStandardMaterialSuffix);
+    if (!is_project_path(path) || (!standard && !path.ends_with(".material.json"))) {
+        return "expected a .material.json or .standard_material.json file's path inside the "
+               "project folder, separated by '/'";
+    }
+    const world::FileReader& reader = world.file_reader();
+    if (!reader) {
+        return {};
+    }
+    auto text = reader(path);
+    if (!text) {
+        return "\"" + path + "\" could not be read: " + text.error().message;
+    }
+    if (standard) {
+        return {};
+    }
+    auto doc = json::parse(text.value());
+    const json::Value* type = doc ? doc.value().find("shader_type") : nullptr;
+    if (type == nullptr || !type->is_string() || type->as_string() != "spatial") {
+        return "\"" + path +
+               R"(" is a canvas material; a mesh takes one with "shader_type": "spatial")";
+    }
+    return {};
+}
+
+} // namespace
+
 std::vector<Problem> check_meshes(const world::World& world) {
     std::vector<Problem> problems;
     // A Skeleton3D's bone names, checked against the model its entity draws, if it loads.
@@ -750,6 +787,12 @@ std::vector<Problem> check_meshes(const world::World& world) {
     }
     std::map<entt::entity, Model> loaded;
     for (const entt::entity entity : made<world::MeshInstance3D>(world)) {
+        if (std::string problem = override_problem(
+                world, world.ecs().get<const world::MeshInstance3D>(entity).material_override);
+            !problem.empty()) {
+            problems.push_back(
+                {entity, "/components/MeshInstance3D/material_override", std::move(problem)});
+        }
         const std::string& path = world.ecs().get<const world::MeshInstance3D>(entity).mesh;
         if (path.empty()) {
             (void)drawable(world, entity, problems);
@@ -1030,6 +1073,68 @@ render::Material3D material(const world::StandardMaterial3D& standard,
     out.uv1_scale = {standard.uv1_scale.x, standard.uv1_scale.y};
     out.uv1_offset = {standard.uv1_offset.x, standard.uv1_offset.y};
     out.disable_fog = standard.disable_fog;
+    return out;
+}
+
+std::optional<render::Material3D> Renderer::override_material(const world::World& world,
+                                                              entt::entity entity,
+                                                              const world::MeshInstance3D& instance,
+                                                              bool& shadows_disabled) {
+    shadows_disabled = false;
+    const auto* standard = world.ecs().try_get<world::StandardMaterial3D>(entity);
+    if (instance.material_override.empty()) {
+        if (standard == nullptr) {
+            return std::nullopt;
+        }
+        return material(*standard, textures_, problems_, entity);
+    }
+    const std::string field = "/components/MeshInstance3D/material_override";
+    if (!override_materials_) {
+        problems_.push_back({entity, field, "material overrides can't load here"});
+        return std::nullopt;
+    }
+    auto loaded =
+        override_materials_(instance.material_override, instance.material_params, capture_time_);
+    if (!loaded) {
+        const std::string& message = loaded.error().message;
+        if (message.starts_with("material_params/")) {
+            const std::size_t end = message.find(": ");
+            problems_.push_back({entity, "/components/MeshInstance3D/" + message.substr(0, end),
+                                 end == std::string::npos ? message : message.substr(end + 2)});
+        } else {
+            problems_.push_back({entity, field, message});
+        }
+        return std::nullopt;
+    }
+    const OverrideMaterial& found = loaded.value();
+    if (found.standard) {
+        return material(*found.standard, textures_, problems_, entity);
+    }
+    render::Material3D out;
+    out.shader = found.shader;
+    out.shader_constants = found.constants;
+    for (std::size_t slot = 0; slot < found.textures.size(); ++slot) {
+        const OverrideMaterial::Texture& texture = found.textures.at(slot);
+        if (texture.path.empty()) {
+            continue;
+        }
+        const render::Filter filter =
+            texture.filter == "nearest" ? render::Filter::Nearest : render::Filter::Linear;
+        auto made = textures_(texture.path, filter);
+        if (!made) {
+            problems_.push_back(
+                {entity, field,
+                 "\"" + instance.material_override + "\"'s texture: " + made.error().message});
+            continue;
+        }
+        out.shader_textures.at(slot) = {.texture = made.value().id, .repeat = texture.repeat};
+    }
+    out.blend = found.blend;
+    out.cull = found.cull;
+    out.unshaded = found.unshaded;
+    out.disable_fog = found.fog_disabled;
+    out.transparency = found.transparency;
+    shadows_disabled = found.shadows_disabled;
     return out;
 }
 
@@ -1476,12 +1581,13 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
         return;
     }
     const Model& model = *source.value().model;
-    // A StandardMaterial3D on the entity takes the place of every surface's, as Godot's
-    // material_override.
-    std::optional<render::Material3D> override;
-    if (const auto* standard = world.ecs().try_get<world::StandardMaterial3D>(entity);
-        standard != nullptr) {
-        override = material(*standard, textures_, problems_, entity);
+    // Its material_override, or a StandardMaterial3D on the entity, takes the place of every
+    // surface's, as Godot's material_override.
+    bool shadows_disabled = false;
+    const std::optional<render::Material3D> override =
+        override_material(world, entity, instance, shadows_disabled);
+    if (shadows_disabled && casting == render::ShadowCasting::On) {
+        casting = render::ShadowCasting::Off;
     }
     std::vector<std::optional<render::Material3D>> materials(model.materials.size());
     const std::string prefix =
@@ -1597,7 +1703,7 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
             draw.lod_bias = instance.lod_bias;
             if (override) {
                 draw.material = *override;
-                if (!skinned) {
+                if (!skinned && instance.material_override.empty()) {
                     face_camera(world.ecs().get<const world::StandardMaterial3D>(entity),
                                 part_place, draw);
                 }
@@ -3196,10 +3302,16 @@ std::optional<Frame3D> Renderer::prepare(
         draw.mesh = mesh.value();
         draw.transform = global(entity).matrix();
         draw.entity = entity;
+        bool shadows_disabled = false;
+        if (auto override = override_material(world, entity, instance, shadows_disabled)) {
+            draw.material = *override;
+        }
         if (const auto* standard = ecs.try_get<world::StandardMaterial3D>(entity);
-            standard != nullptr) {
-            draw.material = material(*standard, textures_, problems_, entity);
+            standard != nullptr && instance.material_override.empty()) {
             face_camera(*standard, global(entity), draw);
+        }
+        if (shadows_disabled && casting == render::ShadowCasting::On) {
+            casting = render::ShadowCasting::Off;
         }
         if (instance.gi_mode == "dynamic") {
             const Shared& shared = shared_.at(cached_.at(entity).key);
@@ -3287,6 +3399,17 @@ std::optional<Frame3D> Renderer::prepare(
         }
     }
     drawn_ = std::move(drawn);
+    // A spatial shader's vertex() places corners where they were with the time of the frame before
+    // too, as Godot's prev_data.time.
+    const double step =
+        (use_taa || fsr2) && drawn_time_ && *drawn_time_ <= time ? time - *drawn_time_ : 0.0;
+    for (Draw& draw : draws_) {
+        if (draw.material.shader != render::ShaderId::None) {
+            auto& clock = draw.material.shader_constants.at(render::kShaderTimeConstant);
+            clock[1] = clock[0] - static_cast<float>(step);
+        }
+    }
+    drawn_time_ = time;
     // Meshes no entity drew this frame go, and so do the entities' records of them.
     for (auto it = shared_.begin(); it != shared_.end();) {
         if (it->second.used != frame_) {

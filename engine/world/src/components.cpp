@@ -2659,7 +2659,14 @@ void register_3d_components(ComponentRegistry& registry) {
                                       "above 1 keeps detail further away.",
                                .min = 0.001})
         .describe("ignore_occlusion_culling",
-                  {.doc = "Always drawn: OccluderInstance3Ds never hide it."});
+                  {.doc = "Always drawn: OccluderInstance3Ds never hide it."})
+        .describe("material_override",
+                  {.doc = "Project path of a spatial .material.json file (a game's shader) or a "
+                          ".standard_material.json file drawn in place of every surface's "
+                          "material, before a StandardMaterial3D; \"\" for none."})
+        .describe("material_params",
+                  {.doc = "Values for the spatial material's params by name, replacing their "
+                          "defaults, e.g. {\"speed\": 2}."});
     registry.add<MultiMeshInstance3D>()
         .set_doc("Draws a model once per instance, each placed by its own transform in the "
                  "entity's space, as Godot's MultiMeshInstance3D; scatter.run makes them.")
