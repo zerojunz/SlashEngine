@@ -49,7 +49,8 @@ struct ShaderStage {
 // 2, WGSL for WebGPU, and HLSL, which Direct3D 12 compiles when the shader is made.
 //
 // A spatial shader is the mesh shader's stages (shaders/mesh.hlsl) with the game's code in them:
-// the fragment fields hold the Compatibility renderer's fragment stage, and clustered,
+// the fragment fields hold the Compatibility renderer's fragment stage (which calls its light(),
+// if it has one, for each light), and clustered,
 // normal_roughness and motion Forward+'s (mesh_clustered.hlsl, mesh_normal.hlsl and
 // mesh_motion.hlsl). With a vertex(), the vertex fields hold the vertex stage every pass but the
 // motion prepass draws with (whose is motion_vertex) and hlsl_vertex its HLSL; without one they
@@ -87,6 +88,10 @@ struct CompiledShader {
     // passes draw with shadow_vertex and shadow (shadows_used: it has a vertex() or writes
     // ALPHA_SCISSOR_THRESHOLD).
     bool vertex_used = false;
+    // A spatial shader has a light(), which lights its meshes in place of the engine's light
+    // model, once a light, as Godot's; cpu_light is its module for the CPU.
+    bool light_used = false;
+    std::vector<std::uint32_t> cpu_light;
     [[nodiscard]] bool shadows_used() const { return vertex_used || alpha_scissor_used; }
     // A spatial shader's vertex() as the motion prepass draws it, and its shadow passes' stages.
     std::string hlsl_vertex;
@@ -216,6 +221,24 @@ inline constexpr std::uint32_t kCornerOutBinormal = 3;
 inline constexpr std::uint32_t kCornerOutUv = 4;
 inline constexpr std::uint32_t kCornerOutColor = 5;
 
+// A spatial shader's cpu_light runs its light() for one light at a pixel as the fragment stage's
+// game_light does, after game_surface on the same inputs as cpu_fragment (kWorld to kFragCoord),
+// so what its fragment() leaves in globals is there. It then reads, in the world:
+// kLightNormal (the shading normal, then ATTENUATION), kLightToward (LIGHT, then 1 for a
+// directional light), kLightView (VIEW, then SPECULAR_AMOUNT), kLightColor (LIGHT_COLOR, then
+// ALPHA), kLightAlbedo (ALBEDO, then METALLIC), kLightDiffuse (DIFFUSE_LIGHT so far, then
+// ROUGHNESS) and kLightSpecular (SPECULAR_LIGHT so far). It writes kOutDiffuse (DIFFUSE_LIGHT,
+// then ALPHA) and kOutSpecular (SPECULAR_LIGHT), or discards.
+inline constexpr std::uint32_t kLightNormal = 7;
+inline constexpr std::uint32_t kLightToward = 8;
+inline constexpr std::uint32_t kLightView = 9;
+inline constexpr std::uint32_t kLightColor = 10;
+inline constexpr std::uint32_t kLightAlbedo = 11;
+inline constexpr std::uint32_t kLightDiffuse = 12;
+inline constexpr std::uint32_t kLightSpecular = 13;
+inline constexpr std::uint32_t kOutDiffuse = 0;
+inline constexpr std::uint32_t kOutSpecular = 1;
+
 } // namespace cpu_spatial
 
 // What a spatial shader's uniform buffer holds, b3 in space3 of the mesh shader's fragment stage,
@@ -251,7 +274,7 @@ class ShaderVm {
 public:
     using Float4 = std::array<float, 4>;
     static constexpr std::size_t kLanes = 4;
-    static constexpr std::size_t kLocations = 8;
+    static constexpr std::size_t kLocations = 16;
     // A loop that runs longer than this many instructions stops, where a GPU would hang.
     static constexpr std::uint64_t kMaxSteps = std::uint64_t{1} << 22;
 

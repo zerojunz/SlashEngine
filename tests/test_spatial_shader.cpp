@@ -487,6 +487,77 @@ struct Scene {
     }
 };
 
+// A shader of one fragment() and a light(), each code's body, with a tint param.
+render::ShaderSource lit_by(std::string_view light, std::string_view fragment = "") {
+    return {.path = "shaders/lit.hlsl",
+            .code = "void fragment() {\n    ALBEDO = tint.rgb;\n    ROUGHNESS = 0.4;\n" +
+                    std::string(fragment) + "}\n\nvoid light() {\n" + std::string(light) + "}\n",
+            .type = render::ShaderType::Spatial,
+            .params = {{.name = "tint", .components = 4, .slot = 0}}};
+}
+
+// A toon look: a band of fragment()'s, which light() reads, cuts its diffuse light into steps, with
+// a sharp highlight, and omni lights add a blue rim; all smooth enough that devices agree.
+render::ShaderSource toon() {
+    render::ShaderSource source =
+        lit_by(R"(    float lit = max(dot(NORMAL, LIGHT), 0.0) * ATTENUATION;
+    DIFFUSE_LIGHT += smoothstep(band, band + 0.2, lit) * LIGHT_COLOR / PI * ALBEDO.g;
+    float3 half_way = normalize(LIGHT + VIEW);
+    SPECULAR_LIGHT += smoothstep(0.85, 0.95, dot(NORMAL, half_way)) * LIGHT_COLOR *
+                      SPECULAR_AMOUNT * ATTENUATION * (1.0 - ROUGHNESS) * 0.3;
+    if (!LIGHT_IS_DIRECTIONAL) {
+        DIFFUSE_LIGHT += float3(0.0, 0.1, 0.4) * pow(1.0 - saturate(dot(NORMAL, VIEW)), 2.0) *
+                         ATTENUATION;
+    }
+)",
+               "    band = 0.2 + 0.4 * UV.y;\n");
+    source.code = "static float band;\n\n" + source.code;
+    return source;
+}
+
+// A frame of a cube (unless card_only) and a card (seen from both sides) drawn with a spatial
+// shader, over the clear color, the card blended when blended.
+render::Image draw_lit(render::RenderDevice& device, const render::Scene3D& scene,
+                       render::ShaderId shader, bool blended = false, bool card_only = false) {
+    auto target = device.create_texture({.width = 64, .height = 64, .render_target = true});
+    auto box = device.create_mesh(cube(), {});
+    auto card = device.create_mesh(quad({0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, 1.0F), {});
+    REQUIRE(target.ok());
+    REQUIRE(box.ok());
+    REQUIRE(card.ok());
+    render::Material3D material;
+    material.shader = shader;
+    material.shader_constants[0] = {0.9F, 0.6F, 0.4F, 1.0F};
+    render::Material3D sheet = material;
+    sheet.cull = render::CullMode::Disabled;
+    if (blended) {
+        sheet.transparency = render::Transparency::Alpha;
+    }
+    REQUIRE(device
+                .begin_frame(
+                    {.target = target.value(), .clear = {0.05F, 0.05F, 0.1F, 1.0F}, .scene = scene})
+                .ok());
+    if (!card_only) {
+        CHECK(device.draw_mesh(box.value(), placed(30, -0.5F, 0, -0.6F), material).ok());
+    }
+    CHECK(device.draw_mesh(card.value(), placed(-20, 0.4F, 0.1F, 0.8F), sheet).ok());
+    REQUIRE(device.end_frame().ok());
+    auto image = device.read_texture(target.value());
+    REQUIRE_MESSAGE(image.ok(), (image.ok() ? "" : image.error().message));
+    device.destroy_mesh(box.value());
+    device.destroy_mesh(card.value());
+    device.destroy_texture(target.value());
+    return image.value();
+}
+
+// The same, with the shader made from source for this frame alone.
+render::Image draw_lit(render::RenderDevice& device, const render::Scene3D& scene,
+                       const render::ShaderSource& source, bool blended = false,
+                       bool card_only = false) {
+    const DeviceShaders shaders(device, {source});
+    return draw_lit(device, scene, shaders[0], blended, card_only);
+}
+
 // How many pixels differ by more than 2 in a channel, and the first of them.
 std::pair<int, std::string> differences(const render::Image& got, const render::Image& want) {
     REQUIRE(got.width == want.width);
@@ -945,6 +1016,147 @@ TEST_CASE("every device draws spatial shaders' vertex() and shadows as the softw
             // SSAO over the shadows' edges rounds a few scattered pixels a level or three apart.
             CHECK(count <= 24);
             if (count > 24) {
+                auto drawn = render::encode_png(image);
+                auto wanted = render::encode_png(want);
+                REQUIRE(drawn.ok());
+                REQUIRE(wanted.ok());
+                MESSAGE("drawn, as a base64 PNG: " << slash::base64_encode(drawn.value()));
+                MESSAGE("expected, as a base64 PNG: " << slash::base64_encode(wanted.value()));
+            }
+        }
+    }
+}
+
+TEST_CASE("a spatial shader's light() compiles into the mesh shader's lit stages and the CPU") {
+    const render::CompiledShader shader = compiled(toon());
+    CHECK(shader.light_used);
+    CHECK(render::ShaderVm::load(shader.cpu_light).ok());
+    for (const std::string* code : {&shader.hlsl, &shader.clustered.hlsl}) {
+        CHECK(code->find("#define GAME_LIGHT") != std::string::npos);
+        CHECK(code->find("void game_light(") != std::string::npos);
+    }
+    CHECK_FALSE(shader.clustered.spirv.empty());
+    CHECK_FALSE(shader.clustered.wgsl.empty());
+    CHECK_FALSE(shader.glsl_fragment.empty());
+    // Shadows don't light anything, so their passes leave it out.
+    const render::CompiledShader cut =
+        compiled(lit_by("    DIFFUSE_LIGHT += ATTENUATION;\n",
+                        "    ALPHA = UV.x;\n    ALPHA_SCISSOR_THRESHOLD = 0.5;\n"));
+    CHECK(cut.shadow.hlsl.find("#define GAME_LIGHT") == std::string::npos);
+    CHECK_FALSE(cut.shadow.spirv.empty());
+    // A shader without one has none, and light()'s built-ins are light()'s alone, as Godot's.
+    const render::CompiledShader plain = compiled(glow());
+    CHECK_FALSE(plain.light_used);
+    CHECK(plain.cpu_light.empty());
+    CHECK(plain.hlsl.find("#define GAME_LIGHT") == std::string::npos);
+    const std::string error =
+        error_of({.path = "shaders/early.hlsl",
+                  .code = "void fragment() {\n    DIFFUSE_LIGHT = (float3)1.0;\n}\n",
+                  .type = render::ShaderType::Spatial,
+                  .params = {}});
+    CHECK(error.starts_with("shaders/early.hlsl:2: "));
+    CHECK(error.find("DIFFUSE_LIGHT") != std::string::npos);
+    for (const char* name : {"game_light", "game_albedo", "cpu_light"}) {
+        CAPTURE(name);
+        CHECK(render::shader_name_reserved(name, render::ShaderType::Spatial));
+    }
+    // The software device can't draw it without its CPU module.
+    render::CompiledShader missing = shader;
+    missing.cpu_light.clear();
+    CHECK_FALSE(render::create_software_device()->create_shader(missing).ok());
+}
+
+TEST_CASE("light() lights a surface once a light, in place of the engine's light model") {
+    const auto software = render::create_software_device();
+    for (const render::RenderMethod method :
+         {render::RenderMethod::ForwardPlus, render::RenderMethod::Compatibility}) {
+        CAPTURE(static_cast<int>(method));
+        const render::Scene3D scene = lit_scene(method);
+        render::Scene3D dark = scene;
+        dark.lights.clear();
+        render::Scene3D sun = scene;
+        sun.lights.resize(1);
+        // A light() that adds nothing leaves only the ambient light: the scene's lights don't
+        // reach the surface as they would without one.
+        const render::Image unlit = draw_lit(*software, scene, lit_by(""));
+        CHECK(unlit.pixels == draw_lit(*software, dark, lit_by("")).pixels);
+        render::ShaderSource plain = lit_by("");
+        plain.code = "void fragment() {\n    ALBEDO = tint.rgb;\n    ROUGHNESS = 0.4;\n}\n";
+        CHECK(unlit.pixels != draw_lit(*software, scene, plain).pixels);
+        // It runs once a light, adding to what the lights before it gave, and knows which are
+        // directional.
+        const render::Image directional = draw_lit(
+            *software, scene, lit_by("    DIFFUSE_LIGHT += LIGHT_IS_DIRECTIONAL ? 0.2 : 0.0;\n"));
+        CHECK(directional.pixels ==
+              draw_lit(*software, sun, lit_by("    DIFFUSE_LIGHT += (float3)0.2;\n")).pixels);
+        CHECK(directional.pixels != unlit.pixels);
+        const render::Image twice = draw_lit(
+            *software, scene, lit_by("    DIFFUSE_LIGHT = DIFFUSE_LIGHT * 2.0 + (float3)0.1;\n"));
+        CHECK(twice.pixels == draw_lit(*software, scene,
+                                       lit_by("    DIFFUSE_LIGHT += (float3)(LIGHT_IS_DIRECTIONAL "
+                                              "? 0.1 : 0.2);\n"))
+                                  .pixels);
+    }
+
+    // It may discard pixels, and change ALPHA, which a blended surface lets the clear color
+    // through by.
+    const render::Scene3D scene = lit_scene(render::RenderMethod::ForwardPlus);
+    // Points on the card's top and bottom halves, drawn alone.
+    const std::array<std::uint32_t, 2> top = pixel_of(scene, {0.4F, 0.3F, 0.8F}, 64);
+    const std::array<std::uint32_t, 2> bottom = pixel_of(scene, {0.4F, -0.1F, 0.8F}, 64);
+    const auto card = [&](const render::ShaderSource& source, bool blended = false) {
+        return draw_lit(*software, scene, source, blended, true);
+    };
+    const auto pixel = [](const render::Image& image, std::array<std::uint32_t, 2> at) {
+        const std::size_t i = ((std::size_t{at[1]} * image.width) + at[0]) * 4;
+        return std::array<int, 3>{image.pixels[i], image.pixels[i + 1], image.pixels[i + 2]};
+    };
+    const render::Image shown = card(lit_by(""));
+    const std::array<int, 3> clear = pixel(shown, {0, 0});
+    REQUIRE(pixel(shown, top) != clear);
+    REQUIRE(pixel(shown, bottom) != clear);
+    const render::Image cut = card(lit_by("    if (UV.y > 0.5) {\n        discard;\n    }\n"
+                                          "    DIFFUSE_LIGHT += (float3)0.5;\n"));
+    CHECK(pixel(cut, top) != clear);
+    CHECK(pixel(cut, bottom) == clear);
+    const std::string bright = "    DIFFUSE_LIGHT += (float3)0.8;\n";
+    const render::Image solid = card(lit_by(bright), true);
+    const render::Image faint = card(lit_by(bright + "    ALPHA = 0.3;\n"), true);
+    const std::array<int, 3> full = pixel(solid, top);
+    const std::array<int, 3> through = pixel(faint, top);
+    CHECK(full != clear);
+    for (std::size_t c = 0; c < 3; ++c) {
+        CAPTURE(c);
+        CHECK(std::abs(through.at(c) - clear.at(c)) < std::abs(full.at(c) - clear.at(c)));
+    }
+}
+
+TEST_CASE("every device draws spatial shaders' light() as the software device does") {
+    render::Scene3D occluded = lit_scene(render::RenderMethod::ForwardPlus);
+    occluded.ssao.enabled = true;
+    const std::array<std::pair<const char*, render::Scene3D>, 3> scenes{
+        {{"forward+", lit_scene(render::RenderMethod::ForwardPlus)},
+         {"forward+ with SSAO", occluded},
+         {"compatibility", lit_scene(render::RenderMethod::Compatibility)}}};
+    const auto software = render::create_software_device();
+    std::vector<render::Image> expected;
+    expected.reserve(scenes.size());
+    for (const auto& [name, scene] : scenes) {
+        expected.push_back(draw_lit(*software, scene, toon()));
+    }
+    for (auto& device : slash::test::hardware_devices()) {
+        CAPTURE(render::backend_name(device->backend()));
+        const bool opengl = device->backend() == render::Backend::OpenGl ||
+                            device->backend() == render::Backend::OpenGlEs;
+        const DeviceShaders shaders(*device, {toon()});
+        for (std::size_t i = 0; i < scenes.size(); ++i) {
+            CAPTURE(scenes.at(i).first);
+            const render::Image& want = opengl ? expected.back() : expected.at(i);
+            const render::Image image = draw_lit(*device, scenes.at(i).second, shaders[0]);
+            const auto [count, first] = differences(image, want);
+            CAPTURE(first);
+            CHECK(count <= 12);
+            if (count > 12) {
                 auto drawn = render::encode_png(image);
                 auto wanted = render::encode_png(want);
                 REQUIRE(drawn.ok());

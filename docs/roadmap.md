@@ -588,7 +588,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         eight primitive meshes, `StandardMaterial3D`, `Camera3D`, `DirectionalLight3D`,
         `OmniLight3D`, `SpotLight3D` and `WorldEnvironment`, drawn under the canvas by every
         game and by `frame.capture`
-- [ ] A game's own 3D shaders, as Godot's `shader_type spatial`
+- [x] A game's own 3D shaders, as Godot's `shader_type spatial`
   - [x] `fragment()` gives a mesh's surface (`ALBEDO`, `ROUGHNESS`, `NORMAL_MAP`, `EMISSION`,
         `ALPHA` and the rest, Godot's built-ins in view space), lit by the engine's 3D
         lighting: compiled into the mesh shader's Compatibility, Forward+ and prepass stages for
@@ -599,7 +599,10 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         world's with `world_vertex_coords`), in the motion prepass with the frame before's
         place and time, and the shadow pass reads the shader: its `vertex()`, and its
         `fragment()` where it cuts out with `ALPHA_SCISSOR_THRESHOLD`
-  - [ ] `light()`
+  - [x] `light()` lights a mesh once a light in place of the engine's light model, with Godot's
+        light built-ins (`LIGHT`, `LIGHT_COLOR`, `ATTENUATION`, `DIFFUSE_LIGHT`,
+        `SPECULAR_LIGHT` and the rest), in the Compatibility and Forward+ stages and on the
+        software device
 - [x] Cascaded, omni and spot shadows
 - [x] Post-processing: tonemap, bloom, SSAO, SSR, depth of field, auto exposure, color grading
   - [x] Godot's Compatibility renderer's tonemappers (linear, Reinhard, filmic, ACES, AgX),

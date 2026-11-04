@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <initializer_list>
 #include <memory>
 #include <optional>
@@ -488,6 +489,27 @@ struct GameSurface {
     Float4 normal{};
 };
 
+// What a game's light() is given for one light at a pixel, in the world: the shading normal, the
+// way to the light, the way to the camera, its color, whether it is directional, its attenuation
+// (shadows included) and specular amount, and the surface's albedo, metallic and roughness.
+struct GameLightInput {
+    Float3 normal{};
+    Float3 toward{};
+    Float3 view{};
+    Float3 color{};
+    bool directional = false;
+    float attenuation = 1.0F;
+    float specular_amount = 1.0F;
+    Float3 albedo{};
+    float metallic = 0.0F;
+    float roughness = 1.0F;
+};
+
+// A game's light() at a pixel, as add_light in shaders/mesh.hlsl calls game_light: it adds the
+// light to diffuse and specular and may change alpha, or gives false where it discards.
+using GameLight = std::function<bool(const GameLightInput& light, Float3& diffuse, Float3& specular,
+                                     float& alpha)>;
+
 // What the fragment stage reads at a pixel: where it is in the target, the corners' values there,
 // which face it is on, and what each texture holds there.
 struct MeshPixel {
@@ -507,6 +529,8 @@ struct MeshPixel {
     const Image* voxel_gi = nullptr;
     // The surface its game's shader gives it, in place of the material's, when it has one.
     std::optional<GameSurface> game{}; // NOLINT(readability-redundant-member-init): left out
+    // Its game's light(), when the shader has one, which lights it in place of light_compute.
+    GameLight game_light{}; // NOLINT(readability-redundant-member-init): left out
 
     [[nodiscard]] static constexpr std::array<Float4, kMeshTextures> white_texels() {
         std::array<Float4, kMeshTextures> out{};
