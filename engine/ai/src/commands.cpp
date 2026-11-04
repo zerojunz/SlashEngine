@@ -74,9 +74,7 @@ json::Value params_schema(json::Object properties) {
 }
 
 json::Value message_schema() {
-    json::Value text;
-    text["type"] = "string";
-    json::Value role;
+    json::Value role = property("string", "Who says it.");
     role["enum"] = json::Array{"system", "user", "assistant", "tool"};
     json::Value image = params_schema({
         {"media_type", property("string", "image/png, image/jpeg, image/gif or image/webp.")},
@@ -86,16 +84,16 @@ json::Value message_schema() {
     json::Value images = property("array", "Images, in a user message.");
     images["items"] = std::move(image);
     json::Value call = params_schema({
-        {"id", text},
-        {"name", text},
-        {"arguments", json::Value(json::Object{})},
+        {"id", property("string", "The call's ID, which its tool message answers.")},
+        {"name", property("string", "The command it calls.")},
+        {"arguments", json::Value(json::Object{{"description", "The command's params."}})},
     });
     call["required"] = json::Array{"id", "name"};
     json::Value calls = property("array", "Tool calls, in an assistant message.");
     calls["items"] = std::move(call);
     json::Value schema = params_schema({
         {"role", std::move(role)},
-        {"text", text},
+        {"text", property("string", "What it says.")},
         {"images", std::move(images)},
         {"tool_calls", std::move(calls)},
         {"tool_call_id", property("string", "In a tool message: the call it answers.")},

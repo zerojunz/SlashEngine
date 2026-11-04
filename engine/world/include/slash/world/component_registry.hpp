@@ -66,7 +66,10 @@ public:
     // Documents the component; returns *this so calls chain after ComponentRegistry::add.
     ComponentType& set_doc(std::string text);
 
-    // Documents one field. The field must exist.
+    // Documents one field, or a member of a struct a field holds by its path:
+    // "angular_x.limit_lower" for a struct, "items[].text" for a list's and "joints{}.limitation"
+    // for a map's. The field and the member must exist. Each component that holds the same
+    // struct describes its members, alike.
     ComponentType& describe(std::string_view field, FieldMeta meta);
 
     [[nodiscard]] bool has(const World& world, entt::entity entity) const;

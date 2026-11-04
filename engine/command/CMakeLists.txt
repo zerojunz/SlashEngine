@@ -13,6 +13,7 @@ add_library(slash_command
     src/scatter.cpp
     src/playtest.cpp
     src/project_map.cpp
+    src/reference.cpp
     src/replay.cpp
     src/rpc.cpp
     src/l10n.cpp

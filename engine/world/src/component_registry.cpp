@@ -36,6 +36,61 @@ void apply_range(json::Value& schema, const FieldMeta& meta) {
     }
 }
 
+// Applies a field's doc, range and choices to its schema.
+void apply_meta(json::Value& property, const FieldMeta& meta) {
+    if (!meta.doc.empty()) {
+        property["description"] = meta.doc;
+    }
+    apply_range(property, meta);
+    if (!meta.choices.empty()) {
+        json::Array choices;
+        for (const std::string& choice : meta.choices) {
+            choices.emplace_back(choice);
+        }
+        // For a list of strings, each item is one of them.
+        const json::Value* type = property.find("type");
+        if (type != nullptr && type->is_string() && type->as_string() == "array") {
+            property["items"]["enum"] = std::move(choices);
+        } else {
+            property["enum"] = std::move(choices);
+        }
+    }
+}
+
+// Where a field's path starts: its name before the first ".", "[" or "{".
+std::string_view first_field(std::string_view path) {
+    return path.substr(0, path.find_first_of(".[{"));
+}
+
+// The schema of a struct member a path names below a field ("items[].text", "floors[].y",
+// "joints{}.limitation", "angular_x.limit_lower"), through the definitions it refers to, or
+// nullptr where it names nothing.
+json::Value* nested_schema(json::Value& field, std::string_view rest, SchemaBuilder& builder) {
+    json::Value* node = &field;
+    while (!rest.empty() && node != nullptr) {
+        if (rest.starts_with("[]")) {
+            node = node->find("items");
+            rest.remove_prefix(2);
+        } else if (rest.starts_with("{}")) {
+            node = node->find("additionalProperties");
+            rest.remove_prefix(2);
+        } else if (rest.starts_with('.')) {
+            rest.remove_prefix(1);
+            const std::string_view member = first_field(rest);
+            rest.remove_prefix(member.size());
+            if (const json::Value* ref = node->find("$ref"); ref != nullptr && ref->is_string()) {
+                const std::string& target = ref->as_string();
+                node = &builder.definition(target.substr(target.rfind('/') + 1));
+            }
+            json::Value* properties = node->find("properties");
+            node = properties != nullptr ? properties->find(member) : nullptr;
+        } else {
+            return nullptr;
+        }
+    }
+    return node;
+}
+
 } // namespace
 
 ComponentType::ComponentType(std::string type_name, entt::id_type hash,
@@ -55,7 +110,7 @@ ComponentType& ComponentType::set_doc(std::string text) {
 }
 
 ComponentType& ComponentType::describe(std::string_view field, FieldMeta meta) {
-    SLASH_ASSERT(std::ranges::find(fields_, field) != fields_.end(),
+    SLASH_ASSERT(std::ranges::find(fields_, first_field(field)) != fields_.end(),
                  "describe() names a field the component does not have");
     field_meta_.insert_or_assign(std::string(field), std::move(meta));
     return *this;
@@ -138,24 +193,23 @@ json::Value ComponentType::schema(SchemaBuilder& builder) const {
             property["default"] = *fallback;
         }
         if (const FieldMeta* meta = field_meta(field); meta != nullptr) {
-            if (!meta->doc.empty()) {
-                property["description"] = meta->doc;
-            }
-            apply_range(property, *meta);
-            if (!meta->choices.empty()) {
-                json::Array choices;
-                for (const std::string& choice : meta->choices) {
-                    choices.emplace_back(choice);
-                }
-                // For a list of strings, each item is one of them.
-                const json::Value* type = property.find("type");
-                if (type != nullptr && type->is_string() && type->as_string() == "array") {
-                    property["items"]["enum"] = std::move(choices);
-                } else {
-                    property["enum"] = std::move(choices);
-                }
-            }
+            apply_meta(property, *meta);
         }
+    }
+    // The members of structs inside fields, in the definitions of their types, which every
+    // component holding the type shares.
+    for (const auto& [path, meta] : field_meta_) {
+        const std::string_view field = first_field(path);
+        if (field.size() == path.size()) {
+            continue;
+        }
+        json::Value* property = properties.find(field);
+        json::Value* member =
+            property != nullptr
+                ? nested_schema(*property, std::string_view(path).substr(field.size()), builder)
+                : nullptr;
+        SLASH_ASSERT(member != nullptr, "describe() names a struct member the field does not have");
+        apply_meta(*member, meta);
     }
     return reference;
 }
