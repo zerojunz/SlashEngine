@@ -148,6 +148,7 @@ add_executable(slash_tests
     test_ray_records.cpp
     test_ray_tracing.cpp
     test_reflect.cpp
+    test_reference.cpp
     test_reflection.cpp
     test_render.cpp
     test_render_scale.cpp
@@ -919,4 +920,8 @@ if(SLASH_BUILD_TOOLS)
     add_test(NAME cli_schema_bench COMMAND slash-cli schema bench)
     set_tests_properties(cli_schema_bench PROPERTIES
         PASS_REGULAR_EXPRESSION "\"title\": \"SlashEngine benchmark task\"")
+    # Every component, field, command and param the tools register has a description, so the
+    # reference slash-cli docs writes has no holes. It prints what lacks one.
+    add_test(NAME cli_docs_strict
+        COMMAND slash-cli docs --strict --out ${CMAKE_CURRENT_BINARY_DIR}/api-docs)
 endif()

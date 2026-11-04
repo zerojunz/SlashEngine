@@ -353,6 +353,42 @@ slash-cli schema providers
 slash-cli schema bench
 ```
 
+### docs
+
+Writes the engine's reference as Markdown from `engine.describe {"full": true}`, as Godot's
+`--doctool` writes its class reference from the running engine. Run on a game (`--project`), the
+pages take in the game's own components and systems too.
+
+```bash
+slash-cli docs [--out <dir>] [--strict] [--project <dir>]
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--out <dir>` | Folder for the pages. Default `api-docs`. |
+| `--strict` | Exit 1 if a component, field, command or param has no description. |
+
+It writes four pages, sorted by name so the same engine writes the same bytes:
+
+| Page | What it holds |
+| --- | --- |
+| `README.md` | The engine's version, what the other pages hold and the session's capabilities. |
+| `components.md` | Each component's doc and a table of its fields: type, limits, default and doc. A struct inside a component (a menu's items, a joint's axes) gets a section of its own, which the field links to. |
+| `commands.md` | Each command's description, the capabilities it needs and a table of its params, nested ones by their paths (`cleanup.up`, `messages[].role`). |
+| `systems.md` | The systems a world runs, in the order they run, with their priorities. |
+
+It prints the pages it wrote and what lacks a description:
+
+```json
+{"pages":["api-docs/README.md","api-docs/components.md","api-docs/commands.md","api-docs/systems.md"],"undocumented":[]}
+```
+
+`undocumented` names each hole as `component X`, `field X.y` (a nested struct's member by the
+struct's name), `command x.y` or `param x.y.z`. The `cli_docs_strict` test runs it with
+`--strict`, so every component, field, command and param the tools register has a description,
+and CI uploads the pages it writes as the `engine-reference` artifact. Members of a struct inside
+a component are described with `ComponentType::describe` by their path: `"items[].text"`.
+
 ### project validate
 
 Checks a folder's `project.json`, its `export_presets.json` if there is one, the theme its

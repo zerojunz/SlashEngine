@@ -110,7 +110,7 @@ Built in two halves.
 
 Exit: an empty project exports to all six platforms and passes headless tests on each.
 
-### Milestone 5: 2D feature set (In progress)
+### Milestone 5: 2D feature set (Done)
 
 Foundations first, in the order Godot built them: the run loop, scenes and resources, then
 rendering on top.
@@ -573,7 +573,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] A music timeline: `run.until` and `playtest.run` report which clip played when and
         every transition, so agents can check the music follows the game
 
-### Milestone 7: 3D feature set (In progress)
+### Milestone 7: 3D feature set (Done)
 
 - [x] Clustered forward+ renderer with PBR materials, plus a low-end path for web and mobile
   - [x] Meshes, a depth buffer and `StandardMaterial3D`'s PBR inputs lit by up to 64
@@ -932,7 +932,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 
 Exit: an agent builds a small 3D sample end to end.
 
-### Milestone 8: Systems and platform services (Planned)
+### Milestone 8: Systems and platform services (In progress)
 
 - [x] Networking: ENet transport, replication driven by reflection, WebSocket for web, following
       Godot's high-level multiplayer ([reference](reference/networking.md))
@@ -1033,7 +1033,7 @@ their adapters live outside this repository. StoreKit is an OS framework, and Go
 is fetched at export time like the rest of the Android SDK, so neither is committed here. Dan
 chose this split.
 
-### Milestone 9: Launch (Planned)
+### Milestone 9: Launch (Next)
 
 - [ ] Every Launch row of the [feature table](#features-by-area) done
 - [x] Plugins with a stable C ABI, as Godot's GDExtension: libraries built apart from the engine,
@@ -1050,7 +1050,10 @@ chose this split.
         the example's plugin for all six
 - [ ] The engine and tools released for macOS
 - [ ] Exports for all six platforms
-- [ ] Reference docs generated from `engine.describe`
+- [x] Reference docs generated from `engine.describe`: `slash-cli docs` writes every component's
+      fields (the structs inside them too), every command's params and the systems as Markdown,
+      as Godot's `--doctool`; `--strict` fails on anything without a description, which a test
+      holds the tools to, and CI uploads the pages
 
 ## After launch
 
@@ -1087,14 +1090,14 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Gameplay code | C++ with hot reload; plugins as C++ modules with a stable C ABI | 6 | Done: game code in C++ that hot reloads in the tools and links into exports, and plugins with a stable C ABI that the tools load and exports ship for all six platforms |
 | Scenes and prefabs | JSON scenes, prefabs and instanced scenes with overrides, on EnTT | 2, 5 | Done |
 | 2D sprites and animation | Batched sprites, sprite sheets, flipbooks | 5 | Done |
-| Tilemaps | Tilemap layers with terrain autotiling, stored as text | 5 | In part: square, isometric and hexagonal tiles, alternatives, turned cells and collision are done; animated and multi-cell tiles in 5 |
+| Tilemaps | Tilemap layers with terrain autotiling, stored as text | 5 | Done: square, isometric and hexagonal tiles, terrains, alternatives, turned cells, animated and multi-cell tiles, collision, navigation, custom data and occluders |
 | 2D lighting | 2D lights, occluders, normal-mapped sprites | 5 | Done |
-| 2D physics | Box2D v3: bodies, areas, joints, character movement and queries | 5 | In part: tile collision is done; area overrides in 5 |
-| 3D physics | Jolt: rigid bodies, joints, character controller, vehicles | 7 | In part: bodies, areas, shapes, character movement and queries are done; joints and vehicles in 7 |
+| 2D physics | Box2D v3: bodies, areas, joints, character movement and queries | 5 | Done: bodies, areas with gravity and damping overrides, joints, character movement, queries and tile collision |
+| 3D physics | Jolt: rigid bodies, joints, character controller, vehicles | 7 | Done: bodies, areas, shapes, character movement, queries, joints, vehicles and ragdolls |
 | 3D renderer | Clustered forward+ with PBR, plus a low-end path for web and mobile | 7 | Done |
 | Shadows | Cascaded, omni and spot shadow maps | 7 | Done |
 | Post-processing | Tonemap, bloom, SSAO, SSR, DoF, auto exposure, color grading | 7 | Done |
-| Materials and shaders | HLSL shaders plus a JSON material graph | 5, 7 | In part: canvas material graphs, a game's own HLSL canvas shaders, `StandardMaterial3D`'s inputs and material files, and spatial shaders' `fragment()` and `vertex()` are done; spatial `light()` in 7 |
+| Materials and shaders | HLSL shaders plus a JSON material graph | 5, 7 | Done: canvas material graphs, a game's own HLSL canvas shaders, `StandardMaterial3D`'s inputs and material files, and spatial shaders' `fragment()`, `vertex()` and `light()` |
 | Keyframe animation | Keyframe tracks on any reflected property | 5 | Done |
 | Skeletal animation | Skinned meshes, blending, root motion | 7 | Done |
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Done |
@@ -1108,25 +1111,25 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Navigation | Godot's navigation server, Recast baking, 2D and 3D, avoidance | 7 | Done |
 | Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | 7 | Done |
 | Profiling | Tracy, plus `perf.stats` over the command API | 5, 6 | Done: Tracy, and `perf.stats` reports frame pacing, tick and system times and memory by part of the engine |
-| Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants, reviewed automatically | 6, 7 | In progress: the library, search, refining, hosted and test generators, feedback, team sharing, ready-to-use texture forms, parametric model recipes, models' text descriptions and attachment points, imported .glb models and versions from edited files, scene assembly (`entity.place`) and complex assets (recipes built of other model files, kept in the library by their parts' IDs), variants and quality tiers, model checks, automatic review and models made from concept images done; the rest of 3D in 7 |
+| Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants, reviewed automatically | 6, 7 | Done: the library, search, refining, hosted and test generators, feedback, team sharing, ready-to-use texture forms, parametric model recipes, models' text descriptions and attachment points, imported .glb models and versions from edited files, scene assembly (`entity.place`) and complex assets (recipes built of other model files, kept in the library by their parts' IDs), variants and quality tiers, model checks, automatic review and models made from concept images |
 | Global illumination | Baked lightmaps and probe-based GI | 7 | Done: reflection probes, baked lightmaps and their light probes, and VoxelGI with its dynamic objects, all imported from Godot |
 | Ray tracing | Acceleration structures and ray queries in the render device on Vulkan, Direct3D 12 and Metal: ray-traced shadows, reflections, AO and GI, with raster and probe fallbacks | 7 | Done: ray-traced shadows, ambient occlusion, reflections, GI, paths and lightmap bakes on the software device, Vulkan, Metal and Direct3D 12 (DXR 1.1's inline ray queries) |
 | Path tracing | A GPU path tracer for baked lightmaps and progressive reference stills | 7 | Done: progressive reference stills and lightmap bakes on the CPU and on Vulkan's, Metal's and Direct3D 12's ray queries |
-| Upscaling and frame generation | Render scale with FSR 1, FSR 2/3 and MetalFX built in, FSR 3 frame generation, DLSS, XeSS and FSR 4 as adapters outside the repo | 7 | Planned |
+| Upscaling and frame generation | Render scale with FSR 1, FSR 2/3 and MetalFX built in, FSR 3 frame generation, DLSS, XeSS and FSR 4 as adapters outside the repo | 7 | Done: FSR 1, FSR 2, FSR 3, MetalFX, FSR 3 frame generation, and a game's own temporal upscaler from an SDK package |
 | Sky and volumetrics | Physical sky, volumetric fog | 7 | Done: procedural, physical and panorama skies, their light on meshes, exponential, depth and height fog, and volumetric fog with fog volumes and VoxelGI's light |
 | Decals | Clustered decals | 7 | Done, imported from Godot |
-| Networking | ENet transport, replication driven by reflection, WebSocket for web | 8 | Planned |
-| Terrain | Heightmap terrain with splat materials and LOD | 7 | Planned |
-| Level geometry | CSG and grid-based tile placement | 7 | In progress: CSG shapes, paths and `GridMap` done; heightmap terrain planned |
+| Networking | ENet transport, replication driven by reflection, WebSocket for web | 8 | Done: ENet and WebSocket peers (`wss://` too), RPCs, spawners and synchronizers, and the `net.*` commands |
+| Terrain | Heightmap terrain with splat materials and LOD | 7 | Done, as the HTerrain plugin's, imported from Godot, Unity and Unreal |
+| Level geometry | CSG and grid-based tile placement | 7 | Done: CSG shapes, paths, `GridMap` and heightmap terrain |
 | LOD and culling | Generated LODs with meshoptimizer, occlusion culling | 7 | Done, imported from Godot |
 | XR | OpenXR | 8 | Done: XR server, nodes, stereo views, OpenXR sessions and drawing on Vulkan, Direct3D 12, Metal, OpenGL and Android |
-| Localization | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | 8 | In progress: translation tables, the language setting, auto-translated controls, pseudo-localization, `l10n.extract` and `l10n.check` are done |
+| Localization | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | 8 | Done: translation tables, the language setting, auto-translated controls, pseudo-localization, `l10n.extract`, `l10n.translate` and `l10n.check` |
 | Video playback | AV1 through dav1d | 8 | Done |
 | Accessibility | AccessKit | 8 | Done: the tree, and backends for Windows, macOS, Linux, the web, Android and iOS |
 | Storyboard | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | 5, 6 | Done: files, commands and checks, palette, texture and triangle budget checks included, model review, the project map, and the style refined from accepted assets |
 | Analytics, ads and in-app purchases | One API for analytics, ads and purchases; StoreKit, Play Billing and a developer-chosen analytics endpoint in the repo, ad networks as outside adapters | 8 | Done: the API and its backend interfaces, banner positions, analytics endpoints, consent with Apple's prompt, StoreKit, Play Billing and the test backend; ad networks are outside adapters |
-| Closed vendor SDKs | SDK packages: an `sdk.json` per SDK that exports fetch, check and link on all six platforms, with JNI and Objective-C bridges and engine interfaces for the glue | 6 | In progress: packages, exports, `sdk.add`, `sdk.check`, Android libraries and Maven, services and glue code |
-| One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | In progress: every platform exports (4a, 4b); building them all from one Mac is next |
+| Closed vendor SDKs | SDK packages: an `sdk.json` per SDK that exports fetch, check and link on all six platforms, with JNI and Objective-C bridges and engine interfaces for the glue | 6 | Done: packages, exports, `sdk.add`, `sdk.check` and `sdk.lock`, Android libraries and Maven, services and glue code |
+| One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | Done: every platform exports, and one Mac builds them all |
 | Procedural generation | FastNoiseLite noise, noise and gradient textures, scatter rules agents write, and procedural content imported from other tools | 8 | Done |
 | Large worlds | Double-precision transforms, world streaming | After launch | After launch |
 | Cinematics | Timeline tracks for cameras and events | After launch | After launch |

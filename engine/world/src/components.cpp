@@ -2,9 +2,11 @@
 
 #include "slash/world/component_registry.hpp"
 
+#include <initializer_list>
 #include <numbers>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace slash::world {
 
@@ -12,6 +14,49 @@ namespace {
 
 // Godot's 20 render layers.
 constexpr double kMaxMask = 1048575;
+
+// A member of a struct a component holds, for describe_members.
+struct Member {
+    std::string_view name;
+    FieldMeta meta;
+};
+
+// Documents the members of the struct at a field's path: "angular_x" for a struct, "items[]"
+// for a list's, "joints{}" for a map's.
+ComponentType& describe_members(ComponentType& type, std::string_view path,
+                                std::initializer_list<Member> members) {
+    for (const Member& member : members) {
+        type.describe(std::string(path) + "." + std::string(member.name), member.meta);
+    }
+    return type;
+}
+
+// A gradient's points, as particles' color ramps hold them.
+void describe_gradient(ComponentType& type, std::string_view field) {
+    describe_members(type, std::string(field) + "[]",
+                     {{"offset", {.doc = "Where it is along the gradient, from 0 to 1."}},
+                      {"color", {.doc = "Its color, as [r, g, b, a] from 0 to 1."}}});
+}
+
+// The items of a PopupMenu or MenuButton.
+void describe_menu_items(ComponentType& type) {
+    describe_members(
+        type, "items[]",
+        {{"text", {.doc = "What it says; with separator, the label in the line."}},
+         {"icon",
+          {.doc = "Project path of a PNG, BMP or KTX2 file shown before the text; \"\" for "
+                  "none."}},
+         {"checkable", {.doc = R"("none", "check" (a check box) or "radio" (a radio button).)"}},
+         {"checked", {.doc = "Its check box or radio button is checked."}},
+         {"id", {.doc = "What id_pressed reports; -1 for the item's index."}},
+         {"disabled", {.doc = "Shown greyed out; it can't be picked."}},
+         {"separator", {.doc = "A line across the menu, around the text if it has some."}},
+         {"indent", {.doc = "Indented this many times the theme's indent."}},
+         {"tooltip", {.doc = "Shown once the pointer rests on the item."}},
+         {"auto_translate_mode",
+          {.doc = "Whether its text shows translated: \"inherit\" (as its menu), \"always\" "
+                  "or \"disabled\"."}}});
+}
 
 // The 2D physics components. Fields every body has come first.
 void register_physics_components(ComponentRegistry& registry) {
@@ -522,7 +567,8 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                "\"motor_target_velocity\" (radians per second), \"motor_force_limit\" "
                "(newton-meters, 300), \"spring_enabled\", \"spring_stiffness\", "
                "\"spring_damping\" (0), \"spring_equilibrium_point\" (radians)}."};
-    registry.add<Generic6DOFJoint3D>()
+    ComponentType& six_dof = registry.add<Generic6DOFJoint3D>();
+    six_dof
         .set_doc("Limits, drives or springs each way two 3D bodies move apart, along and about "
                  "the entity's axes. By default every axis is locked.")
         .describe("node_a", node_a)
@@ -534,6 +580,34 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("angular_x", angular_axis)
         .describe("angular_y", angular_axis)
         .describe("angular_z", angular_axis);
+    for (const std::string_view axis : {"linear_x", "linear_y", "linear_z"}) {
+        describe_members(
+            six_dof, axis,
+            {{"limit_enabled", {.doc = "Holds it between the limits; false moves freely."}},
+             {"limit_upper", {.doc = "In meters."}},
+             {"limit_lower", {.doc = "In meters."}},
+             {"motor_enabled", {.doc = "Drives it at motor_target_velocity."}},
+             {"motor_target_velocity", {.doc = "In meters per second."}},
+             {"motor_force_limit", {.doc = "The most the motor pushes, in newtons."}},
+             {"spring_enabled", {.doc = "Pulls it toward spring_equilibrium_point."}},
+             {"spring_stiffness", {.doc = "How hard the spring pulls."}},
+             {"spring_damping", {.doc = "How much the spring slows it."}},
+             {"spring_equilibrium_point", {.doc = "Where the spring rests, in meters."}}});
+    }
+    for (const std::string_view axis : {"angular_x", "angular_y", "angular_z"}) {
+        describe_members(
+            six_dof, axis,
+            {{"limit_enabled", {.doc = "Holds it between the limits; false turns freely."}},
+             {"limit_upper", {.doc = "In radians."}},
+             {"limit_lower", {.doc = "In radians."}},
+             {"motor_enabled", {.doc = "Drives it at motor_target_velocity."}},
+             {"motor_target_velocity", {.doc = "In radians per second."}},
+             {"motor_force_limit", {.doc = "The most the motor turns it, in newton-meters."}},
+             {"spring_enabled", {.doc = "Pulls it toward spring_equilibrium_point."}},
+             {"spring_stiffness", {.doc = "How hard the spring pulls."}},
+             {"spring_damping", {.doc = "How much the spring slows it."}},
+             {"spring_equilibrium_point", {.doc = "Where the spring rests, in radians."}}});
+    }
 
     registry.add<VehicleBody3D>()
         .set_doc("A car: the RigidBody3D on the same entity rolls on the VehicleWheel3D entities "
@@ -604,8 +678,8 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("collision_exceptions",
                   {.doc = "Bodies its bones never collide with, such as the character's own."});
 
-    registry.add<PhysicalBone3D>()
-        .set_doc("A body for one bone of a model, as Godot's PhysicalBone3D: a Transform3D child "
+    ComponentType& bone = registry.add<PhysicalBone3D>();
+    bone.set_doc("A body for one bone of a model, as Godot's PhysicalBone3D: a Transform3D child "
                  "of a PhysicalBoneSimulator3D's entity, shaped by CollisionShape3D, at the "
                  "bone times body_offset. Its joint holds it, at its bone's origin, to the body "
                  "of the nearest bone above its own that has one. The physics step writes its "
@@ -659,6 +733,24 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("angular_velocity", {.doc = "In radians per second about each axis, while it "
                                               "simulates."})
         .describe("can_sleep", {.doc = "Stop simulating it while it rests."});
+    for (const std::string_view axis : {"x", "y", "z"}) {
+        describe_members(
+            bone, axis,
+            {{"linear_limit_enabled", {.doc = "Holds it along the axis between the limits."}},
+             {"linear_limit_upper", {.doc = "In meters."}},
+             {"linear_limit_lower", {.doc = "In meters."}},
+             {"linear_spring_enabled", {.doc = "Pulls it toward linear_equilibrium_point."}},
+             {"linear_spring_stiffness", {.doc = "How hard the spring pulls."}},
+             {"linear_spring_damping", {.doc = "How much the spring slows it."}},
+             {"linear_equilibrium_point", {.doc = "Where the spring rests, in meters."}},
+             {"angular_limit_enabled", {.doc = "Holds it about the axis between the limits."}},
+             {"angular_limit_upper", {.doc = "In radians."}},
+             {"angular_limit_lower", {.doc = "In radians."}},
+             {"angular_spring_enabled", {.doc = "Pulls it toward angular_equilibrium_point."}},
+             {"angular_spring_stiffness", {.doc = "How hard the spring pulls."}},
+             {"angular_spring_damping", {.doc = "How much the spring slows it."}},
+             {"angular_equilibrium_point", {.doc = "Where the spring rests, in radians."}}});
+    }
 }
 
 // The skeleton modifiers: Godot 4.6's TwoBoneIK3D, FABRIK3D, CCDIK3D and JacobianIK3D.
@@ -686,7 +778,15 @@ void register_ik_components(ComponentRegistry& registry) {
     const FieldMeta deterministic{.doc = "Solves from the pose each time rather than carrying its "
                                          "chain from tick to tick."};
 
-    registry.add<TwoBoneIK3D>()
+    const FieldMeta end_bone_direction{
+        .doc = "The way end_bone_length reaches from the end bone: " + directions + "."};
+    const FieldMeta end_bone_length{.doc = "Meters past the end bone it reaches with, with "
+                                           "extend_end_bone."};
+    const FieldMeta extend_end_bone{.doc = "Reaches with a point end_bone_length past the end "
+                                           "bone."};
+    const FieldMeta target{.doc = "ID of the entity it reaches for."};
+    ComponentType& two_bone = registry.add<TwoBoneIK3D>();
+    two_bone
         .set_doc("Bends two bones of the model the entity (or its Transform3D parent) draws so "
                  "the end reaches a target, toward a pole, as Godot's TwoBoneIK3D.")
         .describe("settings",
@@ -698,6 +798,23 @@ void register_ik_components(ComponentRegistry& registry) {
         .describe("active", active)
         .describe("influence", influence)
         .describe("mutable_bone_axes", mutable_bone_axes);
+    describe_members(
+        two_bone, "settings[]",
+        {{"root_bone", {.doc = "The limb's first bone, which turns toward the target."}},
+         {"middle_bone", {.doc = "The bone that bends, as an elbow or a knee."}},
+         {"end_bone", {.doc = "The bone that reaches the target."}},
+         {"end_bone_direction", end_bone_direction},
+         {"end_bone_length", end_bone_length},
+         {"extend_end_bone", extend_end_bone},
+         {"use_virtual_end",
+          {.doc = "Reaches with the point past the end bone rather than the "
+                  "end bone, making it the middle bone's child."}},
+         {"target", target},
+         {"pole", {.doc = "ID of the entity the middle bone bends toward."}},
+         {"pole_direction",
+          {.doc = "The middle bone's axis that points at the pole: \"none\", " + axes +
+                  ", or \"custom\" (pole_direction_vector)."}},
+         {"pole_direction_vector", {.doc = "The custom pole_direction, in the bone's space."}}});
     const auto chain = [&](ComponentType& added, const std::string& doc) {
         added.set_doc(doc)
             .describe("settings", chain_settings)
@@ -708,6 +825,35 @@ void register_ik_components(ComponentRegistry& registry) {
             .describe("min_distance", min_distance)
             .describe("angular_delta_limit", angular_delta_limit)
             .describe("deterministic", deterministic);
+        describe_members(added, "settings[]",
+                         {{"root_bone", {.doc = "The chain's first bone, which it turns from."}},
+                          {"end_bone", {.doc = "The chain's last bone, which reaches the target."}},
+                          {"end_bone_direction", end_bone_direction},
+                          {"end_bone_length", end_bone_length},
+                          {"extend_end_bone", extend_end_bone},
+                          {"target", target},
+                          {"joints",
+                           {.doc = "How each bone of the chain may turn, by bone name; bones left "
+                                   "out turn every way."}}});
+        describe_members(
+            added, "settings[].joints{}",
+            {{"rotation_axis",
+              {.doc = "The axes it turns about: \"all\", \"x\", \"y\", "
+                      "\"z\" or \"custom\" (rotation_axis_vector), in the "
+                      "bone's space."}},
+             {"rotation_axis_vector", {.doc = "The custom rotation_axis."}},
+             {"limitation",
+              {.doc = "\"\" for none, or \"cone\": it turns within "
+                      "limitation_angle of the cone's axis."}},
+             {"limitation_angle", {.doc = "The cone's half angle, in radians."}},
+             {"limitation_rotation_offset",
+              {.doc = "The cone turned by radians about each "
+                      "axis, as Transform3D's rotation."}},
+             {"limitation_right_axis",
+              {.doc = "Which way is right in the cone's space: "
+                      "\"none\", " +
+                      axes + ", or \"custom\" (limitation_right_axis_vector)."}},
+             {"limitation_right_axis_vector", {.doc = "The custom limitation_right_axis."}}});
     };
     chain(registry.add<FABRIK3D>(),
           "Turns a chain of bones so its end reaches a target by forward and backward reaching, "
@@ -1399,6 +1545,7 @@ void register_ui_components(ComponentRegistry& registry) {
                   {.doc = "Which way it lays out; inherited goes by the project's "
                           "internationalization.rendering.root_node_layout_direction.",
                    .choices = {"inherited", "application_locale", "ltr", "rtl", "system_locale"}});
+    describe_menu_items(*registry.find_mutable("PopupMenu"));
     describe_button_look(registry.add<OptionButton>().set_doc(
                              "A button showing the option picked, which opens a list of its "
                              "options below it when pressed, as Godot's OptionButton. Picking "
@@ -1415,6 +1562,19 @@ void register_ui_components(ComponentRegistry& registry) {
                   {.doc = "Be as wide as the widest option, not only the one shown."})
         .describe("allow_reselect",
                   {.doc = "Picking the option already shown emits item_selected again."});
+    describe_members(
+        *registry.find_mutable("OptionButton"), "items[]",
+        {{"text", {.doc = "What it says; with separator, the label in the line."}},
+         {"icon",
+          {.doc = "Project path of a PNG, BMP or KTX2 file shown before the text; \"\" "
+                  "for none."}},
+         {"id", {.doc = "What the option is known by; -1 for its index."}},
+         {"disabled", {.doc = "Shown greyed out; it can't be picked."}},
+         {"separator", {.doc = "A line between options, around the text if it has some."}},
+         {"tooltip", {.doc = "Shown once the pointer rests on the option in the list."}},
+         {"auto_translate_mode",
+          {.doc = "Whether its text shows translated: \"inherit\" (as "
+                  "its button), \"always\" or \"disabled\"."}}});
     describe_button(registry.add<MenuButton>().set_doc(
                         "A flat button that opens a menu of items below it when pressed, as "
                         "Godot's MenuButton. Picking an item emits id_pressed and index_pressed "
@@ -1426,6 +1586,7 @@ void register_ui_components(ComponentRegistry& registry) {
         .describe("switch_on_hover",
                   {.doc = "While another MenuButton's menu is open, moving onto this one opens "
                           "its menu instead, as in a menu bar."});
+    describe_menu_items(*registry.find_mutable("MenuButton"));
 
     const FieldMeta button_texture{.doc =
                                        "Project path of a PNG, BMP or KTX2 file; \"\" for none."};
@@ -1604,6 +1765,20 @@ void register_ui_components(ComponentRegistry& registry) {
                           "(\"string\" or \"icon\"), \"width\" (24), \"draw\", \"lines\": "
                           "[{\"line\", \"text\", \"icon\", \"color\"}]}. Entries move with "
                           "their lines as the text is typed in, and go with a deleted line."});
+    describe_members(*registry.find_mutable("TextEdit"), "gutters[]",
+                     {{"name", {.doc = "What gutter_clicked names it by."}},
+                      {"type", {.doc = R"("string" (text) or "icon".)"}},
+                      {"width", {.doc = "In pixels."}},
+                      {"draw", {.doc = "Shown; false hides it."}},
+                      {"lines", {.doc = "What it shows by the lines that have something."}}});
+    describe_members(
+        *registry.find_mutable("TextEdit"), "gutters[].lines[]",
+        {{"line", {.doc = "The line, from 0."}},
+         {"text", {.doc = "What a \"string\" gutter shows on the line."}},
+         {"icon",
+          {.doc = "What an \"icon\" gutter shows: a PNG, BMP or KTX2 file, or a "
+                  "built-in icon."}},
+         {"color", {.doc = "Its text or icon's color, as [r, g, b, a] from 0 to 1."}}});
 
     registry.add<CodeHighlighter>()
         .set_doc("Colors the text of the TextEdit on its entity as code, as Godot's "
@@ -1827,6 +2002,8 @@ void register_particle_components(ComponentRegistry& registry) {
                                         "points {offset, color}, blended between."})
         .describe("color_initial_ramp", {.doc = "Each particle multiplies its color by one "
                                                 "picked at random from this gradient."});
+    describe_gradient(type, "color_ramp");
+    describe_gradient(type, "color_initial_ramp");
     range(type, "hue_variation", "Turns its hue, as a fraction of the color wheel", -1, 1)
         .describe("hue_variation_curve", curve);
     range(type, "anim_speed", "Times its frames play over its life", 0)
@@ -1935,6 +2112,8 @@ void register_particle_components(ComponentRegistry& registry) {
                                         "points {offset, color}, blended between."})
         .describe("color_initial_ramp", {.doc = "Each particle multiplies its color by one "
                                                 "picked at random from this gradient."});
+    describe_gradient(type3d, "color_ramp");
+    describe_gradient(type3d, "color_initial_ramp");
     range(type3d, "hue_variation", "Turns its hue, as a fraction of the color wheel", -1, 1)
         .describe("hue_variation_curve", curve);
     range(type3d, "anim_speed", "Times its material's frames play over its life", 0)
@@ -2340,6 +2519,10 @@ void register_path_components(ComponentRegistry& registry) {
                                     "relative to it."})
         .describe("bake_interval",
                   {.doc = "Pixels between the points the curve is baked into.", .min = 0.01});
+    describe_members(*registry.find_mutable("Path2D"), "points[]",
+                     {{"position", {.doc = "Where it is, as [x, y] pixels."}},
+                      {"in", {.doc = "The control handle before it, relative to it."}},
+                      {"out", {.doc = "The control handle after it, relative to it."}}});
     registry.add<PathFollow2D>()
         .set_doc("Places the entity on its Transform2D parent's Path2D curve each tick, as "
                  "Godot's PathFollow2D.")
@@ -2361,6 +2544,11 @@ void register_path_components(ComponentRegistry& registry) {
         .describe("up_vector_enabled",
                   {.doc = "Carries an up vector along the curve, for \"oriented\" followers "
                           "and rolling along it."});
+    describe_members(*registry.find_mutable("Path3D"), "points[]",
+                     {{"position", {.doc = "Where it is, as [x, y, z] meters."}},
+                      {"in", {.doc = "The control handle before it, relative to it."}},
+                      {"out", {.doc = "The control handle after it, relative to it."}},
+                      {"tilt", {.doc = "Radians the curve rolls there about the way it goes."}}});
     registry.add<PathFollow3D>()
         .set_doc("Places the entity on its Transform3D parent's Path3D curve each tick, as "
                  "Godot's PathFollow3D.")
@@ -2519,6 +2707,15 @@ void register_network_components(ComponentRegistry& registry) {
         .describe("properties",
                   {.doc = "What it replicates: each {\"path\": \"Component/field\", \"spawn\", "
                           "\"replication_mode\": \"never\" | \"always\" | \"on_change\"}."});
+    describe_members(
+        *registry.find_mutable("MultiplayerSynchronizer"), "properties[]",
+        {{"path",
+          {.doc = "\"Component/field\", or part of one (\"Transform2D/position/x\"), on "
+                  "the root."}},
+         {"spawn", {.doc = "Sent with the entity when a MultiplayerSpawner spawns it."}},
+         {"replication_mode",
+          {.doc = "\"never\", \"always\" (in every sync, unreliably) or "
+                  "\"on_change\" (reliably, when it changes)."}}});
 }
 
 void register_gridmap_components(ComponentRegistry& registry) {
@@ -2550,6 +2747,13 @@ void register_gridmap_components(ComponentRegistry& registry) {
                   {.doc = "Cells by height, each {\"y\", \"origin\": [x, z], \"rows\"}: rows of "
                           "keys toward +x, each row one cell further toward +z, \".\" for an "
                           "empty cell."});
+    describe_members(
+        *registry.find_mutable("GridMap"), "floors[]",
+        {{"y", {.doc = "The cells' height, in cells."}},
+         {"origin", {.doc = "[x, z] of the cell the first key of the first row stands for."}},
+         {"rows",
+          {.doc = "Keys of the legend toward +x, each row one cell further toward +z; "
+                  "\".\" for an empty cell."}}});
 }
 
 void register_terrain_components(ComponentRegistry& registry) {
@@ -2601,6 +2805,16 @@ void register_terrain_components(ComponentRegistry& registry) {
         .describe("render_layers", {.doc = "Render layers, as MeshInstance3D's layers."})
         .describe("cast_shadow", {.doc = "Which shadows it casts, as MeshInstance3D's.",
                                   .choices = {"off", "on", "double_sided", "shadows_only"}});
+    describe_members(
+        *registry.find_mutable("HTerrain"), "textures[]",
+        {{"albedo_bump",
+          {.doc = "Project path of an sRGB albedo image with its bump in alpha; "
+                  "\"\" is white."}},
+         {"normal_roughness",
+          {.doc = "Project path of an OpenGL-style normal map with roughness "
+                  "in alpha; \"\" is flat and rough."}},
+         {"uv_scale", {.doc = "Cells one repeat of the texture covers."}},
+         {"colormap_opacity", {.doc = "How much the color map tints it, from 0 to 1."}}});
 }
 
 void register_3d_components(ComponentRegistry& registry) {
@@ -2675,6 +2889,11 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("instances", {.doc = "Each instance as {\"position\", \"rotation\", "
                                        "\"scale\"}, a Transform3D's fields in the entity's "
                                        "space."})
+        .describe("instances[].position", {.doc = "Where the instance is in the entity's space, "
+                                                  "as [x, y, z] meters."})
+        .describe("instances[].rotation", {.doc = "Its rotation in radians about each axis, in "
+                                                  "Godot's YXZ order, as [x, y, z]."})
+        .describe("instances[].scale", {.doc = "Its scale on each axis, as [x, y, z]."})
         .describe("visible_instance_count",
                   {.doc = "How many instances draw, from the first; -1 for all.", .min = -1})
         .describe("layers", {.doc = "Render layers, as MeshInstance3D's."})
@@ -3616,6 +3835,12 @@ void register_builtin_components(ComponentRegistry& registry) {
                                    "input. Set by the tree; empty starts it over."})
         .describe("playing", {.doc = "The animations the last tick played, with their times and "
                                      "weights. Set by the tree."})
+        .describe("playing[].animation", {.doc = "Its name in the tree: \"Walk\", or "
+                                                 "\"library/Walk\"."})
+        .describe("playing[].time", {.doc = "Where it played to, in seconds."})
+        .describe("playing[].weight", {.doc = "How much of it went into the blend."})
+        .describe("playing[].node_weights",
+                  {.doc = "Its weight through each of the tree's nodes it passed, by name."})
         .describe("invalid", {.doc = "Why the last tick played nothing, as a missing animation or "
                                      "an input connected to nothing; \"\" when it played."})
         .describe("root_motion_position", {.doc = "How far the root motion track moved in the "
