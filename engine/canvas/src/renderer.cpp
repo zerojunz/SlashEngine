@@ -478,6 +478,16 @@ CanvasRenderer::~CanvasRenderer() {
     if (upscaler_ != nullptr) {
         upscaler_->release(*device_);
     }
+    release_generation_targets();
+}
+
+void CanvasRenderer::release_generation_targets() {
+    for (render::TextureId& target : generation_targets_) {
+        if (target != render::TextureId::None) {
+            device_->destroy_texture(std::exchange(target, render::TextureId::None));
+        }
+    }
+    generation_size_ = {};
 }
 
 void CanvasRenderer::before_tick(const world::World& world) {
@@ -1166,7 +1176,25 @@ struct CanvasRenderer::Submission {
     std::size_t tiles = 0;
     std::size_t particles = 0;
     std::size_t shadows = 0;
+    // Show a generated frame before the drawn one (CanvasOptions::generate).
+    bool generate = false;
 };
+
+namespace {
+
+// Readies the 3D renderer for a frame and says whether the frame is generated from: where the
+// settings ask for it and the device makes frames, not for a path-traced world or a headset's eye.
+bool ready_scene3d(scene3d::Renderer& scene3d, const render::RenderDevice& device,
+                   const Settings& settings, const CanvasOptions& options, bool traced) {
+    const bool generate = options.generate && settings.frame_generation &&
+                          device.generates_frames() && !traced && !options.view3d;
+    scene3d.set_tick_seconds(settings.tick_seconds);
+    scene3d.set_view(options.view3d);
+    scene3d.set_frame_generation(generate);
+    return generate;
+}
+
+} // namespace
 
 Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions& options) {
     SLASH_PROFILE_ZONE("CanvasRenderer::draw");
@@ -1269,8 +1297,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     if (traced) {
         fsr2.reset();
     }
-    scene3d_.set_tick_seconds(settings(world).tick_seconds);
-    scene3d_.set_view(options.view3d);
+    const bool generate = ready_scene3d(scene3d_, *device_, settings(world), options, traced);
     std::optional<scene3d::Frame3D> scene = scene3d_.prepare(
         world, viewport.x, viewport.y, options.interpolation, options.clear,
         settings(world).shadows, options.time, settings(world).depth_of_field, settings(world).ssao,
@@ -2231,7 +2258,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                    .sprites = sprites,
                    .tiles = tiles,
                    .particles = particles,
-                   .shadows = shadows});
+                   .shadows = shadows,
+                   .generate = generate});
 }
 
 Result<void> CanvasRenderer::submit(const Submission& submission) {
@@ -2385,21 +2413,9 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
         return error;
     };
 
-    std::size_t first_canvas = 0;
-    std::optional<render::UpscaleDraw> upscaled;
-    if (upscaler_ != nullptr) {
-        const render::UpscaleSize size{
-            .render_width = render::render_size(output_width, scaling.scale),
-            .render_height = render::render_size(output_height, scaling.scale),
-            .output_width = output_width,
-            .output_height = output_height};
-        auto input = upscaler_->input(*device_, size);
-        if (!input) {
-            return not_begun(input.error());
-        }
-        render::Frame world_frame = frame;
-        world_frame.target = input.value();
-        world_frame.view = render::pixel_projection(view_width, view_height);
+    // The world, with the canvases below it and their controls, drawn into world_frame's
+    // target with the 3D world under it; it ends the frame.
+    const auto draw_world = [&](render::Frame world_frame) -> Result<void> {
         with_scene(world_frame);
         if (auto began = device_->begin_frame(world_frame); !began) {
             return not_begun(began.error());
@@ -2421,62 +2437,164 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
                 return end_after(drawn.error());
             }
         }
-        if (auto ended = device_->end_frame(); !ended) {
-            return ended;
+        return device_->end_frame();
+    };
+    const std::array<render::Vertex2D, 6> screen{
+        render::Vertex2D{.x = 0.0F, .y = 0.0F, .u = 0.0F, .v = 0.0F},
+        render::Vertex2D{.x = view_width, .y = 0.0F, .u = 1.0F, .v = 0.0F},
+        render::Vertex2D{.x = view_width, .y = view_height, .u = 1.0F, .v = 1.0F},
+        render::Vertex2D{.x = 0.0F, .y = 0.0F, .u = 0.0F, .v = 0.0F},
+        render::Vertex2D{.x = view_width, .y = view_height, .u = 1.0F, .v = 1.0F},
+        render::Vertex2D{.x = 0.0F, .y = view_height, .u = 0.0F, .v = 1.0F}};
+
+    // The world's picture, drawn over the screen before the world's controls, when the world
+    // drew apart: upscaled, or into frame generation's target.
+    struct Picture {
+        render::TextureId texture = render::TextureId::None;
+        render::Material material;
+    };
+    std::optional<Picture> picture;
+    if (upscaler_ != nullptr) {
+        const render::UpscaleSize size{
+            .render_width = render::render_size(output_width, scaling.scale),
+            .render_height = render::render_size(output_height, scaling.scale),
+            .output_width = output_width,
+            .output_height = output_height};
+        auto input = upscaler_->input(*device_, size);
+        if (!input) {
+            return not_begun(input.error());
+        }
+        render::Frame world_frame = frame;
+        world_frame.target = input.value();
+        world_frame.view = render::pixel_projection(view_width, view_height);
+        if (auto drawn = draw_world(world_frame); !drawn) {
+            return drawn;
         }
         auto made = upscaler_->upscale(*device_, size, scaling);
         if (!made) {
             return made.error();
         }
-        upscaled = std::move(made).value();
+        picture = Picture{.texture = made.value().texture, .material = made.value().material};
         frame.view = render::pixel_projection(view_width, view_height);
-        first_canvas = world_canvas;
         scaled_ = {.upscaler = upscaler_name_, .size = size};
     }
-    if (!upscaled) {
-        with_scene(frame);
+
+    // Frame generation: the world's picture goes into the first of its targets, and the frame
+    // halfway between it and the one before into the second, shown first.
+    generated_ = false;
+    std::optional<Picture> generated;
+    const bool generate = submission.generate && output_width > 0 && output_height > 0;
+    if (generate && generation_size_ != std::array{output_width, output_height}) {
+        release_generation_targets();
+        for (render::TextureId& target : generation_targets_) {
+            auto made = device_->create_texture({.width = output_width,
+                                                 .height = output_height,
+                                                 .filter = render::Filter::Nearest,
+                                                 .render_target = true});
+            if (!made) {
+                return picture ? made.error() : not_begun(made.error());
+            }
+            target = made.value();
+        }
+        generation_size_ = {output_width, output_height};
+    } else if (!generate) {
+        release_generation_targets();
     }
-    auto began = device_->begin_frame(frame);
+    if (generate) {
+        render::Frame world_frame = frame;
+        world_frame.target = generation_targets_[0];
+        world_frame.view = render::pixel_projection(view_width, view_height);
+        if (picture) {
+            if (auto began = device_->begin_frame(world_frame); !began) {
+                return began.error();
+            }
+            if (auto drawn = device_->draw(picture->texture, screen, picture->material); !drawn) {
+                return end_after(drawn.error());
+            }
+            if (auto ended = device_->end_frame(); !ended) {
+                return ended;
+            }
+        } else if (auto drawn = draw_world(world_frame); !drawn) {
+            return drawn;
+        }
+        picture = Picture{.texture = generation_targets_[0], .material = {}};
+        frame.view = render::pixel_projection(view_width, view_height);
+        if (auto made = device_->generate_frame(generation_targets_[0], generation_targets_[1]);
+            made) {
+            generated = Picture{.texture = generation_targets_[1], .material = {}};
+        } else if (warned_.insert("frame generation").second) {
+            log::warn("generating a frame failed", {{"error", made.error().message}});
+        }
+    }
+
+    // A frame into options.target: the world (or its picture), then the world's controls, the
+    // canvases above and the overlay. Returns whether the frame was drawn.
+    const std::size_t first_item = next_item;
+    const std::size_t first_call = next_call;
+    const auto show = [&](const std::optional<Picture>& shown) -> Result<bool> {
+        next_item = first_item;
+        next_call = first_call;
+        render::Frame shown_frame = frame;
+        if (!shown) {
+            with_scene(shown_frame);
+        }
+        auto began = device_->begin_frame(shown_frame);
+        if (!began) {
+            if (!picture) {
+                (void)not_begun(began.error());
+            }
+            return began.error();
+        }
+        std::size_t first_canvas = 0;
+        if (shown) {
+            if (auto drawn = device_->draw(shown->texture, screen, shown->material); !drawn) {
+                return end_after(drawn.error()).error();
+            }
+            if (auto drawn = draw_controls(world_canvas); !drawn) {
+                return end_after(drawn.error()).error();
+            }
+            first_canvas = world_canvas + 1;
+        } else {
+            if (auto drawn = draw_scene(); !drawn) {
+                return end_after(drawn.error()).error();
+            }
+            if (auto ran = run_particle_jobs(particle_jobs); !ran) {
+                return end_after(ran.error()).error();
+            }
+        }
+        for (std::size_t c = first_canvas; c <= submission.canvases; ++c) {
+            if (auto drawn = draw_items(c); !drawn) {
+                return end_after(drawn.error()).error();
+            }
+            if (auto drawn = draw_controls(c); !drawn) {
+                return end_after(drawn.error()).error();
+            }
+        }
+        for (std::size_t i = 0; i < overlay.calls.size(); ++i) {
+            if (auto drawn =
+                    draw_control(overlay.calls[i], submission.overlay_textures[i], std::nullopt);
+                !drawn) {
+                return end_after(drawn.error()).error();
+            }
+        }
+        if (auto ended = device_->end_frame(); !ended) {
+            return ended.error();
+        }
+        return began.value();
+    };
+    if (generated) {
+        if (auto shown = show(generated); !shown) {
+            return shown.error();
+        }
+        generated_ = true;
+        ++frames_generated_;
+        if (options.between_frames) {
+            options.between_frames();
+        }
+    }
+    const Result<bool> began = show(picture);
     if (!began) {
-        return upscaled ? Result<void>(began.error()) : not_begun(began.error());
-    }
-    if (!upscaled) {
-        if (auto drawn = draw_scene(); !drawn) {
-            return end_after(drawn.error());
-        }
-    }
-    if (upscaled) {
-        const std::array<render::Vertex2D, 6> screen{
-            render::Vertex2D{.x = 0.0F, .y = 0.0F, .u = 0.0F, .v = 0.0F},
-            render::Vertex2D{.x = view_width, .y = 0.0F, .u = 1.0F, .v = 0.0F},
-            render::Vertex2D{.x = view_width, .y = view_height, .u = 1.0F, .v = 1.0F},
-            render::Vertex2D{.x = 0.0F, .y = 0.0F, .u = 0.0F, .v = 0.0F},
-            render::Vertex2D{.x = view_width, .y = view_height, .u = 1.0F, .v = 1.0F},
-            render::Vertex2D{.x = 0.0F, .y = view_height, .u = 0.0F, .v = 1.0F}};
-        if (auto drawn = device_->draw(upscaled->texture, screen, upscaled->material); !drawn) {
-            return end_after(drawn.error());
-        }
-        if (auto drawn = draw_controls(world_canvas); !drawn) {
-            return end_after(drawn.error());
-        }
-        first_canvas = world_canvas + 1;
-    } else if (auto ran = run_particle_jobs(particle_jobs); !ran) {
-        return end_after(ran.error());
-    }
-    for (std::size_t c = first_canvas; c <= submission.canvases; ++c) {
-        if (auto drawn = draw_items(c); !drawn) {
-            return end_after(drawn.error());
-        }
-        if (auto drawn = draw_controls(c); !drawn) {
-            return end_after(drawn.error());
-        }
-    }
-    for (std::size_t i = 0; i < overlay.calls.size(); ++i) {
-        if (auto drawn =
-                draw_control(overlay.calls[i], submission.overlay_textures[i], std::nullopt);
-            !drawn) {
-            return end_after(drawn.error());
-        }
+        return began.error();
     }
     controls_drawn_ = began.value() ? controls.controls : 0;
     glyphs_drawn_ = began.value() ? controls.glyphs : 0;
@@ -2491,7 +2609,7 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
     lods_drawn_ = began.value() ? scene3d_.lods_drawn() : 0;
     meshes_occluded_ = began.value() ? scene3d_.occluded() : 0;
     lights_3d_drawn_ = began.value() && submission.scene ? scene3d_.lights() : 0;
-    return device_->end_frame();
+    return {};
 }
 
 } // namespace slash::canvas

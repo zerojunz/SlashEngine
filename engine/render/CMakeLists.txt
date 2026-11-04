@@ -44,6 +44,7 @@ add_library(slash_render
     src/decal.cpp
     src/device.cpp
     src/forward_post.cpp
+    src/frame_generation.cpp
     src/fsr2.cpp
     src/fsr3.cpp
     src/gl_device.cpp
@@ -141,7 +142,8 @@ endif()
 # every platform: no fused multiply-adds, which arm64 compilers would otherwise emit and x86-64
 # ones not.
 set_source_files_properties(src/clusters.cpp src/decal.cpp src/device.cpp src/forward_post.cpp
-    src/fsr2.cpp src/fsr3.cpp src/material.cpp src/mesh.cpp src/particle_layout_3d.cpp
+    src/frame_generation.cpp src/fsr2.cpp src/fsr3.cpp src/material.cpp src/mesh.cpp
+    src/particle_layout_3d.cpp
     src/particles.cpp src/particles3d.cpp
     src/path_trace.cpp
     src/post.cpp src/resize.cpp src/shader_vm.cpp src/shadow.cpp src/reflection.cpp src/sky.cpp
@@ -173,6 +175,8 @@ set(slash_shader_headers "")
 # the same way, its prepare reactivity pass reading the storage buffer. Volumetric fog's passes (fog_compute) are a compute shader
 # over the shadow atlases and the sky's radiance, which takes tonemap.hlsl's colors, and fog_sky
 # the pass that draws the sky through the fog, whose fragment stage reads it as a storage buffer.
+# Frame generation's passes are one compute shader that includes nothing (compute_alone), and
+# its draw pass reads the generated frame as fog_sky reads the fog.
 set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
     mesh_clustered:MeshClustered:clustered mesh_normal:MeshNormal:normal
     mesh_motion:MeshMotion:motion shadow:Shadow:depth
@@ -190,7 +194,9 @@ set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
     particles_emit:ParticlesEmit:compute particles_draw:ParticlesDraw:compute
     particles_process_3d:ParticlesProcess3D:compute3d particles_sort_3d:ParticlesSort3D:compute3d
     particles_mesh_3d:ParticlesMesh3D:compute3d
-    volumetric_fog:VolumetricFog:fog_compute volumetric_fog_sky:VolumetricFogSky:fog_sky)
+    volumetric_fog:VolumetricFog:fog_compute volumetric_fog_sky:VolumetricFogSky:fog_sky
+    frame_generation:FrameGeneration:compute_alone
+    frame_generation_draw:FrameGenerationDraw:fog_sky)
 foreach(entry IN LISTS slash_shaders)
     string(REPLACE ":" ";" parts ${entry})
     list(GET parts 0 shader)
@@ -216,6 +222,9 @@ foreach(entry IN LISTS slash_shaders)
         elseif(kind STREQUAL "fog_compute")
             set(compute ON)
             set(include tonemap)
+        elseif(kind STREQUAL "compute_alone")
+            set(compute ON)
+            set(include ${shader})
         elseif(kind STREQUAL "fog_sky")
             set(include tonemap)
             set(interface v_uv)

@@ -13,11 +13,11 @@ frame.capture {"points": [[59, 45], [60, 45], [61, 45], [62, 45], [63, 45], [64,
 frame.capture {"points": [[59, 45], [60, 45], [61, 45], [62, 45], [63, 45], [64, 45]], "frames": 7}
   -> {"colors":[[0.051,0.078,0.149,1],[0.051,0.078,0.149,1],[0.051,0.078,0.149,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1]],"drawn":{"meshes":1},"height":90,"render_size":[80,45],"upscaler":"splat","width":160}
 display.set {"scaling": {"scale": 1.0}}
-  -> {"max_fps":0,"scaling":{"fsr_sharpness":0.2,"mode":"fsr2","scale":1.0,"upscaler":"splat"},"vsync_mode":"enabled"}
+  -> {"frame_generation":{"enabled":false},"max_fps":0,"scaling":{"fsr_sharpness":0.2,"mode":"fsr2","scale":1.0,"upscaler":"splat"},"vsync_mode":"enabled"}
 frame.capture {"points": [[59, 45], [60, 45], [61, 45], [62, 45], [63, 45], [64, 45]]}
   -> {"colors":[[0.051,0.078,0.149,1],[0.051,0.078,0.149,1],[0.051,0.078,0.149,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1]],"drawn":{"meshes":1},"height":90,"width":160}
 display.set {"scaling": {"scale": 0.5}}
-  -> {"max_fps":0,"scaling":{"fsr_sharpness":0.2,"mode":"fsr2","scale":0.5,"upscaler":"splat"},"vsync_mode":"enabled"}
+  -> {"frame_generation":{"enabled":false},"max_fps":0,"scaling":{"fsr_sharpness":0.2,"mode":"fsr2","scale":0.5,"upscaler":"splat"},"vsync_mode":"enabled"}
   splat: frame 1, 80x45 to 160x90, jitter (-0.500, 0.500), moved 0.0, reset
 frame.capture {"points": [[59, 45], [60, 45], [61, 45], [62, 45], [63, 45], [64, 45]]}
   -> {"colors":[[0.051,0.078,0.149,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1]],"drawn":{"meshes":1},"height":90,"render_size":[80,45],"upscaler":"splat","width":160}
@@ -36,6 +36,6 @@ component.set {"id": "card", "components": {"Transform3D": {"rotation": [0.0, 0.
 frame.capture {"points": [[59, 45], [60, 45], [61, 45], [62, 45], [63, 45], [64, 45]]}
   -> {"colors":[[0.051,0.078,0.149,1],[0.051,0.078,0.149,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1]],"drawn":{"meshes":1},"height":90,"render_size":[80,45],"upscaler":"splat","width":160}
 display.set {"scaling": {"scale": 1.0}}
-  -> {"max_fps":0,"scaling":{"fsr_sharpness":0.2,"mode":"fsr2","scale":1.0,"upscaler":"splat"},"vsync_mode":"enabled"}
+  -> {"frame_generation":{"enabled":false},"max_fps":0,"scaling":{"fsr_sharpness":0.2,"mode":"fsr2","scale":1.0,"upscaler":"splat"},"vsync_mode":"enabled"}
 frame.capture {"points": [[59, 45], [60, 45], [61, 45], [62, 45], [63, 45], [64, 45]]}
   -> {"colors":[[0.051,0.078,0.149,1],[0.051,0.078,0.149,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1]],"drawn":{"meshes":1},"height":90,"width":160}

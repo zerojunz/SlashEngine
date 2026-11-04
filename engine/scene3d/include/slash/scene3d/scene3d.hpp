@@ -260,6 +260,9 @@ public:
     // get_projection_for_view); the current camera still picks the environment, its cull mask and
     // its LOD settings. nullopt goes back to the camera's view.
     void set_view(const std::optional<CameraView>& view) { view_ = view; }
+    // Whether frames keep their prepass for frame generation (render::Scene3D::frame_generation),
+    // their meshes given the transforms they were drawn at in the last frame, as with use_taa.
+    void set_frame_generation(bool on) { frame_generation_ = on; }
 
     // Works out the frame for a target of width by height pixels, interpolation of the way from
     // the transforms before the last tick to the current ones, its shadows drawn with shadows,
@@ -323,6 +326,7 @@ public:
 
 private:
     std::optional<CameraView> view_;
+    bool frame_generation_ = false;
     struct Local {
         Vec3 position;
         Quat rotation;

@@ -8,6 +8,9 @@
 #include "decal.hpp"
 #include "forward_post.hpp"
 #include "forward_post_shaders.hpp"
+#include "frame_generation.hpp"
+#include "frame_generation_draw_shaders.hpp"
+#include "frame_generation_shaders.hpp"
 #include "fsr2.hpp"
 #include "fsr2_accumulate_shaders.hpp"
 #include "fsr2_depth_clip_shaders.hpp"
@@ -322,26 +325,28 @@ constexpr std::uint64_t kComputeUniformBytes =
     std::max({sizeof(ProcessUniforms), sizeof(EmitUniforms), sizeof(DrawUniforms),
               sizeof(ProcessUniforms3D), sizeof(SortUniforms3D), sizeof(MeshUniforms3D)});
 // The most bytes any binding of the uniform buffer reads.
-constexpr std::uint64_t kLargestUniforms = std::max<std::uint64_t>({sizeof(Mat4),
-                                                                    sizeof(VertexProgramUniforms),
-                                                                    sizeof(ProgramUniforms),
-                                                                    sizeof(LightsUniforms),
-                                                                    kComputeUniformBytes,
-                                                                    sizeof(MeshInstanceUniforms),
-                                                                    sizeof(MeshSurfaceUniforms),
-                                                                    sizeof(MeshSceneUniforms),
-                                                                    sizeof(MeshShadowUniforms),
-                                                                    sizeof(MeshShadowPassUniforms),
-                                                                    sizeof(PostUniforms),
-                                                                    sizeof(SkyUniforms),
-                                                                    sizeof(RadianceUniforms),
-                                                                    sizeof(SsaoUniforms),
-                                                                    sizeof(SsrUniforms),
-                                                                    sizeof(MeshCameraUniforms),
-                                                                    sizeof(TaaUniforms),
-                                                                    sizeof(Fsr2Uniforms),
-                                                                    sizeof(Fsr3Uniforms),
-                                                                    sizeof(SpatialUniforms)});
+constexpr std::uint64_t kLargestUniforms =
+    std::max<std::uint64_t>({sizeof(Mat4),
+                             sizeof(VertexProgramUniforms),
+                             sizeof(ProgramUniforms),
+                             sizeof(LightsUniforms),
+                             kComputeUniformBytes,
+                             sizeof(MeshInstanceUniforms),
+                             sizeof(MeshSurfaceUniforms),
+                             sizeof(MeshSceneUniforms),
+                             sizeof(MeshShadowUniforms),
+                             sizeof(MeshShadowPassUniforms),
+                             sizeof(PostUniforms),
+                             sizeof(SkyUniforms),
+                             sizeof(RadianceUniforms),
+                             sizeof(SsaoUniforms),
+                             sizeof(SsrUniforms),
+                             sizeof(MeshCameraUniforms),
+                             sizeof(TaaUniforms),
+                             sizeof(Fsr2Uniforms),
+                             sizeof(Fsr3Uniforms),
+                             sizeof(SpatialUniforms),
+                             sizeof(FrameGenerationUniforms)});
 // The bind groups are SDL's GPU API's, which the HLSL's registers name and the WGSL keeps
 // (cmake/compile_shaders.cmake): a vertex stage's uniforms in group 1, a fragment stage's
 // textures in group 2 (samplers kSamplerBinding after their textures) and its uniforms in group
@@ -645,6 +650,15 @@ public:
         for (const auto& [format, pipeline] : fog_sky_pipelines_) {
             wgpuRenderPipelineRelease(pipeline);
         }
+        while (!generation_frames_.empty()) {
+            forget_generation_frames(generation_frames_.back().first);
+        }
+        if (generation_pipeline_ != nullptr) {
+            wgpuComputePipelineRelease(generation_pipeline_);
+        }
+        for (const auto& [format, pipeline] : generation_draw_pipelines_) {
+            wgpuRenderPipelineRelease(pipeline);
+        }
         release_pending();
         for (const GpuTexture& atlas :
              {shadow_atlases_[0].gpu, shadow_atlases_[1].gpu, no_shadows_}) {
@@ -735,7 +749,11 @@ public:
                                            fog_output_layout_,
                                            fog_uniforms_layout_,
                                            fog_sky_storage_layout_,
-                                           fog_sky_uniforms_layout_}) {
+                                           fog_sky_uniforms_layout_,
+                                           generation_textures_layout_,
+                                           generation_storage_layout_,
+                                           generation_uniforms_layout_,
+                                           generation_draw_uniforms_layout_}) {
             if (layout != nullptr) {
                 wgpuBindGroupLayoutRelease(layout);
             }
@@ -916,6 +934,7 @@ public:
         forget_taa_history(texture);
         forget_fsr2_frames(texture);
         forget_fog_frames(texture);
+        forget_generation_frames(texture);
     }
 
     Result<ShaderId> create_shader(const CompiledShader& shader) override {
@@ -1610,10 +1629,94 @@ public:
                                        fog_volume_size(frame.scene->volumetric_fog.settings,
                                                        scene_width_, scene_height_));
             }
+            if (uses_frame_generation(*frame.scene) && frame.target != TextureId::None) {
+                prepare_generation(frame.target, {scene_width_, scene_height_}, {width, height},
+                                   !uses_taa(*frame.scene) && !uses_fsr2(*frame.scene));
+            }
         } else if (frame.scene && post_processes(frame.scene->post)) {
             prepare_post(width, height);
         }
         return true;
+    }
+
+    [[nodiscard]] bool generates_frames() const override { return true; }
+
+    Result<void> generate_frame(TextureId target, TextureId into) override {
+        if (in_frame_) {
+            return frame_in_progress("generate_frame");
+        }
+        for (const TextureId id : {target, into}) {
+            const auto it = textures_.find(id);
+            if (it == textures_.end()) {
+                return unknown_texture(id);
+            }
+            if (!it->second.desc.render_target) {
+                return not_a_render_target(id);
+            }
+        }
+        if (into == target) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "generate_frame writes into another render target than target");
+        }
+        const Texture& shown = textures_.at(target);
+        const Texture& made = textures_.at(into);
+        if (made.desc.width != shown.desc.width || made.desc.height != shown.desc.height) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "generate_frame writes into a render target of target's size");
+        }
+        GenerationFrames& frames = generation_frames(target);
+        const std::array<std::uint32_t, 2> display{shown.desc.width, shown.desc.height};
+        // A still frame is drawn at the display size.
+        generation_buffers(frames, frames.prepared ? frames.layout.render : display, display);
+        if (frames.frames == 0) {
+            frames.still_reprojection = reprojection(kNoCamera, kNoCamera);
+            frames.camera = frame_generation_camera(kNoCamera);
+        }
+        // Frames are generated between two the target drew one after the other.
+        const bool reset =
+            frames.fresh || frames.frames == 0 || frames.generated_from + 1 != frames.frames;
+        uniforms_.clear();
+        std::vector<FrameGenerationDispatch> still;
+        std::vector<std::uint32_t> still_at;
+        if (!frames.prepared) {
+            still = frame_generation_prepare_plan(frames.layout, frames.still_reprojection,
+                                                  frames.camera, true);
+            still_at = add_generation_uniforms(still);
+        }
+        const std::vector<FrameGenerationDispatch> plan =
+            frame_generation_plan(frames.layout, frames.camera, reset);
+        const std::vector<std::uint32_t> plan_at = add_generation_uniforms(plan);
+        const std::uint32_t where = uniforms_.add(std::array<std::uint32_t, 4>{
+            display[0],
+            frames.layout.sections.at(static_cast<std::size_t>(FrameGenerationSection::OutRgba)), 0,
+            0});
+        upload_uniforms();
+        WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, nullptr);
+        if (!frames.prepared) {
+            encode_generation(encoder, frames, still, still_at, shown.gpu.view, nullptr);
+        }
+        encode_generation(encoder, frames, plan, plan_at, shown.gpu.view, nullptr);
+        const std::array words{buffer_entry(0, frames.words)};
+        WGPUBindGroup storage = bind_group(fog_sky_storage_layout_, words);
+        WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+        color.view = made.gpu.view;
+        color.loadOp = WGPULoadOp_Clear;
+        color.storeOp = WGPUStoreOp_Store;
+        WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
+        descriptor.colorAttachmentCount = 1;
+        descriptor.colorAttachments = &color;
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
+        wgpuRenderPassEncoderSetPipeline(pass, generation_draw_pipeline(gpu_format(made.stored)));
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, storage, 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(pass, 3, generation_draw_uniforms_group_, 1, &where);
+        wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+        submit(encoder);
+        wgpuBindGroupRelease(storage);
+        frames.generated_from = frames.frames;
+        frames.fresh = false;
+        return {};
     }
 
     Result<void> draw(TextureId texture, std::span<const Vertex2D> vertices,
@@ -1893,6 +1996,27 @@ public:
                 }
             }
         }
+        // Frame generation's prepare pass, after a prepass with motion vectors: from the camera
+        // they were drawn from (the frame before's, for TAA's and FSR 2's).
+        GenerationFrames* generation = generation_frames_drawn();
+        std::vector<std::uint32_t> generation_uniforms_at;
+        std::vector<FrameGenerationDispatch> generation_plan;
+        if (generation != nullptr) {
+            const Mat4 view_projection = multiply(frame_.scene->projection, frame_.scene->camera);
+            Mat4 previous = view_projection;
+            if (taa != nullptr) {
+                previous = taa->primed ? taa->view_projection : view_projection;
+            } else if (fsr2 != nullptr) {
+                previous = fsr2->clock.frames == 0 ? view_projection : fsr2->view_projection;
+            } else {
+                previous = generation->primed ? generation->view_projection : view_projection;
+            }
+            generation->camera = frame_generation_camera(frame_.scene->projection);
+            generation_plan = frame_generation_prepare_plan(generation->layout,
+                                                            reprojection(view_projection, previous),
+                                                            generation->camera, false);
+            generation_uniforms_at = add_generation_uniforms(generation_plan);
+        }
         std::optional<ProbeOffsets> probe_offsets;
         if (capture && capture->face + 1 == kCubeFaces) {
             probe_offsets = add_probe_uniforms();
@@ -1912,12 +2036,15 @@ public:
         if (mesh_uniforms.fog_frames != nullptr) {
             encode_volumetric_fog(encoder, mesh_uniforms);
         }
-        // The prepass draws the motion vectors into TAA's history's next texture, or FSR 2's own.
+        // The prepass draws the motion vectors into TAA's history's next texture, or FSR 2's own,
+        // or frame generation's.
         WGPUTextureView velocity = nullptr;
         if (taa != nullptr) {
             velocity = taa->velocity.at(1 - taa->last).view;
         } else if (fsr2 != nullptr && !mesh_draws_.empty()) {
             velocity = fsr2_textures_.velocity.view;
+        } else if (generation != nullptr) {
+            velocity = generation->velocity.view;
         }
         if (ssao || ssr || velocity != nullptr) {
             // FSR 2 works the sky's motion vectors out from the depth, as Godot's.
@@ -1925,6 +2052,11 @@ public:
         } else if (fsr2 != nullptr) {
             // A frame with no meshes is all sky.
             clear_texture(encoder, fsr2_textures_.velocity.view, kInvalidMotion);
+        }
+        if (generation != nullptr) {
+            encode_generation(encoder, *generation, generation_plan, generation_uniforms_at,
+                              prepass_.depth.view, velocity);
+            generation->prepared_now = true;
         }
         if (ssao) {
             encode_ssao(encoder, *ssao, ssao_uniforms_at);
@@ -2002,6 +2134,7 @@ public:
         }
         wgpuRenderPassEncoderEnd(pass);
         wgpuRenderPassEncoderRelease(pass);
+        count_generated_frame();
         submit(encoder);
         ++stats_.frames;
         finish_frame();
@@ -2264,6 +2397,29 @@ private:
     // Where the frame's mesh uniforms are: the camera's, the scene's (and with SSR, the scene's
     // without it, for a target's first frame) and the shadows', each shadow pass's, then each
     // draw's instance and surface.
+    // A target's frames for frame generation (frame_generation.hpp): the two buffers its passes
+    // work in, laid out for its render and display sizes, and the motion vectors its prepass
+    // draws when neither TAA nor FSR 2 draws them. frames counts the frames drawn since it
+    // began, generated_from the frame the last generated frame was made from; the last frame drew
+    // its prepass (prepared_now, then prepared) or was still, seen from camera and turned by
+    // still_reprojection; fresh buffers hold no history.
+    struct GenerationFrames {
+        FrameGenerationLayout layout;
+        WGPUBuffer words = nullptr;
+        WGPUBuffer atoms = nullptr;
+        GpuTexture velocity;
+        std::array<std::uint32_t, 2> velocity_size{};
+        std::uint64_t frames = 0;
+        std::uint64_t generated_from = 0;
+        bool fresh = true;
+        bool prepared_now = false;
+        bool prepared = false;
+        FrameGenerationCamera camera;
+        std::array<Float4, 4> still_reprojection{};
+        Mat4 view_projection{};
+        bool primed = false;
+    };
+
     struct MeshUniforms {
         std::uint32_t camera = 0;
         std::uint32_t scene = 0;
@@ -2855,6 +3011,24 @@ private:
         const std::array fog_sky_entries{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(FogSkyUniforms))};
         fog_sky_uniforms_layout_ = layout(fog_sky_entries);
+        // Frame generation's passes: the frame or the depth, and the motion vectors; the words
+        // and the atoms; the uniforms. Its draw pass reads the words.
+        std::array<WGPUBindGroupLayoutEntry, 2> generation_textures{};
+        for (std::uint32_t slot = 0; slot < generation_textures.size(); ++slot) {
+            generation_textures.at(slot) = texture_entry(slot);
+            generation_textures.at(slot).visibility = WGPUShaderStage_Compute;
+            generation_textures.at(slot).texture.sampleType =
+                WGPUTextureSampleType_UnfilterableFloat;
+        }
+        generation_textures_layout_ = layout(generation_textures);
+        const std::array generation_storage{storage_entry(0, false), storage_entry(1, false)};
+        generation_storage_layout_ = layout(generation_storage);
+        const std::array generation_entries{
+            uniform_entry(0, WGPUShaderStage_Compute, sizeof(FrameGenerationUniforms))};
+        generation_uniforms_layout_ = layout(generation_entries);
+        const std::array generation_draw_entries{
+            uniform_entry(0, WGPUShaderStage_Fragment, sizeof(std::array<std::uint32_t, 4>))};
+        generation_draw_uniforms_layout_ = layout(generation_draw_entries);
 
         const auto pipeline_layout = [&](std::initializer_list<WGPUBindGroupLayout> groups) {
             const std::vector<WGPUBindGroupLayout> list(groups);
@@ -2929,6 +3103,11 @@ private:
             pipeline_layout({fog_textures_layout_, fog_output_layout_, fog_uniforms_layout_});
         pipeline_layouts_.at(kFogSkyLayout) = pipeline_layout(
             {fog_sky_storage_layout_, empty_layout_, empty_layout_, fog_sky_uniforms_layout_});
+        pipeline_layouts_.at(kGenerationLayout) = pipeline_layout(
+            {generation_textures_layout_, generation_storage_layout_, generation_uniforms_layout_});
+        pipeline_layouts_.at(kGenerationDrawLayout) =
+            pipeline_layout({fog_sky_storage_layout_, empty_layout_, empty_layout_,
+                             generation_draw_uniforms_layout_});
     }
 
     WGPUShaderModule create_module(std::string_view wgsl) {
@@ -3231,21 +3410,30 @@ private:
         fog_uniforms_group_ = bind_group(fog_uniforms_layout_, fog);
         const std::array fog_sky{buffer_entry(0, uniform_buffer_, sizeof(FogSkyUniforms))};
         fog_sky_uniforms_group_ = bind_group(fog_sky_uniforms_layout_, fog_sky);
+        const std::array generation{
+            buffer_entry(0, uniform_buffer_, sizeof(FrameGenerationUniforms))};
+        generation_uniforms_group_ = bind_group(generation_uniforms_layout_, generation);
+        const std::array generation_draw{
+            buffer_entry(0, uniform_buffer_, sizeof(std::array<std::uint32_t, 4>))};
+        generation_draw_uniforms_group_ =
+            bind_group(generation_draw_uniforms_layout_, generation_draw);
     }
 
     void release_uniform_groups() {
-        for (WGPUBindGroup* group : {&vertex_uniforms_group_,      &fragment_uniforms_group_,
-                                     &compute_uniforms_group_,     &mesh_vertex_group_,
-                                     &mesh_fragment_group_,        &mesh_game_fragment_group_,
-                                     &mesh_game_vertex_group_,     &shadow_game_vertex_group_,
-                                     &shadow_game_fragment_group_, &shadow_vertex_group_,
-                                     &shadow_fragment_group_,      &post_uniforms_group_,
-                                     &forward_uniforms_group_,     &sky_uniforms_group_,
-                                     &filter_uniforms_group_,      &ssao_uniforms_group_,
-                                     &ssr_uniforms_group_,         &taa_uniforms_group_,
-                                     &fsr2_uniforms_group_,        &fsr2_compute_uniforms_group_,
-                                     &fsr3_uniforms_group_,        &fsr3_compute_uniforms_group_,
-                                     &fog_uniforms_group_,         &fog_sky_uniforms_group_}) {
+        for (WGPUBindGroup* group :
+             {&vertex_uniforms_group_,      &fragment_uniforms_group_,
+              &compute_uniforms_group_,     &mesh_vertex_group_,
+              &mesh_fragment_group_,        &mesh_game_fragment_group_,
+              &mesh_game_vertex_group_,     &shadow_game_vertex_group_,
+              &shadow_game_fragment_group_, &shadow_vertex_group_,
+              &shadow_fragment_group_,      &post_uniforms_group_,
+              &forward_uniforms_group_,     &sky_uniforms_group_,
+              &filter_uniforms_group_,      &ssao_uniforms_group_,
+              &ssr_uniforms_group_,         &taa_uniforms_group_,
+              &fsr2_uniforms_group_,        &fsr2_compute_uniforms_group_,
+              &fsr3_uniforms_group_,        &fsr3_compute_uniforms_group_,
+              &fog_uniforms_group_,         &fog_sky_uniforms_group_,
+              &generation_uniforms_group_,  &generation_draw_uniforms_group_}) {
             if (*group != nullptr) {
                 wgpuBindGroupRelease(*group);
                 *group = nullptr;
@@ -4193,6 +4381,11 @@ private:
         } else if (fsr2 != nullptr) {
             camera = taa_camera_uniforms(
                 scene, jitter, fsr2->clock.frames == 0 ? view_projection : fsr2->view_projection);
+        } else if (const GenerationFrames* generation = generation_frames_drawn();
+                   generation != nullptr) {
+            camera = taa_camera_uniforms(scene, {0.0F, 0.0F},
+                                         generation->primed ? generation->view_projection
+                                                            : view_projection);
         }
         camera.view_projection = transposed(camera.view_projection);
         camera.previous_view_projection = transposed(camera.previous_view_projection);
@@ -5140,6 +5333,207 @@ private:
             frames.luma_history.at(i) = pass_texture(width, height, kFsr2AccumulateTargets[2]);
             frames.dilated_motion.at(i) =
                 pass_texture(render_width, render_height, kFsr2DilateTargets[1]);
+        }
+    }
+
+    // target's frames for frame generation, or null when it has none.
+    GenerationFrames* find_generation_frames(TextureId target) {
+        for (auto& [id, frames] : generation_frames_) {
+            if (id == target) {
+                return &frames;
+            }
+        }
+        return nullptr;
+    }
+
+    GenerationFrames& generation_frames(TextureId target) {
+        if (GenerationFrames* found = find_generation_frames(target); found != nullptr) {
+            return *found;
+        }
+        return generation_frames_.emplace_back(target, GenerationFrames{}).second;
+    }
+
+    // The frame's target's frames for frame generation when this frame's prepass draws its
+    // depth and motion vectors for it, else null.
+    GenerationFrames* generation_frames_drawn() {
+        if (!frame_.scene || mesh_draws_.empty() || !uses_frame_generation(*frame_.scene)) {
+            return nullptr;
+        }
+        GenerationFrames* frames = find_generation_frames(frame_.target);
+        if (frames == nullptr || frames->words == nullptr) {
+            return nullptr;
+        }
+        const bool drawn =
+            uses_taa(*frame_.scene) || uses_fsr2(*frame_.scene) || frames->velocity.view != nullptr;
+        return drawn ? frames : nullptr;
+    }
+
+    void release_generation_frames(GenerationFrames& frames) {
+        for (WGPUBuffer* buffer : {&frames.words, &frames.atoms}) {
+            if (*buffer != nullptr) {
+                pending_buffers_.push_back(std::exchange(*buffer, nullptr));
+            }
+        }
+        release_pass_texture(frames.velocity);
+    }
+
+    void forget_generation_frames(TextureId target) {
+        const auto it = std::ranges::find_if(
+            generation_frames_, [&](const auto& entry) { return entry.first == target; });
+        if (it == generation_frames_.end()) {
+            return;
+        }
+        release_generation_frames(it->second);
+        generation_frames_.erase(it);
+    }
+
+    // frames' buffers laid out for frames drawn at render and shown at display, made again (with
+    // no history) when they were laid out otherwise.
+    void generation_buffers(GenerationFrames& frames, const std::array<std::uint32_t, 2>& render,
+                            const std::array<std::uint32_t, 2>& display) {
+        if (frames.words != nullptr && frames.layout.render == render &&
+            frames.layout.display == display) {
+            return;
+        }
+        for (WGPUBuffer* buffer : {&frames.words, &frames.atoms}) {
+            if (*buffer != nullptr) {
+                pending_buffers_.push_back(std::exchange(*buffer, nullptr));
+            }
+        }
+        frames.layout = frame_generation_layout(render[0], render[1], display[0], display[1]);
+        frames.fresh = true;
+        frames.prepared = false;
+        frames.words = create_buffer(WGPUBufferUsage_Storage,
+                                     std::uint64_t{frames.layout.words} * sizeof(std::uint32_t));
+        frames.atoms = create_buffer(WGPUBufferUsage_Storage,
+                                     std::uint64_t{frames.layout.atoms} * sizeof(std::uint32_t));
+    }
+
+    // target's frames at the start of a frame with frame generation, drawn at render and shown
+    // at display, with motion vectors of its own unless TAA or FSR 2 draws them (own_motion).
+    void prepare_generation(TextureId target, const std::array<std::uint32_t, 2>& render,
+                            const std::array<std::uint32_t, 2>& display, bool own_motion) {
+        GenerationFrames& frames = generation_frames(target);
+        generation_buffers(frames, render, display);
+        if (own_motion && (frames.velocity.view == nullptr || frames.velocity_size != render)) {
+            release_pass_texture(frames.velocity);
+            frames.velocity = pass_texture(render[0], render[1], kVelocityFormat);
+            frames.velocity_size = render;
+        } else if (!own_motion) {
+            release_pass_texture(frames.velocity);
+        }
+    }
+
+    // Adds the uniforms of plan's dispatches, returning where each went.
+    std::vector<std::uint32_t>
+    add_generation_uniforms(const std::vector<FrameGenerationDispatch>& plan) {
+        std::vector<std::uint32_t> at;
+        at.reserve(plan.size());
+        for (const FrameGenerationDispatch& dispatch : plan) {
+            at.push_back(uniforms_.add(dispatch.uniforms));
+        }
+        return at;
+    }
+
+    // Frame generation's pipeline, made the first time it is needed.
+    WGPUComputePipeline generation_pipeline() {
+        if (generation_pipeline_ == nullptr) {
+            WGPUComputePipelineDescriptor info = WGPU_COMPUTE_PIPELINE_DESCRIPTOR_INIT;
+            info.layout = pipeline_layouts_.at(kGenerationLayout);
+            info.compute.module =
+                module(kGenerationModule, joined(shaders::kFrameGenerationComputeWgsl));
+            info.compute.entryPoint = text_view("cs_main");
+            generation_pipeline_ = wgpuDeviceCreateComputePipeline(device_, &info);
+        }
+        return generation_pipeline_;
+    }
+
+    // The pass that draws a generated frame into a target of format, made the first time it is
+    // needed.
+    WGPURenderPipeline generation_draw_pipeline(WGPUTextureFormat format) {
+        for (const auto& [made, pipeline] : generation_draw_pipelines_) {
+            if (made == format) {
+                return pipeline;
+            }
+        }
+        WGPUColorTargetState color = WGPU_COLOR_TARGET_STATE_INIT;
+        color.format = format;
+        WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
+        fragment.module =
+            module(kGenerationDrawFragmentModule, shaders::kFrameGenerationDrawFragmentWgsl);
+        fragment.entryPoint = text_view("fs_main");
+        fragment.targetCount = 1;
+        fragment.targets = &color;
+        WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
+        info.layout = pipeline_layouts_.at(kGenerationDrawLayout);
+        info.vertex.module =
+            module(kGenerationDrawVertexModule, shaders::kFrameGenerationDrawVertexWgsl);
+        info.vertex.entryPoint = text_view("vs_main");
+        info.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+        info.primitive.cullMode = WGPUCullMode_None;
+        info.fragment = &fragment;
+        WGPURenderPipeline pipeline = wgpuDeviceCreateRenderPipeline(device_, &info);
+        generation_draw_pipelines_.emplace_back(format, pipeline);
+        return pipeline;
+    }
+
+    // Records frame generation's dispatches over frames' buffers, each in a compute pass of its
+    // own with its uniforms at at, reading source and motion (the frame, or the prepass's depth
+    // and motion vectors).
+    void encode_generation(WGPUCommandEncoder encoder, const GenerationFrames& frames,
+                           const std::vector<FrameGenerationDispatch>& plan,
+                           std::span<const std::uint32_t> at, WGPUTextureView source,
+                           WGPUTextureView motion) {
+        std::array<WGPUBindGroupEntry, 2> textures{};
+        for (std::uint32_t slot = 0; slot < textures.size(); ++slot) {
+            textures.at(slot) = WGPU_BIND_GROUP_ENTRY_INIT;
+            textures.at(slot).binding = slot;
+        }
+        textures[0].textureView = source;
+        textures[1].textureView = motion != nullptr ? motion : source;
+        WGPUBindGroup inputs = bind_group(generation_textures_layout_, textures);
+        const std::array buffers{buffer_entry(0, frames.words), buffer_entry(1, frames.atoms)};
+        WGPUBindGroup outputs = bind_group(generation_storage_layout_, buffers);
+        for (std::size_t i = 0; i < plan.size(); ++i) {
+            const FrameGenerationDispatch& dispatch = plan[i];
+            WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+            wgpuComputePassEncoderSetPipeline(compute, generation_pipeline());
+            wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
+            wgpuComputePassEncoderSetBindGroup(compute, 1, outputs, 0, nullptr);
+            wgpuComputePassEncoderSetBindGroup(compute, 2, generation_uniforms_group_, 1, &at[i]);
+            wgpuComputePassEncoderDispatchWorkgroups(compute, dispatch.groups[0],
+                                                     dispatch.groups[1], dispatch.groups[2]);
+            wgpuComputePassEncoderEnd(compute);
+            wgpuComputePassEncoderRelease(compute);
+        }
+        wgpuBindGroupRelease(inputs);
+        wgpuBindGroupRelease(outputs);
+    }
+
+    // Counts a frame drawn into the frame's target for frame generation, when the target keeps
+    // frames for it: one that drew no prepass for it is still, moved as its camera turned.
+    void count_generated_frame() {
+        GenerationFrames* frames = find_generation_frames(frame_.target);
+        if (frames == nullptr) {
+            return;
+        }
+        ++frames->frames;
+        const Scene3D* scene = frame_.scene ? &*frame_.scene : nullptr;
+        if (frames->prepared_now) {
+            frames->prepared = true;
+        } else {
+            const Mat4 view_projection =
+                scene != nullptr ? multiply(scene->projection, scene->camera) : kNoCamera;
+            frames->prepared = false;
+            frames->still_reprojection = reprojection(
+                view_projection, frames->primed ? frames->view_projection : view_projection);
+            frames->camera =
+                frame_generation_camera(scene != nullptr ? scene->projection : kNoCamera);
+        }
+        frames->prepared_now = false;
+        frames->primed = scene != nullptr;
+        if (scene != nullptr) {
+            frames->view_projection = multiply(scene->projection, scene->camera);
         }
     }
 
@@ -6442,6 +6836,9 @@ private:
     static constexpr std::size_t kProcess3DModule = kFsr3ReconstructModule + 1;
     static constexpr std::size_t kSort3DModule = kProcess3DModule + 1;
     static constexpr std::size_t kMesh3DModule = kSort3DModule + 1;
+    static constexpr std::size_t kGenerationModule = kMesh3DModule + 1;
+    static constexpr std::size_t kGenerationDrawVertexModule = kGenerationModule + 1;
+    static constexpr std::size_t kGenerationDrawFragmentModule = kGenerationModule + 2;
     static constexpr std::size_t kSpriteLayout = 0;
     static constexpr std::size_t kMaterialLayout = 1;
     static constexpr std::size_t kProcessLayout = 2;
@@ -6467,6 +6864,8 @@ private:
     static constexpr std::size_t kMeshGameLayout = kMesh3DLayout + 1;
     static constexpr std::size_t kMeshClusteredGameLayout = kMeshGameLayout + 1;
     static constexpr std::size_t kShadowGameLayout = kMeshClusteredGameLayout + 1;
+    static constexpr std::size_t kGenerationLayout = kShadowGameLayout + 1;
+    static constexpr std::size_t kGenerationDrawLayout = kGenerationLayout + 1;
 
     WGPUInstance instance_;
     WGPUDevice device_;
@@ -6479,7 +6878,7 @@ private:
     bool can_wait_ = false; // Asyncify lets read_texture wait for the GPU
     // Which formats the GPU samples, by TextureFormat.
     std::array<bool, 4> sampled_{true, false, false, true};
-    std::array<WGPUShaderModule, kMesh3DModule + 1> modules_{};
+    std::array<WGPUShaderModule, kGenerationDrawFragmentModule + 1> modules_{};
     std::vector<Pipeline> pipelines_;
     std::unordered_map<ShaderId, GameShader> game_shaders_;
     std::uint32_t next_shader_ = 1;
@@ -6535,7 +6934,11 @@ private:
     WGPUBindGroupLayout fog_uniforms_layout_ = nullptr;
     WGPUBindGroupLayout fog_sky_storage_layout_ = nullptr;
     WGPUBindGroupLayout fog_sky_uniforms_layout_ = nullptr;
-    std::array<WGPUPipelineLayout, kShadowGameLayout + 1> pipeline_layouts_{};
+    WGPUBindGroupLayout generation_textures_layout_ = nullptr;
+    WGPUBindGroupLayout generation_storage_layout_ = nullptr;
+    WGPUBindGroupLayout generation_uniforms_layout_ = nullptr;
+    WGPUBindGroupLayout generation_draw_uniforms_layout_ = nullptr;
+    std::array<WGPUPipelineLayout, kGenerationDrawLayout + 1> pipeline_layouts_{};
     std::array<WGPUSampler, 4> samplers_{}; // by sampler_index
     GpuTexture white_;
     std::unordered_map<TextureId, Texture> textures_;
@@ -6573,6 +6976,8 @@ private:
     WGPUBindGroup fsr3_compute_uniforms_group_ = nullptr;
     WGPUBindGroup fog_uniforms_group_ = nullptr;
     WGPUBindGroup fog_sky_uniforms_group_ = nullptr;
+    WGPUBindGroup generation_uniforms_group_ = nullptr;
+    WGPUBindGroup generation_draw_uniforms_group_ = nullptr;
     std::unordered_map<ParticlesId, ParticleSystem> particle_systems_;
     std::uint32_t next_particles_ = 1;
     std::vector<WGPUBuffer> pending_buffers_;
@@ -6701,6 +7106,11 @@ private:
     std::vector<std::pair<TextureId, FogFrames>> fog_frames_;
     WGPUComputePipeline fog_pipeline_ = nullptr;
     std::vector<std::pair<WGPUTextureFormat, WGPURenderPipeline>> fog_sky_pipelines_;
+    // Frame generation: each target's frames, the passes' pipeline and the draw pass's pipelines
+    // by format.
+    std::vector<std::pair<TextureId, GenerationFrames>> generation_frames_;
+    WGPUComputePipeline generation_pipeline_ = nullptr;
+    std::vector<std::pair<WGPUTextureFormat, WGPURenderPipeline>> generation_draw_pipelines_;
     WGPUBuffer no_fog_ = nullptr;
     Fsr2Textures fsr2_textures_;
     std::vector<std::pair<TextureId, Fsr2Frames>> fsr2_frames_;

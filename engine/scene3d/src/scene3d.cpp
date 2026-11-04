@@ -3258,6 +3258,7 @@ std::optional<Frame3D> Renderer::prepare(
     frame.scene.shadows = shadows;
     frame.scene.voxel_gi_high_quality = voxel_gi_high_quality;
     frame.scene.use_taa = use_taa;
+    frame.scene.frame_generation = frame_generation_;
     frame.scene.ray_tracing = ray_tracing;
     frame.scene.fsr2 = fsr2;
     lights_ = frame.scene.lights.size();
@@ -3384,10 +3385,11 @@ std::optional<Frame3D> Renderer::prepare(
             draw.material.emission_energy *= env.exposure;
         }
     }
-    // TAA and FSR 2 move each mesh's pixels by how far it moved since the last frame, as Godot's
-    // prev_transform: each entity's draws, in order, keep where they were drawn.
+    // TAA, FSR 2 and frame generation move each mesh's pixels by how far it moved since the last
+    // frame, as Godot's prev_transform: each entity's draws, in order, keep where they were drawn.
     std::map<std::pair<entt::entity, std::size_t>, std::array<float, 16>> drawn;
-    if ((use_taa || fsr2) && method == render::RenderMethod::ForwardPlus) {
+    const bool moving = use_taa || fsr2 || frame_generation_;
+    if (moving && method == render::RenderMethod::ForwardPlus) {
         std::map<entt::entity, std::size_t> counts;
         for (Draw& draw : draws_) {
             const std::pair key{draw.entity, counts[draw.entity]++};
@@ -3401,8 +3403,7 @@ std::optional<Frame3D> Renderer::prepare(
     drawn_ = std::move(drawn);
     // A spatial shader's vertex() places corners where they were with the time of the frame before
     // too, as Godot's prev_data.time.
-    const double step =
-        (use_taa || fsr2) && drawn_time_ && *drawn_time_ <= time ? time - *drawn_time_ : 0.0;
+    const double step = moving && drawn_time_ && *drawn_time_ <= time ? time - *drawn_time_ : 0.0;
     for (Draw& draw : draws_) {
         if (draw.material.shader != render::ShaderId::None) {
             auto& clock = draw.material.shader_constants.at(render::kShaderTimeConstant);

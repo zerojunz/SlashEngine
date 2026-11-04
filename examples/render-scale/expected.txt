@@ -1,27 +1,27 @@
 scene.open {"path": "main.scene.json"}
   -> {"entities":2,"path":"main.scene.json"}
 display.list {}
-  -> {"displays":[],"max_fps":0,"scaling":{"fsr_sharpness":0.2,"mode":"fsr","scale":0.5},"vsync_mode":"enabled"}
+  -> {"displays":[],"frame_generation":{"enabled":false},"max_fps":0,"scaling":{"fsr_sharpness":0.2,"mode":"fsr","scale":0.5},"vsync_mode":"enabled"}
 frame.capture {"points": [[11, 31], [12, 31], [13, 31], [14, 31], [15, 31], [63, 6], [64, 6]]}
   -> {"colors":[[0,0,0,1],[0,0,0,1],[0.086,0.035,0.016,1],[0.384,0.161,0.063,1],[0.514,0.216,0.086,1],[0,0,0,1],[0.2,0.8,0.302,1]],"drawn":{"controls":1,"sprites":1},"height":64,"render_size":[48,32],"upscaler":"fsr","width":96}
 display.set {"scaling": {"mode": "bilinear", "scale": 1.0}}
-  -> {"max_fps":0,"scaling":{"fsr_sharpness":0.2,"mode":"bilinear","scale":1.0},"vsync_mode":"enabled"}
+  -> {"frame_generation":{"enabled":false},"max_fps":0,"scaling":{"fsr_sharpness":0.2,"mode":"bilinear","scale":1.0},"vsync_mode":"enabled"}
 frame.capture {"points": [[11, 31], [12, 31], [13, 31], [14, 31], [15, 31], [63, 6], [64, 6]]}
   -> {"colors":[[0,0,0,1],[0,0,0,1],[0,0,0,1],[0.471,0.196,0.078,1],[0.471,0.196,0.078,1],[0,0,0,1],[0.2,0.8,0.302,1]],"drawn":{"controls":1,"sprites":1},"height":64,"width":96}
 display.set {"scaling": {"scale": 0.5}}
-  -> {"max_fps":0,"scaling":{"fsr_sharpness":0.2,"mode":"bilinear","scale":0.5},"vsync_mode":"enabled"}
+  -> {"frame_generation":{"enabled":false},"max_fps":0,"scaling":{"fsr_sharpness":0.2,"mode":"bilinear","scale":0.5},"vsync_mode":"enabled"}
 frame.capture {"points": [[11, 31], [12, 31], [13, 31], [14, 31], [15, 31], [63, 6], [64, 6]]}
   -> {"colors":[[0,0,0,1],[0,0,0,1],[0.118,0.051,0.02,1],[0.353,0.149,0.059,1],[0.471,0.196,0.078,1],[0,0,0,1],[0.2,0.8,0.302,1]],"drawn":{"controls":1,"sprites":1},"height":64,"render_size":[48,32],"upscaler":"bilinear","width":96}
 display.set {"scaling": {"mode": "fsr", "fsr_sharpness": 2.0}}
-  -> {"max_fps":0,"scaling":{"fsr_sharpness":2.0,"mode":"fsr","scale":0.5},"vsync_mode":"enabled"}
+  -> {"frame_generation":{"enabled":false},"max_fps":0,"scaling":{"fsr_sharpness":2.0,"mode":"fsr","scale":0.5},"vsync_mode":"enabled"}
 frame.capture {"points": [[11, 31], [12, 31], [13, 31], [14, 31], [15, 31], [63, 6], [64, 6]]}
   -> {"colors":[[0,0,0,1],[0,0,0,1],[0.086,0.035,0.016,1],[0.376,0.157,0.063,1],[0.475,0.2,0.078,1],[0,0,0,1],[0.2,0.8,0.302,1]],"drawn":{"controls":1,"sprites":1},"height":64,"render_size":[48,32],"upscaler":"fsr","width":96}
 display.set {"scaling": {"upscaler": "pixel", "scale": 0.25}}
-  -> {"max_fps":0,"scaling":{"fsr_sharpness":2.0,"mode":"fsr","scale":0.25,"upscaler":"pixel"},"vsync_mode":"enabled"}
+  -> {"frame_generation":{"enabled":false},"max_fps":0,"scaling":{"fsr_sharpness":2.0,"mode":"fsr","scale":0.25,"upscaler":"pixel"},"vsync_mode":"enabled"}
 frame.capture {"points": [[11, 31], [12, 31], [13, 31], [14, 31], [15, 31], [63, 6], [64, 6]]}
   -> {"colors":[[0,0,0,1],[0.471,0.196,0.078,1],[0.471,0.196,0.078,1],[0.471,0.196,0.078,1],[0.471,0.196,0.078,1],[0,0,0,1],[0.2,0.8,0.302,1]],"drawn":{"controls":1,"sprites":1},"height":64,"render_size":[24,16],"upscaler":"pixel","width":96}
 display.set {"scaling": {"mode": "metalfx_spatial", "upscaler": ""}}
-  -> {"max_fps":0,"scaling":{"fsr_sharpness":2.0,"mode":"metalfx_spatial","scale":0.25},"vsync_mode":"enabled"}
+  -> {"frame_generation":{"enabled":false},"max_fps":0,"scaling":{"fsr_sharpness":2.0,"mode":"metalfx_spatial","scale":0.25},"vsync_mode":"enabled"}
 frame.capture {"points": [[11, 31], [12, 31], [13, 31], [14, 31], [15, 31], [63, 6], [64, 6]]}
   -> {"colors":[[0.212,0.102,0.035,1],[0.451,0.224,0.075,1],[0.69,0.345,0.114,1],[0.733,0.365,0.122,1],[0.627,0.306,0.106,1],[0,0,0,1],[0.2,0.8,0.302,1]],"drawn":{"controls":1,"sprites":1},"height":64,"render_size":[24,16],"upscaler":"fsr","width":96}
 display.set {"scaling": {"upscaler": "pixle"}}
