@@ -143,13 +143,18 @@ TEST_CASE("gameplay libraries are matched by compiler family and library ABI, no
     CHECK(id.starts_with("clang, "));
 #elif defined(__GNUC__)
     CHECK(id.starts_with("gcc, "));
+#elif defined(_MSC_VER)
+    CHECK(id.starts_with("msvc, "));
+    CHECK(id.find(SLASH_GAME_MODULE_STRINGIFY(_MSC_FULL_VER)) == std::string_view::npos);
 #endif
 #if defined(_LIBCPP_VERSION)
     CHECK(id.ends_with(", libc++ ABI " SLASH_GAME_MODULE_STRINGIFY(_LIBCPP_ABI_VERSION)));
 #elif defined(__GLIBCXX__) && !defined(_GLIBCXX_DEBUG)
     CHECK(id.ends_with(", libstdc++ ABI " SLASH_GAME_MODULE_STRINGIFY(_GLIBCXX_USE_CXX11_ABI)));
 #endif
+#if defined(__VERSION__)
     CHECK(id.find(__VERSION__) == std::string_view::npos);
+#endif
 }
 
 #if defined(SLASH_TEST_GAMEPLAY_SDK_DATA)
