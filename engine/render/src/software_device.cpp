@@ -9,6 +9,7 @@
 #include "cpu_particles.hpp"
 #include "decal.hpp"
 #include "forward_post.hpp"
+#include "frame_generation.hpp"
 #include "fsr2.hpp"
 #include "fsr3.hpp"
 #include "mesh_shading.hpp"
@@ -239,6 +240,20 @@ struct PathState {
     std::vector<float> sums;
 };
 
+// A target's frames for frame generation: how many it has drawn since it began keeping them, the
+// last one's prepare pass (made from its prepass, or from its camera alone when it drew no
+// meshes with frame generation), its camera, the frame the last generated frame was made from and
+// what the passes keep.
+struct FrameGenerationState {
+    std::uint64_t frames = 0;
+    detail::FramePrepared prepared;
+    bool prepared_now = false; // set by draw_meshes for the frame being drawn
+    Mat4 view_projection{};
+    bool primed = false;
+    std::uint64_t generated_from = 0;
+    detail::FrameGenerationHistory history;
+};
+
 // A frame's camera with FSR 2, for draw_meshes: its jitter, the camera the frame before was seen
 // from without its jitter, and where the prepass's motion vectors go.
 struct Fsr2Camera {
@@ -383,9 +398,12 @@ public:
         std::erase_if(fsr2_states_, [&](const auto& entry) { return entry.first == texture; });
         std::erase_if(fog_states_, [&](const auto& entry) { return entry.first == texture; });
         std::erase_if(path_states_, [&](const auto& entry) { return entry.first == texture; });
+        std::erase_if(frame_generation_states_,
+                      [&](const auto& entry) { return entry.first == texture; });
     }
 
     [[nodiscard]] bool ray_tracing() const override { return true; }
+    [[nodiscard]] bool generates_frames() const override { return true; }
     [[nodiscard]] std::uint32_t path_samples(TextureId target) const override {
         for (const auto& [id, state] : path_states_) {
             if (id == target) {
@@ -818,7 +836,8 @@ public:
                        batch.material.transform ? multiply(view, *batch.material.transform) : view,
                        target);
         }
-        // A frame with TAA or FSR 2 saw its meshes' vertices as they are now.
+        count_frame(target);
+        // A frame with TAA, FSR 2 or frame generation saw its meshes' vertices as they are now.
         if (frame_.scene && detail::uses_motion_vectors(*frame_.scene)) {
             for (const detail::MeshDraw& draw : mesh_draws_) {
                 if (const auto found = meshes_.find(draw.mesh); found != meshes_.end()) {
@@ -831,6 +850,42 @@ public:
         retired_shaders_.clear();
         retired_meshes_.clear();
         mesh_draws_.clear();
+        return {};
+    }
+
+    Result<void> generate_frame(TextureId target, TextureId into) override {
+        if (in_frame_) {
+            return detail::frame_in_progress("generate_frame");
+        }
+        for (const TextureId id : {target, into}) {
+            const auto it = textures_.find(id);
+            if (it == textures_.end()) {
+                return detail::unknown_texture(id);
+            }
+            if (!it->second.desc.render_target) {
+                return detail::not_a_render_target(id);
+            }
+        }
+        if (into == target) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "generate_frame writes into another render target than target");
+        }
+        const Image& shown = textures_.at(target).image;
+        Texture& made = textures_.at(into);
+        if (made.image.width != shown.width || made.image.height != shown.height) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "generate_frame writes into a render target of target's size");
+        }
+        FrameGenerationState& state = frame_generation_state(target);
+        if (state.prepared.width == 0) {
+            state.prepared = still_frame(shown.width, shown.height, nullptr, nullptr);
+        }
+        // Frames are generated between two the target drew one after the other.
+        const bool reset = state.frames == 0 || state.generated_from + 1 != state.frames;
+        detail::run_frame_generation(shown.pixels, shown.width, shown.height, state.prepared, reset,
+                                     state.history, made.image.pixels);
+        state.generated_from = state.frames;
+        made.written = ++writes_;
         return {};
     }
 
@@ -1746,7 +1801,24 @@ private:
         } else if (fsr2 != nullptr) {
             camera = detail::taa_camera_uniforms(scene, fsr2->jitter, fsr2->previous);
         }
-        const bool motion = taa || fsr2 != nullptr;
+        // Frame generation takes the prepass's depth and motion vectors, from the camera the
+        // motion vectors were drawn from (the target's frame before's, for TAA's and FSR 2's).
+        FrameGenerationState* generation =
+            target.hdr != nullptr && detail::uses_frame_generation(scene)
+                ? &frame_generation_state(frame_.target)
+                : nullptr;
+        Mat4 previous = view_projection;
+        if (taa_history != nullptr && taa_history->primed) {
+            previous = taa_history->view_projection;
+        } else if (fsr2 != nullptr) {
+            previous = fsr2->previous;
+        } else if (generation != nullptr && generation->primed) {
+            previous = generation->view_projection;
+        }
+        if (generation != nullptr && !taa && fsr2 == nullptr) {
+            camera = detail::taa_camera_uniforms(scene, {0.0F, 0.0F}, previous);
+        }
+        const bool motion = taa || fsr2 != nullptr || generation != nullptr;
         const auto lights =
             std::make_unique<detail::MeshSceneUniforms>(detail::mesh_scene_uniforms(scene));
         if (clustered) {
@@ -1966,6 +2038,18 @@ private:
             }
         }
         draw_all(depth, false, shade_color);
+        if (generation != nullptr) {
+            const Image& shown = find(frame_.target)->image;
+            generation->prepared = detail::prepare_frame_generation(
+                {.width = target.width(),
+                 .height = target.height(),
+                 .depth = prepass_depth,
+                 .motion = velocity,
+                 .reprojection = detail::reprojection(view_projection, previous),
+                 .camera = detail::frame_generation_camera(scene.projection)},
+                shown.width, shown.height);
+            generation->prepared_now = true;
+        }
         if (taa_history != nullptr) {
             resolve_taa(*target.hdr, prepass_depth, std::move(velocity), *taa_history,
                         view_projection);
@@ -1976,6 +2060,65 @@ private:
             keep_last_frame(scene, *target.hdr, *history, seen);
         }
         return depth;
+    }
+
+    // target's frames for frame generation, made empty when it has none.
+    FrameGenerationState& frame_generation_state(TextureId target) {
+        for (auto& [id, state] : frame_generation_states_) {
+            if (id == target) {
+                return state;
+            }
+        }
+        return frame_generation_states_.emplace_back(target, FrameGenerationState{}).second;
+    }
+
+    // The prepare pass of a frame of width x height that drew no meshes for frame generation:
+    // nothing near, moved only as its camera turned (scene's, else none).
+    static detail::FramePrepared still_frame(std::uint32_t width, std::uint32_t height,
+                                             const Scene3D* scene, const Mat4* previous) {
+        const std::size_t pixels = std::size_t{width} * height;
+        const std::vector<float> depth(pixels, 0.0F);
+        const std::vector<float> motion(pixels * 2, 0.0F);
+        const Mat4 view_projection =
+            scene != nullptr ? multiply(scene->projection, scene->camera) : detail::kNoCamera;
+        return detail::prepare_frame_generation(
+            {.width = width,
+             .height = height,
+             .depth = depth,
+             .motion = motion,
+             .reprojection = detail::reprojection(
+                 view_projection, previous != nullptr ? *previous : view_projection),
+             .camera = detail::frame_generation_camera(scene != nullptr ? scene->projection
+                                                                        : detail::kNoCamera)},
+            width, height);
+    }
+
+    // Counts a frame drawn into target for frame generation, when the frame asks for it or the
+    // target has generated frames before.
+    void count_frame(const Image& shown) {
+        FrameGenerationState* state = nullptr;
+        for (auto& [id, kept] : frame_generation_states_) {
+            if (id == frame_.target) {
+                state = &kept;
+            }
+        }
+        if (state == nullptr) {
+            if (!frame_.scene || !detail::uses_frame_generation(*frame_.scene)) {
+                return;
+            }
+            state = &frame_generation_state(frame_.target);
+        }
+        ++state->frames;
+        const Scene3D* scene = frame_.scene ? &*frame_.scene : nullptr;
+        if (!state->prepared_now) {
+            state->prepared = still_frame(shown.width, shown.height, scene,
+                                          state->primed ? &state->view_projection : nullptr);
+        }
+        state->prepared_now = false;
+        state->primed = scene != nullptr;
+        if (scene != nullptr) {
+            state->view_projection = multiply(scene->projection, scene->camera);
+        }
     }
 
     // target's frames before for FSR 2, FSR 3 (fsr3) or the game's temporal upscaler named added,
@@ -2860,6 +3003,7 @@ private:
     std::vector<std::pair<TextureId, Fsr2State>> fsr2_states_;
     std::vector<std::pair<TextureId, FogState>> fog_states_;
     std::vector<std::pair<TextureId, PathState>> path_states_;
+    std::vector<std::pair<TextureId, FrameGenerationState>> frame_generation_states_;
     std::uint64_t writes_ = 0; // texture writes so far, for Texture::written
     jobs::Pool* pool_ = nullptr;
     std::unordered_map<ShaderId, std::shared_ptr<SoftwareShader>> shaders_;

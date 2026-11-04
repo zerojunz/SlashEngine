@@ -29,10 +29,16 @@ namespace slash::render::detail {
     return scene.method == RenderMethod::ForwardPlus && scene.use_taa && !scene.capture &&
            !uses_fsr2(scene);
 }
-// Whether a scene's frame draws its meshes' motion vectors in the prepass, with its camera
-// jittered: with TAA or FSR 2.
+// Whether a scene's frame keeps its prepass for frame generation (frame_generation.hpp): Forward+,
+// not a capture or path traced.
+[[nodiscard]] inline bool uses_frame_generation(const Scene3D& scene) {
+    return scene.frame_generation && scene.method == RenderMethod::ForwardPlus && !scene.capture &&
+           !scene.path_trace;
+}
+// Whether a scene's frame draws its meshes' motion vectors in the prepass: with TAA or FSR 2,
+// whose cameras are jittered, or frame generation.
 [[nodiscard]] inline bool uses_motion_vectors(const Scene3D& scene) {
-    return uses_taa(scene) || uses_fsr2(scene);
+    return uses_taa(scene) || uses_fsr2(scene) || uses_frame_generation(scene);
 }
 
 // The jitter's points, as Godot's default for TAA.

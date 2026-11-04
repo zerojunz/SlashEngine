@@ -80,6 +80,10 @@ struct Fsr2Frame {
 // mesh drew, such as the sky.
 inline constexpr float kInvalidMotion = -1.0F;
 
+// Godot's reprojection matrix, by columns, as Fsr2Uniforms::reprojection: a point in clip space
+// now (view_projection) to where it was in the frame before's (previous), each without its jitter.
+[[nodiscard]] std::array<Float4, 4> reprojection(const Mat4& view_projection, const Mat4& previous);
+
 // Godot's derive_motion_vector: the motion vector of the render pixel at uv (texture coordinates,
 // y down) whose depth is depth, from where reprojection (Fsr2Uniforms::reprojection) puts it in the
 // frame before. FSR 2 takes it in place of a motion vector of kInvalidMotion both ways.

@@ -4871,8 +4871,8 @@ Other sessions have no window or loop, so they leave them out.
 
 ### display.list
 
-Lists the displays, primary first, with the game's V-Sync mode, frame cap, render scale and path
-tracing. A headless game has no displays.
+Lists the displays, primary first, with the game's V-Sync mode, frame cap, render scale, frame
+generation and path tracing. A headless game has no displays.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -4884,7 +4884,10 @@ mode's `refresh_rate` and `pixel_density`, and `refresh_rates`: every rate its f
 offer, fastest first, for an options menu. A refresh rate of `0` means the system doesn't say.
 `scaling` is the render scale's settings, as `rendering.scaling` in
 [project-format.md](project-format.md#render-scale), with `in_effect`, the upscaler the game's last
-frame used (`none` when the world drew at full size), and its `render_size`. `path_trace` is
+frame used (`none` when the world drew at full size), and its `render_size`. `frame_generation`
+says whether it is `enabled` (`rendering.frame_generation` in
+[project-format.md](project-format.md#frame-generation)), whether the last frame showed a made
+frame first (`in_effect`) and how many `frames` have been made. `path_trace` is
 `null` while the game draws its world live, and while `display.set` has it path traced, its
 `samples` and `bounces` with `path_samples`, the paths each pixel of the last frame held: `0` on
 a device that doesn't trace rays (`slash-cli run` leaves `path_trace` out of games that can't).
@@ -4896,19 +4899,20 @@ rate:
 ```
 
 ```json
-{"displays":[{"bounds":[0,0,1024,768],"id":1,"name":"1","pixel_density":1.0,"primary":true,"refresh_rate":0.0,"refresh_rates":[],"scale":1.0,"window":true}],"max_fps":120,"path_trace":null,"scaling":{"fsr_sharpness":0.2,"in_effect":"fsr","mode":"fsr","render_size":[512,384],"scale":0.5},"vsync_mode":"mailbox"}
+{"displays":[{"bounds":[0,0,1024,768],"id":1,"name":"1","pixel_density":1.0,"primary":true,"refresh_rate":0.0,"refresh_rates":[],"scale":1.0,"window":true}],"frame_generation":{"enabled":false,"frames":0,"in_effect":false},"max_fps":120,"path_trace":null,"scaling":{"fsr_sharpness":0.2,"in_effect":"fsr","mode":"fsr","render_size":[512,384],"scale":0.5},"vsync_mode":"mailbox"}
 ```
 
 ### display.set
 
-Changes the V-Sync mode, the frame cap, the render scale or path tracing from the next frame, as
-a game's options menu would, and returns the settings in effect.
+Changes the V-Sync mode, the frame cap, the render scale, frame generation or path tracing from
+the next frame, as a game's options menu would, and returns the settings in effect.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `vsync_mode` | `"disabled"`, `"enabled"`, `"adaptive"` or `"mailbox"` | unchanged | How frames wait for the display; see [project-format.md](project-format.md) |
 | `max_fps` | integer, 0 to 1000 | unchanged | Frames per second at most; `0` means no cap |
 | `scaling` | object | unchanged | The render scale: any of `mode`, `scale`, `fsr_sharpness` and `upscaler`, as `rendering.scaling` in [project-format.md](project-format.md#render-scale); fields left out stay as they are |
+| `frame_generation` | boolean | unchanged | Show a frame made between each two drawn ones, as `rendering.frame_generation` in [project-format.md](project-format.md#frame-generation) |
 | `path_trace` | object or `null` | unchanged | Path trace the 3D world in the game's window: `samples` paths a pixel each frame (1 to 4096, default 16) and `bounces` (0 to 32, default 4), fields left out staying as they are; `null` draws it live again |
 
 A mode the GPU or window lacks falls back to `enabled`, which every GPU has, and the result
@@ -4921,7 +4925,7 @@ Mesa's software Vulkan on an offscreen window has no mode that skips V-Sync:
 ```
 
 ```json
-{"max_fps":0,"path_trace":null,"scaling":{"fsr_sharpness":0.2,"mode":"bilinear","scale":1.0},"vsync_mode":"enabled"}
+{"frame_generation":{"enabled":false,"frames":0,"in_effect":false},"max_fps":0,"path_trace":null,"scaling":{"fsr_sharpness":0.2,"mode":"bilinear","scale":1.0},"vsync_mode":"enabled"}
 ```
 
 A scaling `mode` that isn't `bilinear`, `fsr`, `fsr2`, `fsr3`, `metalfx_spatial` or
@@ -4965,7 +4969,7 @@ In any session:
 In a running game (`slash-cli run --serve`):
 
 ```json
-{"catch_up_frames":0,"fps":120.0,"frame_ms":{"avg":8.33,"max":8.67,"min":7.99},"frames":932,"max_fps":120,"renderer":"vulkan","scaling":{"fsr_sharpness":0.2,"in_effect":"none","mode":"bilinear","scale":1.0},"systems":[{"avg":0.412,"max":0.951,"name":"physics2d","stage":4}],"tick_hz":60.0,"tick_ms":{"avg":0.598,"max":1.302},"ticks":465,"vsync_mode":"mailbox"}
+{"catch_up_frames":0,"fps":120.0,"frame_generation":{"enabled":false,"frames":0,"in_effect":false},"frame_ms":{"avg":8.33,"max":8.67,"min":7.99},"frames":932,"max_fps":120,"renderer":"vulkan","scaling":{"fsr_sharpness":0.2,"in_effect":"none","mode":"bilinear","scale":1.0},"systems":[{"avg":0.412,"max":0.951,"name":"physics2d","stage":4}],"tick_hz":60.0,"tick_ms":{"avg":0.598,"max":1.302},"ticks":465,"vsync_mode":"mailbox"}
 ```
 
 `tick_ms` is how long `World::step` took, systems and all. A system's times are its own run with

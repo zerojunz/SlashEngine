@@ -191,6 +191,16 @@ struct CanvasOptions {
     // When set, filled with what the frame draws of the world: its items, what couldn't draw
     // and the controls' layout. Collision shapes and the overlay are left out.
     FrameContents* contents = nullptr;
+    // Shows a generated frame before each drawn one where the settings' frame_generation asks
+    // and the device generates frames (RenderDevice::generate_frame): the world, with the
+    // canvases below it, draws into a target of the renderer's, the frame halfway between it and
+    // the last one is made from it, and each is drawn into options.target in turn, the world's
+    // controls, the canvases above and the overlay over both. Games and slash-cli run set it
+    // for their windows.
+    bool generate = false;
+    // Called between the generated frame and the drawn one, to pace them (as
+    // platform::Loop::wait_half_frame).
+    std::function<void()> between_frames{}; // NOLINT(readability-redundant-member-init)
 };
 
 // A point on the screen in a canvas's pixels, as Godot's get_canvas_transform().affine_inverse():
@@ -281,6 +291,10 @@ public:
         render::UpscaleSize size;
     };
     [[nodiscard]] const Scaled& scaled() const noexcept { return scaled_; }
+    // The frames generated and shown before drawn ones since the renderer was made, and whether
+    // the last frame drawn showed one.
+    [[nodiscard]] std::uint64_t frames_generated() const noexcept { return frames_generated_; }
+    [[nodiscard]] bool generated() const noexcept { return generated_; }
     // The paths each pixel of the last frame's path-traced world holds
     // (RenderDevice::path_samples); 0 when it wasn't path traced or the device traces no paths.
     [[nodiscard]] std::uint32_t path_samples() const {
@@ -387,6 +401,7 @@ private:
     // world, scaled by the settings' render scale if they ask, then the controls and overlay.
     struct Submission;
     Result<void> submit(const Submission& submission);
+    void release_generation_targets();
     // Destroys the systems of emitters this frame didn't see.
     void drop_unseen_gpu_systems();
     // A layer's cells, decoded again only when the layer or its tile set changes.
@@ -468,6 +483,13 @@ private:
     std::unique_ptr<render::Upscaler> upscaler_;
     std::string upscaler_name_;
     Scaled scaled_;
+    // Frame generation's targets at the output size: what the world draws into, and the frame
+    // generated from it.
+    std::array<render::TextureId, 2> generation_targets_{render::TextureId::None,
+                                                         render::TextureId::None};
+    std::array<std::uint32_t, 2> generation_size_{};
+    std::uint64_t frames_generated_ = 0;
+    bool generated_ = false;
     // What the last frame drew its path-traced world into, if it was path traced.
     std::optional<render::TextureId> path_target_;
     // Fonts for worlds ui wasn't installed in.
@@ -514,6 +536,9 @@ struct Settings {
     render::OcclusionCulling occlusion_culling{};
     // rendering.ray_tracing: the ray-traced effects devices that trace rays draw.
     render::RayTracing3D ray_tracing{};
+    // rendering.frame_generation: a frame made between each two drawn ones, as AMD's FSR 3
+    // frame generation (CanvasOptions::generate).
+    bool frame_generation = false;
 };
 void set_settings(world::World& world, const Settings& settings);
 // The settings given to the world, or the defaults.

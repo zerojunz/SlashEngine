@@ -84,6 +84,12 @@ public:
     // between the last two ticks. Always 0 headless, where frames and ticks are one to one.
     [[nodiscard]] double interpolation() const noexcept;
 
+    // Waits half a frame: the frame cap's period, else the time frames have been taking. A frame
+    // generated between two drawn ones (canvas::CanvasOptions::generate) is shown, then this
+    // waits, then the drawn one is shown, so each stays up as long as the other where nothing
+    // else paces presenting. Does nothing headless, on the web or before frames were timed.
+    void wait_half_frame();
+
 private:
     Loop(Platform& platform, const RunOptions& options);
     bool tick(const TickFn& on_tick, double tick_seconds);

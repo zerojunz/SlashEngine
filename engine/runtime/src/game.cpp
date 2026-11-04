@@ -291,7 +291,8 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
                                   .decal_filter = project_.decal_filter,
                                   .mesh_lod_threshold = project_.mesh_lod_threshold,
                                   .occlusion_culling = project_.occlusion_culling,
-                                  .ray_tracing = project_.ray_tracing});
+                                  .ray_tracing = project_.ray_tracing,
+                                  .frame_generation = project_.frame_generation});
     ui::set_settings(world_, {.viewport = {static_cast<float>(project_.window_width),
                                            static_cast<float>(project_.window_height)},
                               .theme = project_.gui_theme,
@@ -405,6 +406,17 @@ void Game::draw() {
     options.time =
         canvas::material_time(world_.tick(), 1.0 / loop_->tick_hz(), options.interpolation);
     draw_headset(options);
+#ifndef __EMSCRIPTEN__
+    // A frame generated between the last two shows first, half a frame before the drawn one,
+    // where V-Sync doesn't pace them. The browser shows one frame a callback, so the web has none.
+    options.generate = !platform_.headless();
+    options.between_frames = [this] {
+        const render::VsyncMode vsync = renderer_->vsync();
+        if (vsync == render::VsyncMode::Disabled || vsync == render::VsyncMode::Mailbox) {
+            loop_->wait_half_frame();
+        }
+    };
+#endif
     auto drawn = canvas_->draw(world_, options);
     // One warning, not one per frame.
     if (!drawn && !draw_failed_) {

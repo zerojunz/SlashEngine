@@ -383,6 +383,29 @@ alone (Godot's Compatibility renderer has no TAA), and reflection probes capture
 frame with no meshes starts the history again. `frame.capture` keeps the history between
 captures, and its `frames` draws several at once.
 
+## Frame generation
+
+`rendering.frame_generation` shows a frame made between each two the game draws, as AMD's FSR 3
+frame generation does (Godot has none), so a game drawn at 40 frames a second shows 80. The
+world, with the canvas layers below it, draws into a target of its own; the frame halfway
+between it and the one before is made from the 3D world's motion vectors and depth (in
+`forward_plus`) and the optical flow of the two pictures (everywhere, 2D too); then the game's
+window shows the made frame, then the drawn one, the world's controls, the layers above and the
+debug overlay drawn over both, so the UI never smears.
+
+```json
+"rendering": {"frame_generation": true}
+```
+
+It is off by default. With V-Sync on, each frame waits for the display, which spaces the two out;
+with it off (or `mailbox`), the game waits half a frame between them (the frame cap's period, or
+the time frames have been taking). Frames are made by the GPU devices (Vulkan, Metal, Direct3D
+12), WebGPU and the software device; on OpenGL, headless and on the web (where the browser shows
+one frame a callback) frames draw once. A first frame, or one after a scene change, shows twice.
+The made frame adds half a frame of latency, as AMD's does, so it suits games already above 30
+frames a second. [`display.set`](commands.md#displayset)'s `frame_generation` turns it on and off
+while the game runs.
+
 ## Texture forms
 
 `rendering.textures` says how exports ship textures, as Godot's texture import `compress/mode`.

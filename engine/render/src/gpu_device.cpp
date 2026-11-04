@@ -4,6 +4,9 @@
 #include "decal.hpp"
 #include "forward_post.hpp"
 #include "forward_post_shaders.hpp"
+#include "frame_generation.hpp"
+#include "frame_generation_draw_shaders.hpp"
+#include "frame_generation_shaders.hpp"
 #include "fsr2.hpp"
 #include "fsr2_accumulate_shaders.hpp"
 #include "fsr2_depth_clip_shaders.hpp"
@@ -168,6 +171,29 @@ struct TaaHistory {
     std::size_t last = 0;
     std::uint32_t width = 0;
     std::uint32_t height = 0;
+    bool primed = false;
+};
+
+// A target's frames for frame generation (frame_generation.hpp): the two buffers its passes work
+// in, laid out for its render and display sizes, and the motion vectors its prepass draws when
+// neither TAA nor FSR 2 draws them. frames counts the frames drawn since it began, generated_from
+// the frame the last generated frame was made from; the last frame drew its prepass
+// (prepared_now, then prepared) or was still, seen from still_camera and turned by
+// still_reprojection; fresh buffers hold no history.
+struct GenerationFrames {
+    FrameGenerationLayout layout;
+    SDL_GPUBuffer* words = nullptr;
+    SDL_GPUBuffer* atoms = nullptr;
+    SDL_GPUTexture* velocity = nullptr;
+    std::array<std::uint32_t, 2> velocity_size{};
+    std::uint64_t frames = 0;
+    std::uint64_t generated_from = 0;
+    bool fresh = true;
+    bool prepared_now = false;
+    bool prepared = false;
+    FrameGenerationCamera camera;
+    std::array<Float4, 4> still_reprojection{};
+    Mat4 view_projection{};
     bool primed = false;
 };
 
@@ -701,6 +727,20 @@ public:
         while (!fog_frames_.empty()) {
             forget_fog_frames(fog_frames_.back().first);
         }
+        while (!generation_frames_.empty()) {
+            forget_generation_frames(generation_frames_.back().first);
+        }
+        if (generation_pipeline_ != nullptr) {
+            SDL_ReleaseGPUComputePipeline(device_, generation_pipeline_);
+        }
+        for (SDL_GPUShader* shader : generation_draw_shaders_) {
+            if (shader != nullptr) {
+                SDL_ReleaseGPUShader(device_, shader);
+            }
+        }
+        for (const auto& [format, pipeline] : generation_draw_pipelines_) {
+            SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
+        }
         if (fog_pipeline_ != nullptr) {
             SDL_ReleaseGPUComputePipeline(device_, fog_pipeline_);
         }
@@ -948,6 +988,7 @@ public:
         forget_taa_history(texture);
         forget_fsr2_frames(texture);
         forget_fog_frames(texture);
+        forget_generation_frames(texture);
     }
 
     Result<ShaderId> create_shader(const CompiledShader& shader) override {
@@ -1729,6 +1770,15 @@ public:
                     return ready.error();
                 }
             }
+            if (uses_frame_generation(*frame.scene) && frame.target != TextureId::None) {
+                if (auto ready = prepare_generation(
+                        frame.target, {scene_width, scene_height}, {width, height},
+                        !uses_taa(*frame.scene) && !uses_fsr2(*frame.scene));
+                    !ready) {
+                    SDL_CancelGPUCommandBuffer(commands);
+                    return ready.error();
+                }
+            }
             if (uses_volumetric_fog(*frame.scene)) {
                 if (auto ready =
                         prepare_volumetric_fog(frame.target, world_format(*frame.scene, format),
@@ -2177,6 +2227,7 @@ public:
             }
         }
         SDL_EndGPURenderPass(pass);
+        count_generated_frame();
         const bool submitted = SDL_SubmitGPUCommandBuffer(commands);
         ++stats_.frames;
         finish_frame();
@@ -2276,6 +2327,7 @@ public:
 
     [[nodiscard]] MetalFxSupport metalfx() const override { return metalfx_; }
     [[nodiscard]] bool ray_tracing() const override { return rays_ != nullptr; }
+    [[nodiscard]] bool generates_frames() const override { return true; }
     [[nodiscard]] NativeDevice native_device() const override {
         return detail::native_device(device_, backend_);
     }
@@ -2331,6 +2383,86 @@ public:
             return Error{ErrorCode::InvalidArgument, "trace_lightmap is called outside frames"};
         }
         return rays_->trace_lightmap(trace);
+    }
+
+    Result<void> generate_frame(TextureId target, TextureId into) override {
+        if (in_frame_) {
+            return frame_in_progress("generate_frame");
+        }
+        for (const TextureId id : {target, into}) {
+            const auto it = textures_.find(id);
+            if (it == textures_.end()) {
+                return unknown_texture(id);
+            }
+            if (!it->second.desc.render_target) {
+                return not_a_render_target(id);
+            }
+        }
+        if (into == target) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "generate_frame writes into another render target than target");
+        }
+        const Texture& shown = textures_.at(target);
+        const Texture& made = textures_.at(into);
+        if (made.desc.width != shown.desc.width || made.desc.height != shown.desc.height) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "generate_frame writes into a render target of target's size");
+        }
+        if (auto ready = generation_pipeline(); !ready) {
+            return ready;
+        }
+        auto draw = generation_draw_pipeline(gpu_format(made.stored));
+        if (!draw) {
+            return draw.error();
+        }
+        GenerationFrames& frames = generation_frames(target);
+        const std::array<std::uint32_t, 2> display{shown.desc.width, shown.desc.height};
+        // A still frame is drawn at the display size.
+        if (auto ready = generation_buffers(
+                frames, frames.prepared ? frames.layout.render : display, display);
+            !ready) {
+            return ready;
+        }
+        if (frames.frames == 0) {
+            frames.still_reprojection = reprojection(kNoCamera, kNoCamera);
+            frames.camera = frame_generation_camera(kNoCamera);
+        }
+        // Frames are generated between two the target drew one after the other.
+        const bool reset =
+            frames.fresh || frames.frames == 0 || frames.generated_from + 1 != frames.frames;
+        SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(device_);
+        if (commands == nullptr) {
+            return sdl_error("generating a frame failed");
+        }
+        if (!frames.prepared) {
+            run_generation(commands, frames,
+                           frame_generation_prepare_plan(frames.layout, frames.still_reprojection,
+                                                         frames.camera, true),
+                           shown.gpu, nullptr);
+        }
+        run_generation(commands, frames, frame_generation_plan(frames.layout, frames.camera, reset),
+                       shown.gpu, nullptr);
+        SDL_GPUColorTargetInfo color{};
+        color.texture = made.gpu;
+        color.load_op = SDL_GPU_LOADOP_DONT_CARE;
+        color.store_op = SDL_GPU_STOREOP_STORE;
+        SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(commands, &color, 1, nullptr);
+        SDL_BindGPUGraphicsPipeline(pass, draw.value());
+        SDL_BindGPUFragmentStorageBuffers(pass, 0, &frames.words, 1);
+        const std::array<std::uint32_t, 4> where{
+            display[0],
+            frames.layout.sections.at(static_cast<std::size_t>(FrameGenerationSection::OutRgba)), 0,
+            0};
+        SDL_PushGPUFragmentUniformData(commands, 0, where.data(),
+                                       static_cast<std::uint32_t>(sizeof(where)));
+        SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
+        SDL_EndGPURenderPass(pass);
+        if (!SDL_SubmitGPUCommandBuffer(commands)) {
+            return sdl_error("generating a frame failed");
+        }
+        frames.generated_from = frames.frames;
+        frames.fresh = false;
+        return {};
     }
 
     Result<void> metalfx_spatial(TextureId source, TextureId target) override {
@@ -3831,8 +3963,23 @@ private:
             camera = taa_camera_uniforms(
                 scene, jitter, fsr2->clock.frames == 0 ? view_projection : fsr2->view_projection);
         }
+        // Frame generation takes the prepass's depth and motion vectors, from the camera the
+        // motion vectors were drawn from (the frame before's, for TAA's and FSR 2's).
+        GenerationFrames* generation = plan != nullptr && uses_frame_generation(scene)
+                                           ? find_generation_frames(frame_.target)
+                                           : nullptr;
+        Mat4 previous = view_projection;
+        if (taa != nullptr) {
+            previous = taa->primed ? taa->view_projection : view_projection;
+        } else if (fsr2 != nullptr) {
+            previous = fsr2->clock.frames == 0 ? view_projection : fsr2->view_projection;
+        } else if (generation != nullptr) {
+            previous = generation->primed ? generation->view_projection : view_projection;
+            camera = taa_camera_uniforms(scene, {0.0F, 0.0F}, previous);
+        }
         // Whether the prepass draws motion vectors, and where.
-        const bool motion = plan != nullptr && (taa != nullptr || fsr2 != nullptr);
+        const bool motion =
+            plan != nullptr && (taa != nullptr || fsr2 != nullptr || generation != nullptr);
         const auto lights = std::make_unique<MeshSceneUniforms>(mesh_scene_uniforms(scene));
         const bool clustered = scene.method == RenderMethod::ForwardPlus;
         if (clustered) {
@@ -3949,10 +4096,13 @@ private:
             if (motion) {
                 // FSR 2 works the sky's motion vectors out from the depth, as Godot's.
                 targets[1] = normals;
-                targets[1].texture =
-                    taa != nullptr ? taa->velocity.at(1 - taa->last) : fsr2_textures_.velocity;
-                if (taa == nullptr) {
+                if (taa != nullptr) {
+                    targets[1].texture = taa->velocity.at(1 - taa->last);
+                } else if (fsr2 != nullptr) {
+                    targets[1].texture = fsr2_textures_.velocity;
                     targets[1].clear_color = {kInvalidMotion, kInvalidMotion, 0.0F, 0.0F};
+                } else {
+                    targets[1].texture = generation->velocity;
                 }
             }
             SDL_GPUDepthStencilTargetInfo prepass_depth{};
@@ -3967,6 +4117,15 @@ private:
                 SDL_BeginGPURenderPass(commands, targets.data(), motion ? 2 : 1, &prepass_depth);
             draw_batches(pass, true);
             SDL_EndGPURenderPass(pass);
+            if (generation != nullptr) {
+                generation->camera = frame_generation_camera(scene.projection);
+                run_generation(commands, *generation,
+                               frame_generation_prepare_plan(
+                                   generation->layout, reprojection(view_projection, previous),
+                                   generation->camera, false),
+                               prepass_.depth, targets[1].texture);
+                generation->prepared_now = true;
+            }
             const std::optional<RayOcclusion> occlusion =
                 traced ? ray_occlusion(scene) : std::nullopt;
             if (ssao && !occlusion) {
@@ -5681,6 +5840,204 @@ private:
         return {};
     }
 
+    // Frame generation's compute pipeline, made the first time it is needed.
+    Result<void> generation_pipeline() {
+        if (generation_pipeline_ != nullptr) {
+            return {};
+        }
+        // The frame or the depth, and the motion vectors; the words and the atoms.
+        SDL_GPUComputePipelineCreateInfo info{};
+        info.entrypoint = "cs_main";
+        info.num_samplers = 2;
+        info.num_readwrite_storage_buffers = 2;
+        info.num_uniform_buffers = 1;
+        info.threadcount_x = 8;
+        info.threadcount_y = 8;
+        info.threadcount_z = 1;
+        auto made = create_compute_pipeline(info, shaders::kFrameGenerationComputeSpirv,
+                                            shaders::kFrameGenerationComputeMsl,
+                                            shaders::kFrameGenerationHlsl, "frame generation");
+        if (!made) {
+            return made.error();
+        }
+        generation_pipeline_ = made.value();
+        return {};
+    }
+
+    // The pass that draws a generated frame into a target of format.
+    Result<SDL_GPUGraphicsPipeline*> generation_draw_pipeline(SDL_GPUTextureFormat format) {
+        if (generation_draw_shaders_[0] == nullptr) {
+            const ShaderCode code{.vertex_spirv = shaders::kFrameGenerationDrawVertexSpirv,
+                                  .fragment_spirv = shaders::kFrameGenerationDrawFragmentSpirv,
+                                  .vertex_msl = shaders::kFrameGenerationDrawVertexMsl,
+                                  .fragment_msl = shaders::kFrameGenerationDrawFragmentMsl,
+                                  .hlsl = shaders::kFrameGenerationDrawHlsl};
+            auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 0);
+            if (!vertex) {
+                return vertex.error();
+            }
+            auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code, 0, 1, 1);
+            if (!fragment) {
+                SDL_ReleaseGPUShader(device_, vertex.value());
+                return fragment.error();
+            }
+            generation_draw_shaders_ = {vertex.value(), fragment.value()};
+        }
+        return fullscreen_pipeline(generation_draw_pipelines_, generation_draw_shaders_, format);
+    }
+
+    // target's frames for frame generation, or null when it has none.
+    GenerationFrames* find_generation_frames(TextureId target) {
+        for (auto& [id, frames] : generation_frames_) {
+            if (id == target) {
+                return &frames;
+            }
+        }
+        return nullptr;
+    }
+
+    GenerationFrames& generation_frames(TextureId target) {
+        if (GenerationFrames* found = find_generation_frames(target); found != nullptr) {
+            return *found;
+        }
+        return generation_frames_.emplace_back(target, GenerationFrames{}).second;
+    }
+
+    void release_generation_frames(GenerationFrames& frames) {
+        for (SDL_GPUBuffer** buffer : {&frames.words, &frames.atoms}) {
+            if (*buffer != nullptr) {
+                pending_buffers_.push_back(std::exchange(*buffer, nullptr));
+            }
+        }
+        if (frames.velocity != nullptr) {
+            pending_release_.push_back(std::exchange(frames.velocity, nullptr));
+        }
+    }
+
+    void forget_generation_frames(TextureId target) {
+        const auto it = std::ranges::find_if(
+            generation_frames_, [&](const auto& entry) { return entry.first == target; });
+        if (it == generation_frames_.end()) {
+            return;
+        }
+        release_generation_frames(it->second);
+        generation_frames_.erase(it);
+    }
+
+    // frames' buffers laid out for frames drawn at render and shown at display, made again (with
+    // no history) when they were laid out otherwise.
+    Result<void> generation_buffers(GenerationFrames& frames,
+                                    const std::array<std::uint32_t, 2>& render,
+                                    const std::array<std::uint32_t, 2>& display) {
+        if (frames.words != nullptr && frames.layout.render == render &&
+            frames.layout.display == display) {
+            return {};
+        }
+        for (SDL_GPUBuffer** buffer : {&frames.words, &frames.atoms}) {
+            if (*buffer != nullptr) {
+                pending_buffers_.push_back(std::exchange(*buffer, nullptr));
+            }
+        }
+        frames.layout = frame_generation_layout(render[0], render[1], display[0], display[1]);
+        frames.fresh = true;
+        frames.prepared = false;
+        for (const auto& [buffer, words] : {std::pair{&frames.words, frames.layout.words},
+                                            std::pair{&frames.atoms, frames.layout.atoms}}) {
+            SDL_GPUBufferCreateInfo info{};
+            info.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ |
+                         SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE |
+                         SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ;
+            info.size = words * 4;
+            *buffer = SDL_CreateGPUBuffer(device_, &info);
+            if (*buffer == nullptr) {
+                return sdl_error("creating frame generation's buffers failed");
+            }
+        }
+        return {};
+    }
+
+    // Frame generation's pipeline and target's frames at the start of a frame with it, drawn at
+    // render and shown at display, with motion vectors of its own unless TAA or FSR 2 draws them
+    // (own_motion).
+    Result<void> prepare_generation(TextureId target, const std::array<std::uint32_t, 2>& render,
+                                    const std::array<std::uint32_t, 2>& display, bool own_motion) {
+        if (auto made = generation_pipeline(); !made) {
+            return made;
+        }
+        GenerationFrames& frames = generation_frames(target);
+        if (auto made = generation_buffers(frames, render, display); !made) {
+            return made;
+        }
+        if (own_motion && (frames.velocity == nullptr || frames.velocity_size != render)) {
+            if (frames.velocity != nullptr) {
+                pending_release_.push_back(std::exchange(frames.velocity, nullptr));
+            }
+            auto velocity =
+                pass_texture(render[0], render[1], kVelocityFormat,
+                             SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, 1, "frame generation's motion");
+            if (!velocity) {
+                return velocity.error();
+            }
+            frames.velocity = velocity.value();
+            frames.velocity_size = render;
+        }
+        return {};
+    }
+
+    // Runs frame generation's dispatches over frames' buffers, each in a compute pass of its own,
+    // reading source and motion (the frame, or the prepass's depth and motion vectors).
+    void run_generation(SDL_GPUCommandBuffer* commands, GenerationFrames& frames,
+                        const std::vector<FrameGenerationDispatch>& plan, SDL_GPUTexture* source,
+                        SDL_GPUTexture* motion) {
+        SDL_GPUSampler* nearest = samplers_.at(sampler_index(Filter::Nearest, false));
+        const std::array<SDL_GPUTextureSamplerBinding, 2> textures{{
+            {.texture = source, .sampler = nearest},
+            {.texture = motion != nullptr ? motion : source, .sampler = nearest},
+        }};
+        const std::array<SDL_GPUStorageBufferReadWriteBinding, 2> buffers{{
+            {.buffer = frames.words, .cycle = false, .padding1 = 0, .padding2 = 0, .padding3 = 0},
+            {.buffer = frames.atoms, .cycle = false, .padding1 = 0, .padding2 = 0, .padding3 = 0},
+        }};
+        for (const FrameGenerationDispatch& dispatch : plan) {
+            SDL_GPUComputePass* compute =
+                SDL_BeginGPUComputePass(commands, nullptr, 0, buffers.data(), 2);
+            SDL_BindGPUComputePipeline(compute, generation_pipeline_);
+            SDL_BindGPUComputeSamplers(compute, 0, textures.data(), 2);
+            SDL_PushGPUComputeUniformData(commands, 0, &dispatch.uniforms,
+                                          static_cast<std::uint32_t>(sizeof(dispatch.uniforms)));
+            SDL_DispatchGPUCompute(compute, dispatch.groups[0], dispatch.groups[1],
+                                   dispatch.groups[2]);
+            SDL_EndGPUComputePass(compute);
+        }
+    }
+
+    // Counts a frame drawn into the frame's target for frame generation, when the target keeps
+    // frames for it: one that drew no prepass for it is still, moved as its camera turned.
+    void count_generated_frame() {
+        GenerationFrames* frames = find_generation_frames(frame_.target);
+        if (frames == nullptr) {
+            return;
+        }
+        ++frames->frames;
+        const Scene3D* scene = frame_.scene ? &*frame_.scene : nullptr;
+        if (frames->prepared_now) {
+            frames->prepared = true;
+        } else {
+            const Mat4 view_projection =
+                scene != nullptr ? multiply(scene->projection, scene->camera) : kNoCamera;
+            frames->prepared = false;
+            frames->still_reprojection = reprojection(
+                view_projection, frames->primed ? frames->view_projection : view_projection);
+            frames->camera =
+                frame_generation_camera(scene != nullptr ? scene->projection : kNoCamera);
+        }
+        frames->prepared_now = false;
+        frames->primed = scene != nullptr;
+        if (scene != nullptr) {
+            frames->view_projection = multiply(scene->projection, scene->camera);
+        }
+    }
+
     // Volumetric fog's pipelines and target's froxel buffers for a volume of size, made at the
     // start of a frame with it.
     Result<void> prepare_volumetric_fog(TextureId target, SDL_GPUTextureFormat format,
@@ -7362,6 +7719,13 @@ private:
     // Volumetric fog: each target's frames, the passes' pipeline, the sky's shaders and pipelines,
     // and the buffer the meshes bind in its place without it.
     std::vector<std::pair<TextureId, FogFrames>> fog_frames_;
+    // Frame generation's pipeline, its draw pass's shaders and pipelines by format, and each
+    // target's frames.
+    SDL_GPUComputePipeline* generation_pipeline_ = nullptr;
+    std::array<SDL_GPUShader*, 2> generation_draw_shaders_{};
+    std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>>
+        generation_draw_pipelines_;
+    std::vector<std::pair<TextureId, GenerationFrames>> generation_frames_;
     SDL_GPUComputePipeline* fog_pipeline_ = nullptr;
     std::array<SDL_GPUShader*, 2> fog_sky_shaders_{};
     std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> fog_sky_pipelines_;

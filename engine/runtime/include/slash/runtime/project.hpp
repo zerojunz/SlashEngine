@@ -103,6 +103,9 @@ struct Project {
     // rendering.anti_aliasing.quality.use_taa: temporal antialiasing of the 3D world in Forward+,
     // as Godot's.
     bool use_taa = false;
+    // rendering.frame_generation: a frame made between each two drawn ones, as AMD's FSR 3 frame
+    // generation (canvas::CanvasOptions::generate).
+    bool frame_generation = false;
     // rendering.textures.decals.filter: how decals' textures are filtered, as Godot's
     // rendering/textures/decals/filter.
     render::DecalFilter decal_filter = render::DecalFilter::LinearMipmaps;

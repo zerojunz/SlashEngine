@@ -250,6 +250,7 @@ canvas::Settings canvas_settings(const json::Value& project) {
         }
         settings.voxel_gi_high_quality = render::voxel_gi_high_quality(*rendering);
         settings.use_taa = render::use_taa(*rendering);
+        settings.frame_generation = render::frame_generation(*rendering);
         settings.decal_filter = render::decal_filter(*rendering);
         settings.mesh_lod_threshold = render::mesh_lod_threshold(*rendering);
         settings.occlusion_culling = render::occlusion_culling(*rendering);

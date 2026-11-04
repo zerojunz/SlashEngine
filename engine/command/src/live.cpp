@@ -110,6 +110,14 @@ json::Value frame_settings(const LiveGame& game, const Session& session) {
         }
     }
     out["scaling"] = std::move(scaling);
+    // Frame generation, whether the last frame showed a generated one and how many have shown.
+    json::Value generation;
+    generation["enabled"] = canvas::settings(session.world()).frame_generation;
+    if (game.canvas != nullptr) {
+        generation["in_effect"] = game.canvas->generated();
+        generation["frames"] = game.canvas->frames_generated();
+    }
+    out["frame_generation"] = std::move(generation);
     if (game.path_trace != nullptr) {
         // The paths each pixel holds says whether the device traces them, and how far the
         // still has come.
@@ -207,6 +215,11 @@ Reply display_set(const LiveGame& game, Session& session, const json::Value& par
     if (const json::Value* max_fps = params.find("max_fps"); max_fps != nullptr) {
         game.loop->set_max_fps(static_cast<int>(max_fps->as_int()));
     }
+    if (const json::Value* generation = params.find("frame_generation"); generation != nullptr) {
+        canvas::Settings settings = canvas::settings(session.world());
+        settings.frame_generation = generation->as_bool();
+        canvas::set_settings(session.world(), settings);
+    }
     return Reply::success(frame_settings(game, session));
 }
 
@@ -281,7 +294,7 @@ void register_live_commands(Registry& registry, const LiveGame& game) {
     registry.add({
         .name = "display.list",
         .description = "Lists the displays with their refresh rates, and the game's V-Sync mode, "
-                       "frame cap and render scale.",
+                       "frame cap, render scale and frame generation.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({
@@ -294,8 +307,8 @@ void register_live_commands(Registry& registry, const LiveGame& game) {
     });
     registry.add({
         .name = "display.set",
-        .description = "Changes the game's V-Sync mode, frame cap, render scale or path tracing "
-                       "while it runs, and returns the settings in effect.",
+        .description = "Changes the game's V-Sync mode, frame cap, render scale, frame generation "
+                       "or path tracing while it runs, and returns the settings in effect.",
         .capabilities = {Run},
         .effect = Effect::Read,
         .params = params_schema({
@@ -303,6 +316,8 @@ void register_live_commands(Registry& registry, const LiveGame& game) {
             {"max_fps", std::move(max_fps)},
             {"scaling", std::move(scaling)},
             {"path_trace", std::move(path_trace)},
+            {"frame_generation",
+             property("boolean", "Show a frame made between each two drawn ones (FSR 3).")},
         }),
         .handler = [game](Session& session,
                           const json::Value& params) { return display_set(game, session, params); },
@@ -314,8 +329,9 @@ void register_live_commands(Registry& registry, const LiveGame& game) {
     Command stats = *registry.find("perf.stats");
     stats.description = "Frame pacing over the last 120 frames (fps, frame times in ms and "
                         "catch-up frames), tick and system times over the last 120 ticks, the "
-                        "slowest systems first, the V-Sync mode, frame cap and render scale, and "
-                        "with memory, what each part of the engine holds, GPU textures too.";
+                        "slowest systems first, the V-Sync mode, frame cap, render scale and frame "
+                        "generation, and with memory, what each part of the engine holds, GPU "
+                        "textures too.";
     stats.handler = [game](Session& session, const json::Value& params) {
         return perf_stats(game, session, params);
     };
