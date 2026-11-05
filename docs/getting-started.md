@@ -33,9 +33,10 @@ mcp=./build/dev/tools/slash-mcp/slash-mcp
 
 ### Or install it
 
-On a Mac or a Linux PC, an installed engine works the same way without a checkout. Either unpack
-`slashengine-macos.tar.gz` or `slashengine-linux-x86_64.tar.gz` (CI builds both on every change;
-download them from the run's artifacts) or install a build of your own:
+On a Mac, a Linux PC or a Windows PC, an installed engine works the same way without a checkout.
+Either unpack `slashengine-macos.tar.gz`, `slashengine-linux-x86_64.tar.gz` or
+`slashengine-windows-x64.zip` (CI builds all three on every change; download them from the run's
+artifacts) or install a build of your own:
 
 ```bash
 cmake --preset release && cmake --build --preset release --target slash-cli slash-mcp slash-game
@@ -57,6 +58,10 @@ every game.
   need glibc 2.39 or newer (Ubuntu 24.04, Debian 13, Fedora 40). Exports also need `pkg-config`
   and, for a window, the X11 or Wayland libraries every desktop has. The games they export still
   run on glibc 2.31.
+- **Windows:** the tools need Visual Studio's C++ tools (2022 or newer), which also bring the
+  Visual C++ runtime they link; run them from a Developer PowerShell (x64), as exports build with
+  MSVC. The tools don't load a game's own C++ on Windows yet, so `slash-cli build` and hot reload
+  are for macOS and Linux; exports compile a game's code into it on every platform.
 
 ## 2. Run the engine
 
