@@ -17,16 +17,16 @@ order is the plan, and each item carries a status instead. It is drawn from the 
 
 ## Where things stand
 
-Milestones 1 to 4 and 6 are done, and milestone 5 is nearly done. The engine builds on macOS, Linux and Windows, runs an EnTT world on
-a fixed-timestep loop headless or in an SDL3 window, loads and saves JSON scenes checked against a
-schema it generates from its own components, and serves every engine action as a command over
-MCP, JSON-RPC, a localhost REST API and the command line, including while a game runs. A game is
-a folder with a `project.json`, and `slash-cli export` builds it for macOS, Windows, Linux, the
-web, Android or iOS, from one Mac with toolchains it downloads, signs it and can test the result
-headless. Games draw sprites and flipbook animations through
-a GPU render device, smoothly between fixed ticks and with Godot's V-Sync modes and frame cap,
-color them with material graphs, animate any component field with keyframes and draw tile maps
-that autotile terrain; the rest of the 2D renderer follows in milestone 5.
+Milestones 1 to 8 are done, and so is every Launch row of the [feature table](#features-by-area).
+Only milestone 3's recorded exit check and the published macOS release remain; both need Dan.
+The release needs a version tag, the archive CI already packages, and the tools notarized with
+his Developer ID.
+
+The engine builds and is tested on macOS, Linux and Windows. It covers the 2D and 3D feature
+sets, networking, XR, localization, video, accessibility, procedural generation and platform
+services, and every engine action is a command over MCP, JSON-RPC, REST and the command line.
+`slash-cli export` builds a game for all six platforms from one Mac. CI packages
+`slashengine-macos.tar.gz` and checks it on a Mac with no checkout.
 
 ## The path to launch
 
@@ -932,7 +932,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 
 Exit: an agent builds a small 3D sample end to end.
 
-### Milestone 8: Systems and platform services (In progress)
+### Milestone 8: Systems and platform services (Done)
 
 - [x] Networking: ENet transport, replication driven by reflection, WebSocket for web, following
       Godot's high-level multiplayer ([reference](reference/networking.md))
@@ -1033,9 +1033,9 @@ their adapters live outside this repository. StoreKit is an OS framework, and Go
 is fetched at export time like the rest of the Android SDK, so neither is committed here. Dan
 chose this split.
 
-### Milestone 9: Launch (Next)
+### Milestone 9: Launch (In progress)
 
-- [ ] Every Launch row of the [feature table](#features-by-area) done
+- [x] Every Launch row of the [feature table](#features-by-area) done
 - [x] Plugins with a stable C ABI, as Godot's GDExtension: libraries built apart from the engine,
       in any language that calls C, that add components and systems to a game
   - [x] `slash_plugin.h`, a C interface that only grows: an entry function handed `get_proc`,
@@ -1057,7 +1057,8 @@ chose this split.
         then builds a game's code and exports the game from the unpacked copy
   - [ ] A published release: a version tag, the archive attached and the tools notarized with a
         Developer ID
-- [ ] Exports for all six platforms
+- [x] Exports for all six platforms: CI exports and runs a game for macOS, Windows, Linux, the
+      web, Android (on an emulator) and iOS (in the Simulator) on every pull request
 - [x] Reference docs generated from `engine.describe`: `slash-cli docs` writes every component's
       fields (the structs inside them too), every command's params and the systems as Markdown,
       as Godot's `--doctool`; `--strict` fails on anything without a description, which a test
