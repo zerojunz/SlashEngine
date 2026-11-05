@@ -645,14 +645,18 @@ $cli build --check                    # or build.check: compile what changed, no
 ```
 
 `exporter::build_gameplay` configures `cmake/gameplay/CMakeLists.txt` with the compiler, flags
-and include folders of the engine build the program came from (`build/<preset>/gameplay-sdk.cmake`)
-and builds `.slash/gameplay/game.so`, its engine symbols left for the program to supply.
+and include folders of the engine build the program came from (`build/<preset>/gameplay-sdk.cmake`,
+or an installed engine's `share/slashengine/gameplay-sdk.cmake`, which `cmake --install` writes
+relocatable with `cmake/gameplay/install_sdk.cmake`: the compiler by name and headers from
+outside `engine/` copied in) and builds `.slash/gameplay/game.so`, its engine symbols left for
+the program to supply.
 `exporter::check_gameplay` (`build.check`) builds only its `game_objects` target, so just the
 files that changed compile and nothing links, and `read_compile_diagnostics` reads the errors,
 warnings, notes and `-fdiagnostics-parseable-fixits` fixes from the log.
 `gameplay::Host` (`engine/gameplay`) loads it from a copy with a name of its own, refuses one
 built against other headers (`SLASH_API_HASH`, a hash of `engine/*/include` and the pinned
-dependencies) or with another compiler, and when the file changes swaps the code in: it saves
+dependencies) or with another compiler family or standard library ABI (`SLASH_COMPILER_ID`; other
+versions of the compiler are fine), and when the file changes swaps the code in: it saves
 each entity's components of the old types as JSON, removes the old systems and their pools,
 moves the new types into the world's `ComponentRegistry` and puts the values back field by
 field, reporting what it had to drop. Libraries are never unloaded. Hosts link the engine

@@ -47,6 +47,18 @@ if(SLASH_BUILD_TOOLS)
     add_subdirectory(tools/slash-game)
     include(GNUInstallDirs)
     install(TARGETS slash-cli slash-mcp slash-game RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    # The engine's sources go beside the tools, where exporter::find_engine looks for them
+    # (<bin>/../share/slashengine): exports build games from them, fetching the dependencies the
+    # first time, api.search reads their headers and examples, and the gameplay SDK
+    # (tools/exporter/CMakeLists.txt) builds a game's code against their headers.
+    set(SLASH_INSTALL_ENGINE_DIR ${CMAKE_INSTALL_DATADIR}/slashengine)
+    install(FILES CMakeLists.txt LICENSE THIRD_PARTY.md README.md AGENTS.md
+        DESTINATION ${SLASH_INSTALL_ENGINE_DIR})
+    install(DIRECTORY cmake engine export examples docs DESTINATION ${SLASH_INSTALL_ENGINE_DIR}
+        PATTERN ".DS_Store" EXCLUDE PATTERN ".slash" EXCLUDE PATTERN "build" EXCLUDE)
+    install(CODE "set(SLASH_SDK_DATA [==[${CMAKE_BINARY_DIR}/gameplay-sdk-data.cmake]==])
+        set(SLASH_SDK_DESTINATION [==[${SLASH_INSTALL_ENGINE_DIR}]==])")
+    install(SCRIPT cmake/gameplay/install_sdk.cmake)
 endif()
 
 if(SLASH_BUILD_TESTS)

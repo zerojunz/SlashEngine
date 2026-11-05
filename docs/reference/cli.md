@@ -677,10 +677,14 @@ slash-cli build [--check] [--project <dir>] [--engine <dir>]
 | --- | --- |
 | `--check` | Only compile the files changed since the last check or build, with nothing linked, and print their errors and warnings as [`build.check`](commands.md#buildcheck) returns them; exit 1 if there are errors |
 | `--project <dir>` | Game folder with `project.json` (default `.`) |
-| `--engine <dir>` | Engine sources (default: `SLASH_ENGINE_DIR`, else the checkout this program was built from) |
+| `--engine <dir>` | Engine sources (default: `SLASH_ENGINE_DIR`, an installed copy, or the checkout this program was built from) |
 
 It builds with CMake (3.25 or newer on `PATH`) in `.slash/gameplay/build`, with the compiler and
-flags of the engine build this program came from, so only files that changed compile again.
+flags of the engine build this program came from, so only files that changed compile again. An
+[installed engine](../getting-started.md#or-install-it) builds with the compiler of the same name
+on `PATH` (Xcode's on a Mac) and Ninja if there is one, else CMake's default generator. The
+engine loads code built with any version of its compiler family over the same C++ standard
+library ABI.
 
 ```json
 {"components":["Spin"],"library":".slash/gameplay/game.so","log":".slash/gameplay/build.log","systems":["spin"]}

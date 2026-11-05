@@ -55,6 +55,12 @@ extern "C" SLASH_GAME_MODULE_EXPORT const slash::world::GameModuleAbi* slash_gam
     return &kAbi;
 }
 extern "C" SLASH_GAME_MODULE_EXPORT void slash_game_module(slash::world::GameModule& /*game*/) {}
+#elif defined(SLASH_TEST_MODULE_OTHER_COMPILER)
+extern "C" SLASH_GAME_MODULE_EXPORT const slash::world::GameModuleAbi* slash_game_module_abi() {
+    static constexpr slash::world::GameModuleAbi kAbi{SLASH_API_HASH, "other, libc++ ABI 0"};
+    return &kAbi;
+}
+extern "C" SLASH_GAME_MODULE_EXPORT void slash_game_module(slash::world::GameModule& /*game*/) {}
 #elif !defined(SLASH_TEST_MODULE_NO_ENTRY)
 SLASH_GAME_MODULE(game) {
     using test_game::Health;
