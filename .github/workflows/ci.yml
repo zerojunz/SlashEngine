@@ -561,10 +561,16 @@ jobs:
         include:
           - name: macOS
             os: macos-15
-            archive: slashengine-macos
+            archive: slashengine-macos.tar.gz
           - name: Linux
             os: ubuntu-24.04
-            archive: slashengine-linux-x86_64
+            archive: slashengine-linux-x86_64.tar.gz
+          - name: Windows
+            os: windows-2022
+            archive: slashengine-windows-x64.zip
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -601,6 +607,14 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y $LINUX_SDL_DEPS
 
+      - name: Install tools (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ninja -y
+
+      - name: Set up MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
       # The export job for each platform saves this cache; this one only reads it.
       - name: Cache compiled objects
         uses: hendrikmuhs/ccache-action@v1.2
@@ -614,19 +628,29 @@ jobs:
           cmake --preset release ${{ env.CCACHE_CMAKE_ARGS }}
           cmake --build --preset release --target slash-cli slash-mcp slash-game
 
+      # A .tar.gz on macOS and Linux, a .zip on Windows: cmake's tar picks the format by name.
       - name: Install and package them
         run: |
           cmake --install build/release --prefix "$RUNNER_TEMP/slashengine"
-          tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/${{ matrix.archive }}.tar.gz" slashengine
+          cd "$RUNNER_TEMP"
+          case "${{ matrix.archive }}" in
+            *.zip) cmake -E tar cf "${{ matrix.archive }}" --format=zip slashengine ;;
+            *) cmake -E tar czf "${{ matrix.archive }}" slashengine ;;
+          esac
 
+      # From outside the checkout, which the script moves away: Windows won't move a folder a
+      # running shell is in or reads a script from.
       - name: Build and export a game from the unpacked package
-        run: .github/scripts/check-release.sh "$RUNNER_TEMP/${{ matrix.archive }}.tar.gz" .
+        run: |
+          cp .github/scripts/check-release.sh "$RUNNER_TEMP/"
+          cd "$RUNNER_TEMP"
+          ./check-release.sh "$RUNNER_TEMP/${{ matrix.archive }}" "$GITHUB_WORKSPACE"
 
       - name: Upload the package
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.archive }}
-          path: ${{ runner.temp }}/${{ matrix.archive }}.tar.gz
+          path: ${{ runner.temp }}/${{ matrix.archive }}
           if-no-files-found: error
 
   # A Mac builds Windows and Linux games with the toolchains slash-cli downloads; the runners
