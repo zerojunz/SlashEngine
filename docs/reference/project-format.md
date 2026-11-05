@@ -491,7 +491,8 @@ Exports compile the sources into the game for every platform. The tools build th
 `.slash/gameplay/game.so` with [`slash-cli build`](cli.md#build) or
 [`gameplay.build`](commands.md#gameplaybuild) and load that, on macOS and Linux; when it is
 rebuilt they swap it in, and the world keeps its entities and each field the new code still has.
-Libraries built against other engine headers or with another compiler are refused. Until the
+Libraries built against other engine headers, or with another compiler family or C++ standard
+library ABI, are refused; other versions of the engine's compiler are fine. Until the
 code is built, each component a `SLASH_COMPONENT` line in the sources declares is a stand-in
 that keeps whatever values scenes give it, so their scenes open, change and save as written;
 the first build swaps the code's types in, keeping the values of the fields they have.

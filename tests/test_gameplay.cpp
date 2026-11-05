@@ -7,6 +7,7 @@
 #include "slash/gameplay/host.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/library.hpp"
+#include "slash/platform/process.hpp"
 #include "slash/runtime/gameplay.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/world/component_registry.hpp"
@@ -29,6 +30,8 @@ namespace world = slash::world;
 namespace gameplay = slash::gameplay;
 namespace runtime = slash::runtime;
 namespace command = slash::command;
+namespace exporter = slash::exporter;
+namespace platform = slash::platform;
 namespace fs = std::filesystem;
 
 namespace {
@@ -132,6 +135,104 @@ TEST_CASE("a game's code is found at .slash/gameplay in its project") {
     CHECK(gameplay::library_path("games/pong/") == "games/pong/.slash/gameplay/game.so");
 #endif
 }
+
+TEST_CASE("gameplay libraries are matched by compiler family and library ABI, not version") {
+    // Released tools load a game built with the person's own compiler, of another version.
+    const std::string_view id = SLASH_COMPILER_ID;
+#if defined(__clang__)
+    CHECK(id.starts_with("clang, "));
+#elif defined(__GNUC__)
+    CHECK(id.starts_with("gcc, "));
+#elif defined(_MSC_VER)
+    CHECK(id.starts_with("msvc, "));
+    CHECK(id.find(SLASH_GAME_MODULE_STRINGIFY(_MSC_FULL_VER)) == std::string_view::npos);
+#endif
+#if defined(_LIBCPP_VERSION)
+    CHECK(id.ends_with(", libc++ ABI " SLASH_GAME_MODULE_STRINGIFY(_LIBCPP_ABI_VERSION)));
+#elif defined(__GLIBCXX__) && !defined(_GLIBCXX_DEBUG)
+    CHECK(id.ends_with(", libstdc++ ABI " SLASH_GAME_MODULE_STRINGIFY(_GLIBCXX_USE_CXX11_ABI)));
+#endif
+#if defined(__VERSION__)
+    CHECK(id.find(__VERSION__) == std::string_view::npos);
+#endif
+}
+
+#if defined(SLASH_TEST_GAMEPLAY_SDK_DATA)
+TEST_CASE("an installed engine's gameplay SDK builds a game's code with the compiler on PATH") {
+    // What "cmake --install" lays out (CMakeLists.txt): the engine's sources, here linked to this
+    // checkout's, and the SDK cmake/gameplay/install_sdk.cmake writes beside them.
+    const fs::path prefix = fs::absolute("gameplay_installed_engine");
+    fs::remove_all(prefix);
+    const fs::path engine = prefix / "share" / "slashengine";
+    fs::create_directories(engine);
+    const fs::path source = SLASH_TEST_ENGINE_SOURCE_DIR;
+    for (const char* folder : {"cmake", "engine", "export"}) {
+        fs::create_directory_symlink(source / folder, engine / folder);
+    }
+    auto installed = platform::run_process(
+        {SLASH_TEST_CMAKE, "-DSLASH_SDK_DATA=" SLASH_TEST_GAMEPLAY_SDK_DATA,
+         "-DSLASH_SDK_DESTINATION=share/slashengine", "-DCMAKE_INSTALL_PREFIX=" + prefix.string(),
+         "-P", (source / "cmake" / "gameplay" / "install_sdk.cmake").string()});
+    REQUIRE(installed.ok());
+    REQUIRE_MESSAGE(installed.value().exit_code == 0, installed.value().tail);
+    auto sdk = platform::read_file((engine / "gameplay-sdk.cmake").string());
+    REQUIRE(sdk.ok());
+    // It names no folder of the build it came from, and the compiler by its name alone.
+    CHECK_FALSE(contains(sdk.value(), source.generic_string()));
+    CHECK(contains(sdk.value(), "${CMAKE_CURRENT_LIST_DIR}/engine/core/include;"));
+    CHECK(contains(sdk.value(), "set(CMAKE_CXX_COMPILER [==[" +
+                                    fs::path(SLASH_TEST_CXX_COMPILER).filename().string() +
+                                    "]==]"));
+    // The headers from outside engine/ are copied in: EnTT's, the generated ones.
+    bool entt = false;
+    for (const auto& entry : fs::directory_iterator(engine / "sdk")) {
+        entt = entt || fs::exists(entry.path() / "entt" / "entt.hpp");
+    }
+    CHECK(entt);
+
+    const fs::path game = fs::absolute("gameplay_installed_game");
+    fs::remove_all(game);
+    fs::create_directories(game / "src");
+    fs::create_directories(game / "scenes");
+    REQUIRE(platform::write_file((game / "project.json").string(),
+                                 R"({"format": 1, "gameplay": {"sources": ["src"]},
+                                     "main_scene": "scenes/main.scene.json", "name": "Installed"})")
+                .ok());
+    REQUIRE(platform::write_file((game / "scenes" / "main.scene.json").string(),
+                                 R"({"entities": {}, "format": 1})")
+                .ok());
+    REQUIRE(platform::write_file((game / "src" / "game.cpp").string(), R"(
+#include "slash/world/game_module.hpp"
+
+namespace installed {
+struct Lamp {
+    float brightness = 1.0F;
+};
+SLASH_COMPONENT(Lamp, brightness)
+} // namespace installed
+
+SLASH_GAME_MODULE(game) {
+    game.add_component<installed::Lamp>().set_doc("A lamp.");
+}
+)")
+                .ok());
+    const exporter::GameplayBuild built = exporter::build_gameplay(game.string(), engine.string());
+    REQUIRE_MESSAGE(built.ok, json::write(built.to_json()));
+    auto log = platform::read_file((game / built.log).string());
+    REQUIRE(log.ok());
+    CHECK(contains(log.value(), (engine / "gameplay-sdk.cmake").string()));
+
+    // The engine takes the library: same headers, same compiler family and library ABI.
+    const Project project("installed_load");
+    fs::create_directories(fs::path(project.library()).parent_path());
+    fs::copy_file(game / built.library, project.library());
+    Game loaded(project);
+    REQUIRE(loaded.host.attach(loaded.world).error.empty());
+    CHECK(names(*loaded.host.status().find("components")) == Names{"Lamp"});
+    fs::remove_all(prefix);
+    fs::remove_all(game);
+}
+#endif
 
 TEST_CASE("a game module records registration mistakes") {
     world::GameModule module;
@@ -351,6 +452,9 @@ TEST_CASE("code that can't go in changes nothing, and the old code keeps running
         std::string_view variant;
         std::string_view error;
     };
+    const std::string other_compiler = std::string("the gameplay library was built with other, "
+                                                   "libc++ ABI 0, but the engine with ") +
+                                       SLASH_COMPILER_ID + "; build it again";
     for (const Case& refused : {
              Case{"duplicate", "the component Health is registered twice"},
              Case{"engine_component", "the component Transform2D is already the engine's"},
@@ -358,6 +462,7 @@ TEST_CASE("code that can't go in changes nothing, and the old code keeps running
              Case{"no_entry", "the gameplay library has no SLASH_GAME_MODULE function"},
              Case{"bad_abi", "the gameplay library was built against other engine headers; "
                              "build it again"},
+             Case{"other_compiler", other_compiler},
          }) {
         CAPTURE(refused.variant);
         project.build(refused.variant);
