@@ -26,7 +26,8 @@ The engine builds and is tested on macOS, Linux and Windows. It covers the 2D an
 sets, networking, XR, localization, video, accessibility, procedural generation and platform
 services, and every engine action is a command over MCP, JSON-RPC, REST and the command line.
 `slash-cli export` builds a game for all six platforms from one Mac. CI packages
-`slashengine-macos.tar.gz` and checks it on a Mac with no checkout.
+`slashengine-macos.tar.gz` and `slashengine-linux-x86_64.tar.gz` and checks each on a machine
+with no checkout.
 
 ## The path to launch
 
@@ -1069,7 +1070,8 @@ chose this split.
 Once the macOS release ships:
 
 1. **Windows and Linux hosts.** The engine and tools run on Windows and Linux, not only export to
-   them. CI already builds and tests on both, so this is mostly packaging and host-only tools.
+   them. CI already builds and tests on both, and packages the Linux x86_64 tools
+   (`slashengine-linux-x86_64.tar.gz`); Windows packaging and host-only tools remain.
 2. **After-launch features**, in no fixed order:
    - [x] Large worlds: double-precision transforms and world streaming
      - [x] World streaming: `StreamedScene3D` cells of scene files loaded and unloaded around
@@ -1197,7 +1199,7 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | --- | --- | --- | --- |
 | macOS (Apple silicon and Intel) | At launch | Yes (4a) | macOS 11 Big Sur |
 | Windows x64 | After launch (CI already builds and tests the engine there) | Yes (4a) | Windows 10 version 2004 (May 2020) |
-| Linux x64 and arm64 | After launch (CI already builds and tests the engine on x64) | Yes (4a) | glibc 2.31 (Ubuntu 20.04, Debian 11, Fedora 32 or newer) |
+| Linux x64 and arm64 | After launch (CI packages the x64 tools, for glibc 2.39 or newer) | Yes (4a) | glibc 2.31 (Ubuntu 20.04, Debian 11, Fedora 32 or newer) |
 | iOS | No | Yes (4b) | iOS 14 |
 | Android | No | Yes (4b) | Android 11 (API level 30) |
 | Web | No | Yes (4a) | Chrome and Edge 85, Firefox 79, Safari 15 |
