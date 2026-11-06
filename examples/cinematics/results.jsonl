@@ -1,0 +1,13 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":5,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"length":6,"loop":"none","tracks":{"wide:Camera3D/fov":[60,58.8497,55.2185,49.556,45],"wide:Transform3D/position/z":[9,8.4276,7,5.5724,5]}}}
+{"id":3,"jsonrpc":"2.0","result":{"animation":"intro","time":4}}
+{"id":4,"jsonrpc":"2.0","result":{"components":{"AnimationPlayer":{"animation":"open","library":"door.anim.json","playing":false,"time":1.5},"Transform3D":{"position":[0.0,1.0,0.0],"rotation":[0.0,-1.6,0.0]}},"id":"door"}}
+{"id":5,"jsonrpc":"2.0","result":{"count":1,"entities":["close"],"truncated":false}}
+{"error":{"code":-32001,"data":{"path":"/marker"},"message":"/marker: intro has no marker \"closeup\"; did you mean \"close_up\"?"},"id":6,"jsonrpc":"2.0"}
+{"id":7,"jsonrpc":"2.0","result":{"can_redo":1,"can_undo":0,"undone":"animation.seek"}}
+{"id":8,"jsonrpc":"2.0","result":{"subscription":"events_1"}}
+{"id":9,"jsonrpc":"2.0","result":{"tick":150,"ticks":150}}
+{"id":10,"jsonrpc":"2.0","result":{"components":{"AnimationPlayer":{"animation":"open","library":"door.anim.json","time":0.49999999999999994}},"id":"door"}}
+{"id":11,"jsonrpc":"2.0","result":{"tick":270,"ticks":120}}
+{"id":12,"jsonrpc":"2.0","result":{"count":1,"entities":["close"],"truncated":false}}
+{"id":13,"jsonrpc":"2.0","result":{"dropped":0,"events":[{"data":{"text":"Chapter One"},"id":"director","kind":"title","seq":1,"tick":59},{"data":{"animation":"open"},"id":"door","kind":"animation_finished","seq":2,"tick":209}],"more":false}}

@@ -1182,6 +1182,87 @@ Reply animation_eval(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+Reply animation_seek(Session& session, const json::Value& params) {
+    const std::string id = text(params, "id");
+    world::World& world = session.world();
+    const entt::entity entity = world.find(id);
+    if (entity == entt::null) {
+        return unknown_entity(world, id, "/id");
+    }
+    const auto* player = world.ecs().try_get<world::AnimationPlayer>(entity);
+    if (player == nullptr || player->library.empty()) {
+        return param_error(code::kInvalidParams, "/id",
+                           quoted(id) + (player == nullptr ? " has no AnimationPlayer"
+                                                           : "'s AnimationPlayer has no library"));
+    }
+    const std::string marker = text(params, "marker");
+    const json::Value* time_param = params.find("time");
+    if ((time_param == nullptr) == marker.empty()) {
+        return param_error(code::kInvalidParams, "", "give time (seconds) or marker");
+    }
+    std::string name = text(params, "animation");
+    if (name.empty()) {
+        name = player->animation;
+    }
+    const std::string path = player->library;
+    double time = time_param != nullptr ? time_param->as_double() : 0.0;
+    double length = 0.0;
+    if (path.ends_with(animation::kAnimationSuffix)) {
+        // Checked here, so each error points at the param that is wrong.
+        auto library = session.assets().load<animation::AnimationLibrary>(path);
+        if (!library) {
+            return param_error(library.error(), "/id");
+        }
+        const auto& animations = library.value()->animations;
+        const auto found = animations.find(name);
+        if (found == animations.end()) {
+            std::vector<std::string_view> names;
+            names.reserve(animations.size());
+            for (const auto& [each, animation] : animations) {
+                names.emplace_back(each);
+            }
+            std::string message = path + " has no animation " + quoted(name);
+            add_hint(message, name, names);
+            return param_error(code::kNotFound, "/animation", message);
+        }
+        const animation::Animation& animation = found->second;
+        if (!marker.empty()) {
+            const auto at = animation.markers.find(marker);
+            if (at == animation.markers.end()) {
+                std::vector<std::string_view> names;
+                names.reserve(animation.markers.size());
+                for (const auto& [each, seconds] : animation.markers) {
+                    names.emplace_back(each);
+                }
+                std::string message = name + " has no marker " + quoted(marker);
+                if (names.empty()) {
+                    message += "; it has none";
+                }
+                add_hint(message, marker, names);
+                return param_error(code::kNotFound, "/marker", message);
+            }
+            time = at->second;
+        }
+        length = animation.length;
+        if (time > length) {
+            return param_error(code::kInvalidParams, "/time",
+                               json::write(short_number(time), json::Style::Compact) +
+                                   " is past the animation's length, " +
+                                   json::write(short_number(length), json::Style::Compact));
+        }
+    } else if (!marker.empty()) {
+        return param_error(code::kInvalidParams, "/marker",
+                           "markers are in .anim.json files; " + path + " is a model");
+    }
+    if (auto sought = animation::seek(world, session.assets(), entity, time, name); !sought) {
+        return param_error(sought.error(), "/id");
+    }
+    json::Value result;
+    result["animation"] = name;
+    result["time"] = short_number(time);
+    return Reply::success(std::move(result));
+}
+
 // An entity's AnimationTree and the tree its tree_root loads.
 struct TreeTarget {
     entt::entity entity = entt::null;
@@ -4379,6 +4460,9 @@ Reply audio_state(Session& session, const json::Value& params) {
             item["polyphonic"]["playing"] = info.polyphonic->playing;
             item["polyphonic"]["polyphony"] = info.polyphonic->polyphony;
         }
+        if (info.track_streams > 0) {
+            item["track_streams"] = info.track_streams;
+        }
         item["volume"] = rounded(json::Array{info.volume[0].left, info.volume[0].right});
         if (json::Value speakers = speakers_json(info.volume, channels); !speakers.is_null()) {
             item["speakers"] = std::move(speakers);
@@ -7057,6 +7141,25 @@ void register_builtin_commands(Registry& registry) {
             },
             {"times"}),
         .handler = animation_eval,
+    });
+    json::Value seek_time = property("number", "Seconds into the animation.");
+    seek_time["minimum"] = 0;
+    registry.add({
+        .name = "animation.seek",
+        .description = "Moves an AnimationPlayer to a time or marker and sets what its tracks set "
+                       "there at once, players its animation tracks start included, as Godot's "
+                       "seek; events wait for playback.",
+        .capabilities = {Edit},
+        .effect = Effect::Edit,
+        .params = params_schema(
+            {
+                {"id", id_property("An entity with an AnimationPlayer.")},
+                {"time", std::move(seek_time)},
+                {"marker", property("string", "A marker of the animation, instead of time.")},
+                {"animation", property("string", "Switch to this animation first.")},
+            },
+            {"id"}),
+        .handler = animation_seek,
     });
     registry.add({
         .name = "animation.tree",

@@ -8,6 +8,7 @@
 #include "slash/world/component_registry.hpp"
 #include "slash/world/world.hpp"
 
+#include <array>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -61,6 +62,21 @@
 //            "tracks": [{"node": "Elbow", "property": "rotation",
 //                        "keys": [{"time": 0, "value": [0, 0, 0]},
 //                                 {"time": 0.5, "value": [0, 0, 0.8]}]}]}
+//
+// Cinematics are animations too, as in Godot: a bezier track moves one number along a curve
+// whose keys have handles, as Godot's bezier tracks do, an animation track plays the animations
+// of another entity's AnimationPlayer, as Godot's animation playback tracks do, and a value track
+// that sets a Camera3D's current cuts to it. Markers name times in an animation, as Godot's:
+//
+//   "shot": {"length": 6,
+//            "markers": {"close_up": 4},
+//            "tracks": [{"type": "bezier", "target": "dolly", "path": "Camera3D/fov",
+//                        "keys": [{"time": 0, "value": 70, "out": [1, 0]},
+//                                 {"time": 4, "value": 40, "in": [-1, 0]}]},
+//                       {"type": "animation", "target": "door",
+//                        "keys": [{"time": 1, "animation": "open"}]},
+//                       {"target": "close", "path": "Camera3D/current",
+//                        "keys": [{"time": 4, "value": true}]}]}
 namespace slash::animation {
 
 inline constexpr std::string_view kAnimationSuffix = ".anim.json";
@@ -77,17 +93,36 @@ enum class Interpolation : std::uint8_t { Nearest, Linear, Cubic, LinearAngle, C
 // references, as Godot's editor sets keys of those up.
 enum class UpdateMode : std::uint8_t { Auto, Continuous, Discrete };
 
+// What a track does, as Godot's track types: a value track sets a field, a bezier track sets a
+// number along a curve, an event track emits world events, a node track moves a model's node, an
+// animation track plays another AnimationPlayer's animations and an audio track plays sounds on
+// an audio player.
+enum class TrackType : std::uint8_t { Value, Bezier, Event, Node, Animation, Audio };
+
+// An animation track's key that stops its player, as Godot's.
+inline constexpr std::string_view kStopAnimation = "[stop]";
+
 struct Key {
     double time = 0.0;
-    // A value track's value, or an event track's data.
+    // A value or bezier track's value, an event track's data, an animation track's animation
+    // name (kStopAnimation stops the player) or an audio track's stream.
     json::Value value;
     // Godot's easing curve on the way to the next key: 1 is linear, above 1 eases in, between 0
     // and 1 eases out, below 0 eases in and out, and 0 holds this key's value until the next.
     double transition = 1.0;
+    // A bezier key's handles, [seconds, value] from the key, as Godot's in_handle and out_handle:
+    // the curve leaves toward out and arrives from in.
+    std::array<double, 2> in{};
+    std::array<double, 2> out{};
+    // An audio key's: seconds of its stream skipped at the start, and cut off at the end, as
+    // Godot's start_offset and end_offset.
+    double start_offset = 0.0;
+    double end_offset = 0.0;
 };
 
 struct Track {
-    std::string path;   // a value track's "Component/field[/part...]"
+    TrackType type = TrackType::Value;
+    std::string path;   // a value or bezier track's "Component/field[/part...]"
     std::string event;  // an event track's event kind
     std::string node;   // a node track's model node
     std::string target; // a name in AnimationPlayer::targets; "" for the player's own entity
@@ -97,6 +132,9 @@ struct Track {
     UpdateMode update = UpdateMode::Auto;
     // In a looping animation, move from the last key to the first across the loop's end.
     bool loop_wrap = true;
+    // An audio track's streams play as loud as the animation counts in an animation tree's
+    // blend, as Godot's use_blend.
+    bool use_blend = true;
     std::vector<Key> keys; // by time, earliest first
 };
 
@@ -111,6 +149,8 @@ struct Animation {
     LoopMode loop = LoopMode::None;
     std::vector<Track> tracks;
     ModelClip from;
+    // Named times, as Godot's animation markers: shots of a cinematic, say.
+    std::map<std::string, double, std::less<>> markers;
     // Whether length and loop were written, or are to come from the model's animation.
     bool own_length = true;
     bool own_loop = true;
@@ -123,6 +163,7 @@ struct AnimationLibrary {
 [[nodiscard]] std::string_view loop_mode_name(LoopMode mode);
 [[nodiscard]] std::string_view interpolation_name(Interpolation interpolation);
 [[nodiscard]] std::string_view node_property_name(scene3d::NodeProperty property);
+[[nodiscard]] std::string_view track_type_name(TrackType type);
 
 // Whether an animation has node tracks.
 [[nodiscard]] bool has_node_tracks(const Animation& animation);
@@ -176,11 +217,14 @@ struct Target {
 [[nodiscard]] Result<Target> resolve_target(std::string_view path,
                                             const world::ComponentRegistry& components);
 
-// A value track's value at a time, from 0 to the animation's length.
+// A value or bezier track's value at a time, from 0 to the animation's length. A bezier track's
+// is Godot's bezier_track_interpolate: the curve between the keys either side, which never wraps
+// round a loop.
 [[nodiscard]] json::Value sample(const Animation& animation, const Track& track, double time,
                                  bool discrete);
 
-// Sets a target's value on an entity, adding the component if the entity has none.
+// Sets a target's value on an entity, adding the component if the entity has none. Setting a
+// Camera3D's current on makes it the current camera (make_current_camera).
 [[nodiscard]] Result<void> apply(world::World& world, entt::entity entity, const Target& target,
                                  const json::Value& value);
 
@@ -190,6 +234,19 @@ struct Target {
 // Libraries and models are read through reader.
 [[nodiscard]] std::vector<json::ValidationError> check_players(const json::Value& doc,
                                                                const world::FileReader& reader);
+
+// Makes the camera a value track sets current on the current one, as Godot's Camera3D's
+// current does: every other Camera3D's current turns off. apply does this for "Camera3D/current".
+void make_current_camera(world::World& world, entt::entity camera);
+
+// Moves an entity's AnimationPlayer to a time in its animation, or in another it switches to,
+// and sets at once what its tracks set there, as Godot's AnimationPlayer::seek(time, true, true):
+// value and bezier tracks' values, and the animations its animation tracks play there, each
+// moved to where it would be and set in turn. Event tracks wait for playback. The error names
+// what can't be played: a library that doesn't load, an animation it hasn't, with "did you mean",
+// or a time past its length. Libraries load through assets.
+[[nodiscard]] Result<void> seek(world::World& world, asset::Assets& assets, entt::entity entity,
+                                double time, std::string_view animation = {});
 
 // Asset types "animation" (.anim.json files as AnimationLibrary) and "animation_tree"
 // (.animtree.json files as AnimationTreeResource, in tree.hpp).

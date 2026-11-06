@@ -1635,7 +1635,21 @@ animates, a game's own included; a track with a `target` acts on the entity the 
 model file, and an animation can come `from` a model's animation, posing the entity's model
 (see Rendering's skinned meshes). Keys are passed as Godot passes them: after where playback was,
 up to and including where it got to. `animation.eval` returns a track's values at given times;
-`examples/keyframe-animation` plays a walk cycle and a hit.
+`examples/keyframe-animation` plays a walk cycle and a hit. Cinematics are Godot's timeline tracks: a `"type": "bezier"` track
+eases one number along its keys' `in` and `out` handles (`bezier_value`, Godot's
+`bezier_track_interpolate`), an `"animation"` track starts and stops the animations of another
+`AnimationPlayer` it targets (`play_started` in `src/player.cpp`, `[stop]` stopping it; trees
+through `play_animation_track` in `src/tree_system.cpp`), a value
+track that sets `Camera3D/current` cuts to that camera (`make_current_camera`), and an
+animation's `markers` name times. `animation.seek` (`animation::seek`) moves a player to a time
+or marker and sets what its tracks, and the players its animation tracks start, set there, as
+Godot's `seek` with `update_only`; events wait for playback. An `"audio"` track starts its keys'
+streams on the audio player it targets, as Godot's `AnimationMixer` (`src/audio_tracks.cpp`: the
+streams each player and tree track keeps playing, and Godot's ending process with its blended
+volumes); the audio module plays them on a polyphonic voice of the player's own through
+`world::set_audio_track_sound` (`slash/world/audio_tracks.hpp`), since animation doesn't depend
+on audio, and `audio.state` counts them as `track_streams`. `examples/cinematics` plays an
+intro and `examples/cinematic-sound` its sounds.
 
 `AnimationTree` is Godot's AnimationTree: a `.animtree.json` file (`$cli schema animtree`;
 `tree.hpp`) of blend tree, animation, Blend2/3, Add2/3, Sub2, OneShot, TimeScale, TimeSeek,

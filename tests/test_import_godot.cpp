@@ -1566,8 +1566,12 @@ tracks/4/imported = false
 tracks/4/enabled = true
 tracks/4/path = NodePath("Sprite2D")
 tracks/4/keys = {
-"clips": [],
-"times": PackedFloat32Array()
+"clips": [{
+"end_offset": 0.0,
+"start_offset": 0.0,
+"stream": null
+}],
+"times": PackedFloat32Array(0)
 }
 tracks/4/use_blend = true
 tracks/5/type = "value"
@@ -3840,7 +3844,7 @@ autoplay = "extra/spin"
                     "interpolation": "linear_angle", "loop_wrap": false,
                     "keys": [{"time": 0, "value": 0}, {"time": 1, "value": 3.14}]}]})"));
     // Tracks name nodes from the root node, the player's parent. A method track becomes an
-    // event track per method; a bezier track's keys play cubic; keys past the end go.
+    // event track per method; a bezier track keeps its handles; keys past the end go.
     CHECK(*animations.find("walk") == parse(R"({"length": 0.4, "loop": "linear", "tracks": [
         {"target": "Sprite2D", "path": "Sprite2D/frame", "update": "continuous",
          "keys": [{"time": 0, "value": 0}, {"time": 0.2, "value": 1}]},
@@ -3850,15 +3854,16 @@ autoplay = "extra/spin"
         {"target": ".", "event": "footstep",
          "keys": [{"time": 0, "data": {"args": ["left"]}}]},
         {"target": ".", "event": "blink", "keys": [{"time": 0.2}]},
-        {"target": "Sprite2D", "path": "Sprite2D/modulate/a", "interpolation": "cubic",
-         "keys": [{"time": 0, "value": 1}, {"time": 0.4, "value": 0.5}]},
+        {"type": "bezier", "target": "Sprite2D", "path": "Sprite2D/modulate/a",
+         "keys": [{"time": 0, "value": 1, "in": [-0.1, 0], "out": [0.1, 0]},
+                  {"time": 0.4, "value": 0.5, "in": [-0.1, 0], "out": [0.1, 0]}]},
         {"target": "Sprite2D", "path": "Sprite2D/texture",
          "keys": [{"time": 0, "value": "godot/art/hero.png"}]},
         {"target": "Sprite2D", "path": "Sprite2D/offset/y", "update": "discrete",
          "keys": [{"time": 0, "value": 0}, {"time": 0.2, "value": -2}]}]})"));
     CHECK(unsupported(plan.report, "animation audio track").find("why")->as_string() ==
-          "play the sound from gameplay code, on an event track's event");
-    CHECK(unsupported(plan.report, "animation bezier track") != nullptr);
+          "node path Sprite2D names a Sprite2D, not an audio player");
+    CHECK(unsupported(plan.report, "animation bezier track") == nullptr);
     CHECK(unsupported(plan.report, "disabled animation track") != nullptr);
     CHECK(unsupported(plan.report, "animation track target").find("why")->as_string() ==
           "node path Missing names no node under the root node");
@@ -4192,6 +4197,112 @@ tree_root = SubResource("lone")
 anim_player = NodePath("../Lamp")
 )tscn");
     return folder;
+}
+
+TEST_CASE("importing a Godot cutscene keeps its markers, the players its animation tracks play "
+          "and the sounds its audio tracks start") {
+    const fs::path project = "import_godot_cutscene";
+    fs::remove_all(project);
+    write(project / "godot/project.godot",
+          "config_version=5\n\n[application]\n\nconfig/name=\"Cutscene\"\n"
+          "run/main_scene=\"res://intro.tscn\"\n");
+    write(project / "godot/intro.tscn", R"tscn([gd_scene load_steps=6 format=3]
+
+[ext_resource type="AudioStream" path="res://creak.wav" id="1_creak"]
+
+[sub_resource type="Animation" id="Animation_open"]
+resource_name = "open"
+tracks/0/type = "value"
+tracks/0/path = NodePath(".:rotation")
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 1),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [Vector3(0, 0, 0), Vector3(0, 1.5, 0)]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_door"]
+_data = {
+&"open": SubResource("Animation_open")
+}
+
+[sub_resource type="Animation" id="Animation_intro"]
+resource_name = "intro"
+length = 4.0
+marker_names = PackedStringArray("door", "close_up")
+marker_times = PackedFloat32Array(1, 3)
+marker_colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 1)
+tracks/0/type = "animation"
+tracks/0/path = NodePath("Door/DoorPlayer")
+tracks/0/keys = {
+"clips": PackedStringArray("open", "[stop]"),
+"times": PackedFloat32Array(1, 3.5)
+}
+tracks/1/type = "animation"
+tracks/1/path = NodePath("Door")
+tracks/1/keys = {
+"clips": PackedStringArray("open"),
+"times": PackedFloat32Array(1)
+}
+tracks/2/type = "audio"
+tracks/2/path = NodePath("Door/Creak")
+tracks/2/keys = {
+"clips": [{
+"end_offset": 0.5,
+"start_offset": 0.25,
+"stream": ExtResource("1_creak")
+}, {
+"end_offset": 0.0,
+"start_offset": 0.0,
+"stream": null
+}],
+"times": PackedFloat32Array(1.25, 2)
+}
+tracks/2/use_blend = false
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_intro"]
+_data = {
+&"intro": SubResource("Animation_intro")
+}
+
+[node name="Intro" type="Node3D"]
+
+[node name="Door" type="Node3D" parent="."]
+
+[node name="DoorPlayer" type="AnimationPlayer" parent="Door"]
+libraries = {
+&"": SubResource("AnimationLibrary_door")
+}
+
+[node name="Creak" type="AudioStreamPlayer3D" parent="Door"]
+
+[node name="Director" type="AnimationPlayer" parent="."]
+libraries = {
+&"": SubResource("AnimationLibrary_intro")
+}
+autoplay = "intro"
+)tscn");
+    write(project / "godot/creak.wav", "RIFF");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    // Each player's library is a file of its own, named after the library's sub-resource.
+    const std::string library = "godot/intro_animation_library_intro.anim.json";
+    REQUIRE(files.contains(library));
+    CHECK(*parse(files.at(library)).find("animations")->find("intro") ==
+          parse(R"({"length": 4, "markers": {"close_up": 3, "door": 1}, "tracks": [
+              {"type": "animation", "target": "Door/DoorPlayer",
+               "keys": [{"time": 1, "animation": "open"}, {"time": 3.5, "animation": "[stop]"}]},
+              {"type": "audio", "target": "Door/Creak", "use_blend": false,
+               "keys": [{"time": 1.25, "stream": "godot/creak.wav", "start_offset": 0.25,
+                         "end_offset": 0.5}]}
+          ]})"));
+    CHECK(unsupported(plan.report, "animation animation track").find("why")->as_string() ==
+          "node path Door names a Node3D, not an AnimationPlayer");
+    // The target is the entity of the AnimationPlayer node the track names.
+    CHECK(entity(files, "godot/intro.scene.json", "director") == parse(R"({"AnimationPlayer": {
+        "animation": "intro", "library": "godot/intro_animation_library_intro.anim.json",
+        "targets": {"Door/Creak": "creak", "Door/DoorPlayer": "door_player"}}})"));
+    fs::remove_all(project);
 }
 
 TEST_CASE("importing Godot AnimationTrees writes their trees and plays them where Godot's do") {

@@ -62,7 +62,7 @@ as `entity.get`, reject it as an unknown param.
 | Materials | [`material.eval`](#materialeval) |
 | Textures | [`texture.generate`](#texturegenerate) |
 | Scatter | [`scatter.run`](#scatterrun) |
-| Animations | [`animation.eval`](#animationeval) |
+| Animations | [`animation.eval`](#animationeval), [`animation.seek`](#animationseek) |
 | Models | [`model.inspect`](#modelinspect), [`model.cleanup`](#modelcleanup), [`model.retarget`](#modelretarget), [`skeleton.get`](#skeletonget), [`csg.get`](#csgget) |
 | Paths | [`path.get`](#pathget) |
 | Grid maps | [`gridmap.set`](#gridmapset), [`gridmap.get`](#gridmapget) |
@@ -684,6 +684,35 @@ length fails with its `path`, `/times/<n>`. Event tracks are left out; read them
 ```json
 {"length":1,"loop":"linear","tracks":{},"nodes":{"Elbow":{"rotation":[[0,0,0],[0,0,0.6],[0,0,1.2]]}}}
 ```
+
+### animation.seek
+
+Moves an entity's `AnimationPlayer` to a time or a [marker](scene-format.md#cinematics) and sets
+what its tracks set there at once, as Godot's `AnimationPlayer.seek(time, true, true)`: the values
+of its value and bezier tracks, and for each animation track the animation its last key at or
+before the time started, on the track's target, moved to where it would be and set in turn.
+Event tracks wait for playback, and `playing` stays as it was. Use it to check a cutscene's
+shot, then `frame.capture` it. It records one undo step.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | An entity with an `AnimationPlayer` |
+| `time` | number | | Seconds into the animation. Give `time` or `marker` |
+| `marker` | string | | One of the animation's markers |
+| `animation` | string | the player's | Switch the player to this animation first |
+
+Needs: `edit`.
+
+```json
+{"id": "director", "marker": "close_up"}
+```
+
+```json
+{"animation":"intro","time":4}
+```
+
+An unknown animation or marker fails with the closest name (`/animation`, `/marker`), and a time
+past the animation's length with `/time`. A model library's animations have no markers.
 
 ### animation.tree
 
@@ -2677,6 +2706,8 @@ Needs: `read`. With the footsteps playing:
   full, and the mixes that ran out of frames and played silence since it started. A polyphonic
   player lists `"polyphonic": {"playing", "polyphony"}`: the streams it has going and how many it
   can.
+- `track_streams` counts the sounds [audio tracks](scene-format.md#cinematics) play on the
+  player, beside its own voices; it is left out while there are none.
 - `volume` is the `[left, right]` gain mixed in: the player's `volume_db`, then for an
   `AudioStreamPlayer2D` or `AudioStreamPlayer3D` its fade with distance and its pan from the
   listener.

@@ -1,0 +1,37 @@
+wrote creak.wav, line.wav and sigh.wav
+scene.open {"path":"main.scene.json"}
+{"entities":3,"path":"main.scene.json"}
+events.subscribe {"kinds":["animation_finished"]}
+{"subscription":"events_1"}
+step {"ticks":20}
+{"tick":20,"ticks":20}
+audio.state {"ids":["door","narrator"]}
+{"buses":[{"name":"Master","peak_db":-12,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Master","id":"door","kind":"AudioStreamPlayer","stream":"","track_streams":1,"voices":0,"volume":[0.5012,0.5012]},{"bus":"Master","id":"narrator","kind":"AudioStreamPlayer","stream":"","voices":0,"volume":[1,1]}]}
+audio.capture {"seconds":0.05,"slices":0}
+{"peak_db":-12,"rms_db":-12,"seconds":0.05,"slices":[]}
+step {"ticks":50}
+{"tick":70,"ticks":50}
+audio.state {"ids":["narrator"]}
+{"buses":[{"name":"Master","peak_db":-12,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Master","id":"narrator","kind":"AudioStreamPlayer","stream":"","track_streams":1,"voices":0,"volume":[1,1]}]}
+step {"ticks":40}
+{"tick":110,"ticks":40}
+audio.state {"ids":["narrator"]}
+{"buses":[{"name":"Master","peak_db":null,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Master","id":"narrator","kind":"AudioStreamPlayer","stream":"","voices":0,"volume":[1,1]}]}
+animation.seek {"id":"director","marker":"retake"}
+{"animation":"intro","time":0.9}
+audio.state {"ids":["narrator"]}
+{"buses":[{"name":"Master","peak_db":null,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Master","id":"narrator","kind":"AudioStreamPlayer","stream":"","voices":0,"volume":[1,1]}]}
+step {"ticks":10}
+{"tick":120,"ticks":10}
+audio.state {"ids":["narrator"]}
+{"buses":[{"name":"Master","peak_db":-12,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Master","id":"narrator","kind":"AudioStreamPlayer","stream":"","track_streams":1,"voices":0,"volume":[1,1]}]}
+step {"ticks":95}
+{"tick":215,"ticks":95}
+audio.state {"ids":["narrator"]}
+{"buses":[{"name":"Master","peak_db":-12,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Master","id":"narrator","kind":"AudioStreamPlayer","stream":"","track_streams":1,"voices":0,"volume":[1,1]}]}
+step {"ticks":30}
+{"tick":245,"ticks":30}
+audio.state {"ids":["narrator"]}
+{"buses":[{"name":"Master","peak_db":null,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Master","id":"narrator","kind":"AudioStreamPlayer","stream":"","voices":0,"volume":[1,1]}]}
+events.read {"subscription":"events_1"}
+{"dropped":0,"events":[{"data":{"animation":"intro"},"id":"director","kind":"animation_finished","seq":1,"tick":235}],"more":false}

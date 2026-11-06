@@ -3614,6 +3614,65 @@ TEST_CASE("animation.eval returns the values an animation's tracks set, and step
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("animation.seek moves a cinematic to a time or marker and sets its shot at once") {
+    const std::string root = "animation_seek_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    REQUIRE(slash::platform::write_file(root + "/door.anim.json", R"({"format": 1, "animations": {
+        "open": {"length": 2, "tracks": [{"path": "Transform3D/rotation/y",
+          "keys": [{"time": 0, "value": 0}, {"time": 2, "value": 1.5}]}]}}})")
+                .ok());
+    REQUIRE(slash::platform::write_file(root + "/intro.anim.json", R"({"format": 1, "animations": {
+        "intro": {"length": 6, "markers": {"close_up": 4}, "tracks": [
+          {"type": "bezier", "target": "wide", "path": "Camera3D/fov",
+           "keys": [{"time": 0, "value": 70, "out": [1, 0]}, {"time": 4, "value": 50}]},
+          {"target": "close", "path": "Camera3D/current", "keys": [{"time": 4, "value": true}]},
+          {"type": "animation", "target": "door", "keys": [{"time": 3, "animation": "open"}]}
+        ]}}})")
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("entity.create", R"({"id": "wide", "components": {"Camera3D": {"current": true}}})");
+    engine.ok("entity.create", R"({"id": "close", "components": {"Camera3D": {}}})");
+    engine.ok("entity.create", R"({"id": "door", "components": {"Transform3D": {},
+        "AnimationPlayer": {"library": "door.anim.json", "playing": false}}})");
+    engine.ok("entity.create", R"({"id": "director", "components": {"AnimationPlayer": {
+        "library": "intro.anim.json", "animation": "intro", "playing": false,
+        "targets": {"wide": "wide", "close": "close", "door": "door"}}}})");
+
+    CHECK(engine.ok("animation.seek", R"({"id": "director", "marker": "close_up"})") ==
+          parse(R"({"animation": "intro", "time": 4})"));
+    const auto field = [&](std::string_view id, std::string_view component, std::string_view name) {
+        const json::Value entity = engine.ok("entity.get", R"({"id": ")" + std::string(id) + "\"}");
+        return *entity.find("components")->find(component)->find(name);
+    };
+    // The cut to the close camera, the dolly's end and the door a second into opening.
+    CHECK(field("close", "Camera3D", "current").as_bool());
+    CHECK_FALSE(field("wide", "Camera3D", "current").as_bool());
+    CHECK(field("wide", "Camera3D", "fov").as_double() == doctest::Approx(50.0));
+    CHECK(field("door", "AnimationPlayer", "time").as_double() == 1.0);
+    CHECK(field("door", "Transform3D", "rotation").as_array()[1].as_double() ==
+          doctest::Approx(0.75));
+    // Undo takes it all back.
+    engine.ok("undo");
+    CHECK(field("wide", "Camera3D", "current").as_bool());
+
+    auto reply = engine.fails("animation.seek", R"({"id": "director", "marker": "closeup"})",
+                              command::code::kNotFound);
+    CHECK(reply.message == "/marker: intro has no marker \"closeup\"; did you mean \"close_up\"?");
+    reply = engine.fails("animation.seek", R"({"id": "director", "time": 7})",
+                         command::code::kInvalidParams);
+    CHECK(reply.message == "/time: 7 is past the animation's length, 6");
+    reply = engine.fails("animation.seek", R"({"id": "director"})", command::code::kInvalidParams);
+    CHECK(reply.message == ": give time (seconds) or marker");
+    reply = engine.fails("animation.seek", R"({"id": "door", "time": 1, "animation": "opne"})",
+                         command::code::kNotFound);
+    CHECK(reply.message ==
+          "/animation: door.anim.json has no animation \"opne\"; did you mean \"open\"?");
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("animation.tree lists a tree's parameters and animation.set_parameters checks and sets "
           "them") {
     const std::string root = "animation_tree_test_project";
