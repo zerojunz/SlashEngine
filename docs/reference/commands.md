@@ -68,7 +68,7 @@ as `entity.get`, reject it as an unknown param.
 | Grid maps | [`gridmap.set`](#gridmapset), [`gridmap.get`](#gridmapget) |
 | Terrains | [`terrain.generate`](#terraingenerate), [`terrain.import`](#terrainimport), [`terrain.brush`](#terrainbrush), [`terrain.get`](#terrainget) |
 | Tile maps | [`tilemap.paint`](#tilemappaint), [`tilemap.generate`](#tilemapgenerate), [`tilemap.set`](#tilemapset), [`tilemap.get`](#tilemapget), [`tilemap.convert`](#tilemapconvert) |
-| Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity) |
+| Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity), [`physics.soft_body`](#physicssoft_body) |
 | Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent), [`navigation.bake`](#navigationbake) |
 | Particles | [`particles.eval`](#particleseval), [`particles.bake_sdf`](#particlesbake_sdf) |
 | Lights | [`light.sample`](#lightsample) |
@@ -1570,6 +1570,35 @@ Needs: `read`. The rock below the planet in
 
 An unknown ID, or an entity with no body or with an `Area2D`, is an error at its index in
 `/ids`.
+
+### physics.soft_body
+
+Returns where a [soft body](scene-format.md#soft-bodies)'s points are after the last step, as
+Godot's `SoftBody3D::get_point_transform`: how many there are (one for each vertex of its mesh),
+whether it sleeps, their `bounds` `[x, y, z, w, h, d]` in meters and, with `at`, the place of
+each vertex asked for, keyed by its index. Before the first step they are where the mesh and the
+entity's `Transform3D` put them.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | An entity with a `SoftBody3D` |
+| `at` | integer array | none | Up to 256 mesh vertex indices |
+
+Needs: `read`. The flag in [examples/soft-bodies](../../examples/soft-bodies/), a second after
+its pole moved a meter: its pinned corners, 6 and 34, have followed, and corner 0 swings after
+them.
+
+```json
+{"id": "flag", "at": [6, 34, 0]}
+```
+
+```json
+{"at":{"0":[1.3165,1.4773,1.2299],"34":[2.4,2.4,1],"6":[2.4,1.6,1]},"bounds":[1.3165,1.4773,0.9147,1.0894,0.9227,0.8],"points":35,"sleeping":false}
+```
+
+An unknown ID is an error, as is an entity with no soft body: one without a `SoftBody3D`, or
+whose `MeshInstance3D` draws no primitive mesh. An index past the last vertex is an error at its
+place in `/at`.
 
 ## Navigation
 

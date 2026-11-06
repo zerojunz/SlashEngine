@@ -3,6 +3,7 @@
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/scene3d/collision.hpp"
 #include "slash/scene3d/gridmap.hpp"
+#include "slash/scene3d/soft_body.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/physical_bones.hpp"
@@ -20,6 +21,7 @@
 #include <Jolt/Physics/Collision/Shape/Shape.h>
 #include <Jolt/Physics/Constraints/Constraint.h>
 #include <Jolt/Physics/PhysicsSystem.h>
+#include <Jolt/Physics/SoftBody/SoftBodyContactListener.h>
 // clang-format on
 
 #include <cstdint>
@@ -398,12 +400,45 @@ struct VehicleInputs {
     float steering = 0.0F;
 };
 
+// A soft body, as Godot's JoltSoftBody3D: a Jolt soft body of the entity's primitive mesh, its
+// vertices welded where they meet, its points kept in world space. Its Jolt body has no user
+// data, so queries, motion tests and areas, which go by Body, pass it by, as Godot's Jolt areas
+// do.
+struct SoftBody {
+    entt::entity entity = entt::null;
+    std::string name; // the entity's ID
+    JPH::BodyID id;
+    // What it was made from; a change makes it again.
+    std::string mesh_key; // the primitive's component name and fields
+    float linear_stiffness = 0.5F;
+    float shrinking_factor = 0.0F;
+    // Each mesh vertex's point, or -1 for a vertex no face uses, and where the mesh puts the
+    // vertex in the entity's space.
+    std::vector<int> mesh_to_physics;
+    std::vector<Vec3> mesh_positions;
+    // Where the entity was, without its scale, when its points were last placed.
+    world::Affine3D placed;
+    // What the last sync set, to tell the component's edits apart.
+    std::uint32_t layer = 1;
+    std::uint32_t mask = 1;
+    float total_mass = 1.0F;
+    float pressure = 0.0F;
+    float damping = 0.01F;
+    int precision = 5;
+    std::vector<int> pinned; // the points pinned, sorted
+    entt::entity ignore = entt::null;
+    // Where its mesh is now, after its last step or since it was made.
+    std::shared_ptr<const scene3d::SoftBodyPose> pose;
+};
+
 class Space;
 
 // Contact callbacks during a step, as Godot's JoltContactListener3D: bodies a joint keeps apart
 // don't touch, constant velocities of static and animatable bodies carry what touches them, and
-// rigid bodies that monitor contacts note what touches them.
-class ContactListener final : public JPH::ContactListener {
+// rigid bodies that monitor contacts note what touches them. Soft bodies skip the body their
+// parent_collision_ignore names, and a body that collides with a soft body only one way pushes
+// it, or is pushed by it, without being pushed back.
+class ContactListener final : public JPH::ContactListener, public JPH::SoftBodyContactListener {
 public:
     explicit ContactListener(Space& space) : space_(&space) {}
 
@@ -417,6 +452,10 @@ public:
     void OnContactPersisted(const JPH::Body& a, const JPH::Body& b,
                             const JPH::ContactManifold& manifold,
                             JPH::ContactSettings& settings) override;
+
+    JPH::SoftBodyValidateResult
+    OnSoftBodyContactValidate(const JPH::Body& soft, const JPH::Body& other,
+                              JPH::SoftBodyContactSettings& settings) override;
 
 private:
     void contact(const JPH::Body& a, const JPH::Body& b, JPH::ContactSettings& settings);
@@ -485,6 +524,12 @@ public:
     // Whether a joint keeps two bodies from colliding, as Godot's collision exceptions.
     [[nodiscard]] bool excepted(entt::entity a, entt::entity b) const;
 
+    // A soft body's, or nullptr; by its Jolt body too.
+    [[nodiscard]] const SoftBody* soft_body(entt::entity entity) const;
+    [[nodiscard]] const SoftBody* soft_body(const JPH::BodyID& id) const;
+    // Whether a soft body's Jolt body sleeps.
+    [[nodiscard]] bool sleeping(const SoftBody& soft) const;
+
     // Contact callbacks call these, on the stepping thread.
     void note_contact(Body& a, Body& b);
 
@@ -525,6 +570,18 @@ private:
     void move_characters(world::World& world, const world::Tree3D& tree, float seconds);
     void find_overlaps(const world::World& world);
     void emit_events(world::World& world);
+    // Makes the soft bodies match the SoftBody3D components (soft_body.cpp): made, made again or
+    // removed, their settings, pins and transforms brought up to date.
+    void sync_soft_bodies(world::World& world, const world::Tree3D& tree);
+    void create_soft_body(SoftBody& soft, const scene3d::MeshData& mesh,
+                          const world::SoftBody3D& component);
+    void destroy(SoftBody& soft);
+    // Sets each point's inverse mass from the total mass, pinned points' to 0.
+    void update_masses(SoftBody& soft);
+    // Moves pinned points to their attachments, as Godot's SoftBody3D::_update_physics_server.
+    void pre_step_soft_bodies(const world::World& world, const world::Tree3D& tree);
+    // Notes where each soft body's mesh is after the step.
+    void read_soft_bodies();
     // Makes the Jolt constraints match the joint components and physical bones (joints.cpp).
     void sync_joints(world::World& world, const world::Tree3D& tree);
     void sync_bone_joints(world::World& world, const world::Tree3D& tree);
@@ -552,6 +609,7 @@ private:
     std::unique_ptr<JPH::JobSystem> jobs_;
     std::unique_ptr<JPH::PhysicsSystem> system_;
     EntityMap<std::unique_ptr<Body>> bodies_;
+    EntityMap<std::unique_ptr<SoftBody>> soft_bodies_;
     EntityMap<Joint> joints_;
     EntityMap<BoneJoint> bone_joints_;
     // What each physical bone's simulator makes of it, as the last sync found.

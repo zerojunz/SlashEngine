@@ -5543,6 +5543,65 @@ material_overlay = SubResource("glow")
     fs::remove_all(project);
 }
 
+TEST_CASE("importing Godot's SoftBody3D keeps its mesh, settings and pinned points") {
+    const fs::path project = "import_godot_soft_body";
+    const fs::path folder = project / "godot";
+    fs::remove_all(project);
+    write(folder / "project.godot", R"(config_version=5
+
+[application]
+
+config/name="Flags"
+run/main_scene="res://yard.tscn"
+)");
+    write(folder / "yard.tscn", R"([gd_scene load_steps=2 format=3]
+
+[sub_resource type="PlaneMesh" id="cloth"]
+size = Vector2(2, 1)
+subdivide_width = 1
+orientation = 2
+
+[node name="Yard" type="Node3D"]
+
+[node name="Pole" type="StaticBody3D" parent="."]
+
+[node name="Flag" type="SoftBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 2, 0)
+mesh = SubResource("cloth")
+parent_collision_ignore = NodePath("../Pole")
+simulation_precision = 10
+total_mass = 0.5
+pressure_coefficient = 2.0
+disable_mode = 1
+pinned_points = PackedInt32Array(0, 3)
+attachments/0/point_index = 0
+attachments/0/spatial_attachment_path = NodePath("../Pole")
+attachments/0/offset = Vector3(0, 0.5, 0)
+attachments/1/point_index = 3
+attachments/1/spatial_attachment_path = NodePath("")
+attachments/1/offset = Vector3(0, 0, 0)
+)");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    const std::string yard = "godot/yard.scene.json";
+    REQUIRE(files.contains(yard));
+
+    // The mesh converts as a MeshInstance3D's, and the pins as points with their attachments
+    // (point 0 is the default, so the scene leaves it out).
+    const json::Value flag = entity(files, yard, "flag");
+    CHECK(flag.find("MeshInstance3D") != nullptr);
+    CHECK(*flag.find("PlaneMesh") ==
+          parse(R"({"size": [2.0, 1.0], "subdivide_width": 1, "orientation": "z"})"));
+    CHECK(*flag.find("SoftBody3D") == parse(R"({
+        "parent_collision_ignore": "pole", "simulation_precision": 10, "total_mass": 0.5,
+        "pressure_coefficient": 2.0,
+        "pinned_points": [{"attachment": "pole", "offset": [0.0, 0.5, 0.0]},
+                          {"point": 3}]})"));
+    CHECK(unsupported(plan.report, "SoftBody3D.disable_mode") != nullptr);
+    CHECK(unsupported(plan.report, "SoftBody3D.pinned_points") == nullptr);
+    fs::remove_all(project);
+}
+
 TEST_CASE("importing Godot's GPUParticles3D keeps its 3D process material, attractors and "
           "colliders") {
     const fs::path project = "import_godot_gpu_particles_3d";
