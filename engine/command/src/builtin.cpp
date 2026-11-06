@@ -2028,6 +2028,54 @@ Reply physics_contacts(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+// physics.soft_body: where a soft body's mesh is, as Godot's SoftBody3D::get_point_transform.
+Reply physics_soft_body(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    const std::string id = text(params, "id");
+    const entt::entity entity = world.find(id);
+    if (entity == entt::null) {
+        return unknown_entity(world, id, "/id");
+    }
+    const std::optional<physics3d::SoftBodyPoints> found =
+        physics3d::soft_body_points(world, entity);
+    if (!found) {
+        return param_error(code::kInvalidParams, "/id",
+                           quoted(id) + " has no soft body: it needs a SoftBody3D and a "
+                                        "MeshInstance3D drawing a primitive mesh");
+    }
+    json::Value result;
+    result["points"] = static_cast<std::int64_t>(found->points.size());
+    result["sleeping"] = found->sleeping;
+    if (found->points.empty()) {
+        result["bounds"] = nullptr;
+    } else {
+        Vec3 low = found->points.front();
+        Vec3 high = low;
+        for (const Vec3 p : found->points) {
+            low = {std::min(low.x, p.x), std::min(low.y, p.y), std::min(low.z, p.z)};
+            high = {std::max(high.x, p.x), std::max(high.y, p.y), std::max(high.z, p.z)};
+        }
+        result["bounds"] = rounded(
+            json::Array{low.x, low.y, low.z, high.x - low.x, high.y - low.y, high.z - low.z});
+    }
+    if (const json::Value* points = params.find("at"); points != nullptr) {
+        json::Object at;
+        const json::Array& indices = points->as_array();
+        for (std::size_t i = 0; i < indices.size(); ++i) {
+            const std::int64_t index = indices[i].as_int();
+            if (index < 0 || static_cast<std::size_t>(index) >= found->points.size()) {
+                return param_error(code::kInvalidParams, item_path("/at", i),
+                                   "point " + std::to_string(index) +
+                                       " is out of bounds: " + quoted(id) + " has " +
+                                       std::to_string(found->points.size()) + " points");
+            }
+            at[std::to_string(index)] = point_value(found->points[static_cast<std::size_t>(index)]);
+        }
+        result["at"] = std::move(at);
+    }
+    return Reply::success(std::move(result));
+}
+
 Reply physics_gravity(Session& session, const json::Value& params) {
     world::World& world = session.world();
     json::Object bodies;
@@ -7394,6 +7442,21 @@ void register_builtin_commands(Registry& registry) {
         .effect = Effect::Read,
         .params = params_schema({{"id", id_property("A body or area.")}}, {"id"}),
         .handler = physics_contacts,
+    });
+    json::Value soft_at = property("array", "Mesh vertex indices whose places to return.");
+    soft_at["items"]["type"] = "integer";
+    soft_at["items"]["minimum"] = 0;
+    soft_at["maxItems"] = 256;
+    registry.add({
+        .name = "physics.soft_body",
+        .description = "Returns a SoftBody3D's points after the last step: how many (one per "
+                       "mesh vertex), whether it sleeps, their bounds [x, y, z, w, h, d] and, "
+                       "with at, the places of the points asked for.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema({{"id", id_property("A soft body.")}, {"at", std::move(soft_at)}},
+                                {"id"}),
+        .handler = physics_soft_body,
     });
     json::Value gravity_ids = names_property("Bodies to ask about.");
     gravity_ids["minItems"] = 1;

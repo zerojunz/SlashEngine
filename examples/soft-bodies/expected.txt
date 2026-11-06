@@ -1,0 +1,18 @@
+scene.open {"path":"main.scene.json"}
+{"entities":6,"path":"main.scene.json"}
+physics.soft_body {"id":"tablecloth"}
+{"bounds":[-1,1.5,-1,2,0,2],"points":121,"sleeping":false}
+physics.soft_body {"at":[6,34,0],"id":"flag"}
+{"at":{"0":[3.6,1.6,0],"34":[2.4,2.4,0],"6":[2.4,1.6,0]},"bounds":[2.4,1.6,0,1.2,0.8,0],"points":35,"sleeping":false}
+step 240 ticks
+physics.soft_body {"at":[60],"id":"tablecloth"}
+{"at":{"60":[-0.0052,0.81,-0.0238]},"bounds":[-0.9135,0.1189,-0.9322,1.8217,0.7259,1.8212],"points":121,"sleeping":false}
+physics.soft_body {"id":"ball"}
+{"bounds":[-3.3604,0.01,-0.4778,0.9047,0.8122,0.9057],"points":170,"sleeping":false}
+physics.soft_body {"at":[6,34,0],"id":"flag"}
+{"at":{"0":[3.5967,1.589,0],"34":[2.4,2.4,0],"6":[2.4,1.6,0]},"bounds":[2.3991,1.589,0,1.2049,0.811,0],"points":35,"sleeping":true}
+component.set {"components":{"Transform3D":{"position":[2.4,2.0,1.0]}},"id":"pole"}
+{"changed":{"Transform3D":{"position":[2.4,2.0,1.0]}},"id":"pole"}
+step 60 ticks
+physics.soft_body {"at":[6,34,0],"id":"flag"}
+{"at":{"0":[1.3165,1.4773,1.2299],"34":[2.4,2.4,1],"6":[2.4,1.6,1]},"bounds":[1.3165,1.4773,0.9147,1.0894,0.9227,0.8],"points":35,"sleeping":false}

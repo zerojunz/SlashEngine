@@ -1738,6 +1738,19 @@ before the step, each wheel's ray cast, suspension and friction push the body af
 wheels' `Transform3D` and contact fields are written back. `examples/joints-and-vehicles` has a
 lamp, a bell, a door, a drawer and a car.
 
+Soft bodies are Godot's `SoftBody3D` on its Jolt module (`src/soft_body.cpp`, after
+`JoltSoftBody3D`): `sync_soft_bodies` makes a Jolt soft body of the primitive mesh the entity's
+`MeshInstance3D` draws, its vertices welded by position into points (`SoftBody::mesh_to_physics`)
+with Godot's stiffness, shrinking and edge springs, moves pinned points to their attachments
+before each step and keeps each body's `scene3d::SoftBodyPose` after it. Soft bodies feel Jolt's
+own gravity, which the space sets to the project's (every other body's `mGravityFactor` is 0, as
+the space applies their gravity itself), and `OnSoftBodyContactValidate` keeps Godot's one-way
+layers and `parent_collision_ignore`. `scene3d::set_soft_body_source` (called by
+`physics3d::install`, as scene3d doesn't depend on physics3d) hands the poses to
+`scene3d::Renderer`, which draws the mesh from them (`soft_mesh`), and `check_soft_bodies` backs
+`scene validate`. `physics.soft_body` and `physics3d::soft_body_points` read them;
+`examples/soft-bodies` drapes a tablecloth, flies a flag and drops a ball full of air.
+
 ## Navigation
 
 `engine/navigation` is navigation, as Godot 4.6's `NavigationServer2D` and `NavigationServer3D`,

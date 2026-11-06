@@ -3036,6 +3036,33 @@ TEST_CASE("physics commands ask 3D physics for 3D points, shapes and bodies") {
                  command::code::kInvalidParams);
 }
 
+TEST_CASE("physics.soft_body reports where a soft body's points are") {
+    Engine engine;
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "floor", "components": {
+            "Transform3D": {"position": [0, -0.5, 0]}, "StaticBody3D": {},
+            "CollisionShape3D": {"size": [20, 1, 20]}}}},
+        {"command": "entity.create", "params": {"id": "sheet", "components": {
+            "Transform3D": {"position": [0, 1, 0]}, "MeshInstance3D": {},
+            "PlaneMesh": {"size": [1, 1], "subdivide_width": 1, "subdivide_depth": 1},
+            "SoftBody3D": {}}}}]})");
+    CHECK(engine.ok("physics.soft_body", R"({"id": "sheet", "at": [0, 8]})") == parse(R"({
+        "points": 9, "sleeping": false, "bounds": [-0.5, 1, -0.5, 1, 0, 1],
+        "at": {"0": [0.5, 1, 0.5], "8": [-0.5, 1, -0.5]}})"));
+    engine.ok("step", R"({"ticks": 240})");
+    const json::Value rest = engine.ok("physics.soft_body", R"({"id": "sheet"})");
+    CHECK(rest.find("sleeping")->as_bool());
+    CHECK(rest.find("bounds")->as_array()[1].as_double() == doctest::Approx(0.0).epsilon(0.02));
+    CHECK(engine
+              .fails("physics.soft_body", R"({"id": "sheet", "at": [9]})",
+                     command::code::kInvalidParams)
+              .message == "/at/0: point 9 is out of bounds: \"sheet\" has 9 points");
+    CHECK(engine.fails("physics.soft_body", R"({"id": "floor"})", command::code::kInvalidParams)
+              .message == "/id: \"floor\" has no soft body: it needs a SoftBody3D and a "
+                          "MeshInstance3D drawing a primitive mesh");
+    engine.fails("physics.soft_body", R"({"id": "nobody"})", command::code::kNotFound);
+}
+
 TEST_CASE("particles.eval counts and lists particles, as they are or after a time") {
     Engine engine;
     engine.ok("entity.create", R"({"id": "sparkler", "components": {

@@ -2,6 +2,8 @@
 #include "slash/core/json_schema.hpp"
 #include "slash/core/math.hpp"
 #include "slash/physics3d/physics3d.hpp"
+#include "slash/scene3d/primitive.hpp"
+#include "slash/scene3d/soft_body.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/tree3d.hpp"
@@ -1106,4 +1108,257 @@ f 2 7 6
     physics.get<world::MeshInstance3D>("floor").mesh = "";
     physics.step(60);
     CHECK(physics.position("ball").y < 0.0F);
+}
+
+namespace {
+
+// A cloth: a plane mesh size meters square of cells by cells quads, facing up, as a soft body.
+entt::entity cloth(Physics& physics, std::string_view id, Vec3 position, float size = 2.0F,
+                   int cells = 8) {
+    const entt::entity entity = physics.add(id, position);
+    auto& plane = physics.world.ecs().emplace<world::PlaneMesh>(entity);
+    plane.size = {size, size};
+    plane.subdivide_width = cells - 1;
+    plane.subdivide_depth = cells - 1;
+    physics.world.ecs().emplace<world::MeshInstance3D>(entity);
+    physics.world.ecs().emplace<world::SoftBody3D>(entity);
+    return entity;
+}
+
+// The mesh vertex nearest a point in the mesh's own space.
+int vertex_near(const slash::scene3d::Primitive& primitive, Vec3 point) {
+    const auto mesh = slash::scene3d::make_mesh(primitive);
+    REQUIRE(mesh);
+    int best = -1;
+    float nearest = 0.0F;
+    for (std::size_t i = 0; i < mesh.value().vertices.size(); ++i) {
+        const auto& [x, y, z] = mesh.value().vertices[i].position;
+        const float d = length(Vec3{x, y, z} - point);
+        if (best < 0 || d < nearest) {
+            best = static_cast<int>(i);
+            nearest = d;
+        }
+    }
+    return best;
+}
+
+struct Bounds {
+    Vec3 low;
+    Vec3 high;
+};
+
+Bounds bounds_of(const std::vector<Vec3>& points) {
+    Bounds out{points.front(), points.front()};
+    for (const Vec3 p : points) {
+        out.low = {std::min(out.low.x, p.x), std::min(out.low.y, p.y), std::min(out.low.z, p.z)};
+        out.high = {std::max(out.high.x, p.x), std::max(out.high.y, p.y),
+                    std::max(out.high.z, p.z)};
+    }
+    return out;
+}
+
+physics3d::SoftBodyPoints points_of(Physics& physics, std::string_view id) {
+    const auto points = physics3d::soft_body_points(physics.world, physics.world.find(id));
+    REQUIRE(points.has_value());
+    return *points;
+}
+
+} // namespace
+
+TEST_CASE("a cloth falls, drapes over a box and comes to rest") {
+    Physics physics;
+    physics.floor();
+    physics.block("table", {-0.5F, 0.0F, -0.5F}, {0.5F, 1.0F, 0.5F});
+    cloth(physics, "cloth", {0.0F, 2.0F, 0.0F});
+    // A point for each vertex, where the mesh puts it, before the first step.
+    const physics3d::SoftBodyPoints start = points_of(physics, "cloth");
+    CHECK(start.points.size() == 81);
+    CHECK(bounds_of(start.points).low.y == doctest::Approx(2.0F));
+    CHECK(bounds_of(start.points).high.x == doctest::Approx(1.0F));
+
+    physics.step(600);
+    const physics3d::SoftBodyPoints rest = points_of(physics, "cloth");
+    const Bounds bounds = bounds_of(rest.points);
+    // The middle lies on the table and the edges hang below its top, above the floor.
+    CHECK(bounds.high.y == doctest::Approx(1.0F).epsilon(0.05));
+    CHECK(bounds.low.y < 0.8F);
+    CHECK(bounds.low.y > -0.05F);
+    CHECK(bounds.high.x - bounds.low.x < 1.9F); // drawn in by its fall
+    CHECK(rest.sleeping);
+    // Its entity stays where it was, as Godot's SoftBody3D node does.
+    CHECK(physics.position("cloth") == Vec3{0.0F, 2.0F, 0.0F});
+}
+
+TEST_CASE("pinned points hold still, and those with an attachment follow it") {
+    Physics physics;
+    // A curtain facing z, its top corners pinned.
+    const entt::entity curtain = cloth(physics, "curtain", {0.0F, 2.0F, 0.0F});
+    world::PlaneMesh plane = physics.get<world::PlaneMesh>("curtain");
+    plane.orientation = "z";
+    physics.world.ecs().replace<world::PlaneMesh>(curtain, plane);
+    const int left = vertex_near(plane, {-1.0F, 1.0F, 0.0F});
+    const int right = vertex_near(plane, {1.0F, 1.0F, 0.0F});
+    const entt::entity hook = physics.add("hook", {1.0F, 3.0F, 0.0F});
+    auto& soft = physics.get<world::SoftBody3D>("curtain");
+    soft.pinned_points = {{.point = left, .attachment = entt::null, .offset = {}},
+                          {.point = right, .attachment = hook, .offset = {}}};
+    physics.step(120);
+    physics3d::SoftBodyPoints points = points_of(physics, "curtain");
+    CHECK(points.points[static_cast<std::size_t>(left)] == Vec3{-1.0F, 3.0F, 0.0F});
+    CHECK(points.points[static_cast<std::size_t>(right)] == Vec3{1.0F, 3.0F, 0.0F});
+    // The rest hangs below the pins and has fallen no farther than the curtain is long.
+    const Bounds hanging = bounds_of(points.points);
+    CHECK(hanging.high.y == doctest::Approx(3.0F));
+    CHECK(hanging.low.y > 0.5F);
+    CHECK(hanging.low.y < 1.1F);
+
+    // Moving the hook moves its point, which carries the curtain along.
+    physics.get<world::Transform3D>("hook").position = {2.0F, 3.0F, 0.5F};
+    physics.step(60);
+    points = points_of(physics, "curtain");
+    const Vec3 moved = points.points[static_cast<std::size_t>(right)];
+    CHECK(moved.x == doctest::Approx(2.0F));
+    CHECK(moved.z == doctest::Approx(0.5F));
+    CHECK(points.points[static_cast<std::size_t>(left)] == Vec3{-1.0F, 3.0F, 0.0F});
+
+    // Unpinned, it falls.
+    const auto middle = [&] {
+        Vec3 sum;
+        const std::vector<Vec3> all = points_of(physics, "curtain").points;
+        for (const Vec3 p : all) {
+            sum = sum + p;
+        }
+        return sum * (1.0F / static_cast<float>(all.size()));
+    };
+    const float hung = middle().y;
+    soft.pinned_points.clear();
+    physics.step(60);
+    CHECK(middle().y < hung - 2.0F);
+}
+
+TEST_CASE("pressure keeps a soft ball round where one without it flattens") {
+    const auto drop = [](float pressure) {
+        Physics physics;
+        physics.floor();
+        const entt::entity ball = physics.add("ball", {0.0F, 1.0F, 0.0F});
+        auto& sphere = physics.world.ecs().emplace<world::SphereMesh>(ball);
+        sphere.radial_segments = 16;
+        sphere.rings = 8;
+        physics.world.ecs().emplace<world::MeshInstance3D>(ball);
+        auto& soft = physics.world.ecs().emplace<world::SoftBody3D>(ball);
+        soft.pressure_coefficient = pressure;
+        soft.linear_stiffness = 0.1F;
+        physics.step(240);
+        return bounds_of(points_of(physics, "ball").points);
+    };
+    const Bounds flat = drop(0.0F);
+    const Bounds round = drop(50.0F);
+    CHECK(flat.low.y > -0.05F);
+    CHECK(round.low.y > -0.05F);
+    CHECK(round.high.y - round.low.y > flat.high.y - flat.low.y + 0.1F);
+    CHECK(round.high.y - round.low.y > 0.7F);
+}
+
+TEST_CASE("moving a soft body's transform moves its points with it") {
+    Physics physics(weightless());
+    cloth(physics, "cloth", {0.0F, 2.0F, 0.0F}, 2.0F, 2);
+    physics.step();
+    const Bounds before = bounds_of(points_of(physics, "cloth").points);
+    physics.get<world::Transform3D>("cloth").position = {5.0F, 2.0F, 0.0F};
+    physics.step();
+    const Bounds after = bounds_of(points_of(physics, "cloth").points);
+    CHECK(after.low.x == doctest::Approx(before.low.x + 5.0F));
+    CHECK(after.high.x == doctest::Approx(before.high.x + 5.0F));
+    CHECK(after.low.y == doctest::Approx(before.low.y));
+}
+
+TEST_CASE("a soft body passes through its parent_collision_ignore and by layers") {
+    const auto drop = [](bool ignore, std::uint32_t mask) {
+        Physics physics;
+        physics.floor();
+        const entt::entity table = physics.block("table", {-2.0F, 0.0F, -2.0F}, {2.0F, 1.0F, 2.0F});
+        cloth(physics, "cloth", {0.0F, 2.0F, 0.0F}, 1.0F, 2);
+        auto& soft = physics.get<world::SoftBody3D>("cloth");
+        soft.parent_collision_ignore = ignore ? table : entt::null;
+        soft.collision_mask = mask;
+        physics.get<world::StaticBody3D>("table").collision_mask = mask;
+        physics.step(120);
+        return bounds_of(points_of(physics, "cloth").points).low.y;
+    };
+    CHECK(drop(false, 1) == doctest::Approx(1.0F).epsilon(0.02));
+    CHECK(drop(true, 1) == doctest::Approx(0.0F).epsilon(0.02));
+    CHECK(drop(false, 0) < -1.0F); // neither sees the other, nor the floor
+}
+
+TEST_CASE("soft bodies simulate the same every time") {
+    const auto run = [] {
+        Physics physics;
+        physics.floor();
+        physics.crate("crate", {0.3F, 0.5F, 0.2F});
+        cloth(physics, "cloth", {0.0F, 2.0F, 0.0F});
+        physics.step(120);
+        std::vector<std::uint32_t> bits;
+        for (const Vec3 p : points_of(physics, "cloth").points) {
+            bits.push_back(std::bit_cast<std::uint32_t>(p.x));
+            bits.push_back(std::bit_cast<std::uint32_t>(p.y));
+            bits.push_back(std::bit_cast<std::uint32_t>(p.z));
+        }
+        const Vec3 crate = physics.position("crate");
+        bits.push_back(std::bit_cast<std::uint32_t>(crate.y));
+        return bits;
+    };
+    CHECK(run() == run());
+}
+
+TEST_CASE("soft bodies are made again for a new mesh and dropped with their component") {
+    Physics physics;
+    const entt::entity entity = cloth(physics, "cloth", {}, 2.0F, 2);
+    CHECK(points_of(physics, "cloth").points.size() == 9);
+    physics.get<world::PlaneMesh>("cloth").subdivide_width = 2;
+    physics.world.ecs().patch<world::PlaneMesh>(entity);
+    CHECK(points_of(physics, "cloth").points.size() == 12);
+    physics.step();
+    auto parts = physics.world.memory();
+    auto found = std::find_if(parts.begin(), parts.end(), [](const world::MemoryPart& part) {
+        return part.name == "physics3d";
+    });
+    REQUIRE(found != parts.end());
+    CHECK(found->counts.at("soft_bodies") == 1);
+    physics.world.ecs().remove<world::SoftBody3D>(entity);
+    CHECK_FALSE(physics3d::soft_body_points(physics.world, entity).has_value());
+    // Without a primitive mesh it has none either.
+    physics.world.ecs().emplace<world::SoftBody3D>(entity);
+    physics.world.ecs().get<world::MeshInstance3D>(entity).mesh = "crate.glb";
+    CHECK_FALSE(physics3d::soft_body_points(physics.world, entity).has_value());
+}
+
+TEST_CASE("check_soft_bodies reports what keeps a soft body from being made") {
+    Physics physics;
+    const entt::entity bare = physics.add("bare", {});
+    physics.world.ecs().emplace<world::SoftBody3D>(bare);
+    const entt::entity model = cloth(physics, "model", {});
+    physics.world.ecs().get<world::MeshInstance3D>(model).mesh = "crate.glb";
+    cloth(physics, "pinned", {}, 2.0F, 2);
+    const entt::entity loose = physics.world.create("loose").value();
+    physics.get<world::SoftBody3D>("pinned").pinned_points = {
+        {.point = 9, .attachment = entt::null, .offset = {}},
+        {.point = 0, .attachment = bare, .offset = {}},
+        {.point = 1, .attachment = loose, .offset = {}}};
+    std::vector<std::string> found;
+    for (const slash::scene3d::Problem& problem :
+         slash::scene3d::check_soft_bodies(physics.world)) {
+        found.push_back(std::string(physics.world.id_of(problem.entity)) + " " + problem.path +
+                        ": " + problem.message);
+    }
+    std::sort(found.begin(), found.end());
+    CHECK(found == std::vector<std::string>{
+                       "bare /components/SoftBody3D: a soft body needs a MeshInstance3D drawing "
+                       "its mesh; it is ignored until it has one",
+                       "model /components/MeshInstance3D/mesh: a soft body simulates a primitive "
+                       "mesh component, not a model file, yet",
+                       "pinned /components/SoftBody3D/pinned_points/0/point: point 9 is out of "
+                       "bounds: the mesh has 9 vertices",
+                       "pinned /components/SoftBody3D/pinned_points/2/attachment: the attachment "
+                       "has no Transform3D to follow",
+                   });
 }

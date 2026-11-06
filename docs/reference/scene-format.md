@@ -4321,6 +4321,54 @@ any body is. [examples/ragdoll](../../examples/ragdoll/) lets a waving arm go li
 `scene validate` reports `simulated_bones` and `bone_name`s the model hasn't (with "did you
 mean"), a bone with two bodies and a `PhysicalBone3D` no simulator holds.
 
+### Soft bodies
+
+Soft bodies follow Godot 4.4's `SoftBody3D` on its Jolt module: cloth, flags and anything
+squashy. A `SoftBody3D` simulates the primitive mesh its entity's `MeshInstance3D` draws (a
+`PlaneMesh`, `SphereMesh`, `BoxMesh` or any other; model files aren't simulated yet). The mesh's
+vertices are welded where they meet into points, its faces hold the points apart with springs,
+and Jolt's soft body moves them under gravity, colliding with the bodies around it. The mesh then
+draws where its points are, with each vertex's normal the average of the faces around it, as
+Godot sends it to the rendering server. The entity's own `Transform3D` stays put: it places the
+points when the body is made, and setting it later moves every point with it and stops them.
+[examples/soft-bodies](../../examples/soft-bodies/) drapes a tablecloth, flies a flag and drops
+a ball full of air.
+
+```json
+"flag": {
+  "components": {
+    "MeshInstance3D": {},
+    "PlaneMesh": {"orientation": "z", "size": [1.2, 0.8], "subdivide_depth": 3, "subdivide_width": 5},
+    "SoftBody3D": {
+      "parent_collision_ignore": "pole",
+      "pinned_points": [{"attachment": "pole", "offset": [0.0, 0.4, 0.0], "point": 34}]
+    },
+    "Transform3D": {"position": [3.0, 2.0, 0.0]}
+  }
+}
+```
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `SoftBody3D` | `collision_layer` `1`, `collision_mask` `1`, `parent_collision_ignore` `null` (an entity it passes through), `simulation_precision` `5` (iterations a step), `total_mass` `1` (kilograms, shared by its points), `linear_stiffness` `0.5` (0 to 1), `shrinking_factor` `0`, `pressure_coefficient` `0`, `damping_coefficient` `0.01`, `drag_coefficient` `0`, `ray_pickable` `true`, `pinned_points` `[]`: each a `point` (a mesh vertex index), `attachment` `null` (an entity it follows) and `offset` `[0, 0, 0]` (in the attachment's space) |
+
+- A pinned point holds still where it is. With an `attachment`, it goes where the attachment's
+  global transform puts its `offset` each step, as Godot's `spatial_attachment_path`, carrying the
+  body along. Pinning a vertex pins every vertex welded into its point.
+- `linear_stiffness` is Godot's: its cube, times 100,000, is the springs' stiffness. Changing
+  it, `shrinking_factor` (which shortens every spring by that share) or the mesh makes the body
+  again from the mesh; other fields change in place and wake it.
+- `pressure_coefficient` fills a closed mesh with air that pushes its faces out, so a sphere
+  stays round. `drag_coefficient` and `ray_pickable` are kept but do nothing, as on Godot's Jolt
+  module.
+- Layers and masks work as other bodies': a body whose mask lacks a soft body's layer pushes it
+  without being pushed back, and the other way round. Soft bodies feel the project's gravity,
+  not areas', and queries, motion tests and areas pass them by, as Godot's Jolt module does.
+- `physics.soft_body` returns its points' bounds and places, and C++ code calls
+  `physics3d::soft_body_points`. `scene validate` reports a `SoftBody3D` without a
+  `MeshInstance3D`, one drawing a model file, pinned points past the mesh's vertices and
+  attachments with no `Transform3D`.
+
 ## Navigation
 
 Navigation follows Godot 4.6's `NavigationServer2D` and `NavigationServer3D`. Each world has a

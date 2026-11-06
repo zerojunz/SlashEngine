@@ -1073,7 +1073,8 @@ Once the macOS release ships:
 2. **After-launch features**, in no fixed order:
    - Large worlds: double-precision transforms and world streaming
    - Cinematics: timeline tracks for cameras and events
-   - Cloth and soft bodies on Jolt
+   - [x] Cloth and soft bodies on Jolt: Godot's `SoftBody3D` on its Jolt module's soft bodies,
+         with pinned points, attachments, pressure and the `physics.soft_body` command
    - Destruction: fracture and debris on Jolt
 
 ## Research
@@ -1142,7 +1143,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Procedural generation | FastNoiseLite noise, noise and gradient textures, scatter rules agents write, and procedural content imported from other tools | 8 | Done |
 | Large worlds | Double-precision transforms, world streaming | After launch | After launch |
 | Cinematics | Timeline tracks for cameras and events | After launch | After launch |
-| Cloth and soft bodies | Jolt soft bodies | After launch | After launch |
+| Cloth and soft bodies | Jolt soft bodies | After launch | Done: Godot's `SoftBody3D` on Jolt, with pins, attachments and pressure |
 | Destruction | Fracture and debris on Jolt | After launch | After launch |
 | Virtualized geometry | Meshlet rendering research | Research | Research |
 | Fully dynamic GI at UE quality | Research after probe GI ships | Research | Research |

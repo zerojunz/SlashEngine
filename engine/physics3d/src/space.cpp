@@ -664,6 +664,10 @@ Space::~Space() {
     }
     joints_.clear();
     bone_joints_.clear();
+    for (auto& [entity, soft] : soft_bodies_) {
+        destroy(*soft);
+    }
+    soft_bodies_.clear();
     bodies_.clear();
     system_.reset();
 }
@@ -681,6 +685,10 @@ void Space::reset() {
     exceptions_.clear();
     wheels_.clear();
     vehicles_.clear();
+    for (auto& [entity, soft] : soft_bodies_) {
+        destroy(*soft);
+    }
+    soft_bodies_.clear();
     bodies_.clear();
     system_.reset();
     jobs_.reset();
@@ -696,7 +704,13 @@ void Space::set_settings(const Settings& settings) {
                                  settings.gravity_vector != settings_.gravity_vector;
     settings_ = settings;
     if (gravity_changed && system_ != nullptr) {
+        system_->SetGravity(to_jolt(settings_.gravity_vector * settings_.gravity));
         JPH::BodyInterface& interface = system_->GetBodyInterfaceNoLock();
+        for (auto& [entity, soft] : soft_bodies_) {
+            if (!soft->id.IsInvalid()) {
+                interface.ActivateBody(soft->id);
+            }
+        }
         for (auto& [entity, body] : bodies_) {
             if ((body->kind == Kind::Rigid || body->kind == Kind::Bone) && !body->id.IsInvalid() &&
                 !body->sleeping) {
@@ -738,9 +752,11 @@ void Space::create_system() {
     physics.mUseBodyPairContactCache = true;
     physics.mAllowSleeping = true;
     system_->SetPhysicsSettings(physics);
-    // Gravity and damping are the space's own, from the areas each body is in.
-    system_->SetGravity(JPH::Vec3::sZero());
+    // Gravity and damping are the space's own, from the areas each body is in; Jolt's gravity
+    // is the default gravity, which only soft bodies feel, as Godot's JoltSpace3D sets it.
+    system_->SetGravity(to_jolt(settings_.gravity_vector * settings_.gravity));
     system_->SetContactListener(&listener_);
+    system_->SetSoftBodyContactListener(&listener_);
     system_->SetCombineFriction(combine_friction);
     system_->SetCombineRestitution(combine_bounce);
 }
@@ -931,6 +947,8 @@ void Space::create_body(Body& body, const world::Affine3D& global, const world::
     // Damping is the space's, before each step, as Godot's.
     settings.mLinearDamping = 0.0F;
     settings.mAngularDamping = 0.0F;
+    // So is gravity: Jolt's applies to soft bodies only, as Godot's.
+    settings.mGravityFactor = 0.0F;
     settings.mMaxLinearVelocity = kMaxLinearVelocity;
     settings.mMaxAngularVelocity = kMaxAngularVelocity;
     settings.mEnhancedInternalEdgeRemoval = true;
@@ -1219,7 +1237,7 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
     if (system_ == nullptr) {
         if (csg.empty() && grids.empty() && terrains.empty() && models.empty() &&
             !has_any<RigidBody3D, CharacterBody3D, AnimatableBody3D, StaticBody3D, Area3D,
-                     PhysicalBone3D>(registry)) {
+                     PhysicalBone3D, world::SoftBody3D>(registry)) {
             return;
         }
         create_system();
@@ -1317,6 +1335,7 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
                               .model = std::move(body.shapes)};
         sync_body(world, tree, body.entity, Kind::Static, &shape);
     }
+    sync_soft_bodies(world, tree);
     sync_joints(world, tree);
     if (added_ >= kOptimizeAfter) {
         system_->OptimizeBroadPhase();
@@ -1624,6 +1643,7 @@ void Space::step(world::World& world, float seconds) {
     }
     pre_step_vehicles(world, tree, seconds);
     pre_step(world, seconds);
+    pre_step_soft_bodies(world, tree);
     {
         SLASH_PROFILE_ZONE("Jolt step");
         const JPH::EPhysicsUpdateError errors =
@@ -1635,6 +1655,7 @@ void Space::step(world::World& world, float seconds) {
                        {"max_contact_constraints", static_cast<int>(kMaxContacts)}});
         }
     }
+    read_soft_bodies();
     step_vehicles(world, tree, seconds);
     read_back(world, tree);
     move_characters(world, tree, seconds);
@@ -1700,8 +1721,15 @@ world::MemoryPart Space::memory() const {
     for (const auto& [entity, body] : bodies_) {
         shapes += body->parts.size();
     }
-    part.counts = {
-        {"active", 0}, {"bodies", bodies_.size()}, {"shapes", shapes}, {"joints", joints_.size()}};
+    std::uint64_t points = 0;
+    for (const auto& [entity, soft] : soft_bodies_) {
+        points += soft->mesh_to_physics.size();
+    }
+    part.counts = {{"active", 0},
+                   {"bodies", bodies_.size()},
+                   {"shapes", shapes},
+                   {"joints", joints_.size()},
+                   {"soft_bodies", soft_bodies_.size()}};
     if (system_ != nullptr) {
         // What Jolt allocated for every space in the process; a session or game has one.
         part.bytes = g_jolt_bytes.load();
@@ -1710,6 +1738,9 @@ world::MemoryPart Space::memory() const {
     part.bytes += bodies_.size() * (sizeof(Body) + sizeof(EntityMap<std::unique_ptr<Body>>::Entry));
     part.bytes += (joints_.size() * sizeof(EntityMap<Joint>::Entry)) +
                   (wheels_.size() * sizeof(EntityMap<Wheel>::Entry));
+    part.bytes += (soft_bodies_.size() *
+                   (sizeof(SoftBody) + sizeof(EntityMap<std::unique_ptr<SoftBody>>::Entry))) +
+                  (points * (sizeof(int) + sizeof(Vec3)));
     return part;
 }
 

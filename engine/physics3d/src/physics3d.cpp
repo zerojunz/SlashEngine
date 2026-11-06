@@ -185,6 +185,13 @@ void install(world::World& world, const Settings& settings) {
     auto space = std::make_shared<Space>(settings);
     world.ecs().ctx().emplace<std::shared_ptr<Space>>(space);
     world.add_reset([space](world::World& /*world*/) { space->reset(); });
+    // Soft bodies' meshes draw where their points are.
+    scene3d::set_soft_body_source(world,
+                                  [space](const world::World& /*world*/, entt::entity entity)
+                                      -> std::shared_ptr<const scene3d::SoftBodyPose> {
+                                      const detail::SoftBody* soft = space->soft_body(entity);
+                                      return soft != nullptr ? soft->pose : nullptr;
+                                  });
     world.add_memory_source("physics3d",
                             [space](const world::World& /*world*/) { return space->memory(); });
     world.add_system(
@@ -364,6 +371,15 @@ std::optional<Gravity> gravity(world::World& world, entt::entity entity) {
             detail::with_own(out.angular_damp, own->angular_damp_mode, own->angular_damp);
     }
     return out;
+}
+
+std::optional<SoftBodyPoints> soft_body_points(world::World& world, entt::entity entity) {
+    Space* space = synced(world);
+    const detail::SoftBody* soft = space != nullptr ? space->soft_body(entity) : nullptr;
+    if (soft == nullptr || soft->pose == nullptr) {
+        return std::nullopt;
+    }
+    return SoftBodyPoints{.points = soft->pose->positions, .sleeping = space->sleeping(*soft)};
 }
 
 bool has_body(const world::World& world, entt::entity entity) {

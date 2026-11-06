@@ -126,6 +126,7 @@ above the world.
 | `TileMap` | `Transform2D` and `TileMapLayer`, and an entity per layer (see [tile maps](#tile-sets-and-tile-maps)) |
 | `Node3D`, `Marker3D` | `Transform3D` |
 | `MeshInstance3D` | `Transform3D`, `MeshInstance3D`, and its mesh's and material's components (see [3D](#3d)) |
+| `SoftBody3D` | `Transform3D`, `MeshInstance3D` with its mesh's and material's components, and `SoftBody3D` with its fields of the same names; `pinned_points` and each `attachments/<i>/` become pinned points with their `attachment` and `offset` |
 | `CPUParticles3D` | `Transform3D`, `CPUParticles3D`, and its mesh's and material's components (see [3D particles](#3d-particles)) |
 | `Camera3D`, `DirectionalLight3D`, `OmniLight3D`, `SpotLight3D`, `AudioStreamPlayer3D`, `AudioListener3D` | `Transform3D` and the component of the same name |
 | `XROrigin3D`, `XRController3D`, `XRAnchor3D` | `Transform3D` and the component of the same name |

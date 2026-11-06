@@ -112,6 +112,16 @@ struct Gravity {
 // nullopt when the entity is no 3D body.
 [[nodiscard]] std::optional<Gravity> gravity(world::World& world, entt::entity entity);
 
+// Where a soft body's mesh is, as Godot's SoftBody3D::get_point_transform gives each point:
+// each mesh vertex's place in world space after the last step, and whether its body sleeps.
+// nullopt when the entity has no soft body.
+struct SoftBodyPoints {
+    std::vector<Vec3> points;
+    bool sleeping = false;
+};
+[[nodiscard]] std::optional<SoftBodyPoints> soft_body_points(world::World& world,
+                                                             entt::entity entity);
+
 // Whether an entity is a 3D body or area now, as the next step sees it.
 [[nodiscard]] bool has_body(const world::World& world, entt::entity entity);
 
