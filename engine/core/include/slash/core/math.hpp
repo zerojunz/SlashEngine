@@ -92,6 +92,10 @@ struct Vec3f {
 [[nodiscard]] constexpr Vec3f to_float(Vec3 v) {
     return {static_cast<float>(v.x), static_cast<float>(v.y), static_cast<float>(v.z)};
 }
+// A coordinate rounded to a float.
+[[nodiscard]] constexpr float to_float(double v) {
+    return static_cast<float>(v);
+}
 #else
 using Vec2f = Vec2;
 using Vec3f = Vec3;
@@ -101,6 +105,10 @@ using Vec3f = Vec3;
     return v;
 }
 [[nodiscard]] constexpr Vec3f to_float(Vec3 v) {
+    return v;
+}
+// A coordinate rounded to a float: itself in a single-precision engine.
+[[nodiscard]] constexpr float to_float(float v) {
     return v;
 }
 #endif

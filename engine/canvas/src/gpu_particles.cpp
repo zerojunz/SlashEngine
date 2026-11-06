@@ -693,7 +693,7 @@ private:
         Vec2 high;
     };
 
-    void add(std::vector<Vec2> points, bool closed) {
+    void add(const std::vector<Vec2>& points, bool closed) {
         if (points.empty()) {
             return;
         }
@@ -745,7 +745,7 @@ private:
             for (const Vec2& p : occluder.polygon) {
                 points.push_back(placed.apply(p));
             }
-            add(std::move(points), occluder.closed);
+            add(points, occluder.closed);
         }
         for (const entt::entity entity : in_order(ecs.view<const world::TileMapLayer>())) {
             const auto& layer = ecs.get<world::TileMapLayer>(entity);
@@ -779,7 +779,7 @@ private:
                     for (const Vec2& p : polygon.points) {
                         points.push_back(placed.apply(p + center));
                     }
-                    add(std::move(points), polygon.closed);
+                    add(points, polygon.closed);
                 }
             }
         }

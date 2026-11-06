@@ -3820,8 +3820,8 @@ Result<void> Renderer::reflect(const world::World& world, Frame3D& frame, render
             found.push_back({.entity = entity,
                              .probe = &probe,
                              .place = relative(orthonormalized(tree.global(entity))),
-                             .extent = static_cast<float>(std::sqrt(
-                                 (half.x * half.x) + (half.y * half.y) + (half.z * half.z)))});
+                             .extent = to_float(std::sqrt((half.x * half.x) + (half.y * half.y) +
+                                                          (half.z * half.z)))});
         }
     }
     std::ranges::sort(found, [](const Found& a, const Found& b) {
