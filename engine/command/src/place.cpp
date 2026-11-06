@@ -152,8 +152,10 @@ public:
         min_z_ = bounds.min.z;
         const double per_side = std::ceil(std::sqrt(static_cast<double>(triangles_.size()) / 2.0));
         cells_ = std::clamp(static_cast<int>(per_side), 1, kMaxCells);
-        size_x_ = std::max((bounds.max.x - bounds.min.x) / static_cast<float>(cells_), 1.0e-3F);
-        size_z_ = std::max((bounds.max.z - bounds.min.z) / static_cast<float>(cells_), 1.0e-3F);
+        size_x_ =
+            std::max<real_t>((bounds.max.x - bounds.min.x) / static_cast<float>(cells_), 1.0e-3F);
+        size_z_ =
+            std::max<real_t>((bounds.max.z - bounds.min.z) / static_cast<float>(cells_), 1.0e-3F);
         grid_.resize(static_cast<std::size_t>(cells_) * static_cast<std::size_t>(cells_));
         for (std::size_t i = 0; i < triangles_.size(); ++i) {
             const Triangle& t = triangles_[i];
@@ -512,7 +514,7 @@ Reply entity_place(Session& session, const json::Value& params) {
         float moved = 0.0F;
         if (apart) {
             if (const std::optional<entt::entity> blocker = in_way(spot); blocker) {
-                const float step = std::max(
+                const float step = std::max<real_t>(
                     (std::max(spot.box.max.x - spot.box.min.x, spot.box.max.z - spot.box.min.z) *
                      0.5F) +
                         margin,

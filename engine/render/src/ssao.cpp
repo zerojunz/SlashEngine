@@ -869,7 +869,7 @@ SsaoUniforms ssao_uniforms(const Ssao3D& ssao, const SsaoStep& step,
             const auto a = static_cast<float>(pass);
             const auto b = static_cast<float>(kSubPassMap.at(static_cast<std::size_t>(sub)));
             const float angle = (a + (b / static_cast<float>(kSubPasses))) * kPi * 0.5F;
-            const Vec2 turn = slash::cos_sin(angle);
+            const Vec2f turn = slash::cos_sin(angle);
             const float scale =
                 1.0F + ((a - 1.5F + ((b - ((kSubPasses - 1.0F) * 0.5F)) / kSubPasses)) * 0.07F);
             out.rotation.at(at_index(sub, pass, kSubPasses)) = {scale * turn.x, scale * -turn.y,

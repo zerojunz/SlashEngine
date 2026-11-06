@@ -17,6 +17,7 @@
 #include <vector>
 
 using slash::Vec2;
+using slash::Vec2f;
 using slash::Vec4;
 using slash::render::EmissionShape;
 using slash::render::Particle;
@@ -954,7 +955,7 @@ TEST_CASE("trails draw as Godot's ribbon through a particle and its copies") {
     // A particle moving right with its x axis down, so the ribbon is as wide as a frame across
     // its path; a copy behind it, and one waiting further back.
     std::vector<Particle> particles(3);
-    const std::array<Vec2, 3> places{{{20.0F, 0.0F}, {10.0F, 0.0F}, {0.0F, 0.0F}}};
+    const std::array<Vec2f, 3> places{{{20.0F, 0.0F}, {10.0F, 0.0F}, {0.0F, 0.0F}}};
     const std::array<Vec4, 3> colors{
         {{1.0F, 0.0F, 0.0F, 1.0F}, {0.0F, 1.0F, 0.0F, 1.0F}, {0.0F, 0.0F, 1.0F, 1.0F}}};
     for (std::size_t i = 0; i < 3; ++i) {
@@ -1056,7 +1057,7 @@ TEST_CASE("every device refuses the same particle mistakes") {
               "a particle step names shapes 1 to 2 of 1");
         step.shape_first = 0;
         step.shape_count = 1;
-        std::vector<ParticleShape> many{{.points = std::vector<Vec2>(1025), .closed = true}};
+        std::vector<ParticleShape> many{{.points = std::vector<Vec2f>(1025), .closed = true}};
         CHECK(error_of(device->process_particles(system.value(), {}, std::span(&step, 1), many)) ==
               "a particle step's shapes have at most 1024 points");
         many[0].points = {{0.0F, std::nanf("")}};

@@ -495,9 +495,11 @@ public:
         fixup(0, 0);
         VoxelGIData out;
         const Vec3 position = original_bounds_.position;
-        out.bounds_position = {position.x, position.y, position.z};
-        out.bounds_size = {original_bounds_.size.x, original_bounds_.size.y,
-                           original_bounds_.size.z};
+        out.bounds_position = {static_cast<float>(position.x), static_cast<float>(position.y),
+                               static_cast<float>(position.z)};
+        out.bounds_size = {static_cast<float>(original_bounds_.size.x),
+                           static_cast<float>(original_bounds_.size.y),
+                           static_cast<float>(original_bounds_.size.z)};
         out.octree_size = octree_size();
         out.baked_exposure = exposure;
         out.level_counts.assign(static_cast<std::size_t>(subdiv_) + 1, 0);
@@ -715,7 +717,8 @@ private:
                 cell.normal = {0.0F, 0.0F, 0.0F}; // too much fight over the normal
             } else {
                 const Vec3 unit = normalized(n);
-                cell.normal = {unit.x, unit.y, unit.z};
+                cell.normal = {static_cast<float>(unit.x), static_cast<float>(unit.y),
+                               static_cast<float>(unit.z)};
             }
             cell.alpha = 1.0F;
             return;
@@ -913,7 +916,9 @@ struct Grid3D {
         std::array<int, 3> i0{};
         std::array<int, 3> i1{};
         std::array<float, 3> f{};
-        const std::array<float, 3> coords{at.x - 0.5F, at.y - 0.5F, at.z - 0.5F};
+        const std::array<float, 3> coords{static_cast<float>(at.x - 0.5F),
+                                          static_cast<float>(at.y - 0.5F),
+                                          static_cast<float>(at.z - 0.5F)};
         for (std::size_t a = 0; a < 3; ++a) {
             const float fl = std::floor(coords.at(a));
             const int last = static_cast<int>(size.at(a)) - 1;
@@ -1653,7 +1658,8 @@ private:
                     accum = accum + (color * std::max(0.0F, dot(m.normal, light_dir * -1.0F)));
                 }
                 accum = accum + m.emission;
-                out.light = {accum.x, accum.y, accum.z, m.alpha};
+                out.light = {static_cast<float>(accum.x), static_cast<float>(accum.y),
+                             static_cast<float>(accum.z), m.alpha};
             }
         });
 
@@ -2303,8 +2309,10 @@ VoxelGILight voxel_gi_light(const render::Light3D& light, float indirect_energy,
     out.inv_spot_attenuation = 1.0F / light.spot_attenuation;
     const Vec3 pos = to_probe.apply(vec(light.position));
     const Vec3 dir = normalized(to_probe.basis(vec(light.direction)));
-    out.position = {pos.x, pos.y, pos.z};
-    out.direction = {dir.x, dir.y, dir.z};
+    out.position = {static_cast<float>(pos.x), static_cast<float>(pos.y),
+                    static_cast<float>(pos.z)};
+    out.direction = {static_cast<float>(dir.x), static_cast<float>(dir.y),
+                     static_cast<float>(dir.z)};
     out.has_shadow = light.shadow;
     return out;
 }
@@ -2340,7 +2348,8 @@ Result<VoxelGIBake> bake_voxel_gi(const world::World& world, entt::entity entity
     const world::Tree3D tree(world);
     const world::Affine3D to_space = tree.global(entity).inverse();
     const entt::entity scope = tree.parent(entity);
-    const std::array<float, 3> size{gi.size.x, gi.size.y, gi.size.z};
+    const std::array<float, 3> size{static_cast<float>(gi.size.x), static_cast<float>(gi.size.y),
+                                    static_cast<float>(gi.size.z)};
     const Box box{gi.size * -0.5F, gi.size};
     // The static MeshInstance3Ds at or under its parent touching its box, as
     // VoxelGI::_find_meshes finds them.

@@ -306,7 +306,7 @@ void run_instructions(const MaterialProgram& program, Registers& registers,
                 if (!portable) {
                     return std::tan(x);
                 }
-                const Vec2 turn = cos_sin(x);
+                const Vec2f turn = cos_sin(x);
                 return turn.y / turn.x;
             });
             break;

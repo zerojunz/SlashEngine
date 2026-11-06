@@ -169,7 +169,8 @@ void smooth_normals(std::vector<render::Vertex3D>& corners,
         if (n == Vec3{}) {
             n = {0.0F, 1.0F, 0.0F};
         }
-        corners[i].normal = {n.x, n.y, n.z};
+        corners[i].normal = {static_cast<float>(n.x), static_cast<float>(n.y),
+                             static_cast<float>(n.z)};
     }
 }
 
@@ -549,7 +550,7 @@ Result<render::Vertex3D> ObjReader::corner(std::string_view word, std::size_t at
             return normal.error();
         }
         const Vec3 n = normals_[normal.value()];
-        last_.normal = {n.x, n.y, n.z};
+        last_.normal = {static_cast<float>(n.x), static_cast<float>(n.y), static_cast<float>(n.z)};
         surface_normals_ = true;
         // Tangents need texture coordinates; without them, Godot's importer makes up one.
         if (!uses_uvs_) {
@@ -563,7 +564,7 @@ Result<render::Vertex3D> ObjReader::corner(std::string_view word, std::size_t at
         return vertex.error();
     }
     const Vec3 p = vertices_[vertex.value()];
-    last_.position = {p.x, p.y, p.z};
+    last_.position = {static_cast<float>(p.x), static_cast<float>(p.y), static_cast<float>(p.z)};
     if (!colors_.empty()) {
         last_.rgba = colors_[vertex.value()];
     }

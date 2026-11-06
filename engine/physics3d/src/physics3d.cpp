@@ -28,9 +28,11 @@ namespace {
 
 using detail::find_space;
 using detail::from_jolt;
+using detail::from_jolt_place;
 using detail::Kind;
 using detail::Space;
 using detail::to_jolt;
+using detail::to_jolt_place;
 
 json::Value number_property(std::string_view description, double fallback) {
     json::Value property;
@@ -228,8 +230,8 @@ std::vector<entt::entity> overlap_point(world::World& world, Vec3 point, const Q
     // Godot's intersect_point.
     const QueryFilters filters(*space, filter);
     JPH::AllHitCollisionCollector<JPH::CollidePointCollector> collector;
-    space->system()->GetNarrowPhaseQueryNoLock().CollidePoint(to_jolt(point), collector, filters,
-                                                              filters, filters);
+    space->system()->GetNarrowPhaseQueryNoLock().CollidePoint(to_jolt_place(point), collector,
+                                                              filters, filters, filters);
     std::vector<entt::entity> found;
     const JPH::BodyLockInterfaceNoLock& locks = space->system()->GetBodyLockInterfaceNoLock();
     for (const JPH::CollidePointResult& hit : collector.mHits) {
@@ -271,7 +273,7 @@ std::vector<entt::entity> overlap_shape(world::World& world, const world::Collis
     settings.mBackFaceMode = JPH::EBackFaceMode::CollideWithBackFaces;
     JPH::AllHitCollisionCollector<JPH::CollideShapeCollector> collector;
     space->system()->GetNarrowPhaseQueryNoLock().CollideShape(
-        scaled.GetPtr(), JPH::Vec3::sOne(), detail::matrix_of(transform_com), settings,
+        scaled.GetPtr(), JPH::Vec3::sOne(), detail::place_matrix_of(transform_com), settings,
         JPH::RVec3::sZero(), collector, filters, filters, filters);
     return sorted(world, entities_of(*space, collector.mHits), max_results);
 }
@@ -302,7 +304,7 @@ std::optional<Vec3> closest_point(world::World& world, entt::entity entity, Vec3
     const JPH::TransformedShape body_shape = body->GetTransformedShape();
     Shapes shapes;
     body_shape.CollectTransformedShapes(body->GetWorldSpaceBounds(), shapes);
-    const JPH::RVec3 at = to_jolt(point);
+    const JPH::RVec3 at = to_jolt_place(point);
     float closest_distance_sq = FLT_MAX;
     JPH::RVec3 closest = JPH::RVec3::sZero();
     bool found = false;
@@ -340,7 +342,7 @@ std::optional<Vec3> closest_point(world::World& world, entt::entity entity, Vec3
             found = true;
         }
     }
-    return from_jolt(found ? closest : position);
+    return from_jolt_place(found ? closest : position);
 }
 
 Contacts contacts(world::World& world, entt::entity entity) {
@@ -356,8 +358,7 @@ std::optional<Gravity> gravity(world::World& world, entt::entity entity) {
     }
     Vec3 position = body->placed.origin;
     if (!body->id.IsInvalid()) {
-        position =
-            from_jolt(JPH::Vec3(space->system()->GetBodyInterfaceNoLock().GetPosition(body->id)));
+        position = from_jolt_place(space->system()->GetBodyInterfaceNoLock().GetPosition(body->id));
     }
     detail::AreaForces forces = space->forces(world, *body, position);
     Gravity out{.gravity = forces.gravity,
@@ -412,7 +413,7 @@ std::optional<RayHit> Space::cast_ray(Vec3 from, Vec3 to, const QueryFilter& fil
     }
     // Godot's JoltPhysicsDirectSpaceState3D::intersect_ray, not hitting from inside.
     const QueryFilters filters(*this, filter);
-    const JPH::RRayCast ray(to_jolt(from), to_jolt(to - from));
+    const JPH::RRayCast ray(to_jolt_place(from), to_jolt(to - from));
     JPH::RayCastSettings settings;
     settings.mTreatConvexAsSolid = false;
     settings.mBackFaceModeTriangles = hit_back_faces ? JPH::EBackFaceMode::CollideWithBackFaces
@@ -436,7 +437,7 @@ std::optional<RayHit> Space::cast_ray(Vec3 from, Vec3 to, const QueryFilter& fil
         normal = -normal;
     }
     return RayHit{.entity = found->entity,
-                  .point = from_jolt(JPH::Vec3(position)),
+                  .point = from_jolt_place(position),
                   .normal = from_jolt(normal),
                   .fraction = hit.mFraction,
                   .cell = grid_cell(*found, hit.mSubShapeID2)};

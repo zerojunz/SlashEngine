@@ -368,7 +368,7 @@ Result<void> check_particle_process(const ParticleProcess& process,
         std::size_t points = 0;
         for (const ParticleShape& shape : shapes.subspan(step.shape_first, step.shape_count)) {
             points += shape.points.size();
-            for (const Vec2& point : shape.points) {
+            for (const Vec2f& point : shape.points) {
                 if (!finite(point.x) || !finite(point.y)) {
                     return make_error(ErrorCode::InvalidArgument,
                                       "a particle shape's points are numbers");

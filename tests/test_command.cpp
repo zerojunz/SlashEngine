@@ -36,6 +36,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 #if SLASH_HAS_TINYEXR
@@ -2046,14 +2047,15 @@ TEST_CASE("entity.place stands entities on what is below, apart and along a path
     CHECK(crate[1] == doctest::Approx(0.5));
     CHECK(crate[2] == doctest::Approx(2.0).epsilon(1.0e-4));
 
-    // A mesh is stood on too, and a second box asked to go where the crate is moves aside to
-    // the nearest spot where it only touches: half a box a ring, two rings. Asked to go higher,
-    // it would stand on the crate, as Godot's snap does.
+    // A mesh is stood on too, and a second box asked to go partly where the crate is moves aside
+    // to the nearest spot where it only touches, half a box a ring. (Asked to go right under the
+    // crate's middle, the crate's bottom and the floor's top would tie.) Asked to go higher, it
+    // would stand on the crate, as Godot's snap does.
     CHECK(engine.ok("entity.place", R"({"entities": [{"id": "barrel", "at": [-3, 2, 0]}]})") ==
           parse(R"({"placed": [{"id": "barrel", "on": "step", "position": [-3, 1.5, 0]}]})"));
-    CHECK(engine.ok("entity.place", R"({"entities": [{"id": "barrel", "at": [2, 0, 0]}]})") ==
-          parse(R"({"placed": [{"id": "barrel", "moved": 1, "on": "floor",
-                                "position": [3, 0.5, 0]}]})"));
+    CHECK(engine.ok("entity.place", R"({"entities": [{"id": "barrel", "at": [2.6, 0, 0]}]})") ==
+          parse(R"({"placed": [{"id": "barrel", "moved": 0.5, "on": "floor",
+                                "position": [3.1, 0.5, 0]}]})"));
     // Allowed to overlap, and kept at its height without the ground.
     CHECK(engine.ok("entity.place", R"({"entities": [{"id": "barrel", "at": [2, 3, 0]}],
                                        "ground": false, "apart": false})") ==
@@ -3122,22 +3124,32 @@ TEST_CASE("particles.eval counts and lists particles, as they are or after a tim
     CHECK(engine.ok("particles.eval", R"({"id": "sparkler"})") ==
           parse(R"({"alive": 0, "bounds": null})"));
     engine.ok("step", R"({"ticks": 45})");
+    // Positions add up a float's rounding a tick at a time, which doubles leave out.
+    const auto moved = [](std::string text) {
+        if constexpr (std::is_same_v<slash::real_t, double>) {
+            for (std::size_t at = text.find(".0001"); at != std::string::npos;
+                 at = text.find(".0001")) {
+                text.erase(at, 5);
+            }
+        }
+        return parse(text);
+    };
     CHECK(engine.ok("particles.eval", R"({"id": "sparkler", "list": true, "max_results": 2})") ==
-          parse(R"({"alive": 8, "bounds": [105, 50, 70.0001, 0], "particles": [
+          moved(R"({"alive": 8, "bounds": [105, 50, 70.0001, 0], "particles": [
               {"age": 0.75, "color": [1, 1, 1, 1], "position": [175.0001, 50], "rotation": 0,
                "scale": 1},
               {"age": 0.65, "color": [1, 1, 1, 1], "position": [165.0001, 50], "rotation": 0,
                "scale": 1}]})"));
     // A time runs the settings from the start, apart from the world, as stepping would.
     CHECK(engine.ok("particles.eval", R"({"id": "sparkler", "time": 0.75})") ==
-          parse(R"({"alive": 8, "bounds": [105, 50, 70.0001, 0]})"));
+          moved(R"({"alive": 8, "bounds": [105, 50, 70.0001, 0]})"));
     // A failed command and a dry run put back a copy of the world; the particles stay.
     engine.fails("component.set",
                  R"({"id": "sparkler", "components": {"CPUParticles2D": {"amount": 0}}})",
                  command::code::kInvalidParams);
     engine.ok("entity.destroy", R"({"id": "sparkler", "dry_run": true})");
     CHECK(engine.ok("particles.eval", R"({"id": "sparkler"})") ==
-          parse(R"({"alive": 8, "bounds": [105, 50, 70.0001, 0]})"));
+          moved(R"({"alive": 8, "bounds": [105, 50, 70.0001, 0]})"));
 
     // Particles in local coordinates are placed in the world by the entity's transform.
     engine.ok("component.set", R"({"id": "sparkler", "components": {

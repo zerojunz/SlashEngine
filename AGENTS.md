@@ -1788,6 +1788,20 @@ box and loads its `.scene.json` file onto a new entity `<id>_scene` with
 emitting `streamed_in`, `streamed_out` and `stream_failed` events. `streaming.state` lists the
 cells and `check_streaming` backs `scene validate`. `examples/world-streaming` walks a road.
 
+Double precision is Godot's `precision` build option: `-DSLASH_PRECISION=double` (the `double`
+preset; [docs/reference/precision.md](docs/reference/precision.md)) makes `slash::real_t`, and
+with it `Vec2`, `Vec3` and `Quat`'s fields, doubles (`engine/core` defines
+`SLASH_REAL_T_IS_DOUBLE`), builds Jolt with `DOUBLE_PRECISION` (`to_jolt_place` and
+`from_jolt_place` in `engine/physics3d/src/space.hpp` carry places as `JPH::RVec3`) and adds
+`, double precision` to `SLASH_COMPILER_ID`, so gameplay libraries match. What the render device
+takes stays float: `Vec2f` and `Vec3f` (`slash/core/math.hpp`, the same types as `Vec2` and `Vec3`
+in single builds) and `to_float`. `scene3d::Renderer` draws around a render origin, the camera's
+place rounded to 1024 meters (`render_origin_for`; zero in single builds): `global` in `prepare`
+places everything relative to it. Code that mixes the two narrows with `static_cast<float>` or
+`to_float` and passes `<real_t>` to `std::min`, `max` and `clamp`; the `double` CI job builds
+with warnings as errors and runs the unit tests. `examples/large-world-precision` drops a crate
+ten thousand kilometers out.
+
 ## Navigation
 
 `engine/navigation` is navigation, as Godot 4.6's `NavigationServer2D` and `NavigationServer3D`,

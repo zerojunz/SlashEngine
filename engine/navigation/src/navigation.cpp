@@ -354,11 +354,26 @@ struct Placement {
     [[nodiscard]] std::array<float, 12> key() const {
         if (three_d) {
             const world::Affine3D& a = affine_3d;
-            return {a.x.x, a.x.y, a.x.z, a.y.x,      a.y.y,      a.y.z,
-                    a.z.x, a.z.y, a.z.z, a.origin.x, a.origin.y, a.origin.z};
+            return {static_cast<float>(a.x.x),      static_cast<float>(a.x.y),
+                    static_cast<float>(a.x.z),      static_cast<float>(a.y.x),
+                    static_cast<float>(a.y.y),      static_cast<float>(a.y.z),
+                    static_cast<float>(a.z.x),      static_cast<float>(a.z.y),
+                    static_cast<float>(a.z.z),      static_cast<float>(a.origin.x),
+                    static_cast<float>(a.origin.y), static_cast<float>(a.origin.z)};
         }
         const world::Affine2D& a = affine_2d;
-        return {a.x.x, a.x.y, a.y.x, a.y.y, a.origin.x, a.origin.y, 0, 0, 0, 0, 0, 0};
+        return {static_cast<float>(a.x.x),
+                static_cast<float>(a.x.y),
+                static_cast<float>(a.y.x),
+                static_cast<float>(a.y.y),
+                static_cast<float>(a.origin.x),
+                static_cast<float>(a.origin.y),
+                0,
+                0,
+                0,
+                0,
+                0,
+                0};
     }
 };
 
@@ -1148,10 +1163,10 @@ void drop_stale_agents(const world::World& world, State& state) {
 // RVO2 simulation, which gives each agent a safe velocity.
 
 rvo::V2 ground(Vec3 point) {
-    return {point.x, point.z};
+    return {static_cast<float>(point.x), static_cast<float>(point.z)};
 }
 rvo::V3 rvo_point(Vec3 point) {
-    return {point.x, point.y, point.z};
+    return {static_cast<float>(point.x), static_cast<float>(point.y), static_cast<float>(point.z)};
 }
 
 // Godot's Vector3::limit_length (and Vector2's, for (x, 0, y)).
@@ -1374,7 +1389,8 @@ private:
             const float height = [&] {
                 if constexpr (kThreeD) {
                     const Vec3 y = tree_3d_.global(order.entity).y;
-                    return std::max(std::sqrt((y.x * y.x) + (y.y * y.y) + (y.z * y.z)), 0.001F) *
+                    return std::max<real_t>(std::sqrt((y.x * y.x) + (y.y * y.y) + (y.z * y.z)),
+                                            0.001F) *
                            obstacle.height;
                 } else {
                     return 1.0F; // the 2D map's outlines keep Obstacle2D's default height
@@ -1386,7 +1402,7 @@ private:
                 position = global.origin;
                 velocity = obstacle.velocity;
                 const auto safe = [](Vec3 axis) {
-                    return std::max(
+                    return std::max<real_t>(
                         std::sqrt((axis.x * axis.x) + (axis.y * axis.y) + (axis.z * axis.z)),
                         0.001F);
                 };
@@ -1398,14 +1414,16 @@ private:
                 for (const Vec3 v : obstacle.vertices) {
                     const float x = ((cs.x * scale.x) * v.x) + ((cs.y * scale.z) * v.z);
                     const float z = ((-cs.y * scale.x) * v.x) + ((cs.x * scale.z) * v.z);
-                    outline.push_back({x + position.x, z + position.z});
+                    outline.push_back(
+                        {static_cast<float>(x + position.x), static_cast<float>(z + position.z)});
                 }
             } else {
                 const world::Affine2D global = tree_2d_.global_affine(order.entity);
                 position = to_map(global.origin);
                 velocity = to_map(obstacle.velocity);
                 const auto safe = [](Vec2 axis) {
-                    return std::max(std::sqrt((axis.x * axis.x) + (axis.y * axis.y)), 0.001F);
+                    return std::max<real_t>(std::sqrt((axis.x * axis.x) + (axis.y * axis.y)),
+                                            0.001F);
                 };
                 radius = std::max(safe(global.x), safe(global.y)) * obstacle.radius;
                 // The global transform less its translation, then the position added.
@@ -1413,7 +1431,8 @@ private:
                 for (const Vec2 v : obstacle.vertices) {
                     const Vec2 turned{(global.x.x * v.x) + (global.y.x * v.y),
                                       (global.x.y * v.x) + (global.y.y * v.y)};
-                    outline.push_back({turned.x + global.origin.x, turned.y + global.origin.y});
+                    outline.push_back({static_cast<float>(turned.x + global.origin.x),
+                                       static_cast<float>(turned.y + global.origin.y)});
                 }
             }
             const bool use_3d = [&] {

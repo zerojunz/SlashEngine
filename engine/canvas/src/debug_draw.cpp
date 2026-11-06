@@ -80,7 +80,11 @@ public:
         const std::array<std::uint8_t, 4> rgba{to_byte(color.x), to_byte(color.y), to_byte(color.z),
                                                to_byte(color.w)};
         for (const Vec2 point : {a, b, c}) {
-            out_->push_back({.x = point.x, .y = point.y, .u = 0.0F, .v = 0.0F, .rgba = rgba});
+            out_->push_back({.x = static_cast<float>(point.x),
+                             .y = static_cast<float>(point.y),
+                             .u = 0.0F,
+                             .v = 0.0F,
+                             .rgba = rgba});
         }
     }
 

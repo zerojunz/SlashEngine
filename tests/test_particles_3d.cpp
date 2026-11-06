@@ -184,7 +184,7 @@ TEST_CASE("3D particles spread in a cone about direction, flattened by flatness"
         const float most = std::cos(30.0F * std::numbers::pi_v<float> / 180.0F);
         CHECK(length(particle.velocity) == doctest::Approx(1.0));
         CHECK(particle.velocity.x >= (most * most) - 1e-5F);
-        cone_y = std::max(cone_y, std::abs(particle.velocity.y));
+        cone_y = std::max<slash::real_t>(cone_y, std::abs(particle.velocity.y));
     }
     CHECK(cone_y > 0.1F);
     for (const scene3d::Particle3D& particle : scene.live(fan)) {

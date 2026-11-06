@@ -37,30 +37,30 @@ using particle_math::sign;
 using particle_math::times;
 using Coord = particle_math::Coord;
 
-Vec2 operator/(Vec2 v, float s) {
+Vec2f operator/(Vec2f v, float s) {
     return {v.x / s, v.y / s};
 }
 
-float dot(Vec2 a, Vec2 b) {
+float dot(Vec2f a, Vec2f b) {
     return (a.x * b.x) + (a.y * b.y);
 }
 
-float length(Vec2 v) {
+float length(Vec2f v) {
     return std::sqrt(dot(v, v));
 }
 
 // v made a unit vector, or zero for zero (GLSL's normalize gives NaN there).
-Vec2 normalize(Vec2 v) {
+Vec2f normalize(Vec2f v) {
     const float l = length(v);
-    return l > 0.0F ? v / l : Vec2{};
+    return l > 0.0F ? v / l : Vec2f{};
 }
 
 // A 2D affine transform as ParticleStep::emission holds one, applied to a point or a vector.
-Vec2 transform_point(const std::array<float, 6>& t, Vec2 p) {
+Vec2f transform_point(const std::array<float, 6>& t, Vec2f p) {
     return {(t[0] * p.x) + (t[2] * p.y) + t[4], (t[1] * p.x) + (t[3] * p.y) + t[5]};
 }
 
-Vec2 transform_vector(const std::array<float, 6>& t, Vec2 v) {
+Vec2f transform_vector(const std::array<float, 6>& t, Vec2f v) {
     return {(t[0] * v.x) + (t[2] * v.y), (t[1] * v.x) + (t[3] * v.y)};
 }
 
@@ -105,14 +105,14 @@ bool graph_active(const ParticleProgram& graph, const Registers& registers) {
 }
 
 // Godot's get_noise_direction, at a point on the screen.
-Vec3 noise_direction(const ParticleProcess& p, const ParticleStep& step, Vec2 pos) {
+Vec3f noise_direction(const ParticleProcess& p, const ParticleStep& step, Vec2f pos) {
     const float contrast = std::max(p.turbulence_noise_strength - 1.0F, 0.0F) * 70.0F;
     const float frequency = turbulence_frequency(p.turbulence_noise_scale);
     const Coord at{(pos.x * frequency) + (step.time * p.turbulence_noise_speed.x),
                    (pos.y * frequency) + (step.time * p.turbulence_noise_speed.y),
                    (0.0F * frequency) + (step.time * p.turbulence_noise_speed.z),
                    0.0F + (step.time * p.turbulence_noise_speed_random)};
-    const Vec3 direction = curl_3d(at, contrast);
+    const Vec3f direction = curl_3d(at, contrast);
     return mix(direction * 0.9F, direction, p.turbulence_noise_strength - 9.0F);
 }
 
@@ -235,7 +235,7 @@ void display_at(const ParticleProcess& p, Display& display, float life) {
 }
 
 // get_random_direction_from_spread for 2D.
-Vec2 random_direction(const ParticleProcess& p, std::uint32_t& seed, float spread) {
+Vec2f random_direction(const ParticleProcess& p, std::uint32_t& seed, float spread) {
     float angle = rand_m1_p1(seed) * (spread * kDegreesToRadians);
     angle += p.direction.x != 0.0F ? atan2(p.direction.y, p.direction.x)
                                    : sign(p.direction.y) * (kPi / 2.0F);
@@ -243,8 +243,8 @@ Vec2 random_direction(const ParticleProcess& p, std::uint32_t& seed, float sprea
 }
 
 // calculate_initial_position for 2D.
-Vec2 initial_position(const ParticleProcess& p, const Display& display, std::uint32_t& seed) {
-    Vec2 pos;
+Vec2f initial_position(const ParticleProcess& p, const Display& display, std::uint32_t& seed) {
+    Vec2f pos;
     switch (p.emission_shape) {
     case EmissionShape::Point:
         break;
@@ -253,7 +253,7 @@ Vec2 initial_position(const ParticleProcess& p, const Display& display, std::uin
         const float s = (rand_from_seed(seed) * 2.0F) - 1.0F;
         const float t = rand_from_seed(seed) * 2.0F * kPi;
         const float radius = p.emission_sphere_radius * std::sqrt(1.0F - (s * s));
-        const Vec2 turn = cos_sin(t);
+        const Vec2f turn = cos_sin(t);
         pos = {radius * turn.x, radius * turn.y};
         if (p.emission_shape == EmissionShape::Sphere) {
             const float along = rand_from_seed(seed);
@@ -282,7 +282,7 @@ Vec2 initial_position(const ParticleProcess& p, const Display& display, std::uin
         const float angle = rand_from_seed(seed) * 2.0F * kPi;
         const float r = std::sqrt((rand_from_seed(seed) * ((radius * radius) - (inner * inner))) +
                                   (inner * inner));
-        const Vec2 turn = cos_sin(angle);
+        const Vec2f turn = cos_sin(angle);
         pos = {turn.y * r, turn.x * r};
         break;
     }
@@ -296,8 +296,8 @@ Vec2 initial_position(const ParticleProcess& p, const Display& display, std::uin
 struct Emitted {
     std::uint32_t count = 0;
     bool keep_velocity = false;
-    Vec2 origin;
-    Vec2 velocity;
+    Vec2f origin;
+    Vec2f velocity;
     Vec4 basis;
 };
 
@@ -375,14 +375,14 @@ void start(Particle& particle, const ParticleProcess& p, const ParticleStep& ste
         particle.origin = initial_position(p, display, seed);
         if (p.turbulence_enabled) {
             const float displacement = random_param(p, ParticleParam::TurbulenceDisplacement, seed);
-            const Vec3 direction = noise_direction(p, step, particle.origin);
-            particle.origin = particle.origin + (Vec2{direction.x, direction.y} * displacement);
+            const Vec3f direction = noise_direction(p, step, particle.origin);
+            particle.origin = particle.origin + (Vec2f{direction.x, direction.y} * displacement);
         }
         // TRANSFORM = EMISSION_TRANSFORM * TRANSFORM, from an identity basis.
         particle.basis = {step.emission[0], step.emission[1], step.emission[2], step.emission[3]};
         particle.origin = transform_point(step.emission, particle.origin);
     }
-    Vec2 velocity;
+    Vec2f velocity;
     if (from != nullptr && from->keep_velocity) {
         velocity = from->velocity;
     } else {
@@ -390,8 +390,8 @@ void start(Particle& particle, const ParticleProcess& p, const ParticleStep& ste
         if (p.emission_shape == EmissionShape::DirectedPoints && from_points(p)) {
             const std::size_t point = emission_point(p, display);
             // As Godot's black default texture, a point with no normal doesn't move.
-            const Vec2 normal =
-                point < p.emission_normals.size() ? p.emission_normals[point] : Vec2{};
+            const Vec2f normal =
+                point < p.emission_normals.size() ? p.emission_normals[point] : Vec2f{};
             velocity = {(velocity.x * normal.x) + (velocity.y * normal.y),
                         (velocity.x * normal.y) - (velocity.y * normal.x)};
         }
@@ -428,35 +428,35 @@ void start(Particle& particle, const ParticleProcess& p, const ParticleStep& ste
 }
 
 // process_orbit_displacement for 2D.
-Vec2 orbit_displacement(const ParticleProcess& p, const Dynamics& dynamics, float life,
-                        const Particle& particle, const ParticleStep& step, float delta) {
+Vec2f orbit_displacement(const ParticleProcess& p, const Dynamics& dynamics, float life,
+                         const Particle& particle, const ParticleStep& step, float delta) {
     if (std::abs(dynamics.orbit_velocity) < 0.01F || delta < 0.001F) {
         return {};
     }
     const float amount =
         dynamics.orbit_velocity * sample_curve(curve(p, ParticleParam::OrbitVelocity), life, 1.0F);
-    Vec2 displacement;
+    Vec2f displacement;
     if (amount != 0.0F) {
-        const Vec2 diff = particle.origin - Vec2{step.emission[4], step.emission[5]};
-        const Vec2 turn = cos_sin(amount * kPi * 2.0F * delta);
-        const Vec2 turned{(turn.x * diff.x) + (turn.y * diff.y),
-                          (-turn.y * diff.x) + (turn.x * diff.y)};
+        const Vec2f diff = particle.origin - Vec2f{step.emission[4], step.emission[5]};
+        const Vec2f turn = cos_sin(amount * kPi * 2.0F * delta);
+        const Vec2f turned{(turn.x * diff.x) + (turn.y * diff.y),
+                           (-turn.y * diff.x) + (turn.x * diff.y)};
         displacement = turned - diff;
     }
     return transform_vector(step.emission, displacement / delta);
 }
 
 // process_radial_displacement.
-Vec2 radial_displacement(const ParticleProcess& p, const Dynamics& dynamics, float life,
-                         std::uint32_t& seed, const Particle& particle, const ParticleStep& step,
-                         float delta) {
+Vec2f radial_displacement(const ParticleProcess& p, const Dynamics& dynamics, float life,
+                          std::uint32_t& seed, const Particle& particle, const ParticleStep& step,
+                          float delta) {
     if (delta < 0.001F) {
         return {};
     }
     const float multiplier = sample_curve(curve(p, ParticleParam::RadialVelocity), life, 1.0F);
-    const Vec2 pivot = transform_point(step.emission, p.velocity_pivot);
-    const Vec2 away = particle.origin - pivot;
-    Vec2 out;
+    const Vec2f pivot = transform_point(step.emission, p.velocity_pivot);
+    const Vec2f away = particle.origin - pivot;
+    Vec2f out;
     if (length(away) > 0.01F) {
         out = normalize(away) * multiplier * dynamics.radial_velocity;
     } else {
@@ -524,7 +524,7 @@ void process(Particle& particle, const ParticleProcess& p, const ParticleStep& s
         active = false;
     }
 
-    Vec2 controlled = orbit_displacement(p, dynamics, life, particle, step, delta);
+    Vec2f controlled = orbit_displacement(p, dynamics, life, particle, step, delta);
     controlled = controlled + radial_displacement(p, dynamics, life, seed, particle, step, delta);
 
     physical.linear_accel *= sample_curve(curve(p, ParticleParam::LinearAccel), life, 1.0F);
@@ -532,20 +532,20 @@ void process(Particle& particle, const ParticleProcess& p, const ParticleStep& s
     physical.tangent_accel *= sample_curve(curve(p, ParticleParam::TangentialAccel), life, 1.0F);
     physical.damping *= sample_curve(curve(p, ParticleParam::Damping), life, 1.0F);
 
-    Vec3 built{particle.userdata.x, particle.userdata.y, particle.userdata.z};
-    Vec2 force = p.gravity;
+    Vec3f built{particle.userdata.x, particle.userdata.y, particle.userdata.z};
+    Vec2f force = p.gravity;
     if (length(built) > 0.0F) {
-        const Vec3 along = normalize(built);
-        force = force + (Vec2{along.x, along.y} * physical.linear_accel);
+        const Vec3f along = normalize(built);
+        force = force + (Vec2f{along.x, along.y} * physical.linear_accel);
     }
-    const Vec2 diff = particle.origin - Vec2{step.emission[4], step.emission[5]};
+    const Vec2f diff = particle.origin - Vec2f{step.emission[4], step.emission[5]};
     if (length(diff) > 0.0F) {
         force = force + (normalize(diff) * physical.radial_accel);
     }
     if (length(diff) > 0.0F) {
-        force = force + (normalize(Vec2{-diff.y, diff.x}) * physical.tangent_accel);
+        force = force + (normalize(Vec2f{-diff.y, diff.x}) * physical.tangent_accel);
     }
-    built = built + Vec3{force.x * delta, force.y * delta, 0.0F};
+    built = built + Vec3f{force.x * delta, force.y * delta, 0.0F};
     if (physical.damping > 0.0F) {
         float v = length(built);
         if (!p.damping_as_friction) {
@@ -554,32 +554,32 @@ void process(Particle& particle, const ParticleProcess& p, const ParticleStep& s
             // Godot's friction, for a particle of 0.05 kg.
             v -= v * v * physical.damping * 0.05F * delta;
         }
-        built = v < 0.0F ? Vec3{} : normalize(built) * v;
+        built = v < 0.0F ? Vec3f{} : normalize(built) * v;
     }
 
     // A rigid particle is pushed out of the shape, loses its speed into it and bounces back.
     const bool collided = contact.collided && p.collision_mode != ParticleCollision::Disabled;
     if (collided && p.collision_mode == ParticleCollision::Rigid) {
-        const Vec3 normal{contact.normal.x, contact.normal.y, 0.0F};
+        const Vec3f normal{contact.normal.x, contact.normal.y, 0.0F};
         const float response = dot(normal, built);
         const float bounces =
             std::abs(response) >= 2.0F / std::clamp(p.collision_bounce + 1.0F, 1.0F, 2.0F) ? 1.0F
                                                                                            : 0.0F;
         particle.origin = particle.origin + (contact.normal * contact.depth);
         built = built - (normal * response);
-        built = mix(built, Vec3{}, std::clamp(p.collision_friction, 0.0F, 1.0F));
+        built = mix(built, Vec3f{}, std::clamp(p.collision_friction, 0.0F, 1.0F));
         built = built - (normal * (response * (p.collision_bounce * bounces)));
     } else if (collided && p.collision_mode == ParticleCollision::HideOnContact) {
         active = false;
     }
 
     // Turbulence before limiting, but not for a particle bouncing off a shape.
-    Vec3 controlled3{controlled.x, controlled.y, 0.0F};
+    Vec3f controlled3{controlled.x, controlled.y, 0.0F};
     const bool bounced = collided && p.collision_mode == ParticleCollision::Rigid;
     if (p.turbulence_enabled && !bounced) {
         const float influence =
             sample_curve(curve(p, ParticleParam::TurbulenceInfluence), life, 1.0F);
-        const Vec3 direction = normalize(noise_direction(p, step, particle.origin));
+        const Vec3f direction = normalize(noise_direction(p, step, particle.origin));
         const float amount = std::clamp(dynamics.turbulence_influence * influence, 0.0F, 1.0F) *
                              (delta <= 0.0F ? 0.0F : 1.0F);
         const float boost = 1.0F + ((1.0F - amount) * 0.2F);
@@ -590,13 +590,13 @@ void process(Particle& particle, const ParticleProcess& p, const ParticleStep& s
     particle.userdata.y = built.y;
     particle.userdata.z = built.z;
 
-    Vec3 final_velocity = controlled3 + built;
+    Vec3f final_velocity = controlled3 + built;
     if (!p.velocity_limit_curve.empty() && length(final_velocity) > 0.001F) {
         const float limit = std::abs(sample_curve(p.velocity_limit_curve, life, 0.0F));
         final_velocity =
             normalize(final_velocity) * std::min(std::abs(length(final_velocity)), limit);
     }
-    Vec2 velocity{final_velocity.x, final_velocity.y};
+    Vec2f velocity{final_velocity.x, final_velocity.y};
 
     display_at(p, display, life);
 
@@ -635,7 +635,7 @@ void process(Particle& particle, const ParticleProcess& p, const ParticleStep& s
         const std::array<float, 4>& look = registers.at(kParticleOutRegister + 2);
         if ((graph.outputs & kParticleOutVelocity) != 0) {
             // The forces carry the change on.
-            const Vec2 changed{motion[2], motion[3]};
+            const Vec2f changed{motion[2], motion[3]};
             particle.userdata.x = particle.userdata.x + (changed.x - velocity.x);
             particle.userdata.y = particle.userdata.y + (changed.y - velocity.y);
             velocity = changed;
@@ -669,14 +669,14 @@ void process(Particle& particle, const ParticleProcess& p, const ParticleStep& s
         particle.origin = particle.origin + (velocity * delta);
     }
 
-    Vec2 x_axis;
-    Vec2 y_axis;
+    Vec2f x_axis;
+    Vec2f y_axis;
     if (p.align_y && (graph.outputs & kParticleOutAngle) == 0) {
         y_axis = length(velocity) > 0.0F ? normalize(velocity)
-                                         : normalize(Vec2{particle.basis.z, particle.basis.w});
-        x_axis = normalize(Vec2{y_axis.y, -y_axis.x});
+                                         : normalize(Vec2f{particle.basis.z, particle.basis.w});
+        x_axis = normalize(Vec2f{y_axis.y, -y_axis.x});
     } else {
-        const Vec2 turn = cos_sin(particle.custom.x);
+        const Vec2f turn = cos_sin(particle.custom.x);
         x_axis = {turn.x, -turn.y};
         y_axis = {turn.y, turn.x};
     }
@@ -702,27 +702,27 @@ float collision_size(const Particle& particle, const ParticleProcess& p, const P
     if (!p.collision_use_scale) {
         return step.collision_size;
     }
-    const float x = length(Vec2{particle.basis.x, particle.basis.y});
-    const float y = length(Vec2{particle.basis.z, particle.basis.w});
+    const float x = length(Vec2f{particle.basis.x, particle.basis.y});
+    const float y = length(Vec2f{particle.basis.z, particle.basis.w});
     const float z = started ? 1.0F : (x + y) * 0.5F;
     return step.collision_size * ((x + y + z) * 0.33333333333F);
 }
 
 // Godot's 2D collision: the particle and its size taken to the shapes, and the way out and the
 // depth brought back.
-ParticleContact shape_contact(Vec2 origin, float size, const ParticleStep& step,
+ParticleContact shape_contact(Vec2f origin, float size, const ParticleStep& step,
                               std::span<const ParticleShape> shapes) {
     const std::array<float, 6>& to = step.to_shapes;
-    const Vec2 at{(to[0] * origin.x) + (to[2] * origin.y) + to[4],
-                  (to[1] * origin.x) + (to[3] * origin.y) + to[5]};
-    ParticleContact contact = particle_contact(at, size * length(Vec2{to[2], to[3]}), shapes);
+    const Vec2f at{(to[0] * origin.x) + (to[2] * origin.y) + to[4],
+                   (to[1] * origin.x) + (to[3] * origin.y) + to[5]};
+    ParticleContact contact = particle_contact(at, size * length(Vec2f{to[2], to[3]}), shapes);
     if (contact.collided) {
         const std::array<float, 4>& from = step.from_shapes;
-        const Vec2 out = contact.normal * contact.depth;
-        const Vec2 back{(from[0] * out.x) + (from[2] * out.y),
-                        (from[1] * out.x) + (from[3] * out.y)};
+        const Vec2f out = contact.normal * contact.depth;
+        const Vec2f back{(from[0] * out.x) + (from[2] * out.y),
+                         (from[1] * out.x) + (from[3] * out.y)};
         contact.depth = length(back);
-        contact.normal = contact.depth > 0.0F ? back / contact.depth : Vec2{0.0F, -1.0F};
+        contact.normal = contact.depth > 0.0F ? back / contact.depth : Vec2f{0.0F, -1.0F};
     }
     return contact;
 }
@@ -887,8 +887,8 @@ float sample_curve(const ParticleCurve& curve, float offset, float fallback) {
     }
     for (std::size_t i = 1; i < curve.size(); ++i) {
         if (offset < curve[i].x) {
-            const Vec2 a = curve[i - 1];
-            const Vec2 b = curve[i];
+            const Vec2f a = curve[i - 1];
+            const Vec2f b = curve[i];
             const float t = (offset - a.x) / (b.x - a.x);
             return a.y + ((b.y - a.y) * t);
         }
@@ -970,13 +970,13 @@ void process_particle_chain(std::span<const ParticleChainLink> links) {
     }
 }
 
-ParticleContact particle_contact(Vec2 point, float size, std::span<const ParticleShape> shapes) {
+ParticleContact particle_contact(Vec2f point, float size, std::span<const ParticleShape> shapes) {
     // The nearest point on any edge, and whether the point is inside a closed shape by the
     // even-odd rule. Godot samples a distance field drawn from the shapes; this is the distance
     // it approximates, worked out exactly so every device gets the same.
     float nearest_squared = std::numeric_limits<float>::max();
-    Vec2 from_nearest; // the way from the nearest point on an edge to the point
-    Vec2 along;
+    Vec2f from_nearest; // the way from the nearest point on an edge to the point
+    Vec2f along;
     bool inside = false;
     for (const ParticleShape& shape : shapes) {
         const std::size_t count = shape.points.size();
@@ -988,20 +988,20 @@ ParticleContact particle_contact(Vec2 point, float size, std::span<const Particl
         }
         bool odd = false;
         for (std::size_t i = 0; i < edges; ++i) {
-            const Vec2 a = shape.points[i];
-            const Vec2 b = shape.points[(i + 1) % count];
-            const Vec2 ab = b - a;
-            const Vec2 ap = point - a;
+            const Vec2f a = shape.points[i];
+            const Vec2f b = shape.points[(i + 1) % count];
+            const Vec2f ab = b - a;
+            const Vec2f ap = point - a;
             const float length_squared = dot(ab, ab);
             const float t = length_squared > 0.0F ? dot(ap, ab) / length_squared : 0.0F;
             // Past an end, the way from it; beside the edge, straight out from it, worked out
             // from the cross product so a point a hair from a long edge still gets its normal.
-            Vec2 away = ap;
+            Vec2f away = ap;
             if (t >= 1.0F) {
                 away = point - b;
             } else if (t > 0.0F) {
                 const float cross = (ab.x * ap.y) - (ab.y * ap.x);
-                away = Vec2{-ab.y, ab.x} * (cross / length_squared);
+                away = Vec2f{-ab.y, ab.x} * (cross / length_squared);
             }
             const float distance_squared = dot(away, away);
             if (distance_squared < nearest_squared) {
@@ -1032,7 +1032,7 @@ ParticleContact particle_contact(Vec2 point, float size, std::span<const Particl
     } else {
         // On an edge: out across it, to the left of the way it runs.
         contact.normal =
-            length(along) > 0.0F ? normalize(Vec2{along.y, -along.x}) : Vec2{0.0F, -1.0F};
+            length(along) > 0.0F ? normalize(Vec2f{along.y, -along.x}) : Vec2f{0.0F, -1.0F};
     }
     return contact;
 }
@@ -1062,7 +1062,7 @@ void particle_vertices(std::span<const Particle> particles, const ParticleDraw& 
     const auto h = static_cast<float>(std::max(draw.hframes, 1U));
     const auto v = static_cast<float>(std::max(draw.vframes, 1U));
     const float total = h * v;
-    const Vec2 half = draw.size * 0.5F;
+    const Vec2f half = draw.size * 0.5F;
     const Vertex2D none{.x = 0.0F, .y = 0.0F, .u = 0.0F, .v = 0.0F, .rgba = {0, 0, 0, 0}};
     const auto rgba_of = [&](Vec4 color) {
         color = times(color, draw.modulate);
@@ -1091,12 +1091,12 @@ void particle_vertices(std::span<const Particle> particles, const ParticleDraw& 
         const float v1 = v0 + (1.0F / v);
         if (trail == 1) {
             const std::array<std::uint8_t, 4> rgba = rgba_of(particle.color);
-            const Vec2 at = particle.origin + (particle.velocity * draw.remainder);
-            const Vec2 x_axis{particle.basis.x, particle.basis.y};
-            const Vec2 y_axis{particle.basis.z, particle.basis.w};
+            const Vec2f at = particle.origin + (particle.velocity * draw.remainder);
+            const Vec2f x_axis{particle.basis.x, particle.basis.y};
+            const Vec2f y_axis{particle.basis.z, particle.basis.w};
             const auto corner = [&](float sx, float sy, float u, float tv) {
-                const Vec2 point = transform_point(draw.transform, at + (x_axis * (sx * half.x)) +
-                                                                       (y_axis * (sy * half.y)));
+                const Vec2f point = transform_point(draw.transform, at + (x_axis * (sx * half.x)) +
+                                                                        (y_axis * (sy * half.y)));
                 return Vertex2D{.x = point.x, .y = point.y, .u = u, .v = tv, .rgba = rgba};
             };
             const Vertex2D top_left = corner(-1.0F, -1.0F, u0, v0);
@@ -1128,14 +1128,14 @@ void particle_vertices(std::span<const Particle> particles, const ParticleDraw& 
             const Particle& c = bone(b);
             const float behind = static_cast<float>((b * draw.trail_steps) % trail) /
                                  static_cast<float>(trail) * draw.step_delta;
-            const Vec2 at = c.origin - (c.velocity * behind) + (c.velocity * draw.remainder);
-            return at + (Vec2{c.basis.x, c.basis.y} * (side * half.x));
+            const Vec2f at = c.origin - (c.velocity * behind) + (c.velocity * draw.remainder);
+            return at + (Vec2f{c.basis.x, c.basis.y} * (side * half.x));
         };
         const auto ring_vertex = [&](std::uint32_t r, float side, float u) {
             const auto [first, second] = ring_bones(r);
             const float blend =
                 1.0F - (static_cast<float>(r % subdivisions) / static_cast<float>(subdivisions));
-            Vec2 point = place(first, side) * blend;
+            Vec2f point = place(first, side) * blend;
             Vec4 color = times(bone(first).color, blend);
             if (first != second) {
                 point = point + (place(second, side) * (1.0F - blend));

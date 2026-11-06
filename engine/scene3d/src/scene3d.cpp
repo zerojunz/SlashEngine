@@ -105,8 +105,10 @@ Bounds bounds_of(std::span<const render::Vertex3D> vertices) {
     Bounds out{.min = {first[0], first[1], first[2]}, .max = {first[0], first[1], first[2]}};
     for (const render::Vertex3D& vertex : vertices) {
         const auto& p = vertex.position;
-        out.min = {std::min(out.min.x, p[0]), std::min(out.min.y, p[1]), std::min(out.min.z, p[2])};
-        out.max = {std::max(out.max.x, p[0]), std::max(out.max.y, p[1]), std::max(out.max.z, p[2])};
+        out.min = {std::min<real_t>(out.min.x, p[0]), std::min<real_t>(out.min.y, p[1]),
+                   std::min<real_t>(out.min.z, p[2])};
+        out.max = {std::max<real_t>(out.max.x, p[0]), std::max<real_t>(out.max.y, p[1]),
+                   std::max<real_t>(out.max.z, p[2])};
     }
     return out;
 }
@@ -217,11 +219,13 @@ void add_lights(const world::World& world, const world::Tree3D& tree,
             shone.spot_attenuation = light.spot_angle_attenuation;
         }
         const world::Affine3D placed = global(entity);
-        shone.position = {placed.origin.x, placed.origin.y, placed.origin.z};
+        shone.position = {static_cast<float>(placed.origin.x), static_cast<float>(placed.origin.y),
+                          static_cast<float>(placed.origin.z)};
         const Vec3 forward = normalized(scaled(placed.z, -1.0F));
-        shone.direction = {forward.x, forward.y, forward.z};
+        shone.direction = {static_cast<float>(forward.x), static_cast<float>(forward.y),
+                           static_cast<float>(forward.z)};
         const Vec3 up = normalized(placed.y);
-        shone.up = {up.x, up.y, up.z};
+        shone.up = {static_cast<float>(up.x), static_cast<float>(up.y), static_cast<float>(up.z)};
         const auto at = order.find(entity);
         out.push_back({.place = at != order.end() ? at->second : order.size(),
                        .entity = entity,
@@ -421,6 +425,18 @@ CameraView camera_view(const world::Camera3D& camera, const world::Affine3D& glo
         out.projection = render::perspective(fov_y, aspect, camera.near, camera.far);
     }
     return out;
+}
+
+Vec3 render_origin_for(Vec3 eye) {
+    if constexpr (std::is_same_v<real_t, double>) {
+        const auto snap = [](real_t v) {
+            return std::round(v / kRenderOriginGrid) * kRenderOriginGrid;
+        };
+        return {snap(eye.x), snap(eye.y), snap(eye.z)};
+    } else {
+        (void)eye;
+        return {};
+    }
 }
 
 Environment world_environment(const world::World& world, render::Color clear) {
@@ -706,7 +722,8 @@ sky_lights(const world::World& world, const world::Tree3D& tree,
         }
         const Vec3 forward = normalized(scaled(global(entity).z, -1.0F));
         render::SkyLight sun;
-        sun.direction = {forward.x, forward.y, forward.z};
+        sun.direction = {static_cast<float>(forward.x), static_cast<float>(forward.y),
+                         static_cast<float>(forward.z)};
         sun.color = rgb(light.light_color);
         sun.energy = light.light_negative ? -light.light_energy : light.light_energy;
         sun.angular_distance = light.light_angular_distance;
@@ -1082,8 +1099,10 @@ render::Material3D material(const world::StandardMaterial3D& standard,
     } else if (standard.cull_mode == "disabled") {
         out.cull = render::CullMode::Disabled;
     }
-    out.uv1_scale = {standard.uv1_scale.x, standard.uv1_scale.y};
-    out.uv1_offset = {standard.uv1_offset.x, standard.uv1_offset.y};
+    out.uv1_scale = {static_cast<float>(standard.uv1_scale.x),
+                     static_cast<float>(standard.uv1_scale.y)};
+    out.uv1_offset = {static_cast<float>(standard.uv1_offset.x),
+                      static_cast<float>(standard.uv1_offset.y)};
     out.disable_fog = standard.disable_fog;
     return out;
 }
@@ -1311,7 +1330,8 @@ render::LightmapCapture Renderer::capture(entt::entity entity, const Vec3& cente
                            .exposure = source.exposure});
     }
     const std::optional<LightmapSh> taken =
-        lightmap_capture(sources, {center.x, center.y, center.z});
+        lightmap_capture(sources, {static_cast<float>(center.x), static_cast<float>(center.y),
+                                   static_cast<float>(center.z)});
     if (!taken) {
         captured_.erase(entity);
         return out;
@@ -1534,8 +1554,10 @@ Result<render::MeshId> Renderer::soft_mesh(const std::string& key, const Primiti
     for (std::size_t i = 0; i < vertices.size(); ++i) {
         const Vec3 position = pose->positions[i];
         const Vec3 normal = pose->normals[i];
-        vertices[i].position = {position.x, position.y, position.z};
-        vertices[i].normal = {normal.x, normal.y, normal.z};
+        vertices[i].position = {static_cast<float>(position.x), static_cast<float>(position.y),
+                                static_cast<float>(position.z)};
+        vertices[i].normal = {static_cast<float>(normal.x), static_cast<float>(normal.y),
+                              static_cast<float>(normal.z)};
     }
     if (soft.id == render::MeshId::None) {
         auto made = device_->create_mesh(vertices, data.value().indices);
@@ -2181,6 +2203,8 @@ void Renderer::add_particles(const world::World& world, entt::entity entity,
                 p.previous + scaled(p.transform.origin - p.previous, interpolation);
             if (emitter.local_coords) {
                 model_place = place * model_place;
+            } else {
+                model_place.origin = model_place.origin - render_origin_;
             }
             const world::Affine3D placed =
                 billboard(model_place * piece.place, camera, mode, keep_scale, p.angle);
@@ -2201,12 +2225,15 @@ void Renderer::add_particles(const world::World& world, entt::entity entity,
                 out = from;
                 const Vec3 position =
                     placed.apply({from.position[0], from.position[1], from.position[2]});
-                out.position = {position.x, position.y, position.z};
+                out.position = {static_cast<float>(position.x), static_cast<float>(position.y),
+                                static_cast<float>(position.z)};
                 const Vec3 normal = normal_of({from.normal[0], from.normal[1], from.normal[2]});
-                out.normal = {normal.x, normal.y, normal.z};
+                out.normal = {static_cast<float>(normal.x), static_cast<float>(normal.y),
+                              static_cast<float>(normal.z)};
                 const Vec3 tangent =
                     normalized(placed.basis({from.tangent[0], from.tangent[1], from.tangent[2]}));
-                out.tangent = {tangent.x, tangent.y, tangent.z, from.tangent[3]};
+                out.tangent = {static_cast<float>(tangent.x), static_cast<float>(tangent.y),
+                               static_cast<float>(tangent.z), from.tangent[3]};
                 Vec2 uv{(from.uv[0] * uv_scale[0]) + uv_offset[0],
                         (from.uv[1] * uv_scale[1]) + uv_offset[1]};
                 if (mode == Billboard::Particles) {
@@ -2214,7 +2241,7 @@ void Renderer::add_particles(const world::World& world, entt::entity entity,
                         particle_frame_uv(uv, p.frame, look->particles_anim_h_frames,
                                           look->particles_anim_v_frames, look->particles_anim_loop);
                 }
-                out.uv = {uv.x, uv.y};
+                out.uv = {static_cast<float>(uv.x), static_cast<float>(uv.y)};
                 for (std::size_t c = 0; c < 4; ++c) {
                     out.rgba.at(c) = static_cast<std::uint8_t>(
                         std::lround(static_cast<float>(from.rgba.at(c)) * tint.at(c)));
@@ -2415,12 +2442,21 @@ void Renderer::add_gpu_particles(const world::World& world, entt::entity entity,
     if (emitter.local_coords) {
         sort = place.inverse().basis(sort);
     }
-    look.sort_direction = normalized(sort);
-    look.align_up = normalized(camera.y);
-    look.camera = particle_transform(camera);
+    look.sort_direction = to_float(normalized(sort));
+    look.align_up = to_float(normalized(camera.y));
+    // Particles in world coordinates are in the world, not around the render origin: their meshes
+    // are made there and drawn moved by it.
+    const Vec3 shift = emitter.local_coords ? Vec3{} : render_origin_;
+    world::Affine3D eye = camera;
+    eye.origin = eye.origin + shift;
+    look.camera = particle_transform(eye);
     // The meshes are in the world, drawn in the visibility box.
-    look.box_low = {box.min.x, box.min.y, box.min.z};
-    look.box_high = {box.max.x, box.max.y, box.max.z};
+    const Vec3 low = box.min + shift;
+    const Vec3 high = box.max + shift;
+    look.box_low = {static_cast<float>(low.x), static_cast<float>(low.y),
+                    static_cast<float>(low.z)};
+    look.box_high = {static_cast<float>(high.x), static_cast<float>(high.y),
+                     static_cast<float>(high.z)};
     if (emitter.interpolate) {
         // Drawn between ticks, as the rest of the world is: where they were that much before the
         // tick ended.
@@ -2459,13 +2495,16 @@ void Renderer::add_gpu_particles(const world::World& world, entt::entity entity,
                 const world::Affine3D inverse = at.inverse();
                 for (render::Vertex3D& v : source) {
                     const Vec3 p = at.apply({v.position[0], v.position[1], v.position[2]});
-                    v.position = {p.x, p.y, p.z};
+                    v.position = {static_cast<float>(p.x), static_cast<float>(p.y),
+                                  static_cast<float>(p.z)};
                     const Vec3 n{v.normal[0], v.normal[1], v.normal[2]};
                     const Vec3 turned =
                         normalized(Vec3{dot(inverse.x, n), dot(inverse.y, n), dot(inverse.z, n)});
-                    v.normal = {turned.x, turned.y, turned.z};
+                    v.normal = {static_cast<float>(turned.x), static_cast<float>(turned.y),
+                                static_cast<float>(turned.z)};
                     const Vec3 t = normalized(at.basis({v.tangent[0], v.tangent[1], v.tangent[2]}));
-                    v.tangent = {t.x, t.y, t.z, v.tangent[3]};
+                    v.tangent = {static_cast<float>(t.x), static_cast<float>(t.y),
+                                 static_cast<float>(t.z), v.tangent[3]};
                 }
             }
             render::Material3D made = surface_material(piece.material, entity, field);
@@ -2546,7 +2585,7 @@ void Renderer::add_gpu_particles(const world::World& world, entt::entity entity,
             Draw draw;
             draw.mesh = mesh.id;
             draw.entity = entity;
-            draw.transform = world::Affine3D{}.matrix();
+            draw.transform = world::Affine3D{.origin = Vec3{} - shift}.matrix();
             draw.material = made;
             draw.layers = emitter.layers;
             draw.shadows = casting;
@@ -2770,8 +2809,14 @@ Bounds light_bounds(const render::Light3D& light) {
     const Vec3 up = normalized({light.up[0], light.up[1], light.up[2]});
     const Vec3 right{(up.y * back.z) - (up.z * back.y), (up.z * back.x) - (up.x * back.z),
                      (up.x * back.y) - (up.y * back.x)};
-    const std::array<float, 16> place{right.x, right.y, right.z, 0.0F, up.x, up.y, up.z, 0.0F,
-                                      back.x,  back.y,  back.z,  0.0F, at.x, at.y, at.z, 1.0F};
+    const std::array<float, 16> place{static_cast<float>(right.x), static_cast<float>(right.y),
+                                      static_cast<float>(right.z), 0.0F,
+                                      static_cast<float>(up.x),    static_cast<float>(up.y),
+                                      static_cast<float>(up.z),    0.0F,
+                                      static_cast<float>(back.x),  static_cast<float>(back.y),
+                                      static_cast<float>(back.z),  0.0F,
+                                      static_cast<float>(at.x),    static_cast<float>(at.y),
+                                      static_cast<float>(at.z),    1.0F};
     return placed_bounds({.min = {-size, -size, -range}, .max = {size, size, 0.0F}}, place);
 }
 
@@ -3261,14 +3306,27 @@ std::optional<Frame3D> Renderer::prepare(
             locals.emplace(entity, local);
         }
     }
-    const auto global = [&](entt::entity entity) { return tree.global(entity, locals); };
+    // Positions are drawn relative to the render origin, which double-precision builds keep near
+    // the camera, so what the device sees in floats stays near the origin however far the world
+    // reaches, as Godot's double builds keep rendering camera-relative.
+    render_origin_ =
+        render_origin_for(view_ ? view_->eye.origin : tree.global(camera, locals).origin);
+    const auto global = [&](entt::entity entity) {
+        world::Affine3D placed = tree.global(entity, locals);
+        placed.origin = placed.origin - render_origin_;
+        return placed;
+    };
 
     Frame3D frame;
     frame.camera = camera;
     const auto& lens = ecs.get<const world::Camera3D>(camera);
     const float aspect = width > 0.0F && height > 0.0F ? width / height : 1.0F;
-    const CameraView view = view_ ? *view_ : camera_view(lens, global(camera), aspect);
-    const world::Affine3D camera_global = view_ ? view_->eye : global(camera);
+    CameraView view = view_ ? *view_ : camera_view(lens, global(camera), aspect);
+    if (view_ && render_origin_ != Vec3{}) {
+        view.eye.origin = view.eye.origin - render_origin_;
+        view.view = view.eye.inverse().matrix();
+    }
+    const world::Affine3D camera_global = view_ ? view.eye : global(camera);
     camera_place_ = camera_global;
     frame.scene.camera = view.view;
     frame.scene.projection = view.projection;
@@ -3324,6 +3382,8 @@ std::optional<Frame3D> Renderer::prepare(
     }
     frame.scene.sky = env.sky;
     frame.scene.fog = env.fog;
+    // Height fog's height is in the world, measured from the render origin as the meshes are.
+    frame.scene.fog.height -= static_cast<float>(render_origin_.y);
     frame.scene.radiance = env.radiance;
     problems_.insert(problems_.end(), env.problems.begin(), env.problems.end());
     if (env.sky.kind != render::SkyKind::None || env.radiance.kind != render::SkyKind::None) {
@@ -3412,7 +3472,7 @@ std::optional<Frame3D> Renderer::prepare(
                 continue;
             }
             draw.mesh = moved.value();
-            draw.transform = world::Affine3D{}.matrix();
+            draw.transform = world::Affine3D{.origin = Vec3{} - render_origin_}.matrix();
         }
         bool shadows_disabled = false;
         if (auto override = override_material(world, entity, instance, shadows_disabled)) {
@@ -3504,14 +3564,24 @@ std::optional<Frame3D> Renderer::prepare(
         std::map<entt::entity, std::size_t> counts;
         for (Draw& draw : draws_) {
             const std::pair key{draw.entity, counts[draw.entity]++};
-            if (const auto found = drawn_.find(key);
-                found != drawn_.end() && found->second != draw.transform) {
-                draw.previous = found->second;
+            if (const auto found = drawn_.find(key); found != drawn_.end()) {
+                // Kept around the render origin of its frame: moved to this frame's.
+                std::array<float, 16> before = found->second;
+                if (drawn_origin_ != render_origin_) {
+                    const Vec3 shift = drawn_origin_ - render_origin_;
+                    before[12] += static_cast<float>(shift.x);
+                    before[13] += static_cast<float>(shift.y);
+                    before[14] += static_cast<float>(shift.z);
+                }
+                if (before != draw.transform) {
+                    draw.previous = before;
+                }
             }
             drawn.emplace(key, draw.transform);
         }
     }
     drawn_ = std::move(drawn);
+    drawn_origin_ = render_origin_;
     // A spatial shader's vertex() places corners where they were with the time of the frame before
     // too, as Godot's prev_data.time.
     const double step = moving && drawn_time_ && *drawn_time_ <= time ? time - *drawn_time_ : 0.0;
@@ -3611,7 +3681,8 @@ void Renderer::add_decals(const world::World& world, const world::Tree3D& tree,
         };
         render::Decal3D d;
         d.transform = global(entity).matrix();
-        d.size = {decal.size.x, decal.size.y, decal.size.z};
+        d.size = {static_cast<float>(decal.size.x), static_cast<float>(decal.size.y),
+                  static_cast<float>(decal.size.z)};
         d.albedo = image("texture_albedo", decal.texture_albedo);
         d.normal = image("texture_normal", decal.texture_normal);
         d.orm = image("texture_orm", decal.texture_orm);
@@ -3695,8 +3766,9 @@ void Renderer::add_fog_volumes(const world::World& world, const world::Tree3D& t
         render::FogVolume3D v;
         v.transform = global(entity).matrix();
         // Godot's set_size keeps each axis at 0 or more.
-        v.size = {std::max(volume.size.x, 0.0F), std::max(volume.size.y, 0.0F),
-                  std::max(volume.size.z, 0.0F)};
+        v.size = {static_cast<float>(std::max<real_t>(volume.size.x, 0.0F)),
+                  static_cast<float>(std::max<real_t>(volume.size.y, 0.0F)),
+                  static_cast<float>(std::max<real_t>(volume.size.z, 0.0F))};
         v.shape = fog_volume_shape(volume.shape);
         if (const auto* material = ecs.try_get<const world::FogMaterial>(entity)) {
             v.material = true;
@@ -3727,6 +3799,10 @@ Result<void> Renderer::reflect(const world::World& world, Frame3D& frame, render
                                render::RenderMethod method) {
     const auto& ecs = world.ecs();
     const world::Tree3D tree(world);
+    const auto relative = [this](world::Affine3D placed) {
+        placed.origin = placed.origin - render_origin_;
+        return placed;
+    };
     // The probes, largest first as Godot sorts them, then in the order they were made.
     struct Found {
         entt::entity entity;
@@ -3741,11 +3817,11 @@ Result<void> Renderer::reflect(const world::World& world, Frame3D& frame, render
                 continue;
             }
             const Vec3 half = scaled(probe.size, 0.5F);
-            found.push_back(
-                {.entity = entity,
-                 .probe = &probe,
-                 .place = orthonormalized(tree.global(entity)),
-                 .extent = std::sqrt((half.x * half.x) + (half.y * half.y) + (half.z * half.z))});
+            found.push_back({.entity = entity,
+                             .probe = &probe,
+                             .place = relative(orthonormalized(tree.global(entity))),
+                             .extent = static_cast<float>(std::sqrt(
+                                 (half.x * half.x) + (half.y * half.y) + (half.z * half.z)))});
         }
     }
     std::ranges::sort(found, [](const Found& a, const Found& b) {
@@ -3832,9 +3908,12 @@ Result<void> Renderer::reflect(const world::World& world, Frame3D& frame, render
                 scene.ambient = {0.0F, 0.0F, 0.0F};
                 background = clear;
             }
-            const std::array<float, 3> size{p.size.x, p.size.y, p.size.z};
-            const std::array<float, 3> offset{p.origin_offset.x, p.origin_offset.y,
-                                              p.origin_offset.z};
+            const std::array<float, 3> size{static_cast<float>(p.size.x),
+                                            static_cast<float>(p.size.y),
+                                            static_cast<float>(p.size.z)};
+            const std::array<float, 3> offset{static_cast<float>(p.origin_offset.x),
+                                              static_cast<float>(p.origin_offset.y),
+                                              static_cast<float>(p.origin_offset.z)};
             // Its LODs are picked from where the cube is drawn, by its own threshold over the
             // atlas's cube size, as Godot's _render_reflection_probe_step.
             pick_lods(f.place.apply(p.origin_offset),
@@ -3873,8 +3952,11 @@ Result<void> Renderer::reflect(const world::World& world, Frame3D& frame, render
         }
         reflections.probes.push_back(
             {.transform = transform,
-             .size = {p.size.x, p.size.y, p.size.z},
-             .origin_offset = {p.origin_offset.x, p.origin_offset.y, p.origin_offset.z},
+             .size = {static_cast<float>(p.size.x), static_cast<float>(p.size.y),
+                      static_cast<float>(p.size.z)},
+             .origin_offset = {static_cast<float>(p.origin_offset.x),
+                               static_cast<float>(p.origin_offset.y),
+                               static_cast<float>(p.origin_offset.z)},
              .intensity = p.intensity,
              .blend_distance = p.blend_distance,
              .box_projection = p.box_projection,
@@ -3903,10 +3985,12 @@ void Renderer::pick_lods(const Vec3& camera_position, const std::array<float, 16
         float distance = 1.0F;
         if (!orthogonal) {
             const Bounds box = placed_bounds(draw.box, draw.transform);
-            const Vec3 d{
-                std::max({0.0F, box.min.x - camera_position.x, camera_position.x - box.max.x}),
-                std::max({0.0F, box.min.y - camera_position.y, camera_position.y - box.max.y}),
-                std::max({0.0F, box.min.z - camera_position.z, camera_position.z - box.max.z})};
+            const Vec3 d{std::max<real_t>(
+                             {0.0F, box.min.x - camera_position.x, camera_position.x - box.max.x}),
+                         std::max<real_t>(
+                             {0.0F, box.min.y - camera_position.y, camera_position.y - box.max.y}),
+                         std::max<real_t>(
+                             {0.0F, box.min.z - camera_position.z, camera_position.z - box.max.z})};
             distance = std::sqrt((d.x * d.x) + (d.y * d.y) + (d.z * d.z));
         }
         const std::array<float, 16>& m = draw.transform;
@@ -3951,7 +4035,13 @@ void Renderer::cull_occluded(const world::World& world, const world::Tree3D& tre
     const std::array<int, 2> size = OcclusionBuffer::size_for(
         static_cast<int>(width), static_cast<int>(height), settings.rays_per_thread);
     occlusion_buffer_.resize(size[0], size[1]);
-    occluder_scene_.build(occluder_triangles(world, tree));
+    std::vector<std::array<Vec3, 3>> triangles = occluder_triangles(world, tree);
+    for (std::array<Vec3, 3>& triangle : triangles) {
+        for (Vec3& corner : triangle) {
+            corner = corner - render_origin_;
+        }
+    }
+    occluder_scene_.build(std::move(triangles));
     occlusion_buffer_.update(occluder_scene_,
                              {.transform = view.eye,
                               .projection = view.projection,

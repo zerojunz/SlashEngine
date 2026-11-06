@@ -100,7 +100,8 @@ void generate_lods(ModelSurface& surface, std::span<const world::Affine3D> bones
             }
             skinned = skinned + (bones[w.joints.at(k)].apply(p) * weight);
         }
-        positions[j] = {skinned.x, skinned.y, skinned.z};
+        positions[j] = {static_cast<float>(skinned.x), static_cast<float>(skinned.y),
+                        static_cast<float>(skinned.z)};
     }
 
     // Godot's importer keeps colors only where the file has them; a surface all white has none.

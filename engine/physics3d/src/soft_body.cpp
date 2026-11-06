@@ -92,7 +92,7 @@ std::shared_ptr<const scene3d::SoftBodyPose> pose_of(const SoftBody& soft, const
     const JPH::RVec3 center = body.GetCenterOfMassPosition();
     std::vector<Vec3> positions(points.size());
     for (std::size_t i = 0; i < points.size(); ++i) {
-        positions[i] = from_jolt(JPH::Vec3(center + points[i].mPosition));
+        positions[i] = from_jolt_place(center + points[i].mPosition);
     }
     std::vector<Vec3> normals(points.size());
     for (const JPH::SoftBodySharedSettings::Face& face : motion.GetFaces()) {

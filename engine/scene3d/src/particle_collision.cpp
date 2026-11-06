@@ -368,7 +368,7 @@ private:
             const Vec2 v2 = p2 - points[2];
             const auto dot2 = [](Vec2 a, Vec2 b) { return (a.x * b.x) + (a.y * b.y); };
             const auto towards = [&](Vec2 v, Vec2 e) {
-                return v - (e * std::clamp(dot2(v, e) / dot2(e, e), 0.0F, 1.0F));
+                return v - (e * std::clamp<real_t>(dot2(v, e) / dot2(e, e), 0.0F, 1.0F));
             };
             const Vec2 pq0 = towards(v0, e0);
             const Vec2 pq1 = towards(v1, e1);

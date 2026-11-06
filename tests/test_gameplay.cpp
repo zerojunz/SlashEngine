@@ -138,7 +138,16 @@ TEST_CASE("a game's code is found at .slash/gameplay in its project") {
 
 TEST_CASE("gameplay libraries are matched by compiler family and library ABI, not version") {
     // Released tools load a game built with the person's own compiler, of another version.
-    const std::string_view id = SLASH_COMPILER_ID;
+    std::string_view id = SLASH_COMPILER_ID;
+    // A double-precision engine's Vec2, Vec3 and Quat hold doubles, so it loads only code built
+    // for one.
+    constexpr std::string_view kDouble = ", double precision";
+#if defined(SLASH_REAL_T_IS_DOUBLE)
+    REQUIRE(id.ends_with(kDouble));
+    id.remove_suffix(kDouble.size());
+#else
+    CHECK_FALSE(id.ends_with(kDouble));
+#endif
 #if defined(__clang__)
     CHECK(id.starts_with("clang, "));
 #elif defined(__GNUC__)

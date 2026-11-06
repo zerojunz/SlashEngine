@@ -126,7 +126,8 @@ inline slash::scene3d::Model make(const std::vector<Bone>& bones, const Options&
     scene3d::ModelSurface surface;
     const auto add = [&](Vec3 at, std::uint16_t a, std::uint16_t b, float weight_a) {
         slash::render::Vertex3D vertex;
-        vertex.position = {at.x, at.y, at.z};
+        vertex.position = {static_cast<float>(at.x), static_cast<float>(at.y),
+                           static_cast<float>(at.z)};
         surface.vertices.push_back(vertex);
         scene3d::VertexWeights weights;
         weights.joints[0] = a;
@@ -262,8 +263,10 @@ inline void add_box(slash::scene3d::ModelSurface& surface, Vec3 low, Vec3 high) 
         for (const int c : ring) {
             slash::render::Vertex3D vertex;
             const Vec3 p = corner.at(static_cast<std::size_t>(c));
-            vertex.position = {p.x, p.y, p.z};
-            vertex.normal = {normal.x, normal.y, normal.z};
+            vertex.position = {static_cast<float>(p.x), static_cast<float>(p.y),
+                               static_cast<float>(p.z)};
+            vertex.normal = {static_cast<float>(normal.x), static_cast<float>(normal.y),
+                             static_cast<float>(normal.z)};
             surface.vertices.push_back(vertex);
         }
         for (const std::uint32_t i : {0U, 2U, 1U, 0U, 3U, 2U}) {

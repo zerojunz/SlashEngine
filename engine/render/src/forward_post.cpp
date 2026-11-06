@@ -884,7 +884,7 @@ void run_dof_blur_pass(const ForwardPostUniforms& uniforms, const HdrImage& sour
                 float accum = 1.0F;
                 float radius = uniforms.dof_blur[3];
                 for (float angle = 0.0F; radius < uniforms.dof_blur[0];) {
-                    const Vec2 turn = slash::cos_sin(angle);
+                    const Vec2f turn = slash::cos_sin(angle);
                     const Float4 sample = sample_hdr(source, u + (turn.x * pixel_x * radius),
                                                      v + (turn.y * pixel_y * radius));
                     float sample_size = std::abs(sample[3]);

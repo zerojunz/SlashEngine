@@ -38,7 +38,7 @@ constexpr int kMaxSamples = 512;
 // Frames a mesh seen stays shown with jitter, as HZBuffer::is_occluded's timeout.
 constexpr std::uint64_t kOcclusionTimeout = 9;
 
-static_assert(sizeof(Vec3) == 3 * sizeof(float), "meshoptimizer reads points as three floats");
+static_assert(sizeof(Vec3f) == 3 * sizeof(float), "meshoptimizer reads points as three floats");
 
 // The entities with a component in the order they were made.
 template <typename T>
@@ -245,27 +245,28 @@ void bake_surface(const world::Affine3D& transform, const std::vector<render::Ve
     if (source.empty() || source_indices.empty()) {
         return;
     }
-    std::vector<Vec3> vertices;
+    std::vector<Vec3f> vertices;
     vertices.reserve(source.size());
     for (const render::Vertex3D& vertex : source) {
-        vertices.push_back(
-            transform.apply({vertex.position[0], vertex.position[1], vertex.position[2]}));
+        vertices.push_back(to_float(
+            transform.apply({vertex.position[0], vertex.position[1], vertex.position[2]})));
     }
     std::vector<unsigned int> indices(source_indices.begin(), source_indices.end());
     if (std::abs(simplification) >= detail::kEpsilon) {
-        const float scale = meshopt_simplifyScale(&vertices[0].x, vertices.size(), sizeof(Vec3));
+        const float scale = meshopt_simplifyScale(&vertices[0].x, vertices.size(), sizeof(Vec3f));
         const float target_error = simplification / scale;
         float error = -1.0F;
         const std::size_t target = std::min<std::size_t>(indices.size(), 36);
         const std::size_t count = meshopt_simplify(
             indices.data(), indices.data(), indices.size(), &vertices[0].x, vertices.size(),
-            sizeof(Vec3), target, target_error, meshopt_SimplifyLockBorder, &error);
+            sizeof(Vec3f), target, target_error, meshopt_SimplifyLockBorder, &error);
         indices.resize(count);
     }
     std::vector<int> signed_indices(indices.begin(), indices.end());
-    strip(vertices, signed_indices);
+    std::vector<Vec3> points(vertices.begin(), vertices.end());
+    strip(points, signed_indices);
     const auto offset = static_cast<int>(out.vertices.size());
-    out.vertices.insert(out.vertices.end(), vertices.begin(), vertices.end());
+    out.vertices.insert(out.vertices.end(), points.begin(), points.end());
     for (const int index : signed_indices) {
         out.indices.push_back(offset + index);
     }
@@ -695,10 +696,14 @@ bool OcclusionBuffer::hidden(const Bounds& box) const {
         const int h = sizes_[static_cast<std::size_t>(lod)][1];
         const auto fw = static_cast<float>(w);
         const auto fh = static_cast<float>(h);
-        const auto min_x = static_cast<int>(clamp((rect_min.x * fw) - 1.0F, 0.0F, fw - 1.0F));
-        const auto max_x = static_cast<int>(clamp((rect_max.x * fw) + 1.0F, 0.0F, fw - 1.0F));
-        const auto min_y = static_cast<int>(clamp((rect_min.y * fh) - 1.0F, 0.0F, fh - 1.0F));
-        const auto max_y = static_cast<int>(clamp((rect_max.y * fh) + 1.0F, 0.0F, fh - 1.0F));
+        const auto min_x =
+            static_cast<int>(clamp<float>((rect_min.x * fw) - 1.0F, 0.0F, fw - 1.0F));
+        const auto max_x =
+            static_cast<int>(clamp<float>((rect_max.x * fw) + 1.0F, 0.0F, fw - 1.0F));
+        const auto min_y =
+            static_cast<int>(clamp<float>((rect_min.y * fh) - 1.0F, 0.0F, fh - 1.0F));
+        const auto max_y =
+            static_cast<int>(clamp<float>((rect_max.y * fh) + 1.0F, 0.0F, fh - 1.0F));
         samples += (max_x - min_x + 1) * (max_y - min_y + 1);
         if (samples > kMaxSamples) {
             return false;

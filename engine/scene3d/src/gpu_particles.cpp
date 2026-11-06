@@ -181,7 +181,7 @@ public:
         if (!s_.local_coords) {
             step.emission = particle_transform(transform_);
         }
-        step.emitter_velocity = velocity_;
+        step.emitter_velocity = to_float(velocity_);
         step.emitting = e.storage_emitting;
         step.system_phase = static_cast<float>(new_phase);
         step.prev_system_phase = static_cast<float>(e.phase);
@@ -333,8 +333,11 @@ struct Box3 {
 Box3 placed(const Affine3D& transform, Vec3 position, Vec3 size) {
     Box3 out{transform.origin, transform.origin};
     const std::array<Vec3, 3> axes{transform.x, transform.y, transform.z};
-    const std::array<float, 3> low{position.x, position.y, position.z};
-    const std::array<float, 3> high{position.x + size.x, position.y + size.y, position.z + size.z};
+    const std::array<float, 3> low{static_cast<float>(position.x), static_cast<float>(position.y),
+                                   static_cast<float>(position.z)};
+    const std::array<float, 3> high{static_cast<float>(position.x + size.x),
+                                    static_cast<float>(position.y + size.y),
+                                    static_cast<float>(position.z + size.z)};
     for (std::size_t axis = 0; axis < 3; ++axis) {
         const Vec3 a = axes.at(axis) * low.at(axis);
         const Vec3 b = axes.at(axis) * high.at(axis);
@@ -415,8 +418,9 @@ render::ParticleAttractor3D for_particles(const FoundAttractor& found,
         const float radius = found.radius * ((scale.x + scale.y + scale.z) / 3.0F);
         out.extents = {radius, radius, radius};
     } else {
-        out.extents = {found.extents.x * scale.x, found.extents.y * scale.y,
-                       found.extents.z * scale.z};
+        out.extents = {static_cast<float>(found.extents.x * scale.x),
+                       static_cast<float>(found.extents.y * scale.y),
+                       static_cast<float>(found.extents.z * scale.z)};
         out.field = found.field;
     }
     return out;
@@ -447,8 +451,9 @@ render::ParticleCollider3D collider_for_particles(const FoundCollider& found,
         const float radius = found.radius * ((scale.x + scale.y + scale.z) / 3.0F);
         out.extents = {radius, radius, radius};
     } else {
-        out.extents = {found.extents.x * scale.x, found.extents.y * scale.y,
-                       found.extents.z * scale.z};
+        out.extents = {static_cast<float>(found.extents.x * scale.x),
+                       static_cast<float>(found.extents.y * scale.y),
+                       static_cast<float>(found.extents.z * scale.z)};
         // Godot's SDFs take no scale that isn't uniform.
         out.scale = (scale.x + scale.y + scale.z) * 0.333333333333F;
         out.sdf = found.sdf;
@@ -873,8 +878,12 @@ struct GpuParticleSystem3D {
 } // namespace
 
 render::ParticleTransform particle_transform(const Affine3D& affine) {
-    return {affine.x.x, affine.x.y, affine.x.z, affine.y.x,      affine.y.y,      affine.y.z,
-            affine.z.x, affine.z.y, affine.z.z, affine.origin.x, affine.origin.y, affine.origin.z};
+    return {static_cast<float>(affine.x.x),      static_cast<float>(affine.x.y),
+            static_cast<float>(affine.x.z),      static_cast<float>(affine.y.x),
+            static_cast<float>(affine.y.y),      static_cast<float>(affine.y.z),
+            static_cast<float>(affine.z.x),      static_cast<float>(affine.z.y),
+            static_cast<float>(affine.z.z),      static_cast<float>(affine.origin.x),
+            static_cast<float>(affine.origin.y), static_cast<float>(affine.origin.z)};
 }
 
 Result<render::ParticleField3D> particle_field(const render::Image& image, int slices_horizontal,

@@ -1558,10 +1558,10 @@ Fov OpenXR::fov_for_view(std::uint32_t view) const {
         const Vec2 turn = cos_sin(angle);
         return turn.y / turn.x;
     };
-    return {.left = tangent(fov.angleLeft),
-            .right = tangent(fov.angleRight),
-            .down = tangent(fov.angleDown),
-            .up = tangent(fov.angleUp)};
+    return {.left = static_cast<float>(tangent(fov.angleLeft)),
+            .right = static_cast<float>(tangent(fov.angleRight)),
+            .down = static_cast<float>(tangent(fov.angleDown)),
+            .up = static_cast<float>(tangent(fov.angleUp))};
 }
 
 // OpenXRInterface::get_play_area_mode.

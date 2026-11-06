@@ -165,16 +165,17 @@ TEST_CASE("Box2D steps on the job system's threads to the same bits as on one") 
             }
         }
         physics.step(120);
-        std::vector<std::uint32_t> bits;
+        // As doubles, which hold a position whichever precision the engine has.
+        std::vector<std::uint64_t> bits;
         for (const std::string& id : ids) {
             const auto& transform = physics.get<world::Transform2D>(id);
-            bits.push_back(std::bit_cast<std::uint32_t>(transform.position.x));
-            bits.push_back(std::bit_cast<std::uint32_t>(transform.position.y));
-            bits.push_back(std::bit_cast<std::uint32_t>(transform.rotation));
+            bits.push_back(std::bit_cast<std::uint64_t>(static_cast<double>(transform.position.x)));
+            bits.push_back(std::bit_cast<std::uint64_t>(static_cast<double>(transform.position.y)));
+            bits.push_back(std::bit_cast<std::uint64_t>(static_cast<double>(transform.rotation)));
         }
         return bits;
     };
-    const std::vector<std::uint32_t> alone = run(0);
+    const std::vector<std::uint64_t> alone = run(0);
     CHECK(run(1) == alone);
     CHECK(run(3) == alone);
 }
@@ -1005,7 +1006,7 @@ TEST_CASE("a character's floor and wall options work as Godot's") {
         physics.step(30, [&] {
             physics.fall("hero");
             physics.get<world::CharacterBody2D>("hero").velocity.x = 200.0F;
-            highest = std::min(highest, physics.position("hero").y);
+            highest = std::min<slash::real_t>(highest, physics.position("hero").y);
         });
         CHECK(physics.get<world::CharacterBody2D>("hero").on_wall);
         return rest - highest;

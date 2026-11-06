@@ -39,7 +39,9 @@ Vec3 lerp(Vec3 a, Vec3 b, float t) {
 Quat basis_quaternion(const world::Affine3D& m) {
     // rows[r][c] is column c's component r.
     const std::array<std::array<float, 3>, 3> rows{
-        {{m.x.x, m.y.x, m.z.x}, {m.x.y, m.y.y, m.z.y}, {m.x.z, m.y.z, m.z.z}}};
+        {{static_cast<float>(m.x.x), static_cast<float>(m.y.x), static_cast<float>(m.z.x)},
+         {static_cast<float>(m.x.y), static_cast<float>(m.y.y), static_cast<float>(m.z.y)},
+         {static_cast<float>(m.x.z), static_cast<float>(m.y.z), static_cast<float>(m.z.z)}}};
     const float trace = rows[0][0] + rows[1][1] + rows[2][2];
     std::array<float, 4> q{};
     if (trace > 0.0F) {
@@ -75,7 +77,8 @@ float determinant(const world::Affine3D& m) {
 }
 
 std::array<float, 4> array_of(const Quat& q) {
-    return {q.x, q.y, q.z, q.w};
+    return {static_cast<float>(q.x), static_cast<float>(q.y), static_cast<float>(q.z),
+            static_cast<float>(q.w)};
 }
 
 Quat quat_of(const std::array<float, 4>& v) {
@@ -228,7 +231,7 @@ std::array<float, 4> sample_track(const NodeTrack& track, double time, double le
         return array_of(slerp(quat_of(from), quat_of(to), weight));
     }
     const Vec3 v = lerp(vec_of(from), vec_of(to), weight);
-    return {v.x, v.y, v.z, 0.0F};
+    return {static_cast<float>(v.x), static_cast<float>(v.y), static_cast<float>(v.z), 0.0F};
 }
 
 namespace {
@@ -419,13 +422,16 @@ void skin_vertices(const ModelSurface& surface, std::span<const world::Affine3D>
             if (total > 0.0F) {
                 const Vec3 p =
                     m.apply({vertex.position[0], vertex.position[1], vertex.position[2]});
-                vertex.position = {p.x, p.y, p.z};
+                vertex.position = {static_cast<float>(p.x), static_cast<float>(p.y),
+                                   static_cast<float>(p.z)};
                 const Vec3 n =
                     normalized(m.basis({vertex.normal[0], vertex.normal[1], vertex.normal[2]}));
-                vertex.normal = {n.x, n.y, n.z};
+                vertex.normal = {static_cast<float>(n.x), static_cast<float>(n.y),
+                                 static_cast<float>(n.z)};
                 const Vec3 t =
                     normalized(m.basis({vertex.tangent[0], vertex.tangent[1], vertex.tangent[2]}));
-                vertex.tangent = {t.x, t.y, t.z, vertex.tangent[3]};
+                vertex.tangent = {static_cast<float>(t.x), static_cast<float>(t.y),
+                                  static_cast<float>(t.z), vertex.tangent[3]};
             }
         }
         out[i] = vertex;
