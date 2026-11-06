@@ -12,6 +12,7 @@
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/video/video.hpp"
+#include "slash/world/audio_tracks.hpp"
 #include "slash/world/camera2d.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/tree2d.hpp"
@@ -20,7 +21,11 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <map>
+#include <memory>
+#include <optional>
+#include <ranges>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -56,7 +61,32 @@ struct PlayerState {
     std::uint32_t plays = 0;
     std::map<std::string, json::Value> parameters; // as last given to its voices
     std::string clip; // the music clip it last said started, until its music stops
+    // The voice animations' audio tracks play their streams on, as Godot's AnimationMixer gives
+    // the player an AudioStreamPolyphonic: beside its own voices, mixed as they are.
+    std::optional<Server::PlaybackId> track_voice;
+    std::shared_ptr<const Stream> track_stream;
+
+    // Each voice it mixes: its own and the audio tracks'.
+    template <typename F>
+    void each_voice(F&& f) const {
+        for (const Server::PlaybackId voice : voices) {
+            f(voice);
+        }
+        if (track_voice) {
+            f(*track_voice);
+        }
+    }
 };
+
+// A stream an animation's audio track started: on whose track voice, and its ID there.
+struct TrackStream {
+    std::string player;
+    PolyphonicPlayback::StreamId stream = PolyphonicPlayback::kInvalidId;
+};
+
+// As many streams as Godot's AnimationMixer lets its audio tracks play on one player at once
+// (audio_max_polyphony).
+constexpr int kTrackPolyphony = 32;
 
 using Request = Snapshot::Request;
 
@@ -197,6 +227,9 @@ struct State {
     std::map<std::string, LoadedStream, std::less<>> played;
     std::vector<Request> requests;
     std::vector<Snapshot::Recording> recordings;
+    // Streams animations' audio tracks started, by their IDs, while they play.
+    std::map<std::int64_t, TrackStream> track_streams;
+    std::int64_t next_track = 1;
     Sink sink;
     SpeakerMode device_speakers = SpeakerMode::Stereo; // the sink's
     double carry = 0.0;
@@ -387,6 +420,78 @@ std::uint32_t seed_of(std::string_view key, std::uint32_t plays) {
     h *= 0x7feb352dU;
     h ^= h >> 15U;
     return h;
+}
+
+// The polyphonic playback a player's audio tracks play on, started when there is none.
+template <typename T>
+PolyphonicPlayback* track_voice(State& state, PlayerState& player, const T& component,
+                                std::string_view key) {
+    if (player.track_voice) {
+        Playback* playback = state.server->playback(*player.track_voice);
+        if (playback != nullptr && playback->polyphonic() != nullptr) {
+            return playback->polyphonic();
+        }
+    }
+    if (player.track_stream == nullptr) {
+        StreamFile settings;
+        settings.kind = StreamFile::Kind::Polyphonic;
+        settings.polyphony = kTrackPolyphony;
+        player.track_stream = polyphonic_stream(settings);
+    }
+    auto playback =
+        player.track_stream->instantiate(state.server->mix_rate(), seed_of(key, ++player.plays));
+    const Server::PlaybackId id = state.server->start(
+        std::move(playback), player.bus, player.volume, 0.0, player.pitch, component.stream_paused);
+    state.server->set_bus_volumes(id, player.mix);
+    if (player.highshelf != 0.0F) {
+        state.server->set_highshelf(id, player.highshelf, player.cutoff_hz);
+    }
+    player.track_voice = id;
+    Playback* started = state.server->playback(id);
+    return started != nullptr ? started->polyphonic() : nullptr;
+}
+
+// What an audio track asked of a stream: to start it, stop it or set its volume.
+template <typename T>
+void track_request(State& state, PlayerState& player, const T& component, std::string_view key,
+                   const Request& request) {
+    if (!request.play || request.stream.empty()) {
+        const auto found = state.track_streams.find(request.track);
+        if (found == state.track_streams.end() || !player.track_voice) {
+            return;
+        }
+        Playback* playback = state.server->playback(*player.track_voice);
+        PolyphonicPlayback* polyphonic = playback != nullptr ? playback->polyphonic() : nullptr;
+        if (polyphonic == nullptr) {
+            return;
+        }
+        if (!request.play) {
+            polyphonic->stop_stream(found->second.stream);
+            state.track_streams.erase(found);
+        } else {
+            polyphonic->set_stream_volume(found->second.stream, request.volume_db);
+        }
+        return;
+    }
+    std::string error;
+    std::shared_ptr<const Stream> stream = state.stream_for(request.stream, error, state.played);
+    if (stream == nullptr) {
+        log::warn("an audio track's stream can't load",
+                  {{"player", std::string(key)}, {"stream", request.stream}, {"error", error}});
+        return;
+    }
+    PolyphonicPlayback* polyphonic = track_voice(state, player, component, key);
+    if (polyphonic == nullptr) {
+        return;
+    }
+    const PolyphonicPlayback::StreamId id = polyphonic->play_stream(
+        std::move(stream), request.from_seconds, request.volume_db, request.pitch_scale);
+    if (id == PolyphonicPlayback::kInvalidId) {
+        log::warn("an audio player is playing as many audio tracks' streams as it can",
+                  {{"player", std::string(key)}, {"polyphony", polyphonic->polyphony()}});
+        return;
+    }
+    state.track_streams[request.track] = {std::string(key), id};
 }
 
 // Where 2D sounds are heard from: the first current AudioListener2D by ID, and the current
@@ -1036,16 +1141,15 @@ void reconcile(State& state, world::World& world, const Hearing& hearing, std::s
                 stop_all(*state.server, player);
             }
         }
-        for (const Server::PlaybackId id : player.voices) {
+        player.each_voice([&](Server::PlaybackId id) {
             state.server->set_bus_volumes(id, player.mix);
             state.server->set_pitch_scale(id, player.pitch);
             state.server->set_highshelf(id, player.highshelf, player.cutoff_hz);
-        }
+        });
         if (component.stream_paused != player.paused) {
             player.paused = component.stream_paused;
-            for (const Server::PlaybackId id : player.voices) {
-                state.server->set_paused(id, player.paused);
-            }
+            player.each_voice(
+                [&](Server::PlaybackId id) { state.server->set_paused(id, player.paused); });
         }
         if (component.parameters != player.parameters) {
             // As Godot's AudioStreamPlayerInternal::set: each voice gets a changed parameter.
@@ -1062,9 +1166,16 @@ void reconcile(State& state, world::World& world, const Hearing& hearing, std::s
             }
             player.parameters = component.parameters;
         }
-        if (const auto asked = requests.find(key); asked != requests.end()) {
+        const auto asked = requests.find(key);
+        const bool own_asked =
+            asked != requests.end() &&
+            std::ranges::any_of(asked->second, [](const Request& r) { return r.track == 0; });
+        if (own_asked) {
             // play() and stop() this tick decide, as calls after the field changed would.
             for (const Request& request : asked->second) {
+                if (request.track != 0) {
+                    continue;
+                }
                 if (!request.stream.empty()) {
                     play_on(state, player, component, key, request);
                 } else if (request.play) {
@@ -1075,6 +1186,13 @@ void reconcile(State& state, world::World& world, const Hearing& hearing, std::s
             }
         } else if (play_now) {
             start_voice(state, player, component, key, 0.0);
+        }
+        if (asked != requests.end()) {
+            for (const Request& request : asked->second) {
+                if (request.track != 0) {
+                    track_request(state, player, component, key, request);
+                }
+            }
         }
         player.playing = !player.voices.empty();
         component.playing = player.playing;
@@ -1337,6 +1455,9 @@ void run(State& state, world::World& world, double tick_seconds) {
     std::erase_if(state.players, [&](auto& entry) {
         if (!entry.second.seen) {
             stop_all(*state.server, entry.second);
+            if (entry.second.track_voice) {
+                state.server->stop(*entry.second.track_voice);
+            }
         }
         return !entry.second.seen;
     });
@@ -1421,14 +1542,25 @@ void run(State& state, world::World& world, double tick_seconds) {
         });
     });
     const bool polyphonic = std::ranges::any_of(state.players, [&](const auto& player) {
-        return std::ranges::any_of(player.second.voices, [&](Server::PlaybackId id) {
-            const Playback* playback = state.server->playback(id);
-            return playback != nullptr && playback->polyphonic() != nullptr;
-        });
+        return player.second.track_voice.has_value() ||
+               std::ranges::any_of(player.second.voices, [&](Server::PlaybackId id) {
+                   const Playback* playback = state.server->playback(id);
+                   return playback != nullptr && playback->polyphonic() != nullptr;
+               });
     });
     if (!polyphonic) {
         state.played.clear();
     }
+    // Audio tracks' streams that ended, or whose player went away, are let go.
+    std::erase_if(state.track_streams, [&](const auto& entry) {
+        const auto player = state.players.find(entry.second.player);
+        if (player == state.players.end() || !player->second.track_voice) {
+            return true;
+        }
+        const Playback* playback = state.server->playback(*player->second.track_voice);
+        const PolyphonicPlayback* voice = playback != nullptr ? playback->polyphonic() : nullptr;
+        return voice == nullptr || !voice->is_stream_playing(entry.second.stream);
+    });
 }
 
 template <typename T>
@@ -1569,6 +1701,10 @@ void add_asset_types(asset::Assets& assets) {
                                });
 }
 
+namespace {
+world::AudioTrackSound track_sound();
+} // namespace
+
 void install(world::World& world, asset::Assets& assets, const Settings& settings) {
     add_asset_types(assets);
     if (State* existing = state_of(world); existing != nullptr) {
@@ -1589,6 +1725,8 @@ void install(world::World& world, asset::Assets& assets, const Settings& setting
         state->trackers.clear();
         state->played.clear();
         state->requests.clear();
+        state->track_streams.clear();
+        state->next_track = 1;
         state->recordings.clear();
         state->input_ask.reset();
         state->input_stream.clear();
@@ -1604,6 +1742,7 @@ void install(world::World& world, asset::Assets& assets, const Settings& setting
                 "each VideoStreamPlayer's sound, and mixes the tick's sound through the bus "
                 "layout.",
          .priority = 1200});
+    world::set_audio_track_sound(world, track_sound());
 }
 
 void set_settings(world::World& world, const Settings& settings) {
@@ -1701,6 +1840,121 @@ bool has_player(const world::World& world, std::string_view kind, entt::entity e
         return ecs.all_of<world::AudioStreamPlayer2D>(entity);
     }
     return ecs.all_of<world::AudioStreamPlayer3D>(entity);
+}
+
+// The player an audio track's stream plays on, by its key: the one its pending start names, or
+// the one it plays on.
+const std::string* track_player(const State& state, std::int64_t id) {
+    for (const Request& request : state.requests) {
+        if (request.track == id && request.play && !request.stream.empty()) {
+            return &request.player;
+        }
+    }
+    const auto found = state.track_streams.find(id);
+    return found != state.track_streams.end() ? &found->second.player : nullptr;
+}
+
+world::AudioTrackSound track_sound() {
+    world::AudioTrackSound sound;
+    sound.play = [](world::World& world, entt::entity entity, std::string_view stream,
+                    double from_seconds) -> Result<world::AudioTrackPlay> {
+        State* state = state_of(world);
+        if (state == nullptr) {
+            return make_error(ErrorCode::InvalidArgument, "audio is not installed in this world");
+        }
+        std::string_view kind;
+        for (const std::string_view each : {kPlayer, kPlayer2D, kPlayer3D}) {
+            if (kind.empty() && has_player(world, each, entity)) {
+                kind = each;
+            }
+        }
+        if (kind.empty()) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "\"" + std::string(world.id_of(entity)) +
+                                  "\" has no AudioStreamPlayer, AudioStreamPlayer2D or "
+                                  "AudioStreamPlayer3D");
+        }
+        const std::string path(stream);
+        std::string error;
+        const std::shared_ptr<const Stream> loaded = state->stream_for(path, error, state->played);
+        if (loaded == nullptr) {
+            return make_error(ErrorCode::NotFound, error);
+        }
+        if (const auto entry = state->played.find(path);
+            entry != state->played.end() && is_microphone(entry->second)) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "\"" + path +
+                                  "\" is a microphone, which plays only as a player's own stream");
+        }
+        Request request;
+        request.player = key_of(world, kind, entity);
+        request.stream = path;
+        request.from_seconds = std::max(from_seconds, 0.0);
+        request.track = state->next_track++;
+        state->requests.push_back(request);
+        return world::AudioTrackPlay{request.track, loaded->length()};
+    };
+    sound.stop = [](world::World& world, std::int64_t id) {
+        State* state = state_of(world);
+        if (state == nullptr) {
+            return;
+        }
+        // One that hasn't started never does.
+        if (std::erase_if(state->requests,
+                          [id](const Request& request) { return request.track == id; }) > 0 &&
+            !state->track_streams.contains(id)) {
+            return;
+        }
+        if (const auto found = state->track_streams.find(id); found != state->track_streams.end()) {
+            Request request;
+            request.player = found->second.player;
+            request.play = false;
+            request.track = id;
+            state->requests.push_back(std::move(request));
+        }
+    };
+    sound.playing = [](const world::World& world, std::int64_t id) {
+        const State* state = state_of(world);
+        if (state == nullptr) {
+            return false;
+        }
+        for (const Request& request : std::views::reverse(state->requests)) {
+            if (request.track == id && (!request.play || !request.stream.empty())) {
+                return request.play;
+            }
+        }
+        const auto found = state->track_streams.find(id);
+        if (found == state->track_streams.end()) {
+            return false;
+        }
+        const auto player = state->players.find(found->second.player);
+        if (player == state->players.end() || !player->second.track_voice) {
+            return false;
+        }
+        const Playback* playback = state->server->playback(*player->second.track_voice);
+        const PolyphonicPlayback* voice = playback != nullptr ? playback->polyphonic() : nullptr;
+        return voice != nullptr && voice->is_stream_playing(found->second.stream);
+    };
+    sound.set_volume = [](world::World& world, std::int64_t id, float volume_db) {
+        State* state = state_of(world);
+        if (state == nullptr) {
+            return;
+        }
+        for (Request& request : state->requests) {
+            if (request.track == id && request.play && !request.stream.empty()) {
+                request.volume_db = volume_db; // it starts at this volume
+                return;
+            }
+        }
+        if (const std::string* player = track_player(*state, id)) {
+            Request request;
+            request.player = *player;
+            request.volume_db = volume_db;
+            request.track = id;
+            state->requests.push_back(std::move(request));
+        }
+    };
+    return sound;
 }
 
 } // namespace
@@ -1906,6 +2160,13 @@ std::vector<PlayerInfo> players(const world::World& world) {
                 if (const PolyphonicPlayback* polyphonic = playback->polyphonic()) {
                     info.polyphonic = PlayerInfo::Polyphonic{polyphonic->streams_playing(),
                                                              polyphonic->polyphony()};
+                }
+            }
+        }
+        if (player.track_voice) {
+            if (const Playback* playback = state->server->playback(*player.track_voice)) {
+                if (const PolyphonicPlayback* polyphonic = playback->polyphonic()) {
+                    info.track_streams = polyphonic->streams_playing();
                 }
             }
         }

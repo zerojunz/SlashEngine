@@ -3252,7 +3252,8 @@ the player's root node. A node track moves a node or bone of the model the entit
 `Skeleton3D` bone (see [node tracks](#node-tracks)). `slash-cli schema animation` prints the schema,
 `slash-cli scene validate` and `scene format` accept `.anim.json` files, and the
 [`animation.eval`](commands.md#animationeval) command returns the values an animation sets.
-[examples/keyframe-animation](../../examples/keyframe-animation/) has two.
+[examples/keyframe-animation](../../examples/keyframe-animation/) has two. Bezier tracks,
+animation tracks, camera cuts and markers make [cinematics](#cinematics).
 
 ```json
 {
@@ -3295,16 +3296,23 @@ and the entity that plays it, whose child `sword` the last track turns:
 | `animations/<name>/from` | No | A model's animation it plays on the nodes of the model the entity's `MeshInstance3D` draws: `{"model": "models/hero.glb", "animation": "Walk"}` ([model animations](#skeletons-and-model-animations)) |
 | `animations/<name>/length` | Unless `from` | Seconds, more than 0. Left out, the length of the model's animation it comes from |
 | `animations/<name>/loop` | No | What happens at the end, as Godot's loop modes: `none` stops there, `linear` starts over, `pingpong` turns round. Left out, the model animation's (`linear` if it loops), else `none` |
-| `animations/<name>/tracks` | Unless `from` | Value tracks, event tracks and node tracks |
-| `tracks/<n>/path` | One of these | A value track: the field it sets, as a component, a field and optionally a part of the field |
+| `animations/<name>/tracks` | Unless `from` | Value tracks, event tracks and node tracks, and [cinematics](#cinematics)' bezier, animation and audio tracks |
+| `animations/<name>/markers` | No | Named times in seconds, as Godot's animation markers: `{"close_up": 4}`. [`animation.seek`](commands.md#animationseek) takes them |
+| `tracks/<n>/type` | No | What it does: `value`, `bezier`, `event`, `node`, `animation` or `audio`. Left out, a track with `path` is a value track, with `event` an event track and with `node` a node track; bezier, animation and audio tracks say so |
+| `tracks/<n>/path` | One of these | A value or bezier track: the field it sets, as a component, a field and optionally a part of the field |
 | `tracks/<n>/event` | One of these | An event track: the event kind it emits |
 | `tracks/<n>/node` | One of these | A [node track](#node-tracks): the node of the drawn model it moves |
 | `tracks/<n>/property` | Node tracks | What it moves: `position`, `rotation` (Euler angles in radians, as `Transform3D`'s) or `scale` |
 | `tracks/<n>/target` | No | The entity it acts on: a name the `AnimationPlayer`'s `targets` maps to an entity. Left out, the player's own entity |
 | `tracks/<n>/keys` | Yes | At least one key, in time order, each later than the one before and no later than the length |
 | `keys/<n>/time` | Yes | Seconds from the start |
-| `keys/<n>/value` | Value and node tracks | A value the field takes; for a node track, `[x, y, z]` |
+| `keys/<n>/value` | Value, bezier and node tracks | A value the field takes; for a bezier track, a number; for a node track, `[x, y, z]` |
 | `keys/<n>/data` | No | Event tracks: the event's data, any JSON |
+| `keys/<n>/in`, `keys/<n>/out` | No | Bezier tracks: the key's handles, `[seconds, value]` from the key, as Godot's `in_handle` and `out_handle`; `in`'s seconds 0 or less, `out`'s 0 or more. Left out, `[0, 0]` |
+| `keys/<n>/animation` | Animation tracks | The animation the target's player plays from this key, or `"[stop]"` to stop it |
+| `keys/<n>/stream` | Audio tracks | The project path of the sound the target's player plays from this key: a `.wav`, `.ogg`, `.mp3` or `.audio.json` file |
+| `keys/<n>/start_offset`, `keys/<n>/end_offset` | No | Audio tracks: seconds cut from the sound's start and end, as Godot's. Left out, 0 |
+| `tracks/<n>/use_blend` | No | Audio tracks: in an [animation tree](#animation-trees), whether the sound's volume follows how much its animation counts in the blend (default `true`), as Godot's |
 | `keys/<n>/transition` | No | Easing on the way to the next key, as Godot's easing curve: 1 (default) is linear, above 1 eases in, between 0 and 1 eases out, below 0 eases in and out, 0 holds the value until the next key |
 | `tracks/<n>/interpolation` | No | Value tracks: `linear` (default), `nearest` (each key's value until the next), `cubic` (a smooth curve through the keys), or `linear_angle` and `cubic_angle`, which turn the short way round, for rotations in radians. Node tracks: `linear` or `nearest` |
 | `tracks/<n>/update` | No | Value tracks: `continuous` sets the value every tick, `discrete` sets a key's value when playback reaches it. `auto` (default) is continuous for float fields and discrete for others: integers, strings, booleans and entity references |
@@ -3340,6 +3348,68 @@ entity, so animate `Sprite2D/offset` to move a sprite around its entity instead.
   its tracks use. A player whose file, animation or track can't
   be used logs one warning and plays what it can.
 - Animation files reload when they change, like every asset, and exports check and ship them.
+
+### Cinematics
+
+Cutscenes are animations, as in Godot, where a cinematic is an `AnimationPlayer` whose tracks
+move cameras, start other players and fire events. An animation that directs one usually sits
+on an entity of its own whose `targets` name the cameras and actors.
+
+```json
+"intro": {
+  "length": 6,
+  "markers": {"door": 2, "close_up": 4},
+  "tracks": [
+    {"type": "bezier", "target": "wide", "path": "Transform3D/position/z",
+     "keys": [{"time": 0, "value": 9, "out": [1.5, 0]}, {"time": 4, "value": 5, "in": [-1.5, 0]}]},
+    {"type": "animation", "target": "door", "keys": [{"time": 2, "animation": "open"}]},
+    {"type": "audio", "target": "door", "keys": [{"time": 2, "stream": "sounds/creak.wav"}]},
+    {"target": "close", "path": "Camera3D/current", "keys": [{"time": 4, "value": true}]},
+    {"event": "title", "keys": [{"time": 1, "data": {"text": "Chapter One"}}]}
+  ]
+}
+```
+
+- A bezier track sets one number (`Camera3D/fov`, `Transform3D/position/y`) along a curve, as
+  Godot's bezier tracks: between two keys it is the cubic Bézier from the first key through its
+  `out` handle and the second key's `in` handle, found at the time as Godot's
+  `bezier_track_interpolate` finds it, by ten halvings. With no handles the curve is a straight
+  line; before the first key and after the last it holds, and it never wraps round a loop. It
+  sets the value every tick, and has no `interpolation`, `update`, `loop_wrap` or key
+  `transition`.
+- An animation track plays the `AnimationPlayer` of its `target`, which it needs, as Godot's
+  animation playback tracks: when playback passes a key, the target plays the key's `animation`
+  as Godot's `play` does (another animation starts from its start, the same one goes on, or
+  starts over once it ended), and `"[stop]"` stops it and moves it back to its start, as
+  `stop()`. Players run newest entity first, so a player made after the one it starts begins
+  playing on the same tick.
+- A value track that sets a `Camera3D`'s `current` to `true` cuts to it: every other
+  `Camera3D`'s `current` turns off, as setting Godot's `current` makes the camera the viewport's.
+  [Animation trees](#animation-trees) cut the same way.
+- [`animation.seek`](commands.md#animationseek) jumps a player to a time or a marker and sets what
+  its tracks set there at once, as Godot's `seek(time, true, true)`: value and bezier tracks'
+  values, and for each animation track the animation its last key started, moved to where it
+  would be (held at its end, round its loop or back and forth) and set in turn. Event tracks wait
+  for playback.
+- [Animation trees](#animation-trees) play animation tracks as Godot's `AnimationMixer` does:
+  playback plays the last key passed, as a player does, and a seek in the tree (an animation's
+  first tick, a `TimeSeek`) moves the target to where the key at or before the time started its
+  animation and plays it from there, unless that animation doesn't loop and has ended.
+- An audio track plays sounds on the audio player of its `target` (an `AudioStreamPlayer`,
+  `AudioStreamPlayer2D` or `AudioStreamPlayer3D`, which it needs), as Godot's audio playback
+  tracks: when playback passes a key, the key's `stream` starts there, `start_offset` seconds
+  into the sound, and stops `end_offset` seconds before its end. Each sound plays on a voice of
+  the player's own, beside the player's own `stream`, at the player's volume, pitch, bus and
+  place; up to 32 play at once on a player, as Godot's mixer allows. A sound stops when the
+  animation stops, pauses or ends, when its key plays again, and, in an animation that doesn't
+  loop, when playback goes back before its key. `animation.seek` starts none, as Godot's
+  update-only seek. [`audio.state`](commands.md#audiostate) counts each player's `track_streams`.
+- [Animation trees](#animation-trees) play audio tracks as Godot's `AnimationMixer` does: a seek
+  in the tree starts the sound of the key at or before the time from that far in, and each
+  sound's volume follows the weight its animation has in the blend unless `use_blend` is off. A
+  tree that stops being `active` stops its sounds.
+- [examples/cinematics](../../examples/cinematics/) dollies a camera, opens a door and cuts, and
+  [examples/cinematic-sound](../../examples/cinematic-sound/) plays a cutscene's sounds.
 
 ### Node tracks
 
@@ -3424,8 +3494,9 @@ its field names:
 | `StateMachine` | | `states` (by name, `{node, position}`), `transitions`, `state_machine_type` (`root`, `nested`, `grouped`), `allow_transition_to_self`, `reset_ends` | `travel`, `start`: a state's name; `next`, `stop`: `true`; `conditions/<name>` |
 
 Filters (`filter_enabled` and `filters`) name the tracks a node blends: a model node's name for
-the tracks that move it, a value track's path, `@` and an event track's event, each after its
-target and `:` if it has one (`"sword:Transform2D/rotation"`). The rest pass through, as Godot's
+the tracks that move it, a value track's path, `@` and an event track's event, or `[animation]`
+for an animation track and `[audio]` for an audio track, each after its target and `:` if it has
+one (`"sword:Transform2D/rotation"`, `"door:[animation]"`). The rest pass through, as Godot's
 filters.
 
 A `StateMachine` plays one of its `states` at a time, as Godot's `AnimationNodeStateMachine`, and

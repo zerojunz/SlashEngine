@@ -1,0 +1,62 @@
+{
+  "entities": {
+    "close": {
+      "components": {
+        "Camera3D": {
+          "fov": 35.0
+        },
+        "Transform3D": {
+          "position": [1.5, 1.6, 2.5],
+          "rotation": [0.0, 0.4, 0.0]
+        }
+      }
+    },
+    "director": {
+      "components": {
+        "AnimationPlayer": {
+          "animation": "intro",
+          "library": "intro.anim.json",
+          "targets": {
+            "close": "close",
+            "door": "door",
+            "wide": "wide"
+          }
+        }
+      }
+    },
+    "door": {
+      "components": {
+        "AnimationPlayer": {
+          "library": "door.anim.json",
+          "playing": false
+        },
+        "BoxMesh": {
+          "size": [1.0, 2.0, 0.1]
+        },
+        "MeshInstance3D": {},
+        "Transform3D": {
+          "position": [0.0, 1.0, 0.0]
+        }
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {},
+        "Transform3D": {
+          "rotation": [-0.8, 0.5, 0.0]
+        }
+      }
+    },
+    "wide": {
+      "components": {
+        "Camera3D": {
+          "current": true
+        },
+        "Transform3D": {
+          "position": [0.0, 1.5, 9.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

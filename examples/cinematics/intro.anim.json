@@ -1,0 +1,79 @@
+{
+  "animations": {
+    "intro": {
+      "length": 6,
+      "markers": {
+        "close_up": 4,
+        "door": 2
+      },
+      "tracks": [
+        {
+          "keys": [
+            {
+              "out": [1.5, 0],
+              "time": 0,
+              "value": 9
+            },
+            {
+              "in": [-1.5, 0],
+              "time": 4,
+              "value": 5
+            }
+          ],
+          "path": "Transform3D/position/z",
+          "target": "wide",
+          "type": "bezier"
+        },
+        {
+          "keys": [
+            {
+              "out": [2, 0],
+              "time": 0,
+              "value": 60
+            },
+            {
+              "in": [-1, 2],
+              "time": 4,
+              "value": 45
+            }
+          ],
+          "path": "Camera3D/fov",
+          "target": "wide",
+          "type": "bezier"
+        },
+        {
+          "keys": [
+            {
+              "animation": "open",
+              "time": 2
+            }
+          ],
+          "target": "door",
+          "type": "animation"
+        },
+        {
+          "keys": [
+            {
+              "time": 4,
+              "value": true
+            }
+          ],
+          "path": "Camera3D/current",
+          "target": "close"
+        },
+        {
+          "event": "title",
+          "keys": [
+            {
+              "data": {
+                "text": "Chapter One"
+              },
+              "time": 1
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "format": 1
+}

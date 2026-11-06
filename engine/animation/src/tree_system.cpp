@@ -31,7 +31,7 @@ constexpr double kTau = 2.0 * std::numbers::pi;
 constexpr double kPi = std::numbers::pi;
 
 // The kinds of track a tree mixes, as Godot's track caches.
-enum class TrackKind : std::uint8_t { Value, Event, Node };
+enum class TrackKind : std::uint8_t { Value, Event, Node, Animation, Audio };
 
 // One of a tree's tracks, which every animation's tracks of the same name share, as Godot's
 // AnimationMixer::TrackCache: a value track's path, an event track's event or a model node.
@@ -310,8 +310,13 @@ struct TreePlayer::State {
                         continue;
                     }
                     if (track.path.empty()) {
-                        const auto [index, added] =
-                            track_of(TrackKind::Event, event_track_name(track));
+                        TrackKind kind = TrackKind::Event;
+                        if (track.type == TrackType::Animation) {
+                            kind = TrackKind::Animation;
+                        } else if (track.type == TrackType::Audio) {
+                            kind = TrackKind::Audio;
+                        }
+                        const auto [index, added] = track_of(kind, track_name(track));
                         if (added) {
                             table.tracks[static_cast<std::size_t>(index)].target = track.target;
                         }
@@ -444,6 +449,8 @@ struct TreePlayer::State {
         world::AnimationTree tree = ecs.get<world::AnimationTree>(entity);
         const std::string id(world.id_of(entity));
         if (!tree.active || tree.tree_root.empty()) {
+            // An inactive tree stops its audio tracks' sounds, as Godot's clears its caches.
+            stop_audio(world, entity, Mixer::Tree);
             auto& stored = ecs.get<world::AnimationTree>(entity);
             clear_report(stored, true);
             stored.invalid.clear();
@@ -517,7 +524,9 @@ struct TreePlayer::State {
         }
         std::vector<std::pair<std::string, json::Value>> events;
         if (tick.invalid.empty()) {
+            begin_audio(world, entity, Mixer::Tree);
             mix(world, entity, id, tree, cache, tick, events);
+            end_audio(world, entity, Mixer::Tree);
         }
         for (const TreeSignal& signal : tick.signals) {
             json::Value data;
@@ -527,6 +536,76 @@ struct TreePlayer::State {
         for (auto& [kind, data] : events) {
             // data holds the source entity's ID and the key's data.
             world.emit(kind, data["source"].as_string(), std::move(data["data"]));
+        }
+    }
+
+    // An audio track, as Godot's AnimationMixer::_blend_process plays one: a seek starts the
+    // stream of the key at or before the time from the middle, and playback the stream of the
+    // last key it passed.
+    void play_audio_track(world::World& world, entt::entity entity, std::string_view id,
+                          const world::AnimationTree& tree, const std::string& target,
+                          const std::string& animation_name, const Animation& animation,
+                          std::size_t track_index, const PlaybackInfo& info, float weight) {
+        const Track& track = animation.tracks[track_index];
+        AudioTrackTick tick;
+        tick.owner = entity;
+        tick.mixer = Mixer::Tree;
+        tick.animation_name = animation_name;
+        tick.animation = &animation;
+        tick.track_index = track_index;
+        tick.track = &track;
+        tick.time = info.time;
+        tick.backward = std::signbit(info.delta);
+        tick.blend = weight;
+        tick.seeked = info.seeked;
+        if (info.seeked) {
+            tick.key = find_key(track, animation.length, info.time, true, true);
+        } else {
+            const std::vector<const Key*> keys = keys_in_range(
+                track, animation.length, animation.loop, info.time, info.delta, info.looped);
+            tick.key = keys.empty() ? nullptr : keys.back();
+        }
+        if (tick.key != nullptr) {
+            tick.on = entity_of(world, entity, id, tree, target);
+        }
+        if (auto played = audio_track_tick(world, tick); !played) {
+            warn_once(id, "an audio track's stream: " + played.error().message);
+        }
+    }
+
+    // An animation track, as Godot's AnimationMixer::_blend_process plays one: a seek moves the
+    // track's player to where the key at or before the time started its animation, and playback
+    // plays the animation of the last key it passed, or stops the player at "[stop]".
+    void play_animation_track(world::World& world, entt::entity on, std::string_view id,
+                              const Track& track, const Animation& animation,
+                              const PlaybackInfo& info) {
+        if (info.seeked) {
+            const Key* key = find_key(track, animation.length, info.time, true, true);
+            if (key == nullptr || !key->value.is_string()) {
+                return;
+            }
+            auto sought = seek_started(world, libraries, on, key->value.as_string(),
+                                       info.time - key->time, 1, info.external);
+            if (!sought) {
+                warn_once(id, "target \"" + track.target + "\": " + sought.error().message);
+                return;
+            }
+            // A seek within the tree's playback plays it from there, as does one from outside
+            // while it plays.
+            auto* player = world.ecs().try_get<world::AnimationPlayer>(on);
+            if (sought.value() && player != nullptr && (player->playing || !info.external)) {
+                player->playing = true;
+            }
+            return;
+        }
+        const std::vector<const Key*> keys = keys_in_range(track, animation.length, animation.loop,
+                                                           info.time, info.delta, info.looped);
+        if (keys.empty() || !keys.back()->value.is_string()) {
+            return;
+        }
+        if (auto played = play_started(world, libraries, on, keys.back()->value.as_string());
+            !played) {
+            warn_once(id, "target \"" + track.target + "\": " + played.error().message);
         }
     }
 
@@ -655,12 +734,31 @@ struct TreePlayer::State {
                 if (index < 0) {
                     continue;
                 }
+                if (table.tracks[static_cast<std::size_t>(index)].kind == TrackKind::Audio) {
+                    // Counted even at no weight, so its streams' ends are watched.
+                    float weight = blend_of(instance, index);
+                    if (!tree.deterministic) {
+                        const float total = mixed[static_cast<std::size_t>(index)].total;
+                        weight = is_zero_approx(total) ? 0.0F : weight / total;
+                    }
+                    play_audio_track(world, entity, id, tree,
+                                     table.tracks[static_cast<std::size_t>(index)].target,
+                                     instance.name, animation, i, info, weight);
+                    continue;
+                }
                 const std::optional<float> blend = final_blend(instance, index);
                 if (!blend) {
                     continue;
                 }
                 const TreeTrack& cached = table.tracks[static_cast<std::size_t>(index)];
                 Mixed& out = mixed[static_cast<std::size_t>(index)];
+                if (cached.kind == TrackKind::Animation) {
+                    const entt::entity on = entity_of(world, entity, id, tree, cached.target);
+                    if (on != entt::null) {
+                        play_animation_track(world, on, id, track, animation, info);
+                    }
+                    continue;
+                }
                 if (cached.kind == TrackKind::Event) {
                     const entt::entity on = entity_of(world, entity, id, tree, cached.target);
                     if (on == entt::null) {

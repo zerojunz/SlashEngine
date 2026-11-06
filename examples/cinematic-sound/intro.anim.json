@@ -1,0 +1,27 @@
+{
+  "animations": {
+    "intro": {
+      "length": 3.0,
+      "markers": {"retake": 0.9},
+      "tracks": [
+        {
+          "keys": [
+            {"stream": "creak.wav", "time": 0.25}
+          ],
+          "target": "door",
+          "type": "audio",
+          "use_blend": false
+        },
+        {
+          "keys": [
+            {"end_offset": 0.5, "start_offset": 0.25, "stream": "line.wav", "time": 1.0},
+            {"stream": "sigh.wav", "time": 2.5}
+          ],
+          "target": "narrator",
+          "type": "audio"
+        }
+      ]
+    }
+  },
+  "format": 1
+}

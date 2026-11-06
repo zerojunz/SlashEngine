@@ -1,3 +1,5 @@
+#include "fake_track_sound.hpp"
+
 #include "slash/animation/animation.hpp"
 #include "slash/asset/assets.hpp"
 #include "slash/core/json.hpp"
@@ -200,7 +202,7 @@ TEST_CASE("animation files are checked, with every error at its JSON Pointer") {
     // A track is a value track, an event track or a node track.
     CHECK(errors_of(library(R"({"keys": [{"time": 0}]})")) ==
           "/animations/a/tracks/0: a track has a \"path\", for a value track, an \"event\" or a "
-          "\"node\"");
+          "\"node\", or \"type\": \"animation\" or \"audio\"");
     CHECK(errors_of(library(R"({"path": "Transform2D/rotation", "event": "hit",
                                 "keys": [{"time": 0}]})")) ==
           "/animations/a/tracks/0: a track has one of \"path\", \"event\" and \"node\", not more");
@@ -715,4 +717,269 @@ TEST_CASE("an edited animation file plays its new keys from the next tick") {
     scene.assets.poll();
     scene.world.step(0.25);
     CHECK(scene.transform(hero).rotation == doctest::Approx(3.0F));
+}
+
+TEST_CASE("bezier tracks follow their keys' handles, as Godot's bezier_track_interpolate") {
+    const animation::Animation anim = animation_of(library(R"({"type": "bezier",
+        "path": "Camera3D/fov", "keys": [
+          {"time": 0, "value": 0, "out": [1, 0]},
+          {"time": 2, "value": 10, "in": [-1, 0]},
+          {"time": 3, "value": 4, "in": [-0.5, 3]}]})",
+                                                           4.0, "linear"));
+    CHECK(anim.tracks[0].type == animation::TrackType::Bezier);
+    // Eased in and out between the first two keys, by handles a second long.
+    CHECK(number_at(anim, 0.0) == doctest::Approx(0.0));
+    CHECK(number_at(anim, 0.5) == doctest::Approx(1.0589292831913322));
+    CHECK(number_at(anim, 1.0) == doctest::Approx(5.0));
+    CHECK(number_at(anim, 1.5) == doctest::Approx(8.941070716808667));
+    CHECK(number_at(anim, 2.0) == doctest::Approx(10.0));
+    CHECK(number_at(anim, 2.5) == doctest::Approx(7.0));
+    // Past the last key it holds, even in a loop: a bezier curve never wraps.
+    CHECK(number_at(anim, 3.5) == doctest::Approx(4.0));
+
+    // With no handles, the curve is a straight line.
+    const animation::Animation straight = animation_of(library(R"({"type": "bezier",
+        "path": "Camera3D/fov", "keys": [{"time": 1, "value": 0}, {"time": 3, "value": 10}]})",
+                                                               4.0));
+    CHECK(number_at(straight, 0.0) == doctest::Approx(0.0));
+    CHECK(number_at(straight, 1.5) == doctest::Approx(2.5));
+    CHECK(number_at(straight, 2.0) == doctest::Approx(5.0));
+}
+
+TEST_CASE("cinematic tracks and markers are checked, each error at its JSON Pointer") {
+    CHECK(errors_of(R"({"format": 1, "animations": {"shot": {"length": 2,
+        "markers": {"wide": 0.5, "late": 3},
+        "tracks": [
+          {"type": "bezier", "path": "Transform3D/position",
+           "keys": [{"time": 0, "value": 1}]},
+          {"type": "bezier", "path": "Camera3D/fov", "interpolation": "cubic",
+           "keys": [{"time": 0, "value": 70, "out": [-1, 0], "transition": 2},
+                    {"time": 1, "value": [1], "in": [1, 0]}]},
+          {"type": "animation", "path": "Camera3D/fov", "keys": [{"time": 0, "value": 1}]},
+          {"type": "animation", "keys": [{"time": 0, "value": "open"}]},
+          {"type": "event", "path": "Camera3D/fov", "keys": [{"time": 0, "value": 1}]},
+          {"path": "Camera3D/near", "keys": [{"time": 0, "value": 1, "in": [0, 0],
+                                              "animation": "open"}]}
+        ]}}})") == "/animations/shot/markers/late: 3 is past the animation's length, 2\n"
+                   "/animations/shot/tracks/0/path: a bezier track sets one number, as "
+                   "\"Camera3D/fov\" or \"Transform3D/position/y\"; Transform3D/position isn't "
+                   "one\n"
+                   "/animations/shot/tracks/1/interpolation: a bezier track's curve comes from "
+                   "its keys' handles, so it has no interpolation\n"
+                   "/animations/shot/tracks/1/keys/0/transition: a bezier key's handles shape "
+                   "the curve, so it has no transition\n"
+                   "/animations/shot/tracks/1/keys/0/out/0: an out handle points on in time: 0 "
+                   "seconds or more\n"
+                   "/animations/shot/tracks/1/keys/1/value: a bezier track's keys need a "
+                   "\"value\": a number\n"
+                   "/animations/shot/tracks/1/keys/1/in/0: an in handle points back in time: 0 "
+                   "seconds or less\n"
+                   "/animations/shot/tracks/2: an animation track plays the animations of its "
+                   "target's AnimationPlayer, so it has no path, event or node\n"
+                   "/animations/shot/tracks/3: an animation track needs a \"target\": the entity "
+                   "whose AnimationPlayer it plays\n"
+                   "/animations/shot/tracks/3/keys/0: an animation track's keys need an "
+                   "\"animation\": the one its player plays from there, or \"[stop]\"\n"
+                   "/animations/shot/tracks/3/keys/0/value: an animation track's keys carry "
+                   "\"animation\", not \"value\"\n"
+                   "/animations/shot/tracks/4/type: an event track has a \"event\"\n"
+                   "/animations/shot/tracks/5/keys/0/in: only bezier tracks' keys have handles\n"
+                   "/animations/shot/tracks/5/keys/0/animation: only animation tracks' keys name "
+                   "an animation");
+}
+
+TEST_CASE("audio tracks are checked, each error at its JSON Pointer") {
+    CHECK(errors_of(R"({"format": 1, "animations": {"talk": {"length": 2, "tracks": [
+          {"type": "audio", "keys": [{"time": 0, "stream": "a.wav", "start_offset": 0.5}]},
+          {"type": "audio", "event": "x", "keys": [{"time": 0, "stream": "a.wav"}]},
+          {"type": "audio", "update": "discrete", "keys": [{"time": 0, "value": "a.wav"}]},
+          {"path": "Camera3D/fov", "use_blend": false,
+           "keys": [{"time": 0, "value": 1, "stream": "a.wav", "end_offset": 1}]}
+        ]}}})") == "/animations/talk/tracks/1: an audio track plays sounds on its target's "
+                   "audio player, so it has no path, event or node\n"
+                   "/animations/talk/tracks/2/update: only value tracks have update\n"
+                   "/animations/talk/tracks/2/keys/0: an audio track's keys need a \"stream\": "
+                   "the sound it plays from there\n"
+                   "/animations/talk/tracks/2/keys/0/value: an audio track's keys carry "
+                   "\"stream\", not \"value\"\n"
+                   "/animations/talk/tracks/3/use_blend: only audio tracks have use_blend\n"
+                   "/animations/talk/tracks/3/keys/0/stream: only audio tracks' keys have "
+                   "stream\n"
+                   "/animations/talk/tracks/3/keys/0/end_offset: only audio tracks' keys have "
+                   "end_offset");
+    const animation::Animation talk = animation::parse_animation_library(parse(R"({"format": 1,
+        "animations": {"talk": {"length": 2, "tracks": [{"type": "audio", "use_blend": false,
+        "keys": [{"time": 1, "stream": "a.wav", "start_offset": 0.5, "end_offset": 0.25}]}]}}})"))
+                                          .value()
+                                          .animations.at("talk");
+    REQUIRE(talk.tracks.size() == 1);
+    CHECK(talk.tracks[0].type == animation::TrackType::Audio);
+    CHECK_FALSE(talk.tracks[0].use_blend);
+    CHECK(talk.tracks[0].keys[0].value == json::Value("a.wav"));
+    CHECK(talk.tracks[0].keys[0].start_offset == 0.5);
+    CHECK(talk.tracks[0].keys[0].end_offset == 0.25);
+}
+
+TEST_CASE("an animation track plays and stops another AnimationPlayer's animations") {
+    Scene scene;
+    scene.files.write("door.anim.json", R"({"format": 1, "animations": {
+        "open": {"length": 1, "tracks": [{"path": "Transform2D/rotation",
+          "keys": [{"time": 0, "value": 0}, {"time": 1, "value": 2}]}]},
+        "shut": {"length": 1, "tracks": [{"path": "Transform2D/rotation",
+          "keys": [{"time": 0, "value": 2}, {"time": 1, "value": 0}]}]}}})");
+    scene.files.write("scene.anim.json", R"({"format": 1, "animations": {
+        "intro": {"length": 4, "tracks": [{"type": "animation", "target": "door", "keys": [
+          {"time": 0.5, "animation": "open"}, {"time": 2, "animation": "[stop]"},
+          {"time": 3, "animation": "shut"}]}]}}})");
+    // The door's player waits on its own. The director's plays first, as the newer entity, so
+    // the door plays on from the tick its key starts it.
+    const entt::entity door = scene.create("door", R"({"Transform2D": {}, "AnimationPlayer":
+        {"library": "door.anim.json", "playing": false}})");
+    scene.create("director", R"({"AnimationPlayer": {"library": "scene.anim.json",
+        "animation": "intro", "targets": {"door": "door"}}})");
+    scene.world.step(0.25);
+    CHECK_FALSE(scene.player(door).playing);
+    scene.world.step(0.5);
+    CHECK(scene.player(door).animation == "open");
+    CHECK(scene.player(door).playing);
+    CHECK(scene.player(door).time == doctest::Approx(0.5));
+    CHECK(scene.transform(door).rotation == doctest::Approx(1.0F));
+    scene.world.step(0.75);
+    CHECK_FALSE(scene.player(door).playing);
+    CHECK(scene.transform(door).rotation == doctest::Approx(2.0F));
+    // "[stop]" stops it and moves it back to its start, as Godot's stop().
+    scene.world.step(0.5);
+    CHECK_FALSE(scene.player(door).playing);
+    CHECK(scene.player(door).time == 0.0);
+    CHECK(scene.transform(door).rotation == doctest::Approx(0.0F));
+    scene.world.step(0.75);
+    CHECK_FALSE(scene.player(door).playing);
+    scene.world.step(0.5);
+    CHECK(scene.player(door).animation == "shut");
+    CHECK(scene.transform(door).rotation == doctest::Approx(1.0F));
+}
+
+TEST_CASE("audio tracks start their keys' streams and stop them as Godot's AnimationMixer does") {
+    Scene scene;
+    slash::test::FakeSound sound;
+    sound.install(scene.world);
+    sound.lengths["line.wav"] = 1.0;
+    scene.files.write("talk.anim.json", R"({"format": 1, "animations": {
+        "talk": {"length": 2, "tracks": [{"type": "audio", "target": "voice", "keys": [
+          {"time": 0.5, "stream": "line.wav", "start_offset": 0.25, "end_offset": 0.25},
+          {"time": 1.5, "stream": "sigh.wav"}]}]}}})");
+    scene.create("voice", R"({"AudioStreamPlayer": {}})");
+    const entt::entity talker = scene.create("talker", R"({"AnimationPlayer": {
+        "library": "talk.anim.json", "animation": "talk", "targets": {"voice": "voice"}}})");
+    std::vector<std::string> calls;
+    for (int tick = 1; tick <= 20; ++tick) {
+        scene.world.step(0.1);
+        for (const std::string& call : sound.take()) {
+            calls.push_back(std::to_string(tick) + " " + call);
+        }
+    }
+    // The line plays from a quarter second in, and is cut half a second later, a quarter second
+    // before its end; the sigh plays until the animation ends, as a finished player stops its
+    // sounds.
+    CHECK(calls == std::vector<std::string>{"5 play voice line.wav 0.25", "5 volume 1 0",
+                                            "11 stop 1", "15 play voice sigh.wav 0",
+                                            "15 volume 2 0", "20 stop 2"});
+    CHECK_FALSE(scene.player(talker).playing);
+
+    // A seek back before a key stops its stream; stopping the player stops the rest.
+    scene.player(talker).playing = true;
+    scene.player(talker).time = 0.0;
+    for (int tick = 0; tick < 16; ++tick) {
+        scene.world.step(0.1);
+    }
+    CHECK(sound.take() == std::vector<std::string>{"play voice line.wav 0.25", "volume 3 0",
+                                                   "stop 3", "play voice sigh.wav 0",
+                                                   "volume 4 0"});
+    REQUIRE(animation::seek(scene.world, scene.assets, talker, 1.0).ok());
+    CHECK(sound.take() == std::vector<std::string>{"stop 4"});
+    scene.world.step(0.1);
+    scene.world.step(0.1);
+    scene.world.step(0.1);
+    scene.world.step(0.1);
+    scene.world.step(0.1);
+    CHECK(sound.take() == std::vector<std::string>{"play voice sigh.wav 0", "volume 5 0"});
+    scene.player(talker).playing = false;
+    scene.world.step(0.1);
+    CHECK(sound.take() == std::vector<std::string>{"stop 5"});
+
+    // A stream that can't play warns once.
+    const Warnings warnings;
+    scene.world.ecs().remove<world::AudioStreamPlayer>(scene.world.find("voice"));
+    scene.player(talker).playing = true;
+    scene.player(talker).time = 0.0;
+    for (int tick = 0; tick < 6; ++tick) {
+        scene.world.step(0.1);
+    }
+    CHECK(warnings.logged("an audio track's stream: no player"));
+}
+
+TEST_CASE("a track that makes a camera current cuts to it, as Godot's Camera3D.current") {
+    Scene scene;
+    scene.files.write("cut.anim.json", library(R"({"target": "close", "path": "Camera3D/current",
+        "keys": [{"time": 0.5, "value": true}]},
+        {"type": "bezier", "target": "close", "path": "Camera3D/fov",
+         "keys": [{"time": 0, "value": 60}, {"time": 1, "value": 40}]})"));
+    const entt::entity wide = scene.create("wide", R"({"Camera3D": {"current": true}})");
+    const entt::entity close = scene.create("close", R"({"Camera3D": {}})");
+    scene.create("director", R"({"AnimationPlayer": {"library": "cut.anim.json",
+        "animation": "a", "targets": {"close": "close"}}})");
+    const auto camera = [&](entt::entity entity) -> world::Camera3D& {
+        return scene.world.ecs().get<world::Camera3D>(entity);
+    };
+    scene.world.step(0.25);
+    CHECK(camera(wide).current);
+    CHECK_FALSE(camera(close).current);
+    CHECK(camera(close).fov == doctest::Approx(55.0F));
+    scene.world.step(0.25);
+    CHECK_FALSE(camera(wide).current);
+    CHECK(camera(close).current);
+}
+
+TEST_CASE("seeking sets what an animation's tracks set there, its started players' included") {
+    Scene scene;
+    scene.files.write("door.anim.json", R"({"format": 1, "animations": {
+        "swing": {"length": 1, "loop": "pingpong", "tracks": [{"path": "Transform2D/rotation",
+          "keys": [{"time": 0, "value": 0}, {"time": 1, "value": 2}]}]}}})");
+    scene.files.write("scene.anim.json", R"({"format": 1, "animations": {
+        "intro": {"length": 4, "markers": {"reveal": 2.5}, "tracks": [
+          {"type": "bezier", "path": "Transform2D/position/x",
+           "keys": [{"time": 0, "value": 0}, {"time": 4, "value": 40}]},
+          {"path": "Sprite2D/texture", "keys": [{"time": 0, "value": "a.png"},
+                                                {"time": 2, "value": "b.png"}]},
+          {"event": "boom", "keys": [{"time": 1}]},
+          {"type": "animation", "target": "door", "keys": [{"time": 1, "animation": "swing"}]}
+        ]}}})");
+    const entt::entity door = scene.create("door", R"({"Transform2D": {}, "AnimationPlayer":
+        {"library": "door.anim.json", "playing": false}})");
+    const entt::entity director = scene.create("director", R"({"Transform2D": {}, "AnimationPlayer":
+        {"library": "scene.anim.json", "animation": "intro", "playing": false,
+         "targets": {"door": "door"}}})");
+    REQUIRE(animation::seek(scene.world, scene.assets, director, 2.5).ok());
+    CHECK(scene.player(director).time == 2.5);
+    CHECK(scene.transform(director).position.x == doctest::Approx(25.0F));
+    CHECK(scene.world.ecs().get<world::Sprite2D>(director).texture == "b.png");
+    // The door swung there and halfway back, as it would have from the key at 1 second.
+    CHECK(scene.player(door).animation == "swing");
+    CHECK(scene.player(door).time == doctest::Approx(0.5));
+    CHECK(scene.transform(door).rotation == doctest::Approx(1.0F));
+    CHECK_FALSE(scene.player(door).playing);
+    // Events wait for playback.
+    CHECK(scene.take_events().empty());
+
+    // Before the key, the door is left alone.
+    scene.transform(door).rotation = 9.0F;
+    REQUIRE(animation::seek(scene.world, scene.assets, director, 0.5).ok());
+    CHECK(scene.transform(door).rotation == 9.0F);
+    CHECK(scene.world.ecs().get<world::Sprite2D>(director).texture == "a.png");
+
+    const auto failed = animation::seek(scene.world, scene.assets, director, 1, "outro");
+    REQUIRE_FALSE(failed.ok());
+    CHECK(failed.error().message ==
+          "scene.anim.json has no animation \"outro\"; did you mean \"intro\"?");
+    REQUIRE_FALSE(animation::seek(scene.world, scene.assets, director, 5).ok());
 }

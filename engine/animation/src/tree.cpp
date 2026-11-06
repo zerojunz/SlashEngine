@@ -1446,6 +1446,17 @@ std::string event_track_name(const Track& track) {
     return track.target.empty() ? "@" + track.event : track.target + ":@" + track.event;
 }
 
+std::string track_name(const Track& track) {
+    if (!track.node.empty()) {
+        return track.node;
+    }
+    if (track.type == TrackType::Animation || track.type == TrackType::Audio) {
+        const std::string what = track.type == TrackType::Audio ? "[audio]" : "[animation]";
+        return track.target.empty() ? what : track.target + ":" + what;
+    }
+    return track.path.empty() ? event_track_name(track) : value_track_name(track);
+}
+
 std::vector<json::ValidationError> check_trees(const json::Value& doc,
                                                const world::FileReader& reader) {
     std::vector<json::ValidationError> errors;
@@ -1533,8 +1544,7 @@ std::vector<json::ValidationError> check_trees(const json::Value& doc,
                             nodes_moved.insert(track.node);
                             continue;
                         }
-                        tracks.insert(track.path.empty() ? event_track_name(track)
-                                                         : value_track_name(track));
+                        tracks.insert(track_name(track));
                         if (!track.target.empty()) {
                             targeted.insert(track.target);
                         }

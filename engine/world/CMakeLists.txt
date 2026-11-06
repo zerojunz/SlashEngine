@@ -1,4 +1,5 @@
 add_library(slash_world
+    src/audio_tracks.cpp
     src/camera2d.cpp
     src/canvas_layer.cpp
     src/component_registry.cpp

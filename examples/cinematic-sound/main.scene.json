@@ -1,0 +1,29 @@
+{
+  "entities": {
+    "director": {
+      "components": {
+        "AnimationPlayer": {
+          "animation": "intro",
+          "library": "intro.anim.json",
+          "targets": {
+            "door": "door",
+            "narrator": "narrator"
+          }
+        }
+      }
+    },
+    "door": {
+      "components": {
+        "AudioStreamPlayer": {
+          "volume_db": -6.0
+        }
+      }
+    },
+    "narrator": {
+      "components": {
+        "AudioStreamPlayer": {}
+      }
+    }
+  },
+  "format": 1
+}
