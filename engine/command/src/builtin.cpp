@@ -58,6 +58,7 @@
 #include "slash/scene3d/particles.hpp"
 #include "slash/scene3d/recipe.hpp"
 #include "slash/scene3d/skeleton.hpp"
+#include "slash/scene3d/streaming.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
 #include "slash/soundtrack/score.hpp"
 #include "slash/storyboard/storyboard.hpp"
@@ -2110,6 +2111,27 @@ Reply physics_contacts(Session& session, const json::Value& params) {
 }
 
 // physics.soft_body: where a soft body's mesh is, as Godot's SoftBody3D::get_point_transform.
+Reply streaming_state(Session& session, const json::Value& /*params*/) {
+    const world::World& world = session.world();
+    json::Array cells;
+    for (const scene3d::StreamedCell& cell : scene3d::streamed_cells(world)) {
+        json::Value entry;
+        entry["id"] = std::string(world.id_of(cell.entity));
+        entry["scene"] = world.ecs().get<const world::StreamedScene3D>(cell.entity).scene;
+        entry["loaded"] = cell.loaded;
+        entry["distance"] = cell.distance ? rounded(json::Value(*cell.distance)) : json::Value();
+        cells.push_back(std::move(entry));
+    }
+    std::size_t sources = 0;
+    for (const auto [entity, source] : world.ecs().view<const world::StreamingSource3D>().each()) {
+        sources += source.enabled ? 1 : 0;
+    }
+    json::Value result;
+    result["cells"] = std::move(cells);
+    result["sources"] = static_cast<std::int64_t>(sources);
+    return Reply::success(std::move(result));
+}
+
 Reply physics_soft_body(Session& session, const json::Value& params) {
     world::World& world = session.world();
     const std::string id = text(params, "id");
@@ -7587,6 +7609,16 @@ void register_builtin_commands(Registry& registry) {
         .params = params_schema({{"id", id_property("A soft body.")}, {"at", std::move(soft_at)}},
                                 {"id"}),
         .handler = physics_soft_body,
+    });
+    registry.add({
+        .name = "streaming.state",
+        .description = "Lists the StreamedScene3Ds: each one's scene, whether it is loaded and the "
+                       "meters from the nearest StreamingSource3D to its box (null with none), "
+                       "and how many sources are enabled.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema(),
+        .handler = streaming_state,
     });
     json::Value break_push = property("number", "Meters per second each piece flies away from "
                                                 "from, on top of the body's own velocity.");

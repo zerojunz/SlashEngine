@@ -69,6 +69,7 @@ as `entity.get`, reject it as an unknown param.
 | Terrains | [`terrain.generate`](#terraingenerate), [`terrain.import`](#terrainimport), [`terrain.brush`](#terrainbrush), [`terrain.get`](#terrainget) |
 | Tile maps | [`tilemap.paint`](#tilemappaint), [`tilemap.generate`](#tilemapgenerate), [`tilemap.set`](#tilemapset), [`tilemap.get`](#tilemapget), [`tilemap.convert`](#tilemapconvert) |
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity), [`physics.soft_body`](#physicssoft_body), [`physics.break`](#physicsbreak) |
+| World streaming | [`streaming.state`](#streamingstate) |
 | Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent), [`navigation.bake`](#navigationbake) |
 | Particles | [`particles.eval`](#particleseval), [`particles.bake_sdf`](#particlesbake_sdf) |
 | Lights | [`light.sample`](#lightsample) |
@@ -1657,6 +1658,22 @@ out from under its middle:
 
 An unknown ID is an error, as is an entity without a `Destructible3D`, without a body, or whose
 mesh can't be cut, saying why.
+
+## World streaming
+
+### streaming.state
+
+Lists the world's [`StreamedScene3D`s](scene-format.md#world-streaming), in the order their
+entities were made: each one's scene, whether it is loaded and the meters from the nearest
+enabled `StreamingSource3D` to its box (`null` when there is none), with how many sources are
+enabled. Cells load and unload as the world steps, so before the first step nothing is loaded.
+
+Needs: `read`. No params. [examples/world-streaming](../../examples/world-streaming/) with its
+player 150 meters down the road, in the middle and east cells:
+
+```json
+{"cells":[{"distance":0,"id":"east","loaded":true,"scene":"cells/east.scene.json"},{"distance":0,"id":"middle","loaded":true,"scene":"cells/middle.scene.json"},{"distance":100,"id":"west","loaded":false,"scene":"cells/west.scene.json"}],"sources":1}
+```
 
 ## Navigation
 
