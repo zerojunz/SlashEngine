@@ -332,7 +332,10 @@ An instance of the scene has the same library, with its targets under the instan
 | Godot track | Becomes |
 | --- | --- |
 | Value track | A value track on the field the property converts to, as a node's property does (`.:position` is `Transform2D/position`, `Sprite2D:texture` a texture path); a part such as `modulate:a` or `position:y` is the field's part. Interpolation, easing (`transitions`), `loop_wrap` and discrete or continuous update modes carry over |
-| Bezier track | A value track through its keys' values, with cubic interpolation; its handles are reported |
+| Bezier track | A [bezier track](scene-format.md#cinematics) with its keys' handles; one on a field that isn't a number plays as a cubic value track, and is reported |
+| Animation playback track | An [animation track](scene-format.md#cinematics) targeting the entity of the `AnimationPlayer` node it names, each key's clip as its `animation` |
+| Audio playback track | An [audio track](scene-format.md#cinematics) targeting the entity of the `AudioStreamPlayer`, `AudioStreamPlayer2D` or `AudioStreamPlayer3D` node it names, each key's stream as its `stream` with its `start_offset` and `end_offset`, and `use_blend`. One on another node, or a stream that isn't a file, is reported |
+| Markers | The animation's `markers`, by name |
 | Method track | An event track per method it calls, named after the method, with `{"args": [...]}` as each key's data when it passes arguments. The node's script becomes C++ that handles the event |
 | `position_3d`, `rotation_3d` or `scale_3d` track on a bone or node of an instanced model | A [node track](scene-format.md#node-tracks) on the model's node of that name, rotations as Euler angles. The player goes on the entity that draws the model, since node tracks move the model their entity draws, and the report says so |
 | `position_3d`, `rotation_3d` or `scale_3d` track on a 3D node of the scene | A value track on `Transform3D/position`, `rotation` or `scale`, with easing and `loop_wrap` |
@@ -760,8 +763,7 @@ eight other places (`also`).
 | `GPUParticles3D`'s sub-emitters, trails, `draw_skin`, `material_overlay` and primitive meshes on passes after the first | 3D particles have no sub-emitters or trails yet; export a later pass's mesh as a glTF file |
 | A `GPUParticlesCollisionSDF3D`'s baked texture, and a height field's resolution above 1024 | Bake the SDF again with `particles.bake_sdf`; height fields draw at most 1024 texels across |
 | Other 3D nodes with no SlashEngine component | Not supported yet; their entities keep their place in the tree |
-| Audio and animation tracks | Play the sound or the other animation from gameplay code, on an event track's event |
-| Bezier handles, the capture update mode, blend times and markers | A bezier track plays cubic through its keys, a capture track as continuous, and animations switch without blending |
+| The capture update mode and blend times | A capture track plays as continuous, and animations switch without blending |
 | Tracks on a control's `position` or `size` | Animate its offsets instead |
 | Animation libraries no `AnimationPlayer` plays | A track's fields depend on the node it animates |
 | Custom data of other types, and tiles' constant velocities | Custom data holds the types listed above; move a layer rather than give its tiles a velocity |

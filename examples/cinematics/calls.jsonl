@@ -1,0 +1,13 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"animation.eval","params":{"id":"director","times":[0,1,2,3,4],"tracks":["wide:Transform3D/position/z","wide:Camera3D/fov"]}}
+{"jsonrpc":"2.0","id":3,"method":"animation.seek","params":{"id":"director","marker":"close_up"}}
+{"jsonrpc":"2.0","id":4,"method":"entity.get","params":{"id":"door","components":["AnimationPlayer","Transform3D"],"omit_defaults":true}}
+{"jsonrpc":"2.0","id":5,"method":"world.query","params":{"where":[{"component":"Camera3D","field":"current","value":true}]}}
+{"jsonrpc":"2.0","id":6,"method":"animation.seek","params":{"id":"director","marker":"closeup"}}
+{"jsonrpc":"2.0","id":7,"method":"undo","params":{}}
+{"jsonrpc":"2.0","id":8,"method":"events.subscribe","params":{"kinds":["title","animation_finished"]}}
+{"jsonrpc":"2.0","id":9,"method":"step","params":{"ticks":150}}
+{"jsonrpc":"2.0","id":10,"method":"entity.get","params":{"id":"door","components":["AnimationPlayer"],"omit_defaults":true}}
+{"jsonrpc":"2.0","id":11,"method":"step","params":{"ticks":120}}
+{"jsonrpc":"2.0","id":12,"method":"world.query","params":{"where":[{"component":"Camera3D","field":"current","value":true}]}}
+{"jsonrpc":"2.0","id":13,"method":"events.read","params":{"subscription":"events_1"}}

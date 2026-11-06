@@ -157,6 +157,254 @@ Step advance(world::AnimationPlayer& player, const Animation& animation, double 
     return step;
 }
 
+// The names of a map's keys, for "did you mean".
+template <typename Map>
+std::vector<std::string_view> names_of(const Map& map) {
+    std::vector<std::string_view> names;
+    names.reserve(map.size());
+    for (const auto& [name, value] : map) {
+        names.emplace_back(name);
+    }
+    return names;
+}
+
+// The entity a track acts on: the player's own, or the one its targets name; null, with why in
+// error, for a target that names none.
+entt::entity track_entity(const world::World& world, entt::entity entity,
+                          const world::AnimationPlayer& player, const Track& track,
+                          std::string& error) {
+    if (track.target.empty()) {
+        return entity;
+    }
+    const auto it = player.targets.find(track.target);
+    if (it == player.targets.end()) {
+        error = "no entity for target \"" + track.target + "\" in the AnimationPlayer's targets";
+        if (const std::string_view hint = closest_match(track.target, names_of(player.targets));
+            !hint.empty()) {
+            error += "; did you mean \"" + std::string(hint) + "\"?";
+        }
+        return entt::null;
+    }
+    if (it->second == entt::null || !world.valid(it->second)) {
+        error = "target \"" + track.target + "\" names no entity";
+        return entt::null;
+    }
+    return it->second;
+}
+
+// An animation of a library, or null with why in error.
+const Animation* find_animation(const AnimationLibrary& library, const std::string& path,
+                                const std::string& name, std::string& error) {
+    const auto found = library.animations.find(name);
+    if (found != library.animations.end()) {
+        return &found->second;
+    }
+    error = path + " has no animation \"" + name + "\"";
+    if (const std::string_view hint = closest_match(name, names_of(library.animations));
+        !hint.empty()) {
+        error += "; did you mean \"" + std::string(hint) + "\"?";
+    }
+    return nullptr;
+}
+
+// Where an animation track's player is in the animation a key started, the track's playback at
+// time: as Godot's AnimationMixer finds it when seeking, the time since the key, held at the end,
+// round a loop or back and forth.
+double started_position(const Animation& started, double since) {
+    const double end = started.length;
+    switch (started.loop) {
+    case LoopMode::None:
+        return std::min(end, since);
+    case LoopMode::Linear:
+        return detail::fposmod(since, end);
+    case LoopMode::PingPong:
+        return detail::pingpong(since, end);
+    }
+    return 0.0;
+}
+
+// How deep animation tracks seek players that play players: as deep as any cinematic nests.
+constexpr int kMaxSeekDepth = 8;
+
+// Seeks a player and the players its animation tracks play, as Godot's
+// AnimationPlayer::seek(time, true, true): sets the values its value and bezier tracks have there,
+// and moves each player an animation track started to where it would be.
+Result<void> seek_player(world::World& world, detail::LibraryCache& cache, entt::entity entity,
+                         double time, std::string_view name, int depth) {
+    auto& ecs = world.ecs();
+    const std::string id(world.id_of(entity));
+    if (!ecs.all_of<world::AnimationPlayer>(entity)) {
+        return make_error(ErrorCode::InvalidArgument, "\"" + id + "\" has no AnimationPlayer");
+    }
+    const world::AnimationPlayer player = ecs.get<world::AnimationPlayer>(entity);
+    if (player.library.empty()) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "\"" + id + "\"'s AnimationPlayer has no library");
+    }
+    std::string error;
+    detail::LibraryCache::Entry* cached =
+        cache.get(player.library, [&](const std::string& message) { error = message; });
+    if (cached == nullptr) {
+        return make_error(ErrorCode::InvalidArgument, error);
+    }
+    const std::string animation_name = name.empty() ? player.animation : std::string(name);
+    if (animation_name.empty()) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "\"" + id + "\"'s AnimationPlayer has no animation; name one");
+    }
+    const Animation* found = find_animation(cached->library, player.library, animation_name, error);
+    if (found == nullptr) {
+        return make_error(ErrorCode::NotFound, error);
+    }
+    const Animation& animation = *found;
+    if (!std::isfinite(time) || time < 0.0 || time > animation.length + kEpsilon) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "the time is past " + animation_name + "'s length, " +
+                              json::write(json::Value(animation.length), json::Style::Compact));
+    }
+    time = std::min(time, animation.length);
+    {
+        auto& stored = ecs.get<world::AnimationPlayer>(entity);
+        stored.animation = animation_name;
+        stored.time = time;
+    }
+    // Audio tracks start nothing, but streams playing stop where the seek went back before
+    // their key or past their end, as Godot's update-only seek.
+    detail::begin_audio(world, entity, detail::Mixer::Player);
+    for (std::size_t i = 0; i < animation.tracks.size(); ++i) {
+        if (animation.tracks[i].type == TrackType::Audio) {
+            detail::AudioTrackTick tick;
+            tick.owner = entity;
+            tick.animation_name = animation_name;
+            tick.animation = &animation;
+            tick.track_index = i;
+            tick.track = &animation.tracks[i];
+            tick.time = time;
+            tick.backward = player.backwards;
+            static_cast<void>(detail::audio_track_tick(world, tick));
+        }
+    }
+    detail::end_audio(world, entity, detail::Mixer::Player);
+    const std::vector<detail::LibraryCache::Resolved>& resolved =
+        detail::LibraryCache::targets(*cached, animation_name, animation, world.components());
+    for (std::size_t i = 0; i < animation.tracks.size(); ++i) {
+        const Track& track = animation.tracks[i];
+        if (track.type != TrackType::Value && track.type != TrackType::Bezier &&
+            track.type != TrackType::Animation) {
+            continue;
+        }
+        std::string why;
+        const entt::entity on = track_entity(world, entity, player, track, why);
+        if (on == entt::null) {
+            log::warn("an AnimationPlayer can't seek a track", {{"id", id}, {"error", why}});
+            continue;
+        }
+        if (track.type == TrackType::Animation) {
+            // The key at or before the time, and the animation it started there.
+            const Key* key = detail::find_key(track, animation.length, time, true, true);
+            if (key == nullptr || !key->value.is_string()) {
+                continue;
+            }
+            if (auto sought = detail::seek_started(world, cache, on, key->value.as_string(),
+                                                   time - key->time, depth + 1, true);
+                !sought) {
+                log::warn("an animation track can't seek its player",
+                          {{"id", id}, {"error", sought.error().message}});
+            }
+            continue;
+        }
+        const std::optional<Target>& target = resolved[i].target;
+        if (!target) {
+            log::warn("an AnimationPlayer can't seek a track",
+                      {{"id", id}, {"error", resolved[i].error}});
+            continue;
+        }
+        const bool discrete = track.type == TrackType::Value &&
+                              (track.update == UpdateMode::Discrete ||
+                               (track.update == UpdateMode::Auto && target->discrete));
+        if (auto applied = apply(world, on, *target, sample(animation, track, time, discrete));
+            !applied) {
+            log::warn("an AnimationPlayer can't seek a track",
+                      {{"id", id}, {"error", track.path + ": " + applied.error().message}});
+        }
+    }
+    return {};
+}
+
+} // namespace
+
+namespace detail {
+
+Result<bool> seek_started(world::World& world, LibraryCache& cache, entt::entity entity,
+                          const std::string& name, double since, int depth, bool past_end) {
+    if (name == kStopAnimation || depth > kMaxSeekDepth) {
+        return false;
+    }
+    const auto* player = world.ecs().try_get<world::AnimationPlayer>(entity);
+    if (player == nullptr || player->library.empty()) {
+        return false;
+    }
+    std::string missing;
+    LibraryCache::Entry* library =
+        cache.get(player->library, [&](const std::string& message) { missing = message; });
+    const Animation* started =
+        library == nullptr ? nullptr
+                           : find_animation(library->library, player->library, name, missing);
+    if (started == nullptr) {
+        return false;
+    }
+    if (!past_end && started->loop == LoopMode::None &&
+        is_greater_or_equal_approx(since, started->length)) {
+        return false;
+    }
+    if (auto sought =
+            seek_player(world, cache, entity, started_position(*started, since), name, depth);
+        !sought) {
+        return sought.error();
+    }
+    return true;
+}
+
+Result<void> play_started(world::World& world, LibraryCache& cache, entt::entity entity,
+                          const std::string& name) {
+    auto& ecs = world.ecs();
+    auto* player = ecs.try_get<world::AnimationPlayer>(entity);
+    if (player == nullptr) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "\"" + std::string(world.id_of(entity)) + "\" has no AnimationPlayer");
+    }
+    if (name == kStopAnimation) {
+        player->playing = false;
+        if (player->library.empty() || player->animation.empty()) {
+            return {};
+        }
+        return seek_player(world, cache, entity, 0.0, {}, 0);
+    }
+    std::string error;
+    LibraryCache::Entry* library =
+        player->library.empty()
+            ? nullptr
+            : cache.get(player->library, [&](const std::string& message) { error = message; });
+    if (library == nullptr) {
+        return make_error(ErrorCode::InvalidArgument,
+                          error.empty() ? "its AnimationPlayer has no library" : error);
+    }
+    const Animation* animation = find_animation(library->library, player->library, name, error);
+    if (animation == nullptr) {
+        return make_error(ErrorCode::NotFound, error);
+    }
+    if (player->animation != name) {
+        player->animation = name;
+        player->time = player->backwards ? animation->length : 0.0;
+    }
+    player->playing = true;
+    return {};
+}
+
+} // namespace detail
+
+namespace {
+
 // Plays AnimationPlayer components. Its state is only a cache of loaded .anim.json files and
 // models, the targets their tracks resolve to and the warnings already logged, so a world's
 // snapshot, undo or dry run is never out of step with it.
@@ -177,6 +425,7 @@ struct PlayerState {
     }
 
     void run(world::World& world, double tick_seconds) {
+        detail::sweep_audio(world);
         libraries.begin();
         auto& ecs = world.ecs();
         const auto view = ecs.view<world::AnimationPlayer>();
@@ -194,6 +443,11 @@ struct PlayerState {
         auto& ecs = world.ecs();
         // A copy, since a track may set the player's own fields.
         world::AnimationPlayer player = ecs.get<world::AnimationPlayer>(entity);
+        if (player.library.empty() || player.animation.empty() || !player.playing) {
+            // A player that stopped, paused or finished stops its audio tracks' sounds, as
+            // Godot's clears its caches.
+            detail::stop_audio(world, entity, detail::Mixer::Player);
+        }
         if (player.library.empty() || player.animation.empty()) {
             return;
         }
@@ -203,23 +457,15 @@ struct PlayerState {
         if (cached == nullptr || !player.playing) {
             return;
         }
-        const AnimationLibrary& library = cached->library;
-        const auto found = library.animations.find(player.animation);
-        if (found == library.animations.end()) {
-            std::vector<std::string_view> names;
-            names.reserve(library.animations.size());
-            for (const auto& [name, animation] : library.animations) {
-                names.emplace_back(name);
-            }
-            std::string message = player.library + " has no animation \"" + player.animation + "\"";
-            if (const std::string_view hint = closest_match(player.animation, names);
-                !hint.empty()) {
-                message += "; did you mean \"" + std::string(hint) + "\"?";
-            }
-            warn_once(id, message);
+        std::string missing;
+        const Animation* found =
+            find_animation(cached->library, player.library, player.animation, missing);
+        if (found == nullptr) {
+            warn_once(id, missing);
             return;
         }
-        const Animation& animation = found->second;
+        const Animation& animation = *found;
+        const bool backward = (static_cast<double>(player.speed_scale) < 0.0) != player.backwards;
         const Step step = advance(player, animation, tick_seconds);
         {
             auto& stored = ecs.get<world::AnimationPlayer>(entity);
@@ -230,36 +476,19 @@ struct PlayerState {
 
         // The entity a track acts on: the player's own, or the one its targets name.
         const auto entity_of = [&](const Track& track) -> entt::entity {
-            if (track.target.empty()) {
-                return entity;
+            std::string why;
+            const entt::entity on = track_entity(world, entity, player, track, why);
+            if (on == entt::null) {
+                warn_once(id, why);
             }
-            const auto it = player.targets.find(track.target);
-            if (it == player.targets.end()) {
-                std::vector<std::string_view> names;
-                names.reserve(player.targets.size());
-                for (const auto& [name, target] : player.targets) {
-                    names.emplace_back(name);
-                }
-                std::string message = "no entity for target \"" + track.target +
-                                      "\" in the AnimationPlayer's targets";
-                if (const std::string_view hint = closest_match(track.target, names);
-                    !hint.empty()) {
-                    message += "; did you mean \"" + std::string(hint) + "\"?";
-                }
-                warn_once(id, message);
-                return entt::null;
-            }
-            if (it->second == entt::null || !world.valid(it->second)) {
-                warn_once(id, "target \"" + track.target + "\" names no entity");
-                return entt::null;
-            }
-            return it->second;
+            return on;
         };
 
         // Value tracks: continuous ones take their value at the new time, and discrete ones the
-        // value of the last key playback passed, as Godot's update modes do.
+        // value of the last key playback passed, as Godot's update modes do. Bezier tracks are
+        // continuous.
         const std::vector<detail::LibraryCache::Resolved>& resolved =
-            detail::LibraryCache::targets(*cached, found->first, animation, world.components());
+            detail::LibraryCache::targets(*cached, player.animation, animation, world.components());
         for (std::size_t i = 0; i < animation.tracks.size(); ++i) {
             const Track& track = animation.tracks[i];
             if (track.path.empty()) {
@@ -275,8 +504,9 @@ struct PlayerState {
                 continue;
             }
             const Target& target = *found_target;
-            const bool discrete = track.update == UpdateMode::Discrete ||
-                                  (track.update == UpdateMode::Auto && target.discrete);
+            const bool discrete = track.type == TrackType::Value &&
+                                  (track.update == UpdateMode::Discrete ||
+                                   (track.update == UpdateMode::Auto && target.discrete));
             json::Value value;
             if (discrete) {
                 const Key* last = nullptr;
@@ -302,6 +532,62 @@ struct PlayerState {
                 warn_once(id, track.path + ": " + applied.error().message);
             }
         }
+
+        // Animation tracks: the last key playback passed plays its animation on the track's
+        // player, as Godot's animation playback tracks do.
+        for (const Track& track : animation.tracks) {
+            if (track.type != TrackType::Animation) {
+                continue;
+            }
+            const Key* last = nullptr;
+            for (const Span& span : step.spans) {
+                if (const auto keys = span.keys_of(track); !keys.empty()) {
+                    last = keys.back();
+                }
+            }
+            if (last == nullptr || !last->value.is_string()) {
+                continue;
+            }
+            const entt::entity on = entity_of(track);
+            if (on == entt::null || !world.valid(entity)) {
+                continue;
+            }
+            if (auto played = detail::play_started(world, libraries, on, last->value.as_string());
+                !played) {
+                warn_once(id, "target \"" + track.target + "\": " + played.error().message);
+            }
+        }
+
+        // Audio tracks: the last key playback passed starts its stream on the track's audio
+        // player, as Godot's do, and streams stop where playback went back before their key or
+        // past their end offset.
+        detail::begin_audio(world, entity, detail::Mixer::Player);
+        for (std::size_t i = 0; i < animation.tracks.size(); ++i) {
+            const Track& track = animation.tracks[i];
+            if (track.type != TrackType::Audio) {
+                continue;
+            }
+            detail::AudioTrackTick tick;
+            tick.owner = entity;
+            tick.animation_name = player.animation;
+            tick.animation = &animation;
+            tick.track_index = i;
+            tick.track = &track;
+            tick.time = player.time;
+            tick.backward = backward;
+            for (const Span& span : step.spans) {
+                if (const auto keys = span.keys_of(track); !keys.empty()) {
+                    tick.key = keys.back();
+                }
+            }
+            if (tick.key != nullptr) {
+                tick.on = entity_of(track);
+            }
+            if (auto played = detail::audio_track_tick(world, tick); !played) {
+                warn_once(id, "an audio track's stream: " + played.error().message);
+            }
+        }
+        detail::end_audio(world, entity, detail::Mixer::Player);
 
         // Event tracks: each key passed, in the order playback passed them, from the entity the
         // track acts on.
@@ -338,6 +624,7 @@ struct PlayerState {
             }
         }
         if (step.finished) {
+            detail::stop_audio(world, entity, detail::Mixer::Player);
             json::Value data;
             data["animation"] = player.animation;
             world.emit("animation_finished", id, std::move(data));
@@ -410,6 +697,7 @@ void add_systems(world::World& world, asset::Assets& assets) {
         }
         return out;
     });
+    world.add_reset([](world::World& w) { detail::reset_audio(w); });
     world.add_system("animation_player",
                      [state](world::World& w, double tick_seconds) { state->run(w, tick_seconds); },
                      {.doc = "Plays each AnimationPlayer's animation on its entity's components.",
@@ -428,6 +716,15 @@ void add_systems(world::World& world, asset::Assets& assets) {
             }
             return found.value().share();
         });
+}
+
+Result<void> seek(world::World& world, asset::Assets& assets, entt::entity entity, double time,
+                  std::string_view animation) {
+    if (!world.valid(entity)) {
+        return make_error(ErrorCode::InvalidArgument, "no such entity");
+    }
+    detail::LibraryCache cache(assets);
+    return seek_player(world, cache, entity, time, animation, 0);
 }
 
 void install(world::World& world, asset::Assets& assets) {

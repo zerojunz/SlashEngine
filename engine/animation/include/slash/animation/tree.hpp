@@ -253,10 +253,13 @@ struct TreeParameter {
                                           const TreeParameter& parameter, const json::Value& value);
 
 // The track names a filter can list for an animation: a model node's name for the tracks that
-// move it, a value track's path, an event track's event after "@", each after its target and
-// ":" if it has one, as "sword:Transform2D/rotation".
+// move it, a value track's path, an event track's event after "@", "[animation]" for an
+// animation track or "[audio]" for an audio track, each after its target and ":" if it has one,
+// as "sword:Transform2D/rotation".
 [[nodiscard]] std::string value_track_name(const Track& track);
 [[nodiscard]] std::string event_track_name(const Track& track);
+// Any track's name for filters: one of the above, or a model node's name.
+[[nodiscard]] std::string track_name(const Track& track);
 
 // Every error in a scene's or prefab's AnimationTrees, each with the JSON Pointer of the bad
 // value: a tree or library that doesn't load, an animation the libraries haven't, with "did you

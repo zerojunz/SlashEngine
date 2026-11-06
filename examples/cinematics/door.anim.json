@@ -1,0 +1,24 @@
+{
+  "animations": {
+    "open": {
+      "length": 1.5,
+      "tracks": [
+        {
+          "interpolation": "cubic",
+          "keys": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 1.5,
+              "value": -1.6
+            }
+          ],
+          "path": "Transform3D/rotation/y"
+        }
+      ]
+    }
+  },
+  "format": 1
+}

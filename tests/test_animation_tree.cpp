@@ -1,3 +1,4 @@
+#include "fake_track_sound.hpp"
 #include "gltf.hpp"
 
 #include "slash/animation/animation.hpp"
@@ -445,6 +446,86 @@ TEST_CASE("event tracks and discrete keys fire as the tree's playback passes the
     }
     CHECK(events == std::vector<std::string>{"0 footstep \"left\"", "3 footstep \"right\"",
                                              "5 footstep \"left\""});
+}
+
+TEST_CASE("a tree's animation tracks play and stop another AnimationPlayer's animations, as "
+          "Godot's mixer") {
+    Scene scene;
+    scene.files.write("door.anim.json", R"({"format": 1, "animations": {
+        "open": {"length": 1, "tracks": [{"path": "Transform2D/position/x",
+            "keys": [{"time": 0, "value": 0}, {"time": 1, "value": 10}]}]}
+    }})");
+    scene.files.write("hero.anim.json", R"({"format": 1, "animations": {
+        "cut": {"length": 1, "tracks": [{"type": "animation", "target": "door",
+            "keys": [{"time": 0, "animation": "open"}, {"time": 0.5, "animation": "[stop]"}]}]}
+    }})");
+    scene.files.write("hero.animtree.json",
+                      R"({"format": 1, "root": {"type": "Animation", "animation": "cut"}})");
+    const entt::entity door = scene.create("door", R"({"Transform2D": {},
+        "AnimationPlayer": {"library": "door.anim.json", "animation": "open", "playing": false}})");
+    scene.create("hero", R"({"AnimationTree": {"tree_root": "hero.animtree.json",
+        "libraries": {"": "hero.anim.json"}, "targets": {"door": "door"}}})");
+    const auto& player = scene.world.ecs().get<world::AnimationPlayer>(door);
+    scene.world.step(0.1);
+    CHECK(player.playing);
+    CHECK(player.time == doctest::Approx(0.0));
+    for (int tick = 0; tick < 3; ++tick) {
+        scene.world.step(0.1);
+    }
+    CHECK(player.playing);
+    CHECK(scene.transform(door).position.x == doctest::Approx(3.0));
+    scene.world.step(0.1);
+    scene.world.step(0.1);
+    // At the "[stop]" key: stopped, and back at the start.
+    CHECK_FALSE(player.playing);
+    CHECK(scene.transform(door).position.x == doctest::Approx(0.0));
+    // Animation tracks emit no events of their own, and filters name them
+    // "<target>:[animation]".
+    CHECK(scene.take_events() ==
+          std::vector<std::string>{R"(animation_started {"animation":"cut"})"});
+    CHECK(animation::track_name(animation::parse_animation_library(parse(R"({"format": 1,
+        "animations": {"cut": {"length": 1, "tracks": [{"type": "animation", "target": "door",
+        "keys": [{"time": 0, "animation": "open"}]}]}}})"))
+                                    .value()
+                                    .animations.at("cut")
+                                    .tracks[0]) == "door:[animation]");
+}
+
+TEST_CASE("a tree's audio tracks play as loud as their animations count, as Godot's mixer") {
+    Scene scene;
+    slash::test::FakeSound sound;
+    sound.install(scene.world);
+    scene.files.write("hero.anim.json", R"({"format": 1, "animations": {
+        "walk": {"length": 1, "loop": "linear", "tracks": [{"type": "audio",
+            "keys": [{"time": 0, "stream": "step.wav"}]}]},
+        "sneak": {"length": 1, "loop": "linear", "tracks": [{"type": "audio", "use_blend": false,
+            "keys": [{"time": 0.5, "stream": "creak.wav"}]}]}
+    }})");
+    scene.files.write("hero.animtree.json", R"({"format": 1, "root": {"type": "BlendTree",
+        "nodes": {"walk": {"type": "Animation", "animation": "walk"},
+                  "sneak": {"type": "Animation", "animation": "sneak"},
+                  "mix": {"type": "Blend2", "inputs": {"in": "walk", "blend": "sneak"}}},
+        "output": "mix"}})");
+    const entt::entity hero = scene.create("hero", R"({"AudioStreamPlayer": {},
+        "AnimationTree": {"tree_root": "hero.animtree.json", "libraries": {"": "hero.anim.json"}}})");
+    scene.set(hero, "mix/blend_amount", 0.25);
+    // The first tick seeks to the start, which starts the step there, at three quarters'
+    // volume: 20 log10(0.75) dB.
+    scene.world.step(0.1);
+    CHECK(sound.take() == std::vector<std::string>{"play hero step.wav 0", "volume 1 -2.49877"});
+    for (int tick = 0; tick < 5; ++tick) {
+        scene.world.step(0.1);
+    }
+    // The creak's track doesn't blend, so it plays at full volume however little sneak counts.
+    CHECK(sound.take() == std::vector<std::string>{"play hero creak.wav 0", "volume 2 0"});
+    // Once walk counts for nothing, its step goes quiet but plays on.
+    scene.set(hero, "mix/blend_amount", 1.0);
+    scene.world.step(0.1);
+    CHECK(sound.take() == std::vector<std::string>{"volume 1 -inf"});
+    // Turning the tree off stops them.
+    scene.tree(hero).active = false;
+    scene.world.step(0.1);
+    CHECK(sound.take() == std::vector<std::string>{"stop 2", "stop 1"});
 }
 
 TEST_CASE("a tree reports why it can't play, and its parameters are checked") {
