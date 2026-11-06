@@ -31,7 +31,6 @@ using detail::from_jolt;
 using detail::from_jolt_place;
 using detail::Kind;
 using detail::Space;
-using detail::to_jolt;
 using detail::to_jolt_place;
 
 json::Value number_property(std::string_view description, double fallback) {

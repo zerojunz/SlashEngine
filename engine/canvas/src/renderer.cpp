@@ -226,12 +226,11 @@ Result<std::array<render::Vertex2D, 6>> sprite_quad(const world::Sprite2D& sprit
     const auto corner = [&](float x, float y, float u, float v) {
         const float sx = x * transform.scale.x;
         const float sy = y * transform.scale.y;
-        return render::Vertex2D{
-            .x = static_cast<float>(transform.position.x + (sx * cos_r) - (sy * sin_k)),
-            .y = static_cast<float>(transform.position.y + (sx * sin_r) + (sy * cos_k)),
-            .u = u,
-            .v = v,
-            .rgba = rgba};
+        return render::Vertex2D{.x = to_float(transform.position.x + (sx * cos_r) - (sy * sin_k)),
+                                .y = to_float(transform.position.y + (sx * sin_r) + (sy * cos_k)),
+                                .u = u,
+                                .v = v,
+                                .rgba = rgba};
     };
     const render::Vertex2D top_left = corner(x0, y0, u0, v0);
     const render::Vertex2D top_right = corner(x1, y0, u1, v0);
@@ -1859,8 +1858,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             const float sx = x * transform.scale.x;
             const float sy = y * transform.scale.y;
             return render::Vertex2D{
-                .x = static_cast<float>(transform.position.x + (sx * cos_r) - (sy * sin_k)),
-                .y = static_cast<float>(transform.position.y + (sx * sin_r) + (sy * cos_k)),
+                .x = to_float(transform.position.x + (sx * cos_r) - (sy * sin_k)),
+                .y = to_float(transform.position.y + (sx * sin_r) + (sy * cos_k)),
                 .u = u,
                 .v = v,
                 .rgba = rgba};

@@ -58,8 +58,8 @@ Point place(const world::Transform2D& transform, float x, float y) {
         transform.skew == 0.0F ? cos_r : std::cos(transform.rotation + transform.skew);
     const float sin_k =
         transform.skew == 0.0F ? sin_r : std::sin(transform.rotation + transform.skew);
-    return {static_cast<float>(transform.position.x + (sx * cos_r) - (sy * sin_k)),
-            static_cast<float>(transform.position.y + (sx * sin_r) + (sy * cos_k))};
+    return {to_float(transform.position.x + (sx * cos_r) - (sy * sin_k)),
+            to_float(transform.position.y + (sx * sin_r) + (sy * cos_k))};
 }
 
 std::uint32_t mask_of(int mask) {
@@ -164,20 +164,19 @@ void move_light(render::Light& light, const world::Affine2D& m) {
         const world::Affine2D back = m.inverse();
         const std::array<float, 6> t = light.texture_transform;
         light.texture_transform = {
-            static_cast<float>((t[0] * back.x.x) + (t[1] * back.x.y)),
-            static_cast<float>((t[0] * back.y.x) + (t[1] * back.y.y)),
+            to_float((t[0] * back.x.x) + (t[1] * back.x.y)),
+            to_float((t[0] * back.y.x) + (t[1] * back.y.y)),
             static_cast<float>((t[0] * back.origin.x) + (t[1] * back.origin.y) + t[2]),
-            static_cast<float>((t[3] * back.x.x) + (t[4] * back.x.y)),
-            static_cast<float>((t[3] * back.y.x) + (t[4] * back.y.y)),
+            to_float((t[3] * back.x.x) + (t[4] * back.x.y)),
+            to_float((t[3] * back.y.x) + (t[4] * back.y.y)),
             static_cast<float>((t[3] * back.origin.x) + (t[4] * back.origin.y) + t[5])};
         // As Godot scales a light's height to the canvas.
         light.height *= (length({static_cast<float>(m.x.x), static_cast<float>(m.x.y)}) +
                          length({static_cast<float>(m.y.x), static_cast<float>(m.y.y)})) *
                         0.5F;
     } else {
-        const Point along{
-            static_cast<float>((m.x.x * light.position[0]) + (m.y.x * light.position[1])),
-            static_cast<float>((m.x.y * light.position[0]) + (m.y.y * light.position[1]))};
+        const Point along{to_float((m.x.x * light.position[0]) + (m.y.x * light.position[1])),
+                          to_float((m.x.y * light.position[0]) + (m.y.y * light.position[1]))};
         if (const float size = length(along); size > 0.0F) {
             light.position = {along[0] / size, along[1] / size};
         }

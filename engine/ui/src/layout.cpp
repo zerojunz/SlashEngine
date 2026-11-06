@@ -3028,8 +3028,8 @@ struct Builder {
         } else if (mode == "keep_aspect_covered") {
             const float scale = std::max(size.x / texture.x, size.y / texture.y);
             const Vec2 scaled{texture.x * scale, texture.y * scale};
-            box.style.region_rect = {static_cast<float>(std::abs(scaled.x - size.x) / scale / 2.0F),
-                                     static_cast<float>(std::abs(scaled.y - size.y) / scale / 2.0F),
+            box.style.region_rect = {to_float(std::abs(scaled.x - size.x) / scale / 2.0F),
+                                     to_float(std::abs(scaled.y - size.y) / scale / 2.0F),
                                      static_cast<float>(size.x / scale),
                                      static_cast<float>(size.y / scale)};
         }
@@ -3699,8 +3699,8 @@ struct Builder {
             box.size = size;
             const float scale = std::max(size.x / texture.x, size.y / texture.y);
             box.style.region_rect = {
-                static_cast<float>(std::abs((texture.x * scale) - size.x) / scale / 2.0F),
-                static_cast<float>(std::abs((texture.y * scale) - size.y) / scale / 2.0F),
+                to_float(std::abs((texture.x * scale) - size.x) / scale / 2.0F),
+                to_float(std::abs((texture.y * scale) - size.y) / scale / 2.0F),
                 static_cast<float>(size.x / scale), static_cast<float>(size.y / scale)};
         }
         if (!focus_only) {

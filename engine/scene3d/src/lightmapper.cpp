@@ -1815,7 +1815,7 @@ private:
                         static_cast<float>(0.488603F * d.x),
                         static_cast<float>(1.092548F * d.x * d.y),
                         static_cast<float>(1.092548F * d.y * d.z),
-                        static_cast<float>(0.315392F * ((3.0F * d.z * d.z) - 1.0F)),
+                        to_float(0.315392F * ((3.0F * d.z * d.z) - 1.0F)),
                         static_cast<float>(1.092548F * d.x * d.z),
                         static_cast<float>(0.546274F * ((d.x * d.x) - (d.y * d.y)))};
                     for (std::size_t j = 0; j < 9; ++j) {
