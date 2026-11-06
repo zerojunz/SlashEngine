@@ -655,7 +655,9 @@ void bake_material(const MeshInstance& mesh, Layers<Rgba>& albedo, Layers<Rgba>&
                 }
             }
             LightmapPoint point{.uv = {0.0F, 0.0F}, .color = {0.0F, 0.0F, 0.0F, 0.0F}};
-            const std::array<float, 3> weights{c.barycentric.x, c.barycentric.y, c.barycentric.z};
+            const std::array<float, 3> weights{static_cast<float>(c.barycentric.x),
+                                               static_cast<float>(c.barycentric.y),
+                                               static_cast<float>(c.barycentric.z)};
             for (std::size_t k = 0; k < 3; ++k) {
                 const render::Vertex3D& v =
                     source.vertices[unwrap.xref[unwrap.indices[first_index + k]]];
@@ -747,7 +749,10 @@ struct EdgeKeyHash {
     }
 };
 
-void put_bits(std::uint32_t* out, Vec3 v) {
+// A point's float bits (rounded to floats in a double-precision engine, as the lightmapper's
+// geometry is).
+void put_bits(std::uint32_t* out, Vec3 point) {
+    const Vec3f v = to_float(point);
     out[0] = slash::bit_cast<std::uint32_t>(v.x);
     out[1] = slash::bit_cast<std::uint32_t>(v.y);
     out[2] = slash::bit_cast<std::uint32_t>(v.z);
@@ -1081,9 +1086,9 @@ private:
                                std::max({p[0].y, p[1].y, p[2].y}),
                                std::max({p[0].z, p[1].z, p[2].z})};
                 t.min = tlo;
-                t.max = {tlo.x + std::max(thi.x - tlo.x, 0.0001F),
-                         tlo.y + std::max(thi.y - tlo.y, 0.0001F),
-                         tlo.z + std::max(thi.z - tlo.z, 0.0001F)};
+                t.max = {tlo.x + std::max<real_t>(thi.x - tlo.x, 0.0001F),
+                         tlo.y + std::max<real_t>(thi.y - tlo.y, 0.0001F),
+                         tlo.z + std::max<real_t>(thi.z - tlo.z, 0.0001F)};
                 for (const LightmapMesh::Surface& surface : surfaces) {
                     if (surface.first_index <= i) {
                         t.cull = surface.cull;
@@ -1094,8 +1099,10 @@ private:
         }
         // The light probes count too, as Godot's.
         for (const std::array<float, 3>& point : probes_->points) {
-            lo = {std::min(lo.x, point[0]), std::min(lo.y, point[1]), std::min(lo.z, point[2])};
-            hi = {std::max(hi.x, point[0]), std::max(hi.y, point[1]), std::max(hi.z, point[2])};
+            lo = {std::min<real_t>(lo.x, point[0]), std::min<real_t>(lo.y, point[1]),
+                  std::min<real_t>(lo.z, point[2])};
+            hi = {std::max<real_t>(hi.x, point[0]), std::max<real_t>(hi.y, point[1]),
+                  std::max<real_t>(hi.z, point[2])};
         }
         // Grown a little against rounding, as Godot's.
         lo = lo - Vec3{0.1F, 0.1F, 0.1F};
@@ -1149,9 +1156,13 @@ private:
             // https://ndotl.wordpress.com/2018/08/29/baking-artifact-free-lightmaps/: how far
             // a texel spans in the world, at worst.
             const float texel_size = texel_span(t) * std::numbers::sqrt2_v<float>;
-            position_.texels[at] = {vertex_pos.x, vertex_pos.y, vertex_pos.z, 1.0F};
+            position_.texels[at] = {static_cast<float>(vertex_pos.x),
+                                    static_cast<float>(vertex_pos.y),
+                                    static_cast<float>(vertex_pos.z), 1.0F};
             normal_.texels[at] = normalize(normal_interp);
-            unocclude_.texels[at] = {face_normal.x, face_normal.y, face_normal.z, texel_size};
+            unocclude_.texels[at] = {static_cast<float>(face_normal.x),
+                                     static_cast<float>(face_normal.y),
+                                     static_cast<float>(face_normal.z), texel_size};
         };
         std::size_t begin = 0;
         for (int slice = 0; slice < albedo_.slices; ++slice) {
@@ -1197,7 +1208,9 @@ private:
             }
         }
         Vec3 smooth;
-        const std::array<float, 3> weights{barycentric.x, barycentric.y, barycentric.z};
+        const std::array<float, 3> weights{static_cast<float>(barycentric.x),
+                                           static_cast<float>(barycentric.y),
+                                           static_cast<float>(barycentric.z)};
         for (std::size_t i = 0; i < 3; ++i) {
             const float plane = dot(norm[i], pos[i]);
             const Vec3 projected = vertex_pos - (norm[i] * (dot(norm[i], vertex_pos) - plane));
@@ -1283,7 +1296,8 @@ private:
                     }
                 }
             }
-            position_alpha = {vertex_pos.x, vertex_pos.y, vertex_pos.z, position_alpha[3]};
+            position_alpha = {static_cast<float>(vertex_pos.x), static_cast<float>(vertex_pos.y),
+                              static_cast<float>(vertex_pos.z), position_alpha[3]};
             unocclude_.texels[at] = {mask, 0.0F, 0.0F, 0.0F};
         });
     }
@@ -1328,7 +1342,7 @@ private:
         const float r = std::sqrt(i + 0.5F) / sample_count_sqrt;
         const float theta = (i * kGoldenAngle) + rotation;
         const Vec2 cs = slash::cos_sin(theta);
-        return {cs.x * r, cs.y * r};
+        return {static_cast<float>(cs.x * r), static_cast<float>(cs.y * r)};
     }
 
     struct Penumbra {
@@ -1513,29 +1527,36 @@ private:
         render::LightmapTrace trace;
         trace.vertices.reserve(vertices_.size());
         for (const Vertex& v : vertices_) {
-            trace.vertices.push_back({.position = {v.position.x, v.position.y, v.position.z},
-                                      .u = v.uv[0],
-                                      .normal = {v.normal.x, v.normal.y, v.normal.z},
-                                      .v = v.uv[1]});
+            trace.vertices.push_back(
+                {.position = {static_cast<float>(v.position.x), static_cast<float>(v.position.y),
+                              static_cast<float>(v.position.z)},
+                 .u = v.uv[0],
+                 .normal = {static_cast<float>(v.normal.x), static_cast<float>(v.normal.y),
+                            static_cast<float>(v.normal.z)},
+                 .v = v.uv[1]});
         }
         for (const Triangle& t : triangles_) {
             trace.indices.insert(trace.indices.end(), t.indices.begin(), t.indices.end());
             trace.triangles.push_back({.slice = t.slice, .cull = t.cull});
         }
         for (const Light& l : lights_) {
-            trace.lights.push_back({.type = l.type,
-                                    .position = {l.position.x, l.position.y, l.position.z},
-                                    .direction = {l.direction.x, l.direction.y, l.direction.z},
-                                    .color = {l.color.x, l.color.y, l.color.z},
-                                    .energy = l.energy,
-                                    .indirect_energy = l.indirect_energy,
-                                    .size = l.size,
-                                    .range = l.range,
-                                    .attenuation = l.attenuation,
-                                    .cos_spot_angle = l.cos_spot_angle,
-                                    .inv_spot_attenuation = l.inv_spot_attenuation,
-                                    .shadow_blur = l.shadow_blur,
-                                    .static_bake = l.static_bake});
+            trace.lights.push_back(
+                {.type = l.type,
+                 .position = {static_cast<float>(l.position.x), static_cast<float>(l.position.y),
+                              static_cast<float>(l.position.z)},
+                 .direction = {static_cast<float>(l.direction.x), static_cast<float>(l.direction.y),
+                               static_cast<float>(l.direction.z)},
+                 .color = {static_cast<float>(l.color.x), static_cast<float>(l.color.y),
+                           static_cast<float>(l.color.z)},
+                 .energy = l.energy,
+                 .indirect_energy = l.indirect_energy,
+                 .size = l.size,
+                 .range = l.range,
+                 .attenuation = l.attenuation,
+                 .cos_spot_angle = l.cos_spot_angle,
+                 .inv_spot_attenuation = l.inv_spot_attenuation,
+                 .shadow_blur = l.shadow_blur,
+                 .static_bake = l.static_bake});
         }
         trace.width = static_cast<std::uint32_t>(albedo_.width);
         trace.height = static_cast<std::uint32_t>(albedo_.height);
@@ -1543,7 +1564,8 @@ private:
         std::vector<Rgba> normals(normal_.texels.size());
         for (std::size_t i = 0; i < normals.size(); ++i) {
             const Vec3 n = normal_.texels[i];
-            normals[i] = {n.x, n.y, n.z, 0.0F};
+            normals[i] = {static_cast<float>(n.x), static_cast<float>(n.y), static_cast<float>(n.z),
+                          0.0F};
         }
         trace.albedo = albedo_.texels;
         trace.emission = emission_.texels;
@@ -1566,7 +1588,8 @@ private:
         for (std::size_t c = 0; c < 3; ++c) {
             const Vec3 column =
                 space.basis({c == 0 ? 1.0F : 0.0F, c == 1 ? 1.0F : 0.0F, c == 2 ? 1.0F : 0.0F});
-            trace.probe_space.at(c) = {column.x, column.y, column.z};
+            trace.probe_space.at(c) = {static_cast<float>(column.x), static_cast<float>(column.y),
+                                       static_cast<float>(column.z)};
         }
         auto traced = settings_.device->trace_lightmap(trace);
         if (!traced) {
@@ -1619,10 +1642,12 @@ private:
             }
             light_for_bounces = light_for_bounces * settings_.exposure;
             light_for_texture = light_for_texture * settings_.exposure;
-            light_source_(slice, x, y) = {light_for_bounces.x, light_for_bounces.y,
-                                          light_for_bounces.z, 1.0F};
-            accum_(slice, x, y) = {light_for_texture.x, light_for_texture.y, light_for_texture.z,
-                                   1.0F};
+            light_source_(slice, x, y) = {static_cast<float>(light_for_bounces.x),
+                                          static_cast<float>(light_for_bounces.y),
+                                          static_cast<float>(light_for_bounces.z), 1.0F};
+            accum_(slice, x, y) = {static_cast<float>(light_for_texture.x),
+                                   static_cast<float>(light_for_texture.y),
+                                   static_cast<float>(light_for_texture.z), 1.0F};
         });
     }
 
@@ -1630,7 +1655,7 @@ private:
     [[nodiscard]] Vec3 environment_color(Vec3 ray_dir) const {
         const Vec3 sky_dir = normalize(ray_dir);
         float s = slash::atan2(sky_dir.x, sky_dir.z);
-        const float y = std::clamp(sky_dir.y, -1.0F, 1.0F);
+        const float y = std::clamp<real_t>(sky_dir.y, -1.0F, 1.0F);
         const float t = slash::atan2(std::sqrt((1.0F - y) * (1.0F + y)), y); // acos(y)
         if (s < 0.0F) {
             s += kPi * 2.0F;
@@ -1754,7 +1779,9 @@ private:
                         light_accum + indirect_light(position, ray_dir, noise, texel_size);
                 }
                 const Vec3 added = light_accum * (1.0F / static_cast<float>(ray_count));
-                accum = {accum[0] + added.x, accum[1] + added.y, accum[2] + added.z, accum[3]};
+                accum = {static_cast<float>(accum[0] + added.x),
+                         static_cast<float>(accum[1] + added.y),
+                         static_cast<float>(accum[2] + added.z), accum[3]};
             }
         });
     }
@@ -1781,15 +1808,16 @@ private:
                     const Vec3 d = sphere_uniform_direction(noise);
                     const Vec3 ray_dir = space.basis(d);
                     const Vec3 light = indirect_light(position, ray_dir, noise, 0.0F);
-                    const std::array<float, 9> c{0.282095F,
-                                                 0.488603F * d.y,
-                                                 0.488603F * d.z,
-                                                 0.488603F * d.x,
-                                                 1.092548F * d.x * d.y,
-                                                 1.092548F * d.y * d.z,
-                                                 0.315392F * ((3.0F * d.z * d.z) - 1.0F),
-                                                 1.092548F * d.x * d.z,
-                                                 0.546274F * ((d.x * d.x) - (d.y * d.y))};
+                    const std::array<float, 9> c{
+                        0.282095F,
+                        static_cast<float>(0.488603F * d.y),
+                        static_cast<float>(0.488603F * d.z),
+                        static_cast<float>(0.488603F * d.x),
+                        static_cast<float>(1.092548F * d.x * d.y),
+                        static_cast<float>(1.092548F * d.y * d.z),
+                        static_cast<float>(0.315392F * ((3.0F * d.z * d.z) - 1.0F)),
+                        static_cast<float>(1.092548F * d.x * d.z),
+                        static_cast<float>(0.546274F * ((d.x * d.x) - (d.y * d.y)))};
                     for (std::size_t j = 0; j < 9; ++j) {
                         accum.at(j) = accum.at(j) + (light * c.at(j));
                     }
@@ -1797,8 +1825,9 @@ private:
             }
             const float scale = 4.0F / static_cast<float>(ray_count);
             for (std::size_t j = 0; j < 9; ++j) {
-                out[probe].at(j) = {accum.at(j).x * scale, accum.at(j).y * scale,
-                                    accum.at(j).z * scale};
+                out[probe].at(j) = {static_cast<float>(accum.at(j).x * scale),
+                                    static_cast<float>(accum.at(j).y * scale),
+                                    static_cast<float>(accum.at(j).z * scale)};
             }
         });
         return out;
@@ -1908,7 +1937,8 @@ private:
                     if (weights[at] > kEpsilon) {
                         const Vec3 denoised = sum[at] * (1.0F / weights[at]);
                         Rgba& texel = out(slice, x, y);
-                        texel = {denoised.x, denoised.y, denoised.z, texel[3]};
+                        texel = {static_cast<float>(denoised.x), static_cast<float>(denoised.y),
+                                 static_cast<float>(denoised.z), texel[3]};
                     }
                 }
             }

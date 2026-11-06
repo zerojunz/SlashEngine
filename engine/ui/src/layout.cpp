@@ -376,8 +376,8 @@ Vec2 label_minimum(const LabelWork& work) {
     const bool trims = work.overrun != text::Overrun::NoTrimming;
     if (work.autowrap != text::Autowrap::Off) {
         if (!label.clip_text && trims && label.max_lines_visible > 0) {
-            size.y = std::min(size.y, (lh + static_cast<float>(work.line_spacing)) *
-                                          static_cast<float>(label.max_lines_visible));
+            size.y = std::min<real_t>(size.y, (lh + static_cast<float>(work.line_spacing)) *
+                                                  static_cast<float>(label.max_lines_visible));
         } else if (label.clip_text || trims) {
             size.y = 1.0F;
         }
@@ -745,7 +745,7 @@ Vec2 button_minimum(const ButtonWork& work) {
     }
     if (!button.text.empty()) {
         const float font_height = work.text.line_height;
-        size.y = center ? std::max(size.y, font_height) : size.y + font_height;
+        size.y = center ? std::max<real_t>(size.y, font_height) : size.y + font_height;
     }
     const Vec2 style = work.align ? work.largest : work.style.minimum_size();
     Vec2 minimum{style.x + size.x, style.y + size.y};
@@ -770,10 +770,10 @@ Vec2 button_minimum(const ButtonWork& work) {
 
 Transform local_transform(const world::Control& control, Vec2 position) {
     const Vec2 cs = control.rotation == 0.0F ? Vec2{1.0F, 0.0F} : cos_sin(control.rotation);
-    Transform t{.a = cs.x * control.scale.x,
-                .b = cs.y * control.scale.x,
-                .c = -cs.y * control.scale.y,
-                .d = cs.x * control.scale.y};
+    Transform t{.a = static_cast<float>(cs.x * control.scale.x),
+                .b = static_cast<float>(cs.y * control.scale.x),
+                .c = static_cast<float>(-cs.y * control.scale.y),
+                .d = static_cast<float>(cs.x * control.scale.y)};
     const Vec2 pivot = control.pivot_offset;
     t.tx = position.x + pivot.x - ((t.a * pivot.x) + (t.c * pivot.y));
     t.ty = position.y + pivot.y - ((t.b * pivot.x) + (t.d * pivot.y));
@@ -1184,8 +1184,12 @@ struct Builder {
         if (in.layer == entt::null || t == world::Affine2D{}) {
             return std::nullopt;
         }
-        return Transform{
-            .a = t.x.x, .b = t.x.y, .c = t.y.x, .d = t.y.y, .tx = t.origin.x, .ty = t.origin.y};
+        return Transform{.a = static_cast<float>(t.x.x),
+                         .b = static_cast<float>(t.x.y),
+                         .c = static_cast<float>(t.y.x),
+                         .d = static_cast<float>(t.y.y),
+                         .tx = static_cast<float>(t.origin.x),
+                         .ty = static_cast<float>(t.origin.y)};
     }
 
     [[nodiscard]] const world::Control& control_of(entt::entity entity) const {
@@ -2486,7 +2490,7 @@ struct Builder {
         // Expanded columns and rows that can't fit their minimum in an even share stop
         // expanding, biggest first.
         const auto settle = [](std::set<int>& expanded, std::map<int, int>& minimums,
-                               std::map<int, int>& fixed, float& space) {
+                               std::map<int, int>& fixed, real_t& space) {
             bool can_fit = false;
             while (!can_fit && !expanded.empty()) {
                 can_fit = true;
@@ -2963,10 +2967,10 @@ struct Builder {
             for (const Vec2 corner :
                  {Vec2{}, Vec2{width, 0.0F}, Vec2{0.0F, height}, Vec2{width, height}}) {
                 const Vec2 at = placed.transform.apply(corner);
-                x0 = std::min(x0, at.x);
-                y0 = std::min(y0, at.y);
-                x1 = std::max(x1, at.x);
-                y1 = std::max(y1, at.y);
+                x0 = std::min<real_t>(x0, at.x);
+                y0 = std::min<real_t>(y0, at.y);
+                x1 = std::max<real_t>(x1, at.x);
+                y1 = std::max<real_t>(y1, at.y);
             }
             if (placed.clip) {
                 x0 = std::max(x0, placed.clip->x);
@@ -2977,7 +2981,9 @@ struct Builder {
             const float w = std::max(x1 - x0, 0.0F);
             const float h = std::max(y1 - y0, 0.0F);
             const Vec2 at{std::round(x0), std::round(y0)};
-            placed.clip = Vec4{at.x, at.y, at.x + std::round(w), at.y + std::round(h)};
+            placed.clip = Vec4{static_cast<float>(at.x), static_cast<float>(at.y),
+                               static_cast<float>(at.x + std::round(w)),
+                               static_cast<float>(at.y + std::round(h))};
         }
         for (const std::size_t kid : node.kids) {
             nodes[kid].assigned.reset();
@@ -3022,9 +3028,10 @@ struct Builder {
         } else if (mode == "keep_aspect_covered") {
             const float scale = std::max(size.x / texture.x, size.y / texture.y);
             const Vec2 scaled{texture.x * scale, texture.y * scale};
-            box.style.region_rect = {std::abs(scaled.x - size.x) / scale / 2.0F,
-                                     std::abs(scaled.y - size.y) / scale / 2.0F, size.x / scale,
-                                     size.y / scale};
+            box.style.region_rect = {static_cast<float>(std::abs(scaled.x - size.x) / scale / 2.0F),
+                                     static_cast<float>(std::abs(scaled.y - size.y) / scale / 2.0F),
+                                     static_cast<float>(size.x / scale),
+                                     static_cast<float>(size.y / scale)};
         }
         return box;
     }
@@ -3417,7 +3424,7 @@ struct Builder {
             return;
         }
         LabelWork& text = work.text;
-        const float width = std::ceil(std::max(1.0F, room.x));
+        const float width = std::ceil(std::max<real_t>(1.0F, room.x));
         if (text.autowrap != text::Autowrap::Off) {
             shape(fonts, text, width);
         }
@@ -3691,9 +3698,10 @@ struct Builder {
         } else if (mode == "keep_aspect_covered") {
             box.size = size;
             const float scale = std::max(size.x / texture.x, size.y / texture.y);
-            box.style.region_rect = {std::abs((texture.x * scale) - size.x) / scale / 2.0F,
-                                     std::abs((texture.y * scale) - size.y) / scale / 2.0F,
-                                     size.x / scale, size.y / scale};
+            box.style.region_rect = {
+                static_cast<float>(std::abs((texture.x * scale) - size.x) / scale / 2.0F),
+                static_cast<float>(std::abs((texture.y * scale) - size.y) / scale / 2.0F),
+                static_cast<float>(size.x / scale), static_cast<float>(size.y / scale)};
         }
         if (!focus_only) {
             boxes.push_back(box);
@@ -3834,7 +3842,7 @@ struct Builder {
                                    const PopupItemWork& work) {
         float icon = std::trunc(work.icon.value_or(Vec2{}).y);
         if (item.checkable != "none" && !item.separator) {
-            icon = std::max(icon, std::max(theme.check_size[0].y, theme.check_size[1].y));
+            icon = std::max<real_t>(icon, std::max(theme.check_size[0].y, theme.check_size[1].y));
         }
         float text = std::trunc(work.text_size.y);
         if (text == 0.0F && !item.separator) {
@@ -3901,7 +3909,8 @@ struct Builder {
         const Vec2 rest = shown.position;
         const Vec2 room{std::trunc(out.viewport.x), std::trunc(out.viewport.y)};
         Vec2 position = rest + offset;
-        const auto fit = [](float& at, float rest_at, float length, float offset_at, float end) {
+        const auto fit = [](real_t& at, real_t rest_at, real_t length, real_t offset_at,
+                            real_t end) {
             if (at + length > end) {
                 at = rest_at - length - offset_at;
                 if (at < 0.0F) {
@@ -4054,9 +4063,9 @@ struct Builder {
         bool has_check = false;
         float total = 0.0F; // the list's height, as _get_items_total_height
         for (std::size_t i = 0; i < items.size(); ++i) {
-            icon_width = std::max(icon_width, works[i].icon.value_or(Vec2{}).x);
-            widest = std::max(widest, static_cast<float>(items[i].indent * look.indent) +
-                                          works[i].text_size.x);
+            icon_width = std::max<real_t>(icon_width, works[i].icon.value_or(Vec2{}).x);
+            widest = std::max<real_t>(widest, static_cast<float>(items[i].indent * look.indent) +
+                                                  works[i].text_size.x);
             has_check = has_check || (items[i].checkable != "none" && !items[i].separator);
             total += works[i].height + v_separation;
         }
@@ -4083,8 +4092,8 @@ struct Builder {
         }
         const Vec2 parent{std::trunc(out.viewport.x), std::trunc(out.viewport.y)};
         if (parent.x > 0.0F && parent.y > 0.0F) {
-            position.x = std::max(std::min(position.x, parent.x - size.x), 0.0F);
-            position.y = std::max(std::min(position.y, parent.y - size.y), 0.0F);
+            position.x = std::max<real_t>(std::min(position.x, parent.x - size.x), 0.0F);
+            position.y = std::max<real_t>(std::min(position.y, parent.y - size.y), 0.0F);
             size = {std::min(size.x, parent.x), std::min(size.y, parent.y)};
         }
 
@@ -4099,12 +4108,12 @@ struct Builder {
         const std::array<float, 4> margins{look.panel.margin(kLeft), look.panel.margin(kTop),
                                            look.panel.margin(kRight), look.panel.margin(kBottom)};
         view.margins = margins;
-        const Vec2 room{std::max(size.x - margins[kLeft] - margins[kRight], 0.0F),
-                        std::max(size.y - margins[kTop] - margins[kBottom], 0.0F)};
+        const Vec2 room{std::max<real_t>(size.x - margins[kLeft] - margins[kRight], 0.0F),
+                        std::max<real_t>(size.y - margins[kTop] - margins[kBottom], 0.0F)};
         const bool scrolls = total > room.y;
         view.bar_width = scrolls ? bar_width : 0.0F;
         view.list_position = {margins[kLeft] + (rtl ? view.bar_width : 0.0F), margins[kTop]};
-        view.list_size = {std::max(room.x - view.bar_width, 0.0F), room.y};
+        view.list_size = {std::max<real_t>(room.x - view.bar_width, 0.0F), room.y};
         view.scroll_max = scrolls ? total - room.y : 0.0F;
         // Each item's top in the list (_ofs_cache): half a separation before the first.
         std::vector<float> tops(items.size());
@@ -4183,7 +4192,7 @@ struct Builder {
             if (items[i].separator) {
                 continue;
             }
-            icon_ofs = std::max(icon_ofs, works[i].icon.value_or(Vec2{}).x);
+            icon_ofs = std::max<real_t>(icon_ofs, works[i].icon.value_or(Vec2{}).x);
             has_check = has_check || items[i].checkable != "none";
         }
         if (icon_ofs > 0.0F) {
@@ -4192,8 +4201,8 @@ struct Builder {
         float check_ofs = 0.0F;
         if (has_check) {
             for (std::size_t k = 0; k < look.check_size.size(); ++k) {
-                check_ofs =
-                    std::max({check_ofs, look.check_size.at(k).x, look.uncheck_size.at(k).x});
+                check_ofs = std::max<real_t>(
+                    {check_ofs, look.check_size.at(k).x, look.uncheck_size.at(k).x});
             }
             check_ofs += h_separation;
         }
@@ -4224,7 +4233,7 @@ struct Builder {
                         const float sep_h = std::trunc(look.labeled_left.minimum_size().y);
                         const float sep_ofs = std::floor((h - sep_h) / 2.0F);
                         style(look.labeled_left, {at.x, at.y + sep_ofs},
-                              {std::max(0.0F, static_cast<float>(left) - at.x), sep_h});
+                              {std::max<real_t>(0.0F, static_cast<float>(left) - at.x), sep_h});
                     }
                     if (static_cast<float>(right) < display_width) {
                         const float sep_h = std::trunc(look.labeled_right.minimum_size().y);

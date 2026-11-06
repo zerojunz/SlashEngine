@@ -428,7 +428,7 @@ Float3 frame_direction(const detail::MeshPixel& pixel, const Float3& v) {
 } // namespace
 
 std::array<float, 16> perspective(float fov_y, float aspect, float near, float far) {
-    const Vec2 turn = slash::cos_sin(fov_y * (kPi / 180.0F) * 0.5F);
+    const Vec2f turn = slash::cos_sin(fov_y * (kPi / 180.0F) * 0.5F);
     const float cotangent = turn.x / turn.y;
     std::array<float, 16> m{};
     m[0] = cotangent / aspect;
@@ -900,7 +900,7 @@ MeshLightUniforms mesh_light_uniforms(const Light3D& light, int shadow_slot, int
     packed.color = {srgb_to_linear_exact(light.color[0]) * scaled,
                     srgb_to_linear_exact(light.color[1]) * scaled,
                     srgb_to_linear_exact(light.color[2]) * scaled, specular};
-    const Vec2 cone = slash::cos_sin(light.spot_angle * (kPi / 180.0F));
+    const Vec2f cone = slash::cos_sin(light.spot_angle * (kPi / 180.0F));
     packed.params = {light.attenuation, cone.x, 1.0F / light.spot_attenuation,
                      static_cast<float>(light.cull_mask & kRenderLayers)};
     packed.shadow = {static_cast<float>(shadow_slot), light.baked ? 1.0F : 0.0F,

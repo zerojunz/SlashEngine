@@ -52,15 +52,30 @@ render::Filter resolve_filter(std::string_view filter, render::Filter fallback) 
 
 // A canvas transform as the matrix a draw's material moves its positions by.
 render::Mat4 matrix(const world::Affine2D& t) {
-    return render::Mat4{t.x.x, t.x.y, 0.0F, 0.0F, t.y.x,      t.y.y,      0.0F, 0.0F,
-                        0.0F,  0.0F,  1.0F, 0.0F, t.origin.x, t.origin.y, 0.0F, 1.0F};
+    return render::Mat4{static_cast<float>(t.x.x),
+                        static_cast<float>(t.x.y),
+                        0.0F,
+                        0.0F,
+                        static_cast<float>(t.y.x),
+                        static_cast<float>(t.y.y),
+                        0.0F,
+                        0.0F,
+                        0.0F,
+                        0.0F,
+                        1.0F,
+                        0.0F,
+                        static_cast<float>(t.origin.x),
+                        static_cast<float>(t.origin.y),
+                        0.0F,
+                        1.0F};
 }
 
 // Where a Parallax2D's repeat draws its children, as offsets in their canvas's pixels for a
 // Parallax2D whose global transform is global, in the order Godot's canvas_render_items draws
 // them, the first place included; empty when it doesn't repeat.
 std::vector<Vec2> repeat_offsets(const world::Parallax2D& parallax, const world::Affine2D& global) {
-    const Vec2 size{std::max(parallax.repeat_size.x, 0.0F), std::max(parallax.repeat_size.y, 0.0F)};
+    const Vec2 size{std::max<real_t>(parallax.repeat_size.x, 0.0F),
+                    std::max<real_t>(parallax.repeat_size.y, 0.0F)};
     if (size.x == 0.0F && size.y == 0.0F) {
         return {};
     }
@@ -211,11 +226,12 @@ Result<std::array<render::Vertex2D, 6>> sprite_quad(const world::Sprite2D& sprit
     const auto corner = [&](float x, float y, float u, float v) {
         const float sx = x * transform.scale.x;
         const float sy = y * transform.scale.y;
-        return render::Vertex2D{.x = transform.position.x + (sx * cos_r) - (sy * sin_k),
-                                .y = transform.position.y + (sx * sin_r) + (sy * cos_k),
-                                .u = u,
-                                .v = v,
-                                .rgba = rgba};
+        return render::Vertex2D{
+            .x = static_cast<float>(transform.position.x + (sx * cos_r) - (sy * sin_k)),
+            .y = static_cast<float>(transform.position.y + (sx * sin_r) + (sy * cos_k)),
+            .u = u,
+            .v = v,
+            .rgba = rgba};
     };
     const render::Vertex2D top_left = corner(x0, y0, u0, v0);
     const render::Vertex2D top_right = corner(x1, y0, u1, v0);
@@ -1559,7 +1575,11 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                 to_byte(particle.color.w * from_parents.modulate.w)};
             const auto corner = [&](float sx, float sy, float u, float v) {
                 const Vec2 point = place(at + (x_axis * sx) + (y_axis * sy));
-                return render::Vertex2D{.x = point.x, .y = point.y, .u = u, .v = v, .rgba = rgba};
+                return render::Vertex2D{.x = static_cast<float>(point.x),
+                                        .y = static_cast<float>(point.y),
+                                        .u = u,
+                                        .v = v,
+                                        .rgba = rgba};
             };
             const render::Vertex2D top_left = corner(-1.0F, -1.0F, u0, v0);
             const render::Vertex2D top_right = corner(1.0F, -1.0F, u1, v0);
@@ -1761,12 +1781,12 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         const std::vector<Vec2>& offsets = source != entt::null ? offsets_of(source) : unmoved;
         for (std::size_t r = 0; r < offsets.size(); ++r) {
             render::ParticleDraw at = look;
-            at.transform = {placed.x.x,
-                            placed.x.y,
-                            placed.y.x,
-                            placed.y.y,
-                            placed.origin.x + offsets[r].x,
-                            placed.origin.y + offsets[r].y};
+            at.transform = {static_cast<float>(placed.x.x),
+                            static_cast<float>(placed.x.y),
+                            static_cast<float>(placed.y.x),
+                            static_cast<float>(placed.y.y),
+                            static_cast<float>(placed.origin.x + offsets[r].x),
+                            static_cast<float>(placed.origin.y + offsets[r].y)};
             const std::size_t first = vertices.size();
             if (contents != nullptr) {
                 append_live_quads(cached.cpu, at, kept->trail, vertices);
@@ -1838,11 +1858,12 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         const auto corner = [&](float x, float y, float u, float v) {
             const float sx = x * transform.scale.x;
             const float sy = y * transform.scale.y;
-            return render::Vertex2D{.x = transform.position.x + (sx * cos_r) - (sy * sin_k),
-                                    .y = transform.position.y + (sx * sin_r) + (sy * cos_k),
-                                    .u = u,
-                                    .v = v,
-                                    .rgba = rgba};
+            return render::Vertex2D{
+                .x = static_cast<float>(transform.position.x + (sx * cos_r) - (sy * sin_k)),
+                .y = static_cast<float>(transform.position.y + (sx * sin_r) + (sy * cos_k)),
+                .u = u,
+                .v = v,
+                .rgba = rgba};
         };
         const render::Filter filter = resolve_filter(layer.texture_filter, options.texture_filter);
         // How each source's tiles are shaded: with its normal and specular maps, left out with a

@@ -74,7 +74,8 @@ struct Basis {
 
     [[nodiscard]] Vec3 column(int i) const {
         const auto at = [i](Vec3 row) {
-            const std::array<float, 3> values{row.x, row.y, row.z};
+            const std::array<float, 3> values{static_cast<float>(row.x), static_cast<float>(row.y),
+                                              static_cast<float>(row.z)};
             return values[static_cast<std::size_t>(i)];
         };
         return {at(rows[0]), at(rows[1]), at(rows[2])};

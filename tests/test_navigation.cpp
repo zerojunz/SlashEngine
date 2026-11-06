@@ -612,18 +612,18 @@ std::size_t triangles(const navigation::SourceGeometry3D& geometry) {
     return geometry.indices.size() / 3;
 }
 
-template <typename V>
-float lowest(const std::vector<V>& points, float V::*axis) {
-    float out = points.front().*axis;
+template <typename V, typename T>
+T lowest(const std::vector<V>& points, T V::*axis) {
+    T out = points.front().*axis;
     for (const V& point : points) {
         out = std::min(out, point.*axis);
     }
     return out;
 }
 
-template <typename V>
-float highest(const std::vector<V>& points, float V::*axis) {
-    float out = points.front().*axis;
+template <typename V, typename T>
+T highest(const std::vector<V>& points, T V::*axis) {
+    T out = points.front().*axis;
     for (const V& point : points) {
         out = std::max(out, point.*axis);
     }
@@ -689,8 +689,17 @@ TEST_CASE("a 3D bake finds the walkable floor around what stands on it") {
         {"navigation_mesh": "level.navmesh.json"}})");
     const auto path =
         navigation::query_path(scene.world, Vec3{-4.0F, 0.0F, -4.0F}, Vec3{4.0F, 0.0F, 4.0F});
-    CHECK(text_of(path.points) == "(-4, 0.5, -4) (1.71212, 0.5, 0.0800866) (3, 0.5, 1) "
-                                  "(3.47727, 0.5, 2.43182) (3.875, 0.5, 3.625) (4, 0.5, 4)");
+    // To about six digits, as near as single- and double-precision builds agree.
+    const std::vector<Vec3> want{{-4.0F, 0.5F, -4.0F},   {1.71212F, 0.5F, 0.0800866F},
+                                 {3.0F, 0.5F, 1.0F},     {3.47727F, 0.5F, 2.43182F},
+                                 {3.875F, 0.5F, 3.625F}, {4.0F, 0.5F, 4.0F}};
+    REQUIRE(path.points.size() == want.size());
+    for (std::size_t i = 0; i < want.size(); ++i) {
+        CAPTURE(text_of(path.points));
+        CHECK(path.points[i].x == doctest::Approx(want[i].x).epsilon(1.0e-5));
+        CHECK(path.points[i].y == doctest::Approx(want[i].y).epsilon(1.0e-5));
+        CHECK(path.points[i].z == doctest::Approx(want[i].z).epsilon(1.0e-5));
+    }
 }
 
 TEST_CASE("what a 3D bake takes follows the parsed geometry type and the collision mask") {
@@ -1018,8 +1027,10 @@ TEST_CASE("agents keep out of obstacles' circles and outlines") {
         for (int tick = 0; tick < 400; ++tick) {
             drive(scene, {walker}, 100.0F, 1);
             const Vec2 p = position_of(scene, walker);
-            const float dx = std::max(std::abs(p.x - 300.0F) - (box ? 20.0F : 0.0F), 0.0F);
-            const float dy = std::max(std::abs(p.y - 500.0F) - (box ? 20.0F : 0.0F), 0.0F);
+            const float dx =
+                std::max<slash::real_t>(std::abs(p.x - 300.0F) - (box ? 20.0F : 0.0F), 0.0F);
+            const float dy =
+                std::max<slash::real_t>(std::abs(p.y - 500.0F) - (box ? 20.0F : 0.0F), 0.0F);
             closest = std::min(closest, std::hypot(dx, dy));
         }
         return std::pair{closest, position_of(scene, walker)};
@@ -1088,8 +1099,9 @@ Crossing cross(Scene& scene, entt::entity a, entt::entity b, float speed, float 
         const Vec3 pa = scene.world.ecs().get<world::Transform3D>(a).position;
         const Vec3 pb = scene.world.ecs().get<world::Transform3D>(b).position;
         const float dy = ground ? 0.0F : pa.y - pb.y;
-        out.closest = std::min(out.closest, std::sqrt(((pa.x - pb.x) * (pa.x - pb.x)) + (dy * dy) +
-                                                      ((pa.z - pb.z) * (pa.z - pb.z))));
+        out.closest = std::min<slash::real_t>(
+            out.closest, std::sqrt(((pa.x - pb.x) * (pa.x - pb.x)) + (dy * dy) +
+                                   ((pa.z - pb.z) * (pa.z - pb.z))));
     }
     return out;
 }

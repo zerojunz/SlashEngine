@@ -65,8 +65,8 @@ ComponentType& GameModule::add_component() {
 using GameModuleFunction = void (*)(GameModule& game);
 
 // What a gameplay library was built against. The engine refuses a library built against other
-// headers or with another compiler family or standard library ABI, since their structs might not
-// match its own.
+// headers, with another compiler family or standard library ABI, or at another precision
+// (slash::real_t), since their structs might not match its own.
 struct GameModuleAbi {
     const char* api;      // SLASH_API_HASH
     const char* compiler; // SLASH_COMPILER_ID
@@ -80,6 +80,7 @@ struct GameModuleAbi {
 // The compiler and the ABI of its C++ standard library, as text. Other versions of a compiler
 // lay out the same structs alike over the same library ABI, so a released engine's tools take a
 // game built with the person's own Xcode or compiler; only the family and the ABI must match.
+// A double-precision engine's (SLASH_REAL_T_IS_DOUBLE) says so after them.
 #if defined(__clang__)
 #define SLASH_COMPILER_NAME "clang"
 #elif defined(__GNUC__)
@@ -91,17 +92,22 @@ struct GameModuleAbi {
 #define SLASH_COMPILER_NAME "unknown"
 #endif
 #if defined(_LIBCPP_VERSION)
-#define SLASH_COMPILER_ID                                                                          \
+#define SLASH_COMPILER_ABI                                                                         \
     SLASH_COMPILER_NAME ", libc++ ABI " SLASH_GAME_MODULE_STRINGIFY(_LIBCPP_ABI_VERSION)
 #elif defined(__GLIBCXX__) && defined(_GLIBCXX_DEBUG)
-#define SLASH_COMPILER_ID                                                                          \
+#define SLASH_COMPILER_ABI                                                                         \
     SLASH_COMPILER_NAME                                                                            \
     ", libstdc++ ABI " SLASH_GAME_MODULE_STRINGIFY(_GLIBCXX_USE_CXX11_ABI) " debug"
 #elif defined(__GLIBCXX__)
-#define SLASH_COMPILER_ID                                                                          \
+#define SLASH_COMPILER_ABI                                                                         \
     SLASH_COMPILER_NAME ", libstdc++ ABI " SLASH_GAME_MODULE_STRINGIFY(_GLIBCXX_USE_CXX11_ABI)
 #else
-#define SLASH_COMPILER_ID SLASH_COMPILER_NAME
+#define SLASH_COMPILER_ABI SLASH_COMPILER_NAME
+#endif
+#if defined(SLASH_REAL_T_IS_DOUBLE)
+#define SLASH_COMPILER_ID SLASH_COMPILER_ABI ", double precision"
+#else
+#define SLASH_COMPILER_ID SLASH_COMPILER_ABI
 #endif
 
 #if defined(_MSC_VER)

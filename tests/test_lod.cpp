@@ -48,7 +48,9 @@ Gltf sphere(int rings, int segments) {
         for (int s = 0; s <= segments; ++s) {
             const slash::Vec2 around =
                 slash::cos_sin(static_cast<float>(s) * 2.0F * kPi / static_cast<float>(segments));
-            const std::array<float, 3> p{around.y * down.y, down.x, around.x * down.y};
+            const std::array<float, 3> p{static_cast<float>(around.y * down.y),
+                                         static_cast<float>(down.x),
+                                         static_cast<float>(around.x * down.y)};
             positions.insert(positions.end(), p.begin(), p.end());
             normals.insert(normals.end(), p.begin(), p.end());
             uvs.push_back(static_cast<float>(s) / static_cast<float>(segments));

@@ -371,7 +371,8 @@ std::optional<Reply> write_heights(Session& session, Target& target, json::Value
     }
     Vec2 range = target.terrain.height_range;
     if (low < range.x || high > range.y) {
-        range = {std::min(range.x, std::floor(low)), std::max(range.y, std::ceil(high))};
+        range = {std::min<real_t>(range.x, std::floor(low)),
+                 std::max<real_t>(range.y, std::ceil(high))};
         session.world().ecs().get<world::HTerrain>(target.entity).height_range = range;
         target.terrain.height_range = range;
         result["height_range"] = point_value(range);
@@ -434,8 +435,8 @@ Reply terrain_get(Session& session, const json::Value& params) {
         for (const json::Value& point : points->as_array()) {
             const Vec2 xz = pair(point);
             const Vec3 at = to_cells.apply({xz.x, 0.0F, xz.y});
-            const float x = std::clamp(at.x, 0.0F, last);
-            const float z = std::clamp(at.z, 0.0F, last);
+            const float x = std::clamp<real_t>(at.x, 0.0F, last);
+            const float z = std::clamp<real_t>(at.z, 0.0F, last);
             json::Value each;
             each["position"] = point_value(cells.apply({x, data.interpolated_height(x, z), z}));
             const Vec3 n = scene3d::terrain_normal(data, target.terrain.map_scale, x, z);
@@ -628,8 +629,8 @@ Reply terrain_brush(Session& session, const json::Value& params) {
     }
     // Slopes in degrees from flat, as HTerrain's slope limit slider, as the normal's y.
     const Vec2 slope = pair(params, "slope", {0.0F, 90.0F});
-    dab.slope_min = cos_sin(std::min(slope.y, 90.0F) * kPi / 180.0F).x;
-    dab.slope_max = cos_sin(std::max(slope.x, 0.0F) * kPi / 180.0F).x + 0.001F;
+    dab.slope_min = cos_sin(std::min<real_t>(slope.y, 90.0F) * kPi / 180.0F).x;
+    dab.slope_max = cos_sin(std::max<real_t>(slope.x, 0.0F) * kPi / 180.0F).x + 0.001F;
     dab.map_scale = target.terrain.map_scale;
     const float height = number(params, "height", 0.0F);
     std::size_t changed = 0;

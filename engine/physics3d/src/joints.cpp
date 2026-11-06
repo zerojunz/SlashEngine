@@ -61,26 +61,29 @@ bool excludes(const JointKey& key) {
 // in its body's unscaled space from its center of mass (in the world's for no body), the first
 // moved back along its axes by linear_shift and turned about its z axis by z_turn.
 struct Frames {
-    JPH::Mat44 a;
+    JPH::Mat44 a; // rotations
     JPH::Mat44 b;
+    JPH::RVec3 point_a; // origins
+    JPH::RVec3 point_b;
 };
 
 Frames shift(const Joint& joint, Vec3 scale_a, Vec3 scale_b, Vec3 linear_shift, float z_turn) {
     const JPH::Mat44 local_a = matrix_of(joint.local_a);
     const JPH::Mat44 local_b = matrix_of(joint.local_b);
-    JPH::Vec3 origin_a = local_a.GetTranslation();
-    JPH::Vec3 origin_b = local_b.GetTranslation();
+    // A frame with no body is a place in the world (to_jolt_place).
+    JPH::RVec3 origin_a = to_jolt_place(joint.local_a.origin);
+    JPH::RVec3 origin_b = to_jolt_place(joint.local_b.origin);
     if (joint.body_a != entt::null) {
-        origin_a = (origin_a * to_jolt(scale_a)) - to_jolt(joint.com_a);
+        origin_a = (origin_a * JPH::RVec3(to_jolt(scale_a))) - to_jolt(joint.com_a);
     }
     if (joint.body_b != entt::null) {
-        origin_b = (origin_b * to_jolt(scale_b)) - to_jolt(joint.com_b);
+        origin_b = (origin_b * JPH::RVec3(to_jolt(scale_b))) - to_jolt(joint.com_b);
     }
     const JPH::Mat44 basis_a = local_a.GetRotation();
-    Frames frames{.a = basis_a * JPH::Mat44::sRotationZ(z_turn), .b = local_b.GetRotation()};
-    frames.a.SetTranslation(origin_a - basis_a.Multiply3x3(to_jolt(linear_shift)));
-    frames.b.SetTranslation(origin_b);
-    return frames;
+    return {.a = basis_a * JPH::Mat44::sRotationZ(z_turn),
+            .b = local_b.GetRotation(),
+            .point_a = origin_a - basis_a.Multiply3x3(to_jolt(linear_shift)),
+            .point_b = origin_b};
 }
 
 // Creates a constraint between Jolt bodies, the second the world when there is none.
@@ -94,10 +97,10 @@ JPH::Ref<JPH::Constraint> build_fixed(const Frames& frames, JPH::Body& a, JPH::B
     JPH::FixedConstraintSettings settings;
     settings.mSpace = JPH::EConstraintSpace::LocalToBodyCOM;
     settings.mAutoDetectPoint = false;
-    settings.mPoint1 = frames.a.GetTranslation();
+    settings.mPoint1 = frames.point_a;
     settings.mAxisX1 = frames.a.GetAxisX();
     settings.mAxisY1 = frames.a.GetAxisY();
-    settings.mPoint2 = frames.b.GetTranslation();
+    settings.mPoint2 = frames.point_b;
     settings.mAxisX2 = frames.b.GetAxisX();
     settings.mAxisY2 = frames.b.GetAxisY();
     return create(settings, a, b);
@@ -107,8 +110,8 @@ JPH::Ref<JPH::Constraint> build_fixed(const Frames& frames, JPH::Body& a, JPH::B
 JPH::Ref<JPH::Constraint> build_pin(const Frames& frames, JPH::Body& a, JPH::Body* b) {
     JPH::PointConstraintSettings settings;
     settings.mSpace = JPH::EConstraintSpace::LocalToBodyCOM;
-    settings.mPoint1 = frames.a.GetTranslation();
-    settings.mPoint2 = frames.b.GetTranslation();
+    settings.mPoint1 = frames.point_a;
+    settings.mPoint2 = frames.point_b;
     return create(settings, a, b);
 }
 
@@ -131,10 +134,10 @@ JPH::Ref<JPH::Constraint> build_hinge(const Joint& joint, const HingeJoint3D& hi
     }
     JPH::HingeConstraintSettings settings;
     settings.mSpace = JPH::EConstraintSpace::LocalToBodyCOM;
-    settings.mPoint1 = frames.a.GetTranslation();
+    settings.mPoint1 = frames.point_a;
     settings.mHingeAxis1 = frames.a.GetAxisZ();
     settings.mNormalAxis1 = frames.a.GetAxisX();
-    settings.mPoint2 = frames.b.GetTranslation();
+    settings.mPoint2 = frames.point_b;
     settings.mHingeAxis2 = frames.b.GetAxisZ();
     settings.mNormalAxis2 = frames.b.GetAxisX();
     settings.mLimitsMin = -limit;
@@ -165,10 +168,10 @@ JPH::Ref<JPH::Constraint> build_slider(const Joint& joint, const SliderJoint3D& 
     JPH::SliderConstraintSettings settings;
     settings.mSpace = JPH::EConstraintSpace::LocalToBodyCOM;
     settings.mAutoDetectPoint = false;
-    settings.mPoint1 = frames.a.GetTranslation();
+    settings.mPoint1 = frames.point_a;
     settings.mSliderAxis1 = frames.a.GetAxisX();
     settings.mNormalAxis1 = frames.a.GetAxisZ();
-    settings.mPoint2 = frames.b.GetTranslation();
+    settings.mPoint2 = frames.point_b;
     settings.mSliderAxis2 = frames.b.GetAxisX();
     settings.mNormalAxis2 = frames.b.GetAxisZ();
     settings.mLimitsMin = -limit;
@@ -194,10 +197,10 @@ JPH::Ref<JPH::Constraint> build_cone_twist(const Frames& frames, const ConeTwist
         settings.mTwistMaxAngle = kPi;
     }
     settings.mSpace = JPH::EConstraintSpace::LocalToBodyCOM;
-    settings.mPosition1 = frames.a.GetTranslation();
+    settings.mPosition1 = frames.point_a;
     settings.mTwistAxis1 = frames.a.GetAxisX();
     settings.mPlaneAxis1 = frames.a.GetAxisZ();
-    settings.mPosition2 = frames.b.GetTranslation();
+    settings.mPosition2 = frames.point_b;
     settings.mTwistAxis2 = frames.b.GetAxisX();
     settings.mPlaneAxis2 = frames.b.GetAxisZ();
     settings.mSwingType = JPH::ESwingType::Pyramid;
@@ -236,10 +239,10 @@ JPH::Ref<JPH::Constraint> build_6dof(const Frames& frames, const Generic6DOFJoin
         }
     }
     settings.mSpace = JPH::EConstraintSpace::LocalToBodyCOM;
-    settings.mPosition1 = frames.a.GetTranslation();
+    settings.mPosition1 = frames.point_a;
     settings.mAxisX1 = frames.a.GetAxisX();
     settings.mAxisY1 = frames.a.GetAxisY();
-    settings.mPosition2 = frames.b.GetTranslation();
+    settings.mPosition2 = frames.point_b;
     settings.mAxisX2 = frames.b.GetAxisX();
     settings.mAxisY2 = frames.b.GetAxisY();
     settings.mSwingType = JPH::ESwingType::Pyramid;

@@ -46,6 +46,12 @@ namespace slash::scene3d {
 [[nodiscard]] entt::entity current_camera(const world::World& world, const world::Tree3D& tree);
 
 // What a camera sees: the world to its space and its space to clip space, with reversed depth.
+// The grid, in meters, a double-precision build's render origin snaps to (Renderer::render_origin).
+inline constexpr real_t kRenderOriginGrid = 1024;
+// The render origin for a camera at eye: zero in single-precision builds, else eye rounded to the
+// nearest kRenderOriginGrid meters on each axis.
+[[nodiscard]] Vec3 render_origin_for(Vec3 eye);
+
 struct CameraView {
     std::array<float, 16> view{};
     std::array<float, 16> projection{};
@@ -265,6 +271,12 @@ public:
     // Whether frames keep their prepass for frame generation (render::Scene3D::frame_generation),
     // their meshes given the transforms they were drawn at in the last frame, as with use_taa.
     void set_frame_generation(bool on) { frame_generation_ = on; }
+
+    // Where the last frame's world was drawn around: the frame's positions are relative to it,
+    // so meshes, lights and the camera stay near the origin in the floats the device draws with.
+    // In double-precision builds (slash::real_t is double) it is the camera's place rounded to
+    // kRenderOriginGrid meters, as Godot's camera-relative rendering; otherwise it is always zero.
+    [[nodiscard]] Vec3 render_origin() const noexcept { return render_origin_; }
 
     // Works out the frame for a target of width by height pixels, interpolation of the way from
     // the transforms before the last tick to the current ones, its shadows drawn with shadows,
@@ -646,6 +658,8 @@ private:
                                                         bool& shadows_disabled);
     double tick_seconds_ = 1.0 / 60.0;
     world::Affine3D camera_place_; // where the current camera is, for billboards
+    Vec3 render_origin_{};         // what the frame's positions are relative to (render_origin)
+    Vec3 drawn_origin_{};          // render_origin_ when drawn_ was kept
     std::unordered_map<std::string, std::pair<MeshData, std::uint64_t>> particle_shapes_;
     std::vector<render::Vertex3D> particle_vertices_;
     std::unordered_map<entt::entity, Cached> cached_;

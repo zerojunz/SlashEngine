@@ -69,7 +69,7 @@ Vec4 material_color(const ufbx_material_map& map) {
     }
     if (map.value_components == 3) {
         const Vec3 c = vec3_of(map.value_vec3);
-        return {c.x, c.y, c.z, 1.0F};
+        return {static_cast<float>(c.x), static_cast<float>(c.y), static_cast<float>(c.z), 1.0F};
     }
     const ufbx_vec4 c = map.value_vec4;
     return {static_cast<float>(c.x), static_cast<float>(c.y), static_cast<float>(c.z),
@@ -509,8 +509,10 @@ Result<ModelMesh> FbxReader::mesh(const ufbx_mesh& in) {
                 render::Vertex3D v;
                 const Vec3 p = vec3_of(in.vertex_position[corner]);
                 const Vec3 n = vec3_of(in.vertex_normal[corner]);
-                v.position = {p.x, p.y, p.z};
-                v.normal = {n.x, n.y, n.z};
+                v.position = {static_cast<float>(p.x), static_cast<float>(p.y),
+                              static_cast<float>(p.z)};
+                v.normal = {static_cast<float>(n.x), static_cast<float>(n.y),
+                            static_cast<float>(n.z)};
                 if (in.vertex_tangent.exists) {
                     const Vec3 t = vec3_of(in.vertex_tangent[corner]);
                     float sign = 1.0F;
@@ -524,7 +526,8 @@ Result<ModelMesh> FbxReader::mesh(const ufbx_mesh& in) {
                             sign = -1.0F;
                         }
                     }
-                    v.tangent = {t.x, t.y, t.z, sign};
+                    v.tangent = {static_cast<float>(t.x), static_cast<float>(t.y),
+                                 static_cast<float>(t.z), sign};
                 }
                 if (in.vertex_uv.exists) {
                     const ufbx_vec2 uv = in.vertex_uv[corner];
@@ -712,11 +715,14 @@ void FbxReader::animations() {
                 }
             };
             add(NodeProperty::Position, in.translation_keys,
-                {node.position.x, node.position.y, node.position.z, 0.0F});
+                {static_cast<float>(node.position.x), static_cast<float>(node.position.y),
+                 static_cast<float>(node.position.z), 0.0F});
             add(NodeProperty::Rotation, in.rotation_keys,
-                {node.rotation.x, node.rotation.y, node.rotation.z, node.rotation.w});
+                {static_cast<float>(node.rotation.x), static_cast<float>(node.rotation.y),
+                 static_cast<float>(node.rotation.z), static_cast<float>(node.rotation.w)});
             add(NodeProperty::Scale, in.scale_keys,
-                {node.scale.x, node.scale.y, node.scale.z, 0.0F});
+                {static_cast<float>(node.scale.x), static_cast<float>(node.scale.y),
+                 static_cast<float>(node.scale.z), 0.0F});
         }
         // Godot's shortest animation length.
         out.length = std::max(stack->time_end, 0.001);

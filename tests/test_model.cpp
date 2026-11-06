@@ -2267,8 +2267,8 @@ TEST_CASE("generate_collision makes a model's trimesh, convex hull or convex dec
             CHECK(point.x <= box.max.x + 0.05F);
             CHECK(point.y >= box.min.y - 0.05F);
             CHECK(point.y <= box.max.y + 0.05F);
-            low = std::min(low, point.x);
-            high = std::max(high, point.x);
+            low = std::min<slash::real_t>(low, point.x);
+            high = std::max<slash::real_t>(high, point.x);
         }
         // No hull spans the gap between the crates.
         CHECK((high < 1.0F || low > 2.0F));

@@ -1071,10 +1071,13 @@ Once the macOS release ships:
 1. **Windows and Linux hosts.** The engine and tools run on Windows and Linux, not only export to
    them. CI already builds and tests on both, so this is mostly packaging and host-only tools.
 2. **After-launch features**, in no fixed order:
-   - Large worlds: double-precision transforms and world streaming
+   - [x] Large worlds: double-precision transforms and world streaming
      - [x] World streaming: `StreamedScene3D` cells of scene files loaded and unloaded around
            `StreamingSource3D`s, as Unreal's World Partition, and the `streaming.state` command
-     - Double-precision transforms
+     - [x] Double-precision transforms: Godot's precision build option (`SLASH_PRECISION=double`,
+           the `double` preset), with positions in doubles (`slash::real_t`), Jolt in double
+           precision, 3D drawn around a render origin near the camera, gameplay libraries matched
+           by precision, and a CI job that builds and tests it
    - Cinematics: timeline tracks for cameras and events
      - [x] Godot's bezier and animation playback tracks, camera cuts, markers, the importer's
            conversion of them and the `animation.seek` command
@@ -1150,7 +1153,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Closed vendor SDKs | SDK packages: an `sdk.json` per SDK that exports fetch, check and link on all six platforms, with JNI and Objective-C bridges and engine interfaces for the glue | 6 | Done: packages, exports, `sdk.add`, `sdk.check` and `sdk.lock`, Android libraries and Maven, services and glue code |
 | One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | Done: every platform exports, and one Mac builds them all |
 | Procedural generation | FastNoiseLite noise, noise and gradient textures, scatter rules agents write, and procedural content imported from other tools | 8 | Done |
-| Large worlds | Double-precision transforms, world streaming | After launch | World streaming done; double-precision transforms next |
+| Large worlds | Double-precision transforms, world streaming | After launch | Done: the double-precision build, camera-relative 3D drawing and world streaming |
 | Cinematics | Timeline tracks for cameras and events | After launch | Done: bezier, animation and audio tracks, camera cuts, markers and `animation.seek` |
 | Cloth and soft bodies | Jolt soft bodies | After launch | Done: Godot's `SoftBody3D` on Jolt, with pins, attachments and pressure |
 | Destruction | Fracture and debris on Jolt | After launch | Done: Voronoi fracture of `Destructible3D` bodies, impact breaking, debris lifetimes and `physics.break` |

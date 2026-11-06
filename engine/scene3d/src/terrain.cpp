@@ -485,7 +485,8 @@ std::vector<float> erode(const std::vector<float>& heights, int resolution,
                 const Vec3 normal = unit({left - right, pixel + pixel, bottom - top});
                 const Vec3 up =
                     unit({noise.erosion_slope_direction.x, 1.0F, noise.erosion_slope_direction.y});
-                float f = std::max((normal.x * up.x) + (normal.y * up.y) + (normal.z * up.z), 0.0F);
+                float f = std::max<real_t>(
+                    (normal.x * up.x) + (normal.y * up.y) + (normal.z * up.z), 0.0F);
                 if (noise.erosion_slope_invert) {
                     f = 1.0F - f;
                 }

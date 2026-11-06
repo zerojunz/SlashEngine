@@ -91,7 +91,8 @@ std::vector<Vertex3D> cube() {
 // A turn of degrees about the Y axis, then a move to (x, y, z).
 Mat4 placed(float degrees, float x, float y, float z) {
     const slash::Vec2 turn = slash::cos_sin(degrees * 3.14159265F / 180.0F);
-    return {turn.x, 0, -turn.y, 0, 0, 1, 0, 0, turn.y, 0, turn.x, 0, x, y, z, 1};
+    return {static_cast<float>(turn.x), 0, static_cast<float>(-turn.y), 0, 0, 1, 0, 0,
+            static_cast<float>(turn.y), 0, static_cast<float>(turn.x),  0, x, y, z, 1};
 }
 
 render::Scene3D lit_scene() {

@@ -30,7 +30,9 @@ std::uint64_t next_serial() {
 
 std::array<float, 6> matrix_of(const world::Transform2D& transform) {
     const world::Affine2D m = world::affine(transform);
-    return {m.x.x, m.x.y, m.y.x, m.y.y, m.origin.x, m.origin.y};
+    return {static_cast<float>(m.x.x),      static_cast<float>(m.x.y),
+            static_cast<float>(m.y.x),      static_cast<float>(m.y.y),
+            static_cast<float>(m.origin.x), static_cast<float>(m.origin.y)};
 }
 
 // The shapes an emitter's particles collide with in a step, and how they are measured there.
@@ -368,7 +370,7 @@ public:
         if (!s_.local_coords) {
             step.emission = matrix_of(transform_);
         }
-        step.emitter_velocity = velocity_;
+        step.emitter_velocity = to_float(velocity_);
         step.emitting = e.storage_emitting;
         step.system_phase = static_cast<float>(new_phase);
         step.prev_system_phase = static_cast<float>(e.phase);
@@ -432,7 +434,7 @@ public:
         if (!settings.local_coords) {
             step.emission = sub.emission;
         }
-        step.emitter_velocity = sub.velocity;
+        step.emitter_velocity = to_float(sub.velocity);
         step.emitting = false;
         step.system_phase = static_cast<float>(new_phase);
         step.prev_system_phase = static_cast<float>(e.phase);
@@ -640,8 +642,11 @@ public:
         }
         const world::Affine2D back = to.inverse();
         Collision out;
-        out.to_shapes = {to.x.x, to.x.y, to.y.x, to.y.y, to.origin.x, to.origin.y};
-        out.from_shapes = {back.x.x, back.x.y, back.y.x, back.y.y};
+        out.to_shapes = {static_cast<float>(to.x.x),      static_cast<float>(to.x.y),
+                         static_cast<float>(to.y.x),      static_cast<float>(to.y.y),
+                         static_cast<float>(to.origin.x), static_cast<float>(to.origin.y)};
+        out.from_shapes = {static_cast<float>(back.x.x), static_cast<float>(back.x.y),
+                           static_cast<float>(back.y.x), static_cast<float>(back.y.y)};
         // GPUParticles2D::_update_collision_size: half the texture's average side, a radius.
         out.size = std::max(settings.collision_base_size, 0.0F);
         if (!settings.texture.empty()) {
@@ -692,10 +697,15 @@ private:
         if (points.empty()) {
             return;
         }
+        std::vector<Vec2f> narrowed;
+        narrowed.reserve(points.size());
+        for (const Vec2 point : points) {
+            narrowed.push_back(to_float(point));
+        }
         Shape shape{
-            .shape = {.points = std::move(points), .closed = closed}, .low = {}, .high = {}};
+            .shape = {.points = std::move(narrowed), .closed = closed}, .low = {}, .high = {}};
         shape.low = shape.high = shape.shape.points.front();
-        for (const Vec2& p : shape.shape.points) {
+        for (const Vec2 p : shape.shape.points) {
             shape.low = {std::min(shape.low.x, p.x), std::min(shape.low.y, p.y)};
             shape.high = {std::max(shape.high.x, p.x), std::max(shape.high.y, p.y)};
         }

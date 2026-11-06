@@ -42,16 +42,17 @@ struct IsStringMap : std::false_type {};
 template <typename T, typename Compare, typename Allocator>
 struct IsStringMap<std::map<std::string, T, Compare, Allocator>> : std::true_type {};
 
-// Math types are written as fixed-length arrays of numbers, e.g. a Vec3 as [x, y, z].
+// Math types are written as fixed-length arrays of numbers, e.g. a Vec3 as [x, y, z]. Vec2, Vec3
+// and Quat hold real_t, Vec4 (colors) floats.
 template <typename T>
 struct FloatArray;
 template <>
 struct FloatArray<Vec2> {
-    static constexpr std::array<float Vec2::*, 2> kMembers{&Vec2::x, &Vec2::y};
+    static constexpr std::array<real_t Vec2::*, 2> kMembers{&Vec2::x, &Vec2::y};
 };
 template <>
 struct FloatArray<Vec3> {
-    static constexpr std::array<float Vec3::*, 3> kMembers{&Vec3::x, &Vec3::y, &Vec3::z};
+    static constexpr std::array<real_t Vec3::*, 3> kMembers{&Vec3::x, &Vec3::y, &Vec3::z};
 };
 template <>
 struct FloatArray<Vec4> {
@@ -59,7 +60,7 @@ struct FloatArray<Vec4> {
 };
 template <>
 struct FloatArray<Quat> {
-    static constexpr std::array<float Quat::*, 4> kMembers{&Quat::x, &Quat::y, &Quat::z, &Quat::w};
+    static constexpr std::array<real_t Quat::*, 4> kMembers{&Quat::x, &Quat::y, &Quat::z, &Quat::w};
 };
 
 // A default value of T, to compare fields against.
@@ -259,7 +260,9 @@ Result<void> from_json(World& world, const json::Value& json, T& out, std::strin
                 detail::push_path(path, std::to_string(i));
                 return detail::type_error("number", item);
             }
-            value.*detail::FloatArray<T>::kMembers[i] = static_cast<float>(item.as_double());
+            using Number =
+                std::remove_reference_t<decltype(value.*detail::FloatArray<T>::kMembers[i])>;
+            value.*detail::FloatArray<T>::kMembers[i] = static_cast<Number>(item.as_double());
         }
         out = value;
     } else if constexpr (detail::IntArrayType<T>) {

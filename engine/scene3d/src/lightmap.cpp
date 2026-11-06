@@ -581,7 +581,8 @@ public:
         for (const entt::entity entity : made<world::LightmapProbe>(world_)) {
             if (under(tree_, entity, scope)) {
                 const Vec3 at = space.apply(tree_.global(entity).origin);
-                probes.push_back({at.x, at.y, at.z});
+                probes.push_back(
+                    {static_cast<float>(at.x), static_cast<float>(at.y), static_cast<float>(at.z)});
             }
         }
     }
@@ -765,9 +766,12 @@ private:
             out.shadow_blur = light.shadow_blur;
             out.static_bake = light.light_bake_mode == "static";
             const world::Affine3D placed = tree_.global(entity);
-            out.position = {placed.origin.x, placed.origin.y, placed.origin.z};
+            out.position = {static_cast<float>(placed.origin.x),
+                            static_cast<float>(placed.origin.y),
+                            static_cast<float>(placed.origin.z)};
             const Vec3 forward = placed.z * -1.0F;
-            out.direction = {forward.x, forward.y, forward.z};
+            out.direction = {static_cast<float>(forward.x), static_cast<float>(forward.y),
+                             static_cast<float>(forward.z)};
             lights.push_back(out);
         }
     }
@@ -1101,7 +1105,8 @@ Result<LightmapBake> bake_lightmap(const world::World& world, entt::entity entit
             if (index < mesh.vertices.size()) {
                 const std::array<float, 3>& p = mesh.vertices[index].position;
                 const Vec3 at = to_gi.apply({p[0], p[1], p[2]});
-                triangles.push_back({at.x, at.y, at.z});
+                triangles.push_back(
+                    {static_cast<float>(at.x), static_cast<float>(at.y), static_cast<float>(at.z)});
             }
         }
     }
@@ -1116,7 +1121,8 @@ Result<LightmapBake> bake_lightmap(const world::World& world, entt::entity entit
     request.space = space;
     for (const std::array<float, 3>& point : probes.points) {
         const Vec3 at = space.apply({point[0], point[1], point[2]});
-        request.points.push_back({at.x, at.y, at.z});
+        request.points.push_back(
+            {static_cast<float>(at.x), static_cast<float>(at.y), static_cast<float>(at.z)});
     }
     // rendering/lightmapping/bake_quality/*_quality_probe_ray_count.
     if (gi.quality == "low") {

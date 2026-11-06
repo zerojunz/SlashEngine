@@ -216,9 +216,12 @@ Result<Model> rig_humanoid(const Model& model) {
                     part.transform.basis({vertex.normal[0], vertex.normal[1], vertex.normal[2]}));
                 const Vec3 t = normalized(part.transform.basis(
                     {vertex.tangent[0], vertex.tangent[1], vertex.tangent[2]}));
-                vertex.position = {p.x, p.y, p.z};
-                vertex.normal = {n.x, n.y, n.z};
-                vertex.tangent = {t.x, t.y, t.z, vertex.tangent[3]};
+                vertex.position = {static_cast<float>(p.x), static_cast<float>(p.y),
+                                   static_cast<float>(p.z)};
+                vertex.normal = {static_cast<float>(n.x), static_cast<float>(n.y),
+                                 static_cast<float>(n.z)};
+                vertex.tangent = {static_cast<float>(t.x), static_cast<float>(t.y),
+                                  static_cast<float>(t.z), vertex.tangent[3]};
                 int side = 0;
                 if (p.x > middle.x + margin) {
                     side = 1;

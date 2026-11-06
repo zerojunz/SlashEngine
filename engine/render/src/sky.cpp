@@ -318,7 +318,7 @@ Float3 importance_sample_ggx(float xi_x, float xi_y, float roughness4) {
     const float phi = 2.0F * kPi * xi_x;
     const float cos_theta = std::sqrt((1.0F - xi_y) / (1.0F + ((roughness4 - 1.0F) * xi_y)));
     const float sin_theta = std::sqrt(1.0F - (cos_theta * cos_theta));
-    const slash::Vec2 turn = slash::cos_sin(phi);
+    const slash::Vec2f turn = slash::cos_sin(phi);
     return {sin_theta * turn.x, sin_theta * turn.y, cos_theta};
 }
 
@@ -836,11 +836,11 @@ HdrImage ambient_panorama(
     for (std::uint32_t y = 0; y < height; ++y) {
         const float polar =
             std::numbers::pi_v<float> * (static_cast<float>(y) + 0.5F) / static_cast<float>(height);
-        const Vec2 polar_cs = cos_sin(polar);
+        const Vec2f polar_cs = cos_sin(polar);
         for (std::uint32_t x = 0; x < width; ++x) {
             const float around = 2.0F * std::numbers::pi_v<float> * (static_cast<float>(x) + 0.5F) /
                                  static_cast<float>(width);
-            const Vec2 around_cs = cos_sin(around);
+            const Vec2f around_cs = cos_sin(around);
             const Float3 d{polar_cs.y * around_cs.y, polar_cs.x, polar_cs.y * around_cs.x};
             Float3 light = ambient;
             if (sky) {

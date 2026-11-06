@@ -3083,8 +3083,10 @@ TEST_CASE("Unity's isometric and hexagonal tile maps keep their cells where Unit
                     layer.find("legend")->find(std::string(1, keys[column]))->as_string();
                 const slash::Vec2 center = canvas::map_to_local(out.set, {x, y});
                 out.centers.push_back(
-                    {center.x + static_cast<float>(out.position.as_array()[0].as_double()),
-                     center.y + static_cast<float>(out.position.as_array()[1].as_double())});
+                    {static_cast<float>(center.x +
+                                        static_cast<float>(out.position.as_array()[0].as_double())),
+                     static_cast<float>(
+                         center.y + static_cast<float>(out.position.as_array()[1].as_double()))});
             }
         }
         std::ranges::sort(out.centers);

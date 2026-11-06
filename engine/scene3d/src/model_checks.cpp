@@ -135,7 +135,8 @@ std::vector<json::ValidationError> check_model_against(const Model& model,
     }
     const ModelSummary summary = summarize(model);
     const Vec3 size = summary.bounds.max - summary.bounds.min;
-    const std::array<float, 3> sizes = {size.x, size.y, size.z};
+    const std::array<float, 3> sizes = {static_cast<float>(size.x), static_cast<float>(size.y),
+                                        static_cast<float>(size.z)};
     if (const json::Value* bounds = checks.find("size"); bounds != nullptr) {
         for (const std::string_view side : {"min", "max"}) {
             const json::Value* limit = bounds->find(side);
@@ -164,7 +165,9 @@ std::vector<json::ValidationError> check_model_against(const Model& model,
         }
     }
     if (const json::Value* pivot = checks.find("pivot"); pivot != nullptr) {
-        const std::array<float, 3> pivots = {summary.pivot.x, summary.pivot.y, summary.pivot.z};
+        const std::array<float, 3> pivots = {static_cast<float>(summary.pivot.x),
+                                             static_cast<float>(summary.pivot.y),
+                                             static_cast<float>(summary.pivot.z)};
         for (std::size_t axis = 0; axis < 3; ++axis) {
             const auto wanted = static_cast<float>(pivot->as_array()[axis].as_double());
             if (std::abs(pivots[axis] - wanted) <= kPivotSlack) {

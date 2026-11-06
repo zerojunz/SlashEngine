@@ -1183,7 +1183,9 @@ TEST_CASE("a tile's texture origin moves its texture, and turns with the cell, a
     };
     const auto rect = [&](std::string_view text) {
         const canvas::TileLook found = look(text);
-        return std::array<float, 4>{found.position.x, found.position.y, found.size.x, found.size.y};
+        return std::array<float, 4>{
+            static_cast<float>(found.position.x), static_cast<float>(found.position.y),
+            static_cast<float>(found.size.x), static_cast<float>(found.size.y)};
     };
     using Rect = std::array<float, 4>;
     CHECK(rect("a:0,0") == Rect{-6, 1, 8, 4});

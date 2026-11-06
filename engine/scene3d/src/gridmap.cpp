@@ -407,9 +407,10 @@ Vec3 cross(Vec3 a, Vec3 b) {
 std::array<float, 3> normalized(Vec3 v) {
     const float length = std::sqrt(dot(v, v));
     if (length == 0.0F) {
-        return {v.x, v.y, v.z};
+        return {static_cast<float>(v.x), static_cast<float>(v.y), static_cast<float>(v.z)};
     }
-    return {v.x / length, v.y / length, v.z / length};
+    return {static_cast<float>(v.x / length), static_cast<float>(v.y / length),
+            static_cast<float>(v.z / length)};
 }
 
 // Appends triangles to a surface, placed by transform: normals by its inverse transpose,
@@ -425,7 +426,7 @@ void append(MeshSurface& to, const std::vector<render::Vertex3D>& vertices,
         render::Vertex3D out = vertex;
         const Vec3 p =
             transform.apply({vertex.position[0], vertex.position[1], vertex.position[2]});
-        out.position = {p.x, p.y, p.z};
+        out.position = {static_cast<float>(p.x), static_cast<float>(p.y), static_cast<float>(p.z)};
         const Vec3 n{vertex.normal[0], vertex.normal[1], vertex.normal[2]};
         out.normal = normalized({dot(inverse.x, n), dot(inverse.y, n), dot(inverse.z, n)});
         const std::array<float, 3> t =

@@ -161,8 +161,8 @@ void add_obstacle(SourceGeometry3D& out, const world::NavigationObstacle3D& obst
     }
     const float elevation = global.origin.y + root.origin.y;
     const auto safe = [](Vec3 axis) {
-        return std::max(std::sqrt((axis.x * axis.x) + (axis.y * axis.y) + (axis.z * axis.z)),
-                        0.001F);
+        return std::max<real_t>(
+            std::sqrt((axis.x * axis.x) + (axis.y * axis.y) + (axis.z * axis.z)), 0.001F);
     };
     const Vec3 scale{safe(global.x), safe(global.y), safe(global.z)};
     if (obstacle.radius > 0.0F) {
@@ -437,7 +437,7 @@ void add_obstacle(SourceGeometry2D& out, const world::NavigationObstacle2D& obst
     const Affine2D global = tree.global_affine(entity);
     if (obstacle.radius > 0.0F) {
         const auto safe = [](Vec2 axis) {
-            return std::max(std::sqrt((axis.x * axis.x) + (axis.y * axis.y)), 0.001F);
+            return std::max<real_t>(std::sqrt((axis.x * axis.x) + (axis.y * axis.y)), 0.001F);
         };
         const float max_scale = std::max(safe(global.x), safe(global.y));
         world::Transform2D parts = tree.global(entity);

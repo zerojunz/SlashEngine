@@ -6,7 +6,7 @@
 
 namespace slash {
 
-Vec2 cos_sin(float radians) {
+Vec2f cos_sin(float radians) {
     if (!std::isfinite(radians)) {
         return {1.0F, 0.0F};
     }

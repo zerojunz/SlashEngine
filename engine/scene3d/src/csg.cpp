@@ -1007,9 +1007,11 @@ CsgMesh mesh_of(const Brush& brush, const CsgSettings& settings) {
                 normal = negated(normal);
             }
             render::Vertex3D& corner = surface.vertices[last + order[j]];
-            corner.position = {v.x, v.y, v.z};
-            corner.normal = {normal.x, normal.y, normal.z};
-            corner.uv = {face.uvs[j].x, face.uvs[j].y};
+            corner.position = {static_cast<float>(v.x), static_cast<float>(v.y),
+                               static_cast<float>(v.z)};
+            corner.normal = {static_cast<float>(normal.x), static_cast<float>(normal.y),
+                             static_cast<float>(normal.z)};
+            corner.uv = {static_cast<float>(face.uvs[j].x), static_cast<float>(face.uvs[j].y)};
         }
     }
     for (std::size_t i = 0; i < count; ++i) {
