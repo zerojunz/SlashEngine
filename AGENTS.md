@@ -29,6 +29,8 @@ ctest --preset dev               # run unit and smoke tests
 ```
 
 The `ci` preset is what CI runs: same build with warnings as errors. Use it before you push.
+Ninja links one Debug executable per 6 GB of memory (the `slash_link` pool in `CMakeLists.txt`,
+since each link takes nearly 4 GB with GNU ld); set `CMAKE_JOB_POOL_LINK` to use your own.
 
 On Linux, SDL3 needs the X11/Wayland development packages listed in
 `.github/workflows/ci.yml`.
