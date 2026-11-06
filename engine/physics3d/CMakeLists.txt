@@ -4,6 +4,7 @@ add_library(slash_physics3d
     src/motion.cpp
     src/physics3d.cpp
     src/shapes.cpp
+    src/soft_body.cpp
     src/space.cpp
     src/vehicle.cpp)
 add_library(slash::physics3d ALIAS slash_physics3d)

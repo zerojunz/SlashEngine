@@ -696,6 +696,8 @@ constexpr std::array kNodeTypes{
     NodeType{"Node3D", Family::Node3D, "", ""},
     NodeType{"Marker3D", Family::Node3D, "", ""},
     NodeType{"MeshInstance3D", Family::Node3D, "MeshInstance3D", ""},
+    // Godot's SoftBody3D is a MeshInstance3D that physics moves.
+    NodeType{"SoftBody3D", Family::Node3D, "MeshInstance3D", "SoftBody3D"},
     NodeType{"CPUParticles3D", Family::Node3D, "CPUParticles3D", ""},
     NodeType{"GPUParticles3D", Family::Node3D, "GPUParticles3D", ""},
     NodeType{"GPUParticlesAttractorSphere3D", Family::Node3D, "GPUParticlesAttractorSphere3D", ""},
@@ -5948,7 +5950,7 @@ private:
             }
             return true;
         }
-        if (name != "mesh" || node.type != "MeshInstance3D") {
+        if (name != "mesh" || (node.type != "MeshInstance3D" && node.type != "SoftBody3D")) {
             return false;
         }
         std::string model;
@@ -7919,6 +7921,52 @@ private:
         const bool ik = node.type == "TwoBoneIK3D" || node.type == "FABRIK3D" ||
                         node.type == "CCDIK3D" || node.type == "JacobianIK3D";
         return ik && (name == "setting_count" || name.starts_with("settings/"));
+    }
+
+    // Whether a property of a SoftBody3D is one of its pinned points, which convert together
+    // (convert_soft_body_pins).
+    static bool soft_body_pin_property(const Node& node, std::string_view name) {
+        return node.type == "SoftBody3D" &&
+               (name == "pinned_points" || name.starts_with("attachments/"));
+    }
+
+    // A SoftBody3D's pinned points, as Godot's SoftBody3D::_set takes them: pinned_points the
+    // vertices, and attachments/<i>/spatial_attachment_path and offset the i-th one's attachment.
+    void convert_soft_body_pins(const std::vector<Node>& nodes, const Node& node,
+                                json::Value& out) {
+        const Property* pinned = node.find("pinned_points");
+        if (pinned == nullptr) {
+            return;
+        }
+        const auto numbers = pinned->value->numbers();
+        if (!numbers) {
+            problems_.add("SoftBody3D.pinned_points", node.declared, "not a list of vertices");
+            return;
+        }
+        json::Array pins;
+        for (std::size_t i = 0; i < numbers->size(); ++i) {
+            json::Value pin = json::Object{};
+            pin["point"] = static_cast<std::int64_t>(numbers->at(i));
+            const std::string prefix = "attachments/" + std::to_string(i) + "/";
+            if (const Property* path = node.find(prefix + "spatial_attachment_path");
+                path != nullptr) {
+                std::string id = setting_node(nodes, node, *path->value,
+                                              "SoftBody3D." + prefix + "spatial_attachment_path");
+                if (!id.empty()) {
+                    pin["attachment"] = std::move(id);
+                }
+            }
+            if (const Property* offset = node.find(prefix + "offset"); offset != nullptr) {
+                if (auto value = vector3(*offset->value); value) {
+                    pin["offset"] = std::move(*value);
+                } else {
+                    problems_.add("SoftBody3D." + prefix + "offset", node.declared,
+                                  "not a Vector3");
+                }
+            }
+            pins.push_back(std::move(pin));
+        }
+        out["pinned_points"] = std::move(pins);
     }
 
     // Converts what a skeleton modifier, physical bone or bone attachment sets as a whole: the
@@ -10605,7 +10653,8 @@ private:
                 if (node.find(given.name) != &given) {
                     continue; // a later value overrides it
                 }
-                if (bone_node_property(node, given.name)) {
+                if (bone_node_property(node, given.name) ||
+                    soft_body_pin_property(node, given.name)) {
                     continue; // converted with the node, below
                 }
                 if (terrain && hterrain_property(given.name)) {
@@ -10652,6 +10701,9 @@ private:
             }
             if (contains(kSkeletonChildTypes, node.type)) {
                 convert_bone_node(nodes, node, components);
+            }
+            if (node.type == "SoftBody3D") {
+                convert_soft_body_pins(nodes, node, components["SoftBody3D"]);
             }
             if (terrain) {
                 convert_hterrain(node, components);
