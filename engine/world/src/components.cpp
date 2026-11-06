@@ -751,6 +751,42 @@ void register_physics_3d_components(ComponentRegistry& registry) {
              {"angular_spring_damping", {.doc = "How much the spring slows it."}},
              {"angular_equilibrium_point", {.doc = "Where the spring rests, in radians."}}});
     }
+
+    registry.add<SoftBody3D>()
+        .set_doc("Makes the primitive mesh its entity draws a soft body, as cloth or a ball: "
+                 "its vertices are points gravity and collisions move, held together by springs "
+                 "along its edges. The physics step keeps them in world space; the Transform3D "
+                 "places them when the body is made and moves them all when it changes.")
+        .describe("collision_layer", layer)
+        .describe("collision_mask", mask)
+        .describe("parent_collision_ignore", {.doc = "A body it never collides with."})
+        .describe("simulation_precision",
+                  {.doc = "Iterations per step: more keeps it stiffer and steadier.",
+                   .min = 1,
+                   .max = 100})
+        .describe("total_mass", {.doc = "In kilograms, shared by its points.", .min = 0.01})
+        .describe("linear_stiffness",
+                  {.doc = "How hard its edges keep their length: 0 stretches, 1 hardly.",
+                   .min = 0,
+                   .max = 1})
+        .describe("shrinking_factor", {.doc = "Shortens each edge's rest length by this share, "
+                                              "so it tightens; negative values loosen it."})
+        .describe("pressure_coefficient",
+                  {.doc = "Pushes a closed mesh out, as air in a ball.", .min = 0})
+        .describe("damping_coefficient", {.doc = "Slows its points, per second.", .min = 0})
+        .describe("drag_coefficient", {.doc = "Kept for Godot's scenes; Jolt has no drag, so it "
+                                              "does nothing.",
+                                       .min = 0,
+                                       .max = 1})
+        .describe("ray_pickable", {.doc = "Kept for Godot's scenes; queries don't see soft "
+                                          "bodies yet."})
+        .describe("pinned_points", {.doc = "Points held in place."})
+        .describe("pinned_points[].point", {.doc = "The index of the mesh vertex held.", .min = 0})
+        .describe("pinned_points[].attachment",
+                  {.doc = "An entity whose Transform3D the point follows; null keeps it where "
+                          "it is."})
+        .describe("pinned_points[].offset",
+                  {.doc = "Where the point is in the attachment's space, as [x, y, z]."});
 }
 
 // The skeleton modifiers: Godot 4.6's TwoBoneIK3D, FABRIK3D, CCDIK3D and JacobianIK3D.

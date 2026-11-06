@@ -10,6 +10,7 @@
 #include "slash/runtime/project.hpp"
 #include "slash/scene3d/primitive.hpp"
 #include "slash/scene3d/scene3d.hpp"
+#include "slash/scene3d/soft_body.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
@@ -478,6 +479,53 @@ TEST_CASE("meshes that can't draw are reported, in the world and in scene files"
                                               {});
     REQUIRE(errors.size() == 1);
     CHECK(errors[0].path == "/entities/cube/components/MeshInstance3D");
+}
+
+TEST_CASE("a soft body's mesh draws where its points are, as Godot's SoftBody3D") {
+    Scene scene;
+    scene.create("camera", R"({"Transform3D": {"position": [0, 0, 3]}, "Camera3D": {}})");
+    scene.create("env", R"({"WorldEnvironment": {"background_mode": "color",
+                                                 "background_color": [0, 0, 1, 1]}})");
+    // Out of sight where its transform puts it.
+    const entt::entity sheet = scene.create("sheet", R"({"Transform3D": {"position": [50, 0, 0]},
+        "MeshInstance3D": {}, "QuadMesh": {}, "SoftBody3D": {},
+        "StandardMaterial3D": {"shading_mode": "unshaded", "albedo_color": [1, 0, 0, 1]}})");
+    const auto centre = [&] {
+        const auto captured = canvas::capture(scene.world, scene.assets);
+        REQUIRE(captured.ok());
+        return pixel(captured.value().image, 32, 32);
+    };
+    // With no physics, it draws as a MeshInstance3D.
+    CHECK(centre() == Rgba{0, 0, 255, 255});
+
+    // Physics gives each vertex a place in the world: here, in front of the camera.
+    const auto mesh = scene3d::make_mesh(world::QuadMesh{});
+    REQUIRE(mesh.ok());
+    auto pose = std::make_shared<scene3d::SoftBodyPose>();
+    for (const auto& vertex : mesh.value().vertices) {
+        pose->positions.push_back(Vec3{vertex.position[0], vertex.position[1], 1.0F});
+        pose->normals.push_back(Vec3{0.0F, 0.0F, 1.0F});
+    }
+    int asked = 0;
+    scene3d::set_soft_body_source(scene.world,
+                                  [&](const world::World& /*world*/, entt::entity entity)
+                                      -> std::shared_ptr<const scene3d::SoftBodyPose> {
+                                      ++asked;
+                                      return entity == sheet ? pose : nullptr;
+                                  });
+    CHECK(centre() == Rgba{255, 0, 0, 255});
+    CHECK(asked > 0);
+    CHECK(scene3d::soft_body_pose(scene.world, sheet) == pose);
+
+    // A pose that doesn't match the mesh is a problem, and nothing draws.
+    pose = std::make_shared<scene3d::SoftBodyPose>();
+    pose->positions.resize(1);
+    pose->normals.resize(1);
+    const auto device = render::create_null_device();
+    scene3d::Renderer renderer(*device, nullptr);
+    const auto prepared = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {});
+    REQUIRE(prepared.has_value());
+    CHECK(renderer.meshes() == 0);
 }
 
 TEST_CASE("the 3D world draws under the canvas, on the software device and every GPU") {

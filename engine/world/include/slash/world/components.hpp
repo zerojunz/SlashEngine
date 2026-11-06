@@ -2301,6 +2301,46 @@ SLASH_COMPONENT(PhysicalBone3D, bone_name, body_offset_position, body_offset_rot
                 linear_damp_mode, linear_damp, angular_damp_mode, angular_damp, linear_velocity,
                 angular_velocity, can_sleep)
 
+// A point of a SoftBody3D's mesh held in place, as Godot's pinned_points and attachments: with an
+// attachment, it follows the attachment's Transform3D at offset in its space; without, it stays
+// where it is.
+struct SoftBodyPin {
+    int point = 0; // the mesh vertex's index
+    entt::entity attachment{entt::null};
+    Vec3 offset;
+
+    friend bool operator==(const SoftBodyPin&, const SoftBodyPin&) = default;
+};
+SLASH_REFLECT(SoftBodyPin, point, attachment, offset)
+
+// Makes the mesh its entity draws a soft body, as Godot's SoftBody3D on its Jolt module: its
+// vertices are points that gravity and collisions move and its edges springs between them, as
+// cloth, or a ball when pressure_coefficient pushes its closed mesh out. The mesh is one of the
+// entity's primitive mesh components; the physics step keeps the points in world space, where
+// the mesh draws, and the entity's Transform3D (without its scale) only places the points when
+// the body is made and moves them all when it changes. Areas don't see soft bodies, as Godot's
+// Jolt areas don't.
+struct SoftBody3D {
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+    entt::entity parent_collision_ignore{entt::null}; // a body it never collides with
+    int simulation_precision = 5;                     // iterations per step
+    float total_mass = 1.0F;                          // kilograms, shared by the points
+    float linear_stiffness = 0.5F;                    // 0 to 1
+    float shrinking_factor = 0.0F;                    // shortens each edge by this share
+    float pressure_coefficient = 0.0F;
+    float damping_coefficient = 0.01F;
+    float drag_coefficient = 0.0F; // kept, as Godot's Jolt module keeps it, with no effect
+    bool ray_pickable = true;
+    std::vector<SoftBodyPin> pinned_points;
+
+    friend bool operator==(const SoftBody3D&, const SoftBody3D&) = default;
+};
+SLASH_COMPONENT(SoftBody3D, collision_layer, collision_mask, parent_collision_ignore,
+                simulation_precision, total_mass, linear_stiffness, shrinking_factor,
+                pressure_coefficient, damping_coefficient, drag_coefficient, ray_pickable,
+                pinned_points)
+
 // ---- Navigation, as Godot's (engine/navigation): regions of navigation mesh, links between
 // places and agents that follow paths over them, on one 2D and one 3D map per world.
 

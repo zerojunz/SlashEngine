@@ -15,6 +15,7 @@
 #include "slash/scene3d/material.hpp"
 #include "slash/scene3d/particle_collision.hpp"
 #include "slash/scene3d/particles.hpp"
+#include "slash/scene3d/soft_body.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
 #include "slash/world/path.hpp"
@@ -998,6 +999,9 @@ std::vector<Problem> check_meshes(const world::World& world) {
     for (Problem& problem : check_particle_colliders(world)) {
         problems.push_back(std::move(problem));
     }
+    for (Problem& problem : check_soft_bodies(world)) {
+        problems.push_back(std::move(problem));
+    }
     return problems;
 }
 
@@ -1494,6 +1498,50 @@ Result<render::MeshId> Renderer::kept_mesh(const std::string& key,
     }
     shared.used = frame_;
     return shared.id;
+}
+
+Result<render::MeshId> Renderer::soft_mesh(const std::string& key, const Primitive& primitive,
+                                           std::shared_ptr<const SoftBodyPose> pose) {
+    Skinned& soft = skinned_[key];
+    soft.used = frame_;
+    if (soft.id != render::MeshId::None && soft.soft == pose) {
+        return soft.id;
+    }
+    auto data = make_mesh(primitive);
+    std::vector<render::Vertex3D>* vertices_made = data ? &data.value().vertices : nullptr;
+    if (vertices_made == nullptr || pose->positions.size() != vertices_made->size() ||
+        pose->normals.size() != vertices_made->size()) {
+        if (soft.id == render::MeshId::None) {
+            skinned_.erase(key);
+        }
+        if (!data) {
+            return data.error();
+        }
+        return make_error(ErrorCode::InvalidArgument,
+                          "the soft body's points don't match its mesh's vertices");
+    }
+    std::vector<render::Vertex3D>& vertices = *vertices_made;
+    // As Godot's SoftBody3D: each vertex where its point is, with the smooth normal of the
+    // faces around it; the rest of the vertex stays as the mesh made it.
+    for (std::size_t i = 0; i < vertices.size(); ++i) {
+        const Vec3 position = pose->positions[i];
+        const Vec3 normal = pose->normals[i];
+        vertices[i].position = {position.x, position.y, position.z};
+        vertices[i].normal = {normal.x, normal.y, normal.z};
+    }
+    if (soft.id == render::MeshId::None) {
+        auto made = device_->create_mesh(vertices, data.value().indices);
+        if (!made) {
+            skinned_.erase(key);
+            return made.error();
+        }
+        soft.id = made.value();
+    } else if (auto updated = device_->update_mesh(soft.id, vertices); !updated) {
+        return updated.error();
+    }
+    soft.soft = std::move(pose);
+    soft.box = bounds_of(vertices);
+    return soft.id;
 }
 
 Result<render::MeshId> Renderer::skinned_mesh(const std::string& key, const ModelSurface& surface,
@@ -3303,12 +3351,26 @@ std::optional<Frame3D> Renderer::prepare(
         draw.mesh = mesh.value();
         draw.transform = global(entity).matrix();
         draw.entity = entity;
+        // A soft body's mesh draws where physics put its points, which are in world space.
+        std::shared_ptr<const SoftBodyPose> soft;
+        if (ecs.all_of<world::SoftBody3D>(entity)) {
+            soft = soft_body_pose(world, entity);
+        }
+        if (soft != nullptr) {
+            auto moved = soft_mesh("soft:" + std::string(world.id_of(entity)), *primitive, soft);
+            if (!moved) {
+                problems_.push_back({entity, "/components/SoftBody3D", moved.error().message});
+                continue;
+            }
+            draw.mesh = moved.value();
+            draw.transform = world::Affine3D{}.matrix();
+        }
         bool shadows_disabled = false;
         if (auto override = override_material(world, entity, instance, shadows_disabled)) {
             draw.material = *override;
         }
         if (const auto* standard = ecs.try_get<world::StandardMaterial3D>(entity);
-            standard != nullptr && instance.material_override.empty()) {
+            standard != nullptr && instance.material_override.empty() && soft == nullptr) {
             face_camera(*standard, global(entity), draw);
         }
         if (shadows_disabled && casting == render::ShadowCasting::On) {
@@ -3317,7 +3379,7 @@ std::optional<Frame3D> Renderer::prepare(
         if (instance.gi_mode == "dynamic") {
             const Shared& shared = shared_.at(cached_.at(entity).key);
             draw.material.capture = capture(entity, global(entity).apply(shared.center));
-        } else if (instance.gi_mode == "static") {
+        } else if (instance.gi_mode == "static" && soft == nullptr) {
             const LitSource source{.key = "primitive:" + cached_.at(entity).key,
                                    .make = [&primitive](std::vector<render::Vertex3D>& vertices,
                                                         std::vector<std::uint32_t>& indices) {

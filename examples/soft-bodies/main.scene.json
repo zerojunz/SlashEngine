@@ -1,0 +1,102 @@
+{
+  "entities": {
+    "ball": {
+      "components": {
+        "MeshInstance3D": {},
+        "SoftBody3D": {
+          "linear_stiffness": 0.1,
+          "pressure_coefficient": 50.0
+        },
+        "SphereMesh": {
+          "height": 0.8,
+          "radial_segments": 16,
+          "radius": 0.4,
+          "rings": 8
+        },
+        "Transform3D": {
+          "position": [-3.0, 2.0, 0.0]
+        }
+      }
+    },
+    "flag": {
+      "components": {
+        "MeshInstance3D": {},
+        "PlaneMesh": {
+          "orientation": "z",
+          "size": [1.2, 0.8],
+          "subdivide_depth": 3,
+          "subdivide_width": 5
+        },
+        "SoftBody3D": {
+          "parent_collision_ignore": "pole",
+          "pinned_points": [
+            {
+              "attachment": "pole",
+              "offset": [0.0, 0.4, 0.0],
+              "point": 34
+            },
+            {
+              "attachment": "pole",
+              "offset": [0.0, -0.4, 0.0],
+              "point": 6
+            }
+          ]
+        },
+        "Transform3D": {
+          "position": [3.0, 2.0, 0.0]
+        }
+      }
+    },
+    "floor": {
+      "components": {
+        "CollisionShape3D": {
+          "size": [12.0, 1.0, 12.0]
+        },
+        "StaticBody3D": {},
+        "Transform3D": {
+          "position": [0.0, -0.5, 0.0]
+        }
+      }
+    },
+    "pole": {
+      "components": {
+        "CollisionShape3D": {
+          "height": 4.0,
+          "radius": 0.05,
+          "shape": "cylinder"
+        },
+        "StaticBody3D": {},
+        "Transform3D": {
+          "position": [2.4, 2.0, 0.0]
+        }
+      }
+    },
+    "table": {
+      "components": {
+        "CollisionShape3D": {
+          "size": [1.2, 0.8, 1.2]
+        },
+        "StaticBody3D": {},
+        "Transform3D": {
+          "position": [0.0, 0.4, 0.0]
+        }
+      }
+    },
+    "tablecloth": {
+      "components": {
+        "MeshInstance3D": {},
+        "PlaneMesh": {
+          "subdivide_depth": 9,
+          "subdivide_width": 9
+        },
+        "SoftBody3D": {
+          "total_mass": 0.5
+        },
+        "Transform3D": {
+          "position": [0.0, 1.5, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

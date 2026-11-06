@@ -139,6 +139,7 @@ using TextureSource =
     std::function<Result<SourceTexture>(const std::string& path, render::Filter filter)>;
 
 struct LightmapData;
+struct SoftBodyPose; // slash/scene3d/soft_body.hpp
 struct LightmapUnwrap;
 
 // A baked lightmap loaded by its .lightmap.json file's project path (lightmap.hpp), with the
@@ -412,6 +413,8 @@ private:
         std::vector<world::Affine3D> joints; // what moved its vertices last
         Bounds box;                          // its moved vertices' bounds
         std::vector<SurfaceLod> lods;        // its surface's coarser LODs
+        // A soft body's mesh: the pose that moved its vertices last.
+        std::shared_ptr<const SoftBodyPose> soft;
     };
 
     Result<render::MeshId> mesh_for(const world::World& world, entt::entity entity,
@@ -487,6 +490,10 @@ private:
     // made once per key.
     render::MaterialTexture kept_texture(const std::string& key, const render::Image& image);
     // A skinned surface's vertices moved by joints, in its entity's mesh on the device.
+    // A soft body's primitive mesh with its vertices where physics put them, in world space, in a
+    // mesh of its own refilled when the pose changes.
+    Result<render::MeshId> soft_mesh(const std::string& key, const Primitive& primitive,
+                                     std::shared_ptr<const SoftBodyPose> pose);
     Result<render::MeshId> skinned_mesh(const std::string& key, const ModelSurface& surface,
                                         const std::vector<world::Affine3D>& joints);
 

@@ -71,6 +71,7 @@ add_library(slash_scene3d
     src/humanoid.cpp
     src/skeleton.cpp
     src/skin_tool.cpp
+    src/soft_body.cpp
     src/surface_tool.cpp
     src/terrain.cpp
     src/voxel_gi.cpp)
