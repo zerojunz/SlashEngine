@@ -1,0 +1,46 @@
+{
+  "entities": {
+    "ground": {
+      "components": {
+        "BoxMesh": {
+          "size": [100.0, 1.0, 100.0]
+        },
+        "CollisionShape3D": {
+          "size": [100.0, 1.0, 100.0]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.6, 0.55, 0.35, 1.0]
+        },
+        "StaticBody3D": {},
+        "Transform3D": {
+          "children": ["well", "mill"]
+        }
+      }
+    },
+    "mill": {
+      "components": {
+        "BoxMesh": {
+          "size": [2.0, 4.0, 2.0]
+        },
+        "MeshInstance3D": {},
+        "Transform3D": {
+          "position": [25.0, 2.0, 20.0]
+        }
+      }
+    },
+    "well": {
+      "components": {
+        "BoxMesh": {
+          "size": [2.0, 4.0, 2.0]
+        },
+        "MeshInstance3D": {},
+        "Transform3D": {
+          "position": [0.0, 2.0, -15.0]
+        }
+      }
+    }
+  },
+  "format": 1,
+  "root": "ground"
+}

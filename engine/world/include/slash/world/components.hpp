@@ -2365,6 +2365,23 @@ struct FracturePiece3D {
 };
 SLASH_COMPONENT(FracturePiece3D, pieces, seed, index, lifetime)
 
+// A part of a large world kept in a scene file of its own, loaded while a StreamingSource3D is
+// near it and unloaded when they have all gone, as Unreal's World Partition streams its cells.
+// Godot has none. The scene's root becomes the entity "<id>_scene", placed under this one.
+struct StreamedScene3D {
+    std::string scene;           // a .scene.json file that names its root
+    Vec3 size;                   // the box it covers in the world's axes, centered on the entity
+    float load_radius = 100.0F;  // meters from a source to the box at which it loads
+    float unload_margin = 10.0F; // and how much farther the sources must go before it unloads
+};
+SLASH_COMPONENT(StreamedScene3D, scene, size, load_radius, unload_margin)
+
+// Where the world is streamed in around: a player or camera, as Unreal's streaming sources.
+struct StreamingSource3D {
+    bool enabled = true;
+};
+SLASH_COMPONENT(StreamingSource3D, enabled)
+
 // ---- Navigation, as Godot's (engine/navigation): regions of navigation mesh, links between
 // places and agents that follow paths over them, on one 2D and one 3D map per world.
 

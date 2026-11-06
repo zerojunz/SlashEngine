@@ -44,6 +44,7 @@ add_library(slash_scene3d
     src/cleanup.cpp
     src/collision.cpp
     src/csg.cpp
+    src/streaming.cpp
     src/delight.cpp
     src/geometry.cpp
     src/fbx.cpp
