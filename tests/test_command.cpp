@@ -1341,7 +1341,7 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "doc": "Steps 2D physics: moves rigid and character bodies and reports contacts.",
          "priority": 950},
         {"name": "physics3d",
-         "doc": "Steps 3D physics: moves rigid and character bodies and reports contacts.",
+         "doc": "Steps 3D physics: moves rigid and character bodies, reports contacts and breaks Destructible3Ds hit hard enough.",
          "priority": 950},
         {"name": "multiplayer_visibility",
          "doc": "Checks the visibility filters of synchronizers whose visibility_update_mode is \"physics\", after physics, as Godot's MultiplayerSynchronizer.",
@@ -3061,6 +3061,37 @@ TEST_CASE("physics.soft_body reports where a soft body's points are") {
               .message == "/id: \"floor\" has no soft body: it needs a SoftBody3D and a "
                           "MeshInstance3D drawing a primitive mesh");
     engine.fails("physics.soft_body", R"({"id": "nobody"})", command::code::kNotFound);
+}
+
+TEST_CASE("physics.break breaks a Destructible3D into pieces, and undo puts it back") {
+    Engine engine;
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "crate", "components": {
+            "Transform3D": {"position": [0, 1, 0]}, "MeshInstance3D": {}, "BoxMesh": {},
+            "StaticBody3D": {}, "CollisionShape3D": {},
+            "Destructible3D": {"pieces": 4, "seed": 3, "mass": 8}}}},
+        {"command": "entity.create", "params": {"id": "floor", "components": {
+            "Transform3D": {}, "StaticBody3D": {}, "CollisionShape3D": {}}}}]})");
+    const json::Value before = engine.scene();
+    const json::Value dry = engine.ok("physics.break", R"({"id": "crate", "dry_run": true})");
+    CHECK(dry.find("dry_run")->as_bool());
+    CHECK(engine.scene() == before);
+
+    const json::Value broken =
+        engine.ok("physics.break", R"({"id": "crate", "push": 2, "from": [0, 0, 0]})");
+    CHECK(broken == parse(R"({"pieces": ["crate_1", "crate_2", "crate_3", "crate_4"]})"));
+    CHECK(*engine
+               .ok("world.query", R"({"with": ["FracturePiece3D"], "include":
+        ["FracturePiece3D"], "where": [{"component": "FracturePiece3D", "field": "index",
+        "value": 1}]})")
+               .find("entities") == parse(R"([{"id": "crate_2", "components": {
+        "FracturePiece3D": {"pieces": 4, "seed": 3, "index": 1, "lifetime": 0}}}])"));
+    engine.ok("undo");
+    CHECK(engine.scene() == before);
+
+    CHECK(engine.fails("physics.break", R"({"id": "floor"})", command::code::kInvalidParams)
+              .message == "/id: \"floor\" has no Destructible3D");
+    engine.fails("physics.break", R"({"id": "nobody"})", command::code::kNotFound);
 }
 
 TEST_CASE("particles.eval counts and lists particles, as they are or after a time") {

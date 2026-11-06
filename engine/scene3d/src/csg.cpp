@@ -3,6 +3,7 @@
 #include "model_internal.hpp"
 
 #include "slash/core/text.hpp"
+#include "slash/scene3d/fracture.hpp"
 #include "slash/world/path.hpp"
 #include "slash/world/world.hpp"
 
@@ -1075,9 +1076,21 @@ struct CsgCache {
         CsgNode input;
         std::shared_ptr<const CsgMesh> mesh;
     };
+    // An entity's fracture: what was cut, into how many cells around which points.
+    struct FractureEntry {
+        CsgNode input;
+        int cells = 0;
+        std::uint32_t seed = 0;
+        std::shared_ptr<const Fracture> fracture;
+
+        [[nodiscard]] bool same(const CsgNode& node, int count, std::uint32_t points) const {
+            return cells == count && seed == points && input == node;
+        }
+    };
     std::mutex mutex;
     ModelLoader load;
     std::unordered_map<entt::entity, Entry> entries;
+    std::unordered_map<entt::entity, FractureEntry> fractures;
 
     world::MemoryPart memory() {
         const std::scoped_lock lock(mutex);
@@ -1087,7 +1100,20 @@ struct CsgCache {
             part.bytes += bytes_of(*entry.mesh);
             triangles += entry.mesh->triangles;
         }
-        part.counts = {{"meshes", entries.size()}, {"triangles", triangles}};
+        // Pieces of one fracture share it, so count each once.
+        std::vector<const Fracture*> counted;
+        for (const auto& [entity, entry] : fractures) {
+            if (std::ranges::find(counted, entry.fracture.get()) != counted.end()) {
+                continue;
+            }
+            counted.push_back(entry.fracture.get());
+            for (const FracturePiece& piece : entry.fracture->pieces) {
+                part.bytes += bytes_of(piece.mesh) + (piece.hull.size() * sizeof(Vec3));
+                triangles += piece.mesh.triangles;
+            }
+        }
+        part.counts = {
+            {"meshes", entries.size()}, {"fractures", counted.size()}, {"triangles", triangles}};
         return part;
     }
 };
@@ -1115,6 +1141,43 @@ ModelLoader file_loader(const world::World& world) {
         }
         return std::make_shared<const Model>(std::move(model).value());
     };
+}
+
+// Reads the mesh a CSGMesh3D, or a MeshInstance3D being cut, names on its entity: its model or
+// primitive mesh, or why it has neither.
+void read_mesh(CsgNode& node, const world::World& world, entt::entity entity,
+               const std::string& mesh, const ModelLoader& load) {
+    auto found = primitive_of(world, entity);
+    const std::optional<Primitive> primitive = found ? found.value() : std::optional<Primitive>{};
+    if (!found) {
+        node.mesh_error = found.error().message;
+    } else if (!mesh.empty()) {
+        if (!is_project_path(mesh)) {
+            node.mesh_error = "expected a path inside the project folder, separated by '/', "
+                              "with no \".\" or \"..\" parts";
+        } else if (!is_model_path(mesh)) {
+            node.mesh_error = "expected a .gltf, .glb, .obj, .fbx, .blend or .model.json file";
+        } else if (primitive) {
+            node.mesh_error = "names a model, so its " +
+                              std::string(kPrimitiveNames[primitive->index()]) +
+                              " is left out: remove one of them";
+        } else if (auto model = load(mesh); !model) {
+            node.mesh_error = model.error().message;
+        } else {
+            node.model = model.value();
+        }
+    } else if (!primitive) {
+        node.mesh_error = "names no model and the entity has no primitive mesh: name a model "
+                          "file, or give it a BoxMesh, SphereMesh or another closed mesh";
+    } else if (std::holds_alternative<world::PlaneMesh>(*primitive) ||
+               std::holds_alternative<world::QuadMesh>(*primitive)) {
+        node.mesh_error = "its " + std::string(kPrimitiveNames[primitive->index()]) +
+                          " is flat, so it has no inside: use a closed mesh such as a BoxMesh";
+    } else if (auto checked = check_primitive(*primitive); !checked) {
+        node.mesh_error = checked.error().message;
+    } else {
+        node.primitive = primitive;
+    }
 }
 
 CsgNode node_of(const world::World& world, const world::Tree3D& tree, entt::entity entity,
@@ -1162,38 +1225,7 @@ CsgNode node_of(const world::World& world, const world::Tree3D& tree, entt::enti
         }
     }
     if (const auto* mesh = std::get_if<world::CSGMesh3D>(&shape); mesh != nullptr) {
-        auto found = primitive_of(world, entity);
-        const std::optional<Primitive> primitive =
-            found ? found.value() : std::optional<Primitive>{};
-        if (!found) {
-            node.mesh_error = found.error().message;
-        } else if (!mesh->mesh.empty()) {
-            if (!is_project_path(mesh->mesh)) {
-                node.mesh_error = "expected a path inside the project folder, separated by '/', "
-                                  "with no \".\" or \"..\" parts";
-            } else if (!is_model_path(mesh->mesh)) {
-                node.mesh_error = "expected a .gltf, .glb, .obj, .fbx, .blend or .model.json file";
-            } else if (primitive) {
-                node.mesh_error = "names a model, so its " +
-                                  std::string(kPrimitiveNames[primitive->index()]) +
-                                  " is left out: remove one of them";
-            } else if (auto model = load(mesh->mesh); !model) {
-                node.mesh_error = model.error().message;
-            } else {
-                node.model = model.value();
-            }
-        } else if (!primitive) {
-            node.mesh_error = "names no model and the entity has no primitive mesh: name a model "
-                              "file, or give it a BoxMesh, SphereMesh or another closed mesh";
-        } else if (std::holds_alternative<world::PlaneMesh>(*primitive) ||
-                   std::holds_alternative<world::QuadMesh>(*primitive)) {
-            node.mesh_error = "its " + std::string(kPrimitiveNames[primitive->index()]) +
-                              " is flat, so it has no inside: use a closed mesh such as a BoxMesh";
-        } else if (auto checked = check_primitive(*primitive); !checked) {
-            node.mesh_error = checked.error().message;
-        } else {
-            node.primitive = primitive;
-        }
+        read_mesh(node, world, entity, mesh->mesh, load);
     }
     return node;
 }
@@ -1211,6 +1243,130 @@ std::shared_ptr<const CsgMesh> make(const CsgNode& root) {
     }
     mesh->problems = std::move(problems);
     return mesh;
+}
+
+// PCG32 (O'Neill, pcg-random.org, Apache 2.0), as procedural::scatter's: the same points on every
+// machine.
+class Random {
+public:
+    Random(std::uint64_t seed, std::uint64_t stream) : increment_((stream << 1U) | 1U) {
+        next();
+        state_ += seed;
+        next();
+    }
+    std::uint32_t next() {
+        const std::uint64_t old = state_;
+        state_ = (old * 6364136223846793005ULL) + increment_;
+        const auto shifted = static_cast<std::uint32_t>(((old >> 18U) ^ old) >> 27U);
+        const auto rotation = static_cast<std::uint32_t>(old >> 59U);
+        return (shifted >> rotation) | (shifted << ((32U - rotation) & 31U));
+    }
+    // From 0 up to 1, in steps of 2^-24.
+    double unit() { return static_cast<double>(next() >> 8U) * (1.0 / 16777216.0); }
+
+private:
+    std::uint64_t state_ = 0;
+    std::uint64_t increment_;
+};
+
+// The stream fractures draw their points from, so a seed's points are their own.
+constexpr std::uint64_t kFractureStream = 0x66726163U; // "frac"
+
+// A piece's corners in the order they first appear, and the center and volume of what its
+// faces enclose (the divergence theorem, over tetrahedra from the origin).
+void measure(const Brush& brush, FracturePiece& piece) {
+    std::unordered_map<Vec3, bool, Vec3Hash> seen;
+    double volume = 0.0;
+    std::array<double, 3> moment{};
+    for (const Face& face : brush.faces) {
+        for (const Vec3 v : face.vertices) {
+            if (seen.try_emplace(v, true).second) {
+                piece.hull.push_back(v);
+            }
+        }
+        const Vec3 a = face.vertices[0];
+        const Vec3 b = face.vertices[face.invert ? 2 : 1];
+        const Vec3 c = face.vertices[face.invert ? 1 : 2];
+        // Godot's faces wind clockwise seen from outside, so the signed volume is negated.
+        const double six =
+            -((static_cast<double>(a.x) *
+               ((static_cast<double>(b.y) * c.z) - (static_cast<double>(b.z) * c.y))) -
+              (static_cast<double>(a.y) *
+               ((static_cast<double>(b.x) * c.z) - (static_cast<double>(b.z) * c.x))) +
+              (static_cast<double>(a.z) *
+               ((static_cast<double>(b.x) * c.y) - (static_cast<double>(b.y) * c.x))));
+        volume += six;
+        moment[0] += six * (static_cast<double>(a.x) + b.x + c.x);
+        moment[1] += six * (static_cast<double>(a.y) + b.y + c.y);
+        moment[2] += six * (static_cast<double>(a.z) + b.z + c.z);
+    }
+    piece.volume = volume / 6.0;
+    if (volume != 0.0) {
+        piece.center = {static_cast<float>(moment[0] / (4.0 * volume)),
+                        static_cast<float>(moment[1] / (4.0 * volume)),
+                        static_cast<float>(moment[2] / (4.0 * volume))};
+    }
+}
+
+std::shared_ptr<const Fracture> make_fracture(const CsgNode& node, int cells, std::uint32_t seed) {
+    auto out = std::make_shared<Fracture>();
+    const Brush own = own_brush(node, out->problems);
+    if (!out->problems.empty()) {
+        return out;
+    }
+    Materials materials;
+    const manifold::Manifold whole = pack(own, materials);
+    if (own.faces.empty() || whole.Status() != manifold::Manifold::Error::NoError ||
+        whole.IsEmpty()) {
+        out->problems.push_back(
+            {node.entity, where_of(node),
+             "its mesh doesn't close (" + status_name(whole.Status()) +
+                 "), so it has no inside to break: each edge must join exactly two faces"});
+        return out;
+    }
+    // The faces a cut makes draw with the mesh's own material.
+    SurfaceMaterial inside;
+    inside.standard = node.material;
+    const manifold::Box box = whole.BoundingBox();
+    const manifold::vec3 size = box.max - box.min;
+    const double pad = 0.001 + (0.01 * std::max({size.x, size.y, size.z}));
+    const manifold::Manifold bounds = manifold::Manifold::Cube(size + manifold::vec3(2.0 * pad))
+                                          .Translate(box.min - manifold::vec3(pad));
+    Random random(seed, kFractureStream);
+    std::vector<manifold::vec3> points(static_cast<std::size_t>(std::max(cells, 0)));
+    for (manifold::vec3& point : points) {
+        const double x = random.unit();
+        const double y = random.unit();
+        const double z = random.unit();
+        point = box.min + manifold::vec3(x * size.x, y * size.y, z * size.z);
+    }
+    for (std::size_t i = 0; i < points.size(); ++i) {
+        // The cell: everything nearer its point than any other's.
+        manifold::Manifold cell = bounds;
+        for (std::size_t j = 0; j < points.size(); ++j) {
+            const manifold::vec3 away = points[i] - points[j];
+            const double length = manifold::la::length(away);
+            if (j == i || length == 0.0) {
+                continue;
+            }
+            const manifold::vec3 normal = away / length;
+            cell =
+                cell.TrimByPlane(normal, manifold::la::dot(normal, (points[i] + points[j]) * 0.5));
+        }
+        cell = cell.AsOriginal();
+        materials[static_cast<std::uint32_t>(cell.OriginalID())] = inside;
+        const manifold::Manifold share = whole ^ cell;
+        if (share.IsEmpty()) {
+            continue;
+        }
+        const Brush brush = unpack(share, materials);
+        FracturePiece piece;
+        piece.mesh = mesh_of(brush, csg_settings(node.shape));
+        piece.mesh.version = next_version.fetch_add(1);
+        measure(brush, piece);
+        out->pieces.push_back(std::move(piece));
+    }
+    return out;
 }
 
 } // namespace
@@ -1356,11 +1512,96 @@ std::shared_ptr<const CsgMesh> csg_mesh(const CsgTree& root) {
     return make(node_of(root));
 }
 
+std::shared_ptr<const Fracture> fracture(const CsgTree& mesh, int cells, std::uint32_t seed) {
+    CsgTree alone = mesh;
+    alone.children.clear();
+    return make_fracture(node_of(alone), cells, seed);
+}
+
+Result<std::shared_ptr<const Fracture>> fracture_of(const world::World& world, entt::entity entity,
+                                                    int cells, std::uint32_t seed) {
+    const auto* instance = world.ecs().try_get<const world::MeshInstance3D>(entity);
+    if (instance == nullptr) {
+        return Error{.code = ErrorCode::InvalidArgument,
+                     .message = "has no MeshInstance3D: give it one that draws a closed mesh"};
+    }
+    CsgCache* cache = find_cache(world);
+    const auto read = [&](const ModelLoader& load) {
+        CsgNode node;
+        node.shape = world::CSGMesh3D{.mesh = instance->mesh};
+        if (const auto* standard = world.ecs().try_get<const world::StandardMaterial3D>(entity);
+            standard != nullptr) {
+            node.material = *standard;
+        }
+        read_mesh(node, world, entity, instance->mesh, load);
+        return node;
+    };
+    const auto made =
+        [](std::shared_ptr<const Fracture> fracture) -> Result<std::shared_ptr<const Fracture>> {
+        if (!fracture->problems.empty()) {
+            return Error{.code = ErrorCode::InvalidArgument,
+                         .message = fracture->problems.front().message};
+        }
+        return fracture;
+    };
+    if (cache == nullptr) {
+        return made(make_fracture(read(file_loader(world)), cells, seed));
+    }
+    const std::scoped_lock lock(cache->mutex);
+    const CsgNode input = read(cache->load);
+    if (const auto found = cache->fractures.find(entity);
+        found != cache->fractures.end() && found->second.same(input, cells, seed)) {
+        return made(found->second.fracture);
+    }
+    // Entities that are gone, or draw no mesh, let theirs go.
+    std::erase_if(cache->fractures, [&](const auto& entry) {
+        return !world.valid(entry.first) || !world.ecs().all_of<world::MeshInstance3D>(entry.first);
+    });
+    std::shared_ptr<const Fracture> fracture;
+    for (const auto& [other, entry] : cache->fractures) {
+        if (entry.same(input, cells, seed)) {
+            fracture = entry.fracture;
+            break;
+        }
+    }
+    if (fracture == nullptr) {
+        fracture = make_fracture(input, cells, seed);
+    }
+    cache->fractures[entity] = {.input = input, .cells = cells, .seed = seed, .fracture = fracture};
+    return made(fracture);
+}
+
+std::vector<Problem> check_destructibles(const world::World& world) {
+    std::vector<Problem> problems;
+    const auto& ecs = world.ecs();
+    std::vector<entt::entity> entities;
+    for (const entt::entity entity : ecs.view<const world::Destructible3D>()) {
+        entities.push_back(entity);
+    }
+    std::ranges::sort(entities, {}, [](entt::entity entity) { return entt::to_entity(entity); });
+    for (const entt::entity entity : entities) {
+        if (!ecs.any_of<world::StaticBody3D, world::RigidBody3D>(entity)) {
+            problems.push_back({entity, "/components/Destructible3D",
+                                "breaks only a StaticBody3D or RigidBody3D: give it one"});
+            continue;
+        }
+        const auto& destructible = ecs.get<const world::Destructible3D>(entity);
+        if (auto made = fracture_of(world, entity, destructible.pieces, destructible.seed); !made) {
+            const bool drawn = ecs.all_of<world::MeshInstance3D>(entity);
+            problems.push_back({entity,
+                                drawn ? "/components/MeshInstance3D" : "/components/Destructible3D",
+                                "can't break: " + made.error().message});
+        }
+    }
+    return problems;
+}
+
 void install_csg(world::World& world, ModelLoader load) {
     if (CsgCache* cache = find_cache(world); cache != nullptr) {
         const std::scoped_lock lock(cache->mutex);
         cache->load = std::move(load);
         cache->entries.clear();
+        cache->fractures.clear();
         return;
     }
     auto cache = std::make_shared<CsgCache>();
@@ -1369,6 +1610,7 @@ void install_csg(world::World& world, ModelLoader load) {
     world.add_reset([cache](world::World& /*world*/) {
         const std::scoped_lock lock(cache->mutex);
         cache->entries.clear();
+        cache->fractures.clear();
     });
     world.add_memory_source("csg",
                             [cache](const world::World& /*world*/) { return cache->memory(); });

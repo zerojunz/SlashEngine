@@ -34,6 +34,7 @@ using world::AnimatableBody3D;
 using world::Area3D;
 using world::CharacterBody3D;
 using world::CollisionShape3D;
+using world::Destructible3D;
 using world::PhysicalBone3D;
 using world::RigidBody3D;
 using world::StaticBody3D;
@@ -558,9 +559,68 @@ bool Space::excepted(entt::entity a, entt::entity b) const {
 }
 
 void ContactListener::OnContactAdded(const JPH::Body& a, const JPH::Body& b,
-                                     const JPH::ContactManifold& /*manifold*/,
+                                     const JPH::ContactManifold& manifold,
                                      JPH::ContactSettings& settings) {
     contact(a, b, settings);
+    if (space_->note_impact(a, b, manifold)) {
+        // What breaks it goes on into its pieces, which take its place after the step.
+        settings.mIsSensor = true;
+    }
+}
+
+// An impact's impulse: the two bodies' reduced mass times how fast they meet along the contact's
+// normal, which is the impulse that stops them meeting, as an inelastic collision's. True when it
+// breaks one of them.
+bool Space::note_impact(const JPH::Body& a, const JPH::Body& b,
+                        const JPH::ContactManifold& manifold) {
+    if (breakable_.empty() || a.IsSensor() || b.IsSensor() ||
+        manifold.mRelativeContactPointsOn1.empty()) {
+        return false;
+    }
+    const Body* first = Space::body_of(a);
+    const Body* second = Space::body_of(b);
+    if (first == nullptr || second == nullptr) {
+        return false;
+    }
+    const auto threshold = [&](const Body& body) {
+        const auto found = breakable_.find(body.entity);
+        return found != breakable_.end() ? found->second : 0.0F;
+    };
+    const float threshold_a = threshold(*first);
+    const float threshold_b = threshold(*second);
+    if (threshold_a <= 0.0F && threshold_b <= 0.0F) {
+        return false;
+    }
+    float inverse_mass = 0.0F;
+    for (const JPH::Body* body : {&a, &b}) {
+        if (body->IsDynamic()) {
+            inverse_mass += body->GetMotionPropertiesUnchecked()->GetInverseMass();
+        }
+    }
+    if (inverse_mass <= 0.0F) {
+        return false;
+    }
+    const JPH::RVec3 point = manifold.GetWorldSpaceContactPointOn1(0);
+    // The normal points from the first body to the second.
+    const float speed =
+        (a.GetPointVelocity(point) - b.GetPointVelocity(point)).Dot(manifold.mWorldSpaceNormal);
+    if (speed <= 0.0F) {
+        return false;
+    }
+    const float impulse = speed / inverse_mass;
+    const Vec3 where{point.GetX(), point.GetY(), point.GetZ()};
+    bool breaks = false;
+    for (const auto& [body, limit] :
+         {std::pair{first, threshold_a}, std::pair{second, threshold_b}}) {
+        if (limit > 0.0F && impulse >= limit) {
+            Impact& impact = impacts_[body->entity];
+            if (impulse > impact.impulse) {
+                impact = {.impulse = impulse, .point = where};
+            }
+            breaks = true;
+        }
+    }
+    return breaks;
 }
 
 void ContactListener::OnContactPersisted(const JPH::Body& a, const JPH::Body& b,
@@ -1637,6 +1697,13 @@ void Space::find_overlaps(const world::World& world) {
 void Space::step(world::World& world, float seconds) {
     const world::Tree3D tree(world);
     sync(world, tree);
+    impacts_.clear();
+    breakable_.clear();
+    for (const auto [entity, destructible] : world.ecs().view<const Destructible3D>().each()) {
+        if (destructible.damage_threshold > 0.0F) {
+            breakable_.emplace(entity, destructible.damage_threshold);
+        }
+    }
     if (system_ == nullptr) {
         impulses_.clear();
         return;

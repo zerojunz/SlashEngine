@@ -198,8 +198,10 @@ void install(world::World& world, const Settings& settings) {
         "physics3d",
         [space](world::World& w, double tick_seconds) {
             space->step(w, static_cast<float>(tick_seconds));
+            detail::break_and_age(w, *space, static_cast<float>(tick_seconds));
         },
-        {.doc = "Steps 3D physics: moves rigid and character bodies and reports contacts.",
+        {.doc = "Steps 3D physics: moves rigid and character bodies, reports contacts and "
+                "breaks Destructible3Ds hit hard enough.",
          .priority = 950});
 }
 

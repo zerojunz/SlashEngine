@@ -371,7 +371,9 @@ std::vector<world::CollisionShape3D> collision_shapes(const Model& model) {
 std::shared_ptr<const std::vector<world::CollisionShape3D>> model_shapes(const world::World& world,
                                                                          entt::entity entity) {
     const auto* mesh = world.ecs().try_get<world::MeshInstance3D>(entity);
-    if (mesh == nullptr || mesh->mesh.empty() || !is_model_path(mesh->mesh)) {
+    // A broken piece of a model collides as its own hull, not the model's shapes.
+    if (mesh == nullptr || mesh->mesh.empty() || !is_model_path(mesh->mesh) ||
+        world.ecs().all_of<world::FracturePiece3D>(entity)) {
         return nullptr;
     }
     CollisionCache* cache = find_cache(world);
