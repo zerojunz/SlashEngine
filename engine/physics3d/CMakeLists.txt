@@ -1,5 +1,6 @@
 add_library(slash_physics3d
     src/character.cpp
+    src/destruction.cpp
     src/joints.cpp
     src/motion.cpp
     src/physics3d.cpp

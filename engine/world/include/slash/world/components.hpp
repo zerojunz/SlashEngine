@@ -2341,6 +2341,30 @@ SLASH_COMPONENT(SoftBody3D, collision_layer, collision_mask, parent_collision_ig
                 pressure_coefficient, damping_coefficient, drag_coefficient, ray_pickable,
                 pinned_points)
 
+// Breaks a body into pieces, as Unreal's geometry collections (Godot has no destruction): the
+// mesh its entity's MeshInstance3D draws is cut into Voronoi cells around seeded points, and
+// when an impact is hard enough, or physics.break says so, the entity is replaced by a rigid
+// body per piece (FracturePiece3D) moving as it moved. Its entity is a StaticBody3D or a
+// RigidBody3D.
+struct Destructible3D {
+    int pieces = 8;                // cells the mesh is cut into; empty ones are left out
+    std::uint32_t seed = 0;        // picks the cells' points
+    float damage_threshold = 0.0F; // kilogram-meters per second of one impact; 0: never by impact
+    float mass = 1.0F;             // kilograms the pieces share when the entity isn't a RigidBody3D
+    float debris_lifetime = 0.0F;  // seconds the pieces stay; 0 keeps them
+};
+SLASH_COMPONENT(Destructible3D, pieces, seed, damage_threshold, mass, debris_lifetime)
+
+// One piece of a broken Destructible3D: the entity's MeshInstance3D draws only this cell of its
+// mesh's fracture, and its CollisionShape3D is the cell's hull.
+struct FracturePiece3D {
+    int pieces = 8; // the Destructible3D's pieces and seed, which made the cells
+    std::uint32_t seed = 0;
+    int index = 0;         // which cell
+    float lifetime = 0.0F; // seconds before it goes; 0 keeps it
+};
+SLASH_COMPONENT(FracturePiece3D, pieces, seed, index, lifetime)
+
 // ---- Navigation, as Godot's (engine/navigation): regions of navigation mesh, links between
 // places and agents that follow paths over them, on one 2D and one 3D map per world.
 

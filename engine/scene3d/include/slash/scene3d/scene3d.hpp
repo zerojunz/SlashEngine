@@ -178,8 +178,9 @@ using ModelSource = std::function<Result<SourceModel>(const std::string& path)>;
 // set, each model is read and checked as check_model does, and the bone names of Skeleton3Ds,
 // skeleton modifiers and bone attachments against the models they follow. CSG shapes that can't
 // be made (check_csg), path followers that can't follow (world::check_paths), GridMaps whose
-// cells can't be made (check_gridmaps), terrains (check_terrains) and LightmapGIs
-// (check_lightmaps) come after.
+// cells can't be made (check_gridmaps), terrains (check_terrains), LightmapGIs
+// (check_lightmaps), soft bodies (check_soft_bodies) and Destructible3Ds (check_destructibles)
+// come after.
 [[nodiscard]] std::vector<Problem> check_meshes(const world::World& world);
 
 // The same in a parsed scene file, each at its JSON Pointer in the file. Prefabs and instanced
@@ -442,6 +443,10 @@ private:
     render::Material3D surface_material(const SurfaceMaterial& from, entt::entity entity,
                                         const std::string& model_field);
     // A CSG root's result, drawn as Godot draws its root shape's mesh.
+    // A FracturePiece3D's piece of its mesh.
+    void add_piece(const world::World& world, entt::entity entity,
+                   const world::MeshInstance3D& instance, const world::Affine3D& place,
+                   render::ShadowCasting casting);
     void add_csg(const world::World& world, const world::Tree3D& tree, entt::entity root,
                  const world::Affine3D& place, std::uint32_t cull_mask);
     // A MultiMeshInstance3D's model at each instance, as Godot draws a MultiMesh.

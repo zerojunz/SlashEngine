@@ -1,0 +1,126 @@
+{
+  "entities": {
+    "ball": {
+      "components": {
+        "CollisionShape3D": {
+          "radius": 0.3,
+          "shape": "sphere"
+        },
+        "MeshInstance3D": {},
+        "RigidBody3D": {
+          "linear_velocity": [0.0, 0.0, -10.0],
+          "mass": 4.0
+        },
+        "SphereMesh": {
+          "height": 0.6,
+          "radius": 0.3
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.2, 0.2, 0.25, 1.0]
+        },
+        "Transform3D": {
+          "position": [-1.0, 1.0, 3.0]
+        }
+      }
+    },
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 60.0
+        },
+        "Transform3D": {
+          "position": [0.0, 1.5, 5.0],
+          "rotation": [-0.12, 0.0, 0.0]
+        }
+      }
+    },
+    "crate": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.8, 0.8, 0.8]
+        },
+        "CollisionShape3D": {
+          "size": [0.8, 0.8, 0.8]
+        },
+        "Destructible3D": {
+          "mass": 5.0,
+          "pieces": 4,
+          "seed": 2
+        },
+        "MeshInstance3D": {},
+        "RigidBody3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.75, 0.6, 0.3, 1.0]
+        },
+        "Transform3D": {
+          "position": [1.5, 0.4, 0.0]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "WorldEnvironment": {
+          "ambient_light_color": [0.6, 0.7, 0.9, 1.0],
+          "ambient_light_energy": 0.5,
+          "background_color": [0.45, 0.6, 0.8, 1.0],
+          "background_mode": "color"
+        }
+      }
+    },
+    "floor": {
+      "components": {
+        "BoxMesh": {
+          "size": [20.0, 1.0, 20.0]
+        },
+        "CollisionShape3D": {
+          "size": [20.0, 1.0, 20.0]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.35, 0.5, 0.3, 1.0]
+        },
+        "StaticBody3D": {},
+        "Transform3D": {
+          "position": [0.0, -0.5, 0.0]
+        }
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {
+          "light_color": [1.0, 0.95, 0.85, 1.0]
+        },
+        "Transform3D": {
+          "rotation": [-0.9, 0.5, 0.0]
+        }
+      }
+    },
+    "wall": {
+      "components": {
+        "BoxMesh": {
+          "size": [2.0, 2.0, 0.3]
+        },
+        "CollisionShape3D": {
+          "size": [2.0, 2.0, 0.3]
+        },
+        "Destructible3D": {
+          "damage_threshold": 10.0,
+          "debris_lifetime": 3.0,
+          "mass": 20.0,
+          "pieces": 6,
+          "seed": 1
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.8, 0.4, 0.3, 1.0]
+        },
+        "StaticBody3D": {},
+        "Transform3D": {
+          "position": [-1.0, 1.0, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

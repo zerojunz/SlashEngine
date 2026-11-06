@@ -2157,6 +2157,33 @@ Reply physics_soft_body(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+Reply physics_break(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    const std::string id = text(params, "id");
+    const entt::entity entity = world.find(id);
+    if (entity == entt::null) {
+        return unknown_entity(world, id, "/id");
+    }
+    const float push = params.find("push") != nullptr
+                           ? static_cast<float>(params.find("push")->as_double())
+                           : 0.0F;
+    std::optional<Vec3> from;
+    if (const json::Value* at = params.find("from"); at != nullptr) {
+        from = vec3_of(*at);
+    }
+    auto broken = physics3d::break_body(world, entity, push, from);
+    if (!broken) {
+        return param_error(code::kInvalidParams, "/id", quoted(id) + " " + broken.error().message);
+    }
+    json::Array pieces;
+    for (const entt::entity piece : broken.value()) {
+        pieces.emplace_back(std::string(world.id_of(piece)));
+    }
+    json::Value result;
+    result["pieces"] = std::move(pieces);
+    return Reply::success(std::move(result));
+}
+
 Reply physics_gravity(Session& session, const json::Value& params) {
     world::World& world = session.world();
     json::Object bodies;
@@ -7560,6 +7587,27 @@ void register_builtin_commands(Registry& registry) {
         .params = params_schema({{"id", id_property("A soft body.")}, {"at", std::move(soft_at)}},
                                 {"id"}),
         .handler = physics_soft_body,
+    });
+    json::Value break_push = property("number", "Meters per second each piece flies away from "
+                                                "from, on top of the body's own velocity.");
+    break_push["minimum"] = 0;
+    break_push["maximum"] = 1000;
+    json::Value break_from = property("array", "[x, y, z] in the world the pieces fly away from. "
+                                               "Default: the body's center.");
+    break_from["items"]["type"] = "number";
+    break_from["minItems"] = 3;
+    break_from["maxItems"] = 3;
+    registry.add({
+        .name = "physics.break",
+        .description = "Breaks a Destructible3D now: a rigid body per piece of its mesh takes its "
+                       "place. Returns the pieces' IDs.",
+        .capabilities = {Edit},
+        .effect = Effect::Edit,
+        .params = params_schema({{"id", id_property("A Destructible3D.")},
+                                 {"push", std::move(break_push)},
+                                 {"from", std::move(break_from)}},
+                                {"id"}),
+        .handler = physics_break,
     });
     json::Value gravity_ids = names_property("Bodies to ask about.");
     gravity_ids["minItems"] = 1;

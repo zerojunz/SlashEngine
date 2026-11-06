@@ -787,6 +787,36 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                           "it is."})
         .describe("pinned_points[].offset",
                   {.doc = "Where the point is in the attachment's space, as [x, y, z]."});
+
+    registry.add<Destructible3D>()
+        .set_doc("Breaks its entity into pieces: the mesh its MeshInstance3D draws is cut into "
+                 "Voronoi cells, and an impact at least damage_threshold hard, or physics.break, "
+                 "replaces the entity with a rigid body per piece (FracturePiece3D) moving as it "
+                 "moved. Its entity is a StaticBody3D or a RigidBody3D.")
+        .describe("pieces", {.doc = "Cells the mesh is cut into; cells that miss it are left "
+                                    "out.",
+                             .min = 2,
+                             .max = 256})
+        .describe("seed", {.doc = "Picks the points the cells grow around."})
+        .describe("damage_threshold",
+                  {.doc = "How hard one impact must be to break it, in kilogram-meters per "
+                          "second: the two bodies' reduced mass times how fast they meet along "
+                          "the contact's normal. 0 breaks it only through physics.break.",
+                   .min = 0})
+        .describe("mass", {.doc = "Kilograms the pieces share by volume when the entity isn't a "
+                                  "RigidBody3D, whose mass they share otherwise.",
+                           .min = 0.001})
+        .describe("debris_lifetime",
+                  {.doc = "Seconds the pieces stay before they go; 0 keeps them.", .min = 0});
+    registry.add<FracturePiece3D>()
+        .set_doc("One piece of a broken Destructible3D: its MeshInstance3D draws only this cell "
+                 "of its mesh's fracture, and its CollisionShape3D is the cell's hull.")
+        .describe(
+            "pieces",
+            {.doc = "The Destructible3D's pieces, which made the cells.", .min = 2, .max = 256})
+        .describe("seed", {.doc = "The Destructible3D's seed, which made the cells."})
+        .describe("index", {.doc = "Which cell it is.", .min = 0})
+        .describe("lifetime", {.doc = "Seconds left before it goes; 0 keeps it.", .min = 0});
 }
 
 // The skeleton modifiers: Godot 4.6's TwoBoneIK3D, FABRIK3D, CCDIK3D and JacobianIK3D.
