@@ -131,6 +131,16 @@ void apply_impulse(world::World& world, entt::entity entity, Vec3 impulse, Vec3 
 // Turns a rigid body at the next physics step, as Godot's apply_torque_impulse.
 void apply_torque_impulse(world::World& world, entt::entity entity, Vec3 impulse);
 
+// Breaks a Destructible3D into its pieces now, as an impact at least its damage_threshold does
+// after a step: the entity goes, and a rigid body per piece of its mesh's fracture takes its
+// place (FracturePiece3D), each moving as that part of the body moved, sharing its mass by
+// volume, and emitting a "broken" event with the pieces' IDs. push moves each piece away from
+// `from` (world space; the body's center when nullopt) at that many meters per second more.
+// Fails, changing nothing, for an entity with no Destructible3D or body, or a mesh it can't cut.
+[[nodiscard]] Result<std::vector<entt::entity>> break_body(world::World& world, entt::entity entity,
+                                                           float push = 0.0F,
+                                                           std::optional<Vec3> from = std::nullopt);
+
 // The convex hull of points as triangles, three points each, wound clockwise as seen from
 // outside, as Godot's faces are: what a convex_polygon shape bakes into a navigation mesh as.
 // Empty when the points don't span a volume.

@@ -4440,6 +4440,51 @@ a ball full of air.
   `MeshInstance3D`, one drawing a model file, pinned points past the mesh's vertices and
   attachments with no `Transform3D`.
 
+### Destruction
+
+Godot has no destruction of its own, so `Destructible3D` follows Unreal's geometry collections:
+a static or rigid body whose mesh breaks into pieces. Its entity's `MeshInstance3D` draws a
+closed mesh (a primitive mesh component or a model file), which is cut into Voronoi cells around
+`pieces` points seeded by `seed` in its bounds, with Manifold's booleans as CSG shapes are; the
+same seed cuts the same mesh the same way on every machine, and the cut is made once and kept
+while the mesh and settings stay. [examples/destruction-3d](../../examples/destruction-3d/)
+breaks a wall with a ball and a crate with `physics.break`.
+
+```json
+"wall": {
+  "components": {
+    "BoxMesh": {"size": [2.0, 2.0, 0.3]},
+    "CollisionShape3D": {"shape": "box", "size": [2.0, 2.0, 0.3]},
+    "Destructible3D": {"damage_threshold": 10.0, "debris_lifetime": 3.0, "mass": 20.0, "pieces": 6, "seed": 1},
+    "MeshInstance3D": {},
+    "StaticBody3D": {},
+    "Transform3D": {"position": [-1.0, 1.0, 0.0]}
+  }
+}
+```
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `Destructible3D` | `pieces` `8` (cells, 2 to 256), `seed` `0`, `damage_threshold` `0` (an impulse in newton-seconds; 0 breaks only through `physics.break`), `mass` `1` (kilograms, shared by the pieces), `debris_lifetime` `0` (seconds each piece lasts; 0 keeps them) |
+| `FracturePiece3D` | `pieces` `8`, `seed` `0`, `index` `0` (which piece of that cut it draws), `lifetime` `0` (seconds left; 0 keeps it) |
+
+- A contact breaks the body when its impulse, the two bodies' reduced mass times how fast they
+  close along the contact's normal, passes `damage_threshold`. The contact is let through, so
+  what hit the body goes on into the pieces. Bodies break after the physics step, in the order
+  their entities were made, and each is a `broken` event with its `pieces`.
+- Breaking destroys the entity and makes one per piece, `<id>_1` to `<id>_<n>`, placed where it
+  was: a `RigidBody3D` with the body's layers, its share of `mass` by volume and the velocity of
+  its place on the body (the body's, or 0 for a static one), a `CollisionShape3D` of the piece's
+  convex hull, and copies of the `MeshInstance3D`, primitive mesh and `StandardMaterial3D`. The
+  faces a cut makes draw with the entity's material too.
+- A `FracturePiece3D` draws only its piece of the mesh, from the cut its `pieces` and `seed`
+  name. With `debris_lifetime`, each piece's `lifetime` counts down and the piece is removed
+  when it ends.
+- `physics.break` breaks a body by hand, pushing its pieces out from a point; C++ code calls
+  `physics3d::break_body`. `scene validate` reports a `Destructible3D` with no `StaticBody3D` or
+  `RigidBody3D`, and one whose mesh can't be cut: a flat `PlaneMesh` or `QuadMesh`, or a model
+  that doesn't close.
+
 ## Navigation
 
 Navigation follows Godot 4.6's `NavigationServer2D` and `NavigationServer3D`. Each world has a

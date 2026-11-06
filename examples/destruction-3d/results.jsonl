@@ -1,0 +1,15 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":7,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"subscription":"events_1"}}
+{"id":3,"jsonrpc":"2.0","result":{"colors":[[0.694,0.369,0.302,1],[0.698,0.369,0.302,1],[0.698,0.369,0.302,1],[0.651,0.549,0.302,1],[0.451,0.6,0.8,1]],"drawn":{"meshes":4},"height":90,"width":160}}
+{"id":4,"jsonrpc":"2.0","result":{"tick":50,"ticks":50}}
+{"id":5,"jsonrpc":"2.0","result":{"dropped":0,"events":[{"data":{"pieces":["wall_1","wall_2","wall_3","wall_4","wall_5","wall_6"]},"id":"wall","kind":"broken","seq":1,"tick":16}],"more":false}}
+{"id":6,"jsonrpc":"2.0","result":{"count":6,"entities":[{"components":{"RigidBody3D":{"angular_velocity":[-3.9867852,-0.00011194554,0.35169247],"linear_velocity":[-0.0805421,-0.7806732,-0.9206174],"mass":2.3849425}},"id":"wall_1"},{"components":{"RigidBody3D":{"angular_velocity":[0.9151025,0.2120233,-0.14139913],"linear_velocity":[0.059860267,-1.9463012,-0.23560505],"mass":1.416283}},"id":"wall_2"},{"components":{"RigidBody3D":{"angular_velocity":[0.48816565,-0.12981613,0.06146893],"linear_velocity":[0.11164426,-1.7729647,-0.25861245],"mass":0.8773079}},"id":"wall_3"},{"components":{"RigidBody3D":{"angular_velocity":[0.9134052,0.20576322,-0.15445928],"linear_velocity":[0.06687523,-1.9490889,-0.45829988],"mass":4.546405}},"id":"wall_4"},{"components":{"RigidBody3D":{"angular_velocity":[1.7175192,0.18538019,-0.46823704],"linear_velocity":[0.0031500016,-1.4813042,-1.0990261],"mass":4.3954244}},"id":"wall_5"},{"components":{"RigidBody3D":{"angular_velocity":[-3.9365094,3.5493972e-8,-1.0748893],"linear_velocity":[0.36285344,-2.3920038,-1.2877318],"mass":6.3796377}},"id":"wall_6"}],"truncated":false}}
+{"id":7,"jsonrpc":"2.0","result":{"colors":[[0.451,0.6,0.8,1],[0.431,0.604,0.373,1],[0.353,0.227,0.231,1],[0.651,0.549,0.302,1],[0.451,0.6,0.8,1]],"drawn":{"meshes":9},"height":90,"width":160}}
+{"id":8,"jsonrpc":"2.0","result":{"pieces":["crate_1","crate_2","crate_3","crate_4"]}}
+{"id":9,"jsonrpc":"2.0","result":{"tick":200,"ticks":150}}
+{"id":10,"jsonrpc":"2.0","result":{"count":4,"entities":["crate_1","crate_2","crate_3","crate_4"],"truncated":false}}
+{"id":11,"jsonrpc":"2.0","result":{"can_redo":1,"can_undo":2,"undone":"step"}}
+{"id":12,"jsonrpc":"2.0","result":{"can_redo":2,"can_undo":1,"undone":"physics.break"}}
+{"id":13,"jsonrpc":"2.0","result":{"count":1,"entities":["crate"],"truncated":false}}
+{"id":14,"jsonrpc":"2.0","result":{"id":"sign"}}
+{"error":{"code":-32602,"data":{"path":"/id"},"message":"/id: \"sign\" can't break: its PlaneMesh is flat, so it has no inside: use a closed mesh such as a BoxMesh"},"id":15,"jsonrpc":"2.0"}

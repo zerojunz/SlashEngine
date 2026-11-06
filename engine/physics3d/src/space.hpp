@@ -532,6 +532,18 @@ public:
 
     // Contact callbacks call these, on the stepping thread.
     void note_contact(Body& a, Body& b);
+    // True when the impact breaks a Destructible3D.
+    bool note_impact(const JPH::Body& a, const JPH::Body& b, const JPH::ContactManifold& manifold);
+
+    // The hardest impact on each Destructible3D in the last step that was at least its
+    // damage_threshold, taken by the destruction pass after it.
+    struct Impact {
+        float impulse = 0.0F; // kilogram-meters per second
+        Vec3 point;           // where, in world space
+    };
+    [[nodiscard]] std::unordered_map<entt::entity, Impact> take_impacts() {
+        return std::exchange(impacts_, {});
+    }
 
     // Jolt's allocations and what its system holds, for World::memory.
     [[nodiscard]] world::MemoryPart memory() const;
@@ -616,6 +628,9 @@ private:
     std::unordered_map<entt::entity, world::PhysicalBoneLink> bone_links_;
     // Pairs of bodies joints keep apart, the lower entity first.
     std::set<std::pair<entt::entity, entt::entity>> exceptions_;
+    // Destructible3D bodies' damage thresholds, read before each step, and their impacts.
+    std::unordered_map<entt::entity, float> breakable_;
+    std::unordered_map<entt::entity, Impact> impacts_;
     EntityMap<Wheel> wheels_;
     EntityMap<VehicleInputs> vehicles_;
     std::vector<Impulse> impulses_;
@@ -661,5 +676,9 @@ void set_up_jolt();
 // transform is its global transform, which it moves.
 void move_character(const Space& space, Body& body, world::Affine3D& transform,
                     world::CharacterBody3D& character, float seconds);
+
+// After a step (destruction.cpp): breaks the Destructible3Ds the step's impacts reached, and
+// takes away pieces whose lifetime ran out.
+void break_and_age(world::World& world, Space& space, float seconds);
 
 } // namespace slash::physics3d::detail

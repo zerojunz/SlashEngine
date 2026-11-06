@@ -1079,7 +1079,9 @@ Once the macOS release ships:
            of them
    - [x] Cloth and soft bodies on Jolt: Godot's `SoftBody3D` on its Jolt module's soft bodies,
          with pinned points, attachments, pressure and the `physics.soft_body` command
-   - Destruction: fracture and debris on Jolt
+   - [x] Destruction: fracture and debris on Jolt: `Destructible3D` bodies cut into Voronoi
+         pieces with Manifold, broken by impacts past a threshold or `physics.break`, with
+         debris lifetimes
 
 ## Research
 
@@ -1148,7 +1150,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Large worlds | Double-precision transforms, world streaming | After launch | After launch |
 | Cinematics | Timeline tracks for cameras and events | After launch | Done: bezier, animation and audio tracks, camera cuts, markers and `animation.seek` |
 | Cloth and soft bodies | Jolt soft bodies | After launch | Done: Godot's `SoftBody3D` on Jolt, with pins, attachments and pressure |
-| Destruction | Fracture and debris on Jolt | After launch | After launch |
+| Destruction | Fracture and debris on Jolt | After launch | Done: Voronoi fracture of `Destructible3D` bodies, impact breaking, debris lifetimes and `physics.break` |
 | Virtualized geometry | Meshlet rendering research | Research | Research |
 | Fully dynamic GI at UE quality | Research after probe GI ships | Research | Research |
 | Digital humans | Research; out of scope for releases | Research | Research |

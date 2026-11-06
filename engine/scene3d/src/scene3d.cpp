@@ -8,6 +8,7 @@
 #include "slash/render/image.hpp"
 #include "slash/scene3d/bone_attachment.hpp"
 #include "slash/scene3d/csg.hpp"
+#include "slash/scene3d/fracture.hpp"
 #include "slash/scene3d/gpu_particles.hpp"
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/ik.hpp"
@@ -1002,6 +1003,9 @@ std::vector<Problem> check_meshes(const world::World& world) {
     for (Problem& problem : check_soft_bodies(world)) {
         problems.push_back(std::move(problem));
     }
+    for (Problem& problem : check_destructibles(world)) {
+        problems.push_back(std::move(problem));
+    }
     return problems;
 }
 
@@ -1851,6 +1855,43 @@ void Renderer::face_camera(const world::StandardMaterial3D& standard, const worl
         draw.material.uv1_scale = {draw.material.uv1_scale[0] / h, draw.material.uv1_scale[1] / v};
         draw.material.uv1_offset = {draw.material.uv1_offset[0] / h,
                                     draw.material.uv1_offset[1] / v};
+    }
+}
+
+void Renderer::add_piece(const world::World& world, entt::entity entity,
+                         const world::MeshInstance3D& instance, const world::Affine3D& place,
+                         render::ShadowCasting casting) {
+    const auto& piece = world.ecs().get<const world::FracturePiece3D>(entity);
+    auto fracture = fracture_of(world, entity, piece.pieces, piece.seed);
+    if (!fracture) {
+        problems_.push_back({entity, "/components/MeshInstance3D", fracture.error().message});
+        return;
+    }
+    const std::vector<FracturePiece>& pieces = fracture.value()->pieces;
+    if (piece.index < 0 || static_cast<std::size_t>(piece.index) >= pieces.size()) {
+        problems_.push_back({entity, "/components/FracturePiece3D/index",
+                             "its mesh breaks into " + std::to_string(pieces.size()) +
+                                 " pieces, so there is no piece " + std::to_string(piece.index)});
+        return;
+    }
+    const CsgMesh& mesh = pieces[static_cast<std::size_t>(piece.index)].mesh;
+    const std::array<float, 16> transform = place.matrix();
+    const std::string prefix = "piece:" + std::to_string(mesh.version) + "/";
+    for (std::size_t i = 0; i < mesh.surfaces.size(); ++i) {
+        const MeshSurface& surface = mesh.surfaces[i];
+        auto made = kept_mesh(prefix + std::to_string(i), surface.vertices, surface.indices);
+        if (!made) {
+            problems_.push_back({entity, "/components/FracturePiece3D", made.error().message});
+            continue;
+        }
+        Draw draw;
+        draw.mesh = made.value();
+        draw.transform = transform;
+        draw.entity = entity;
+        draw.material = surface_material(surface.material, entity, "/components/MeshInstance3D");
+        draw.layers = instance.layers;
+        draw.shadows = casting;
+        draws_.push_back(draw);
     }
 }
 
@@ -3332,6 +3373,10 @@ std::optional<Frame3D> Renderer::prepare(
                 continue;
             }
             casting = render::ShadowCasting::ShadowsOnly;
+        }
+        if (ecs.all_of<world::FracturePiece3D>(entity)) {
+            add_piece(world, entity, instance, global(entity), casting);
+            continue;
         }
         if (!instance.mesh.empty()) {
             add_model(world, entity, instance, global(entity), global, casting, t);

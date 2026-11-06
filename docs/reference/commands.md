@@ -68,7 +68,7 @@ as `entity.get`, reject it as an unknown param.
 | Grid maps | [`gridmap.set`](#gridmapset), [`gridmap.get`](#gridmapget) |
 | Terrains | [`terrain.generate`](#terraingenerate), [`terrain.import`](#terrainimport), [`terrain.brush`](#terrainbrush), [`terrain.get`](#terrainget) |
 | Tile maps | [`tilemap.paint`](#tilemappaint), [`tilemap.generate`](#tilemapgenerate), [`tilemap.set`](#tilemapset), [`tilemap.get`](#tilemapget), [`tilemap.convert`](#tilemapconvert) |
-| Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity), [`physics.soft_body`](#physicssoft_body) |
+| Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity), [`physics.soft_body`](#physicssoft_body), [`physics.break`](#physicsbreak) |
 | Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent), [`navigation.bake`](#navigationbake) |
 | Particles | [`particles.eval`](#particleseval), [`particles.bake_sdf`](#particlesbake_sdf) |
 | Lights | [`light.sample`](#lightsample) |
@@ -1628,6 +1628,35 @@ them.
 An unknown ID is an error, as is an entity with no soft body: one without a `SoftBody3D`, or
 whose `MeshInstance3D` draws no primitive mesh. An index past the last vertex is an error at its
 place in `/at`.
+
+### physics.break
+
+Breaks a [`Destructible3D`](scene-format.md#destruction) body into its pieces now, whatever its
+`damage_threshold`, as an impact past it would. The entity is destroyed and each piece is a
+rigid body of its own, `<id>_1` to `<id>_<n>`, listed in the order of the cut. With `push`, each
+piece also moves away from `from` (the body's center when left out) at that speed. It is a
+`broken` event too, and `undo` puts the body back.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | A `StaticBody3D` or `RigidBody3D` with a `Destructible3D` |
+| `push` | number | `0` | Meters a second, 0 to 1,000 |
+| `from` | `[x, y, z]` | the body's center | Where the pieces are pushed from, in the world |
+| `dry_run` | boolean | `false` | Return what would change and change nothing |
+
+Needs: `edit`. The crate in [examples/destruction-3d](../../examples/destruction-3d/), pushed
+out from under its middle:
+
+```json
+{"id": "crate", "push": 3, "from": [1.5, 0, 0]}
+```
+
+```json
+{"pieces":["crate_1","crate_2","crate_3","crate_4"]}
+```
+
+An unknown ID is an error, as is an entity without a `Destructible3D`, without a body, or whose
+mesh can't be cut, saying why.
 
 ## Navigation
 
