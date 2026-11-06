@@ -4,6 +4,7 @@
 
 #include "slash/core/text.hpp"
 #include "slash/scene3d/skeleton.hpp"
+#include "slash/world/components.hpp"
 #include "slash/world/tree3d.hpp"
 
 #include <algorithm>
@@ -30,6 +31,8 @@ constexpr std::array<std::string_view, 5> kInterpolations = {"nearest", "linear"
                                                              "linear_angle", "cubic_angle"};
 constexpr std::array<std::string_view, 3> kUpdateModes = {"auto", "continuous", "discrete"};
 constexpr std::array<std::string_view, 3> kNodeProperties = {"position", "rotation", "scale"};
+constexpr std::array<std::string_view, 6> kTrackTypes = {"value", "bezier",    "event",
+                                                         "node",  "animation", "audio"};
 
 template <std::size_t N>
 json::Value names(const std::array<std::string_view, N>& list) {
@@ -66,12 +69,44 @@ json::Value schema() {
         property("number", "Easing to the next key, as Godot's: 1 linear, above 1 eases in, "
                            "0 to 1 eases out, below 0 eases in and out, 0 holds the value.");
     key["properties"]["transition"]["default"] = 1;
+    json::Value handle = property("array", "");
+    handle["items"]["type"] = "number";
+    handle["minItems"] = 2;
+    handle["maxItems"] = 2;
+    key["properties"]["in"] = handle;
+    key["properties"]["in"]["description"] =
+        "A bezier key's in handle, [seconds, value] from the key: seconds 0 or less.";
+    key["properties"]["out"] = std::move(handle);
+    key["properties"]["out"]["description"] =
+        "A bezier key's out handle, [seconds, value] from the key: seconds 0 or more.";
+    key["properties"]["animation"] =
+        property("string", "An animation track's: the animation its player plays from here, or "
+                           "\"[stop]\" to stop it.");
+    key["properties"]["animation"]["minLength"] = 1;
+    key["properties"]["stream"] =
+        property("string", "An audio track's: the sound or .audio.json file it plays from here, "
+                           "on the target's audio player.");
+    key["properties"]["stream"]["minLength"] = 1;
+    key["properties"]["start_offset"] =
+        property("number", "An audio key's seconds of its stream skipped at the start.");
+    key["properties"]["start_offset"]["minimum"] = 0;
+    key["properties"]["end_offset"] =
+        property("number", "An audio key's seconds of its stream cut off at the end.");
+    key["properties"]["end_offset"]["minimum"] = 0;
 
     json::Value track;
     track["type"] = "object";
     track["additionalProperties"] = false;
     track["required"] = json::Array{"keys"};
-    track["description"] = "A value track (path), an event track (event) or a node track (node).";
+    track["description"] = "A value track (path), an event track (event), a node track (node), "
+                           "or a track whose type says so.";
+    track["properties"]["type"] =
+        property("string", "What it does: sets a field (value), sets a number along a curve "
+                           "(bezier, with path), emits events (event), moves a model's node "
+                           "(node), plays the target's AnimationPlayer (animation) or plays "
+                           "sounds on its audio player (audio). Left out, from path, event or "
+                           "node.");
+    track["properties"]["type"]["enum"] = names(kTrackTypes);
     track["properties"]["path"] =
         property("string", "The value it sets: a component, its field and optionally a part, "
                            "as \"Transform2D/position\" or \"Sprite2D/modulate/a\".");
@@ -101,6 +136,10 @@ json::Value schema() {
         property("boolean", "In a looping animation, move from the last key to the first "
                             "across the loop's end.");
     track["properties"]["loop_wrap"]["default"] = true;
+    track["properties"]["use_blend"] =
+        property("boolean", "An audio track's sounds play as loud as its animation counts in "
+                            "an animation tree's blend.");
+    track["properties"]["use_blend"]["default"] = true;
     track["properties"]["keys"]["type"] = "array";
     track["properties"]["keys"]["minItems"] = 1;
     track["properties"]["keys"]["items"]["$ref"] = "#/$defs/key";
@@ -133,6 +172,10 @@ json::Value schema() {
     animation["properties"]["loop"]["default"] = "none";
     animation["properties"]["tracks"]["type"] = "array";
     animation["properties"]["tracks"]["items"]["$ref"] = "#/$defs/track";
+    animation["properties"]["markers"] =
+        property("object", "Named times in seconds, as Godot's animation markers.");
+    animation["properties"]["markers"]["additionalProperties"]["type"] = "number";
+    animation["properties"]["markers"]["additionalProperties"]["minimum"] = 0;
 
     json::Value out;
     out["$schema"] = "https://json-schema.org/draft/2020-12/schema";
@@ -253,6 +296,72 @@ double cubic(double pre, double from, double to, double post, double weight, dou
     return lerp(b1, b2, to_t == 0.0 ? 0.5 : t / to_t);
 }
 
+// Godot's Vector2::bezier_interpolate of one coordinate: the point at t on the cubic curve from
+// start to end with controls a and b.
+double bezier_point(double start, double a, double b, double end, double t) {
+    const double omt = 1.0 - t;
+    const double omt2 = omt * omt;
+    const double omt3 = omt2 * omt;
+    const double t2 = t * t;
+    const double t3 = t2 * t;
+    return (start * omt3) + (a * omt2 * t * 3.0) + (b * omt * t2 * 3.0) + (end * t3);
+}
+
+// A bezier track's value at a time, as Godot's Animation::bezier_track_interpolate: the curve
+// from the key at or before it toward the next, its out handle and the next key's in handle as
+// controls, found at the time by ten halvings of the curve's parameter.
+json::Value bezier_value(const std::vector<Key>& keys, double time) {
+    const auto value_at = [&](std::size_t i) {
+        return keys[i].value.is_number() ? keys[i].value.as_double() : 0.0;
+    };
+    if (keys.size() == 1) {
+        return value_at(0);
+    }
+    // Godot's Animation::_find: the key at the time, else the last before it.
+    std::size_t idx = keys.size();
+    for (std::size_t i = 0; i < keys.size(); ++i) {
+        if (detail::is_equal_approx(time, keys[i].time)) {
+            idx = i;
+            break;
+        }
+        if (keys[i].time < time) {
+            idx = i;
+        }
+    }
+    if (idx == keys.size()) {
+        return value_at(0);
+    }
+    if (idx + 1 >= keys.size()) {
+        return value_at(keys.size() - 1);
+    }
+    const double t = time - keys[idx].time;
+    const double duration = keys[idx + 1].time - keys[idx].time;
+    const std::array<double, 2> start{0.0, value_at(idx)};
+    const std::array<double, 2> start_out{start[0] + keys[idx].out[0], start[1] + keys[idx].out[1]};
+    const std::array<double, 2> end{duration, value_at(idx + 1)};
+    const std::array<double, 2> end_in{end[0] + keys[idx + 1].in[0], end[1] + keys[idx + 1].in[1]};
+    const auto point = [&](double at) {
+        return std::array<double, 2>{bezier_point(start[0], start_out[0], end_in[0], end[0], at),
+                                     bezier_point(start[1], start_out[1], end_in[1], end[1], at)};
+    };
+    constexpr int kIterations = 10;
+    double low = 0.0;
+    double high = 1.0;
+    for (int i = 0; i < kIterations; ++i) {
+        const double middle = (low + high) / 2.0;
+        if (point(middle)[0] < t) {
+            low = middle;
+        } else {
+            high = middle;
+        }
+    }
+    const std::array<double, 2> low_pos = point(low);
+    const std::array<double, 2> high_pos = point(high);
+    const double span = high_pos[0] - low_pos[0];
+    const double c = span != 0.0 ? (t - low_pos[0]) / span : 0.0;
+    return low_pos[1] + ((high_pos[1] - low_pos[1]) * c);
+}
+
 // The numbers in a numeric value: one, or an array's.
 std::vector<double> numbers_of(const json::Value& value) {
     if (value.is_number()) {
@@ -321,6 +430,17 @@ private:
         // until its file is read.
         const double end =
             length != nullptr ? length->as_double() : std::numeric_limits<double>::infinity();
+        if (const json::Value* markers = animation.find("markers"); markers != nullptr) {
+            for (const auto& [name, time] : markers->as_object()) {
+                if (name.empty()) {
+                    fail(at + "/markers", "name each marker");
+                } else if (time.as_double() > end) {
+                    fail(at + "/markers/" + json::pointer_escape(name),
+                         number_text(time.as_double()) + " is past the animation's length, " +
+                             number_text(end));
+                }
+            }
+        }
         std::set<std::string, std::less<>> paths;
         const json::Array& list = tracks->as_array();
         for (std::size_t i = 0; i < list.size(); ++i) {
@@ -335,14 +455,44 @@ private:
         const json::Value* node = track.find("node");
         const int kinds = static_cast<int>(path != nullptr) + static_cast<int>(event != nullptr) +
                           static_cast<int>(node != nullptr);
-        if (kinds != 1) {
+        const json::Value* type_value = track.find("type");
+        const std::string type = type_value != nullptr ? type_value->as_string() : std::string();
+        if (type == "animation" || type == "audio") {
+            if (kinds != 0) {
+                fail(at, type == "audio"
+                             ? "an audio track plays sounds on its target's audio player, so it "
+                               "has no path, event or node"
+                             : "an animation track plays the animations of its target's "
+                               "AnimationPlayer, so it has no path, event or node");
+                return;
+            }
+        } else if (kinds != 1) {
             fail(at, kinds == 0
-                         ? R"(a track has a "path", for a value track, an "event" or a "node")"
+                         ? R"(a track has a "path", for a value track, an "event" or a "node", or )"
+                           R"("type": "animation" or "audio")"
                          : R"(a track has one of "path", "event" and "node", not more)");
             return;
+        } else if (!type.empty()) {
+            const bool fits = ((type == "value" || type == "bezier") && path != nullptr) ||
+                              (type == "event" && event != nullptr) ||
+                              (type == "node" && node != nullptr);
+            if (!fits) {
+                const char* needs = R"("path")";
+                if (type == "event") {
+                    needs = R"("event")";
+                } else if (type == "node") {
+                    needs = R"("node")";
+                }
+                fail(at + "/type", "a" + std::string(type == "event" ? "n " : " ") + type +
+                                       " track has a " + needs);
+                return;
+            }
         }
         if (node == nullptr && track.find("property") != nullptr) {
             fail(at + "/property", "only node tracks have property");
+        }
+        if (type != "audio" && track.find("use_blend") != nullptr) {
+            fail(at + "/use_blend", "only audio tracks have use_blend");
         }
         const json::Array& keys = track.find("keys")->as_array();
         for (std::size_t j = 0; j < keys.size(); ++j) {
@@ -358,7 +508,34 @@ private:
                          " comes after " + number_text(keys[j - 1].find("time")->as_double()));
             }
         }
-        if (event != nullptr) {
+        for (std::size_t j = 0; j < keys.size(); ++j) {
+            const std::string key_at = at + "/keys/" + std::to_string(j);
+            if (type != "bezier") {
+                for (const char* handle : {"in", "out"}) {
+                    if (keys[j].find(handle) != nullptr) {
+                        fail(key_at + "/" + handle, "only bezier tracks' keys have handles");
+                    }
+                }
+            }
+            if (type != "animation" && keys[j].find("animation") != nullptr) {
+                fail(key_at + "/animation", "only animation tracks' keys name an animation");
+            }
+            if (type != "audio") {
+                for (const char* field : {"stream", "start_offset", "end_offset"}) {
+                    if (keys[j].find(field) != nullptr) {
+                        fail(key_at + "/" + field,
+                             "only audio tracks' keys have " + std::string(field));
+                    }
+                }
+            }
+        }
+        if (type == "animation") {
+            check_animation_track(track, at);
+        } else if (type == "audio") {
+            check_audio_track(track, at);
+        } else if (type == "bezier") {
+            check_bezier_track(track, path->as_string(), at, paths);
+        } else if (event != nullptr) {
             check_event_track(track, *event, at);
         } else if (node != nullptr) {
             check_node_track(track, node->as_string(), at, from_model, paths);
@@ -444,22 +621,138 @@ private:
         }
     }
 
-    void check_value_track(const json::Value& track, const std::string& path, const std::string& at,
-                           std::set<std::string, std::less<>>& paths) {
+    void check_animation_track(const json::Value& track, const std::string& at) {
+        if (track.find("target") == nullptr) {
+            fail(at, "an animation track needs a \"target\": the entity whose AnimationPlayer "
+                     "it plays");
+        }
+        for (const char* key : {"interpolation", "update", "loop_wrap"}) {
+            if (track.find(key) != nullptr) {
+                fail(at + "/" + key, "only value tracks have " + std::string(key));
+            }
+        }
+        const json::Array& keys = track.find("keys")->as_array();
+        for (std::size_t j = 0; j < keys.size(); ++j) {
+            const std::string key_at = at + "/keys/" + std::to_string(j);
+            if (keys[j].find("animation") == nullptr) {
+                fail(key_at, "an animation track's keys need an \"animation\": the one its "
+                             "player plays from there, or \"[stop]\"");
+            }
+            for (const char* field : {"value", "data", "transition"}) {
+                if (keys[j].find(field) != nullptr) {
+                    fail(key_at + "/" + field, "an animation track's keys carry \"animation\", "
+                                               "not \"" +
+                                                   std::string(field) + "\"");
+                }
+            }
+        }
+    }
+
+    void check_audio_track(const json::Value& track, const std::string& at) {
+        for (const char* key : {"interpolation", "update", "loop_wrap"}) {
+            if (track.find(key) != nullptr) {
+                fail(at + "/" + key, "only value tracks have " + std::string(key));
+            }
+        }
+        const json::Array& keys = track.find("keys")->as_array();
+        for (std::size_t j = 0; j < keys.size(); ++j) {
+            const std::string key_at = at + "/keys/" + std::to_string(j);
+            if (keys[j].find("stream") == nullptr) {
+                fail(key_at, "an audio track's keys need a \"stream\": the sound it plays from "
+                             "there");
+            }
+            for (const char* field : {"value", "data", "transition"}) {
+                if (keys[j].find(field) != nullptr) {
+                    fail(key_at + "/" + field, R"(an audio track's keys carry "stream", not ")" +
+                                                   std::string(field) + R"(")");
+                }
+            }
+        }
+    }
+
+    // Whether a path has the form of a value track's, failing it if not.
+    bool check_path_form(const std::string& path, const std::string& at) {
         const std::size_t slash = path.find('/');
         if (slash == std::string::npos || slash == 0 || slash + 1 == path.size() ||
             path.find("//") != std::string::npos || path.back() == '/') {
             fail(at + "/path", "a path is a component and one of its fields, as "
                                "\"Transform2D/position\", then optionally a part, as "
                                "\"Transform2D/position/y\"");
-            return;
+            return false;
         }
+        return true;
+    }
+
+    // Whether no other track sets a path on the same entity, failing it if one does.
+    void check_unique_path(const json::Value& track, const std::string& path, const std::string& at,
+                           std::set<std::string, std::less<>>& paths) {
         const json::Value* on = track.find("target");
         const std::string target_name = on != nullptr ? on->as_string() : std::string();
         if (!paths.insert(target_name + ":" + path).second) {
             fail(at + "/path", "another track already sets \"" + path + "\"" +
                                    (on != nullptr ? " on \"" + target_name + "\"" : ""));
         }
+    }
+
+    void check_bezier_track(const json::Value& track, const std::string& path,
+                            const std::string& at, std::set<std::string, std::less<>>& paths) {
+        if (!check_path_form(path, at)) {
+            return;
+        }
+        check_unique_path(track, path, at, paths);
+        for (const char* key : {"interpolation", "update", "loop_wrap"}) {
+            if (track.find(key) != nullptr) {
+                fail(at + "/" + key, "a bezier track's curve comes from its keys' handles, so it "
+                                     "has no " +
+                                         std::string(key));
+            }
+        }
+        const json::Array& keys = track.find("keys")->as_array();
+        for (std::size_t j = 0; j < keys.size(); ++j) {
+            const std::string key_at = at + "/keys/" + std::to_string(j);
+            const json::Value* value = keys[j].find("value");
+            if (value == nullptr || !value->is_number()) {
+                fail(value == nullptr ? key_at : key_at + "/value",
+                     "a bezier track's keys need a \"value\": a number");
+            }
+            if (keys[j].find("data") != nullptr) {
+                fail(key_at + "/data", R"(a bezier track's keys carry "value", not "data")");
+            }
+            if (keys[j].find("transition") != nullptr) {
+                fail(key_at + "/transition", "a bezier key's handles shape the curve, so it has "
+                                             "no transition");
+            }
+            if (const json::Value* in = keys[j].find("in");
+                in != nullptr && in->as_array()[0].as_double() > 0.0) {
+                fail(key_at + "/in/0", "an in handle points back in time: 0 seconds or less");
+            }
+            if (const json::Value* out = keys[j].find("out");
+                out != nullptr && out->as_array()[0].as_double() < 0.0) {
+                fail(key_at + "/out/0", "an out handle points on in time: 0 seconds or more");
+            }
+        }
+        if (components_ == nullptr) {
+            return;
+        }
+        auto resolved = resolve_target(path, *components_);
+        if (!resolved) {
+            fail(at + "/path", resolved.error().message);
+            return;
+        }
+        const json::Value* type = resolved.value().schema.find("type");
+        if (type == nullptr || !type->is_string() || type->as_string() != "number") {
+            fail(at + "/path", "a bezier track sets one number, as \"Camera3D/fov\" or "
+                               "\"Transform3D/position/y\"; " +
+                                   path + " isn't one");
+        }
+    }
+
+    void check_value_track(const json::Value& track, const std::string& path, const std::string& at,
+                           std::set<std::string, std::less<>>& paths) {
+        if (!check_path_form(path, at)) {
+            return;
+        }
+        check_unique_path(track, path, at, paths);
         const json::Array& keys = track.find("keys")->as_array();
         bool values_ok = true;
         for (std::size_t j = 0; j < keys.size(); ++j) {
@@ -575,6 +868,10 @@ std::string_view interpolation_name(Interpolation interpolation) {
 
 std::string_view node_property_name(scene3d::NodeProperty property) {
     return kNodeProperties.at(static_cast<std::size_t>(property));
+}
+
+std::string_view track_type_name(TrackType type) {
+    return kTrackTypes.at(static_cast<std::size_t>(type));
 }
 
 bool has_node_tracks(const Animation& animation) {
@@ -706,6 +1003,11 @@ Result<AnimationLibrary> parse_animation_library(const json::Value& doc) {
             animation.from.model = from->find("model")->as_string();
             animation.from.animation = from->find("animation")->as_string();
         }
+        if (const json::Value* markers = json_animation.find("markers"); markers != nullptr) {
+            for (const auto& [marker, time] : markers->as_object()) {
+                animation.markers.emplace(marker, time.as_double());
+            }
+        }
         static const json::Array kNoTracks;
         const json::Value* json_tracks = json_animation.find("tracks");
         for (const json::Value& json_track :
@@ -719,6 +1021,13 @@ Result<AnimationLibrary> parse_animation_library(const json::Value& doc) {
             }
             if (const json::Value* node = json_track.find("node"); node != nullptr) {
                 track.node = node->as_string();
+                track.type = TrackType::Node;
+            }
+            if (!track.event.empty()) {
+                track.type = TrackType::Event;
+            }
+            if (const json::Value* type = json_track.find("type"); type != nullptr) {
+                track.type = static_cast<TrackType>(index_of(kTrackTypes, type->as_string()));
             }
             if (const json::Value* property = json_track.find("property"); property != nullptr) {
                 track.property = static_cast<scene3d::NodeProperty>(
@@ -736,16 +1045,38 @@ Result<AnimationLibrary> parse_animation_library(const json::Value& doc) {
             if (const json::Value* value = json_track.find("loop_wrap"); value != nullptr) {
                 track.loop_wrap = value->as_bool();
             }
+            if (const json::Value* value = json_track.find("use_blend"); value != nullptr) {
+                track.use_blend = value->as_bool();
+            }
+            const char* carries = "value";
+            if (track.type == TrackType::Event) {
+                carries = "data";
+            } else if (track.type == TrackType::Animation) {
+                carries = "animation";
+            } else if (track.type == TrackType::Audio) {
+                carries = "stream";
+            }
             for (const json::Value& json_key : json_track.find("keys")->as_array()) {
                 Key key;
                 key.time = json_key.find("time")->as_double();
-                if (const json::Value* value =
-                        json_key.find(track.event.empty() ? "value" : "data");
-                    value != nullptr) {
+                if (const json::Value* value = json_key.find(carries); value != nullptr) {
                     key.value = *value;
                 }
                 if (const json::Value* value = json_key.find("transition"); value != nullptr) {
                     key.transition = value->as_double();
+                }
+                if (const json::Value* value = json_key.find("start_offset"); value != nullptr) {
+                    key.start_offset = value->as_double();
+                }
+                if (const json::Value* value = json_key.find("end_offset"); value != nullptr) {
+                    key.end_offset = value->as_double();
+                }
+                for (const auto& [field, handle] :
+                     {std::pair{"in", &key.in}, std::pair{"out", &key.out}}) {
+                    if (const json::Value* value = json_key.find(field); value != nullptr) {
+                        *handle = {value->as_array()[0].as_double(),
+                                   value->as_array()[1].as_double()};
+                    }
                 }
                 track.keys.push_back(std::move(key));
             }
@@ -991,6 +1322,9 @@ json::Value sample(const Animation& animation, const Track& track, double time, 
     if (keys.empty()) {
         return {};
     }
+    if (track.type == TrackType::Bezier) {
+        return bezier_value(keys, std::clamp(time, 0.0, animation.length));
+    }
     const double length = animation.length;
     time = std::clamp(time, 0.0, length);
     const bool wrap = animation.loop != LoopMode::None && track.loop_wrap && keys.size() > 1;
@@ -1140,7 +1474,19 @@ Result<void> apply(world::World& world, entt::entity entity, const Target& targe
         return make_error(assigned.error().code,
                           (path.empty() ? std::string() : path + ": ") + assigned.error().message);
     }
+    if (target.component->name() == "Camera3D" && target.field == "current" &&
+        target.part.empty() && value.is_bool() && value.as_bool()) {
+        make_current_camera(world, entity);
+    }
     return {};
+}
+
+void make_current_camera(world::World& world, entt::entity camera) {
+    for (const auto [entity, other] : world.ecs().view<world::Camera3D>().each()) {
+        if (entity != camera) {
+            other.current = false;
+        }
+    }
 }
 
 } // namespace slash::animation

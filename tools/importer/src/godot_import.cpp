@@ -7416,8 +7416,24 @@ private:
             (loop->integer == 1 || loop->integer == 2)) {
             out["loop"] = loop->integer == 1 ? "linear" : "pingpong";
         }
-        if (section.property("marker_names") != nullptr) {
-            problems_.add("animation markers", where, "play from a marker's time in gameplay code");
+        if (const Value* names = section.property("marker_names"); names != nullptr) {
+            // Godot keeps markers as names and times side by side.
+            const Value* times = section.property("marker_times");
+            const auto seconds =
+                times != nullptr ? times->numbers() : std::optional<std::vector<double>>{};
+            json::Value markers = json::Object{};
+            for (std::size_t i = 0; i < names->items.size(); ++i) {
+                const Value& name = names->items[i];
+                if (!name.is_string() || name.text.empty() || !seconds || i >= seconds->size() ||
+                    seconds->at(i) < 0.0 || seconds->at(i) > length) {
+                    problems_.add("animation marker", where, "a marker with no name or time");
+                    continue;
+                }
+                markers[name.text] = seconds->at(i);
+            }
+            if (!markers.as_object().empty()) {
+                out["markers"] = std::move(markers);
+            }
         }
         const bool loops = out.find("loop") != nullptr && out["loop"].as_string() == "linear";
         json::Array tracks;
@@ -8996,20 +9012,14 @@ private:
 
     // Why a kind of Godot track doesn't convert.
     static std::string track_why(std::string_view type) {
-        if (type == "audio") {
-            return "play the sound from gameplay code, on an event track's event";
-        }
-        if (type == "animation") {
-            return "start the other AnimationPlayer from gameplay code, on an event track's event";
-        }
         if (type == "blend_shape") {
             return "SlashEngine models have no blend shapes yet";
         }
         return "no SlashEngine track of this kind";
     }
 
-    // Adds a Godot track's equivalent to tracks: a value track for a value or bezier track, and
-    // an event track for each method a method track calls.
+    // Adds a Godot track's equivalent to tracks: a value or bezier track for one of those, an
+    // event track for each method a method track calls, and an animation track for one.
     void convert_track(const GodotTrack& track, const std::string& where, double length,
                        const TextFile& file, const std::vector<Node>& nodes, const Node& root,
                        const OrderOf& order_of, const SceneContext& scene, json::Array& tracks,
@@ -9020,7 +9030,8 @@ private:
         if (disabled(track, where)) {
             return;
         }
-        if (type != "value" && type != "bezier" && type != "method") {
+        if (type != "value" && type != "bezier" && type != "method" && type != "animation" &&
+            type != "audio") {
             problems_.add("animation " + type + " track", where, track_why(type));
             return;
         }
@@ -9048,6 +9059,91 @@ private:
         constexpr double kPastEnd = 1.0e-9;
         const auto playable = [&](std::size_t i) { return times->at(i) <= length + kPastEnd; };
         const Value* values = keys->get("values");
+
+        if (type == "animation") {
+            // Plays the animations of the AnimationPlayer node it names, as the clip of each key.
+            if (target->type != "AnimationPlayer") {
+                problems_.add("animation animation track", where,
+                              "node path " + node_path + " names a " + target->type +
+                                  ", not an AnimationPlayer");
+                return;
+            }
+            const Value* clips = keys->get("clips");
+            json::Array out_keys;
+            for (std::size_t i = 0; i < times->size(); ++i) {
+                const Value* clip =
+                    clips != nullptr && i < clips->items.size() ? &clips->items[i] : nullptr;
+                if (!playable(i) || clip == nullptr || !clip->is_string() || clip->text.empty()) {
+                    continue;
+                }
+                json::Value key;
+                key["time"] = times->at(i);
+                key["animation"] = clip->text;
+                out_keys.push_back(std::move(key));
+            }
+            if (out_keys.empty()) {
+                return;
+            }
+            json::Value out;
+            out["type"] = "animation";
+            out["target"] = node_path;
+            out["keys"] = std::move(out_keys);
+            tracks.push_back(std::move(out));
+            targets.insert(node_path);
+            return;
+        }
+
+        if (type == "audio") {
+            // Plays each key's stream on the audio player node it names.
+            if (target->type != "AudioStreamPlayer" && target->type != "AudioStreamPlayer2D" &&
+                target->type != "AudioStreamPlayer3D") {
+                problems_.add("animation audio track", where,
+                              "node path " + node_path + " names a " + target->type +
+                                  ", not an audio player");
+                return;
+            }
+            const Value* clips = keys->get("clips");
+            json::Array out_keys;
+            for (std::size_t i = 0; i < times->size(); ++i) {
+                const Value* clip =
+                    clips != nullptr && i < clips->items.size() ? &clips->items[i] : nullptr;
+                const Value* stream = clip != nullptr ? clip->get("stream") : nullptr;
+                if (!playable(i) || stream == nullptr || stream->kind == Value::Kind::Nil) {
+                    continue;
+                }
+                std::string why;
+                std::string stream_path = resource_path(*stream, file, why);
+                if (stream_path.empty()) {
+                    problems_.add("animation audio track stream", where, why);
+                    continue;
+                }
+                json::Value key;
+                key["time"] = times->at(i);
+                key["stream"] = std::move(stream_path);
+                for (const char* offset : {"start_offset", "end_offset"}) {
+                    if (const Value* seconds = clip->get(offset);
+                        seconds != nullptr && seconds->is_number() && seconds->number() > 0.0) {
+                        key[offset] = seconds->number();
+                    }
+                }
+                out_keys.push_back(std::move(key));
+            }
+            if (out_keys.empty()) {
+                return;
+            }
+            json::Value out;
+            out["type"] = "audio";
+            out["target"] = node_path;
+            targets.insert(node_path);
+            if (const Value* use_blend = track.get("use_blend");
+                use_blend != nullptr && use_blend->kind == Value::Kind::Bool &&
+                !use_blend->boolean) {
+                out["use_blend"] = false;
+            }
+            out["keys"] = std::move(out_keys);
+            tracks.push_back(std::move(out));
+            return;
+        }
 
         if (type == "method") {
             std::vector<json::Value> events; // one per method, in the order first called
@@ -9137,6 +9233,11 @@ private:
         if (const Value* list = keys->get("points"); type == "bezier" && list != nullptr) {
             points = list->numbers();
         }
+        // A bezier track sets one number; one on another kind of field plays as cubic
+        // interpolation through its keys.
+        const json::Value* schema_type = resolved.value().schema.find("type");
+        const bool bezier = type == "bezier" && schema_type != nullptr &&
+                            schema_type->is_string() && schema_type->as_string() == "number";
         const Value* transitions_value = keys->get("transitions");
         const auto transitions = transitions_value != nullptr
                                      ? transitions_value->numbers()
@@ -9158,6 +9259,15 @@ private:
                     return;
                 }
                 key["value"] = points->at(i * kPoint);
+                // Handles, [time, value] each, as Godot's in_handle and out_handle.
+                for (const auto& [name, offset] :
+                     {std::pair{"in", std::size_t{1}}, std::pair{"out", std::size_t{3}}}) {
+                    const double handle_time = points->at((i * kPoint) + offset);
+                    const double handle_value = points->at((i * kPoint) + offset + 1);
+                    if (bezier && (handle_time != 0.0 || handle_value != 0.0)) {
+                        key[name] = json::Array{handle_time, handle_value};
+                    }
+                }
             } else if (values == nullptr || i >= values->items.size()) {
                 problems_.add(what, where, "a key with no value");
                 return;
@@ -9191,6 +9301,15 @@ private:
             return;
         }
         json::Value out;
+        if (bezier) {
+            out["type"] = "bezier";
+            out["target"] = node_path;
+            out["path"] = field_path;
+            out["keys"] = std::move(out_keys);
+            tracks.push_back(std::move(out));
+            targets.insert(node_path);
+            return;
+        }
         out["target"] = node_path;
         out["path"] = field_path;
         std::int64_t interpolation = 1; // Godot's default, linear
@@ -10805,6 +10924,26 @@ private:
         for (const Node& node : nodes) {
             if (node.type == "AnimationPlayer") {
                 convert_player(nodes, node, order_of, scene, entities);
+            }
+        }
+        // An animation track names the AnimationPlayer it plays, which may have moved onto the
+        // entity that draws its model.
+        for (auto& [id, entity] : entities) {
+            json::Value* components = entity.find("components");
+            json::Value* player =
+                components != nullptr ? components->find("AnimationPlayer") : nullptr;
+            json::Value* targets = player != nullptr ? player->find("targets") : nullptr;
+            if (targets == nullptr || !targets->is_object()) {
+                continue;
+            }
+            for (auto& [name, target] : targets->as_object()) {
+                if (!target.is_string()) {
+                    continue;
+                }
+                if (const auto moved = moved_players_.find(target.as_string());
+                    moved != moved_players_.end()) {
+                    target = moved->second;
+                }
             }
         }
         // AnimationTrees, which play the libraries of those players or of models.

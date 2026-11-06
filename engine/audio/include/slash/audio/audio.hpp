@@ -689,6 +689,9 @@ struct Snapshot {
         float volume_db = 0.0F;   // play_stream's
         float pitch_scale = 1.0F; // play_stream's
         bool play = true;
+        // An animation's audio track's stream (world::AudioTrackSound), by its ID: with a stream
+        // it starts, with play off it stops, and otherwise its volume becomes volume_db.
+        std::int64_t track = 0;
     };
     struct Recording {
         int bus = 0;
@@ -733,6 +736,8 @@ struct PlayerInfo {
         int polyphony = 0;
     };
     std::optional<Polyphonic> polyphonic;
+    // Streams animations' audio tracks play on it, beside its own voices.
+    int track_streams = 0;
 };
 // Every player with an ID, by ID.
 [[nodiscard]] std::vector<PlayerInfo> players(const world::World& world);

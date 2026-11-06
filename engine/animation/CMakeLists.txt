@@ -1,5 +1,6 @@
 add_library(slash_animation
     src/animation.cpp
+    src/audio_tracks.cpp
     src/internal.cpp
     src/player.cpp
     src/tree.cpp

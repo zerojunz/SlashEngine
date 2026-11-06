@@ -135,6 +135,53 @@ private:
     std::map<std::string, UsedModel, std::less<>> models_;
 };
 
+// One audio track's tick, as Godot's AnimationMixer::_blend_process takes it: the owner (the
+// player or tree playing it), the entity whose audio player it plays on, where the animation is,
+// how much it counts, and the key to start, if any (seeked starts it from the middle).
+// What plays an animation's audio tracks: an AnimationPlayer or an AnimationTree, which an entity
+// can have both of, as Godot's are nodes of their own.
+enum class Mixer : std::uint8_t { Player, Tree };
+struct AudioTrackTick {
+    entt::entity owner = entt::null;
+    Mixer mixer = Mixer::Player;
+    entt::entity on = entt::null;
+    std::string animation_name;
+    const Animation* animation = nullptr;
+    std::size_t track_index = 0;
+    const Track* track = nullptr;
+    double time = 0.0;
+    bool backward = false;
+    float blend = 1.0F;
+    const Key* key = nullptr;
+    bool seeked = false;
+};
+// Before an owner's tick: its audio tracks count for nothing until ticked, as _blend_init.
+void begin_audio(world::World& world, entt::entity owner, Mixer mixer);
+// Notes where an audio track is and starts its key's stream; fails if that can't play.
+Result<void> audio_track_tick(world::World& world, const AudioTrackTick& tick);
+// After an owner's tick, as _blend_apply: stops the streams playback went back before or past
+// their end offsets, and sets the others' volumes by how much their animation counted.
+void end_audio(world::World& world, entt::entity owner, Mixer mixer);
+// Stops every stream an owner's audio tracks play, as _clear_audio_streams when a player stops.
+void stop_audio(world::World& world, entt::entity owner, Mixer mixer);
+// Stops those of owners that went away.
+void sweep_audio(world::World& world);
+// Forgets every stream, for World::reset_state.
+void reset_audio(world::World& world);
+
+// Plays an animation on an animation track's player, as Godot's AnimationPlayer::play: another
+// animation starts from its start (its end, playing backward), the same one goes on, or starts
+// again once it ended; "[stop]" stops it and moves it back to the start, as stop() does.
+Result<void> play_started(world::World& world, LibraryCache& cache, entt::entity entity,
+                          const std::string& name);
+// Seeks an animation track's player to where the animation a key started since seconds ago is,
+// as Godot's mixer seeks an animation track's AnimationPlayer: sets what its tracks set there,
+// and those of the players its own animation tracks start, depth players down. False for
+// "[stop]", an animation the player lacks, or, unless past_end, one that doesn't loop and ended
+// since.
+Result<bool> seek_started(world::World& world, LibraryCache& cache, entt::entity entity,
+                          const std::string& name, double since, int depth, bool past_end);
+
 // Godot's Delaunay2D::triangulate, as AnimationNodeBlendSpace2D adds its triangles: each sorted,
 // the same three points only once, in the order it made them.
 [[nodiscard]] std::vector<std::array<int, 3>> delaunay(const std::vector<Vec2>& input);

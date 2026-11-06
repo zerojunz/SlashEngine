@@ -7,6 +7,7 @@
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/ui/ui.hpp"
+#include "slash/world/audio_tracks.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/world.hpp"
@@ -1041,6 +1042,69 @@ TEST_CASE("a game pushes frames to a generator player and plays streams on a pol
     REQUIRE_FALSE(refused.ok());
     CHECK(contains(refused.error().message, "isn't polyphonic"));
     CHECK_FALSE(audio::play_stream(sounds.world, sfx, "audio/missing.wav").ok());
+}
+
+TEST_CASE("animations' audio tracks play streams on a voice of the player's own, beside its "
+          "stream") {
+    Sounds sounds;
+    sounds.files.write("music.wav", steady_wav(kRate, {0.125F, 0.125F}));
+    sounds.files.write("line.wav", steady_wav(kRate / 2, {0.25F, 0.25F}));
+    const entt::entity speaker =
+        sounds.add("speaker", "AudioStreamPlayer", R"({"stream": "music.wav", "autoplay": true})");
+    const world::AudioTrackSound* sound = world::audio_track_sound(sounds.world);
+    REQUIRE(sound != nullptr);
+    sounds.step();
+    auto played = sound->play(sounds.world, speaker, "line.wav", 0.0);
+    REQUIRE(played.ok());
+    const std::int64_t line = played.value().id;
+    CHECK(played.value().length == doctest::Approx(0.5));
+    // It plays from the next mix, a lookahead late, mixed with the player's own stream.
+    CHECK(sound->playing(sounds.world, line));
+    sounds.step(2);
+    check_frame(sounds.last(), 0.375F, 0.375F);
+    auto info = sounds.player("speaker");
+    CHECK(info->voices == 1);
+    CHECK(info->track_streams == 1);
+    // Its volume changes, and stopping it leaves the player's stream.
+    sound->set_volume(sounds.world, line, -6.0206F);
+    sounds.step();
+    check_frame(sounds.last(), 0.25F, 0.25F);
+    sound->stop(sounds.world, line);
+    CHECK_FALSE(sound->playing(sounds.world, line));
+    sounds.step(2);
+    check_frame(sounds.last(), 0.125F, 0.125F);
+    CHECK(sounds.player("speaker")->track_streams == 0);
+    CHECK(sounds.world.ecs().get<world::AudioStreamPlayer>(speaker).playing);
+
+    // A stream that ends stops playing; one stopped before it starts never does; a restored
+    // snapshot takes back one asked for after it was saved.
+    played = sound->play(sounds.world, speaker, "line.wav", 0.4);
+    REQUIRE(played.ok());
+    sounds.step(10);
+    CHECK_FALSE(sound->playing(sounds.world, played.value().id));
+    played = sound->play(sounds.world, speaker, "line.wav", 0.0);
+    sound->stop(sounds.world, played.value().id);
+    sounds.step();
+    CHECK(sounds.player("speaker")->track_streams == 0);
+    const audio::Snapshot saved = audio::save(sounds.world);
+    played = sound->play(sounds.world, speaker, "line.wav", 0.0);
+    audio::restore(sounds.world, saved);
+    CHECK_FALSE(sound->playing(sounds.world, played.value().id));
+    sounds.step();
+    CHECK(sounds.player("speaker")->track_streams == 0);
+
+    // It plays on any kind of player, and fails without one or a stream that loads.
+    CHECK_FALSE(
+        sound->play(sounds.world, sounds.world.create("bare").value(), "line.wav", 0.0).ok());
+    auto missing = sound->play(sounds.world, speaker, "missing.wav", 0.0);
+    REQUIRE_FALSE(missing.ok());
+    // A player that goes away stops them.
+    played = sound->play(sounds.world, speaker, "line.wav", 0.0);
+    sounds.step();
+    CHECK(sound->playing(sounds.world, played.value().id));
+    sounds.world.destroy(speaker);
+    sounds.step();
+    CHECK_FALSE(sound->playing(sounds.world, played.value().id));
 }
 
 // A microphone for tests: a ramp from -0.5 to 0.5 every 1000 frames, mirrored on the right, so
