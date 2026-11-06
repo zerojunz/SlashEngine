@@ -1765,6 +1765,19 @@ layers and `parent_collision_ignore`. `scene3d::set_soft_body_source` (called by
 `scene validate`. `physics.soft_body` and `physics3d::soft_body_points` read them;
 `examples/soft-bodies` drapes a tablecloth, flies a flag and drops a ball full of air.
 
+Destruction is SlashEngine's own (Godot has none), after Unreal's geometry collections:
+`scene3d::fracture` (`slash/scene3d/fracture.hpp`, `make_fracture` in
+`engine/scene3d/src/csg.cpp`) cuts a closed mesh into Voronoi cells around points a PCG32 seeds
+in its bounds, each a padded cube trimmed by bisector planes and intersected with the mesh in
+Manifold, and `fracture_of` keeps an entity's cut in the CSG cache. The space measures each
+contact's impulse (reduced mass times closing speed) for bodies with a `Destructible3D`
+`damage_threshold` (`Space::note_impact`), lets a breaking contact through as a sensor, and
+after the step `detail::break_and_age` (`src/destruction.cpp`) breaks them with `break_body`
+(rigid pieces `<id>_<n>` with convex hulls, mass by volume, the body's velocity) and counts down
+`FracturePiece3D` lifetimes; `Renderer::add_piece` draws a piece's part of the cut.
+`physics.break` breaks one by hand, and `check_destructibles` backs `scene validate`.
+`examples/destruction-3d` breaks a wall and a crate.
+
 ## Navigation
 
 `engine/navigation` is navigation, as Godot 4.6's `NavigationServer2D` and `NavigationServer3D`,
