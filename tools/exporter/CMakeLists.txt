@@ -48,6 +48,15 @@ endforeach()
 string(APPEND sdk_content
     "set(SLASH_SDK_INCLUDE_DIRECTORIES [==[$<REMOVE_DUPLICATES:$<TARGET_PROPERTY:slash_runtime,INCLUDE_DIRECTORIES>;$<TARGET_PROPERTY:slash_ai,INCLUDE_DIRECTORIES>>]==] CACHE INTERNAL \"\")\n"
     "set(SLASH_SDK_COMPILE_DEFINITIONS [==[$<REMOVE_DUPLICATES:$<TARGET_PROPERTY:slash_runtime,COMPILE_DEFINITIONS>>]==] CACHE INTERNAL \"\")\n")
+# On Windows, the import library of what the tools export (engine/gameplay/CMakeLists.txt).
+set(host_library "")
+if(WIN32 AND SLASH_GAMEPLAY_HOSTS)
+    slash_gameplay_exports()
+    set(host_library ${SLASH_GAMEPLAY_HOST_LIBRARY})
+    add_dependencies(slash_exporter slash_gameplay_exports)
+    string(APPEND sdk_content
+        "set(SLASH_SDK_HOST_LIBRARY [==[${host_library}]==] CACHE INTERNAL \"\")\n")
+endif()
 file(GENERATE OUTPUT ${gameplay_sdk} CONTENT "${sdk_content}" TARGET slash_runtime)
 # The same for an installed engine, which cmake/gameplay/install_sdk.cmake makes relocatable when
 # the top-level CMakeLists.txt installs it.
@@ -58,6 +67,7 @@ string(APPEND sdk_data
     "set(slash_sdk_flags [==[${CMAKE_CXX_FLAGS}]==])\n"
     "set(slash_sdk_architectures [==[${CMAKE_OSX_ARCHITECTURES}]==])\n"
     "set(slash_sdk_deployment_target [==[${CMAKE_OSX_DEPLOYMENT_TARGET}]==])\n"
+    "set(slash_sdk_host_library [==[${host_library}]==])\n"
     "set(slash_sdk_includes [==[$<REMOVE_DUPLICATES:$<TARGET_PROPERTY:slash_runtime,INCLUDE_DIRECTORIES>;$<TARGET_PROPERTY:slash_ai,INCLUDE_DIRECTORIES>>]==])\n"
     "set(slash_sdk_definitions [==[$<REMOVE_DUPLICATES:$<TARGET_PROPERTY:slash_runtime,COMPILE_DEFINITIONS>>]==])\n")
 file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/gameplay-sdk-data.cmake CONTENT "${sdk_data}"

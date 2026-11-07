@@ -72,18 +72,12 @@ bool read_diagnostic(std::string_view line, const std::string& project, CompileE
             severity = marker.severity;
         }
     }
-    if (at != std::string_view::npos) {
-        std::string_view where = line.substr(0, at);
+    // file:line:column, or file:line. MSVC's notes have ": note: " too, after "file(line)".
+    std::string_view where = line.substr(0, at);
+    const std::size_t last = at == std::string_view::npos ? at : where.rfind(':');
+    int number = 0;
+    if (last != std::string_view::npos && parse_int(where.substr(last + 1), number)) {
         out.message = std::string(line.substr(at + marker_size));
-        // file:line:column, or file:line.
-        const std::size_t last = where.rfind(':');
-        if (last == std::string_view::npos) {
-            return false;
-        }
-        int number = 0;
-        if (!parse_int(where.substr(last + 1), number)) {
-            return false;
-        }
         where = where.substr(0, last);
         const std::size_t before = where.rfind(':');
         int line_number = 0;
@@ -98,9 +92,20 @@ bool read_diagnostic(std::string_view line, const std::string& project, CompileE
         out.file = project_file(where, project);
         return !out.file.empty();
     }
-    // MSVC: file(line,column): error C2065: message
-    severity = Severity::Error;
-    at = line.find("): error ");
+    // MSVC: file(line,column): error C2065: message, and its warnings and notes.
+    at = std::string_view::npos;
+    constexpr std::array<Marker, 4> kMsvcMarkers{{{"): fatal error ", Severity::Error},
+                                                  {"): error ", Severity::Error},
+                                                  {"): warning ", Severity::Warning},
+                                                  {"): note: ", Severity::Note}}};
+    for (const Marker& marker : kMsvcMarkers) {
+        const std::size_t found = line.find(marker.text);
+        if (found < at) {
+            at = found;
+            marker_size = marker.text.size();
+            severity = marker.severity;
+        }
+    }
     const std::size_t open = at == std::string_view::npos ? at : line.rfind('(', at);
     if (open == std::string_view::npos) {
         return false;
@@ -114,9 +119,12 @@ bool read_diagnostic(std::string_view line, const std::string& project, CompileE
     if (comma != std::string_view::npos && !parse_int(numbers.substr(comma + 1), out.column)) {
         return false;
     }
-    std::string_view message = line.substr(at + 9);
-    if (const std::size_t colon = message.find(": "); colon != std::string_view::npos) {
-        message.remove_prefix(colon + 2);
+    std::string_view message = line.substr(at + marker_size);
+    // The code before the message ("C2065: "); notes have none.
+    if (severity != Severity::Note) {
+        if (const std::size_t colon = message.find(": "); colon != std::string_view::npos) {
+            message.remove_prefix(colon + 2);
+        }
     }
     out.message = std::string(message);
     out.file = project_file(line.substr(0, open), project);
@@ -373,8 +381,8 @@ std::optional<Workspace> configure_gameplay(const std::string& project, const st
                     "\"gameplay\": {\"sources\": [\"src\"]}");
     }
     if (!platform::can_load_libraries()) {
-        return fail("the tools load gameplay libraries on macOS and Linux only; exports for every "
-                    "platform link the code in");
+        return fail("the tools load gameplay libraries on macOS, Linux and Windows only; exports "
+                    "for every platform link the code in");
     }
     std::error_code error;
     const std::optional<std::string> engine_dir = find_engine(engine);

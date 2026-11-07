@@ -110,8 +110,8 @@ struct GameModuleAbi {
 #define SLASH_COMPILER_ID SLASH_COMPILER_ABI
 #endif
 
-#if defined(_MSC_VER)
-#define SLASH_GAME_MODULE_EXPORT
+#if defined(_WIN32)
+#define SLASH_GAME_MODULE_EXPORT __declspec(dllexport)
 #else
 #define SLASH_GAME_MODULE_EXPORT __attribute__((visibility("default")))
 #endif

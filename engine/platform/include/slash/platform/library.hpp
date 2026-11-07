@@ -30,8 +30,8 @@ private:
     void* handle_ = nullptr;
 };
 
-// Whether the tools on this platform load shared libraries of a game's own code: macOS and Linux
-// do. Windows would need the engine built as DLLs, and phones and the web don't allow it.
+// Whether the tools on this platform load shared libraries of a game's own code: macOS, Linux and
+// Windows (tools built with MSVC) do; phones and the web don't allow it.
 [[nodiscard]] bool can_load_libraries();
 
 // Where the executable or library holding an address starts: the same for every function and

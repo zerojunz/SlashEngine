@@ -5489,12 +5489,13 @@ A game's own components and systems are C++ in the folders and files `project.js
 [`gameplay.sources`](project-format.md#gameplay-code) names, registered in one
 `SLASH_GAME_MODULE` function (see [AGENTS.md](../../AGENTS.md#gameplay-code)). Exports link them
 in. `slash-cli`, `slash-mcp` and `slash-game` load them from the library this command builds, on
-macOS and Linux, and every command first swaps in a library that changed since, so a build by
+macOS, Linux and Windows, and every command first swaps in a library that changed since, so a build by
 another program (such as [`slash-cli build`](cli.md#build)) goes in too.
 
 ### gameplay.build
 
-Compiles the project's gameplay sources into `.slash/gameplay/game.so` and swaps the new code
+Compiles the project's gameplay sources into `.slash/gameplay/game.so` (`game.dll` on Windows)
+and swaps the new code
 into the world. The world keeps its entities; each component of the game's types keeps the
 fields its new type still has. Only files that changed are compiled again. Registered by
 `slash-cli` and `slash-mcp`; a running game leaves it out, and picks up a library another program

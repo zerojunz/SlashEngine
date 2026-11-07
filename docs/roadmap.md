@@ -1077,8 +1077,8 @@ chose this split.
 Once the macOS release ships:
 
 1. **Windows and Linux hosts.** The engine and tools run on Windows and Linux, not only export to
-   them. CI already builds, tests and packages the tools on both; loading a game's own C++ on
-   Windows (`slash-cli build` and hot reload) remains.
+   them. Done: CI builds, tests and packages the tools on both, and the tools build and hot
+   reload a game's own C++ on Windows too, as a DLL calling the engine the program exports.
 2. **After-launch features**, in no fixed order:
    - [x] Large worlds: double-precision transforms and world streaming
      - [x] World streaming: `StreamedScene3D` cells of scene files loaded and unloaded around
@@ -1219,7 +1219,7 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | Platform | Engine and tools run there | Games export there | Oldest supported version |
 | --- | --- | --- | --- |
 | macOS (Apple silicon and Intel) | At launch | Yes (4a) | macOS 11 Big Sur |
-| Windows x64 | After launch (CI packages the tools; a game's own C++ loads on macOS and Linux only) | Yes (4a) | Windows 10 version 2004 (May 2020) |
+| Windows x64 | After launch (CI packages the tools, which build and hot reload a game's own C++) | Yes (4a) | Windows 10 version 2004 (May 2020) |
 | Linux x64 and arm64 | Done: CI packages the tools for both, built for glibc 2.28 or newer | Yes (4a) | glibc 2.31 (Ubuntu 20.04, Debian 11, Fedora 32 or newer) |
 | iOS | No | Yes (4b) | iOS 14 |
 | Android | No | Yes (4b) | Android 11 (API level 30) |
