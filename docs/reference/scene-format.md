@@ -1991,7 +1991,7 @@ there is no ambient light and colors stay as they are.
 | `sdfgi_cascades` | `4` | Cascades around the camera, each twice as far as the one before, from 1 to 8 |
 | `sdfgi_min_cell_size` | `0.2` | The nearest cascade's cell size in meters; each holds 128 cells across |
 | `sdfgi_y_scale` | `"75_percent"` | How far cascades reach up and down, as a share of across: `"50_percent"`, `"75_percent"` or `"100_percent"` |
-| `sdfgi_use_occlusion` | `false` | Probes behind walls light less, which cuts light leaks (not drawn yet) |
+| `sdfgi_use_occlusion` | `false` | Probes behind walls light less, which cuts light leaks |
 | `sdfgi_read_sky_light` | `true` | Rays that leave the cascades take the sky's light (or the ambient light) |
 | `sdfgi_bounce_feedback` | `0.5` | How much of the probes' light surfaces bounce again, from 0 to 1.99; `0` for one bounce |
 | `sdfgi_energy` | `1` | Multiplies its light, from 0 to 8 |

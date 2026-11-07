@@ -243,6 +243,19 @@ std::uint32_t probe_cells(std::uint32_t size) {
     return size / kSdfgiProbeDivisor;
 }
 
+// Which of the occlusion's eight parities a cascade's probe is: its world place's (Godot's
+// probe_world_offset + the probe) parity in x, y and z.
+std::uint32_t probe_parity(const SdfgiCascade& cascade, std::uint32_t size,
+                           const std::array<std::int32_t, 3>& probe) {
+    const auto occ = static_cast<std::int32_t>(probe_cells(size));
+    std::uint32_t parity = 0;
+    for (std::size_t a = 0; a < 3; ++a) {
+        parity |= static_cast<std::uint32_t>(((cascade.position.at(a) / occ) + probe.at(a)) & 1)
+                  << a;
+    }
+    return parity;
+}
+
 // --- Voxelizing (render_region, _render_sdfgi) -------------------------------------------------
 
 // How far a cell's box stops short of the next cell, so a triangle on the face between two cells
@@ -803,8 +816,20 @@ void light_cells(SdfgiState& state, std::size_t index, const std::vector<SdfgiLi
                     if ((cell.facing & (1U << k)) == 0) {
                         continue;
                     }
-                    const float weight = trilinear[0] * trilinear[1] * trilinear[2] *
-                                         std::max(0.0F, dot(kAnisoDir.at(k), probe_dir));
+                    float weight = trilinear[0] * trilinear[1] * trilinear[2] *
+                                   std::max(0.0F, dot(kAnisoDir.at(k), probe_dir));
+                    if (weight > 0.0F && !cascade.occlusion.empty()) {
+                        // How much the probe sees of the cell next to this one on that side
+                        // (a texel's center, clamped to the cascade as Godot's sampler is).
+                        std::array<std::int64_t, 3> next{};
+                        for (std::size_t a = 0; a < 3; ++a) {
+                            next.at(a) = std::clamp<std::int64_t>(
+                                cpos.at(a) + static_cast<std::int64_t>(kAnisoDir.at(k).at(a)), 0,
+                                static_cast<std::int64_t>(size) - 1);
+                        }
+                        weight *= sdfgi_occlusion(cascade, cs.grid.index(next[0], next[1], next[2]),
+                                                  probe_parity(cascade, size, probe));
+                    }
                     if (weight > 0.0F) {
                         accum.at(k) = add(
                             accum.at(k),
@@ -1162,6 +1187,258 @@ void scroll_probes(SdfgiCascade& cascade, const std::array<std::int32_t, 3>& pro
 
 } // namespace
 
+// --- Probe occlusion (sdfgi_preprocess.glsl's MODE_OCCLUSION and MODE_STORE) --------------------
+
+void make_sdfgi_occlusion(SdfgiCascade& cascade, std::uint32_t size, jobs::Pool* pool) {
+    const Grid grid{size};
+    // Godot's OCCLUSION_SIZE: the cells between probes. A region is the 2 * occ cells a side
+    // around one probe, with the probe at its local corner (occ, occ, occ).
+    const auto occ = static_cast<std::int64_t>(probe_cells(size));
+    const std::int64_t span = occ * 2;
+    const auto whole = static_cast<std::int64_t>(size);
+    cascade.occlusion.assign(grid.cells(), 0U);
+    if (occ == 0 || cascade.sums.size() != grid.cells()) {
+        return;
+    }
+    // Which sides each cell's geometry faces (0 for an empty cell or one outside the cascade).
+    const auto facing = [&](std::int64_t x, std::int64_t y, std::int64_t z) -> std::uint32_t {
+        if (!grid.inside(x, y, z)) {
+            return 0U;
+        }
+        const SdfgiCellSum& sum = cascade.sums[grid.index(x, y, z)];
+        return sum.count > 0 ? sum.facing : 0U;
+    };
+    // Godot's dst_occlusion images are R8: every store rounds to 8 bits.
+    std::vector<float> values(grid.cells(), 0.0F);
+    const std::array<std::int64_t, 3> probe_global{
+        cascade.position[0] / occ, cascade.position[1] / occ, cascade.position[2] / occ};
+    for (std::uint32_t index = 0; index < 8; ++index) {
+        // The probes of this world parity: every other probe from offset, as gi.cpp dispatches
+        // them (its probe_size + 1 regions, which is kSdfgiProbeDivisor / 2 + 1 at any size).
+        std::array<std::int64_t, 3> offset{};
+        for (std::size_t a = 0; a < 3; ++a) {
+            offset.at(a) = ((index >> a) & 1U) ^ static_cast<std::uint32_t>(probe_global.at(a) & 1);
+        }
+        constexpr std::int64_t kRegions = (kSdfgiProbeDivisor / 2) + 1;
+        const std::array<std::int64_t, 3> groups{kRegions - offset[0], kRegions - offset[1],
+                                                 kRegions - offset[2]};
+        // Regions don't overlap and read only their own cells, so they run at once.
+        const auto region_count = static_cast<std::size_t>(groups[0] * groups[1] * groups[2]);
+        for_each(region_count, pool, [&](std::size_t r) {
+            const auto ri = static_cast<std::int64_t>(r);
+            const std::array<std::int64_t, 3> region{ri % groups[0], (ri / groups[0]) % groups[1],
+                                                     ri / (groups[0] * groups[1])};
+            std::array<std::int64_t, 3> base{};
+            for (std::size_t a = 0; a < 3; ++a) {
+                base.at(a) = -occ + (region.at(a) * span) + (offset.at(a) * occ);
+            }
+            const auto in_grid = [&](std::int64_t x, std::int64_t y, std::int64_t z) {
+                return x >= 0 && y >= 0 && z >= 0 && x < whole && y < whole && z < whole;
+            };
+            // Local cell to the cascade's value and facing.
+            const auto value = [&](const std::array<std::int64_t, 3>& l) -> float& {
+                return values[grid.index(base[0] + l[0], base[1] + l[1], base[2] + l[2])];
+            };
+            const auto local_facing = [&](const std::array<std::int64_t, 3>& l) {
+                return facing(base[0] + l[0], base[1] + l[1], base[2] + l[2]);
+            };
+            const auto local_in_grid = [&](const std::array<std::int64_t, 3>& l) {
+                return in_grid(base[0] + l[0], base[1] + l[1], base[2] + l[2]);
+            };
+            // Flood out from the probe, a Manhattan distance a step (Godot's group_pos order;
+            // cells of a step read only cells of the step before).
+            for (std::int64_t step = 0; step <= (occ - 1) * 3; ++step) {
+                for (std::int64_t az = 0; az < occ; ++az) {
+                    for (std::int64_t ay = 0; ay < occ; ++ay) {
+                        const std::int64_t ax = step - ay - az;
+                        if (ax < 0 || ax >= occ) {
+                            continue;
+                        }
+                        const std::array<std::int64_t, 3> proc_abs{ax, ay, az};
+                        for (std::uint32_t i = 0; i < 8; ++i) {
+                            std::array<std::int64_t, 3> sign{};
+                            std::array<std::int64_t, 3> l{};
+                            for (std::size_t a = 0; a < 3; ++a) {
+                                const std::int64_t bit = (i >> a) & 1U;
+                                sign.at(a) = (bit * 2) - 1;
+                                l.at(a) = occ + (proc_abs.at(a) * sign.at(a)) - (1 - bit);
+                            }
+                            if (!local_in_grid(l)) {
+                                continue;
+                            }
+                            float o = 0.0F;
+                            if (local_facing(l) != 0) {
+                                o = 0.0F;
+                            } else if (step == 0) {
+                                o = 1.0F;
+                            } else {
+                                const std::array<std::int64_t, 3> read_dir{-sign[0], -sign[1],
+                                                                           -sign[2]};
+                                std::array<std::int64_t, 3> major{};
+                                if (ax < ay) {
+                                    major = az < ay ? std::array<std::int64_t, 3>{0, 1, 0}
+                                                    : std::array<std::int64_t, 3>{0, 0, 1};
+                                } else {
+                                    major = az < ax ? std::array<std::int64_t, 3>{1, 0, 0}
+                                                    : std::array<std::int64_t, 3>{0, 0, 1};
+                                }
+                                float avg = 0.0F;
+                                for (std::size_t a = 0; a < 3; ++a) {
+                                    std::array<std::int64_t, 3> read = l;
+                                    read.at(a) += read_dir.at(a);
+                                    if (proc_abs.at(a) == 0) {
+                                        for (std::size_t b = 0; b < 3; ++b) {
+                                            read.at(b) += major.at(b) * read_dir.at(b);
+                                        }
+                                    }
+                                    if (local_facing(read) == 0) {
+                                        if (local_in_grid(read)) {
+                                            o += value(read);
+                                            avg += 1.0F;
+                                        }
+                                    } else if (proc_abs.at(a) != 0) {
+                                        // Don't occlude from cells in the opposite octant.
+                                        avg += 1.0F;
+                                    }
+                                }
+                                if (avg > 0.0F) {
+                                    o /= avg;
+                                }
+                            }
+                            value(l) = unorm8(o);
+                        }
+                    }
+                }
+            }
+            // Where each local cell lies from the probe, without a zero: -occ to -1, 1 to occ.
+            const auto proc_pos = [&](const std::array<std::int64_t, 3>& l) {
+                std::array<std::int64_t, 3> p{};
+                for (std::size_t a = 0; a < 3; ++a) {
+                    p.at(a) = l.at(a) - occ;
+                    p.at(a) += p.at(a) >= 0 ? 1 : 0;
+                }
+                return p;
+            };
+            const auto each_cell = [&](const auto& visit) {
+                for (std::int64_t z = 0; z < span; ++z) {
+                    for (std::int64_t y = 0; y < span; ++y) {
+                        for (std::int64_t x = 0; x < span; ++x) {
+                            const std::array<std::int64_t, 3> l{x, y, z};
+                            if (local_in_grid(l)) {
+                                visit(l);
+                            }
+                        }
+                    }
+                }
+            };
+            // Solid cells take the light of the empty cells toward the probe on the sides they
+            // face, so they don't darken the surfaces they hold.
+            each_cell([&](const std::array<std::int64_t, 3>& l) {
+                const std::uint32_t f = local_facing(l);
+                if (f == 0) {
+                    return;
+                }
+                const std::array<std::int64_t, 3> p = proc_pos(l);
+                std::array<std::int64_t, 3> read_dir{};
+                std::array<bool, 3> valid{};
+                for (std::size_t a = 0; a < 3; ++a) {
+                    read_dir.at(a) = p.at(a) > 0 ? -1 : 1;
+                    const std::uint32_t pos_bit = (f >> a) & 1U;
+                    const std::uint32_t neg_bit = (f >> (a + 3)) & 1U;
+                    valid.at(a) = (read_dir.at(a) > 0 ? pos_bit : neg_bit) != 0;
+                }
+                float o = 0.0F;
+                float avg = 0.0F;
+                const auto take = [&](bool x, bool y, bool z) {
+                    const std::array<std::int64_t, 3> read{l[0] + (x ? read_dir[0] : 0),
+                                                           l[1] + (y ? read_dir[1] : 0),
+                                                           l[2] + (z ? read_dir[2] : 0)};
+                    if (local_facing(read) == 0 && local_in_grid(read)) {
+                        o += value(read);
+                        avg += 1.0F;
+                    }
+                };
+                // Sides, then edges, then the corner, as Godot reads them.
+                if (valid[0]) {
+                    take(true, false, false);
+                }
+                if (valid[1]) {
+                    take(false, true, false);
+                }
+                if (valid[2]) {
+                    take(false, false, true);
+                }
+                if (valid[1] && valid[2]) {
+                    take(false, true, true);
+                }
+                if (valid[0] && valid[2]) {
+                    take(true, false, true);
+                }
+                if (valid[0] && valid[1]) {
+                    take(true, true, false);
+                }
+                if (valid[0] && valid[1] && valid[2]) {
+                    take(true, true, true);
+                }
+                if (avg > 0.0F) {
+                    o /= avg;
+                }
+                value(l) = unorm8(o);
+            });
+            // Empty cells next to solid ones see the probe as much as those face it.
+            each_cell([&](const std::array<std::int64_t, 3>& l) {
+                if (local_facing(l) != 0) {
+                    return;
+                }
+                const std::array<std::int64_t, 3> p = proc_pos(l);
+                float visible = 0.0F;
+                float total = 0.0F;
+                const auto test = [&](std::size_t a, std::int64_t dir, std::uint32_t mask) {
+                    std::array<std::int64_t, 3> read = l;
+                    read.at(a) += dir;
+                    const std::uint32_t m = local_facing(read);
+                    if (m != 0 && local_in_grid(read)) {
+                        total += 1.0F;
+                        if ((m & mask) != 0) {
+                            visible += 1.0F;
+                        }
+                    }
+                };
+                for (std::size_t a = 0; a < 3; ++a) {
+                    const std::int64_t dir = p.at(a) > 0 ? 1 : -1;
+                    if (std::abs(p.at(a)) < occ) {
+                        // Away from the probe: a cell facing back toward it.
+                        test(a, dir, dir > 0 ? 8U << a : 1U << a);
+                    }
+                }
+                for (std::size_t a = 0; a < 3; ++a) {
+                    const std::int64_t dir = p.at(a) > 0 ? 1 : -1;
+                    if (std::abs(p.at(a)) == 1) {
+                        // Near the probe's plane, the other way too.
+                        test(a, -dir, dir < 0 ? 8U << a : 1U << a);
+                    }
+                }
+                if (total > 0.0F) {
+                    value(l) = unorm8(value(l) * (visible / total));
+                }
+            });
+        });
+        // MODE_STORE: 4 bits a probe parity.
+        for (std::size_t c = 0; c < grid.cells(); ++c) {
+            const auto nibble =
+                static_cast<std::uint32_t>(std::clamp(values[c] * 15.0F, 0.0F, 15.0F));
+            cascade.occlusion[c] |= nibble << (index * 4U);
+        }
+    }
+}
+
+float sdfgi_occlusion(const SdfgiCascade& cascade, std::size_t cell, std::uint32_t parity) {
+    if (cell >= cascade.occlusion.size()) {
+        return 1.0F;
+    }
+    return static_cast<float>((cascade.occlusion[cell] >> (parity * 4U)) & 0xFU) / 15.0F;
+}
+
 float sdfgi_y_mult(const Sdfgi3D& settings) {
     return settings.y_scale > 0.0F ? settings.y_scale : 1.0F;
 }
@@ -1326,6 +1603,11 @@ void update_sdfgi(SdfgiState& state, const Scene3D& scene, const Float3& camera,
     for (std::size_t c = 0; c < state.cascades.size(); ++c) {
         if (dirty[c]) {
             voxelize(state.cascades[c], size, y_mult, paths, textures, pool, scrolls[c]);
+            if (settings.use_occlusion) {
+                make_sdfgi_occlusion(state.cascades[c], size, pool);
+            } else {
+                state.cascades[c].occlusion.clear();
+            }
         }
     }
     const std::vector<SdfgiLight> lights = sdfgi_lights(scene, y_mult);
@@ -1365,8 +1647,24 @@ void probe_light(const SdfgiState& state, std::size_t cascade, Float3 cascade_po
         const Float3 probe_dir = normalize(scale(probe_to_pos, -1.0F));
         const Float3 trilinear{1.0F - std::abs(probe_to_pos[0]), 1.0F - std::abs(probe_to_pos[1]),
                                1.0F - std::abs(probe_to_pos[2])};
-        const float weight =
+        float weight =
             trilinear[0] * trilinear[1] * trilinear[2] * std::max(0.005F, dot(normal, probe_dir));
+        if (!c.occlusion.empty()) {
+            // How much the probe sees of the point, read within its spacing of it.
+            const auto occ = static_cast<float>(probe_cells(state.settings.cascade_size));
+            const float clamp = (occ - 0.5F) / occ;
+            Float3 at{};
+            for (std::size_t a = 0; a < 3; ++a) {
+                const auto p = static_cast<float>(probe.at(a));
+                at.at(a) = std::clamp(cascade_pos.at(a), p - clamp, p + clamp) * occ;
+            }
+            const std::uint32_t parity = probe_parity(c, state.settings.cascade_size, probe);
+            const float occlusion = sample3<std::array<float, 1>>(
+                Grid{state.settings.cascade_size}, at, [&](std::size_t i) {
+                    return std::array<float, 1>{sdfgi_occlusion(c, i, parity)};
+                })[0];
+            weight *= std::max(occlusion, 0.01F);
+        }
         const Float3 d = probe_texel(c, c.irradiance, probe, normal);
         diffuse_accum = add(diffuse_accum, scale(d, weight));
         weight_accum += weight;
