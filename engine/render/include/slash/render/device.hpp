@@ -337,6 +337,17 @@ struct Material3D {
     std::array<float, 2> uv1_scale{1.0F, 1.0F};
     std::array<float, 2> uv1_offset{0.0F, 0.0F};
     bool disable_fog = false; // the scene's fog leaves it alone
+    // StandardMaterial3D's rim: each light also lights the edges facing away from the camera,
+    // rim_tint of the way from white to the albedo. 0 for none.
+    float rim = 0.0F;
+    float rim_tint = 0.0F;
+    // Its clearcoat: a glossy coat over the surface, lit about the geometry's normal (not the
+    // normal map's), its highlight as rough as clearcoat_roughness (0 to 1). 0 for none.
+    float clearcoat = 0.0F;
+    float clearcoat_roughness = 0.0F;
+    // Its anisotropy, -1 to 1: highlights stretched along the tangent (above 0) or across it, as
+    // brushed metal and hair. 0 for none.
+    float anisotropy = 0.0F;
     // With terrain.enabled, the terrain's maps and layers give the albedo, roughness, normal and
     // holes, in place of the textures above; albedo, metallic, specular and the rest still count.
     TerrainShading terrain{}; // NOLINT(readability-redundant-member-init): may be left out

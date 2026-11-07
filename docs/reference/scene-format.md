@@ -1763,10 +1763,17 @@ Godot's do in 3D, unless `texture_repeat` is off.
 | `cull_mode` | `"back"` | Faces not drawn: `"back"`, `"front"` or `"disabled"` (both sides drawn) |
 | `uv1_scale`, `uv1_offset` | `[1, 1, 1]`, `[0, 0, 0]` | Texture coordinates are scaled, then moved (x and y are used) |
 | `disable_fog` | `false` | The environment's fog leaves it alone |
+| `rim_enabled`, `rim`, `rim_tint` | `false`, `1`, `0.5` | Each light also lights the edges facing away from the camera, as skin and cloth catch light, from white toward the albedo by `rim_tint`; sharper as roughness falls |
+| `clearcoat_enabled`, `clearcoat`, `clearcoat_roughness` | `false`, `1`, `0.5` | A glossy coat over the surface (car paint, lacquer, an eye's wet layer), lit about the mesh's own normal rather than the normal map's, with its own highlight and its own reflection of the sky |
+| `anisotropy_enabled`, `anisotropy` | `false`, `0` | Highlights stretched along the mesh's tangents (above 0) or across them (below 0, down to -1), as hair cards and brushed metal; reflections bend the same way |
 | `billboard_mode`, `billboard_keep_scale` | `"disabled"`, `false` | Face the camera: `"enabled"`, `"fixed_y"` (turned about y only) or `"particles"` (turned by each [3D particle](#3d-particles)'s angle); `billboard_keep_scale` keeps the mesh's scale, which billboards otherwise drop |
 | `particles_anim_h_frames`, `particles_anim_v_frames`, `particles_anim_loop` | `1`, `1`, `false` | With `"particles"`, the albedo texture's columns and rows of frames each particle steps through, and whether they start again after the last |
 | `texture_filter` | `"linear_with_mipmaps"` | `"nearest"` and `"nearest_with_mipmaps"` keep texels sharp |
 | `texture_repeat` | `true` | Textures tile past their edges; `false` stretches the edge texels, as a glTF sampler that clamps |
+
+Rim, clearcoat and anisotropy follow Godot's scene shader, on every renderer and device. Their
+textures (`rim_texture`, `clearcoat_texture`, `anisotropy_flowmap`) aren't read yet: the
+highlight runs along Godot's default flow map.
 
 Opaque and alpha scissor meshes draw nearest first, then alpha meshes farthest first, as Godot
 sorts them. A texture that can't load is left out, with a warning and a problem in
