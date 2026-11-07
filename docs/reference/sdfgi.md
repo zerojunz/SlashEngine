@@ -27,6 +27,11 @@ twice as large, so it reaches twice as far. Heights count `y_scale` times as muc
 3. **A distance field.** Each empty cell keeps its distance to the nearest solid cell, 1 more and
    rounded, up to 255, in a byte, as Godot's R8 texels. Godot finds it by jump flooding; here an
    exact Euclidean distance transform does, which jump flooding approximates.
+   With `sdfgi_use_occlusion`, each probe also floods out through the empty cells within a probe
+   spacing of it, a step of Manhattan distance at a time, to say how much of each cell it sees:
+   solid cells take their empty neighbors' on the sides they face, and empty cells next to solid
+   ones see it by how many of those face it (`sdfgi_preprocess.glsl`'s `MODE_OCCLUSION`). The
+   result is kept as 4 bits per probe parity, as Godot's occlusion texture.
 4. **The solid cells' light.** Each light is traced through the distance field from the cell, with
    Godot's bias, and lights the sides the cell faces by how much they face it, times its albedo
    (`sdfgi_direct_light.glsl`). Emission and `sdfgi_bounce_feedback` of the probes' light from
@@ -44,7 +49,8 @@ twice as large, so it reaches twice as far. Heights count `y_scale` times as muc
 6. **Pixels read the probes.** After the depth and normal prepass, each opaque pixel finds the
    finest cascade that holds it, blends into the next one near its edge, and takes the eight
    probes around it, each weighted by distance and by how much it faces the pixel, along its
-   normal for ambient light and, when it is smooth, along its reflection. That is `gi.glsl`'s
+   normal for ambient light and, when it is smooth, along its reflection, and with occlusion by
+   how much it sees of the pixel's place. That is `gi.glsl`'s
    `sdfgi_process`, and the result covers the sky's ambient light and reflections by how much the
    cascades hold the pixel, as Godot's GI buffers do. VoxelGIs and reflection probes still go over
    it.
@@ -83,7 +89,7 @@ The Godot importer reads them from `project.godot`. In C++, `render::Scene3D::sd
 `frames_to_update_light`), plus the cascade size (128), which only C++ sets.
 
 `examples/sdfgi-3d` lights a room with it and repaints a wall.
-`tests/test_sdfgi.cpp` checks the light bounces, the cascades move and scroll and the result is the same on
+`tests/test_sdfgi.cpp` checks the light bounces, the cascades move and scroll, walls occlude probes and the result is the same on
 any number of threads.
 
 ## Not done yet
@@ -100,6 +106,4 @@ This is a spike to measure the idea. It still does these things the simple way:
   culling, where Godot draws every mesh in a cascade's box.
 - **No textures' changes.** A texture written again (a video or a viewport) doesn't make the
   cells again.
-- **No probe occlusion.** `sdfgi_use_occlusion` is kept, but Godot's occlusion texture isn't
-  made yet, so probes behind a wall can leak light through it.
 - **No debug views.** Godot's probe and cascade views are not ported.

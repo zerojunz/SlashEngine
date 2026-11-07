@@ -52,7 +52,8 @@
           "background_mode": "color",
           "sdfgi_cascades": 1,
           "sdfgi_enabled": true,
-          "sdfgi_min_cell_size": 0.15
+          "sdfgi_min_cell_size": 0.15,
+          "sdfgi_use_occlusion": true
         }
       }
     },

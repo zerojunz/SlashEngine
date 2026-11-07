@@ -325,3 +325,72 @@ TEST_CASE("SDFGI's settings read project.json's as Godot's") {
     CHECK(read(R"({"global_illumination": {"voxel_gi": {"quality": "high"}}})") == defaults);
     CHECK(read("{}") == defaults);
 }
+
+TEST_CASE("SDFGI's probe occlusion floods out from each probe and stops at walls") {
+    // A cascade of 64 cells (a probe every 4) at the origin, with a wall one cell thick across x
+    // at cell 34, facing both ways.
+    constexpr std::uint32_t kSize = 64;
+    render::detail::SdfgiCascade cascade;
+    cascade.sums.resize(std::size_t{kSize} * kSize * kSize);
+    const auto index = [](std::size_t x, std::size_t y, std::size_t z) {
+        return (((z * kSize) + y) * kSize) + x;
+    };
+    for (std::size_t z = 0; z < kSize; ++z) {
+        for (std::size_t y = 0; y < kSize; ++y) {
+            cascade.sums[index(34, y, z)] = {.count = 1, .facing = 1U | 8U};
+        }
+    }
+    render::detail::make_sdfgi_occlusion(cascade, kSize, nullptr);
+    REQUIRE(cascade.occlusion.size() == cascade.sums.size());
+    // Probe 8 (between cells 31 and 32 on each axis) is of parity 0; probe 9 (between 35 and
+    // 36 in x) of parity 1.
+    const auto seen = [&](std::size_t x, std::uint32_t parity) {
+        return render::detail::sdfgi_occlusion(cascade, index(x, 32, 32), parity);
+    };
+    // Probe 8 sees the cells on its side of the wall and the wall's face toward it, and not
+    // the cell behind the wall.
+    CHECK(seen(32, 0) == 1.0F);
+    CHECK(seen(33, 0) == 1.0F);
+    CHECK(seen(34, 0) == 1.0F);
+    CHECK(seen(35, 0) == 0.0F);
+    // Probe 9, on the other side, sees that cell and not those on probe 8's side.
+    CHECK(seen(35, 1) == 1.0F);
+    CHECK(seen(33, 1) == 0.0F);
+    // The same on any number of threads.
+    slash::jobs::Pool pool(4);
+    render::detail::SdfgiCascade shared = cascade;
+    render::detail::make_sdfgi_occlusion(shared, kSize, &pool);
+    CHECK(shared.occlusion == cascade.occlusion);
+    // With no wall, every probe sees every cell within its spacing.
+    render::detail::SdfgiCascade open;
+    open.sums.resize(cascade.sums.size());
+    render::detail::make_sdfgi_occlusion(open, kSize, nullptr);
+    CHECK(std::all_of(open.occlusion.begin(), open.occlusion.end(),
+                      [](std::uint32_t packed) { return packed == 0xFFFFFFFFU; }));
+}
+
+TEST_CASE("SDFGI with occlusion keeps a wall's bounce from leaking behind it") {
+    auto device = render::create_software_device();
+    // Looking at the floor behind the wall, in its shadow, from beyond it.
+    render::Scene3D leaky = lit_cube();
+    leaky.camera = render::look_at({4.5F, 4.0F, 0.0F}, {2.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F});
+    render::Scene3D occluded = leaky;
+    occluded.sdfgi.use_occlusion = true;
+    const Image without = draw_frames(*device, leaky, 6, Stand::Wall);
+    const Image with = draw_frames(*device, occluded, 6, Stand::Wall);
+    // Without occlusion, the probes on the sunlit side light the floor behind the wall through
+    // it; with it, they don't.
+    constexpr std::array<std::uint32_t, 2> kBehind{12, 15};
+    CHECK(channel(without, kBehind[0], kBehind[1], 0) >= 20);
+    CHECK(channel(with, kBehind[0], kBehind[1], 0) <= 4);
+    CHECK(greens(with) < greens(without));
+    // The floor in front of the wall's lit face still turns red.
+    render::Scene3D front = lit_cube();
+    front.sdfgi.use_occlusion = true;
+    const Image lit = draw_frames(*device, front, 6, Stand::Wall);
+    CHECK(channel(lit, kBounce[0], kBounce[1], 0) - channel(lit, kBounce[0], kBounce[1], 1) > 4);
+    // The same on any number of threads.
+    slash::jobs::Pool pool(4);
+    auto shared = render::create_software_device(&pool);
+    CHECK(draw_frames(*shared, occluded, 6, Stand::Wall).pixels == with.pixels);
+}

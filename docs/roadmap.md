@@ -1111,8 +1111,8 @@ launch rows and the after-launch features above.
 - Fully dynamic global illumination at Lumen quality, after probe GI ships. Spike: Godot 4.6's
   SDFGI ported to the CPU (cascades of distance fields that follow the camera, lit cells and
   probes with spherical harmonics history), behind `WorldEnvironment.sdfgi_enabled` on the
-  software device ([sdfgi.md](reference/sdfgi.md)), its cascades scrolling; the GPU passes and
-  probe occlusion remain
+  software device ([sdfgi.md](reference/sdfgi.md)), its cascades scrolling and its probes
+  occluded by walls; the GPU passes remain
 - Digital humans in the style of MetaHuman; out of scope for releases. Research note:
   [digital-humans.md](reference/digital-humans.md). Blend shapes done (glTF morph targets,
   `MeshInstance3D.blend_shapes` and their animation tracks) and hair and eye shading (Godot's rim,
