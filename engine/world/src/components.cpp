@@ -3131,7 +3131,22 @@ void register_3d_components(ComponentRegistry& registry) {
                   {.doc = "Rows of frames in albedo_texture, for particles.", .min = 1, .max = 128})
         .describe("particles_anim_loop",
                   {.doc = "Frames past the last start again from the first; false stays on the "
-                          "last."});
+                          "last."})
+        .describe("rim_enabled", {.doc = "Lights its edges, as skin and cloth catch light."})
+        .describe("rim", {.doc = "How bright the rim is.", .min = 0, .max = 1})
+        .describe("rim_tint",
+                  {.doc = "0 lights the rim white, 1 in the albedo's color.", .min = 0, .max = 1})
+        .describe("clearcoat_enabled",
+                  {.doc = "Adds a glossy coat, as car paint, lacquer or the wet of an eye."})
+        .describe("clearcoat", {.doc = "How strong the coat is.", .min = 0, .max = 1})
+        .describe(
+            "clearcoat_roughness",
+            {.doc = "0 for a sharp highlight on the coat, 1 for a soft one.", .min = 0, .max = 1})
+        .describe("anisotropy_enabled",
+                  {.doc = "Stretches highlights along the mesh's tangents, as hair and brushed "
+                          "metal."})
+        .describe("anisotropy",
+                  {.doc = "Above 0 along the tangents, below 0 across them.", .min = -1, .max = 1});
 
     registry.add<Camera3D>()
         .set_doc("What the 3D world is seen through, as Godot's Camera3D, looking down the "

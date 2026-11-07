@@ -726,7 +726,12 @@ Result<void> check_material_3d(const Material3D& material, TextureId target, con
                  m.lightmap.uv_rect[1],
                  m.lightmap.uv_rect[2],
                  m.lightmap.uv_rect[3],
-                 m.lightmap.exposure})) {
+                 m.lightmap.exposure,
+                 m.rim,
+                 m.rim_tint,
+                 m.clearcoat,
+                 m.clearcoat_roughness,
+                 m.anisotropy})) {
         return make_error(ErrorCode::InvalidArgument, "a 3D material's numbers are finite");
     }
     for (const std::array<float, 3>& coefficient : m.capture.sh) {

@@ -419,6 +419,11 @@ struct StandardMaterial3D {
     std::string emission_texture;
     bool normal_enabled = false;
     float normal_scale = 1.0F;
+    float rim = 1.0F;
+    float rim_tint = 0.5F;
+    float clearcoat = 1.0F;
+    float clearcoat_roughness = 0.5F;
+    float anisotropy = 0.0F;
     // With billboard_mode "particles", the albedo texture's frames, which each particle steps
     // through as its anim_speed and anim_offset say, as Godot's particles_anim_*; with
     // particles_anim_loop, frames past the last start again from the first.
@@ -437,6 +442,15 @@ struct StandardMaterial3D {
     bool disable_fog = false;   // the WorldEnvironment's fog leaves it alone
     bool billboard_keep_scale = false;
     bool particles_anim_loop = false;
+    // Godot's rim (rim_enabled, rim, rim_tint): each light also lights the edges facing away
+    // from the camera, rim_tint of the way from white to the albedo.
+    bool rim_enabled = false;
+    // Godot's clearcoat (clearcoat_enabled, clearcoat, clearcoat_roughness): a glossy coat lit
+    // about the mesh's own normal, not the normal map's.
+    bool clearcoat_enabled = false;
+    // Godot's anisotropy (anisotropy_enabled, anisotropy): highlights stretched along the
+    // tangent (above 0) or across it.
+    bool anisotropy_enabled = false;
 
     friend bool operator==(const StandardMaterial3D&, const StandardMaterial3D&) = default;
 };
@@ -447,7 +461,8 @@ SLASH_COMPONENT(StandardMaterial3D, transparency, alpha_scissor_threshold, blend
                 emission_energy_multiplier, emission_texture, normal_enabled, normal_scale,
                 normal_texture, uv1_scale, uv1_offset, texture_filter, texture_repeat, disable_fog,
                 billboard_mode, billboard_keep_scale, particles_anim_h_frames,
-                particles_anim_v_frames, particles_anim_loop)
+                particles_anim_v_frames, particles_anim_loop, rim_enabled, rim, rim_tint,
+                clearcoat_enabled, clearcoat, clearcoat_roughness, anisotropy_enabled, anisotropy)
 
 // What the 3D world is seen through, as Godot's Camera3D: it looks down its entity's -z. The
 // world is seen through the current camera: the first with current set, else the first one,

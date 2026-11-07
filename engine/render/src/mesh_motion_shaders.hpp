@@ -2440,9 +2440,11 @@ cbuffer Surface : register(b0, space3) {
     uint4 options;
     float4 terrain_uv;      // each ground layer's tiling: the maps' resolution over its uv_scale
     float4 terrain_opacity; // how much the color map tints each ground layer
-    float4 lightmap;        // the lightmap's exposure, then 1 for the bicubic filter
-    float4 capture[9];      // the light probes' spherical harmonics, RGB
-    float4 voxel_gi;        // how many of voxel_gis it traces
+    // The lightmap's exposure, then 1 for the bicubic filter; then the rim and its tint.
+    float4 lightmap;
+    float4 capture[9]; // the light probes' spherical harmonics, RGB
+    // How many of voxel_gis it traces; then the clearcoat, its roughness and the anisotropy.
+    float4 voxel_gi;
     VoxelGI voxel_gis[2];
 };
 
@@ -2479,10 +2481,10 @@ cbuffer Scene : register(b1, space3) {
     // view depth (how many over the far plane's distance).
     float4 cluster;
     // 1 when screen_texture's layer 0 holds the frame's SSAO, its light affect and its AO channel
-    // affect, then 1 when its layer 1 holds its SSR.
-    float4 ssao;
 )hlsl",
-R"hlsl(    float4 view_rows[3]; // the world to the camera's space, a row each, for normals
+R"hlsl(    // affect, then 1 when its layer 1 holds its SSR.
+    float4 ssao;
+    float4 view_rows[3]; // the world to the camera's space, a row each, for normals
     // Forward+'s reflection probes: how many in probes, the level the roughest surfaces read, and
     // the exposure their light is multiplied by.
     float4 reflections;
@@ -2720,10 +2722,10 @@ float4 fog_process(float3 world) {
     if (fog.y > 0.001) {
         float3 view = distance > 0.0 ? to_point / distance : (float3)0.0;
         uint count = (uint)camera.w;
-        for (uint i = 0u; i < count; ++i) {
-            if (lights[i].direction.w == kDirectional) {
 )hlsl",
-R"hlsl(                float amount = pow(max(dot(view, normalize(lights[i].direction.xyz)), 0.0), 8.0);
+R"hlsl(        for (uint i = 0u; i < count; ++i) {
+            if (lights[i].direction.w == kDirectional) {
+                float amount = pow(max(dot(view, normalize(lights[i].direction.xyz)), 0.0), 8.0);
                 color += lights[i].color.rgb * amount * fog.y;
             }
         }
@@ -2827,16 +2829,62 @@ float v_ggx(float n_dot_l, float n_dot_v, float alpha) {
     return 0.5 / lerp(2.0 * n_dot_l * n_dot_v, n_dot_l + n_dot_v, alpha);
 }
 
-// light_compute in Godot's scene.glsl, with Burley diffuse and Schlick-GGX specular, its defaults.
+float d_ggx_anisotropic(float cos_theta_m, float alpha_x, float alpha_y, float cos_phi,
+                        float sin_phi) {
+    float alpha2 = alpha_x * alpha_y;
+    float3 v = float3(alpha_y * cos_phi, alpha_x * sin_phi, alpha2 * cos_theta_m);
+    float v2 = dot(v, v);
+    float w2 = alpha2 / v2;
+    return alpha2 * w2 * w2 * (1.0 / kPi);
+}
+
+float v_ggx_anisotropic(float alpha_x, float alpha_y, float t_dot_v, float t_dot_l, float b_dot_v,
+                        float b_dot_l, float n_dot_v, float n_dot_l) {
+    float lambda_v = n_dot_l * length(float3(alpha_x * t_dot_v, alpha_y * b_dot_v, n_dot_v));
+    float lambda_l = n_dot_v * length(float3(alpha_x * t_dot_l, alpha_y * b_dot_l, n_dot_l));
+    return saturate(0.5 / (lambda_v + lambda_l));
+}
+
+// StandardMaterial3D's rim, clearcoat and anisotropy (0 where they are off), and what they
+// shade with: the albedo the rim is tinted toward, the geometry's normal the clearcoat takes in
+// place of the normal map's, and the tangent and binormal the highlight stretches along.
+struct Layers {
+    float rim;
+    float rim_tint;
+    float clearcoat;
+    float clearcoat_roughness;
+    float anisotropy;
+    float3 albedo;
+    float3 geometry;
+    float3 tangent;
+    float3 binormal;
+};
+
+// light_compute in Godot's scene.glsl, with Burley diffuse and Schlick-GGX specular, its defaults,
+// and the rim, clearcoat and anisotropy of layers.
 void light_compute(float3 n, float3 l, float3 v, float3 light_color, float attenuation, float3 f0,
-                   float roughness, float metallic, float specular_amount,
+                   float roughness, float metallic, float specular_amount, Layers layers,
                    inout float3 diffuse_light, inout float3 specular_light) {
     float n_dot_l = min(dot(n, l), 1.0);
     float c_n_dot_l = max(n_dot_l, 0.0);
     float c_n_dot_v = max(dot(n, v), 1e-4);
+    if (layers.rim > 0.0) {
+        float rim_light = pow(max(1e-4, 1.0 - c_n_dot_v), max(0.0, (1.0 - roughness) * 16.0));
+        diffuse_light += rim_light * layers.rim *
+                         lerp((float3)1.0, layers.albedo, layers.rim_tint) * light_color;
+    }
     float3 h = normalize(v + l);
     float c_n_dot_h = clamp(dot(n, h), 0.0, 1.0);
     float c_l_dot_h = clamp(dot(l, h), 0.0, 1.0);
+    if (layers.clearcoat > 0.0) {
+        // The clearcoat ignores the normal map, as Godot's takes the vertex normal.
+        float cc_n_dot_h = clamp(dot(layers.geometry, h), 0.0, 1.0);
+        float dr = d_ggx(cc_n_dot_h, lerp(0.001, 0.1, layers.clearcoat_roughness));
+        float gr = 0.25 / (c_l_dot_h * c_l_dot_h + 1e-4);
+        float fr = lerp(0.04, 1.0, schlick_fresnel(c_l_dot_h));
+        float clearcoat_brdf_nl = layers.clearcoat * gr * fr * dr * c_n_dot_l;
+        specular_light += clearcoat_brdf_nl * light_color * attenuation * specular_amount;
+    }
     if (metallic < 1.0) {
         float fd90_minus_1 = 2.0 * c_l_dot_h * c_l_dot_h * roughness - 0.5;
         float fd_v = 1.0 + fd90_minus_1 * schlick_fresnel(c_n_dot_v);
@@ -2846,8 +2894,21 @@ void light_compute(float3 n, float3 l, float3 v, float3 light_color, float atten
     }
     if (roughness > 0.0) {
         float alpha_ggx = roughness * roughness;
-        float d = d_ggx(c_n_dot_h, alpha_ggx);
-        float g = v_ggx(c_n_dot_l, c_n_dot_v, alpha_ggx);
+        float d;
+        float g;
+        if (layers.anisotropy != 0.0) {
+            float aspect = sqrt(1.0 - layers.anisotropy * 0.9);
+            float ax = alpha_ggx / aspect;
+            float ay = alpha_ggx * aspect;
+            float3 t = layers.tangent;
+            float3 b = layers.binormal;
+            d = d_ggx_anisotropic(c_n_dot_h, ax, ay, dot(t, h), dot(b, h));
+            g = v_ggx_anisotropic(ax, ay, dot(t, v), dot(t, l), dot(b, v), dot(b, l), c_n_dot_v,
+                                  c_n_dot_l);
+        } else {
+            d = d_ggx(c_n_dot_h, alpha_ggx);
+            g = v_ggx(c_n_dot_l, c_n_dot_v, alpha_ggx);
+        }
         float c_l_dot_h5 = schlick_fresnel(c_l_dot_h);
         float f90 = clamp(50.0 * f0.g, 0.0, 1.0);
         float3 f = f0 + (f90 - f0) * c_l_dot_h5;
@@ -2931,7 +2992,8 @@ float light_shadow(bool directional, uint slot, float3 world, float3 normal, flo
     uint cascade = 0u;
     float blend = 0.0;
     float view_z = 0.0;
-    float3 base_bias = (float3)0.0;
+)hlsl",
+R"hlsl(    float3 base_bias = (float3)0.0;
     float3 p = world;
     uint face = 0u;
     float taps = filters.y;
@@ -3002,8 +3064,7 @@ float light_shadow(bool directional, uint slot, float3 world, float3 normal, flo
         }
     }
     if (!directional) {
-)hlsl",
-R"hlsl(        return lerp(1.0, shadow, positional_shadows[slot].params.y);
+        return lerp(1.0, shadow, positional_shadows[slot].params.y);
     }
     if (lookups == 2u) {
         shadow = lerp(shadow, next, blend);
@@ -3054,8 +3115,8 @@ struct RayShadows {
 // draw's layers, with the shading normal and the one shadows offset along (geometry). A pixel with
 // ray-traced shadows takes a light's with a ray slot from them in place of its shadow map's.
 void add_light(Light light, float3 world, float3 normal, float3 geometry, float3 view, float3 f0,
-               float roughness, float metallic, RayShadows rays, inout float3 diffuse_light,
-               inout float3 specular_light) {
+               float roughness, float metallic, Layers layers, RayShadows rays,
+               inout float3 diffuse_light, inout float3 specular_light) {
     if (((uint)light.params.w & options.z) == 0u) {
         return;
     }
@@ -3079,6 +3140,8 @@ void add_light(Light light, float3 world, float3 normal, float3 geometry, float3
             attenuation *= 1.0 - pow(rim, light.params.z);
         }
     }
+    // The rim fades with distance but not in shadow, as Godot's.
+    layers.rim *= attenuation;
     float ray = light.shadow.w;
 #ifdef CLUSTERED
     if (rays.on && ray > 0.0) {
@@ -3099,7 +3162,7 @@ void add_light(Light light, float3 world, float3 normal, float3 geometry, float3
                game_albedo, metallic, roughness, diffuse_light, specular_light);
 #else
     light_compute(normal, toward, view, light.color.rgb, attenuation, f0, roughness, metallic,
-                  light.color.w, diffuse_light, specular_light);
+                  light.color.w, layers, diffuse_light, specular_light);
 #endif
 }
 
@@ -3206,7 +3269,8 @@ void surface_steps(float3 world, float3 geometry, out float3 dx, out float3 dy) 
     float dw2 = dot(clip_rows[2].xyz, t2);
     float2 s1 = float2((dot(clip_rows[0].xyz, t1) * w - x * dw1) / (w * w) * (0.5 * screen.x),
                        -((dot(clip_rows[1].xyz, t1) * w - y * dw1) / (w * w)) * (0.5 * screen.y));
-    float2 s2 = float2((dot(clip_rows[0].xyz, t2) * w - x * dw2) / (w * w) * (0.5 * screen.x),
+)hlsl",
+R"hlsl(    float2 s2 = float2((dot(clip_rows[0].xyz, t2) * w - x * dw2) / (w * w) * (0.5 * screen.x),
                        -((dot(clip_rows[1].xyz, t2) * w - y * dw2) / (w * w)) * (0.5 * screen.y));
     float det = s1.x * s2.y - s2.x * s1.y;
     if (!(abs(det) > 1.0e-20)) {
@@ -3270,8 +3334,7 @@ void apply_decal(Decal decal, float3 world, float3 geometry, float3 dx, float3 d
             n.xy = n.xy * float2(2.0, -2.0) - float2(1.0, -1.0);
             n.z = sqrt(max(0.0, 1.0 - dot(n.xy, n.xy)));
             float3 turned = float3(dot(decal.normal_rows[0].xyz, n.xzy),
-)hlsl",
-R"hlsl(                                   dot(decal.normal_rows[1].xyz, n.xzy),
+                                   dot(decal.normal_rows[1].xyz, n.xzy),
                                    dot(decal.normal_rows[2].xyz, n.xzy));
             normal = normalize(lerp(normal, turned, albedo.a));
         }
@@ -3462,7 +3525,8 @@ float4 voxel_cone_trace(uint index, float3 cell_size, float max_distance, float3
 
 // voxel_cone_trace_45_degrees: a cone of 45 degrees each side, each step as far as its radius
 // and a level coarser.
-float4 voxel_cone_trace_45_degrees(uint index, float3 cell_size, float max_distance, float3 pos,
+)hlsl",
+R"hlsl(float4 voxel_cone_trace_45_degrees(uint index, float3 cell_size, float max_distance, float3 pos,
                                    float3 direction, float bias) {
     float dist = bias;
     float4 color = (float4)0.0;
@@ -3520,8 +3584,7 @@ void voxel_gi_compute(uint index, float3 world, float3 normal, float3 reflection
     float4 light = (float4)0.0;
     if (scene_voxel_gi.y != 0.0) {
         for (uint i = 0u; i < 6u; ++i) {
-)hlsl",
-R"hlsl(            float3 c = kHighQualityCones[i];
+            float3 c = kHighQualityCones[i];
             float3 turned = tangent * c.x + bitangent * c.y + normal * c.z;
             float3 dir = normalize(float3(dot(gi.rows[0].xyz, turned), dot(gi.rows[1].xyz, turned),
                                           dot(gi.rows[2].xyz, turned)));
@@ -3636,6 +3699,34 @@ float3 capture_light(float3 n) {
            0.429043 * capture[8].rgb * (n.x * n.x - n.y * n.y);
 }
 
+// The material's rim, clearcoat and anisotropy at a pixel. An anisotropic one's highlight runs
+// along Godot's default flow map, the tangent turned by its (1, 128 / 255) texel.
+Layers material_layers(VertexOutput input, float3 albedo, float3 geometry) {
+    Layers layers;
+    layers.rim = lightmap.z;
+    layers.rim_tint = lightmap.w;
+    layers.clearcoat = voxel_gi.y;
+    layers.clearcoat_roughness = voxel_gi.z;
+    layers.anisotropy = voxel_gi.w;
+    layers.albedo = albedo;
+    layers.geometry = geometry;
+    layers.tangent = (float3)0.0;
+    layers.binormal = (float3)0.0;
+    if (layers.anisotropy != 0.0) {
+        float3 tangent = normalize(input.tangent);
+        float3 binormal = normalize(input.binormal);
+        if (layers.anisotropy > 0.01) {
+            float2 flow = float2(1.0, 128.0 / 255.0 * 2.0 - 1.0);
+            layers.tangent = normalize(tangent * flow.x + binormal * flow.y);
+            layers.binormal = normalize(tangent * -flow.y + binormal * flow.x);
+        } else {
+            layers.tangent = tangent;
+            layers.binormal = binormal;
+        }
+    }
+    return layers;
+}
+
 // A lit pixel's color, linear: its lights, reflections, emission and ambient light on base, the
 // albedo, with the shading normal and the one shadows offset along (geometry), its ambient light
 // darkened by ao and its direct light by ao_direct. A lightmapped pixel's ambient light is its
@@ -3656,13 +3747,14 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
 #endif
     float3 view = normalize(camera.xyz - input.world);
     float3 f0 = lerp((float3)(0.16 * specular * specular), base, metallic);
+    Layers layers = material_layers(input, base, geometry);
 
     float3 diffuse_light = (float3)0.0;
     float3 specular_light = (float3)0.0;
     uint count = (uint)camera.w;
     for (uint i = 0u; i < count; ++i) {
         add_light(lights[i], input.world, normal, geometry, view, f0, roughness, metallic,
-                  rays, diffuse_light, specular_light);
+                  layers, rays, diffuse_light, specular_light);
     }
 #ifdef CLUSTERED
     // The omni and spot lights of the pixel's cluster: its tile's lights within its slice's
@@ -3681,20 +3773,30 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
             uint bit = firstbitlow(mask);
             mask &= mask - 1u;
             add_light(clustered_lights[word * 32u + bit], input.world, normal, geometry, view, f0,
-                      roughness, metallic, rays, diffuse_light, specular_light);
+                      roughness, metallic, layers, rays, diffuse_light, specular_light);
         }
     }
 #endif
 
-    // Light from the sky's radiance, as Godot's scene.glsl takes it: reflections by roughness
+)hlsl",
+R"hlsl(    // Light from the sky's radiance, as Godot's scene.glsl takes it: reflections by roughness
     // and ambient light by the normal, then specular occlusion and Lazarov's environment BRDF.
     float3 ambient_light = lightmapped ? lightmap_light(input.uv2)
                            : captured  ? capture_light(normal)
                                        : ambient.rgb;
     float3 reflected = (float3)0.0;
     if (sky.y != 0.0) {
-        float3 ray = reflect(-view, normal);
-        ray = lerp(ray, normal, roughness * roughness);
+        // An anisotropic surface reflects about a normal bent along its highlight, as Godot's.
+        float3 bent = normal;
+        if (layers.anisotropy != 0.0) {
+            float3 direction = layers.anisotropy >= 0.0 ? layers.binormal : layers.tangent;
+            float3 across = cross(direction, view);
+            float3 anisotropic_normal = cross(across, direction);
+            bent = normalize(lerp(normal, anisotropic_normal,
+                                  abs(layers.anisotropy) * saturate(5.0 * roughness)));
+        }
+        float3 ray = reflect(-view, bent);
+        ray = lerp(ray, bent, roughness * roughness);
         float horizon = min(1.0 + dot(ray, normal), 1.0);
         float3 turned = float3(dot(sky_rows[0].xyz, ray), dot(sky_rows[1].xyz, ray),
                                dot(sky_rows[2].xyz, ray));
@@ -3707,6 +3809,22 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
                                dot(sky_rows[2].xyz, normal));
         float3 texel = radiance_map.SampleLevel(radiance_sampler, turned, kRadianceMaxLevel).rgb;
         ambient_light = lerp(ambient_light, srgb_to_linear(texel) * sky.z, sky.w);
+    }
+    if (sky.y != 0.0 && layers.clearcoat > 0.0) {
+        // The clearcoat's reflection of the sky, about the geometry's normal, over what it
+        // lets through: Godot's layer with an IOR of 1.5.
+        float coat_n_dot_v = max(dot(geometry, view), 0.0001);
+        float3 ray = reflect(-view, geometry);
+        ray = lerp(ray, geometry, layers.clearcoat_roughness * layers.clearcoat_roughness);
+        float fc = layers.clearcoat * (0.04 + 0.96 * schlick_fresnel(coat_n_dot_v));
+        ambient_light *= 1.0 - fc;
+        reflected *= 1.0 - fc;
+        float horizon = min(1.0 + dot(ray, normal), 1.0);
+        float3 turned = float3(dot(sky_rows[0].xyz, ray), dot(sky_rows[1].xyz, ray),
+                               dot(sky_rows[2].xyz, ray));
+        float level = lerp(0.001, 0.1, sqrt(layers.clearcoat_roughness)) * kRadianceMaxLevel;
+        float3 texel = radiance_map.SampleLevel(radiance_sampler, turned, level).rgb;
+        reflected += srgb_to_linear(texel) * horizon * horizon * fc * sky.z;
     }
 #ifdef CLUSTERED
     if (scene_voxel_gi.x != 0.0 && voxel_gi.x > 0.0 && !lightmapped && !captured) {
@@ -3759,8 +3877,7 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
         reflected *= occlusion * (env.x * f0 + env.y * clamp(50.0 * f0.g, metallic, 1.0));
     } else {
         // Godot's SSR: the reflection, faded out toward the trace's roughness cutoff, put over
-)hlsl",
-R"hlsl(        // the sky's by its premultiplied alpha.
+        // the sky's by its premultiplied alpha.
         reflected *= occlusion;
         float4 faded = ssr * smoothstep(0.0, 1.0, 1.0 - saturate((roughness - 0.6) / 0.1));
         reflected = reflected * (1.0 - faded.a) + faded.rgb;
@@ -3888,7 +4005,8 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
         // With the interpolated, unnormalized tangent frame, per MikkTSpace, as Godot does.
         float3 mapped = mapped_texel.rgb;
         mapped.xy = mapped.xy * 2.0 - 1.0;
-        mapped.z = sqrt(max(0.0, 1.0 - dot(mapped.xy, mapped.xy)));
+)hlsl",
+R"hlsl(        mapped.z = sqrt(max(0.0, 1.0 - dot(mapped.xy, mapped.xy)));
         normal = normalize(lerp(
             normal, input.tangent * mapped.x + input.binormal * mapped.y + normal * mapped.z,
             surface.w));

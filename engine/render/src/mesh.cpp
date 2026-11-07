@@ -157,6 +157,36 @@ float v_ggx(float n_dot_l, float n_dot_v, float alpha) {
     return 0.5F / lerp(2.0F * n_dot_l * n_dot_v, n_dot_l + n_dot_v, alpha);
 }
 
+float d_ggx_anisotropic(float cos_theta_m, float alpha_x, float alpha_y, float cos_phi,
+                        float sin_phi) {
+    const float alpha2 = alpha_x * alpha_y;
+    const Float3 v{alpha_y * cos_phi, alpha_x * sin_phi, alpha2 * cos_theta_m};
+    const float w2 = alpha2 / dot3(v, v);
+    return alpha2 * w2 * w2 * std::numbers::inv_pi_v<float>;
+}
+
+float v_ggx_anisotropic(float alpha_x, float alpha_y, float t_dot_v, float t_dot_l, float b_dot_v,
+                        float b_dot_l, float n_dot_v, float n_dot_l) {
+    const float lambda_v = n_dot_l * length({alpha_x * t_dot_v, alpha_y * b_dot_v, n_dot_v});
+    const float lambda_l = n_dot_v * length({alpha_x * t_dot_l, alpha_y * b_dot_l, n_dot_l});
+    return std::clamp(0.5F / (lambda_v + lambda_l), 0.0F, 1.0F);
+}
+
+// shaders/mesh.hlsl's Layers: StandardMaterial3D's rim, clearcoat and anisotropy (0 where they
+// are off), with the albedo the rim is tinted toward, the geometry's normal the clearcoat takes
+// and the tangent and binormal the highlight stretches along.
+struct Layers {
+    float rim = 0.0F;
+    float rim_tint = 0.0F;
+    float clearcoat = 0.0F;
+    float clearcoat_roughness = 0.0F;
+    float anisotropy = 0.0F;
+    Float3 albedo{};
+    Float3 geometry{};
+    Float3 tangent{};
+    Float3 binormal{};
+};
+
 // The light a pixel gets, summed over the lights.
 struct LightSum {
     Float3 diffuse{};
@@ -165,13 +195,28 @@ struct LightSum {
 
 void light_compute(const Float3& n, const Float3& l, const Float3& v, const Float3& light_color,
                    float attenuation, const Float3& f0, float roughness, float metallic,
-                   float specular_amount, LightSum& out) {
+                   float specular_amount, const Layers& layers, LightSum& out) {
     const float n_dot_l = std::min(dot3(n, l), 1.0F);
     const float c_n_dot_l = std::max(n_dot_l, 0.0F);
     const float c_n_dot_v = std::max(dot3(n, v), 1e-4F);
+    if (layers.rim > 0.0F) {
+        const float rim_light =
+            power(std::max(1e-4F, 1.0F - c_n_dot_v), std::max(0.0F, (1.0F - roughness) * 16.0F));
+        const Float3 tint = lerp3({1.0F, 1.0F, 1.0F}, layers.albedo, layers.rim_tint);
+        out.diffuse = add(out.diffuse, scale(mul(tint, light_color), rim_light * layers.rim));
+    }
     const Float3 h = normalize(add(v, l));
     const float c_n_dot_h = std::clamp(dot3(n, h), 0.0F, 1.0F);
     const float c_l_dot_h = std::clamp(dot3(l, h), 0.0F, 1.0F);
+    if (layers.clearcoat > 0.0F) {
+        const float cc_n_dot_h = std::clamp(dot3(layers.geometry, h), 0.0F, 1.0F);
+        const float dr = d_ggx(cc_n_dot_h, lerp(0.001F, 0.1F, layers.clearcoat_roughness));
+        const float gr = 0.25F / ((c_l_dot_h * c_l_dot_h) + 1e-4F);
+        const float fr = lerp(0.04F, 1.0F, schlick_fresnel(c_l_dot_h));
+        const float clearcoat_brdf_nl = layers.clearcoat * gr * fr * dr * c_n_dot_l;
+        out.specular = add(out.specular,
+                           scale(light_color, clearcoat_brdf_nl * attenuation * specular_amount));
+    }
     if (metallic < 1.0F) {
         const float fd90_minus_1 = (2.0F * c_l_dot_h * c_l_dot_h * roughness) - 0.5F;
         const float fd_v = 1.0F + (fd90_minus_1 * schlick_fresnel(c_n_dot_v));
@@ -181,8 +226,21 @@ void light_compute(const Float3& n, const Float3& l, const Float3& v, const Floa
     }
     if (roughness > 0.0F) {
         const float alpha_ggx = roughness * roughness;
-        const float d = d_ggx(c_n_dot_h, alpha_ggx);
-        const float g = v_ggx(c_n_dot_l, c_n_dot_v, alpha_ggx);
+        float d = 0.0F;
+        float g = 0.0F;
+        if (layers.anisotropy != 0.0F) {
+            const float aspect = std::sqrt(1.0F - (layers.anisotropy * 0.9F));
+            const float ax = alpha_ggx / aspect;
+            const float ay = alpha_ggx * aspect;
+            const Float3& t = layers.tangent;
+            const Float3& b = layers.binormal;
+            d = d_ggx_anisotropic(c_n_dot_h, ax, ay, dot3(t, h), dot3(b, h));
+            g = v_ggx_anisotropic(ax, ay, dot3(t, v), dot3(t, l), dot3(b, v), dot3(b, l), c_n_dot_v,
+                                  c_n_dot_l);
+        } else {
+            d = d_ggx(c_n_dot_h, alpha_ggx);
+            g = v_ggx(c_n_dot_l, c_n_dot_v, alpha_ggx);
+        }
         const float c_l_dot_h5 = schlick_fresnel(c_l_dot_h);
         const float f90 = std::clamp(50.0F * f0[1], 0.0F, 1.0F);
         Float3 f{};
@@ -779,6 +837,12 @@ MeshSurfaceUniforms mesh_surface_uniforms(const Material3D& material, std::uint3
             out.voxel_gis.at(i) = voxel_gi_uniforms(gi.probes.at(i));
         }
     }
+    // The rim, clearcoat and anisotropy take the lanes the lightmap and VoxelGIs leave.
+    out.lightmap[2] = std::max(material.rim, 0.0F);
+    out.lightmap[3] = material.rim_tint;
+    out.voxel_gi[1] = std::max(material.clearcoat, 0.0F);
+    out.voxel_gi[2] = material.clearcoat_roughness;
+    out.voxel_gi[3] = std::clamp(material.anisotropy, -1.0F, 1.0F);
     // A game's spatial shader cuts its pixels by its own ALPHA_SCISSOR_THRESHOLD, in its shadows
     // too (shadow.hlsl's GAME_SHADER), so the threshold here cuts nothing.
     float threshold = material.shader != ShaderId::None ? 0.0F : material.alpha_scissor_threshold;
@@ -1435,7 +1499,8 @@ LightResponse light_response(const Float3& n, const Float3& l, const Float3& v,
                              const Float3& light_color, float attenuation, const Float3& f0,
                              float roughness, float metallic, float specular_amount) {
     LightSum sum;
-    light_compute(n, l, v, light_color, attenuation, f0, roughness, metallic, specular_amount, sum);
+    light_compute(n, l, v, light_color, attenuation, f0, roughness, metallic, specular_amount,
+                  Layers{}, sum);
     return {.diffuse = sum.diffuse, .specular = sum.specular};
 }
 
@@ -1607,16 +1672,41 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     const float dielectric = 0.16F * specular * specular;
     const Float3 f0 = lerp3({dielectric, dielectric, dielectric}, base, metallic);
 
+    // material_layers in shaders/mesh.hlsl: an anisotropic highlight runs along Godot's default
+    // flow map, the tangent turned by its (1, 128 / 255) texel.
+    Layers layers{.rim = surface.lightmap[2],
+                  .rim_tint = surface.lightmap[3],
+                  .clearcoat = surface.voxel_gi[1],
+                  .clearcoat_roughness = surface.voxel_gi[2],
+                  .anisotropy = surface.voxel_gi[3],
+                  .albedo = base,
+                  .geometry = geometry};
+    if (layers.anisotropy != 0.0F) {
+        const Float3 tangent = normalize(pixel.tangent);
+        const Float3 binormal = normalize(pixel.binormal);
+        if (layers.anisotropy > 0.01F) {
+            const float flow = ((128.0F / 255.0F) * 2.0F) - 1.0F;
+            layers.tangent = normalize(add(tangent, scale(binormal, flow)));
+            layers.binormal = normalize(add(scale(tangent, -flow), binormal));
+        } else {
+            layers.tangent = tangent;
+            layers.binormal = binormal;
+        }
+    }
+
     LightSum light_sum;
     // A game's light() lights the pixel in place of light_compute, as Godot's LIGHT_CODE_USED,
     // from the ALPHA its fragment() gave, which it may change; it may also discard the pixel.
     float light_alpha = pixel.game ? pixel.game->albedo[3] : alpha;
     bool discarded = false;
+    // The rim fades with distance (rim_fade) but not in shadow, as Godot's.
     const auto compute = [&](const Float3& toward, const Float3& light_color, float attenuation,
-                             float specular_amount, bool directional) {
+                             float specular_amount, bool directional, float rim_fade) {
         if (!pixel.game_light) {
+            Layers lit = layers;
+            lit.rim *= rim_fade;
             light_compute(normal, toward, view, light_color, attenuation, f0, roughness, metallic,
-                          specular_amount, light_sum);
+                          specular_amount, lit, light_sum);
             return;
         }
         if (discarded) {
@@ -1661,7 +1751,7 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
                                      ? directional_shadow(maps, static_cast<std::size_t>(slot),
                                                           pixel.world, geometry, toward)
                                      : traced_shadow;
-            compute(toward, light_color, shadow, light.color[3], true);
+            compute(toward, light_color, shadow, light.color[3], true, 1.0F);
             return;
         }
         const Float3 to_light =
@@ -1677,12 +1767,13 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
             const float rim = std::max(0.0001F, (1.0F - scos) / (1.0F - cone));
             attenuation *= 1.0F - power(rim, light.params[2]);
         }
+        const float rim_fade = attenuation;
         if (slot >= 0.0F && maps.uniforms != nullptr) {
             attenuation *=
                 positional_shadow(maps, static_cast<std::size_t>(slot), pixel.world, geometry);
         }
         attenuation *= traced_shadow;
-        compute(normalize(to_light), light_color, attenuation, light.color[3], false);
+        compute(normalize(to_light), light_color, attenuation, light.color[3], false, rim_fade);
     };
     const auto count = static_cast<std::size_t>(scene.camera[3]);
     for (std::size_t i = 0; i < count && i < kMaxLights3D; ++i) {
@@ -1715,8 +1806,18 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
                           dot3(xyz(scene.sky_rows[2]), v)};
         };
         if (scene.sky[1] != 0.0F) {
-            Float3 ray = sub(scale(normal, 2.0F * dot3(normal, view)), view);
-            ray = lerp3(ray, normal, roughness * roughness);
+            // An anisotropic surface reflects about a normal bent along its highlight, as Godot's.
+            Float3 bent = normal;
+            if (layers.anisotropy != 0.0F) {
+                const Float3& direction =
+                    layers.anisotropy >= 0.0F ? layers.binormal : layers.tangent;
+                const Float3 anisotropic_normal = cross(cross(direction, view), direction);
+                bent = normalize(
+                    lerp3(normal, anisotropic_normal,
+                          std::abs(layers.anisotropy) * std::clamp(5.0F * roughness, 0.0F, 1.0F)));
+            }
+            Float3 ray = sub(scale(bent, 2.0F * dot3(bent, view)), view);
+            ray = lerp3(ray, bent, roughness * roughness);
             const float horizon = std::min(1.0F + dot3(ray, normal), 1.0F);
             const Float4 texel =
                 maps.radiance->sample(to_sky(ray), std::sqrt(roughness) * kRadianceMaxLevel);
@@ -1726,6 +1827,22 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
             const Float4 texel = maps.radiance->sample(to_sky(normal), kRadianceMaxLevel);
             ambient_light =
                 lerp3(ambient_light, scale(srgb_to_linear(xyz(texel)), scene.sky[2]), scene.sky[3]);
+        }
+        if (scene.sky[1] != 0.0F && layers.clearcoat > 0.0F) {
+            // The clearcoat's reflection of the sky, about the geometry's normal, over what it
+            // lets through: Godot's layer with an IOR of 1.5.
+            const float coat_n_dot_v = std::max(dot3(geometry, view), 0.0001F);
+            Float3 ray = sub(scale(geometry, 2.0F * dot3(geometry, view)), view);
+            ray = lerp3(ray, geometry, layers.clearcoat_roughness * layers.clearcoat_roughness);
+            const float fc = layers.clearcoat * (0.04F + (0.96F * schlick_fresnel(coat_n_dot_v)));
+            ambient_light = scale(ambient_light, 1.0F - fc);
+            reflected = scale(reflected, 1.0F - fc);
+            const float horizon = std::min(1.0F + dot3(ray, normal), 1.0F);
+            const float level =
+                lerp(0.001F, 0.1F, std::sqrt(layers.clearcoat_roughness)) * kRadianceMaxLevel;
+            const Float4 texel = maps.radiance->sample(to_sky(ray), level);
+            reflected = add(reflected, scale(srgb_to_linear(xyz(texel)),
+                                             horizon * horizon * fc * scene.sky[2]));
         }
     }
     // Forward+'s SDFGI, as Godot's GI buffers light a pixel: its ambient light and reflections
