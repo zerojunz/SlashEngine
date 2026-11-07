@@ -18,7 +18,8 @@ order is the plan, and each item carries a status instead. It is drawn from the 
 ## Where things stand
 
 Milestones 1 to 8 are done, and so is every Launch row of the [feature table](#features-by-area).
-Only milestone 3's recorded exit check and the published macOS release remain; both need Dan.
+Only milestone 3's exit check runs with Codex and Cursor (Claude Code's is recorded) and the
+published macOS release remain; both need Dan.
 The release needs a version tag, the archive CI already packages, and the tools notarized with
 his Developer ID.
 
@@ -64,8 +65,10 @@ work.
 - [x] Live games: `slash-cli run --serve` runs commands between ticks
 - [x] `slash-cli init` writes MCP configs for Claude Code, Codex and Cursor, and for opencode,
       Hermes Agent and OpenClaw
-- [ ] Exit check: Claude Code, Codex and Cursor each open, edit and save a scene over MCP. The
-      tools are built and tested; a recorded run with each agent is still to do.
+- [ ] Exit check: Claude Code, Codex and Cursor each open, edit and save a scene over MCP.
+      `.github/scripts/agent-exit-check.py` runs it for them, opencode, Hermes Agent and
+      OpenClaw ([exit-check](exit-check/README.md)); Claude Code's run is recorded, and the
+      others are recorded where they are signed in.
 
 ### Milestone 4: Export pipeline (Done)
 
