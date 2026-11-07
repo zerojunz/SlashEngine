@@ -64,6 +64,7 @@ add_library(slash_render
     src/ray_records.cpp
     src/ray_shadows.cpp
     src/resize.cpp
+    src/sdfgi.cpp
     src/shader.cpp
     src/shader_vm.cpp
     src/shadow.cpp
@@ -147,7 +148,7 @@ set_source_files_properties(src/clusters.cpp src/decal.cpp src/device.cpp src/fo
     src/particles.cpp src/particles3d.cpp
     src/path_trace.cpp
     src/post.cpp src/resize.cpp src/shader_vm.cpp src/shadow.cpp src/reflection.cpp src/sky.cpp
-    src/software_device.cpp
+    src/sdfgi.cpp src/software_device.cpp
     src/ssao.cpp src/ssr.cpp src/taa.cpp src/upscaler.cpp src/volumetric_fog.cpp src/voxel_gi.cpp
     PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")

@@ -151,6 +151,7 @@ add_executable(slash_tests
     test_ragdoll.cpp
     test_ray_records.cpp
     test_ray_tracing.cpp
+    test_sdfgi.cpp
     test_reflect.cpp
     test_reference.cpp
     test_reflection.cpp
