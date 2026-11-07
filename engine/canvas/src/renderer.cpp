@@ -321,6 +321,9 @@ bool awaits_video_frame(const world::World& world, std::string_view texture) {
 void apply_settings(render::Scene3D& scene, const Settings& project) {
     scene.method = project.rendering_method;
     scene.subsurface = project.subsurface;
+    scene.sdfgi.ray_count = project.sdfgi.probe_ray_count;
+    scene.sdfgi.frames_to_converge = project.sdfgi.frames_to_converge;
+    scene.sdfgi.frames_to_update_light = project.sdfgi.frames_to_update_lights;
 }
 
 } // namespace

@@ -2013,6 +2013,25 @@ private:
             project["rendering"]["global_illumination"]["voxel_gi"]["quality"] =
                 quality->number() >= 1.0 ? "high" : "low";
         }
+        // SDFGI's settings, which Godot keeps as indices into RenderingServer's enums.
+        const auto sdfgi = [&](std::string_view sdfgi_key, std::span<const std::int64_t> choices) {
+            const Value* index =
+                number("rendering", "global_illumination/sdfgi/" + std::string(sdfgi_key));
+            if (index == nullptr) {
+                return;
+            }
+            const auto at = static_cast<std::int64_t>(index->number());
+            if (at >= 0 && at < static_cast<std::int64_t>(choices.size())) {
+                project["rendering"]["global_illumination"]["sdfgi"][std::string(sdfgi_key)] =
+                    choices[static_cast<std::size_t>(at)];
+            }
+        };
+        static constexpr std::array<std::int64_t, 7> kSdfgiRays{4, 8, 16, 32, 64, 96, 128};
+        static constexpr std::array<std::int64_t, 6> kSdfgiConverge{5, 10, 15, 20, 25, 30};
+        static constexpr std::array<std::int64_t, 5> kSdfgiUpdate{1, 2, 4, 8, 16};
+        sdfgi("probe_ray_count", kSdfgiRays);
+        sdfgi("frames_to_converge", kSdfgiConverge);
+        sdfgi("frames_to_update_lights", kSdfgiUpdate);
         // Decals' filter, by Godot's DecalFilter.
         if (const Value* filter = number("rendering", "textures/decals/filter")) {
             const auto index = static_cast<std::int64_t>(filter->number());

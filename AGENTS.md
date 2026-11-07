@@ -1202,11 +1202,14 @@ SDFGI is Godot 4.6's fully dynamic GI, a research spike on the CPU
 ([docs/reference/sdfgi.md](docs/reference/sdfgi.md)): `WorldEnvironment`'s `sdfgi_*` fields set
 `Scene3D::sdfgi` (`render::Sdfgi3D`), and the software device, after the prepass, keeps a
 `detail::SdfgiState` per target (`src/sdfgi.cpp`, after `gi.cpp`'s `GI::SDFGI` and its shaders):
-`update_sdfgi` moves the cascades with the camera, makes each moved or changed one's cells from
-the path tracer's scene (`path_surface_at`) with an exact distance field, lights the cells
+`update_sdfgi` moves the cascades with the camera (a moved one keeps the cells it still holds,
+`SdfgiCascade::sums`, while the triangles stay the same), makes the cells that came in or changed
+from the path tracer's scene (`path_surface_at`) with an exact distance field, lights the cells
 through it and has the probes trace their rays into spherical harmonics history, then
 `run_sdfgi` (`gi.glsl`'s `sdfgi_process`) gives each pixel its ambient light and reflections as
 `MeshMaps::sdfgi`, which `shade_mesh` puts under VoxelGIs' light. Other devices draw without it.
+project.json's `rendering.global_illumination.sdfgi` (`render::SdfgiSettings`) sets every frame's
+probe rays and how fast it follows changes.
 `examples/sdfgi-3d` lights a room with it.
 
 Path tracing makes reference stills on the CPU (`Scene3D::path_trace`, `render::PathTrace3D`;

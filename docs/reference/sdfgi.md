@@ -65,12 +65,25 @@ with Godot's names and defaults. A frame in `forward_plus` drawn by the software
 ```
 
 Light settles over `frames_to_converge` frames (30), as Godot's, so a capture of a scene's first
-frame sees little of it. In C++, `render::Scene3D::sdfgi` (`render::Sdfgi3D`) has the same
-settings, plus Godot's project settings `ray_count` (8), `frames_to_converge` (30),
-`frames_to_update_light` (4) and the cascade size (128), which only C++ sets for now.
+frame sees little of it. project.json's `rendering.global_illumination.sdfgi` holds Godot's
+project settings of the same names, for every SDFGI a frame draws:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `probe_ray_count` | 8 | Rays each probe traces a frame: 4, 8, 16, 32, 64, 96 or 128 |
+| `frames_to_converge` | 30 | Frames a probe averages: 5, 10, 15, 20, 25 or 30 |
+| `frames_to_update_lights` | 4 | Frames over which the cells' light is updated: 1, 2, 4, 8 or 16 |
+
+```json
+"rendering": {"global_illumination": {"sdfgi": {"probe_ray_count": 16, "frames_to_converge": 20}}}
+```
+
+The Godot importer reads them from `project.godot`. In C++, `render::Scene3D::sdfgi`
+(`render::Sdfgi3D`) has the same settings (`ray_count`, `frames_to_converge`,
+`frames_to_update_light`), plus the cascade size (128), which only C++ sets.
 
 `examples/sdfgi-3d` lights a room with it and repaints a wall.
-`tests/test_sdfgi.cpp` checks the light bounces, the cascades move and the result is the same on
+`tests/test_sdfgi.cpp` checks the light bounces, the cascades move and scroll and the result is the same on
 any number of threads.
 
 ## Not done yet
@@ -79,14 +92,14 @@ This is a spike to measure the idea. It still does these things the simple way:
 
 - **Only the software device draws it.** The other devices draw without it. A port to compute
   shaders, as Godot runs it, is the next step if the spike holds up.
-- **Cells are made again whole.** Godot scrolls a moved cascade and voxelizes only the slab that
-  came in, and only meshes that moved. Here any change to the frame's triangles makes every
-  cascade again, and a moved cascade is made again whole.
+- **Only cascades over unchanged triangles scroll.** A moved cascade keeps the cells it still
+  holds and makes only the slab that came in, as Godot's scroll does, but any change to the
+  frame's triangles (and so a camera turn that culls others) makes every cascade again, where
+  Godot voxelizes only the meshes that moved.
 - **Cells are made from the frame's triangles,** which are what the camera sees through its
   culling, where Godot draws every mesh in a cascade's box.
 - **No textures' changes.** A texture written again (a video or a viewport) doesn't make the
   cells again.
-- **No project settings.** `rendering.global_illumination.sdfgi.*` is not read yet.
 - **No probe occlusion.** `sdfgi_use_occlusion` is kept, but Godot's occlusion texture isn't
   made yet, so probes behind a wall can leak light through it.
 - **No debug views.** Godot's probe and cascade views are not ported.
