@@ -1758,7 +1758,8 @@ Godot's do in 3D, unless `texture_repeat` is off.
 | `emission_enabled`, `emission`, `emission_energy_multiplier`, `emission_texture` | `false`, `[0, 0, 0, 1]`, `1`, `""` | Light the surface gives off, unlit: the color (plus the texture) made linear, times the multiplier, as Godot |
 | `normal_enabled`, `normal_scale`, `normal_texture` | `false`, `1`, `""` | A tangent-space normal map |
 | `shading_mode` | `"per_pixel"` | `"unshaded"` draws the albedo with no lighting |
-| `transparency`, `alpha_scissor_threshold` | `"disabled"`, `0.5` | `"alpha"` blends; `"alpha_scissor"` drops pixels under the threshold |
+| `transparency`, `alpha_scissor_threshold` | `"disabled"`, `0.5` | `"alpha"` blends; `"alpha_scissor"` drops pixels under the threshold; `"alpha_hash"` drops them by a dither fixed to the mesh, so hair cards and eyelashes fade out without sorting (see below) |
+| `alpha_hash_scale` | `1` | The grain of `"alpha_hash"`'s dither: above 1 finer, below 1 coarser |
 | `blend_mode` | `"mix"` | How alpha meshes blend: `"mix"`, `"add"`, `"sub"`, `"mul"` or `"premul_alpha"` |
 | `cull_mode` | `"back"` | Faces not drawn: `"back"`, `"front"` or `"disabled"` (both sides drawn) |
 | `uv1_scale`, `uv1_offset` | `[1, 1, 1]`, `[0, 0, 0]` | Texture coordinates are scaled, then moved (x and y are used) |
@@ -1766,6 +1767,15 @@ Godot's do in 3D, unless `texture_repeat` is off.
 | `rim_enabled`, `rim`, `rim_tint` | `false`, `1`, `0.5` | Each light also lights the edges facing away from the camera, as skin and cloth catch light, from white toward the albedo by `rim_tint`; sharper as roughness falls |
 | `clearcoat_enabled`, `clearcoat`, `clearcoat_roughness` | `false`, `1`, `0.5` | A glossy coat over the surface (car paint, lacquer, an eye's wet layer), lit about the mesh's own normal rather than the normal map's, with its own highlight and its own reflection of the sky |
 | `anisotropy_enabled`, `anisotropy` | `false`, `0` | Highlights stretched along the mesh's tangents (above 0) or across them (below 0, down to -1), as hair cards and brushed metal; reflections bend the same way |
+
+`"alpha_hash"` is Godot's alpha hash (Wyman and McGuire's hashed alpha testing): each pixel is
+drawn whole or not at all, where the alpha reaches a threshold made from noise on cells of the
+mesh about a pixel wide, at the two scales nearest the pixel's size, so a surface of alpha 0.3
+keeps about 30% of its pixels, the dither stays put as the mesh moves, and it draws as an opaque
+mesh: in depth order, in the prepass and with shadows that are dithered the same way. TAA or
+FSR smooth the dither into a fade. The noise is a hash of whole numbers (PCG3D) where Godot's
+uses sines, so every device keeps the same pixels; ray-traced and path-traced effects take the
+surface's alpha as the share of rays it stops, as they take a blended one's.
 | `subsurf_scatter_enabled`, `subsurf_scatter_strength`, `subsurf_scatter_skin_mode` | `false`, `0`, `false` | `forward_plus`: light [scattered under the surface](#subsurface-scattering), as skin, wax and marble; `subsurf_scatter_skin_mode` spreads red further than green and blue, as skin does |
 | `subsurf_scatter_transmittance_enabled`, `subsurf_scatter_transmittance_color`, `subsurf_scatter_transmittance_depth`, `subsurf_scatter_transmittance_boost` | `false`, `[1, 1, 1, 1]`, `0.1`, `0` | With subsurface scattering, light coming through thin parts (ears, leaves, fingers) from lights behind them that cast shadows: the color it takes (skin's own with skin mode), how deep it reaches in meters, and how far round the lit side it shows |
 | `billboard_mode`, `billboard_keep_scale` | `"disabled"`, `false` | Face the camera: `"enabled"`, `"fixed_y"` (turned about y only) or `"particles"` (turned by each [3D particle](#3d-particles)'s angle); `billboard_keep_scale` keeps the mesh's scale, which billboards otherwise drop |

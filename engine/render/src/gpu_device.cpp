@@ -5017,7 +5017,7 @@ private:
             if (!shaded) {
                 continue;
             }
-            ray.surface = mesh_surface_uniforms(draw.material, draw.layers);
+            ray.surface = traced_surface(mesh_surface_uniforms(draw.material, draw.layers));
             const MeshInstanceUniforms instance =
                 mesh_instance_uniforms(draw.transform, draw.material);
             ray.normal_model = instance.normal_model;

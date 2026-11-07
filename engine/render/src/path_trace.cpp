@@ -694,7 +694,7 @@ PathScene build_path_scene(const Scene3D& scene, std::span<const PathMesh> meshe
         const MeshDraw& draw = *mesh.draw;
         const auto draw_index = static_cast<std::uint32_t>(out.draws.size());
         PathDraw& path_draw = out.draws.emplace_back();
-        path_draw.surface = mesh_surface_uniforms(draw.material, draw.layers);
+        path_draw.surface = traced_surface(mesh_surface_uniforms(draw.material, draw.layers));
         path_draw.cull = draw.material.cull;
         path_draw.shadows = draw.shadows;
         path_draw.layers = draw.layers;

@@ -3,6 +3,7 @@
 if(EMSCRIPTEN)
     add_executable(slash_web_tests
         test_main.cpp
+        test_alpha_hash.cpp
         test_clusters.cpp
         test_decal.cpp
         test_forward_post.cpp
@@ -53,6 +54,7 @@ endif()
 add_executable(slash_tests
     test_main.cpp
     test_ai.cpp
+    test_alpha_hash.cpp
     test_analytics_endpoint.cpp
     test_android_library.cpp
     test_animation.cpp
