@@ -3,6 +3,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/text.hpp"
 #include "slash/render/image.hpp"
+#include "slash/scene3d/blend_shapes.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/skeleton.hpp"
 
@@ -507,6 +508,7 @@ struct Writer {
                 keyframes.push_back(std::move(sampler));
                 channels.push_back(std::move(channel));
             }
+            blend_channels(in, channels, keyframes);
             if (channels.empty()) {
                 continue;
             }
@@ -518,8 +520,118 @@ struct Writer {
         }
     }
 
-    // A surface as a primitive of triangles, its corners back in glTF's counter-clockwise order.
-    json::Value primitive(const ModelSurface& surface) {
+    // An animation's blend shape tracks as a weights channel for each node, its shapes sampled
+    // together at every time any of them has a key; shapes without a track hold their mesh's
+    // weight.
+    void blend_channels(const ModelAnimation& in, json::Array& channels, json::Array& keyframes) {
+        std::map<std::size_t, std::vector<const BlendShapeTrack*>> by_node;
+        for (const BlendShapeTrack& track : in.blend_tracks) {
+            if (track.node < model.nodes.size() && !track.times.empty()) {
+                by_node[track.node].push_back(&track);
+            }
+        }
+        for (const auto& [node, tracks] : by_node) {
+            const auto part =
+                std::ranges::find(model.parts, static_cast<int>(node), &ModelPart::node_index);
+            if (part == model.parts.end() || part->mesh >= model.meshes.size()) {
+                continue;
+            }
+            const ModelMesh& mesh = model.meshes[part->mesh];
+            if (mesh.blend_shapes.empty()) {
+                continue;
+            }
+            std::vector<float> times;
+            bool step = true;
+            for (const BlendShapeTrack* track : tracks) {
+                times.insert(times.end(), track->times.begin(), track->times.end());
+                step = step && track->step;
+            }
+            std::ranges::sort(times);
+            times.erase(std::unique(times.begin(), times.end()), times.end());
+            std::vector<float> values;
+            values.reserve(times.size() * mesh.blend_shapes.size());
+            for (const float time : times) {
+                for (std::size_t k = 0; k < mesh.blend_shapes.size(); ++k) {
+                    const auto found =
+                        std::ranges::find_if(tracks, [&](const BlendShapeTrack* track) {
+                            return track->shape == mesh.blend_shapes[k];
+                        });
+                    float value = k < mesh.blend_weights.size() ? mesh.blend_weights[k] : 0.0F;
+                    if (found != tracks.end()) {
+                        value = sample_blend_track(**found, time, in.length, false);
+                    }
+                    values.push_back(value);
+                }
+            }
+            json::Value sampler = json::Object{};
+            const int input = accessor(times, 1, kFloat, "SCALAR", 0);
+            json::Value& input_accessor =
+                document["accessors"].as_array()[static_cast<std::size_t>(input)];
+            input_accessor["min"] = json::Array{times.front()};
+            input_accessor["max"] = json::Array{times.back()};
+            sampler["input"] = input;
+            sampler["output"] = accessor(values, 1, kFloat, "SCALAR", 0);
+            sampler["interpolation"] = step ? "STEP" : "LINEAR";
+            json::Value target = json::Object{};
+            target["node"] = static_cast<std::int64_t>(node);
+            target["path"] = "weights";
+            json::Value channel = json::Object{};
+            channel["sampler"] = static_cast<std::int64_t>(keyframes.size());
+            channel["target"] = std::move(target);
+            keyframes.push_back(std::move(sampler));
+            channels.push_back(std::move(channel));
+        }
+    }
+
+    // A surface's morph targets, shapes of them (its mesh's count), each with its position
+    // offsets (zero where it has none) and its normal and tangent offsets where it has them.
+    json::Value targets(const ModelSurface& surface, std::size_t shapes) {
+        const std::size_t count = surface.vertices.size();
+        json::Value out = json::Array{};
+        for (std::size_t k = 0; k < shapes; ++k) {
+            const SurfaceBlendShape empty;
+            const SurfaceBlendShape& shape =
+                k < surface.blend_shapes.size() ? surface.blend_shapes[k] : empty;
+            const auto flat = [count](const std::vector<std::array<float, 3>>& offsets) {
+                std::vector<float> values(count * 3, 0.0F);
+                for (std::size_t i = 0; i < count && i < offsets.size(); ++i) {
+                    for (std::size_t c = 0; c < 3; ++c) {
+                        values[(i * 3) + c] = offsets[i].at(c);
+                    }
+                }
+                return values;
+            };
+            json::Value target = json::Object{};
+            const std::vector<float> positions = flat(shape.positions);
+            std::array<float, 3> low{};
+            std::array<float, 3> high{};
+            for (std::size_t i = 0; i < count; ++i) {
+                for (std::size_t c = 0; c < 3; ++c) {
+                    const float v = positions[(i * 3) + c];
+                    low.at(c) = i == 0 ? v : std::min(low.at(c), v);
+                    high.at(c) = i == 0 ? v : std::max(high.at(c), v);
+                }
+            }
+            const int position = accessor(positions, 3, kFloat, "VEC3", kArrayBuffer);
+            document["accessors"].as_array()[static_cast<std::size_t>(position)]["min"] =
+                json::Array{low[0], low[1], low[2]};
+            document["accessors"].as_array()[static_cast<std::size_t>(position)]["max"] =
+                json::Array{high[0], high[1], high[2]};
+            target["POSITION"] = position;
+            if (!shape.normals.empty()) {
+                target["NORMAL"] = accessor(flat(shape.normals), 3, kFloat, "VEC3", kArrayBuffer);
+            }
+            if (!shape.tangents.empty()) {
+                target["TANGENT"] = accessor(flat(shape.tangents), 3, kFloat, "VEC3", kArrayBuffer);
+            }
+            out.push_back(std::move(target));
+        }
+        return out;
+    }
+
+    // A surface as a primitive of triangles, its corners back in glTF's counter-clockwise order,
+    // with shapes morph targets (its mesh's blend shapes; 0 for none).
+    json::Value primitive(const ModelSurface& surface, std::size_t shapes = 0) {
         const std::size_t count = surface.vertices.size();
         std::vector<float> positions;
         std::vector<float> normals;
@@ -597,6 +709,9 @@ struct Writer {
             static_cast<std::size_t>(surface.material) < model.materials.size()) {
             out["material"] = surface.material;
         }
+        if (shapes > 0 && count > 0) {
+            out["targets"] = targets(surface, shapes);
+        }
         return out;
     }
 };
@@ -638,19 +753,31 @@ Result<std::pair<json::Value, std::string>> document_of(const Model& model, std:
     std::vector<int> meshes(model.meshes.size(), -1);
     for (std::size_t i = 0; i < model.meshes.size(); ++i) {
         json::Value primitives = json::Array{};
-        for (const ModelSurface& surface : model.meshes[i].surfaces) {
+        const ModelMesh& in = model.meshes[i];
+        for (const ModelSurface& surface : in.surfaces) {
             if (!surface.vertices.empty() && surface.indices.size() >= 3) {
-                primitives.push_back(writer.primitive(surface));
+                primitives.push_back(writer.primitive(surface, in.blend_shapes.size()));
             }
         }
         if (primitives.size() == 0) {
             continue;
         }
         json::Value mesh = json::Object{};
-        if (!model.meshes[i].name.empty()) {
-            mesh["name"] = model.meshes[i].name;
+        if (!in.name.empty()) {
+            mesh["name"] = in.name;
         }
         mesh["primitives"] = std::move(primitives);
+        // Blend shapes' weights, and their names as Blender's exporter and Godot's write them.
+        if (!in.blend_shapes.empty()) {
+            json::Array weights;
+            json::Array names;
+            for (std::size_t k = 0; k < in.blend_shapes.size(); ++k) {
+                weights.emplace_back(k < in.blend_weights.size() ? in.blend_weights[k] : 0.0F);
+                names.emplace_back(in.blend_shapes[k]);
+            }
+            mesh["weights"] = std::move(weights);
+            mesh["extras"]["targetNames"] = std::move(names);
+        }
         meshes[i] = writer.add("meshes", std::move(mesh));
     }
     const auto mesh_of = [&](const ModelPart& part) {

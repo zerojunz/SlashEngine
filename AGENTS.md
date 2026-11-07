@@ -1517,7 +1517,12 @@ from components every time, never kept. The animation module tells scene3d what 
 `.anim.json` animation can come `from` a model's and add its own tracks. The renderer skins on
 the CPU as Godot's skeleton shader does (`skin_vertices`) into a mesh per entity that
 `RenderDevice::update_mesh` refills, and blends poses between ticks. `skeleton.get` lists and
-poses bones; `examples/skinned-meshes` waves an arm.
+poses bones; `examples/skinned-meshes` waves an arm. glTF morph targets are Godot's blend shapes
+(`slash/scene3d/blend_shapes.hpp`): each surface keeps its shapes' offsets
+(`ModelSurface::blend_shapes`, carried through merging corners by `Triangles::origins` and
+`follow_origins`), animations' weights channels are `BlendShapeTrack`s, `blend_shape_weights`
+blends them over `MeshInstance3D.blend_shapes` as Godot's mixer does, and the renderer moves the
+vertices with `blend_vertices` before skinning; `examples/blend-shapes` makes a face smile.
 
 Retargeting follows Godot 4.6's importer (`slash/scene3d/humanoid.hpp`): `humanoid_profile` is
 its `SkeletonProfileHumanoid`, `auto_map_bones` its `BoneMapper::auto_mapping_process` (Godot's

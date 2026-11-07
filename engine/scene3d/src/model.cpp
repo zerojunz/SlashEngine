@@ -431,6 +431,40 @@ surface_of(const cgltf_data& data, const cgltf_primitive& primitive, const std::
                               " draw");
     }
 
+    // Morph targets' offsets, as Godot's GLTFDocument::_parse_meshes reads a primitive's
+    // targets into blend shapes; vertices remember where they came from while normals and
+    // tangents are made, so the offsets follow them.
+    std::vector<SurfaceBlendShape> shapes(primitive.targets_count);
+    for (cgltf_size t = 0; t < primitive.targets_count; ++t) {
+        const cgltf_morph_target& target = primitive.targets[t];
+        for (cgltf_size a = 0; a < target.attributes_count; ++a) {
+            const cgltf_attribute& offsets = target.attributes[a];
+            std::vector<std::array<float, 3>>* into = nullptr;
+            if (offsets.type == cgltf_attribute_type_position) {
+                into = &shapes[t].positions;
+            } else if (offsets.type == cgltf_attribute_type_normal && normals != nullptr) {
+                into = &shapes[t].normals;
+            } else if (offsets.type == cgltf_attribute_type_tangent && tangents != nullptr) {
+                into = &shapes[t].tangents;
+            }
+            if (into == nullptr || offsets.data == nullptr) {
+                continue;
+            }
+            const std::vector<float> d = floats(*offsets.data);
+            const std::size_t n = cgltf_num_components(offsets.data->type);
+            into->assign(count, {0.0F, 0.0F, 0.0F});
+            for (std::size_t i = 0; i < count && i < offsets.data->count && n >= 3; ++i) {
+                (*into)[i] = {d[i * n], d[(i * n) + 1], d[(i * n) + 2]};
+            }
+        }
+    }
+    if (!shapes.empty()) {
+        triangles.origins.resize(count);
+        for (std::size_t i = 0; i < count; ++i) {
+            triangles.origins[i] = static_cast<std::uint32_t>(i);
+        }
+    }
+
     if (normals == nullptr) {
         flat_normals(triangles);
     }
@@ -449,6 +483,7 @@ surface_of(const cgltf_data& data, const cgltf_primitive& primitive, const std::
     surface.vertices = std::move(triangles.vertices);
     surface.indices = std::move(triangles.indices);
     surface.weights = std::move(triangles.weights);
+    surface.blend_shapes = follow_origins(shapes, triangles.origins);
     surface.material =
         primitive.material == nullptr ? -1 : static_cast<int>(primitive.material - data.materials);
     return std::optional<ModelSurface>(std::move(surface));
@@ -652,9 +687,73 @@ std::array<float, 4> normalized_rotation(std::array<float, 4> q) {
     return q;
 }
 
+// A channel of a node's morph target weights as a blend shape track for each of its mesh's
+// shapes, as Godot's _import_animation makes them: keys as they are, or a cubic spline baked
+// into linear keys at 30 a second.
+void read_weights(const cgltf_animation_sampler& sampler, std::size_t node, const ModelMesh& mesh,
+                  std::vector<BlendShapeTrack>& tracks, float& end) {
+    const std::size_t shapes = mesh.blend_shapes.size();
+    if (shapes == 0) {
+        return;
+    }
+    const bool cubic = sampler.interpolation == cgltf_interpolation_type_cubic_spline;
+    const std::size_t per_key = cubic ? 3 * shapes : shapes;
+    const std::vector<float> times = floats(*sampler.input);
+    const std::vector<float> values = floats(*sampler.output);
+    const std::size_t keys = std::min(times.size(), values.size() / per_key);
+    if (keys == 0) {
+        return;
+    }
+    end = std::max(end, times[keys - 1]);
+    for (std::size_t k = 0; k < shapes; ++k) {
+        BlendShapeTrack track;
+        track.node = node;
+        track.shape = mesh.blend_shapes[k];
+        track.step = sampler.interpolation == cgltf_interpolation_type_step;
+        // A cubic spline key holds an in-tangent, the value and an out-tangent for every shape.
+        const auto at = [&](std::size_t key, std::size_t part) {
+            return values[(key * per_key) + (part * shapes) + k];
+        };
+        if (!cubic) {
+            for (std::size_t i = 0; i < keys; ++i) {
+                track.times.push_back(times[i]);
+                track.values.push_back(at(i, 0));
+            }
+        } else {
+            const float last = times[keys - 1];
+            for (int frame = 0;; ++frame) {
+                const float t = std::min(static_cast<float>(frame) / 30.0F, last);
+                const auto after = static_cast<std::size_t>(
+                    std::upper_bound(times.begin(),
+                                     times.begin() + static_cast<std::ptrdiff_t>(keys), t) -
+                    times.begin());
+                float v = 0.0F;
+                if (after == 0) {
+                    v = at(0, 1);
+                } else if (after >= keys) {
+                    v = at(keys - 1, 1);
+                } else {
+                    const std::size_t i = after - 1;
+                    const float span = times[i + 1] - times[i];
+                    const float weight = span > 0.0F ? (t - times[i]) / span : 0.0F;
+                    v = hermite({at(i, 1), 0, 0, 0}, {at(i, 2), 0, 0, 0}, {at(i + 1, 0), 0, 0, 0},
+                                {at(i + 1, 1), 0, 0, 0}, weight, span)[0];
+                }
+                track.times.push_back(t);
+                track.values.push_back(v);
+                if (t >= last) {
+                    break;
+                }
+            }
+        }
+        tracks.push_back(std::move(track));
+    }
+}
+
 // The model's animations, as Godot's GLTFDocument::_parse_animations and _import_animation make
-// them: a track per channel that moves a node of the scene (morph target weights are left out),
-// cubic splines baked into linear keys at 30 a second, Godot's default bake rate.
+// them: a track per channel that moves a node of the scene, and one per blend shape for a
+// channel of a node's morph target weights, cubic splines baked into linear keys at 30 a second,
+// Godot's default bake rate.
 void read_animations(const cgltf_data& data, const SceneReader& scene, Model& model) {
     NameSet taken;
     for (cgltf_size i = 0; i < data.animations_count; ++i) {
@@ -679,6 +778,14 @@ void read_animations(const cgltf_data& data, const SceneReader& scene, Model& mo
             }
             const auto node = scene.indices.find(channel.target_node);
             if (node == scene.indices.end()) {
+                continue;
+            }
+            if (channel.target_path == cgltf_animation_path_type_weights) {
+                if (channel.target_node->mesh != nullptr) {
+                    const ModelMesh& mesh = model.meshes[static_cast<std::size_t>(
+                        channel.target_node->mesh - data.meshes)];
+                    read_weights(*sampler, node->second, mesh, out.blend_tracks, end);
+                }
                 continue;
             }
             Channel made;
@@ -910,6 +1017,21 @@ Result<Model> read_gltf(std::string_view bytes, std::string_view path, const Mod
                 }
             }
             out.surfaces.push_back(std::move(made));
+        }
+        // Its blend shapes, named as Godot's importer names them, with the mesh's weights.
+        std::size_t shapes = 0;
+        for (const ModelSurface& surface : out.surfaces) {
+            shapes = std::max(shapes, surface.blend_shapes.size());
+        }
+        for (std::size_t k = 0; k < shapes; ++k) {
+            const bool named = k < mesh.target_names_count && mesh.target_names[k] != nullptr &&
+                               *mesh.target_names[k] != '\0';
+            out.blend_shapes.push_back(named ? std::string(mesh.target_names[k])
+                                             : "morph_" + std::to_string(k));
+            out.blend_weights.push_back(k < mesh.weights_count ? mesh.weights[k] : 0.0F);
+        }
+        for (ModelSurface& surface : out.surfaces) {
+            surface.blend_shapes.resize(surface.blend_shapes.empty() ? 0 : shapes);
         }
         model.meshes.push_back(std::move(out));
     }
@@ -1277,6 +1399,13 @@ ModelSummary summarize(const Model& model) {
     for (const ModelAnimation& animation : model.animations) {
         out.animations.push_back(animation.name);
     }
+    for (const ModelMesh& mesh : model.meshes) {
+        for (const std::string& shape : mesh.blend_shapes) {
+            if (std::ranges::find(out.blend_shapes, shape) == out.blend_shapes.end()) {
+                out.blend_shapes.push_back(shape);
+            }
+        }
+    }
     for (const ModelCollision& collision : model.collision) {
         ModelSummary::Collision shape;
         shape.name = collision.node;
@@ -1295,6 +1424,11 @@ std::size_t model_bytes(const Model& model) {
             bytes += (surface.vertices.capacity() * sizeof(render::Vertex3D)) +
                      (surface.indices.capacity() * sizeof(std::uint32_t)) +
                      (surface.weights.capacity() * sizeof(VertexWeights));
+            for (const SurfaceBlendShape& shape : surface.blend_shapes) {
+                bytes += (shape.positions.capacity() + shape.normals.capacity() +
+                          shape.tangents.capacity()) *
+                         sizeof(std::array<float, 3>);
+            }
         }
     }
     bytes += model.nodes.capacity() * sizeof(ModelNode);
@@ -1307,6 +1441,10 @@ std::size_t model_bytes(const Model& model) {
         for (const NodeTrack& track : animation.tracks) {
             bytes += sizeof(NodeTrack) + (track.times.capacity() * sizeof(float)) +
                      (track.values.capacity() * sizeof(std::array<float, 4>));
+        }
+        for (const BlendShapeTrack& track : animation.blend_tracks) {
+            bytes += sizeof(BlendShapeTrack) +
+                     ((track.times.capacity() + track.values.capacity()) * sizeof(float));
         }
     }
     for (const ModelImage& image : model.images) {

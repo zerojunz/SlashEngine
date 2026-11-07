@@ -207,7 +207,8 @@ Result<void> SurfaceTool::commit(Model& model) {
         model.materials.push_back(std::move(material));
     }
     if (model.meshes.empty()) {
-        model.meshes.push_back({.name = "mesh", .surfaces = {}});
+        model.meshes.push_back(
+            {.name = "mesh", .surfaces = {}, .blend_shapes = {}, .blend_weights = {}});
         model.parts.push_back(
             {.node = "mesh", .mesh = 0, .transform = {}, .node_index = -1, .skin = -1});
     }
