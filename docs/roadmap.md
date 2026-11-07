@@ -1109,8 +1109,9 @@ launch rows and the after-launch features above.
   occlusion remain
 - Digital humans in the style of MetaHuman; out of scope for releases. Research note:
   [digital-humans.md](reference/digital-humans.md). Blend shapes done (glTF morph targets,
-  `MeshInstance3D.blend_shapes` and their animation tracks); subsurface scattering, hair and eye
-  shading and face capture tracks remain
+  `MeshInstance3D.blend_shapes` and their animation tracks) and hair and eye shading (Godot's rim,
+  clearcoat and anisotropy) done; subsurface scattering, alpha hash and face capture tracks
+  remain
 
 Console ports are not on this roadmap and never will be in this repository. As with Godot,
 PlayStation, Xbox and Switch support comes from licensed porting partners as private backends.

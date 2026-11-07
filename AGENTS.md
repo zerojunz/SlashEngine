@@ -86,7 +86,7 @@ than pointers and headers include fewer others, so code GCC accepts can fail the
 every push that changes C++. It needs `slash-cli toolchain install web`.
 
 The unit tests run as five ctest shards (`unit_1` to `unit_5`, by test file name). A test case
-that runs over five minutes is stuck: the watchdog in `tests/test_main.cpp` names it and stops
+that runs over eight minutes is stuck: the watchdog in `tests/test_main.cpp` names it and stops
 the shard, and `tests/retry_stuck.cmake` runs the shard once more, so a hang that comes back
 still fails.
 
@@ -1000,6 +1000,15 @@ Godot's formulas, and `src/mesh_shading.hpp` fills its uniforms for every device
 CPU twins of its two stages (`mesh_vertex`, `shade_mesh`), which the software device draws with;
 `tests/test_mesh.cpp` holds every device to the software device's pixels, so a change to the 3D
 shading goes in both. `examples/meshes-3d` draws a lit scene.
+
+`Material3D`'s `rim`, `clearcoat` and `anisotropy` are `StandardMaterial3D`'s `rim_*`,
+`clearcoat_*` and `anisotropy_*` fields, which Godot shades hair cards, skin and eyes with:
+`mesh.hlsl`'s `light_compute` and its CPU twin in `src/mesh.cpp` add them as Godot's scene shader
+does, from a `Layers` that `material_layers` reads out of lanes the lightmap and VoxelGI uniforms
+leave free (`MeshSurfaceUniforms::lightmap`'s z and w, `voxel_gi`'s y, z and w), so the surface
+uniforms keep their size; the clearcoat also reflects the sky and anisotropy bends the normal
+reflections take. Their textures aren't read yet (texture slots are full).
+`examples/hair-and-eye-shading` lights a cheek, an eye and hair.
 
 `engine/scene3d` puts Godot's 3D nodes in scenes. `Transform3D` (position, Euler rotation in
 radians in Godot's YXZ order, scale, `visible`, `top_level`, `children`) makes trees that
