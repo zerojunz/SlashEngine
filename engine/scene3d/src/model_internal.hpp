@@ -56,10 +56,18 @@ struct Triangles {
     std::vector<render::Vertex3D> vertices;
     std::vector<std::uint32_t> indices; // counter-clockwise, as glTF's and OBJ's
     std::vector<VertexWeights> weights; // one per vertex for a skinned surface, else empty
+    // For each vertex, the one it came from in the file, so blend shapes' offsets follow it when
+    // vertices split or merge; empty where nothing needs it.
+    std::vector<std::uint32_t> origins;
 };
 
 // Each triangle's corners as vertices of their own.
 Triangles deindexed(const Triangles& in);
+
+// Blend shapes' offsets for the vertices of a surface made from the file's, each vertex taking
+// those of the one origins says it came from.
+std::vector<SurfaceBlendShape> follow_origins(const std::vector<SurfaceBlendShape>& shapes,
+                                              const std::vector<std::uint32_t>& origins);
 
 // Equal vertices merged into one, in the order they first appear, as Godot's SurfaceTool::index.
 void reindex(Triangles& triangles);

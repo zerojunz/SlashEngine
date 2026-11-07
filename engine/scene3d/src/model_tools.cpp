@@ -85,6 +85,33 @@ Triangles deindexed(const Triangles& in) {
         if (!in.weights.empty()) {
             out.weights.push_back(in.weights[index]);
         }
+        if (!in.origins.empty()) {
+            out.origins.push_back(in.origins[index]);
+        }
+    }
+    return out;
+}
+
+std::vector<SurfaceBlendShape> follow_origins(const std::vector<SurfaceBlendShape>& shapes,
+                                              const std::vector<std::uint32_t>& origins) {
+    const auto follow = [&origins](const std::vector<std::array<float, 3>>& from) {
+        std::vector<std::array<float, 3>> out;
+        if (from.empty()) {
+            return out;
+        }
+        out.reserve(origins.size());
+        for (const std::uint32_t origin : origins) {
+            out.push_back(origin < from.size() ? from[origin]
+                                               : std::array<float, 3>{0.0F, 0.0F, 0.0F});
+        }
+        return out;
+    };
+    std::vector<SurfaceBlendShape> out;
+    out.reserve(shapes.size());
+    for (const SurfaceBlendShape& shape : shapes) {
+        out.push_back({.positions = follow(shape.positions),
+                       .normals = follow(shape.normals),
+                       .tangents = follow(shape.tangents)});
     }
     return out;
 }
@@ -93,15 +120,24 @@ void reindex(Triangles& triangles) {
     std::unordered_map<std::string, std::uint32_t> seen;
     std::vector<render::Vertex3D> vertices;
     std::vector<VertexWeights> weights;
+    std::vector<std::uint32_t> origins;
     const bool skinned = !triangles.weights.empty();
+    // A vertex's weights, and where it came from, are part of it: corners alike but for them
+    // stay apart, since a skin or a blend shape may move them apart.
+    const bool traced = !triangles.origins.empty();
+    const std::size_t extra =
+        (skinned ? sizeof(VertexWeights) : 0) + (traced ? sizeof(std::uint32_t) : 0);
     for (std::uint32_t& index : triangles.indices) {
         const render::Vertex3D& vertex = triangles.vertices[index];
-        // A vertex's weights are part of it: corners alike but for them stay apart.
-        std::string key(sizeof(render::Vertex3D) + (skinned ? sizeof(VertexWeights) : 0), '\0');
+        std::string key(sizeof(render::Vertex3D) + extra, '\0');
         std::memcpy(key.data(), &vertex, sizeof(vertex));
+        std::size_t at = sizeof(vertex);
         if (skinned) {
-            std::memcpy(key.data() + sizeof(vertex), &triangles.weights[index],
-                        sizeof(VertexWeights));
+            std::memcpy(key.data() + at, &triangles.weights[index], sizeof(VertexWeights));
+            at += sizeof(VertexWeights);
+        }
+        if (traced) {
+            std::memcpy(key.data() + at, &triangles.origins[index], sizeof(std::uint32_t));
         }
         const auto [it, added] =
             seen.emplace(std::move(key), static_cast<std::uint32_t>(vertices.size()));
@@ -110,11 +146,15 @@ void reindex(Triangles& triangles) {
             if (skinned) {
                 weights.push_back(triangles.weights[index]);
             }
+            if (traced) {
+                origins.push_back(triangles.origins[index]);
+            }
         }
         index = it->second;
     }
     triangles.vertices = std::move(vertices);
     triangles.weights = std::move(weights);
+    triangles.origins = std::move(origins);
 }
 
 Vec3 position_of(const render::Vertex3D& v) {

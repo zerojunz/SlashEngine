@@ -12373,7 +12373,8 @@ private:
             }
         }
         std::string key = asset.path + "\n" + std::to_string(*index) + "\n" + std::to_string(kept);
-        scene3d::ModelMesh part{.name = mesh.name, .surfaces = {}};
+        scene3d::ModelMesh part{
+            .name = mesh.name, .surfaces = {}, .blend_shapes = {}, .blend_weights = {}};
         std::map<int, int> own; // the model's materials, by their index there
         world::World scratch(components_);
         for (std::size_t i = 0; i < kept; ++i) {

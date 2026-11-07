@@ -805,6 +805,8 @@ Give `path` or `id`. Needs: `read`.
   Godot's default material, and counts their vertices and triangles.
   `lods`, for a mesh whose surfaces have [LODs](scene-format.md#mesh-lods), counts its
   triangles at each coarser LOD, a surface with fewer counted at its coarsest.
+  `blend_shapes`, for a mesh with [blend shapes](scene-format.md#blend-shapes), gives each
+  shape's value at rest by name.
 - Each material has the `StandardMaterial3D` fields that differ from the defaults, as the import
   sets them, and `textures`: the index into `images` its `albedo`, `metallic`, `roughness`,
   `normal` and `emission` textures sample (a glTF model's metallic and roughness are one image).
@@ -814,7 +816,8 @@ Give `path` or `id`. Needs: `read`.
   deforms it, if one does.
 - `skins` and `animations` are there only for a model that has them: each skin's name and how
   many joints it has, and each [animation](scene-format.md#skeletons-and-model-animations)'s
-  name, length in seconds, `loop` if it loops and how many tracks it has.
+  name, length in seconds, `loop` if it loops and how many tracks it has (a blend shape's
+  track counted with the rest).
   [`skeleton.get`](#skeletonget) lists the bones.
 - `bounds` are the corners of the box the parts fill at rest, in the model's own meters.
 - `collision` is there only for a model with [collision](scene-format.md#model-collision): each
@@ -846,6 +849,8 @@ it, and things on it, without drawing it:
   A [`BoneAttachment3D`](scene-format.md#bone-attachments)'s `bone_name` follows one, and a
   `Skeleton3D` turns a part by its name.
 - `animations` are the names of its animations, for a model with any.
+- `blend_shapes` are the names of its meshes' [blend shapes](scene-format.md#blend-shapes), for
+  a model with any.
 - `collision` lists its [collision](scene-format.md#model-collision) shapes, as the full form
   does, for a model with any. Collision nodes aren't `points`.
 
