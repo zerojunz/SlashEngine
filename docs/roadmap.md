@@ -1129,7 +1129,7 @@ cost, from the research proposal of 2026-11-07, in order:
 1. [x] Planning NPCs: goal-oriented action planning as F.E.A.R.'s, with `.npc.json` brains of
        facts, goals and actions, `NpcAgent` components planned on the job system, go_to along
        navigation paths, and the `npc.plan` command
-2. [ ] Goals and brains written by a model from the storyboard, checked by `npc.plan`
+2. [x] Goals and brains written by a model from the storyboard, checked by `npc.plan`
 3. [ ] Lighting checks for agents (`lighting.check`) and ReSTIR direct lighting
 4. [ ] Gaussian splats and generated meshes (TRELLIS) for detailed scenery
 

@@ -1,0 +1,13 @@
+{
+  "entries": {
+    "character/mira": {
+      "name": "Mira",
+      "summary": "Sells fruit from her stall in the square. When she runs out she picks more in the orchard, and she goes home at night."
+    },
+    "place/square": {
+      "name": "The square",
+      "summary": "A market square with a fruit stall, an orchard to the east, a well to the north and houses to the west."
+    }
+  },
+  "format": 1
+}

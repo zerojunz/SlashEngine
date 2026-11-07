@@ -1974,7 +1974,11 @@ the world's job pool, each from its own facts, and starts their plans in entity 
 Gameplay code answers an `emit` action's event and sets facts with `npc::set_fact`, which has the
 agent think at the next tick. `npc::check_scene` backs `scene validate` and exports, and
 `npc.plan` (`engine/command/src/npc.cpp`) says what an agent or a brain would choose, or why no
-goal is chosen. `examples/npc-planner` has two farmers and a guard who rings a bell.
+goal is chosen. `npc.draft` (`engine/ai/src/npc_draft.cpp`, in `slash_ai_commands`) has a
+model from `providers.json` write or revise a brain from a brief and storyboard entries, sending
+each draft's problems (`validate_brain`, `go_to` targets, `emit` events, goals `check_brain`
+finds out of reach) back until one checks, and only then writes it. `examples/npc-planner` has
+two farmers and a guard who rings a bell, and `examples/npc-draft` a fruit seller a model wrote.
 
 ## Particles
 

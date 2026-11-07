@@ -71,7 +71,7 @@ as `entity.get`, reject it as an unknown param.
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity), [`physics.soft_body`](#physicssoft_body), [`physics.break`](#physicsbreak) |
 | World streaming | [`streaming.state`](#streamingstate) |
 | Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent), [`navigation.bake`](#navigationbake) |
-| NPCs | [`npc.plan`](#npcplan) |
+| NPCs | [`npc.plan`](#npcplan), [`npc.draft`](#npcdraft) |
 | Particles | [`particles.eval`](#particleseval), [`particles.bake_sdf`](#particlesbake_sdf) |
 | Lights | [`light.sample`](#lightsample) |
 | Global illumination | [`lightmap.bake`](#lightmapbake), [`voxel_gi.bake`](#voxel_gibake) |
@@ -1954,6 +1954,47 @@ The same cook with no food left:
 An unknown ID, goal or fact fails at its path with a "did you mean"; an entity with no
 `NpcAgent`, or a brain that doesn't load, fails at `/id` or `/brain`.
 [examples/npc-planner](../../examples/npc-planner/) asks it about a village.
+
+### npc.draft
+
+Has a model from `providers.json` write an [NPC](scene-format.md#npcs)'s `.npc.json` brain from a
+`brief` and the storyboard entries in `story`, or revise the brain at `path` when it exists. The
+model is told the brief, the entries whole, the entities its `go_to` actions may walk to, the
+events the game's code answers, the brain it revises and the brain file's schema. Each draft is
+checked as `scene validate` checks a brain, and for `go_to` targets outside `targets`, `emit`
+events outside `events` and goals no chain of actions reaches; the problems go back to the model,
+which tries again, up to `attempts` drafts. Only a draft with no problems is written, as one
+undo step. Actions no plan uses are `warnings`, which don't stop it.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | | The `.npc.json` file to write; one that exists is revised |
+| `brief` | string | | Who the NPC is and what it should do |
+| `story` | array | `[]` | Storyboard entry IDs about it (at most 16), sent whole |
+| `targets` | array | the open scene's entities with a transform and no `NpcAgent` | Entity IDs its `go_to` actions may walk to (at most 64) |
+| `events` | array | any | Events the game's code answers, which its `emit` actions may use |
+| `attempts` | integer | `2` | Drafts the model may make (1 to 4) |
+| `role` | string | the `default` role, or the only provider | A role or provider from `providers.json` |
+| `max_tokens` | integer | | The most tokens the model may reply with |
+
+Needs: `read`, `edit`, `filesystem` and `network` (a session without `network` answers only from
+a replay file). It returns the `path`, the `attempts` it took, the `model` and its `usage`, the
+brain's `goals`, `actions`, the entities it walks to (`go_to`) and the events it `emit`s, and
+`replayed` when the answers came from a replay file. A brain the same as the file's comes back
+with `"unchanged": true` and writes nothing.
+
+```json
+{"path": "brains/mira.npc.json", "brief": "Mira sells fruit at the square by day and sleeps at night.", "story": ["character/mira", "place/square"], "events": ["sell"]}
+```
+
+```json
+{"actions":["walk_to_orchard","pick_fruit","walk_to_stall","sell_fruit","walk_home"],"attempts":2,"emits":["sell"],"go_to":["home","orchard","stall"],"goals":["sleep","restock","serve","mind_stall"],"model":"local-model","path":"brains/mira.npc.json","usage":{"input_tokens":2210,"output_tokens":480}}
+```
+
+A path that isn't a `.npc.json` file fails at `/path`, an unknown storyboard ID at `/story/<i>`
+with a "did you mean", and a model whose last draft still has problems fails with them in the
+error's `problems`, writing nothing. [examples/npc-draft](../../examples/npc-draft/) has a model
+write a fruit seller.
 
 ### particles.eval
 
