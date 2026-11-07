@@ -167,4 +167,13 @@ struct PathHit {
                                 const Float3& origin, const Float3& direction, float distance,
                                 std::uint32_t caster_mask, std::uint32_t seed);
 
+// The surface of the triangle-th triangle (index into PathScene::triangles) at the point whose
+// second and third corners' shares are u and v, seen from its front or back, as a ray meeting it
+// there takes it: path_surface with its textures sampled, or nullopt where its alpha scissor
+// discards it.
+[[nodiscard]] std::optional<PathSurface> path_surface_at(const PathScene& scene,
+                                                         const PathTextures& textures,
+                                                         std::size_t triangle, float u, float v,
+                                                         bool front);
+
 } // namespace slash::render::detail

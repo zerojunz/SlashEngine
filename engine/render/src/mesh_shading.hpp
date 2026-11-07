@@ -579,6 +579,9 @@ struct MeshMaps {
     // Forward+'s ray-traced ambient light, when the scene's uniforms say the frame has it
     // (screen's w): three values a pixel in rows from the top, as run_ray_gi makes them.
     std::span<const float> gi;
+    // Forward+'s SDFGI, when the frame has it: eight values a pixel in rows from the top, ambient
+    // light and how much of it, then reflections and how much, as run_sdfgi makes them.
+    std::span<const float> sdfgi;
 };
 // A pixel's visibility of the light in a ray-traced shadow slot, from MeshMaps::ray_shadows, as
 // add_light in shaders/mesh.hlsl loads it.

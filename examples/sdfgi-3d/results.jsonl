@@ -1,0 +1,7 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":8,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"colors":[[0.627,0.627,0.627,1],[0.459,0.459,0.431,1],[0.008,0.02,0.016,1],[0.427,0.427,0.427,1]],"drawn":{"meshes":5},"height":180,"width":320}}
+{"id":3,"jsonrpc":"2.0","result":{"colors":[[0.667,0.667,0.698,1],[0.584,0.584,0.565,1],[0.204,0.278,0.31,1],[0.525,0.522,0.537,1]],"drawn":{"meshes":5},"height":180,"path":"shots/room.png","width":320}}
+{"id":4,"jsonrpc":"2.0","result":{"changed":{"StandardMaterial3D":{"albedo_color":[0.1,0.2,0.9,1.0]}},"id":"red_wall"}}
+{"id":5,"jsonrpc":"2.0","result":{"colors":[[0.655,0.671,0.722,1],[0.584,0.592,0.584,1],[0.2,0.294,0.322,1],[0.514,0.525,0.569,1]],"drawn":{"meshes":5},"height":180,"path":"shots/blue.png","width":320}}
+{"id":6,"jsonrpc":"2.0","result":{"changed":{"WorldEnvironment":{"sdfgi_enabled":false}},"id":"environment"}}
+{"id":7,"jsonrpc":"2.0","result":{"colors":[[0.655,0.667,0.698,1],[0.51,0.529,0.537,1],[0.216,0.259,0.341,1],[0.475,0.494,0.537,1]],"drawn":{"meshes":5},"height":180,"width":320}}

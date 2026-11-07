@@ -895,4 +895,12 @@ bool path_blocked(const PathScene& scene, const PathTextures* textures, const Fl
         .has_value();
 }
 
+std::optional<PathSurface> path_surface_at(const PathScene& scene, const PathTextures& textures,
+                                           std::size_t triangle, float u, float v, bool front) {
+    const PathTriangle& met = scene.triangles[triangle];
+    MeshPixel pixel = pixel_at(scene, met, u, v, front);
+    sample_texels(scene, textures, met.draw, uv_at(scene, met, u, v), pixel);
+    return path_surface(scene.draws[met.draw].surface, pixel);
+}
+
 } // namespace slash::render::detail
