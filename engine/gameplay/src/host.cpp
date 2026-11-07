@@ -209,6 +209,16 @@ Load Host::load_library() {
     if (auto made = platform::create_directories(folder); !made) {
         return fail(made.error().message);
     }
+    // Copies left from before: Windows won't remove a library while it is loaded, so each is
+    // removed once no program holds it.
+    if (auto old = platform::list_files(folder, [](std::string_view) { return false; })) {
+        for (const std::string& name : old.value()) {
+            std::string path = folder;
+            path += '/';
+            path += name;
+            (void)platform::remove_file(path);
+        }
+    }
     if (auto written = platform::write_file(copy, bytes.value()); !written) {
         return fail(written.error().message);
     }
@@ -227,6 +237,18 @@ Load Host::load_library() {
     if (abi == nullptr || entry == nullptr) {
         library.unload();
         return fail("the gameplay library has no SLASH_GAME_MODULE function");
+    }
+    // On Windows, the engine's functions are bound now (cmake/gameplay/delay_load.cpp), so a
+    // library calling one this program doesn't export is refused before any of its code runs.
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+    const auto bind = reinterpret_cast<const char* (*)()>(library.symbol("slash_game_bind"));
+    if (bind != nullptr) {
+        if (const char* missing = bind(); missing != nullptr) {
+            const std::string name = missing;
+            library.unload();
+            return fail("the gameplay library calls " + name +
+                        ", which this program doesn't have; build it again against this engine");
+        }
     }
     const world::GameModuleAbi* built = abi();
     if (std::string_view(built->api) != SLASH_API_HASH) {

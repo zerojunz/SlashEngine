@@ -639,7 +639,7 @@ A game's own components and systems are plain C++ in the folders and files `proj
 `gameplay.sources` names (`src` in games `slash-cli init` makes), registered in one
 `SLASH_GAME_MODULE(game) { ... }` function (`engine/world/include/slash/world/game_module.hpp`),
 as Godot's scripts are. Exports compile the sources into the game (`SLASH_GAME_SOURCES` in
-`export/CMakeLists.txt`). The tools load them as a library instead, on macOS and Linux:
+`export/CMakeLists.txt`). The tools load them as a library instead, on macOS, Linux and Windows:
 
 ```bash
 $cli build --project path/to/game     # or the gameplay.build command; compiler errors with file and line
@@ -662,7 +662,15 @@ versions of the compiler are fine), and when the file changes swaps the code in:
 each entity's components of the old types as JSON, removes the old systems and their pools,
 moves the new types into the world's `ComponentRegistry` and puts the values back field by
 field, reporting what it had to drop. Libraries are never unloaded. Hosts link the engine
-libraries whole and export their symbols (`slash_gameplay_host` in CMake). Sessions poll it
+libraries whole and export their symbols (`slash_gameplay_host` in CMake). On Windows (MSVC)
+that is a module-definition file `engine/gameplay/exports/write_def.cpp` writes from the
+libraries' COFF objects (every external symbol but COMDATs any copy of which will do, data marked
+`DATA`), and the game's `game.dll` links `slash-host.lib`, the import library of a program named
+`slash-host.exe`, with `/DELAYLOAD`: `cmake/gameplay/delay_load.cpp`, compiled in, hands the
+delay-load helper the running program, and its `slash_game_bind` binds every engine function
+before the host runs the code, so a library calling one the program lacks is refused by name.
+Engine variables can't be imported that way, so game code reaches them through functions.
+`slash_gameplay_module` builds test libraries the same way. Sessions poll it
 before each command (`gameplay.reloaded` events), `slash-game` before each tick, and
 `scene validate` and exports check the game's components by what its sources declare when the
 library isn't there (`runtime::add_gameplay_types`, `ComponentRegistry::add_stand_in`). Sessions

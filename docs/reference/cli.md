@@ -663,11 +663,14 @@ rebuild a Unity build's project.
 
 Compiles the game's own C++ code, the folders and files `project.json`'s
 [`gameplay.sources`](project-format.md#gameplay-code) names, into the library `slash-cli`,
-`slash-mcp` and `slash-game` load (`.slash/gameplay/game.so`), then loads it once to check it.
+`slash-mcp` and `slash-game` load (`.slash/gameplay/game.so`, or `game.dll` on Windows), then
+loads it once to check it.
 Programs that have the project open swap the new code in before their next command or tick,
 keeping the world. [`gameplay.build`](commands.md#gameplaybuild) does the same over MCP,
-JSON-RPC and REST, and swaps it into that session at once. macOS and Linux only; exports for
-every platform link the code in.
+JSON-RPC and REST, and swaps it into that session at once. On Windows it builds with MSVC, so
+run it from a Developer PowerShell; there the code calls the engine's functions but can't use
+its global variables directly. Exports for every platform link
+the code in.
 
 ```bash
 slash-cli build [--check] [--project <dir>] [--engine <dir>]

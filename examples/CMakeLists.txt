@@ -7,7 +7,8 @@
 #                   equal results.jsonl, line for line
 #   project.json    the folder is a game project and must pass "slash-cli project validate"
 #   src/            the project's gameplay sources; the example runs on macOS and Linux only, as
-#                   does one whose main.cpp calls gameplay.build
+#                   does one whose main.cpp calls gameplay.build (their output names game.so,
+#                   and test_gameplay.cpp covers Windows)
 #   addons/<p>/<p>.c  a plugin's source, built into addons/<p>/bin/ of the copy as <p>.so (.dll
 #                   on Windows) before it runs
 #
@@ -25,7 +26,7 @@ foreach(name IN LISTS examples)
         continue()
     endif()
     # An example with gameplay sources, or one that calls gameplay.build on code it writes, builds
-    # them while it runs, which the tools do on macOS and Linux only.
+    # them while it runs: on macOS and Linux, whose library is game.so.
     set(gameplay OFF)
     if(EXISTS ${dir}/main.cpp)
         file(READ ${dir}/main.cpp main_text)

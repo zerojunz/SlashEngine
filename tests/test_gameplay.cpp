@@ -96,7 +96,8 @@ struct Project {
             before = fs::last_write_time(to);
         }
         fs::copy_file(fs::path(SLASH_TEST_GAMEPLAY_DIR) /
-                          ("gameplay_" + std::string(variant) + ".so"),
+                          ("gameplay_" + std::string(variant) +
+                           fs::path(gameplay::library_path("")).extension().string()),
                       to, fs::copy_options::overwrite_existing);
         if (before && fs::last_write_time(to) <= *before) {
             fs::last_write_time(to, *before + std::chrono::seconds(1));
@@ -702,6 +703,36 @@ TEST_CASE("compiler errors are read from a build log") {
     CHECK(failed.to_json() == parse(R"({"errors": [{"column": 5, "file": "src/game.cpp", "line": 12,
                                          "message": "use of undeclared identifier 'speed'"}],
                                         "log": ".slash/gameplay/build.log", "step": "build"})"));
+}
+
+TEST_CASE("MSVC's errors, warnings and notes are read from a build log") {
+    const std::string log =
+        "[1/2] Building CXX object CMakeFiles\\game_objects.dir\\src\\game.cpp.obj\r\n"
+        "C:\\work\\pong\\src\\game.cpp(16,28): error C2039: 'incme': is not a member of "
+        "'Wallet'\r\n"
+        "C:\\work\\pong\\src\\wallet.hpp(3): note: see declaration of 'Wallet'\r\n"
+        "C:\\work\\pong\\src\\game.cpp(20,9): warning C4100: 'seconds': unreferenced "
+        "parameter\r\n"
+        "C:\\work\\pong\\src\\ball.hpp(1,10): fatal error C1083: Cannot open include file: "
+        "'missing.hpp': No such file or directory\r\n"
+        "game_objects.obj : error LNK2019: unresolved external symbol\r\n";
+    const slash::exporter::CompileDiagnostics read =
+        slash::exporter::read_compile_diagnostics(log, "C:/work/pong");
+    REQUIRE(read.errors.size() == 2);
+    CHECK(read.errors[0].file == "src/game.cpp");
+    CHECK(read.errors[0].line == 16);
+    CHECK(read.errors[0].column == 28);
+    CHECK(read.errors[0].message == "'incme': is not a member of 'Wallet'");
+    REQUIRE(read.errors[0].notes.size() == 1);
+    CHECK(read.errors[0].notes[0].file == "src/wallet.hpp");
+    CHECK(read.errors[0].notes[0].line == 3);
+    CHECK(read.errors[0].notes[0].message == "see declaration of 'Wallet'");
+    CHECK(read.errors[1].file == "src/ball.hpp");
+    CHECK(read.errors[1].message ==
+          "Cannot open include file: 'missing.hpp': No such file or directory");
+    REQUIRE(read.warnings.size() == 1);
+    CHECK(read.warnings[0].line == 20);
+    CHECK(read.warnings[0].message == "'seconds': unreferenced parameter");
 }
 
 TEST_CASE("errors, warnings, their notes and the compiler's fixes are read from a build log") {
