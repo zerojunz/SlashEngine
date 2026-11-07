@@ -228,7 +228,7 @@ Vec3 vec_of(const std::array<float, 4>& v) {
 }
 
 std::array<float, 4> array_of(Vec3 v) {
-    return {v.x, v.y, v.z, 0.0F};
+    return {static_cast<float>(v.x), static_cast<float>(v.y), static_cast<float>(v.z), 0.0F};
 }
 
 Quat quat_of(const std::array<float, 4>& v) {
@@ -236,7 +236,8 @@ Quat quat_of(const std::array<float, 4>& v) {
 }
 
 std::array<float, 4> array_of(const Quat& q) {
-    return {q.x, q.y, q.z, q.w};
+    return {static_cast<float>(q.x), static_cast<float>(q.y), static_cast<float>(q.z),
+            static_cast<float>(q.w)};
 }
 
 } // namespace

@@ -94,7 +94,7 @@ Float3 disk_point(const Float3& n, float r, float u, float v) {
     Float3 b;
     basis(n, t, b);
     const float reach = std::sqrt(u) * r;
-    const Vec2 turn = slash::cos_sin(2.0F * kPi * v);
+    const Vec2f turn = slash::cos_sin(2.0F * kPi * v);
     return add(scale(t, reach * turn.x), scale(b, reach * turn.y));
 }
 
@@ -149,7 +149,7 @@ std::vector<RayShadowLight> ray_shadow_lights(const Scene3D& scene) {
             const Float3 way = normalize(light.direction);
             ray.toward = scale(way, -1.0F);
             const float half = std::clamp(light.size, 0.0F, 90.0F) * (kPi / 360.0F);
-            const Vec2 turn = slash::cos_sin(half);
+            const Vec2f turn = slash::cos_sin(half);
             ray.size = turn.x > 0.0F ? turn.y / turn.x : 0.0F;
         }
         out.push_back(ray);

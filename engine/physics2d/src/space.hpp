@@ -100,7 +100,7 @@ private:
 };
 
 inline b2Vec2 to_b2(Vec2 v) {
-    return {v.x, v.y};
+    return {static_cast<float>(v.x), static_cast<float>(v.y)};
 }
 
 inline Vec2 from_b2(b2Vec2 v) {
@@ -121,7 +121,7 @@ struct ShapePlacement {
         if (owner) {
             turned = to_b2(owner->apply(from_b2(turned)));
         }
-        return {turned.x * scale.x, turned.y * scale.y};
+        return {static_cast<float>(turned.x * scale.x), static_cast<float>(turned.y * scale.y)};
     }
     // Radii scale by the larger axis.
     [[nodiscard]] float radius(float value) const {

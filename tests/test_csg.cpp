@@ -542,7 +542,8 @@ TEST_CASE("navigation bakes take a CSG root's mesh, and its collision only when 
     CHECK_FALSE(baked.value().polygons.empty());
     float nearest = 100.0F;
     for (const Vec3 vertex : baked.value().vertices) {
-        nearest = std::min(nearest, std::sqrt((vertex.x * vertex.x) + (vertex.z * vertex.z)));
+        nearest = std::min<slash::real_t>(nearest,
+                                          std::sqrt((vertex.x * vertex.x) + (vertex.z * vertex.z)));
     }
     CHECK(nearest > 0.5F);
     CHECK(nearest < 1.5F);

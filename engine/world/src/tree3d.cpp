@@ -76,8 +76,14 @@ Affine3D Affine3D::inverse() const {
 }
 
 std::array<float, 16> Affine3D::matrix() const {
-    return {x.x, x.y, x.z, 0.0F, y.x,      y.y,      y.z,      0.0F,
-            z.x, z.y, z.z, 0.0F, origin.x, origin.y, origin.z, 1.0F};
+    return {static_cast<float>(x.x),      static_cast<float>(x.y),
+            static_cast<float>(x.z),      0.0F,
+            static_cast<float>(y.x),      static_cast<float>(y.y),
+            static_cast<float>(y.z),      0.0F,
+            static_cast<float>(z.x),      static_cast<float>(z.y),
+            static_cast<float>(z.z),      0.0F,
+            static_cast<float>(origin.x), static_cast<float>(origin.y),
+            static_cast<float>(origin.z), 1.0F};
 }
 
 Affine3D affine(const Transform3D& transform) {

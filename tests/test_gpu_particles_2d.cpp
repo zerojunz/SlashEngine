@@ -33,6 +33,7 @@ namespace json = slash::json;
 namespace render = slash::render;
 namespace world = slash::world;
 using slash::Vec2;
+using slash::Vec2f;
 
 namespace {
 
@@ -930,7 +931,7 @@ TEST_CASE("GPU particles collide with LightOccluder2D outlines and tile occluder
     REQUIRE(kept.shapes.size() == 1);
     CHECK(
         kept.shapes[0].points ==
-        std::vector<Vec2>{{-100.0F, 80.0F}, {100.0F, 80.0F}, {100.0F, 120.0F}, {-100.0F, 120.0F}});
+        std::vector<Vec2f>{{-100.0F, 80.0F}, {100.0F, 80.0F}, {100.0F, 120.0F}, {-100.0F, 120.0F}});
     CHECK(kept.shapes[0].closed);
     for (const render::ParticleStep& step : kept.steps) {
         CHECK(step.shape_first == 0);
@@ -1008,9 +1009,9 @@ TEST_CASE("GPU particles collide with LightOccluder2D outlines and tile occluder
     const render::ParticleStep& last = tiled.steps.back();
     REQUIRE(last.shape_count == 2);
     CHECK(tiled.shapes[last.shape_first].points ==
-          std::vector<Vec2>{{0.0F, 100.0F}, {16.0F, 100.0F}, {16.0F, 116.0F}, {0.0F, 116.0F}});
+          std::vector<Vec2f>{{0.0F, 100.0F}, {16.0F, 100.0F}, {16.0F, 116.0F}, {0.0F, 116.0F}});
     CHECK(tiled.shapes[last.shape_first + 1].points ==
-          std::vector<Vec2>{{32.0F, 100.0F}, {48.0F, 100.0F}, {48.0F, 116.0F}, {32.0F, 116.0F}});
+          std::vector<Vec2f>{{32.0F, 100.0F}, {48.0F, 100.0F}, {48.0F, 116.0F}, {32.0F, 116.0F}});
 }
 
 namespace {

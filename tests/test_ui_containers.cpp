@@ -126,7 +126,8 @@ struct Scene {
 std::array<float, 4> rect_of(const Scene& scene, const ui::Layout& layout, std::string_view id) {
     const ui::Placed* placed = layout.find(scene.world.find(id));
     REQUIRE(placed != nullptr);
-    return {placed->transform.tx, placed->transform.ty, placed->size.x, placed->size.y};
+    return {placed->transform.tx, placed->transform.ty, static_cast<float>(placed->size.x),
+            static_cast<float>(placed->size.y)};
 }
 
 using Rect = std::array<float, 4>;

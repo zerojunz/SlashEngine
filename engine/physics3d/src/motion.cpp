@@ -218,9 +218,9 @@ bool recover(const JPH::PhysicsSystem& system, const Body& body, const world::Af
     for (int i = 0; i < kRecoveryIterations; ++i) {
         collector.Reset();
         const Vec3 base = transform_com.origin;
-        query.CollideShapeWithInternalEdgeRemoval(body.shape.GetPtr(), JPH::Vec3::sOne(),
-                                                  matrix_of(transform_com), settings, to_jolt(base),
-                                                  collector, filter, filter, filter);
+        query.CollideShapeWithInternalEdgeRemoval(
+            body.shape.GetPtr(), JPH::Vec3::sOne(), place_matrix_of(transform_com), settings,
+            to_jolt_place(base), collector, filter, filter, filter);
         if (collector.hits.empty()) {
             break;
         }
@@ -254,7 +254,7 @@ bool cast_shape(const JPH::PhysicsSystem& system, const JPH::ConvexShape& shape,
     closest_safe = 1.0F;
     closest_unsafe = 1.0F;
     const float motion_length = length(motion);
-    const JPH::Mat44 com = matrix_of(transform_com);
+    const JPH::RMat44 com = place_matrix_of(transform_com);
     const JPH::Vec3 jolt_scale = to_jolt(scale);
     const JPH::Vec3 jolt_motion = to_jolt(motion);
     const JPH::Vec3 motion_local = com.Multiply3x3Transposed(jolt_motion);
@@ -350,7 +350,7 @@ bool cast(const JPH::PhysicsSystem& system, const Body& body, const world::Affin
 Vec3 point_velocity(const JPH::Body& jolt, const Body& body, Vec3 position) {
     const Vec3 linear = from_jolt(jolt.GetLinearVelocity()) + body.constant_linear_velocity;
     const Vec3 angular = from_jolt(jolt.GetAngularVelocity()) + body.constant_angular_velocity;
-    return linear + cross(angular, position - from_jolt(jolt.GetCenterOfMassPosition()));
+    return linear + cross(angular, position - from_jolt_place(jolt.GetCenterOfMassPosition()));
 }
 
 // Godot's _body_motion_collide: what the body touches at transform, deepest first.
@@ -368,8 +368,8 @@ bool collide(const JPH::PhysicsSystem& system, const Body& body, const world::Af
     const Vec3 base = transform_com.origin;
     ClosestMulti collector(max_collisions);
     system.GetNarrowPhaseQueryNoLock().CollideShapeWithInternalEdgeRemoval(
-        body.shape.GetPtr(), JPH::Vec3::sOne(), matrix_of(transform_com), settings, to_jolt(base),
-        collector, filter, filter, filter);
+        body.shape.GetPtr(), JPH::Vec3::sOne(), place_matrix_of(transform_com), settings,
+        to_jolt_place(base), collector, filter, filter, filter);
     const JPH::BodyLockInterfaceNoLock& locks = system.GetBodyLockInterfaceNoLock();
     const float tolerance_squared = system.GetPhysicsSettings().mManifoldTolerance *
                                     system.GetPhysicsSettings().mManifoldTolerance;

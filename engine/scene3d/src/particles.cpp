@@ -430,8 +430,9 @@ private:
             const float height = s_.emission_ring_height;
             // tan(90 degrees - cone angle): how far in the side leans per meter up.
             const Vec2 lean = cos_sin((90.0F - s_.emission_ring_cone_angle) * kRadiansPerDegree);
-            const float top =
-                lean.x != 0.0F ? std::max(radius - ((lean.y / lean.x) * height), 0.0F) : 0.0F;
+            const float top = lean.x != 0.0F
+                                  ? std::max<real_t>(radius - ((lean.y / lean.x) * height), 0.0F)
+                                  : 0.0F;
             const float skew = std::max(std::min(radius, top) / std::max(radius, top), 0.5F);
             float y = r(kShapeA);
             y = radius < top ? power(y, skew) : 1.0F - power(y, skew);
@@ -552,8 +553,9 @@ private:
             scale = {amount, amount, amount};
         }
         const float base = lerp(s_.scale_amount_min, s_.scale_amount_max, slot.random.at(kScale));
-        scale = {std::max(scale.x * base, kCmpEpsilon), std::max(scale.y * base, kCmpEpsilon),
-                 std::max(scale.z * base, kCmpEpsilon)};
+        scale = {std::max<real_t>(scale.x * base, kCmpEpsilon),
+                 std::max<real_t>(scale.y * base, kCmpEpsilon),
+                 std::max<real_t>(scale.z * base, kCmpEpsilon)};
         // As Godot's Basis::scale, which scales its rows: along the world's axes.
         for (Vec3* axis : {&p.transform.x, &p.transform.y, &p.transform.z}) {
             *axis = {axis->x * scale.x, axis->y * scale.y, axis->z * scale.z};

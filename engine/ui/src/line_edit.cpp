@@ -186,9 +186,9 @@ float Field::x_ofs(const world::LineEdit& edit, const EditState& state, bool dra
                 x = to_int(static_cast<float>(x) + icon.x);
             }
         } else if (rtl) {
-            x = to_int(std::max(left + icon.x, static_cast<float>(x)));
+            x = to_int(std::max<real_t>(left + icon.x, static_cast<float>(x)));
         } else {
-            x = to_int(std::max(left, static_cast<float>(x) - icon.x - right));
+            x = to_int(std::max<real_t>(left, static_cast<float>(x) - icon.x - right));
         }
     }
     return static_cast<float>(x);
@@ -279,7 +279,7 @@ Vec2 Field::minimum_size(const world::LineEdit& edit) const {
     Vec2 size{static_cast<float>(view_->minimum_character_width) * em_, 0.0F};
     if (edit.expand_to_text_length) {
         // Room for the caret at the end.
-        size.x = std::max(size.x, full_width() + static_cast<float>(view_->caret_width));
+        size.x = std::max<real_t>(size.x, full_width() + static_cast<float>(view_->caret_width));
     }
     size.y = std::max(text_height(), font_height_);
     int icon_max_width = 0;

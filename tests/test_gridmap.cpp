@@ -41,6 +41,12 @@ using slash::Vec3i;
 
 namespace {
 
+// A position as the library's JSON reads it: decimals rounded to slash::real_t.
+Vec3 real(double x, double y, double z) {
+    return {static_cast<slash::real_t>(x), static_cast<slash::real_t>(y),
+            static_cast<slash::real_t>(z)};
+}
+
 json::Value parse(std::string_view text) {
     auto parsed = json::parse(text);
     REQUIRE(parsed.ok());
@@ -234,8 +240,11 @@ TEST_CASE("a cell's orientation is one of Godot's 24 turns") {
     for (int i = 0; i < scene3d::kOrientations; ++i) {
         const world::Affine3D basis = scene3d::orientation_basis(i);
         CHECK(dot(basis.x, cross(basis.y, basis.z)) == doctest::Approx(1.0F));
-        seen.insert({basis.x.x, basis.x.y, basis.x.z, basis.y.x, basis.y.y, basis.y.z, basis.z.x,
-                     basis.z.y, basis.z.z});
+        seen.insert({static_cast<float>(basis.x.x), static_cast<float>(basis.x.y),
+                     static_cast<float>(basis.x.z), static_cast<float>(basis.y.x),
+                     static_cast<float>(basis.y.y), static_cast<float>(basis.y.z),
+                     static_cast<float>(basis.z.x), static_cast<float>(basis.z.y),
+                     static_cast<float>(basis.z.z)});
         CHECK(scene3d::orientation_index(basis) == i);
     }
     CHECK(seen.size() == 24);
@@ -380,11 +389,11 @@ TEST_CASE("mesh libraries hold items by name, checked as they load") {
     REQUIRE(items.size() == 4);
     const scene3d::MeshLibraryItem& floor = items.at("floor");
     REQUIRE(floor.primitive.has_value());
-    CHECK(std::get<world::BoxMesh>(*floor.primitive).size == Vec3{2.0F, 0.2F, 2.0F});
+    CHECK(std::get<world::BoxMesh>(*floor.primitive).size == real(2.0, 0.2, 2.0));
     CHECK(floor.material->albedo_color.y == 1.0F);
     CHECK(floor.mesh_transform.origin == Vec3{0.0F, -0.1F, 0.0F});
     REQUIRE(floor.shapes.size() == 1);
-    CHECK(floor.shapes[0].position == Vec3{0.0F, -0.1F, 0.0F});
+    CHECK(floor.shapes[0].position == real(0.0, -0.1, 0.0));
     CHECK(floor.navigation_mesh == "floor.navmesh.json");
     CHECK(floor.navigation_layers == 3);
     CHECK(items.at("ramp").mesh == "ramp.obj");
@@ -450,7 +459,7 @@ TEST_CASE("a GridMap's octants merge their cells' meshes by material, kept until
     // Shapes in every cell that has them, and the floor's navigation region.
     REQUIRE(mesh->shapes->size() == 4);
     CHECK(mesh->shapes->at(3).cell == Vec3i{0, 0, 1});
-    CHECK(mesh->shapes->at(3).local.origin == Vec3{1.0F, 0.9F, 3.0F});
+    CHECK(mesh->shapes->at(3).local.origin == real(1.0, 0.9, 3.0));
     REQUIRE(mesh->regions.size() == 1);
     CHECK(mesh->regions[0].cell == Vec3i{0, 0, 1});
     CHECK(mesh->regions[0].navigation_layers == 3);

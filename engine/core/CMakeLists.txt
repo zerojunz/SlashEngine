@@ -44,6 +44,10 @@ if(SLASH_PROFILER STREQUAL "tracy")
     target_link_libraries(slash_core PUBLIC Tracy::TracyClient)
     target_compile_definitions(slash_core PUBLIC SLASH_TRACY)
 endif()
+# Double-precision positions (SLASH_PRECISION in the top CMakeLists.txt; slash::real_t).
+if(SLASH_PRECISION STREQUAL "double")
+    target_compile_definitions(slash_core PUBLIC SLASH_REAL_T_IS_DOUBLE=1)
+endif()
 # The reflection macros use __VA_OPT__, which MSVC only supports with its conforming preprocessor.
 target_compile_options(slash_core PUBLIC $<$<CXX_COMPILER_ID:MSVC>:/Zc:preprocessor>)
 set_source_files_properties(src/version.cpp PROPERTIES

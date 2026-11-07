@@ -1997,7 +1997,7 @@ struct Bridge::State {
             for (const entt::entity e : look.entities()) {
                 const detail::Box3 box = look.mesh_bounds(e);
                 if (!box.empty) {
-                    low = std::min(low, box.low.y);
+                    low = std::min<real_t>(low, box.low.y);
                 }
             }
             kill_y = (std::isfinite(low) ? low : 0.0F) - static_cast<float>(out_of_world_margin);

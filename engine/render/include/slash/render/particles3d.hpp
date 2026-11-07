@@ -41,26 +41,26 @@ struct ParticleCurve3 {
 // are in degrees and lengths in meters.
 struct ParticleProcess3D {
     EmissionShape emission_shape = EmissionShape::Point;
-    Vec3 emission_shape_offset;
-    Vec3 emission_shape_scale{1.0F, 1.0F, 1.0F};
+    Vec3f emission_shape_offset;
+    Vec3f emission_shape_scale{1.0F, 1.0F, 1.0F};
     float emission_sphere_radius = 1.0F;
-    Vec3 emission_box_extents{1.0F, 1.0F, 1.0F};
-    std::vector<Vec3> emission_points;  // Points and DirectedPoints
-    std::vector<Vec3> emission_normals; // DirectedPoints: one per point
-    std::vector<Vec4> emission_colors;  // none, or one per point, multiplying color
+    Vec3f emission_box_extents{1.0F, 1.0F, 1.0F};
+    std::vector<Vec3f> emission_points;  // Points and DirectedPoints
+    std::vector<Vec3f> emission_normals; // DirectedPoints: one per point
+    std::vector<Vec4> emission_colors;   // none, or one per point, multiplying color
     // Ring: about emission_ring_axis, emission_ring_height tall, its sides at
     // emission_ring_cone_angle degrees (90 is a cylinder).
-    Vec3 emission_ring_axis{0.0F, 0.0F, 1.0F};
+    Vec3f emission_ring_axis{0.0F, 0.0F, 1.0F};
     float emission_ring_height = 1.0F;
     float emission_ring_radius = 1.0F;
     float emission_ring_inner_radius = 0.0F;
     float emission_ring_cone_angle = 90.0F;
-    Vec3 direction{1.0F, 0.0F, 0.0F};
+    Vec3f direction{1.0F, 0.0F, 0.0F};
     float spread = 45.0F;
     float flatness = 0.0F; // 1 keeps the spread in the plane of direction and x
     float inherit_velocity_ratio = 0.0F;
-    Vec3 velocity_pivot;
-    Vec3 gravity{0.0F, -9.8F, 0.0F};
+    Vec3f velocity_pivot;
+    Vec3f gravity{0.0F, -9.8F, 0.0F};
     // By ParticleParam, as ParticleProcess's; Scale's and OrbitVelocity's curves are in
     // scale_curve and orbit_velocity_curve instead.
     std::array<float, kParticleParams> param_min{0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0.1F, 0};
@@ -96,7 +96,7 @@ struct ParticleProcess3D {
     bool turbulence_enabled = false;
     float turbulence_noise_strength = 1.0F;
     float turbulence_noise_scale = 9.0F;
-    Vec3 turbulence_noise_speed;
+    Vec3f turbulence_noise_speed;
     float turbulence_noise_speed_random = 0.2F;
     // Attractors push the particles (Godot's attractor_interaction_enabled).
     bool attractor_interaction = true;
@@ -135,7 +135,7 @@ enum class AttractorShape3D : std::uint8_t { Sphere, Box, VectorField };
 struct ParticleAttractor3D {
     AttractorShape3D shape = AttractorShape3D::Sphere;
     ParticleTransform transform = kParticleIdentity;
-    Vec3 extents{1.0F, 1.0F, 1.0F};
+    Vec3f extents{1.0F, 1.0F, 1.0F};
     float strength = 1.0F;
     float attenuation = 1.0F;
     float directionality = 0.0F;
@@ -180,7 +180,7 @@ enum class ColliderShape3D : std::uint8_t { Sphere, Box, Sdf, HeightField };
 struct ParticleCollider3D {
     ColliderShape3D shape = ColliderShape3D::Sphere;
     ParticleTransform transform = kParticleIdentity;
-    Vec3 extents{1.0F, 1.0F, 1.0F};
+    Vec3f extents{1.0F, 1.0F, 1.0F};
     float scale = 1.0F;                                   // Sdf only
     std::shared_ptr<const ParticleSdf3D> sdf;             // Sdf only
     std::shared_ptr<const ParticleHeightField3D> heights; // HeightField only
@@ -205,7 +205,7 @@ struct ParticleStep3D {
     // Where new particles start: the emitter's transform, or the identity for particles in its
     // own space (local_coords).
     ParticleTransform emission = kParticleIdentity;
-    Vec3 emitter_velocity; // meters per second
+    Vec3f emitter_velocity; // meters per second
     float system_phase = 0.0F;
     float prev_system_phase = 0.0F;
     float delta = 0.0F;
@@ -241,7 +241,7 @@ struct Particle3D {
     Vec4 y{0.0F, 1.0F, 0.0F, 0.0F};
     Vec4 z{0.0F, 0.0F, 1.0F, 0.0F};
     Vec4 origin;
-    Vec3 velocity;
+    Vec3f velocity;
     std::uint32_t flags = 0;
     Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};
     Vec4 custom;
@@ -291,8 +291,8 @@ struct ParticleMeshDraw3D {
     ParticleTransform transform = kParticleIdentity;
     // The camera's z axis (pointing back at it) and y axis: the z in the particles' own space,
     // as Godot's sort_direction, and the y as it is, as its align_up.
-    Vec3 sort_direction{0.0F, 0.0F, 1.0F};
-    Vec3 align_up{0.0F, 1.0F, 0.0F};
+    Vec3f sort_direction{0.0F, 0.0F, 1.0F};
+    Vec3f align_up{0.0F, 1.0F, 0.0F};
     // Where the camera is, for billboards.
     ParticleTransform camera = kParticleIdentity;
     ParticleBillboard billboard = ParticleBillboard::Disabled;

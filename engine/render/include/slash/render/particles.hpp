@@ -96,7 +96,7 @@ enum class ParticleCollision : std::uint8_t {
 
 // A curve over a particle's life: points [offset, value], offsets from 0 to 1 in order, joined by
 // straight lines and flat past the ends. No points is no curve.
-using ParticleCurve = std::vector<Vec2>;
+using ParticleCurve = std::vector<Vec2f>;
 
 struct GradientStop {
     float offset = 0.0F;
@@ -156,20 +156,20 @@ struct ParticleProgram {
 // its generated shader runs it. Angles are in degrees.
 struct ParticleProcess {
     EmissionShape emission_shape = EmissionShape::Point;
-    Vec2 emission_shape_offset;
-    Vec2 emission_shape_scale{1.0F, 1.0F};
+    Vec2f emission_shape_offset;
+    Vec2f emission_shape_scale{1.0F, 1.0F};
     float emission_sphere_radius = 1.0F;
-    Vec2 emission_box_extents{1.0F, 1.0F};
-    std::vector<Vec2> emission_points;  // Points and DirectedPoints
-    std::vector<Vec2> emission_normals; // DirectedPoints: unit vectors, one per point
-    std::vector<Vec4> emission_colors;  // none, or one per point, multiplying color
+    Vec2f emission_box_extents{1.0F, 1.0F};
+    std::vector<Vec2f> emission_points;  // Points and DirectedPoints
+    std::vector<Vec2f> emission_normals; // DirectedPoints: unit vectors, one per point
+    std::vector<Vec4> emission_colors;   // none, or one per point, multiplying color
     float emission_ring_radius = 1.0F;
     float emission_ring_inner_radius = 0.0F;
-    Vec2 direction{1.0F, 0.0F};
+    Vec2f direction{1.0F, 0.0F};
     float spread = 45.0F;
     float inherit_velocity_ratio = 0.0F; // of the emitter's velocity, added at the start
-    Vec2 velocity_pivot;                 // what radial velocity pushes away from
-    Vec2 gravity{0.0F, 98.0F};
+    Vec2f velocity_pivot;                // what radial velocity pushes away from
+    Vec2f gravity{0.0F, 98.0F};
     // By ParticleParam. Scale is 1 and TurbulenceInfluence 0.1, the rest 0.
     std::array<float, kParticleParams> param_min{0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0.1F, 0};
     std::array<float, kParticleParams> param_max{0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0.1F, 0};
@@ -190,7 +190,7 @@ struct ParticleProcess {
     bool turbulence_enabled = false;
     float turbulence_noise_strength = 1.0F;     // how sharply the noise turns, 0 to 20
     float turbulence_noise_scale = 9.0F;        // Godot's slider: higher is larger swirls
-    Vec3 turbulence_noise_speed;                // how the noise moves per second of particle time
+    Vec3f turbulence_noise_speed;               // how the noise moves per second of particle time
     float turbulence_noise_speed_random = 0.2F; // how fast the noise changes as it moves
     // Collision with the steps' shapes (ParticleShape), as Godot's with LightOccluder2D nodes.
     ParticleCollision collision_mode = ParticleCollision::Disabled;
@@ -215,7 +215,7 @@ struct ParticleProcess {
 // A shape particles collide with, as a LightOccluder2D's outline in the signed distance field
 // Godot's particles collide with: a closed one is solid, an open one a line.
 struct ParticleShape {
-    std::vector<Vec2> points; // pixels
+    std::vector<Vec2f> points; // pixels
     bool closed = true;
 
     bool operator==(const ParticleShape&) const = default;
@@ -230,7 +230,7 @@ struct ParticleStep {
     // Where new particles start: x' = [0] x + [2] y + [4], y' = [1] x + [3] y + [5]; identity
     // for particles in the emitter's own coordinates.
     std::array<float, 6> emission{1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F};
-    Vec2 emitter_velocity;          // pixels per second
+    Vec2f emitter_velocity;         // pixels per second
     float system_phase = 0.0F;      // where the emission cycle is after the step, from 0 to 1
     float prev_system_phase = 0.0F; // before it
     float delta = 0.0F;             // seconds
@@ -277,8 +277,8 @@ inline constexpr std::uint32_t kParticleCycleShift = 16U;
 // trail's waiting copy keeps the steps left until it follows.
 struct Particle {
     Vec4 basis{1.0F, 0.0F, 0.0F, 1.0F}; // its x axis [x, y] then its y axis [z, w], scaled
-    Vec2 origin;                        // pixels
-    Vec2 velocity;                      // pixels per second
+    Vec2f origin;                       // pixels
+    Vec2f velocity;                     // pixels per second
     Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};
     // Godot's CUSTOM: its angle in radians, its age as a fraction of the system's lifetime, its
     // sprite sheet frame from 0 to 1, and its own lifetime as a fraction of the system's.
@@ -316,7 +316,7 @@ struct ParticleDraw {
     ParticleOrder order = ParticleOrder::Index;
     std::uint32_t lifetime_split = 0; // particle_lifetime_split for the system's phase
     float remainder = 0.0F;           // seconds each particle is moved on along its velocity
-    Vec2 size{1.0F, 1.0F};            // pixels
+    Vec2f size{1.0F, 1.0F};           // pixels
     std::uint32_t hframes = 1;
     std::uint32_t vframes = 1;
     bool anim_loop = false;
@@ -373,10 +373,10 @@ void process_particle_chain(std::span<const ParticleChainLink> links);
 // it size away. No collision when the point is further than size from every shape.
 struct ParticleContact {
     bool collided = false;
-    Vec2 normal;
+    Vec2f normal;
     float depth = 0.0F;
 };
-[[nodiscard]] ParticleContact particle_contact(Vec2 point, float size,
+[[nodiscard]] ParticleContact particle_contact(Vec2f point, float size,
                                                std::span<const ParticleShape> shapes);
 
 // Appends particles' quads to out, as the GPU draws them: six vertices each, in draw order; or,

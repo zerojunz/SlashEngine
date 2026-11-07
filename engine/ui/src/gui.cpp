@@ -2318,7 +2318,7 @@ private:
         const float x0 = std::max(0.0F, left);
         const float x1 = std::min(room.x, left + view.list_size.x);
         const float y0 = std::max(0.0F, -view.scroll);
-        const float y1 = std::min(room.y, std::max(total, room.y) - view.scroll);
+        const float y1 = std::min(room.y, std::max<real_t>(total, room.y) - view.scroll);
         if (local.x < x0 || local.y < y0 || local.x >= x1 || local.y >= y1) {
             return -1;
         }
@@ -3545,12 +3545,12 @@ private:
         pos = pos + (status.speed * delta);
         bool off_h = false;
         bool off_v = false;
-        const auto keep = [](float& value, const ScrollBarView& bar, bool& off) {
+        const auto keep = [](real_t& value, const ScrollBarView& bar, bool& off) {
             if (value < 0.0F) {
                 value = 0.0F;
                 off = true;
             }
-            const auto end = static_cast<float>(bar.max_value - bar.page);
+            const auto end = static_cast<real_t>(bar.max_value - bar.page);
             if (value > end) {
                 value = end;
                 off = true;

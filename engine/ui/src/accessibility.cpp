@@ -35,7 +35,8 @@ Vec4 bounds(const Transform& transform, Vec2 size) {
         low = {std::min(low.x, corner.x), std::min(low.y, corner.y)};
         high = {std::max(high.x, corner.x), std::max(high.y, corner.y)};
     }
-    return {low.x, low.y, high.x - low.x, high.y - low.y};
+    return {static_cast<float>(low.x), static_cast<float>(low.y),
+            static_cast<float>(high.x - low.x), static_cast<float>(high.y - low.y)};
 }
 
 // How many code points UTF-8 text holds.
@@ -306,7 +307,8 @@ private:
         out.entity = popup.owner;
         out.menu = true;
         out.role = "menu";
-        out.rect = {popup.position.x, popup.position.y, popup.size.x, popup.size.y};
+        out.rect = {static_cast<float>(popup.position.x), static_cast<float>(popup.position.y),
+                    static_cast<float>(popup.size.x), static_cast<float>(popup.size.y)};
         const bool standalone = world_.ecs().all_of<world::PopupMenu>(popup.owner);
         if (standalone) {
             out.name = world_.id_of(popup.owner); // Node's name
@@ -336,9 +338,10 @@ private:
             element.tooltip = item.tooltip;
             if (i < popup.items.size()) {
                 const PopupItemView& view = popup.items[i];
-                element.rect = {popup.position.x + popup.list_position.x,
-                                popup.position.y + popup.list_position.y + view.y - popup.scroll,
-                                popup.list_size.x,
+                element.rect = {static_cast<float>(popup.position.x + popup.list_position.x),
+                                static_cast<float>(popup.position.y + popup.list_position.y +
+                                                   view.y - popup.scroll),
+                                static_cast<float>(popup.list_size.x),
                                 view.height + static_cast<float>(popup.v_separation)};
             }
             const std::size_t at = add(std::move(element));

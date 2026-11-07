@@ -141,7 +141,8 @@ std::vector<float> flat(std::span<const Vec3> points) {
     std::vector<float> out;
     out.reserve(points.size() * 3);
     for (const Vec3 point : points) {
-        out.insert(out.end(), {point.x, point.y, point.z});
+        out.insert(out.end(), {static_cast<float>(point.x), static_cast<float>(point.y),
+                               static_cast<float>(point.z)});
     }
     return out;
 }

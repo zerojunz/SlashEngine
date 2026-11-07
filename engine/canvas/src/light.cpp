@@ -58,8 +58,8 @@ Point place(const world::Transform2D& transform, float x, float y) {
         transform.skew == 0.0F ? cos_r : std::cos(transform.rotation + transform.skew);
     const float sin_k =
         transform.skew == 0.0F ? sin_r : std::sin(transform.rotation + transform.skew);
-    return {transform.position.x + (sx * cos_r) - (sy * sin_k),
-            transform.position.y + (sx * sin_r) + (sy * cos_k)};
+    return {to_float(transform.position.x + (sx * cos_r) - (sy * sin_k)),
+            to_float(transform.position.y + (sx * sin_r) + (sy * cos_k))};
 }
 
 std::uint32_t mask_of(int mask) {
@@ -146,12 +146,13 @@ std::vector<OccluderEdge> edges_for(const render::Light& light, std::uint32_t sh
 
 // A transform as render::Shading::to_lights holds it.
 std::array<float, 6> rows_of(const world::Affine2D& m) {
-    return {m.x.x, m.y.x, m.origin.x, m.x.y, m.y.y, m.origin.y};
+    return {static_cast<float>(m.x.x), static_cast<float>(m.y.x), static_cast<float>(m.origin.x),
+            static_cast<float>(m.x.y), static_cast<float>(m.y.y), static_cast<float>(m.origin.y)};
 }
 
 Point moved(const world::Affine2D& m, Point p) {
     const Vec2 out = m.apply({p[0], p[1]});
-    return {out.x, out.y};
+    return {static_cast<float>(out.x), static_cast<float>(out.y)};
 }
 
 // Moves a light from its canvas's coordinates into the lights', through m, as Godot's viewport
@@ -162,17 +163,20 @@ void move_light(render::Light& light, const world::Affine2D& m) {
         // The texture's coordinates from the light's: first back through m.
         const world::Affine2D back = m.inverse();
         const std::array<float, 6> t = light.texture_transform;
-        light.texture_transform = {(t[0] * back.x.x) + (t[1] * back.x.y),
-                                   (t[0] * back.y.x) + (t[1] * back.y.y),
-                                   (t[0] * back.origin.x) + (t[1] * back.origin.y) + t[2],
-                                   (t[3] * back.x.x) + (t[4] * back.x.y),
-                                   (t[3] * back.y.x) + (t[4] * back.y.y),
-                                   (t[3] * back.origin.x) + (t[4] * back.origin.y) + t[5]};
+        light.texture_transform = {
+            to_float((t[0] * back.x.x) + (t[1] * back.x.y)),
+            to_float((t[0] * back.y.x) + (t[1] * back.y.y)),
+            static_cast<float>((t[0] * back.origin.x) + (t[1] * back.origin.y) + t[2]),
+            to_float((t[3] * back.x.x) + (t[4] * back.x.y)),
+            to_float((t[3] * back.y.x) + (t[4] * back.y.y)),
+            static_cast<float>((t[3] * back.origin.x) + (t[4] * back.origin.y) + t[5])};
         // As Godot scales a light's height to the canvas.
-        light.height *= (length({m.x.x, m.x.y}) + length({m.y.x, m.y.y})) * 0.5F;
+        light.height *= (length({static_cast<float>(m.x.x), static_cast<float>(m.x.y)}) +
+                         length({static_cast<float>(m.y.x), static_cast<float>(m.y.y)})) *
+                        0.5F;
     } else {
-        const Point along{(m.x.x * light.position[0]) + (m.y.x * light.position[1]),
-                          (m.x.y * light.position[0]) + (m.y.y * light.position[1])};
+        const Point along{to_float((m.x.x * light.position[0]) + (m.y.x * light.position[1])),
+                          to_float((m.x.y * light.position[0]) + (m.y.y * light.position[1]))};
         if (const float size = length(along); size > 0.0F) {
             light.position = {along[0] / size, along[1] / size};
         }
@@ -499,7 +503,8 @@ SceneLighting collect_lighting(const world::World& world, const LightImage& imag
             }
             scene_light.texture = point->texture;
             light.kind = render::LightKind::Point;
-            light.position = {placed.position.x, placed.position.y};
+            light.position = {static_cast<float>(placed.position.x),
+                              static_cast<float>(placed.position.y)};
             light.height = point->height;
             // In the canvas's coordinates first; move_light takes it into the lights'.
             const Point center = light.position;

@@ -131,7 +131,8 @@ void flat_normals(Triangles& triangles) {
         const float length = std::sqrt((n.x * n.x) + (n.y * n.y) + (n.z * n.z));
         n = length > 0.0F ? n * (1.0F / length) : Vec3{0.0F, 1.0F, 0.0F};
         for (int k = 0; k < 3; ++k) {
-            corner[k].normal = {n.x, n.y, n.z};
+            corner[k].normal = {static_cast<float>(n.x), static_cast<float>(n.y),
+                                static_cast<float>(n.z)};
         }
     }
 }
@@ -158,7 +159,8 @@ render::Vertex3D dummy_tangent(render::Vertex3D vertex) {
     Vec3 t{(a.y * u.z) - (a.z * u.y), (a.z * u.x) - (a.x * u.z), (a.x * u.y) - (a.y * u.x)};
     const float t_length = std::sqrt((t.x * t.x) + (t.y * t.y) + (t.z * t.z));
     t = t_length > 0.0F ? t * (1.0F / t_length) : Vec3{1.0F, 0.0F, 0.0F};
-    vertex.tangent = {t.x, t.y, t.z, 1.0F};
+    vertex.tangent = {static_cast<float>(t.x), static_cast<float>(t.y), static_cast<float>(t.z),
+                      1.0F};
     return vertex;
 }
 

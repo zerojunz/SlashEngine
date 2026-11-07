@@ -198,7 +198,7 @@ void Space::step_vehicles(world::World& world, const world::Tree3D& tree, float 
         if (jolt == nullptr) {
             return std::nullopt;
         }
-        return Ground{.origin = from_jolt(JPH::Vec3(jolt->GetPosition())),
+        return Ground{.origin = from_jolt_place(jolt->GetPosition()),
                       .linear_velocity =
                           from_jolt(jolt->GetLinearVelocity()) + found->constant_linear_velocity,
                       .angular_velocity =

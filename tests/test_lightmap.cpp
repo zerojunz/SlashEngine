@@ -702,7 +702,9 @@ TEST_CASE("light probes' light turns with their LightmapGI, and blends where mes
         const world::Affine3D unit = world::orthonormalized(turn);
         const slash::Vec3 t = unit.basis({d[0], d[1], d[2]});
         for (std::size_t c = 0; c < 3; ++c) {
-            CHECK(sh_value(turned, c, {t.x, t.y, t.z}) ==
+            CHECK(sh_value(turned, c,
+                           {static_cast<float>(t.x), static_cast<float>(t.y),
+                            static_cast<float>(t.z)}) ==
                   doctest::Approx(sh_value(sh, c, d)).epsilon(1e-4).scale(1.0));
         }
     }

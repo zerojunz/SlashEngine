@@ -1,0 +1,12 @@
+precision: single (positions are 32-bit)
+
+step between neighboring positions:
+         1 km: 0.0610352 mm
+       100 km: 7.8125 mm
+     10000 km: 1000 mm
+
+a crate dropped 0.3 m east and 0.2 m north of a floor's middle rests at:
+         0 km out: x 0.300, y 0.484, z -0.200
+     10000 km out: x 0.000, y 0.484, z 0.000
+
+a camera at (10000300.00, 1.80, -5000.00) draws around (0, 0, 0)

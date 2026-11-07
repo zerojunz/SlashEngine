@@ -58,7 +58,11 @@ public:
                                                to_byte(color.w)};
         const auto corner = [&](float x, float y, float u, float v) {
             const Vec2 p = transform.apply({x, y});
-            return render::Vertex2D{.x = p.x, .y = p.y, .u = u, .v = v, .rgba = rgba};
+            return render::Vertex2D{.x = static_cast<float>(p.x),
+                                    .y = static_cast<float>(p.y),
+                                    .u = u,
+                                    .v = v,
+                                    .rgba = rgba};
         };
         const render::Vertex2D top_left = corner(rect.x0, rect.y0, uv.x0, uv.y0);
         const render::Vertex2D top_right = corner(rect.x1, rect.y0, uv.x1, uv.y0);
@@ -144,11 +148,11 @@ constexpr std::size_t kBottomLeft = 3;
 using Four = std::array<float, 4>;
 
 Vec2 min_each(Vec2 v, float m) {
-    return {std::min(v.x, m), std::min(v.y, m)};
+    return {std::min<real_t>(v.x, m), std::min<real_t>(v.y, m)};
 }
 
 Vec2 max_each(Vec2 v, float m) {
-    return {std::max(v.x, m), std::max(v.y, m)};
+    return {std::max<real_t>(v.x, m), std::max<real_t>(v.y, m)};
 }
 
 // Triangles with a color at each point.
@@ -441,7 +445,8 @@ Mesh flat_mesh(const StyleBox& style, Area rect) {
 
 void draw_flat(Drawer& drawer, const Box& box, const Placed& placed, Vec4 tint) {
     const StyleBox& style = box.style;
-    const Area rect{box.position.x, box.position.y, box.size.x, box.size.y};
+    const Area rect{static_cast<float>(box.position.x), static_cast<float>(box.position.y),
+                    static_cast<float>(box.size.x), static_cast<float>(box.size.y)};
     const bool plain = style.draw_center && style.shadow_size <= 0 &&
                        std::ranges::all_of(style.border_width, [](int w) { return w <= 0; }) &&
                        std::ranges::all_of(style.corner_radius, [](int r) { return r <= 0; }) &&
@@ -464,8 +469,8 @@ void draw_flat(Drawer& drawer, const Box& box, const Placed& placed, Vec4 tint) 
     for (const std::size_t i : mesh.indices) {
         const Vec2 p = placed.transform.apply(mesh.points[i]);
         const Vec4 c = times(mesh.colors[i], tint);
-        vertices.push_back({.x = p.x,
-                            .y = p.y,
+        vertices.push_back({.x = static_cast<float>(p.x),
+                            .y = static_cast<float>(p.y),
                             .u = 0.0F,
                             .v = 0.0F,
                             .rgba = {to_byte(c.x), to_byte(c.y), to_byte(c.z), to_byte(c.w)}});
@@ -559,17 +564,17 @@ std::vector<Segment> segments(float size, float source, float begin, float end,
 
 void draw_texture(Drawer& drawer, const Box& box, const Placed& placed, Vec4 tint) {
     const StyleBox& style = box.style;
-    const Rect rect{box.position.x - style.expand_margin[kLeft],
-                    box.position.y - style.expand_margin[kTop],
-                    box.position.x + box.size.x + style.expand_margin[kRight],
-                    box.position.y + box.size.y + style.expand_margin[kBottom]};
+    const Rect rect{static_cast<float>(box.position.x - style.expand_margin[kLeft]),
+                    static_cast<float>(box.position.y - style.expand_margin[kTop]),
+                    static_cast<float>(box.position.x + box.size.x + style.expand_margin[kRight]),
+                    static_cast<float>(box.position.y + box.size.y + style.expand_margin[kBottom])};
     const Vec2 texture = box.texture_size;
     if (rect.x1 <= rect.x0 || rect.y1 <= rect.y0 || texture.x <= 0.0F || texture.y <= 0.0F) {
         return;
     }
     Vec4 region = style.region_rect;
     if (region.z <= 0.0F || region.w <= 0.0F) {
-        region = {0.0F, 0.0F, texture.x, texture.y};
+        region = {0.0F, 0.0F, static_cast<float>(texture.x), static_cast<float>(texture.y)};
     }
     const std::vector<Segment> columns =
         segments(rect.x1 - rect.x0, region.z, style.texture_margin[kLeft],
@@ -697,9 +702,12 @@ void draw_label_pass(Drawer& drawer, DrawList& list, text::Fonts& fonts, const L
             const auto pw = static_cast<float>(page.width);
             const auto ph = static_cast<float>(page.height);
             const Rect rect{
-                at.x + (image->left * image->scale), at.y + (image->top * image->scale),
-                at.x + ((image->left + static_cast<float>(image->width)) * image->scale),
-                at.y + ((image->top + static_cast<float>(image->height)) * image->scale)};
+                static_cast<float>(at.x + (image->left * image->scale)),
+                static_cast<float>(at.y + (image->top * image->scale)),
+                static_cast<float>(
+                    at.x + ((image->left + static_cast<float>(image->width)) * image->scale)),
+                static_cast<float>(
+                    at.y + ((image->top + static_cast<float>(image->height)) * image->scale))};
             const Rect uv{static_cast<float>(image->x) / pw, static_cast<float>(image->y) / ph,
                           static_cast<float>(image->x + image->width) / pw,
                           static_cast<float>(image->y + image->height) / ph};
@@ -929,7 +937,8 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
             const auto* control = ecs.try_get<world::Control>(placed.entity);
             const Vec4 tint = times(
                 placed.modulate, (control != nullptr ? *control : kDefaultControl).self_modulate);
-            const Rect bounds{0.0F, 0.0F, placed.size.x, placed.size.y};
+            const Rect bounds{0.0F, 0.0F, static_cast<float>(placed.size.x),
+                              static_cast<float>(placed.size.y)};
             const std::size_t calls_before = list.calls.size();
             const std::size_t vertices_before = vertices_now();
             bool drawn = false;
@@ -1054,9 +1063,10 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
         boxes(placed, popup.panel);
         Placed items = placed;
         const std::array<float, 4>& m = popup.margins;
-        items.clip =
-            Vec4{popup.position.x + m[0], popup.position.y + m[1],
-                 popup.position.x + popup.size.x - m[2], popup.position.y + popup.size.y - m[3]};
+        items.clip = Vec4{static_cast<float>(popup.position.x + m[0]),
+                          static_cast<float>(popup.position.y + m[1]),
+                          static_cast<float>(popup.position.x + popup.size.x - m[2]),
+                          static_cast<float>(popup.position.y + popup.size.y - m[3])};
         const std::size_t calls_before = list.calls.size();
         const std::size_t vertices_before = vertices_now();
         for (const Box& box : popup.boxes) {

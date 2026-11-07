@@ -9,12 +9,20 @@ function(slash_target_warnings target)
         if(SLASH_WARNINGS_AS_ERRORS)
             target_compile_options(${target} PRIVATE /WX)
         endif()
+        # A double-precision engine rounds positions to floats wherever they meet the renderer,
+        # fonts and float math, as Godot's precision=double does without a word.
+        if(SLASH_PRECISION STREQUAL "double")
+            target_compile_options(${target} PRIVATE /wd4244 /wd4305)
+        endif()
     else()
         target_compile_options(${target} PRIVATE
             -Wall -Wextra -Wpedantic -Wshadow -Wnon-virtual-dtor -Wold-style-cast
             -Woverloaded-virtual -Wconversion -Wsign-conversion)
         if(SLASH_WARNINGS_AS_ERRORS)
             target_compile_options(${target} PRIVATE -Werror)
+        endif()
+        if(SLASH_PRECISION STREQUAL "double")
+            target_compile_options(${target} PRIVATE -Wno-float-conversion)
         endif()
     endif()
 endfunction()

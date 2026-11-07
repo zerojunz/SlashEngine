@@ -104,7 +104,7 @@ json::Value numbers(std::size_t count, std::optional<double> minimum = std::null
 }
 
 // A vector as [x, y], or [x, y, z]: 2D reads x and y, 3D takes z as 0 when it is left out.
-json::Value vector(std::string_view description, Vec3 fallback,
+json::Value vector(std::string_view description, Vec3f fallback,
                    std::optional<double> minimum = std::nullopt) {
     json::Value schema = numbers(3, minimum);
     schema["minItems"] = 2;
@@ -114,9 +114,9 @@ json::Value vector(std::string_view description, Vec3 fallback,
     return schema;
 }
 
-json::Value vector(std::string_view description, Vec2 fallback,
+json::Value vector(std::string_view description, Vec2f fallback,
                    std::optional<double> minimum = std::nullopt) {
-    return vector(description, Vec3{fallback.x, fallback.y, 0.0F}, minimum);
+    return vector(description, Vec3f{fallback.x, fallback.y, 0.0F}, minimum);
 }
 
 json::Value color_schema(std::string_view description) {
@@ -169,12 +169,12 @@ json::Value gradient_schema(std::string_view description) {
     return schema;
 }
 
-Vec2 vec2(const json::Value& value) {
+Vec2f vec2(const json::Value& value) {
     const json::Array& items = value.as_array();
     return {static_cast<float>(items[0].as_double()), static_cast<float>(items[1].as_double())};
 }
 
-Vec3 vec3(const json::Value& value) {
+Vec3f vec3(const json::Value& value) {
     const json::Array& items = value.as_array();
     return {static_cast<float>(items[0].as_double()), static_cast<float>(items[1].as_double()),
             items.size() > 2 ? static_cast<float>(items[2].as_double()) : 0.0F};
@@ -526,7 +526,7 @@ Result<render::ParticleProcess> parse_process_material(const json::Value& doc) {
             field = static_cast<float>(value->as_double());
         }
     };
-    const auto pair = [&](std::string_view key, Vec2& field) {
+    const auto pair = [&](std::string_view key, Vec2f& field) {
         if (const json::Value* value = doc.find(key); value != nullptr) {
             field = vec2(*value);
         }
@@ -661,7 +661,7 @@ Result<render::ParticleProcess3D> parse_process_material_3d(const json::Value& d
         }
     };
     // A vector given as [x, y] keeps the 3D default's z.
-    const auto triple = [&](std::string_view key, Vec3& field) {
+    const auto triple = [&](std::string_view key, Vec3f& field) {
         if (const json::Value* value = doc.find(key); value != nullptr) {
             const float z = field.z;
             field = vec3(*value);

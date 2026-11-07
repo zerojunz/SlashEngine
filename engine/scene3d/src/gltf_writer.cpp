@@ -420,7 +420,8 @@ struct Writer {
         std::array<float, 3> high{};
         for (std::size_t i = 0; i < collision.points.size(); ++i) {
             const Vec3 p = where.apply(collision.points[i]);
-            const std::array<float, 3> v{p.x, p.y, p.z};
+            const std::array<float, 3> v{static_cast<float>(p.x), static_cast<float>(p.y),
+                                         static_cast<float>(p.z)};
             positions.insert(positions.end(), v.begin(), v.end());
             for (std::size_t k = 0; k < 3; ++k) {
                 low.at(k) = i == 0 ? v.at(k) : std::min(low.at(k), v.at(k));

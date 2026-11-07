@@ -93,7 +93,7 @@ Float3 from_basis(const Float3& local, const Float3& t, const Float3& b, const F
 // Cosine-weighted directions about n.
 Float3 sample_cosine(const Float3& n, float u1, float u2) {
     const float r = std::sqrt(u1);
-    const Vec2 cs = slash::cos_sin(2.0F * kPi * u2);
+    const Vec2f cs = slash::cos_sin(2.0F * kPi * u2);
     const Float3 local{r * cs.x, r * cs.y, std::sqrt(std::max(0.0F, 1.0F - u1))};
     Float3 t{};
     Float3 b{};
@@ -114,7 +114,7 @@ Float3 sample_visible_normal(const Float3& n, const Float3& v, float alpha, floa
                                    : Float3{1.0F, 0.0F, 0.0F};
     const Float3 t2 = cross(vh, t1);
     const float r = std::sqrt(u1);
-    const Vec2 cs = slash::cos_sin(2.0F * kPi * u2);
+    const Vec2f cs = slash::cos_sin(2.0F * kPi * u2);
     const float p1 = r * cs.x;
     float p2 = r * cs.y;
     const float s = 0.5F * (1.0F + vh[2]);

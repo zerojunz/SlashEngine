@@ -484,7 +484,7 @@ Traced trace_pass(const SsrUniforms& u, const TraceTextures& tex, int x, int y) 
     if (roughness > 0.001F) {
         const float cone_angle = std::min(roughness, 0.999F) * kPi * 0.5F;
         const float cone_len = ray_len;
-        const Vec2 turn = slash::cos_sin(cone_angle);
+        const Vec2f turn = slash::cos_sin(cone_angle);
         // The opposite side of the cone's isosceles triangle.
         const float op_len = 2.0F * (turn.y / turn.x) * cone_len;
         // The sphere that fits inside the cone and ends at its end, which keeps blur from

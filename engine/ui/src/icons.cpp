@@ -92,7 +92,8 @@ bool inside(const Shape& shape, float x, float y) {
             const float length = (ex * ex) + (ey * ey);
             const float along =
                 length > 0.0F
-                    ? std::clamp((((x - p[i].x) * ex) + ((y - p[i].y) * ey)) / length, 0.0F, 1.0F)
+                    ? std::clamp<real_t>((((x - p[i].x) * ex) + ((y - p[i].y) * ey)) / length, 0.0F,
+                                         1.0F)
                     : 0.0F;
             const float dx = x - (p[i].x + (along * ex));
             const float dy = y - (p[i].y + (along * ey));

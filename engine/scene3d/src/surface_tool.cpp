@@ -46,11 +46,13 @@ SmoothKey smooth_key(const render::Vertex3D& vertex, std::uint32_t group) {
 
 void SurfaceTool::add_vertex(Vec3 position) {
     Vertex v;
-    v.vertex.position = {position.x, position.y, position.z};
-    v.vertex.normal = {normal_.x, normal_.y, normal_.z};
+    v.vertex.position = {static_cast<float>(position.x), static_cast<float>(position.y),
+                         static_cast<float>(position.z)};
+    v.vertex.normal = {static_cast<float>(normal_.x), static_cast<float>(normal_.y),
+                       static_cast<float>(normal_.z)};
     v.vertex.tangent = {tangent_.x, tangent_.y, tangent_.z, tangent_.w};
-    v.vertex.uv = {uv_.x, uv_.y};
-    v.vertex.uv2 = {uv2_.x, uv2_.y};
+    v.vertex.uv = {static_cast<float>(uv_.x), static_cast<float>(uv_.y)};
+    v.vertex.uv2 = {static_cast<float>(uv2_.x), static_cast<float>(uv2_.y)};
     v.vertex.rgba = {byte_of(color_.x), byte_of(color_.y), byte_of(color_.z), byte_of(color_.w)};
     v.smooth_group = smooth_group_;
     vertices_.push_back(v);
@@ -115,14 +117,16 @@ void SurfaceTool::generate_normals(bool flip) {
                     it->second = it->second + normal;
                 }
             } else {
-                v[k].vertex.normal = {normal.x, normal.y, normal.z};
+                v[k].vertex.normal = {static_cast<float>(normal.x), static_cast<float>(normal.y),
+                                      static_cast<float>(normal.z)};
             }
         }
     }
     for (Vertex& vertex : vertices_) {
         if (vertex.smooth_group != kFlat) {
             const Vec3 n = normalized(smooth.at(smooth_key(vertex.vertex, vertex.smooth_group)));
-            vertex.vertex.normal = {n.x, n.y, n.z};
+            vertex.vertex.normal = {static_cast<float>(n.x), static_cast<float>(n.y),
+                                    static_cast<float>(n.z)};
         }
     }
     if (was_indexed) {

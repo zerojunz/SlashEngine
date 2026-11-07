@@ -428,7 +428,10 @@ Result<FrameSummary> summarize(world::World& world, asset::Assets& assets,
     }
 
     const std::vector<FrameItem>& items = summary.contents.items;
-    const Bounds window{.x0 = 0.0F, .y0 = 0.0F, .x1 = viewport.x, .y1 = viewport.y};
+    const Bounds window{.x0 = 0.0F,
+                        .y0 = 0.0F,
+                        .x1 = static_cast<float>(viewport.x),
+                        .y1 = static_cast<float>(viewport.y)};
     Bounds area = window;
     if (options.region) {
         const auto [x, y, width, height] = *options.region;
@@ -628,18 +631,18 @@ Result<FrameSummary> summarize(world::World& world, asset::Assets& assets,
                 if (const auto popup =
                         std::ranges::find(popups, items[i].entity, &ui::PopupView::owner);
                     popup != popups.end()) {
-                    rect = {.x0 = popup->position.x,
-                            .y0 = popup->position.y,
-                            .x1 = popup->position.x + popup->size.x,
-                            .y1 = popup->position.y + popup->size.y};
+                    rect = {.x0 = static_cast<float>(popup->position.x),
+                            .y0 = static_cast<float>(popup->position.y),
+                            .x1 = static_cast<float>(popup->position.x + popup->size.x),
+                            .y1 = static_cast<float>(popup->position.y + popup->size.y)};
                 }
             } else if (items[i].kind == FrameItem::Kind::Tooltip) {
                 if (const std::optional<ui::TooltipView>& tip = summary.contents.layout.tooltip;
                     tip && tip->owner == items[i].entity) {
-                    rect = {.x0 = tip->position.x,
-                            .y0 = tip->position.y,
-                            .x1 = tip->position.x + tip->size.x,
-                            .y1 = tip->position.y + tip->size.y};
+                    rect = {.x0 = static_cast<float>(tip->position.x),
+                            .y0 = static_cast<float>(tip->position.y),
+                            .x1 = static_cast<float>(tip->position.x + tip->size.x),
+                            .y1 = static_cast<float>(tip->position.y + tip->size.y)};
                 }
             }
             place[i] = static_cast<std::ptrdiff_t>(summary.shown.size());

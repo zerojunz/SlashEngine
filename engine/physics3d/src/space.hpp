@@ -140,11 +140,23 @@ private:
     std::unordered_map<entt::entity, std::size_t> index_;
 };
 
+// A direction, size or point near a body, in Jolt's floats.
 inline JPH::Vec3 to_jolt(Vec3 v) {
-    return {v.x, v.y, v.z};
+    return {static_cast<float>(v.x), static_cast<float>(v.y), static_cast<float>(v.z)};
 }
 
 inline Vec3 from_jolt(JPH::Vec3Arg v) {
+    return {v.GetX(), v.GetY(), v.GetZ()};
+}
+
+// A place in the world, as Jolt's RVec3: doubles in a double-precision engine
+// (SLASH_REAL_T_IS_DOUBLE builds Jolt with JPH_DOUBLE_PRECISION), as Godot's Jolt module keeps
+// positions with precision=double.
+inline JPH::RVec3 to_jolt_place(Vec3 v) {
+    return {v.x, v.y, v.z};
+}
+
+inline Vec3 from_jolt_place(JPH::RVec3Arg v) {
     return {v.GetX(), v.GetY(), v.GetZ()};
 }
 
@@ -177,6 +189,8 @@ struct Unscaled {
 [[nodiscard]] JPH::Quat rotation_of(const world::Affine3D& basis);
 [[nodiscard]] world::Affine3D affine_of(JPH::RVec3Arg position, JPH::QuatArg rotation);
 [[nodiscard]] JPH::Mat44 matrix_of(const world::Affine3D& transform);
+// The same with its origin a place in the world (to_jolt_place).
+[[nodiscard]] JPH::RMat44 place_matrix_of(const world::Affine3D& transform);
 
 // A CollisionShape3D's Jolt shape, unscaled and in its own space, as Godot's JoltShape3D
 // subclasses build them; an error for a shape that can't be made, such as a hull of too few
