@@ -86,7 +86,7 @@ than pointers and headers include fewer others, so code GCC accepts can fail the
 every push that changes C++. It needs `slash-cli toolchain install web`.
 
 The unit tests run as five ctest shards (`unit_1` to `unit_5`, by test file name). A test case
-that runs over five minutes is stuck: the watchdog in `tests/test_main.cpp` names it and stops
+that runs over eight minutes is stuck: the watchdog in `tests/test_main.cpp` names it and stops
 the shard, and `tests/retry_stuck.cmake` runs the shard once more, so a hang that comes back
 still fails.
 
