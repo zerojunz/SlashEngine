@@ -56,6 +56,7 @@ struct VertexOutput {
     float2 uv : TEXCOORD4;
     float4 color : TEXCOORD5;
     float2 uv2 : TEXCOORD6;
+    float3 object : TEXCOORD9; // the place on the mesh, which alpha hash's cells are fixed to
 #ifdef MOTION_VECTORS
     float4 motion_clip : TEXCOORD7;   // where the vertex is in clip space, without the jitter
     float4 previous_clip : TEXCOORD8; // and where it was in the frame before
@@ -79,6 +80,7 @@ VertexOutput vs_main(VertexInput input) {
     output.uv = moved.uv;
     output.color = moved.color;
     output.uv2 = moved.uv2 * lightmap_uv.zw + lightmap_uv.xy;
+    output.object = input.position;
 #else
     float4 world = mul(model, float4(input.position, 1.0));
     output.world = world.xyz;
@@ -91,6 +93,7 @@ VertexOutput vs_main(VertexInput input) {
     output.uv = input.uv * uv1.xy + uv1.zw;
     output.color = input.color;
     output.uv2 = input.uv2 * lightmap_uv.zw + lightmap_uv.xy;
+    output.object = input.position;
 #endif
 #ifdef MOTION_VECTORS
     output.motion_clip = output.position;
@@ -156,10 +159,51 @@ static const uint kHasAlpha = 64u;
 static const uint kDisableFog = 128u;
 static const uint kLightmap = 256u;
 static const uint kLightmapCapture = 512u;
+// With kAlphaScissor: options.y is alpha_hash_scale's bits, and the threshold is hashed.
+static const uint kAlphaHash = 1024u;
 // Terrain flags, in options.w.
 static const uint kTerrain = 1u;
 static const uint kTerrainDepthBlending = 2u;
 static const uint kTerrainNormals = 16u; // shifted left by the layer
+
+// Alpha hash's noise at a cell of the mesh: 0 to 1 from three whole numbers, by Jarzynski and
+// Olano's PCG3D, where Godot's hash_3d uses sines, so the CPU (alpha_hash_value in src/mesh.cpp)
+// makes the same bits.
+float alpha_hash_value(float3 cell) {
+    uint3 v = uint3(int3(clamp(cell, -1073741824.0, 1073741824.0))) * 1664525u + 1013904223u;
+    v.x += v.y * v.z;
+    v.y += v.z * v.x;
+    v.z += v.x * v.y;
+    v ^= v >> 16u;
+    v.x += v.y * v.z;
+    v.y += v.z * v.x;
+    v.z += v.x * v.y;
+    return float(v.x >> 8u) * (1.0 / 16777216.0);
+}
+
+// Godot's compute_alpha_hash_threshold: the alpha a pixel at pos on the mesh must reach, its
+// neighbors across and down being dx and dy further on, from noise on cells about a pixel wide
+// at two scales, blended so the dither holds still as the mesh moves.
+float alpha_hash_threshold(float3 pos, float3 dx, float3 dy, float hash_scale) {
+    float delta_max = max(length(dx), length(dy));
+    float level = clamp(log2(1.0 / (hash_scale * delta_max)), -64.0, 64.0);
+    float low = floor(level);
+    float lerp_factor = level - low;
+    float high = lerp_factor > 0.0 ? low + 1.0 : low;
+    float a_low = alpha_hash_value(floor(exp2(low) * pos));
+    float a_high = alpha_hash_value(floor(exp2(high) * pos));
+    float a_interp = (1.0 - lerp_factor) * a_low + lerp_factor * a_high;
+    float min_lerp = min(lerp_factor, 1.0 - lerp_factor);
+    float threshold;
+    if (a_interp < 1.0 - min_lerp) {
+        threshold = a_interp < min_lerp
+                        ? a_interp * a_interp / (2.0 * min_lerp * (1.0 - min_lerp))
+                        : (a_interp - 0.5 * min_lerp) / (1.0 - min_lerp);
+    } else {
+        threshold = 1.0 - ((1.0 - a_interp) * (1.0 - a_interp) / (2.0 * min_lerp * (1.0 - min_lerp)));
+    }
+    return clamp(threshold, 0.00001, 1.0);
+}
 
 // A VoxelGI a draw traces (Forward+): its light is a 3D texture kept in ground_texture_2 as each
 // level's z slices side by side.
@@ -1722,6 +1766,9 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
     float4 normal_1 = ground_normal_1.Sample(ground_normal_sampler_1, input.uv * terrain_uv.y);
     float4 normal_2 = ground_normal_2.Sample(ground_normal_sampler_2, input.uv * terrain_uv.z);
     float4 normal_3 = ground_normal_3.Sample(ground_normal_sampler_3, input.uv * terrain_uv.w);
+    // And alpha hash's derivatives.
+    float3 object_dx = ddx(input.object);
+    float3 object_dy = ddy(input.object);
 
     uint flags = options.x;
     float4 color = albedo * texel;
@@ -1732,7 +1779,11 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
     // it is transparent. A terrain's color map cuts its holes here.
     float alpha = (flags & kHasAlpha) != 0u ? color.a : 1.0;
     if ((flags & kAlphaScissor) != 0u) {
-        if (alpha < asfloat(options.y)) {
+        float threshold = (flags & kAlphaHash) != 0u
+                              ? alpha_hash_threshold(input.object, object_dx, object_dy,
+                                                     asfloat(options.y))
+                              : asfloat(options.y);
+        if (alpha < threshold) {
             discard;
         }
         alpha = 1.0;

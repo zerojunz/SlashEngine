@@ -398,8 +398,10 @@ SLASH_COMPONENT(TorusMesh, inner_radius, outer_radius, rings, ring_segments, fli
 // What the entity's mesh is made of, as Godot's StandardMaterial3D set as its material_override.
 // Colors are sRGB. Textures are project paths of PNG, BMP or KTX2 files; "" leaves one out.
 struct StandardMaterial3D {
-    std::string transparency = "disabled"; // "disabled", "alpha" or "alpha_scissor"
+    // "disabled", "alpha", "alpha_scissor" or "alpha_hash"
+    std::string transparency = "disabled";
     float alpha_scissor_threshold = 0.5F;
+    float alpha_hash_scale = 1.0F;
     std::string blend_mode = "mix"; // how an alpha mesh blends: "mix", "add", "sub" or "mul"
     std::string cull_mode = "back"; // "back", "front" or "disabled"
     std::string shading_mode = "per_pixel"; // "per_pixel" or "unshaded"
@@ -466,18 +468,19 @@ struct StandardMaterial3D {
 
     friend bool operator==(const StandardMaterial3D&, const StandardMaterial3D&) = default;
 };
-SLASH_COMPONENT(StandardMaterial3D, transparency, alpha_scissor_threshold, blend_mode, cull_mode,
-                shading_mode, vertex_color_use_as_albedo, albedo_color, albedo_texture, metallic,
-                metallic_specular, metallic_texture, metallic_texture_channel, roughness,
-                roughness_texture, roughness_texture_channel, emission_enabled, emission,
-                emission_energy_multiplier, emission_texture, normal_enabled, normal_scale,
-                normal_texture, uv1_scale, uv1_offset, texture_filter, texture_repeat, disable_fog,
-                billboard_mode, billboard_keep_scale, particles_anim_h_frames,
-                particles_anim_v_frames, particles_anim_loop, rim_enabled, rim, rim_tint,
-                clearcoat_enabled, clearcoat, clearcoat_roughness, anisotropy_enabled, anisotropy,
-                subsurf_scatter_enabled, subsurf_scatter_strength, subsurf_scatter_skin_mode,
-                subsurf_scatter_transmittance_enabled, subsurf_scatter_transmittance_color,
-                subsurf_scatter_transmittance_depth, subsurf_scatter_transmittance_boost)
+SLASH_COMPONENT(StandardMaterial3D, transparency, alpha_scissor_threshold, alpha_hash_scale,
+                blend_mode, cull_mode, shading_mode, vertex_color_use_as_albedo, albedo_color,
+                albedo_texture, metallic, metallic_specular, metallic_texture,
+                metallic_texture_channel, roughness, roughness_texture, roughness_texture_channel,
+                emission_enabled, emission, emission_energy_multiplier, emission_texture,
+                normal_enabled, normal_scale, normal_texture, uv1_scale, uv1_offset, texture_filter,
+                texture_repeat, disable_fog, billboard_mode, billboard_keep_scale,
+                particles_anim_h_frames, particles_anim_v_frames, particles_anim_loop, rim_enabled,
+                rim, rim_tint, clearcoat_enabled, clearcoat, clearcoat_roughness,
+                anisotropy_enabled, anisotropy, subsurf_scatter_enabled, subsurf_scatter_strength,
+                subsurf_scatter_skin_mode, subsurf_scatter_transmittance_enabled,
+                subsurf_scatter_transmittance_color, subsurf_scatter_transmittance_depth,
+                subsurf_scatter_transmittance_boost)
 
 // What the 3D world is seen through, as Godot's Camera3D: it looks down its entity's -z. The
 // world is seen through the current camera: the first with current set, else the first one,

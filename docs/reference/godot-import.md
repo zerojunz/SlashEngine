@@ -468,8 +468,8 @@ does. [examples/import-godot-3d](../../examples/import-godot-3d/) imports a cour
   become `MeshInstance3D.blend_shapes` ([blend shapes](scene-format.md#blend-shapes)).
 - The material that wins in Godot becomes the entity's `StandardMaterial3D`: `material_override`,
   then `surface_material_override/0`, then the mesh's own `material`. `StandardMaterial3D` and
-  `ORMMaterial3D` properties keep their names. `transparency` is named; alpha hash cuts at
-  `alpha_scissor_threshold` and depth pre-pass blends as alpha, and both are reported. An
+  `ORMMaterial3D` properties keep their names. `transparency` is named; depth pre-pass blends as
+  alpha and is reported. An
   `ORMMaterial3D`'s `orm_texture` is its `roughness_texture` read from green and its
   `metallic_texture` read from blue.
 - An instance of a `.glb`, `.gltf`, `.fbx` or `.blend` file, Godot's imported scene, becomes a

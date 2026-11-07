@@ -106,6 +106,10 @@ enum class Transparency : std::uint8_t {
     Disabled,     // opaque, Godot's default
     Alpha,        // blended, after the opaque meshes, without writing depth
     AlphaScissor, // opaque where alpha reaches alpha_scissor_threshold, and not drawn elsewhere
+    // Opaque where alpha reaches a threshold hashed from the place on the mesh, and not drawn
+    // elsewhere, so alpha dithers in place: Godot's ALPHA_HASH (Wyman and McGuire's hashed alpha
+    // testing), for hair and fur. alpha_hash_scale sets the grain.
+    AlphaHash,
 };
 
 // Which channel of a texture a value is read from, as Godot's TextureChannel.

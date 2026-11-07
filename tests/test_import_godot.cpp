@@ -1905,6 +1905,7 @@ scaling_3d/fsr_sharpness=0.5
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_wall"]
 transparency = 3
+alpha_hash_scale = 1.5
 albedo_color = Color(0.8, 0.4, 0.2, 1)
 albedo_texture = ExtResource("1_bricks")
 roughness = 0.6
@@ -2181,8 +2182,8 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     CHECK(*entity(files, level, "roof_occluder").find("OccluderInstance3D") ==
           parse(R"({"shape": "polygon", "polygon": [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]})"));
     CHECK(*wall.find("StandardMaterial3D") == parse(R"({
-        "transparency": "alpha_scissor", "albedo_color": [0.8, 0.4, 0.2, 1.0],
-        "albedo_texture": "godot/art/bricks.jpg", "roughness": 0.6, "texture_filter": "nearest",
+        "transparency": "alpha_hash", "alpha_hash_scale": 1.5,
+        "albedo_color": [0.8, 0.4, 0.2, 1.0], "albedo_texture": "godot/art/bricks.jpg", "roughness": 0.6, "texture_filter": "nearest",
         "uv1_scale": [2.0, 2.0, 1.0], "rim_enabled": true, "rim_tint": 0.25})"));
     const json::Value ball = entity(files, level, "ball");
     CHECK(*ball.find("SphereMesh") == parse(R"({"radius": 0.25, "height": 0.5})"));
@@ -2292,8 +2293,7 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
         REQUIRE_MESSAGE(!item.is_null(), what);
         return item.find("why")->as_string();
     };
-    CHECK(why("StandardMaterial3D.transparency") ==
-          "alpha hash dithers; it cuts at alpha_scissor_threshold instead");
+    CHECK(unsupported(report, "StandardMaterial3D.transparency").is_null());
     CHECK(!unsupported(report, "StandardMaterial3D.refraction_enabled").is_null());
     CHECK(why("MeshInstance3D.mesh") ==
           "a mesh saved in Godot's own format; export it as a glTF file");

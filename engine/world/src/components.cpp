@@ -3084,9 +3084,14 @@ void register_3d_components(ComponentRegistry& registry) {
                  "Burley diffuse and GGX specular, as Godot's Compatibility renderer.")
         .describe("transparency",
                   {.doc = "\"alpha\" blends it, drawn after opaque meshes; \"alpha_scissor\" "
-                          "cuts away pixels below alpha_scissor_threshold.",
-                   .choices = {"disabled", "alpha", "alpha_scissor"}})
+                          "cuts away pixels below alpha_scissor_threshold; \"alpha_hash\" cuts "
+                          "them below a threshold hashed from the place on the mesh, dithering "
+                          "alpha, for hair.",
+                   .choices = {"disabled", "alpha", "alpha_scissor", "alpha_hash"}})
         .describe("alpha_scissor_threshold", {.doc = "The alpha kept.", .min = 0, .max = 1})
+        .describe(
+            "alpha_hash_scale",
+            {.doc = "An alpha_hash dither's grain: above 1 finer, below 1 coarser.", .min = 0})
         .describe("blend_mode",
                   {.doc = "How an alpha mesh blends.", .choices = {"mix", "add", "sub", "mul"}})
         .describe("cull_mode", {.doc = "The faces it hides: those facing away (back), those "

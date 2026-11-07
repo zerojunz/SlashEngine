@@ -1018,6 +1018,17 @@ uniforms keep their size; the clearcoat also reflects the sky and anisotropy ben
 reflections take. Their textures aren't read yet (texture slots are full).
 `examples/hair-and-eye-shading` lights a cheek, an eye and hair.
 
+Alpha hash is Godot's `"alpha_hash"` transparency (`Transparency::AlphaHash`,
+`Material3D::alpha_hash_scale`): `mesh_surface_uniforms` sets `kMeshAlphaScissor` and
+`kMeshAlphaHash` with the scale in the threshold's lane, and `mesh.hlsl` and `shadow.hlsl` cut at
+`alpha_hash_threshold` (Godot's `compute_alpha_hash_threshold` over the place on the mesh, a
+varying of its own, and its `ddx` and `ddy`), whose noise is PCG3D of whole numbers in place of
+Godot's sines. `detail::alpha_hash_threshold` in `src/mesh.cpp` is its CPU twin, which the
+software device feeds from its quads' coarse derivatives (`MeshRaster::hash_scale`,
+`MeshFragment::alpha_hash`); rays take the surface as alpha (`traced_surface`). A change to one
+goes in both; `tests/test_alpha_hash.cpp` holds every device to the software device and
+`examples/alpha-hash` fades a hair card.
+
 Subsurface scattering is Godot 4.6's Forward+ screen-space blur (`Material3D::subsurface`, from
 `StandardMaterial3D`'s `subsurf_scatter_*`; project.json's
 `rendering.environment.subsurface_scattering`, `render::SubsurfaceSettings`). `src/subsurface.hpp`

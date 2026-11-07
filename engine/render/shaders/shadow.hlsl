@@ -46,6 +46,7 @@ struct VertexOutput {
 struct VertexOutput {
     float2 uv : TEXCOORD0;
     float4 color : TEXCOORD1;
+    float3 object : TEXCOORD2; // the place on the mesh, for alpha hash
     float4 position : SV_Position;
 };
 #endif
@@ -90,6 +91,7 @@ VertexOutput vs_main(VertexInput input) {
 #else
     output.uv = input.uv * uv1.xy + uv1.zw;
     output.color = input.color;
+    output.object = input.position;
 #endif
     return output;
 }
@@ -101,6 +103,7 @@ SamplerState albedo_sampler : register(s0, space2);
 
 static const uint kVertexColorAlbedo = 2u;
 static const uint kAlphaScissor = 4u;
+static const uint kAlphaHash = 1024u;
 
 cbuffer Surface : register(b0, space3) {
     float4 albedo;
@@ -125,14 +128,54 @@ void fs_main(VertexOutput input, bool front : SV_IsFrontFace) {
     }
 }
 #else
+// mesh.hlsl's alpha hash, which cuts the same dither out of the shadow, seen from the light.
+float alpha_hash_value(float3 cell) {
+    uint3 v = uint3(int3(clamp(cell, -1073741824.0, 1073741824.0))) * 1664525u + 1013904223u;
+    v.x += v.y * v.z;
+    v.y += v.z * v.x;
+    v.z += v.x * v.y;
+    v ^= v >> 16u;
+    v.x += v.y * v.z;
+    v.y += v.z * v.x;
+    v.z += v.x * v.y;
+    return float(v.x >> 8u) * (1.0 / 16777216.0);
+}
+
+float alpha_hash_threshold(float3 pos, float3 dx, float3 dy, float hash_scale) {
+    float delta_max = max(length(dx), length(dy));
+    float level = clamp(log2(1.0 / (hash_scale * delta_max)), -64.0, 64.0);
+    float low = floor(level);
+    float lerp_factor = level - low;
+    float high = lerp_factor > 0.0 ? low + 1.0 : low;
+    float a_low = alpha_hash_value(floor(exp2(low) * pos));
+    float a_high = alpha_hash_value(floor(exp2(high) * pos));
+    float a_interp = (1.0 - lerp_factor) * a_low + lerp_factor * a_high;
+    float min_lerp = min(lerp_factor, 1.0 - lerp_factor);
+    float threshold;
+    if (a_interp < 1.0 - min_lerp) {
+        threshold = a_interp < min_lerp
+                        ? a_interp * a_interp / (2.0 * min_lerp * (1.0 - min_lerp))
+                        : (a_interp - 0.5 * min_lerp) / (1.0 - min_lerp);
+    } else {
+        threshold = 1.0 - ((1.0 - a_interp) * (1.0 - a_interp) / (2.0 * min_lerp * (1.0 - min_lerp)));
+    }
+    return clamp(threshold, 0.00001, 1.0);
+}
+
 void fs_main(VertexOutput input) {
     float4 texel = albedo_texture.Sample(albedo_sampler, input.uv);
+    float3 object_dx = ddx(input.object);
+    float3 object_dy = ddy(input.object);
     if ((options.x & kAlphaScissor) != 0u) {
         float alpha = albedo.a * texel.a;
         if ((options.x & kVertexColorAlbedo) != 0u) {
             alpha *= input.color.a;
         }
-        if (alpha < asfloat(options.y)) {
+        float threshold = (options.x & kAlphaHash) != 0u
+                              ? alpha_hash_threshold(input.object, object_dx, object_dy,
+                                                     asfloat(options.y))
+                              : asfloat(options.y);
+        if (alpha < threshold) {
             discard;
         }
     }
