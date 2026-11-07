@@ -120,6 +120,12 @@ joint_transforms(const ModelSkin& skin, std::span<const world::Affine3D> globals
 // tangent turned the same way and normalized. A vertex with no weight stays where it is.
 void skin_vertices(const ModelSurface& surface, std::span<const world::Affine3D> joints,
                    std::vector<render::Vertex3D>& out);
+// The same for vertices given apart from their surface, with one weights each (or none for a
+// vertex past weights' end), as a surface its blend shapes moved first: out has a place for each
+// and may be vertices itself.
+void skin_vertices(std::span<const render::Vertex3D> vertices,
+                   std::span<const VertexWeights> weights, std::span<const world::Affine3D> joints,
+                   std::span<render::Vertex3D> out);
 
 // Blends two poses of the same model weight of the way from a to b: positions and scales in a
 // line, rotations by nlerp, as frames between ticks blend Transform3Ds.

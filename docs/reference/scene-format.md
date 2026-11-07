@@ -765,6 +765,8 @@ Its `virtualized` (default `false`) is a research feature of SlashEngine's own: 
 surfaces draw as a hierarchy of clusters cut for the camera, each part as fine as its distance
 needs, in place of their LODs ([virtualized-geometry.md](virtualized-geometry.md)).
 
+Its `blend_shapes` (default `{}`) sets its model's [blend shapes](#blend-shapes) by name.
+
 Its `ignore_occlusion_culling` (default `false`) is Godot's: [occluders](#occlusion-culling) never
 hide the mesh.
 
@@ -1255,7 +1257,8 @@ file's skin deformers and animation stacks are read as [FBX models](#fbx-models)
   also become `_`; one with no name is `Animation`), and looping linearly when its name begins or
   ends with `loop` or `cycle` in any case (`Walk-loop`, `cycle_run`), as Godot's import hints.
   Position, rotation and scale keys play with their interpolation (`STEP` holds each key,
-  `CUBICSPLINE` is sampled 30 times a second); morph target weights are left out.
+  `CUBICSPLINE` is sampled 30 times a second); morph target weights are kept as
+  [blend shape](#blend-shapes) tracks.
 - An `AnimationPlayer` whose `library` is the model plays its animations by name, as Godot's
   `AnimationPlayer` plays an imported scene's library. A [`.anim.json` animation](#animations) can
   come `from` a model's animation and add tracks of its own, such as footsteps. An animation from
@@ -1278,6 +1281,35 @@ file's skin deformers and animation stacks are read as [FBX models](#fbx-models)
 `Skeleton3D` bone the model hasn't (with "did you mean") and one on an entity that draws no
 model. [examples/skinned-meshes](../../examples/skinned-meshes/) waves a skinned arm, from a
 glTF file and from the same arm as an FBX file.
+
+#### Blend shapes
+
+A glTF model's morph targets are its meshes' blend shapes, as Godot's importer makes them: each
+target is a shape that moves the mesh's vertices, named by the mesh's `extras.targetNames` (else
+`morph_0`, `morph_1`, ...) with the mesh's `weights` as each shape's value at rest.
+`MeshInstance3D`'s `blend_shapes` (default `{}`) sets shapes by name, as Godot's
+`blend_shapes/<name>` properties, over every mesh of the model that has the shape:
+
+```json
+"face": {"components": {
+  "Transform3D": {},
+  "MeshInstance3D": {"mesh": "models/face.glb", "blend_shapes": {"smile": 0.6}},
+  "AnimationPlayer": {"library": "models/face.glb", "animation": "Talk"}
+}}
+```
+
+- A mesh is moved as Godot's skeleton shader moves it, before its skin: each vertex by the sum of
+  each shape's offset times its value, its normal and tangent by theirs and normalized again. A
+  value near 0 (within 0.0001) is skipped, and values can go below 0 or above 1.
+- A model animation's morph target weights are a track per shape, played as Godot's
+  `AnimationMixer` blends a blend shape track: each moves the value its weight of the way from the
+  value set (`blend_shapes`, else the mesh's) to the track's. A `.anim.json` value track on
+  `MeshInstance3D/blend_shapes/<name>` animates the field as any other.
+- [`model.inspect`](commands.md#modelinspect) lists each mesh's shapes with their values at rest,
+  and its `brief` the shapes' names.
+- `write_gltf` and `write_glb` (so `model.cleanup` and the library) keep them.
+
+[examples/blend-shapes](../../examples/blend-shapes/) makes a face smile.
 
 #### Retargeting
 

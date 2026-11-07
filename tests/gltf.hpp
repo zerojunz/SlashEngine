@@ -180,6 +180,33 @@ inline Gltf quad(std::int64_t material = -1, bool normals = true, bool uvs = tru
     return out;
 }
 
+// quad() with two morph targets, as Blender exports shape keys: "smile" raises its top corners
+// by 1 and "wide" moves its right corners 1 to the right, both at weight 0. Its animation "Talk"
+// takes them from 0 to 1 and 0.5 over a second.
+inline Gltf face() {
+    Gltf out = quad();
+    json::Value smile;
+    smile["POSITION"] = out.floats(
+        {0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 1.0F, 0.0F}, "VEC3");
+    json::Value wide;
+    wide["POSITION"] = out.floats(
+        {0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F}, "VEC3");
+    json::Value& mesh = out.document["meshes"].as_array()[0];
+    mesh["primitives"].as_array()[0]["targets"] = json::Array{std::move(smile), std::move(wide)};
+    mesh["weights"] = gltf_json("[0, 0]");
+    mesh["extras"]["targetNames"] = gltf_json(R"(["smile", "wide"])");
+    json::Value sampler;
+    sampler["input"] = out.floats({0.0F, 1.0F}, "SCALAR");
+    sampler["output"] = out.floats({0.0F, 0.0F, 1.0F, 0.5F}, "SCALAR");
+    json::Value animation;
+    animation["name"] = "Talk";
+    animation["samplers"].push_back(std::move(sampler));
+    animation["channels"] =
+        gltf_json(R"([{"sampler": 0, "target": {"node": 0, "path": "weights"}}])");
+    out.document["animations"].push_back(std::move(animation));
+    return out;
+}
+
 // An arm of two bones, as a skinned glTF model: a strip from y 0 to 2, half a unit either side of
 // x 0, whose bottom row follows the bone "Upper" (at the origin), its top row the bone "Lower" (at
 // y 1) and its middle row both, half each. Its animations are "Bend", which turns Lower a quarter

@@ -3050,6 +3050,9 @@ json::Value brief_model(const scene3d::ModelSummary& summary) {
     if (!summary.animations.empty()) {
         out["animations"] = names(summary.animations);
     }
+    if (!summary.blend_shapes.empty()) {
+        out["blend_shapes"] = names(summary.blend_shapes);
+    }
     for (const scene3d::ModelSummary::Collision& shape : summary.collision) {
         json::Value item;
         item["name"] = shape.name;
@@ -3129,6 +3132,11 @@ Reply model_inspect(Session& session, const json::Value& params) {
             }
             out["lods"].push_back(lod_triangles);
         }
+        // Its blend shapes, by name with their weights, for a mesh that has them.
+        for (std::size_t k = 0; k < mesh.blend_shapes.size(); ++k) {
+            out["blend_shapes"][mesh.blend_shapes[k]] =
+                rounded(json::Value(k < mesh.blend_weights.size() ? mesh.blend_weights[k] : 0.0F));
+        }
         result["meshes"].push_back(std::move(out));
     }
     // Each material's StandardMaterial3D fields that differ from the defaults, and the images
@@ -3192,7 +3200,7 @@ Reply model_inspect(Session& session, const json::Value& params) {
         if (animation.loop) {
             out["loop"] = true;
         }
-        out["tracks"] = animation.tracks.size();
+        out["tracks"] = animation.tracks.size() + animation.blend_tracks.size();
         result["animations"].push_back(std::move(out));
     }
     // Collision only for a model that has it.

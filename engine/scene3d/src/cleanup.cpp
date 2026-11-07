@@ -16,6 +16,7 @@
 #include <meshoptimizer.h>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -81,18 +82,43 @@ void transform_root(Model& model, const Quat& turn, float scale, Vec3 move) {
     }
 }
 
+// A surface's per-vertex lists (skin weights and blend shapes' offsets) taken from the vertices
+// sources names, one for each vertex it now has.
+void follow_vertices(ModelSurface& surface, const std::vector<std::uint32_t>& sources) {
+    const auto pick = [&sources](auto& list) {
+        if (list.empty()) {
+            return;
+        }
+        std::remove_reference_t<decltype(list)> picked;
+        picked.reserve(sources.size());
+        for (const std::uint32_t source : sources) {
+            picked.push_back(list[source]);
+        }
+        list = std::move(picked);
+    };
+    pick(surface.weights);
+    for (SurfaceBlendShape& shape : surface.blend_shapes) {
+        pick(shape.positions);
+        pick(shape.normals);
+        pick(shape.tangents);
+    }
+}
+
 // The surface with only the vertices its triangles use, in the order they first use them.
 void compact(ModelSurface& surface) {
     std::vector<std::uint32_t> remap(surface.vertices.size(), UINT32_MAX);
     std::vector<render::Vertex3D> kept;
+    std::vector<std::uint32_t> sources;
     for (std::uint32_t& index : surface.indices) {
         if (remap[index] == UINT32_MAX) {
             remap[index] = static_cast<std::uint32_t>(kept.size());
             kept.push_back(surface.vertices[index]);
+            sources.push_back(index);
         }
         index = remap[index];
     }
     surface.vertices = std::move(kept);
+    follow_vertices(surface, sources);
 }
 
 // Each mesh's triangles times the parts that draw it.
@@ -231,13 +257,16 @@ Result<CleanupReport> cleanup_model(Model& model, const CleanupOptions& options)
                 }
                 std::vector<render::Vertex3D> vertices;
                 vertices.reserve(unwrap.value().xref.size());
+                std::vector<std::uint32_t> sources;
                 for (std::size_t i = 0; i < unwrap.value().xref.size(); ++i) {
                     render::Vertex3D vertex = surface.vertices[unwrap.value().xref[i]];
                     vertex.uv = unwrap.value().uv2[i];
                     vertex.uv2 = unwrap.value().uv2[i];
                     vertices.push_back(vertex);
+                    sources.push_back(unwrap.value().xref[i]);
                 }
                 surface.vertices = std::move(vertices);
+                follow_vertices(surface, sources);
                 surface.indices = std::move(unwrap.value().indices);
                 generate_lods(surface);
                 ++report.unwrapped;

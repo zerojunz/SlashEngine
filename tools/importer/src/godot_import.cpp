@@ -5943,6 +5943,15 @@ private:
             }
             return true;
         }
+        // A blend shape's value, as Godot's blend_shapes/<name> properties.
+        if (name.starts_with("blend_shapes/") && node.type == "MeshInstance3D") {
+            if (value.is_number()) {
+                components["MeshInstance3D"]["blend_shapes"][name.substr(13)] = value.number();
+            } else {
+                problems_.add("MeshInstance3D.blend_shapes", node.declared, "not a number");
+            }
+            return true;
+        }
         if (name == "material_overlay") {
             if (value.kind != Value::Kind::Nil) {
                 problems_.add("MeshInstance3D.material_overlay", node.declared,

@@ -74,6 +74,18 @@ struct SurfaceLod {
     std::vector<std::uint32_t> indices;
 };
 
+// How one blend shape moves a surface's vertices, as a glTF morph target: an offset for each
+// vertex's position, normal and tangent, each list empty where the shape leaves that alone. Godot
+// draws a vertex at its position plus each shape's offset times the shape's weight, its normal
+// and tangent the same way, then normalized (skeleton.glsl's blend shapes).
+struct SurfaceBlendShape {
+    std::vector<std::array<float, 3>> positions;
+    std::vector<std::array<float, 3>> normals;
+    std::vector<std::array<float, 3>> tangents;
+
+    friend bool operator==(const SurfaceBlendShape&, const SurfaceBlendShape&) = default;
+};
+
 // One part of a mesh drawn with one material, as a glTF primitive or an OBJ material's faces
 // become a surface of Godot's ArrayMesh: triangles only, with Godot's clockwise front faces.
 struct ModelSurface {
@@ -84,11 +96,20 @@ struct ModelSurface {
     std::vector<VertexWeights> weights;
     // Its LODs, finest first (generate_lods).
     std::vector<SurfaceLod> lods{}; // NOLINT(readability-redundant-member-init)
+    // How each of its mesh's blend shapes moves it, in ModelMesh::blend_shapes' order; empty for
+    // a surface no shape moves.
+    std::vector<SurfaceBlendShape> blend_shapes{}; // NOLINT(readability-redundant-member-init)
 };
 
 struct ModelMesh {
     std::string name;
     std::vector<ModelSurface> surfaces;
+    // Its blend shapes' names, as Godot's ArrayMesh blend shapes (a glTF mesh's morph targets,
+    // named by its extras' targetNames, else "morph_<n>" as Godot's importer names them), and
+    // the weight each has until a MeshInstance3D or an animation gives it another (the mesh's
+    // weights).
+    std::vector<std::string> blend_shapes{}; // NOLINT(readability-redundant-member-init)
+    std::vector<float> blend_weights{};      // NOLINT(readability-redundant-member-init)
 };
 
 // A mesh where a node of the model's scene puts it.
@@ -145,6 +166,18 @@ struct NodeTrack {
     std::vector<std::array<float, 4>> values;
 };
 
+// A track of a model's animation that moves one blend shape's weight, as Godot's importer makes
+// a glTF channel of a node's morph target weights a blend shape track for each shape. Keys
+// interpolate linearly, or hold until the next with step set.
+struct BlendShapeTrack {
+    std::size_t node = 0; // into Model::nodes: the node whose mesh has the shape
+    std::string shape;    // the shape's name in that mesh
+    bool step = false;
+    bool loop_wrap = true;
+    std::vector<float> times; // seconds, earliest first
+    std::vector<float> values;
+};
+
 // An animation in a model file, as Godot's importer makes it an Animation: as long as its last
 // key, and looping (linearly) when its name ends with Godot's "-loop" or "-cycle" import hint.
 struct ModelAnimation {
@@ -152,6 +185,8 @@ struct ModelAnimation {
     double length = 0.0;
     bool loop = false;
     std::vector<NodeTrack> tracks;
+    // Its blend shape tracks.
+    std::vector<BlendShapeTrack> blend_tracks{}; // NOLINT(readability-redundant-member-init)
     // The frames a second of the file's timeline, which tools that count in frames go by: an FBX
     // file's; 0 when the file counts in seconds only, as glTF files do.
     double frame_rate = 0.0;
@@ -286,6 +321,9 @@ struct ModelSummary {
     };
     std::vector<Point> points;
     std::vector<std::string> animations;
+    // Its blend shapes' names, each once, in the order its meshes have them: the names
+    // MeshInstance3D's blend_shapes takes.
+    std::vector<std::string> blend_shapes{}; // NOLINT(readability-redundant-member-init)
     // What it collides as (Model::collision): each shape's name, whether it is a convex hull or
     // a trimesh, and its points and triangles.
     struct Collision {
