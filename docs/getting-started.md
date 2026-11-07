@@ -33,9 +33,9 @@ mcp=./build/dev/tools/slash-mcp/slash-mcp
 
 ### Or install it
 
-On a Mac, an installed engine works the same way without a checkout. Either unpack
-`slashengine-macos.tar.gz` (CI builds it on every change; download it from the run's artifacts)
-or install a build of your own:
+On a Mac or a Linux PC, an installed engine works the same way without a checkout. Either unpack
+`slashengine-macos.tar.gz` or `slashengine-linux-x86_64.tar.gz` (CI builds both on every change;
+download them from the run's artifacts) or install a build of your own:
 
 ```bash
 cmake --preset release && cmake --build --preset release --target slash-cli slash-mcp slash-game
@@ -46,10 +46,17 @@ mcp=~/slashengine/bin/slash-mcp
 
 `bin/` holds `slash-cli`, `slash-mcp` and `slash-game`, and `share/slashengine/` the engine's
 sources, examples and docs and its gameplay SDK. The tools find the engine there by themselves.
-Building a game's own C++ needs CMake and Xcode's command line tools (any version: the code is
-built with the compiler on `PATH`), and the first export fetches the engine's dependencies into
-`~/.slash/cpm-cache`, once for every game. The tools aren't notarized yet, so macOS quarantines
-a downloaded copy: run `xattr -dr com.apple.quarantine ~/slashengine` once after unpacking it.
+Building a game's own C++ needs CMake and a compiler of the family the engine was built with, any
+version (the code is built with the compiler on `PATH`): Xcode's command line tools on a Mac, GCC
+on Linux. The first export fetches the engine's dependencies into `~/.slash/cpm-cache`, once for
+every game.
+
+- **macOS:** the tools aren't notarized yet, so macOS quarantines a downloaded copy: run
+  `xattr -dr com.apple.quarantine ~/slashengine` once after unpacking it.
+- **Linux:** the tools link only the C and C++ runtimes. CI builds them on Ubuntu 24.04, so they
+  need glibc 2.39 or newer (Ubuntu 24.04, Debian 13, Fedora 40). Exports also need `pkg-config`
+  and, for a window, the X11 or Wayland libraries every desktop has. The games they export still
+  run on glibc 2.31.
 
 ## 2. Run the engine
 
