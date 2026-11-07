@@ -1909,6 +1909,8 @@ roughness = 0.6
 texture_filter = 0
 uv1_scale = Vector3(2, 2, 1)
 rim_enabled = true
+rim_tint = 0.25
+refraction_enabled = true
 
 [sub_resource type="BoxMesh" id="BoxMesh_wall"]
 material = SubResource("StandardMaterial3D_wall")
@@ -2179,7 +2181,7 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     CHECK(*wall.find("StandardMaterial3D") == parse(R"({
         "transparency": "alpha_scissor", "albedo_color": [0.8, 0.4, 0.2, 1.0],
         "albedo_texture": "godot/art/bricks.jpg", "roughness": 0.6, "texture_filter": "nearest",
-        "uv1_scale": [2.0, 2.0, 1.0]})"));
+        "uv1_scale": [2.0, 2.0, 1.0], "rim_enabled": true, "rim_tint": 0.25})"));
     const json::Value ball = entity(files, level, "ball");
     CHECK(*ball.find("SphereMesh") == parse(R"({"radius": 0.25, "height": 0.5})"));
     CHECK(*ball.find("StandardMaterial3D") == parse(R"({
@@ -2289,7 +2291,7 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     };
     CHECK(why("StandardMaterial3D.transparency") ==
           "alpha hash dithers; it cuts at alpha_scissor_threshold instead");
-    CHECK(!unsupported(report, "StandardMaterial3D.rim_enabled").is_null());
+    CHECK(!unsupported(report, "StandardMaterial3D.refraction_enabled").is_null());
     CHECK(why("MeshInstance3D.mesh") ==
           "a mesh saved in Godot's own format; export it as a glTF file");
     CHECK(unsupported(report, "node in an imported model").find("where")->as_string() ==

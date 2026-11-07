@@ -1127,6 +1127,17 @@ render::Material3D material(const world::StandardMaterial3D& standard,
     out.uv1_offset = {static_cast<float>(standard.uv1_offset.x),
                       static_cast<float>(standard.uv1_offset.y)};
     out.disable_fog = standard.disable_fog;
+    if (standard.rim_enabled) {
+        out.rim = standard.rim;
+        out.rim_tint = standard.rim_tint;
+    }
+    if (standard.clearcoat_enabled) {
+        out.clearcoat = standard.clearcoat;
+        out.clearcoat_roughness = standard.clearcoat_roughness;
+    }
+    if (standard.anisotropy_enabled) {
+        out.anisotropy = standard.anisotropy;
+    }
     return out;
 }
 

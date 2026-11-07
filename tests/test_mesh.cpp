@@ -8,6 +8,7 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -15,6 +16,7 @@
 #include <cstdlib>
 #include <limits>
 #include <memory>
+#include <numbers>
 #include <optional>
 #include <span>
 #include <string>
@@ -634,5 +636,217 @@ TEST_CASE("every device draws a mesh's LODs from their own indices, as Godot's L
         device->destroy_mesh(card.value());
         device->destroy_mesh(unindexed.value());
         device->destroy_texture(target.value());
+    }
+}
+
+namespace {
+
+// A linear color's byte in sRGB, by the exact curve.
+int srgb_byte(float linear) {
+    const double s = linear <= 0.0031308F ? linear * 12.92
+                                          : (1.055 * std::pow(double{linear}, 1.0 / 2.4)) - 0.055;
+    return static_cast<int>(std::lround(std::clamp(s, 0.0, 1.0) * 255.0));
+}
+
+// An sRGB byte's linear value, by the exact curve.
+double linear_of(int byte) {
+    const double s = byte / 255.0;
+    return s <= 0.04045 ? s / 12.92 : std::pow((s + 0.055) / 1.055, 2.4);
+}
+
+// A sphere of radius around center, with its tangents along its lines of latitude.
+std::vector<Vertex3D> sphere(const Float3& center, float radius) {
+    constexpr int kRings = 16;
+    constexpr int kSegments = 24;
+    const auto corner = [&](int ring, int segment) {
+        const double theta = std::numbers::pi * ring / kRings;
+        const double phi = 2.0 * std::numbers::pi * segment / kSegments;
+        const Float3 n{static_cast<float>(std::sin(theta) * std::cos(phi)),
+                       static_cast<float>(std::cos(theta)),
+                       static_cast<float>(std::sin(theta) * std::sin(phi))};
+        return Vertex3D{
+            .position = sum(center, scaled(n, radius)),
+            .normal = n,
+            .tangent = {static_cast<float>(-std::sin(phi)), 0.0F, static_cast<float>(std::cos(phi)),
+                        1.0F},
+            .uv = {static_cast<float>(segment) / kSegments, static_cast<float>(ring) / kRings}};
+    };
+    std::vector<Vertex3D> out;
+    for (int ring = 0; ring < kRings; ++ring) {
+        for (int segment = 0; segment < kSegments; ++segment) {
+            const Vertex3D a = corner(ring, segment);
+            const Vertex3D b = corner(ring, segment + 1);
+            const Vertex3D c = corner(ring + 1, segment + 1);
+            const Vertex3D d = corner(ring + 1, segment);
+            out.insert(out.end(), {a, b, c, a, c, d});
+        }
+    }
+    return out;
+}
+
+// Three spheres, with a rim, a clearcoat and anisotropy, under two lights and a sky they reflect.
+Image draw_layers(RenderDevice& device, std::uint32_t size, render::RenderMethod method) {
+    auto target = device.create_texture(target_desc(size));
+    REQUIRE(target.ok());
+    auto ball = device.create_mesh(sphere({0.0F, 0.0F, 0.0F}, 0.6F), {});
+    REQUIRE(ball.ok());
+    render::Scene3D scene;
+    scene.method = method;
+    scene.camera = render::look_at({0.0F, 0.4F, 4.0F}, {0.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F});
+    scene.projection = render::perspective(45.0F, 1.0F, 0.1F, 100.0F);
+    scene.ambient = {0.1F, 0.1F, 0.15F};
+    scene.lights = {{.type = render::LightType::Directional,
+                     .color = {1.0F, 0.95F, 0.9F},
+                     .direction = {-0.5F, -0.4F, -0.75F}},
+                    {.type = render::LightType::Omni,
+                     .color = {0.4F, 0.6F, 1.0F},
+                     .energy = 3.0F,
+                     .position = {1.5F, 1.0F, 1.5F},
+                     .range = 4.0F}};
+    scene.sky.kind = render::SkyKind::Procedural;
+    scene.radiance = {.kind = render::SkyKind::Procedural,
+                      .size = 32,
+                      .ambient = true,
+                      .ambient_mix = 0.5F,
+                      .reflections = true};
+    REQUIRE(device
+                .begin_frame(
+                    {.target = target.value(), .clear = {0.05F, 0.05F, 0.1F, 1.0F}, .scene = scene})
+                .ok());
+    const render::CullMode both = render::CullMode::Disabled;
+    CHECK(device
+              .draw_mesh(ball.value(), placed(0.0F, -1.4F, 0.0F, 0.0F),
+                         {.albedo = {0.8F, 0.5F, 0.4F, 1.0F},
+                          .roughness = 0.6F,
+                          .cull = both,
+                          .rim = 0.8F,
+                          .rim_tint = 0.3F})
+              .ok());
+    CHECK(device
+              .draw_mesh(ball.value(), placed(0.0F, 0.0F, 0.0F, 0.0F),
+                         {.albedo = {0.6F, 0.1F, 0.1F, 1.0F},
+                          .roughness = 0.7F,
+                          .cull = both,
+                          .clearcoat = 1.0F,
+                          .clearcoat_roughness = 0.3F})
+              .ok());
+    CHECK(device
+              .draw_mesh(ball.value(), placed(0.0F, 1.4F, 0.0F, 0.0F),
+                         {.albedo = {0.7F, 0.6F, 0.4F, 1.0F},
+                          .metallic = 0.8F,
+                          .roughness = 0.4F,
+                          .cull = both,
+                          .anisotropy = 0.7F})
+              .ok());
+    REQUIRE(device.end_frame().ok());
+    auto image = device.read_texture(target.value());
+    REQUIRE_MESSAGE(image.ok(), error_of(image));
+    device.destroy_mesh(ball.value());
+    device.destroy_texture(target.value());
+    return image.value();
+}
+
+} // namespace
+
+TEST_CASE("every device lights a rim, a clearcoat and anisotropy by Godot's formulas") {
+    for (auto& device : slash::test::drawing_devices()) {
+        CAPTURE(render::backend_name(device->backend()));
+        const std::vector<Vertex3D> square = quad({0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, 2.0F);
+        auto card = device->create_mesh(square, {});
+        REQUIRE(card.ok());
+        // An odd size, so the middle pixel sees the card head on.
+        auto target = device->create_texture(target_desc(9));
+        REQUIRE(target.ok());
+        const auto shade = [&](const render::Scene3D& scene, const render::Material3D& material) {
+            REQUIRE(
+                device->begin_frame({.target = target.value(), .clear = {}, .scene = scene}).ok());
+            REQUIRE(device->draw_mesh(card.value(), placed(0, 0, 0, 0), material).ok());
+            REQUIRE(device->end_frame().ok());
+            auto image = device->read_texture(target.value());
+            REQUIRE_MESSAGE(image.ok(), error_of(image));
+            return pixel(image.value(), 4, 4);
+        };
+        render::Scene3D scene;
+        scene.camera = render::look_at({0, 0, 3}, {0, 0, 0}, {0, 1, 0});
+        render::Material3D material{.albedo = {0.5F, 0.5F, 0.5F, 1.0F}};
+
+        // A light behind the card lights only its rim, which a light's shadow side doesn't stop:
+        // at roughness 1 the rim is the light's color (times pi, as Godot's lights are), white
+        // toward the albedo by rim_tint, times the albedo as diffuse light is. The albedo is
+        // sRGB 0.5, linear 0.214.
+        scene.lights = {{.direction = {0.1F, 0.0F, 0.995F}}};
+        CHECK(shade(scene, material)[0] == 0);
+        material.rim = 1.0F;
+        constexpr float kAlbedo = 0.21404F;
+        constexpr float kPi = std::numbers::pi_v<float>;
+        std::array<int, 4> rim = shade(scene, material);
+        CAPTURE(rim);
+        CHECK(std::abs(rim[0] - srgb_byte(kPi * kAlbedo)) <= 2);
+        material.rim_tint = 1.0F;
+        rim = shade(scene, material);
+        CHECK(std::abs(rim[0] - srgb_byte(kPi * kAlbedo * kAlbedo)) <= 2);
+        material.rim = 0.0F;
+
+        // A light straight on: the clearcoat adds Godot's coat, the light (pi) times its specular
+        // (0.5, Light3D's light_specular), clearcoat, D_GGX at its roughness's alpha (0.1 at 1),
+        // 0.25 for its visibility and Fresnel's 0.04 at its peak.
+        scene.lights = {{.direction = {0.0F, 0.0F, -1.0F}}};
+        const std::array<int, 4> plain = shade(scene, material);
+        material.clearcoat = 0.25F;
+        material.clearcoat_roughness = 1.0F;
+        const std::array<int, 4> coated = shade(scene, material);
+        CAPTURE(plain);
+        CAPTURE(coated);
+        const double coat =
+            std::numbers::pi * 0.5 * 0.25 * (0.25 / 1.0001) * 0.04 / (0.01 * std::numbers::pi);
+        CHECK(linear_of(coated[0]) - linear_of(plain[0]) == doctest::Approx(coat).epsilon(0.08));
+        material.clearcoat = 0.0F;
+
+        // A light off to the side along the card's tangent (x) or across it (y): the same to an
+        // isotropic surface, but anisotropy stretches the highlight along the tangent.
+        material.roughness = 0.4F;
+        render::Scene3D along = scene;
+        along.lights = {{.direction = {-0.5F, 0.0F, -0.866F}}};
+        render::Scene3D across = scene;
+        across.lights = {{.direction = {0.0F, -0.5F, -0.866F}}};
+        CHECK(std::abs(shade(along, material)[0] - shade(across, material)[0]) <= 1);
+        material.anisotropy = 0.8F;
+        const int stretched = shade(along, material)[0];
+        const int narrowed = shade(across, material)[0];
+        CAPTURE(stretched);
+        CAPTURE(narrowed);
+        CHECK(stretched > narrowed + 10);
+        device->destroy_mesh(card.value());
+        device->destroy_texture(target.value());
+    }
+}
+
+TEST_CASE("GPUs draw rims, clearcoats and anisotropy as the software device does") {
+    const auto software = render::create_software_device();
+    const Image forward = draw_layers(*software, 96, render::RenderMethod::ForwardPlus);
+    const Image compatibility = draw_layers(*software, 96, render::RenderMethod::Compatibility);
+    CHECK(forward.pixels != compatibility.pixels);
+    for (auto& device : slash::test::hardware_devices()) {
+        CAPTURE(render::backend_name(device->backend()));
+        const bool opengl = device->backend() == render::Backend::OpenGl ||
+                            device->backend() == render::Backend::OpenGlEs;
+        const Image& expected = opengl ? compatibility : forward;
+        const Image image = draw_layers(*device, 96, render::RenderMethod::ForwardPlus);
+        int differing = 0;
+        int worst = 0;
+        for (std::uint32_t y = 0; y < image.height; ++y) {
+            for (std::uint32_t x = 0; x < image.width; ++x) {
+                const std::array<int, 4> a = pixel(image, x, y);
+                const std::array<int, 4> b = pixel(expected, x, y);
+                int most = 0;
+                for (std::size_t c = 0; c < 4; ++c) {
+                    most = std::max(most, std::abs(a.at(c) - b.at(c)));
+                }
+                differing += most > 2 ? 1 : 0;
+                worst = std::max(worst, most);
+            }
+        }
+        CAPTURE(worst);
+        CHECK(differing <= 20);
     }
 }
