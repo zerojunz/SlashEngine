@@ -1,6 +1,9 @@
 #include "internal.hpp"
 
+#include "slash/xr/face.hpp"
+
 #include <algorithm>
+#include <array>
 #include <numbers>
 #include <utility>
 
@@ -172,6 +175,19 @@ void TestInterface::process(world::World& world) {
         }
         for (const auto& [input_name, value] : tracker.inputs) {
             set_input(world, name, input_name, value);
+        }
+        if (tracker.type == TrackerType::Face) {
+            // Blended shapes left out follow their parts, as an imported recording's do.
+            std::array<float, kFaceShapeCount> weights{};
+            std::array<bool, kFaceShapeCount> given{};
+            for (const auto& [shape, weight] : tracker.blend_shapes) {
+                if (shape < kFaceShapeCount) {
+                    weights.at(shape) = weight;
+                    given.at(shape) = true;
+                }
+            }
+            fill_blended_shapes(weights, given);
+            set_face_blend_shapes(world, name, weights);
         }
     }
     state_.published = std::move(published);

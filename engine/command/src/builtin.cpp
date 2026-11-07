@@ -8659,6 +8659,7 @@ void register_builtin_commands(Registry& registry) {
     register_l10n_commands(registry);
     register_net_commands(registry);
     register_xr_commands(registry);
+    register_face_capture_commands(registry);
 }
 
 void register_run_commands(Registry& registry) {

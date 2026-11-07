@@ -1,5 +1,6 @@
 add_library(slash_xr
     src/action_map.cpp
+    src/face.cpp
     src/settings.cpp
     src/test_interface.cpp
     src/xr.cpp)
@@ -7,6 +8,8 @@ add_library(slash::xr ALIAS slash_xr)
 
 target_include_directories(slash_xr PUBLIC include)
 target_link_libraries(slash_xr PUBLIC slash::core slash::render slash::world)
+# Face modifiers read the blend shapes of the models faces draw.
+target_link_libraries(slash_xr PRIVATE slash::asset slash::scene3d)
 slash_engine_target(slash_xr)
 # Poses place nodes the same everywhere.
 target_compile_options(slash_xr PRIVATE "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
