@@ -72,7 +72,14 @@ if [ "$platform" = windows ]; then
 fi
 for try in 1 2 3 4 5; do
   mv "$checkout" "$checkout.moved" && break
-  [ "$try" = 5 ] && exit 1
+  if [ "$try" = 5 ]; then
+    # Which programs are still running, to find the one holding the checkout.
+    if [ "$platform" = windows ]; then
+      powershell -NoProfile -Command 'Get-CimInstance Win32_Process |
+        Format-Table -AutoSize -Wrap ProcessId, ParentProcessId, Name, CommandLine | Out-String -Width 300'
+    fi
+    exit 1
+  fi
   sleep 2
 done
 trap 'mv "$checkout.moved" "$checkout"' EXIT
