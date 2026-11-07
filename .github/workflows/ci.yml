@@ -3,6 +3,8 @@ name: CI
 on:
   push:
     branches: [main]
+    # A version tag runs everything, then publishes the packages as a draft release.
+    tags: ['v*']
   pull_request:
 
 permissions:
@@ -571,6 +573,10 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      # Whether the repository holds a Developer ID to sign and notarize the macOS tools with
+      # (.github/scripts/notarize-macos.sh names the secrets).
+      DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -628,10 +634,24 @@ jobs:
           cmake --preset release ${{ env.CCACHE_CMAKE_ARGS }}
           cmake --build --preset release --target slash-cli slash-mcp slash-game
 
+      - name: Install them
+        run: cmake --install build/release --prefix "$RUNNER_TEMP/slashengine"
+
+      # A version tag's macOS tools, signed with the Developer ID and notarized, where the
+      # repository has one; otherwise they stay ad hoc signed, as every build is.
+      - name: Sign and notarize them (macOS release)
+        if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/v') && env.DEVELOPER_ID == 'true'
+        env:
+          APPLE_DEVELOPER_ID_CERTIFICATE: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE }}
+          APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: .github/scripts/notarize-macos.sh "$RUNNER_TEMP/slashengine"
+
       # A .tar.gz on macOS and Linux, a .zip on Windows: cmake's tar picks the format by name.
-      - name: Install and package them
+      - name: Package them
         run: |
-          cmake --install build/release --prefix "$RUNNER_TEMP/slashengine"
           cd "$RUNNER_TEMP"
           case "${{ matrix.archive }}" in
             *.zip) cmake -E tar cf "${{ matrix.archive }}" --format=zip slashengine ;;
@@ -890,3 +910,37 @@ jobs:
         with:
           path: .clang-tidy-cache
           key: clang-tidy-${{ github.run_id }}-${{ github.run_attempt }}
+
+  # A version tag (v0.1.0) that passes every job publishes the packages as a draft release, which
+  # a maintainer reads over and publishes.
+  publish:
+    name: Draft the release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, tracy, double, export, release, cross-export, cross-run, lint]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE != '' }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: slashengine-*
+          path: dist
+          merge-multiple: true
+
+      - name: Draft the release with the packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          ls -l dist
+          if [ "$DEVELOPER_ID" = true ]; then
+            mac="The macOS tools are signed with a Developer ID and notarized."
+          else
+            mac="The macOS tools are ad hoc signed, not notarized: run \`xattr -dr com.apple.quarantine slashengine\` after unpacking."
+          fi
+          printf '%s\n\n%s\n' "$mac" \
+            "Unpack a package and follow docs/getting-started.md." > notes.md
+          gh release create "$GITHUB_REF_NAME" dist/* --draft --verify-tag \
+            --title "SlashEngine ${GITHUB_REF_NAME#v}" --notes-file notes.md --generate-notes

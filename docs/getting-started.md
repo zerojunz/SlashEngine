@@ -52,8 +52,9 @@ version (the code is built with the compiler on `PATH`): Xcode's command line to
 on Linux. The first export fetches the engine's dependencies into `~/.slash/cpm-cache`, once for
 every game.
 
-- **macOS:** the tools aren't notarized yet, so macOS quarantines a downloaded copy: run
-  `xattr -dr com.apple.quarantine ~/slashengine` once after unpacking it.
+- **macOS:** a release's tools are notarized when it says so in its notes. Otherwise macOS
+  quarantines a downloaded copy: run `xattr -dr com.apple.quarantine ~/slashengine` once after
+  unpacking it.
 - **Linux:** the tools link only the C and C++ runtimes. CI builds them on Ubuntu 24.04, so they
   need glibc 2.39 or newer (Ubuntu 24.04, Debian 13, Fedora 40). Exports also need `pkg-config`
   and, for a window, the X11 or Wayland libraries every desktop has. The games they export still
