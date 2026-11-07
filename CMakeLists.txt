@@ -16,6 +16,20 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# A Debug link of a test or example executable takes nearly 4 GB with GNU ld, so Ninja links
+# only as many at once as there are 6 GB of memory (at least one); otherwise a build linking
+# many examples at once runs out of memory, which stops CI's runners. Set
+# CMAKE_JOB_POOL_LINK yourself to use a pool of your own.
+if(CMAKE_GENERATOR MATCHES "Ninja" AND NOT DEFINED CMAKE_JOB_POOL_LINK)
+    cmake_host_system_information(RESULT _slash_memory_mib QUERY TOTAL_PHYSICAL_MEMORY)
+    math(EXPR _slash_links "${_slash_memory_mib} / 6144")
+    if(_slash_links LESS 1)
+        set(_slash_links 1)
+    endif()
+    set_property(GLOBAL APPEND PROPERTY JOB_POOLS slash_link=${_slash_links})
+    set(CMAKE_JOB_POOL_LINK slash_link)
+endif()
+
 option(SLASH_BUILD_TOOLS "Build slash-cli and slash-mcp" ${PROJECT_IS_TOP_LEVEL})
 option(SLASH_BUILD_TESTS "Build the unit and smoke tests" ${PROJECT_IS_TOP_LEVEL})
 option(SLASH_BUILD_EXAMPLES "Build the examples and test them (needs tools and tests)"

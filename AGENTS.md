@@ -29,6 +29,8 @@ ctest --preset dev               # run unit and smoke tests
 ```
 
 The `ci` preset is what CI runs: same build with warnings as errors. Use it before you push.
+Ninja links one Debug executable per 6 GB of memory (the `slash_link` pool in `CMakeLists.txt`,
+since each link takes nearly 4 GB with GNU ld); set `CMAKE_JOB_POOL_LINK` to use your own.
 
 On Linux, SDL3 needs the X11/Wayland development packages listed in
 `.github/workflows/ci.yml`.
@@ -1777,6 +1779,14 @@ after the step `detail::break_and_age` (`src/destruction.cpp`) breaks them with 
 `FracturePiece3D` lifetimes; `Renderer::add_piece` draws a piece's part of the cut.
 `physics.break` breaks one by hand, and `check_destructibles` backs `scene validate`.
 `examples/destruction-3d` breaks a wall and a crate.
+
+World streaming is SlashEngine's own (Godot has none), after Unreal's World Partition: the
+`world_streaming` system (`engine/scene3d/src/streaming.cpp`, priority -700, added by
+`canvas::install`) measures from each enabled `StreamingSource3D` to each `StreamedScene3D`'s
+box and loads its `.scene.json` file onto a new entity `<id>_scene` with
+`world::instantiate_prefab`, as a child of the cell, or destroys it past `unload_margin`,
+emitting `streamed_in`, `streamed_out` and `stream_failed` events. `streaming.state` lists the
+cells and `check_streaming` backs `scene validate`. `examples/world-streaming` walks a road.
 
 ## Navigation
 

@@ -1297,16 +1297,16 @@ TEST_CASE("engine.describe lists systems in the order they run") {
     world.add_system("movement", [](world::World& /*w*/, double /*dt*/) {},
                      {.doc = "Moves things by their velocity."});
     world.add_system("controls", [](world::World& /*w*/, double /*dt*/) {}, {.priority = -1});
-    // Every session applies input, network, XR and service events first and plays animations, steps
-    // 2D and 3D physics, checks synchronizers' visibility, steps navigation, moves the camera and
-    // parallax, runs particles, hands over models' replies and plays sound with built-in systems
-    // that run late. The particle systems are threaded: the CPU ones and GPUParticles2D's run at
-    // the same time, and GPUParticles3D's, which loads vector fields' textures as GPUParticles2D's
-    // loads its own, runs after them.
+    // Every session applies input, network, XR and service events first, streams the world in,
+    // and plays animations, steps 2D and 3D physics, checks synchronizers' visibility, steps
+    // navigation, moves the camera and parallax, runs particles, hands over models' replies and
+    // plays sound with built-in systems that run late. The particle systems are threaded: the CPU
+    // ones and GPUParticles2D's run at the same time, and GPUParticles3D's, which loads vector
+    // fields' textures as GPUParticles2D's loads its own, runs after them.
     CHECK(
         *engine.ok("engine.describe").find("systems") ==
         parse(
-            R"(["input", "multiplayer", "gui", "xr", "services", "controls", "movement", "animation_player",
+            R"(["input", "multiplayer", "gui", "xr", "services", "world_streaming", "controls", "movement", "animation_player",
                     "animation_tree", "skeleton_modifiers", "path_follow", "physics2d", "physics3d", "multiplayer_visibility", "navigation", "animated_sprite_2d",
                     "camera_2d", "parallax_2d", "cpu_particles_2d", "cpu_particles_3d", "gpu_particles_2d", "gpu_particles_3d", "video", "ai", "audio"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
@@ -1323,6 +1323,9 @@ TEST_CASE("engine.describe lists systems in the order they run") {
         {"name": "services",
          "doc": "Hands what the ads, analytics, purchases and games backends reported to the game as events.",
          "priority": -800},
+        {"name": "world_streaming",
+         "doc": "Loads each StreamedScene3D's scene while a StreamingSource3D is near and unloads it when they have all gone, as Unreal's World Partition streams cells.",
+         "priority": -700},
         {"name": "controls", "priority": -1},
         {"name": "movement", "doc": "Moves things by their velocity.", "priority": 0},
         {"name": "animation_player",
@@ -1359,19 +1362,19 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "priority": 1060},
         {"name": "cpu_particles_2d",
          "doc": "Emits, moves and ages each CPUParticles2D's particles.", "priority": 1100,
-         "threaded": true, "stage": 18, "reads": ["Transform2D"], "writes": ["CPUParticles2D"]},
+         "threaded": true, "stage": 19, "reads": ["Transform2D"], "writes": ["CPUParticles2D"]},
         {"name": "cpu_particles_3d",
          "doc": "Emits, moves and ages each CPUParticles3D's particles.", "priority": 1100,
-         "threaded": true, "stage": 18, "reads": ["Transform3D"], "writes": ["CPUParticles3D"]},
+         "threaded": true, "stage": 19, "reads": ["Transform3D"], "writes": ["CPUParticles3D"]},
         {"name": "gpu_particles_2d",
          "doc": "Steps each GPUParticles2D's emission for renderers to run.", "priority": 1110,
-         "threaded": true, "stage": 18,
+         "threaded": true, "stage": 19,
          "reads": ["Transform2D", "LightOccluder2D", "TileMapLayer", "CanvasLayer", "Control",
                    "Camera2D"],
          "writes": ["GPUParticles2D", "assets"]},
         {"name": "gpu_particles_3d",
          "doc": "Steps each GPUParticles3D's emission for renderers to run.", "priority": 1110,
-         "threaded": true, "stage": 19,
+         "threaded": true, "stage": 20,
          "reads": ["GPUParticlesAttractorSphere3D", "GPUParticlesAttractorBox3D",
                    "GPUParticlesAttractorVectorField3D", "GPUParticlesCollisionSphere3D",
                    "GPUParticlesCollisionBox3D", "GPUParticlesCollisionSDF3D",
@@ -3092,6 +3095,22 @@ TEST_CASE("physics.break breaks a Destructible3D into pieces, and undo puts it b
     CHECK(engine.fails("physics.break", R"({"id": "floor"})", command::code::kInvalidParams)
               .message == "/id: \"floor\" has no Destructible3D");
     engine.fails("physics.break", R"({"id": "nobody"})", command::code::kNotFound);
+}
+
+TEST_CASE("streaming.state lists StreamedScene3Ds and how near the sources are") {
+    Engine engine;
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "north", "components": {
+            "Transform3D": {"position": [0, 0, -300]},
+            "StreamedScene3D": {"scene": "cells/north.scene.json", "size": [200, 50, 200]}}}},
+        {"command": "entity.create", "params": {"id": "player", "components": {
+            "Transform3D": {}, "StreamingSource3D": {}}}}]})");
+    CHECK(engine.ok("streaming.state") == parse(R"({"sources": 1, "cells": [
+        {"id": "north", "scene": "cells/north.scene.json", "loaded": false, "distance": 200}]})"));
+    engine.ok("component.set", R"({"id": "player", "components": {
+        "StreamingSource3D": {"enabled": false}}})");
+    CHECK(engine.ok("streaming.state") == parse(R"({"sources": 0, "cells": [
+        {"id": "north", "scene": "cells/north.scene.json", "loaded": false, "distance": null}]})"));
 }
 
 TEST_CASE("particles.eval counts and lists particles, as they are or after a time") {

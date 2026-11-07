@@ -17,6 +17,7 @@
 #include "slash/scene3d/particle_collision.hpp"
 #include "slash/scene3d/particles.hpp"
 #include "slash/scene3d/soft_body.hpp"
+#include "slash/scene3d/streaming.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
 #include "slash/world/path.hpp"
@@ -1004,6 +1005,9 @@ std::vector<Problem> check_meshes(const world::World& world) {
         problems.push_back(std::move(problem));
     }
     for (Problem& problem : check_destructibles(world)) {
+        problems.push_back(std::move(problem));
+    }
+    for (Problem& problem : check_streaming(world)) {
         problems.push_back(std::move(problem));
     }
     return problems;

@@ -1,0 +1,49 @@
+{
+  "entities": {
+    "east": {
+      "components": {
+        "StreamedScene3D": {
+          "load_radius": 30.0,
+          "scene": "cells/east.scene.json",
+          "size": [100.0, 20.0, 100.0]
+        },
+        "Transform3D": {
+          "position": [200.0, -0.5, 0.0]
+        }
+      }
+    },
+    "middle": {
+      "components": {
+        "StreamedScene3D": {
+          "load_radius": 30.0,
+          "scene": "cells/middle.scene.json",
+          "size": [100.0, 20.0, 100.0]
+        },
+        "Transform3D": {
+          "position": [100.0, -0.5, 0.0]
+        }
+      }
+    },
+    "player": {
+      "components": {
+        "StreamingSource3D": {},
+        "Transform3D": {
+          "position": [0.0, 1.0, 0.0]
+        }
+      }
+    },
+    "west": {
+      "components": {
+        "StreamedScene3D": {
+          "load_radius": 30.0,
+          "scene": "cells/west.scene.json",
+          "size": [100.0, 20.0, 100.0]
+        },
+        "Transform3D": {
+          "position": [0.0, -0.5, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

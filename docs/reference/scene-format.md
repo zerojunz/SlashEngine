@@ -4485,6 +4485,45 @@ breaks a wall with a ball and a crate with `physics.break`.
   `RigidBody3D`, and one whose mesh can't be cut: a flat `PlaneMesh` or `QuadMesh`, or a model
   that doesn't close.
 
+### World streaming
+
+Godot has no world streaming, so this follows Unreal's World Partition: a world too large to keep
+whole is kept as scene files, each loaded while something that streams the world in is near it.
+A `StreamedScene3D` names a `.scene.json` file that names its `root` (`scene.save` takes `root`)
+and the box it covers; a `StreamingSource3D` on the player or the camera streams in the cells
+around its global position. [examples/world-streaming](../../examples/world-streaming/) walks a
+player down a road of three cells.
+
+```json
+"middle": {
+  "components": {
+    "StreamedScene3D": {"load_radius": 30.0, "scene": "cells/middle.scene.json", "size": [100.0, 20.0, 100.0], "unload_margin": 10.0},
+    "Transform3D": {"position": [100.0, -0.5, 0.0]}
+  }
+}
+```
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `StreamedScene3D` | `scene` `""` (a `.scene.json` path), `size` `[0, 0, 0]` (meters along the world's axes, centered on the entity), `load_radius` `100` (meters), `unload_margin` `10` (meters) |
+| `StreamingSource3D` | `enabled` `true` |
+
+- Each tick, after input, multiplayer, XR and services, the `world_streaming` system
+  (priority -700) measures from each enabled source to each cell's box. A cell loads when one is
+  within `load_radius`, and unloads when every source is farther than `load_radius` plus
+  `unload_margin`, or there is no source.
+- A loaded scene's root is the entity `<id>_scene`, one of the cell's `Transform3D` children, so
+  it is placed in the cell's space; its other entities are `<id>_scene/<their id>`, as an
+  instanced scene's. Unloading destroys them all. Each is a `streamed_in` event (with `scene`
+  and `root`) or a `streamed_out` one.
+- A scene that can't load is a `stream_failed` event with the `error`, once until the cell's
+  `scene` changes. Loads read the file through the project's assets, all in the tick they are
+  asked for, so runs repeat.
+- What streamed in is part of the world: saving a scene, snapshots and `undo` keep it as it is.
+  `streaming.state` lists the cells. `scene validate` reports a `StreamedScene3D` without a
+  `Transform3D`, a `scene` that is no `.scene.json` file, can't be read or names no root, and
+  an ID too long for its root's.
+
 ## Navigation
 
 Navigation follows Godot 4.6's `NavigationServer2D` and `NavigationServer3D`. Each world has a

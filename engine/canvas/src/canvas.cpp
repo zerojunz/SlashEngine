@@ -14,6 +14,7 @@
 #include "slash/scene3d/csg.hpp"
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/particles.hpp"
+#include "slash/scene3d/streaming.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/video/video.hpp"
@@ -345,6 +346,7 @@ void add_systems(world::World& world, asset::Assets& assets) {
     add_particles_system(world);
     add_gpu_particles_system(world, &assets);
     scene3d::add_particles_system(world);
+    scene3d::add_streaming_system(world);
     // Vector field attractors' textures read through assets.
     const scene3d::ImageLoader images =
         [&assets](const std::string& path) -> Result<std::shared_ptr<const render::Image>> {

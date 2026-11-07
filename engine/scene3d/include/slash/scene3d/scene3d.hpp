@@ -179,8 +179,8 @@ using ModelSource = std::function<Result<SourceModel>(const std::string& path)>;
 // skeleton modifiers and bone attachments against the models they follow. CSG shapes that can't
 // be made (check_csg), path followers that can't follow (world::check_paths), GridMaps whose
 // cells can't be made (check_gridmaps), terrains (check_terrains), LightmapGIs
-// (check_lightmaps), soft bodies (check_soft_bodies) and Destructible3Ds (check_destructibles)
-// come after.
+// (check_lightmaps), soft bodies (check_soft_bodies), Destructible3Ds (check_destructibles) and
+// StreamedScene3Ds (check_streaming) come after.
 [[nodiscard]] std::vector<Problem> check_meshes(const world::World& world);
 
 // The same in a parsed scene file, each at its JSON Pointer in the file. Prefabs and instanced
