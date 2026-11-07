@@ -19,6 +19,7 @@
 #include "slash/scene3d/soft_body.hpp"
 #include "slash/scene3d/streaming.hpp"
 #include "slash/scene3d/terrain.hpp"
+#include "slash/scene3d/virtual_geometry.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
 #include "slash/world/path.hpp"
 #include "slash/world/serialize.hpp"
@@ -1191,8 +1192,24 @@ Renderer::~Renderer() {
     for (const auto& [key, texture] : embedded_) {
         device_->destroy_texture(texture.id);
     }
+    destroy_cuts(false);
     destroy_lightmaps(false);
     destroy_voxel_gis();
+}
+
+void Renderer::destroy_cuts(bool unused_only) {
+    for (auto it = cuts_.begin(); it != cuts_.end();) {
+        if (unused_only && it->second.used == frame_) {
+            ++it;
+            continue;
+        }
+        if (it->second.id != render::MeshId::None) {
+            device_->destroy_mesh(it->second.id);
+        }
+        it = cuts_.erase(it);
+    }
+    std::erase_if(clustered_,
+                  [&](const auto& entry) { return !unused_only || entry.second.used != frame_; });
 }
 
 void Renderer::destroy_lightmaps(bool unused_only) {
@@ -1820,6 +1837,30 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
                                        !surface.lods.empty(), &draw.lods)) {
                 draw.mesh = lit;
                 draw.material.lightmap = *lightmap;
+            }
+            // A virtualized surface draws as the camera cuts its cluster hierarchy (pick_lods):
+            // the last cut until then. Skinned and lightmapped surfaces draw as they are.
+            if (instance.virtualized && !skinned && draw.mesh == made.value()) {
+                const std::string key =
+                    prefix + std::to_string(part.mesh) + "/" + std::to_string(i);
+                Clustered& clustered = clustered_[key];
+                if (clustered.hierarchy == nullptr) {
+                    clustered.hierarchy =
+                        std::make_shared<const ClusterHierarchy>(build_cluster_hierarchy(surface));
+                    clustered.vertices = surface.vertices;
+                }
+                clustered.used = frame_;
+                draw.cut =
+                    key + "@" + std::to_string(entt::to_integral(entity)) + "/" + std::to_string(p);
+                Cut& cut = cuts_[draw.cut];
+                cut.clustered = key;
+                cut.place = part_place;
+                cut.box = draw.box;
+                cut.used = frame_;
+                if (cut.id != render::MeshId::None) {
+                    draw.mesh = cut.id;
+                }
+                draw.lods = nullptr;
             }
             draw.layers = instance.layers;
             draw.shadows = casting;
@@ -3260,6 +3301,7 @@ std::optional<Frame3D> Renderer::prepare(
             device_->destroy_mesh(skinned.id);
         }
         skinned_.clear();
+        destroy_cuts(false);
         for (const auto& [key, kept] : particle_meshes_) {
             device_->destroy_mesh(kept.id);
         }
@@ -3602,6 +3644,7 @@ std::optional<Frame3D> Renderer::prepare(
         }
     }
     std::erase_if(cached_, [&](const auto& entry) { return !shared_.contains(entry.second.key); });
+    destroy_cuts(true);
     for (auto it = skinned_.begin(); it != skinned_.end();) {
         if (it->second.used != frame_) {
             device_->destroy_mesh(it->second.id);
@@ -3918,7 +3961,7 @@ Result<void> Renderer::reflect(const world::World& world, Frame3D& frame, render
             // atlas's cube size, as Godot's _render_reflection_probe_step.
             pick_lods(f.place.apply(p.origin_offset),
                       render::probe_face_projection(size, offset, p.max_distance, 0), false,
-                      static_cast<float>(settings.reflection_size), p.mesh_lod_threshold);
+                      static_cast<float>(settings.reflection_size), p.mesh_lod_threshold, false);
             for (std::uint32_t face = 0; face < 6; ++face) {
                 scene.camera = render::probe_face_view(transform, offset, face);
                 scene.projection =
@@ -3970,13 +4013,25 @@ Result<void> Renderer::reflect(const world::World& world, Frame3D& frame, render
 }
 
 void Renderer::pick_lods(const Vec3& camera_position, const std::array<float, 16>& projection,
-                         bool orthogonal, float width, float threshold_pixels) {
+                         bool orthogonal, float width, float threshold_pixels, bool cut) {
     // RendererViewport::_draw_3d's screen_mesh_lod_threshold and Projection::get_lod_multiplier.
     const float threshold = width > 0.0F ? threshold_pixels / width : 0.0F;
     const float multiplier = 2.0F / projection[0];
     lods_drawn_ = 0;
+    if (cut) {
+        clusters_drawn_ = 0;
+        cluster_triangles_drawn_ = 0;
+    }
     for (Draw& draw : draws_) {
         draw.lod = 0;
+        if (!draw.cut.empty()) {
+            if (cut) {
+                // The pixels a unit's error covers a unit away, as LODs' threshold measures it.
+                cut_clusters(draw, camera_position,
+                             orthogonal ? 0.0F : projection[0] * 0.5F * width, threshold_pixels);
+            }
+            continue;
+        }
         if (threshold <= 0.0F || draw.lods == nullptr || draw.lods->empty()) {
             continue;
         }
@@ -4006,8 +4061,50 @@ void Renderer::pick_lods(const Vec3& camera_position, const std::array<float, 16
     }
 }
 
+void Renderer::cut_clusters(Draw& draw, const Vec3& camera_position, float pixels_per_unit,
+                            float threshold_pixels) {
+    Cut& cut = cuts_.at(draw.cut);
+    const Clustered& clustered = clustered_.at(cut.clustered);
+    const std::array<float, 16>& m = draw.transform;
+    const float scale = std::max({std::sqrt((m[0] * m[0]) + (m[1] * m[1]) + (m[2] * m[2])),
+                                  std::sqrt((m[4] * m[4]) + (m[5] * m[5]) + (m[6] * m[6])),
+                                  std::sqrt((m[8] * m[8]) + (m[9] * m[9]) + (m[10] * m[10]))});
+    // An orthogonal view (no pixels a unit away to go by) draws the surface's own triangles.
+    const ClusterView view{.camera = to_float(cut.place.inverse().apply(camera_position)),
+                           .projection = pixels_per_unit,
+                           .height = 2.0F,
+                           .near = 0.05F,
+                           .threshold = pixels_per_unit > 0.0F ? threshold_pixels : 0.0F,
+                           .scale = scale};
+    std::vector<std::uint32_t> chosen = select_clusters(*clustered.hierarchy, view);
+    if (cut.id == render::MeshId::None || chosen != cut.clusters) {
+        const std::vector<std::uint32_t> indices = cluster_indices(*clustered.hierarchy, chosen);
+        auto made = device_->create_mesh(clustered.vertices, indices);
+        if (made) {
+            if (cut.id != render::MeshId::None) {
+                device_->destroy_mesh(cut.id);
+            }
+            cut.id = made.value();
+            cut.clusters = std::move(chosen);
+            cut.triangles = indices.size() / 3;
+        } else {
+            problems_.push_back({draw.entity, std::string(kMeshField), made.error().message});
+        }
+    }
+    if (cut.id != render::MeshId::None) {
+        draw.mesh = cut.id;
+        clusters_drawn_ += cut.clusters.size();
+        cluster_triangles_drawn_ += cut.triangles;
+    }
+}
+
 std::unordered_map<render::MeshId, Bounds> Renderer::mesh_boxes() const {
     std::unordered_map<render::MeshId, Bounds> out;
+    for (const auto& [key, cut] : cuts_) {
+        if (cut.used == frame_ && cut.id != render::MeshId::None) {
+            out.emplace(cut.id, cut.box);
+        }
+    }
     for (const auto& [mesh_key, shared] : shared_) {
         if (shared.used == frame_) {
             out.emplace(shared.id, shared.box);

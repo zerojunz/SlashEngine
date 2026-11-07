@@ -1,11 +1,19 @@
 // Virtualized geometry's cluster hierarchies: built once, then cut for a view so detail follows
 // distance across one surface, with no cracks between parts drawn at different depths.
 
+#include "gltf.hpp"
+
+#include "slash/asset/assets.hpp"
+#include "slash/canvas/canvas.hpp"
+#include "slash/core/json.hpp"
 #include "slash/core/math.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/primitive.hpp"
 #include "slash/scene3d/virtual_geometry.hpp"
+#include "slash/ui/ui.hpp"
+#include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/world.hpp"
 
 #include <doctest/doctest.h>
 
@@ -14,8 +22,12 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <map>
+#include <optional>
+#include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -111,6 +123,34 @@ scene3d::ClusterView view_from(float distance) {
             .near = 0.05F,
             .threshold = 1.0F,
             .scale = 1.0F};
+}
+
+// The bumpy ground as a glTF model.
+std::string ground_gltf() {
+    const scene3d::ModelSurface ground = bumpy_ground();
+    std::vector<float> positions;
+    std::vector<float> normals;
+    for (const slash::render::Vertex3D& vertex : ground.vertices) {
+        positions.insert(positions.end(), vertex.position.begin(), vertex.position.end());
+        normals.insert(normals.end(), vertex.normal.begin(), vertex.normal.end());
+    }
+    std::vector<std::uint16_t> indices;
+    indices.reserve(ground.indices.size());
+    for (const std::uint32_t index : ground.indices) {
+        indices.push_back(static_cast<std::uint16_t>(index));
+    }
+    slash::test::Gltf out;
+    slash::json::Value primitive;
+    primitive["attributes"]["POSITION"] = out.floats(positions, "VEC3");
+    primitive["attributes"]["NORMAL"] = out.floats(normals, "VEC3");
+    primitive["indices"] = out.indices(indices);
+    slash::json::Value mesh;
+    mesh["primitives"].push_back(std::move(primitive));
+    out.document["meshes"].push_back(std::move(mesh));
+    out.document["nodes"] = slash::test::gltf_json(R"([{"name": "Ground", "mesh": 0}])");
+    out.document["scenes"] = slash::test::gltf_json(R"([{"nodes": [0]}])");
+    out.document["scene"] = 0;
+    return out.gltf();
 }
 
 } // namespace
@@ -230,4 +270,57 @@ TEST_CASE("a jagged surface's hierarchy keeps no folds of a triangle over itself
             hierarchy, scene3d::select_clusters(hierarchy, view_from(distance)));
         CHECK(signed_area_from_above(ground, indices) == doctest::Approx(1600.0).epsilon(1e-6));
     }
+}
+
+TEST_CASE("a virtualized MeshInstance3D draws the clusters its distance needs") {
+    // A world drawn at 320x320 through a camera at the origin looking down -z, the ground below.
+    std::map<std::string, std::string, std::less<>> files{{"ground.gltf", ground_gltf()}};
+    slash::asset::Assets assets{slash::asset::FileSource{
+        .read = [&](std::string_view path) -> slash::Result<std::string> {
+            const auto it = files.find(path);
+            if (it == files.end()) {
+                return slash::make_error(slash::ErrorCode::NotFound, "no such file");
+            }
+            return it->second;
+        },
+        .stamp = [&](std::string_view path) -> std::optional<slash::asset::FileStamp> {
+            const auto it = files.find(path);
+            if (it == files.end()) {
+                return std::nullopt;
+            }
+            return slash::asset::FileStamp{.modified = 1, .size = it->second.size()};
+        }}};
+    slash::world::ComponentRegistry components;
+    slash::world::World world{components};
+    slash::world::register_builtin_components(components);
+    slash::canvas::install(world, assets);
+    slash::ui::Settings ui;
+    ui.viewport = {320.0F, 320.0F};
+    slash::ui::set_settings(world, ui);
+    const entt::entity camera = world.create("camera").value();
+    world.ecs().emplace<slash::world::Transform3D>(camera);
+    world.ecs().emplace<slash::world::Camera3D>(camera);
+    const entt::entity ground = world.create("ground").value();
+    world.ecs().emplace<slash::world::Transform3D>(ground).position = {0.0F, -3.0F, -25.0F};
+    world.ecs().emplace<slash::world::MeshInstance3D>(ground).mesh = "ground.gltf";
+
+    const auto drawn = [&] {
+        const auto captured = slash::canvas::capture(world, assets);
+        REQUIRE(captured.ok());
+        CHECK(captured.value().meshes == 1);
+        return captured.value().clusters;
+    };
+    // Not virtualized, it draws as a model: no clusters.
+    CHECK(drawn() == 0);
+    world.ecs().get<slash::world::MeshInstance3D>(ground).virtualized = true;
+    const std::size_t near = drawn();
+    CHECK(near > 1);
+    // Far away, the same ground is cut into fewer, coarser clusters.
+    world.ecs().get<slash::world::Transform3D>(ground).position = {0.0F, -3.0F, -2000.0F};
+    const std::size_t far = drawn();
+    CHECK(far > 0);
+    CHECK(far < near);
+    // Brought back, it is cut as before.
+    world.ecs().get<slash::world::Transform3D>(ground).position = {0.0F, -3.0F, -25.0F};
+    CHECK(drawn() == near);
 }

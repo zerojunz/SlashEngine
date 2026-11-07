@@ -1097,7 +1097,11 @@ Once the macOS release ships:
 These are UE5-class systems with no committed plan to ship. Work on them happens only after the
 launch rows and the after-launch features above.
 
-- Virtualized geometry in the style of Nanite (meshlet rendering)
+- Virtualized geometry in the style of Nanite (meshlet rendering). Spike: cluster hierarchies
+  built with meshoptimizer's cluster LOD builder and cut per camera on the CPU, crack-free,
+  behind `MeshInstance3D.virtualized`
+  ([virtualized-geometry.md](reference/virtualized-geometry.md)); GPU selection, cluster
+  culling, a software rasterizer and streaming remain
 - Fully dynamic global illumination at Lumen quality, after probe GI ships
 - Digital humans in the style of MetaHuman; out of scope for releases
 
@@ -1160,7 +1164,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Cinematics | Timeline tracks for cameras and events | After launch | Done: bezier, animation and audio tracks, camera cuts, markers and `animation.seek` |
 | Cloth and soft bodies | Jolt soft bodies | After launch | Done: Godot's `SoftBody3D` on Jolt, with pins, attachments and pressure |
 | Destruction | Fracture and debris on Jolt | After launch | Done: Voronoi fracture of `Destructible3D` bodies, impact breaking, debris lifetimes and `physics.break` |
-| Virtualized geometry | Meshlet rendering research | Research | Research |
+| Virtualized geometry | Meshlet rendering research | Research | Research: cluster hierarchies cut per camera on the CPU (`MeshInstance3D.virtualized`) |
 | Fully dynamic GI at UE quality | Research after probe GI ships | Research | Research |
 | Digital humans | Research; out of scope for releases | Research | Research |
 
