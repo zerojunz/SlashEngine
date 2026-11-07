@@ -950,6 +950,12 @@ struct PathTrace3D {
 // nothing), averaged and smoothed across neighbors on the same surface. It stands in for the
 // ambient light, the sky's, VoxelGIs' and probes' (but not a lightmap's), so light bounces off what
 // is near.
+// With many_lights (a research spike: the software device draws it, other devices light every
+// light as before), each opaque pixel's omni and spot lights are ReSTIR's (src/restir.hpp): it
+// keeps many_light_samples reservoirs of one light each, drawn from many_light_candidates of its
+// cluster's lights and resampled over last frame's and its neighbors', and traces one shadow ray
+// to each, so every light with shadow set casts ray-traced shadows at a few rays a pixel however
+// many lights there are.
 inline constexpr std::size_t kMaxRayShadowLights = 8;
 inline constexpr std::uint32_t kMaxRayShadowSamples = 64;
 struct RayTracing3D {
@@ -961,12 +967,16 @@ struct RayTracing3D {
     std::uint32_t reflection_samples = 1; // 1 to kMaxRayShadowSamples
     bool global_illumination = false;
     std::uint32_t global_illumination_samples = 4; // 1 to kMaxRayShadowSamples
+    bool many_lights = false;
+    std::uint32_t many_light_candidates = 8; // 1 to 32
+    std::uint32_t many_light_samples = 1;    // 1 to 4
 
     bool operator==(const RayTracing3D&) const = default;
 };
 // Reads project.json's rendering object's ray_tracing: shadows, shadow_samples,
 // ambient_occlusion, ambient_occlusion_samples, reflections, reflection_samples,
-// global_illumination and global_illumination_samples. What is missing
+// global_illumination, global_illumination_samples, many_lights, many_light_candidates and
+// many_light_samples. What is missing
 // or of the wrong type keeps its default, and samples are held to their range.
 [[nodiscard]] RayTracing3D ray_tracing(const json::Value& rendering);
 

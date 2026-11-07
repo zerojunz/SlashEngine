@@ -1,0 +1,956 @@
+{
+  "entities": {
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 60.0
+        },
+        "Transform3D": {
+          "position": [0.0, 6.0, 9.0],
+          "rotation": [-0.6, 0.0, 0.0]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "WorldEnvironment": {
+          "ambient_light_color": [1.0, 1.0, 1.0, 1.0],
+          "ambient_light_energy": 0.05,
+          "ambient_light_source": "color",
+          "background_color": [0.02, 0.02, 0.04, 1.0],
+          "background_mode": "color"
+        }
+      }
+    },
+    "floor": {
+      "components": {
+        "MeshInstance3D": {},
+        "PlaneMesh": {
+          "size": [20.0, 20.0]
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.75, 0.72, 0.65, 1.0]
+        },
+        "Transform3D": {}
+      }
+    },
+    "lamp_01": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.75, 0.5, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-5.25, 2.2, -5.25]
+        }
+      }
+    },
+    "lamp_02": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.8, 1.0, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-5.25, 2.2, -3.75]
+        }
+      }
+    },
+    "lamp_03": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.6, 0.8, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-5.25, 2.2, -2.25]
+        }
+      }
+    },
+    "lamp_04": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.7, 1.0, 0.7, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-5.25, 2.2, -0.75]
+        }
+      }
+    },
+    "lamp_05": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.75, 0.5, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-5.25, 2.2, 0.75]
+        }
+      }
+    },
+    "lamp_06": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.8, 1.0, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-5.25, 2.2, 2.25]
+        }
+      }
+    },
+    "lamp_07": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.6, 0.8, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-5.25, 2.2, 3.75]
+        }
+      }
+    },
+    "lamp_08": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.7, 1.0, 0.7, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-5.25, 2.2, 5.25]
+        }
+      }
+    },
+    "lamp_09": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.8, 1.0, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-3.75, 2.2, -5.25]
+        }
+      }
+    },
+    "lamp_10": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.6, 0.8, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-3.75, 2.2, -3.75]
+        }
+      }
+    },
+    "lamp_11": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.7, 1.0, 0.7, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-3.75, 2.2, -2.25]
+        }
+      }
+    },
+    "lamp_12": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.75, 0.5, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-3.75, 2.2, -0.75]
+        }
+      }
+    },
+    "lamp_13": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.8, 1.0, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-3.75, 2.2, 0.75]
+        }
+      }
+    },
+    "lamp_14": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.6, 0.8, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-3.75, 2.2, 2.25]
+        }
+      }
+    },
+    "lamp_15": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.7, 1.0, 0.7, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-3.75, 2.2, 3.75]
+        }
+      }
+    },
+    "lamp_16": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.75, 0.5, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-3.75, 2.2, 5.25]
+        }
+      }
+    },
+    "lamp_17": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.6, 0.8, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-2.25, 2.2, -5.25]
+        }
+      }
+    },
+    "lamp_18": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.7, 1.0, 0.7, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-2.25, 2.2, -3.75]
+        }
+      }
+    },
+    "lamp_19": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.75, 0.5, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-2.25, 2.2, -2.25]
+        }
+      }
+    },
+    "lamp_20": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.8, 1.0, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-2.25, 2.2, -0.75]
+        }
+      }
+    },
+    "lamp_21": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.6, 0.8, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-2.25, 2.2, 0.75]
+        }
+      }
+    },
+    "lamp_22": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.7, 1.0, 0.7, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-2.25, 2.2, 2.25]
+        }
+      }
+    },
+    "lamp_23": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.75, 0.5, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-2.25, 2.2, 3.75]
+        }
+      }
+    },
+    "lamp_24": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.8, 1.0, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-2.25, 2.2, 5.25]
+        }
+      }
+    },
+    "lamp_25": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.7, 1.0, 0.7, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-0.75, 2.2, -5.25]
+        }
+      }
+    },
+    "lamp_26": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.75, 0.5, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-0.75, 2.2, -3.75]
+        }
+      }
+    },
+    "lamp_27": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.8, 1.0, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-0.75, 2.2, -2.25]
+        }
+      }
+    },
+    "lamp_28": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.6, 0.8, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-0.75, 2.2, -0.75]
+        }
+      }
+    },
+    "lamp_29": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.7, 1.0, 0.7, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-0.75, 2.2, 0.75]
+        }
+      }
+    },
+    "lamp_30": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.75, 0.5, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-0.75, 2.2, 2.25]
+        }
+      }
+    },
+    "lamp_31": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.8, 1.0, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-0.75, 2.2, 3.75]
+        }
+      }
+    },
+    "lamp_32": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.6, 0.8, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [-0.75, 2.2, 5.25]
+        }
+      }
+    },
+    "lamp_33": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.75, 0.5, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [0.75, 2.2, -5.25]
+        }
+      }
+    },
+    "lamp_34": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.8, 1.0, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [0.75, 2.2, -3.75]
+        }
+      }
+    },
+    "lamp_35": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.6, 0.8, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [0.75, 2.2, -2.25]
+        }
+      }
+    },
+    "lamp_36": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.7, 1.0, 0.7, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [0.75, 2.2, -0.75]
+        }
+      }
+    },
+    "lamp_37": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.75, 0.5, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [0.75, 2.2, 0.75]
+        }
+      }
+    },
+    "lamp_38": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.8, 1.0, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [0.75, 2.2, 2.25]
+        }
+      }
+    },
+    "lamp_39": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.6, 0.8, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [0.75, 2.2, 3.75]
+        }
+      }
+    },
+    "lamp_40": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.7, 1.0, 0.7, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [0.75, 2.2, 5.25]
+        }
+      }
+    },
+    "lamp_41": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.8, 1.0, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [2.25, 2.2, -5.25]
+        }
+      }
+    },
+    "lamp_42": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.6, 0.8, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [2.25, 2.2, -3.75]
+        }
+      }
+    },
+    "lamp_43": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.7, 1.0, 0.7, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [2.25, 2.2, -2.25]
+        }
+      }
+    },
+    "lamp_44": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.75, 0.5, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [2.25, 2.2, -0.75]
+        }
+      }
+    },
+    "lamp_45": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.8, 1.0, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [2.25, 2.2, 0.75]
+        }
+      }
+    },
+    "lamp_46": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.6, 0.8, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [2.25, 2.2, 2.25]
+        }
+      }
+    },
+    "lamp_47": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.7, 1.0, 0.7, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [2.25, 2.2, 3.75]
+        }
+      }
+    },
+    "lamp_48": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.75, 0.5, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [2.25, 2.2, 5.25]
+        }
+      }
+    },
+    "lamp_49": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.6, 0.8, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [3.75, 2.2, -5.25]
+        }
+      }
+    },
+    "lamp_50": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.7, 1.0, 0.7, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [3.75, 2.2, -3.75]
+        }
+      }
+    },
+    "lamp_51": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.75, 0.5, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [3.75, 2.2, -2.25]
+        }
+      }
+    },
+    "lamp_52": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.8, 1.0, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [3.75, 2.2, -0.75]
+        }
+      }
+    },
+    "lamp_53": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.6, 0.8, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [3.75, 2.2, 0.75]
+        }
+      }
+    },
+    "lamp_54": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.7, 1.0, 0.7, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [3.75, 2.2, 2.25]
+        }
+      }
+    },
+    "lamp_55": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.75, 0.5, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [3.75, 2.2, 3.75]
+        }
+      }
+    },
+    "lamp_56": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.8, 1.0, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [3.75, 2.2, 5.25]
+        }
+      }
+    },
+    "lamp_57": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.7, 1.0, 0.7, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [5.25, 2.2, -5.25]
+        }
+      }
+    },
+    "lamp_58": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.75, 0.5, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [5.25, 2.2, -3.75]
+        }
+      }
+    },
+    "lamp_59": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.8, 1.0, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [5.25, 2.2, -2.25]
+        }
+      }
+    },
+    "lamp_60": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.6, 0.8, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [5.25, 2.2, -0.75]
+        }
+      }
+    },
+    "lamp_61": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.7, 1.0, 0.7, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [5.25, 2.2, 0.75]
+        }
+      }
+    },
+    "lamp_62": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.75, 0.5, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [5.25, 2.2, 2.25]
+        }
+      }
+    },
+    "lamp_63": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.8, 1.0, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [5.25, 2.2, 3.75]
+        }
+      }
+    },
+    "lamp_64": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.6, 0.8, 1.0],
+          "light_energy": 0.6,
+          "omni_range": 4.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [5.25, 2.2, 5.25]
+        }
+      }
+    },
+    "pillar_1": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.6, 3.0, 0.6]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.85, 0.85, 0.8, 1.0]
+        },
+        "Transform3D": {
+          "position": [-3.0, 1.5, -2.0]
+        }
+      }
+    },
+    "pillar_2": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.6, 3.0, 0.6]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.85, 0.85, 0.8, 1.0]
+        },
+        "Transform3D": {
+          "position": [0.0, 1.5, -2.0]
+        }
+      }
+    },
+    "pillar_3": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.6, 3.0, 0.6]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.85, 0.85, 0.8, 1.0]
+        },
+        "Transform3D": {
+          "position": [3.0, 1.5, -2.0]
+        }
+      }
+    },
+    "pillar_4": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.6, 3.0, 0.6]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.85, 0.85, 0.8, 1.0]
+        },
+        "Transform3D": {
+          "position": [-3.0, 1.5, 2.0]
+        }
+      }
+    },
+    "pillar_5": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.6, 3.0, 0.6]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.85, 0.85, 0.8, 1.0]
+        },
+        "Transform3D": {
+          "position": [0.0, 1.5, 2.0]
+        }
+      }
+    },
+    "pillar_6": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.6, 3.0, 0.6]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.85, 0.85, 0.8, 1.0]
+        },
+        "Transform3D": {
+          "position": [3.0, 1.5, 2.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

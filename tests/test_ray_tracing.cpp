@@ -1,5 +1,6 @@
 #include "../engine/render/src/mesh_shading.hpp"
 #include "../engine/render/src/ray_shadows.hpp"
+#include "../engine/render/src/restir.hpp"
 #include "devices.hpp"
 
 #include "slash/core/jobs.hpp"
@@ -788,4 +789,118 @@ TEST_CASE("devices trace global illumination as the software device does") {
         CHECK(channel(traced, kBounce[0], kBounce[1], 0) >
               channel(traced, kBounce[0], kBounce[1], 1) + 4);
     }
+}
+
+TEST_CASE("project.json's rendering.ray_tracing turns ReSTIR's many lights on") {
+    auto rendering = slash::json::parse(R"({"ray_tracing": {"many_lights": true,
+        "many_light_candidates": 99, "many_light_samples": 0}})");
+    REQUIRE(rendering.ok());
+    const render::RayTracing3D read = render::ray_tracing(rendering.value());
+    CHECK(read.many_lights);
+    CHECK(read.many_light_candidates == 32);
+    CHECK(read.many_light_samples == 1);
+    CHECK(render::RayTracing3D{}.many_light_candidates == 8);
+}
+
+namespace {
+
+// frames frames of scene drawn into one target, as a game draws them, the last read back.
+Image draw_frames(RenderDevice& device, const render::Scene3D& scene, std::uint32_t frames,
+                  std::uint32_t size = 32) {
+    auto target = device.create_texture({.width = size, .height = size, .render_target = true});
+    REQUIRE(target.ok());
+    auto box = device.create_mesh(cube(), {});
+    REQUIRE(box.ok());
+    auto floor = device.create_mesh(quad({0, 0, 0}, {1, 0, 0}, {0, 0, -1}, {0, 1, 0}, 8.0F), {});
+    REQUIRE(floor.ok());
+    for (std::uint32_t i = 0; i < frames; ++i) {
+        REQUIRE(device.begin_frame({.target = target.value(), .clear = {}, .scene = scene}).ok());
+        REQUIRE(
+            device.draw_mesh(floor.value(), moved(0, 0, 0), {.albedo = {0.8F, 0.8F, 0.8F, 1.0F}})
+                .ok());
+        REQUIRE(
+            device.draw_mesh(box.value(), moved(0, 1.0F, 0), {.albedo = {0.9F, 0.2F, 0.2F, 1.0F}})
+                .ok());
+        REQUIRE(device.end_frame().ok());
+    }
+    auto image = device.read_texture(target.value());
+    REQUIRE(image.ok());
+    device.destroy_mesh(box.value());
+    device.destroy_mesh(floor.value());
+    device.destroy_texture(target.value());
+    return image.value();
+}
+
+// The camera above the floor and the cube, lit by a grid of omni lights with shadows and no
+// ambient light, through ReSTIR where many.
+render::Scene3D lamps(bool many, std::uint32_t samples = 1) {
+    render::Scene3D scene = above(shadowed(LightType::Omni), false);
+    scene.ambient = {0.0F, 0.0F, 0.0F};
+    scene.lights.clear();
+    for (int i = 0; i < 6; ++i) {
+        for (int j = 0; j < 6; ++j) {
+            Light3D light = shadowed(LightType::Omni);
+            light.position = {-3.0F + (1.2F * static_cast<float>(i)), 2.5F,
+                              -3.0F + (1.2F * static_cast<float>(j))};
+            light.energy = 0.4F;
+            light.range = 5.0F;
+            light.color = {1.0F, 0.6F + (0.08F * static_cast<float>(i)), 0.9F};
+            scene.lights.push_back(light);
+        }
+    }
+    scene.ray_tracing.many_lights = many;
+    scene.ray_tracing.many_light_samples = samples;
+    return scene;
+}
+
+// The mean of an image's channels.
+double mean_of(const Image& image) {
+    double sum = 0.0;
+    for (std::size_t i = 0; i < image.pixels.size(); i += 4) {
+        sum += image.pixels[i] + image.pixels[i + 1] + image.pixels[i + 2];
+    }
+    return sum / static_cast<double>(image.pixels.size() / 4 * 3);
+}
+
+} // namespace
+
+TEST_CASE("ReSTIR lights one light as the cluster loop does, with a traced shadow") {
+    auto device = render::create_software_device();
+    render::Scene3D one = above(shadowed(LightType::Omni), false);
+    one.ambient = {0.05F, 0.05F, 0.05F};
+    CHECK_FALSE(render::detail::many_lights(one).has_value());
+    one.ray_tracing.many_lights = true;
+    REQUIRE(render::detail::many_lights(one).has_value());
+    render::Scene3D compatibility = one;
+    compatibility.method = render::RenderMethod::Compatibility;
+    CHECK_FALSE(render::detail::many_lights(compatibility).has_value());
+
+    // With one light every reservoir keeps it at a weight of 1, so the pixels are those of the
+    // light's ray-traced shadow, though the light has no ray slot here.
+    render::Scene3D traced = above(shadowed(LightType::Omni), true);
+    traced.ambient = one.ambient;
+    const Image restir = draw_frames(*device, one, 2);
+    const Image rays = draw_frames(*device, traced, 2);
+    CHECK(differing(restir, rays, 2) <= 2); // a pixel at the shadow's edge may differ
+    CHECK(at(restir, kShaded) + 20 < at(restir, kLit));
+}
+
+TEST_CASE("ReSTIR lights many lights near what every light gives, the same on any thread") {
+    auto device = render::create_software_device();
+    const Image every = draw_frames(*device, lamps(false), 1);
+    // The frames before resample into the last, which comes near the cluster loop's light.
+    const Image first = draw_frames(*device, lamps(true, 2), 1);
+    const Image settled = draw_frames(*device, lamps(true, 2), 8);
+    CHECK(first.pixels != settled.pixels);
+    CHECK(mean_of(settled) == doctest::Approx(mean_of(every)).epsilon(0.15));
+    // Every light casts its shadow by a ray: without shadows the frame is brighter.
+    render::Scene3D unshadowed = lamps(true, 2);
+    for (Light3D& light : unshadowed.lights) {
+        light.shadow = false;
+    }
+    CHECK(mean_of(draw_frames(*device, unshadowed, 8)) > mean_of(settled) + 1.0);
+    // The same on any number of threads.
+    slash::jobs::Pool pool(4);
+    auto shared = render::create_software_device(&pool);
+    CHECK(draw_frames(*shared, lamps(true, 2), 8).pixels == settled.pixels);
 }

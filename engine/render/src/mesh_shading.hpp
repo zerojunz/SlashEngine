@@ -307,6 +307,7 @@ struct LightClusters {
     std::uint32_t decal_words = 0; // the decals over 32, rounded up
     float slices_per_depth = 0.0F;
     std::vector<MeshLightUniforms> lights;
+    std::vector<std::uint32_t> sources; // each of lights' index into Scene3D::lights
     std::vector<MeshDecalUniforms> decals;
     std::vector<std::uint32_t> cells;
 
@@ -324,6 +325,10 @@ struct LightClusters {
 [[nodiscard]] LightClusters build_clusters(const Scene3D& scene, std::uint32_t width,
                                            std::uint32_t height,
                                            const DecalAtlas* decal_atlas = nullptr);
+
+// How much light an omni or spot light's packed uniforms bring to a point with no shadow, before
+// the surface's facing: its distance and cone attenuation, as add_light works them out.
+[[nodiscard]] float light_falloff(const MeshLightUniforms& light, const Float3& world);
 
 // range_mask in shaders/mesh.hlsl: the bits of word of a tile's bits for the lights or decals from
 // first up to end.
@@ -606,6 +611,12 @@ struct MeshMaps {
     // Forward+'s SDFGI, when the frame has it: eight values a pixel in rows from the top, ambient
     // light and how much of it, then reflections and how much, as run_sdfgi makes them.
     std::span<const float> sdfgi;
+    // ReSTIR's reservoirs (src/restir.hpp), when the frame lights its omni and spot lights with
+    // them: restir_samples pairs a pixel in rows from the top, a light's index into clusters'
+    // lights (or -1) and its weight, which shade_mesh lights the pixel with in place of its
+    // cluster's lights.
+    std::span<const float> restir;
+    std::uint32_t restir_samples = 0;
 };
 // A pixel's visibility of the light in a ray-traced shadow slot, from MeshMaps::ray_shadows, as
 // add_light in shaders/mesh.hlsl loads it.
