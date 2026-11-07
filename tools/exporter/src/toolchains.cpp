@@ -245,11 +245,15 @@ std::string tail_of(const Result<platform::ProcessResult>& result) {
 
 std::vector<Toolchain> host_toolchains() {
     std::vector<Toolchain> toolchains;
-#if defined(__APPLE__) || (defined(__linux__) && defined(__x86_64__))
+#if defined(__APPLE__) || (defined(__linux__) && (defined(__x86_64__) || defined(__aarch64__)))
 #if defined(__APPLE__)
     constexpr std::string_view kLlvmMingwHost = "macos-universal";
     constexpr std::string_view kLlvmMingwSha256 =
         "52e5f5a7b131021d0c39a37a38fa380a1da7885cd04bd61afd0cd4ecfb8bc1f3";
+#elif defined(__aarch64__)
+    constexpr std::string_view kLlvmMingwHost = "ubuntu-22.04-aarch64";
+    constexpr std::string_view kLlvmMingwSha256 =
+        "07d21263c56bfe9a713db6fdb3f7434bf4c121a005e40397d3b4c0170fb06769";
 #else
     constexpr std::string_view kLlvmMingwHost = "ubuntu-22.04-x86_64";
     constexpr std::string_view kLlvmMingwSha256 =
