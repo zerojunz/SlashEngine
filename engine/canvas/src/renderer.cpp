@@ -2254,6 +2254,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         shapes_drawn_ = shapes.shapes;
         meshes_drawn_ = scene3d_.meshes();
         lods_drawn_ = scene3d_.lods_drawn();
+        clusters_drawn_ = scene3d_.clusters_drawn();
         meshes_occluded_ = scene3d_.occluded();
         lights_3d_drawn_ = scene ? scene3d_.lights() : 0;
         return {};
@@ -2627,6 +2628,7 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
     shapes_drawn_ = began.value() ? shapes.shapes : 0;
     meshes_drawn_ = began.value() ? scene3d_.meshes() : 0;
     lods_drawn_ = began.value() ? scene3d_.lods_drawn() : 0;
+    clusters_drawn_ = began.value() ? scene3d_.clusters_drawn() : 0;
     meshes_occluded_ = began.value() ? scene3d_.occluded() : 0;
     lights_3d_drawn_ = began.value() && submission.scene ? scene3d_.lights() : 0;
     return {};

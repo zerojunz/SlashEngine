@@ -1480,6 +1480,19 @@ behind it, keeping shadow casters as `ShadowsOnly`. `bake_occluder` (`occluder.b
 triangles are merged as Godot's `_bake_surface` does. `examples/occlusion-culling` hides houses
 behind a wall.
 
+Virtualized geometry is a research spike of SlashEngine's own, after Nanite
+([docs/reference/virtualized-geometry.md](docs/reference/virtualized-geometry.md)):
+`build_cluster_hierarchy` (`slash/scene3d/virtual_geometry.hpp`, `src/virtual_geometry.cpp`)
+builds a surface's DAG of cluster groups with meshoptimizer's cluster LOD builder
+(`demo/clusterlod.h`, compiled in `src/clusterlod_build.cpp` with the rest of
+`slash_meshoptimizer`), locking open edges as Godot's LODs do, using only the regular
+simplifier and dropping triangles folded over their twins; `select_clusters` cuts it for a
+`ClusterView` by its groups' projected errors, so a cut covers the surface once with no cracks.
+`MeshInstance3D.virtualized` has `scene3d::Renderer` cut each such surface for the camera in
+`pick_lods` (`cut_clusters`; probes draw the last cut) and draw the cut as a mesh of its own,
+made again when the clusters change; `frame.capture` counts them as `clusters`.
+`examples/virtualized-geometry` cuts moons near and far.
+
 Skinned meshes and model animations follow Godot's glTF importer, `Skeleton3D` and
 `AnimationMixer` (`engine/scene3d/src/skeleton.cpp`). A glTF model keeps its nodes (named as
 Godot's `validate_node_name` and made unique), skins (joints and inverse bind matrices),
