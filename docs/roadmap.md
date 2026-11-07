@@ -1130,8 +1130,10 @@ cost, from the research proposal of 2026-11-07, in order:
        facts, goals and actions, `NpcAgent` components planned on the job system, go_to along
        navigation paths, and the `npc.plan` command
 2. [x] Goals and brains written by a model from the storyboard, checked by `npc.plan`
-3. [ ] Lighting checks for agents (`lighting.check`) and ReSTIR direct lighting
-4. [ ] Gaussian splats and generated meshes (TRELLIS) for detailed scenery
+3. [x] Lighting checks for agents: `lighting.check` measures a frame's exposure and what each
+       light lights, and names the problems
+4. [ ] ReSTIR direct lighting for scenes of many lights
+5. [ ] Gaussian splats and generated meshes (TRELLIS) for detailed scenery
 
 Console ports are not on this roadmap and never will be in this repository. As with Godot,
 PlayStation, Xbox and Switch support comes from licensed porting partners as private backends.

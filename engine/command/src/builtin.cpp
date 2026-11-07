@@ -19,6 +19,7 @@
 #include "slash/canvas/sprite_frames.hpp"
 #include "slash/canvas/tilemap.hpp"
 #include "slash/command/l10n.hpp"
+#include "slash/command/lighting.hpp"
 #include "slash/command/lightmap.hpp"
 #include "slash/command/model_cleanup.hpp"
 #include "slash/command/navigation.hpp"
@@ -8678,6 +8679,7 @@ void register_builtin_commands(Registry& registry) {
     register_project_map(registry);
     register_navigation_commands(registry);
     register_npc_commands(registry);
+    register_lighting_commands(registry);
     register_place_commands(registry);
     register_terrain_commands(registry);
     register_procedural_commands(registry);

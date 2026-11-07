@@ -1234,6 +1234,12 @@ post passes; it keys the sums by `path_scene_key` and a hash of the draws. `disp
 `path_trace` (`LiveGame::path_trace`) path traces a running game's window, and
 `CanvasRenderer::path_samples` reports its sums. `examples/path-tracing` traces the lightmaps room.
 
+`lighting.check` (`engine/command/src/lighting.cpp`) judges a 3D frame's lighting as numbers for
+agents: it draws the frame with `canvas::capture`, measures its exposure (mean, percentiles,
+clipped and crushed shares), draws it again with each light's `light_energy` at 0 (put back
+after) to measure what that light lights, and names problems such as a light that lights nothing
+in view. `examples/lighting-check` fixes a flood light and a lamp out of view.
+
 Ray tracing is SlashEngine's own (Godot 4.6 has none): project.json's `rendering.ray_tracing`
 (`render::RayTracing3D`, `Scene3D::ray_tracing`) turns on ray-traced shadows in Forward+ on
 devices whose `RenderDevice::ray_tracing()` says so: the software device, and the GPU device on

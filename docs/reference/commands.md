@@ -73,7 +73,7 @@ as `entity.get`, reject it as an unknown param.
 | Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent), [`navigation.bake`](#navigationbake) |
 | NPCs | [`npc.plan`](#npcplan), [`npc.draft`](#npcdraft) |
 | Particles | [`particles.eval`](#particleseval), [`particles.bake_sdf`](#particlesbake_sdf) |
-| Lights | [`light.sample`](#lightsample) |
+| Lights | [`light.sample`](#lightsample), [`lighting.check`](#lightingcheck) |
 | Global illumination | [`lightmap.bake`](#lightmapbake), [`voxel_gi.bake`](#voxel_gibake) |
 | Occlusion culling | [`occluder.bake`](#occluderbake) |
 | UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.drag`](#uidrag), [`ui.tooltip`](#uitooltip), [`ui.focus`](#uifocus), [`ui.accessibility`](#uiaccessibility), [`ui.accessibility_action`](#uiaccessibility_action), [`ui.search`](#uisearch), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
@@ -1911,7 +1911,7 @@ An unknown ID fails at `/id` with a "did you mean"; so do an entity with no regi
 with no file named and a file of the other kind. A file that doesn't validate fails with its
 first error's JSON Pointer.
 
-## Particles
+## NPCs
 
 ### npc.plan
 
@@ -1995,6 +1995,8 @@ A path that isn't a `.npc.json` file fails at `/path`, an unknown storyboard ID 
 with a "did you mean", and a model whose last draft still has problems fails with them in the
 error's `problems`, writing nothing. [examples/npc-draft](../../examples/npc-draft/) has a model
 write a fruit seller.
+
+## Particles
 
 ### particles.eval
 
@@ -2128,6 +2130,50 @@ torch and one behind the crate from it:
 - Normal maps aren't sampled: the pixel faces the viewer. Values are rounded to three decimals.
 - A light that can't shine, such as one whose texture doesn't load, is left out and listed in
   `warnings` with its entity's ID and why.
+
+### lighting.check
+
+Looks at the 3D world's lighting through its current `Camera3D`, for an agent that can't judge a
+picture by eye. It draws the frame on the CPU, as [`frame.capture`](#framecapture) does, so the
+numbers are the same on every machine, and returns its `exposure`: the `mean`, 5th (`p5`) and
+95th (`p95`) percentile of its pixels' brightness from 0 to 1 (Rec. 709's weights over the drawn
+colors), and the shares of pixels `clipped` (a channel at full brightness) and `crushed`
+(brightness below 0.02). With `lights`, it draws the frame again without each 3D light that
+shines (its `light_energy` at 0 for the drawing, then put back) and says what share of the frame
+it lights (`lit`: brightness changed by two 8-bit steps or more), what share of the frame's
+brightness it adds (`share`), and what would not be clipped without it (`clips`). Lights baked
+whole into lightmaps (`light_bake_mode` `"static"`) say `baked`, as taking them away changes
+only moving meshes. The check changes nothing.
+
+`problems` lists what to fix, each with a `kind`, a `message` and, for a light, its `id`:
+
+| Kind | When |
+| --- | --- |
+| `overexposed` | More than 5% of the frame is clipped |
+| `crushed` | More than 40% of the frame is nearly black |
+| `dark`, `bright` | The mean brightness is below 0.08 or above 0.8 |
+| `flat` | The 5th to 95th percentile spans less than 0.1 |
+| `unlit` | A light lights under 0.1% of the frame: out of range, shadowed, culled or facing away |
+| `clips` | Without a light, more than 2% of the frame would not be clipped |
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `scale` | number | `0.25` | Image pixels per window pixel, from 0.05 to 1 |
+| `lights` | boolean | `true` | Measure each light, drawing the frame once more per light |
+| `ids` | array | every 3D light that shines | The lights to measure, by entity ID (at most 32, in ID order) |
+
+Needs: `read`. A courtyard with a flood light at an energy of 40 and a lamp out of view:
+
+```json
+{"scale": 1}
+```
+
+```json
+{"exposure":{"clipped":0.0617,"crushed":0.0,"mean":0.6461,"p5":0.5793,"p95":0.946},"lights":[{"clips":0.0617,"id":"flood","lit":0.0701,"share":0.042,"type":"SpotLight3D"},{"id":"porch_lamp","lit":0.0,"share":0.0,"type":"OmniLight3D"},{"clips":0.0055,"id":"sun","lit":0.6338,"share":0.3965,"type":"DirectionalLight3D"}],"problems":[{"kind":"overexposed","message":"6.2% of the frame is clipped to full brightness"},{"id":"flood","kind":"clips","message":"\"flood\" pushes 6.2% of the frame to full brightness"},{"id":"porch_lamp","kind":"unlit","message":"\"porch_lamp\" lights nothing in view: out of range, shadowed, culled or facing away"}],"size":[160,90]}
+```
+
+A frame with no 3D meshes fails, and an unknown light in `ids` fails at its path with a "did you
+mean". [examples/lighting-check](../../examples/lighting-check/) fixes a courtyard's lights.
 
 ## Global illumination
 

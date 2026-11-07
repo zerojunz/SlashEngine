@@ -3541,6 +3541,84 @@ TEST_CASE("light.sample returns how lit points are, and which lights reach them"
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("lighting.check measures a 3D frame's exposure and what each light lights") {
+    const std::string root = "command_lighting_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    REQUIRE(slash::platform::write_file(root + "/project.json", R"({"format": 1,
+        "name": "Lighting", "main_scene": "main.scene.json", "version": "1.0.0",
+        "window": {"width": 64, "height": 36}})")
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+
+    // Nothing 3D to look at.
+    CHECK(engine.fails("lighting.check", "{}", command::code::kInvalidParams).message ==
+          "the frame draws no 3D meshes; lighting.check looks at a 3D world through its current "
+          "Camera3D");
+
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "camera", "components": {
+            "Camera3D": {"current": true},
+            "Transform3D": {"position": [0, 2, 5], "rotation": [-0.35, 0, 0]}}}},
+        {"command": "entity.create", "params": {"id": "ground", "components": {
+            "MeshInstance3D": {}, "PlaneMesh": {"size": [20, 20]},
+            "StandardMaterial3D": {"albedo_color": [0.6, 0.6, 0.6, 1]}, "Transform3D": {}}}},
+        {"command": "entity.create", "params": {"id": "sun", "components": {
+            "DirectionalLight3D": {}, "Transform3D": {"rotation": [-0.9, 0.3, 0]}}}},
+        {"command": "entity.create", "params": {"id": "far", "components": {
+            "OmniLight3D": {"omni_range": 1}, "Transform3D": {"position": [0, 1, -40]}}}},
+        {"command": "entity.create", "params": {"id": "blaze", "components": {
+            "OmniLight3D": {"light_energy": 60, "omni_range": 4},
+            "Transform3D": {"position": [0, 0.5, 1]}}}}]})");
+    json::Value checked = engine.ok("lighting.check", R"({"scale": 1})");
+    CHECK(checked["size"] == parse("[64, 36]"));
+    CHECK(checked["exposure"]["clipped"].as_double() > 0.05);
+    std::vector<std::string> kinds;
+    for (json::Value& found : checked["problems"].as_array()) {
+        kinds.push_back(found["kind"].as_string() +
+                        (found.find("id") != nullptr ? ":" + found["id"].as_string() : ""));
+    }
+    // The blaze and the sun together clip the ground under the blaze, so taking either away
+    // brings it back.
+    CHECK(kinds ==
+          std::vector<std::string>{"overexposed", "clips:blaze", "unlit:far", "clips:sun"});
+    // The lights in ID order, each measured without the others taken away.
+    json::Array lights = checked["lights"].as_array();
+    REQUIRE(lights.size() == 3);
+    CHECK(lights[0]["id"] == "blaze");
+    CHECK(lights[1]["id"] == "far");
+    CHECK(lights[1]["lit"].as_double() == 0.0);
+    CHECK(lights[2]["id"] == "sun");
+    CHECK(lights[2]["lit"].as_double() > 0.3);
+    // The check puts the lights back and changes nothing to undo.
+    CHECK(
+        engine.ok("entity.get",
+                  R"({"id": "blaze", "components": ["OmniLight3D"]})")["components"]["OmniLight3D"]
+                                                                      ["light_energy"] == 60);
+    engine.ok("undo");
+    CHECK(engine.fails("entity.get", R"({"id": "blaze"})", command::code::kNotFound)
+              .message.starts_with("/id"));
+
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "camera", "components": {
+            "Camera3D": {"current": true},
+            "Transform3D": {"position": [0, 2, 5], "rotation": [-0.35, 0, 0]}}}},
+        {"command": "entity.create", "params": {"id": "ground", "components": {
+            "MeshInstance3D": {}, "PlaneMesh": {"size": [20, 20]}, "Transform3D": {}}}},
+        {"command": "entity.create", "params": {"id": "sun", "components": {
+            "DirectionalLight3D": {}, "Transform3D": {"rotation": [-0.9, 0.3, 0]}}}}]})");
+    // Exposure alone draws once, and a misspelled light gets a "did you mean".
+    json::Value alone = engine.ok("lighting.check", R"({"lights": false, "scale": 0.5})");
+    CHECK(alone.find("lights") == nullptr);
+    CHECK(alone["size"] == parse("[32, 18]"));
+    CHECK(engine.fails("lighting.check", R"({"ids": ["son"]})", command::code::kNotFound).message ==
+          "/ids/0: no 3D light that shines has the id \"son\"; did you mean "
+          "\"sun\"?");
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("frame.capture draws the window on the CPU and returns pixels, a PNG or a file") {
     const std::string root = "command_capture_project";
     std::filesystem::remove_all(root);
