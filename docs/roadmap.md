@@ -62,7 +62,8 @@ work.
 - [x] `slash-mcp`: MCP over stdio, or forwarded to a running game with `--live`
 - [x] Localhost HTTP server: REST mirror, OpenAPI 3.1, JSON-RPC and MCP over HTTP
 - [x] Live games: `slash-cli run --serve` runs commands between ticks
-- [x] `slash-cli init` writes MCP configs for Claude Code, Codex and Cursor
+- [x] `slash-cli init` writes MCP configs for Claude Code, Codex and Cursor, and for opencode,
+      Hermes Agent and OpenClaw
 - [ ] Exit check: Claude Code, Codex and Cursor each open, edit and save a scene over MCP. The
       tools are built and tested; a recorded run with each agent is still to do.
 

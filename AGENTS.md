@@ -392,7 +392,7 @@ $cli rpc --project .                                     # JSON-RPC 2.0, one mes
 $cli call world.query '{"with": ["Transform2D"]}' --scene tests/data/basic.scene.json
 $cli call batch '{"commands": [{"command": "entity.create", "params": {"id": "a"}}]}' \
     --scene build/out.scene.json --save
-$cli init path/to/game                                   # MCP configs for Claude Code, Codex, Cursor
+$cli init path/to/game                                   # MCP configs for Claude Code, Codex, Cursor, opencode, Hermes, OpenClaw
 ```
 
 A session checks each command's capabilities (`--allow read,edit,run,filesystem,build,network`),

@@ -14,7 +14,9 @@ struct InitOptions {
 };
 
 // Sets up a game project for agents: a project.json named after the folder, MCP configs for
-// Claude Code (.mcp.json), Codex (.codex/config.toml) and Cursor (.cursor/mcp.json), an AGENTS.md
+// Claude Code (.mcp.json), Codex (.codex/config.toml), Cursor (.cursor/mcp.json) and opencode
+// (opencode.json), the entries Hermes Agent and OpenClaw take in their user configs
+// (.slash/agents/hermes.yaml and openclaw.json, naming the folder in full), an AGENTS.md
 // with a CLAUDE.md pointing to it, a Claude Code skill, a GitHub Actions workflow that exports
 // every platform, an empty main scene and .gitignore entries for .slash/ and build/. Returns
 // {"created": [...], "skipped": [...]} plus "updated" when an existing .gitignore gained entries,

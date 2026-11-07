@@ -907,6 +907,22 @@ if(SLASH_BUILD_TOOLS)
     set_tests_properties(cli_init_workflow PROPERTIES
         FIXTURES_REQUIRED init_project
         PASS_REGULAR_EXPRESSION "SLASHENGINE_REF: ([0-9a-f]+|v[0-9.]+)\n")
+    # opencode's project config, and the entries Hermes Agent and OpenClaw take in their user
+    # configs, which name the project in full since those agents start servers anywhere.
+    add_test(NAME cli_init_opencode COMMAND ${CMAKE_COMMAND} -E cat ${init_project}/opencode.json)
+    set_tests_properties(cli_init_opencode PROPERTIES
+        FIXTURES_REQUIRED init_project
+        PASS_REGULAR_EXPRESSION "\"mcp\": {\n    \"slashengine\": {\n      \"command\": \\[\"slash-mcp\", \"--project\", \"\\.\", \"--scene\", \"scenes/main\\.scene\\.json\"\\],\n      \"type\": \"local\"")
+    add_test(NAME cli_init_openclaw
+        COMMAND ${CMAKE_COMMAND} -E cat ${init_project}/.slash/agents/openclaw.json)
+    set_tests_properties(cli_init_openclaw PROPERTIES
+        FIXTURES_REQUIRED init_project
+        PASS_REGULAR_EXPRESSION "^{\"args\":\\[\"--project\",\"[^\"]*init_project\",\"--scene\",\"scenes/main\\.scene\\.json\"\\],\"command\":\"slash-mcp\"}")
+    add_test(NAME cli_init_hermes
+        COMMAND ${CMAKE_COMMAND} -E cat ${init_project}/.slash/agents/hermes.yaml)
+    set_tests_properties(cli_init_hermes PROPERTIES
+        FIXTURES_REQUIRED init_project
+        PASS_REGULAR_EXPRESSION "mcp_servers:\n  slashengine:\n    command: \"slash-mcp\"\n    args: \\[\"--project\", \"[^\"]*init_project\", \"--scene\", \"scenes/main\\.scene\\.json\"\\]\n")
     add_test(NAME cli_init_scene_valid
         COMMAND slash-cli scene validate ${init_project}/scenes/main.scene.json)
     set_tests_properties(cli_init_scene_valid PROPERTIES

@@ -241,9 +241,9 @@ The HTTP server runs inside the game, so an agent can inspect and change a world
 
 Agents get structured JSON logs, a subscribable event stream, frame captures as PNG and per-system timings. The server binds to localhost only, requires a random bearer token, rejects requests whose `Host` or `Origin` header names another site (which blocks DNS rebinding from web pages), and grants capabilities in levels (read, edit, run, filesystem, build, network), so a player-facing build ships with the server compiled out. Its address and token go in `.slash/server.json`, which is owner-only on macOS and Linux, gitignored, and removed on exit.
 
-### 5. Connecting Claude Code, Codex and Cursor
+### 5. Connecting Claude Code, Codex, Cursor and other agents
 
-All three agents connect directly, because each one can launch a local MCP server over stdio. Running `slash-cli init` in a game project writes all three configs, an `AGENTS.md` (read by Codex and Cursor), a `CLAUDE.md` that points to it, a Claude Code skill for editing scenes, and an empty `scenes/main.scene.json` that the server opens at startup. The server's MCP `instructions` tell the model to use the engine tools rather than hand-edit scene files, and how to use them cheaply.
+The agents connect directly, because each one can launch a local MCP server over stdio. Running `slash-cli init` in a game project writes the configs of Claude Code, Codex, Cursor and opencode, the entries Hermes Agent and OpenClaw take in their users' own configs, an `AGENTS.md` (read by Codex and Cursor), a `CLAUDE.md` that points to it, a Claude Code skill for editing scenes, and an empty `scenes/main.scene.json` that the server opens at startup. The server's MCP `instructions` tell the model to use the engine tools rather than hand-edit scene files, and how to use them cheaply.
 
 Claude Code reads `.mcp.json` in the project, or adds the server by hand:
 
@@ -264,6 +264,11 @@ Cursor reads `.cursor/mcp.json`:
 ```json
 { "mcpServers": { "slashengine": { "command": "slash-mcp", "args": ["--project", "${workspaceFolder}"] } } }
 ```
+
+opencode reads `opencode.json` in the project. Hermes Agent (`~/.hermes/config.yaml`'s
+`mcp_servers`) and OpenClaw (`openclaw mcp set`) keep servers in the user's own config and start
+them from anywhere, so `init` writes their entries into `.slash/agents/` with the project's folder
+in full, and `AGENTS.md` says how to add them.
 
 To work on a game while it runs, start it with `slash-cli run --serve` (or `slash-cli serve` for a world with no window) and connect with `slash-mcp --live`, which finds the server through `.slash/server.json` and forwards each message to it:
 
