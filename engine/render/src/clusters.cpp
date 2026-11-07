@@ -179,12 +179,14 @@ LightClusters build_clusters(const Scene3D& scene, std::uint32_t width, std::uin
     const std::vector<int> slots = shadow_slots(scene);
     const std::vector<int> rays = ray_shadow_slots(scene);
     out.lights.reserve(spheres.size());
+    out.sources.reserve(spheres.size());
     const auto w = static_cast<float>(width);
     const auto h = static_cast<float>(height);
     for (std::size_t k = 0; k < spheres.size(); ++k) {
         const Sphere& sphere = spheres[k];
         out.lights.push_back(mesh_light_uniforms(scene.lights[sphere.light], slots[sphere.light],
                                                  rays[sphere.light]));
+        out.sources.push_back(static_cast<std::uint32_t>(sphere.light));
         Reach reach{.nearest = sphere.depth - sphere.radius,
                     .farthest = sphere.depth + sphere.radius};
         if (reach.farthest < 0.0F || reach.nearest > far) {

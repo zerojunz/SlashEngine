@@ -454,6 +454,26 @@ json::Value ray_tracing_schema() {
     gi_samples["default"] = render::RayTracing3D{}.global_illumination_samples;
     gi_samples["description"] =
         "Rays a pixel sends for its ambient light: more is less noisy and costs more.";
+    json::Value many;
+    many["type"] = "boolean";
+    many["default"] = false;
+    many["description"] =
+        "Omni and spot lights are lit by ReSTIR: a few lights a pixel resampled from its "
+        "cluster's, last frame's and its neighbors', each with a shadow ray (a research spike: the "
+        "software device draws it, others light every light as before).";
+    json::Value many_candidates;
+    many_candidates["type"] = "integer";
+    many_candidates["minimum"] = 1;
+    many_candidates["maximum"] = 32;
+    many_candidates["default"] = render::RayTracing3D{}.many_light_candidates;
+    many_candidates["description"] = "Lights a pixel draws from its cluster each frame.";
+    json::Value many_samples;
+    many_samples["type"] = "integer";
+    many_samples["minimum"] = 1;
+    many_samples["maximum"] = 4;
+    many_samples["default"] = render::RayTracing3D{}.many_light_samples;
+    many_samples["description"] =
+        "Reservoirs a pixel keeps, each a light and a shadow ray: more is less noisy.";
     json::Value out;
     out["type"] = "object";
     out["additionalProperties"] = false;
@@ -466,6 +486,9 @@ json::Value ray_tracing_schema() {
     out["properties"]["reflection_samples"] = std::move(reflection_samples);
     out["properties"]["global_illumination"] = std::move(gi);
     out["properties"]["global_illumination_samples"] = std::move(gi_samples);
+    out["properties"]["many_lights"] = std::move(many);
+    out["properties"]["many_light_candidates"] = std::move(many_candidates);
+    out["properties"]["many_light_samples"] = std::move(many_samples);
     return out;
 }
 

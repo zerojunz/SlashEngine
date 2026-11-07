@@ -1234,6 +1234,18 @@ post passes; it keys the sums by `path_scene_key` and a hash of the draws. `disp
 `path_trace` (`LiveGame::path_trace`) path traces a running game's window, and
 `CanvasRenderer::path_samples` reports its sums. `examples/path-tracing` traces the lightmaps room.
 
+ReSTIR direct lighting is a research spike on the software device
+([docs/reference/restir.md](docs/reference/restir.md)): with `rendering.ray_tracing.many_lights`
+(`RayTracing3D::many_lights`), after the prepass `run_restir` (`src/restir.cpp`, built with
+`-ffp-contract=off`) keeps `many_light_samples` reservoirs a pixel of one omni or spot light
+each: `many_light_candidates` drawn from the pixel's cluster (`LightClusters::sources` names
+their scene lights) and resampled by their unshadowed light, last frame's reservoir where the
+surface was (`RestirState`, kept per target with the camera), then three neighbors' on the same
+surface, with a shadow ray (`path_blocked`) to the light kept for lights with `shadow`.
+`shade_mesh` lights the pixel with those lights, weighed by their reservoirs, in place of its
+cluster's (`MeshMaps::restir`). Other devices light every light as before.
+`examples/many-lights` lights a hall with 64 shadowed lamps.
+
 `lighting.check` (`engine/command/src/lighting.cpp`) judges a 3D frame's lighting as numbers for
 agents: it draws the frame with `canvas::capture`, measures its exposure (mean, percentiles,
 clipped and crushed shares), draws it again with each light's `light_energy` at 0 (put back

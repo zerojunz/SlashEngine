@@ -1,0 +1,6 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":73,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"drawn":{"meshes":7},"height":90,"path":"shots/hall.png","width":160}}
+{"id":3,"jsonrpc":"2.0","result":{"exposure":{"clipped":0.0059,"crushed":0.0,"mean":0.3234,"p5":0.021,"p95":0.6458},"problems":[],"size":[160,90]}}
+{"id":4,"jsonrpc":"2.0","result":{"destroyed":"pillar_5"}}
+{"id":5,"jsonrpc":"2.0","result":{"drawn":{"meshes":6},"height":90,"width":160}}
+{"id":6,"jsonrpc":"2.0","result":{"exposure":{"clipped":0.0053,"crushed":0.0,"mean":0.3209,"p5":0.021,"p95":0.6382},"problems":[],"size":[160,90]}}

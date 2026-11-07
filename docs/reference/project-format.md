@@ -354,6 +354,9 @@ these settings are SlashEngine's own. Devices that can't trace rays draw as if t
 | `reflection_samples` | `1` | Rays a pixel reflects, from 1 to 64: more make rough reflections less grainy |
 | `global_illumination` | `false` | Traces each opaque pixel's [ambient light](scene-format.md#ray-traced-global-illumination) by rays bouncing off what is near it; on the software device and on Vulkan, Metal or Direct3D 12 where the GPU traces rays |
 | `global_illumination_samples` | `4` | Rays a pixel sends for its ambient light, from 1 to 64: more is less noisy |
+| `many_lights` | `false` | Lights each opaque pixel's omni and spot lights by [ReSTIR](restir.md): a few lights a pixel, resampled from its cluster's, last frame's and its neighbors', each with one shadow ray. Research: only the software device draws it; others light every light as before |
+| `many_light_candidates` | `8` | Lights a pixel draws from its cluster each frame, from 1 to 32 |
+| `many_light_samples` | `1` | Reservoirs a pixel keeps, each a light and a shadow ray, from 1 to 4: more is less noisy |
 
 ## Reflection probes
 

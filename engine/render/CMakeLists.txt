@@ -63,6 +63,7 @@ add_library(slash_render
     src/post.cpp
     src/ray_records.cpp
     src/ray_shadows.cpp
+    src/restir.cpp
     src/resize.cpp
     src/sdfgi.cpp
     src/shader.cpp
@@ -83,7 +84,7 @@ add_library(slash_render
     src/vulkan_rays.cpp)
 add_library(slash::render ALIAS slash_render)
 # Rays decide which triangles they meet, so their math is the same on every machine.
-set_source_files_properties(src/path_trace.cpp src/ray_shadows.cpp PROPERTIES
+set_source_files_properties(src/path_trace.cpp src/ray_shadows.cpp src/restir.cpp PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 
 target_include_directories(slash_render PUBLIC include)

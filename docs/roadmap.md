@@ -1132,7 +1132,8 @@ cost, from the research proposal of 2026-11-07, in order:
 2. [x] Goals and brains written by a model from the storyboard, checked by `npc.plan`
 3. [x] Lighting checks for agents: `lighting.check` measures a frame's exposure and what each
        light lights, and names the problems
-4. [ ] ReSTIR direct lighting for scenes of many lights
+4. [x] ReSTIR direct lighting for scenes of many lights (research: the software device; see
+       [restir.md](reference/restir.md))
 5. [ ] Gaussian splats and generated meshes (TRELLIS) for detailed scenery
 
 Console ports are not on this roadmap and never will be in this repository. As with Godot,
