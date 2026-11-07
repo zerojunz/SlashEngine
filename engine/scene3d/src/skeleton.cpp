@@ -400,10 +400,16 @@ std::vector<world::Affine3D> joint_transforms(const ModelSkin& skin,
 void skin_vertices(const ModelSurface& surface, std::span<const world::Affine3D> joints,
                    std::vector<render::Vertex3D>& out) {
     out.resize(surface.vertices.size());
-    for (std::size_t i = 0; i < surface.vertices.size(); ++i) {
-        render::Vertex3D vertex = surface.vertices[i];
-        if (i < surface.weights.size()) {
-            const VertexWeights& w = surface.weights[i];
+    skin_vertices(surface.vertices, surface.weights, joints, out);
+}
+
+void skin_vertices(std::span<const render::Vertex3D> vertices,
+                   std::span<const VertexWeights> weights, std::span<const world::Affine3D> joints,
+                   std::span<render::Vertex3D> out) {
+    for (std::size_t i = 0; i < vertices.size() && i < out.size(); ++i) {
+        render::Vertex3D vertex = vertices[i];
+        if (i < weights.size()) {
+            const VertexWeights& w = weights[i];
             world::Affine3D m{.x = {}, .y = {}, .z = {}, .origin = {}};
             float total = 0.0F;
             for (std::size_t k = 0; k < w.weights.size(); ++k) {

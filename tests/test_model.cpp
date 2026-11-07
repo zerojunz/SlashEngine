@@ -11,6 +11,7 @@
 #include "slash/core/text.hpp"
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
+#include "slash/scene3d/blend_shapes.hpp"
 #include "slash/scene3d/cleanup.hpp"
 #include "slash/scene3d/collision.hpp"
 #include "slash/scene3d/geometry.hpp"
@@ -1890,6 +1891,146 @@ TEST_CASE("AnimationPlayer plays a model's animations on the skinned mesh its en
     REQUIRE(more.size() == 2);
     CHECK(more[1].entity == stray);
     CHECK(more[1].path == "/components/Skeleton3D");
+}
+
+TEST_CASE("glTF morph targets load as Godot's importer makes them blend shapes") {
+    MemoryFiles files;
+    files.files["face.gltf"] = slash::test::face().gltf();
+    const auto loaded = load(files, "face.gltf");
+    REQUIRE_MESSAGE(loaded.ok(), error_of(loaded));
+    const scene3d::Model& model = loaded.value();
+    const scene3d::ModelMesh& mesh = model.meshes.at(0);
+    CHECK(mesh.blend_shapes == std::vector<std::string>{"smile", "wide"});
+    CHECK(mesh.blend_weights == std::vector<float>{0.0F, 0.0F});
+    CHECK(scene3d::summarize(model).blend_shapes == std::vector<std::string>{"smile", "wide"});
+    // The offsets follow the vertices through the tangents Godot's importer makes.
+    const scene3d::ModelSurface& surface = mesh.surfaces.at(0);
+    REQUIRE(surface.blend_shapes.size() == 2);
+    REQUIRE(surface.blend_shapes[0].positions.size() == surface.vertices.size());
+    CHECK(surface.blend_shapes[0].normals.empty());
+    for (std::size_t i = 0; i < surface.vertices.size(); ++i) {
+        const std::array<float, 3>& at = surface.vertices[i].position;
+        CAPTURE(i);
+        CHECK(near(surface.blend_shapes[0].positions[i],
+                   std::array<float, 3>{0.0F, at[1] > 0.0F ? 1.0F : 0.0F, 0.0F}));
+        CHECK(near(surface.blend_shapes[1].positions[i],
+                   std::array<float, 3>{at[0] > 0.0F ? 1.0F : 0.0F, 0.0F, 0.0F}));
+    }
+    // A weights channel becomes a track for each shape.
+    REQUIRE(model.animations.size() == 1);
+    const scene3d::ModelAnimation& talk = model.animations[0];
+    CHECK(talk.name == "Talk");
+    CHECK(talk.length == doctest::Approx(1.0));
+    REQUIRE(talk.blend_tracks.size() == 2);
+    CHECK(talk.blend_tracks[0].shape == "smile");
+    CHECK(talk.blend_tracks[0].values == std::vector<float>{0.0F, 1.0F});
+    CHECK(talk.blend_tracks[1].shape == "wide");
+    CHECK(scene3d::sample_blend_track(talk.blend_tracks[1], 0.5, 1.0, false) ==
+          doctest::Approx(0.25));
+
+    // Blended, its top corners rise and its right ones move right.
+    std::vector<render::Vertex3D> moved;
+    scene3d::blend_vertices(surface, std::vector<float>{1.0F, 0.5F}, moved);
+    for (std::size_t i = 0; i < moved.size(); ++i) {
+        const std::array<float, 3>& at = surface.vertices[i].position;
+        CHECK(moved[i].position[1] == doctest::Approx(at[1] > 0.0F ? 2.0F : -1.0F));
+        CHECK(moved[i].position[0] == doctest::Approx(at[0] > 0.0F ? 1.5F : -1.0F));
+    }
+
+    // Weights: the mesh's, then the entity's, then each clip's share of the way to its track's.
+    const std::map<std::string, float> set{{"smile", 0.2F}, {"nose", 1.0F}};
+    auto weights = scene3d::blend_shape_weights(model, {}, set, {});
+    CHECK(weights == std::map<std::string, float>{{"smile", 0.2F}, {"wide", 0.0F}});
+    const auto shared = std::make_shared<const scene3d::Model>(model);
+    const std::vector<scene3d::ClipSample> half{
+        {.model = "face.gltf", .animation = "Talk", .time = 0.5, .weight = 0.5F, .source = shared}};
+    weights = scene3d::blend_shape_weights(model, half, set, {});
+    CHECK(weights.at("smile") == doctest::Approx(0.35F));
+    CHECK(weights.at("wide") == doctest::Approx(0.125F));
+    CHECK(scene3d::mesh_weights(mesh, weights) ==
+          std::vector<float>{weights.at("smile"), weights.at("wide")});
+
+    // Unnamed targets are named as Godot's importer names them, and the mesh's weights kept.
+    slash::test::Gltf plain = slash::test::face();
+    json::Value& doc_mesh = plain.document["meshes"].as_array()[0];
+    doc_mesh.as_object().erase("extras");
+    doc_mesh["weights"] = parse("[0, 0.5]");
+    files.files["plain.gltf"] = plain.gltf();
+    const auto unnamed = load(files, "plain.gltf");
+    REQUIRE(unnamed.ok());
+    CHECK(unnamed.value().meshes[0].blend_shapes == std::vector<std::string>{"morph_0", "morph_1"});
+    CHECK(unnamed.value().meshes[0].blend_weights == std::vector<float>{0.0F, 0.5F});
+
+    // Written back out, the shapes, weights and tracks load as they were.
+    const auto written = scene3d::write_gltf(model, "copy.gltf");
+    REQUIRE_MESSAGE(written.ok(), error_of(written));
+    files.files["copy.gltf"] = written.value();
+    const auto copy = load(files, "copy.gltf");
+    REQUIRE_MESSAGE(copy.ok(), error_of(copy));
+    CHECK(copy.value().meshes[0].blend_shapes == mesh.blend_shapes);
+    CHECK(copy.value().meshes[0].blend_weights == mesh.blend_weights);
+    std::vector<render::Vertex3D> again;
+    scene3d::blend_vertices(copy.value().meshes[0].surfaces[0], std::vector<float>{1.0F, 0.5F},
+                            again);
+    REQUIRE(again.size() == moved.size());
+    for (std::size_t i = 0; i < again.size(); ++i) {
+        CHECK(near(again[i].position, moved[i].position));
+    }
+    REQUIRE(copy.value().animations.size() == 1);
+    REQUIRE(copy.value().animations[0].blend_tracks.size() == 2);
+    CHECK(copy.value().animations[0].blend_tracks[1].values == std::vector<float>{0.0F, 0.5F});
+}
+
+TEST_CASE("MeshInstance3D's blend shapes and animations move the vertices of the model it draws") {
+    Scene scene;
+    slash::animation::install(scene.world, scene.assets);
+    scene.files.files["models/face.gltf"] = slash::test::face().gltf();
+    world::StandardMaterial3D white;
+    white.shading_mode = "unshaded";
+    const entt::entity face = scene.create(
+        "face", R"({"Transform3D": {}, "MeshInstance3D": {"mesh": "models/face.gltf"}})");
+    scene.world.ecs().emplace<world::StandardMaterial3D>(face, white);
+    constexpr std::array<std::uint8_t, 4> kBackground{0, 0, 255, 255};
+    const auto at = [&](std::uint32_t x, std::uint32_t y) {
+        const auto captured = canvas::capture(scene.world, scene.assets);
+        REQUIRE_MESSAGE(captured.ok(), error_of(captured));
+        return pixel(captured.value().image, x, y);
+    };
+    // At rest the quad spans pixels 18 to 46; smiling, its top reaches past pixel 10.
+    CHECK(at(32, 10) == kBackground);
+    CHECK(at(50, 32) == kBackground);
+    scene.world.ecs().get<world::MeshInstance3D>(face).blend_shapes["smile"] = 1.0F;
+    CHECK(at(32, 10) != kBackground);
+    CHECK(at(50, 32) == kBackground);
+
+    // The model's animation moves both, from the entity's weights.
+    scene.world.ecs().get<world::MeshInstance3D>(face).blend_shapes.clear();
+    world::AnimationPlayer talk;
+    talk.library = "models/face.gltf";
+    talk.animation = "Talk";
+    talk.playing = false;
+    talk.time = 1.0;
+    scene.world.ecs().emplace<world::AnimationPlayer>(face, talk);
+    CHECK(at(32, 10) != kBackground);
+    CHECK(at(50, 32) != kBackground);
+    scene.world.ecs().get<world::AnimationPlayer>(face).time = 0.0;
+    CHECK(at(32, 10) == kBackground);
+
+    // An animation file's value track sets the entity's weight by name.
+    scene.world.ecs().remove<world::AnimationPlayer>(face);
+    scene.files.files["anim/face.anim.json"] = R"({"format": 1, "animations": {
+        "grin": {"length": 1, "tracks": [{"path": "MeshInstance3D/blend_shapes/smile",
+                 "keys": [{"time": 0, "value": 0}, {"time": 1, "value": 1}]}]}}})";
+    world::AnimationPlayer grin;
+    grin.library = "anim/face.anim.json";
+    grin.animation = "grin";
+    scene.world.ecs().emplace<world::AnimationPlayer>(face, grin);
+    for (int tick = 0; tick < 30; ++tick) {
+        scene.world.step(1.0 / 60.0);
+    }
+    CHECK(scene.world.ecs().get<world::MeshInstance3D>(face).blend_shapes.at("smile") ==
+          doctest::Approx(0.5F));
+    CHECK(at(32, 12) != kBackground);
 }
 
 TEST_CASE("animation files play a model's animations with tracks of their own") {

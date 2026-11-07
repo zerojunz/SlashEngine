@@ -48,6 +48,7 @@ target_compile_options(slash_vhacd PRIVATE "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-w;
 add_library(slash_scene3d
     src/auto_rig.cpp
     src/blend.cpp
+    src/blend_shapes.cpp
     src/bone_attachment.cpp
     src/cleanup.cpp
     src/collision.cpp

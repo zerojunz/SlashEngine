@@ -2008,6 +2008,7 @@ surface_material_override/0 = SubResource("ORMMaterial3D_metal")
 [node name="Rock" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.5, -0.866025, 0, 0.866025, 0.5, 0, 0, 5)
 mesh = ExtResource("2_rock")
+blend_shapes/smile = 0.5
 
 [node name="Blob" type="MeshInstance3D" parent="."]
 mesh = SubResource("ArrayMesh_blob")
@@ -2187,7 +2188,7 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
         "roughness_texture_channel": "green"})"));
     // A model Godot imports as a mesh, and one it imports as a scene.
     CHECK(*entity(files, level, "rock").find("MeshInstance3D") ==
-          parse(R"({"mesh": "godot/models/rock.obj"})"));
+          parse(R"({"mesh": "godot/models/rock.obj", "blend_shapes": {"smile": 0.5}})"));
     const json::Value cart = entity(files, level, "cart");
     CHECK(*cart.find("MeshInstance3D") == parse(R"({"mesh": "godot/models/cart.gltf"})"));
     CHECK(*cart.find("Transform3D") ==

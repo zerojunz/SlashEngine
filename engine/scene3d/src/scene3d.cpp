@@ -6,6 +6,7 @@
 #include "slash/core/text.hpp"
 #include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
+#include "slash/scene3d/blend_shapes.hpp"
 #include "slash/scene3d/bone_attachment.hpp"
 #include "slash/scene3d/csg.hpp"
 #include "slash/scene3d/fracture.hpp"
@@ -1613,13 +1614,25 @@ Result<render::MeshId> Renderer::soft_mesh(const std::string& key, const Primiti
 }
 
 Result<render::MeshId> Renderer::skinned_mesh(const std::string& key, const ModelSurface& surface,
-                                              const std::vector<world::Affine3D>& joints) {
+                                              const std::vector<world::Affine3D>& joints,
+                                              const std::vector<float>& shape_weights) {
     Skinned& skinned = skinned_[key];
     skinned.used = frame_;
-    if (skinned.id != render::MeshId::None && skinned.joints == joints) {
+    if (skinned.id != render::MeshId::None && skinned.joints == joints &&
+        skinned.shape_weights == shape_weights) {
         return skinned.id;
     }
-    skin_vertices(surface, joints, skinned_vertices_);
+    // Blend shapes first, then the skin, as Godot's skeleton shader moves them.
+    if (any_blend(shape_weights)) {
+        blend_vertices(surface, shape_weights, skinned_vertices_);
+        if (!joints.empty()) {
+            skin_vertices(skinned_vertices_, surface.weights, joints, skinned_vertices_);
+        }
+    } else if (!joints.empty()) {
+        skin_vertices(surface, joints, skinned_vertices_);
+    } else {
+        skinned_vertices_ = surface.vertices;
+    }
     if (skinned.id == render::MeshId::None) {
         auto made =
             device_->create_mesh(skinned_vertices_, surface.indices, lod_spans(surface.lods));
@@ -1633,6 +1646,7 @@ Result<render::MeshId> Renderer::skinned_mesh(const std::string& key, const Mode
         return updated.error();
     }
     skinned.joints = joints;
+    skinned.shape_weights = shape_weights;
     skinned.box = bounds_of(skinned_vertices_);
     return skinned.id;
 }
@@ -1718,16 +1732,32 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
     }
     std::vector<world::Affine3D> globals;
     const bool modified = has_modifiers(world, entity);
+    const ModelLoader load =
+        [this](const std::string& path) -> Result<std::shared_ptr<const Model>> {
+        auto loaded = models_(path);
+        if (!loaded) {
+            return loaded.error();
+        }
+        return loaded.value().model;
+    };
+    // Its blend shapes' weights by name, part of the way from those before the last tick.
+    std::map<std::string, float> shape_weights;
+    if (std::ranges::any_of(model.meshes,
+                            [](const ModelMesh& mesh) { return !mesh.blend_shapes.empty(); })) {
+        shape_weights = blend_shape_weights(model, now.clips, instance.blend_shapes, load);
+        if (const auto was = before_poses_.find(entity);
+            interpolation < 1.0F && was != before_poses_.end() && !(was->second == now)) {
+            const std::map<std::string, float> before =
+                blend_shape_weights(model, was->second.clips, instance.blend_shapes, load);
+            for (auto& [name, weight] : shape_weights) {
+                if (const auto found = before.find(name); found != before.end()) {
+                    weight = found->second + ((weight - found->second) * interpolation);
+                }
+            }
+        }
+    }
     if (!model.nodes.empty() &&
         (!model.skins.empty() || !now.clips.empty() || now.skeleton || modified)) {
-        const ModelLoader load =
-            [this](const std::string& path) -> Result<std::shared_ptr<const Model>> {
-            auto loaded = models_(path);
-            if (!loaded) {
-                return loaded.error();
-            }
-            return loaded.value().model;
-        };
         const auto skeleton_of = [](const std::optional<world::Skeleton3D>& skeleton) {
             return skeleton.has_value() ? &skeleton.value() : nullptr;
         };
@@ -1790,13 +1820,21 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
             const ModelSurface& surface = mesh.surfaces[i];
             const std::uint32_t first = first_index;
             first_index += static_cast<std::uint32_t>(surface.indices.size());
-            // A skin places its surfaces by its joints, leaving out its part's node.
+            // A skin places its surfaces by its joints, leaving out its part's node. Blend
+            // shapes move a surface's vertices in a mesh of the entity's own, as a skin does.
             const bool skinned = !joints.empty() && !surface.weights.empty();
+            std::vector<float> surface_weights;
+            if (!surface.blend_shapes.empty()) {
+                surface_weights = mesh_weights(mesh, shape_weights);
+            }
+            const bool morphed = any_blend(surface_weights);
+            const bool deformed = skinned || morphed;
             auto made =
-                skinned ? skinned_mesh(skin_prefix + std::to_string(p) + "/" + std::to_string(i),
-                                       surface, joints)
-                        : kept_mesh(prefix + std::to_string(part.mesh) + "/" + std::to_string(i),
-                                    surface.vertices, surface.indices, surface.lods);
+                deformed ? skinned_mesh(skin_prefix + std::to_string(p) + "/" + std::to_string(i),
+                                        surface, skinned ? joints : std::vector<world::Affine3D>{},
+                                        morphed ? surface_weights : std::vector<float>{})
+                         : kept_mesh(prefix + std::to_string(part.mesh) + "/" + std::to_string(i),
+                                     surface.vertices, surface.indices, surface.lods);
             if (!made) {
                 problems_.push_back({entity, std::string(kMeshField), made.error().message});
                 continue;
@@ -1805,7 +1843,7 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
             draw.mesh = made.value();
             draw.entity = entity;
             draw.transform = skinned ? place.matrix() : transform;
-            if (skinned) {
+            if (deformed) {
                 const Skinned& kept =
                     skinned_.at(skin_prefix + std::to_string(p) + "/" + std::to_string(i));
                 draw.lods = &kept.lods;
@@ -1819,7 +1857,7 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
             draw.lod_bias = instance.lod_bias;
             if (override) {
                 draw.material = *override;
-                if (!skinned && instance.material_override.empty()) {
+                if (!deformed && instance.material_override.empty()) {
                     face_camera(world.ecs().get<const world::StandardMaterial3D>(entity),
                                 part_place, draw);
                 }
@@ -1849,7 +1887,7 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
                 draw.material = *made_material;
             }
             render::MeshId lit = render::MeshId::None;
-            if (instance.gi_mode != "static" || skinned || part.skin >= 0) {
+            if (instance.gi_mode != "static" || deformed || part.skin >= 0) {
                 // Moving meshes aren't baked; dynamic ones take the light probes'.
                 draw.material.capture = captured;
             } else if (const render::LightmapShading* lightmap =
@@ -1861,7 +1899,7 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
             }
             // A virtualized surface draws as the camera cuts its cluster hierarchy (pick_lods):
             // the last cut until then. Skinned and lightmapped surfaces draw as they are.
-            if (instance.virtualized && !skinned && draw.mesh == made.value()) {
+            if (instance.virtualized && !deformed && draw.mesh == made.value()) {
                 const std::string key =
                     prefix + std::to_string(part.mesh) + "/" + std::to_string(i);
                 Clustered& clustered = clustered_[key];

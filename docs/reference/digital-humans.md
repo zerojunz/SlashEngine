@@ -35,10 +35,9 @@ A believable close-up character is several systems working together:
 Godot has no digital human system either, but it has the parts below, so they come first and
 follow Godot's design:
 
-1. **Blend shapes.** glTF morph targets loaded as Godot's mesh blend shapes, a
+1. **Blend shapes** (done: [scene-format.md](scene-format.md#blend-shapes)). glTF morph targets loaded as Godot's mesh blend shapes, a
    `MeshInstance3D` field per shape (`blend_shapes/<name>`), animation tracks for them, and
-   blending on the CPU before skinning, as Godot's skeleton shader does. Model animations keep
-   no morph weights today (`engine/scene3d/src/model.cpp` leaves them out). This is useful well
+   blending on the CPU before skinning, as Godot's skeleton shader does. This is useful well
    beyond humans, for faces, cloth, and any shape change an artist animates.
 2. **Subsurface scattering and transmittance**, as Godot's `StandardMaterial3D`
    `subsurf_scatter_*` and `subsurf_scatter_transmittance_*` fields, with its screen-space
