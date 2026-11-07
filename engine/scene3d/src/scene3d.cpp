@@ -1253,6 +1253,9 @@ void Renderer::destroy_cuts(bool unused_only) {
         if (it->second.id != render::MeshId::None) {
             device_->destroy_mesh(it->second.id);
         }
+        if (it->second.seen_id != render::MeshId::None) {
+            device_->destroy_mesh(it->second.seen_id);
+        }
         it = cuts_.erase(it);
     }
     std::erase_if(clustered_,
@@ -1941,6 +1944,7 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
                 cut.place = part_place;
                 cut.box = draw.box;
                 cut.used = frame_;
+                cut.ignore_occlusion = instance.ignore_occlusion_culling;
                 if (cut.id != render::MeshId::None) {
                     draw.mesh = cut.id;
                 }
@@ -3367,6 +3371,7 @@ std::optional<Frame3D> Renderer::prepare(
     problems_.clear();
     lights_ = 0;
     occluded_ = 0;
+    clusters_culled_ = 0;
     const auto& ecs = world.ecs();
     const world::Tree3D tree(world);
     const entt::entity camera = scene3d::current_camera(world, tree);
@@ -3773,8 +3778,14 @@ std::optional<Frame3D> Renderer::prepare(
     }
     cull_occluded(world, tree, view, lens, width, height, occlusion);
     // Model surfaces draw at the LODs the camera picks, into shadow maps too, as Godot's.
+    // Virtualized ones leave out the clusters the camera can't see, unless rays or SDFGI, which
+    // see the frame's triangles from elsewhere, need them.
+    const bool rays = ray_tracing.shadows || ray_tracing.ambient_occlusion ||
+                      ray_tracing.reflections || ray_tracing.global_illumination;
+    const bool cull_clusters =
+        cluster_culling_ && !rays && !frame.scene.sdfgi.enabled && lens.projection != "orthogonal";
     pick_lods(camera_global.origin, view.projection, lens.projection == "orthogonal", width,
-              mesh_lod_threshold);
+              mesh_lod_threshold, true, cull_clusters ? &view : nullptr);
     return frame;
 }
 
@@ -4098,7 +4109,8 @@ Result<void> Renderer::reflect(const world::World& world, Frame3D& frame, render
 }
 
 void Renderer::pick_lods(const Vec3& camera_position, const std::array<float, 16>& projection,
-                         bool orthogonal, float width, float threshold_pixels, bool cut) {
+                         bool orthogonal, float width, float threshold_pixels, bool cut,
+                         const CameraView* culled) {
     // RendererViewport::_draw_3d's screen_mesh_lod_threshold and Projection::get_lod_multiplier.
     const float threshold = width > 0.0F ? threshold_pixels / width : 0.0F;
     const float multiplier = 2.0F / projection[0];
@@ -4106,6 +4118,7 @@ void Renderer::pick_lods(const Vec3& camera_position, const std::array<float, 16
     if (cut) {
         clusters_drawn_ = 0;
         cluster_triangles_drawn_ = 0;
+        clusters_culled_ = 0;
     }
     for (Draw& draw : draws_) {
         draw.lod = 0;
@@ -4113,7 +4126,8 @@ void Renderer::pick_lods(const Vec3& camera_position, const std::array<float, 16
             if (cut) {
                 // The pixels a unit's error covers a unit away, as LODs' threshold measures it.
                 cut_clusters(draw, camera_position,
-                             orthogonal ? 0.0F : projection[0] * 0.5F * width, threshold_pixels);
+                             orthogonal ? 0.0F : projection[0] * 0.5F * width, threshold_pixels,
+                             culled);
             }
             continue;
         }
@@ -4144,10 +4158,11 @@ void Renderer::pick_lods(const Vec3& camera_position, const std::array<float, 16
             ++lods_drawn_;
         }
     }
+    std::erase_if(draws_, [](const Draw& draw) { return draw.hidden; });
 }
 
 void Renderer::cut_clusters(Draw& draw, const Vec3& camera_position, float pixels_per_unit,
-                            float threshold_pixels) {
+                            float threshold_pixels, const CameraView* culled) {
     Cut& cut = cuts_.at(draw.cut);
     const Clustered& clustered = clustered_.at(cut.clustered);
     const std::array<float, 16>& m = draw.transform;
@@ -4176,10 +4191,149 @@ void Renderer::cut_clusters(Draw& draw, const Vec3& camera_position, float pixel
             problems_.push_back({draw.entity, std::string(kMeshField), made.error().message});
         }
     }
-    if (cut.id != render::MeshId::None) {
-        draw.mesh = cut.id;
+    if (cut.id == render::MeshId::None) {
+        return;
+    }
+    draw.mesh = cut.id;
+    if (culled != nullptr) {
+        cull_clusters(draw, cut, view, *culled);
+        return;
+    }
+    clusters_drawn_ += cut.clusters.size();
+    cluster_triangles_drawn_ += cut.triangles;
+}
+
+void Renderer::cull_clusters(Draw& draw, Cut& cut, const ClusterView& cluster_view,
+                             const CameraView& camera) {
+    const ClusterHierarchy& hierarchy = *clustered_.at(cut.clustered).hierarchy;
+    const auto keep_all = [&] {
         clusters_drawn_ += cut.clusters.size();
         cluster_triangles_drawn_ += cut.triangles;
+    };
+    // A draw only into shadow maps, or casting from both sides (whose faces the camera's culling
+    // can't stand for), keeps its whole cut.
+    if (draw.shadows == render::ShadowCasting::ShadowsOnly ||
+        draw.shadows == render::ShadowCasting::DoubleSided) {
+        keep_all();
+        return;
+    }
+    // The view's planes in the world (clip = projection * view; a point is seen where
+    // -w <= x, y <= w and w > 0), each scaled to measure distance, then taken into the surface's
+    // space through its place: plane * place.
+    const std::array<float, 16>& p = camera.projection;
+    const std::array<float, 16>& v = camera.view;
+    std::array<float, 16> clip{};
+    for (std::size_t column = 0; column < 4; ++column) {
+        for (std::size_t row = 0; row < 4; ++row) {
+            float sum = 0.0F;
+            for (std::size_t k = 0; k < 4; ++k) {
+                sum += p.at((k * 4) + row) * v.at((column * 4) + k);
+            }
+            clip.at((column * 4) + row) = sum;
+        }
+    }
+    const auto row_of = [&](std::size_t row) {
+        return std::array<float, 4>{clip.at(row), clip.at(4 + row), clip.at(8 + row),
+                                    clip.at(12 + row)};
+    };
+    const std::array<float, 4> x = row_of(0);
+    const std::array<float, 4> y = row_of(1);
+    const std::array<float, 4> w = row_of(3);
+    const std::array<std::array<float, 4>, 5> world_planes{{
+        {w[0] + x[0], w[1] + x[1], w[2] + x[2], w[3] + x[3]},
+        {w[0] - x[0], w[1] - x[1], w[2] - x[2], w[3] - x[3]},
+        {w[0] + y[0], w[1] + y[1], w[2] + y[2], w[3] + y[3]},
+        {w[0] - y[0], w[1] - y[1], w[2] - y[2], w[3] - y[3]},
+        w,
+    }};
+    const std::array<float, 16> m = cut.place.matrix();
+    ClusterCulling culling;
+    for (const std::array<float, 4>& plane : world_planes) {
+        const float length =
+            std::sqrt((plane[0] * plane[0]) + (plane[1] * plane[1]) + (plane[2] * plane[2]));
+        if (length <= 0.0F) {
+            continue;
+        }
+        std::array<float, 4> local{};
+        for (std::size_t column = 0; column < 4; ++column) {
+            local.at(column) =
+                ((m.at(column * 4) * plane[0]) + (m.at((column * 4) + 1) * plane[1]) +
+                 (m.at((column * 4) + 2) * plane[2]) + (m.at((column * 4) + 3) * plane[3])) /
+                length;
+        }
+        culling.planes.push_back(local);
+    }
+    // Facing survives any place that doesn't mirror the surface.
+    const float determinant = (m[0] * ((m[5] * m[10]) - (m[9] * m[6]))) -
+                              (m[4] * ((m[1] * m[10]) - (m[9] * m[2]))) +
+                              (m[8] * ((m[1] * m[6]) - (m[5] * m[2])));
+    culling.back_faces = draw.material.cull == render::CullMode::Back && determinant > 0.0F;
+
+    std::vector<std::uint32_t> seen;
+    seen.reserve(cut.clusters.size());
+    std::unordered_map<std::uint32_t, std::uint64_t> timeouts;
+    for (const std::uint32_t c : cut.clusters) {
+        const Cluster& cluster = hierarchy.clusters.at(c);
+        if (cluster_culled(cluster, cluster_view, culling)) {
+            continue;
+        }
+        if (!occlusion_buffer_.empty() && !cut.ignore_occlusion) {
+            const ClusterBounds& sphere = cluster.bounds;
+            const Vec3 center =
+                cut.place.apply(Vec3{sphere.center.x, sphere.center.y, sphere.center.z});
+            const real_t radius = sphere.radius * cluster_view.scale;
+            std::uint64_t timeout = 0;
+            if (const auto found = cut.timeouts.find(c); found != cut.timeouts.end()) {
+                timeout = found->second;
+            }
+            const bool hidden =
+                occlusion_buffer_.occluded({.min = center - Vec3{radius, radius, radius},
+                                            .max = center + Vec3{radius, radius, radius}},
+                                           timeout);
+            timeouts.emplace(c, timeout);
+            if (hidden) {
+                continue;
+            }
+        }
+        seen.push_back(c);
+    }
+    cut.timeouts = std::move(timeouts);
+    clusters_culled_ += cut.clusters.size() - seen.size();
+    if (seen.size() == cut.clusters.size()) {
+        keep_all();
+        return;
+    }
+    const bool casts = draw.shadows == render::ShadowCasting::On;
+    if (seen.empty()) {
+        // Nothing of it is seen: it only casts, or isn't drawn.
+        if (casts) {
+            draw.shadows = render::ShadowCasting::ShadowsOnly;
+        } else {
+            draw.hidden = true;
+        }
+        return;
+    }
+    if (cut.seen_id == render::MeshId::None || seen != cut.seen) {
+        const std::vector<std::uint32_t> indices = cluster_indices(hierarchy, seen);
+        auto made = device_->create_mesh(clustered_.at(cut.clustered).vertices, indices);
+        if (!made) {
+            problems_.push_back({draw.entity, std::string(kMeshField), made.error().message});
+            keep_all();
+            return;
+        }
+        if (cut.seen_id != render::MeshId::None) {
+            device_->destroy_mesh(cut.seen_id);
+        }
+        cut.seen_id = made.value();
+        cut.seen = std::move(seen);
+        cut.seen_triangles = indices.size() / 3;
+    }
+    clusters_drawn_ += cut.seen.size();
+    cluster_triangles_drawn_ += cut.seen_triangles;
+    draw.mesh = cut.seen_id;
+    if (casts) {
+        draw.shadows = render::ShadowCasting::Off;
+        draw.shadow_mesh = cut.id;
     }
 }
 
@@ -4188,6 +4342,9 @@ std::unordered_map<render::MeshId, Bounds> Renderer::mesh_boxes() const {
     for (const auto& [key, cut] : cuts_) {
         if (cut.used == frame_ && cut.id != render::MeshId::None) {
             out.emplace(cut.id, cut.box);
+        }
+        if (cut.used == frame_ && cut.seen_id != render::MeshId::None) {
+            out.emplace(cut.seen_id, cut.box);
         }
     }
     for (const auto& [mesh_key, shared] : shared_) {
@@ -4277,6 +4434,15 @@ Result<void> Renderer::draw() {
                                             draw.shadows, draw.previous, draw.lod);
             !drawn) {
             return drawn;
+        }
+        // A culled cut casts its shadows whole.
+        if (draw.shadow_mesh != render::MeshId::None) {
+            if (auto drawn =
+                    device_->draw_mesh(draw.shadow_mesh, draw.transform, draw.material, draw.layers,
+                                       render::ShadowCasting::ShadowsOnly, draw.previous, draw.lod);
+                !drawn) {
+                return drawn;
+            }
         }
     }
     return {};

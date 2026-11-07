@@ -4863,7 +4863,8 @@ Needs: `read`, and `filesystem` with `path`. A HUD with a health bar at 75%:
 `width` and `height` are the image's, after `region` and `scale`. `drawn` counts what was drawn
 (`sprites`, `tiles`, `particles`, `lights`, `controls`, `shapes`, 3D `meshes` and, of those,
 `lods`: the meshes drawn at a coarser [LOD](scene-format.md#mesh-lods)), `clusters`, the
-clusters [virtualized](virtualized-geometry.md) meshes were cut into, and `occluded`, the 3D
+clusters [virtualized](virtualized-geometry.md) meshes were cut into and drawn, `culled`, the
+clusters of those cuts the camera [culled](virtualized-geometry.md#culling), and `occluded`, the 3D
 meshes [occluders](scene-format.md#occlusion-culling) hid, leaving out
 zeros. When the
 project's `rendering.scaling` ([project-format.md](project-format.md#render-scale)) draws the

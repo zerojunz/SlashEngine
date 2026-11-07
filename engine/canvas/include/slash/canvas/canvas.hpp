@@ -185,6 +185,9 @@ struct CanvasOptions {
     // Sees the 3D world through this view instead of the current camera's, as a headset's eye
     // (scene3d::Renderer::set_view).
     std::optional<scene3d::CameraView> view3d{}; // NOLINT(readability-redundant-member-init)
+    // Whether virtualized meshes leave out the clusters the camera can't see
+    // (scene3d::Renderer::set_cluster_culling); off draws their whole cuts, to compare.
+    bool cull_clusters = true;
     // Another world whose controls draw over everything, laid out in the same viewport with
     // this world's fonts, such as the debug overlay's.
     const world::World* overlay = nullptr;
@@ -282,6 +285,10 @@ public:
     [[nodiscard]] std::size_t lods_drawn() const noexcept { return lods_drawn_; }
     // The clusters virtualized meshes (MeshInstance3D.virtualized) were cut into.
     [[nodiscard]] std::size_t clusters_drawn() const noexcept { return clusters_drawn_; }
+    // The clusters of those cuts the camera culled: out of view, seen from behind or occluded.
+    [[nodiscard]] std::size_t clusters_culled() const noexcept {
+        return scene3d_.clusters_culled();
+    }
     // 3D meshes the OccluderInstance3Ds hid from the camera in the last frame.
     [[nodiscard]] std::size_t meshes_occluded() const noexcept { return meshes_occluded_; }
     [[nodiscard]] std::size_t lights_3d_drawn() const noexcept { return lights_3d_drawn_; }
@@ -569,6 +576,8 @@ struct CaptureOptions {
     std::optional<Vec2> viewport{}; // NOLINT(readability-redundant-member-init)
     // As CanvasOptions::view3d.
     std::optional<scene3d::CameraView> view3d{}; // NOLINT(readability-redundant-member-init)
+    // As CanvasOptions::cull_clusters.
+    bool cull_clusters = true;
 };
 
 struct Capture {
@@ -582,7 +591,8 @@ struct Capture {
     std::size_t shapes = 0;
     std::size_t meshes = 0;   // 3D meshes (scene3d.hpp)
     std::size_t lods = 0;     // of those, drawn at a coarser LOD
-    std::size_t clusters = 0; // clusters virtualized meshes were cut into
+    std::size_t clusters = 0; // clusters virtualized meshes were cut into, drawn
+    std::size_t culled = 0;   // clusters of those cuts the camera culled
     std::size_t occluded = 0; // 3D meshes occluders hid from the camera
     // How the settings' render scale scaled the world, if they did.
     CanvasRenderer::Scaled scaled;
