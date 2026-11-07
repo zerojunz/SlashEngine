@@ -1563,7 +1563,11 @@ simplifier and dropping triangles folded over their twins; `select_clusters` cut
 `ClusterView` by its groups' projected errors, so a cut covers the surface once with no cracks.
 `MeshInstance3D.virtualized` has `scene3d::Renderer` cut each such surface for the camera in
 `pick_lods` (`cut_clusters`; probes draw the last cut) and draw the cut as a mesh of its own,
-made again when the clusters change; `frame.capture` counts them as `clusters`.
+made again when the clusters change; `frame.capture` counts them as `clusters`. The camera's
+draw then leaves out the clusters out of view, facing away (`Cluster::cone`, from
+`meshopt_computeClusterBounds`) or occluded (`cluster_culled`, `cull_clusters`), drawing the
+rest as a second mesh and the whole cut into shadow maps (`Draw::shadow_mesh`), except where
+rays, SDFGI or path tracing need every cluster (`set_cluster_culling`); `culled` counts them.
 `examples/virtualized-geometry` cuts moons near and far.
 
 Skinned meshes and model animations follow Godot's glTF importer, `Skeleton3D` and

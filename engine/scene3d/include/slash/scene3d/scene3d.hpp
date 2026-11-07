@@ -273,6 +273,10 @@ public:
     // Whether frames keep their prepass for frame generation (render::Scene3D::frame_generation),
     // their meshes given the transforms they were drawn at in the last frame, as with use_taa.
     void set_frame_generation(bool on) { frame_generation_ = on; }
+    // Whether virtualized surfaces leave out of the camera's draw the clusters it can't see (out
+    // of view, seen from behind, or hidden by occluders). A path-traced frame turns it off, since
+    // its paths see every cluster; frames with ray-traced effects or SDFGI never cull them.
+    void set_cluster_culling(bool on) { cluster_culling_ = on; }
 
     // Where the last frame's world was drawn around: the frame's positions are relative to it,
     // so meshes, lights and the camera stay near the origin in the floats the device draws with.
@@ -339,6 +343,8 @@ public:
     [[nodiscard]] std::size_t cluster_triangles_drawn() const noexcept {
         return cluster_triangles_drawn_;
     }
+    // How many of those clusters the camera culled: out of view, seen from behind or occluded.
+    [[nodiscard]] std::size_t clusters_culled() const noexcept { return clusters_culled_; }
     // How many of the last prepare's meshes the occluders hid from the camera.
     [[nodiscard]] std::size_t occluded() const noexcept { return occluded_; }
     // The occlusion buffer the last prepare cast, empty with occlusion off.
@@ -349,6 +355,7 @@ public:
 private:
     std::optional<CameraView> view_;
     bool frame_generation_ = false;
+    bool cluster_culling_ = true;
     struct Local {
         Vec3 position;
         Quat rotation;
@@ -382,13 +389,20 @@ private:
         std::uint32_t lod = 0;
         // Its cut in cuts_, when its surface draws virtualized; its mesh is the cut's.
         std::string cut;
+        // When the camera culled some of its cut's clusters: the whole cut, drawn into shadow
+        // maps only, while mesh (the clusters the camera sees) is drawn without shadows.
+        render::MeshId shadow_mesh = render::MeshId::None;
+        // Every cluster of its cut culled, and it casts no shadow: it isn't drawn.
+        bool hidden = false;
     };
     // Picks each draw's LOD as Godot's Forward+ does for a camera at camera_position, seen
     // through projection at width pixels across with a threshold of threshold_pixels.
     // Virtualized draws are cut for the camera into clusters instead, unless cut is false (a
-    // reflection probe's faces draw the camera's cut).
+    // reflection probe's faces draw the camera's cut), and with culled, the clusters out of its
+    // view, seen from behind or hidden by the occlusion buffer are left out of its draw.
     void pick_lods(const Vec3& camera_position, const std::array<float, 16>& projection,
-                   bool orthogonal, float width, float threshold_pixels, bool cut = true);
+                   bool orthogonal, float width, float threshold_pixels, bool cut = true,
+                   const CameraView* culled = nullptr);
     // A virtualized surface's hierarchy, kept by its kept_mesh key, and one draw's cut of it:
     // the clusters chosen and a mesh of their triangles, made again when they change.
     struct Clustered {
@@ -404,6 +418,14 @@ private:
         std::size_t triangles = 0;
         render::MeshId id = render::MeshId::None;
         std::uint64_t used = 0;
+        // The clusters of it the camera last saw, when it culled some, and their mesh.
+        std::vector<std::uint32_t> seen;
+        std::size_t seen_triangles = 0;
+        render::MeshId seen_id = render::MeshId::None;
+        // Each cluster's occlusion jitter timeout, as draws keep theirs, and whether its
+        // MeshInstance3D ignores occlusion culling.
+        std::unordered_map<std::uint32_t, std::uint64_t> timeouts;
+        bool ignore_occlusion = false;
     };
     // Cuts a virtualized draw for a camera at camera_position (pixels_per_unit is the projection's
     // pixels across a unit at a unit's distance; 0 for an orthogonal one) and points it at the
@@ -411,7 +433,10 @@ private:
     // Destroys the cuts' meshes, only those of cuts no draw used this frame when unused_only.
     void destroy_cuts(bool unused_only);
     void cut_clusters(Draw& draw, const Vec3& camera_position, float pixels_per_unit,
-                      float threshold_pixels);
+                      float threshold_pixels, const CameraView* culled);
+    // Leaves out of a cut draw's camera draw the clusters the camera can't see.
+    void cull_clusters(Draw& draw, Cut& cut, const ClusterView& cluster_view,
+                       const CameraView& camera);
     // Casts the occlusion buffer for the camera from the world's occluders and leaves the meshes
     // it hides out of the frame, as Godot's _scene_cull leaves them out of the camera's list:
     // drawn only into shadow maps when they cast shadows.
@@ -706,6 +731,7 @@ private:
     std::size_t lods_drawn_ = 0;
     std::size_t clusters_drawn_ = 0;
     std::size_t cluster_triangles_drawn_ = 0;
+    std::size_t clusters_culled_ = 0;
     std::unordered_map<std::string, Clustered> clustered_;
     std::unordered_map<std::string, Cut> cuts_;
     // Occlusion culling: the occluders' triangles, the depth buffer cast into them, each draw's

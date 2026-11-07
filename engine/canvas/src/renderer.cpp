@@ -1215,6 +1215,8 @@ bool ready_scene3d(scene3d::Renderer& scene3d, const render::RenderDevice& devic
     scene3d.set_tick_seconds(settings.tick_seconds);
     scene3d.set_view(options.view3d);
     scene3d.set_frame_generation(generate);
+    // A path-traced frame's paths see every cluster of a virtualized surface.
+    scene3d.set_cluster_culling(options.cull_clusters && !traced);
     return generate;
 }
 

@@ -171,6 +171,7 @@ ClusterHierarchy build_cluster_hierarchy(const ModelSurface& surface,
                 hierarchy.clusters.push_back(Cluster{
                     .indices = {from.indices, from.indices + from.index_count}, // NOLINT
                     .bounds = bounds_of(from.bounds),
+                    .cone = {},
                     .refined = from.refined,
                     .group = id,
                     .depth = group.depth,
@@ -181,6 +182,27 @@ ClusterHierarchy build_cluster_hierarchy(const ModelSurface& surface,
             return id;
         });
     drop_folds(hierarchy);
+    // Each cluster's own sphere (clodBuild gives clusters their group's, which LOD selection
+    // needs and culling doesn't) and cone of facing. Front faces wind clockwise, where
+    // meshoptimizer takes them counterclockwise, so it is given each triangle turned the other way.
+    std::vector<unsigned int> turned;
+    for (Cluster& cluster : hierarchy.clusters) {
+        if (cluster.indices.size() < 3) {
+            continue;
+        }
+        turned.assign(cluster.indices.begin(), cluster.indices.end());
+        for (std::size_t t = 0; t + 2 < turned.size(); t += 3) {
+            std::swap(turned[t + 1], turned[t + 2]);
+        }
+        const meshopt_Bounds cone =
+            meshopt_computeClusterBounds(turned.data(), turned.size(), positions.data(),
+                                         surface.vertices.size(), sizeof(float) * 3);
+        cluster.bounds.center = {cone.center[0], cone.center[1], cone.center[2]};
+        cluster.bounds.radius = cone.radius;
+        cluster.cone = {.apex = {cone.cone_apex[0], cone.cone_apex[1], cone.cone_apex[2]},
+                        .axis = {cone.cone_axis[0], cone.cone_axis[1], cone.cone_axis[2]},
+                        .cutoff = cone.cone_cutoff};
+    }
     return hierarchy;
 }
 
@@ -216,6 +238,33 @@ std::vector<std::uint32_t> select_clusters(const ClusterHierarchy& hierarchy,
         }
     }
     return chosen;
+}
+
+bool cluster_culled(const Cluster& cluster, const ClusterView& view,
+                    const ClusterCulling& culling) {
+    const ClusterBounds& sphere = cluster.bounds;
+    const float radius = sphere.radius * view.scale;
+    for (const std::array<float, 4>& plane : culling.planes) {
+        const float distance = (plane[0] * sphere.center.x) + (plane[1] * sphere.center.y) +
+                               (plane[2] * sphere.center.z) + plane[3];
+        if (distance < -radius) {
+            return true;
+        }
+    }
+    if (!culling.back_faces || cluster.cone.cutoff >= 1.0F) {
+        return false;
+    }
+    // meshoptimizer's test: the camera seen from the cone's apex lies within the cone.
+    const ClusterCone& cone = cluster.cone;
+    const Vec3f from{cone.apex.x - view.camera.x, cone.apex.y - view.camera.y,
+                     cone.apex.z - view.camera.z};
+    const float length = std::sqrt((from.x * from.x) + (from.y * from.y) + (from.z * from.z));
+    if (length <= 0.0F) {
+        return false;
+    }
+    const float facing =
+        ((from.x * cone.axis.x) + (from.y * cone.axis.y) + (from.z * cone.axis.z)) / length;
+    return facing >= cone.cutoff;
 }
 
 std::vector<std::uint32_t> cluster_indices(const ClusterHierarchy& hierarchy,
