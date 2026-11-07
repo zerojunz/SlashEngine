@@ -639,11 +639,11 @@ jobs:
           esac
 
       # From outside the checkout, which the script moves away: Windows won't move a folder a
-      # running shell is in or reads a script from.
+      # running shell started in or reads a script from.
       - name: Build and export a game from the unpacked package
+        working-directory: ${{ runner.temp }}
         run: |
-          cp .github/scripts/check-release.sh "$RUNNER_TEMP/"
-          cd "$RUNNER_TEMP"
+          cp "$GITHUB_WORKSPACE/.github/scripts/check-release.sh" .
           ./check-release.sh "$RUNNER_TEMP/${{ matrix.archive }}" "$GITHUB_WORKSPACE"
 
       - name: Upload the package
