@@ -459,6 +459,7 @@ private:
         render::MeshId id = render::MeshId::None;
         std::uint64_t used = 0;
         std::vector<world::Affine3D> joints; // what moved its vertices last
+        std::vector<float> shape_weights;    // and its blend shapes' weights
         Bounds box;                          // its moved vertices' bounds
         std::vector<SurfaceLod> lods;        // its surface's coarser LODs
         // A soft body's mesh: the pose that moved its vertices last.
@@ -541,13 +542,15 @@ private:
     // An image the renderer makes, such as a terrain's normal map, as a texture on the device,
     // made once per key.
     render::MaterialTexture kept_texture(const std::string& key, const render::Image& image);
-    // A skinned surface's vertices moved by joints, in its entity's mesh on the device.
     // A soft body's primitive mesh with its vertices where physics put them, in world space, in a
     // mesh of its own refilled when the pose changes.
     Result<render::MeshId> soft_mesh(const std::string& key, const Primitive& primitive,
                                      std::shared_ptr<const SoftBodyPose> pose);
+    // A surface's vertices moved by its blend shapes' weights, then by a skin's joints (none
+    // for a surface no skin moves), in its entity's mesh on the device.
     Result<render::MeshId> skinned_mesh(const std::string& key, const ModelSurface& surface,
-                                        const std::vector<world::Affine3D>& joints);
+                                        const std::vector<world::Affine3D>& joints,
+                                        const std::vector<float>& shape_weights);
 
     // A mesh's place in a baked lightmap this frame, by its entity and model part.
     struct Lit {

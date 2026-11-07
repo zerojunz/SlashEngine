@@ -88,11 +88,17 @@ struct MeshInstance3D {
     std::string material_override;
     // Values for the spatial material's params, as Sprite2D's material_params.
     std::map<std::string, json::Value> material_params;
+    // The weights of the model's blend shapes, by name, as Godot's blend_shapes/<name>
+    // properties: 0 leaves a shape out and 1 applies it whole. A name moves the shape of that
+    // name in every mesh of the model; shapes not named keep their mesh's weight, and
+    // animations' blend shape tracks blend from these.
+    std::map<std::string, float> blend_shapes;
 
     friend bool operator==(const MeshInstance3D&, const MeshInstance3D&) = default;
 };
 SLASH_COMPONENT(MeshInstance3D, mesh, layers, cast_shadow, gi_mode, gi_lightmap_texel_scale,
-                lod_bias, virtualized, ignore_occlusion_culling, material_override, material_params)
+                lod_bias, virtualized, ignore_occlusion_culling, material_override, material_params,
+                blend_shapes)
 
 // One instance of a MultiMeshInstance3D's mesh: where it is in the entity's space, as a
 // Transform3D's position, rotation (radians, Godot's YXZ order) and scale.

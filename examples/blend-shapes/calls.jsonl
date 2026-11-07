@@ -1,0 +1,12 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"model.inspect","params":{"path":"models/face.gltf"}}
+{"jsonrpc":"2.0","id":3,"method":"model.inspect","params":{"path":"models/face.gltf","brief":true}}
+{"jsonrpc":"2.0","id":4,"method":"frame.capture","params":{"points":[[68,54],[68,56],[80,59],[80,64]]}}
+{"jsonrpc":"2.0","id":5,"method":"component.set","params":{"id":"face","components":{"MeshInstance3D":{"blend_shapes":{"smile":1}}}}}
+{"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"points":[[68,54],[68,56],[80,59],[80,64]]}}
+{"jsonrpc":"2.0","id":7,"method":"component.set","params":{"id":"face","components":{"AnimationPlayer":{"library":"models/face.gltf","animation":"Talk-loop","time":0.25,"playing":false}}}}
+{"jsonrpc":"2.0","id":8,"method":"frame.capture","params":{"points":[[68,54],[68,56],[80,59],[80,64]]}}
+{"jsonrpc":"2.0","id":9,"method":"component.set","params":{"id":"face","components":{"MeshInstance3D":{"blend_shapes":{}},"AnimationPlayer":{"library":"anim/face.anim.json","animation":"grin","time":0,"playing":true}}}}
+{"jsonrpc":"2.0","id":10,"method":"step","params":{"ticks":30}}
+{"jsonrpc":"2.0","id":11,"method":"entity.get","params":{"id":"face","components":["MeshInstance3D"]}}
+{"jsonrpc":"2.0","id":12,"method":"frame.capture","params":{"points":[[68,54],[68,56],[80,59],[80,64]]}}

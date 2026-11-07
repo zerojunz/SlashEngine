@@ -708,7 +708,10 @@ std::shared_ptr<const Model> hull_model(const std::vector<Vec3>& points,
         }
     }
     auto model = std::make_shared<Model>();
-    model->meshes.push_back({.name = "bevel", .surfaces = {std::move(surface)}});
+    model->meshes.push_back({.name = "bevel",
+                             .surfaces = {std::move(surface)},
+                             .blend_shapes = {},
+                             .blend_weights = {}});
     model->parts.push_back({.node = "bevel", .mesh = 0, .transform = {}});
     return model;
 }

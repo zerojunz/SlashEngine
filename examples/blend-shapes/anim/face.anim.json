@@ -1,0 +1,23 @@
+{
+  "animations": {
+    "grin": {
+      "length": 1.0,
+      "tracks": [
+        {
+          "keys": [
+            {
+              "time": 0.0,
+              "value": 0.0
+            },
+            {
+              "time": 1.0,
+              "value": 1.0
+            }
+          ],
+          "path": "MeshInstance3D/blend_shapes/smile"
+        }
+      ]
+    }
+  },
+  "format": 1
+}

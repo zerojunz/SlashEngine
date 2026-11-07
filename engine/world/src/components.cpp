@@ -2970,7 +2970,13 @@ void register_3d_components(ComponentRegistry& registry) {
                           "material, before a StandardMaterial3D; \"\" for none."})
         .describe("material_params",
                   {.doc = "Values for the spatial material's params by name, replacing their "
-                          "defaults, e.g. {\"speed\": 2}."});
+                          "defaults, e.g. {\"speed\": 2}."})
+        .describe("blend_shapes",
+                  {.doc = "Weights of the model's blend shapes (morph targets) by name, as "
+                          "Godot's blend_shapes/<name>, e.g. {\"smile\": 0.5}: a name moves "
+                          "that shape in every mesh of the model, and shapes not named keep "
+                          "their mesh's weight; 0 leaves a shape out and 1 applies it whole "
+                          "(Godot's editor offers -1 to 1). Animations blend from these."});
     registry.add<MultiMeshInstance3D>()
         .set_doc("Draws a model once per instance, each placed by its own transform in the "
                  "entity's space, as Godot's MultiMeshInstance3D; scatter.run makes them.")

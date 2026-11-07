@@ -1299,6 +1299,11 @@ Result<Target> resolve_target(std::string_view path, const world::ComponentRegis
             }
             target.part.push_back(part);
             next = properties.find(part)->second;
+        } else if (type == "object" && current.find("additionalProperties") != nullptr &&
+                   current.find("additionalProperties")->is_object()) {
+            // A map's value by its key, as MeshInstance3D/blend_shapes/smile.
+            target.part.push_back(part);
+            next = *current.find("additionalProperties");
         } else {
             return make_error(ErrorCode::InvalidArgument,
                               walked + " is " + (type.empty() ? "a value" : "a " + type) +

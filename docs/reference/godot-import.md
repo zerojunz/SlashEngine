@@ -464,7 +464,8 @@ does. [examples/import-godot-3d](../../examples/import-godot-3d/) imports a cour
 - A `MeshInstance3D`'s `BoxMesh`, `SphereMesh`, `CylinderMesh`, `CapsuleMesh`, `PlaneMesh`,
   `QuadMesh`, `PrismMesh` or `TorusMesh` becomes the [component](scene-format.md#3d-nodes) of the
   same name with the mesh's fields. A mesh that is a model file (an `.obj` file Godot imports as a
-  mesh) becomes `MeshInstance3D.mesh`, the file's path.
+  mesh) becomes `MeshInstance3D.mesh`, the file's path. Its `blend_shapes/<name>` properties
+  become `MeshInstance3D.blend_shapes` ([blend shapes](scene-format.md#blend-shapes)).
 - The material that wins in Godot becomes the entity's `StandardMaterial3D`: `material_override`,
   then `surface_material_override/0`, then the mesh's own `material`. `StandardMaterial3D` and
   `ORMMaterial3D` properties keep their names. `transparency` is named; alpha hash cuts at
