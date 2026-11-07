@@ -1140,6 +1140,17 @@ VoxelGIs its bounds touch as `Material3D::voxel_gi` (`render::VoxelGIShading`, t
 sampling of the slices, and `render::detail::trace_voxel_gis` (`engine/render/src/voxel_gi.cpp`)
 is its CPU twin. `examples/voxel-gi-3d` bounces a sun around a room.
 
+SDFGI is Godot 4.6's fully dynamic GI, a research spike on the CPU
+([docs/reference/sdfgi.md](docs/reference/sdfgi.md)): `WorldEnvironment`'s `sdfgi_*` fields set
+`Scene3D::sdfgi` (`render::Sdfgi3D`), and the software device, after the prepass, keeps a
+`detail::SdfgiState` per target (`src/sdfgi.cpp`, after `gi.cpp`'s `GI::SDFGI` and its shaders):
+`update_sdfgi` moves the cascades with the camera, makes each moved or changed one's cells from
+the path tracer's scene (`path_surface_at`) with an exact distance field, lights the cells
+through it and has the probes trace their rays into spherical harmonics history, then
+`run_sdfgi` (`gi.glsl`'s `sdfgi_process`) gives each pixel its ambient light and reflections as
+`MeshMaps::sdfgi`, which `shade_mesh` puts under VoxelGIs' light. Other devices draw without it.
+`examples/sdfgi-3d` lights a room with it.
+
 Path tracing makes reference stills on the CPU (`Scene3D::path_trace`, `render::PathTrace3D`;
 `frame.capture`'s `path_trace`). The software device, at `end_frame`, has `build_path_scene`
 (`src/path_trace.cpp`) put the frame's triangles in the world into a bounding volume hierarchy

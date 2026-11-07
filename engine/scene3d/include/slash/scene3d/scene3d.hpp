@@ -92,7 +92,8 @@ struct Environment {
     render::Fog3D fog;
     render::Ssao3D ssao; // with the default settings, which the project's replace
     render::Ssr3D ssr;   // the same
-    render::VolumetricFog3D volumetric_fog;         // the same
+    render::VolumetricFog3D volumetric_fog; // the same
+    render::Sdfgi3D sdfgi;
     std::array<float, 3> ambient{0.0F, 0.0F, 0.0F}; // sRGB
     float ambient_energy = 1.0F;
     render::PostProcess post;     // with no color correction texture made yet

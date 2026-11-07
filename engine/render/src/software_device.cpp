@@ -17,6 +17,7 @@
 #include "post_shading.hpp"
 #include "ray_shadows.hpp"
 #include "reflection.hpp"
+#include "sdfgi.hpp"
 #include "sky_shading.hpp"
 #include "ssao.hpp"
 #include "ssr.hpp"
@@ -398,6 +399,7 @@ public:
         forget_taa_history(texture);
         std::erase_if(fsr2_states_, [&](const auto& entry) { return entry.first == texture; });
         std::erase_if(fog_states_, [&](const auto& entry) { return entry.first == texture; });
+        std::erase_if(sdfgi_states_, [&](const auto& entry) { return entry.first == texture; });
         std::erase_if(path_states_, [&](const auto& entry) { return entry.first == texture; });
         std::erase_if(frame_generation_states_,
                       [&](const auto& entry) { return entry.first == texture; });
@@ -632,6 +634,11 @@ public:
         }
         if (!frame.scene || !detail::uses_taa(*frame.scene)) {
             forget_taa_history(frame.target);
+        }
+        // A target's SDFGI is kept while its frames have it; a probe's capture leaves it be.
+        if (!frame.scene || (!frame.scene->sdfgi.enabled && !frame.scene->capture)) {
+            std::erase_if(sdfgi_states_,
+                          [&](const auto& entry) { return entry.first == frame.target; });
         }
         if (!frame.scene || !detail::uses_fsr2(*frame.scene)) {
             std::erase_if(fsr2_states_,
@@ -1792,7 +1799,8 @@ private:
                               .decal_atlas = clustered ? &decal_atlas : nullptr,
                               .fog = {},
                               .ray_shadows = {},
-                              .gi = {}};
+                              .gi = {},
+                              .sdfgi = {}};
 
         std::vector<float> depth(std::size_t{target.width()} * target.height(), 0.0F);
         // TAA's frame: the next jitter, from the camera the target's frame before was seen from
@@ -1921,11 +1929,15 @@ private:
         std::vector<float> ray_shadows;
         std::vector<float> ray_reflections;
         std::vector<float> ray_light;
+        std::vector<float> sdfgi_light;
+        // Godot's SDFGI, in Forward+ and not in a reflection probe's captures (as Godot's, which
+        // draw them without GI buffers).
+        const bool sdfgi = clustered && scene.sdfgi.enabled && !scene.capture;
         const std::optional<detail::RayGI> gi =
             clustered ? detail::ray_gi(scene) : std::optional<detail::RayGI>{};
         const std::vector<detail::RayShadowLight> traced =
             clustered ? detail::ray_shadow_lights(scene) : std::vector<detail::RayShadowLight>{};
-        if (lights->ssao[0] != 0.0F || ssr || motion || !traced.empty() || gi) {
+        if (lights->ssao[0] != 0.0F || ssr || motion || !traced.empty() || gi || sdfgi) {
             prepass_depth.assign(pixels, 0.0F);
             if (motion) {
                 // FSR 2 works the sky's motion vectors out from the depth, as Godot's.
@@ -1972,7 +1984,7 @@ private:
             // And its SSR.
             const std::optional<detail::RayReflection> reflection =
                 ssr ? detail::ray_reflection(scene) : std::nullopt;
-            if (!traced.empty() || occlusion || reflection || gi) {
+            if (!traced.empty() || occlusion || reflection || gi || sdfgi) {
                 // Rays from each pixel the prepass drew, through every mesh the frame draws.
                 const std::vector<detail::PathMesh> meshes = path_meshes();
                 const detail::PathScene paths =
@@ -2003,6 +2015,18 @@ private:
                     maps.gi = ray_light;
                     maps.ao_width = target.width();
                     lights->screen[3] = 1.0F;
+                }
+                if (sdfgi) {
+                    // The cascades follow the camera and are made from the frame's triangles,
+                    // then each pixel takes their probes' light, as Godot's GI buffers.
+                    detail::SdfgiState& state = sdfgi_state(frame_.target);
+                    const detail::Float3 eye{lights->camera[0], lights->camera[1],
+                                             lights->camera[2]};
+                    detail::update_sdfgi(state, scene, eye, paths, bindings, pool_);
+                    sdfgi_light =
+                        detail::run_sdfgi(state, eye, rays, prepass_depth, normals.values, pool_);
+                    maps.sdfgi = sdfgi_light;
+                    maps.ao_width = target.width();
                 }
             }
             if (lights->ssao[0] != 0.0F) {
@@ -2408,6 +2432,16 @@ private:
             }
         }
         return ssr_histories_.emplace_back(target, SsrHistory{}).second;
+    }
+
+    // target's SDFGI, made empty when it has none.
+    detail::SdfgiState& sdfgi_state(TextureId target) {
+        for (auto& [id, state] : sdfgi_states_) {
+            if (id == target) {
+                return state;
+            }
+        }
+        return sdfgi_states_.emplace_back(target, detail::SdfgiState{}).second;
     }
 
     void forget_ssr_history(TextureId target) {
@@ -3055,6 +3089,7 @@ private:
     std::vector<std::pair<TextureId, TaaHistory>> taa_histories_;
     std::vector<std::pair<TextureId, Fsr2State>> fsr2_states_;
     std::vector<std::pair<TextureId, FogState>> fog_states_;
+    std::vector<std::pair<TextureId, detail::SdfgiState>> sdfgi_states_;
     std::vector<std::pair<TextureId, PathState>> path_states_;
     std::vector<std::pair<TextureId, FrameGenerationState>> frame_generation_states_;
     std::uint64_t writes_ = 0; // texture writes so far, for Texture::written

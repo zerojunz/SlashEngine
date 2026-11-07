@@ -147,6 +147,8 @@ render::Light3D light_base(const T& light, render::LightType type) {
     out.shadow_caster_mask = light.shadow_caster_mask;
     out.baked = light.light_bake_mode == "static";
     out.volumetric_fog_energy = light.light_volumetric_fog_energy;
+    // SDFGI leaves out lights whose bake mode is disabled, as Godot's.
+    out.indirect_energy = light.light_bake_mode == "disabled" ? 0.0F : light.light_indirect_energy;
     return out;
 }
 
@@ -506,6 +508,25 @@ Environment world_environment(const world::World& world, render::Color clear) {
         fog.sky_affect = env.volumetric_fog_sky_affect;
         fog.temporal_reprojection = env.volumetric_fog_temporal_reprojection_enabled;
         fog.temporal_reprojection_amount = env.volumetric_fog_temporal_reprojection_amount;
+    }
+    if (env.sdfgi_enabled) {
+        render::Sdfgi3D& gi = out.sdfgi;
+        gi.enabled = true;
+        gi.cascades = env.sdfgi_cascades;
+        gi.min_cell_size = env.sdfgi_min_cell_size;
+        // Godot's sdfgi_y_scale: heights count twice as much at 50 percent.
+        gi.y_scale = 1.5F;
+        if (env.sdfgi_y_scale == "50_percent") {
+            gi.y_scale = 2.0F;
+        } else if (env.sdfgi_y_scale == "100_percent") {
+            gi.y_scale = 1.0F;
+        }
+        gi.use_occlusion = env.sdfgi_use_occlusion;
+        gi.bounce_feedback = env.sdfgi_bounce_feedback;
+        gi.read_sky_light = env.sdfgi_read_sky_light;
+        gi.energy = env.sdfgi_energy;
+        gi.normal_bias = env.sdfgi_normal_bias;
+        gi.probe_bias = env.sdfgi_probe_bias;
     }
     if (env.ssr_enabled) {
         out.ssr = {.enabled = true,
@@ -3400,6 +3421,7 @@ std::optional<Frame3D> Renderer::prepare(
     frame.scene.ssr = env.ssr;
     frame.scene.ssr.settings = ssr;
     frame.scene.volumetric_fog = env.volumetric_fog;
+    frame.scene.sdfgi = env.sdfgi;
     frame.scene.volumetric_fog.settings = volumetric_fog;
     if (depth_of_field.use_jitter) {
         // Godot seeds the jitter at random each frame; the game time keeps frames repeatable.

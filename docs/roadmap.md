@@ -1102,8 +1102,13 @@ launch rows and the after-launch features above.
   behind `MeshInstance3D.virtualized`
   ([virtualized-geometry.md](reference/virtualized-geometry.md)); GPU selection, cluster
   culling, a software rasterizer and streaming remain
-- Fully dynamic global illumination at Lumen quality, after probe GI ships
-- Digital humans in the style of MetaHuman; out of scope for releases
+- Fully dynamic global illumination at Lumen quality, after probe GI ships. Spike: Godot 4.6's
+  SDFGI ported to the CPU (cascades of distance fields that follow the camera, lit cells and
+  probes with spherical harmonics history), behind `WorldEnvironment.sdfgi_enabled` on the
+  software device ([sdfgi.md](reference/sdfgi.md)); the GPU passes, scrolling cascades and probe
+  occlusion remain
+- Digital humans in the style of MetaHuman; out of scope for releases. Research note:
+  [digital-humans.md](reference/digital-humans.md) (blend shapes would come first)
 
 Console ports are not on this roadmap and never will be in this repository. As with Godot,
 PlayStation, Xbox and Switch support comes from licensed porting partners as private backends.
@@ -1165,7 +1170,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Cloth and soft bodies | Jolt soft bodies | After launch | Done: Godot's `SoftBody3D` on Jolt, with pins, attachments and pressure |
 | Destruction | Fracture and debris on Jolt | After launch | Done: Voronoi fracture of `Destructible3D` bodies, impact breaking, debris lifetimes and `physics.break` |
 | Virtualized geometry | Meshlet rendering research | Research | Research: cluster hierarchies cut per camera on the CPU (`MeshInstance3D.virtualized`) |
-| Fully dynamic GI at UE quality | Research after probe GI ships | Research | Research |
+| Fully dynamic GI at UE quality | Research after probe GI ships | Research | Research: Godot's SDFGI on the CPU (`WorldEnvironment.sdfgi_enabled`, software device) |
 | Digital humans | Research; out of scope for releases | Research | Research |
 
 ## Agent efficiency

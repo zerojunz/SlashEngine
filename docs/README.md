@@ -23,6 +23,8 @@ real commands and real output, and no screenshots.
 | Send packets between the machines in a multiplayer game | [reference/networking.md](reference/networking.md) |
 | Build the engine with double-precision positions for worlds far from the origin | [reference/precision.md](reference/precision.md) |
 | Try virtualized geometry (Nanite-style cluster hierarchies), a research feature | [reference/virtualized-geometry.md](reference/virtualized-geometry.md) |
+| Try SDFGI, Godot's fully dynamic global illumination, a research feature | [reference/sdfgi.md](reference/sdfgi.md) |
+| Read what digital humans would need, a research note | [reference/digital-humans.md](reference/digital-humans.md) |
 | Call a language model from a game, a tool or a test | [reference/providers.md](reference/providers.md) |
 | Have Autopilot's agent play a game to find bugs, verify a claim or reach a goal | [reference/autopilot.md](reference/autopilot.md) |
 | Bring a game over from Godot | [reference/godot-import.md](reference/godot-import.md) |

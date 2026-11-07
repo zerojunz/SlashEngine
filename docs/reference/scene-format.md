@@ -1916,6 +1916,15 @@ there is no ambient light and colors stay as they are.
 | `volumetric_fog_gi_inject` | `1` | How much the light of the [VoxelGIs](#voxelgi) it is in lights it, from 0 to 16 |
 | `volumetric_fog_sky_affect` | `1` | How much it covers the sky, from 0 to 1 |
 | `volumetric_fog_temporal_reprojection_enabled`, `volumetric_fog_temporal_reprojection_amount` | `true`, `0.9` | Each frame blends in this much of the frame before's fog, from 0.5 to 0.99, smoothing it |
+| `sdfgi_enabled` | `false` | `forward_plus`: [SDFGI](sdfgi.md), Godot's fully dynamic global illumination, bounces the lights and the sky off the meshes around the camera with nothing baked. Research: only the software device draws it |
+| `sdfgi_cascades` | `4` | Cascades around the camera, each twice as far as the one before, from 1 to 8 |
+| `sdfgi_min_cell_size` | `0.2` | The nearest cascade's cell size in meters; each holds 128 cells across |
+| `sdfgi_y_scale` | `"75_percent"` | How far cascades reach up and down, as a share of across: `"50_percent"`, `"75_percent"` or `"100_percent"` |
+| `sdfgi_use_occlusion` | `false` | Probes behind walls light less, which cuts light leaks (not drawn yet) |
+| `sdfgi_read_sky_light` | `true` | Rays that leave the cascades take the sky's light (or the ambient light) |
+| `sdfgi_bounce_feedback` | `0.5` | How much of the probes' light surfaces bounce again, from 0 to 1.99; `0` for one bounce |
+| `sdfgi_energy` | `1` | Multiplies its light, from 0 to 8 |
+| `sdfgi_normal_bias`, `sdfgi_probe_bias` | `1.1`, `1.1` | How far along a pixel's normal it reads the probes, and how far probes' rays start from them, in cells, from 0 to 4 |
 
 How colors are finished depends on the project's
 [rendering method](project-format.md#rendering-methods), as in Godot.
