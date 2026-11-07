@@ -1,0 +1,109 @@
+{
+  "actions": [
+    {
+      "do": {
+        "go_to": "field"
+      },
+      "effects": {
+        "at_field": true,
+        "at_hall": false
+      },
+      "name": "walk_to_field"
+    },
+    {
+      "do": {
+        "wait": 1
+      },
+      "effects": {
+        "crops": "+1"
+      },
+      "name": "harvest",
+      "needs": {
+        "at_field": true
+      }
+    },
+    {
+      "cost": 2,
+      "do": {
+        "go_to": "hall",
+        "speed": 4
+      },
+      "effects": {
+        "at_field": false,
+        "at_hall": true
+      },
+      "name": "run_to_hall"
+    },
+    {
+      "do": {
+        "go_to": "pantry"
+      },
+      "effects": {
+        "at_field": false,
+        "at_hall": false,
+        "food": "-1",
+        "has_food": true
+      },
+      "name": "take_food",
+      "needs": {
+        "food": ">0",
+        "has_food": false
+      }
+    },
+    {
+      "do": {
+        "wait": 1
+      },
+      "effects": {
+        "has_food": false,
+        "hungry": false
+      },
+      "name": "eat",
+      "needs": {
+        "has_food": true
+      }
+    }
+  ],
+  "facts": {
+    "alarm": false,
+    "at_field": false,
+    "at_hall": false,
+    "crops": 0,
+    "food": 2,
+    "has_food": false,
+    "hungry": false
+  },
+  "format": 1,
+  "goals": [
+    {
+      "name": "hide",
+      "priority": 3,
+      "want": {
+        "at_hall": true
+      },
+      "when": {
+        "alarm": true
+      }
+    },
+    {
+      "name": "eat",
+      "priority": 2,
+      "want": {
+        "hungry": false
+      },
+      "when": {
+        "hungry": true
+      }
+    },
+    {
+      "name": "farm",
+      "priority": 1,
+      "want": {
+        "crops": ">=3"
+      },
+      "when": {
+        "alarm": false
+      }
+    }
+  ]
+}

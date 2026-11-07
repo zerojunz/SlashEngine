@@ -1,0 +1,23 @@
+scene.open {"path":"main.scene.json"}
+{"entities":7,"path":"main.scene.json"}
+events.subscribe {"kinds":["npc_goal_changed","npc_action_failed","bell"]}
+{"subscription":"events_1"}
+npc.plan {"brain":"brains/villager.npc.json","check":true}
+{"cost":4,"facts":{"alarm":0,"at_field":0,"at_hall":0,"crops":0,"food":2,"has_food":0,"hungry":0},"goal":"farm","plan":["walk_to_field","harvest","harvest","harvest"],"searched":10,"warnings":[]}
+npc.plan {"id":"bob"}
+{"cost":2,"facts":{"alarm":0,"at_field":0,"at_hall":0,"crops":0,"food":2,"has_food":0,"hungry":1},"goal":"eat","plan":["take_food","eat"],"searched":4}
+tick 60: ann at (1.97, 0.00) farm/walk_to_field bob at (-0.97, 0.00) eat/take_food guard at (0.00, 4.48) keep_watch/climb_tower
+tick 120: ann at (3.97, 0.00) farm/walk_to_field bob at (-2.53, 0.00) eat/eat guard at (0.00, 5.50) -/-
+tick 180: ann at (5.53, 0.00) farm/harvest bob at (-2.13, 0.00) farm/walk_to_field guard at (0.00, 5.50) -/-
+tick 240: ann at (5.53, 0.00) farm/harvest bob at (-0.13, 0.00) farm/walk_to_field guard at (0.00, 5.50) -/-
+tick 300: ann at (2.40, -2.27) hide/run_to_hall bob at (-0.01, -3.53) -/- guard at (0.00, 5.50) -/-
+tick 360: ann at (0.40, -3.71) -/- bob at (-0.01, -3.53) -/- guard at (0.00, 5.50) -/-
+tick 420: ann at (0.40, -3.71) -/- bob at (-0.01, -3.53) -/- guard at (0.00, 5.50) -/-
+events.read {"subscription":"events_1"}
+{"dropped":0,"events":[{"data":{"goal":"keep_watch","previous":""},"id":"guard","kind":"npc_goal_changed","seq":1,"tick":0},{"data":{"goal":"eat","previous":""},"id":"bob","kind":"npc_goal_changed","seq":2,"tick":0},{"data":{"goal":"farm","previous":""},"id":"ann","kind":"npc_goal_changed","seq":3,"tick":0},{"data":{"goal":"","previous":"keep_watch"},"id":"guard","kind":"npc_goal_changed","seq":4,"tick":100},{"data":{"goal":"farm","previous":"eat"},"id":"bob","kind":"npc_goal_changed","seq":5,"tick":167},{"data":{"goal":"raise_alarm","previous":""},"id":"guard","kind":"npc_goal_changed","seq":6,"tick":240},{"data":{"action":"ring_bell"},"id":"guard","kind":"bell","seq":7,"tick":240},{"data":{"goal":"","previous":"raise_alarm"},"id":"guard","kind":"npc_goal_changed","seq":8,"tick":241},{"data":{"goal":"hide","previous":"farm"},"id":"bob","kind":"npc_goal_changed","seq":9,"tick":241},{"data":{"goal":"hide","previous":"farm"},"id":"ann","kind":"npc_goal_changed","seq":10,"tick":241},{"data":{"goal":"","previous":"hide"},"id":"bob","kind":"npc_goal_changed","seq":11,"tick":294},{"data":{"goal":"","previous":"hide"},"id":"ann","kind":"npc_goal_changed","seq":12,"tick":336}],"more":false}
+npc.plan {"id":"ann"}
+{"facts":{"alarm":1,"at_field":0,"at_hall":1,"crops":1,"food":2,"has_food":0,"hungry":0},"goal":null,"goals":{"eat":"its when conditions don't hold","farm":"its when conditions don't hold","hide":"its want conditions already hold"}}
+npc.plan {"brain":"brains/villager.npc.json","facts":{"food":0,"hungry":true},"goal":"eat"}
+{"facts":{"alarm":0,"at_field":0,"at_hall":0,"crops":0,"food":0,"has_food":0,"hungry":1},"found":false,"goal":"eat","searched":2048}
+npc.plan {"facts":{"hungri":true},"id":"ann"}
+"/facts/hungri: the brain has no fact named \"hungri\"; did you mean \"hungry\"?"

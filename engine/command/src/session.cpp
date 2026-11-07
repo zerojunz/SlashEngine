@@ -16,6 +16,7 @@
 #include "slash/l10n/l10n.hpp"
 #include "slash/navigation/navigation.hpp"
 #include "slash/net/multiplayer.hpp"
+#include "slash/npc/npc.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/platform/file.hpp"
@@ -314,6 +315,7 @@ Session::Session(const world::ComponentRegistry& component_registry,
     physics2d::install(world_, physics_settings(project));
     physics3d::install(world_, physics_3d_settings(project));
     navigation::install(world_, assets_, navigation_settings(project));
+    npc::install(world_, assets_);
     input::install(world_, input_map(project), input_settings(project));
     audio::install(world_, assets_, audio_settings(project));
     // Ads load and purchases complete as services.test says, with no store account.

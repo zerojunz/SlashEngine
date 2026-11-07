@@ -147,7 +147,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, sdk, plugin)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, sdk, plugin)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -157,7 +157,7 @@ Validate after editing a scene or prefab by hand, and format before committing o
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
-`.score.json`, `.navmesh.json`, `.navpoly.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json` and `.scatter.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
+`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json` and `.scatter.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -1956,6 +1956,26 @@ take a layer's outlines as traversable and its collision polygons as obstruction
 (`add_tiles` in `src/sources.cpp`, as `navmesh_parse_source_geometry`). `examples/navigation-tiles`
 sends a mouse through a maze of tiles.
 
+## NPCs
+
+`engine/npc` is NPCs that plan, as F.E.A.R.'s goal-oriented action planning (Jeff Orkin's "Three
+States and a Plan"; Godot has none). A `.npc.json` brain (`$cli schema npc`; `slash/npc/npc.hpp`,
+`src/brain.cpp`) names facts (whole numbers, booleans as 0 and 1), goals with a priority and
+`when` and `want` conditions, and actions with `needs`, `effects` (a value, or `"+1"` to add), a
+cost and a `do` (`wait`, `go_to` an entity, `emit` an event). `plan` is A* over the facts' values,
+ties going to the action earlier in the file, bounded by `search_limit`; `choose` takes the first
+goal by priority that applies, is unmet and is reached; `check_brain` warns about goals no chain
+reaches and actions no plan uses. An `NpcAgent` names its brain and keeps its facts (those that
+differ from the brain's), goal, plan and timers, so saving, undo and replays keep them. The `npc`
+system (priority 965, after navigation; `src/npc.cpp`) runs each agent's action (a `go_to` walks
+along its `NavigationAgent3D` or 2D's path when it has one), then has those due to think choose on
+the world's job pool, each from its own facts, and starts their plans in entity order, emitting
+`npc_goal_changed`, `npc_action_started`, `npc_action_finished` and `npc_action_failed`.
+Gameplay code answers an `emit` action's event and sets facts with `npc::set_fact`, which has the
+agent think at the next tick. `npc::check_scene` backs `scene validate` and exports, and
+`npc.plan` (`engine/command/src/npc.cpp`) says what an agent or a brain would choose, or why no
+goal is chosen. `examples/npc-planner` has two farmers and a guard who rings a bell.
+
 ## Particles
 
 `CPUParticles2D` is Godot's, with Godot's field names and angles in degrees. The
@@ -2729,7 +2749,7 @@ CI rejects unformatted code and any clang-tidy finding.
   `accessibility` (screen readers through AccessKit's adapters), `animation` (`.anim.json` keyframe
   animations, `.animtree.json` animation trees and the systems that play them),
   `scene3d` (3D nodes: primitive meshes, glTF, OBJ, FBX and Blender models, CSG shapes, grid maps, materials, cameras, lights and environments,
-  and drawing them), `physics2d` (2D bodies, areas, joints and queries on Box2D), `physics3d` (3D bodies, areas, character movement and queries on Jolt), `navigation` (navigation meshes, maps, paths and agents), `net` (multiplayer peers, the ENet transport, a world's multiplayer and RPCs), `xr` (the XR server, interfaces, trackers, XR nodes, the test headset and OpenXR), `library` (the asset library, its
+  and drawing them), `physics2d` (2D bodies, areas, joints and queries on Box2D), `physics3d` (3D bodies, areas, character movement and queries on Jolt), `navigation` (navigation meshes, maps, paths and agents), `npc` (NPC brains, goal-oriented action planning and the system that runs agents' plans), `net` (multiplayer peers, the ENet transport, a world's multiplayer and RPCs), `xr` (the XR server, interfaces, trackers, XR nodes, the test headset and OpenXR), `library` (the asset library, its
   generators and commands), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `soundtrack` (`.score.json` scores, MIDI files, rendering stems, drafting cue sheets and arranging them),
   `command` (commands, sessions with undo, JSON-RPC and MCP),
