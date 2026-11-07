@@ -37,13 +37,25 @@
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "SLASH_WARNINGS_AS_ERRORS": "ON"
       }
+    },
+    {
+      "name": "double",
+      "inherits": "base",
+      "displayName": "CI build with double-precision positions",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "SLASH_PRECISION": "double",
+        "SLASH_WARNINGS_AS_ERRORS": "ON",
+        "SLASH_BUILD_EXAMPLES": "OFF"
+      }
     }
   ],
   "buildPresets": [
     { "name": "dev", "configurePreset": "dev" },
     { "name": "release", "configurePreset": "release" },
     { "name": "tracy", "configurePreset": "tracy" },
-    { "name": "ci", "configurePreset": "ci" }
+    { "name": "ci", "configurePreset": "ci" },
+    { "name": "double", "configurePreset": "double" }
   ],
   "testPresets": [
     {
@@ -61,6 +73,12 @@
     {
       "name": "ci",
       "configurePreset": "ci",
+      "output": { "outputOnFailure": true },
+      "execution": { "timeout": 600 }
+    },
+    {
+      "name": "double",
+      "configurePreset": "double",
       "output": { "outputOnFailure": true },
       "execution": { "timeout": 600 }
     }

@@ -115,7 +115,8 @@ void new_positions(const Octree& cell, float cell_size, std::span<const Point> u
             const bool exists = std::ranges::any_of(
                 user, [&](const Point& p) { return length(vec(p) - real) < cell_size * 0.5F; });
             if (!exists) {
-                out.push_back({real.x, real.y, real.z});
+                out.push_back({static_cast<float>(real.x), static_cast<float>(real.y),
+                               static_cast<float>(real.z)});
             }
             used[pos] = true;
         }
@@ -732,7 +733,9 @@ private:
         }
 
         LightmapBspNode node;
-        node.plane = {best_plane.normal.x, best_plane.normal.y, best_plane.normal.z, best_plane.d};
+        node.plane = {static_cast<float>(best_plane.normal.x),
+                      static_cast<float>(best_plane.normal.y),
+                      static_cast<float>(best_plane.normal.z), best_plane.d};
         node.under = side_of(under);
         node.over = side_of(over);
         nodes_[static_cast<std::size_t>(node_index)] = node;
@@ -804,7 +807,8 @@ LightmapProbes place_lightmap_probes(std::span<const std::array<float, 3>> trian
     if (subdiv <= 0) {
         for (int i = 0; i < 8; ++i) {
             const Vec3 p = bounds.endpoint(i);
-            placed.push_back({p.x, p.y, p.z});
+            placed.push_back(
+                {static_cast<float>(p.x), static_cast<float>(p.y), static_cast<float>(p.z)});
         }
     } else {
         const int longest = bounds.longest_axis();
@@ -833,7 +837,8 @@ LightmapProbes place_lightmap_probes(std::span<const std::array<float, 3>> trian
                             (i & 4) != 0 ? limit[2] : 0};
             used[pos] = true;
             const Vec3 real = bounds.position + (to_vec(pos) * cell_size);
-            placed.push_back({real.x, real.y, real.z});
+            placed.push_back({static_cast<float>(real.x), static_cast<float>(real.y),
+                              static_cast<float>(real.z)});
         }
         // The first level is left out: its corners are the bounds', above.
         for (const auto& child : octree.children) {
@@ -845,8 +850,11 @@ LightmapProbes place_lightmap_probes(std::span<const std::array<float, 3>> trian
     // Godot adds the LightmapProbes first and the generated ones after.
     out.points.assign(user.begin(), user.end());
     out.points.insert(out.points.end(), placed.begin(), placed.end());
-    out.bounds_position = {bounds.position.x, bounds.position.y, bounds.position.z};
-    out.bounds_size = {bounds.size.x, bounds.size.y, bounds.size.z};
+    out.bounds_position = {static_cast<float>(bounds.position.x),
+                           static_cast<float>(bounds.position.y),
+                           static_cast<float>(bounds.position.z)};
+    out.bounds_size = {static_cast<float>(bounds.size.x), static_cast<float>(bounds.size.y),
+                       static_cast<float>(bounds.size.z)};
     return out;
 }
 
@@ -1200,7 +1208,8 @@ std::optional<LightmapSh> lightmap_capture(std::span<const LightmapCaptureSource
         if (!bounds.has_point(at)) {
             continue;
         }
-        LightmapSh sh = tap_lightmap_probes(probes, {at.x, at.y, at.z});
+        LightmapSh sh = tap_lightmap_probes(
+            probes, {static_cast<float>(at.x), static_cast<float>(at.y), static_cast<float>(at.z)});
         rotate_sh(sh, lightmap.transform);
         for (auto& coefficient : sh) {
             for (float& c : coefficient) {

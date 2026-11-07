@@ -207,7 +207,9 @@ Affine3D axis_angle(Vec3 axis, float angle) {
 Quat quaternion_of(const Affine3D& b) {
     // m[r][c] is column c's row r.
     const std::array<std::array<float, 3>, 3> m{
-        {{b.x.x, b.y.x, b.z.x}, {b.x.y, b.y.y, b.z.y}, {b.x.z, b.y.z, b.z.z}}};
+        {{static_cast<float>(b.x.x), static_cast<float>(b.y.x), static_cast<float>(b.z.x)},
+         {static_cast<float>(b.x.y), static_cast<float>(b.y.y), static_cast<float>(b.z.y)},
+         {static_cast<float>(b.x.z), static_cast<float>(b.y.z), static_cast<float>(b.z.z)}}};
     const float trace = m[0][0] + m[1][1] + m[2][2];
     std::array<float, 4> temp{};
     if (trace > 0.0F) {

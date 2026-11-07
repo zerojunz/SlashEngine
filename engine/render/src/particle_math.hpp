@@ -21,20 +21,20 @@ inline float mix(float a, float b, float t) {
     return (a * (1.0F - t)) + (b * t);
 }
 
-inline float dot(Vec3 a, Vec3 b) {
+inline float dot(Vec3f a, Vec3f b) {
     return (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
 }
 
-inline float length(Vec3 v) {
+inline float length(Vec3f v) {
     return std::sqrt(dot(v, v));
 }
 
-inline Vec3 normalize(Vec3 v) {
+inline Vec3f normalize(Vec3f v) {
     const float l = length(v);
-    return l > 0.0F ? Vec3{v.x / l, v.y / l, v.z / l} : Vec3{};
+    return l > 0.0F ? Vec3f{v.x / l, v.y / l, v.z / l} : Vec3f{};
 }
 
-inline Vec3 mix(Vec3 a, Vec3 b, float t) {
+inline Vec3f mix(Vec3f a, Vec3f b, float t) {
     return {mix(a.x, b.x, t), mix(a.y, b.y, t), mix(a.z, b.z, t)};
 }
 
@@ -156,7 +156,7 @@ inline float noise(Coord coord, std::uint32_t channel) {
 // Godot's curl_3d: the curl of three noises, from differences epsilon either side. Godot samples
 // each noise at all six places; the curl uses two at each, taken here in the order its sums take
 // them: term i adds to component i / 2, plus for even i and minus for odd.
-inline Vec3 curl_3d(const Coord& p, float c) {
+inline Vec3f curl_3d(const Coord& p, float c) {
     const float epsilon = 0.001F + c;
     std::array<float, 3> curl{};
     for (std::uint32_t term = 0; term < 6; ++term) {
@@ -171,12 +171,12 @@ inline Vec3 curl_3d(const Coord& p, float c) {
         const float difference = noise(ahead, channel) - noise(behind, channel);
         curl.at(component) += odd != 0 ? -difference : difference;
     }
-    return normalize(Vec3{curl[0], curl[1], curl[2]});
+    return normalize(Vec3f{curl[0], curl[1], curl[2]});
 }
 
 // Godot's rotate_hue: a turn of the color about the gray axis.
 inline Vec4 rotate_hue(Vec4 color, float angle) {
-    const Vec2 turn = cos_sin(angle);
+    const Vec2f turn = cos_sin(angle);
     const float c = turn.x;
     const float s = turn.y;
     // Columns of the matrix (each [r, g, b] of a column; alpha passes through).

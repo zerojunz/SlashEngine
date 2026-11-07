@@ -37,24 +37,24 @@ using particle_math::sign;
 using particle_math::times;
 using Coord = particle_math::Coord;
 
-Vec3 cross(Vec3 a, Vec3 b) {
+Vec3f cross(Vec3f a, Vec3f b) {
     return {(a.y * b.z) - (a.z * b.y), (a.z * b.x) - (a.x * b.z), (a.x * b.y) - (a.y * b.x)};
 }
 
-Vec3 times(Vec3 a, Vec3 b) {
+Vec3f times(Vec3f a, Vec3f b) {
     return {a.x * b.x, a.y * b.y, a.z * b.z};
 }
 
-Vec3 xyz(Vec4 v) {
+Vec3f xyz(Vec4 v) {
     return {v.x, v.y, v.z};
 }
 
-Vec4 with_w(Vec3 v, float w = 0.0F) {
+Vec4 with_w(Vec3f v, float w = 0.0F) {
     return {v.x, v.y, v.z, w};
 }
 
 // Godot's normalize_or_else: v at length 1, or fallback for exactly zero.
-Vec3 normalize_or_else(Vec3 v, Vec3 fallback) {
+Vec3f normalize_or_else(Vec3f v, Vec3f fallback) {
     if (v.x == 0.0F && v.y == 0.0F && v.z == 0.0F) {
         return fallback;
     }
@@ -63,7 +63,7 @@ Vec3 normalize_or_else(Vec3 v, Vec3 fallback) {
 
 // tan from the engine's own sine and cosine, the same on every machine.
 float tangent_of(float radians) {
-    const Vec2 cs = cos_sin(radians);
+    const Vec2f cs = cos_sin(radians);
     return cs.y / cs.x;
 }
 
@@ -77,10 +77,10 @@ float power(float base, float exponent) {
 
 // A transform's basis applied to a vector, and the whole of it to a point.
 struct Affine {
-    Vec3 x{1.0F, 0.0F, 0.0F};
-    Vec3 y{0.0F, 1.0F, 0.0F};
-    Vec3 z{0.0F, 0.0F, 1.0F};
-    Vec3 origin;
+    Vec3f x{1.0F, 0.0F, 0.0F};
+    Vec3f y{0.0F, 1.0F, 0.0F};
+    Vec3f z{0.0F, 0.0F, 1.0F};
+    Vec3f origin;
 
     static Affine of(const ParticleTransform& t) {
         return {.x = {t[0], t[1], t[2]},
@@ -89,17 +89,17 @@ struct Affine {
                 .origin = {t[9], t[10], t[11]}};
     }
 
-    [[nodiscard]] Vec3 basis(Vec3 v) const { return (x * v.x) + (y * v.y) + (z * v.z); }
-    [[nodiscard]] Vec3 apply(Vec3 p) const { return basis(p) + origin; }
+    [[nodiscard]] Vec3f basis(Vec3f v) const { return (x * v.x) + (y * v.y) + (z * v.z); }
+    [[nodiscard]] Vec3f apply(Vec3f p) const { return basis(p) + origin; }
 
     // The inverse, as GLSL's inverse() of the 4x4 matrix.
     [[nodiscard]] Affine inverse() const {
         const float det = dot(x, cross(y, z));
         const float inv = det != 0.0F ? 1.0F / det : 0.0F;
         // Rows of the inverse are the cross products of the columns, over the determinant.
-        const Vec3 r0 = cross(y, z) * inv;
-        const Vec3 r1 = cross(z, x) * inv;
-        const Vec3 r2 = cross(x, y) * inv;
+        const Vec3f r0 = cross(y, z) * inv;
+        const Vec3f r1 = cross(z, x) * inv;
+        const Vec3f r2 = cross(x, y) * inv;
         Affine out;
         out.x = {r0.x, r1.x, r2.x};
         out.y = {r0.y, r1.y, r2.y};
@@ -131,14 +131,14 @@ const ParticleCurve& curve(const ParticleProcess3D& p, ParticleParam param) {
 
 // A curve's x, y and z at an offset, as Godot's texture(curve, ...).rgb; fallback for an axis
 // with no points.
-Vec3 sample3(const ParticleCurve3& c, float offset, float fallback) {
+Vec3f sample3(const ParticleCurve3& c, float offset, float fallback) {
     return {sample_curve(c.axes[0], offset, fallback), sample_curve(c.axes[1], offset, fallback),
             sample_curve(c.axes[2], offset, fallback)};
 }
 
 // Godot's DisplayParameters, DynamicsParameters and PhysicalParameters.
 struct Display {
-    Vec3 scale{1.0F, 1.0F, 1.0F};
+    Vec3f scale{1.0F, 1.0F, 1.0F};
     float hue_rotation = 0.0F;
     float animation_speed = 0.0F;
     float animation_offset = 0.0F;
@@ -245,37 +245,37 @@ void display_at(const ParticleProcess3D& p, Display& display, float life) {
 }
 
 // get_random_direction_from_spread.
-Vec3 random_direction(const ParticleProcess3D& p, std::uint32_t& seed, float spread) {
+Vec3f random_direction(const ParticleProcess3D& p, std::uint32_t& seed, float spread) {
     const float spread_rad = spread * kDegreesToRadians;
     if (p.disable_z) {
         float angle = rand_m1_p1(seed) * spread_rad;
         angle += p.direction.x != 0.0F ? slash::atan2(p.direction.y, p.direction.x)
                                        : sign(p.direction.y) * (kPi / 2.0F);
-        const Vec2 turn = cos_sin(angle);
+        const Vec2f turn = cos_sin(angle);
         return {turn.x, turn.y, 0.0F};
     }
     const float angle1 = rand_m1_p1(seed) * spread_rad;
     const float angle2 = rand_m1_p1(seed) * spread_rad * (1.0F - p.flatness);
-    const Vec2 turn1 = cos_sin(angle1);
-    const Vec2 turn2 = cos_sin(angle2);
-    const Vec3 xz{turn1.y, 0.0F, turn1.x};
-    Vec3 yz{0.0F, turn2.y, turn2.x};
+    const Vec2f turn1 = cos_sin(angle1);
+    const Vec2f turn2 = cos_sin(angle2);
+    const Vec3f xz{turn1.y, 0.0F, turn1.x};
+    Vec3f yz{0.0F, turn2.y, turn2.x};
     yz.z = yz.z / std::max(0.0001F, std::sqrt(std::abs(yz.z)));
-    const Vec3 spread_direction{xz.x * yz.z, yz.y, xz.z * yz.z};
-    const Vec3 forward = length(p.direction) > 0.0F ? normalize(p.direction) : Vec3{0, 0, 1};
-    Vec3 binormal = cross({0.0F, 1.0F, 0.0F}, forward);
+    const Vec3f spread_direction{xz.x * yz.z, yz.y, xz.z * yz.z};
+    const Vec3f forward = length(p.direction) > 0.0F ? normalize(p.direction) : Vec3f{0, 0, 1};
+    Vec3f binormal = cross({0.0F, 1.0F, 0.0F}, forward);
     if (length(binormal) < 0.0001F) {
         binormal = {0.0F, 0.0F, 1.0F};
     }
     binormal = normalize(binormal);
-    const Vec3 normal = cross(binormal, forward);
+    const Vec3f normal = cross(binormal, forward);
     return normalize((binormal * spread_direction.x) + (normal * spread_direction.y) +
                      (forward * spread_direction.z));
 }
 
 // calculate_initial_position.
-Vec3 initial_position(const ParticleProcess3D& p, const Display& display, std::uint32_t& seed) {
-    Vec3 pos;
+Vec3f initial_position(const ParticleProcess3D& p, const Display& display, std::uint32_t& seed) {
+    Vec3f pos;
     switch (p.emission_shape) {
     case EmissionShape::Point:
         break;
@@ -284,15 +284,15 @@ Vec3 initial_position(const ParticleProcess3D& p, const Display& display, std::u
         const float t = rand_from_seed(seed) * 2.0F * kPi;
         const float along = rand_from_seed(seed);
         const float radius = p.emission_sphere_radius * std::sqrt(1.0F - (s * s));
-        const Vec2 turn = cos_sin(t);
-        pos = Vec3{radius * turn.x, radius * turn.y, p.emission_sphere_radius * s} * along;
+        const Vec2f turn = cos_sin(t);
+        pos = Vec3f{radius * turn.x, radius * turn.y, p.emission_sphere_radius * s} * along;
         break;
     }
     case EmissionShape::SphereSurface: {
         const float s = (rand_from_seed(seed) * 2.0F) - 1.0F;
         const float t = rand_from_seed(seed) * 2.0F * kPi;
         const float radius = p.emission_sphere_radius * std::sqrt(1.0F - (s * s));
-        const Vec2 turn = cos_sin(t);
+        const Vec2f turn = cos_sin(t);
         pos = {radius * turn.x, radius * turn.y, p.emission_sphere_radius * s};
         break;
     }
@@ -300,7 +300,7 @@ Vec3 initial_position(const ParticleProcess3D& p, const Display& display, std::u
         const float x = (rand_from_seed(seed) * 2.0F) - 1.0F;
         const float y = (rand_from_seed(seed) * 2.0F) - 1.0F;
         const float z = (rand_from_seed(seed) * 2.0F) - 1.0F;
-        pos = times(Vec3{x, y, z}, p.emission_box_extents);
+        pos = times(Vec3f{x, y, z}, p.emission_box_extents);
         break;
     }
     case EmissionShape::Points:
@@ -323,23 +323,23 @@ Vec3 initial_position(const ParticleProcess3D& p, const Display& display, std::u
         float r = std::sqrt((rand_from_seed(seed) * ((radius * radius) - (inner * inner))) +
                             (inner * inner));
         r = mix(r, r * (top / radius), y_pos);
-        const Vec3 axis = p.emission_ring_axis == Vec3{} ? Vec3{0.0F, 0.0F, 1.0F}
-                                                         : normalize(p.emission_ring_axis);
-        Vec3 ortho = std::abs(axis.x) == 1.0F && axis.y == 0.0F && axis.z == 0.0F
-                         ? cross(axis, {0.0F, 1.0F, 0.0F})
-                         : cross(axis, {1.0F, 0.0F, 0.0F});
+        const Vec3f axis = p.emission_ring_axis == Vec3f{} ? Vec3f{0.0F, 0.0F, 1.0F}
+                                                           : normalize(p.emission_ring_axis);
+        Vec3f ortho = std::abs(axis.x) == 1.0F && axis.y == 0.0F && axis.z == 0.0F
+                          ? cross(axis, {0.0F, 1.0F, 0.0F})
+                          : cross(axis, {1.0F, 0.0F, 0.0F});
         ortho = normalize(ortho);
-        const Vec2 turn = cos_sin(angle);
+        const Vec2f turn = cos_sin(angle);
         const float s = turn.y;
         const float c = turn.x;
         const float oc = 1.0F - c;
         // Godot's mat3 of these three columns, times ortho: a turn of angle about axis.
-        const Vec3 c0{c + (axis.x * axis.x * oc), (axis.x * axis.y * oc) - (axis.z * s),
-                      (axis.x * axis.z * oc) + (axis.y * s)};
-        const Vec3 c1{(axis.x * axis.y * oc) + (s * axis.z), c + (axis.y * axis.y * oc),
-                      (axis.y * axis.z * oc) - (axis.x * s)};
-        const Vec3 c2{(axis.z * axis.x * oc) - (axis.y * s), (axis.z * axis.y * oc) + (axis.x * s),
-                      c + (axis.z * axis.z * oc)};
+        const Vec3f c0{c + (axis.x * axis.x * oc), (axis.x * axis.y * oc) - (axis.z * s),
+                       (axis.x * axis.z * oc) + (axis.y * s)};
+        const Vec3f c1{(axis.x * axis.y * oc) + (s * axis.z), c + (axis.y * axis.y * oc),
+                       (axis.y * axis.z * oc) - (axis.x * s)};
+        const Vec3f c2{(axis.z * axis.x * oc) - (axis.y * s), (axis.z * axis.y * oc) + (axis.x * s),
+                       c + (axis.z * axis.z * oc)};
         ortho = normalize((c0 * ortho.x) + (c1 * ortho.y) + (c2 * ortho.z));
         pos = (ortho * r) +
               (axis * ((y_pos * p.emission_ring_height) - (p.emission_ring_height / 2.0F)));
@@ -350,14 +350,14 @@ Vec3 initial_position(const ParticleProcess3D& p, const Display& display, std::u
 }
 
 // Godot's get_noise_direction.
-Vec3 noise_direction(const ParticleProcess3D& p, const ParticleStep3D& step, Vec3 pos) {
+Vec3f noise_direction(const ParticleProcess3D& p, const ParticleStep3D& step, Vec3f pos) {
     const float contrast = std::max(p.turbulence_noise_strength - 1.0F, 0.0F) * 70.0F;
     const float frequency = turbulence_frequency(p.turbulence_noise_scale);
     const Coord at{(pos.x * frequency) + (step.time * p.turbulence_noise_speed.x),
                    (pos.y * frequency) + (step.time * p.turbulence_noise_speed.y),
                    (pos.z * frequency) + (step.time * p.turbulence_noise_speed.z),
                    0.0F + (step.time * p.turbulence_noise_speed_random)};
-    const Vec3 direction = curl_3d(at, contrast);
+    const Vec3f direction = curl_3d(at, contrast);
     return particle_math::mix(direction * 0.9F, direction, p.turbulence_noise_strength - 9.0F);
 }
 
@@ -375,7 +375,7 @@ void start(Particle3D& particle, const ParticleProcess3D& p, const ParticleStep3
     }
     particle.custom = {dynamics.angle, 0.0F, 0.0F, display.lifetime};
     particle.color = display.color;
-    Vec3 origin = initial_position(p, display, seed);
+    Vec3f origin = initial_position(p, display, seed);
     if (p.turbulence_enabled) {
         const float displacement = random_param(p, ParticleParam::TurbulenceDisplacement, seed);
         origin = origin + (noise_direction(p, step, origin) * displacement);
@@ -386,22 +386,22 @@ void start(Particle3D& particle, const ParticleProcess3D& p, const ParticleStep3
     particle.y = with_w(emission.y);
     particle.z = with_w(emission.z);
     origin = emission.apply(origin);
-    Vec3 velocity = random_direction(p, seed, p.spread) * dynamics.initial_velocity;
+    Vec3f velocity = random_direction(p, seed, p.spread) * dynamics.initial_velocity;
     if (p.emission_shape == EmissionShape::DirectedPoints) {
         if (const auto point = emission_point(p, display)) {
             // As Godot's black default texture, a point with no normal doesn't move.
-            const Vec3 normal =
-                *point < p.emission_normals.size() ? p.emission_normals[*point] : Vec3{};
+            const Vec3f normal =
+                *point < p.emission_normals.size() ? p.emission_normals[*point] : Vec3f{};
             if (p.disable_z) {
-                const Vec2 v{velocity.x, velocity.y};
+                const Vec2f v{velocity.x, velocity.y};
                 velocity = {(normal.x * v.x) + (normal.y * v.y),
                             (normal.y * v.x) - (normal.x * v.y), velocity.z};
-            } else if (normal == Vec3{}) {
+            } else if (normal == Vec3f{}) {
                 velocity = {};
             } else {
-                const Vec3 v0 = std::abs(normal.z) < 0.999F ? Vec3{0, 0, 1} : Vec3{0, 1, 0};
-                const Vec3 tangent = normalize(cross(v0, normal));
-                const Vec3 bitangent = normalize(cross(tangent, normal));
+                const Vec3f v0 = std::abs(normal.z) < 0.999F ? Vec3f{0, 0, 1} : Vec3f{0, 1, 0};
+                const Vec3f tangent = normalize(cross(v0, normal));
+                const Vec3f bitangent = normalize(cross(tangent, normal));
                 velocity =
                     (tangent * velocity.x) + (bitangent * velocity.y) + (normal * velocity.z);
             }
@@ -418,13 +418,13 @@ void start(Particle3D& particle, const ParticleProcess3D& p, const ParticleStep3
 }
 
 // process_orbit_displacement: 2D's with disable_z, and in 3D only with a curve, as Godot's.
-Vec3 orbit_displacement(const ParticleProcess3D& p, const Dynamics& dynamics, float life,
-                        const Vec3& origin, const Affine& emission, float delta) {
+Vec3f orbit_displacement(const ParticleProcess3D& p, const Dynamics& dynamics, float life,
+                         const Vec3f& origin, const Affine& emission, float delta) {
     if ((p.orbit_velocity_curve.empty() && !p.disable_z) ||
         std::abs(dynamics.orbit_velocity) < 0.01F || delta < 0.001F) {
         return {};
     }
-    Vec3 displacement;
+    Vec3f displacement;
     if (p.disable_z) {
         float amount = dynamics.orbit_velocity;
         if (!p.orbit_velocity_curve.empty()) {
@@ -432,46 +432,46 @@ Vec3 orbit_displacement(const ParticleProcess3D& p, const Dynamics& dynamics, fl
             amount *= sample_curve(p.orbit_velocity_curve.axes[2], life, 0.0F);
         }
         if (amount != 0.0F) {
-            const Vec3 diff = origin - emission.origin;
-            const Vec2 turn = cos_sin(amount * kPi * 2.0F * delta);
+            const Vec3f diff = origin - emission.origin;
+            const Vec2f turn = cos_sin(amount * kPi * 2.0F * delta);
             displacement = {(turn.x * diff.x) + (turn.y * diff.y) - diff.x,
                             (-turn.y * diff.x) + (turn.x * diff.y) - diff.y, 0.0F};
         }
     } else {
-        const Vec3 turns = sample3(p.orbit_velocity_curve, life, 0.0F) *
-                           (dynamics.orbit_velocity * kPi * 2.0F * delta);
-        const Vec3 at = emission.inverse().apply(origin) - p.velocity_pivot;
+        const Vec3f turns = sample3(p.orbit_velocity_curve, life, 0.0F) *
+                            (dynamics.orbit_velocity * kPi * 2.0F * delta);
+        const Vec3f at = emission.inverse().apply(origin) - p.velocity_pivot;
         // About x, y and z in turn, each from where the particle is.
-        Vec3 local{0.0F, at.y, at.z};
-        Vec2 cs = cos_sin(turns.x);
-        displacement = Vec3{local.x, (cs.x * local.y) - (cs.y * local.z),
-                            (cs.y * local.y) + (cs.x * local.z)} -
+        Vec3f local{0.0F, at.y, at.z};
+        Vec2f cs = cos_sin(turns.x);
+        displacement = Vec3f{local.x, (cs.x * local.y) - (cs.y * local.z),
+                             (cs.y * local.y) + (cs.x * local.z)} -
                        local;
         local = {at.x, 0.0F, at.z};
         cs = cos_sin(turns.y);
-        displacement = displacement + (Vec3{(cs.x * local.x) + (cs.y * local.z), local.y,
-                                            (-cs.y * local.x) + (cs.x * local.z)} -
+        displacement = displacement + (Vec3f{(cs.x * local.x) + (cs.y * local.z), local.y,
+                                             (-cs.y * local.x) + (cs.x * local.z)} -
                                        local);
         local = {at.x, at.y, 0.0F};
         cs = cos_sin(turns.z);
-        displacement = displacement + (Vec3{(cs.x * local.x) - (cs.y * local.y),
-                                            (cs.y * local.x) + (cs.x * local.y), local.z} -
+        displacement = displacement + (Vec3f{(cs.x * local.x) - (cs.y * local.y),
+                                             (cs.y * local.x) + (cs.x * local.y), local.z} -
                                        local);
     }
     return emission.basis(displacement * (1.0F / delta));
 }
 
 // process_radial_displacement.
-Vec3 radial_displacement(const ParticleProcess3D& p, const Dynamics& dynamics, float life,
-                         std::uint32_t& seed, const Vec3& origin, const Affine& emission,
-                         float delta) {
+Vec3f radial_displacement(const ParticleProcess3D& p, const Dynamics& dynamics, float life,
+                          std::uint32_t& seed, const Vec3f& origin, const Affine& emission,
+                          float delta) {
     if (delta < 0.001F) {
         return {};
     }
     const float multiplier = sample_curve(curve(p, ParticleParam::RadialVelocity), life, 1.0F);
-    const Vec3 pivot = emission.apply(p.velocity_pivot);
-    const Vec3 away = origin - pivot;
-    Vec3 out;
+    const Vec3f pivot = emission.apply(p.velocity_pivot);
+    const Vec3f away = origin - pivot;
+    Vec3f out;
     if (length(away) > 0.01F) {
         out = normalize(away) * (multiplier * dynamics.radial_velocity);
     } else {
@@ -487,8 +487,8 @@ Vec3 radial_displacement(const ParticleProcess3D& p, const Dynamics& dynamics, f
 
 // The generated process(): one step of a live particle's life.
 // Godot's safe_normalize: zero below a length of 0.001.
-Vec3 safe_normalize(Vec3 v) {
-    return length(v) < 0.001F ? Vec3{} : normalize(v);
+Vec3f safe_normalize(Vec3f v) {
+    return length(v) < 0.001F ? Vec3f{} : normalize(v);
 }
 
 // Where a linear sampler that clamps to the edge reads along one axis of size texels at at (from
@@ -503,7 +503,7 @@ float filter_axis(float at, std::uint32_t size, std::uint32_t& low, std::uint32_
 
 // A vector field's texel at uvw (each from 0 to 1), filtered as a linear sampler that clamps to
 // the edge filters a Texture3D's first level.
-Vec3 sample_field(const ParticleField3D& field, Vec3 uvw) {
+Vec3f sample_field(const ParticleField3D& field, Vec3f uvw) {
     const auto axis = filter_axis;
     std::uint32_t x0 = 0;
     std::uint32_t x1 = 0;
@@ -517,9 +517,9 @@ Vec3 sample_field(const ParticleField3D& field, Vec3 uvw) {
     const auto at = [&](std::uint32_t x, std::uint32_t y, std::uint32_t z) {
         return xyz(field.texels[(((z * field.height) + y) * field.width) + x]);
     };
-    const Vec3 near =
+    const Vec3f near =
         mix(mix(at(x0, y0, z0), at(x1, y0, z0), tx), mix(at(x0, y1, z0), at(x1, y1, z0), tx), ty);
-    const Vec3 far =
+    const Vec3f far =
         mix(mix(at(x0, y0, z1), at(x1, y0, z1), tx), mix(at(x0, y1, z1), at(x1, y1, z1), tx), ty);
     return mix(near, far, tz);
 }
@@ -530,7 +530,7 @@ float sdf_value(std::uint16_t bits) {
 }
 
 // An SDF's distance at uvw, filtered as sample_field filters a field's texels.
-float sample_sdf(const ParticleSdf3D& sdf, Vec3 uvw) {
+float sample_sdf(const ParticleSdf3D& sdf, Vec3f uvw) {
     std::uint32_t x0 = 0;
     std::uint32_t x1 = 0;
     std::uint32_t y0 = 0;
@@ -566,13 +566,13 @@ float sample_heights(const ParticleHeightField3D& field, float u, float v) {
 
 // What a step's attractors push a particle at pos with, as particles.glsl's attractor loop (its
 // mass is 1).
-Vec3 attractor_force(const ParticleStep3D& step, Vec3 pos) {
-    Vec3 force;
+Vec3f attractor_force(const ParticleStep3D& step, Vec3f pos) {
+    Vec3f force;
     for (const ParticleAttractor3D& attractor : step.attractors) {
         const Affine place = Affine::of(attractor.transform);
-        const Vec3 rel = pos - place.origin;
-        const Vec3 local{dot(rel, place.x), dot(rel, place.y), dot(rel, place.z)};
-        Vec3 dir;
+        const Vec3f rel = pos - place.origin;
+        const Vec3f local{dot(rel, place.x), dot(rel, place.y), dot(rel, place.z)};
+        Vec3f dir;
         float amount = 0.0F;
         if (attractor.shape == AttractorShape3D::Sphere) {
             dir = safe_normalize(rel);
@@ -591,14 +591,14 @@ Vec3 attractor_force(const ParticleStep3D& step, Vec3 pos) {
             }
             amount = std::max(0.0F, 1.0F - d);
         } else {
-            const Vec3 uvw{((local.x / attractor.extents.x) + 1.0F) * 0.5F,
-                           ((local.y / attractor.extents.y) + 1.0F) * 0.5F,
-                           ((local.z / attractor.extents.z) + 1.0F) * 0.5F};
+            const Vec3f uvw{((local.x / attractor.extents.x) + 1.0F) * 0.5F,
+                            ((local.y / attractor.extents.y) + 1.0F) * 0.5F,
+                            ((local.z / attractor.extents.z) + 1.0F) * 0.5F};
             if (attractor.field == nullptr || uvw.x < 0.0F || uvw.y < 0.0F || uvw.z < 0.0F ||
                 uvw.x > 1.0F || uvw.y > 1.0F || uvw.z > 1.0F) {
                 continue;
             }
-            const Vec3 s = (sample_field(*attractor.field, uvw) * -2.0F) + Vec3{1.0F, 1.0F, 1.0F};
+            const Vec3f s = (sample_field(*attractor.field, uvw) * -2.0F) + Vec3f{1.0F, 1.0F, 1.0F};
             dir = place.basis(safe_normalize(s));
             amount = length(s);
         }
@@ -612,7 +612,7 @@ Vec3 attractor_force(const ParticleStep3D& step, Vec3 pos) {
 // Where a particle touches the step's colliders: the way out of them and how deep it is.
 struct Contact {
     bool collided = false;
-    Vec3 normal;
+    Vec3f normal;
     float depth = 0.0F;
 };
 
@@ -629,14 +629,14 @@ float collision_size(const Particle3D& particle, const ParticleProcess3D& p,
 
 // particles.glsl's collider loop: each sphere, box, SDF and height field the particle at pos of
 // the given size touches, their ways out added up so it leaves them all.
-Contact collider_contact(const ParticleStep3D& step, Vec3 pos, float size) {
+Contact collider_contact(const ParticleStep3D& step, Vec3f pos, float size) {
     // Particles just touching a collider count as touching it.
     constexpr float kEpsilon = 0.001F;
     Contact contact;
     for (const ParticleCollider3D& collider : step.colliders) {
         const Affine place = Affine::of(collider.transform);
-        const Vec3 rel = pos - place.origin;
-        Vec3 normal;
+        const Vec3f rel = pos - place.origin;
+        Vec3f normal;
         float depth = 0.0F;
         bool touches = false;
         if (collider.shape == ColliderShape3D::Sphere) {
@@ -647,72 +647,72 @@ Contact collider_contact(const ParticleStep3D& step, Vec3 pos, float size) {
                 normal = normalize(rel);
             }
         } else if (collider.shape == ColliderShape3D::Sdf) {
-            const Vec3 local{dot(rel, place.x), dot(rel, place.y), dot(rel, place.z)};
-            const Vec3 ext = collider.extents;
-            const Vec3 abs_pos{std::abs(local.x), std::abs(local.y), std::abs(local.z)};
+            const Vec3f local{dot(rel, place.x), dot(rel, place.y), dot(rel, place.z)};
+            const Vec3f ext = collider.extents;
+            const Vec3f abs_pos{std::abs(local.x), std::abs(local.y), std::abs(local.z)};
             float extra = 0.0F;
             if (abs_pos.x > ext.x || abs_pos.y > ext.y || abs_pos.z > ext.z) {
                 // Outside the box: as far again as its nearest point.
-                const Vec3 closest{std::min(abs_pos.x, ext.x), std::min(abs_pos.y, ext.y),
-                                   std::min(abs_pos.z, ext.z)};
+                const Vec3f closest{std::min(abs_pos.x, ext.x), std::min(abs_pos.y, ext.y),
+                                    std::min(abs_pos.z, ext.z)};
                 extra = length(abs_pos - closest);
             }
             if (extra > size || collider.sdf == nullptr) {
                 continue;
             }
             const ParticleSdf3D& sdf = *collider.sdf;
-            const Vec3 uvw{((local.x / ext.x) + 1.0F) * 0.5F, ((local.y / ext.y) + 1.0F) * 0.5F,
-                           ((local.z / ext.z) + 1.0F) * 0.5F};
+            const Vec3f uvw{((local.x / ext.x) + 1.0F) * 0.5F, ((local.y / ext.y) + 1.0F) * 0.5F,
+                            ((local.z / ext.z) + 1.0F) * 0.5F};
             const float d = (sample_sdf(sdf, uvw) * collider.scale) + extra;
             if (d <= size + kEpsilon) {
                 touches = true;
                 depth = size - d;
-                const auto across = [&](Vec3 offset) {
+                const auto across = [&](Vec3f offset) {
                     return sample_sdf(sdf, uvw + offset) - sample_sdf(sdf, uvw - offset);
                 };
                 normal = place.basis(
-                    normalize(Vec3{across({kEpsilon, 0.0F, 0.0F}), across({0.0F, kEpsilon, 0.0F}),
-                                   across({0.0F, 0.0F, kEpsilon})}));
+                    normalize(Vec3f{across({kEpsilon, 0.0F, 0.0F}), across({0.0F, kEpsilon, 0.0F}),
+                                    across({0.0F, 0.0F, kEpsilon})}));
             }
         } else if (collider.shape == ColliderShape3D::HeightField) {
             // Godot reads the height field's normal and depth in its space and leaves them
             // there, unturned.
-            const Vec3 local{dot(rel, place.x), dot(rel, place.y), dot(rel, place.z)};
-            const Vec3 ext = collider.extents;
-            const Vec3 bottom{local.x, local.y - size, local.z};
+            const Vec3f local{dot(rel, place.x), dot(rel, place.y), dot(rel, place.z)};
+            const Vec3f ext = collider.extents;
+            const Vec3f bottom{local.x, local.y - size, local.z};
             if (std::abs(bottom.x) > ext.x || std::abs(bottom.y) > ext.y ||
                 std::abs(bottom.z) > ext.z || collider.heights == nullptr) {
                 continue;
             }
             constexpr float kDelta = 1.0F / 8192.0F;
             const ParticleHeightField3D& field = *collider.heights;
-            const Vec3 uvw{((bottom.x / ext.x) + 1.0F) * 0.5F, ((bottom.y / ext.y) + 1.0F) * 0.5F,
-                           ((bottom.z / ext.z) + 1.0F) * 0.5F};
+            const Vec3f uvw{((bottom.x / ext.x) + 1.0F) * 0.5F, ((bottom.y / ext.y) + 1.0F) * 0.5F,
+                            ((bottom.z / ext.z) + 1.0F) * 0.5F};
             const float y = sample_heights(field, uvw.x, uvw.z);
             if (y + kEpsilon >= uvw.y) {
                 const auto point = [&](float u, float v, float h) {
-                    return times(Vec3{(u * 2.0F) - 1.0F, (h * 2.0F) - 1.0F, (v * 2.0F) - 1.0F},
+                    return times(Vec3f{(u * 2.0F) - 1.0F, (h * 2.0F) - 1.0F, (v * 2.0F) - 1.0F},
                                  ext);
                 };
-                const Vec3 pos1 = point(uvw.x, uvw.z, y);
-                const Vec3 pos2 =
+                const Vec3f pos1 = point(uvw.x, uvw.z, y);
+                const Vec3f pos2 =
                     point(uvw.x + kDelta, uvw.z, sample_heights(field, uvw.x + kDelta, uvw.z));
-                const Vec3 pos3 =
+                const Vec3f pos3 =
                     point(uvw.x, uvw.z + kDelta, sample_heights(field, uvw.x, uvw.z + kDelta));
                 touches = true;
                 normal = normalize(cross(pos1 - pos2, pos1 - pos3));
                 depth = dot(normal, pos1) - dot(normal, bottom);
             }
         } else {
-            const Vec3 local{dot(rel, place.x), dot(rel, place.y), dot(rel, place.z)};
-            const Vec3 abs_pos{std::abs(local.x), std::abs(local.y), std::abs(local.z)};
-            const Vec3 sgn{sign(local.x), sign(local.y), sign(local.z)};
-            const Vec3 ext = collider.extents;
+            const Vec3f local{dot(rel, place.x), dot(rel, place.y), dot(rel, place.z)};
+            const Vec3f abs_pos{std::abs(local.x), std::abs(local.y), std::abs(local.z)};
+            const Vec3f sgn{sign(local.x), sign(local.y), sign(local.z)};
+            const Vec3f ext = collider.extents;
             if (abs_pos.x > ext.x || abs_pos.y > ext.y || abs_pos.z > ext.z) {
                 // Outside the box: from its nearest point.
-                const Vec3 closest{std::min(abs_pos.x, ext.x), std::min(abs_pos.y, ext.y),
-                                   std::min(abs_pos.z, ext.z)};
-                const Vec3 out = abs_pos - closest;
+                const Vec3f closest{std::min(abs_pos.x, ext.x), std::min(abs_pos.y, ext.y),
+                                    std::min(abs_pos.z, ext.z)};
+                const Vec3f out = abs_pos - closest;
                 depth = length(out) - size;
                 if (depth <= kEpsilon) {
                     touches = true;
@@ -721,15 +721,15 @@ Contact collider_contact(const ParticleStep3D& step, Vec3 pos, float size) {
                 }
             } else {
                 // Inside: out through the nearest face.
-                const Vec3 axis_len = ext - abs_pos;
-                Vec3 axis{0.0F, 0.0F, 1.0F};
+                const Vec3f axis_len = ext - abs_pos;
+                Vec3f axis{0.0F, 0.0F, 1.0F};
                 if (axis_len.x < axis_len.y && axis_len.x < axis_len.z) {
                     axis = {1.0F, 0.0F, 0.0F};
                 } else if (axis_len.y < axis_len.x && axis_len.y < axis_len.z) {
                     axis = {0.0F, 1.0F, 0.0F};
                 }
                 touches = true;
-                depth = dot(times(axis, axis_len), Vec3{1.0F, 1.0F, 1.0F}) + size;
+                depth = dot(times(axis, axis_len), Vec3f{1.0F, 1.0F, 1.0F}) + size;
                 normal = place.basis(times(axis, sgn));
             }
         }
@@ -739,7 +739,7 @@ Contact collider_contact(const ParticleStep3D& step, Vec3 pos, float size) {
         if (!contact.collided) {
             contact = {.collided = true, .normal = normal, .depth = depth};
         } else {
-            Vec3 c = contact.normal * contact.depth;
+            Vec3f c = contact.normal * contact.depth;
             c = c + (normal * std::max(0.0F, depth - dot(normal, c)));
             contact.normal = normalize(c);
             contact.depth = length(c);
@@ -764,11 +764,11 @@ void process(Particle3D& particle, const ParticleProcess3D& p, const ParticleSte
     }
 
     const Affine emission = Affine::of(step.emission);
-    Vec3 origin = xyz(particle.origin);
-    Vec3 controlled = orbit_displacement(p, dynamics, life, origin, emission, delta);
+    Vec3f origin = xyz(particle.origin);
+    Vec3f controlled = orbit_displacement(p, dynamics, life, origin, emission, delta);
     controlled = controlled + radial_displacement(p, dynamics, life, seed, origin, emission, delta);
     if (!p.directional_velocity_curve.empty()) {
-        Vec3 directional =
+        Vec3f directional =
             sample3(p.directional_velocity_curve, life, 0.0F) * dynamics.directional_velocity;
         if (p.directional_velocity_global) {
             directional = emission.basis(directional);
@@ -781,22 +781,22 @@ void process(Particle3D& particle, const ParticleProcess3D& p, const ParticleSte
     physical.tangent_accel *= sample_curve(curve(p, ParticleParam::TangentialAccel), life, 1.0F);
     physical.damping *= sample_curve(curve(p, ParticleParam::Damping), life, 1.0F);
 
-    Vec3 velocity = particle.velocity;
-    Vec3 force = p.gravity;
+    Vec3f velocity = particle.velocity;
+    Vec3f force = p.gravity;
     if (length(velocity) > 0.0F) {
         force = force + (normalize(velocity) * physical.linear_accel);
     }
-    const Vec3 diff = origin - emission.origin;
+    const Vec3f diff = origin - emission.origin;
     if (length(diff) > 0.0F) {
         force = force + (normalize(diff) * physical.radial_accel);
     }
     if (p.disable_z) {
-        if (length(Vec3{diff.y, diff.x, 0.0F}) > 0.0F) {
-            force = force + (normalize(Vec3{-diff.y, diff.x, 0.0F}) * physical.tangent_accel);
+        if (length(Vec3f{diff.y, diff.x, 0.0F}) > 0.0F) {
+            force = force + (normalize(Vec3f{-diff.y, diff.x, 0.0F}) * physical.tangent_accel);
         }
     } else {
         // Godot's normalize of a zero vector makes NaNs, which the length test then skips.
-        const Vec3 across = cross(normalize(diff), normalize(p.gravity));
+        const Vec3f across = cross(normalize(diff), normalize(p.gravity));
         if (length(across) > 0.0F) {
             force = force + (normalize(across) * physical.tangent_accel);
         }
@@ -816,7 +816,7 @@ void process(Particle3D& particle, const ParticleProcess3D& p, const ParticleSte
             // Godot's friction, for a particle of 0.05 kg.
             v -= v * v * physical.damping * 0.05F * delta;
         }
-        velocity = v < 0.0F ? Vec3{} : normalize(velocity) * v;
+        velocity = v < 0.0F ? Vec3f{} : normalize(velocity) * v;
     }
 
     const bool bounced = contact.collided && p.collision_mode == ParticleCollision::Rigid;
@@ -827,7 +827,7 @@ void process(Particle3D& particle, const ParticleProcess3D& p, const ParticleSte
                                                                                            : 0.0F;
         origin = origin + (contact.normal * contact.depth);
         velocity = velocity - (contact.normal * response);
-        velocity = mix(velocity, Vec3{}, std::clamp(p.collision_friction, 0.0F, 1.0F));
+        velocity = mix(velocity, Vec3f{}, std::clamp(p.collision_friction, 0.0F, 1.0F));
         velocity = velocity - (contact.normal * (response * (p.collision_bounce * bounces)));
     } else if (contact.collided && p.collision_mode == ParticleCollision::HideOnContact) {
         active = false;
@@ -837,7 +837,7 @@ void process(Particle3D& particle, const ParticleProcess3D& p, const ParticleSte
     if (p.turbulence_enabled && !bounced) {
         const float influence =
             sample_curve(curve(p, ParticleParam::TurbulenceInfluence), life, 1.0F);
-        const Vec3 direction = normalize(noise_direction(p, step, origin));
+        const Vec3f direction = normalize(noise_direction(p, step, origin));
         const float amount = std::clamp(dynamics.turbulence_influence * influence, 0.0F, 1.0F) *
                              (delta <= 0.0F ? 0.0F : 1.0F);
         const float boost = 1.0F + ((1.0F - amount) * 0.2F);
@@ -845,7 +845,7 @@ void process(Particle3D& particle, const ParticleProcess3D& p, const ParticleSte
         controlled =
             particle_math::mix(controlled, direction * (length(controlled) * boost), amount);
     }
-    Vec3 final_velocity = controlled + velocity;
+    Vec3f final_velocity = controlled + velocity;
     if (!p.velocity_limit_curve.empty() && length(final_velocity) > 0.001F) {
         const float limit = std::abs(sample_curve(p.velocity_limit_curve, life, 0.0F));
         final_velocity =
@@ -865,15 +865,15 @@ void process(Particle3D& particle, const ParticleProcess3D& p, const ParticleSte
     particle.custom.x = base_angle * kDegreesToRadians;
     particle.color = display.color;
 
-    Vec3 x = xyz(particle.x);
-    Vec3 y = xyz(particle.y);
-    Vec3 z = xyz(particle.z);
+    Vec3f x = xyz(particle.x);
+    Vec3f y = xyz(particle.y);
+    Vec3f z = xyz(particle.z);
     if (p.disable_z) {
         if (p.align_y) {
             y = normalize(length(final_velocity) > 0.0F ? final_velocity : y);
             x = normalize(cross(y, z));
         } else {
-            const Vec2 cs = cos_sin(particle.custom.x);
+            const Vec2f cs = cos_sin(particle.custom.x);
             x = {cs.x, -cs.y, 0.0F};
             y = {cs.y, cs.x, 0.0F};
         }
@@ -896,7 +896,7 @@ void process(Particle3D& particle, const ParticleProcess3D& p, const ParticleSte
             z = normalize_or_else(z, {0.0F, 0.0F, 1.0F});
         }
         if (p.rotate_y) {
-            const Vec2 cs = cos_sin(particle.custom.x);
+            const Vec2f cs = cos_sin(particle.custom.x);
             x = {cs.x, 0.0F, -cs.y};
             y = {0.0F, 1.0F, 0.0F};
             z = {cs.y, 0.0F, cs.x};
@@ -1036,8 +1036,8 @@ void particle_mesh_vertices_3d(std::span<const Particle3D> particles,
     }
     const Affine emitter = Affine::of(draw.transform);
     const Affine camera = Affine::of(draw.camera);
-    const Vec3 sort = draw.sort_direction;
-    const Vec3 up = draw.align_up;
+    const Vec3f sort = draw.sort_direction;
+    const Vec3f up = draw.align_up;
     for (std::uint32_t slot = 0; slot < total; ++slot) {
         const std::uint32_t index =
             sorted.empty() ? particle_draw_index_3d(slot, total, draw.order, draw.lifetime_split)
@@ -1056,7 +1056,7 @@ void particle_mesh_vertices_3d(std::span<const Particle3D> particles,
                      .y = xyz(particle.y),
                      .z = xyz(particle.z),
                      .origin = xyz(particle.origin)};
-        const Vec3 v = particle.velocity;
+        const Vec3f v = particle.velocity;
         switch (draw.align) {
         case ParticleAlign::Disabled:
             break;
@@ -1071,19 +1071,19 @@ void particle_mesh_vertices_3d(std::span<const Particle3D> particles,
             const float s = (length(place.x) + length(place.y) + length(place.z)) / 3.0F;
             place.y = normalize(length(v) > 0.0F ? v : place.y);
             place.x = normalize(cross(place.y, place.z));
-            place.z = Vec3{0.0F, 0.0F, 1.0F} * s;
+            place.z = Vec3f{0.0F, 0.0F, 1.0F} * s;
             place.x = place.x * s;
             place.y = place.y * s;
             break;
         }
         case ParticleAlign::ZBillboardYToVelocity: {
-            Vec3 screen = v - (sort * dot(sort, v));
+            Vec3f screen = v - (sort * dot(sort, v));
             if (length(screen) == 0.0F) {
                 screen = up;
             }
             screen = normalize(screen);
-            const Vec3 x = normalize(cross(screen, sort)) * length(place.x);
-            const Vec3 y = screen * length(place.y);
+            const Vec3f x = normalize(cross(screen, sort)) * length(place.x);
+            const Vec3f y = screen * length(place.y);
             place.z = sort * length(place.z);
             place.x = x;
             place.y = y;
@@ -1104,9 +1104,9 @@ void particle_mesh_vertices_3d(std::span<const Particle3D> particles,
                 placed.y = {0.0F, 1.0F, 0.0F};
                 placed.z = normalize(cross(camera.x, {0.0F, 1.0F, 0.0F}));
             } else {
-                const Vec3 cx = normalize(camera.x);
-                const Vec3 cy = normalize(camera.y);
-                const Vec2 cs = cos_sin(particle.custom.x);
+                const Vec3f cx = normalize(camera.x);
+                const Vec3f cy = normalize(camera.y);
+                const Vec2f cs = cos_sin(particle.custom.x);
                 placed.x = (cx * cs.x) - (cy * cs.y);
                 placed.y = (cx * cs.y) + (cy * cs.x);
                 placed.z = normalize(camera.z);
@@ -1121,13 +1121,13 @@ void particle_mesh_vertices_3d(std::span<const Particle3D> particles,
         // billboard, by its inverse's transpose otherwise.
         const Affine inverse = placed.inverse();
         const bool billboard = draw.billboard != ParticleBillboard::Disabled;
-        const auto normal_of = [&](Vec3 n) {
+        const auto normal_of = [&](Vec3f n) {
             return billboard
                        ? normalize(placed.basis(n))
-                       : normalize(
-                             Vec3{(inverse.x.x * n.x) + (inverse.x.y * n.y) + (inverse.x.z * n.z),
-                                  (inverse.y.x * n.x) + (inverse.y.y * n.y) + (inverse.y.z * n.z),
-                                  (inverse.z.x * n.x) + (inverse.z.y * n.y) + (inverse.z.z * n.z)});
+                       : normalize(Vec3f{
+                             (inverse.x.x * n.x) + (inverse.x.y * n.y) + (inverse.x.z * n.z),
+                             (inverse.y.x * n.x) + (inverse.y.y * n.y) + (inverse.y.z * n.z),
+                             (inverse.z.x * n.x) + (inverse.z.y * n.y) + (inverse.z.z * n.z)});
         };
         const std::array<float, 4> tint{
             std::clamp(particle.color.x, 0.0F, 1.0F), std::clamp(particle.color.y, 0.0F, 1.0F),
@@ -1151,12 +1151,12 @@ void particle_mesh_vertices_3d(std::span<const Particle3D> particles,
             const Vertex3D& from = source[c];
             Vertex3D& to = first[c];
             to = from;
-            const Vec3 position =
+            const Vec3f position =
                 placed.apply({from.position[0], from.position[1], from.position[2]});
             to.position = {position.x, position.y, position.z};
-            const Vec3 normal = normal_of({from.normal[0], from.normal[1], from.normal[2]});
+            const Vec3f normal = normal_of({from.normal[0], from.normal[1], from.normal[2]});
             to.normal = {normal.x, normal.y, normal.z};
-            const Vec3 tangent =
+            const Vec3f tangent =
                 normalize(placed.basis({from.tangent[0], from.tangent[1], from.tangent[2]}));
             to.tangent = {tangent.x, tangent.y, tangent.z, from.tangent[3]};
             float u = (from.uv[0] * draw.uv_scale[0]) + draw.uv_offset[0];

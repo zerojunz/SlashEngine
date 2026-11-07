@@ -24,10 +24,13 @@ struct Builder {
     std::uint32_t point = 0;
 
     void add(Vec3 position, Vec3 normal, std::array<float, 4> tangent, Vec2 uv) {
-        mesh.vertices.push_back({.position = {position.x, position.y, position.z},
-                                 .normal = {normal.x, normal.y, normal.z},
-                                 .tangent = tangent,
-                                 .uv = {uv.x, uv.y}});
+        mesh.vertices.push_back(
+            {.position = {static_cast<float>(position.x), static_cast<float>(position.y),
+                          static_cast<float>(position.z)},
+             .normal = {static_cast<float>(normal.x), static_cast<float>(normal.y),
+                        static_cast<float>(normal.z)},
+             .tangent = tangent,
+             .uv = {static_cast<float>(uv.x), static_cast<float>(uv.y)}});
         ++point;
     }
     void index(int i) { mesh.indices.push_back(static_cast<std::uint32_t>(i)); }
@@ -283,7 +286,7 @@ MeshData capsule_mesh(const world::CapsuleMesh& capsule) {
             return std::array<float, 3>{u, 0.0F, 1.0F};
         }
         const Vec2 cs = around(u);
-        return std::array<float, 3>{u, -cs.y, cs.x};
+        return std::array<float, 3>{u, static_cast<float>(-cs.y), static_cast<float>(cs.x)};
     };
 
     // top hemisphere
@@ -539,7 +542,8 @@ MeshData torus_mesh(const world::TorusMesh& torus) {
             const Vec2 normalk = (normalj * radius) + Vec2{min_radius + radius, 0.0F};
             b.add({normali.x * normalk.x, normalk.y, normali.y * normalk.x},
                   {normali.x * normalj.x, normalj.y, normali.y * normalj.x},
-                  {normali.y, 0.0F, -normali.x, 1.0F}, {inci, incj});
+                  {static_cast<float>(normali.y), 0.0F, static_cast<float>(-normali.x), 1.0F},
+                  {inci, incj});
             if (i > 0 && j > 0) {
                 b.triangle(thisrow + j - 1, prevrow + j, prevrow + j - 1);
                 b.triangle(thisrow + j - 1, thisrow + j, prevrow + j);

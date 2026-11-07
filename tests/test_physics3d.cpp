@@ -21,6 +21,7 @@
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <type_traits>
 #include <vector>
 
 namespace json = slash::json;
@@ -175,6 +176,30 @@ TEST_CASE("a rigid body falls and comes to rest on a static floor") {
     CHECK(physics.position("crate").x == doctest::Approx(0.0F));
     CHECK(length(rigid.linear_velocity) < 0.01F);
     CHECK(rigid.sleeping);
+}
+
+TEST_CASE("bodies ten thousand kilometers out move as near the origin, in double builds") {
+    // Godot's double-precision builds keep Jolt's positions in doubles too (JPH_DOUBLE_PRECISION),
+    // so a crate lands on a floor far out as it does at home. In single builds there are no
+    // places that far worth having, so far is the origin.
+    constexpr bool kDouble = std::is_same_v<slash::real_t, double>;
+    using slash::real_t;
+    const real_t out_there = kDouble ? static_cast<real_t>(1.0e7) : 0;
+    const Vec3 far{out_there, out_there / 40000, -out_there};
+    const auto run = [](Vec3 at) {
+        Physics physics;
+        physics.block("floor", at + Vec3{-10.0F, -1.0F, -10.0F}, at + Vec3{10.0F, 0.0F, 10.0F});
+        physics.crate("crate", at + Vec3{0.3F, 3.0F, -0.2F});
+        physics.get<world::RigidBody3D>("crate").linear_velocity = {1.0F, 0.0F, 0.5F};
+        physics.step(270);
+        return physics.position("crate") - at;
+    };
+    const Vec3 home = run({});
+    const Vec3 out = run(far);
+    CHECK(home.y == doctest::Approx(0.5).epsilon(0.02));
+    CHECK(out.x == doctest::Approx(home.x).epsilon(1e-3));
+    CHECK(out.y == doctest::Approx(home.y).epsilon(1e-3));
+    CHECK(out.z == doctest::Approx(home.z).epsilon(1e-3));
 }
 
 TEST_CASE("physics settings set gravity and damping") {
@@ -590,14 +615,15 @@ TEST_CASE("the same scene simulates the same every time") {
             physics.fall("hero");
             physics.get<world::CharacterBody3D>("hero").velocity.x = 2.0F;
         });
-        std::vector<std::uint32_t> bits;
+        std::vector<std::uint64_t> bits;
         for (int i = 0; i < 12; ++i) {
             const Vec3 p = physics.position("crate" + std::to_string(i));
-            bits.push_back(std::bit_cast<std::uint32_t>(p.x));
-            bits.push_back(std::bit_cast<std::uint32_t>(p.y));
-            bits.push_back(std::bit_cast<std::uint32_t>(p.z));
+            bits.push_back(std::bit_cast<std::uint64_t>(static_cast<double>(p.x)));
+            bits.push_back(std::bit_cast<std::uint64_t>(static_cast<double>(p.y)));
+            bits.push_back(std::bit_cast<std::uint64_t>(static_cast<double>(p.z)));
         }
-        bits.push_back(std::bit_cast<std::uint32_t>(physics.position("hero").x));
+        bits.push_back(
+            std::bit_cast<std::uint64_t>(static_cast<double>(physics.position("hero").x)));
         return bits;
     };
     CHECK(run() == run());
@@ -1297,14 +1323,15 @@ TEST_CASE("soft bodies simulate the same every time") {
         physics.crate("crate", {0.3F, 0.5F, 0.2F});
         cloth(physics, "cloth", {0.0F, 2.0F, 0.0F});
         physics.step(120);
-        std::vector<std::uint32_t> bits;
+        // As doubles, which hold a position whichever precision the engine has.
+        std::vector<std::uint64_t> bits;
         for (const Vec3 p : points_of(physics, "cloth").points) {
-            bits.push_back(std::bit_cast<std::uint32_t>(p.x));
-            bits.push_back(std::bit_cast<std::uint32_t>(p.y));
-            bits.push_back(std::bit_cast<std::uint32_t>(p.z));
+            bits.push_back(std::bit_cast<std::uint64_t>(static_cast<double>(p.x)));
+            bits.push_back(std::bit_cast<std::uint64_t>(static_cast<double>(p.y)));
+            bits.push_back(std::bit_cast<std::uint64_t>(static_cast<double>(p.z)));
         }
         const Vec3 crate = physics.position("crate");
-        bits.push_back(std::bit_cast<std::uint32_t>(crate.y));
+        bits.push_back(std::bit_cast<std::uint64_t>(static_cast<double>(crate.y)));
         return bits;
     };
     CHECK(run() == run());

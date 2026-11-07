@@ -652,12 +652,12 @@ std::array<float, 2> planar_uv(Vec3 p, Vec3 n) {
     const float ay = std::abs(n.y);
     const float az = std::abs(n.z);
     if (ax >= ay && ax >= az) {
-        return {p.z, -p.y};
+        return {static_cast<float>(p.z), static_cast<float>(-p.y)};
     }
     if (ay >= az) {
-        return {p.x, p.z};
+        return {static_cast<float>(p.x), static_cast<float>(p.z)};
     }
-    return {p.x, -p.y};
+    return {static_cast<float>(p.x), static_cast<float>(-p.y)};
 }
 
 // The convex hull of points as a model of one surface in Godot's winding, each corner's normal
@@ -679,8 +679,8 @@ std::shared_ptr<const Model> hull_model(const std::vector<Vec3>& points,
     ModelSurface surface;
     const auto vertex = [](Vec3 p, Vec3 n) {
         render::Vertex3D v;
-        v.position = {p.x, p.y, p.z};
-        v.normal = {n.x, n.y, n.z};
+        v.position = {static_cast<float>(p.x), static_cast<float>(p.y), static_cast<float>(p.z)};
+        v.normal = {static_cast<float>(n.x), static_cast<float>(n.y), static_cast<float>(n.z)};
         v.uv = planar_uv(p, n);
         return v;
     };
@@ -761,7 +761,7 @@ std::shared_ptr<const Model> beveled_cylinder(float radius, float height, int si
     const auto inner = [core, half](Vec3 p) {
         const float out = std::sqrt((p.x * p.x) + (p.z * p.z));
         const float scale = out > core && out > 0.0F ? core / out : 1.0F;
-        return Vec3{p.x * scale, std::clamp(p.y, -half, half), p.z * scale};
+        return Vec3{p.x * scale, std::clamp<real_t>(p.y, -half, half), p.z * scale};
     };
     return hull_model(points, inner, segments == 1 || !smooth);
 }

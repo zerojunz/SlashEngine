@@ -1410,9 +1410,9 @@ void watch_tick(const Look& look, Watch& watch, double t) {
             entry.found.emplace_back("moved", t);
         }
         if (!found_already(entry, "changed size")) {
-            const Vec3 base{std::max(std::abs(entry.scale.x), 0.001F),
-                            std::max(std::abs(entry.scale.y), 0.001F),
-                            std::max(std::abs(entry.scale.z), 0.001F)};
+            const Vec3 base{std::max<real_t>(std::abs(entry.scale.x), 0.001F),
+                            std::max<real_t>(std::abs(entry.scale.y), 0.001F),
+                            std::max<real_t>(std::abs(entry.scale.z), 0.001F)};
             const Vec3 d = s->scale - entry.scale;
             const double rel =
                 std::max({std::abs(d.x) / base.x, std::abs(d.y) / base.y, std::abs(d.z) / base.z});

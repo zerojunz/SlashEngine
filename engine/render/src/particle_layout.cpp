@@ -108,8 +108,8 @@ void pack_particle_process(const ParticleProcess& process, std::vector<Word>& ou
     for (const ParticleCurve* curve : curves) {
         for (std::size_t word = 0; word < kCurveWords; ++word) {
             const std::size_t first = word * 2;
-            const Vec2 a = first < curve->size() ? (*curve)[first] : Vec2{};
-            const Vec2 b = first + 1 < curve->size() ? (*curve)[first + 1] : Vec2{};
+            const Vec2f a = first < curve->size() ? (*curve)[first] : Vec2f{};
+            const Vec2f b = first + 1 < curve->size() ? (*curve)[first + 1] : Vec2f{};
             out.push_back(floats(a.x, a.y, b.x, b.y));
         }
     }
@@ -128,9 +128,9 @@ void pack_particle_process(const ParticleProcess& process, std::vector<Word>& ou
     }
     // A point with no normal stays still and one with no color is white, as in the CPU twin.
     for (std::size_t i = 0; i < process.emission_points.size(); ++i) {
-        const Vec2 point = process.emission_points[i];
-        const Vec2 normal =
-            i < process.emission_normals.size() ? process.emission_normals[i] : Vec2{};
+        const Vec2f point = process.emission_points[i];
+        const Vec2f normal =
+            i < process.emission_normals.size() ? process.emission_normals[i] : Vec2f{};
         out.push_back(floats(point.x, point.y, normal.x, normal.y));
         out.push_back(floats(i < process.emission_colors.size() ? process.emission_colors[i]
                                                                 : Vec4{1.0F, 1.0F, 1.0F, 1.0F}));
@@ -178,8 +178,8 @@ std::vector<std::uint32_t> pack_particle_shapes(std::span<const ParticleStep> st
         out.push_back(
             {static_cast<std::uint32_t>(shape.points.size()), shape.closed ? 1U : 0U, 0U, 0U});
         for (std::size_t point = 0; point < shape.points.size(); point += 2) {
-            const Vec2 a = shape.points[point];
-            const Vec2 b = point + 1 < shape.points.size() ? shape.points[point + 1] : Vec2{};
+            const Vec2f a = shape.points[point];
+            const Vec2f b = point + 1 < shape.points.size() ? shape.points[point + 1] : Vec2f{};
             out.push_back(floats(a.x, a.y, b.x, b.y));
         }
     }

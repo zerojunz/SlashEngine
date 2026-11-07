@@ -93,8 +93,8 @@ void push_clipped(std::vector<Box>& out, Vec2 size, Vec2 position, Vec2 extent, 
         position.y += extent.y;
         extent.y = -extent.y;
     }
-    const float x0 = std::max(position.x, 0.0F);
-    const float y0 = std::max(position.y, 0.0F);
+    const float x0 = std::max<real_t>(position.x, 0.0F);
+    const float y0 = std::max<real_t>(position.y, 0.0F);
     const float x1 = std::min(position.x + extent.x, size.x);
     const float y1 = std::min(position.y + extent.y, size.y);
     if (x0 >= x1 || y0 >= y1) {
@@ -2004,7 +2004,7 @@ void TextArea::draw(const world::TextEdit& edit, const TextEditState& state, boo
     view.font_height = font_height_;
     view.line_height = row_height;
     view.rows_top = st.margin(1);
-    view.rows_height = std::max(size.y - st.margin(1) - st.margin(3), 0.0F);
+    view.rows_height = std::max<real_t>(size.y - st.margin(1) - st.margin(3), 0.0F);
     view.caret_line = caret.line;
     view.caret_column = caret.column;
     if (selecting) {

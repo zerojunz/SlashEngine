@@ -848,9 +848,11 @@ scene3d::NodeTrack node_track(const Track& track, std::size_t node) {
         }
         if (track.property == scene3d::NodeProperty::Rotation) {
             const Quat turn = world::quaternion(value);
-            out.values.push_back({turn.x, turn.y, turn.z, turn.w});
+            out.values.push_back({static_cast<float>(turn.x), static_cast<float>(turn.y),
+                                  static_cast<float>(turn.z), static_cast<float>(turn.w)});
         } else {
-            out.values.push_back({value.x, value.y, value.z, 0.0F});
+            out.values.push_back({static_cast<float>(value.x), static_cast<float>(value.y),
+                                  static_cast<float>(value.z), 0.0F});
         }
     }
     return out;

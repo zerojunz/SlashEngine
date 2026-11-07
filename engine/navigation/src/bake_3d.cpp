@@ -236,7 +236,9 @@ Result<NavigationMesh> bake(const NavigationMesh& settings, const SourceGeometry
             std::vector<float> points;
             points.reserve(obstruction.vertices.size() * 3);
             for (const Vec3 vertex : obstruction.vertices) {
-                points.insert(points.end(), {vertex.x, vertex.y, vertex.z});
+                points.insert(points.end(),
+                              {static_cast<float>(vertex.x), static_cast<float>(vertex.y),
+                               static_cast<float>(vertex.z)});
             }
             rcMarkConvexPolyArea(&ctx, points.data(), static_cast<int>(obstruction.vertices.size()),
                                  obstruction.elevation, obstruction.elevation + obstruction.height,

@@ -999,7 +999,7 @@ void Space::create_body(Body& body, const world::Affine3D& global, const world::
     const Unscaled placed = unscale(global);
     const JPH::EMotionType motion = motion_of(body.kind, body.rigid_key);
     JPH::BodyCreationSettings settings(
-        body.shape.GetPtr(), to_jolt(placed.transform.origin), rotation_of(placed.transform),
+        body.shape.GetPtr(), to_jolt_place(placed.transform.origin), rotation_of(placed.transform),
         motion, layers_.to_object_layer(broad_of(body.kind, motion), body.layer, body.mask));
     settings.mUserData = reinterpret_cast<std::uint64_t>(&body); // NOLINT
     settings.mFriction = body.friction;
@@ -1245,7 +1245,7 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
     const JPH::AABox before = jolt->GetWorldSpaceBounds();
     const bool dynamic = jolt->IsDynamic();
     interface.SetPositionAndRotation(
-        body.id, to_jolt(placed.transform.origin), rotation_of(placed.transform),
+        body.id, to_jolt_place(placed.transform.origin), rotation_of(placed.transform),
         dynamic ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
     body.target.reset();
     if (!dynamic && kind != Kind::Area) {
@@ -1518,7 +1518,7 @@ void Space::pre_step(const world::World& world, float seconds) {
                 body->contacts.clear();
             }
             if (const std::optional<world::Affine3D>& target = body->target; target.has_value()) {
-                const JPH::RVec3 position = to_jolt(target->origin);
+                const JPH::RVec3 position = to_jolt_place(target->origin);
                 const JPH::Quat rotation = rotation_of(*target);
                 if (position != jolt->GetPosition() || rotation != jolt->GetRotation()) {
                     interface.MoveKinematic(body->id, position, rotation, seconds);
@@ -1543,7 +1543,7 @@ void Space::pre_step(const world::World& world, float seconds) {
         body->contacts.clear();
         // Godot's JoltBody3D::_integrate_forces: damping first, then gravity, then the
         // constant forces.
-        const AreaForces forces = this->forces(world, *body, from_jolt(jolt->GetPosition()));
+        const AreaForces forces = this->forces(world, *body, from_jolt_place(jolt->GetPosition()));
         body->gravity = forces.gravity * own->gravity_scale;
         body->total_linear_damp =
             with_own(forces.linear_damp, own->linear_damp_mode, own->linear_damp);

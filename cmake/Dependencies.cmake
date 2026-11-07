@@ -94,12 +94,19 @@ slash_add_dependency(box2d
 # floating-point contraction off, and with no x86 instruction sets past SSE2 (as Box2D above),
 # since games run on machines from 2020 on. Its debug renderer, profiler, object streams, GPU
 # compute and floating-point exceptions stay out, and it takes this project's compiler flags and
-# runtime library rather than its own.
+# runtime library rather than its own. A double-precision engine (SLASH_PRECISION) builds it with
+# double-precision positions, as Godot's Jolt module does with precision=double.
+if(SLASH_PRECISION STREQUAL "double")
+    set(_slash_jolt_double ON)
+else()
+    set(_slash_jolt_double OFF)
+endif()
 slash_add_dependency(JoltPhysics
     SYSTEM TRUE
     SOURCE_SUBDIR Build
     OPTIONS
         "CROSS_PLATFORM_DETERMINISTIC ON"
+        "DOUBLE_PRECISION ${_slash_jolt_double}"
         "OVERRIDE_CXX_FLAGS OFF"
         "USE_STATIC_MSVC_RUNTIME_LIBRARY OFF"
         "INTERPROCEDURAL_OPTIMIZATION OFF"

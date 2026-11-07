@@ -315,7 +315,18 @@ Image draw_particles(RenderDevice& device, std::uint32_t size) {
     REQUIRE(texture.ok());
 
     const slash::Vec3 eye{0.0F, 0.0F, 6.0F};
-    const render::ParticleTransform camera{1, 0, 0, 0, 1, 0, 0, 0, 1, eye.x, eye.y, eye.z};
+    const render::ParticleTransform camera{1,
+                                           0,
+                                           0,
+                                           0,
+                                           1,
+                                           0,
+                                           0,
+                                           0,
+                                           1,
+                                           static_cast<float>(eye.x),
+                                           static_cast<float>(eye.y),
+                                           static_cast<float>(eye.z)};
     const std::vector<Vertex3D> source = card(0.5F);
     const std::vector<ParticleMeshDraw3D> draws = varied_draws(camera);
     std::vector<render::MeshId> meshes(draws.size());
@@ -335,7 +346,9 @@ Image draw_particles(RenderDevice& device, std::uint32_t size) {
         meshes[i] = mesh.value();
     }
     render::Scene3D scene;
-    scene.camera = render::look_at({eye.x, eye.y, eye.z}, {0.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F});
+    scene.camera = render::look_at(
+        {static_cast<float>(eye.x), static_cast<float>(eye.y), static_cast<float>(eye.z)},
+        {0.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F});
     scene.projection = render::perspective(70.0F, 1.0F, 0.1F, 100.0F);
     REQUIRE(device
                 .begin_frame(

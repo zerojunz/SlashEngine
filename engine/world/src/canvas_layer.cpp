@@ -161,8 +161,8 @@ Vec2 parallax_position(const Parallax2D& parallax, Vec2 scale, Vec2 screen_size)
         scroll.y = clamped(scroll.y, parallax.limit_begin.y, parallax.limit_end.y - screen_size.y);
     }
     scroll = {scroll.x * parallax.scroll_scale.x, scroll.y * parallax.scroll_scale.y};
-    const Vec2 repeat{std::max(parallax.repeat_size.x, 0.0F),
-                      std::max(parallax.repeat_size.y, 0.0F)};
+    const Vec2 repeat{std::max<real_t>(parallax.repeat_size.x, 0.0F),
+                      std::max<real_t>(parallax.repeat_size.y, 0.0F)};
     if (repeat.x != 0.0F) {
         const float mod = fposmod(scroll.x - parallax.scroll_offset.x, repeat.x * scale.x);
         scroll.x = screen_offset.x - mod;
@@ -196,8 +196,8 @@ void add_parallax_system(World& world, std::function<Vec2(const World&)> screen_
                          const auto delta = static_cast<float>(tick_seconds);
                          for (const auto [entity, parallax, transform] : parallaxes.each()) {
                              // NOTIFICATION_INTERNAL_PROCESS, which runs only with both set.
-                             const Vec2 repeat{std::max(parallax.repeat_size.x, 0.0F),
-                                               std::max(parallax.repeat_size.y, 0.0F)};
+                             const Vec2 repeat{std::max<real_t>(parallax.repeat_size.x, 0.0F),
+                                               std::max<real_t>(parallax.repeat_size.y, 0.0F)};
                              if ((repeat.x != 0.0F || repeat.y != 0.0F) &&
                                  (parallax.autoscroll.x != 0.0F || parallax.autoscroll.y != 0.0F)) {
                                  Vec2 offset =

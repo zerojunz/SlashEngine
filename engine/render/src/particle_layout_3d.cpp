@@ -19,7 +19,7 @@ Word floats(float x, float y, float z, float w) {
     return {bits(x), bits(y), bits(z), bits(w)};
 }
 
-Word floats(Vec3 v, float w) {
+Word floats(Vec3f v, float w) {
     return floats(v.x, v.y, v.z, w);
 }
 
@@ -45,12 +45,12 @@ void pack_particle_process_3d(const ParticleProcess3D& process, std::vector<Word
     out.reserve(out.size() + kPointsAt3D + (process.emission_points.size() * kPointWords3D));
     // The ring's top radius and skew, as the CPU twin works them out for each particle.
     const float radius = std::max(0.001F, process.emission_ring_radius);
-    const Vec2 cone = cos_sin((90.0F - process.emission_ring_cone_angle) * kDegreesToRadians);
+    const Vec2f cone = cos_sin((90.0F - process.emission_ring_cone_angle) * kDegreesToRadians);
     const float top = std::max(radius - ((cone.y / cone.x) * process.emission_ring_height), 0.0F);
     const float skew = std::max(std::min(radius, top) / std::max(radius, top), 0.5F);
-    const Vec3 axis = process.emission_ring_axis == Vec3{}
-                          ? Vec3{0.0F, 0.0F, 1.0F}
-                          : particle_math::normalize(process.emission_ring_axis);
+    const Vec3f axis = process.emission_ring_axis == Vec3f{}
+                           ? Vec3f{0.0F, 0.0F, 1.0F}
+                           : particle_math::normalize(process.emission_ring_axis);
     const std::uint32_t flags =
         (process.align_y ? kProcessAlignY : 0U) | (process.rotate_y ? kProcessRotateY : 0U) |
         (process.disable_z ? kProcessDisableZ : 0U) |
@@ -114,8 +114,8 @@ void pack_particle_process_3d(const ParticleProcess3D& process, std::vector<Word
     for (const ParticleCurve* curve : curves) {
         for (std::size_t word = 0; word < kCurveWords; ++word) {
             const std::size_t first = word * 2;
-            const Vec2 a = first < curve->size() ? (*curve)[first] : Vec2{};
-            const Vec2 b = first + 1 < curve->size() ? (*curve)[first + 1] : Vec2{};
+            const Vec2f a = first < curve->size() ? (*curve)[first] : Vec2f{};
+            const Vec2f b = first + 1 < curve->size() ? (*curve)[first + 1] : Vec2f{};
             out.push_back(floats(a.x, a.y, b.x, b.y));
         }
     }
@@ -136,7 +136,7 @@ void pack_particle_process_3d(const ParticleProcess3D& process, std::vector<Word
     for (std::size_t i = 0; i < process.emission_points.size(); ++i) {
         out.push_back(floats(process.emission_points[i], 0.0F));
         out.push_back(floats(
-            i < process.emission_normals.size() ? process.emission_normals[i] : Vec3{}, 0.0F));
+            i < process.emission_normals.size() ? process.emission_normals[i] : Vec3f{}, 0.0F));
         out.push_back(floats(i < process.emission_colors.size() ? process.emission_colors[i]
                                                                 : Vec4{1.0F, 1.0F, 1.0F, 1.0F}));
     }

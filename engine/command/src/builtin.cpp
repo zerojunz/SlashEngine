@@ -2746,8 +2746,8 @@ Reply ui_layout(Session& session, const json::Value& params) {
         if (placed.clip) {
             // The part a clip leaves: none, or less than the whole rect.
             const Vec4& clip = *placed.clip;
-            const Vec2 from{std::max(low.x, clip.x), std::max(low.y, clip.y)};
-            const Vec2 to{std::min(high.x, clip.z), std::min(high.y, clip.w)};
+            const Vec2 from{std::max<real_t>(low.x, clip.x), std::max<real_t>(low.y, clip.y)};
+            const Vec2 to{std::min<real_t>(high.x, clip.z), std::min<real_t>(high.y, clip.w)};
             if (to.x <= from.x || to.y <= from.y) {
                 item["clipped"] = true;
             } else if (from.x > low.x || from.y > low.y || to.x < high.x || to.y < high.y) {
@@ -5107,7 +5107,7 @@ Reply light_sample(Session& session, const json::Value& params) {
         // Where it is, and its z_index, after its parents.
         sampled = canvases.of(entity);
         const Vec2 at = tree.global(entity).position;
-        positions.push_back({at.x, at.y});
+        positions.push_back({static_cast<float>(at.x), static_cast<float>(at.y)});
         const canvas::Inherited from_parents = canvas::inherited(world, tree, entity);
         if (const auto* sprite = ecs.try_get<world::Sprite2D>(entity); sprite != nullptr) {
             item.light_mask = static_cast<std::uint32_t>(sprite->light_mask);

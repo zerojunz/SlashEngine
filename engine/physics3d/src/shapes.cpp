@@ -109,14 +109,25 @@ world::Affine3D affine_of(JPH::RVec3Arg position, JPH::QuatArg rotation) {
     return {.x = from_jolt(matrix.GetAxisX()),
             .y = from_jolt(matrix.GetAxisY()),
             .z = from_jolt(matrix.GetAxisZ()),
-            .origin = from_jolt(JPH::Vec3(position))};
+            .origin = from_jolt_place(position)};
 }
 
+namespace {
+
+JPH::Vec4 column(Vec3 v, float w) {
+    return {static_cast<float>(v.x), static_cast<float>(v.y), static_cast<float>(v.z), w};
+}
+
+} // namespace
+
 JPH::Mat44 matrix_of(const world::Affine3D& transform) {
-    return {JPH::Vec4(transform.x.x, transform.x.y, transform.x.z, 0.0F),
-            JPH::Vec4(transform.y.x, transform.y.y, transform.y.z, 0.0F),
-            JPH::Vec4(transform.z.x, transform.z.y, transform.z.z, 0.0F),
-            JPH::Vec4(transform.origin.x, transform.origin.y, transform.origin.z, 1.0F)};
+    return {column(transform.x, 0.0F), column(transform.y, 0.0F), column(transform.z, 0.0F),
+            column(transform.origin, 1.0F)};
+}
+
+JPH::RMat44 place_matrix_of(const world::Affine3D& transform) {
+    return {column(transform.x, 0.0F), column(transform.y, 0.0F), column(transform.z, 0.0F),
+            to_jolt_place(transform.origin)};
 }
 
 BuiltShape build_shape(const world::CollisionShape3D& shape) {
@@ -124,7 +135,7 @@ BuiltShape build_shape(const world::CollisionShape3D& shape) {
         // Godot's JoltBoxShape3D.
         const Vec3 half = column_scale(shape.size, 0.5F);
         const float margin =
-            std::min(shape.margin, std::min({half.x, half.y, half.z}) * kMarginFraction);
+            std::min<real_t>(shape.margin, std::min({half.x, half.y, half.z}) * kMarginFraction);
         return made(JPH::BoxShapeSettings(to_jolt(half), std::max(margin, 0.0F)), "box");
     }
     if (shape.shape == "sphere") {
@@ -172,8 +183,8 @@ BuiltShape build_shape(const world::CollisionShape3D& shape) {
                     std::max(high.z, point.z)};
         }
         const Vec3 size = high - low;
-        const float margin =
-            std::min(shape.margin, std::min({size.x, size.y, size.z}) * 0.5F * kMarginFraction);
+        const float margin = std::min<real_t>(shape.margin, std::min({size.x, size.y, size.z}) *
+                                                                0.5F * kMarginFraction);
         return made(JPH::ConvexHullShapeSettings(points, std::max(margin, 0.0F)), "convex polygon");
     }
     if (shape.shape == "concave_polygon") {
