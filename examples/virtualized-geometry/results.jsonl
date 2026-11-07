@@ -1,0 +1,7 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":5,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"bounds":{"max":[1.9948,2,1.9991],"min":[-2,-2,-2]},"images":[],"materials":[{"name":"rock","standard":{"albedo_color":[0.62,0.6,0.57,1],"roughness":0.9}}],"meshes":[{"lods":[20508,10254,5126,2562,1280,640,326],"materials":[0],"name":"moon","triangles":41018,"vertices":22977}],"parts":[{"mesh":0,"node":"moon"}]}}
+{"id":3,"jsonrpc":"2.0","result":{"drawn":{"clusters":81,"meshes":2},"height":180,"path":"shots/moons.png","width":320}}
+{"id":4,"jsonrpc":"2.0","result":{"changed":{"MeshInstance3D":{"virtualized":false}},"id":"far"}}
+{"id":5,"jsonrpc":"2.0","result":{"colors":[[0.133,0.133,0.145,1]],"drawn":{"clusters":74,"lods":1,"meshes":2},"height":180,"width":320}}
+{"id":6,"jsonrpc":"2.0","result":{"changed":{"Transform3D":{"position":[-1.2,0.0,-60.0]}},"id":"near"}}
+{"id":7,"jsonrpc":"2.0","result":{"colors":[[0.082,0.086,0.11,1]],"drawn":{"clusters":12,"lods":1,"meshes":2},"height":180,"width":320}}

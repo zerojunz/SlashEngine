@@ -2958,6 +2958,10 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("lod_bias", {.doc = "Times its size when picking a model's coarser LODs: "
                                       "above 1 keeps detail further away.",
                                .min = 0.001})
+        .describe("virtualized",
+                  {.doc = "Research: draws a model's surfaces as a hierarchy of clusters cut for "
+                          "the camera, so detail follows distance across a surface, in place of "
+                          "its LODs. Skinned and lightmapped surfaces draw as they are."})
         .describe("ignore_occlusion_culling",
                   {.doc = "Always drawn: OccluderInstance3Ds never hide it."})
         .describe("material_override",

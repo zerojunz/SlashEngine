@@ -761,6 +761,10 @@ move, and lights every other mesh in its box.
 Its `lod_bias` (default `1`) is Godot's `GeometryInstance3D.lod_bias`: a model's surfaces pick
 their [LODs](#mesh-lods) as if the entity were that many times larger.
 
+Its `virtualized` (default `false`) is a research feature of SlashEngine's own: a model's
+surfaces draw as a hierarchy of clusters cut for the camera, each part as fine as its distance
+needs, in place of their LODs ([virtualized-geometry.md](virtualized-geometry.md)).
+
 Its `ignore_occlusion_culling` (default `false`) is Godot's: [occluders](#occlusion-culling) never
 hide the mesh.
 
