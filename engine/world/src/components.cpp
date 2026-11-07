@@ -817,6 +817,26 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("seed", {.doc = "The Destructible3D's seed, which made the cells."})
         .describe("index", {.doc = "Which cell it is.", .min = 0})
         .describe("lifetime", {.doc = "Seconds left before it goes; 0 keeps it.", .min = 0});
+    registry.add<StreamedScene3D>()
+        .set_doc("A part of a large world kept in a scene file of its own, loaded as the entity "
+                 "\"<id>_scene\" under this one while a StreamingSource3D is within load_radius "
+                 "of its box, and unloaded when every source is farther than load_radius plus "
+                 "unload_margin, as Unreal's World Partition streams cells.")
+        .describe("scene", {.doc = "Project path of the .scene.json file it loads, which names "
+                                   "its root."})
+        .describe("size", {.doc = "Meters the box it covers measures along the world's axes, "
+                                  "centered on the entity; 0 is a point.",
+                           .min = 0})
+        .describe("load_radius",
+                  {.doc = "Meters from a source to the box at which it loads.", .min = 0})
+        .describe("unload_margin", {.doc = "Meters past load_radius every source must be before "
+                                           "it unloads, so a source on the edge doesn't load and "
+                                           "unload it each tick.",
+                                    .min = 0});
+    registry.add<StreamingSource3D>()
+        .set_doc("Streams in the StreamedScene3Ds near its entity's global position, as Unreal's "
+                 "streaming sources: a player or a camera.")
+        .describe("enabled", {.doc = "false stops it streaming anything in."});
 }
 
 // The skeleton modifiers: Godot 4.6's TwoBoneIK3D, FABRIK3D, CCDIK3D and JacobianIK3D.

@@ -1,0 +1,35 @@
+{
+  "entities": {
+    "barn": {
+      "components": {
+        "BoxMesh": {
+          "size": [2.0, 4.0, 2.0]
+        },
+        "MeshInstance3D": {},
+        "Transform3D": {
+          "position": [-20.0, 2.0, 10.0]
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "BoxMesh": {
+          "size": [100.0, 1.0, 100.0]
+        },
+        "CollisionShape3D": {
+          "size": [100.0, 1.0, 100.0]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.35, 0.5, 0.3, 1.0]
+        },
+        "StaticBody3D": {},
+        "Transform3D": {
+          "children": ["barn"]
+        }
+      }
+    }
+  },
+  "format": 1,
+  "root": "ground"
+}
