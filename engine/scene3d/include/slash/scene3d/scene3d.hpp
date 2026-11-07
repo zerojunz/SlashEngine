@@ -12,6 +12,7 @@
 #include "slash/scene3d/primitive.hpp"
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/scene3d/surface.hpp"
+#include "slash/scene3d/virtual_geometry.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
@@ -331,6 +332,12 @@ public:
     [[nodiscard]] std::size_t meshes_kept() const noexcept { return shared_.size(); }
     // How many of the last prepare's draws are at a coarser LOD than their surface's own.
     [[nodiscard]] std::size_t lods_drawn() const noexcept { return lods_drawn_; }
+    // How many clusters the last prepare's virtualized draws (MeshInstance3D.virtualized) cut
+    // their surfaces into for the camera, and how many triangles those hold.
+    [[nodiscard]] std::size_t clusters_drawn() const noexcept { return clusters_drawn_; }
+    [[nodiscard]] std::size_t cluster_triangles_drawn() const noexcept {
+        return cluster_triangles_drawn_;
+    }
     // How many of the last prepare's meshes the occluders hid from the camera.
     [[nodiscard]] std::size_t occluded() const noexcept { return occluded_; }
     // The occlusion buffer the last prepare cast, empty with occlusion off.
@@ -372,11 +379,38 @@ private:
         Bounds box;
         float lod_bias = 1.0F;
         std::uint32_t lod = 0;
+        // Its cut in cuts_, when its surface draws virtualized; its mesh is the cut's.
+        std::string cut;
     };
     // Picks each draw's LOD as Godot's Forward+ does for a camera at camera_position, seen
     // through projection at width pixels across with a threshold of threshold_pixels.
+    // Virtualized draws are cut for the camera into clusters instead, unless cut is false (a
+    // reflection probe's faces draw the camera's cut).
     void pick_lods(const Vec3& camera_position, const std::array<float, 16>& projection,
-                   bool orthogonal, float width, float threshold_pixels);
+                   bool orthogonal, float width, float threshold_pixels, bool cut = true);
+    // A virtualized surface's hierarchy, kept by its kept_mesh key, and one draw's cut of it:
+    // the clusters chosen and a mesh of their triangles, made again when they change.
+    struct Clustered {
+        std::shared_ptr<const ClusterHierarchy> hierarchy;
+        std::vector<render::Vertex3D> vertices;
+        std::uint64_t used = 0;
+    };
+    struct Cut {
+        std::string clustered;
+        world::Affine3D place; // where its surface is drawn
+        Bounds box;            // its surface's bounds, in its own space
+        std::vector<std::uint32_t> clusters;
+        std::size_t triangles = 0;
+        render::MeshId id = render::MeshId::None;
+        std::uint64_t used = 0;
+    };
+    // Cuts a virtualized draw for a camera at camera_position (pixels_per_unit is the projection's
+    // pixels across a unit at a unit's distance; 0 for an orthogonal one) and points it at the
+    // cut's mesh.
+    // Destroys the cuts' meshes, only those of cuts no draw used this frame when unused_only.
+    void destroy_cuts(bool unused_only);
+    void cut_clusters(Draw& draw, const Vec3& camera_position, float pixels_per_unit,
+                      float threshold_pixels);
     // Casts the occlusion buffer for the camera from the world's occluders and leaves the meshes
     // it hides out of the frame, as Godot's _scene_cull leaves them out of the camera's list:
     // drawn only into shadow maps when they cast shadows.
@@ -666,6 +700,10 @@ private:
     std::unordered_map<std::string, Shared> shared_;
     std::vector<Draw> draws_;
     std::size_t lods_drawn_ = 0;
+    std::size_t clusters_drawn_ = 0;
+    std::size_t cluster_triangles_drawn_ = 0;
+    std::unordered_map<std::string, Clustered> clustered_;
+    std::unordered_map<std::string, Cut> cuts_;
     // Occlusion culling: the occluders' triangles, the depth buffer cast into them, each draw's
     // jitter timeout by its entity and place among the entity's draws, and how many it hid.
     OccluderScene occluder_scene_;

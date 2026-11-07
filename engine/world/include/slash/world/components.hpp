@@ -74,6 +74,11 @@ struct MeshInstance3D {
     // Times its size when picking a coarser LOD of a model's surfaces, as Godot's
     // GeometryInstance3D.lod_bias: above 1 keeps detail further away, below 1 drops it sooner.
     float lod_bias = 1.0F;
+    // A research feature, SlashEngine's own (docs/reference/virtualized-geometry.md): the model's
+    // surfaces draw as a hierarchy of clusters of triangles (scene3d::build_cluster_hierarchy) cut
+    // for the camera, each part as fine as its distance needs, in place of their LODs. Skinned and
+    // lightmapped surfaces draw as they are.
+    bool virtualized = false;
     // Always drawn, never hidden by OccluderInstance3Ds, as Godot's
     // GeometryInstance3D.ignore_occlusion_culling.
     bool ignore_occlusion_culling = false;
@@ -87,7 +92,7 @@ struct MeshInstance3D {
     friend bool operator==(const MeshInstance3D&, const MeshInstance3D&) = default;
 };
 SLASH_COMPONENT(MeshInstance3D, mesh, layers, cast_shadow, gi_mode, gi_lightmap_texel_scale,
-                lod_bias, ignore_occlusion_culling, material_override, material_params)
+                lod_bias, virtualized, ignore_occlusion_culling, material_override, material_params)
 
 // One instance of a MultiMeshInstance3D's mesh: where it is in the entity's space, as a
 // Transform3D's position, rotation (radians, Godot's YXZ order) and scale.
