@@ -691,7 +691,7 @@ for (const slash::world::Event& event : world.events()) {
 
 | Front end | Speaks | Use it for |
 | --- | --- | --- |
-| `slash-mcp` | MCP over stdio | Claude Code, Codex, Cursor and any other MCP client |
+| `slash-mcp` | MCP over stdio | Claude Code, Codex, Cursor, opencode, Hermes Agent, OpenClaw and any other MCP client |
 | `slash-mcp --live` | MCP over stdio, forwarded over HTTP | An agent driving a game that is already running |
 | `slash-cli call` | One command per process | Scripts and shell use |
 | `slash-cli rpc` | JSON-RPC 2.0, one message per line on stdio | Tools that keep one engine open |
@@ -725,7 +725,9 @@ edit a frozen frame or advance it with `step`; `play` lets it run again.
 ## Agent setup files
 
 `slash-cli init` writes everything an agent needs to work on a game: MCP configs for Claude Code
-(`.mcp.json`), Codex (`.codex/config.toml`) and Cursor (`.cursor/mcp.json`), an `AGENTS.md` with
+(`.mcp.json`), Codex (`.codex/config.toml`), Cursor (`.cursor/mcp.json`) and opencode
+(`opencode.json`), the entries Hermes Agent and OpenClaw take in their users' own configs
+(`.slash/agents/`, naming the project's folder in full), an `AGENTS.md` with
 the working rules and a link to the engine's [examples](../examples/README.md) at the commit the
 project pins, a `CLAUDE.md` that loads it, a Claude Code skill for editing scenes, a GitHub
 Actions workflow that checks the project and exports and tests every platform
