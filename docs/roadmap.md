@@ -19,9 +19,9 @@ order is the plan, and each item carries a status instead. It is drawn from the 
 
 Milestones 1 to 8 are done, and so is every Launch row of the [feature table](#features-by-area).
 Only milestone 3's exit check runs with Codex and Cursor (Claude Code's is recorded) and the
-published macOS release remain; both need Dan.
-The release needs a version tag, the archive CI already packages, and the tools notarized with
-his Developer ID.
+published macOS release remain; both need Dan. The release needs only a version tag: CI drafts it
+with the packages, signing and notarizing the macOS tools once the repository has his Developer
+ID as Actions secrets ([CONTRIBUTING.md](../CONTRIBUTING.md#releases)).
 
 The engine builds and is tested on macOS, Linux and Windows. It covers the 2D and 3D feature
 sets, networking, XR, localization, video, accessibility, procedural generation and platform
@@ -1062,7 +1062,8 @@ chose this split.
         exports fetch dependencies once per machine. CI packages it as `slashengine-macos.tar.gz`,
         then builds a game's code and exports the game from the unpacked copy
   - [ ] A published release: a version tag, the archive attached and the tools notarized with a
-        Developer ID
+        Developer ID. A `v*` tag drafts the release with every package and notarizes the macOS
+        tools when the `APPLE_*` secrets exist; the tag and the secrets remain
 - [x] Exports for all six platforms: CI exports and runs a game for macOS, Windows, Linux, the
       web, Android (on an emulator) and iOS (in the Simulator) on every pull request
 - [x] Reference docs generated from `engine.describe`: `slash-cli docs` writes every component's
