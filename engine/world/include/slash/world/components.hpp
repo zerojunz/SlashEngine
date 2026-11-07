@@ -2652,6 +2652,27 @@ struct NavigationObstacle3D {
 SLASH_COMPONENT(NavigationObstacle3D, radius, height, vertices, avoidance_enabled, velocity,
                 avoidance_layers, use_3d_avoidance, affect_navigation_mesh, carve_navigation_mesh)
 
+// An NPC that plans, as F.E.A.R.'s goal-oriented action planning: its .npc.json brain names
+// facts, goals and actions, and the npc system picks the first goal by priority it can reach and
+// runs the cheapest chain of actions to it (slash/npc/npc.hpp). facts holds the values that differ
+// from the brain's defaults; goal, plan and the times are the system's, saved with the rest.
+struct NpcAgent {
+    std::string brain;                // project path of a .npc.json file
+    std::map<std::string, int> facts; // fact values over the brain's defaults
+    std::string goal;                 // the goal it is pursuing, or ""
+    std::vector<std::string> plan;    // the actions left, the running one first
+    float action_time = 0.0F;         // seconds the running action has run
+    float think_interval = 0.5F;      // seconds between thinking again
+    float think_in = 0.0F;            // seconds until it thinks again
+    float speed = 2.0F;               // units a second a go_to action walks
+    float arrive_distance = 0.5F;     // how near a go_to action's target counts as there
+    bool enabled = true;
+
+    friend bool operator==(const NpcAgent&, const NpcAgent&) = default;
+};
+SLASH_COMPONENT(NpcAgent, brain, facts, goal, plan, action_time, think_interval, think_in, speed,
+                arrive_distance, enabled)
+
 // ---- Particles, as Godot's CPUParticles2D.
 
 // A color at a point of a gradient, as one stop of Godot's Gradient.

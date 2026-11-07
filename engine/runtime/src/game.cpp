@@ -8,6 +8,7 @@
 #include "slash/input/input.hpp"
 #include "slash/l10n/l10n.hpp"
 #include "slash/net/multiplayer.hpp"
+#include "slash/npc/npc.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/runtime/icon.hpp"
 #include "slash/scene3d/scene3d.hpp"
@@ -307,6 +308,7 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
     physics2d::install(world_, project_.physics_2d);
     physics3d::install(world_, project_.physics_3d);
     navigation::install(world_, assets_, project_.navigation);
+    npc::install(world_, assets_);
     input::install(world_, project_.input, project_.input_devices);
     audio::install(world_, assets_, project_.audio);
     // With no backends until an SDK package's glue code gives some.

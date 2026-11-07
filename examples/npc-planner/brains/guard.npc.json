@@ -1,0 +1,49 @@
+{
+  "actions": [
+    {
+      "do": {
+        "go_to": "tower"
+      },
+      "effects": {
+        "at_tower": true
+      },
+      "name": "climb_tower"
+    },
+    {
+      "do": {
+        "emit": "bell"
+      },
+      "effects": {
+        "alarm_rung": true
+      },
+      "name": "ring_bell",
+      "needs": {
+        "at_tower": true
+      }
+    }
+  ],
+  "facts": {
+    "alarm_rung": false,
+    "at_tower": false,
+    "thief_seen": false
+  },
+  "format": 1,
+  "goals": [
+    {
+      "name": "raise_alarm",
+      "priority": 1,
+      "want": {
+        "alarm_rung": true
+      },
+      "when": {
+        "thief_seen": true
+      }
+    },
+    {
+      "name": "keep_watch",
+      "want": {
+        "at_tower": true
+      }
+    }
+  ]
+}

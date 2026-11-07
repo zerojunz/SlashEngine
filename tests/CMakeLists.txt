@@ -129,6 +129,7 @@ add_executable(slash_tests
     test_accessibility_web.cpp
     test_websocket.cpp
     test_navigation.cpp
+    test_npc.cpp
     test_net.cpp
     test_occlusion.cpp
     test_openxr.cpp
@@ -206,7 +207,7 @@ add_executable(slash_tests
     test_voxel_gi.cpp
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
-    slash::ai slash::ai_commands slash::animation slash::asset slash::audio slash::autopilot slash::bench slash::canvas slash::command slash::core slash::debug slash::exporter slash::importer slash::input slash::l10n slash::library slash::library_commands slash::navigation slash::net slash::physics2d slash::physics3d slash::plugin
+    slash::ai slash::ai_commands slash::animation slash::asset slash::audio slash::autopilot slash::bench slash::canvas slash::command slash::core slash::debug slash::exporter slash::importer slash::input slash::l10n slash::library slash::library_commands slash::navigation slash::net slash::npc slash::physics2d slash::physics3d slash::plugin
     slash::platform slash::procedural slash::render slash::runtime slash::scene3d slash::server slash::services slash::shader_compiler slash::soundtrack slash::soundtrack_commands slash::storyboard slash::text slash::texture_encoder slash::ui slash::video slash::video_commands slash::video_encoder slash::world slash::xr doctest::doctest SDL3::SDL3-static
     slash_httplib # a stand-in model server for the AI provider tests
     webp) # WebP textures for the Godot unpacking tests

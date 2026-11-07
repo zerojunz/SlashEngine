@@ -9,7 +9,7 @@ slash_engine_target(slash_gameplay)
 # The engine libraries a game's code may call, which a program loading gameplay libraries links
 # in whole and exports.
 set(SLASH_GAMEPLAY_LIBRARIES slash_ai slash_animation slash_asset slash_audio slash_canvas slash_core
-    slash_gameplay slash_input slash_l10n slash_net slash_physics2d slash_platform slash_procedural
+    slash_gameplay slash_input slash_l10n slash_net slash_npc slash_physics2d slash_platform slash_procedural
     slash_render slash_runtime slash_services slash_text slash_ui slash_video slash_world slash_xr
     CACHE INTERNAL "")
 set(SLASH_GAMEPLAY_DIR ${CMAKE_CURRENT_SOURCE_DIR} CACHE INTERNAL "")

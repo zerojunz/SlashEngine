@@ -23,6 +23,7 @@
 #include "slash/command/model_cleanup.hpp"
 #include "slash/command/navigation.hpp"
 #include "slash/command/net.hpp"
+#include "slash/command/npc.hpp"
 #include "slash/command/perf.hpp"
 #include "slash/command/place.hpp"
 #include "slash/command/replay.hpp"
@@ -39,6 +40,7 @@
 #include "slash/gameplay/host.hpp"
 #include "slash/input/input.hpp"
 #include "slash/navigation/navigation.hpp"
+#include "slash/npc/npc.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/platform/file.hpp"
@@ -475,6 +477,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "navpoly") {
         return Reply::success(navigation::polygon_schema());
+    }
+    if (kind == "npc") {
+        return Reply::success(npc::brain_schema());
     }
     if (kind == "meshlib") {
         return Reply::success(scene3d::mesh_library_schema());
@@ -6968,20 +6973,42 @@ void register_builtin_commands(Registry& registry) {
                                           "or \"storyboard\" for those files, \"component\" for "
                                           "one component's fields, \"command\" for a command's "
                                           "params.");
-    kind["enum"] =
-        json::Array{"scene",    "prefab",           "frames",    "material", "animation",
-                    "animtree", "process_material", "tileset",   "font",     "theme",
-                    "audio",    "bus_layout",       "navmesh",   "navpoly",  "meshlib",
-                    "lightmap", "voxel_gi",         "model",     "replay",   "test",
-                    "score",    "storyboard",       "component", "command",  "standard_material",
-                    "texture",  "scatter"};
+    kind["enum"] = json::Array{"scene",
+                               "prefab",
+                               "frames",
+                               "material",
+                               "animation",
+                               "animtree",
+                               "process_material",
+                               "tileset",
+                               "font",
+                               "theme",
+                               "audio",
+                               "bus_layout",
+                               "navmesh",
+                               "navpoly",
+                               "npc",
+                               "meshlib",
+                               "lightmap",
+                               "voxel_gi",
+                               "model",
+                               "replay",
+                               "test",
+                               "score",
+                               "storyboard",
+                               "component",
+                               "command",
+                               "standard_material",
+                               "texture",
+                               "scatter"};
     registry.add({
         .name = "schema.get",
         .description =
             "Returns a JSON Schema: for scene, prefab, .frames.json, .material.json, "
             ".anim.json, .animtree.json, .process_material.json, .tileset.json, .font.json, "
             ".theme.json, .audio.json, "
-            ".bus_layout.json, .navmesh.json, .navpoly.json, .meshlib.json, .lightmap.json, "
+            ".bus_layout.json, .navmesh.json, .navpoly.json, .npc.json, .meshlib.json, "
+            ".lightmap.json, "
             ".voxelgi.json, .model.json, .standard_material.json, .texture.json, .scatter.json, "
             ".replay.json, "
             ".test.json, "
@@ -8650,6 +8677,7 @@ void register_builtin_commands(Registry& registry) {
     register_playtest_commands(registry);
     register_project_map(registry);
     register_navigation_commands(registry);
+    register_npc_commands(registry);
     register_place_commands(registry);
     register_terrain_commands(registry);
     register_procedural_commands(registry);

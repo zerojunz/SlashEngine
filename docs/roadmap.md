@@ -1121,6 +1121,18 @@ launch rows and the after-launch features above.
   and Live Link Face recordings imported as animations by `animation.import_face_capture`),
   and alpha hash done (Godot's `"alpha_hash"` transparency, with a hash every device makes alike)
 
+## Agent-built worlds and smart NPCs
+
+Ways for agents to build detailed 3D worlds and many smarter NPCs at a fraction of Unreal's
+cost, from the research proposal of 2026-11-07, in order:
+
+1. [x] Planning NPCs: goal-oriented action planning as F.E.A.R.'s, with `.npc.json` brains of
+       facts, goals and actions, `NpcAgent` components planned on the job system, go_to along
+       navigation paths, and the `npc.plan` command
+2. [ ] Goals and brains written by a model from the storyboard, checked by `npc.plan`
+3. [ ] Lighting checks for agents (`lighting.check`) and ReSTIR direct lighting
+4. [ ] Gaussian splats and generated meshes (TRELLIS) for detailed scenery
+
 Console ports are not on this roadmap and never will be in this repository. As with Godot,
 PlayStation, Xbox and Switch support comes from licensed porting partners as private backends.
 

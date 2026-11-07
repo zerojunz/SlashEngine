@@ -71,6 +71,7 @@ as `entity.get`, reject it as an unknown param.
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity), [`physics.soft_body`](#physicssoft_body), [`physics.break`](#physicsbreak) |
 | World streaming | [`streaming.state`](#streamingstate) |
 | Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent), [`navigation.bake`](#navigationbake) |
+| NPCs | [`npc.plan`](#npcplan) |
 | Particles | [`particles.eval`](#particleseval), [`particles.bake_sdf`](#particlesbake_sdf) |
 | Lights | [`light.sample`](#lightsample) |
 | Global illumination | [`lightmap.bake`](#lightmapbake), [`voxel_gi.bake`](#voxel_gibake) |
@@ -167,6 +168,7 @@ Returns a JSON Schema: for scene, prefab, [`.frames.json`](scene-format.md#sprit
 [`.bus_layout.json`](scene-format.md#bus-layouts), [`.replay.json`](scene-format.md#replays),
 [`.test.json`](scene-format.md#tests),
 [`.navmesh.json` or `.navpoly.json`](scene-format.md#navigation-meshes-and-polygons),
+[`.npc.json`](scene-format.md#npcs),
 [`.meshlib.json`](scene-format.md#mesh-libraries), [`.model.json`](scene-format.md#model-recipes),
 [`.standard_material.json`](scene-format.md#material-files),
 [`.texture.json`](scene-format.md#procedural-textures),
@@ -175,7 +177,7 @@ command.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"standard_material"`, `"texture"`, `"scatter"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"npc"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"standard_material"`, `"texture"`, `"scatter"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -1910,6 +1912,48 @@ with no file named and a file of the other kind. A file that doesn't validate fa
 first error's JSON Pointer.
 
 ## Particles
+
+### npc.plan
+
+Returns the goal an [NPC](scene-format.md#npcs) would choose and the cheapest plan to it, as its
+`npc` system would: the `goal`, the `plan` (its actions' names), its `cost`, how many states the
+planner `searched` and the `facts` it planned from. When no goal is chosen, `goal` is null and
+`goals` says why for each: its when conditions don't hold, its want
+conditions already hold, or no plan reaches it within `search_limit`. With `goal`, it plans for
+that goal whatever its `when` and priority, and says whether a plan was `found`. Planning changes
+nothing.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | | An entity with an `NpcAgent`: plans from its facts |
+| `brain` | string | | A `.npc.json` file: plans from its facts' defaults |
+| `facts` | object | `{}` | Facts to change first, by name: whole numbers or booleans |
+| `goal` | string | | Plan for this goal |
+| `check` | boolean | `false` | Also return the brain's `warnings`: goals no chain of actions reaches from the facts' defaults and actions no plan uses |
+
+Needs: `read`. Give `id` or `brain`. A cook whose brain cooks, then eats:
+
+```json
+{"brain": "cook.npc.json", "check": true}
+```
+
+```json
+{"cost":2,"facts":{"food":1,"has_food":0,"hungry":1},"goal":"eat","plan":["cook","eat"],"searched":3,"warnings":[{"message":"goal \"stock_up\" is out of reach from the facts' defaults","path":"/goals/1"}]}
+```
+
+The same cook with no food left:
+
+```json
+{"id": "cook"}
+```
+
+```json
+{"facts":{"food":0,"has_food":0,"hungry":1},"goal":null,"goals":{"eat":"no plan within search_limit","stock_up":"no plan within search_limit"}}
+```
+
+An unknown ID, goal or fact fails at its path with a "did you mean"; an entity with no
+`NpcAgent`, or a brain that doesn't load, fails at `/id` or `/brain`.
+[examples/npc-planner](../../examples/npc-planner/) asks it about a village.
 
 ### particles.eval
 

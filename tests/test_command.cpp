@@ -1300,15 +1300,15 @@ TEST_CASE("engine.describe lists systems in the order they run") {
     world.add_system("controls", [](world::World& /*w*/, double /*dt*/) {}, {.priority = -1});
     // Every session applies input, network, XR and service events first, streams the world in,
     // and plays animations, steps 2D and 3D physics, checks synchronizers' visibility, steps
-    // navigation, moves the camera and parallax, runs particles, hands over models' replies and
-    // plays sound with built-in systems that run late. The particle systems are threaded: the CPU
-    // ones and GPUParticles2D's run at the same time, and GPUParticles3D's, which loads vector
-    // fields' textures as GPUParticles2D's loads its own, runs after them.
+    // navigation, runs NPCs, moves the camera and parallax, runs particles, hands over models'
+    // replies and plays sound with built-in systems that run late. The particle systems are
+    // threaded: the CPU ones and GPUParticles2D's run at the same time, and GPUParticles3D's, which
+    // loads vector fields' textures as GPUParticles2D's loads its own, runs after them.
     CHECK(
         *engine.ok("engine.describe").find("systems") ==
         parse(
             R"(["input", "multiplayer", "gui", "xr", "services", "world_streaming", "controls", "movement", "animation_player",
-                    "animation_tree", "skeleton_modifiers", "path_follow", "physics2d", "physics3d", "multiplayer_visibility", "navigation", "animated_sprite_2d",
+                    "animation_tree", "skeleton_modifiers", "path_follow", "physics2d", "physics3d", "multiplayer_visibility", "navigation", "npc", "animated_sprite_2d",
                     "camera_2d", "parallax_2d", "cpu_particles_2d", "cpu_particles_3d", "gpu_particles_2d", "gpu_particles_3d", "video", "ai", "audio"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
         {"name": "input", "doc": "Applies the input events queued since the last tick.",
@@ -1353,6 +1353,9 @@ TEST_CASE("engine.describe lists systems in the order they run") {
         {"name": "navigation",
          "doc": "Rebuilds changed navigation maps, moves agents along their paths and gives avoiding agents safe velocities.",
          "priority": 960},
+        {"name": "npc",
+         "doc": "Runs each NpcAgent's action, then has those due to think choose a goal and plan the cheapest chain of actions to it.",
+         "priority": 965},
         {"name": "animated_sprite_2d",
          "doc": "Plays each AnimatedSprite2D's animation on its Sprite2D.", "priority": 1000},
         {"name": "camera_2d",
@@ -1363,19 +1366,19 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "priority": 1060},
         {"name": "cpu_particles_2d",
          "doc": "Emits, moves and ages each CPUParticles2D's particles.", "priority": 1100,
-         "threaded": true, "stage": 19, "reads": ["Transform2D"], "writes": ["CPUParticles2D"]},
+         "threaded": true, "stage": 20, "reads": ["Transform2D"], "writes": ["CPUParticles2D"]},
         {"name": "cpu_particles_3d",
          "doc": "Emits, moves and ages each CPUParticles3D's particles.", "priority": 1100,
-         "threaded": true, "stage": 19, "reads": ["Transform3D"], "writes": ["CPUParticles3D"]},
+         "threaded": true, "stage": 20, "reads": ["Transform3D"], "writes": ["CPUParticles3D"]},
         {"name": "gpu_particles_2d",
          "doc": "Steps each GPUParticles2D's emission for renderers to run.", "priority": 1110,
-         "threaded": true, "stage": 19,
+         "threaded": true, "stage": 20,
          "reads": ["Transform2D", "LightOccluder2D", "TileMapLayer", "CanvasLayer", "Control",
                    "Camera2D"],
          "writes": ["GPUParticles2D", "assets"]},
         {"name": "gpu_particles_3d",
          "doc": "Steps each GPUParticles3D's emission for renderers to run.", "priority": 1110,
-         "threaded": true, "stage": 20,
+         "threaded": true, "stage": 21,
          "reads": ["GPUParticlesAttractorSphere3D", "GPUParticlesAttractorBox3D",
                    "GPUParticlesAttractorVectorField3D", "GPUParticlesCollisionSphere3D",
                    "GPUParticlesCollisionBox3D", "GPUParticlesCollisionSDF3D",
@@ -2506,6 +2509,58 @@ TEST_CASE("navigation commands find paths, points and agents' progress") {
     const json::Value& errors = *map.find("3d")->find("errors");
     REQUIRE(errors.size() == 1);
     CHECK(*errors.as_array()[0].find("id") == "lost");
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("npc.plan says what an NPC would choose and why") {
+    const std::string root = "npc_plan_test_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    REQUIRE(slash::platform::write_file(root + "/cook.npc.json", R"({"format": 1,
+        "facts": {"hungry": true, "has_food": false, "food": 1},
+        "goals": [{"name": "eat", "when": {"hungry": true}, "want": {"hungry": false}},
+                  {"name": "stock_up", "want": {"food": ">=3"}}],
+        "actions": [
+            {"name": "cook", "needs": {"has_food": false, "food": ">0"},
+             "effects": {"has_food": true, "food": "-1"}, "do": {"wait": 2}},
+            {"name": "eat", "needs": {"has_food": true},
+             "effects": {"has_food": false, "hungry": false}}]})")
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("entity.create", R"({"id": "cook", "components": {
+        "NpcAgent": {"brain": "cook.npc.json", "facts": {"food": 0}}}})");
+
+    // From the file: cook, then eat. With check, stock_up is out of reach.
+    CHECK(engine.ok("npc.plan", R"({"brain": "cook.npc.json", "check": true})") == parse(R"({
+        "goal": "eat", "plan": ["cook", "eat"], "cost": 2, "searched": 3,
+        "facts": {"food": 1, "has_food": 0, "hungry": 1},
+        "warnings": [{"path": "/goals/1",
+                      "message": "goal \"stock_up\" is out of reach from the facts' defaults"}]})"));
+    // The cook has no food, so no goal can be reached; npc.plan says why for each.
+    CHECK(engine.ok("npc.plan", R"({"id": "cook"})") == parse(R"({"goal": null,
+        "goals": {"eat": "no plan within search_limit", "stock_up": "no plan within search_limit"},
+        "facts": {"food": 0, "has_food": 0, "hungry": 1}})"));
+    CHECK(engine.ok("npc.plan", R"({"id": "cook", "facts": {"hungry": false}})") ==
+          parse(R"({"goal": null, "goals": {"eat": "its when conditions don't hold",
+                    "stock_up": "no plan within search_limit"},
+                    "facts": {"food": 0, "has_food": 0, "hungry": 0}})"));
+    CHECK(engine.ok("npc.plan", R"({"id": "cook", "goal": "eat", "facts": {"food": 2}})") ==
+          parse(R"({"goal": "eat", "found": true, "plan": ["cook", "eat"], "cost": 2,
+                    "searched": 3, "facts": {"food": 2, "has_food": 0, "hungry": 1}})"));
+
+    auto reply = engine.fails("npc.plan", R"({"id": "cook", "goal": "eats"})",
+                              command::code::kInvalidParams);
+    CHECK(reply.message == "/goal: the brain has no goal named \"eats\"; did you mean \"eat\"?");
+    reply = engine.fails("npc.plan", R"({"id": "cook", "facts": {"fod": 1}})",
+                         command::code::kInvalidParams);
+    CHECK(reply.message ==
+          "/facts/fod: the brain has no fact named \"fod\"; did you mean \"food\"?");
+    reply = engine.fails("npc.plan", R"({"id": "cok"})", command::code::kNotFound);
+    CHECK(reply.message == "/id: no entity has the id \"cok\"; did you mean \"cook\"?");
+    engine.fails("npc.plan", "{}", command::code::kInvalidParams);
+    engine.fails("npc.plan", R"({"brain": "missing.npc.json"})", command::code::kInvalidParams);
     std::filesystem::remove_all(root);
 }
 

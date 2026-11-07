@@ -1143,6 +1143,35 @@ void register_navigation_components(ComponentRegistry& registry) {
         .describe("height", {.doc = "How far up from the entity it reaches.", .min = 0})
         .describe("use_3d_avoidance",
                   {.doc = "Its circle is a sphere, avoided by agents with use_3d_avoidance."});
+
+    registry.add<NpcAgent>()
+        .set_doc("An NPC that plans, as F.E.A.R.'s goal-oriented action planning: its .npc.json "
+                 "brain names facts, goals and actions, and the npc system pursues the first goal "
+                 "by priority whose when conditions hold, running the cheapest chain of actions "
+                 "that reaches it. It emits npc_goal_changed, npc_action_started and "
+                 "npc_action_finished; gameplay code sets facts as the world changes.")
+        .describe("brain", {.doc = "Project path of a .npc.json file."})
+        .describe("facts", {.doc = "Fact values that differ from the brain's defaults (false is 0, "
+                                   "true 1); actions' effects and gameplay code change them."})
+        .describe("facts{}", {.doc = "The fact's value."})
+        .describe("goal", {.doc = "The goal it is pursuing, or \"\" when none; set by the system."})
+        .describe("plan", {.doc = "The actions left to reach its goal, the running one first; set "
+                                  "by the system."})
+        .describe("plan[]", {.doc = "An action's name."})
+        .describe("action_time", {.doc = "Seconds the running action has run.", .min = 0})
+        .describe("think_interval",
+                  {.doc = "Seconds between choosing a goal again; it also thinks when its plan "
+                          "ends or stops working.",
+                   .min = 0})
+        .describe("think_in",
+                  {.doc = "Seconds until it thinks again; 0 thinks at the next tick.", .min = 0})
+        .describe("speed", {.doc = "How fast go_to actions walk, in meters (2D: pixels) a second.",
+                            .min = 0})
+        .describe("arrive_distance",
+                  {.doc = "How near a go_to action's target counts as there, in meters (2D: "
+                          "pixels).",
+                   .min = 0})
+        .describe("enabled", {.doc = "Whether it thinks and acts."});
 }
 
 } // namespace

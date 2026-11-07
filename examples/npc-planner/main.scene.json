@@ -1,0 +1,65 @@
+{
+  "entities": {
+    "ann": {
+      "components": {
+        "NpcAgent": {
+          "brain": "brains/villager.npc.json"
+        },
+        "Transform3D": {}
+      }
+    },
+    "bob": {
+      "components": {
+        "NpcAgent": {
+          "brain": "brains/villager.npc.json",
+          "facts": {
+            "hungry": 1
+          }
+        },
+        "Transform3D": {
+          "position": [1.0, 0.0, 0.0]
+        }
+      }
+    },
+    "field": {
+      "components": {
+        "Transform3D": {
+          "position": [6.0, 0.0, 0.0]
+        }
+      }
+    },
+    "guard": {
+      "components": {
+        "NpcAgent": {
+          "brain": "brains/guard.npc.json",
+          "speed": 1.5
+        },
+        "Transform3D": {
+          "position": [0.0, 0.0, 3.0]
+        }
+      }
+    },
+    "hall": {
+      "components": {
+        "Transform3D": {
+          "position": [0.0, 0.0, -4.0]
+        }
+      }
+    },
+    "pantry": {
+      "components": {
+        "Transform3D": {
+          "position": [-3.0, 0.0, 0.0]
+        }
+      }
+    },
+    "tower": {
+      "components": {
+        "Transform3D": {
+          "position": [0.0, 0.0, 6.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

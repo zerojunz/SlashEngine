@@ -44,6 +44,7 @@
 #include "slash/library/commands.hpp"
 #include "slash/library/team.hpp"
 #include "slash/navigation/navigation.hpp"
+#include "slash/npc/npc.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/platform.hpp"
 #include "slash/platform/process.hpp"
@@ -158,7 +159,7 @@ Usage:
                                      .material.json, .process_material.json, .anim.json,
                                      .animtree.json, .tileset.json, .font.json, .theme.json,
                                      .audio.json, .bus_layout.json, .navmesh.json,
-                                     .navpoly.json, .meshlib.json, .standard_material.json,
+                                     .navpoly.json, .npc.json, .meshlib.json, .standard_material.json,
                                      .lightmap.json, .voxelgi.json, .texture.json, .replay.json,
                                      .test.json or .score.json
                                      file; lists every error
@@ -170,7 +171,8 @@ Usage:
                                      animtree (.animtree.json), tileset (.tileset.json), font (.font.json), theme
                                      (.theme.json), audio (.audio.json), bus_layout
                                      (.bus_layout.json), navmesh (.navmesh.json), navpoly
-                                     (.navpoly.json), meshlib (.meshlib.json), standard_material
+                                     (.navpoly.json), npc (.npc.json), meshlib (.meshlib.json),
+                                     standard_material
                                      (.standard_material.json), lightmap
                                      (.lightmap.json), voxel_gi (.voxelgi.json), texture
                                      (.texture.json), replay
@@ -1192,6 +1194,7 @@ int cmd_scene_validate(const std::string& path) {
     const bool buses = path.ends_with(slash::audio::kBusLayoutSuffix);
     const bool navmesh = path.ends_with(slash::navigation::kMeshSuffix);
     const bool navpoly = path.ends_with(slash::navigation::kPolygonSuffix);
+    const bool brain = path.ends_with(slash::npc::kBrainSuffix);
     const bool meshlib = path.ends_with(slash::scene3d::kMeshLibrarySuffix);
     const bool standard = path.ends_with(slash::scene3d::kStandardMaterialSuffix);
     const bool lightmap = path.ends_with(slash::scene3d::kLightmapSuffix);
@@ -1233,6 +1236,8 @@ int cmd_scene_validate(const std::string& path) {
         errors = slash::navigation::validate_mesh(parsed.value());
     } else if (navpoly) {
         errors = slash::navigation::validate_polygon(parsed.value());
+    } else if (brain) {
+        errors = slash::npc::validate_brain(parsed.value());
     } else if (meshlib) {
         errors = slash::scene3d::validate_mesh_library(parsed.value());
     } else if (standard) {
@@ -1276,10 +1281,13 @@ int cmd_scene_validate(const std::string& path) {
         if (errors.empty()) {
             errors = slash::navigation::check_scene(parsed.value(), prefab_reader(path));
         }
+        if (errors.empty()) {
+            errors = slash::npc::check_scene(parsed.value(), prefab_reader(path));
+        }
     }
     if (parsed && !frames && !material && !process && !animation && !tree && !tileset && !font &&
-        !theme && !stream && !buses && !navmesh && !navpoly && !meshlib && !standard && !lightmap &&
-        !replay && !test && !score && !texture) {
+        !theme && !stream && !buses && !navmesh && !navpoly && !brain && !meshlib && !standard &&
+        !lightmap && !replay && !test && !score && !texture) {
         check_story_refs(path, parsed.value(), errors);
     }
     result["valid"] = errors.empty();
@@ -1288,6 +1296,15 @@ int cmd_scene_validate(const std::string& path) {
     } else if (font || stream || process || standard) {
         print(result);
         return kExitOk;
+    } else if (brain) {
+        // Its goals and actions, and what no plan reaches or uses.
+        const auto parsed_brain = slash::npc::parse_brain(parsed.value());
+        result["goals"] = parsed_brain.value().goals.size();
+        result["actions"] = parsed_brain.value().actions.size();
+        if (const auto warnings = slash::npc::check_brain(parsed_brain.value());
+            !warnings.empty()) {
+            result["warnings"] = errors_to_json(warnings);
+        }
     } else if (scatter) {
         // Its layers.
         result["layers"] = static_cast<std::int64_t>(
@@ -1439,6 +1456,9 @@ int cmd_scene_format(const std::string& path, bool check) {
         if (path.ends_with(slash::navigation::kPolygonSuffix)) {
             return format_checked(text.value(), slash::navigation::parse_polygon);
         }
+        if (path.ends_with(slash::npc::kBrainSuffix)) {
+            return format_checked(text.value(), slash::npc::parse_brain);
+        }
         if (path.ends_with(slash::scene3d::kMeshLibrarySuffix)) {
             return format_checked(text.value(), slash::scene3d::parse_mesh_library);
         }
@@ -1541,46 +1561,23 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 31> kKinds = {"scene",
-                                                         "prefab",
-                                                         "frames",
-                                                         "material",
-                                                         "process_material",
-                                                         "animation",
-                                                         "animtree",
-                                                         "tileset",
-                                                         "font",
-                                                         "theme",
-                                                         "audio",
-                                                         "bus_layout",
-                                                         "navmesh",
-                                                         "navpoly",
-                                                         "meshlib",
-                                                         "lightmap",
-                                                         "voxel_gi",
-                                                         "model",
-                                                         "replay",
-                                                         "test",
-                                                         "score",
-                                                         "storyboard",
-                                                         "project",
-                                                         "presets",
-                                                         "sdk",
-                                                         "plugin",
-                                                         "providers",
-                                                         "bench",
-                                                         "standard_material",
-                                                         "texture",
-                                                         "scatter"};
+    constexpr std::array<std::string_view, 32> kKinds = {
+        "scene",     "prefab",     "frames",     "material", "process_material",
+        "animation", "animtree",   "tileset",    "font",     "theme",
+        "audio",     "bus_layout", "navmesh",    "navpoly",  "npc",
+        "meshlib",   "lightmap",   "voxel_gi",   "model",    "replay",
+        "test",      "score",      "storyboard", "project",  "presets",
+        "sdk",       "plugin",     "providers",  "bench",    "standard_material",
+        "texture",   "scatter"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
-        return usage_error(
-            "schema takes one argument: scene, prefab, frames, material, "
-            "process_material, animation, animtree, tileset, font, theme, audio, "
-            "bus_layout, navmesh, navpoly, meshlib, lightmap, voxel_gi, model, standard_material, "
-            "texture, scatter, replay, test, "
-            "score, "
-            "storyboard, "
-            "project, presets, sdk, plugin, providers or bench");
+        return usage_error("schema takes one argument: scene, prefab, frames, material, "
+                           "process_material, animation, animtree, tileset, font, theme, audio, "
+                           "bus_layout, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, "
+                           "standard_material, "
+                           "texture, scatter, replay, test, "
+                           "score, "
+                           "storyboard, "
+                           "project, presets, sdk, plugin, providers or bench");
     }
     json::Value schema;
     if (args[0] == "scene") {
@@ -1611,6 +1608,8 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = slash::navigation::mesh_schema();
     } else if (args[0] == "navpoly") {
         schema = slash::navigation::polygon_schema();
+    } else if (args[0] == "npc") {
+        schema = slash::npc::brain_schema();
     } else if (args[0] == "meshlib") {
         schema = slash::scene3d::mesh_library_schema();
     } else if (args[0] == "lightmap") {
