@@ -34,9 +34,9 @@ mcp=./build/dev/tools/slash-mcp/slash-mcp
 ### Or install it
 
 On a Mac, a Linux PC or a Windows PC, an installed engine works the same way without a checkout.
-Either unpack `slashengine-macos.tar.gz`, `slashengine-linux-x86_64.tar.gz` or
-`slashengine-windows-x64.zip` (CI builds all three on every change; download them from the run's
-artifacts) or install a build of your own:
+Either unpack `slashengine-macos.tar.gz`, `slashengine-linux-x86_64.tar.gz`,
+`slashengine-linux-arm64.tar.gz` or `slashengine-windows-x64.zip` (CI builds them on every change;
+download them from the run's artifacts) or install a build of your own:
 
 ```bash
 cmake --preset release && cmake --build --preset release --target slash-cli slash-mcp slash-game
@@ -55,10 +55,12 @@ every game.
 - **macOS:** a release's tools are notarized when it says so in its notes. Otherwise macOS
   quarantines a downloaded copy: run `xattr -dr com.apple.quarantine ~/slashengine` once after
   unpacking it.
-- **Linux:** the tools link only the C and C++ runtimes. CI builds them on Ubuntu 24.04, so they
-  need glibc 2.39 or newer (Ubuntu 24.04, Debian 13, Fedora 40). Exports also need `pkg-config`
-  and, for a window, the X11 or Wayland libraries every desktop has. The games they export still
-  run on glibc 2.31.
+- **Linux:** the tools link only the C and C++ runtimes, for x86_64 or arm64. CI builds them in
+  manylinux's AlmaLinux 8 image with GCC Toolset 14, which links what an older system's C++
+  runtime lacks into the programs, so they run on glibc 2.28 or newer (Ubuntu 20.04, Debian 11,
+  Fedora 29, RHEL 8). Exports also need `pkg-config` and, for a window, the X11 or Wayland
+  libraries every desktop has, and the export toolchain `slash-cli toolchain install` downloads
+  needs glibc 2.35 (Ubuntu 22.04). The games they export run on glibc 2.31.
 - **Windows:** the tools need Visual Studio's C++ tools (2022 or newer), which also bring the
   Visual C++ runtime they link; run them from a Developer PowerShell (x64), as exports build with
   MSVC. The tools don't load a game's own C++ on Windows yet, so `slash-cli build` and hot reload

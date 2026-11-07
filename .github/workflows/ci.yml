@@ -551,7 +551,7 @@ jobs:
           path: build/empty-game/.slash/export/*/export.log
           if-no-files-found: ignore
 
-  # The macOS and Linux releases (docs/getting-started.md): the tools and the engine's sources
+  # The macOS and Windows releases (docs/getting-started.md; Linux's are release-linux): the tools and the engine's sources
   # installed, packaged, then unpacked elsewhere and used with the checkout moved away, as a
   # machine with no checkout would use them.
   release:
@@ -564,9 +564,6 @@ jobs:
           - name: macOS
             os: macos-15
             archive: slashengine-macos.tar.gz
-          - name: Linux
-            os: ubuntu-24.04
-            archive: slashengine-linux-x86_64.tar.gz
           - name: Windows
             os: windows-2022
             archive: slashengine-windows-x64.zip
@@ -672,6 +669,130 @@ jobs:
           name: ${{ matrix.archive }}
           path: ${{ runner.temp }}/${{ matrix.archive }}
           if-no-files-found: error
+
+  # The Linux releases, for x86_64 and arm64: built in manylinux's AlmaLinux 8 image with GCC
+  # Toolset 14, whose libstdc++ links what glibc 2.28's system libstdc++ lacks into the programs,
+  # so the tools run on any Linux with glibc 2.28 or newer (Ubuntu 20.04, Debian 11, ...).
+  release-linux:
+    name: Package the Linux ${{ matrix.arch }} release
+    runs-on: ${{ matrix.os }}
+    container: quay.io/pypa/manylinux_2_28_${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            os: ubuntu-24.04
+            image: x86_64
+          - arch: arm64
+            os: ubuntu-24.04-arm
+            image: aarch64
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: .cpm-cache
+          key: cpm-manylinux-${{ matrix.arch }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/dependencies.json') }}
+
+      # SDL's X11, Wayland, sound and input headers; Rust for AccessKit; CMake and Ninja.
+      - name: Install tools
+        run: |
+          dnf install -y libX11-devel libXext-devel libXrandr-devel libXcursor-devel \
+            libXfixes-devel libXi-devel libXScrnSaver-devel libXtst-devel libxkbcommon-devel \
+            wayland-devel mesa-libEGL-devel mesa-libGL-devel libdrm-devel mesa-libgbm-devel \
+            alsa-lib-devel pulseaudio-libs-devel systemd-devel dbus-devel perl jq
+          /opt/python/cp312-cp312/bin/pip install cmake ninja
+          echo /opt/python/cp312-cp312/bin >> "$GITHUB_PATH"
+          curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Build the tools
+        run: |
+          gcc --version
+          cmake --preset release
+          cmake --build --preset release --target slash-cli slash-mcp slash-game
+
+      - name: Install and package them
+        run: |
+          cmake --install build/release --prefix "$RUNNER_TEMP/slashengine"
+          cd "$RUNNER_TEMP"
+          cmake -E tar czf slashengine-linux-${{ matrix.arch }}.tar.gz slashengine
+
+      # Nothing newer than glibc 2.28's symbols, so they run on every glibc from there on.
+      - name: Check the glibc they need
+        run: |
+          for tool in slash-cli slash-mcp slash-game; do
+            newest=$(objdump -T "$RUNNER_TEMP/slashengine/bin/$tool" | grep -o 'GLIBC_[0-9.]*' \
+              | sort -t. -k2,2n -k3,3n | tail -n 1)
+            echo "$tool needs $newest"
+            case "$newest" in
+              GLIBC_2.[0-9]|GLIBC_2.1[0-9]*|GLIBC_2.2[0-8]*) ;;
+              *) echo "$tool needs $newest, newer than 2.28" >&2; exit 1 ;;
+            esac
+          done
+
+      - name: Upload the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: slashengine-linux-${{ matrix.arch }}.tar.gz
+          path: ${{ runner.temp }}/slashengine-linux-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+
+  # Each Linux package used as a person with no checkout would: on Ubuntu 20.04 (glibc 2.31), the
+  # oldest Linux games support, then on the runner's own system, where check-release.sh builds a
+  # game's code with the system's GCC, loads it and exports the game.
+  release-linux-check:
+    name: Use the Linux ${{ matrix.arch }} release
+    needs: release-linux
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            os: ubuntu-24.04
+          - arch: arm64
+            os: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: slashengine-linux-${{ matrix.arch }}.tar.gz
+          path: ${{ runner.temp }}
+
+      - name: Run the tools on Ubuntu 20.04
+        run: |
+          docker run --rm -v "$RUNNER_TEMP:/release" ubuntu:20.04 bash -c '
+            set -e
+            cd /tmp && tar xzf /release/slashengine-linux-${{ matrix.arch }}.tar.gz
+            ldd --version | head -n 1
+            slashengine/bin/slash-cli version
+            slashengine/bin/slash-cli init game > /dev/null
+            slashengine/bin/slash-cli run --headless --ticks 30 --project game
+            slashengine/bin/slash-cli project validate game
+            slashengine/bin/slash-cli call engine.describe --project game > /dev/null'
+
+      - name: Cache downloaded toolchains
+        uses: actions/cache@v4
+        with:
+          path: ~/.slash/toolchains
+          key: toolchains-${{ matrix.os }}-${{ hashFiles('tools/exporter/src/toolchains.cpp') }}
+
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y $LINUX_SDL_DEPS
+
+      - name: Build and export a game from the unpacked package
+        working-directory: ${{ runner.temp }}
+        run: |
+          cp "$GITHUB_WORKSPACE/.github/scripts/check-release.sh" .
+          ./check-release.sh "$RUNNER_TEMP/slashengine-linux-${{ matrix.arch }}.tar.gz" "$GITHUB_WORKSPACE"
 
   # A Mac builds Windows and Linux games with the toolchains slash-cli downloads; the runners
   # for those platforms then run them.
@@ -916,7 +1037,7 @@ jobs:
   publish:
     name: Draft the release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, tracy, double, export, release, cross-export, cross-run, lint]
+    needs: [build, tracy, double, export, release, release-linux-check, cross-export, cross-run, lint]
     runs-on: ubuntu-24.04
     permissions:
       contents: write

@@ -27,9 +27,10 @@ The engine builds and is tested on macOS, Linux and Windows. It covers the 2D an
 sets, networking, XR, localization, video, accessibility, procedural generation and platform
 services, and every engine action is a command over MCP, JSON-RPC, REST and the command line.
 `slash-cli export` builds a game for all six platforms from one Mac. CI packages
-the tools for macOS, Linux and Windows (`slashengine-macos.tar.gz`,
-`slashengine-linux-x86_64.tar.gz` and `slashengine-windows-x64.zip`) and checks each on a machine
-with no checkout.
+the tools for macOS, Linux on x86_64 and arm64 and Windows (`slashengine-macos.tar.gz`,
+`slashengine-linux-x86_64.tar.gz`, `slashengine-linux-arm64.tar.gz` and
+`slashengine-windows-x64.zip`) and checks each on a machine with no checkout, the Linux ones on
+Ubuntu 20.04 too.
 
 ## The path to launch
 
@@ -1219,7 +1220,7 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | --- | --- | --- | --- |
 | macOS (Apple silicon and Intel) | At launch | Yes (4a) | macOS 11 Big Sur |
 | Windows x64 | After launch (CI packages the tools; a game's own C++ loads on macOS and Linux only) | Yes (4a) | Windows 10 version 2004 (May 2020) |
-| Linux x64 and arm64 | After launch (CI packages the x64 tools, for glibc 2.39 or newer) | Yes (4a) | glibc 2.31 (Ubuntu 20.04, Debian 11, Fedora 32 or newer) |
+| Linux x64 and arm64 | Done: CI packages the tools for both, built for glibc 2.28 or newer | Yes (4a) | glibc 2.31 (Ubuntu 20.04, Debian 11, Fedora 32 or newer) |
 | iOS | No | Yes (4b) | iOS 14 |
 | Android | No | Yes (4b) | Android 11 (API level 30) |
 | Web | No | Yes (4a) | Chrome and Edge 85, Firefox 79, Safari 15 |
