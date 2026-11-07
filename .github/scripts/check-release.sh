@@ -63,8 +63,18 @@ if grep -q -F -e "$checkout" ${checkout_mixed:+-e "$checkout_mixed"} "$sdk"; the
   exit 1
 fi
 
-# The checkout moves away, so the tools can only use what was installed.
-mv "$checkout" "$checkout.moved"
+# The checkout moves away, so the tools can only use what was installed. On Windows, MSVC's PDB
+# server and telemetry outlive the build in the checkout, and Windows won't move a folder a
+# running program is in, so they stop first.
+if [ "$platform" = windows ]; then
+  taskkill //F //IM mspdbsrv.exe > /dev/null 2>&1 || true
+  taskkill //F //IM vctip.exe > /dev/null 2>&1 || true
+fi
+for try in 1 2 3 4 5; do
+  mv "$checkout" "$checkout.moved" && break
+  [ "$try" = 5 ] && exit 1
+  sleep 2
+done
 trap 'mv "$checkout.moved" "$checkout"' EXIT
 
 game=$work/game
