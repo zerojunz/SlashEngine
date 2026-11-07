@@ -3687,6 +3687,35 @@ void register_3d_components(ComponentRegistry& registry) {
                   {.doc = "Each frame blends in the frame before's fog, smoothing it."})
         .describe("volumetric_fog_temporal_reprojection_amount",
                   {.doc = "How much of the frame before's fog it keeps.", .min = 0.5, .max = 0.99})
+        .describe("sdfgi_enabled",
+                  {.doc = "Forward+: SDFGI, Godot's fully dynamic global illumination, bounces "
+                          "the lights and the sky off the meshes around the camera with nothing "
+                          "baked. A research spike: only the software device draws it."})
+        .describe("sdfgi_use_occlusion",
+                  {.doc = "Probes behind walls light less, which cuts light leaks."})
+        .describe("sdfgi_read_sky_light",
+                  {.doc = "Rays that leave the cascades take the sky's light."})
+        .describe("sdfgi_bounce_feedback",
+                  {.doc = "How much of the probes' light the surfaces bounce again; 0 for one "
+                          "bounce.",
+                   .min = 0,
+                   .max = 1.99})
+        .describe("sdfgi_cascades",
+                  {.doc = "Cascades around the camera, each twice as far as the one before.",
+                   .min = 1,
+                   .max = 8})
+        .describe("sdfgi_min_cell_size",
+                  {.doc = "The nearest cascade's cell size in meters.", .min = 0.01, .max = 64})
+        .describe("sdfgi_y_scale",
+                  {.doc = "How far the cascades reach up and down, as a share of across.",
+                   .choices = {"50_percent", "75_percent", "100_percent"}})
+        .describe("sdfgi_energy", {.doc = "Multiplies its light.", .min = 0, .max = 8})
+        .describe("sdfgi_normal_bias",
+                  {.doc = "How far along a pixel's normal it reads the probes, in cells.",
+                   .min = 0,
+                   .max = 4})
+        .describe("sdfgi_probe_bias",
+                  {.doc = "How far probes' rays start from them, in cells.", .min = 0, .max = 4})
         .describe("adjustment_enabled",
                   {.doc = "Brightness, contrast, saturation and color correction apply."})
         .describe("adjustment_brightness", {.doc = "Multiplies colors.", .min = 0})

@@ -184,6 +184,9 @@ struct Light3D {
     bool baked = false;
     // How much it lights volumetric fog, as Godot's light_volumetric_fog_energy.
     float volumetric_fog_energy = 1.0F;
+    // How much it lights what Sdfgi3D bounces, as Godot's light_indirect_energy (0 where its bake
+    // mode is disabled, which SDFGI leaves out).
+    float indirect_energy = 1.0F;
     // How big it is, which softens its ray-traced shadows (RayTracing3D): an omni or spot light's
     // radius, as Godot's light_size, or a directional light's angular diameter in degrees, as
     // light_angular_distance. 0 is a point, whose shadows are hard.
@@ -926,6 +929,39 @@ struct RayTracing3D {
 // or of the wrong type keeps its default, and samples are held to their range.
 [[nodiscard]] RayTracing3D ray_tracing(const json::Value& rendering);
 
+// Godot 4.6's SDFGI (signed distance field global illumination), its fully dynamic GI, in
+// Forward+ (a research spike: the software device draws it, other devices draw without it).
+// Around the camera, cascades of cascade_size cells a side, each twice as coarse as the one before
+// from min_cell_size, hold the frame's meshes as a distance field with each surface cell's light
+// (lights traced through the field to it, what it gives off, and bounce_feedback of the light
+// probes' light before); a grid of probes in each cascade traces ray_count rays a frame through
+// the fields (the sky where they leave) and keeps history frames of them, and pixels take their
+// ambient light (and, when smooth, reflections) from the probes around them. Heights count
+// y_scale as much (Godot's sdfgi_y_scale: 2, 1.5 or 1), so cascades reach less far up and down.
+struct Sdfgi3D {
+    bool enabled = false;
+    std::uint32_t cascades = 4; // 1 to 8
+    float min_cell_size = 0.2F;
+    float y_scale = 1.5F;
+    bool use_occlusion = false;
+    float bounce_feedback = 0.5F;
+    bool read_sky_light = true;
+    float energy = 1.0F;
+    float normal_bias = 1.1F;
+    float probe_bias = 1.1F;
+    // Project settings (rendering/global_illumination/sdfgi): rays per probe a frame (4, 8, 16,
+    // 32, 64, 96 or 128), the frames a probe averages (5 to 30), and over how many frames the
+    // cells' light is updated (1, 2, 4, 8 or 16).
+    std::uint32_t ray_count = 8;
+    std::uint32_t frames_to_converge = 30;
+    std::uint32_t frames_to_update_light = 4;
+    // Cells across a cascade: 128 as in Godot; smaller (a multiple of 16) for tests.
+    std::uint32_t cascade_size = 128;
+
+    bool operator==(const Sdfgi3D&) const = default;
+};
+inline constexpr std::uint32_t kMaxSdfgiCascades = 8;
+
 // What a frame's meshes are seen from and lit by. Matrices are column-major, as Mat4.
 struct Scene3D {
     // The world to the camera's space: the inverse of the camera's transform.
@@ -948,6 +984,7 @@ struct Scene3D {
     Radiance3D radiance;
     Ssao3D ssao;
     Ssr3D ssr;
+    Sdfgi3D sdfgi;
     Reflections3D reflections;
     Decals3D decals;
     // How meshes trace their VoxelGIs (Material3D::voxel_gi), as Godot's rendering/

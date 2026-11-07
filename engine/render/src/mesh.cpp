@@ -1728,6 +1728,15 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
                 lerp3(ambient_light, scale(srgb_to_linear(xyz(texel)), scene.sky[2]), scene.sky[3]);
         }
     }
+    // Forward+'s SDFGI, as Godot's GI buffers light a pixel: its ambient light and reflections
+    // go over the sky's by how much of them its cascades hold (gi.glsl's sdfgi_process, run on
+    // the prepass by run_sdfgi), and VoxelGIs go over it.
+    if (opaque && !maps.sdfgi.empty() && !lightmapped && !captured) {
+        const std::size_t at = ((std::size_t{pixel.y} * maps.ao_width) + pixel.x) * 8;
+        const std::span<const float, 8> buffer(maps.sdfgi.subspan(at, 8));
+        ambient_light = lerp3(ambient_light, {buffer[0], buffer[1], buffer[2]}, buffer[3]);
+        reflected = lerp3(reflected, {buffer[4], buffer[5], buffer[6]}, buffer[7]);
+    }
     // Forward+'s VoxelGIs, as Godot's GI buffers light a pixel: their ambient light and
     // reflections go over the sky's by how much of their cones met something.
     if (scene.voxel_gi[0] != 0.0F && surface.voxel_gi[0] > 0.0F && pixel.voxel_gi != nullptr &&

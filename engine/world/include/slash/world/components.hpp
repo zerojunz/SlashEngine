@@ -968,6 +968,19 @@ struct WorldEnvironment {
     float volumetric_fog_gi_inject = 1.0F;      // how much it is lit by VoxelGIs' light
     float volumetric_fog_sky_affect = 1.0F;     // how much it covers the sky
     float volumetric_fog_temporal_reprojection_amount = 0.9F;
+    // Forward+: SDFGI, Godot's fully dynamic global illumination (a research spike: only the
+    // software device draws it). Cascades around the camera bounce the lights and the sky off
+    // the meshes, which need no baking.
+    std::string sdfgi_y_scale = "75_percent"; // "50_percent", "75_percent" or "100_percent"
+    float sdfgi_bounce_feedback = 0.5F;
+    std::uint32_t sdfgi_cascades = 4;
+    float sdfgi_min_cell_size = 0.2F;
+    float sdfgi_energy = 1.0F;
+    float sdfgi_normal_bias = 1.1F;
+    float sdfgi_probe_bias = 1.1F;
+    bool sdfgi_enabled = false;
+    bool sdfgi_use_occlusion = false;
+    bool sdfgi_read_sky_light = true;
     bool adjustment_enabled = false;
     float adjustment_brightness = 1.0F;
     float adjustment_contrast = 1.0F;
@@ -993,9 +1006,11 @@ SLASH_COMPONENT(WorldEnvironment, background_mode, background_color, background_
                 volumetric_fog_anisotropy, volumetric_fog_length, volumetric_fog_detail_spread,
                 volumetric_fog_ambient_inject, volumetric_fog_gi_inject, volumetric_fog_sky_affect,
                 volumetric_fog_temporal_reprojection_enabled,
-                volumetric_fog_temporal_reprojection_amount, adjustment_enabled,
-                adjustment_brightness, adjustment_contrast, adjustment_saturation,
-                adjustment_color_correction)
+                volumetric_fog_temporal_reprojection_amount, sdfgi_enabled, sdfgi_use_occlusion,
+                sdfgi_read_sky_light, sdfgi_bounce_feedback, sdfgi_cascades, sdfgi_min_cell_size,
+                sdfgi_y_scale, sdfgi_energy, sdfgi_normal_bias, sdfgi_probe_bias,
+                adjustment_enabled, adjustment_brightness, adjustment_contrast,
+                adjustment_saturation, adjustment_color_correction)
 
 // How the 3D world is exposed and focused, as Godot's CameraAttributesPractical: on a Camera3D's
 // entity for that camera, or on the WorldEnvironment's entity for cameras without their own.
