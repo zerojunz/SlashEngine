@@ -73,6 +73,7 @@ add_executable(slash_tests
     test_decal.cpp
     test_destruction.cpp
     test_streaming.cpp
+    test_virtual_geometry.cpp
     test_exporter.cpp
     test_expression.cpp
     test_fixed_step.cpp

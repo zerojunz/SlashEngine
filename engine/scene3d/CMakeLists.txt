@@ -21,11 +21,19 @@ target_link_libraries(slash_xatlas PRIVATE slash::core)
 target_compile_options(slash_xatlas PRIVATE "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-w;-ffp-contract=off>")
 
 # Mesh LODs (src/lod.cpp) are simplified with meshoptimizer's simplifier, as Godot's importer
-# generates them, and baked occluders (src/occlusion.cpp) simplified and stripped of repeated
-# points, with no fused multiply-adds so they are the same on every platform.
+# generates them, baked occluders (src/occlusion.cpp) simplified and stripped of repeated
+# points, and virtualized geometry's cluster hierarchies (src/virtual_geometry.cpp) built with its
+# clusterizer and its cluster LOD builder (demo/clusterlod.h, src/clusterlod_build.cpp), with no
+# fused multiply-adds so they are the same on every platform.
 add_library(slash_meshoptimizer STATIC ${meshoptimizer_SOURCE_DIR}/src/allocator.cpp
-    ${meshoptimizer_SOURCE_DIR}/src/indexgenerator.cpp ${meshoptimizer_SOURCE_DIR}/src/simplifier.cpp)
-target_include_directories(slash_meshoptimizer SYSTEM PUBLIC ${meshoptimizer_SOURCE_DIR}/src)
+    ${meshoptimizer_SOURCE_DIR}/src/clusterizer.cpp
+    ${meshoptimizer_SOURCE_DIR}/src/indexgenerator.cpp
+    ${meshoptimizer_SOURCE_DIR}/src/partition.cpp
+    ${meshoptimizer_SOURCE_DIR}/src/simplifier.cpp
+    ${meshoptimizer_SOURCE_DIR}/src/spatialorder.cpp
+    src/clusterlod_build.cpp)
+target_include_directories(slash_meshoptimizer SYSTEM PUBLIC ${meshoptimizer_SOURCE_DIR}/src
+    ${meshoptimizer_SOURCE_DIR}/demo)
 target_compile_options(slash_meshoptimizer PRIVATE
     "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-w;-ffp-contract=off>")
 
@@ -75,6 +83,7 @@ add_library(slash_scene3d
     src/soft_body.cpp
     src/surface_tool.cpp
     src/terrain.cpp
+    src/virtual_geometry.cpp
     src/voxel_gi.cpp)
 add_library(slash::scene3d ALIAS slash_scene3d)
 
