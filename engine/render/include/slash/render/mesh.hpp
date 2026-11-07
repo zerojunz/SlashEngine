@@ -706,6 +706,19 @@ struct ReflectionAtlasSettings {
 // Whether project.json's rendering object asks for high quality VoxelGIs:
 // global_illumination.voxel_gi.quality "high" (Scene3D::voxel_gi_high_quality).
 [[nodiscard]] bool voxel_gi_high_quality(const json::Value& rendering);
+// Godot's rendering/global_illumination/sdfgi settings, which every SDFGI in a frame takes
+// (Sdfgi3D's ray_count, frames_to_converge and frames_to_update_light).
+struct SdfgiSettings {
+    std::uint32_t probe_ray_count = 8;
+    std::uint32_t frames_to_converge = 30;
+    std::uint32_t frames_to_update_lights = 4;
+
+    bool operator==(const SdfgiSettings&) const = default;
+};
+// Reads project.json's rendering object's global_illumination.sdfgi: {"probe_ray_count" (4, 8,
+// 16, 32, 64, 96 or 128), "frames_to_converge" (5, 10, 15, 20, 25 or 30),
+// "frames_to_update_lights" (1, 2, 4, 8 or 16)}. What is missing or not valid keeps its default.
+[[nodiscard]] SdfgiSettings sdfgi_settings_from_json(const json::Value& rendering);
 // Whether project.json's rendering object turns on temporal antialiasing:
 // anti_aliasing.quality.use_taa, as Godot's rendering/anti_aliasing/quality/use_taa
 // (Scene3D::use_taa).

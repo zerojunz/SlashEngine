@@ -46,9 +46,19 @@ struct SdfgiCell {
 // six directions (Godot's aniso0 and aniso1, 8 bits each), its solid cells, and its probes'
 // history, averages and octahedral irradiance and radiance (Godot's lightprobe texture, RGB9E5,
 // (6 + 2) * 17 * 17 texels by (6 + 2) * 17, x fastest).
+// What the triangles touching a cell sum to, kept so a cascade that moves makes only the cells
+// that came in (Godot's scroll): albedo and emission sums, how many triangles, the sides they face.
+struct SdfgiCellSum {
+    Float3 albedo{};
+    Float3 emission{};
+    std::uint32_t count = 0;
+    std::uint32_t facing = 0;
+};
+
 struct SdfgiCascade {
     std::array<std::int32_t, 3> position{};
     float cell_size = 0.0F;
+    std::vector<SdfgiCellSum> sums;
     std::vector<std::uint8_t> sdf;
     std::vector<Float3> light;
     std::vector<std::array<float, 6>> aniso;
@@ -76,9 +86,10 @@ struct SdfgiState {
 
 // Brings a target's SDFGI up to date for a frame seen from camera (in the world), as Godot's
 // sdfgi_update, render_region, update_light, update_probes and store_probes run in a frame: the
-// cascades follow the camera (moving by 8 cells at a time); a cascade that moved, or all of them
-// when the frame's geometry changed (paths' key) or settings did, is voxelized again from the
-// frame's triangles and its distance field made again; the solid cells' light is worked out (a
+// cascades follow the camera (moving by 8 cells at a time); a cascade that moved keeps the cells
+// it still holds and voxelizes the slab that came in, as Godot scrolls it, and all of them are
+// voxelized whole when the frame's geometry changed (paths' key) or settings did, each with its
+// distance field made again; the solid cells' light is worked out (a
 // frames_to_update_light share of them a frame, all after a cascade is made again); and the
 // probes trace their rays. Work is shared out over pool's threads when there is one; the result
 // doesn't depend on how many.

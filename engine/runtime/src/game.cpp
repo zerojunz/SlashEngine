@@ -288,6 +288,7 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
                                   .subsurface = project_.subsurface,
                                   .reflection_atlas = project_.reflection_atlas,
                                   .voxel_gi_high_quality = project_.voxel_gi_high_quality,
+                                  .sdfgi = project_.sdfgi,
                                   .use_taa = project_.use_taa,
                                   .decal_filter = project_.decal_filter,
                                   .mesh_lod_threshold = project_.mesh_lod_threshold,

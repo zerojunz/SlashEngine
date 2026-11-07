@@ -420,9 +420,25 @@ std::vector<double> squared_distances(const Grid& grid, const std::vector<std::u
 // passes make its distance field and solid cell list from them. Godot rasterizes the geometry
 // from three sides and keeps what was drawn last in a cell; this averages what each triangle
 // touching a cell has at the point nearest the cell's center, sampled as a ray meeting it would.
+// With scrolled, the cascade moved by that many cells since its sums were made: the cells it
+// still holds keep theirs, moved, and only those that came in are made, as Godot's scroll renders
+// only the region that came in.
 void voxelize(SdfgiCascade& cascade, std::uint32_t size, float y_mult, const PathScene& paths,
-              const PathTextures& textures, jobs::Pool* pool) {
+              const PathTextures& textures, jobs::Pool* pool,
+              const std::optional<std::array<std::int32_t, 3>>& scrolled = std::nullopt) {
     const Grid grid{size};
+    const auto whole = static_cast<std::int64_t>(size);
+    // Whether the cell at (x, y, z) was in the cascade before it moved, and so keeps its sum.
+    const bool scrolling = scrolled.has_value() && cascade.sums.size() == grid.cells();
+    const auto kept = [&](std::int64_t x, std::int64_t y, std::int64_t z) {
+        if (!scrolling) {
+            return false;
+        }
+        const std::int64_t ox = x + (*scrolled)[0];
+        const std::int64_t oy = y + (*scrolled)[1];
+        const std::int64_t oz = z + (*scrolled)[2];
+        return ox >= 0 && oy >= 0 && oz >= 0 && ox < whole && oy < whole && oz < whole;
+    };
     const Float3 offset = sdfgi_offset(cascade, size);
     const float to_cell = 1.0F / cascade.cell_size;
     // Each triangle's corners in cells, and the z slices it reaches.
@@ -455,13 +471,20 @@ void voxelize(SdfgiCascade& cascade, std::uint32_t size, float y_mult, const Pat
             slices[static_cast<std::size_t>(z)].push_back(static_cast<std::uint32_t>(t));
         }
     }
-    struct Sum {
-        Float3 albedo{};
-        Float3 emission{};
-        std::uint32_t count = 0;
-        std::uint32_t facing = 0;
-    };
-    std::vector<Sum> sums(grid.cells());
+    std::vector<SdfgiCellSum> sums(grid.cells());
+    if (scrolling) {
+        for_each(size, pool, [&](std::size_t z) {
+            const auto iz = static_cast<std::int64_t>(z);
+            for (std::int64_t y = 0; y < whole; ++y) {
+                for (std::int64_t x = 0; x < whole; ++x) {
+                    if (kept(x, y, iz)) {
+                        sums[grid.index(x, y, iz)] = cascade.sums[grid.index(
+                            x + (*scrolled)[0], y + (*scrolled)[1], iz + (*scrolled)[2])];
+                    }
+                }
+            }
+        });
+    }
     for_each(size, pool, [&](std::size_t z) {
         for (const std::uint32_t t : slices[z]) {
             const Placed& p = placed[t];
@@ -489,6 +512,9 @@ void voxelize(SdfgiCascade& cascade, std::uint32_t size, float y_mult, const Pat
             }
             for (std::int32_t y = lo[1]; y <= hi[1]; ++y) {
                 for (std::int32_t x = lo[0]; x <= hi[0]; ++x) {
+                    if (kept(x, y, static_cast<std::int64_t>(z))) {
+                        continue;
+                    }
                     const Float3 center{static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F,
                                         static_cast<float>(z) + 0.5F};
                     // The cell's box: from its low corner to kCellEdge short of the next cell.
@@ -506,7 +532,7 @@ void voxelize(SdfgiCascade& cascade, std::uint32_t size, float y_mult, const Pat
                     if (!surface) {
                         continue;
                     }
-                    Sum& sum = sums[grid.index(x, y, static_cast<std::int64_t>(z))];
+                    SdfgiCellSum& sum = sums[grid.index(x, y, static_cast<std::int64_t>(z))];
                     sum.albedo = add(sum.albedo, surface->unshaded ? Float3{} : surface->base);
                     sum.emission =
                         add(sum.emission, surface->unshaded ? surface->base : surface->emitted);
@@ -587,6 +613,7 @@ void voxelize(SdfgiCascade& cascade, std::uint32_t size, float y_mult, const Pat
             }
         }
     }
+    cascade.sums = std::move(sums);
     cascade.light.assign(grid.cells(), Float3{});
     cascade.aniso.assign(grid.cells(), std::array<float, 6>{});
     cascade.all_lights_dirty = true;
@@ -1237,6 +1264,8 @@ void update_sdfgi(SdfgiState& state, const Scene3D& scene, const Float3& camera,
                         state.settings.use_occlusion != settings.use_occlusion;
     state.settings = settings;
     std::vector<bool> dirty(settings.cascades, false);
+    // How far each cascade that moved moved, in cells, when it can scroll.
+    std::vector<std::optional<std::array<std::int32_t, 3>>> scrolls(settings.cascades);
     if (remake) {
         state.cascades.assign(settings.cascades, {});
         float cell_size = settings.min_cell_size;
@@ -1283,6 +1312,7 @@ void update_sdfgi(SdfgiState& state, const Scene3D& scene, const Float3& camera,
                 } else {
                     scroll_probes(cascade, {moved[0] / step, moved[1] / step, moved[2] / step},
                                   history_size);
+                    scrolls[c] = moved;
                 }
             }
         }
@@ -1290,11 +1320,12 @@ void update_sdfgi(SdfgiState& state, const Scene3D& scene, const Float3& camera,
     const std::uint64_t geometry = geometry_key(paths);
     if (geometry != state.geometry) {
         dirty.assign(settings.cascades, true);
+        scrolls.assign(settings.cascades, std::nullopt);
         state.geometry = geometry;
     }
     for (std::size_t c = 0; c < state.cascades.size(); ++c) {
         if (dirty[c]) {
-            voxelize(state.cascades[c], size, y_mult, paths, textures, pool);
+            voxelize(state.cascades[c], size, y_mult, paths, textures, pool, scrolls[c]);
         }
     }
     const std::vector<SdfgiLight> lights = sdfgi_lights(scene, y_mult);

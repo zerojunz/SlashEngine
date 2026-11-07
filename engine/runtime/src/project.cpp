@@ -330,6 +330,31 @@ json::Value global_illumination_schema() {
     out["additionalProperties"] = false;
     out["description"] = "Global illumination, as Godot's rendering/global_illumination settings.";
     out["properties"]["voxel_gi"] = std::move(voxel_gi);
+    const render::SdfgiSettings sdfgi_defaults;
+    const auto choice = [](json::Array choices, std::uint32_t value, std::string_view description) {
+        json::Value field;
+        field["type"] = "integer";
+        field["enum"] = std::move(choices);
+        field["default"] = static_cast<std::int64_t>(value);
+        field["description"] = std::string(description);
+        return field;
+    };
+    json::Value sdfgi;
+    sdfgi["type"] = "object";
+    sdfgi["additionalProperties"] = false;
+    sdfgi["description"] =
+        "SDFGI's probes and light, for every WorldEnvironment with sdfgi_enabled.";
+    sdfgi["properties"]["probe_ray_count"] =
+        choice(json::Array{4, 8, 16, 32, 64, 96, 128}, sdfgi_defaults.probe_ray_count,
+               "Rays each probe traces a frame: more for less noise, at more cost.");
+    sdfgi["properties"]["frames_to_converge"] =
+        choice(json::Array{5, 10, 15, 20, 25, 30}, sdfgi_defaults.frames_to_converge,
+               "Frames a probe averages: fewer to follow changes sooner, with more noise.");
+    sdfgi["properties"]["frames_to_update_lights"] =
+        choice(json::Array{1, 2, 4, 8, 16}, sdfgi_defaults.frames_to_update_lights,
+               "Frames over which the cells' light is updated: fewer to follow lights sooner, at "
+               "more cost a frame.");
+    out["properties"]["sdfgi"] = std::move(sdfgi);
     return out;
 }
 
@@ -1057,6 +1082,7 @@ Result<Project> parse_project(const json::Value& project) {
             }
         }
         out.voxel_gi_high_quality = render::voxel_gi_high_quality(*rendering);
+        out.sdfgi = render::sdfgi_settings_from_json(*rendering);
         out.use_taa = render::use_taa(*rendering);
         out.frame_generation = render::frame_generation(*rendering);
         out.decal_filter = render::decal_filter(*rendering);

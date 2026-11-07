@@ -48,6 +48,7 @@ checks it.
 | `rendering.ray_tracing` | No | off | 3D shadows, ambient occlusion, reflections and global illumination traced by rays: see [Ray tracing](#ray-tracing) |
 | `rendering.reflections.reflection_atlas` | No | 256 texels, 64 probes | The size of 3D [reflection probes'](scene-format.md#reflection-probes) cubes and how many a frame draws: see [Reflection probes](#reflection-probes) |
 | `rendering.global_illumination.voxel_gi.quality` | No | `low` | How many cones meshes trace through [VoxelGIs](scene-format.md#voxelgi): see [VoxelGI](#voxelgi) |
+| `rendering.global_illumination.sdfgi` | No | see [SDFGI](sdfgi.md) | SDFGI's `probe_ray_count` (8), `frames_to_converge` (30) and `frames_to_update_lights` (4), as Godot's project settings |
 | `rendering.occlusion_culling` | No | off | Leave out 3D meshes that [occluders](scene-format.md#occlusion-culling) hide: see [Occlusion culling](#occlusion-culling) |
 | `rendering.mesh_lod.lod_change.threshold_pixels` | No | `1` | How many pixels a model's coarser [LODs](scene-format.md#mesh-lods) may be off by where they draw: see [Mesh LODs](#mesh-lods) |
 | `rendering.textures` | No | `lossless`, `linear_mipmaps` | How exports ship textures: as their files, or compressed for each platform's GPUs, and how [decals](scene-format.md#decals) sample theirs: see [Texture forms](#texture-forms) |

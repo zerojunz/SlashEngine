@@ -1,6 +1,7 @@
 #include "../engine/render/src/sdfgi.hpp"
 
 #include "slash/core/jobs.hpp"
+#include "slash/core/json.hpp"
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/mesh.hpp"
@@ -13,6 +14,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace render = slash::render;
@@ -250,4 +252,76 @@ TEST_CASE("SDFGI's probes settle over frames_to_converge frames") {
     CHECK(second < settled);
     // Past frames_to_converge, it holds.
     CHECK(std::abs(greens(draw_frames(*device, lit_cube(), 8)) - plain - settled) < settled / 20);
+}
+
+TEST_CASE("SDFGI's cascades scroll: a moved cascade keeps its cells and makes those that came in") {
+    // A floor of four cubes along x, lit by nothing, so only cells are compared.
+    render::Scene3D scene = lit_cube();
+    scene.lights.clear();
+    const std::vector<Vertex3D> box = cube();
+    std::vector<render::detail::MeshDraw> draws;
+    for (int i = 0; i < 4; ++i) {
+        render::detail::MeshDraw draw;
+        draw.transform =
+            placed({1.5F, 0.5F, 1.5F}, {(static_cast<float>(i) * 3.0F) - 4.0F, 0.0F, 0.0F});
+        draw.material.albedo = {0.2F * static_cast<float>(i + 1), 0.5F, 0.5F, 1.0F};
+        draws.push_back(draw);
+    }
+    std::vector<std::uint32_t> triangles(box.size());
+    for (std::size_t i = 0; i < triangles.size(); ++i) {
+        triangles[i] = static_cast<std::uint32_t>(i);
+    }
+    std::vector<render::detail::PathMesh> meshes;
+    for (const render::detail::MeshDraw& draw : draws) {
+        meshes.push_back({.draw = &draw, .vertices = box, .triangles = triangles});
+    }
+    const render::detail::PathScene paths =
+        render::detail::build_path_scene(scene, meshes, 16, 16, {});
+    const White textures;
+    // One state follows the camera along x; the other is made where it ends up.
+    render::detail::SdfgiState moving;
+    render::detail::update_sdfgi(moving, scene, {0.0F, 0.0F, 0.0F}, paths, textures, nullptr);
+    const std::array<std::int32_t, 3> start = moving.cascades[0].position;
+    render::detail::update_sdfgi(moving, scene, {2.0F, 0.0F, 0.0F}, paths, textures, nullptr);
+    REQUIRE(moving.cascades[0].position != start);
+    render::detail::SdfgiState fresh;
+    render::detail::update_sdfgi(fresh, scene, {2.0F, 0.0F, 0.0F}, paths, textures, nullptr);
+    REQUIRE(fresh.cascades[0].position == moving.cascades[0].position);
+    for (std::size_t c = 0; c < fresh.cascades.size(); ++c) {
+        CAPTURE(c);
+        const render::detail::SdfgiCascade& a = moving.cascades[c];
+        const render::detail::SdfgiCascade& b = fresh.cascades[c];
+        CHECK(a.sdf == b.sdf);
+        REQUIRE(a.cells.size() == b.cells.size());
+        for (std::size_t i = 0; i < a.cells.size(); ++i) {
+            CHECK(a.cells[i].index == b.cells[i].index);
+            CHECK(a.cells[i].facing == b.cells[i].facing);
+            CHECK(a.cells[i].neighbors == b.cells[i].neighbors);
+            for (std::size_t k = 0; k < 3; ++k) {
+                CHECK(a.cells[i].albedo.at(k) == doctest::Approx(b.cells[i].albedo.at(k)));
+            }
+        }
+    }
+}
+
+TEST_CASE("SDFGI's settings read project.json's as Godot's") {
+    const render::SdfgiSettings defaults;
+    CHECK(defaults.probe_ray_count == render::Sdfgi3D{}.ray_count);
+    CHECK(defaults.frames_to_converge == render::Sdfgi3D{}.frames_to_converge);
+    CHECK(defaults.frames_to_update_lights == render::Sdfgi3D{}.frames_to_update_light);
+    const auto read = [](std::string_view text) {
+        auto parsed = slash::json::parse(text);
+        REQUIRE(parsed.ok());
+        return render::sdfgi_settings_from_json(parsed.value());
+    };
+    const render::SdfgiSettings set = read(R"({"global_illumination": {"sdfgi": {
+        "probe_ray_count": 96, "frames_to_converge": 10, "frames_to_update_lights": 16}}})");
+    CHECK(set.probe_ray_count == 96);
+    CHECK(set.frames_to_converge == 10);
+    CHECK(set.frames_to_update_lights == 16);
+    // Values Godot doesn't offer, or of the wrong kind, keep their defaults.
+    CHECK(read(R"({"global_illumination": {"sdfgi": {"probe_ray_count": 12,
+        "frames_to_converge": "fast", "frames_to_update_lights": 3}}})") == defaults);
+    CHECK(read(R"({"global_illumination": {"voxel_gi": {"quality": "high"}}})") == defaults);
+    CHECK(read("{}") == defaults);
 }

@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <limits>
 #include <span>
+#include <string_view>
 #include <vector>
 
 namespace slash::render {
@@ -135,6 +136,37 @@ bool voxel_gi_high_quality(const json::Value& rendering) {
     found = found != nullptr && found->is_object() ? found->find("voxel_gi") : nullptr;
     found = found != nullptr && found->is_object() ? found->find("quality") : nullptr;
     return found != nullptr && found->is_string() && found->as_string() == "high";
+}
+
+SdfgiSettings sdfgi_settings_from_json(const json::Value& rendering) {
+    SdfgiSettings out;
+    const json::Value* found =
+        rendering.is_object() ? rendering.find("global_illumination") : nullptr;
+    found = found != nullptr && found->is_object() ? found->find("sdfgi") : nullptr;
+    if (found == nullptr || !found->is_object()) {
+        return out;
+    }
+    // Sets field to the setting's value when it is one of choices.
+    const auto read = [&](std::string_view name, std::span<const std::uint32_t> choices,
+                          std::uint32_t& field) {
+        const json::Value* value = found->find(name);
+        if (value == nullptr || !value->is_number()) {
+            return;
+        }
+        const double number = value->as_double();
+        for (const std::uint32_t choice : choices) {
+            if (number == static_cast<double>(choice)) {
+                field = choice;
+            }
+        }
+    };
+    static constexpr std::array<std::uint32_t, 7> kRays{4, 8, 16, 32, 64, 96, 128};
+    static constexpr std::array<std::uint32_t, 6> kConverge{5, 10, 15, 20, 25, 30};
+    static constexpr std::array<std::uint32_t, 5> kUpdate{1, 2, 4, 8, 16};
+    read("probe_ray_count", kRays, out.probe_ray_count);
+    read("frames_to_converge", kConverge, out.frames_to_converge);
+    read("frames_to_update_lights", kUpdate, out.frames_to_update_lights);
+    return out;
 }
 
 } // namespace slash::render
