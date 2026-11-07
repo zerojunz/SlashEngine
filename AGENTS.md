@@ -1010,6 +1010,21 @@ uniforms keep their size; the clearcoat also reflects the sky and anisotropy ben
 reflections take. Their textures aren't read yet (texture slots are full).
 `examples/hair-and-eye-shading` lights a cheek, an eye and hair.
 
+Subsurface scattering is Godot 4.6's Forward+ screen-space blur (`Material3D::subsurface`, from
+`StandardMaterial3D`'s `subsurf_scatter_*`; project.json's
+`rendering.environment.subsurface_scattering`, `render::SubsurfaceSettings`). `src/subsurface.hpp`
+holds what devices share (`uses_subsurface`, `draws_subsurface`, the uniforms) and the CPU twin of
+`shaders/subsurface.hlsl`'s two passes (`run_subsurface_pass`, `run_subsurface`, Jimenez's
+kernels as Godot's `subsurface_scattering.glsl`). After the opaque meshes, each device draws the
+scattering meshes again with `mesh_subsurface.hlsl` (`mesh.hlsl` with `SUBSURFACE`: emission,
+diffuse and ambient light and the signed strength) into an RGBA16F texture over the kept depth,
+blurs it across and down, and adds the change to the world before the blended meshes; the
+software device's `draw_color` does the same. The transmittance is `light_compute`'s, with the
+depth through the mesh from the light's shadow map (`shadow_thickness`, `ShadowAtlas::depth`) by
+`Light3D::shadow_transmittance_bias`. A change to either goes in both. `tests/test_subsurface.cpp`
+holds every device to the software device; `examples/subsurface-scattering` lights a wax candle
+and an ear.
+
 `engine/scene3d` puts Godot's 3D nodes in scenes. `Transform3D` (position, Euler rotation in
 radians in Godot's YXZ order, scale, `visible`, `top_level`, `children`) makes trees that
 `world::Tree3D` (`slash/world/tree3d.hpp`) walks, as `Tree2D` walks 2D ones. `MeshInstance3D`

@@ -35,6 +35,7 @@
 #include "mesh_normal_shaders.hpp"
 #include "mesh_shaders.hpp"
 #include "mesh_shading.hpp"
+#include "mesh_subsurface_shaders.hpp"
 #include "particle_layout.hpp"
 #include "particle_layout_3d.hpp"
 #include "particles_draw_shaders.hpp"
@@ -57,6 +58,8 @@
 #include "ssr.hpp"
 #include "ssr_shaders.hpp"
 #include "ssr_trace_shaders.hpp"
+#include "subsurface.hpp"
+#include "subsurface_shaders.hpp"
 #include "taa.hpp"
 #include "taa_shaders.hpp"
 #include "uniforms.hpp"
@@ -601,6 +604,13 @@ public:
         if (taa_pipeline_ != nullptr) {
             wgpuRenderPipelineRelease(taa_pipeline_);
         }
+        for (WGPURenderPipeline pipeline : {subsurface_pipeline_, subsurface_add_pipeline_}) {
+            if (pipeline != nullptr) {
+                wgpuRenderPipelineRelease(pipeline);
+            }
+        }
+        release_pass_texture(subsurface_.light);
+        release_pass_texture(subsurface_.across);
         for (WGPURenderPipeline pipeline : fsr2_pipelines_) {
             if (pipeline != nullptr) {
                 wgpuRenderPipelineRelease(pipeline);
@@ -738,6 +748,8 @@ public:
                                            ssr_uniforms_layout_,
                                            taa_textures_layout_,
                                            taa_uniforms_layout_,
+                                           subsurface_textures_layout_,
+                                           subsurface_uniforms_layout_,
                                            fsr2_uniforms_layout_,
                                            fsr2_storage_layout_,
                                            fsr2_compute_textures_layout_,
@@ -1620,6 +1632,9 @@ public:
             if (uses_taa(*frame.scene)) {
                 prepare_taa(frame.target, width, height);
             }
+            if (uses_subsurface(*frame.scene)) {
+                prepare_subsurface(scene_width_, scene_height_);
+            }
             if (uses_fsr2(*frame.scene)) {
                 prepare_fsr2(frame.target, {scene_width_, scene_height_, width, height},
                              uses_fsr3(*frame.scene));
@@ -1798,6 +1813,9 @@ public:
                                         ? motion_pipeline_for(material.cull, material.shader)
                                         : normal_pipeline_for(material.cull, material.shader);
         }
+        if (uses_subsurface(*frame_.scene) && draws_subsurface(material)) {
+            batch.subsurface_pipeline = subsurface_pipeline_for(material.cull);
+        }
         const std::array<MaterialTexture, kMeshTextures> slots = mesh_texture_slots(material);
         for (std::size_t slot = 0; slot < kMeshTextures; ++slot) {
             batch.bindings.at(slot) = binding(slots.at(slot).texture, slots.at(slot).repeat);
@@ -1949,6 +1967,18 @@ public:
                               : nullptr;
         const std::uint32_t taa_uniforms_at =
             taa != nullptr ? uniforms_.add(taa_uniforms(frame_width_, frame_height_)) : 0;
+        // Subsurface scattering's blur across and down, in a frame with meshes that scatter.
+        std::optional<std::array<std::uint32_t, 2>> subsurface_at;
+        if (forward && subsurface_.light.texture != nullptr && uses_subsurface(*frame_.scene) &&
+            std::ranges::any_of(mesh_batches_, [](const MeshBatch& batch) {
+                return batch.subsurface_pipeline != nullptr;
+            })) {
+            subsurface_at = std::array<std::uint32_t, 2>{
+                uniforms_.add(
+                    subsurface_uniforms(*frame_.scene, scene_width_, scene_height_, false)),
+                uniforms_.add(
+                    subsurface_uniforms(*frame_.scene, scene_width_, scene_height_, true))};
+        }
         // TAA blends frames that draw meshes; one without starts it again.
         if (mesh_draws_.empty() && frame_.scene && uses_taa(*frame_.scene)) {
             if (TaaHistory* frames = find_taa_history(frame_.target); frames != nullptr) {
@@ -2062,7 +2092,8 @@ public:
             encode_ssao(encoder, *ssao, ssao_uniforms_at);
         }
         if (ssr && !history->primed) {
-            encode_meshes(encoder, mesh_uniforms, sky_uniforms_at, ssao.has_value(), false);
+            encode_meshes(encoder, mesh_uniforms, sky_uniforms_at, ssao.has_value(), false,
+                          subsurface_at);
             encode_ssr_step(encoder, ssr_last_frame_step(), last_frame_at, *history);
         }
         if (ssr) {
@@ -2070,7 +2101,7 @@ public:
         }
         if (!mesh_draws_.empty() || sky || dof || capture || fsr2 != nullptr) {
             encode_meshes(encoder, mesh_uniforms, sky_uniforms_at, ssao.has_value(),
-                          ssr.has_value());
+                          ssr.has_value(), subsurface_at);
         }
         if (taa != nullptr) {
             encode_taa(encoder, *taa, taa_uniforms_at,
@@ -2355,13 +2386,15 @@ private:
         // The prepass's, for an opaque mesh in a frame with SSAO, SSR or TAA.
         WGPURenderPipeline normal_pipeline = nullptr;
         MeshBindings bindings{};
+        // The subsurface pass's, for a mesh whose light scatters under its surface.
+        WGPURenderPipeline subsurface_pipeline = nullptr;
         // Where its vertices were in the frame before, which TAA's prepass reads.
         WGPUBuffer previous_vertices = nullptr;
     };
 
     // Which pass a mesh pipeline draws: the meshes' own, or the prepass's normals, with or
-    // without motion vectors.
-    enum class MeshPass : std::uint8_t { Color, Normal, Motion };
+    // without motion vectors, or the subsurface pass's light.
+    enum class MeshPass : std::uint8_t { Color, Normal, Motion, Subsurface };
 
     struct MeshPipeline {
         WGPUTextureFormat format = WGPUTextureFormat_Undefined;
@@ -2930,6 +2963,17 @@ private:
         const std::array taa_entries{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(TaaUniforms))};
         taa_uniforms_layout_ = layout(taa_entries);
+        // Subsurface scattering's blur loads its three textures, as TAA's pass does.
+        std::array<WGPUBindGroupLayoutEntry, 3> subsurface_textures{};
+        for (std::uint32_t slot = 0; slot < subsurface_textures.size(); ++slot) {
+            subsurface_textures.at(slot) = texture_entry(slot);
+            subsurface_textures.at(slot).texture.sampleType =
+                WGPUTextureSampleType_UnfilterableFloat;
+        }
+        subsurface_textures_layout_ = layout(subsurface_textures);
+        const std::array subsurface_entries{
+            uniform_entry(0, WGPUShaderStage_Fragment, sizeof(SubsurfaceUniforms))};
+        subsurface_uniforms_layout_ = layout(subsurface_entries);
         const std::array filter{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(RadianceUniforms))};
         filter_uniforms_layout_ = layout(filter);
@@ -3081,6 +3125,9 @@ private:
             {empty_layout_, empty_layout_, ssr_textures_layout_, ssr_uniforms_layout_});
         pipeline_layouts_.at(kTaaLayout) = pipeline_layout(
             {empty_layout_, empty_layout_, taa_textures_layout_, taa_uniforms_layout_});
+        pipeline_layouts_.at(kSubsurfaceLayout) =
+            pipeline_layout({empty_layout_, empty_layout_, subsurface_textures_layout_,
+                             subsurface_uniforms_layout_});
         for (std::size_t pass = 0; pass < kFsr2Passes; ++pass) {
             pipeline_layouts_.at(kFsr2Layout + pass) = pipeline_layout(
                 {static_cast<Fsr2Pass>(pass) == Fsr2Pass::DepthClip ? fsr2_storage_layout_
@@ -3399,6 +3446,8 @@ private:
         ssr_uniforms_group_ = bind_group(ssr_uniforms_layout_, ssr);
         const std::array taa{buffer_entry(0, uniform_buffer_, sizeof(TaaUniforms))};
         taa_uniforms_group_ = bind_group(taa_uniforms_layout_, taa);
+        const std::array subsurface{buffer_entry(0, uniform_buffer_, sizeof(SubsurfaceUniforms))};
+        subsurface_uniforms_group_ = bind_group(subsurface_uniforms_layout_, subsurface);
         const std::array fsr2{buffer_entry(0, uniform_buffer_, sizeof(Fsr2Uniforms))};
         fsr2_uniforms_group_ = bind_group(fsr2_uniforms_layout_, fsr2);
         fsr2_compute_uniforms_group_ = bind_group(fsr2_compute_uniforms_layout_, fsr2);
@@ -3420,20 +3469,33 @@ private:
     }
 
     void release_uniform_groups() {
-        for (WGPUBindGroup* group :
-             {&vertex_uniforms_group_,      &fragment_uniforms_group_,
-              &compute_uniforms_group_,     &mesh_vertex_group_,
-              &mesh_fragment_group_,        &mesh_game_fragment_group_,
-              &mesh_game_vertex_group_,     &shadow_game_vertex_group_,
-              &shadow_game_fragment_group_, &shadow_vertex_group_,
-              &shadow_fragment_group_,      &post_uniforms_group_,
-              &forward_uniforms_group_,     &sky_uniforms_group_,
-              &filter_uniforms_group_,      &ssao_uniforms_group_,
-              &ssr_uniforms_group_,         &taa_uniforms_group_,
-              &fsr2_uniforms_group_,        &fsr2_compute_uniforms_group_,
-              &fsr3_uniforms_group_,        &fsr3_compute_uniforms_group_,
-              &fog_uniforms_group_,         &fog_sky_uniforms_group_,
-              &generation_uniforms_group_,  &generation_draw_uniforms_group_}) {
+        for (WGPUBindGroup* group : {&vertex_uniforms_group_,
+                                     &fragment_uniforms_group_,
+                                     &compute_uniforms_group_,
+                                     &mesh_vertex_group_,
+                                     &mesh_fragment_group_,
+                                     &mesh_game_fragment_group_,
+                                     &mesh_game_vertex_group_,
+                                     &shadow_game_vertex_group_,
+                                     &shadow_game_fragment_group_,
+                                     &shadow_vertex_group_,
+                                     &shadow_fragment_group_,
+                                     &post_uniforms_group_,
+                                     &forward_uniforms_group_,
+                                     &sky_uniforms_group_,
+                                     &filter_uniforms_group_,
+                                     &ssao_uniforms_group_,
+                                     &ssr_uniforms_group_,
+                                     &taa_uniforms_group_,
+                                     &subsurface_uniforms_group_,
+                                     &fsr2_uniforms_group_,
+                                     &fsr2_compute_uniforms_group_,
+                                     &fsr3_uniforms_group_,
+                                     &fsr3_compute_uniforms_group_,
+                                     &fog_uniforms_group_,
+                                     &fog_sky_uniforms_group_,
+                                     &generation_uniforms_group_,
+                                     &generation_draw_uniforms_group_}) {
             if (*group != nullptr) {
                 wgpuBindGroupRelease(*group);
                 *group = nullptr;
@@ -4556,8 +4618,12 @@ private:
     // Records the frame's sky, when it has one (its uniforms at sky), then its meshes, in a pass
     // that clears the target and the depth buffer to the far plane. With ssao they are lit with
     // its occlusion, and with ssr they reflect its reflections.
+    // With subsurface (the blur's uniforms across and down), the opaque meshes draw first, then
+    // those that scatter light under their surface again into the subsurface pass's texture,
+    // whose blur adds to the world, then the blended meshes.
     void encode_meshes(WGPUCommandEncoder encoder, const MeshUniforms& at,
-                       std::optional<std::uint32_t> sky, bool ssao, bool ssr) {
+                       std::optional<std::uint32_t> sky, bool ssao, bool ssr,
+                       const std::optional<std::array<std::uint32_t, 2>>& subsurface) {
         WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
         // A scene that post-processes draws its meshes into a texture the post passes read.
         color.view = world_view(*frame_.scene);
@@ -4567,11 +4633,15 @@ private:
         WGPURenderPassDepthStencilAttachment depth = WGPU_RENDER_PASS_DEPTH_STENCIL_ATTACHMENT_INIT;
         depth.view = depth_.view;
         depth.depthLoadOp = WGPULoadOp_Clear;
-        // Kept for depth of field and FSR 2, which read it after.
+        // Kept for depth of field and FSR 2, which read it after, and subsurface scattering.
         depth.depthStoreOp = frame_.scene->method == RenderMethod::ForwardPlus &&
                                      (uses_dof(frame_.scene->post) || uses_fsr2(*frame_.scene))
                                  ? WGPUStoreOp_Store
                                  : WGPUStoreOp_Discard;
+        const WGPUStoreOp depth_store = depth.depthStoreOp;
+        if (subsurface) {
+            depth.depthStoreOp = WGPUStoreOp_Store;
+        }
         depth.depthClearValue = 0.0F;
         WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
         descriptor.colorAttachmentCount = 1;
@@ -4606,20 +4676,183 @@ private:
                 wgpuBindGroupRelease(storage);
             }
         }
-        if (!mesh_draws_.empty() && frame_.scene->method == RenderMethod::ForwardPlus) {
+        const bool clustered =
+            !mesh_draws_.empty() && frame_.scene->method == RenderMethod::ForwardPlus;
+        if (clustered) {
             wgpuRenderPassEncoderSetBindGroup(pass, 0, cluster_group_, 0, nullptr);
         }
-        encode_mesh_draws(pass, at, false, ssao, ssr);
+        encode_mesh_draws(pass, at, subsurface ? MeshDraws::Opaque : MeshDraws::All, ssao, ssr);
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+        if (!subsurface) {
+            return;
+        }
+        WGPURenderPassColorAttachment light = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+        light.view = subsurface_.light.view;
+        light.loadOp = WGPULoadOp_Clear;
+        light.storeOp = WGPUStoreOp_Store;
+        light.clearValue = {0.0, 0.0, 0.0, 0.0};
+        depth.depthLoadOp = WGPULoadOp_Load;
+        depth.depthStoreOp = WGPUStoreOp_Store;
+        descriptor.colorAttachments = &light;
+        pass = wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
+        if (clustered) {
+            wgpuRenderPassEncoderSetBindGroup(pass, 0, cluster_group_, 0, nullptr);
+        }
+        encode_mesh_draws(pass, at, MeshDraws::Subsurface, ssao, ssr);
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+        encode_subsurface(encoder, *subsurface);
+        color.loadOp = WGPULoadOp_Load;
+        depth.depthStoreOp = depth_store;
+        descriptor.colorAttachments = &color;
+        pass = wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
+        if (clustered) {
+            wgpuRenderPassEncoderSetBindGroup(pass, 0, cluster_group_, 0, nullptr);
+        }
+        encode_mesh_draws(pass, at, MeshDraws::Blended, ssao, ssr);
         wgpuRenderPassEncoderEnd(pass);
         wgpuRenderPassEncoderRelease(pass);
     }
+
+    // Subsurface scattering's blur, its uniforms at at: across into its second texture, then
+    // down, adding the change to the world.
+    void encode_subsurface(WGPUCommandEncoder encoder, const std::array<std::uint32_t, 2>& at) {
+        for (const bool second : {false, true}) {
+            const std::array<WGPUTextureView, 3> views{second ? subsurface_.across.view
+                                                              : subsurface_.light.view,
+                                                       depth_.view, subsurface_.light.view};
+            std::array<WGPUBindGroupEntry, 3> entries{};
+            for (std::uint32_t slot = 0; slot < entries.size(); ++slot) {
+                entries.at(slot) = WGPU_BIND_GROUP_ENTRY_INIT;
+                entries.at(slot).binding = slot;
+                entries.at(slot).textureView = views.at(slot);
+            }
+            WGPUBindGroup textures = bind_group(subsurface_textures_layout_, entries);
+            WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+            color.view = second ? world_view(*frame_.scene) : subsurface_.across.view;
+            color.loadOp = second ? WGPULoadOp_Load : WGPULoadOp_Clear;
+            color.storeOp = WGPUStoreOp_Store;
+            WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
+            descriptor.colorAttachmentCount = 1;
+            descriptor.colorAttachments = &color;
+            WGPURenderPassEncoder draw = wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
+            wgpuRenderPassEncoderSetPipeline(draw, subsurface_pipeline(second));
+            wgpuRenderPassEncoderSetBindGroup(draw, 2, textures, 0, nullptr);
+            wgpuRenderPassEncoderSetBindGroup(draw, 3, subsurface_uniforms_group_, 1,
+                                              &at.at(second ? 1 : 0));
+            wgpuRenderPassEncoderDraw(draw, 3, 1, 0, 0);
+            wgpuRenderPassEncoderEnd(draw);
+            wgpuRenderPassEncoderRelease(draw);
+            wgpuBindGroupRelease(textures);
+        }
+    }
+
+    // Subsurface scattering's blur across, or down (add), which adds its color to the world.
+    WGPURenderPipeline subsurface_pipeline(bool add) {
+        WGPURenderPipeline& made = add ? subsurface_add_pipeline_ : subsurface_pipeline_;
+        if (made != nullptr) {
+            return made;
+        }
+        WGPUBlendState adding = WGPU_BLEND_STATE_INIT;
+        adding.color = {.operation = WGPUBlendOperation_Add,
+                        .srcFactor = WGPUBlendFactor_One,
+                        .dstFactor = WGPUBlendFactor_One};
+        adding.alpha = {.operation = WGPUBlendOperation_Add,
+                        .srcFactor = WGPUBlendFactor_Zero,
+                        .dstFactor = WGPUBlendFactor_One};
+        WGPUColorTargetState color = WGPU_COLOR_TARGET_STATE_INIT;
+        color.format = kHdrFormat;
+        color.blend = add ? &adding : nullptr;
+        WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
+        fragment.module = module(kSubsurfaceFragmentModule, shaders::kSubsurfaceFragmentWgsl);
+        fragment.entryPoint = text_view("fs_main");
+        fragment.targetCount = 1;
+        fragment.targets = &color;
+        WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
+        info.layout = pipeline_layouts_.at(kSubsurfaceLayout);
+        info.vertex.module = module(kSubsurfaceVertexModule, shaders::kSubsurfaceVertexWgsl);
+        info.vertex.entryPoint = text_view("vs_main");
+        info.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+        info.primitive.cullMode = WGPUCullMode_None;
+        info.fragment = &fragment;
+        made = wgpuDeviceCreateRenderPipeline(device_, &info);
+        return made;
+    }
+
+    // Subsurface scattering's textures for a frame of width x height.
+    void prepare_subsurface(std::uint32_t width, std::uint32_t height) {
+        make_depth_target(width, height);
+        if (subsurface_.light.texture != nullptr && subsurface_.width == width &&
+            subsurface_.height == height) {
+            return;
+        }
+        release_pass_texture(subsurface_.light);
+        release_pass_texture(subsurface_.across);
+        subsurface_.light = pass_texture(width, height, kHdrFormat);
+        subsurface_.across = pass_texture(width, height, kHdrFormat);
+        subsurface_.width = width;
+        subsurface_.height = height;
+    }
+
+    // The pipeline drawing meshes that cull as cull says into the subsurface pass: Forward+'s
+    // fragment stage giving each pixel's diffuse light and strength, where the opaque pass left
+    // its depth, writing none.
+    WGPURenderPipeline subsurface_pipeline_for(CullMode cull) {
+        for (const MeshPipeline& made : mesh_pipelines_) {
+            if (made.cull == cull && made.pass == MeshPass::Subsurface) {
+                return made.pipeline;
+            }
+        }
+        const std::array attributes = mesh_attributes();
+        WGPUVertexBufferLayout buffer = WGPU_VERTEX_BUFFER_LAYOUT_INIT;
+        buffer.stepMode = WGPUVertexStepMode_Vertex;
+        buffer.arrayStride = sizeof(Vertex3D);
+        buffer.attributeCount = attributes.size();
+        buffer.attributes = attributes.data();
+        WGPUColorTargetState color = WGPU_COLOR_TARGET_STATE_INIT;
+        color.format = kHdrFormat;
+        WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
+        fragment.module =
+            module(kMeshSubsurfaceFragmentModule, joined(shaders::kMeshSubsurfaceFragmentWgsl));
+        fragment.entryPoint = text_view("fs_main");
+        fragment.targetCount = 1;
+        fragment.targets = &color;
+        WGPUDepthStencilState depth = WGPU_DEPTH_STENCIL_STATE_INIT;
+        depth.format = kDepthFormat;
+        depth.depthWriteEnabled = WGPUOptionalBool_False;
+        depth.depthCompare = WGPUCompareFunction_GreaterEqual;
+        WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
+        info.layout = pipeline_layouts_.at(kMeshClusteredLayout);
+        info.vertex.module = module(kMeshVertexModule, joined(shaders::kMeshVertexWgsl));
+        info.vertex.entryPoint = text_view("vs_main");
+        info.vertex.bufferCount = 1;
+        info.vertex.buffers = &buffer;
+        info.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+        info.primitive.frontFace = WGPUFrontFace_CW;
+        info.primitive.cullMode = gpu_cull(cull);
+        info.depthStencil = &depth;
+        info.fragment = &fragment;
+        WGPURenderPipeline pipeline = wgpuDeviceCreateRenderPipeline(device_, &info);
+        mesh_pipelines_.push_back({.format = kHdrFormat,
+                                   .cull = cull,
+                                   .clustered = true,
+                                   .pass = MeshPass::Subsurface,
+                                   .pipeline = pipeline});
+        return pipeline;
+    }
+
+    // Which of the frame's meshes a pass draws: the opaque ones' prepass, all of them, the opaque
+    // or blended ones alone around subsurface scattering, or those that scatter light.
+    enum class MeshDraws : std::uint8_t { Prepass, All, Opaque, Blended, Subsurface };
 
     // Records the frame's meshes in pass, in the order mesh_draw_order gives: with their prepass
     // pipelines (the opaque ones') for the normal-roughness prepass, or lit, with SSAO's
     // occlusion if ssao and SSR's reflections if ssr (with the scene's uniforms without SSR if
     // not, in a frame with it).
-    void encode_mesh_draws(WGPURenderPassEncoder pass, const MeshUniforms& at, bool prepass,
+    void encode_mesh_draws(WGPURenderPassEncoder pass, const MeshUniforms& at, MeshDraws draws,
                            bool ssao, bool ssr) {
+        const bool prepass = draws == MeshDraws::Prepass;
         const std::uint32_t scene =
             !prepass && !ssr && uses_ssr(*frame_.scene) ? at.unreflected : at.scene;
         // The motion vectors' prepass reads where the vertices were from a second buffer.
@@ -4629,8 +4862,16 @@ private:
              mesh_draw_order(std::span<const MeshDraw>(mesh_draws_), *frame_.scene,
                              [&](std::size_t draw) { return mesh_batches_[draw].bounds; })) {
             const MeshBatch& batch = mesh_batches_[i];
-            WGPURenderPipeline pipeline = prepass ? batch.normal_pipeline : batch.pipeline;
-            if (mesh_draws_[i].shadows == ShadowCasting::ShadowsOnly || pipeline == nullptr) {
+            WGPURenderPipeline pipeline = batch.pipeline;
+            if (prepass) {
+                pipeline = batch.normal_pipeline;
+            } else if (draws == MeshDraws::Subsurface) {
+                pipeline = batch.subsurface_pipeline;
+            }
+            const bool blended = mesh_draws_[i].material.transparency == Transparency::Alpha;
+            if (mesh_draws_[i].shadows == ShadowCasting::ShadowsOnly || pipeline == nullptr ||
+                (draws == MeshDraws::Opaque && blended) ||
+                (draws == MeshDraws::Blended && !blended)) {
                 continue;
             }
             if (pipeline != bound) {
@@ -4941,7 +5182,7 @@ private:
         prepass.colorAttachments = colors.data();
         prepass.depthStencilAttachment = &depth;
         WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &prepass);
-        encode_mesh_draws(pass, at, true, false, false);
+        encode_mesh_draws(pass, at, MeshDraws::Prepass, false, false);
         wgpuRenderPassEncoderEnd(pass);
         wgpuRenderPassEncoderRelease(pass);
     }
@@ -6839,6 +7080,9 @@ private:
     static constexpr std::size_t kGenerationModule = kMesh3DModule + 1;
     static constexpr std::size_t kGenerationDrawVertexModule = kGenerationModule + 1;
     static constexpr std::size_t kGenerationDrawFragmentModule = kGenerationModule + 2;
+    static constexpr std::size_t kSubsurfaceVertexModule = kGenerationDrawFragmentModule + 1;
+    static constexpr std::size_t kSubsurfaceFragmentModule = kSubsurfaceVertexModule + 1;
+    static constexpr std::size_t kMeshSubsurfaceFragmentModule = kSubsurfaceFragmentModule + 1;
     static constexpr std::size_t kSpriteLayout = 0;
     static constexpr std::size_t kMaterialLayout = 1;
     static constexpr std::size_t kProcessLayout = 2;
@@ -6866,6 +7110,7 @@ private:
     static constexpr std::size_t kShadowGameLayout = kMeshClusteredGameLayout + 1;
     static constexpr std::size_t kGenerationLayout = kShadowGameLayout + 1;
     static constexpr std::size_t kGenerationDrawLayout = kGenerationLayout + 1;
+    static constexpr std::size_t kSubsurfaceLayout = kGenerationDrawLayout + 1;
 
     WGPUInstance instance_;
     WGPUDevice device_;
@@ -6878,7 +7123,7 @@ private:
     bool can_wait_ = false; // Asyncify lets read_texture wait for the GPU
     // Which formats the GPU samples, by TextureFormat.
     std::array<bool, 4> sampled_{true, false, false, true};
-    std::array<WGPUShaderModule, kGenerationDrawFragmentModule + 1> modules_{};
+    std::array<WGPUShaderModule, kMeshSubsurfaceFragmentModule + 1> modules_{};
     std::vector<Pipeline> pipelines_;
     std::unordered_map<ShaderId, GameShader> game_shaders_;
     std::uint32_t next_shader_ = 1;
@@ -6920,6 +7165,8 @@ private:
     WGPUBindGroupLayout ssr_uniforms_layout_ = nullptr;
     WGPUBindGroupLayout taa_textures_layout_ = nullptr;
     WGPUBindGroupLayout taa_uniforms_layout_ = nullptr;
+    WGPUBindGroupLayout subsurface_textures_layout_ = nullptr;
+    WGPUBindGroupLayout subsurface_uniforms_layout_ = nullptr;
     std::array<WGPUBindGroupLayout, kFsr2Passes> fsr2_textures_layouts_{};
     WGPUBindGroupLayout fsr2_uniforms_layout_ = nullptr;
     WGPUBindGroupLayout fsr2_storage_layout_ = nullptr;
@@ -6938,7 +7185,7 @@ private:
     WGPUBindGroupLayout generation_storage_layout_ = nullptr;
     WGPUBindGroupLayout generation_uniforms_layout_ = nullptr;
     WGPUBindGroupLayout generation_draw_uniforms_layout_ = nullptr;
-    std::array<WGPUPipelineLayout, kGenerationDrawLayout + 1> pipeline_layouts_{};
+    std::array<WGPUPipelineLayout, kSubsurfaceLayout + 1> pipeline_layouts_{};
     std::array<WGPUSampler, 4> samplers_{}; // by sampler_index
     GpuTexture white_;
     std::unordered_map<TextureId, Texture> textures_;
@@ -6970,6 +7217,7 @@ private:
     WGPUBindGroup ssao_uniforms_group_ = nullptr;
     WGPUBindGroup ssr_uniforms_group_ = nullptr;
     WGPUBindGroup taa_uniforms_group_ = nullptr;
+    WGPUBindGroup subsurface_uniforms_group_ = nullptr;
     WGPUBindGroup fsr2_uniforms_group_ = nullptr;
     WGPUBindGroup fsr2_compute_uniforms_group_ = nullptr;
     WGPUBindGroup fsr3_uniforms_group_ = nullptr;
@@ -7069,6 +7317,18 @@ private:
     std::vector<std::pair<TextureId, SsrHistory>> ssr_histories_;
     std::array<WGPURenderPipeline, 3> motion_pipelines_{}; // TAA's prepass's, by CullMode
     WGPURenderPipeline taa_pipeline_ = nullptr;
+    // Subsurface scattering's blur across, its blur down adding to the world (made for the
+    // world's format, kHdrFormat in Forward+), and its two textures of half floats at the
+    // frame's size: the subsurface pass's light and the blur across.
+    WGPURenderPipeline subsurface_pipeline_ = nullptr;
+    WGPURenderPipeline subsurface_add_pipeline_ = nullptr;
+    struct SubsurfaceTargets {
+        GpuTexture light;
+        GpuTexture across;
+        std::uint32_t width = 0;
+        std::uint32_t height = 0;
+    };
+    SubsurfaceTargets subsurface_;
     // Each target's frames before for TAA, by the target.
     std::vector<std::pair<TextureId, TaaHistory>> taa_histories_;
     // FSR 2's pipelines by Fsr2Pass, its reconstruct pass's, the textures a frame's passes draw

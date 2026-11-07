@@ -21,6 +21,7 @@
 #include "sky_shading.hpp"
 #include "ssao.hpp"
 #include "ssr.hpp"
+#include "subsurface.hpp"
 #include "taa.hpp"
 #include "volumetric_fog.hpp"
 
@@ -1507,6 +1508,8 @@ private:
         // A draw with a game's spatial shader, whose fragment() runs on 2x2 quads of pixels, as
         // GPUs run it, so ddx and ddy work.
         const MeshShader* game = nullptr;
+        // Whether pixels as near as the buffer's pass too, as the subsurface pass's do.
+        bool equal = false;
     };
 
     // A pixel of a triangle: its corners, their perspective-correct shares and whether the
@@ -1891,18 +1894,23 @@ private:
             std::span<const detail::MeshDraw>(mesh_draws_), scene,
             [&](std::size_t i) { return find_mesh(mesh_draws_[i].mesh).bounds; });
         std::vector<ClipVertex> corners;
-        // Draws the meshes in order over buffer, the opaque pass's alone for the prepass, with
-        // shade(shader, fragment, at) for each pixel nearer than the buffer, keeping its depth
-        // where shade returns true.
-        const auto draw_all = [&](std::span<float> buffer, bool prepass, const auto& shade) {
+        // Draws the meshes in order over buffer, the opaque pass's alone for the prepass and
+        // the blended pass's alone after the subsurface scattering, with shade(shader, fragment,
+        // at) for each pixel nearer than the buffer, keeping its depth where shade returns true.
+        const auto draw_some = [&](std::span<float> buffer, bool opaque, bool transparent,
+                                   const auto& shade) {
             for (const std::size_t index : order) {
                 const detail::MeshDraw& draw = mesh_draws_[index];
                 const bool blended = draw.material.transparency == Transparency::Alpha;
-                if (draw.shadows == ShadowCasting::ShadowsOnly || (prepass && blended)) {
+                if (draw.shadows == ShadowCasting::ShadowsOnly ||
+                    (blended ? !transparent : !opaque)) {
                     continue;
                 }
                 draw_mesh(draw, camera, *lights, maps, buffer, target, shade, corners);
             }
+        };
+        const auto draw_all = [&](std::span<float> buffer, bool prepass, const auto& shade) {
+            draw_some(buffer, true, !prepass, shade);
         };
         // The color pass: the meshes' colors over the target.
         const auto shade_color = [&](const MeshShader& shader, const MeshFragment& fragment,
@@ -1924,6 +1932,54 @@ private:
         SsrHistory* history = nullptr;
         const detail::SsrCamera seen = detail::ssr_camera(scene);
         const std::size_t pixels = std::size_t{target.width()} * target.height();
+        // The color pass over buffer: with subsurface scattering, the opaque meshes, then those
+        // that scatter light under their surface again where they are seen, into a texture of
+        // half floats, which is blurred across and down and added to the world, then the blended
+        // meshes.
+        const auto draw_color = [&](std::span<float> buffer) {
+            if (target.hdr == nullptr || !detail::uses_subsurface(scene)) {
+                draw_all(buffer, false, shade_color);
+                return;
+            }
+            draw_some(buffer, true, false, shade_color);
+            std::vector<float> light(pixels * 4, 0.0F);
+            bool scattered = false;
+            for (const std::size_t index : order) {
+                const detail::MeshDraw& draw = mesh_draws_[index];
+                if (draw.shadows == ShadowCasting::ShadowsOnly ||
+                    !detail::draws_subsurface(draw.material)) {
+                    continue;
+                }
+                scattered = true;
+                draw_mesh(
+                    draw, camera, *lights, maps, buffer, target,
+                    [&](const MeshShader& shader, const MeshFragment& fragment, std::size_t at) {
+                        Float4 diffuse{};
+                        const auto color =
+                            shade_mesh_pixel(shader, fragment,
+                                             {static_cast<std::uint32_t>(at % target.width()),
+                                              static_cast<std::uint32_t>(at / target.width())},
+                                             &diffuse);
+                        if (color) {
+                            for (std::size_t c = 0; c < 4; ++c) {
+                                light[(at * 4) + c] = detail::round_half(diffuse.at(c));
+                            }
+                        }
+                        return false;
+                    },
+                    corners, true);
+            }
+            if (scattered) {
+                const std::vector<float> change =
+                    detail::run_subsurface(scene, target.width(), target.height(), light, buffer);
+                for (std::size_t at = 0; at < pixels; ++at) {
+                    const Float4 was = target.load(at);
+                    target.store(at, {was[0] + change[at * 4], was[1] + change[(at * 4) + 1],
+                                      was[2] + change[(at * 4) + 2], was[3]});
+                }
+            }
+            draw_some(buffer, false, true, shade_color);
+        };
         std::vector<float> prepass_depth;
         std::vector<float> velocity;
         std::vector<float> ray_shadows;
@@ -2050,7 +2106,7 @@ private:
                     const detail::HdrImage sky = *target.hdr;
                     lights->ssao[3] = 0.0F;
                     std::vector<float> primed(pixels, 0.0F);
-                    draw_all(primed, false, shade_color);
+                    draw_color(primed);
                     keep_last_frame(scene, *target.hdr, *history, seen);
                     *target.hdr = sky;
                     lights->ssao[3] = 1.0F;
@@ -2069,7 +2125,7 @@ private:
                 maps.ao_width = target.width();
             }
         }
-        draw_all(depth, false, shade_color);
+        draw_color(depth);
         if (generation != nullptr) {
             const Image& shown = find(frame_.target)->image;
             generation->prepared = detail::prepare_frame_generation(
@@ -2463,7 +2519,7 @@ private:
     void draw_mesh(const detail::MeshDraw& draw, const detail::MeshCameraUniforms& camera,
                    const detail::MeshSceneUniforms& lights, const detail::MeshMaps& maps,
                    std::span<float> buffer, const WorldTarget& target, const Shade& shade,
-                   std::vector<ClipVertex>& corners) {
+                   std::vector<ClipVertex>& corners, bool equal = false) {
         const Material3D& material = draw.material;
         const SoftwareMesh& mesh = find_mesh(draw.mesh);
         MeshShader shader{.material = &material,
@@ -2528,7 +2584,8 @@ private:
                                 .stride = target.width(),
                                 .viewport = {.width = target.width(), .height = target.height()},
                                 .cull = material.cull,
-                                .game = shader.game != nullptr ? &shader : nullptr};
+                                .game = shader.game != nullptr ? &shader : nullptr,
+                                .equal = equal};
         const auto shade_pixel = [&](const MeshFragment& fragment, std::size_t at) {
             return shade(shader, fragment, at);
         };
@@ -2826,7 +2883,8 @@ private:
                 const auto z = static_cast<float>((ba * a.z) + (bb * b.z) + (bc * c.z));
                 const std::size_t at =
                     (static_cast<std::size_t>(py) * raster.stride) + static_cast<std::size_t>(px);
-                if (!(z > raster.depth[at])) {
+                const bool nearer = z > raster.depth[at] || (raster.equal && z == raster.depth[at]);
+                if (!nearer) {
                     continue;
                 }
                 // Perspective-correct: each corner's share over its w.
@@ -3049,7 +3107,8 @@ private:
 
     static std::optional<Float4> shade_mesh_pixel(const MeshShader& shader,
                                                   const MeshFragment& fragment,
-                                                  std::array<std::uint32_t, 2> at) {
+                                                  std::array<std::uint32_t, 2> at,
+                                                  Float4* subsurface = nullptr) {
         detail::MeshPixel pixel =
             mesh_pixel(shader, fragment.varyings(), fragment.front, at, fragment.game);
         if (shader.game != nullptr && shader.game->light) {
@@ -3059,7 +3118,7 @@ private:
                 return game_light(shader, module, fragment, at, light, diffuse, specular, alpha);
             };
         }
-        return detail::shade_mesh(shader.surface, *shader.scene, *shader.maps, pixel);
+        return detail::shade_mesh(shader.surface, *shader.scene, *shader.maps, pixel, subsurface);
     }
 
     // Writes a mesh pixel as the GPU device's mesh pipelines do: opaque ones replace the pixel,

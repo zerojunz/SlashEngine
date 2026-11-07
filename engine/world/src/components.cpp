@@ -2932,6 +2932,11 @@ void register_3d_components(ComponentRegistry& registry) {
     const FieldMeta shadow_opacity{
         .doc = "How dark its shadows are: 0 casts none, 1 a full one.", .min = 0, .max = 1};
     const FieldMeta shadow_caster_mask{.doc = "Meshes whose layers share a bit cast its shadows."};
+    const FieldMeta transmittance_bias{
+        .doc = "Forward+: moves points into its shadow map, for subsurface materials' "
+               "transmittance.",
+        .min = -16,
+        .max = 16};
 
     registry.add<MeshInstance3D>()
         .set_doc("Draws the entity's primitive mesh (BoxMesh, SphereMesh, ...) at its "
@@ -3146,7 +3151,29 @@ void register_3d_components(ComponentRegistry& registry) {
                   {.doc = "Stretches highlights along the mesh's tangents, as hair and brushed "
                           "metal."})
         .describe("anisotropy",
-                  {.doc = "Above 0 along the tangents, below 0 across them.", .min = -1, .max = 1});
+                  {.doc = "Above 0 along the tangents, below 0 across them.", .min = -1, .max = 1})
+        .describe("subsurf_scatter_enabled",
+                  {.doc =
+                       "Forward+: spreads the light it takes under its surface, as skin, wax and "
+                       "marble."})
+        .describe("subsurf_scatter_strength",
+                  {.doc = "How far the light spreads, from 0 to 1.", .min = 0, .max = 1})
+        .describe("subsurf_scatter_skin_mode",
+                  {.doc = "Spreads red farther than blue, as skin does."})
+        .describe("subsurf_scatter_transmittance_enabled",
+                  {.doc = "Lets light through from behind, as through ears and leaves."})
+        .describe("subsurf_scatter_transmittance_color",
+                  {.doc = "The color of the light let through, [r, g, b, a] from 0 to 1, sRGB; a "
+                          "scales it.",
+                   .min = 0,
+                   .max = 1})
+        .describe(
+            "subsurf_scatter_transmittance_depth",
+            {.doc = "How thick a part lets light through, in meters.", .min = 0.001, .max = 8})
+        .describe("subsurf_scatter_transmittance_boost",
+                  {.doc = "Lets light through where it faces the light too, from 0 to 1.",
+                   .min = 0,
+                   .max = 1});
 
     registry.add<Camera3D>()
         .set_doc("What the 3D world is seen through, as Godot's Camera3D, looking down the "
@@ -3260,7 +3287,8 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("light_indirect_energy", indirect_energy)
         .describe("light_bake_mode", bake_mode)
         .describe("shadow_blur", shadow_blur)
-        .describe("light_volumetric_fog_energy", fog_energy);
+        .describe("light_volumetric_fog_energy", fog_energy)
+        .describe("shadow_transmittance_bias", transmittance_bias);
     registry.add<OmniLight3D>()
         .set_doc("Light from the entity in every direction, such as a lamp, as Godot's "
                  "OmniLight3D.")
@@ -3281,7 +3309,8 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("light_size", light_size)
         .describe("light_bake_mode", bake_mode)
         .describe("shadow_blur", shadow_blur)
-        .describe("light_volumetric_fog_energy", fog_energy);
+        .describe("light_volumetric_fog_energy", fog_energy)
+        .describe("shadow_transmittance_bias", transmittance_bias);
     registry.add<SpotLight3D>()
         .set_doc("Light from the entity in a cone down its -z, such as a torch, as Godot's "
                  "SpotLight3D.")
@@ -3306,7 +3335,8 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("light_size", light_size)
         .describe("light_bake_mode", bake_mode)
         .describe("shadow_blur", shadow_blur)
-        .describe("light_volumetric_fog_energy", fog_energy);
+        .describe("light_volumetric_fog_energy", fog_energy)
+        .describe("shadow_transmittance_bias", transmittance_bias);
 
     const FieldMeta curve{
         .doc = "How sharply it changes; smaller is sharper.", .min = 0.001, .max = 1};

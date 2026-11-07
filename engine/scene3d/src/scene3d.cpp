@@ -143,6 +143,7 @@ render::Light3D light_base(const T& light, render::LightType type) {
     out.shadow = light.shadow_enabled;
     out.shadow_bias = light.shadow_bias;
     out.shadow_normal_bias = light.shadow_normal_bias;
+    out.shadow_transmittance_bias = light.shadow_transmittance_bias;
     out.shadow_opacity = light.shadow_opacity;
     out.shadow_reverse_cull_face = light.shadow_reverse_cull_face;
     out.shadow_caster_mask = light.shadow_caster_mask;
@@ -1137,6 +1138,16 @@ render::Material3D material(const world::StandardMaterial3D& standard,
     }
     if (standard.anisotropy_enabled) {
         out.anisotropy = standard.anisotropy;
+    }
+    if (standard.subsurf_scatter_enabled) {
+        out.subsurface = standard.subsurf_scatter_strength;
+        out.subsurface_skin = standard.subsurf_scatter_skin_mode;
+        out.transmittance = standard.subsurf_scatter_transmittance_enabled;
+        const Vec4& through = standard.subsurf_scatter_transmittance_color;
+        out.transmittance_color = {static_cast<float>(through.x), static_cast<float>(through.y),
+                                   static_cast<float>(through.z), static_cast<float>(through.w)};
+        out.transmittance_depth = standard.subsurf_scatter_transmittance_depth;
+        out.transmittance_boost = standard.subsurf_scatter_transmittance_boost;
     }
     return out;
 }
