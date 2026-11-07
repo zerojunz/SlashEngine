@@ -10,6 +10,7 @@
 #include "slash/command/mcp.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/json.hpp"
+#include "slash/npc/npc.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
@@ -1849,6 +1850,93 @@ TEST_CASE("storyboard.review asks a model for contradictions and keeps only thos
     const command::Reply missing =
         engine.call("storyboard.review", parse(R"({"paths": ["nope.txt"]})"));
     CHECK(missing.message == "no file \"nope.txt\"");
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("npc.draft has a model write a brain and sends its problems back until it checks") {
+    const std::string root = "ai_npc_draft_project";
+    std::filesystem::remove_all(root);
+    // The first draft walks to a well the scene lacks and wants what no action gives; the
+    // second is fixed.
+    const std::string first = R"({"format": 1, "facts": {"thirsty": true, "rested": false},
+        "goals": [{"name": "drink", "priority": 2, "when": {"thirsty": true},
+                   "want": {"thirsty": false}},
+                  {"name": "rest", "want": {"rested": true}}],
+        "actions": [{"name": "drink", "effects": {"thirsty": false}, "do": {"go_to": "well"}}]})";
+    const std::string second = R"(```json
+{"format": 1, "facts": {"thirsty": true, "rested": false},
+ "goals": [{"name": "drink", "priority": 2, "when": {"thirsty": true},
+            "want": {"thirsty": false}},
+           {"name": "rest", "want": {"rested": true}}],
+ "actions": [{"name": "drink", "effects": {"thirsty": false}, "do": {"go_to": "fountain"}},
+             {"name": "nap", "effects": {"rested": true}, "do": {"wait": 3}},
+             {"name": "shout", "do": {"emit": "shout"}}]}
+```)";
+    FakeModelServer server({chat_reply(first), chat_reply(second), chat_reply("not a brain")});
+    write(root + "/providers.json", R"({"providers": {"local": {"type": "openai",
+        "model": "local-model", "url": ")" +
+                                        server.url() + R"("}}})");
+    write(root + "/project.json", R"({"format": 1, "name": "Square",
+        "main_scene": "main.scene.json"})");
+    write(root + "/main.scene.json", R"({"format": 1, "entities": {
+        "fountain": {"components": {"Transform3D": {}}},
+        "bench": {"components": {"Transform3D": {"position": [2, 0, 0]}}},
+        "walker": {"components": {"Transform3D": {}, "NpcAgent": {}}},
+        "title": {"components": {"Control": {}}}}})");
+    write(root + "/storyboard/world.json", R"({"format": 1, "entries": {
+        "character/ada": {"name": "Ada", "summary": "An old gardener who drinks often."}}})");
+    Engine engine(root);
+    engine.ok("scene.open", parse(R"({"path": "main.scene.json"})"));
+
+    const json::Value drafted = engine.ok("npc.draft", parse(R"({"path": "ada.npc.json",
+        "brief": "Drinks at the fountain when thirsty, otherwise rests.",
+        "story": ["character/ada"]})"));
+    CHECK(drafted == parse(R"({"path": "ada.npc.json", "attempts": 2, "model": "local-model",
+        "usage": {"input_tokens": 24, "output_tokens": 6},
+        "goals": ["drink", "rest"], "actions": ["drink", "nap", "shout"],
+        "go_to": ["fountain"], "emits": ["shout"],
+        "warnings": [{"path": "/actions/2",
+                      "message": "no goal's plan from the facts' defaults uses \"shout\""}]})"));
+    const npc::Brain brain = npc::parse_brain(parse(read(root + "/ada.npc.json"))).value();
+    CHECK(brain.actions.size() == 3);
+
+    // The model heard the brief, the storyboard entry, the entities it may walk to (those with
+    // a place and no NpcAgent) and, the second time, the first draft's problems.
+    const std::vector<json::Value> bodies = server.bodies();
+    REQUIRE(bodies.size() == 2);
+    const json::Array& asked = bodies[0].find("messages")->as_array();
+    const std::string prompt = asked[1].find("content")->as_string();
+    CHECK(prompt.find("Drinks at the fountain") != std::string::npos);
+    CHECK(prompt.find("An old gardener") != std::string::npos);
+    CHECK(prompt.find(R"(["bench","fountain"])") != std::string::npos);
+    const json::Array& again = bodies[1].find("messages")->as_array();
+    REQUIRE(again.size() == 4);
+    const std::string problems = again[3].find("content")->as_string();
+    CHECK(problems.find(R"("path":"/actions/0/do/go_to")") != std::string::npos);
+    CHECK(problems.find(R"(goal \"rest\" is out of reach)") != std::string::npos);
+
+    // Undo takes the file away again.
+    engine.ok("undo", parse("{}"));
+    CHECK(!std::filesystem::exists(root + "/ada.npc.json"));
+
+    // A model that never makes a brain writes nothing, and says what was wrong.
+    const command::Reply failed = engine.call("npc.draft", parse(R"({"path": "bob.npc.json",
+        "brief": "A baker.", "attempts": 1})"));
+    REQUIRE(!failed.ok);
+    CHECK(failed.message == "the model's brain still has problems after 1 attempt; nothing was "
+                            "written");
+    CHECK(failed.data.find("problems")->size() == 1);
+    CHECK(!std::filesystem::exists(root + "/bob.npc.json"));
+    const command::Reply wrong = engine.call("npc.draft", parse(R"({"path": "bob.json",
+        "brief": "A baker."})"));
+    REQUIRE(!wrong.ok);
+    CHECK(wrong.message == "/path: NPC brains are .npc.json files");
+    const command::Reply unknown = engine.call("npc.draft", parse(R"({"path": "bob.npc.json",
+        "brief": "A baker.", "story": ["character/bob"]})"));
+    REQUIRE(!unknown.ok);
+    CHECK(
+        unknown.message ==
+        "/story/0: the storyboard has no entry \"character/bob\"; did you mean \"character/ada\"?");
     std::filesystem::remove_all(root);
 }
 

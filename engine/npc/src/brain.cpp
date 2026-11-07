@@ -259,6 +259,22 @@ int added(int value, int change) {
                                                      std::numeric_limits<int>::max()));
 }
 
+// A value that meets a condition its fact's value doesn't: the condition's own, or one past it.
+int nearest_meeting(const Condition& condition) {
+    switch (condition.compare) {
+    case Compare::Less:
+        return added(condition.value, -1);
+    case Compare::Greater:
+    case Compare::NotEqual:
+        return added(condition.value, 1);
+    case Compare::Equal:
+    case Compare::LessEqual:
+    case Compare::GreaterEqual:
+        break;
+    }
+    return condition.value;
+}
+
 std::size_t unmet(std::span<const Condition> conditions, std::span<const int> facts) {
     return static_cast<std::size_t>(std::ranges::count_if(
         conditions, [&](const Condition& c) { return !meets(c, facts[c.fact]); }));
@@ -563,10 +579,11 @@ std::vector<json::ValidationError> check_brain(const Brain& brain) {
     for (std::size_t g = 0; g < brain.goals.size(); ++g) {
         const Goal& goal = brain.goals[g];
         std::vector<int> start = brain.defaults;
-        // The goal's when conditions taken as met where they say a value.
+        // The goal's when conditions taken as met, each unmet one by the value nearest the
+        // default that meets it.
         for (const Condition& condition : goal.when) {
-            if (condition.compare == Compare::Equal) {
-                start[condition.fact] = condition.value;
+            if (!meets(condition, start[condition.fact])) {
+                start[condition.fact] = nearest_meeting(condition);
             }
         }
         if (holds(goal.want, start)) {

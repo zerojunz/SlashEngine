@@ -4931,7 +4931,10 @@ it. `facts` holds only the values that differ from the brain's defaults.
 `scene validate` checks a brain file's facts, names and `do`s, and warns about goals no chain of
 actions reaches from the facts' defaults and actions no plan uses. On a scene, it and exports
 check each agent's brain loads and that its `facts`, `goal` and `plan` name what the brain has.
-[`npc.plan`](commands.md#npcplan) shows what an agent would choose and why.
+A goal whose `when` compares (`<`, `>`, `!=`) counts as met with the nearest value that meets it
+for that check. [`npc.plan`](commands.md#npcplan) shows what an agent would choose and why, and
+[`npc.draft`](commands.md#npcdraft) has a model write or revise a brain from a brief and the
+storyboard, checked the same way.
 [examples/npc-planner](../../examples/npc-planner/) has two farmers and a guard.
 
 ## Particles

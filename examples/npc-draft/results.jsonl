@@ -1,0 +1,12 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":4,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"actions":["walk_to_orchard","pick_fruit","walk_to_stall","sell_fruit","walk_home"],"attempts":2,"emits":["sell"],"go_to":["home","orchard","stall"],"goals":["sleep","restock","serve","mind_stall"],"model":"local-model","path":"brains/mira.npc.json","replayed":true,"usage":{"input_tokens":0,"output_tokens":0}}}
+{"id":3,"jsonrpc":"2.0","result":{"id":"mira"}}
+{"id":4,"jsonrpc":"2.0","result":{"cost":3,"facts":{"at_home":1,"at_orchard":0,"at_stall":0,"customers":2,"fruit":0,"night":0},"goal":"restock","plan":["walk_to_orchard","pick_fruit"],"searched":4}}
+{"id":5,"jsonrpc":"2.0","result":{"subscription":"events_1"}}
+{"id":6,"jsonrpc":"2.0","result":{"tick":600,"ticks":600}}
+{"id":7,"jsonrpc":"2.0","result":{"dropped":0,"events":[{"data":{"goal":"restock","previous":""},"id":"mira","kind":"npc_goal_changed","seq":1,"tick":0},{"data":{"goal":"serve","previous":"restock"},"id":"mira","kind":"npc_goal_changed","seq":2,"tick":391},{"data":{"action":"sell_fruit"},"id":"mira","kind":"sell","seq":3,"tick":532},{"data":{"action":"sell_fruit"},"id":"mira","kind":"sell","seq":4,"tick":533},{"data":{"goal":"","previous":"serve"},"id":"mira","kind":"npc_goal_changed","seq":5,"tick":534}],"more":false}}
+{"id":8,"jsonrpc":"2.0","result":{"cost":1,"facts":{"at_home":0,"at_orchard":0,"at_stall":1,"customers":0,"fruit":1,"night":1},"goal":"sleep","plan":["walk_home"],"searched":2}}
+{"id":9,"jsonrpc":"2.0","result":{"actions":["walk_to_orchard","pick_fruit","walk_to_stall","sell_fruit","walk_home","drink_at_well"],"attempts":1,"emits":["sell"],"go_to":["home","orchard","stall","well"],"goals":["sleep","drink","restock","serve","mind_stall"],"model":"local-model","path":"brains/mira.npc.json","replayed":true,"usage":{"input_tokens":0,"output_tokens":0}}}
+{"id":10,"jsonrpc":"2.0","result":{"cost":2,"facts":{"at_home":0,"at_orchard":0,"at_stall":1,"customers":0,"fruit":1,"night":0,"thirsty":1},"goal":"drink","plan":["drink_at_well"],"searched":2}}
+{"id":11,"jsonrpc":"2.0","result":{"can_redo":1,"can_undo":3,"undone":"npc.draft"}}
+{"error":{"code":-32602,"data":{"path":"/facts/fruits"},"message":"/facts/fruits: the brain has no fact named \"fruits\"; did you mean \"fruit\"?"},"id":12,"jsonrpc":"2.0"}
