@@ -1,0 +1,5 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":5,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"colors":[[0.071,0.063,0.047,1],[0.396,0.373,0.306,1],[0.659,0.624,0.522,1],[0.541,0.031,0.004,1]],"drawn":{"meshes":2},"height":90,"width":160}}
+{"id":3,"jsonrpc":"2.0","result":{"changed":{"StandardMaterial3D":{"subsurf_scatter_enabled":false}},"id":"wax"}}
+{"id":4,"jsonrpc":"2.0","result":{"changed":{"StandardMaterial3D":{"subsurf_scatter_transmittance_enabled":false}},"id":"ear"}}
+{"id":5,"jsonrpc":"2.0","result":{"colors":[[0,0,0,1],[0.388,0.365,0.302,1],[0.659,0.624,0.522,1],[0,0,0,1]],"drawn":{"meshes":2},"height":90,"width":160}}

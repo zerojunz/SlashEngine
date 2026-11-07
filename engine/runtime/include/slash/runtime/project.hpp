@@ -125,6 +125,8 @@ struct Project {
     render::SsrSettings ssr{};
     // Volumetric fog's froxels, as Godot's rendering/environment/volumetric_fog.
     render::VolumetricFogSettings volumetric_fog{};
+    // Subsurface scattering, as Godot's rendering/environment/subsurface_scattering.
+    render::SubsurfaceSettings subsurface{};
     // Reflection probes' cubes, as Godot's rendering/reflections/reflection_atlas.
     render::ReflectionAtlasSettings reflection_atlas{};
     // How exports ship textures.

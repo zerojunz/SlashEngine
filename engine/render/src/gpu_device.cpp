@@ -33,6 +33,7 @@
 #include "mesh_normal_shaders.hpp"
 #include "mesh_shaders.hpp"
 #include "mesh_shading.hpp"
+#include "mesh_subsurface_shaders.hpp"
 #include "metalfx.hpp"
 #include "native.hpp"
 #include "native_copy.hpp"
@@ -59,6 +60,8 @@
 #include "ssr.hpp"
 #include "ssr_shaders.hpp"
 #include "ssr_trace_shaders.hpp"
+#include "subsurface.hpp"
+#include "subsurface_shaders.hpp"
 #include "taa.hpp"
 #include "taa_shaders.hpp"
 #include "uniforms.hpp"
@@ -672,6 +675,24 @@ public:
                 SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
             }
         }
+        for (SDL_GPUShader* shader :
+             {subsurface_mesh_shader_, subsurface_shaders_[0], subsurface_shaders_[1]}) {
+            if (shader != nullptr) {
+                SDL_ReleaseGPUShader(device_, shader);
+            }
+        }
+        for (SDL_GPUGraphicsPipeline* pipeline : subsurface_mesh_pipelines_) {
+            if (pipeline != nullptr) {
+                SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
+            }
+        }
+        for (const auto& [format, pipeline] : subsurface_pipelines_) {
+            SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
+        }
+        for (const auto& [format, pipeline] : subsurface_add_pipelines_) {
+            SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
+        }
+        release_subsurface();
         for (SDL_GPUShader* shader : ssao_shaders_) {
             if (shader != nullptr) {
                 SDL_ReleaseGPUShader(device_, shader);
@@ -1751,6 +1772,12 @@ public:
                     return ready.error();
                 }
             }
+            if (uses_subsurface(*frame.scene)) {
+                if (auto ready = prepare_subsurface(scene_width, scene_height); !ready) {
+                    SDL_CancelGPUCommandBuffer(commands);
+                    return ready.error();
+                }
+            }
             if (uses_taa(*frame.scene)) {
                 if (auto ready = prepare_taa(frame.target, scene_width, scene_height); !ready) {
                     SDL_CancelGPUCommandBuffer(commands);
@@ -2095,6 +2122,14 @@ public:
                 return normal.error();
             }
             batch.normal_pipeline = normal.value();
+        }
+        if (subsurface_.light != nullptr && uses_subsurface(*frame_.scene) &&
+            draws_subsurface(material)) {
+            auto made = subsurface_pipeline_for(material.cull);
+            if (!made) {
+                return made.error();
+            }
+            batch.subsurface_pipeline = made.value();
         }
         if (material.shader != ShaderId::None && shadows != ShadowCasting::Off) {
             auto made = game_shadow_pipelines(material.shader);
@@ -2566,6 +2601,8 @@ private:
         SDL_GPUGraphicsPipeline* pipeline = nullptr;
         // The prepass's, for an opaque mesh in a frame with SSAO, SSR or TAA.
         SDL_GPUGraphicsPipeline* normal_pipeline = nullptr;
+        // The subsurface pass's, for a mesh whose light scatters under its surface.
+        SDL_GPUGraphicsPipeline* subsurface_pipeline = nullptr;
         // A game's spatial shader's shadow pipelines by CullMode, where it draws its shadows.
         std::array<SDL_GPUGraphicsPipeline*, 3> shadow_pipelines{};
         std::array<SDL_GPUTextureSamplerBinding, kMeshTextures> samplers{};
@@ -4025,8 +4062,11 @@ private:
             draw_volumetric_fog(commands, scene, *lights, *plan, *fog);
         }
         // Draws the meshes in pass, with their prepass pipelines (the opaque ones') for the
-        // prepass.
-        const auto draw_batches = [&](SDL_GPURenderPass* pass, bool prepass) {
+        // prepass, the opaque or blended ones alone around subsurface scattering, or those that
+        // scatter light with their subsurface pipelines.
+        enum class Draws : std::uint8_t { Prepass, All, Opaque, Blended, Subsurface };
+        const auto draw_batches = [&](SDL_GPURenderPass* pass, Draws draws) {
+            const bool prepass = draws == Draws::Prepass;
             SDL_PushGPUVertexUniformData(commands, 0, &camera,
                                          static_cast<std::uint32_t>(sizeof(camera)));
             SDL_PushGPUFragmentUniformData(commands, 1, lights.get(),
@@ -4039,9 +4079,15 @@ private:
             for (const std::size_t i : order) {
                 const MeshDraw& draw = mesh_draws_[i];
                 const MeshBatch& batch = mesh_batches_[i];
-                SDL_GPUGraphicsPipeline* pipeline =
-                    prepass ? batch.normal_pipeline : batch.pipeline;
-                if (draw.shadows == ShadowCasting::ShadowsOnly || pipeline == nullptr) {
+                SDL_GPUGraphicsPipeline* pipeline = batch.pipeline;
+                if (prepass) {
+                    pipeline = batch.normal_pipeline;
+                } else if (draws == Draws::Subsurface) {
+                    pipeline = batch.subsurface_pipeline;
+                }
+                const bool blended = draw.material.transparency == Transparency::Alpha;
+                if (draw.shadows == ShadowCasting::ShadowsOnly || pipeline == nullptr ||
+                    (draws == Draws::Opaque && blended) || (draws == Draws::Blended && !blended)) {
                     continue;
                 }
                 if (pipeline != bound) {
@@ -4115,7 +4161,7 @@ private:
             prepass_depth.cycle = true;
             SDL_GPURenderPass* pass =
                 SDL_BeginGPURenderPass(commands, targets.data(), motion ? 2 : 1, &prepass_depth);
-            draw_batches(pass, true);
+            draw_batches(pass, Draws::Prepass);
             SDL_EndGPURenderPass(pass);
             if (generation != nullptr) {
                 generation->camera = frame_generation_camera(scene.projection);
@@ -4157,6 +4203,13 @@ private:
             clear_texture(commands, fsr2_textures_.velocity,
                           {kInvalidMotion, kInvalidMotion, 0.0F, 0.0F});
         }
+        // Subsurface scattering, where a mesh's light scatters under its surface.
+        const bool subsurface = plan != nullptr && clustered && subsurface_.light != nullptr &&
+                                uses_subsurface(scene) &&
+                                std::ranges::any_of(order, [&](std::size_t i) {
+                                    return mesh_batches_[i].subsurface_pipeline != nullptr &&
+                                           mesh_draws_[i].shadows != ShadowCasting::ShadowsOnly;
+                                });
         // The sky, then the meshes over it.
         const auto draw_color = [&] {
             SDL_GPUColorTargetInfo color{};
@@ -4168,11 +4221,16 @@ private:
             depth.texture = depth_;
             depth.clear_depth = 0.0F;
             depth.load_op = SDL_GPU_LOADOP_CLEAR;
-            // Kept for depth of field and FSR 2, which read it after.
+            // Kept for depth of field and FSR 2, which read it after, and for subsurface
+            // scattering's passes.
             depth.store_op = scene.method == RenderMethod::ForwardPlus &&
                                      (uses_dof(scene.post) || fsr2 != nullptr)
                                  ? SDL_GPU_STOREOP_STORE
                                  : SDL_GPU_STOREOP_DONT_CARE;
+            const SDL_GPUStoreOp depth_store = depth.store_op;
+            if (subsurface) {
+                depth.store_op = SDL_GPU_STOREOP_STORE;
+            }
             depth.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
             depth.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
             depth.cycle = true;
@@ -4202,15 +4260,47 @@ private:
                 SDL_EndGPURenderPass(pass);
                 return;
             }
-            if (clustered) {
-                const std::array storage{
-                    cluster_lights_.buffer,     cluster_cells_.buffer,
-                    probe_buffer_.buffer,       decal_buffer_.buffer,
-                    decal_atlas_buffer_.buffer, fog != nullptr ? fog->fog : no_fog_};
-                SDL_BindGPUFragmentStorageBuffers(pass, 0, storage.data(),
-                                                  static_cast<std::uint32_t>(storage.size()));
+            const auto bind_storage = [&](SDL_GPURenderPass* to) {
+                if (clustered) {
+                    const std::array storage{
+                        cluster_lights_.buffer,     cluster_cells_.buffer,
+                        probe_buffer_.buffer,       decal_buffer_.buffer,
+                        decal_atlas_buffer_.buffer, fog != nullptr ? fog->fog : no_fog_};
+                    SDL_BindGPUFragmentStorageBuffers(to, 0, storage.data(),
+                                                      static_cast<std::uint32_t>(storage.size()));
+                }
+            };
+            bind_storage(pass);
+            if (!subsurface) {
+                draw_batches(pass, Draws::All);
+                SDL_EndGPURenderPass(pass);
+                return;
             }
-            draw_batches(pass, false);
+            // The opaque meshes, then those that scatter light under their surface again where
+            // they are seen, into the subsurface pass's texture, its blur added to the world,
+            // then the blended meshes.
+            draw_batches(pass, Draws::Opaque);
+            SDL_EndGPURenderPass(pass);
+            SDL_GPUColorTargetInfo light{};
+            light.texture = subsurface_.light;
+            light.clear_color = {0.0F, 0.0F, 0.0F, 0.0F};
+            light.load_op = SDL_GPU_LOADOP_CLEAR;
+            light.store_op = SDL_GPU_STOREOP_STORE;
+            SDL_GPUDepthStencilTargetInfo kept = depth;
+            kept.load_op = SDL_GPU_LOADOP_LOAD;
+            kept.store_op = SDL_GPU_STOREOP_STORE;
+            kept.cycle = false;
+            pass = SDL_BeginGPURenderPass(commands, &light, 1, &kept);
+            bind_storage(pass);
+            draw_batches(pass, Draws::Subsurface);
+            SDL_EndGPURenderPass(pass);
+            draw_subsurface(commands, scene);
+            color.load_op = SDL_GPU_LOADOP_LOAD;
+            color.cycle = false;
+            kept.store_op = depth_store;
+            pass = SDL_BeginGPURenderPass(commands, &color, 1, &kept);
+            bind_storage(pass);
+            draw_batches(pass, Draws::Blended);
             SDL_EndGPURenderPass(pass);
         };
         if (!ssr) {
@@ -5413,6 +5503,191 @@ private:
 
     // TAA's shaders and pipeline, and target's history at width x height, made empty when it has
     // none or it was drawn at another size. Made at the start of a frame that needs them.
+    // Subsurface scattering's shaders, its blur's pipeline, its textures for a frame of width x
+    // height and the depth buffer it reads. Made at the start of a frame that needs them.
+    Result<void> prepare_subsurface(std::uint32_t width, std::uint32_t height) {
+        if (subsurface_shaders_[0] == nullptr) {
+            const ShaderCode code{.vertex_spirv = shaders::kSubsurfaceVertexSpirv,
+                                  .fragment_spirv = shaders::kSubsurfaceFragmentSpirv,
+                                  .vertex_msl = shaders::kSubsurfaceVertexMsl,
+                                  .fragment_msl = shaders::kSubsurfaceFragmentMsl,
+                                  .hlsl = shaders::kSubsurfaceHlsl};
+            auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 0);
+            if (!vertex) {
+                return vertex.error();
+            }
+            auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code, 3, 1);
+            if (!fragment) {
+                SDL_ReleaseGPUShader(device_, vertex.value());
+                return fragment.error();
+            }
+            subsurface_shaders_ = {vertex.value(), fragment.value()};
+        }
+        if (auto pipeline =
+                fullscreen_pipeline(subsurface_pipelines_, subsurface_shaders_, kHdrFormat);
+            !pipeline) {
+            return pipeline.error();
+        }
+        if (auto depth = depth_target(width, height); !depth) {
+            return depth.error();
+        }
+        if (subsurface_.light != nullptr && subsurface_.width == width &&
+            subsurface_.height == height) {
+            return {};
+        }
+        release_subsurface();
+        for (SDL_GPUTexture** texture : {&subsurface_.light, &subsurface_.across}) {
+            auto made = pass_texture(width, height, kHdrFormat, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
+                                     1, "subsurface scattering");
+            if (!made) {
+                release_subsurface();
+                return made.error();
+            }
+            *texture = made.value();
+        }
+        subsurface_.width = width;
+        subsurface_.height = height;
+        return {};
+    }
+
+    void release_subsurface() {
+        for (SDL_GPUTexture** texture : {&subsurface_.light, &subsurface_.across}) {
+            if (*texture != nullptr) {
+                pending_release_.push_back(std::exchange(*texture, nullptr));
+            }
+        }
+        subsurface_.width = 0;
+        subsurface_.height = 0;
+    }
+
+    // The pipeline drawing meshes that cull as cull says into the subsurface pass: Forward+'s
+    // fragment stage giving each pixel's diffuse light and strength, where the opaque pass left
+    // its depth, writing none.
+    Result<SDL_GPUGraphicsPipeline*> subsurface_pipeline_for(CullMode cull) {
+        SDL_GPUGraphicsPipeline*& made =
+            subsurface_mesh_pipelines_.at(static_cast<std::size_t>(cull));
+        if (made != nullptr) {
+            return made;
+        }
+        if (auto ready = make_mesh_shaders(); !ready) {
+            return ready.error();
+        }
+        if (auto ready = make_clustered_shader(); !ready) {
+            return ready.error();
+        }
+        if (subsurface_mesh_shader_ == nullptr) {
+            const std::string fragment_msl = joined(shaders::kMeshSubsurfaceFragmentMsl);
+            const std::string hlsl = joined(shaders::kMeshSubsurfaceHlsl);
+            const ShaderCode code{.vertex_spirv = {},
+                                  .fragment_spirv = shaders::kMeshSubsurfaceFragmentSpirv,
+                                  .vertex_msl = {},
+                                  .fragment_msl = fragment_msl,
+                                  .hlsl = hlsl};
+            auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code,
+                                            static_cast<std::uint32_t>(kMeshTextures) + 5, 3, 6);
+            if (!fragment) {
+                return fragment.error();
+            }
+            subsurface_mesh_shader_ = fragment.value();
+        }
+        SDL_GPUVertexBufferDescription buffer{};
+        buffer.slot = 0;
+        buffer.pitch = sizeof(Vertex3D);
+        buffer.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+        const std::array<SDL_GPUVertexAttribute, 6> attributes = mesh_attributes();
+        SDL_GPUColorTargetDescription color{};
+        color.format = kHdrFormat;
+        SDL_GPUGraphicsPipelineCreateInfo info{};
+        info.vertex_shader = mesh_shaders_[0];
+        info.fragment_shader = subsurface_mesh_shader_;
+        info.vertex_input_state.vertex_buffer_descriptions = &buffer;
+        info.vertex_input_state.num_vertex_buffers = 1;
+        info.vertex_input_state.vertex_attributes = attributes.data();
+        info.vertex_input_state.num_vertex_attributes =
+            static_cast<std::uint32_t>(attributes.size());
+        info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+        info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+        info.rasterizer_state.cull_mode = gpu_cull(cull);
+        info.rasterizer_state.front_face = SDL_GPU_FRONTFACE_CLOCKWISE;
+        info.depth_stencil_state.enable_depth_test = true;
+        info.depth_stencil_state.enable_depth_write = false;
+        info.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_GREATER_OR_EQUAL;
+        info.target_info.color_target_descriptions = &color;
+        info.target_info.num_color_targets = 1;
+        info.target_info.has_depth_stencil_target = true;
+        info.target_info.depth_stencil_format = depth_format_;
+        made = SDL_CreateGPUGraphicsPipeline(device_, &info);
+        if (made == nullptr) {
+            return sdl_error("creating the subsurface pass's pipeline failed");
+        }
+        return made;
+    }
+
+    // Subsurface scattering's blur, after the subsurface pass drew its light: across into its
+    // second texture, then down, adding the change to the world.
+    void draw_subsurface(SDL_GPUCommandBuffer* commands, const Scene3D& scene) {
+        const SDL_GPUTextureFormat format = world_format(scene, frame_format_);
+        auto across = fullscreen_pipeline(subsurface_pipelines_, subsurface_shaders_, kHdrFormat);
+        auto down = subsurface_add_pipeline(format);
+        if (!across || !down) {
+            return;
+        }
+        SDL_GPUSampler* nearest = samplers_.at(sampler_index(Filter::Nearest, false));
+        for (const bool second : {false, true}) {
+            SDL_GPUColorTargetInfo color{};
+            color.texture = second ? world_texture(scene) : subsurface_.across;
+            color.load_op = second ? SDL_GPU_LOADOP_LOAD : SDL_GPU_LOADOP_DONT_CARE;
+            color.store_op = SDL_GPU_STOREOP_STORE;
+            SDL_GPURenderPass* render = SDL_BeginGPURenderPass(commands, &color, 1, nullptr);
+            SDL_BindGPUGraphicsPipeline(render, second ? down.value() : across.value());
+            const SubsurfaceUniforms uniforms =
+                subsurface_uniforms(scene, scene_width_, scene_height_, second);
+            SDL_PushGPUFragmentUniformData(commands, 0, &uniforms,
+                                           static_cast<std::uint32_t>(sizeof(uniforms)));
+            const std::array<SDL_GPUTextureSamplerBinding, 3> bindings{{
+                {.texture = second ? subsurface_.across : subsurface_.light, .sampler = nearest},
+                {.texture = depth_, .sampler = nearest},
+                {.texture = subsurface_.light, .sampler = nearest},
+            }};
+            SDL_BindGPUFragmentSamplers(render, 0, bindings.data(),
+                                        static_cast<std::uint32_t>(bindings.size()));
+            SDL_DrawGPUPrimitives(render, 3, 1, 0, 0);
+            SDL_EndGPURenderPass(render);
+        }
+    }
+
+    // The blur down's pipeline into a world of format, adding its color.
+    Result<SDL_GPUGraphicsPipeline*> subsurface_add_pipeline(SDL_GPUTextureFormat format) {
+        for (const auto& [made_format, pipeline] : subsurface_add_pipelines_) {
+            if (made_format == format) {
+                return pipeline;
+            }
+        }
+        SDL_GPUColorTargetDescription color{};
+        color.format = format;
+        color.blend_state.enable_blend = true;
+        color.blend_state.color_blend_op = SDL_GPU_BLENDOP_ADD;
+        color.blend_state.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
+        color.blend_state.src_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+        color.blend_state.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+        color.blend_state.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ZERO;
+        color.blend_state.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+        SDL_GPUGraphicsPipelineCreateInfo info{};
+        info.vertex_shader = subsurface_shaders_[0];
+        info.fragment_shader = subsurface_shaders_[1];
+        info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+        info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+        info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+        info.target_info.color_target_descriptions = &color;
+        info.target_info.num_color_targets = 1;
+        SDL_GPUGraphicsPipeline* pipeline = SDL_CreateGPUGraphicsPipeline(device_, &info);
+        if (pipeline == nullptr) {
+            return sdl_error("creating subsurface scattering's pipeline failed");
+        }
+        subsurface_add_pipelines_.emplace_back(format, pipeline);
+        return pipeline;
+    }
+
     Result<void> prepare_taa(TextureId target, std::uint32_t width, std::uint32_t height) {
         if (taa_shaders_[0] == nullptr) {
             const ShaderCode code{.vertex_spirv = shaders::kTaaVertexSpirv,
@@ -7649,6 +7924,22 @@ private:
     };
     SDL_GPUShader* normal_shader_ = nullptr;                     // the prepass's fragment stage
     std::array<SDL_GPUGraphicsPipeline*, 3> normal_pipelines_{}; // by CullMode
+    // Subsurface scattering: the meshes' fragment stage and pipelines (by CullMode), the blur's
+    // shaders, its pipelines and those adding its change to the world, and its two textures of
+    // half floats at the frame's size: the subsurface pass's light and the blur across.
+    SDL_GPUShader* subsurface_mesh_shader_ = nullptr;
+    std::array<SDL_GPUGraphicsPipeline*, 3> subsurface_mesh_pipelines_{};
+    std::array<SDL_GPUShader*, 2> subsurface_shaders_{};
+    std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> subsurface_pipelines_;
+    std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>>
+        subsurface_add_pipelines_;
+    struct SubsurfaceTargets {
+        SDL_GPUTexture* light = nullptr;
+        SDL_GPUTexture* across = nullptr;
+        std::uint32_t width = 0;
+        std::uint32_t height = 0;
+    };
+    SubsurfaceTargets subsurface_;
     // The vertex shader, then the fragment shader, or on Direct3D 12 one for each group of passes
     // (kSsaoShaderGroups), and the pipelines for each.
     std::array<SDL_GPUShader*, 1 + kSsaoShaderGroups.size()> ssao_shaders_{};

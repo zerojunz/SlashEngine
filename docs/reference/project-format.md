@@ -43,6 +43,7 @@ checks it.
 | `rendering.camera.depth_of_field` | No | `hexagon`, `low`, no jitter | The bokeh shape and quality of 3D [depth of field](scene-format.md#cameraattributespractical): see [Depth of field](#depth-of-field) |
 | `rendering.environment.ssao` | No | `medium`, half size, 2 blur passes | The quality and cost of 3D [ambient occlusion](scene-format.md#ambient-occlusion): see [SSAO](#ssao) |
 | `rendering.environment.screen_space_reflection` | No | half size | The resolution of 3D [screen-space reflections](scene-format.md#screen-space-reflections): see [Screen-space reflections](#screen-space-reflections) |
+| `rendering.environment.subsurface_scattering` | No | low | How meshes' [subsurface scattering](scene-format.md#subsurface-scattering) is blurred: see [Subsurface scattering](#subsurface-scattering) |
 | `rendering.environment.volumetric_fog` | No | 64 x 64 x 64, filtered | The froxels of 3D [volumetric fog](scene-format.md#volumetric-fog): see [Volumetric fog](#volumetric-fog) |
 | `rendering.ray_tracing` | No | off | 3D shadows, ambient occlusion, reflections and global illumination traced by rays: see [Ray tracing](#ray-tracing) |
 | `rendering.reflections.reflection_atlas` | No | 256 texels, 64 probes | The size of 3D [reflection probes'](scene-format.md#reflection-probes) cubes and how many a frame draws: see [Reflection probes](#reflection-probes) |
@@ -299,6 +300,22 @@ atlas into quadrants of different tile sizes; here every tile is the same size.
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `half_size` | `true` | Traces at half the frame's resolution in each direction, then resolves the reflections to its size along its depths and normals: faster, and softer at edges |
+
+## Subsurface scattering
+
+`rendering.environment.subsurface_scattering` says how materials'
+[subsurface scattering](scene-format.md#subsurface-scattering) is blurred, as Godot's
+`rendering/environment/subsurface_scattering` settings.
+
+```json
+"rendering": {"environment": {"subsurface_scattering": {"quality": "high", "scale": 0.08}}}
+```
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `quality` | `"low"` | `"disabled"` turns it off; `"low"`, `"medium"` and `"high"` blur with 11, 17 and 25 samples across |
+| `scale` | `0.05` | How wide the blur is at full strength, as a share of the screen, 0 to 1 |
+| `depth_scale` | `0.01` | How much the blur narrows with distance, from 0 (not at all) to 1 |
 
 ## Volumetric fog
 
