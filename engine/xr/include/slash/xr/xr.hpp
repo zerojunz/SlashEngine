@@ -8,11 +8,13 @@
 #include "slash/world/world.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -80,6 +82,9 @@ struct Tracker {
     Hand hand = Hand::Unknown;
     std::map<std::string, Pose, std::less<>> poses;
     std::map<std::string, Input, std::less<>> inputs;
+    // A face tracker's weight for each face shape (slash/xr/face.hpp), as Godot's XRFaceTracker's
+    // blend shapes: kFaceShapeCount of them once set_face_blend_shapes has been called.
+    std::vector<float> blend_shapes{}; // NOLINT(readability-redundant-member-init)
 };
 
 // Godot's XRInterface::Capabilities.
@@ -252,6 +257,10 @@ void set_pose(world::World& world, std::string_view tracker, std::string_view na
 void invalidate_pose(world::World& world, std::string_view tracker, std::string_view name);
 void set_input(world::World& world, std::string_view tracker, std::string_view name, Input value);
 void set_profile(world::World& world, std::string_view tracker, std::string_view profile);
+// A face tracker's weights, as XRFaceTracker's set_blend_shapes: kFaceShapeCount of them, by
+// face shape; fewer are padded with 0.
+void set_face_blend_shapes(world::World& world, std::string_view tracker,
+                           std::span<const float> weights);
 
 // The pose's transform with the world scale and reference frame applied, as Godot's
 // XRPose::get_adjusted_transform: where its XR node goes under the XROrigin3D.
@@ -317,6 +326,8 @@ struct TestTracker {
     std::string profile;
     std::map<std::string, TestPose, std::less<>> poses;
     std::map<std::string, Input, std::less<>> inputs;
+    // A face tracker's weights by face shape (slash/xr/face.hpp); the rest are 0.
+    std::map<std::size_t, float> blend_shapes{}; // NOLINT(readability-redundant-member-init)
 };
 // A pulse trigger_haptic_pulse asked for, kept for agents to check.
 struct HapticPulse {

@@ -1111,7 +1111,9 @@ launch rows and the after-launch features above.
   [digital-humans.md](reference/digital-humans.md). Blend shapes done (glTF morph targets,
   `MeshInstance3D.blend_shapes` and their animation tracks) and hair and eye shading (Godot's rim,
   clearcoat and anisotropy) done, and subsurface scattering and transmittance (Godot's Forward+
-  screen-space blur) done; alpha hash and face capture tracks remain
+  screen-space blur) done, and face capture done (Godot's `XRFaceTracker` and `XRFaceModifier3D`,
+  and Live Link Face recordings imported as animations by `animation.import_face_capture`);
+  alpha hash remains
 
 Console ports are not on this roadmap and never will be in this repository. As with Godot,
 PlayStation, Xbox and Switch support comes from licensed porting partners as private backends.

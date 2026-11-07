@@ -1,0 +1,11 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":4,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"tick":0}}
+{"id":3,"jsonrpc":"2.0","result":{"tick":1,"ticks":1}}
+{"id":4,"jsonrpc":"2.0","result":{"components":{"MeshInstance3D":{"blend_shapes":{"MouthSmile":1.0,"jawOpen":0.0},"cast_shadow":"on","gi_lightmap_texel_scale":1.0,"gi_mode":"static","ignore_occlusion_culling":false,"layers":1,"lod_bias":1.0,"material_override":"","material_params":{},"mesh":"models/face.gltf","virtualized":false}},"id":"face"}}
+{"id":5,"jsonrpc":"2.0","result":{"colors":[[0.78,0.353,0.4,1],[0.988,0.906,0.82,1],[0.78,0.345,0.392,1],[0.988,0.906,0.82,1]],"drawn":{"meshes":2},"height":90,"width":160}}
+{"id":6,"jsonrpc":"2.0","result":{"animation":"talk","frames":31,"keys":22,"length":0.5,"out":"anim/face.anim.json","skipped":["BlendShapeCount","HeadYaw","HeadPitch","HeadRoll"],"tracks":2}}
+{"id":7,"jsonrpc":"2.0","result":{"id":"face","removed":["XRFaceModifier3D"]}}
+{"id":8,"jsonrpc":"2.0","result":{"added":["AnimationPlayer"],"changed":{"AnimationPlayer":{"animation":"talk","library":"anim/face.anim.json"},"MeshInstance3D":{"blend_shapes":{}}},"id":"face"}}
+{"id":9,"jsonrpc":"2.0","result":{"tick":16,"ticks":15}}
+{"id":10,"jsonrpc":"2.0","result":{"components":{"MeshInstance3D":{"blend_shapes":{"MouthSmile":0.855,"jawOpen":1.0},"cast_shadow":"on","gi_lightmap_texel_scale":1.0,"gi_mode":"static","ignore_occlusion_culling":false,"layers":1,"lod_bias":1.0,"material_override":"","material_params":{},"mesh":"models/face.gltf","virtualized":false}},"id":"face"}}
+{"id":11,"jsonrpc":"2.0","result":{"colors":[[0.78,0.353,0.4,1],[0.78,0.349,0.396,1],[0.78,0.345,0.392,1],[0.776,0.341,0.392,1]],"drawn":{"meshes":2},"height":90,"width":160}}

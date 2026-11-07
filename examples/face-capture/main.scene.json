@@ -1,0 +1,44 @@
+{
+  "entities": {
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 60.0
+        },
+        "Transform3D": {
+          "position": [0.0, 0.0, 1.6]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "WorldEnvironment": {
+          "ambient_light_color": [0.55, 0.62, 0.75, 1.0],
+          "ambient_light_energy": 0.5,
+          "ambient_light_source": "color",
+          "background_color": [0.2, 0.25, 0.35, 1.0],
+          "background_mode": "color"
+        }
+      }
+    },
+    "face": {
+      "components": {
+        "MeshInstance3D": {
+          "mesh": "models/face.gltf"
+        },
+        "Transform3D": {},
+        "XRFaceModifier3D": {}
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {},
+        "Transform3D": {
+          "rotation": [-0.4, -0.3, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

@@ -543,6 +543,17 @@ struct XRCamera3D {
 };
 SLASH_COMPONENT(XRCamera3D)
 
+// Moves a face's blend shapes by a face tracker, as Godot's XRFaceModifier3D: each blend shape of
+// the target's model named in Unified Expressions, ARKit, SRanipal or Meta's standard
+// (slash/xr/face.hpp) takes its face shape's weight into the target's MeshInstance3D.
+struct XRFaceModifier3D {
+    std::string face_tracker = "/user/face_tracker";
+    std::string target; // the entity drawing the face; "" for this one
+
+    friend bool operator==(const XRFaceModifier3D&, const XRFaceModifier3D&) = default;
+};
+SLASH_COMPONENT(XRFaceModifier3D, face_tracker, target)
+
 // Light from one direction over the whole world, as Godot's DirectionalLight3D, such as the sun:
 // it shines down its entity's -z.
 struct DirectionalLight3D {

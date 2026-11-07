@@ -3225,6 +3225,13 @@ void register_3d_components(ComponentRegistry& registry) {
     registry.add<XRCamera3D>().set_doc(
         "The headset, as Godot's XRCamera3D: the entity's Camera3D follows the \"head\" "
         "tracker under its XROrigin3D.");
+    registry.add<XRFaceModifier3D>()
+        .set_doc("Moves a face by a face tracker, as Godot's XRFaceModifier3D: each blend shape "
+                 "of the target's model named in Unified Expressions, ARKit (\"jawOpen\"), "
+                 "SRanipal or Meta's standard follows the tracker's weight for it, set in the "
+                 "target's MeshInstance3D blend_shapes.")
+        .describe("face_tracker", {.doc = "The face tracker it follows."})
+        .describe("target", {.doc = "The entity drawing the face, by ID; \"\" for this one."});
 
     // Baking into a LightmapGI, as Godot's Light3D.
     const FieldMeta indirect_energy{
