@@ -38,6 +38,10 @@ void SharedLibrary::unload() {
 bool can_load_libraries() {
 #if defined(SDL_PLATFORM_MACOS) || (defined(SDL_PLATFORM_LINUX) && !defined(SDL_PLATFORM_ANDROID))
     return true;
+#elif defined(SDL_PLATFORM_WIN32) && defined(_MSC_VER)
+    // Tools built with MSVC, which export the engine to gameplay libraries
+    // (engine/gameplay/CMakeLists.txt); games built with llvm-mingw link their code in.
+    return true;
 #else
     return false;
 #endif

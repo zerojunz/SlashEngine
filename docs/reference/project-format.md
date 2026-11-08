@@ -505,8 +505,8 @@ SLASH_GAME_MODULE(game) {
 ```
 
 Exports compile the sources into the game for every platform. The tools build them into
-`.slash/gameplay/game.so` with [`slash-cli build`](cli.md#build) or
-[`gameplay.build`](commands.md#gameplaybuild) and load that, on macOS and Linux; when it is
+`.slash/gameplay/game.so` (`game.dll` on Windows) with [`slash-cli build`](cli.md#build) or
+[`gameplay.build`](commands.md#gameplaybuild) and load that, on macOS, Linux and Windows; when it is
 rebuilt they swap it in, and the world keeps its entities and each field the new code still has.
 Libraries built against other engine headers, or with another compiler family or C++ standard
 library ABI, are refused; other versions of the engine's compiler are fine. Until the
@@ -519,6 +519,12 @@ components, so scenes save it, `undo` restores it and rebuilding keeps it: value
 the code never registered, and anything kept in globals, are lost when the code is rebuilt, and
 the world's context (`World::ecs().ctx()`) must hold no values of the game's own types. A
 component or system named like one of the engine's is refused.
+
+On Windows the tools build the code with MSVC (run them from a Developer PowerShell) into a DLL
+that calls the functions the program exports. It can't use the engine's global variables directly
+(a few non-`inline` ones, such as a class's `static` members defined in the engine's sources),
+only through functions; the link names any it tries to. The tools refuse a DLL that calls a
+function the program lacks, naming it.
 
 ## Plugins
 

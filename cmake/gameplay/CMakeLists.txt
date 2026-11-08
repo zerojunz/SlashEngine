@@ -11,8 +11,13 @@
 # build.check builds the game_objects target alone: each changed file compiled, nothing linked.
 #
 # The library is linked with the engine's functions left unresolved: the program loading it has
-# them. It lands in <project>/.slash/gameplay/game.so, replaced in one step so a program polling
-# the file never reads half of it.
+# them. It lands in <project>/.slash/gameplay/game.so (game.dll on Windows), replaced in one step
+# so a program polling the file never reads half of it.
+#
+# On Windows the engine's functions come through SLASH_SDK_HOST_LIBRARY, an import library of
+# what the tools export, which the library delay-loads; delay_load.cpp, compiled in, hands the
+# loader the program that loads the library. Engine data is not imported: a game's code calls the
+# engine's functions, and reads its variables through them.
 cmake_minimum_required(VERSION 3.25)
 
 project(SlashGameplay LANGUAGES CXX)
@@ -58,17 +63,38 @@ target_include_directories(game_objects PRIVATE ${folders} ${SLASH_SDK_INCLUDE_D
 target_compile_definitions(game_objects PRIVATE ${SLASH_SDK_COMPILE_DEFINITIONS})
 # As the engine is built: no exceptions or RTTI. GCC's unique symbols would tie each rebuilt
 # library to the statics of the first one loaded. Suggested fixes are printed as data
-# ("fix-it:"file":{line:column-line:column}:"text""), which build.check returns.
-target_compile_options(game_objects PRIVATE -fno-exceptions -fno-rtti -Wall -Wextra
-    -fdiagnostics-parseable-fixits $<$<CXX_COMPILER_ID:GNU>:-fno-gnu-unique>)
-
-add_library(game MODULE $<TARGET_OBJECTS:game_objects>)
-set_target_properties(game PROPERTIES PREFIX "" OUTPUT_NAME game SUFFIX ".so")
-if(APPLE)
-    target_link_options(game PRIVATE -undefined dynamic_lookup)
+# ("fix-it:"file":{line:column-line:column}:"text""), which build.check returns. MSVC needs
+# its standard preprocessor for the reflection macros' __VA_OPT__.
+if(MSVC)
+    target_compile_options(game_objects PRIVATE /EHs-c- /GR- /W4 /permissive- /Zc:preprocessor
+        /utf-8 /bigobj)
+    target_compile_definitions(game_objects PRIVATE _HAS_EXCEPTIONS=0)
+else()
+    target_compile_options(game_objects PRIVATE -fno-exceptions -fno-rtti -Wall -Wextra
+        -fdiagnostics-parseable-fixits $<$<CXX_COMPILER_ID:GNU>:-fno-gnu-unique>)
 endif()
 
-set(library "${SLASH_PROJECT_DIR}/.slash/gameplay/game.so")
+if(WIN32)
+    if(NOT MSVC OR NOT SLASH_SDK_HOST_LIBRARY)
+        message(FATAL_ERROR "gameplay libraries on Windows are built with MSVC against the "
+            "engine's slash-host.lib; use the engine's gameplay-sdk.cmake from a Developer prompt")
+    endif()
+    add_library(game MODULE $<TARGET_OBJECTS:game_objects> delay_load.cpp)
+    set_target_properties(game PROPERTIES PREFIX "" OUTPUT_NAME game SUFFIX ".dll")
+    target_compile_options(game PRIVATE /EHs-c- /GR-)
+    target_compile_definitions(game PRIVATE _HAS_EXCEPTIONS=0)
+    target_link_libraries(game PRIVATE "${SLASH_SDK_HOST_LIBRARY}" delayimp)
+    target_link_options(game PRIVATE /DELAYLOAD:slash-host.exe)
+    set(library "${SLASH_PROJECT_DIR}/.slash/gameplay/game.dll")
+else()
+    add_library(game MODULE $<TARGET_OBJECTS:game_objects>)
+    set_target_properties(game PROPERTIES PREFIX "" OUTPUT_NAME game SUFFIX ".so")
+    if(APPLE)
+        target_link_options(game PRIVATE -undefined dynamic_lookup)
+    endif()
+    set(library "${SLASH_PROJECT_DIR}/.slash/gameplay/game.so")
+endif()
+
 add_custom_command(TARGET game POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:game> "${library}.new"
     COMMAND ${CMAKE_COMMAND} -E rename "${library}.new" "${library}"
