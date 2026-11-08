@@ -143,6 +143,22 @@ Most changes add something an agent will use, so check these when you design it:
 - For a large change, such as a new module, a new dependency or a change to the scene format or
   the command API, open an issue first so the design can be agreed before the code.
 
+## Releases
+
+Maintainers release by pushing a version tag (`git tag v0.1.0 && git push origin v0.1.0`). CI
+runs every job on it, then drafts a GitHub release with the macOS, Linux and Windows packages,
+which a maintainer reads over and publishes. Where the repository has these Actions secrets, the
+macOS tools are signed with a Developer ID and notarized first
+([.github/scripts/notarize-macos.sh](.github/scripts/notarize-macos.sh)); without them they stay
+ad hoc signed and the release notes say how to open them:
+
+| Secret | What it holds |
+| --- | --- |
+| `APPLE_DEVELOPER_ID_CERTIFICATE` | The Developer ID Application certificate with its private key, exported from Keychain Access as a `.p12` file, in base64 (`base64 -i id.p12`) |
+| `APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD` | The password the `.p12` file was exported with |
+| `APPLE_API_KEY` | An App Store Connect API key (`.p8`, Developer access is enough), in base64 |
+| `APPLE_API_KEY_ID`, `APPLE_API_ISSUER` | That key's ID and its issuer ID, from App Store Connect's Integrations page |
+
 ## Contributing with an AI agent
 
 Agents are first-class contributors here. Claude Code reads [CLAUDE.md](CLAUDE.md), which loads
