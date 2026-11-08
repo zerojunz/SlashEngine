@@ -21,6 +21,7 @@ if(EMSCRIPTEN)
         test_sky.cpp
         test_ssao.cpp
         test_ssr.cpp
+        test_subsurface.cpp
         test_taa.cpp
         test_upscaler.cpp
         test_volumetric_fog.cpp
@@ -178,6 +179,7 @@ add_executable(slash_tests
     test_sky.cpp
     test_ssao.cpp
     test_ssr.cpp
+    test_subsurface.cpp
     test_storyboard.cpp
     test_syntax_highlighter.cpp
     test_taa.cpp

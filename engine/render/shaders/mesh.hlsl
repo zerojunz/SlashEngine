@@ -188,6 +188,11 @@ cbuffer Surface : register(b0, space3) {
     // How many of voxel_gis it traces; then the clearcoat, its roughness and the anisotropy.
     float4 voxel_gi;
     VoxelGI voxel_gis[2];
+    // Forward+'s subsurface scattering: its strength (below 0 for skin's profile), the
+    // transmittance's depth and boost, and 1 when the transmittance is on; then the
+    // transmittance's color, linear.
+    float4 sss_params;
+    float4 sss_transmittance;
 };
 
 struct Light {
@@ -488,16 +493,43 @@ struct Layers {
     float3 geometry;
     float3 tangent;
     float3 binormal;
+    // Forward+'s transmittance: on, through skin's profile, its color (alpha times the subsurface
+    // strength and the light's attenuation), depth and boost.
+    bool transmittance;
+    bool skin;
+    float4 transmittance_color;
+    float transmittance_depth;
+    float transmittance_boost;
 };
 
 // light_compute in Godot's scene.glsl, with Burley diffuse and Schlick-GGX specular, its defaults,
-// and the rim, clearcoat and anisotropy of layers.
+// and the transmittance, rim, clearcoat and anisotropy of layers; transmittance_z is how deep the
+// pixel is in the mesh as the light's shadow map sees it.
 void light_compute(float3 n, float3 l, float3 v, float3 light_color, float attenuation, float3 f0,
                    float roughness, float metallic, float specular_amount, Layers layers,
-                   inout float3 diffuse_light, inout float3 specular_light) {
+                   float transmittance_z, inout float3 diffuse_light,
+                   inout float3 specular_light) {
     float n_dot_l = min(dot(n, l), 1.0);
     float c_n_dot_l = max(n_dot_l, 0.0);
     float c_n_dot_v = max(dot(n, v), 1e-4);
+    [branch] if (layers.transmittance) {
+        // Light through the mesh, by how deep the pixel is, onto its side facing away.
+        float d = 8.25 / layers.transmittance_depth * abs(transmittance_z);
+        float dd = -d * d;
+        float3 through;
+        [branch] if (layers.skin) {
+            through = float3(0.233, 0.455, 0.649) * exp(dd / 0.0064) +
+                      float3(0.1, 0.336, 0.344) * exp(dd / 0.0484) +
+                      float3(0.118, 0.198, 0.0) * exp(dd / 0.187) +
+                      float3(0.113, 0.007, 0.007) * exp(dd / 0.567) +
+                      float3(0.358, 0.004, 0.0) * exp(dd / 1.99) +
+                      float3(0.078, 0.0, 0.0) * exp(dd / 7.41);
+        } else {
+            through = exp(dd) * layers.transmittance_color.rgb;
+        }
+        diffuse_light += through * layers.transmittance_color.a * light_color *
+                         clamp(layers.transmittance_boost - n_dot_l, 0.0, 1.0) * (1.0 / kPi);
+    }
     if (layers.rim > 0.0) {
         float rim_light = pow(max(1e-4, 1.0 - c_n_dot_v), max(0.0, (1.0 - roughness) * 16.0));
         diffuse_light += rim_light * layers.rim *
@@ -703,6 +735,86 @@ float light_shadow(bool directional, uint slot, float3 world, float3 normal, flo
     return lerp(1.0, shadow, params.z);
 }
 
+#ifdef CLUSTERED
+// The depth in a shadow atlas at uv, filtered from the four texels around it as Godot's
+// SAMPLER_LINEAR_CLAMP reads it; texel is a texel's share of the atlas across.
+float atlas_depth(bool positional, float2 uv, float texel) {
+    float size = round(1.0 / texel);
+    float2 p = clamp(uv, -1.0, 2.0) * size - 0.5;
+    float2 base = floor(p);
+    float2 f = p - base;
+    int last = (int)size - 1;
+    int2 low = clamp((int2)base, int2(0, 0), int2(last, last));
+    int2 high = clamp((int2)base + int2(1, 1), int2(0, 0), int2(last, last));
+    float4 d;
+    [branch] if (positional) {
+        d = float4(positional_atlas.Load(int3(low.x, low.y, 0)).r,
+                   positional_atlas.Load(int3(high.x, low.y, 0)).r,
+                   positional_atlas.Load(int3(low.x, high.y, 0)).r,
+                   positional_atlas.Load(int3(high.x, high.y, 0)).r);
+    } else {
+        d = float4(directional_atlas.Load(int3(low.x, low.y, 0)).r,
+                   directional_atlas.Load(int3(high.x, low.y, 0)).r,
+                   directional_atlas.Load(int3(low.x, high.y, 0)).r,
+                   directional_atlas.Load(int3(high.x, high.y, 0)).r);
+    }
+    return lerp(lerp(d.x, d.y, f.x), lerp(d.z, d.w, f.x), f.y);
+}
+
+// How deep a pixel is in its mesh as a light's shadow map sees it, in world units, for the
+// transmittance (Godot's transmittance_z): from the point moved into the mesh by the light's
+// transmittance bias to the caster the map holds there. A directional light's is measured in
+// the cascade the pixel's view depth falls in, moved along the geometry's normal by the bias
+// times the cascade's depth; an omni or spot light's along the normal by the bias, its caster's
+// depth made linear from the map's. fallback where the light casts no shadow.
+float shadow_thickness(bool directional, uint slot, float3 world, float3 normal, float3 geometry,
+                       float fallback) {
+    [branch] if (directional) {
+        if (!(directional_shadows[slot].params.z > 0.001)) {
+            return fallback;
+        }
+        float depth_z = -(dot(world, camera_z.xyz) + camera_z.w);
+        uint count = (uint)directional_shadows[slot].params.w;
+        uint cascade = 0u;
+        while (cascade + 1u < count && !(depth_z < directional_shadows[slot].splits[cascade])) {
+            ++cascade;
+        }
+        float4x4 m = directional_shadows[slot].matrices[cascade];
+        float range = 1.0 / length(m[2].xyz);
+        float3 p = world - geometry * (directional_shadows[slot].options.z * range);
+        float4 at = mul(m, float4(p, 1.0));
+        float caster = atlas_depth(false, at.xy / at.w, directional_shadows[slot].options.y);
+        return (at.z / at.w - caster) * range;
+    }
+    if (!(positional_shadows[slot].params.y > 0.001)) {
+        return fallback;
+    }
+    // The light's transmittance bias is in the last row of its matrix, which places nothing.
+    float3 p = world - normal * positional_shadows[slot].light[3].x;
+    uint face = 0u;
+    if (positional_shadows[slot].params.w > 1.5) {
+        float3 local = mul(positional_shadows[slot].light, float4(p, 1.0)).xyz;
+        float3 a = abs(local);
+        if (a.x >= a.y && a.x >= a.z) {
+            face = local.x > 0.0 ? 0u : 1u;
+        } else if (a.y >= a.z) {
+            face = local.y < 0.0 ? 2u : 3u;
+        } else {
+            face = local.z > 0.0 ? 4u : 5u;
+        }
+    }
+    float4x4 m = positional_shadows[slot].faces[face];
+    float4 at = mul(m, float4(p, 1.0));
+    float4 rect = positional_shadows[slot].rects[face];
+    float caster =
+        atlas_depth(true, clamp(at.xy / at.w, rect.xy, rect.zw), positional_shadows[slot].params.z);
+    // A perspective map's depth is a + b / w along a ray from the light, w the view depth.
+    float a = dot(m[2].xyz, m[3].xyz) / dot(m[3].xyz, m[3].xyz);
+    float b = m[2].w - a * m[3].w;
+    return at.w - b / (caster - a);
+}
+#endif
+
 // get_depth_blended_weights in HTerrain's shader: the splat map's weights, sharpened where one
 // layer's bump stands above the others.
 float4 depth_blended_weights(float4 splat, float4 bumps) {
@@ -769,8 +881,19 @@ void add_light(Light light, float3 world, float3 normal, float3 geometry, float3
             attenuation *= 1.0 - pow(rim, light.params.z);
         }
     }
-    // The rim fades with distance but not in shadow, as Godot's.
+    // The rim fades with distance but not in shadow, as Godot's, and so does the transmittance,
+    // which takes the depth the shadow map sees.
     layers.rim *= attenuation;
+    float transmittance_z = layers.transmittance_depth;
+#ifdef CLUSTERED
+    [branch] if (layers.transmittance) {
+        layers.transmittance_color.a *= attenuation;
+        [branch] if (slot >= 0.0) {
+            transmittance_z = shadow_thickness(directional, (uint)slot, world, normal, geometry,
+                                               transmittance_z);
+        }
+    }
+#endif
     float ray = light.shadow.w;
 #ifdef CLUSTERED
     if (rays.on && ray > 0.0) {
@@ -791,7 +914,7 @@ void add_light(Light light, float3 world, float3 normal, float3 geometry, float3
                game_albedo, metallic, roughness, diffuse_light, specular_light);
 #else
     light_compute(normal, toward, view, light.color.rgb, attenuation, f0, roughness, metallic,
-                  light.color.w, layers, diffuse_light, specular_light);
+                  light.color.w, layers, transmittance_z, diffuse_light, specular_light);
 #endif
 }
 
@@ -1326,7 +1449,7 @@ float3 capture_light(float3 n) {
            0.429043 * capture[8].rgb * (n.x * n.x - n.y * n.y);
 }
 
-// The material's rim, clearcoat and anisotropy at a pixel. An anisotropic one's highlight runs
+// The material's rim, clearcoat, anisotropy and, in Forward+, transmittance at a pixel. An anisotropic one's highlight runs
 // along Godot's default flow map, the tangent turned by its (1, 128 / 255) texel.
 Layers material_layers(VertexOutput input, float3 albedo, float3 geometry) {
     Layers layers;
@@ -1339,6 +1462,16 @@ Layers material_layers(VertexOutput input, float3 albedo, float3 geometry) {
     layers.geometry = geometry;
     layers.tangent = (float3)0.0;
     layers.binormal = (float3)0.0;
+#ifdef CLUSTERED
+    layers.transmittance = sss_params.w != 0.0;
+#else
+    layers.transmittance = false;
+#endif
+    layers.skin = sss_params.x < 0.0;
+    layers.transmittance_color =
+        float4(sss_transmittance.rgb, sss_transmittance.a * abs(sss_params.x));
+    layers.transmittance_depth = sss_params.y;
+    layers.transmittance_boost = sss_params.z;
     if (layers.anisotropy != 0.0) {
         float3 tangent = normalize(input.tangent);
         float3 binormal = normalize(input.binormal);
@@ -1359,6 +1492,10 @@ Layers material_layers(VertexOutput input, float3 albedo, float3 geometry) {
 // darkened by ao and its direct light by ao_direct. A lightmapped pixel's ambient light is its
 // lightmap's, and a captured one's its light probes', either standing in for the scene's and the
 // probes', as Godot's USE_LIGHTMAP. rays are its ray-traced shadows.
+// What lit_color lit diffusely (its emission, diffuse and ambient light), which the subsurface
+// pass blurs, as Godot's separate diffuse buffer.
+static float3 subsurface_light = (float3)0.0;
+
 float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry, float metallic,
                  float roughness, float3 emitted, float ao, float ao_direct, float4 ssr,
                  RayShadows rays) {
@@ -1379,13 +1516,11 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
     float3 diffuse_light = (float3)0.0;
     float3 specular_light = (float3)0.0;
     uint count = (uint)camera.w;
-    for (uint i = 0u; i < count; ++i) {
-        add_light(lights[i], input.world, normal, geometry, view, f0, roughness, metallic,
-                  layers, rays, diffuse_light, specular_light);
-    }
 #ifdef CLUSTERED
-    // The omni and spot lights of the pixel's cluster: its tile's lights within its slice's
-    // range, nearest first, as Godot's scene_forward_clustered.glsl walks them.
+    // The directional lights, then the omni and spot lights of the pixel's cluster: its tile's
+    // lights within its slice's range, nearest first, as Godot's scene_forward_clustered.glsl
+    // walks them. One loop calls add_light once, so the shader holds one copy of it, which
+    // keeps it small enough for Direct3D 12's WARP.
     uint2 tile = (uint2)input.position.xy / kClusterSize;
     uint words = (uint)cluster.y;
     uint cell = (tile.y * (uint)cluster.x + tile.x) * cluster_stride();
@@ -1394,14 +1529,34 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
     uint range = clusters[cell + words + slice];
     uint first = range & 0xFFFFu;
     uint end = range >> 16u;
-    for (uint word = first >> 5u; word < (end + 31u) >> 5u; ++word) {
-        uint mask = clusters[cell + word] & range_mask(word, first, end);
-        while (mask != 0u) {
+    uint word = first >> 5u;
+    uint last_word = (end + 31u) >> 5u;
+    uint mask = word < last_word ? clusters[cell + word] & range_mask(word, first, end) : 0u;
+    uint i = 0u;
+    [loop] while (true) {
+        Light light;
+        if (i < count) {
+            light = lights[i];
+            ++i;
+        } else {
+            while (mask == 0u && word + 1u < last_word) {
+                ++word;
+                mask = clusters[cell + word] & range_mask(word, first, end);
+            }
+            if (mask == 0u) {
+                break;
+            }
             uint bit = firstbitlow(mask);
             mask &= mask - 1u;
-            add_light(clustered_lights[word * 32u + bit], input.world, normal, geometry, view, f0,
-                      roughness, metallic, layers, rays, diffuse_light, specular_light);
+            light = clustered_lights[word * 32u + bit];
         }
+        add_light(light, input.world, normal, geometry, view, f0, roughness, metallic, layers,
+                  rays, diffuse_light, specular_light);
+    }
+#else
+    for (uint i = 0u; i < count; ++i) {
+        add_light(lights[i], input.world, normal, geometry, view, f0, roughness, metallic,
+                  layers, rays, diffuse_light, specular_light);
     }
 #endif
 
@@ -1513,6 +1668,7 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
     ambient_light *= base * (1.0 - metallic);
     diffuse_light *= base * ao_direct * (1.0 - metallic);
     specular_light *= ao_direct;
+    subsurface_light = emitted + diffuse_light + ambient_light;
     return diffuse_light + specular_light + reflected + emitted + ambient_light;
 }
 
@@ -1726,7 +1882,14 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
         alpha = ALPHA;
     }
 #endif
+#ifdef SUBSURFACE
+    // Forward+'s subsurface pass: the diffuse light, fogged, and the strength the blur spreads it
+    // by, as Godot's diffuse buffer.
+    return float4(finish(subsurface_light, 1.0, input.world, input.position.xy).rgb,
+                  sss_params.x);
+#else
     // One call, so the tonemappers are inlined once and the shader stays small.
     return finish(lit, alpha, input.world, input.position.xy);
+#endif
 #endif
 }

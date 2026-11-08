@@ -49,7 +49,8 @@ constexpr std::string_view kTakenNames =
 // same name where game_surface reads them. A test checks mesh.hlsl's.
 constexpr std::string_view kSpatialTakenNames =
     " add_light agx_contrast_approx albedo albedo_sampler albedo_texture ambient apply_decal "
-    "apply_decals apply_tonemapping before bicubic_w0 bicubic_w1 bicubic_w2 bicubic_w3 binormal "
+    "apply_decals apply_tonemapping atlas_depth before bicubic_w0 bicubic_w1 bicubic_w2 bicubic_w3 "
+    "binormal "
     "camera camera_z capture capture_light clip clip_rows cluster cluster_stride clustered_lights "
     "clusters color compare_atlas corner cpu_fragment cpu_light cpu_vertex d_ggx d_ggx_anisotropic "
     "decal_atlas "
@@ -73,7 +74,8 @@ constexpr std::string_view kSpatialTakenNames =
     "probe_atlas probe_sampler probes projection radiance_map radiance_sampler range_mask "
     "reflect_probes reflections roughness_channel roughness_sampler roughness_texture "
     "sample_fog_froxels sample_probe sample_shadow scene_voxel_gi schlick_fresnel screen "
-    "screen_sampler screen_texture shading sky sky_rows smooth srgb_to_linear ssao surface "
+    "screen_sampler screen_texture shading shadow_thickness sky sky_rows smooth srgb_to_linear "
+    "ssao sss_params sss_transmittance subsurface_light surface "
     "surface_out surface_steps tangent terrain_opacity terrain_uv texture tonemap tonemap_aces "
     "tonemap_agx tonemap_filmic tonemap_reinhard trace_voxel_gis unpack_ground_normal uv uv1 uv2 "
     "v_binormal v_color v_ggx v_ggx_anisotropic v_normal v_tangent v_uv v_uv2 v_world vertex view "

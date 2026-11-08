@@ -27,8 +27,8 @@ A believable close-up character is several systems working together:
 - Godot's IK modifiers, ragdolls and bone attachments.
 - Animation trees with blend spaces and state machines.
 - Mesh LODs and virtualized geometry ([virtualized-geometry.md](virtualized-geometry.md)).
-- `StandardMaterial3D`'s base lighting model with Godot's rim, clearcoat and anisotropy, without
-  subsurface scattering yet.
+- `StandardMaterial3D`'s base lighting model with Godot's rim, clearcoat, anisotropy, and
+  subsurface scattering and transmittance.
 
 ## What is missing, in the order Godot would suggest
 
@@ -39,9 +39,10 @@ follow Godot's design:
    `MeshInstance3D` field per shape (`blend_shapes/<name>`), animation tracks for them, and
    blending on the CPU before skinning, as Godot's skeleton shader does. This is useful well
    beyond humans, for faces, cloth, and any shape change an artist animates.
-2. **Subsurface scattering and transmittance**, as Godot's `StandardMaterial3D`
+2. **Subsurface scattering and transmittance** (done:
+   [scene-format.md](scene-format.md#subsurface-scattering)), as Godot's `StandardMaterial3D`
    `subsurf_scatter_*` and `subsurf_scatter_transmittance_*` fields, with its screen-space
-   blur in Forward+.
+   blur in Forward+. Their textures remain.
 3. **Hair and eye shading**: Godot's `StandardMaterial3D` `anisotropy`, `rim` and `clearcoat`
    fields (done: [scene-format.md](scene-format.md#standardmaterial3d)) and alpha hash, which
    Godot uses for hair cards and eyes. Alpha hash and the fields' textures remain.

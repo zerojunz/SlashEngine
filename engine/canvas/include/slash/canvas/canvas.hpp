@@ -524,6 +524,8 @@ struct Settings {
     render::SsrSettings ssr{};
     // rendering.environment.volumetric_fog: volumetric fog's froxels.
     render::VolumetricFogSettings volumetric_fog{};
+    // rendering.environment.subsurface_scattering: subsurface scattering's quality and width.
+    render::SubsurfaceSettings subsurface{};
     // rendering.reflections.reflection_atlas: the size and number of reflection probes' cubes.
     render::ReflectionAtlasSettings reflection_atlas{};
     // rendering.global_illumination.voxel_gi.quality "high": VoxelGIs' narrower cones.

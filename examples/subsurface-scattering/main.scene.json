@@ -1,0 +1,72 @@
+{
+  "entities": {
+    "back_light": {
+      "components": {
+        "DirectionalLight3D": {
+          "light_color": [1.0, 0.85, 0.7, 1.0],
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "rotation": [0.0, 3.1416, 0.0]
+        }
+      }
+    },
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 40.0
+        },
+        "Transform3D": {
+          "position": [0.0, 0.0, 4.0]
+        }
+      }
+    },
+    "ear": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.9, 1.1, 0.04]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.85, 0.62, 0.52, 1.0],
+          "subsurf_scatter_enabled": true,
+          "subsurf_scatter_skin_mode": true,
+          "subsurf_scatter_strength": 1.0,
+          "subsurf_scatter_transmittance_depth": 0.2,
+          "subsurf_scatter_transmittance_enabled": true
+        },
+        "Transform3D": {
+          "position": [0.8, 0.0, 0.0]
+        }
+      }
+    },
+    "side_light": {
+      "components": {
+        "DirectionalLight3D": {},
+        "Transform3D": {
+          "rotation": [0.0, 1.5708, 0.0]
+        }
+      }
+    },
+    "wax": {
+      "components": {
+        "MeshInstance3D": {},
+        "SphereMesh": {
+          "height": 1.2,
+          "radius": 0.6
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.95, 0.9, 0.75, 1.0],
+          "roughness": 0.7,
+          "subsurf_scatter_enabled": true,
+          "subsurf_scatter_strength": 1.0
+        },
+        "Transform3D": {
+          "position": [-0.8, 0.0, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

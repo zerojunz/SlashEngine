@@ -348,6 +348,19 @@ struct Material3D {
     // Its anisotropy, -1 to 1: highlights stretched along the tangent (above 0) or across it, as
     // brushed metal and hair. 0 for none.
     float anisotropy = 0.0F;
+    // Its subsurface scattering, 0 to 1, in Forward+: an opaque mesh's diffuse light is blurred
+    // across the screen by how strong it is, as Godot's subsurf_scatter_strength, through skin's
+    // profile with subsurface_skin. 0 for none.
+    float subsurface = 0.0F;
+    bool subsurface_skin = false;
+    // With subsurface above 0, its transmittance: light reaching the side away from each light
+    // through less than transmittance_depth of the mesh, measured in the light's shadow map
+    // (sRGB transmittance_color; skin's profile in its place with subsurface_skin), lighting
+    // that side more by transmittance_boost.
+    bool transmittance = false;
+    std::array<float, 4> transmittance_color{1.0F, 1.0F, 1.0F, 1.0F};
+    float transmittance_depth = 0.1F;
+    float transmittance_boost = 0.0F;
     // With terrain.enabled, the terrain's maps and layers give the albedo, roughness, normal and
     // holes, in place of the textures above; albedo, metallic, specular and the rest still count.
     TerrainShading terrain{}; // NOLINT(readability-redundant-member-init): may be left out

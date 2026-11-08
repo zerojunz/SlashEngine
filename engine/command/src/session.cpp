@@ -240,6 +240,10 @@ canvas::Settings canvas_settings(const json::Value& project) {
             if (const json::Value* fog = environment->find("volumetric_fog"); fog != nullptr) {
                 settings.volumetric_fog = render::volumetric_fog_settings_from_json(*fog);
             }
+            if (const json::Value* subsurface = environment->find("subsurface_scattering");
+                subsurface != nullptr) {
+                settings.subsurface = render::subsurface_settings_from_json(*subsurface);
+            }
         }
         if (const json::Value* reflections = rendering->find("reflections");
             reflections != nullptr && reflections->is_object()) {

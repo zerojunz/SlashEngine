@@ -317,6 +317,12 @@ bool awaits_video_frame(const world::World& world, std::string_view texture) {
     return shown.player && shown.image == nullptr && shown.error.empty();
 }
 
+// What the project's settings say about how a frame's meshes are lit and drawn.
+void apply_settings(render::Scene3D& scene, const Settings& project) {
+    scene.method = project.rendering_method;
+    scene.subsurface = project.subsurface;
+}
+
 } // namespace
 
 double material_time(std::uint64_t tick, double tick_seconds, double interpolation) {
@@ -1323,7 +1329,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         traced ? render::OcclusionCulling{} : settings(world).occlusion_culling,
         traced ? render::RayTracing3D{} : settings(world).ray_tracing);
     if (scene) {
-        scene->scene.method = settings(world).rendering_method;
+        apply_settings(scene->scene, settings(world));
         scene->scene.path_trace = options.path_trace;
     }
     for (const scene3d::Problem& unseen : scene3d_.problems()) {

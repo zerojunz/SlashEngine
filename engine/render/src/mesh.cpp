@@ -185,6 +185,13 @@ struct Layers {
     Float3 geometry{};
     Float3 tangent{};
     Float3 binormal{};
+    // Forward+'s transmittance: on, through skin's profile, its color (alpha times the subsurface
+    // strength and the light's attenuation), depth and boost.
+    bool transmittance = false;
+    bool skin = false;
+    Float4 transmittance_color{};
+    float transmittance_depth = 0.0F;
+    float transmittance_boost = 0.0F;
 };
 
 // The light a pixel gets, summed over the lights.
@@ -195,10 +202,37 @@ struct LightSum {
 
 void light_compute(const Float3& n, const Float3& l, const Float3& v, const Float3& light_color,
                    float attenuation, const Float3& f0, float roughness, float metallic,
-                   float specular_amount, const Layers& layers, LightSum& out) {
+                   float specular_amount, const Layers& layers, float transmittance_z,
+                   LightSum& out) {
     const float n_dot_l = std::min(dot3(n, l), 1.0F);
     const float c_n_dot_l = std::max(n_dot_l, 0.0F);
     const float c_n_dot_v = std::max(dot3(n, v), 1e-4F);
+    if (layers.transmittance) {
+        // Light through the mesh, by how deep the pixel is, onto its side facing away.
+        const float d = 8.25F / layers.transmittance_depth * std::abs(transmittance_z);
+        const float dd = -d * d;
+        Float3 through{};
+        if (layers.skin) {
+            constexpr std::array<std::pair<Float3, float>, 6> kProfile{{
+                {{0.233F, 0.455F, 0.649F}, 0.0064F},
+                {{0.1F, 0.336F, 0.344F}, 0.0484F},
+                {{0.118F, 0.198F, 0.0F}, 0.187F},
+                {{0.113F, 0.007F, 0.007F}, 0.567F},
+                {{0.358F, 0.004F, 0.0F}, 1.99F},
+                {{0.078F, 0.0F, 0.0F}, 7.41F},
+            }};
+            for (const auto& [color, variance] : kProfile) {
+                through = add(through, scale(color, slash::exp(dd / variance)));
+            }
+        } else {
+            through = scale(xyz(layers.transmittance_color), slash::exp(dd));
+        }
+        out.diffuse = add(out.diffuse,
+                          scale(mul(through, light_color),
+                                layers.transmittance_color[3] *
+                                    std::clamp(layers.transmittance_boost - n_dot_l, 0.0F, 1.0F) *
+                                    std::numbers::inv_pi_v<float>));
+    }
     if (layers.rim > 0.0F) {
         const float rim_light =
             power(std::max(1e-4F, 1.0F - c_n_dot_v), std::max(0.0F, (1.0F - roughness) * 16.0F));
@@ -397,6 +431,63 @@ float positional_shadow(const detail::MeshMaps& maps, std::size_t slot, const Fl
     const float shadow = sample_shadow(maps.positional, s.faces.at(face), point, s.params[2], taps,
                                        &s.rects.at(face));
     return lerp(1.0F, shadow, s.params[1]);
+}
+
+// shadow_thickness in shaders/mesh.hlsl: how deep a pixel is in its mesh as a light's shadow map
+// sees it, in world units, for the transmittance; fallback where the light casts no shadow.
+float shadow_thickness(const detail::MeshMaps& maps, bool directional, std::size_t slot,
+                       const Float3& world, const Float3& normal, const Float3& geometry,
+                       float fallback) {
+    const detail::MeshShadowUniforms& u = *maps.uniforms;
+    if (directional) {
+        const detail::MeshDirectionalShadowUniforms& s = u.directional.at(slot);
+        if (!(s.params[2] > 0.001F)) {
+            return fallback;
+        }
+        const float depth_z =
+            -(dot3(world, {u.camera_z[0], u.camera_z[1], u.camera_z[2]}) + u.camera_z[3]);
+        const auto count = static_cast<std::size_t>(s.params[3]);
+        std::size_t cascade = 0;
+        while (cascade + 1 < count && !(depth_z < s.splits.at(cascade))) {
+            ++cascade;
+        }
+        const Mat4& m = s.matrices.at(cascade);
+        const float range = 1.0F / length({m[2], m[6], m[10]});
+        const Float3 p = sub(world, scale(geometry, s.options[2] * range));
+        const Float4 at = transform(m, {p[0], p[1], p[2], 1.0F});
+        const float caster = maps.directional.depth(at[0] / at[3], at[1] / at[3]);
+        return ((at[2] / at[3]) - caster) * range;
+    }
+    const detail::MeshPositionalShadowUniforms& s = u.positional.at(slot);
+    if (!(s.params[1] > 0.001F)) {
+        return fallback;
+    }
+    const Float3 p = sub(world, scale(normal, s.light[3]));
+    std::size_t face = 0;
+    if (s.params[3] > 1.5F) {
+        const Float4 local = transform(s.light, {p[0], p[1], p[2], 1.0F});
+        const float ax = std::abs(local[0]);
+        const float ay = std::abs(local[1]);
+        const float az = std::abs(local[2]);
+        if (ax >= ay && ax >= az) {
+            face = local[0] > 0.0F ? 0 : 1;
+        } else if (ay >= az) {
+            face = local[1] < 0.0F ? 2 : 3;
+        } else {
+            face = local[2] > 0.0F ? 4 : 5;
+        }
+    }
+    const Mat4& m = s.faces.at(face);
+    const Float4 at = transform(m, {p[0], p[1], p[2], 1.0F});
+    const Float4& rect = s.rects.at(face);
+    const float caster = maps.positional.depth(std::clamp(at[0] / at[3], rect[0], rect[2]),
+                                               std::clamp(at[1] / at[3], rect[1], rect[3]));
+    // A perspective map's depth is a + b / w along a ray from the light, w the view depth.
+    const Float3 row2{m[2], m[6], m[10]};
+    const Float3 row3{m[3], m[7], m[11]};
+    const float a = dot3(row2, row3) / dot3(row3, row3);
+    const float b = m[14] - (a * m[15]);
+    return at[3] - (b / (caster - a));
 }
 
 // What terrain shading gives a pixel, as the HTerrain plugin's Classic4 shader: the ground's
@@ -843,6 +934,15 @@ MeshSurfaceUniforms mesh_surface_uniforms(const Material3D& material, std::uint3
     out.voxel_gi[1] = std::max(material.clearcoat, 0.0F);
     out.voxel_gi[2] = material.clearcoat_roughness;
     out.voxel_gi[3] = std::clamp(material.anisotropy, -1.0F, 1.0F);
+    // Subsurface scattering, below 0 through skin's profile, and its transmittance.
+    const float strength = std::clamp(material.subsurface, 0.0F, 1.0F);
+    out.subsurface = {material.subsurface_skin ? -strength : strength,
+                      std::max(material.transmittance_depth, 0.001F), material.transmittance_boost,
+                      material.transmittance && strength > 0.0F ? 1.0F : 0.0F};
+    out.transmittance = {srgb_to_linear_exact(material.transmittance_color[0]),
+                         srgb_to_linear_exact(material.transmittance_color[1]),
+                         srgb_to_linear_exact(material.transmittance_color[2]),
+                         material.transmittance_color[3]};
     // A game's spatial shader cuts its pixels by its own ALPHA_SCISSOR_THRESHOLD, in its shadows
     // too (shadow.hlsl's GAME_SHADER), so the threshold here cuts nothing.
     float threshold = material.shader != ShaderId::None ? 0.0F : material.alpha_scissor_threshold;
@@ -1150,8 +1250,9 @@ Result<void> check_scene(const Scene3D& scene) {
                               "light " + std::to_string(i) + " has a direction");
         }
         if (!finite({l.up[0], l.up[1], l.up[2], l.shadow_bias, l.shadow_normal_bias,
-                     l.shadow_opacity, l.shadow_splits[0], l.shadow_splits[1], l.shadow_splits[2],
-                     l.shadow_fade_start, l.shadow_max_distance, l.shadow_pancake_size})) {
+                     l.shadow_transmittance_bias, l.shadow_opacity, l.shadow_splits[0],
+                     l.shadow_splits[1], l.shadow_splits[2], l.shadow_fade_start,
+                     l.shadow_max_distance, l.shadow_pancake_size})) {
             return make_error(ErrorCode::InvalidArgument,
                               "light " + std::to_string(i) + "'s shadow numbers are finite");
         }
@@ -1500,7 +1601,7 @@ LightResponse light_response(const Float3& n, const Float3& l, const Float3& v,
                              float roughness, float metallic, float specular_amount) {
     LightSum sum;
     light_compute(n, l, v, light_color, attenuation, f0, roughness, metallic, specular_amount,
-                  Layers{}, sum);
+                  Layers{}, 0.0F, sum);
     return {.diffuse = sum.diffuse, .specular = sum.specular};
 }
 
@@ -1554,7 +1655,7 @@ std::optional<Float4> mesh_normal_roughness(const MeshSurfaceUniforms& surface,
 }
 
 std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshSceneUniforms& scene,
-                                 const MeshMaps& maps, const MeshPixel& pixel) {
+                                 const MeshMaps& maps, const MeshPixel& pixel, Float4* subsurface) {
     const std::uint32_t flags = surface.options[0];
     const std::optional<SurfacePixel> found = surface_pixel(surface, pixel);
     if (!found) {
@@ -1637,6 +1738,10 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     }
     const Float3& base = decaled.base;
     if ((flags & kMeshUnshaded) != 0) {
+        if (subsurface != nullptr) {
+            const Float4 none = finish({});
+            *subsurface = {none[0], none[1], none[2], surface.subsurface[0]};
+        }
         return finish(base);
     }
 
@@ -1674,13 +1779,21 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
 
     // material_layers in shaders/mesh.hlsl: an anisotropic highlight runs along Godot's default
     // flow map, the tangent turned by its (1, 128 / 255) texel.
-    Layers layers{.rim = surface.lightmap[2],
-                  .rim_tint = surface.lightmap[3],
-                  .clearcoat = surface.voxel_gi[1],
-                  .clearcoat_roughness = surface.voxel_gi[2],
-                  .anisotropy = surface.voxel_gi[3],
-                  .albedo = base,
-                  .geometry = geometry};
+    Layers layers{
+        .rim = surface.lightmap[2],
+        .rim_tint = surface.lightmap[3],
+        .clearcoat = surface.voxel_gi[1],
+        .clearcoat_roughness = surface.voxel_gi[2],
+        .anisotropy = surface.voxel_gi[3],
+        .albedo = base,
+        .geometry = geometry,
+        .transmittance = maps.clusters != nullptr && surface.subsurface[3] != 0.0F,
+        .skin = surface.subsurface[0] < 0.0F,
+        .transmittance_color = {surface.transmittance[0], surface.transmittance[1],
+                                surface.transmittance[2],
+                                surface.transmittance[3] * std::abs(surface.subsurface[0])},
+        .transmittance_depth = surface.subsurface[1],
+        .transmittance_boost = surface.subsurface[2]};
     if (layers.anisotropy != 0.0F) {
         const Float3 tangent = normalize(pixel.tangent);
         const Float3 binormal = normalize(pixel.binormal);
@@ -1699,14 +1812,24 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     // from the ALPHA its fragment() gave, which it may change; it may also discard the pixel.
     float light_alpha = pixel.game ? pixel.game->albedo[3] : alpha;
     bool discarded = false;
-    // The rim fades with distance (rim_fade) but not in shadow, as Godot's.
+    // The rim and the transmittance fade with distance (rim_fade) but not in shadow, as Godot's;
+    // the transmittance takes the depth the light's shadow map in slot sees (-1 for none).
     const auto compute = [&](const Float3& toward, const Float3& light_color, float attenuation,
-                             float specular_amount, bool directional, float rim_fade) {
+                             float specular_amount, bool directional, float rim_fade, float slot) {
         if (!pixel.game_light) {
             Layers lit = layers;
             lit.rim *= rim_fade;
+            float transmittance_z = lit.transmittance_depth;
+            if (lit.transmittance) {
+                lit.transmittance_color[3] *= rim_fade;
+                if (slot >= 0.0F && maps.uniforms != nullptr) {
+                    transmittance_z =
+                        shadow_thickness(maps, directional, static_cast<std::size_t>(slot),
+                                         pixel.world, normal, geometry, transmittance_z);
+                }
+            }
             light_compute(normal, toward, view, light_color, attenuation, f0, roughness, metallic,
-                          specular_amount, lit, light_sum);
+                          specular_amount, lit, transmittance_z, light_sum);
             return;
         }
         if (discarded) {
@@ -1751,7 +1874,7 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
                                      ? directional_shadow(maps, static_cast<std::size_t>(slot),
                                                           pixel.world, geometry, toward)
                                      : traced_shadow;
-            compute(toward, light_color, shadow, light.color[3], true, 1.0F);
+            compute(toward, light_color, shadow, light.color[3], true, 1.0F, light.shadow[0]);
             return;
         }
         const Float3 to_light =
@@ -1773,7 +1896,8 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
                 positional_shadow(maps, static_cast<std::size_t>(slot), pixel.world, geometry);
         }
         attenuation *= traced_shadow;
-        compute(normalize(to_light), light_color, attenuation, light.color[3], false, rim_fade);
+        compute(normalize(to_light), light_color, attenuation, light.color[3], false, rim_fade,
+                light.shadow[0]);
     };
     const auto count = static_cast<std::size_t>(scene.camera[3]);
     for (std::size_t i = 0; i < count && i < kMaxLights3D; ++i) {
@@ -1926,6 +2050,10 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     const Float3 specular_light = scale(light_sum.specular, ao_direct);
     const Float3 lit =
         add(add(add(add(diffuse_light, specular_light), reflected), emitted), ambient_light);
+    if (subsurface != nullptr) {
+        const Float4 diffuse = finish(add(add(emitted, diffuse_light), ambient_light));
+        *subsurface = {diffuse[0], diffuse[1], diffuse[2], surface.subsurface[0]};
+    }
     return finish(lit);
 }
 

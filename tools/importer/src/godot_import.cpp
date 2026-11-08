@@ -1965,6 +1965,28 @@ private:
         if (!fog.is_null()) {
             project["rendering"]["environment"]["volumetric_fog"] = std::move(fog);
         }
+        // Subsurface scattering's quality, whose enum counts as Godot's does, and its widths.
+        json::Value subsurface;
+        if (const Value* quality = number(
+                "rendering", "environment/subsurface_scattering/subsurface_scattering_quality")) {
+            const auto index = static_cast<std::int64_t>(quality->number());
+            if (index >= 0 &&
+                static_cast<std::size_t>(index) < render::kSubsurfaceQualityNames.size()) {
+                subsurface["quality"] = std::string(
+                    render::kSubsurfaceQualityNames.at(static_cast<std::size_t>(index)));
+            }
+        }
+        for (const char* key : {"scale", "depth_scale"}) {
+            if (const Value* value = number(
+                    "rendering",
+                    std::string("environment/subsurface_scattering/subsurface_scattering_") + key);
+                value != nullptr && value->number() >= 0.0 && value->number() <= 1.0) {
+                subsurface[key] = value->number();
+            }
+        }
+        if (!subsurface.is_null()) {
+            project["rendering"]["environment"]["subsurface_scattering"] = std::move(subsurface);
+        }
         // Reflection probes' cubes, which take sizes in powers of two here.
         if (const Value* size =
                 number("rendering", "reflections/reflection_atlas/reflection_size")) {

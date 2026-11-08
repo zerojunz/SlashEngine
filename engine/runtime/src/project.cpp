@@ -250,6 +250,39 @@ json::Value environment_schema() {
         froxels(fog_defaults.volume_depth, "Froxels from the camera to the fog's length.");
     fog["properties"]["use_filter"] = std::move(use_filter);
     out["properties"]["volumetric_fog"] = std::move(fog);
+    const render::SubsurfaceSettings subsurface_defaults;
+    json::Array subsurface_qualities;
+    for (const std::string_view name : render::kSubsurfaceQualityNames) {
+        subsurface_qualities.emplace_back(std::string(name));
+    }
+    json::Value subsurface_quality;
+    subsurface_quality["enum"] = std::move(subsurface_qualities);
+    subsurface_quality["default"] = std::string(
+        render::kSubsurfaceQualityNames.at(static_cast<std::size_t>(subsurface_defaults.quality)));
+    subsurface_quality["description"] =
+        "How many samples the blur takes across and down: 11 (low), 17 (medium) or 25 (high), or "
+        "none.";
+    const auto share = [](float value, std::string_view description) {
+        json::Value field;
+        field["type"] = "number";
+        field["minimum"] = 0;
+        field["maximum"] = 1;
+        field["default"] = static_cast<double>(value);
+        field["description"] = std::string(description);
+        return field;
+    };
+    json::Value subsurface;
+    subsurface["type"] = "object";
+    subsurface["additionalProperties"] = false;
+    subsurface["description"] = "Forward+'s subsurface scattering, for StandardMaterial3Ds with "
+                                "subsurf_scatter_enabled.";
+    subsurface["properties"]["quality"] = std::move(subsurface_quality);
+    subsurface["properties"]["scale"] =
+        share(subsurface_defaults.scale, "How wide the blur is at full strength, as a share of "
+                                         "the screen.");
+    subsurface["properties"]["depth_scale"] =
+        share(subsurface_defaults.depth_scale, "How much the blur narrows with distance.");
+    out["properties"]["subsurface_scattering"] = std::move(subsurface);
     return out;
 }
 
@@ -1010,6 +1043,10 @@ Result<Project> parse_project(const json::Value& project) {
             }
             if (const json::Value* fog = environment->find("volumetric_fog"); fog != nullptr) {
                 out.volumetric_fog = render::volumetric_fog_settings_from_json(*fog);
+            }
+            if (const json::Value* subsurface = environment->find("subsurface_scattering");
+                subsurface != nullptr) {
+                out.subsurface = render::subsurface_settings_from_json(*subsurface);
             }
         }
         if (const json::Value* reflections = rendering->find("reflections");

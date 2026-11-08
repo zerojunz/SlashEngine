@@ -163,8 +163,12 @@ struct Light3D {
     // Shadows, with Light3D's defaults (a DirectionalLight3D's normal bias is 2 and a
     // SpotLight3D's bias 0.03).
     bool shadow = false;
-    float shadow_bias = 0.1F;              // pushes depths away from the light, against acne
-    float shadow_normal_bias = 1.0F;       // moves pixels along their normals, in shadow map texels
+    float shadow_bias = 0.1F;        // pushes depths away from the light, against acne
+    float shadow_normal_bias = 1.0F; // moves pixels along their normals, in shadow map texels
+    // How far a subsurface material's transmittance (Material3D::transmittance) moves the point
+    // it measures into the mesh, along its normal: in world units for an omni or spot light, and a
+    // hundredth of each cascade's depth for a directional light, as Godot's.
+    float shadow_transmittance_bias = 0.05F;
     float shadow_opacity = 1.0F;           // 0 casts no shadow, 1 a full one
     bool shadow_reverse_cull_face = false; // draws the faces meshes cull, and culls the rest
     // Meshes whose layers share a bit with it cast its shadows.
@@ -266,6 +270,26 @@ struct DepthOfFieldSettings {
 enum class SsaoQuality : std::uint8_t { VeryLow, Low, Medium, High, Ultra };
 inline constexpr std::array<std::string_view, 5> kSsaoQualityNames{"very_low", "low", "medium",
                                                                    "high", "ultra"};
+
+// Godot's rendering/environment/subsurface_scattering/subsurface_scattering_quality: how many
+// samples Forward+'s subsurface scattering blur takes across and down (11, 17 or 25), or none.
+enum class SubsurfaceQuality : std::uint8_t { Disabled, Low, Medium, High };
+inline constexpr std::array<std::string_view, 4> kSubsurfaceQualityNames{"disabled", "low",
+                                                                         "medium", "high"};
+
+// Godot's rendering/environment/subsurface_scattering settings: the quality, the blur's width
+// as a share of the screen at full strength (scale), and how much it narrows with distance
+// (depth_scale, from 0 for none to 1).
+struct SubsurfaceSettings {
+    SubsurfaceQuality quality = SubsurfaceQuality::Low;
+    float scale = 0.05F;
+    float depth_scale = 0.01F;
+
+    bool operator==(const SubsurfaceSettings&) const = default;
+};
+// Reads project.json's rendering.environment.subsurface_scattering: {"quality", "scale",
+// "depth_scale"}. What is missing or not valid keeps its default.
+[[nodiscard]] SubsurfaceSettings subsurface_settings_from_json(const json::Value& value);
 
 // Godot's rendering/environment/ssao settings.
 struct SsaoSettings {
@@ -987,6 +1011,9 @@ struct Scene3D {
     Sdfgi3D sdfgi;
     Reflections3D reflections;
     Decals3D decals;
+    // Forward+'s subsurface scattering of meshes with Material3D::subsurface, after the opaque
+    // meshes and before the transparent ones, as Godot's.
+    SubsurfaceSettings subsurface;
     // How meshes trace their VoxelGIs (Material3D::voxel_gi), as Godot's rendering/
     // global_illumination/voxel_gi/quality: four cones of 45 degrees for their ambient light, or
     // with high quality six narrower ones.

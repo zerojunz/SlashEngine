@@ -285,6 +285,7 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
                                   .ssao = project_.ssao,
                                   .ssr = project_.ssr,
                                   .volumetric_fog = project_.volumetric_fog,
+                                  .subsurface = project_.subsurface,
                                   .reflection_atlas = project_.reflection_atlas,
                                   .voxel_gi_high_quality = project_.voxel_gi_high_quality,
                                   .use_taa = project_.use_taa,

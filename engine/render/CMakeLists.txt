@@ -73,6 +73,7 @@ add_library(slash_render
     src/ssao.cpp
     src/reflection.cpp
     src/ssr.cpp
+    src/subsurface.cpp
     src/taa.cpp
     src/texture_codec.cpp
     src/uniforms.cpp
@@ -149,7 +150,8 @@ set_source_files_properties(src/clusters.cpp src/decal.cpp src/device.cpp src/fo
     src/path_trace.cpp
     src/post.cpp src/resize.cpp src/shader_vm.cpp src/shadow.cpp src/reflection.cpp src/sky.cpp
     src/sdfgi.cpp src/software_device.cpp
-    src/ssao.cpp src/ssr.cpp src/taa.cpp src/upscaler.cpp src/volumetric_fog.cpp src/voxel_gi.cpp
+    src/ssao.cpp src/ssr.cpp src/subsurface.cpp src/taa.cpp src/upscaler.cpp
+    src/volumetric_fog.cpp src/voxel_gi.cpp
     PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 
@@ -180,9 +182,9 @@ set(slash_shader_headers "")
 # its draw pass reads the generated frame as fog_sky reads the fog.
 set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
     mesh_clustered:MeshClustered:clustered mesh_normal:MeshNormal:normal
-    mesh_motion:MeshMotion:motion shadow:Shadow:depth
+    mesh_motion:MeshMotion:motion mesh_subsurface:MeshSubsurface:clustered shadow:Shadow:depth
     post:Post:post sky:Sky:post forward_post:ForwardPost:post16 ssao:Ssao:ssao ssr:Ssr:ssao
-    ssr_trace:SsrTrace:ssr_trace radiance:Radiance:post taa:Taa:post
+    ssr_trace:SsrTrace:ssr_trace radiance:Radiance:post taa:Taa:post subsurface:Subsurface:post
     fsr2_luma:Fsr2Luma:fsr2 fsr2_dilate:Fsr2Dilate:fsr2
     fsr2_reconstruct:Fsr2Reconstruct:fsr2_compute fsr2_depth_clip:Fsr2DepthClip:fsr2_storage
     fsr2_lock:Fsr2Lock:fsr2 fsr2_accumulate:Fsr2Accumulate:fsr2 fsr2_rcas:Fsr2Rcas:fsr2
