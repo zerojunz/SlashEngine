@@ -2,12 +2,19 @@
 
 #include "internal.hpp"
 
+#include "slash/asset/assets.hpp"
+#include "slash/scene3d/model.hpp"
 #include "slash/world/components.hpp"
+#include "slash/xr/face.hpp"
 #include "slash/xr/openxr.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <span>
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace slash::xr {
 namespace {
@@ -161,6 +168,55 @@ entt::entity current_origin(const world::World& world, const world::Tree3D& tree
         }
     }
     return first;
+}
+
+// The blend shapes of the model an entity's MeshInstance3D draws, each name once.
+std::vector<std::string> blend_shape_names(const world::World& world,
+                                           const world::MeshInstance3D& instance) {
+    std::vector<std::string> names;
+    asset::Assets* assets = asset::assets_of(world.ecs());
+    if (assets == nullptr || instance.mesh.empty()) {
+        return names;
+    }
+    auto model = assets->load<scene3d::Model>(instance.mesh);
+    if (!model) {
+        return names;
+    }
+    for (const scene3d::ModelMesh& mesh : model.value()->meshes) {
+        for (const std::string& name : mesh.blend_shapes) {
+            if (std::ranges::find(names, name) == names.end()) {
+                names.push_back(name);
+            }
+        }
+    }
+    return names;
+}
+
+// XRFaceModifier3D's _update_face_blends, its mapping (_get_blend_data) made from the target's
+// model each time, so a changed model or target is followed at once.
+void drive_faces(world::World& world, const std::map<std::string, Tracker, std::less<>>& trackers) {
+    auto& ecs = world.ecs();
+    for (const entt::entity entity : ecs.view<world::XRFaceModifier3D>()) {
+        const auto& modifier = ecs.get<world::XRFaceModifier3D>(entity);
+        const auto tracker = trackers.find(modifier.face_tracker);
+        if (tracker == trackers.end() || tracker->second.type != TrackerType::Face ||
+            tracker->second.blend_shapes.size() != kFaceShapeCount) {
+            continue;
+        }
+        const entt::entity target = modifier.target.empty() ? entity : world.find(modifier.target);
+        if (target == entt::null || !ecs.all_of<world::MeshInstance3D>(target)) {
+            continue;
+        }
+        auto& instance = ecs.get<world::MeshInstance3D>(target);
+        const std::vector<std::string> names = blend_shape_names(world, instance);
+        for (const auto& [name, shape] : face_blend_mapping(names)) {
+            const float weight = tracker->second.blend_shapes[shape];
+            const auto found = instance.blend_shapes.find(name);
+            if (found == instance.blend_shapes.end() || found->second != weight) {
+                instance.blend_shapes.insert_or_assign(name, weight);
+            }
+        }
+    }
 }
 
 } // namespace
@@ -391,6 +447,7 @@ void Server::run(world::World& world) {
         }
     }
     route(world);
+    drive_faces(world, data.trackers);
 }
 
 void Server::emit(world::World& world, std::string kind, json::Value event) const {
@@ -693,6 +750,18 @@ void set_input(world::World& world, std::string_view tracker, std::string_view n
     }
     s.signal(
         {.kind = kind, .tracker = std::string(tracker), .name = std::string(name), .value = value});
+}
+
+void set_face_blend_shapes(world::World& world, std::string_view tracker,
+                           std::span<const float> weights) {
+    Server& s = server(world);
+    const auto found = s.data.trackers.find(tracker);
+    if (found == s.data.trackers.end()) {
+        return;
+    }
+    std::vector<float>& shapes = found->second.blend_shapes;
+    shapes.assign(kFaceShapeCount, 0.0F);
+    std::copy_n(weights.begin(), std::min(weights.size(), kFaceShapeCount), shapes.begin());
 }
 
 void set_profile(world::World& world, std::string_view tracker, std::string_view profile) {
@@ -1001,6 +1070,16 @@ json::Value state_json(const world::World& world, const std::vector<std::string>
         }
         if (!inputs.empty()) {
             entry["inputs"] = std::move(inputs);
+        }
+        json::Object shapes;
+        for (std::size_t shape = 0; shape < tracker.blend_shapes.size(); ++shape) {
+            if (tracker.blend_shapes[shape] != 0.0F) {
+                shapes.emplace(std::string(face_shape_name(shape)),
+                               static_cast<double>(tracker.blend_shapes[shape]));
+            }
+        }
+        if (!shapes.empty()) {
+            entry["blend_shapes"] = std::move(shapes);
         }
         trackers_out.emplace(name, std::move(entry));
     }

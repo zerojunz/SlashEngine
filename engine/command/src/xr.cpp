@@ -3,11 +3,15 @@
 #include "slash/command/session.hpp"
 #include "slash/core/text.hpp"
 #include "slash/world/tree3d.hpp"
+#include "slash/xr/face.hpp"
 #include "slash/xr/openxr.hpp"
 #include "slash/xr/xr.hpp"
 
 #include <array>
+#include <cstddef>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -73,6 +77,11 @@ json::Value tracker_schema() {
     inputs["type"] = "object";
     inputs["description"] = "Inputs by action name, as trigger, grip, primary or ax_button.";
     inputs["additionalProperties"] = std::move(input);
+    json::Value shapes;
+    shapes["type"] = "object";
+    shapes["description"] = "A face tracker's weights by face shape, in Unified Expressions "
+                            "(JawOpen) or ARKit (jawOpen) names; the rest stay.";
+    shapes["additionalProperties"]["type"] = "number";
     json::Object properties{
         {"type", choice({"head", "controller", "basestation", "anchor", "hand", "body", "face"},
                         "Adds a tracker of this type, or changes one's.")},
@@ -83,6 +92,7 @@ json::Value tracker_schema() {
         {"tracking", property("boolean", "Every pose's.")},
         {"poses", std::move(poses)},
         {"inputs", std::move(inputs)},
+        {"blend_shapes", std::move(shapes)},
         {"remove", property("boolean", "Takes the tracker away.")},
     };
     return object_schema(std::move(properties));
@@ -189,6 +199,25 @@ Reply set_tracker(xr::TestInterface& test, const std::string& name, const json::
     if (const json::Value* poses = params.find("poses")) {
         for (const auto& [pose_name, pose_params] : poses->as_object()) {
             apply_pose(pose_params, tracker.poses[pose_name]);
+        }
+    }
+    if (const json::Value* shapes = params.find("blend_shapes")) {
+        for (const auto& [shape_name, weight] : shapes->as_object()) {
+            const std::optional<std::size_t> shape = xr::face_shape_named(shape_name);
+            if (!shape) {
+                std::vector<std::string_view> names;
+                for (std::size_t i = 0; i < xr::kFaceShapeCount; ++i) {
+                    names.push_back(xr::face_shape_name(i));
+                }
+                std::string message = quoted(shape_name) + " isn't a face shape";
+                if (const std::string_view hint = closest_match(shape_name, names); !hint.empty()) {
+                    message += "; did you mean " + quoted(hint) + "?";
+                }
+                return param_error(code::kInvalidParams,
+                                   at + "/blend_shapes/" + json::pointer_escape(shape_name),
+                                   message);
+            }
+            tracker.blend_shapes.insert_or_assign(*shape, static_cast<float>(weight.as_double()));
         }
     }
     if (const json::Value* inputs = params.find("inputs")) {

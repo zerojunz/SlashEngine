@@ -1,0 +1,11 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"xr.set","params":{"trackers":{"/user/face_tracker":{"type":"face","blend_shapes":{"mouthSmileLeft":1,"mouthSmileRight":1}}}}}
+{"jsonrpc":"2.0","id":3,"method":"step","params":{"ticks":1}}
+{"jsonrpc":"2.0","id":4,"method":"entity.get","params":{"id":"face","components":["MeshInstance3D"]}}
+{"jsonrpc":"2.0","id":5,"method":"frame.capture","params":{"points":[[68,54],[68,56],[80,59],[80,64]]}}
+{"jsonrpc":"2.0","id":6,"method":"animation.import_face_capture","params":{"path":"capture/talk.csv","model":"models/face.gltf","out":"anim/face.anim.json"}}
+{"jsonrpc":"2.0","id":7,"method":"component.remove","params":{"id":"face","components":["XRFaceModifier3D"]}}
+{"jsonrpc":"2.0","id":8,"method":"component.set","params":{"id":"face","components":{"MeshInstance3D":{"blend_shapes":{}},"AnimationPlayer":{"library":"anim/face.anim.json","animation":"talk","playing":true}}}}
+{"jsonrpc":"2.0","id":9,"method":"step","params":{"ticks":15}}
+{"jsonrpc":"2.0","id":10,"method":"entity.get","params":{"id":"face","components":["MeshInstance3D"]}}
+{"jsonrpc":"2.0","id":11,"method":"frame.capture","params":{"points":[[68,54],[68,56],[80,59],[80,64]]}}
