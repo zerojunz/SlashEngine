@@ -20,6 +20,7 @@
 #include "restir.hpp"
 #include "sdfgi.hpp"
 #include "sky_shading.hpp"
+#include "splats.hpp"
 #include "ssao.hpp"
 #include "ssr.hpp"
 #include "subsurface.hpp"
@@ -815,7 +816,7 @@ public:
                                                 size[0], size[1]);
             }
             draw_sky(scene, {.bytes = nullptr, .hdr = &world}, sky_jitter);
-            if (!mesh_draws_.empty()) {
+            if (!mesh_draws_.empty() || !scene.splats.clouds.empty()) {
                 depth = draw_meshes(scene, {.bytes = nullptr, .hdr = &world},
                                     fsr2_state != nullptr ? &fsr2_camera : nullptr);
             } else if (detail::uses_taa(scene)) {
@@ -1740,7 +1741,7 @@ private:
                       world.pixels.begin() + static_cast<std::ptrdiff_t>(i));
         }
         draw_sky(scene, {.bytes = nullptr, .hdr = &world});
-        if (!mesh_draws_.empty()) {
+        if (!mesh_draws_.empty() || !scene.splats.clouds.empty()) {
             draw_meshes(scene, {.bytes = nullptr, .hdr = &world});
         }
         if (capture_raw_.size != size) {
@@ -1949,16 +1950,9 @@ private:
         SsrHistory* history = nullptr;
         const detail::SsrCamera seen = detail::ssr_camera(scene);
         const std::size_t pixels = std::size_t{target.width()} * target.height();
-        // The color pass over buffer: with subsurface scattering, the opaque meshes, then those
-        // that scatter light under their surface again where they are seen, into a texture of
-        // half floats, which is blurred across and down and added to the world, then the blended
-        // meshes.
-        const auto draw_color = [&](std::span<float> buffer) {
-            if (target.hdr == nullptr || !detail::uses_subsurface(scene)) {
-                draw_all(buffer, false, shade_color);
-                return;
-            }
-            draw_some(buffer, true, false, shade_color);
+        // The meshes that scatter light under their surface, again where they are seen, into a
+        // texture of half floats, which is blurred across and down and added to the world.
+        const auto scatter_under_surfaces = [&](std::span<float> buffer) {
             std::vector<float> light(pixels * 4, 0.0F);
             bool scattered = false;
             for (const std::size_t index : order) {
@@ -1993,6 +1987,38 @@ private:
                     const Float4 was = target.load(at);
                     target.store(at, {was[0] + change[at * 4], was[1] + change[(at * 4) + 1],
                                       was[2] + change[(at * 4) + 2], was[3]});
+                }
+            }
+        };
+        // The color pass over buffer: with subsurface scattering or Gaussian splats, the opaque
+        // meshes, then those that scatter light under their surface again where they are seen,
+        // into a texture of half floats, which is blurred across and down and added to the
+        // world, then the splats blended over what is in front of them, then the blended meshes.
+        const bool splats = target.hdr != nullptr && !scene.splats.clouds.empty();
+        const auto draw_color = [&](std::span<float> buffer) {
+            const bool subsurface = target.hdr != nullptr && detail::uses_subsurface(scene);
+            if (!subsurface && !splats) {
+                draw_all(buffer, false, shade_color);
+                return;
+            }
+            draw_some(buffer, true, false, shade_color);
+            if (subsurface) {
+                scatter_under_surfaces(buffer);
+            }
+            if (splats) {
+                const std::vector<float> blend =
+                    detail::run_splats(scene.splats,
+                                       {.width = target.width(),
+                                        .height = target.height(),
+                                        .view_projection = camera.view_projection,
+                                        .camera = detail::camera_place(scene.camera)},
+                                       buffer, pool_);
+                for (std::size_t at = 0; at < pixels; ++at) {
+                    const Float4 was = target.load(at);
+                    const float showing = blend[(at * 4) + 3];
+                    target.store(at, {blend[at * 4] + (was[0] * showing),
+                                      blend[(at * 4) + 1] + (was[1] * showing),
+                                      blend[(at * 4) + 2] + (was[2] * showing), was[3]});
                 }
             }
             draw_some(buffer, false, true, shade_color);

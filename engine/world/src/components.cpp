@@ -3585,6 +3585,19 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("sorting_offset",
                   {.doc = "Meters taken off its distance from the camera, to draw it over "
                           "nearer decals."});
+    registry.add<GaussianSplat3D>()
+        .set_doc("Research: a cloud of 3D Gaussians captured from a real place or thing (a 3D "
+                 "Gaussian Splatting .ply file, as Postshot, Polycam or nerfstudio write), "
+                 "blended over the opaque meshes in Forward+. Only the software device draws "
+                 "them yet.")
+        .describe("splats", {.doc = "Project path of the .ply file; \"\" for none."})
+        .describe("sh_degree",
+                  {.doc = "The most spherical harmonics degree its colors use: 0 looks the same "
+                          "from every side, 3 shines as the capture did.",
+                   .min = 0,
+                   .max = 3})
+        .describe("opacity", {.doc = "Times each splat's opacity.", .min = 0, .max = 1})
+        .describe("layers", {.doc = "Cameras whose cull_mask shares a bit see it."});
     registry.add<FogVolume>()
         .set_doc("Forward+: a place where the volumetric fog is thicker, thinner or glows, as "
                  "Godot's FogVolume, filled as the FogMaterial on the entity says (with none, a "

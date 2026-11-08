@@ -43,6 +43,7 @@
 #include "slash/scene3d/particle_collision.hpp"
 #include "slash/scene3d/recipe.hpp"
 #include "slash/scene3d/scene3d.hpp"
+#include "slash/scene3d/splats.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
 #include "slash/shader_compiler/shader_compiler.hpp"
@@ -204,7 +205,8 @@ enum class DataFile : std::uint8_t {
     VoxelGI,
     Model,
     Buffer,
-    Translation
+    Translation,
+    Splats
 };
 
 DataFile data_file(std::string_view name) {
@@ -284,6 +286,9 @@ DataFile data_file(std::string_view name) {
     if (name.ends_with(scene3d::kVoxelGISuffix)) {
         return DataFile::VoxelGI;
     }
+    if (name.ends_with(scene3d::kSplatSuffix)) {
+        return DataFile::Splats;
+    }
     // A lightmap's texels, light past 1 kept as a Radiance HDR file.
     if (name.ends_with(".hdr")) {
         return DataFile::LightmapTexels;
@@ -325,6 +330,12 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
     if (kind == DataFile::Heightmap) {
         if (auto heights = render::decode_gray16(text); !heights) {
             return {{"", heights.error().message}};
+        }
+        return {};
+    }
+    if (kind == DataFile::Splats) {
+        if (auto splats = render::read_splat_ply(text); !splats) {
+            return {{"", splats.error().message}};
         }
         return {};
     }
@@ -625,7 +636,7 @@ std::optional<std::string> with_quality(std::string_view text, const std::string
 // .material.json, .anim.json, .animtree.json, .tileset.json, font, .theme.json, sound, .audio.json,
 // .bus_layout.json, .navmesh.json, .navpoly.json, .npc.json, .meshlib.json, .lightmap.json and
 // .voxelgi.json file, translation file (.po, .mo and the CSV files project.json lists), heightmap,
-// lightmap's .hdr texels and model into data, checking each on the way.
+// lightmap's .hdr texels, Gaussian splats' .ply file and model into data, checking each on the way.
 // Materials take their shaders compiled for the platform, and textures ship in the forms
 // project.json's rendering.textures asks for, kept in library_dir's cache. Model recipes ship
 // as the preset's model_quality tier makes them.

@@ -87,6 +87,7 @@ add_executable(slash_tests
     test_generated_frames.cpp
     test_frame_summary.cpp
     test_gameplay.cpp
+    test_gaussian_splats.cpp
     test_generators.cpp
     test_godot_pack.cpp
     test_gpu_particles.cpp

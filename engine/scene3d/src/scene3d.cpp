@@ -18,6 +18,7 @@
 #include "slash/scene3d/particle_collision.hpp"
 #include "slash/scene3d/particles.hpp"
 #include "slash/scene3d/soft_body.hpp"
+#include "slash/scene3d/splats.hpp"
 #include "slash/scene3d/streaming.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/scene3d/virtual_geometry.hpp"
@@ -1049,6 +1050,9 @@ std::vector<Problem> check_meshes(const world::World& world) {
         problems.push_back(std::move(problem));
     }
     for (Problem& problem : check_streaming(world)) {
+        problems.push_back(std::move(problem));
+    }
+    for (Problem& problem : check_splats(world)) {
         problems.push_back(std::move(problem));
     }
     return problems;
@@ -3552,6 +3556,9 @@ std::optional<Frame3D> Renderer::prepare(
     frame.scene.decals.filter = decal_filter;
     if (method == render::RenderMethod::ForwardPlus) {
         add_decals(world, tree, global, lens.cull_mask, env.exposure, frame.scene.decals);
+    }
+    if (method == render::RenderMethod::ForwardPlus) {
+        add_splats(world, tree, global, lens.cull_mask, frame.scene.splats);
     }
     if (method == render::RenderMethod::ForwardPlus && frame.scene.volumetric_fog.enabled) {
         add_fog_volumes(world, tree, global, lens.cull_mask, frame.scene.volumetric_fog.volumes);

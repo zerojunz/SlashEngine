@@ -2540,6 +2540,23 @@ duplicate corners and triangles merged. [`frame.capture`](commands.md#framecaptu
 counts the meshes hidden as `occluded`. [examples/occlusion-culling](../../examples/occlusion-culling/)
 hides three houses behind a wall.
 
+### Gaussian splats
+
+A `GaussianSplat3D` draws scenery captured from photos: a 3D Gaussian Splatting `.ply` file of
+small, see-through 3D Gaussians, placed by the entity's `Transform3D` and blended over the opaque
+meshes in Forward+, nearest first, where no mesh is in front of them. It is a research feature of
+SlashEngine's own (Godot has none), and only the software device draws it yet; see
+[gaussian-splats.md](gaussian-splats.md) for how it draws and what it doesn't do.
+
+| `GaussianSplat3D` field | Default | Meaning |
+| --- | --- | --- |
+| `splats` | `""` | Project path of the `.ply` file; `""` draws nothing |
+| `sh_degree` | `3` | The most spherical harmonics degree its colors use, 0 to 3: 0 looks the same from every side, higher shines as the capture did |
+| `opacity` | `1` | Times each splat's opacity, 0 to 1 |
+| `layers` | `1` | Cameras whose `cull_mask` shares a bit see it |
+
+[examples/gaussian-splats](../../examples/gaussian-splats/) puts a captured boulder behind a post.
+
 ### Checks
 
 `scene validate` and exports report an entity with two primitive meshes (at
@@ -2550,7 +2567,8 @@ project, doesn't load, or sits beside a primitive mesh (at its `mesh`), as drawi
 be made, [path followers](#paths) that can't follow, [LightmapGIs](#baked-lightmaps) whose
 `light_data` doesn't load and [VoxelGIs](#voxelgi) whose `data` doesn't load, and [occluders](#occlusion-culling) whose
 `polygon` or `indices` can't make triangles (too few, an index out of range, or a polygon that
-can't be triangulated).
+can't be triangulated), and [GaussianSplat3Ds](#gaussian-splats) whose `splats` isn't a `.ply`
+file of splats or whose `sh_degree` isn't 0 to 3.
 Exports
 check every `.gltf`, `.glb`, `.obj` and `.fbx` file as `scene validate` does, and ship them with their
 `.bin` buffers, `.mtl` libraries and images. `frame.summary` doesn't describe 3D meshes

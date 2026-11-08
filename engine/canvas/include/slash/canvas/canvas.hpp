@@ -457,6 +457,7 @@ private:
     std::map<std::string, LightmapEntry, std::less<>> lightmaps_;
     // The cells VoxelGIs name.
     std::map<std::string, asset::Handle<scene3d::VoxelGIData>, std::less<>> voxel_gis_;
+    std::map<std::string, asset::Handle<render::GaussianSplats>, std::less<>> splats_;
     ShadowCache shadow_cache_;
     // The light atlas, and the textures and versions it was packed from.
     render::TextureId atlas_ = render::TextureId::None;

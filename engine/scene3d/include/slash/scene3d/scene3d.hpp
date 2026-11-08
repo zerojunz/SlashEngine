@@ -171,6 +171,10 @@ using VoxelGISource =
 using ImageSource =
     std::function<Result<std::shared_ptr<const render::Image>>(const std::string& path)>;
 
+// The Gaussian splats a GaussianSplat3D's splats names, loaded by project path (splats.hpp).
+using SplatSource =
+    std::function<Result<std::shared_ptr<const render::GaussianSplats>>(const std::string& path)>;
+
 // A model loaded by project path, and its version: a reload raises it, and its meshes are made
 // again.
 struct SourceModel {
@@ -187,8 +191,8 @@ using ModelSource = std::function<Result<SourceModel>(const std::string& path)>;
 // skeleton modifiers and bone attachments against the models they follow. CSG shapes that can't
 // be made (check_csg), path followers that can't follow (world::check_paths), GridMaps whose
 // cells can't be made (check_gridmaps), terrains (check_terrains), LightmapGIs
-// (check_lightmaps), soft bodies (check_soft_bodies), Destructible3Ds (check_destructibles) and
-// StreamedScene3Ds (check_streaming) come after.
+// (check_lightmaps), soft bodies (check_soft_bodies), Destructible3Ds (check_destructibles),
+// StreamedScene3Ds (check_streaming) and GaussianSplat3Ds (check_splats) come after.
 [[nodiscard]] std::vector<Problem> check_meshes(const world::World& world);
 
 // The same in a parsed scene file, each at its JSON Pointer in the file. Prefabs and instanced
@@ -326,6 +330,9 @@ public:
         override_materials_ = std::move(materials);
     }
     void set_tick_seconds(double seconds) { tick_seconds_ = seconds; }
+    // Where GaussianSplat3Ds' .ply files load from: without a source, they draw nothing, and
+    // each is a problem.
+    void set_splats(SplatSource splats) { splats_ = std::move(splats); }
     // Draws the meshes prepare found into the frame begun with its scene.
     [[nodiscard]] Result<void> draw();
 
@@ -627,6 +634,11 @@ private:
     void add_decals(const world::World& world, const world::Tree3D& tree,
                     const std::function<world::Affine3D(entt::entity)>& global,
                     std::uint32_t cull_mask, float exposure, render::Decals3D& out);
+    // The GaussianSplat3Ds the camera's cull_mask sees, in the order they were made, their files
+    // loaded through the splat source; those that can't load are left out, with a problem.
+    void add_splats(const world::World& world, const world::Tree3D& tree,
+                    const std::function<world::Affine3D(entt::entity)>& global,
+                    std::uint32_t cull_mask, render::Splats3D& out);
     // The FogVolumes the camera's cull_mask sees, in the order they were made, each with the
     // FogMaterial on its entity; past render::kMaxFogVolumes they are left out and reported.
     void add_fog_volumes(const world::World& world, const world::Tree3D& tree,
@@ -712,6 +724,7 @@ private:
     std::unordered_map<entt::entity, GpuParticles3D> gpu_particles_;
     ParticleProcessSource processes_;
     ShaderMaterialSource override_materials_;
+    SplatSource splats_;
     // The material in place of an entity's surfaces': its material_override's, else its
     // StandardMaterial3D's; nullopt for neither, or for an override that can't load, with a
     // problem. shadows_disabled says its material casts none.
