@@ -512,12 +512,12 @@ void light_compute(float3 n, float3 l, float3 v, float3 light_color, float atten
     float n_dot_l = min(dot(n, l), 1.0);
     float c_n_dot_l = max(n_dot_l, 0.0);
     float c_n_dot_v = max(dot(n, v), 1e-4);
-    if (layers.transmittance) {
+    [branch] if (layers.transmittance) {
         // Light through the mesh, by how deep the pixel is, onto its side facing away.
         float d = 8.25 / layers.transmittance_depth * abs(transmittance_z);
         float dd = -d * d;
         float3 through;
-        if (layers.skin) {
+        [branch] if (layers.skin) {
             through = float3(0.233, 0.455, 0.649) * exp(dd / 0.0064) +
                       float3(0.1, 0.336, 0.344) * exp(dd / 0.0484) +
                       float3(0.118, 0.198, 0.0) * exp(dd / 0.187) +
@@ -747,7 +747,7 @@ float atlas_depth(bool positional, float2 uv, float texel) {
     int2 low = clamp((int2)base, int2(0, 0), int2(last, last));
     int2 high = clamp((int2)base + int2(1, 1), int2(0, 0), int2(last, last));
     float4 d;
-    if (positional) {
+    [branch] if (positional) {
         d = float4(positional_atlas.Load(int3(low.x, low.y, 0)).r,
                    positional_atlas.Load(int3(high.x, low.y, 0)).r,
                    positional_atlas.Load(int3(low.x, high.y, 0)).r,
@@ -769,7 +769,7 @@ float atlas_depth(bool positional, float2 uv, float texel) {
 // depth made linear from the map's. fallback where the light casts no shadow.
 float shadow_thickness(bool directional, uint slot, float3 world, float3 normal, float3 geometry,
                        float fallback) {
-    if (directional) {
+    [branch] if (directional) {
         if (!(directional_shadows[slot].params.z > 0.001)) {
             return fallback;
         }
@@ -886,9 +886,9 @@ void add_light(Light light, float3 world, float3 normal, float3 geometry, float3
     layers.rim *= attenuation;
     float transmittance_z = layers.transmittance_depth;
 #ifdef CLUSTERED
-    if (layers.transmittance) {
+    [branch] if (layers.transmittance) {
         layers.transmittance_color.a *= attenuation;
-        if (slot >= 0.0) {
+        [branch] if (slot >= 0.0) {
             transmittance_z = shadow_thickness(directional, (uint)slot, world, normal, geometry,
                                                transmittance_z);
         }
