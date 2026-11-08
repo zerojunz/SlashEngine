@@ -19,7 +19,8 @@ root=$work/slashengine
 cli=$root/bin/slash-cli
 
 # The tools link only the system's libraries, so they run with no other install: on a Mac those
-# under /usr/lib and /System, on Linux the C and C++ runtimes (SDL loads the display and sound
+# under /usr/lib and /System, on Linux the C and C++ runtimes (glibc before 2.34 keeps the
+# pseudo-terminal calls in libutil, and later ones still ship it; SDL loads the display and sound
 # libraries it finds when it starts), on Windows those in System32, Visual C++'s runtime among
 # them where Visual Studio is installed.
 case "$(uname -s)" in
@@ -30,7 +31,7 @@ case "$(uname -s)" in
   Linux)
     platform=linux
     libraries() {
-      ldd "$1" | grep -v -E '^[[:space:]]*(linux-vdso|/lib(64)?/ld-linux)|(libc|libm|libdl|libpthread|librt|libstdc\+\+|libgcc_s)\.so' || true
+      ldd "$1" | grep -v -E '^[[:space:]]*(linux-vdso|/lib(64)?/ld-linux)|(libc|libm|libdl|libpthread|librt|libutil|libstdc\+\+|libgcc_s)\.so' || true
     }
     ;;
   MINGW*|MSYS*)
