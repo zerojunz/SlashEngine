@@ -25,7 +25,7 @@ namespace {
 
 constexpr std::string_view kMainScene = "scenes/main.scene.json";
 
-constexpr std::string_view kAgents = R"(# AGENTS.md
+constexpr std::string_view kAgents = R"md(# AGENTS.md
 
 This is a SlashEngine game project. SlashEngine is built for agents: you inspect and change the
 game through engine commands instead of editing files by hand.
@@ -33,10 +33,14 @@ game through engine commands instead of editing files by hand.
 ## Connect to the engine
 
 The `slashengine` MCP server is configured for Claude Code (`.mcp.json`), Codex
-(`.codex/config.toml`) and Cursor (`.cursor/mcp.json`), and opens `scenes/main.scene.json` at
-startup. Its tools check every change against the engine's schemas, support undo and return
-compact results. Use them rather than editing `.scene.json` files directly: the server holds the
-open scene, so a hand edit is overwritten the next time the scene is saved.
+(`.codex/config.toml`), Cursor (`.cursor/mcp.json`) and opencode (`opencode.json`), and opens
+`scenes/main.scene.json` at startup. Hermes Agent and OpenClaw keep MCP servers in their user's
+own config, so `slash-cli init` writes their entries for this folder into `.slash/agents/`: add
+`.slash/agents/hermes.yaml`'s `mcp_servers` entry to `~/.hermes/config.yaml`, or run
+`openclaw mcp set slashengine "$(cat .slash/agents/openclaw.json)"`. Its tools check every change
+against the engine's schemas, support undo and return compact results. Use them rather than
+editing `.scene.json` files directly: the server holds the open scene, so a hand edit is
+overwritten the next time the scene is saved.
 
 Without MCP, the same commands run from the shell:
 
@@ -217,7 +221,7 @@ environment variables, never from the file.
   `journal.jsonl`, the record of who changed them. Commit both.
 - `tests/`: `.test.json` tests that `test_run` and `slash-cli test` run, and the export workflow
   runs on every push.
-)";
+)md";
 
 constexpr std::string_view kGameCode =
     R"(// The game's own C++ code, as Godot's scripts: components that scenes use and systems the world
@@ -466,6 +470,46 @@ std::string json_config(const InitOptions& options, std::string_view project) {
     return json::write(config) + "\n";
 }
 
+// opencode's project config: a local server is its command and arguments in one list.
+std::string opencode_config(const InitOptions& options) {
+    json::Value server;
+    server["type"] = "local";
+    server["command"] = json::Array{options.mcp_command, "--project", ".", "--scene", kMainScene};
+    json::Value config;
+    config["$schema"] = "https://opencode.ai/config.json";
+    config["mcp"]["slashengine"] = std::move(server);
+    return json::write(config) + "\n";
+}
+
+// The project folder as an absolute path, for agents that keep servers in a config of the
+// user's own and start them from anywhere.
+std::string absolute_project(const std::string& directory) {
+    std::error_code error;
+    std::string path =
+        std::filesystem::absolute(directory, error).lexically_normal().generic_string();
+    while (path.size() > 1 && path.back() == '/') {
+        path.pop_back();
+    }
+    return path;
+}
+
+// OpenClaw's entry, for `openclaw mcp set slashengine '<entry>'`.
+std::string openclaw_config(const InitOptions& options) {
+    return json::write(server_entry(options, absolute_project(options.directory)),
+                       json::Style::Compact) +
+           "\n";
+}
+
+// Hermes Agent's entry, for ~/.hermes/config.yaml. JSON strings are YAML's double-quoted ones.
+std::string hermes_config(const InitOptions& options) {
+    const auto quoted = [](std::string_view text) { return "\"" + log::escape_json(text) + "\""; };
+    return "# Add this to ~/.hermes/config.yaml (merge it into mcp_servers if you have one).\n"
+           "mcp_servers:\n  slashengine:\n    command: " +
+           quoted(options.mcp_command) + "\n    args: [\"--project\", " +
+           quoted(absolute_project(options.directory)) + ", \"--scene\", " + quoted(kMainScene) +
+           "]\n";
+}
+
 std::string toml_string(std::string_view text) {
     return "\"" + log::escape_json(text) + "\"";
 }
@@ -566,7 +610,8 @@ std::string empty_scene() {
 } // namespace
 
 Result<json::Value> init_project(const InitOptions& options) {
-    // Cursor expands ${workspaceFolder}; Claude Code and Codex start servers in the project.
+    // Cursor expands ${workspaceFolder}; Claude Code, Codex and opencode start servers in the
+    // project; Hermes Agent and OpenClaw start them anywhere, so theirs name it in full.
     const std::string name = project_name(options.directory);
     const std::string glossary = storyboard::file_path("glossary");
     const std::string work = storyboard::file_path("work");
@@ -579,6 +624,9 @@ Result<json::Value> init_project(const InitOptions& options) {
         {".mcp.json", json_config(options, ".")},
         {".cursor/mcp.json", json_config(options, "${workspaceFolder}")},
         {".codex/config.toml", codex_config(options)},
+        {"opencode.json", opencode_config(options)},
+        {".slash/agents/hermes.yaml", hermes_config(options)},
+        {".slash/agents/openclaw.json", openclaw_config(options)},
         {".claude/skills/slashengine/SKILL.md", std::string(kSkill)},
         {".github/workflows/export.yml", with_engine_ref(kWorkflow)},
         {kMainScene, empty_scene()},

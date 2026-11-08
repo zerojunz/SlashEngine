@@ -32,6 +32,7 @@ real commands and real output, and no screenshots.
 | Bring a game over from Unreal Engine | [reference/unreal-import.md](reference/unreal-import.md) |
 | Call the engine over HTTP, JSON-RPC or MCP | [reference/protocols.md](reference/protocols.md) |
 | Measure what agent tasks cost in calls and tokens | [reference/benchmark.md](reference/benchmark.md) |
+| Check that each coding agent edits a scene over MCP | [exit-check/README.md](exit-check/README.md) |
 | Read the full design and the reasons behind it | [design.md](design.md) |
 | Work on the engine's own code | [../AGENTS.md](../AGENTS.md) |
 
