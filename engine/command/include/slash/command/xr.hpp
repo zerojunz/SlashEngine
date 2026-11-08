@@ -8,4 +8,8 @@ namespace slash::command {
 // slash/xr/xr.hpp.
 void register_xr_commands(Registry& registry);
 
+// Adds animation.import_face_capture, which turns a face capture app's recording of ARKit blend
+// shapes into a .anim.json animation.
+void register_face_capture_commands(Registry& registry);
+
 } // namespace slash::command

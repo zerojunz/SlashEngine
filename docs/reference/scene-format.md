@@ -6504,6 +6504,7 @@ and presses; it starts when project.json's [`xr.openxr.enabled`](project-format.
 | `XRCamera3D` | none | The headset: with a `Camera3D` on the same entity, it follows the `head` tracker's `default` pose |
 | `XRController3D` | `tracker` (`""`), `pose` (`"default"`), `show_when_tracked` (`false`) | A hand controller: follows the pose and sends its tracker's inputs as events |
 | `XRAnchor3D` | the same | Something the headset found in the room, such as a table |
+| `XRFaceModifier3D` | `face_tracker` (`"/user/face_tracker"`), `target` (`""`) | Drives the blend shapes of a face from a face tracker; see [Face tracking](#face-tracking) |
 
 A node's `Transform3D` becomes the pose's transform with its position times the world scale,
 then the reference frame `center_on_hmd` set applied, as Godot's `XRPose::get_adjusted_transform`.
@@ -6537,6 +6538,31 @@ the origin) and its field of view as the tangents of its four edges, which
 0.064 m apart, in 1024 by 1024 images; `xr.set`'s `ipd` and `render_target_size` change them,
 and `view_configuration` `"mono"` gives one view at the head. [`frame.capture`](commands.md#framecapture)'s
 `xr_view` draws one.
+
+### Face tracking
+
+A face tracker (type `face`) holds a weight for each of the 143 face shapes of the Unified
+Expressions standard, as Godot's `XRFaceTracker`
+([`slash/xr/face.hpp`](../../engine/xr/include/slash/xr/face.hpp)). An `XRFaceModifier3D`
+follows the tracker its `face_tracker` names and, each tick, sets the
+[blend shapes](#blend-shapes) of the `MeshInstance3D` on its `target` (an entity ID, else its own
+entity) that stand for face shapes, as Godot's `XRFaceModifier3D`:
+
+- A blend shape stands for a face shape when its name, in any case and with underscores ignored,
+  is the shape's name in Unified Expressions (`JawOpen`), Apple ARKit (`jawOpen`,
+  `eyeBlinkLeft`), SRanipal or Meta's standard (`xr::face_shape_named`).
+- A blended shape (such as `MouthSmile`, made of both sides' corner pulls and slants) is left
+  out when the mesh has all its parts, so the face isn't moved twice.
+- The modifier writes `MeshInstance3D.blend_shapes`, so it can be saved, read with `entity.get`
+  and animated over.
+
+The test headset adds a face tracker when [`xr.set`](commands.md#xrset) names one with `type`
+`"face"` and its `blend_shapes`. Recordings come in as animations through
+[`animation.import_face_capture`](commands.md#animationimport_face_capture). Both fill in the
+shapes those given imply, which is SlashEngine's own: each part of a given blended shape takes
+its value (ARKit records `mouthSmileLeft`, not the corner pull and slant it is made of), then
+each blended shape whose parts are all known takes their mean.
+[examples/face-capture](../../examples/face-capture/) smiles live and plays a recording.
 
 ### OpenXR
 

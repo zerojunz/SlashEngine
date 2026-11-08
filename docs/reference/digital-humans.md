@@ -46,8 +46,11 @@ follow Godot's design:
 3. **Hair and eye shading**: Godot's `StandardMaterial3D` `anisotropy`, `rim` and `clearcoat`
    fields (done: [scene-format.md](scene-format.md#standardmaterial3d)) and alpha hash, which
    Godot uses for hair cards and eyes. Alpha hash and the fields' textures remain.
-4. **Face capture data**: reading ARKit-style named blend shape tracks into animations, so a
-   recorded performance can drive a face.
+4. **Face capture data** (done: [scene-format.md](scene-format.md#face-tracking)): Godot's
+   `XRFaceTracker` and `XRFaceModifier3D`, which drive a face's blend shapes named in ARKit's,
+   Unified Expressions', SRanipal's or Meta's standard live, and
+   [`animation.import_face_capture`](commands.md#animationimport_face_capture), which reads a
+   Live Link Face recording into an animation, so a recorded performance drives a face.
 
 Strand hair simulation, a face rig editor and a library of scanned heads would come only after
 these, and would need permissively licensed sources.

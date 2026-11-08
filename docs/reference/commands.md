@@ -686,6 +686,51 @@ length fails with its `path`, `/times/<n>`. Event tracks are left out; read them
 {"length":1,"loop":"linear","tracks":{},"nodes":{"Elbow":{"rotation":[[0,0,0],[0,0,0.6],[0,0,1.2]]}}}
 ```
 
+### animation.import_face_capture
+
+Turns a face capture recording into a `.anim.json` animation of blend shape tracks
+(`MeshInstance3D/blend_shapes/<name>`), so a recorded performance drives a face. The recording is
+a CSV file as Live Link Face and other ARKit capture apps write: a first line of column names,
+a time column (`Timecode`, `HH:MM:SS:FF` with the frame's fraction, or `time` or `seconds` in
+seconds) and a column of weights per face shape, named as ARKit (`JawOpen`, `EyeBlinkLeft`) or
+Unified Expressions names them. Other columns, such as the head's and eyes' turns, are skipped
+and listed. Times start at the first row's. Keys that a straight line between the keys kept
+passes within `tolerance` of are dropped, and a track that never moves keeps one key. The
+animation is added to the library at `out`, replacing one of the same name and keeping the
+others.
+
+Without a `model`, each face shape column becomes a track named as ARKit names the shape (the
+column's name with a lower-case first letter). With one, each of the model's blend shapes the
+recording drives gets a track, matched as [`XRFaceModifier3D`](scene-format.md#face-tracking)
+matches them, with blended shapes filled in from the shapes recorded; `undriven` lists the
+model's blend shapes it doesn't drive.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | required | The recording (CSV), project path |
+| `out` | string | `path` as `.anim.json` | The `.anim.json` library to write into |
+| `name` | string | the file's name | The animation's name |
+| `model` | string | | The face model whose blend shapes the tracks drive |
+| `fps` | number above 0 | `60` | Frames a second of the `Timecode` column |
+| `tolerance` | number, 0 or more | `0.005` | How far a dropped key may be from the line between those kept |
+
+Needs: `edit`, `filesystem`. Undo puts the library back as it was.
+
+```json
+{"path": "capture/talk.csv", "model": "models/face.gltf", "out": "anim/face.anim.json"}
+```
+
+```json
+{"animation":"talk","frames":31,"keys":22,"length":0.5,"out":"anim/face.anim.json",
+ "skipped":["BlendShapeCount","HeadYaw","HeadPitch","HeadRoll"],"tracks":2}
+```
+
+```
+/path: line 3's JawOpen "x" isn't a number
+```
+
+[`examples/face-capture`](../../examples/face-capture/) imports a recording and plays it.
+
 ### animation.seek
 
 Moves an entity's `AnimationPlayer` to a time or a [marker](scene-format.md#cinematics) and sets
@@ -3862,7 +3907,7 @@ anchor the headset found. Returns the tick the server has the changes at.
 | --- | --- | --- | --- |
 | `interface` | `"test"` or `"openxr"` | | Switches to the test headset or to the machine's OpenXR runtime, which then moves the trackers as a headset does. Only on its own; a runtime that can't start says why at `/interface` |
 | `initialize` | boolean | | Starts or stops the test headset, which adds or takes away its trackers |
-| `trackers` | object | | Changes by tracker name: `type`, `hand`, `profile`, `position`, `rotation`, `tracking`, `poses` (by name, each with `position`, `rotation`, `linear_velocity`, `angular_velocity`, `tracking` and `confidence`), `inputs` (by action name: a boolean button, a number trigger or an `[x, y]` thumbstick) and `remove` |
+| `trackers` | object | | Changes by tracker name: `type`, `hand`, `profile`, `position`, `rotation`, `tracking`, `poses` (by name, each with `position`, `rotation`, `linear_velocity`, `angular_velocity`, `tracking` and `confidence`), `inputs` (by action name: a boolean button, a number trigger or an `[x, y]` thumbstick), `blend_shapes` (a face tracker's weights by face shape name, Unified Expressions' or ARKit's; see [Face tracking](scene-format.md#face-tracking)) and `remove` |
 | `play_area_mode` | `"sitting"`, `"roomscale"` or `"stage"` | | The play area the headset tracks in, as Godot's `XRInterface` |
 | `play_area_size` | `[x, z]` | `[2, 2]` | Meters |
 | `environment_blend_mode` | `"opaque"`, `"additive"` or `"alpha"` | | How the picture blends with the world: `opaque` for VR, the others for AR |

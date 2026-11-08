@@ -20,6 +20,7 @@ add_library(slash_command
     src/l10n_check.cpp
     src/l10n_extract.cpp
     src/net.cpp
+    src/face_capture.cpp
     src/xr.cpp
     src/services.cpp
     src/session.cpp
