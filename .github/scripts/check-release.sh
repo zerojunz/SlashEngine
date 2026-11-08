@@ -94,6 +94,12 @@ if [ "$platform" != windows ]; then
   "$cli" call engine.describe --project "$game" | jq -e '.components | map(.name) | index("Spin")'
 fi
 
+# Linux games build for x86_64 unless a preset says otherwise, so on an arm64 machine the linux
+# preset builds for arm64, to run the game there.
+if [ "$platform" = linux ] && [ "$(uname -m)" = aarch64 ]; then
+  echo '{"format": 1, "presets": {"linux": {"platform": "linux", "linux": {"arch": "arm64"}}}}' \
+    > "$game/export_presets.json"
+fi
 # A debug build: one architecture, unoptimized, so the whole engine compiles quickly.
 env -u CPM_SOURCE_CACHE "$cli" export "$platform" --debug --project "$game" --test \
   > "$work/export.json" \
