@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -317,8 +318,14 @@ TEST_CASE("a project's gameplay library registers its components and systems") {
     // Nothing more until the file changes.
     CHECK_FALSE(game.host.changed());
     CHECK_FALSE(game.host.poll().has_value());
-    // The copy it loaded is gone.
-    CHECK(fs::is_empty(fs::path(project.dir) / ".slash/gameplay/loaded"));
+    // The copy it loaded is gone. Windows won't remove a library while it is loaded, so there the
+    // one copy stays until a later load finds no program holding it.
+    const fs::path copies = fs::path(project.dir) / ".slash/gameplay/loaded";
+#if defined(_WIN32)
+    CHECK(std::distance(fs::directory_iterator(copies), fs::directory_iterator()) == 1);
+#else
+    CHECK(fs::is_empty(copies));
+#endif
 }
 
 TEST_CASE("a project with no gameplay library built loads nothing until there is one") {
