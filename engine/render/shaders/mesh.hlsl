@@ -1516,13 +1516,11 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
     float3 diffuse_light = (float3)0.0;
     float3 specular_light = (float3)0.0;
     uint count = (uint)camera.w;
-    for (uint i = 0u; i < count; ++i) {
-        add_light(lights[i], input.world, normal, geometry, view, f0, roughness, metallic,
-                  layers, rays, diffuse_light, specular_light);
-    }
 #ifdef CLUSTERED
-    // The omni and spot lights of the pixel's cluster: its tile's lights within its slice's
-    // range, nearest first, as Godot's scene_forward_clustered.glsl walks them.
+    // The directional lights, then the omni and spot lights of the pixel's cluster: its tile's
+    // lights within its slice's range, nearest first, as Godot's scene_forward_clustered.glsl
+    // walks them. One loop calls add_light once, so the shader holds one copy of it, which
+    // keeps it small enough for Direct3D 12's WARP.
     uint2 tile = (uint2)input.position.xy / kClusterSize;
     uint words = (uint)cluster.y;
     uint cell = (tile.y * (uint)cluster.x + tile.x) * cluster_stride();
@@ -1531,14 +1529,34 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
     uint range = clusters[cell + words + slice];
     uint first = range & 0xFFFFu;
     uint end = range >> 16u;
-    for (uint word = first >> 5u; word < (end + 31u) >> 5u; ++word) {
-        uint mask = clusters[cell + word] & range_mask(word, first, end);
-        while (mask != 0u) {
+    uint word = first >> 5u;
+    uint last_word = (end + 31u) >> 5u;
+    uint mask = word < last_word ? clusters[cell + word] & range_mask(word, first, end) : 0u;
+    uint i = 0u;
+    [loop] while (true) {
+        Light light;
+        if (i < count) {
+            light = lights[i];
+            ++i;
+        } else {
+            while (mask == 0u && word + 1u < last_word) {
+                ++word;
+                mask = clusters[cell + word] & range_mask(word, first, end);
+            }
+            if (mask == 0u) {
+                break;
+            }
             uint bit = firstbitlow(mask);
             mask &= mask - 1u;
-            add_light(clustered_lights[word * 32u + bit], input.world, normal, geometry, view, f0,
-                      roughness, metallic, layers, rays, diffuse_light, specular_light);
+            light = clustered_lights[word * 32u + bit];
         }
+        add_light(light, input.world, normal, geometry, view, f0, roughness, metallic, layers,
+                  rays, diffuse_light, specular_light);
+    }
+#else
+    for (uint i = 0u; i < count; ++i) {
+        add_light(lights[i], input.world, normal, geometry, view, f0, roughness, metallic,
+                  layers, rays, diffuse_light, specular_light);
     }
 #endif
 
