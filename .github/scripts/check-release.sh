@@ -6,7 +6,7 @@
 # dependencies into the per-machine cache. On Windows it runs in Git Bash after MSVC's
 # environment is set up, so dumpbin and the compiler are on PATH.
 #
-#   check-release.sh <slashengine-macos.tar.gz | slashengine-linux-x86_64.tar.gz |
+#   check-release.sh <slashengine-macos.tar.gz | slashengine-linux-<x86_64|arm64>.tar.gz |
 #                     slashengine-windows-x64.zip> <checkout>
 set -euo pipefail
 archive=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
@@ -19,7 +19,8 @@ root=$work/slashengine
 cli=$root/bin/slash-cli
 
 # The tools link only the system's libraries, so they run with no other install: on a Mac those
-# under /usr/lib and /System, on Linux the C and C++ runtimes (SDL loads the display and sound
+# under /usr/lib and /System, on Linux the C and C++ runtimes (glibc before 2.34 keeps the
+# pseudo-terminal calls in libutil, and later ones still ship it; SDL loads the display and sound
 # libraries it finds when it starts), on Windows those in System32, Visual C++'s runtime among
 # them where Visual Studio is installed.
 case "$(uname -s)" in
@@ -30,7 +31,7 @@ case "$(uname -s)" in
   Linux)
     platform=linux
     libraries() {
-      ldd "$1" | grep -v -E '^[[:space:]]*(linux-vdso|/lib(64)?/ld-linux)|(libc|libm|libstdc\+\+|libgcc_s)\.so' || true
+      ldd "$1" | grep -v -E '^[[:space:]]*(linux-vdso|/lib(64)?/ld-linux)|(libc|libm|libdl|libpthread|librt|libutil|libstdc\+\+|libgcc_s)\.so' || true
     }
     ;;
   MINGW*|MSYS*)
@@ -93,6 +94,12 @@ if [ "$platform" != windows ]; then
   "$cli" call engine.describe --project "$game" | jq -e '.components | map(.name) | index("Spin")'
 fi
 
+# Linux games build for x86_64 unless a preset says otherwise, so on an arm64 machine the linux
+# preset builds for arm64, to run the game there.
+if [ "$platform" = linux ] && [ "$(uname -m)" = aarch64 ]; then
+  echo '{"format": 1, "presets": {"linux": {"platform": "linux", "linux": {"arch": "arm64"}}}}' \
+    > "$game/export_presets.json"
+fi
 # A debug build: one architecture, unoptimized, so the whole engine compiles quickly.
 env -u CPM_SOURCE_CACHE "$cli" export "$platform" --debug --project "$game" --test \
   > "$work/export.json" \

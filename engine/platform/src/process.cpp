@@ -96,13 +96,25 @@ void write_input(SDL_Process* process, std::string_view input) {
     SDL_CloseIO(stream); // also clears it from the process's properties
 }
 
+// glibc added posix_spawn_file_actions_addchdir_np in 2.29, and SDL built against an older one
+// (the Linux tools are, to run on glibc 2.28) can't start a program in another folder, so a
+// shell changes to it first.
+#if defined(__GLIBC__) && (__GLIBC__ < 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ < 29))
+constexpr bool kSpawnSetsFolder = false;
+#else
+constexpr bool kSpawnSetsFolder = true;
+#endif
+
 // Starts a program with its stdout and stderr in one pipe this process reads, and its stdin
 // given the options' input, if any.
-Result<SDL_Process*> create_process(const std::vector<std::string>& args,
+Result<SDL_Process*> create_process(const std::vector<std::string>& given,
                                     const ProcessOptions& options) {
-    if (args.empty()) {
+    if (given.empty()) {
         return make_error(ErrorCode::InvalidArgument, "a process needs a program to run");
     }
+    const bool shell_sets_folder = !kSpawnSetsFolder && !options.working_directory.empty();
+    const std::vector<std::string> args =
+        shell_sets_folder ? detail::in_folder(given, options.working_directory) : given;
     std::vector<const char*> argv;
     argv.reserve(args.size() + 1);
     for (const std::string& arg : args) {
@@ -124,7 +136,7 @@ Result<SDL_Process*> create_process(const std::vector<std::string>& args,
     if (environment != nullptr) {
         SDL_SetPointerProperty(props, SDL_PROP_PROCESS_CREATE_ENVIRONMENT_POINTER, environment);
     }
-    if (!options.working_directory.empty()) {
+    if (!options.working_directory.empty() && !shell_sets_folder) {
         SDL_SetStringProperty(props, SDL_PROP_PROCESS_CREATE_WORKING_DIRECTORY_STRING,
                               options.working_directory.c_str());
     }
@@ -137,7 +149,7 @@ Result<SDL_Process*> create_process(const std::vector<std::string>& args,
     SDL_DestroyEnvironment(environment);
     if (process == nullptr) {
         return make_error(ErrorCode::PlatformFailure,
-                          "could not start \"" + args[0] + "\": " + SDL_GetError());
+                          "could not start \"" + given[0] + "\": " + SDL_GetError());
     }
     if (!options.input.empty()) {
         write_input(process, options.input);
@@ -171,6 +183,15 @@ void read_output(SDL_Process* process, Sink&& sink) {
 }
 
 } // namespace
+
+std::vector<std::string> detail::in_folder(const std::vector<std::string>& args,
+                                           const std::string& folder) {
+    // The shell's $0 is the folder and "$@" the program and its arguments, so none of them is
+    // ever read as shell code.
+    std::vector<std::string> wrapped = {"/bin/sh", "-c", R"(cd -- "$0" && exec "$@")", folder};
+    wrapped.insert(wrapped.end(), args.begin(), args.end());
+    return wrapped;
+}
 
 std::string environment_variable(const std::string& name) {
     const char* value = SDL_getenv(name.c_str());

@@ -18,6 +18,7 @@
 #include <array>
 #include <chrono>
 #include <cstdio>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -407,6 +408,30 @@ TEST_CASE("processes read the input they are given to its end") {
 }
 
 #ifndef _WIN32
+TEST_CASE("processes start in the folder they are given, through a shell where spawning can't") {
+    const std::filesystem::path folder = std::filesystem::absolute("process test's folder");
+    std::filesystem::create_directories(folder);
+    platform::ProcessOptions options;
+    options.working_directory = folder.string();
+    auto result = platform::run_process({"sh", "-c", "pwd -P"}, options);
+    REQUIRE(result.ok());
+    CHECK(result.value().exit_code == 0);
+    const std::string expected = std::filesystem::canonical(folder).string();
+    CHECK(result.value().tail == expected);
+
+    // What glibc before 2.29 runs: a shell that changes folder, then runs the program in its
+    // place, with arguments that would mean something to a shell passed as they are.
+    result = platform::run_process(platform::detail::in_folder(
+        {"sh", "-c", "pwd -P; echo \"$1\"", "sh", "$HOME; 'x'"}, folder.string()));
+    REQUIRE(result.ok());
+    CHECK(result.value().exit_code == 0);
+    CHECK(result.value().tail == expected + "\n$HOME; 'x'");
+    result = platform::run_process(
+        platform::detail::in_folder({"sh", "-c", "pwd"}, (folder / "missing").string()));
+    REQUIRE(result.ok());
+    CHECK(result.value().exit_code != 0);
+}
+
 TEST_CASE("a process ends when it exits, though a program it started keeps its output open") {
     // The background sleep holds the pipe open long after the shell exits, as the trace server
     // Unreal Editor starts does.

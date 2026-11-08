@@ -19,17 +19,18 @@ order is the plan, and each item carries a status instead. It is drawn from the 
 
 Milestones 1 to 8 are done, and so is every Launch row of the [feature table](#features-by-area).
 Only milestone 3's exit check runs with Codex and Cursor (Claude Code's is recorded) and the
-published macOS release remain; both need Dan.
-The release needs a version tag, the archive CI already packages, and the tools notarized with
-his Developer ID.
+published macOS release remain; both need Dan. The release needs only a version tag: CI drafts it
+with the packages, signing and notarizing the macOS tools once the repository has his Developer
+ID as Actions secrets ([CONTRIBUTING.md](../CONTRIBUTING.md#releases)).
 
 The engine builds and is tested on macOS, Linux and Windows. It covers the 2D and 3D feature
 sets, networking, XR, localization, video, accessibility, procedural generation and platform
 services, and every engine action is a command over MCP, JSON-RPC, REST and the command line.
 `slash-cli export` builds a game for all six platforms from one Mac. CI packages
-the tools for macOS, Linux and Windows (`slashengine-macos.tar.gz`,
-`slashengine-linux-x86_64.tar.gz` and `slashengine-windows-x64.zip`) and checks each on a machine
-with no checkout.
+the tools for macOS, Linux on x86_64 and arm64 and Windows (`slashengine-macos.tar.gz`,
+`slashengine-linux-x86_64.tar.gz`, `slashengine-linux-arm64.tar.gz` and
+`slashengine-windows-x64.zip`) and checks each on a machine with no checkout, the Linux ones on
+Ubuntu 20.04 too.
 
 ## The path to launch
 
@@ -1062,7 +1063,8 @@ chose this split.
         exports fetch dependencies once per machine. CI packages it as `slashengine-macos.tar.gz`,
         then builds a game's code and exports the game from the unpacked copy
   - [ ] A published release: a version tag, the archive attached and the tools notarized with a
-        Developer ID
+        Developer ID. A `v*` tag drafts the release with every package and notarizes the macOS
+        tools when the `APPLE_*` secrets exist; the tag and the secrets remain
 - [x] Exports for all six platforms: CI exports and runs a game for macOS, Windows, Linux, the
       web, Android (on an emulator) and iOS (in the Simulator) on every pull request
 - [x] Reference docs generated from `engine.describe`: `slash-cli docs` writes every component's
@@ -1218,7 +1220,7 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | --- | --- | --- | --- |
 | macOS (Apple silicon and Intel) | At launch | Yes (4a) | macOS 11 Big Sur |
 | Windows x64 | After launch (CI packages the tools; a game's own C++ loads on macOS and Linux only) | Yes (4a) | Windows 10 version 2004 (May 2020) |
-| Linux x64 and arm64 | After launch (CI packages the x64 tools, for glibc 2.39 or newer) | Yes (4a) | glibc 2.31 (Ubuntu 20.04, Debian 11, Fedora 32 or newer) |
+| Linux x64 and arm64 | Done: CI packages the tools for both, built for glibc 2.28 or newer | Yes (4a) | glibc 2.31 (Ubuntu 20.04, Debian 11, Fedora 32 or newer) |
 | iOS | No | Yes (4b) | iOS 14 |
 | Android | No | Yes (4b) | Android 11 (API level 30) |
 | Web | No | Yes (4a) | Chrome and Edge 85, Firefox 79, Safari 15 |
