@@ -8919,13 +8919,11 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
     float3 diffuse_light = (float3)0.0;
     float3 specular_light = (float3)0.0;
     uint count = (uint)camera.w;
-    for (uint i = 0u; i < count; ++i) {
-        add_light(lights[i], input.world, normal, geometry, view, f0, roughness, metallic,
-                  layers, rays, diffuse_light, specular_light);
-    }
 #ifdef CLUSTERED
-    // The omni and spot lights of the pixel's cluster: its tile's lights within its slice's
-    // range, nearest first, as Godot's scene_forward_clustered.glsl walks them.
+    // The directional lights, then the omni and spot lights of the pixel's cluster: its tile's
+    // lights within its slice's range, nearest first, as Godot's scene_forward_clustered.glsl
+    // walks them. One loop calls add_light once, so the shader holds one copy of it, which
+    // keeps it small enough for Direct3D 12's WARP.
     uint2 tile = (uint2)input.position.xy / kClusterSize;
     uint words = (uint)cluster.y;
     uint cell = (tile.y * (uint)cluster.x + tile.x) * cluster_stride();
@@ -8934,14 +8932,34 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
     uint range = clusters[cell + words + slice];
     uint first = range & 0xFFFFu;
     uint end = range >> 16u;
-    for (uint word = first >> 5u; word < (end + 31u) >> 5u; ++word) {
-        uint mask = clusters[cell + word] & range_mask(word, first, end);
-        while (mask != 0u) {
+    uint word = first >> 5u;
+    uint last_word = (end + 31u) >> 5u;
+    uint mask = word < last_word ? clusters[cell + word] & range_mask(word, first, end) : 0u;
+    uint i = 0u;
+    [loop] while (true) {
+        Light light;
+        if (i < count) {
+            light = lights[i];
+            ++i;
+        } else {
+            while (mask == 0u && word + 1u < last_word) {
+                ++word;
+                mask = clusters[cell + word] & range_mask(word, first, end);
+            }
+            if (mask == 0u) {
+                break;
+            }
             uint bit = firstbitlow(mask);
             mask &= mask - 1u;
-            add_light(clustered_lights[word * 32u + bit], input.world, normal, geometry, view, f0,
-                      roughness, metallic, layers, rays, diffuse_light, specular_light);
+            light = clustered_lights[word * 32u + bit];
         }
+        add_light(light, input.world, normal, geometry, view, f0, roughness, metallic, layers,
+                  rays, diffuse_light, specular_light);
+    }
+#else
+    for (uint i = 0u; i < count; ++i) {
+        add_light(lights[i], input.world, normal, geometry, view, f0, roughness, metallic,
+                  layers, rays, diffuse_light, specular_light);
     }
 #endif
 
@@ -9033,7 +9051,8 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
         (ambient_light.r * 0.3 + ambient_light.g * 0.59 + ambient_light.b * 0.11) * 2.0;
     occlusion = min(occlusion * 4.0, 1.0);
     float reflective = (1.0 - roughness) * metallic;
-    occlusion = max(min(reflective * occlusion * 10.0, 1.0), occlusion);
+)hlsl",
+R"hlsl(    occlusion = max(min(reflective * occlusion * 10.0, 1.0), occlusion);
     float n_dot_v = saturate(dot(normal, view));
     float4 r = roughness * float4(-1.0, -0.0275, -0.572, 0.022) +
                float4(1.0, 0.0425, 1.04, -0.04);
@@ -9042,8 +9061,7 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
     if (ssr.a < 0.0) {
         reflected *= occlusion * (env.x * f0 + env.y * clamp(50.0 * f0.g, metallic, 1.0));
     } else {
-)hlsl",
-R"hlsl(        // Godot's SSR: the reflection, faded out toward the trace's roughness cutoff, put over
+        // Godot's SSR: the reflection, faded out toward the trace's roughness cutoff, put over
         // the sky's by its premultiplied alpha.
         reflected *= occlusion;
         float4 faded = ssr * smoothstep(0.0, 1.0, 1.0 - saturate((roughness - 0.6) / 0.1));
