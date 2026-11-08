@@ -8,19 +8,19 @@
 //
 //   slash-write-def <out.def> <library.lib>...
 //
-// A tool built and run with the engine; it may use exceptions.
+// A tool built and run with the engine. It stops at the first problem, printing it.
 
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iostream>
 #include <iterator>
 #include <map>
 #include <set>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -29,9 +29,14 @@ namespace {
 
 using Bytes = std::vector<unsigned char>;
 
+[[noreturn]] void fail(const std::string& message) {
+    std::cerr << "slash-write-def: " << message << '\n';
+    std::exit(1);
+}
+
 std::uint32_t read_u16(const Bytes& data, std::size_t at) {
     if (at + 2 > data.size()) {
-        throw std::runtime_error("an object file ends early");
+        fail("an object file ends early");
     }
     return static_cast<std::uint32_t>(data[at]) | (static_cast<std::uint32_t>(data[at + 1]) << 8U);
 }
@@ -68,9 +73,8 @@ void read_object(const Bytes& object, const std::string& where,
         }
         if (object.size() < 56 ||
             !std::equal(kBigObjClass.begin(), kBigObjClass.end(), object.begin() + 12)) {
-            throw std::runtime_error(where +
-                                     " holds an object compiled with /GL, whose symbols can't be "
-                                     "read; build the engine without whole program optimization");
+            fail(where + " holds an object compiled with /GL, whose symbols can't be "
+                         "read; build the engine without whole program optimization");
         }
         machine = read_u16(object, 6);
         section_count = read_u32(object, 44);
@@ -91,7 +95,7 @@ void read_object(const Bytes& object, const std::string& where,
     const std::size_t strings_at = symbols_at + (symbol_count * symbol_size);
     if (sections_at + (std::size_t{section_count} * 40) > object.size() ||
         strings_at > object.size()) {
-        throw std::runtime_error(where + " is not an object file this tool can read");
+        fail(where + " is not an object file this tool can read");
     }
     std::vector<std::uint32_t> flags(section_count + 1, 0);
     for (std::uint32_t section = 1; section <= section_count; ++section) {
@@ -103,7 +107,7 @@ void read_object(const Bytes& object, const std::string& where,
         if (read_u32(object, at) == 0) {
             const std::size_t start = strings_at + read_u32(object, at + 4);
             if (start >= object.size()) {
-                throw std::runtime_error(where + " names a symbol past its string table");
+                fail(where + " names a symbol past its string table");
             }
             const auto* text = reinterpret_cast<const char*>(object.data() + start);
             return std::string(text, strnlen(text, object.size() - start));
@@ -160,13 +164,13 @@ void read_object(const Bytes& object, const std::string& where,
 void read_library(const std::string& path, std::map<std::string, bool>& exports) {
     std::ifstream file(path, std::ios::binary);
     if (!file) {
-        throw std::runtime_error("can't open " + path);
+        fail("can't open " + path);
     }
     const Bytes data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     constexpr std::string_view kMagic = "!<arch>\n";
     if (data.size() < kMagic.size() ||
         std::memcmp(data.data(), kMagic.data(), kMagic.size()) != 0) {
-        throw std::runtime_error(path + " is not a static library");
+        fail(path + " is not a static library");
     }
     std::size_t at = kMagic.size();
     while (at + 60 <= data.size()) {
@@ -175,7 +179,7 @@ void read_library(const std::string& path, std::map<std::string, bool>& exports)
         const std::size_t size = std::stoul(size_text);
         const std::size_t start = at + 60;
         if (start + size > data.size()) {
-            throw std::runtime_error(path + " ends inside a member");
+            fail(path + " ends inside a member");
         }
         // The linker members ("/" twice), the long names ("//") and other "/<...>/" members.
         if (!name.starts_with("/ ") && !name.starts_with("// ") && !name.starts_with("/<")) {
@@ -194,28 +198,23 @@ int main(int argc, char** argv) {
         std::cerr << "usage: slash-write-def <out.def> <library.lib>...\n";
         return 2;
     }
-    try {
-        std::map<std::string, bool> exports;
-        for (int index = 2; index < argc; ++index) {
-            read_library(argv[index], exports);
-        }
-        if (exports.size() > 65535) {
-            throw std::runtime_error("the engine defines " + std::to_string(exports.size()) +
-                                     " symbols, more than a program can export");
-        }
-        std::string text = "EXPORTS\n";
-        for (const auto& [name, data] : exports) {
-            text += "    " + name + (data ? " DATA\n" : "\n");
-        }
-        std::ofstream out(argv[1], std::ios::binary | std::ios::trunc);
-        out << text;
-        if (!out) {
-            throw std::runtime_error(std::string("can't write ") + argv[1]);
-        }
-        std::cout << exports.size() << " symbols exported to gameplay libraries\n";
-    } catch (const std::exception& error) {
-        std::cerr << "slash-write-def: " << error.what() << '\n';
-        return 1;
+    std::map<std::string, bool> exports;
+    for (int index = 2; index < argc; ++index) {
+        read_library(argv[index], exports);
     }
+    if (exports.size() > 65535) {
+        fail("the engine defines " + std::to_string(exports.size()) +
+             " symbols, more than a program can export");
+    }
+    std::string text = "EXPORTS\n";
+    for (const auto& [name, data] : exports) {
+        text += "    " + name + (data ? " DATA\n" : "\n");
+    }
+    std::ofstream out(argv[1], std::ios::binary | std::ios::trunc);
+    out << text;
+    if (!out) {
+        fail(std::string("can't write ") + argv[1]);
+    }
+    std::cout << exports.size() << " symbols exported to gameplay libraries\n";
     return 0;
 }
