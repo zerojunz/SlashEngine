@@ -63,9 +63,11 @@ target_include_directories(game_objects PRIVATE ${folders} ${SLASH_SDK_INCLUDE_D
 target_compile_definitions(game_objects PRIVATE ${SLASH_SDK_COMPILE_DEFINITIONS})
 # As the engine is built: no exceptions or RTTI. GCC's unique symbols would tie each rebuilt
 # library to the statics of the first one loaded. Suggested fixes are printed as data
-# ("fix-it:"file":{line:column-line:column}:"text""), which build.check returns.
+# ("fix-it:"file":{line:column-line:column}:"text""), which build.check returns. MSVC needs
+# its standard preprocessor for the reflection macros' __VA_OPT__.
 if(MSVC)
-    target_compile_options(game_objects PRIVATE /EHs-c- /GR- /W4 /permissive- /utf-8 /bigobj)
+    target_compile_options(game_objects PRIVATE /EHs-c- /GR- /W4 /permissive- /Zc:preprocessor
+        /utf-8 /bigobj)
     target_compile_definitions(game_objects PRIVATE _HAS_EXCEPTIONS=0)
 else()
     target_compile_options(game_objects PRIVATE -fno-exceptions -fno-rtti -Wall -Wextra
