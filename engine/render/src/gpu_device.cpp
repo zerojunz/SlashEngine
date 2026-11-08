@@ -1772,12 +1772,6 @@ public:
                     return ready.error();
                 }
             }
-            if (uses_subsurface(*frame.scene)) {
-                if (auto ready = prepare_subsurface(scene_width, scene_height); !ready) {
-                    SDL_CancelGPUCommandBuffer(commands);
-                    return ready.error();
-                }
-            }
             if (uses_taa(*frame.scene)) {
                 if (auto ready = prepare_taa(frame.target, scene_width, scene_height); !ready) {
                     SDL_CancelGPUCommandBuffer(commands);
@@ -2123,8 +2117,12 @@ public:
             }
             batch.normal_pipeline = normal.value();
         }
-        if (subsurface_.light != nullptr && uses_subsurface(*frame_.scene) &&
-            draws_subsurface(material)) {
+        // Subsurface scattering's textures and pipelines are made at the first draw whose light
+        // scatters, so frames without one make none.
+        if (uses_subsurface(*frame_.scene) && draws_subsurface(material)) {
+            if (auto ready = prepare_subsurface(scene_width_, scene_height_); !ready) {
+                return ready;
+            }
             auto made = subsurface_pipeline_for(material.cull);
             if (!made) {
                 return made.error();
@@ -5504,7 +5502,7 @@ private:
     // TAA's shaders and pipeline, and target's history at width x height, made empty when it has
     // none or it was drawn at another size. Made at the start of a frame that needs them.
     // Subsurface scattering's shaders, its blur's pipeline, its textures for a frame of width x
-    // height and the depth buffer it reads. Made at the start of a frame that needs them.
+    // height and the depth buffer it reads. Made at the first draw of a frame that scatters.
     Result<void> prepare_subsurface(std::uint32_t width, std::uint32_t height) {
         if (subsurface_shaders_[0] == nullptr) {
             const ShaderCode code{.vertex_spirv = shaders::kSubsurfaceVertexSpirv,

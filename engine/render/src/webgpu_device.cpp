@@ -1632,9 +1632,6 @@ public:
             if (uses_taa(*frame.scene)) {
                 prepare_taa(frame.target, width, height);
             }
-            if (uses_subsurface(*frame.scene)) {
-                prepare_subsurface(scene_width_, scene_height_);
-            }
             if (uses_fsr2(*frame.scene)) {
                 prepare_fsr2(frame.target, {scene_width_, scene_height_, width, height},
                              uses_fsr3(*frame.scene));
@@ -1813,7 +1810,10 @@ public:
                                         ? motion_pipeline_for(material.cull, material.shader)
                                         : normal_pipeline_for(material.cull, material.shader);
         }
+        // Subsurface scattering's textures are made at the first draw whose light scatters, so
+        // frames without one make none.
         if (uses_subsurface(*frame_.scene) && draws_subsurface(material)) {
+            prepare_subsurface(scene_width_, scene_height_);
             batch.subsurface_pipeline = subsurface_pipeline_for(material.cull);
         }
         const std::array<MaterialTexture, kMeshTextures> slots = mesh_texture_slots(material);
