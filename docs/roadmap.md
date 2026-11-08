@@ -1134,7 +1134,9 @@ cost, from the research proposal of 2026-11-07, in order:
        light lights, and names the problems
 4. [x] ReSTIR direct lighting for scenes of many lights (research: the software device; see
        [restir.md](reference/restir.md))
-5. [ ] Gaussian splats and generated meshes (TRELLIS) for detailed scenery
+5. [x] Generated meshes for detailed scenery: the `fal-trellis` library generator makes textured
+       `.glb` models from a concept image through Microsoft's TRELLIS (MIT), as fal.ai runs it
+6. [ ] Gaussian splats for detailed scenery
 
 Console ports are not on this roadmap and never will be in this repository. As with Godot,
 PlayStation, Xbox and Switch support comes from licensed porting partners as private backends.
