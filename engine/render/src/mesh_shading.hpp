@@ -101,6 +101,11 @@ struct MeshSurfaceUniforms {
     std::array<Float4, 9> capture{}; // the light probes' spherical harmonics, RGB
     Float4 voxel_gi{};               // how many of voxel_gis it traces, then 0
     std::array<MeshVoxelGIUniforms, 2> voxel_gis{};
+    // Forward+'s subsurface scattering: its strength (below 0 for skin's profile), the
+    // transmittance's depth and boost, then 1 when the transmittance is on; then the
+    // transmittance's color, linear.
+    Float4 subsurface{};
+    Float4 transmittance{};
 };
 
 // A draw's textures in mesh.hlsl's slots. A StandardMaterial3D's albedo, metallic, roughness,
@@ -200,10 +205,13 @@ struct MeshDirectionalShadowUniforms {
     Float4 splits{};                // the view depth each cascade reaches
     Float4 normal_bias{};           // each cascade's, in world units
     Float4 params{};                // fade from and to (view z), opacity, how many cascades
-    Float4 options{};               // 1 blends cascades, an atlas texel, 0, 0
+    // 1 blends cascades, an atlas texel, the transmittance's bias over 100, 0.
+    Float4 options{};
 };
 struct MeshPositionalShadowUniforms {
-    Mat4 light{};                  // the world to the light's own space, for an omni's faces
+    // The world to the light's own space, for an omni's faces; its last row's first lane is the
+    // light's transmittance bias.
+    Mat4 light{};
     std::array<Mat4, 6> faces{};   // one a cube face for an omni light; a spot light's first
     std::array<Float4, 6> rects{}; // each face's tile, its texture coordinates' low and high
     Float4 params{};   // normal bias over distance (world units), opacity, an atlas texel, faces
@@ -227,7 +235,7 @@ struct MeshShadowPassUniforms {
 static_assert(sizeof(MeshCameraUniforms) == 144);
 static_assert(sizeof(MeshInstanceUniforms) == 224);
 static_assert(sizeof(MeshVoxelGIUniforms) == 240);
-static_assert(sizeof(MeshSurfaceUniforms) == 784);
+static_assert(sizeof(MeshSurfaceUniforms) == 816);
 static_assert(sizeof(MeshSceneUniforms) == 384 + (80 * kMaxLights3D));
 static_assert(sizeof(MeshDirectionalShadowUniforms) == 320);
 static_assert(sizeof(MeshPositionalShadowUniforms) == 576);
@@ -546,6 +554,9 @@ struct ShadowAtlas {
     // SampleCmpLevelZero with a linear GREATER_OR_EQUAL comparison sampler that clamps to the
     // edge: how much of the four texels around (u, v) reference is at least.
     [[nodiscard]] float compare(float u, float v, float reference) const;
+    // The depth at (u, v), filtered linearly from the four texels around it, clamped to the edge:
+    // mesh.hlsl's atlas_depth.
+    [[nodiscard]] float depth(float u, float v) const;
 };
 struct CubeImage; // in sky_shading.hpp
 
@@ -628,10 +639,13 @@ struct VoxelGILight {
 [[nodiscard]] Float3 fog_voxel_gi_light(const MeshVoxelGIUniforms& gi, const Image& atlas,
                                         const Float3& world);
 
-// The pixel's color, as fs_main gives it, or nullopt where it discards the pixel.
+// The pixel's color, as fs_main gives it, or nullopt where it discards the pixel. With
+// subsurface, also what fs_main gives with SUBSURFACE defined there (mesh_subsurface.hlsl): its
+// diffuse light, fogged, and its subsurface strength.
 [[nodiscard]] std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface,
                                                const MeshSceneUniforms& scene, const MeshMaps& maps,
-                                               const MeshPixel& pixel);
+                                               const MeshPixel& pixel,
+                                               Float4* subsurface = nullptr);
 // What the path tracer (path_trace.hpp) takes from a surface at a point, as fs_main reads it:
 // its albedo (linear), alpha, metallic, roughness and shading normal, the light it emits
 // (linear, times its energy) and whether it is unshaded, or nullopt where the alpha scissor
@@ -731,7 +745,14 @@ Result<void> check_material_3d(const Material3D& material, TextureId target, con
                  m.rim_tint,
                  m.clearcoat,
                  m.clearcoat_roughness,
-                 m.anisotropy})) {
+                 m.anisotropy,
+                 m.subsurface,
+                 m.transmittance_color[0],
+                 m.transmittance_color[1],
+                 m.transmittance_color[2],
+                 m.transmittance_color[3],
+                 m.transmittance_depth,
+                 m.transmittance_boost})) {
         return make_error(ErrorCode::InvalidArgument, "a 3D material's numbers are finite");
     }
     for (const std::array<float, 3>& coefficient : m.capture.sh) {

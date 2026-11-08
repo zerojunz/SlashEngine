@@ -1,0 +1,5 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture","params":{"points":[[47,45],[53,45],[60,45],[105,45]]}}
+{"jsonrpc":"2.0","id":3,"method":"component.set","params":{"id":"wax","components":{"StandardMaterial3D":{"subsurf_scatter_enabled":false}}}}
+{"jsonrpc":"2.0","id":4,"method":"component.set","params":{"id":"ear","components":{"StandardMaterial3D":{"subsurf_scatter_transmittance_enabled":false}}}}
+{"jsonrpc":"2.0","id":5,"method":"frame.capture","params":{"points":[[47,45],[53,45],[60,45],[105,45]]}}

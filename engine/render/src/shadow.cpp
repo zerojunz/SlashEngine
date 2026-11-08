@@ -382,8 +382,9 @@ void plan_directional(const Scene3D& scene, const CameraFrustum& camera, std::si
     }
     out.params = {-out.splits[3] * std::min(light.shadow_fade_start, 0.999F), -out.splits[3],
                   light.shadow_opacity, static_cast<float>(splits)};
+    // Then the transmittance's bias, a hundredth of each cascade's depth per unit, as Godot's.
     out.options = {splits > 1 && light.shadow_blend_splits ? 1.0F : 0.0F,
-                   1.0F / static_cast<float>(size), 0.0F, 0.0F};
+                   1.0F / static_cast<float>(size), light.shadow_transmittance_bias / 100.0F, 0.0F};
 }
 
 // An omni or spot light's passes into tiles of the positional atlas, from first, and its
@@ -456,6 +457,9 @@ void plan_positional(const Scene3D& scene, std::size_t index, int slot, std::uin
         plan.passes.push_back(pass);
     }
     out.light = view_of(basis, position);
+    // Only the matrix's first three rows place points (an omni light's face is picked by them),
+    // so its last row's first lane carries the transmittance's bias.
+    out.light[3] = light.shadow_transmittance_bias;
     out.params = {light.shadow_normal_bias * 10.0F / static_cast<float>(tile), light.shadow_opacity,
                   1.0F / s, static_cast<float>(faces)};
     out.position = {position[0], position[1], position[2], radius};
@@ -631,6 +635,29 @@ float ShadowAtlas::compare(float u, float v, float reference) const {
                        depths[(static_cast<std::size_t>(cy) * size) + static_cast<std::size_t>(cx)]
                    ? 1.0F
                    : 0.0F;
+    };
+    const float top = texel(x0, y0) + ((texel(x0 + 1.0F, y0) - texel(x0, y0)) * fx);
+    const float bottom =
+        texel(x0, y0 + 1.0F) + ((texel(x0 + 1.0F, y0 + 1.0F) - texel(x0, y0 + 1.0F)) * fx);
+    return top + ((bottom - top) * fy);
+}
+
+float ShadowAtlas::depth(float u, float v) const {
+    if (size == 0) {
+        return 0.0F;
+    }
+    const auto s = static_cast<float>(size);
+    const float x = (std::clamp(u, -1.0F, 2.0F) * s) - 0.5F;
+    const float y = (std::clamp(v, -1.0F, 2.0F) * s) - 0.5F;
+    const float x0 = std::floor(x);
+    const float y0 = std::floor(y);
+    const float fx = x - x0;
+    const float fy = y - y0;
+    const auto last = static_cast<std::int64_t>(size) - 1;
+    const auto texel = [&](float column, float row) {
+        const auto cx = std::clamp(static_cast<std::int64_t>(column), std::int64_t{0}, last);
+        const auto cy = std::clamp(static_cast<std::int64_t>(row), std::int64_t{0}, last);
+        return depths[(static_cast<std::size_t>(cy) * size) + static_cast<std::size_t>(cx)];
     };
     const float top = texel(x0, y0) + ((texel(x0 + 1.0F, y0) - texel(x0, y0)) * fx);
     const float bottom =

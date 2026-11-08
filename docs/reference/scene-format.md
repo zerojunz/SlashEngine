@@ -1766,6 +1766,8 @@ Godot's do in 3D, unless `texture_repeat` is off.
 | `rim_enabled`, `rim`, `rim_tint` | `false`, `1`, `0.5` | Each light also lights the edges facing away from the camera, as skin and cloth catch light, from white toward the albedo by `rim_tint`; sharper as roughness falls |
 | `clearcoat_enabled`, `clearcoat`, `clearcoat_roughness` | `false`, `1`, `0.5` | A glossy coat over the surface (car paint, lacquer, an eye's wet layer), lit about the mesh's own normal rather than the normal map's, with its own highlight and its own reflection of the sky |
 | `anisotropy_enabled`, `anisotropy` | `false`, `0` | Highlights stretched along the mesh's tangents (above 0) or across them (below 0, down to -1), as hair cards and brushed metal; reflections bend the same way |
+| `subsurf_scatter_enabled`, `subsurf_scatter_strength`, `subsurf_scatter_skin_mode` | `false`, `0`, `false` | `forward_plus`: light [scattered under the surface](#subsurface-scattering), as skin, wax and marble; `subsurf_scatter_skin_mode` spreads red further than green and blue, as skin does |
+| `subsurf_scatter_transmittance_enabled`, `subsurf_scatter_transmittance_color`, `subsurf_scatter_transmittance_depth`, `subsurf_scatter_transmittance_boost` | `false`, `[1, 1, 1, 1]`, `0.1`, `0` | With subsurface scattering, light coming through thin parts (ears, leaves, fingers) from lights behind them that cast shadows: the color it takes (skin's own with skin mode), how deep it reaches in meters, and how far round the lit side it shows |
 | `billboard_mode`, `billboard_keep_scale` | `"disabled"`, `false` | Face the camera: `"enabled"`, `"fixed_y"` (turned about y only) or `"particles"` (turned by each [3D particle](#3d-particles)'s angle); `billboard_keep_scale` keeps the mesh's scale, which billboards otherwise drop |
 | `particles_anim_h_frames`, `particles_anim_v_frames`, `particles_anim_loop` | `1`, `1`, `false` | With `"particles"`, the albedo texture's columns and rows of frames each particle steps through, and whether they start again after the last |
 | `texture_filter` | `"linear_with_mipmaps"` | `"nearest"` and `"nearest_with_mipmaps"` keep texels sharp |
@@ -1774,6 +1776,25 @@ Godot's do in 3D, unless `texture_repeat` is off.
 Rim, clearcoat and anisotropy follow Godot's scene shader, on every renderer and device. Their
 textures (`rim_texture`, `clearcoat_texture`, `anisotropy_flowmap`) aren't read yet: the
 highlight runs along Godot's default flow map.
+
+### Subsurface scattering
+
+Subsurface scattering is Godot 4.6's Forward+ screen-space blur after Jorge Jimenez's separable
+kernels. After the opaque meshes, the meshes whose material has `subsurf_scatter_enabled` and a
+strength above 0 draw again where they are seen, keeping only their emitted, diffuse and ambient
+light; that light is blurred across the screen and then down it by the kernel of the project's
+quality ([project-format.md](project-format.md#subsurface-scattering)), each pixel by its
+strength (the blur is `scale` of the screen wide at full strength, narrowing with distance by
+`depth_scale`) and stopping where no such mesh shows, and the change is added to the frame before
+transparent meshes draw. Specular light is left sharp, as Godot keeps it apart. Skin mode blurs
+each channel by skin's own weights.
+
+The transmittance lights a mesh's side away from a light by how much of the mesh the light
+passes through, which is measured in the light's shadow map: a light that casts no shadow lights
+nothing through it. Each light's `shadow_transmittance_bias` moves where it is measured.
+Compatibility draws neither, nor do probe captures, path-traced frames or
+[spatial shaders](#spatial-shaders); `subsurf_scatter_texture` and
+`subsurf_scatter_transmittance_texture` aren't read yet.
 
 Opaque and alpha scissor meshes draw nearest first, then alpha meshes farthest first, as Godot
 sorts them. A texture that can't load is left out, with a warning and a problem in
@@ -1835,6 +1856,7 @@ lights each pixel with only the omni and spot lights whose range reaches it, and
 | `light_size` | `0` | omni, spot | Its radius when baked and in [ray-traced shadows](#ray-traced-shadows), for soft shadows (a directional light's is `light_angular_distance`) |
 | `shadow_blur` | `1` | all | How much its baked shadows soften |
 | `light_volumetric_fog_energy` | `1` | all | `forward_plus`: how much it lights [volumetric fog](#volumetric-fog), times `light_energy` |
+| `shadow_transmittance_bias` | `0.05` | all | Moves where its shadow map measures how deep a pixel is in its mesh for the [transmittance](#subsurface-scattering), -16 to 16 |
 
 Shadows are Godot's Compatibility renderer's shadow maps, drawn on every device and by
 `frame.capture`. A directional light's cascades share the directional atlas with the other

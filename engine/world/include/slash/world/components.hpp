@@ -424,6 +424,13 @@ struct StandardMaterial3D {
     float clearcoat = 1.0F;
     float clearcoat_roughness = 0.5F;
     float anisotropy = 0.0F;
+    // Godot's subsurface scattering (subsurf_scatter_*), in Forward+: how far the light it takes
+    // spreads under the surface, and with transmittance the color, depth and boost of the light
+    // that shines through it from behind.
+    float subsurf_scatter_strength = 0.0F;
+    Vec4 subsurf_scatter_transmittance_color{1.0F, 1.0F, 1.0F, 1.0F};
+    float subsurf_scatter_transmittance_depth = 0.1F;
+    float subsurf_scatter_transmittance_boost = 0.0F;
     // With billboard_mode "particles", the albedo texture's frames, which each particle steps
     // through as its anim_speed and anim_offset say, as Godot's particles_anim_*; with
     // particles_anim_loop, frames past the last start again from the first.
@@ -451,6 +458,11 @@ struct StandardMaterial3D {
     // Godot's anisotropy (anisotropy_enabled, anisotropy): highlights stretched along the
     // tangent (above 0) or across it.
     bool anisotropy_enabled = false;
+    // Whether light scatters under its surface, by skin's own profile when skin_mode is set, and
+    // whether it shines through from behind.
+    bool subsurf_scatter_enabled = false;
+    bool subsurf_scatter_skin_mode = false;
+    bool subsurf_scatter_transmittance_enabled = false;
 
     friend bool operator==(const StandardMaterial3D&, const StandardMaterial3D&) = default;
 };
@@ -462,7 +474,10 @@ SLASH_COMPONENT(StandardMaterial3D, transparency, alpha_scissor_threshold, blend
                 normal_texture, uv1_scale, uv1_offset, texture_filter, texture_repeat, disable_fog,
                 billboard_mode, billboard_keep_scale, particles_anim_h_frames,
                 particles_anim_v_frames, particles_anim_loop, rim_enabled, rim, rim_tint,
-                clearcoat_enabled, clearcoat, clearcoat_roughness, anisotropy_enabled, anisotropy)
+                clearcoat_enabled, clearcoat, clearcoat_roughness, anisotropy_enabled, anisotropy,
+                subsurf_scatter_enabled, subsurf_scatter_strength, subsurf_scatter_skin_mode,
+                subsurf_scatter_transmittance_enabled, subsurf_scatter_transmittance_color,
+                subsurf_scatter_transmittance_depth, subsurf_scatter_transmittance_boost)
 
 // What the 3D world is seen through, as Godot's Camera3D: it looks down its entity's -z. The
 // world is seen through the current camera: the first with current set, else the first one,
@@ -570,6 +585,8 @@ struct DirectionalLight3D {
     std::string light_bake_mode = "dynamic";
     float shadow_blur = 1.0F;
     float light_volumetric_fog_energy = 1.0F; // Forward+: how much it lights volumetric fog
+    // Forward+: how far subsurface materials' transmittance moves points into its shadow map.
+    float shadow_transmittance_bias = 0.05F;
 
     friend bool operator==(const DirectionalLight3D&, const DirectionalLight3D&) = default;
 };
@@ -580,7 +597,8 @@ SLASH_COMPONENT(DirectionalLight3D, light_color, light_energy, light_specular, l
                 directional_shadow_split_3, directional_shadow_blend_splits,
                 directional_shadow_fade_start, directional_shadow_max_distance,
                 directional_shadow_pancake_size, light_angular_distance, sky_mode,
-                light_indirect_energy, light_bake_mode, shadow_blur, light_volumetric_fog_energy)
+                light_indirect_energy, light_bake_mode, shadow_blur, light_volumetric_fog_energy,
+                shadow_transmittance_bias)
 
 // Light from a point in every direction, as Godot's OmniLight3D, such as a lamp.
 struct OmniLight3D {
@@ -609,6 +627,8 @@ struct OmniLight3D {
     std::string light_bake_mode = "dynamic";
     float shadow_blur = 1.0F;
     float light_volumetric_fog_energy = 1.0F; // Forward+: how much it lights volumetric fog
+    // Forward+: how far subsurface materials' transmittance moves points into its shadow map.
+    float shadow_transmittance_bias = 0.05F;
 
     friend bool operator==(const OmniLight3D&, const OmniLight3D&) = default;
 };
@@ -616,7 +636,7 @@ SLASH_COMPONENT(OmniLight3D, light_color, light_energy, light_specular, light_ne
                 light_cull_mask, omni_range, omni_attenuation, shadow_enabled, shadow_bias,
                 shadow_normal_bias, shadow_reverse_cull_face, shadow_opacity, shadow_caster_mask,
                 light_indirect_energy, light_size, light_bake_mode, shadow_blur,
-                light_volumetric_fog_energy)
+                light_volumetric_fog_energy, shadow_transmittance_bias)
 
 // Light from a point in a cone down its entity's -z, as Godot's SpotLight3D, such as a torch.
 struct SpotLight3D {
@@ -647,6 +667,8 @@ struct SpotLight3D {
     std::string light_bake_mode = "dynamic";
     float shadow_blur = 1.0F;
     float light_volumetric_fog_energy = 1.0F; // Forward+: how much it lights volumetric fog
+    // Forward+: how far subsurface materials' transmittance moves points into its shadow map.
+    float shadow_transmittance_bias = 0.05F;
 
     friend bool operator==(const SpotLight3D&, const SpotLight3D&) = default;
 };
@@ -654,7 +676,8 @@ SLASH_COMPONENT(SpotLight3D, light_color, light_energy, light_specular, light_ne
                 light_cull_mask, spot_range, spot_attenuation, spot_angle, spot_angle_attenuation,
                 shadow_enabled, shadow_bias, shadow_normal_bias, shadow_reverse_cull_face,
                 shadow_opacity, shadow_caster_mask, light_indirect_energy, light_size,
-                light_bake_mode, shadow_blur, light_volumetric_fog_energy)
+                light_bake_mode, shadow_blur, light_volumetric_fog_energy,
+                shadow_transmittance_bias)
 
 // Godot's ProceduralSkyMaterial, on a WorldEnvironment's entity: a sky from its top through the
 // horizon to the ground's bottom, with each DirectionalLight3D's sun on it. Colors are sRGB;

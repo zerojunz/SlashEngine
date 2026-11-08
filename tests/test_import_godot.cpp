@@ -1889,6 +1889,8 @@ environment/ssao/half_size=false
 environment/ssao/blur_passes=3
 environment/ssao/fadeout_to=200.0
 environment/screen_space_reflection/half_size=false
+environment/subsurface_scattering/subsurface_scattering_quality=3
+environment/subsurface_scattering/subsurface_scattering_scale=0.1
 reflections/reflection_atlas/reflection_size=512
 reflections/reflection_atlas/reflection_count=16
 scaling_3d/mode=2
@@ -2271,7 +2273,8 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
         "depth_of_field_use_jitter": true}})"));
     CHECK(*project_file.find("rendering")->find("environment") == parse(R"({"ssao": {
         "quality": "high", "half_size": false, "blur_passes": 3, "fadeout_to": 200.0},
-        "screen_space_reflection": {"half_size": false}})"));
+        "screen_space_reflection": {"half_size": false},
+        "subsurface_scattering": {"quality": "high", "scale": 0.1}})"));
     CHECK(*project_file.find("rendering")->find("reflections") ==
           parse(R"({"reflection_atlas": {"reflection_size": 512, "reflection_count": 16}})"));
     CHECK(*project_file.find("rendering")->find("anti_aliasing") ==
