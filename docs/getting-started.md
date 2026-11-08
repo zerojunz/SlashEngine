@@ -63,8 +63,8 @@ every game.
   needs glibc 2.35 (Ubuntu 22.04). The games they export run on glibc 2.31.
 - **Windows:** the tools need Visual Studio's C++ tools (2022 or newer), which also bring the
   Visual C++ runtime they link; run them from a Developer PowerShell (x64), as exports build with
-  MSVC. The tools don't load a game's own C++ on Windows yet, so `slash-cli build` and hot reload
-  are for macOS and Linux; exports compile a game's code into it on every platform.
+  MSVC, and so do `slash-cli build` and hot reload, which build a game's own C++ into a DLL with
+  the compiler there.
 
 ## 2. Run the engine
 

@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # Unpacks a release archive somewhere new and uses it as a person with no checkout would
 # (docs/getting-started.md): the tools find the installed engine, build a game's C++ with the
-# compiler on PATH against the installed gameplay SDK and load it (on macOS and Linux, where the
-# tools load a game's code), and export the game for the machine it runs on, fetching the engine's
-# dependencies into the per-machine cache. On Windows it runs in Git Bash after MSVC's
-# environment is set up, so dumpbin and the compiler are on PATH.
+# compiler on PATH against the installed gameplay SDK and load it, and export the game for the
+# machine it runs on, fetching the engine's dependencies into the per-machine cache. On Windows it
+# runs in Git Bash after MSVC's environment is set up, so dumpbin and the compiler are on PATH.
 #
 #   check-release.sh <slashengine-macos.tar.gz | slashengine-linux-<x86_64|arm64>.tar.gz |
 #                     slashengine-windows-x64.zip> <checkout>
@@ -87,12 +86,15 @@ trap 'mv "$checkout.moved" "$checkout"' EXIT
 
 game=$work/game
 "$cli" init "$game" > /dev/null
-if [ "$platform" != windows ]; then
-  "$cli" build --project "$game" | tee "$work/build.json"
-  jq -e '.components == ["Spin"]' "$work/build.json"
+"$cli" build --project "$game" | tee "$work/build.json"
+jq -e '.components == ["Spin"]' "$work/build.json"
+if [ "$platform" = windows ]; then
+  # Windows programs write the path their own way; the installed SDK's place is enough.
+  grep -q -E 'share[/\\]slashengine[/\\]gameplay-sdk\.cmake' "$game/.slash/gameplay/build.log"
+else
   grep -q "$sdk" "$game/.slash/gameplay/build.log"
-  "$cli" call engine.describe --project "$game" | jq -e '.components | map(.name) | index("Spin")'
 fi
+"$cli" call engine.describe --project "$game" | jq -e '.components | map(.name) | index("Spin")'
 
 # Linux games build for x86_64 unless a preset says otherwise, so on an arm64 machine the linux
 # preset builds for arm64, to run the game there.

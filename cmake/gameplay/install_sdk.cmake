@@ -3,7 +3,8 @@
 # tree's (tools/exporter/CMakeLists.txt) but relocatable. It names the compiler by its file name,
 # found on PATH, so a game's code builds with the person's own Xcode or compiler, and its include
 # folders relative to itself: the engine's own under engine/, and copies of the headers it takes
-# from the build and the fetched dependencies under sdk/.
+# from the build and the fetched dependencies under sdk/, with the import library game libraries
+# link on Windows.
 #
 # SLASH_SDK_DATA names the file tools/exporter/CMakeLists.txt generates, SLASH_SDK_DESTINATION
 # the engine's folder under the install prefix.
@@ -40,5 +41,12 @@ endforeach()
 string(APPEND content
     "set(SLASH_SDK_INCLUDE_DIRECTORIES \"${includes}\" CACHE INTERNAL \"\")\n"
     "set(SLASH_SDK_COMPILE_DEFINITIONS [==[${slash_sdk_definitions}]==] CACHE INTERNAL \"\")\n")
+# On Windows, the import library of what the installed tools export, which game libraries link.
+if(slash_sdk_host_library)
+    message(STATUS "Installing: ${root}/sdk/slash-host.lib")
+    file(COPY "${slash_sdk_host_library}" DESTINATION "${root}/sdk")
+    string(APPEND content "set(SLASH_SDK_HOST_LIBRARY \"\${CMAKE_CURRENT_LIST_DIR}/sdk/slash-host.lib\" "
+        "CACHE INTERNAL \"\")\n")
+endif()
 message(STATUS "Installing: ${root}/gameplay-sdk.cmake")
 file(WRITE "${root}/gameplay-sdk.cmake" "${content}")

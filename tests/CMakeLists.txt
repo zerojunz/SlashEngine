@@ -297,22 +297,15 @@ endif()
 
 # Gameplay libraries for test_gameplay.cpp, built as cmake/gameplay builds a game's code: with the
 # engine's headers, and its functions left for the program that loads them.
-if(APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(SLASH_GAMEPLAY_HOSTS)
     foreach(variant IN ITEMS v1 v2 v3 duplicate engine_component engine_system no_entry bad_abi
             other_compiler)
         string(TOUPPER ${variant} upper)
         add_library(gameplay_${variant} MODULE gameplay_module.cpp)
-        set_target_properties(gameplay_${variant} PROPERTIES PREFIX "" SUFFIX ".so"
+        slash_gameplay_module(gameplay_${variant})
+        set_target_properties(gameplay_${variant} PROPERTIES
             LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/gameplay_modules)
-        target_include_directories(gameplay_${variant} PRIVATE
-            $<TARGET_PROPERTY:slash_runtime,INTERFACE_INCLUDE_DIRECTORIES>)
-        target_compile_definitions(gameplay_${variant} PRIVATE SLASH_TEST_MODULE_${upper}
-            $<TARGET_PROPERTY:slash_runtime,INTERFACE_COMPILE_DEFINITIONS>)
-        target_compile_options(gameplay_${variant} PRIVATE -fno-exceptions -fno-rtti
-            $<$<CXX_COMPILER_ID:GNU>:-fno-gnu-unique>)
-        if(APPLE)
-            target_link_options(gameplay_${variant} PRIVATE -undefined dynamic_lookup)
-        endif()
+        target_compile_definitions(gameplay_${variant} PRIVATE SLASH_TEST_MODULE_${upper})
         add_dependencies(slash_tests gameplay_${variant})
     endforeach()
     target_compile_definitions(slash_tests PRIVATE
