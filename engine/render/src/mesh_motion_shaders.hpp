@@ -496,8 +496,8 @@ out vec3 v_binormal;
 out vec2 v_uv;
 out vec4 v_color;
 out vec2 v_uv2;
+out vec4 v_object;
 out vec4 v_motion_clip;
-out vec4 v_previous_clip;
 
 highp mat4 spvWorkaroundRowMajor(highp mat4 wrap) { return wrap; }
 mediump mat4 spvWorkaroundRowMajorMP(mediump mat4 wrap) { return wrap; }
@@ -517,8 +517,8 @@ void main()
     v_uv = (input_uv * _36.uv1.xy) + _36.uv1.zw;
     v_color = input_color;
     v_uv2 = (input_uv2 * _36.lightmap_uv.zw) + _36.lightmap_uv.xy;
-    v_motion_clip = _567;
-    v_previous_clip = (vec4(input_previous, 1.0) * spvWorkaroundRowMajor(_36.previous_model)) * spvWorkaroundRowMajor(_50.previous_view_projection);
+    v_object = _567;
+    v_motion_clip = (vec4(input_previous, 1.0) * spvWorkaroundRowMajor(_36.previous_model)) * spvWorkaroundRowMajor(_50.previous_view_projection);
     gl_Position = _349;
     gl_Position.z = 2.0 * gl_Position.z - gl_Position.w;
 }
@@ -1902,8 +1902,8 @@ in highp vec3 v_tangent;
 in highp vec3 v_binormal;
 in highp vec2 v_uv;
 in highp vec4 v_color;
+in highp vec4 v_object;
 in highp vec4 v_motion_clip;
-in highp vec4 v_previous_clip;
 layout(location = 0) out highp vec4 _entryPointOutput_normal_roughness;
 layout(location = 1) out highp vec4 _entryPointOutput_motion;
 
@@ -2009,7 +2009,7 @@ void main()
     {
         _1486 = normalize(_1485);
     }
-    highp vec2 _1201 = ((v_previous_clip.xy / vec2(v_previous_clip.w)) * 0.5) - ((v_motion_clip.xy / vec2(v_motion_clip.w)) * 0.5);
+    highp vec2 _1201 = ((v_motion_clip.xy / vec2(v_motion_clip.w)) * 0.5) - ((v_object.xy / vec2(v_object.w)) * 0.5);
     _entryPointOutput_normal_roughness = vec4((normalize(vec3(dot(_604.view_rows[0].xyz, _1486), dot(_604.view_rows[1].xyz, _1486), dot(_604.view_rows[2].xyz, _1486))) * 0.5) + vec3(0.5), _1489 * 0.4980392158031463623046875);
     _entryPointOutput_motion = vec4(_1201.x, -_1201.y, 0.0, 0.0);
 }
@@ -2897,12 +2897,12 @@ void light_compute(float3 n, float3 l, float3 v, float3 light_color, float atten
     float n_dot_l = min(dot(n, l), 1.0);
     float c_n_dot_l = max(n_dot_l, 0.0);
     float c_n_dot_v = max(dot(n, v), 1e-4);
-    if (layers.transmittance) {
+    [branch] if (layers.transmittance) {
         // Light through the mesh, by how deep the pixel is, onto its side facing away.
         float d = 8.25 / layers.transmittance_depth * abs(transmittance_z);
         float dd = -d * d;
         float3 through;
-        if (layers.skin) {
+        [branch] if (layers.skin) {
             through = float3(0.233, 0.455, 0.649) * exp(dd / 0.0064) +
                       float3(0.1, 0.336, 0.344) * exp(dd / 0.0484) +
                       float3(0.118, 0.198, 0.0) * exp(dd / 0.187) +
@@ -3003,9 +3003,9 @@ static const float2 kTaps[13] = {float2(0.0, 0.0),  float2(2.0, 0.0),   float2(-
 // samples a texel apart, each kept within clamp_rect's low and high corners. The taps run in a
 // loop, so that drivers compile one sample rather than thirteen.
 float sample_shadow(bool positional, float4x4 to_atlas, float3 p, float texel, float taps,
-                    float4 clamp_rect) {
 )hlsl",
-R"hlsl(    float4 at = mul(to_atlas, float4(p, 1.0));
+R"hlsl(                    float4 clamp_rect) {
+    float4 at = mul(to_atlas, float4(p, 1.0));
     float2 uv = at.xy / at.w;
     float reference = saturate(at.z / at.w);
     uint count = taps > 12.0 ? 13u : (taps > 4.0 ? 5u : 1u);
@@ -3133,7 +3133,7 @@ float atlas_depth(bool positional, float2 uv, float texel) {
     int2 low = clamp((int2)base, int2(0, 0), int2(last, last));
     int2 high = clamp((int2)base + int2(1, 1), int2(0, 0), int2(last, last));
     float4 d;
-    if (positional) {
+    [branch] if (positional) {
         d = float4(positional_atlas.Load(int3(low.x, low.y, 0)).r,
                    positional_atlas.Load(int3(high.x, low.y, 0)).r,
                    positional_atlas.Load(int3(low.x, high.y, 0)).r,
@@ -3155,7 +3155,7 @@ float atlas_depth(bool positional, float2 uv, float texel) {
 // depth made linear from the map's. fallback where the light casts no shadow.
 float shadow_thickness(bool directional, uint slot, float3 world, float3 normal, float3 geometry,
                        float fallback) {
-    if (directional) {
+    [branch] if (directional) {
         if (!(directional_shadows[slot].params.z > 0.001)) {
             return fallback;
         }
@@ -3272,11 +3272,11 @@ void add_light(Light light, float3 world, float3 normal, float3 geometry, float3
     layers.rim *= attenuation;
     float transmittance_z = layers.transmittance_depth;
 #ifdef CLUSTERED
-    if (layers.transmittance) {
+    [branch] if (layers.transmittance) {
         layers.transmittance_color.a *= attenuation;
-        if (slot >= 0.0) {
 )hlsl",
-R"hlsl(            transmittance_z = shadow_thickness(directional, (uint)slot, world, normal, geometry,
+R"hlsl(        [branch] if (slot >= 0.0) {
+            transmittance_z = shadow_thickness(directional, (uint)slot, world, normal, geometry,
                                                transmittance_z);
         }
     }

@@ -7911,12 +7911,12 @@ void light_compute(float3 n, float3 l, float3 v, float3 light_color, float atten
     float n_dot_l = min(dot(n, l), 1.0);
     float c_n_dot_l = max(n_dot_l, 0.0);
     float c_n_dot_v = max(dot(n, v), 1e-4);
-    if (layers.transmittance) {
+    [branch] if (layers.transmittance) {
         // Light through the mesh, by how deep the pixel is, onto its side facing away.
         float d = 8.25 / layers.transmittance_depth * abs(transmittance_z);
         float dd = -d * d;
         float3 through;
-        if (layers.skin) {
+        [branch] if (layers.skin) {
             through = float3(0.233, 0.455, 0.649) * exp(dd / 0.0064) +
                       float3(0.1, 0.336, 0.344) * exp(dd / 0.0484) +
                       float3(0.118, 0.198, 0.0) * exp(dd / 0.187) +
@@ -8147,7 +8147,7 @@ float atlas_depth(bool positional, float2 uv, float texel) {
     int2 low = clamp((int2)base, int2(0, 0), int2(last, last));
     int2 high = clamp((int2)base + int2(1, 1), int2(0, 0), int2(last, last));
     float4 d;
-    if (positional) {
+    [branch] if (positional) {
         d = float4(positional_atlas.Load(int3(low.x, low.y, 0)).r,
                    positional_atlas.Load(int3(high.x, low.y, 0)).r,
                    positional_atlas.Load(int3(low.x, high.y, 0)).r,
@@ -8169,7 +8169,7 @@ float atlas_depth(bool positional, float2 uv, float texel) {
 // depth made linear from the map's. fallback where the light casts no shadow.
 float shadow_thickness(bool directional, uint slot, float3 world, float3 normal, float3 geometry,
                        float fallback) {
-    if (directional) {
+    [branch] if (directional) {
         if (!(directional_shadows[slot].params.z > 0.001)) {
             return fallback;
         }
@@ -8286,9 +8286,9 @@ void add_light(Light light, float3 world, float3 normal, float3 geometry, float3
     layers.rim *= attenuation;
     float transmittance_z = layers.transmittance_depth;
 #ifdef CLUSTERED
-    if (layers.transmittance) {
+    [branch] if (layers.transmittance) {
         layers.transmittance_color.a *= attenuation;
-        if (slot >= 0.0) {
+        [branch] if (slot >= 0.0) {
             transmittance_z = shadow_thickness(directional, (uint)slot, world, normal, geometry,
                                                transmittance_z);
         }
@@ -8296,10 +8296,10 @@ void add_light(Light light, float3 world, float3 normal, float3 geometry, float3
 #endif
     float ray = light.shadow.w;
 #ifdef CLUSTERED
-    if (rays.on && ray > 0.0) {
-        uint k = (uint)ray - 1u;
 )hlsl",
-R"hlsl(        // The light's channel by a dot product: an index into a vector is an array to FXC.
+R"hlsl(    if (rays.on && ray > 0.0) {
+        uint k = (uint)ray - 1u;
+        // The light's channel by a dot product: an index into a vector is an array to FXC.
         uint lane = k & 3u;
         attenuation *= dot(k < 4u ? rays.low : rays.high,
                            float4(lane == 0u, lane == 1u, lane == 2u, lane == 3u));
@@ -8557,11 +8557,11 @@ void reflect_probes(float3 world, float3 ray, float3 normal, float roughness,
             continue;
         }
         Probe probe = probes[at];
-        if (((uint)probe.options.z & options.z) == 0u) {
+)hlsl",
+R"hlsl(        if (((uint)probe.options.z & options.z) == 0u) {
             continue;
         }
-)hlsl",
-R"hlsl(        if (reflection_accum.a >= 1.0 && ambient_accum.a >= 1.0) {
+        if (reflection_accum.a >= 1.0 && ambient_accum.a >= 1.0) {
             break;
         }
         float3 extents = probe.extents.xyz;
@@ -8810,11 +8810,11 @@ float bicubic_w3(float a) {
 float3 lightmap_light(float2 uv) {
     float3 light;
     if (lightmap.y != 0.0) {
-        uint width;
+)hlsl",
+R"hlsl(        uint width;
         uint height;
         ground_normal_3.GetDimensions(width, height);
-)hlsl",
-R"hlsl(        float2 size = float2((float)width, (float)height);
+        float2 size = float2((float)width, (float)height);
         float2 texel = 1.0 / size;
         float2 at = uv * size + 0.5;
         float2 iuv = floor(at);
@@ -9042,11 +9042,11 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
     if (ssr.a < 0.0) {
         reflected *= occlusion * (env.x * f0 + env.y * clamp(50.0 * f0.g, metallic, 1.0));
     } else {
-        // Godot's SSR: the reflection, faded out toward the trace's roughness cutoff, put over
+)hlsl",
+R"hlsl(        // Godot's SSR: the reflection, faded out toward the trace's roughness cutoff, put over
         // the sky's by its premultiplied alpha.
         reflected *= occlusion;
-)hlsl",
-R"hlsl(        float4 faded = ssr * smoothstep(0.0, 1.0, 1.0 - saturate((roughness - 0.6) / 0.1));
+        float4 faded = ssr * smoothstep(0.0, 1.0, 1.0 - saturate((roughness - 0.6) / 0.1));
         reflected = reflected * (1.0 - faded.a) + faded.rgb;
         reflected *= env.x * f0 + env.y * clamp(50.0 * f0.g, metallic, 1.0);
     }
