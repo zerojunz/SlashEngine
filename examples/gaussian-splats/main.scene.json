@@ -1,0 +1,62 @@
+{
+  "entities": {
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 50.0
+        },
+        "Transform3D": {
+          "position": [0.0, 1.2, 4.0],
+          "rotation": [-0.15, 0.0, 0.0]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "WorldEnvironment": {
+          "ambient_light_color": [1.0, 1.0, 1.0, 1.0],
+          "ambient_light_energy": 0.3,
+          "ambient_light_source": "color",
+          "background_color": [0.5, 0.7, 0.9, 1.0],
+          "background_mode": "color"
+        }
+      }
+    },
+    "floor": {
+      "components": {
+        "MeshInstance3D": {},
+        "PlaneMesh": {
+          "size": [10.0, 10.0]
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.45, 0.4, 0.3, 1.0]
+        },
+        "Transform3D": {}
+      }
+    },
+    "post": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.2, 2.0, 0.2]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.9, 0.9, 0.9, 1.0]
+        },
+        "Transform3D": {
+          "position": [0.45, 1.0, 1.2]
+        }
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {},
+        "Transform3D": {
+          "rotation": [-0.9, 0.4, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

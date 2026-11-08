@@ -908,6 +908,19 @@ SLASH_COMPONENT(Decal, size, texture_albedo, texture_normal, texture_orm, textur
                 distance_fade_enabled, distance_fade_begin, distance_fade_length, cull_mask, layers,
                 sorting_offset)
 
+// A cloud of 3D Gaussians captured from a real place or thing, from a 3D Gaussian Splatting .ply
+// file, placed by the entity's Transform3D and blended over the opaque meshes in Forward+ (a
+// research spike of SlashEngine's own, Godot has none: the software device draws them).
+struct GaussianSplat3D {
+    std::string splats;         // project path of the .ply file
+    std::int32_t sh_degree = 3; // the most spherical harmonics degree its colors use, 0 to 3
+    float opacity = 1.0F;       // times each splat's
+    std::uint32_t layers = 1;   // as MeshInstance3D's: the cameras that see it
+
+    friend bool operator==(const GaussianSplat3D&, const GaussianSplat3D&) = default;
+};
+SLASH_COMPONENT(GaussianSplat3D, splats, sh_degree, opacity, layers)
+
 // Forward+: a place where the volumetric fog is thicker, thinner or glows, as Godot's FogVolume:
 // a shape of size centered on the entity, in its space, or the whole fog ("world"), filled as the
 // FogMaterial on the same entity says (with none, a density of 1 and white light scattered, as

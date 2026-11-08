@@ -1,0 +1,22 @@
+wrote boulder.ply: 1500 splats of degree 1, 156630 bytes
+scene.open {"path":"main.scene.json"}
+{"entities":5,"path":"main.scene.json"}
+-- the captured boulder behind the post: moss, stone, the post in front, the sky
+entity.create {"components":{"GaussianSplat3D":{"splats":"boulder.ply"},"Transform3D":{"position":[0,0.5,0]}},"id":"boulder"}
+{"id":"boulder"}
+frame.capture {"points":[[78,40],[72,52],[94,48],[80,10]]}
+{"colors":[[0.537,0.784,0.435,1],[0.569,0.549,0.51,1],[0.851,0.851,0.851,1],[0.498,0.702,0.902,1]],"drawn":{"meshes":2},"height":90,"width":160}
+-- sh_degree 0 drops the wet moss's shine: the moss is duller, the stone the same
+component.set {"components":{"GaussianSplat3D":{"sh_degree":0}},"id":"boulder"}
+{"changed":{"GaussianSplat3D":{"sh_degree":0}},"id":"boulder"}
+frame.capture {"points":[[78,40],[72,52],[94,48],[80,10]]}
+{"colors":[[0.341,0.592,0.243,1],[0.569,0.549,0.51,1],[0.851,0.851,0.851,1],[0.498,0.702,0.902,1]],"drawn":{"meshes":2},"height":90,"width":160}
+-- moved in front of the post, the boulder hides it; splats overlap many deep, so the post shows through only at a faint opacity of 0.05
+component.set {"components":{"Transform3D":{"position":[0,0.5,2]}},"id":"boulder"}
+{"changed":{"Transform3D":{"position":[0.0,0.5,2.0]}},"id":"boulder"}
+frame.capture {"points":[[94,50]]}
+{"colors":[[0.345,0.592,0.243,1]],"drawn":{"meshes":2},"height":90,"width":160}
+component.set {"components":{"GaussianSplat3D":{"opacity":0.05}},"id":"boulder"}
+{"changed":{"GaussianSplat3D":{"opacity":0.05}},"id":"boulder"}
+frame.capture {"points":[[94,50]]}
+{"colors":[[0.624,0.714,0.6,1]],"drawn":{"meshes":2},"height":90,"width":160}

@@ -2,6 +2,7 @@
 
 #include "slash/core/json.hpp"
 #include "slash/core/result.hpp"
+#include "slash/render/splats.hpp"
 
 #include <array>
 #include <cstddef>
@@ -1038,6 +1039,9 @@ struct Scene3D {
     Sdfgi3D sdfgi;
     Reflections3D reflections;
     Decals3D decals;
+    // Gaussian splat clouds blended over the opaque meshes (a research spike: the software
+    // device draws them in Forward+, others draw none; see splats.hpp).
+    Splats3D splats;
     // Forward+'s subsurface scattering of meshes with Material3D::subsurface, after the opaque
     // meshes and before the transparent ones, as Godot's.
     SubsurfaceSettings subsurface;

@@ -1246,6 +1246,17 @@ surface, with a shadow ray (`path_blocked`) to the light kept for lights with `s
 cluster's (`MeshMaps::restir`). Other devices light every light as before.
 `examples/many-lights` lights a hall with 64 shadowed lamps.
 
+Gaussian splats are a research spike on the software device
+([docs/reference/gaussian-splats.md](docs/reference/gaussian-splats.md)): a `GaussianSplat3D`
+names a 3D Gaussian Splatting `.ply` file (`render::read_splat_ply` and `write_splat_ply` in
+`engine/render/src/splats.cpp`, loaded as an asset by `scene3d::add_splat_type`), which
+`scene3d::Renderer::add_splats` puts in `Scene3D::splats`; in Forward+ the software device's
+`draw_color` blends them after the opaque meshes and subsurface scattering and before the blended
+meshes with `detail::run_splats` (EWA projection through the view projection's Jacobian, colors
+from spherical harmonics, sorted nearest first, tiles of 16 pixels on the job pool, tested against
+the opaque depth; built with `-ffp-contract=off`). Other devices draw none, and splats are
+neither lit nor in the depth buffer. `examples/gaussian-splats` places a boulder made in code.
+
 `lighting.check` (`engine/command/src/lighting.cpp`) judges a 3D frame's lighting as numbers for
 agents: it draws the frame with `canvas::capture`, measures its exposure (mean, percentiles,
 clipped and crushed shares), draws it again with each light's `light_energy` at 0 (put back
