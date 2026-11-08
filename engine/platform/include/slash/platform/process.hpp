@@ -73,4 +73,11 @@ private:
 [[nodiscard]] Result<std::unique_ptr<ChildProcess>>
 start_process(const std::vector<std::string>& args, const ProcessOptions& options = {});
 
+namespace detail {
+// args run in folder by a shell that changes to it first, as processes start where the system
+// can't start a program in another folder (glibc before 2.29). POSIX only.
+[[nodiscard]] std::vector<std::string> in_folder(const std::vector<std::string>& args,
+                                                 const std::string& folder);
+} // namespace detail
+
 } // namespace slash::platform
