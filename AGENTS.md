@@ -232,7 +232,7 @@ generator, model, seed, license, tags, a short description and the parent it was
 Files are written whole and moved into place (`platform::rename_file`), so agents can share a
 library. Generators are `library::Generator` adapters named in `providers.json`'s `generators`,
 as models are `ai::Provider`s: `openai-image`, `gemini-image`, `automatic1111`, `openai-speech`,
-`elevenlabs-sound`, `elevenlabs-music`, `stability-audio`, `stability-3d` and `meshy-rig` (`src/adapters.cpp`, through `ai::post_with_retries`, with images fitted
+`elevenlabs-sound`, `elevenlabs-music`, `stability-audio`, `stability-3d`, `fal-trellis` (Microsoft's TRELLIS on fal.ai) and `meshy-rig` (`src/adapters.cpp`, through `ai::post_with_retries`, with images fitted
 to the size asked for by `fit_image`), and the built-in `test` generator, which draws
 placeholders with integer math only, so they are the same bytes everywhere. `asset.search`, `asset.generate` (an exact repeat
 calls no generator, close matches come back as candidates), `asset.refine`, `asset.info`,

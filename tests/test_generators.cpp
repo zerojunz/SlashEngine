@@ -621,6 +621,93 @@ TEST_CASE("meshy-rig rigs a figure as a task: started, asked about, then fetched
     CHECK(keyless->requests.empty());
 }
 
+TEST_CASE("fal-trellis makes a model from the concept image through fal.ai's TRELLIS") {
+    auto png = library::test_generator()->generate(request("image", "red ball", 16));
+    REQUIRE(png.ok());
+    library::GenerateRequest asked = request("model", "A red ball");
+    asked.image_data = png.value().data;
+    asked.seed = 3;
+    const std::string glb = std::string("glTF\x02\x00\x00\x00", 8) + "trellis";
+
+    // The image goes up as a data URI with the seed and options; the .glb is fetched with no key.
+    auto transport = std::make_shared<ScriptedTransport>(std::vector<ScriptedTransport::Reply>{
+        {200, R"({"model_mesh": {"url": "https://v3.fal.media/files/ball/model.glb",
+                  "content_type": "model/gltf-binary"}, "timings": {"inference": 9.5}})"},
+        {200, glb}});
+    const library::OpenedGenerator sculptor =
+        open(R"({"type": "fal-trellis", "api_key_env": "TEST_KEY",
+                 "options": {"texture_size": "1024", "mesh_simplify": 0.9}})",
+             transport, "model");
+    CHECK(sculptor.model == "fal-ai/trellis");
+    CHECK(sculptor.generator->capabilities().models);
+    CHECK_FALSE(sculptor.generator->capabilities().images);
+    CHECK_FALSE(library::refines(sculptor.generator->capabilities(), "model"));
+    auto made = sculptor.generator->generate(asked);
+    REQUIRE_MESSAGE(made.ok(), made.error().message);
+    CHECK(made.value().format == "glb");
+    CHECK(made.value().data == glb);
+    CHECK(made.value().seed == 3);
+    REQUIRE(transport->requests.size() == 2);
+    CHECK(transport->requests[0].url == "https://fal.run/fal-ai/trellis");
+    CHECK(transport->header("Authorization") == "Key key");
+    const json::Value body = transport->body();
+    CHECK(body.find("image_url")->as_string() ==
+          "data:image/png;base64," + slash::base64_encode(png.value().data));
+    CHECK(body.find("seed")->as_int() == 3);
+    CHECK(body.find("texture_size")->as_string() == "1024");
+    CHECK(body.find("mesh_simplify")->as_double() == doctest::Approx(0.9));
+    CHECK(body.find("prompt") == nullptr);
+    CHECK(transport->requests[1].url == "https://v3.fal.media/files/ball/model.glb");
+    CHECK(transport->requests[1].method == "GET");
+    CHECK(transport->header("Authorization", 1).empty());
+
+    // In sync mode fal answers with the file itself, as a data URI.
+    auto inline_reply = std::make_shared<ScriptedTransport>(std::vector<ScriptedTransport::Reply>{
+        {200, R"({"model_mesh": {"url": "data:model/gltf-binary;base64,)" +
+                  slash::base64_encode(glb) + R"("}})"}});
+    auto synced = open(R"({"type": "fal-trellis", "api_key_env": "TEST_KEY",
+                           "model": "fal-ai/trellis/multi", "url": "https://queue.example"})",
+                       inline_reply, "model")
+                      .generator->generate(asked);
+    REQUIRE_MESSAGE(synced.ok(), synced.error().message);
+    CHECK(synced.value().data == glb);
+    CHECK(inline_reply->requests.size() == 1);
+    CHECK(inline_reply->requests[0].url == "https://queue.example/fal-ai/trellis/multi");
+
+    // Replies with no model, or a file that isn't a .glb, are errors.
+    auto empty = std::make_shared<ScriptedTransport>(
+        std::vector<ScriptedTransport::Reply>{{200, R"({"timings": {}})"}});
+    auto nothing = open(R"({"type": "fal-trellis", "api_key_env": "TEST_KEY"})", empty, "model")
+                       .generator->generate(asked);
+    REQUIRE_FALSE(nothing.ok());
+    CHECK(nothing.error().message == "the fal-trellis generator answered with no model_mesh");
+    auto html = std::make_shared<ScriptedTransport>(std::vector<ScriptedTransport::Reply>{
+        {200, R"({"model_mesh": {"url": "https://v3.fal.media/x.glb"}})"}, {200, "<html>"}});
+    auto wrong = open(R"({"type": "fal-trellis", "api_key_env": "TEST_KEY"})", html, "model")
+                     .generator->generate(asked);
+    REQUIRE_FALSE(wrong.ok());
+    CHECK(wrong.error().message ==
+          "the fal-trellis generator returned something other than a .glb model");
+
+    // It needs a concept image it can name, and its key.
+    asked.image_data = "GIF89a";
+    auto gif = sculptor.generator->generate(asked);
+    REQUIRE_FALSE(gif.ok());
+    CHECK(gif.error().message ==
+          "the fal-trellis generator takes a PNG, JPEG or WebP concept image");
+    asked.image_data.clear();
+    auto none = sculptor.generator->generate(asked);
+    REQUIRE_FALSE(none.ok());
+    CHECK(none.error().message.find("makes a model from a concept image") != std::string::npos);
+    asked.image_data = png.value().data;
+    auto keyless = std::make_shared<ScriptedTransport>(std::vector<ScriptedTransport::Reply>{});
+    auto no_key = open(R"({"type": "fal-trellis", "api_key_env": "FAL_KEY"})", keyless, "model")
+                      .generator->generate(asked);
+    REQUIRE_FALSE(no_key.ok());
+    CHECK(no_key.error().message ==
+          "the fal-trellis generator reads its key from FAL_KEY, which is not set");
+    CHECK(keyless->requests.empty());
+}
 TEST_CASE("generators retry rate limits and report errors with the service's message") {
     const std::string made = png(4, 4, {1, 2, 3});
     auto transport = std::make_shared<ScriptedTransport>(std::vector<ScriptedTransport::Reply>{
