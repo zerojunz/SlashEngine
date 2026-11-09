@@ -15,6 +15,9 @@ import sys
 import time
 
 LIMIT = 300.0
+# GL's sampler uniform types.
+SAMPLERS = {0x8B5D, 0x8B5E, 0x8B5F, 0x8B60, 0x8B62, 0x8DC1, 0x8DC4, 0x8DC5, 0x8DCA, 0x8DCB, 0x8DCC,
+            0x8DCF, 0x8DD2, 0x8DD3, 0x8DD4, 0x8DD7, 0x8B63, 0x8DD0, 0x8DD5, 0x8B61, 0x8B64}
 
 
 def arrays(header):
@@ -105,6 +108,22 @@ def draw(vertex, fragment):
         gl.glBufferData(0x8A11, ctypes.c_ssize_t(65536), zeros, 0x88E4)
         gl.glUniformBlockBinding(program, i, i)
         gl.glBindBufferBase(0x8A11, i, buf)
+    # Each sampler on a unit of its own: samplers of different types on one unit fail the draw.
+    uniforms = ctypes.c_int()
+    gl.glGetProgramiv(program, 0x8B86, ctypes.byref(uniforms))
+    gl.glUseProgram(program)
+    unit = 0
+    for i in range(uniforms.value):
+        name = ctypes.create_string_buffer(256)
+        size = ctypes.c_int()
+        kind = ctypes.c_uint()
+        gl.glGetActiveUniform(program, i, 256, None, ctypes.byref(size), ctypes.byref(kind), name)
+        if kind.value in SAMPLERS:
+            location = gl.glGetUniformLocation(program, name)
+            for j in range(size.value):
+                gl.glUniform1i(location + j, unit)
+                unit += 1
+    print("  samplers: %d, GL error %d" % (unit, gl.glGetError()), flush=True)
     vao = ctypes.c_uint()
     gl.glGenVertexArrays(1, ctypes.byref(vao))
     gl.glBindVertexArray(vao)
@@ -117,7 +136,7 @@ def draw(vertex, fragment):
     gl.glBindFramebuffer(0x8D40, fb)
     gl.glFramebufferRenderbuffer(0x8D40, 0x8CE0, 0x8D41, rb)
     gl.glViewport(0, 0, 64, 64)
-    gl.glUseProgram(program)
+    print("  framebuffer: %x" % gl.glCheckFramebufferStatus(0x8D40), flush=True)
     gl.glDrawArrays(4, 0, 3)
     pixels = ctypes.create_string_buffer(64 * 64 * 4)
     gl.glReadPixels(0, 0, 64, 64, 0x1908, 0x1401, pixels)
@@ -149,17 +168,16 @@ def main():
         except subprocess.TimeoutExpired:
             print("  the draw took over %d s" % LIMIT, flush=True)
         drawn = time.monotonic()
-        quiet = 0
+        last_busy = drawn
         while time.monotonic() - drawn < LIMIT:
-            busy = [c for c in compilers() if float(c[1]) > 5.0]
-            quiet = 0 if busy else quiet + 1
-            if quiet >= 3:
+            if [c for c in compilers() if float(c[1]) > 5.0]:
+                last_busy = time.monotonic()
+            elif time.monotonic() - last_busy > 5.0:
                 break
             time.sleep(1.0)
-        left = compilers()
         print("  CVMCompiler busy for %.0f s after the draw%s (draw process %.1f s) %s" %
-              (time.monotonic() - drawn - quiet, " (gave up)" if quiet < 3 else "",
-               drawn - start, left), flush=True)
+              (last_busy - drawn, " (gave up)" if time.monotonic() - drawn >= LIMIT else "",
+               drawn - start, compilers()), flush=True)
     subprocess.run(["pkill", "-9", "CVMCompiler"])
 
 
