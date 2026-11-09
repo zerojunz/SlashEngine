@@ -2,15 +2,18 @@
 #define DOCTEST_CONFIG_IMPLEMENT
 #else
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include "slash/platform/process.hpp"
 #include "slash/shader_compiler/shader_compiler.hpp"
 #endif
 
 #include <doctest/doctest.h>
 
+#include <array>
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -94,18 +97,18 @@ private:
     // time went though ctest shows only a failed test's output.
     void note_time(std::chrono::steady_clock::duration took) const {
         constexpr auto kSlowTestCase = std::chrono::seconds(5);
-        const char* path = std::getenv("SLASH_TEST_TIMES");
-        if (took < kSlowTestCase || path == nullptr || *path == '\0') {
+        if (took < kSlowTestCase) {
             return;
         }
-        // NOLINTNEXTLINE(cppcoreguidelines-owning-memory): closed below
-        std::FILE* file = std::fopen(path, "a");
-        if (file == nullptr) {
+        const std::string path = slash::platform::environment_variable("SLASH_TEST_TIMES");
+        if (path.empty()) {
             return;
         }
-        std::fprintf(file, "%7.1f s  %s (%s)\n", std::chrono::duration<double>(took).count(),
-                     name_.c_str(), file_.c_str());
-        std::fclose(file); // NOLINT(cppcoreguidelines-owning-memory)
+        std::ofstream file(path, std::ios::app);
+        std::array<char, 32> seconds{};
+        std::snprintf(seconds.data(), seconds.size(), "%7.1f s  ",
+                      std::chrono::duration<double>(took).count());
+        file << seconds.data() << name_ << " (" << file_ << ")\n";
     }
 
     void watch() {
