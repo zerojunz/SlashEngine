@@ -36,12 +36,13 @@ Each provider is an adapter `type` and a `model`, keyed by a name the roles use.
 | Type | API | Default URL |
 | --- | --- | --- |
 | `openai` | OpenAI's chat completions, which Ollama, llama.cpp's server, vLLM, LM Studio and OpenRouter also serve | `https://api.openai.com/v1` |
+| `openai-responses` | OpenAI's Responses API, which OpenAI's newer reasoning models need for tools; reasoning goes back encrypted (`store` off), and `stop` and `seed` aren't sent | `https://api.openai.com/v1` |
 | `anthropic` | Anthropic's Messages API | `https://api.anthropic.com` |
 | `gemini` | Google's Gemini API | `https://generativelanguage.googleapis.com/v1beta` |
 
 | Field | Meaning |
 | --- | --- |
-| `type` | `openai`, `anthropic` or `gemini` |
+| `type` | `openai`, `openai-responses`, `anthropic` or `gemini` |
 | `model` | The model's ID, as the provider names it |
 | `url` | The API's base URL, such as `http://localhost:11434/v1` for Ollama. Default: the vendor's |
 | `api_key_env` | The environment variable that holds the key. Leave it out for servers that take none |
@@ -117,7 +118,7 @@ tokens it used and whether it came from the replay file.
   named as MCP names them, and `ai::run_tool_calls` runs a reply's calls as those commands in a
   session.
 - **Reasoning.** Replies keep what the provider needs back in later turns unchanged (Anthropic's
-  thinking blocks and Gemini's thought signatures) in the message's `native` field, which only
+  thinking blocks, OpenAI's encrypted reasoning items and Gemini's thought signatures) in the message's `native` field, which only
   an adapter of the same type reads, so a conversation can move to another provider. Anthropic
   binds thinking blocks to the tools of the request that made them, so its adapter keeps a hash of
   them and leaves the blocks out once the tools have changed, as when an MCP client's

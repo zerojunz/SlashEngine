@@ -272,6 +272,9 @@ Result<std::shared_ptr<Provider>> make_adapter(std::string_view type, AdapterOpt
     if (type == "openai") {
         return detail::make_openai(std::move(options));
     }
+    if (type == "openai-responses") {
+        return detail::make_openai_responses(std::move(options));
+    }
     if (type == "anthropic") {
         return detail::make_anthropic(std::move(options));
     }
@@ -282,7 +285,8 @@ Result<std::shared_ptr<Provider>> make_adapter(std::string_view type, AdapterOpt
     if (const std::string_view hint = closest_match(type, kAdapterTypes); !hint.empty()) {
         message += "; did you mean \"" + std::string(hint) + "\"?";
     }
-    return make_error(ErrorCode::InvalidArgument, message + " (anthropic, gemini or openai)");
+    return make_error(ErrorCode::InvalidArgument,
+                      message + " (anthropic, gemini, openai or openai-responses)");
 }
 
 } // namespace slash::ai

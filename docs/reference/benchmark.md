@@ -127,7 +127,8 @@ Checks on solution steps are skipped, since the model's steps are its own. Live 
 the model, so they are not compared with the baseline.
 
 `.github/workflows/bench.yml` runs them every week for each model the repository names, one
-after another: the `BENCH_PROVIDER_TYPE`, `BENCH_MODEL` and, for a server of your own,
+after another: the `BENCH_PROVIDER_TYPE` (`openai-responses` for OpenAI's own models, whose
+newer ones take tools only there), `BENCH_MODEL` and, for a server of your own,
 `BENCH_URL` Actions variables with the `BENCH_API_KEY` secret, and a second model on Anthropic's
 API with the `BENCH_ANTHROPIC_MODEL` variable and the `BENCH_ANTHROPIC_API_KEY` secret. The job
 summary and log have a table of each model's task calls and tokens, and the reports are kept as

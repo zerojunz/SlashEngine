@@ -2610,7 +2610,8 @@ only looks for one (`xr::openxr_runtime_extensions`) and reports it in its summa
 ([docs/reference/providers.md](docs/reference/providers.md)). Adapters translate a `Request`
 (messages with text, images, tool calls and tool results; tools; an `output_schema`; params) and
 the reply for OpenAI's chat completions (also Ollama, llama.cpp, vLLM, LM Studio and OpenRouter),
-Anthropic's Messages API and Gemini (`src/openai.cpp`, `src/anthropic.cpp`, `src/gemini.cpp` on
+OpenAI's Responses API, Anthropic's Messages API and Gemini (`src/openai.cpp`,
+`src/openai_responses.cpp`, `src/anthropic.cpp`, `src/gemini.cpp` on
 `src/http_provider.cpp`, which retries and streams server-sent events). A reply keeps what its
 provider needs back in later turns (thinking blocks, thought signatures) in `Message::native`.
 `fit_request` puts an output schema in the prompt for models that can't take one, and

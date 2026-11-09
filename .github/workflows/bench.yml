@@ -5,7 +5,7 @@ name: Agent benchmark
 # (slash-cli bench --live; docs/reference/benchmark.md). It runs each model the repository names,
 # one after another, with these Actions variables and secrets:
 #
-#   BENCH_PROVIDER_TYPE      openai, anthropic or gemini
+#   BENCH_PROVIDER_TYPE      openai-responses (OpenAI's own models), openai, anthropic or gemini
 #   BENCH_MODEL              the model's ID
 #   BENCH_URL                a server's API URL, for openai-compatible servers of your own (optional)
 #   BENCH_API_KEY            the key (a secret; optional for a server that needs none)
