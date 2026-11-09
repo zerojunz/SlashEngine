@@ -393,6 +393,7 @@ backs three front ends, so they never drift apart:
 ```bash
 mcp=./build/dev/tools/slash-mcp/slash-mcp
 $mcp --project . --scene tests/data/basic.scene.json     # MCP over stdio; tools use '_' for '.'
+$mcp --project . --tools all                             # every command as a tool, not core + tools_load
 $cli rpc --project .                                     # JSON-RPC 2.0, one message per line
 $cli call world.query '{"with": ["Transform2D"]}' --scene tests/data/basic.scene.json
 $cli call batch '{"commands": [{"command": "entity.create", "params": {"id": "a"}}]}' \
@@ -409,6 +410,12 @@ go back to a copy of the entities. `events.subscribe` and `events.read` report e
 destroyed, each change to the world and events gameplay code emits with `World::emit`. Systems
 react to them through `World::events()`, the events of the tick before, which each system sees
 once whatever its priority; sessions put them back when a command fails or is a dry run.
+
+MCP clients start with the core commands as tools (`kCoreCommands` in
+`engine/command/src/mcp.cpp`) and `tools_load`, a directory that adds the rest by group as a task
+needs them, since OpenAI's API takes at most 128 tools and each definition costs tokens every turn
+([docs/reference/protocols.md](docs/reference/protocols.md#mcp)). A command most sessions need
+belongs in that list; the bench's setup counts it.
 
 Commands are built for agents, so keep them cheap to call:
 

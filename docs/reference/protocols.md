@@ -20,7 +20,27 @@ covers the envelopes, the HTTP server and the error codes.
 SlashEngine is an MCP server speaking protocol versions `2025-11-25`, `2025-06-18`, `2025-03-26`
 and `2024-11-05`. It answers `initialize` with the newest version the client also speaks.
 
-**Tools.** Every command is a tool. Tool names replace dots with underscores (`entity_create` for
+**Tools.** An agent starts with the commands most tasks need as tools (`mcp::core_commands`:
+scenes, entities, queries, `batch`, undo, stepping, input, frame checks, tests, building gameplay
+code, the storyboard and the asset library), and `tools_load`, a directory of the rest. OpenAI's
+API takes at most 128 tools and some clients fewer, and every tool definition is read again on each
+turn, so the engine's commands are loaded only when a task needs them. `tools_load` with no
+arguments lists every command by group (its name up to the first dot):
+
+```json
+{"groups":{"audio":["audio.analyze","audio.capture","audio.play"],"ui":["ui.focus","ui.layout","ui.press"]}}
+```
+
+With `groups` (`["audio"]`) or `commands` (`["ui.layout"]`, or tool names), it adds them to the
+tools, returns each one's name, description and `inputSchema`, and sends a
+`notifications/tools/list_changed` notification, so the client lists the tools again. Over plain
+HTTP (`POST /mcp`) there is no stream to send it on; `slash-mcp --live` sends it to its client
+itself. A client that doesn't list tools again can still call a loaded command by its tool name or
+through `batch`. Every command can be called by its tool name whether it is listed or not.
+`slash-mcp --tools all` lists every command from the start instead, for clients that handle many
+tools (Claude Code defers large tool sets on its own); then there is no `tools_load`.
+
+Tool names replace dots with underscores (`entity_create` for
 `entity.create`), because some clients only accept letters, digits, `_` and `-`. The tool's
 `inputSchema` is the command's params schema, and its annotations say whether it is read-only and,
 if not, whether it is destructive (opening a scene, writing files or building with `export.run`
@@ -48,11 +68,12 @@ session's capabilities apply to them too.
 
 **Instructions.** The `initialize` result carries short instructions that clients pass to the
 model: call `engine_describe` first, use `batch` for many edits, query IDs before components, use
-the tools rather than editing `.scene.json` files by hand, and call `storyboard_brief` before a
-task and `storyboard_check` after it.
+the tools rather than editing `.scene.json` files by hand, load a group with `tools_load` before
+calling its commands, and call `storyboard_brief` before a task and `storyboard_check` after it.
 
 Also supported: `ping`, `tools/list`, `resources/list`, `resources/templates/list` (empty) and
-notifications. The tool and resource lists never change while the server runs.
+notifications. The tool list changes only when `tools_load` adds to it; the resource list never
+changes while the server runs.
 
 ## JSON-RPC
 

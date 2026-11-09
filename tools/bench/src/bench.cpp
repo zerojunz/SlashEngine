@@ -428,13 +428,18 @@ Result<json::Value> run_live(const Options& options, const Live& live) {
             request.messages.push_back({.role = ai::Role::System, .text = setup.instructions});
             request.messages.push_back(
                 {.role = ai::Role::User, .text = task.spec.find("prompt")->as_string()});
-            for (const json::Value& tool : setup.tools.as_array()) {
-                const json::Value* description = tool.find("description");
-                request.tools.push_back(
-                    {.name = tool.find("name")->as_string(),
-                     .description = description != nullptr ? description->as_string() : "",
-                     .parameters = *tool.find("inputSchema")});
-            }
+            // As a client does, the tools are listed again when tools_load changes them.
+            const auto offer = [&request](const json::Value& tools) {
+                request.tools.clear();
+                for (const json::Value& tool : tools.as_array()) {
+                    const json::Value* description = tool.find("description");
+                    request.tools.push_back(
+                        {.name = tool.find("name")->as_string(),
+                         .description = description != nullptr ? description->as_string() : "",
+                         .parameters = *tool.find("inputSchema")});
+                }
+            };
+            offer(setup.tools);
             request.params.max_tokens = live.max_tokens;
 
             std::int64_t calls = 0;
@@ -477,6 +482,9 @@ Result<json::Value> run_live(const Options& options, const Live& live) {
                         message.is_error = true;
                     }
                     request.messages.push_back(std::move(message));
+                }
+                if (!server.take_notifications().empty()) {
+                    offer(*server.dispatch("tools/list", json::Object{}).value.find("tools"));
                 }
             }
             if (finished) {
