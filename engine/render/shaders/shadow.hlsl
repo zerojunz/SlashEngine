@@ -164,17 +164,16 @@ float alpha_hash_threshold(float3 pos, float3 dx, float3 dy, float hash_scale) {
 
 void fs_main(VertexOutput input) {
     float4 texel = albedo_texture.Sample(albedo_sampler, input.uv);
-    float3 object_dx = ddx(input.object);
-    float3 object_dy = ddy(input.object);
     if ((options.x & kAlphaScissor) != 0u) {
         float alpha = albedo.a * texel.a;
         if ((options.x & kVertexColorAlbedo) != 0u) {
             alpha *= input.color.a;
         }
-        float threshold = (options.x & kAlphaHash) != 0u
-                              ? alpha_hash_threshold(input.object, object_dx, object_dy,
-                                                     asfloat(options.y))
-                              : asfloat(options.y);
+        float threshold = asfloat(options.y);
+        if ((options.x & kAlphaHash) != 0u) {
+            threshold = alpha_hash_threshold(input.object, ddx(input.object), ddy(input.object),
+                                             threshold);
+        }
         if (alpha < threshold) {
             discard;
         }
