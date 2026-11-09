@@ -30,6 +30,53 @@ def arrays(header):
     return found
 
 
+def varyings(source, keyword):
+    found = []
+    pos = 0
+    while pos < len(source):
+        nxt = source.find("\n", pos)
+        nxt = len(source) if nxt < 0 else nxt
+        text = source[pos:nxt]
+        if text.startswith(keyword + " ") and text.endswith(";"):
+            words = text[len(keyword) + 1:-1].split(" ")
+            if len(words) in (2, 3):
+                found.append((pos, nxt, words[0] if len(words) == 3 else "", words[-2], words[-1]))
+        pos = nxt + 1
+    return found
+
+
+def renamed(source, found, keyword):
+    for line, end, precision, kind, name in reversed(found):
+        typ = (precision + " " if precision else "") + kind
+        declared = "%s %s slash_%s;\n%s %s;" % (keyword, typ, name, typ, name)
+        source = source[:line] + declared + source[end:]
+    return source
+
+
+def at_w1(shaders):
+    """The GL device's rewrite for Apple's software renderer (at_w1_vertex and at_w1_fragment)."""
+    vertex = shaders["kMeshVertexGlsl"]
+    outputs = varyings(vertex, "out")
+    vertex = renamed(vertex, outputs, "out")
+    scaling = ("    slash_scale = gl_Position.w > 1.0e-3 ? 1.0 / gl_Position.w : 1.0;\n"
+               "    gl_Position *= slash_scale;\n")
+    for o in outputs:
+        scaling += "    slash_%s = %s * slash_scale;\n" % (o[4], o[4])
+    end = vertex.rfind("}")
+    vertex = vertex[:end] + scaling + vertex[end:]
+    main = vertex.find("void main()")
+    vertex = vertex[:main] + "out highp float slash_scale;\n" + vertex[main:]
+    fragment = shaders["kMeshFragmentGlsl"]
+    inputs = varyings(fragment, "in")
+    fragment = renamed(fragment, inputs, "in")
+    dividing = "".join("    %s = slash_%s / slash_scale;\n" % (i[4], i[4]) for i in inputs)
+    main = fragment.find("void main()")
+    brace = fragment.find("{", main) + 2
+    fragment = fragment[:brace] + dividing + fragment[brace:]
+    fragment = fragment[:main] + "in highp float slash_scale;\n" + fragment[main:]
+    return {"kMeshVertexGlsl": vertex, "kMeshFragmentGlsl": fragment}
+
+
 def versions():
     path = "engine/render/src/mesh_shaders.hpp"
     branch = open(path).read()
@@ -52,7 +99,8 @@ def versions():
                                          b["kMeshFragmentGlsl"])
     out.append(("branch, hash multiplier 1", nomath))
     out.append(("main again", m))
-    return out
+    rewritten = [(name + ", at w 1", at_w1(shaders)) for name, shaders in out[:-1]]
+    return out[:2] + rewritten
 
 
 def draw(vertex, fragment):
