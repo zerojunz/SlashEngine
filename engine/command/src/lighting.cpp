@@ -203,8 +203,8 @@ Reply lighting_check(Session& session, const json::Value& params) {
     std::size_t crushed = 0;
     for (std::size_t i = 0; i < base.brightness.size(); ++i) {
         sum += base.brightness[i];
-        clipped += base.clipped[i] ? 1 : 0;
-        crushed += base.brightness[i] < kCrushed ? 1 : 0;
+        clipped += base.clipped[i] ? 1U : 0U;
+        crushed += base.brightness[i] < kCrushed ? 1U : 0U;
     }
     const double mean = sum / count;
     const double low = percentile(base.brightness, 0.05);
@@ -265,7 +265,7 @@ Reply lighting_check(Session& session, const json::Value& params) {
                 const double change = base.brightness[i] - dark.brightness[i];
                 lit += change >= kLitStep ? 1 : 0;
                 added += std::max(change, 0.0);
-                clips += base.clipped[i] && !dark.clipped[i] ? 1 : 0;
+                clips += base.clipped[i] && !dark.clipped[i] ? 1U : 0U;
             }
             const double lit_share = static_cast<double>(lit) / count;
             const double clip_share = static_cast<double>(clips) / count;
