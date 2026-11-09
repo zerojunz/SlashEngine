@@ -107,6 +107,25 @@ jobs:
       - name: Build
         run: cmake --build --preset ci
 
+      # Temporary, to find why macOS unit shards slow down on this branch: shard 2 alone in a
+      # fresh process, then again after only the alpha hash tests have run.
+      - name: Time shard 2 alone, then after the alpha hash tests (macOS)
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        shell: bash
+        run: |
+          date -u
+          ctest --preset ci -R '^unit_2$' || true
+          cat build/ci/tests/unit_2-times.txt 2>/dev/null || true
+          date -u
+          (cd build/ci/tests && SLASH_TEST_TIMES="$PWD/../../alpha-times.txt" ./slash_tests \
+            --source-file='*test_alpha_hash*') || true
+          cat build/alpha-times.txt 2>/dev/null || true
+          date -u
+          ctest --preset ci -R '^unit_2$' || true
+          cat build/ci/tests/unit_2-times.txt 2>/dev/null || true
+          date -u
+
       - name: Test
         run: ctest --preset ci
 
