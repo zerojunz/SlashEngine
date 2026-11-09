@@ -118,7 +118,10 @@ tokens it used and whether it came from the replay file.
   session.
 - **Reasoning.** Replies keep what the provider needs back in later turns unchanged (Anthropic's
   thinking blocks and Gemini's thought signatures) in the message's `native` field, which only
-  an adapter of the same type reads, so a conversation can move to another provider.
+  an adapter of the same type reads, so a conversation can move to another provider. Anthropic
+  binds thinking blocks to the tools of the request that made them, so its adapter keeps a hash of
+  them and leaves the blocks out once the tools have changed, as when an MCP client's
+  `tools_load` adds some.
 - **Streaming.** A request given a sink receives the reply's text as it arrives. `ai::Call` runs a
   request on its own thread, so a game keeps ticking while the model answers, and cancels it when
   destroyed, without waiting for its thread.

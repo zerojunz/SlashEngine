@@ -144,6 +144,7 @@ struct HttpProvider::Exchange {
         }
         Response out = std::move(response).value();
         out.message.role = Role::Assistant;
+        provider->note_reply(request, out);
         if (sink && unstreamed && !out.message.text.empty()) {
             sink(out.message.text);
         }
