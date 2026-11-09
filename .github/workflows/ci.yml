@@ -107,35 +107,28 @@ jobs:
       - name: Build
         run: cmake --build --preset ci
 
-      # Temporary, to find why macOS unit shards slow down on this branch: on the run before,
+      # Temporary, to find why macOS unit shards slow down on this branch: on the runs before,
       # the first test process was fast and every one after it slow, whichever shard it ran.
-      # What runs and what Metal's cache holds between two runs of shard 2.
-      - name: Time shard 2 twice, with what runs between (macOS)
+      # Shard 2 three times: fresh, again, then with Metal's shader cache moved aside.
+      - name: Time shard 2 three times, the last without Metal's cache (macOS)
         if: runner.os == 'macOS'
         continue-on-error: true
-        shell: bash
+        shell: bash {0}
         run: |
+          cache="$(getconf DARWIN_USER_CACHE_DIR)"
           state() {
             date -u
-            ps -Ao pid,ppid,pcpu,pmem,etime,comm -r | head -n 12
-            cache="$(getconf DARWIN_USER_CACHE_DIR)"
-            du -sh "$cache"com.apple.metal* "$cache"*/com.apple.metal* 2>/dev/null || true
-            find "$cache" -maxdepth 3 -iname '*metal*' 2>/dev/null | head -n 20
+            ps -Ao pid,pcpu,pmem,etime,comm -r > "$RUNNER_TEMP/ps.txt"; head -n 8 "$RUNNER_TEMP/ps.txt"
+            find "$cache" -maxdepth 4 -iname '*metal*' -exec du -sh {} + 2>/dev/null | sort -h | tail -n 15
           }
-          ( while true; do sleep 60; ps -Ao pcpu,etime,comm -r | sed -n 2,6p | tr '\n' '|'; echo; done ) \
-            > "$RUNNER_TEMP/top.txt" 2>&1 &
-          sampler=$!
-          state
-          ctest --preset ci -R '^unit_2$' || true
-          cat build/ci/tests/unit_2-times.txt 2>/dev/null || true
-          state
-          sleep 120
-          state
-          ctest --preset ci -R '^unit_2$' || true
-          cat build/ci/tests/unit_2-times.txt 2>/dev/null || true
-          state
-          kill "$sampler" || true
-          cat "$RUNNER_TEMP/top.txt"
+          shard() {
+            ctest --preset ci -R '^unit_2$' | grep 'Test *#'
+            cat build/ci/tests/unit_2-times.txt 2>/dev/null
+          }
+          state; shard; state; shard; state
+          find "$cache" -maxdepth 4 -iname '*metal*' -prune -exec mv {} {}.moved \; 2>/dev/null
+          state; shard; state
+          true
 
       - name: Test
         run: ctest --preset ci
