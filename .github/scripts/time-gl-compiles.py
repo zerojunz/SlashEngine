@@ -104,6 +104,11 @@ def versions():
 
 
 def draw(vertex, fragment):
+    # Cover the target whatever the attributes and matrices say, so every pixel runs the
+    # fragment shader.
+    end = vertex.rfind("}")
+    vertex = (vertex[:end] + "    gl_Position = vec4(gl_VertexID == 1 ? 3.0 : -1.0, "
+              "gl_VertexID == 2 ? 3.0 : -1.0, 0.5, 1.0);\n" + vertex[end:])
     gl = ctypes.CDLL("/System/Library/Frameworks/OpenGL.framework/OpenGL")
     attrs = (ctypes.c_int * 5)(99, 0x3200, 70, 0x00020400, 0)
     pix = ctypes.c_void_p()
@@ -146,31 +151,62 @@ def draw(vertex, fragment):
         print("  link failed:", log.value.decode(errors="replace")[:2000], flush=True)
         sys.exit(1)
 
+    # Uniform blocks filled with 2047 in every word, so each option bit is set and each number
+    # is small, as a draw with every feature on.
     blocks = ctypes.c_int()
     gl.glGetProgramiv(program, 0x8A36, ctypes.byref(blocks))
-    zeros = ctypes.create_string_buffer(65536)
+    words = (ctypes.c_uint * 16384)(*([2047] * 16384))
     for i in range(blocks.value):
         buf = ctypes.c_uint()
         gl.glGenBuffers(1, ctypes.byref(buf))
         gl.glBindBuffer(0x8A11, buf)
-        gl.glBufferData(0x8A11, ctypes.c_ssize_t(65536), zeros, 0x88E4)
+        gl.glBufferData(0x8A11, ctypes.c_ssize_t(65536), words, 0x88E4)
         gl.glUniformBlockBinding(program, i, i)
         gl.glBindBufferBase(0x8A11, i, buf)
-    # Each sampler on a unit of its own: samplers of different types on one unit fail the draw.
+    # Each sampler on a unit of its own (samplers of different types on one unit fail the draw),
+    # with a complete texture of its kind bound there, as the device binds them.
     uniforms = ctypes.c_int()
     gl.glGetProgramiv(program, 0x8B86, ctypes.byref(uniforms))
     gl.glUseProgram(program)
+    texels = (ctypes.c_ubyte * (16 * 16 * 4))(*([128] * (16 * 16 * 4)))
+    depths = (ctypes.c_float * (16 * 16))(*([0.5] * (16 * 16)))
     unit = 0
     for i in range(uniforms.value):
         name = ctypes.create_string_buffer(256)
         size = ctypes.c_int()
         kind = ctypes.c_uint()
         gl.glGetActiveUniform(program, i, 256, None, ctypes.byref(size), ctypes.byref(kind), name)
-        if kind.value in SAMPLERS:
-            location = gl.glGetUniformLocation(program, name)
-            for j in range(size.value):
-                gl.glUniform1i(location + j, unit)
-                unit += 1
+        if kind.value not in SAMPLERS:
+            continue
+        location = gl.glGetUniformLocation(program, name)
+        for j in range(size.value):
+            gl.glUniform1i(location + j, unit)
+            gl.glActiveTexture(0x84C0 + unit)
+            tex = ctypes.c_uint()
+            gl.glGenTextures(1, ctypes.byref(tex))
+            if kind.value == 0x8B60:  # samplerCube
+                gl.glBindTexture(0x8513, tex)
+                for face in range(6):
+                    gl.glTexImage2D(0x8515 + face, 0, 0x8058, 16, 16, 0, 0x1908, 0x1401, texels)
+                gl.glGenerateMipmap(0x8513)
+                gl.glTexParameteri(0x8513, 0x2801, 0x2703)
+                gl.glTexParameteri(0x8513, 0x2800, 0x2601)
+            elif kind.value == 0x8B62:  # sampler2DShadow
+                gl.glBindTexture(0x0DE1, tex)
+                gl.glTexImage2D(0x0DE1, 0, 0x8CAC, 16, 16, 0, 0x1902, 0x1406, depths)
+                gl.glTexParameteri(0x0DE1, 0x884C, 0x884E)
+                gl.glTexParameteri(0x0DE1, 0x884D, 0x0203)
+                gl.glTexParameteri(0x0DE1, 0x2801, 0x2601)
+                gl.glTexParameteri(0x0DE1, 0x2800, 0x2601)
+            else:
+                gl.glBindTexture(0x0DE1, tex)
+                gl.glTexImage2D(0x0DE1, 0, 0x8058, 16, 16, 0, 0x1908, 0x1401, texels)
+                gl.glGenerateMipmap(0x0DE1)
+                gl.glTexParameteri(0x0DE1, 0x2801, 0x2703)
+                gl.glTexParameteri(0x0DE1, 0x2800, 0x2601)
+                gl.glTexParameteri(0x0DE1, 0x2802, 0x2901)
+                gl.glTexParameteri(0x0DE1, 0x2803, 0x2901)
+            unit += 1
     print("  samplers: %d, GL error %d" % (unit, gl.glGetError()), flush=True)
     vao = ctypes.c_uint()
     gl.glGenVertexArrays(1, ctypes.byref(vao))
@@ -183,6 +219,15 @@ def draw(vertex, fragment):
     gl.glGenFramebuffers(1, ctypes.byref(fb))
     gl.glBindFramebuffer(0x8D40, fb)
     gl.glFramebufferRenderbuffer(0x8D40, 0x8CE0, 0x8D41, rb)
+    depth = ctypes.c_uint()
+    gl.glGenRenderbuffers(1, ctypes.byref(depth))
+    gl.glBindRenderbuffer(0x8D41, depth)
+    gl.glRenderbufferStorage(0x8D41, 0x8CAC, 64, 64)
+    gl.glFramebufferRenderbuffer(0x8D40, 0x8D00, 0x8D41, depth)
+    gl.glEnable(0x0B71)
+    gl.glDepthFunc(0x0204)
+    gl.glClearDepth(ctypes.c_double(0.0))
+    gl.glClear(0x4100)
     gl.glViewport(0, 0, 64, 64)
     print("  framebuffer: %x" % gl.glCheckFramebufferStatus(0x8D40), flush=True)
     gl.glDrawArrays(4, 0, 3)
