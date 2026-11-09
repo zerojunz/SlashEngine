@@ -675,6 +675,35 @@ TEST_CASE("the anthropic adapter sends messages and returns thinking blocks unch
           parse(R"({"type":"thinking","thinking":"","signature":"sig-2"})"));
 }
 
+TEST_CASE("the anthropic adapter drops thinking blocks made with other tools") {
+    auto transport = std::make_shared<FakeTransport>(std::vector<FakeTransport::Reply>{{200, R"({
+        "model": "test-model", "stop_reason": "tool_use",
+        "content": [{"type": "thinking", "thinking": "", "signature": "sig-1"},
+                    {"type": "redacted_thinking", "data": "abc"},
+                    {"type": "tool_use", "id": "toolu_1", "name": "item_find", "input": {}}]})"}});
+    auto provider = adapter("anthropic", transport);
+    ai::Request request = tool_conversation();
+    request.messages.resize(2);
+    auto first = provider->complete(request);
+    REQUIRE(first.ok());
+    ai::Message result = message(ai::Role::Tool, "{}");
+    result.tool_call_id = "toolu_1";
+    request.messages.push_back(first.value().message);
+    request.messages.push_back(result);
+
+    // The same tools: the blocks go back as they came.
+    REQUIRE(provider->complete(request).ok());
+    CHECK(transport->body(1)["messages"].as_array()[1]["content"].size() == 3);
+
+    // A tool added since (as tools_load adds them): the API would refuse the blocks.
+    request.tools.push_back({.name = "item_sell",
+                             .description = "Sells an item.",
+                             .parameters = parse(R"({"type":"object"})")});
+    REQUIRE(provider->complete(request).ok());
+    CHECK(transport->body(2)["messages"].as_array()[1]["content"] == parse(R"([
+        {"type": "tool_use", "id": "toolu_1", "name": "item_find", "input": {}}])"));
+}
+
 TEST_CASE("the anthropic adapter rebuilds a streamed message block by block") {
     const std::string stream = sse({
         {"message_start",
@@ -718,10 +747,11 @@ TEST_CASE("the anthropic adapter rebuilds a streamed message block by block") {
     CHECK(reply.stop == ai::StopReason::ToolCalls);
     CHECK(reply.usage.input_tokens == 7);
     CHECK(reply.usage.output_tokens == 15);
-    CHECK(reply.message.native == parse(R"({"type":"anthropic","content":[
+    CHECK(*reply.message.native.find("type") == "anthropic");
+    CHECK(*reply.message.native.find("content") == parse(R"([
         {"type":"thinking","thinking":"Hmm.","signature":"sig"},
         {"type":"text","text":"One moment."},
-        {"type":"tool_use","id":"toolu_1","name":"item_find","input":{"name":"bow"}}]})"));
+        {"type":"tool_use","id":"toolu_1","name":"item_find","input":{"name":"bow"}}])"));
 
     auto failing = std::make_shared<FakeTransport>(std::vector<FakeTransport::Reply>{
         {200,
