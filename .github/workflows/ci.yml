@@ -110,6 +110,12 @@ jobs:
       - name: Test
         run: ctest --preset ci
 
+      # Where the unit tests' time went: tests/test_main.cpp notes each case of 5 s or more.
+      - name: Show the slowest unit test cases
+        if: always()
+        shell: bash
+        run: cat build/ci/tests/unit_*-times.txt 2>/dev/null | sort -rn | head -n 40 || true
+
       # The engine's reference, which the cli_docs_strict test writes with slash-cli docs.
       - name: Upload the engine reference
         if: runner.os == 'Linux'
