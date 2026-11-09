@@ -26,8 +26,7 @@
               "Transform2D": {
                 "position": [200, 100]
               }
-            },
-            "id": "slime_2"
+            }
           },
           {
             "components": {
@@ -37,8 +36,7 @@
               "Transform2D": {
                 "position": [260, 100]
               }
-            },
-            "id": "slime_3"
+            }
           }
         ]
       },

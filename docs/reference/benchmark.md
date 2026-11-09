@@ -43,7 +43,7 @@ own files.
 | `prompt` | The task as a person would ask an agent for it |
 | `solution` | The MCP tool calls an agent that knows the engine well makes for it, in order: each a `tool` name (dots become `_`) and its `arguments` |
 | `checks` | What must hold afterwards, so a task that stops doing what it says fails |
-| `answer` | Text a [live run](#live-runs)'s final reply must contain, for a task that asks a question (optional) |
+| `answer` | Text a [live run](#live-runs)'s final reply must contain, for a task that asks a question, or a list of texts it must contain one of, for a question with more than one fair answer (optional) |
 
 Each check is either a `command` with `params`, run in the same session once the solution has
 run, or a `step` (from 1) whose reply to check. `expect` works as in a
