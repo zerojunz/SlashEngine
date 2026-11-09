@@ -32,8 +32,8 @@ constexpr std::string_view kSchema = R"({
         "required": ["type", "model"],
         "properties": {
           "type": {
-            "description": "openai: OpenAI's chat completions, also served by Ollama, llama.cpp, vLLM, LM Studio and OpenRouter. anthropic: Anthropic's Messages API. gemini: Google's Gemini API.",
-            "enum": ["anthropic", "gemini", "openai"]
+            "description": "openai: OpenAI's chat completions, also served by Ollama, llama.cpp, vLLM, LM Studio and OpenRouter. openai-responses: OpenAI's Responses API, which its newer reasoning models need for tools. anthropic: Anthropic's Messages API. gemini: Google's Gemini API.",
+            "enum": ["anthropic", "gemini", "openai", "openai-responses"]
           },
           "model": {"description": "The model's ID, as the provider names it.", "type": "string", "minLength": 1},
           "url": {"description": "The API's base URL, such as http://localhost:11434/v1 for Ollama. Default: the vendor's.", "type": "string"},

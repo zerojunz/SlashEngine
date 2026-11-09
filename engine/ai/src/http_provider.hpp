@@ -12,7 +12,7 @@
 #include <string>
 #include <string_view>
 
-// What the three adapters share: fitting a request to the model, sending it with retries,
+// What the adapters share: fitting a request to the model, sending it with retries,
 // reading a streamed reply event by event, turning error replies into errors and checking the
 // reply against an output schema. Each adapter says how to build its request and read its reply.
 namespace slash::ai::detail {
@@ -74,6 +74,7 @@ private:
 [[nodiscard]] std::int64_t int_or_zero(const json::Value& value, std::string_view key);
 
 [[nodiscard]] std::shared_ptr<Provider> make_openai(AdapterOptions options);
+[[nodiscard]] std::shared_ptr<Provider> make_openai_responses(AdapterOptions options);
 [[nodiscard]] std::shared_ptr<Provider> make_anthropic(AdapterOptions options);
 [[nodiscard]] std::shared_ptr<Provider> make_gemini(AdapterOptions options);
 
