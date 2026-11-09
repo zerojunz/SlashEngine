@@ -107,28 +107,13 @@ jobs:
       - name: Build
         run: cmake --build --preset ci
 
-      # Temporary, to find why macOS unit shards slow down on this branch: on the runs before,
-      # the first test process was fast and every one after it slow, whichever shard it ran.
-      # Shard 2 three times: fresh, again, then with Metal's shader cache moved aside.
-      - name: Time shard 2 three times, the last without Metal's cache (macOS)
+      # Temporary: on this branch macOS's CVMCompiler, the software OpenGL renderer's shader
+      # compiler, starts in the first test process and runs on at 100% for the rest of the job,
+      # and every later process's first OpenGL compile waits behind it. Which test case starts it.
+      - name: Find the test case that leaves CVMCompiler running (macOS)
         if: runner.os == 'macOS'
         continue-on-error: true
-        shell: bash {0}
-        run: |
-          cache="$(getconf DARWIN_USER_CACHE_DIR)"
-          state() {
-            date -u
-            ps -Ao pid,pcpu,pmem,etime,comm -r > "$RUNNER_TEMP/ps.txt"; head -n 8 "$RUNNER_TEMP/ps.txt"
-            find "$cache" -maxdepth 4 -iname '*metal*' -exec du -sh {} + 2>/dev/null | sort -h | tail -n 15
-          }
-          shard() {
-            ctest --preset ci -R '^unit_2$' | grep 'Test *#'
-            cat build/ci/tests/unit_2-times.txt 2>/dev/null
-          }
-          state; shard; state; shard; state
-          find "$cache" -maxdepth 4 -iname '*metal*' -prune -exec mv {} {}.moved \; 2>/dev/null
-          state; shard; state
-          true
+        run: python3 .github/scripts/find-gl-compile-hang.py "$PWD/build/ci/tests/slash_tests" tests
 
       - name: Test
         run: ctest --preset ci
