@@ -113,6 +113,7 @@ jobs:
       - name: Find the test case that leaves CVMCompiler running (macOS)
         if: runner.os == 'macOS'
         continue-on-error: true
+        timeout-minutes: 120
         run: python3 .github/scripts/find-gl-compile-hang.py "$PWD/build/ci/tests/slash_tests" tests
 
       - name: Test
