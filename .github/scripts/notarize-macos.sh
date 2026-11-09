@@ -6,8 +6,17 @@
 #   APPLE_DEVELOPER_ID_CERTIFICATE           the Developer ID Application certificate and its key,
 #                                            exported from Keychain Access as .p12, in base64
 #   APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD  the password the .p12 was exported with
+#
+# and, to notarize, either an App Store Connect team key:
+#
 #   APPLE_API_KEY                            an App Store Connect API key (.p8), in base64
 #   APPLE_API_KEY_ID, APPLE_API_ISSUER       that key's ID and its issuer ID
+#
+# or, as individual accounts have no team keys, an Apple ID with an app-specific password:
+#
+#   APPLE_ID                                 the Apple ID's email
+#   APPLE_APP_PASSWORD                       an app-specific password made for it
+#   APPLE_TEAM_ID                            the developer team's 10-character ID
 #
 #   notarize-macos.sh <install prefix>
 #
@@ -15,8 +24,12 @@
 # the first time a tool runs.
 set -euo pipefail
 prefix=$(cd "$1" && pwd)
-for name in APPLE_DEVELOPER_ID_CERTIFICATE APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD APPLE_API_KEY \
-            APPLE_API_KEY_ID APPLE_API_ISSUER; do
+if [ -n "${APPLE_API_KEY:-}" ]; then
+  needed=(APPLE_API_KEY_ID APPLE_API_ISSUER)
+else
+  needed=(APPLE_ID APPLE_APP_PASSWORD APPLE_TEAM_ID)
+fi
+for name in APPLE_DEVELOPER_ID_CERTIFICATE APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD "${needed[@]}"; do
   if [ -z "${!name:-}" ]; then
     echo "$name isn't set" >&2
     exit 2
@@ -73,14 +86,18 @@ fi
 
 # Apple takes the signed tools in a zip and says whether they pass.
 ditto -c -k --keepParent "$prefix/bin" "$work/tools.zip"
-printf '%s' "$APPLE_API_KEY" | base64 --decode > "$work/AuthKey.p8"
-xcrun notarytool submit "$work/tools.zip" --key "$work/AuthKey.p8" --key-id "$APPLE_API_KEY_ID" \
-  --issuer "$APPLE_API_ISSUER" --wait --timeout 1h --output-format json | tee "$work/result.json"
+if [ -n "${APPLE_API_KEY:-}" ]; then
+  printf '%s' "$APPLE_API_KEY" | base64 --decode > "$work/AuthKey.p8"
+  credentials=(--key "$work/AuthKey.p8" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER")
+else
+  credentials=(--apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID")
+fi
+xcrun notarytool submit "$work/tools.zip" "${credentials[@]}" --wait --timeout 1h \
+  --output-format json | tee "$work/result.json"
 status=$(plutil -extract status raw -o - "$work/result.json")
 if [ "$status" != "Accepted" ]; then
   id=$(plutil -extract id raw -o - "$work/result.json")
-  xcrun notarytool log "$id" --key "$work/AuthKey.p8" --key-id "$APPLE_API_KEY_ID" \
-    --issuer "$APPLE_API_ISSUER" || true
+  xcrun notarytool log "$id" "${credentials[@]}" || true
   echo "notarization ended $status" >&2
   exit 1
 fi
