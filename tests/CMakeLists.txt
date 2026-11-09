@@ -317,12 +317,13 @@ if(SLASH_GAMEPLAY_HOSTS)
         SLASH_TEST_CXX_COMPILER="${CMAKE_CXX_COMPILER}")
 endif()
 
-# The unit tests run as five ctest tests, by the first letter of the file after "test_", so each
-# has its own time limit: on Windows runners, which have no GPU, they take many times longer than
-# on Linux and macOS. The last takes every file the others don't, so a new test file always runs.
+# The unit tests run as five ctest tests, by the first letters of the file after "test_", so each
+# has its own time limit: on Windows runners, which have no GPU, and on macOS runners, where the
+# Metal tests are slow, they take many times longer than on Linux. The last takes every file the
+# others don't (s from "si" on, then t to z), so a new test file always runs.
 # retry_stuck.cmake runs a shard once more when test_main.cpp's watchdog stops a stuck test case,
 # so each gets twice the presets' ten minutes.
-set(unit_shards "a b c d e f g" "h i j k l m n o" "p q r" "s")
+set(unit_shards "a b c d e f g" "h i j k l m n o" "p q r" "sa sb sc sd se sf sg sh")
 set(unit_args "")
 set(unit_others "")
 foreach(letters IN LISTS unit_shards)

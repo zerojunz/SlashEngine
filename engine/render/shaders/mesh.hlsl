@@ -1766,9 +1766,6 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
     float4 normal_1 = ground_normal_1.Sample(ground_normal_sampler_1, input.uv * terrain_uv.y);
     float4 normal_2 = ground_normal_2.Sample(ground_normal_sampler_2, input.uv * terrain_uv.z);
     float4 normal_3 = ground_normal_3.Sample(ground_normal_sampler_3, input.uv * terrain_uv.w);
-    // And alpha hash's derivatives.
-    float3 object_dx = ddx(input.object);
-    float3 object_dy = ddy(input.object);
 
     uint flags = options.x;
     float4 color = albedo * texel;
@@ -1779,10 +1776,12 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
     // it is transparent. A terrain's color map cuts its holes here.
     float alpha = (flags & kHasAlpha) != 0u ? color.a : 1.0;
     if ((flags & kAlphaScissor) != 0u) {
-        float threshold = (flags & kAlphaHash) != 0u
-                              ? alpha_hash_threshold(input.object, object_dx, object_dy,
-                                                     asfloat(options.y))
-                              : asfloat(options.y);
+        float threshold = asfloat(options.y);
+        if ((flags & kAlphaHash) != 0u) {
+            // The flags are the draw's, so every pixel of a quad takes this branch together.
+            threshold = alpha_hash_threshold(input.object, ddx(input.object), ddy(input.object),
+                                             threshold);
+        }
         if (alpha < threshold) {
             discard;
         }
