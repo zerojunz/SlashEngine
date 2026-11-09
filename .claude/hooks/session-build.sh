@@ -25,10 +25,10 @@ main() {
     # ccache on the command line rather than in the environment, so the builds that exports and
     # build.check run with their own compilers are left alone. ccache can't keep compiles that use
     # precompiled headers (SDL's and Jolt's), so those are off.
-    # Debug links of slash_tests and the tools take GBs each, so a 16 GB machine links one at a
-    # time.
+    # Without debug info (SLASH_DEBUG_INFO), a session compiles in about half the time and its
+    # links take far less memory; a debugger still has function names.
     configure=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-        -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON -DCMAKE_JOB_POOLS=link=1 -DCMAKE_JOB_POOL_LINK=link)
+        -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON -DSLASH_DEBUG_INFO=OFF)
 
     # Wayland is pinned from gitlab.freedesktop.org, which cloud sessions' default network blocks.
     # Ubuntu 20.04's source package is the same 1.18.0 release (its COPYING has the hash

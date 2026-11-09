@@ -30,6 +30,26 @@ if(CMAKE_GENERATOR MATCHES "Ninja" AND NOT DEFINED CMAKE_JOB_POOL_LINK)
     set(CMAKE_JOB_POOL_LINK slash_link)
 endif()
 
+# Debug info in Debug and RelWithDebInfo builds. Without it a compile takes about half as long,
+# objects are a twentieth of the size and links need far less memory, so a compiler cache holds a
+# whole build: CI's builds (the ci and double presets) and cloud sessions leave it out. Everything
+# else builds the same. Set before the dependencies, which take these flags too.
+option(SLASH_DEBUG_INFO "Compile Debug and RelWithDebInfo builds with debug info" ON)
+if(NOT SLASH_DEBUG_INFO)
+    foreach(config DEBUG RELWITHDEBINFO)
+        foreach(lang C CXX OBJC OBJCXX)
+            string(REGEX REPLACE "(^| )[-/](g|Zi|Z7|ZI)[^ ]*" "" CMAKE_${lang}_FLAGS_${config}
+                "${CMAKE_${lang}_FLAGS_${config}}")
+        endforeach()
+        foreach(kind EXE SHARED MODULE)
+            string(REGEX REPLACE "(^| )[-/]debug[^ ]*" "" CMAKE_${kind}_LINKER_FLAGS_${config}
+                "${CMAKE_${kind}_LINKER_FLAGS_${config}}")
+        endforeach()
+    endforeach()
+    # MSVC's /Z7 or /Zi (CMP0141): an empty format adds neither.
+    set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "")
+endif()
+
 option(SLASH_BUILD_TOOLS "Build slash-cli and slash-mcp" ${PROJECT_IS_TOP_LEVEL})
 option(SLASH_BUILD_TESTS "Build the unit and smoke tests" ${PROJECT_IS_TOP_LEVEL})
 option(SLASH_BUILD_EXAMPLES "Build the examples and test them (needs tools and tests)"

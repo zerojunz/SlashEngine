@@ -28,9 +28,13 @@ cmake --build --preset dev       # build engine, slash-cli and tests
 ctest --preset dev               # run unit and smoke tests
 ```
 
-The `ci` preset is what CI runs: same build with warnings as errors. Use it before you push.
+The `ci` preset is what CI runs: warnings as errors and no debug info. Use it before you push.
+`-DSLASH_DEBUG_INFO=OFF` leaves debug info out of any build: compiles take about half as long,
+objects a twentieth of the space (so ccache keeps a whole build) and links far less memory; CI
+and cloud sessions build that way, and a debugger still has function names.
 Ninja links one Debug executable per 6 GB of memory (the `slash_link` pool in `CMakeLists.txt`,
-since each link takes nearly 4 GB with GNU ld); set `CMAKE_JOB_POOL_LINK` to use your own.
+since each link with debug info takes nearly 4 GB with GNU ld); set `CMAKE_JOB_POOL_LINK` to use
+your own.
 
 On Linux, SDL3 needs the X11/Wayland development packages listed in
 `.github/workflows/ci.yml`.
