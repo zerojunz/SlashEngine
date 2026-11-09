@@ -14,7 +14,7 @@ import subprocess
 import sys
 import time
 
-LIMIT = 300.0
+LIMIT = 150.0
 # GL's sampler uniform types.
 SAMPLERS = {0x8B5D, 0x8B5E, 0x8B5F, 0x8B60, 0x8B62, 0x8DC1, 0x8DC4, 0x8DC5, 0x8DCA, 0x8DCB, 0x8DCC,
             0x8DCF, 0x8DD2, 0x8DD3, 0x8DD4, 0x8DD7, 0x8B63, 0x8DD0, 0x8DD5, 0x8B61, 0x8B64}
@@ -77,30 +77,52 @@ def at_w1(shaders):
     return {"kMeshVertexGlsl": vertex, "kMeshFragmentGlsl": fragment}
 
 
+def with_fragment(shaders, change):
+    out = dict(shaders)
+    out["kMeshFragmentGlsl"] = change(shaders["kMeshFragmentGlsl"])
+    return out
+
+
+def multiplier_1(fragment):
+    return fragment.replace("uvec3(1664525u)", "uvec3(1u)")
+
+
+def no_derivatives(fragment):
+    return re.sub(r"dFd([xy])\(v_object\)", "vec3(0.001)", fragment)
+
+
+def hash_off(fragment):
+    return fragment.replace("(_907.options.x & 1024u) != 0u", "false")
+
+
+def hoisted(fragment):
+    """Takes the derivatives out of the alpha hash's branches, to the start of main."""
+    lines = re.findall(r"\n *highp vec3 _\d+ = dFd[xy]\(v_object\);", fragment)
+    for line in lines:
+        fragment = fragment.replace(line, "")
+    brace = fragment.find("{", fragment.find("void main()")) + 1
+    return fragment[:brace] + "".join(lines) + fragment[brace:]
+
+
 def versions():
     path = "engine/render/src/mesh_shaders.hpp"
-    branch = open(path).read()
-    main = subprocess.run(["git", "show", "origin/main:" + path], capture_output=True,
-                          text=True, check=True).stdout
-    b = arrays(branch)
-    m = arrays(main)
-    out = [("main", m), ("branch", b)]
-    hash_test = "(_907.options.x & 1024u) != 0u"
-    if hash_test in b["kMeshFragmentGlsl"]:
-        off = dict(b)
-        off["kMeshFragmentGlsl"] = b["kMeshFragmentGlsl"].replace(hash_test, "false")
-        out.append(("branch, hash branch false", off))
-    flat = dict(b)
-    flat["kMeshFragmentGlsl"] = re.sub(r"dFd([xy])\(v_object\)", "vec3(0.001)",
-                                       b["kMeshFragmentGlsl"])
-    out.append(("branch, no derivatives", flat))
-    nomath = dict(b)
-    nomath["kMeshFragmentGlsl"] = re.sub(r"uvec3\(1664525u\)", "uvec3(1u)",
-                                         b["kMeshFragmentGlsl"])
-    out.append(("branch, hash multiplier 1", nomath))
-    out.append(("main again", m))
-    rewritten = [(name + ", at w 1", at_w1(shaders)) for name, shaders in out[:-1]]
-    return out[:2] + rewritten
+    b = arrays(open(path).read())
+    m = arrays(subprocess.run(["git", "show", "origin/main:" + path], capture_output=True,
+                              text=True, check=True).stdout)
+    out = [
+        ("main", m),
+        ("branch", b),
+        ("branch, multiplier 1", with_fragment(b, multiplier_1)),
+        ("branch, multiplier 1, again", with_fragment(b, multiplier_1)),
+        ("branch, multiplier 1, no derivatives",
+         with_fragment(b, lambda f: no_derivatives(multiplier_1(f)))),
+        ("branch, multiplier 1, hash off", with_fragment(b, lambda f: hash_off(multiplier_1(f)))),
+        ("branch, multiplier 1, derivatives hoisted",
+         with_fragment(b, lambda f: hoisted(multiplier_1(f)))),
+        ("branch, derivatives hoisted", with_fragment(b, hoisted)),
+        ("branch, again", b),
+    ]
+    return [(name + ", at w 1", at_w1(shaders)) for name, shaders in out]
 
 
 def draw(vertex, fragment):
