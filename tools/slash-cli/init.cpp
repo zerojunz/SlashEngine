@@ -102,6 +102,8 @@ asset files reload while it runs: prefab instances update and keep their overrid
 ## Work efficiently
 
 - Call `engine_describe` once to learn the components (with default field values) and commands.
+- The tools are the commands most tasks need. `tools_load` lists the rest by group (`audio`,
+  `ui`, `physics`...) and adds the groups a task needs as tools.
 - Group related edits in one `batch` call. It is all or nothing, and one `undo` reverts it.
 - Add `"dry_run": true` to any edit or `batch` to see what it would change, changing nothing.
   `world_snapshot`, then `world_diff`, lists what changed since; `world_restore` goes back.

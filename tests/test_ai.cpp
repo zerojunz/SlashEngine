@@ -1604,7 +1604,7 @@ TEST_CASE("ai.complete asks the project's model and ai.providers lists them") {
 
     // Over MCP, ai.complete is marked as reaching outside the machine, and sessions without the
     // network capability can't call it.
-    command::mcp::Server mcp(*engine.session);
+    command::mcp::Server mcp(*engine.session, command::mcp::Tools::All);
     const json::Value listed =
         parse(mcp.handle(R"({"jsonrpc":"2.0","id":1,"method":"tools/list"})"));
     for (const json::Value& tool : listed.find("result")->find("tools")->as_array()) {

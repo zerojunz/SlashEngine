@@ -1,6 +1,8 @@
 "protocolVersion":"2025-11-25"
 "name":"entity_create"
+"name":"tools_load"
 "name":"export_run"
+notifications/tools/list_changed
 "structuredContent":{"id":"player"}
 "structuredContent":{"entities":1,"path":"main.scene.json"}
 did you mean \\\"player\\\"?
