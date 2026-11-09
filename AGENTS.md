@@ -85,10 +85,11 @@ MSVC's STL; in both, `std::array`, `std::string_view` and `std::span` iterators 
 than pointers and headers include fewer others, so code GCC accepts can fail there. Run it before
 every push that changes C++. It needs `slash-cli toolchain install web`.
 
-The unit tests run as five ctest shards (`unit_1` to `unit_5`, by test file name). A test case
+The unit tests run as six ctest shards (`unit_1` to `unit_6`, by test file name). A test case
 that runs over eight minutes is stuck: the watchdog in `tests/test_main.cpp` names it and stops
 the shard, and `tests/retry_stuck.cmake` runs the shard once more, so a hang that comes back
-still fails.
+still fails. Each case of 5 s or more is written to `build/<preset>/tests/unit_<n>-times.txt`
+(`SLASH_TEST_TIMES`), which CI prints after the tests, slowest first.
 
 Claude Code sessions run `.claude/hooks/task_nudge.py` after each tool call. It says nothing
 until one task has taken 30 minutes, then adds a `[task-nudge]` line asking the agent to check

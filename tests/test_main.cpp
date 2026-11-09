@@ -73,6 +73,7 @@ public:
     void test_case_end(const doctest::CurrentTestCaseStats& /*stats*/) override {
         const std::lock_guard lock(mutex_);
         running_ = false;
+        note_time(std::chrono::steady_clock::now() - started_);
     }
 
     // ctest prints a stuck run's output only if it reached the pipe.
@@ -88,6 +89,25 @@ public:
     void test_case_skipped(const doctest::TestCaseData& /*data*/) override {}
 
 private:
+    // A test case that took kSlowTestCase or longer goes on a line of SLASH_TEST_TIMES' file, when
+    // it is set (tests/retry_stuck.cmake sets it per shard), so CI can show where a slow shard's
+    // time went though ctest shows only a failed test's output.
+    void note_time(std::chrono::steady_clock::duration took) const {
+        constexpr auto kSlowTestCase = std::chrono::seconds(5);
+        const char* path = std::getenv("SLASH_TEST_TIMES");
+        if (took < kSlowTestCase || path == nullptr || *path == '\0') {
+            return;
+        }
+        // NOLINTNEXTLINE(cppcoreguidelines-owning-memory): closed below
+        std::FILE* file = std::fopen(path, "a");
+        if (file == nullptr) {
+            return;
+        }
+        std::fprintf(file, "%7.1f s  %s (%s)\n", std::chrono::duration<double>(took).count(),
+                     name_.c_str(), file_.c_str());
+        std::fclose(file); // NOLINT(cppcoreguidelines-owning-memory)
+    }
+
     void watch() {
         std::unique_lock lock(mutex_);
         while (!stopping_) {
