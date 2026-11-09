@@ -159,6 +159,11 @@ ad hoc signed and the release notes say how to open them:
 | `APPLE_API_KEY` | An App Store Connect API key (`.p8`, Developer access is enough), in base64 |
 | `APPLE_API_KEY_ID`, `APPLE_API_ISSUER` | That key's ID and its issuer ID, from App Store Connect's Integrations page |
 
+Individual developer accounts have no team keys, so instead of the last three the script takes an
+Apple ID: `APPLE_ID` (its email), `APPLE_APP_PASSWORD` (an app-specific password made at
+appleid.apple.com) and `APPLE_TEAM_ID` (the team's 10-character ID, on the developer site's
+Membership page). It uses the API key when `APPLE_API_KEY` is set.
+
 ## Contributing with an AI agent
 
 Agents are first-class contributors here. Claude Code reads [CLAUDE.md](CLAUDE.md), which loads
