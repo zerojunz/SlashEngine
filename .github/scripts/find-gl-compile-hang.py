@@ -30,12 +30,16 @@ for name in files:
     for case in cases:
         pattern = case.replace("\\", "\\\\").replace(",", "\\,")
         started = time.monotonic()
-        result = subprocess.run([program, f"--source-file=*{name}", f"-tc={pattern}"],
-                                capture_output=True, text=True, cwd=work)
+        try:
+            code = subprocess.run([program, f"--source-file=*{name}", f"-tc={pattern}"],
+                                  capture_output=True, text=True, cwd=work,
+                                  timeout=180).returncode
+        except subprocess.TimeoutExpired:
+            code = "TIMED OUT"
         took = time.monotonic() - started
         time.sleep(2)
         left = compilers()
         mark = " CVMCompiler LEFT RUNNING: " + str(left) if left else ""
-        print(f"{took:7.1f} s  exit {result.returncode}  {name}: {case}{mark}", flush=True)
+        print(f"{took:7.1f} s  exit {code}  {name}: {case}{mark}", flush=True)
         for row in left:
             subprocess.run(["kill", "-9", row[0]])
