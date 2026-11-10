@@ -123,6 +123,9 @@ SlashEngine covers nearly every Godot 4 feature area at launch and adds UE5 feat
 | Cinematics | AnimationPlayer, cameras | Sequencer | Timeline tracks for cameras and events | After launch |
 | Cloth and soft bodies | SoftBody3D | Chaos Cloth | Jolt soft bodies | After launch |
 | Destruction | None built in | Chaos Destruction | Fracture and debris on Jolt | After launch |
+| Wind | Area3D wind (soft bodies) | Wind Directional Source | One world wind field of sources and areas, read by vegetation shaders, soft bodies, cloth and particles | After launch |
+| Foliage | MultiMesh, plugins | Foliage tool, grass | Painted and scattered foliage kept per cell, instanced grass, impostors, wind bending | After launch |
+| Light tools | Light temperature, projectors, physical units | IES profiles, light functions, Lumen tuning | Temperature, projectors, IES profiles, light functions and `light.tune` toward `lighting.check` targets | After launch |
 | Virtualized geometry | None built in | Nanite | Meshlet rendering research | Research |
 | Fully dynamic GI at UE quality | SDFGI (partial) | Lumen | Research after probe GI ships | Research |
 | Digital humans | None built in | MetaHuman | Research; out of scope for releases | Research |
