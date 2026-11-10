@@ -26,6 +26,7 @@ add_library(slash_command
     src/xr.cpp
     src/services.cpp
     src/session.cpp
+    src/style.cpp
     src/terrain.cpp
     src/test.cpp)
 add_library(slash::command ALIAS slash_command)

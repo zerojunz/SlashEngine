@@ -30,6 +30,7 @@
 #include "slash/command/replay.hpp"
 #include "slash/command/services.hpp"
 #include "slash/command/session.hpp"
+#include "slash/command/style.hpp"
 #include "slash/command/terrain.hpp"
 #include "slash/command/test.hpp"
 #include "slash/command/xr.hpp"
@@ -8751,6 +8752,7 @@ void register_builtin_commands(Registry& registry) {
     register_navigation_commands(registry);
     register_npc_commands(registry);
     register_lighting_commands(registry);
+    register_style_commands(registry);
     register_place_commands(registry);
     register_terrain_commands(registry);
     register_procedural_commands(registry);

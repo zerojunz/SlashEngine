@@ -47,6 +47,7 @@ enum class FieldType : std::uint8_t {
     Paths,   // a list of project paths: scenes, assets and source files
     Colors,  // color names mapped to "#rrggbb"
     Choice,  // one of a fixed list of strings
+    Data,    // a JSON object of the shape Field::schema gives
 };
 
 // Every member of Field, Kind and Query has an initializer so designated initializers may skip
@@ -59,6 +60,8 @@ struct Field {
     std::string_view ref_kind{}; // NOLINT(readability-redundant-member-init)
     // Choice: the allowed values.
     std::vector<std::string_view> choices{}; // NOLINT(readability-redundant-member-init)
+    // Data: JSON Schema for the object, or nullptr for any object.
+    json::Value (*schema)() = nullptr;
 };
 
 struct Kind {
