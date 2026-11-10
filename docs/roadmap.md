@@ -1181,6 +1181,23 @@ cost, from the research proposal of 2026-11-07, in order:
         buoyancy and lift, which `vehicle.tune` changes while a game runs and `vehicle.check`
         holds to the design; characters get in, drive and get out through seats, and vehicles
         push, knock down and hurt characters and creatures by their contact impulses
+15. [ ] Damage and destruction design: a tool that authors how each model and piece of the
+        environment takes damage, past today's Voronoi fracture: `.damage.json` profiles by
+        material (wood splinters, glass shatters, metal dents, stone crumbles, cloth tears)
+        with health, damage states that swap meshes and materials, dents and holes cut into
+        meshes, hand-placed or patterned fracture (radial, slices, clusters, levels of pieces
+        as Chaos Destruction's geometry collections), anchored and connected pieces that fall
+        when what holds them breaks, terrain craters and deformation, and the debris, dust,
+        decals and sounds each break leaves; `damage.apply` and `damage.check` drive and check
+        it, for characters, creatures and vehicles alike
+16. [ ] VFX design: a tool that builds special effects as `.vfx.json` recipes, as Unreal's
+        Niagara systems: emitters of CPU and GPU particles, ribbons, trails, mesh particles,
+        flipbooks, decals, lights, distortion, screen flashes, camera shakes and sounds,
+        timed and layered on one timeline with parameters (size, color, intensity) a game sets,
+        spawned at a place or attached to bones and sockets, with level-of-detail and budget
+        checks; `vfx.play`, `vfx.preview` (frames and numbers an agent reads) and `vfx.check`
+        drive and check them, and the damage, foliage, character, fauna and vehicle tools play
+        their effects through it
 
 Console ports are not on this roadmap and never will be in this repository. As with Godot,
 PlayStation, Xbox and Switch support comes from licensed porting partners as private backends.
