@@ -4603,6 +4603,36 @@ void register_builtin_components(ComponentRegistry& registry) {
                  "it is in, has where no light reaches. One per canvas.")
         .describe("color", {.doc = "As [r, g, b, a] from 0 to 1.", .min = 0, .max = 1});
 
+    registry.add<Reflection2D>()
+        .set_doc("A 2D reflection, SlashEngine's own: a rect whose top edge, at the entity's "
+                 "Transform2D, is a mirror line, showing what its canvas drew before it above "
+                 "the line upside down below it, rippled, faded and tinted, as water or a "
+                 "polished floor.")
+        .describe("size",
+                  {.doc = "Across and down from the line, in the canvas's pixels.", .min = 0})
+        .describe(
+            "tint",
+            {.doc = "Multiplies the reflection, as [r, g, b, a] from 0 to 1.", .min = 0, .max = 1})
+        .describe("opacity", {.doc = "How much of the reflection shows at the line, from 0 to 1.",
+                              .min = 0,
+                              .max = 1})
+        .describe("fade",
+                  {.doc = "How much of that opacity it loses by the bottom, from 0 (none) to 1 "
+                          "(all of it).",
+                   .min = 0,
+                   .max = 1})
+        .describe(
+            "ripple_amplitude",
+            {.doc = "Pixels the reflection shifts sideways at most; 0 keeps it still.", .min = 0})
+        .describe("ripple_wavelength",
+                  {.doc = "Pixels down the rect from one ripple to the next.", .min = 1})
+        .describe("ripple_speed", {.doc = "Ripples a second that pass down the rect."})
+        .describe("z_index",
+                  {.doc = "Draw order among its canvas's sprites; it reflects what draws before "
+                          "it."})
+        .describe("z_as_relative", {.doc = "Whether z_index adds to its parents'."})
+        .describe("visible", {.doc = "Hidden reflections draw nothing."});
+
     const FieldMeta limit{.doc = "Edge of the world the view stays inside, in pixels."};
     const FieldMeta drag_margin{
         .doc = "How far the entity moves from the center before the camera follows, as a share "

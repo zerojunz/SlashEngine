@@ -5749,6 +5749,8 @@ Reply frame_summary(Session& session, const json::Value& params) {
             return "PopupMenu";
         case canvas::FrameItem::Kind::Tooltip:
             return "Tooltip";
+        case canvas::FrameItem::Kind::Reflection:
+            return "Reflection2D";
         case canvas::FrameItem::Kind::Control:
             break;
         }
@@ -5883,6 +5885,8 @@ Reply frame_summary(Session& session, const json::Value& params) {
             if (layout.tooltip) {
                 each["text"] = layout.tooltip->text;
             }
+            break;
+        case canvas::FrameItem::Kind::Reflection:
             break;
         }
         drawn.push_back(std::move(each));

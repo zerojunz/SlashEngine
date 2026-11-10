@@ -175,6 +175,14 @@ A reference must name an entity that exists in the same scene.
 | | `sdf_collision` | `bool` | `true` | [GPU particles](#gpu-particle-collision) whose process material has a `collision_mode` collide with it |
 | | `occluder_light_mask` | `int` | `1` | Casts shadows from lights whose `shadow_item_cull_mask` shares a bit |
 | `CanvasModulate` | `color` | `Vec4` | `[1, 1, 1, 1]` | Tints everything lit in its canvas (the world's, or the `CanvasLayer`'s that holds it): the light it has where no light reaches. One per canvas |
+| `Reflection2D` | `size` | `Vec2` | `[128, 64]` | A 2D reflection, SlashEngine's own: a rect from the entity's `Transform2D`, this far across and down, whose top edge is a mirror line. What its canvas drew before it (by `z_index`, then drawing order) shows upside down below the line, lit where it is in the world; draws of a `GPUParticles2D` are left out. Water, mirrors and polished floors |
+| | `tint` | `Vec4` | `[1, 1, 1, 1]` | Multiplies the reflection, with its parents' `modulate` |
+| | `opacity` | `float` | `0.6` | How much of the reflection shows at the line, from 0 to 1 |
+| | `fade` | `float` | `1` | How much of that it loses by the bottom: 0 none, 1 all of it |
+| | `ripple_amplitude` | `float` | `0` | Pixels the reflection shifts sideways at most, in waves down the rect; 0 keeps it still |
+| | `ripple_wavelength` | `float` | `16` | Pixels down the rect from one wave to the next |
+| | `ripple_speed` | `float` | `1` | Waves a second that pass down the rect, by the frame's time |
+| | `z_index`, `z_as_relative`, `visible` | | | As `Sprite2D`'s |
 | `Camera2D` | `enabled` | `bool` | `true` | Can be the [current camera](#2d-camera): the first enabled one in drawing order |
 | | `anchor_mode` | `std::string` | `"drag_center"` | `drag_center` puts the middle of the screen at the camera; `fixed_top_left` its top left corner |
 | | `ignore_rotation` | `bool` | `true` | Keep the view upright when the camera's `Transform2D` turns |

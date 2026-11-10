@@ -150,6 +150,7 @@ add_executable(slash_tests
     test_foliage.cpp
     test_light_tools.cpp
     test_light_projectors.cpp
+    test_reflection_2d.cpp
     test_physics_fields.cpp
     test_playtest.cpp
     test_autopilot.cpp

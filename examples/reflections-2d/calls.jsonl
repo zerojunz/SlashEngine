@@ -1,0 +1,10 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"pond.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture","params":{"points":[[120,20],[120,80],[50,46],[50,54],[80,30],[80,70],[20,62]]}}
+{"jsonrpc":"2.0","id":3,"method":"frame.capture","params":{"points":[[38,53],[38,55],[38,57],[38,59]]}}
+{"jsonrpc":"2.0","id":4,"method":"step","params":{"ticks":60}}
+{"jsonrpc":"2.0","id":5,"method":"frame.capture","params":{"points":[[38,53],[38,55],[38,57],[38,59]]}}
+{"jsonrpc":"2.0","id":6,"method":"component.set","params":{"id":"pond","components":{"Reflection2D":{"ripple_amplitude":0,"fade":0,"opacity":1,"tint":[1,1,1,1]}}}}
+{"jsonrpc":"2.0","id":7,"method":"frame.capture","params":{"points":[[120,80],[50,54]]}}
+{"jsonrpc":"2.0","id":8,"method":"component.set","params":{"id":"boat","components":{"Sprite2D":{"z_index":2}}}}
+{"jsonrpc":"2.0","id":9,"method":"frame.capture","params":{"points":[[50,46],[50,54]]}}
+{"jsonrpc":"2.0","id":10,"method":"frame.summary","params":{}}

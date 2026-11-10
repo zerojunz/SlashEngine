@@ -152,6 +152,7 @@ engine. Copy from them.
 | [tile-data-and-occluders](tile-data-and-occluders/) | Custom data and occluders on tiles, as Godot's: `custom_data_layers` read with `tilemap.get`'s `cells`, walls and a pillar whose `occlusion` polygons shadow a torch, checked with `light.sample` and `frame.capture`, and `occlusion_enabled` |
 | [tile-collision](tile-collision/) | Collision polygons on tiles, physics layers, one-way tiles, cells turned with `:h`, an alternative tile, and `physics.raycast` reporting the cell |
 | [lights-2d](lights-2d/) | `PointLight2D`, `DirectionalLight2D`, `CanvasModulate`, occluder shadows, normal maps and `light.sample`, drawn offscreen |
+| [reflections-2d](reflections-2d/) | A pond that mirrors the sky, the moon and a boat through a `Reflection2D`, rippled, faded and tinted, checked by its pixels |
 | [lit-tiles-and-layers](lit-tiles-and-layers/) | Normal and specular maps on a tile set's atlas source, lights' `range_layer_min` and `range_layer_max` across canvas layers, a `CanvasModulate` per canvas and `light.sample` on a HUD sprite, checked with `frame.capture` |
 | [physics-2d](physics-2d/) | Static, rigid and character bodies, areas, concave and one-way shapes, a joint, and `physics.raycast`, `physics.overlap` and `physics.contacts` |
 | [gravity-and-conveyors](gravity-and-conveyors/) | `Area2D` gravity and damping overrides by priority, a planet's point gravity, a conveyor belt made with a `StaticBody2D`'s `constant_linear_velocity`, and `physics.gravity` |
