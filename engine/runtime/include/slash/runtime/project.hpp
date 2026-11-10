@@ -12,6 +12,7 @@
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/render/mesh.hpp"
 #include "slash/render/upscaler.hpp"
+#include "slash/scene3d/cluster_streaming.hpp"
 #include "slash/services/services.hpp"
 #include "slash/world/scene.hpp"
 #include "slash/xr/xr.hpp"
@@ -80,6 +81,8 @@ struct Project {
     // rendering.mesh_lod.lod_change.threshold_pixels: how many pixels a coarser LOD may be off by,
     // as Godot's rendering/mesh_lod/lod_change/threshold_pixels.
     float mesh_lod_threshold = 1.0F;
+    // rendering.virtual_geometry: how virtualized surfaces' cluster pages stream.
+    scene3d::ClusterStreamingSettings cluster_streaming{};
     // rendering.occlusion_culling: whether OccluderInstance3Ds hide meshes from the camera, as
     // Godot's rendering/occlusion_culling.
     render::OcclusionCulling occlusion_culling{};

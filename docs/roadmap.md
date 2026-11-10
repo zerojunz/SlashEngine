@@ -1106,8 +1106,9 @@ launch rows and the after-launch features above.
 - Virtualized geometry in the style of Nanite (meshlet rendering). Spike: cluster hierarchies
   built with meshoptimizer's cluster LOD builder and cut per camera on the CPU, crack-free,
   behind `MeshInstance3D.virtualized`, with clusters out of view, facing away or occluded culled
-  per cut ([virtualized-geometry.md](reference/virtualized-geometry.md)); GPU selection and
-  culling, a software rasterizer and streaming remain
+  per cut, and its pages streamed within a pool as cuts need them
+  ([virtualized-geometry.md](reference/virtualized-geometry.md)); GPU selection and culling and a
+  software rasterizer remain
 - Fully dynamic global illumination at Lumen quality, after probe GI ships. Spike: Godot 4.6's
   SDFGI ported to the CPU (cascades of distance fields that follow the camera, lit cells and
   probes with spherical harmonics history), behind `WorldEnvironment.sdfgi_enabled` on the
@@ -1124,7 +1125,12 @@ launch rows and the after-launch features above.
 ## Agent-built worlds and smart NPCs
 
 Ways for agents to build detailed 3D worlds and many smarter NPCs at a fraction of Unreal's
-cost, from the research proposal of 2026-11-07, in order:
+cost, from the research proposal of 2026-11-07, in order. Items 7 on (wind, style memory and the world tools)
+ship in the launch release, which waits for them. Each works in 2D worlds as well as 3D ones,
+on physics2d and the canvas where 3D uses physics3d and meshes: `WindSource2D` wind for canvas
+shaders and 2D particles, the simulation's fields, materials and ragdolls on Box2D, foliage
+scattered on tile maps and polygons, 2D lights and reflections, sprite and `Skeleton2D` hair,
+characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2D effects:
 
 1. [x] Planning NPCs: goal-oriented action planning as F.E.A.R.'s, with `.npc.json` brains of
        facts, goals and actions, `NpcAgent` components planned on the job system, go_to along
@@ -1138,6 +1144,106 @@ cost, from the research proposal of 2026-11-07, in order:
        `.glb` models from a concept image through Microsoft's TRELLIS (MIT), as fal.ai runs it
 6. [x] Gaussian splats for detailed scenery (research: the software device; see
        [gaussian-splats.md](reference/gaussian-splats.md))
+7. [x] Wind: `WindSource3D` directional and point sources with gusts and turbulence, as Unreal's
+       WindDirectionalSource, and Godot's `Area3D` wind fields, sampled by one world wind field
+       that vegetation shaders (`WIND` built-ins), soft bodies, cloth and particles all read
+       (`slash/world/wind.hpp`, `wind.sample`, `examples/wind`)
+8. [ ] Style memory: the storyboard marks and remembers the look of what agents and people make
+       or import, so weeks of autonomous work keep one look. `style.mark` keeps a scene, an
+       asset, a captured frame, a material or a lighting setup as a `style/<name>` reference
+       with what made it (files, material and shader params, light and post settings, camera)
+       and a fingerprint measured from its frames: palette and its proportions, value range and
+       contrast, saturation, edge density and line weight, texel density, shading and
+       post-processing. `style.check` captures new scenes and assets the way their references
+       were and reports drift from them as numbers and, with a vision model, in words that
+       quote the reference; `storyboard.brief` hands a task the references it touches, the
+       asset generators and every world tool after this one are prompted and checked with
+       them, `test.run` fails work that drifts past a reference's tolerances, and a journal
+       of fingerprints over time shows slow drift that no single change shows
+9. [ ] One simulation, as Unreal's Chaos Physics: everything every tool builds (foliage,
+       hair and fur, cloth, characters' ragdolls, creatures, vehicles, destruction pieces,
+       particles) simulates in physics3d's one space and step on Jolt, with one set of layers,
+       queries and events. Shared `.physics_material.json` materials (friction, bounce,
+       density, strength and the surface's sounds, effects and damage profile); physics assets
+       of capsules per bone that ragdolls, cloth and hair all collide with; individual ragdolls
+       for every character and creature (`.ragdoll.json` profiles: each bone's shape, mass,
+       joint limits, stiffness and damping, muscle strength for active ragdolls that blend
+       with animation as Unreal's Physical Animation component, per-bone hit reactions,
+       balance and getting back up, made by the character and fauna tools and tunable per
+       instance with `ragdoll.tune`); Chaos Fields as
+       `PhysicsField3D` components (radial and directional force and velocity, falloffs by
+       sphere, box and plane, noise, strain that breaks, anchors, kill and sleep volumes)
+       acting on every kind of body at once, with `WindSource3D` one of them; skinned cloth
+       on characters with painted max distances and backstops, as Chaos Cloth; substepped
+       fixed-rate steps that stay deterministic; Chaos Cache's recorded simulations played back
+       in cinematics; and a visual debugger's record of contacts, constraints and fields per
+       step that `physics.debug` returns for agents. Each tool after this one builds on it
+10. [ ] Foliage: painted and scattered plants and ground cover as Unreal's Foliage tool, with
+       `foliage.paint` and `foliage.erase` brushes over terrains and meshes and instances kept
+       per cell: distinct kinds of grass, flowers, shrubs, bushes, trees, moss, rocks and
+       pebbles (`.foliage.json` types made from recipes or library models, varied by seed),
+       grass drawn in instanced batches with distance culling and fades, impostors for far
+       trees, bending in the wind, and characters' interactions: plants that part, bend and
+       spring back as they pass, trees and rocks that block and can be climbed or harvested
+11. [ ] Light tools: Godot 4's `light_temperature` and physical light units, projector textures
+       (`light_projector`), IES profiles and light functions as Unreal's, `light.tune`, which
+       adjusts lights toward exposure and contribution targets from `lighting.check`, and
+       screen-space reflections in 2D worlds (Godot has none): `Reflection2D` water, mirrors
+       and polished floors that reflect the canvas above their line with ripples, fade and
+       tint, beside 3D's Forward+ SSR and ray-traced reflections, which are done
+12. [ ] NPCs with stories of their own: questlines (`.quest.json` stages and objectives over
+        facts, with rewards and journal text), movement scripts (patrols, daily schedules and
+        routes per NPC), conversation scripts (`.dialogue.json` branching dialogue with
+        conditions and effects on facts, translated through l10n) and behavior per NPC (brains
+        that extend a shared one with their own goals, traits and priorities), with `quest.*` and
+        `dialogue.*` commands and checks that every quest can be finished and every line reached
+13. [ ] Hair and fur: `HairInstance3D` groomed strands (`.groom.json` guides grown over a
+        model's surface with length, density, clumping, curl and color maps) drawn as cards,
+        strands or fur shells with the existing hair shading, and simulated as Unreal's
+        Groom and Chaos hair: guide strands stepped with constraints, colliding with the
+        body's capsules, blown by the wind and following the skeleton, for characters and
+        animals
+14. [ ] Characters: a character tool that makes the player and NPCs as `.character.json` recipes
+        (body proportions, face, hair, clothing and props, materials) built into rigged models,
+        each distinct from the others in silhouette and color, following the storyboard's
+        character design rules, which `character.check` enforces
+15. [ ] Fauna: a fauna tool for distinct animals (birds, fish, insects, grazers, predators,
+        pets) as `.creature.json` recipes of body plans built into rigged, animated models with
+        their own looks per species, NPC brains for flocking, grazing, fleeing, hunting and
+        following, placed in habitats by the foliage tool's brushes, and characters'
+        interactions: animals that notice, flee, attack, can be fed, ridden or tamed
+16. [ ] Vehicles: a vehicle tool that designs cars, bikes, trucks, tracked vehicles, boats and
+        aircraft as `.vehicle.json` recipes (a body built from model recipes, seats and doors,
+        wheels, tracks, hulls or wings) built into a rigged model with its collision, each with
+        its own physics to tune as Unreal's Chaos Vehicles: mass and center of mass, engine
+        torque curve, gears, differential, steering, brakes, suspension, tire friction,
+        buoyancy and lift, which `vehicle.tune` changes while a game runs and `vehicle.check`
+        holds to the design; characters get in, drive and get out through seats, and vehicles
+        push, knock down and hurt characters and creatures by their contact impulses
+17. [ ] Damage and destruction design: a tool that authors how each model and piece of the
+        environment takes damage, past today's Voronoi fracture: `.damage.json` profiles by
+        material (wood splinters, glass shatters, metal dents, stone crumbles, cloth tears)
+        with health, damage states that swap meshes and materials, dents and holes cut into
+        meshes, hand-placed or patterned fracture (radial, slices, clusters, levels of pieces
+        as Chaos Destruction's geometry collections), anchored and connected pieces that fall
+        when what holds them breaks, terrain craters and deformation, and the debris, dust,
+        decals and sounds each break leaves. Damage simulates in real time, not only as
+        authored: each hit fractures what it hits where and as hard as it hit (pieces fine
+        near the impact and coarse away from it, cut while the game runs on the job pool
+        within a time budget), pieces break again when hit, stress spreads through the
+        connection graph so a weakened wall or bridge gives way under its own load, metal
+        dents and bends by the impulse, cloth tears where it is pulled too far, and terrain
+        and walls are carved where explosions reach, all deterministic so replays repeat;
+        authored patterns are optional. `damage.apply` and `damage.check` drive and check it,
+        for characters, creatures and vehicles alike
+18. [ ] VFX design: a tool that builds special effects as `.vfx.json` recipes, as Unreal's
+        Niagara systems: emitters of CPU and GPU particles, ribbons, trails, mesh particles,
+        flipbooks, decals, lights, distortion, screen flashes, camera shakes and sounds,
+        timed and layered on one timeline with parameters (size, color, intensity) a game sets,
+        spawned at a place or attached to bones and sockets, with level-of-detail and budget
+        checks; `vfx.play`, `vfx.preview` (frames and numbers an agent reads) and `vfx.check`
+        drive and check them, and the damage, foliage, character, fauna and vehicle tools play
+        their effects through it
 
 Console ports are not on this roadmap and never will be in this repository. As with Godot,
 PlayStation, Xbox and Switch support comes from licensed porting partners as private backends.

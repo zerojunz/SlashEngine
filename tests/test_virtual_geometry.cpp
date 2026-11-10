@@ -7,6 +7,7 @@
 #include "slash/canvas/canvas.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/math.hpp"
+#include "slash/scene3d/cluster_streaming.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/primitive.hpp"
 #include "slash/scene3d/virtual_geometry.hpp"
@@ -25,6 +26,7 @@
 #include <functional>
 #include <limits>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -536,4 +538,210 @@ TEST_CASE("a virtualized MeshInstance3D leaves out the clusters the camera can't
     slash::canvas::set_settings(world, settings);
     const slash::canvas::Capture occluded = same_pixels();
     CHECK(occluded.culled > seen.culled);
+}
+
+TEST_CASE("a cluster page file reads back the hierarchy, its pages loaded as views need them") {
+    const scene3d::ModelSurface ground = bumpy_ground();
+    const scene3d::ClusterHierarchy hierarchy = scene3d::build_cluster_hierarchy(ground);
+    const auto file =
+        std::make_shared<const std::vector<std::uint8_t>>(scene3d::write_cluster_pages(hierarchy));
+    // The same hierarchy writes the same bytes.
+    CHECK(scene3d::write_cluster_pages(hierarchy) == *file);
+
+    const auto index = scene3d::read_cluster_page_index(scene3d::cluster_pages_in_memory(file));
+    REQUIRE(index.ok());
+    const scene3d::ClusterHierarchy& skeleton = index.value().hierarchy;
+    REQUIRE(skeleton.clusters.size() == hierarchy.clusters.size());
+    REQUIRE(skeleton.groups.size() == hierarchy.groups.size());
+    CHECK(skeleton.source_triangles == hierarchy.source_triangles);
+    CHECK(skeleton.levels == hierarchy.levels);
+    for (std::size_t c = 0; c < hierarchy.clusters.size(); ++c) {
+        CHECK(skeleton.clusters[c].indices.empty());
+        CHECK(index.value().index_counts[c] == hierarchy.clusters[c].indices.size());
+        CHECK(skeleton.clusters[c].refined == hierarchy.clusters[c].refined);
+        CHECK(skeleton.clusters[c].bounds.error == hierarchy.clusters[c].bounds.error);
+        CHECK(skeleton.clusters[c].cone.cutoff == hierarchy.clusters[c].cone.cutoff);
+    }
+
+    // With no pool limit, a view's pages load over a few updates until its cut is the full one.
+    auto opened = scene3d::ClusterStreamer::open(scene3d::cluster_pages_in_memory(file),
+                                                 {.pool_bytes = 0, .max_page_loads = 8});
+    REQUIRE(opened.ok());
+    scene3d::ClusterStreamer streamer = std::move(opened).value();
+    const scene3d::ClusterStreamingStats start = streamer.stats();
+    CHECK(start.resident_pages > 0);
+    CHECK(start.resident_pages < hierarchy.groups.size());
+    CHECK(start.loads == 0);
+    const scene3d::ClusterView view = view_from(30.0F);
+    const std::vector<std::uint32_t> full = scene3d::select_clusters(hierarchy, view);
+    int updates = 0;
+    while (true) {
+        const std::vector<std::uint32_t> cut = streamer.select(view);
+        REQUIRE(streamer.update().ok());
+        if (cut == full) {
+            break;
+        }
+        CHECK(streamer.stats().loads <= 8U * static_cast<std::size_t>(updates + 1));
+        REQUIRE(++updates < 200);
+    }
+    CHECK(updates > 1);
+    CHECK(streamer.stats().pending_pages == 0);
+    CHECK(scene3d::cluster_indices(streamer.hierarchy(), full) ==
+          scene3d::cluster_indices(hierarchy, full));
+}
+
+TEST_CASE("streamed cuts cover the surface once while pages load and drop within the pool") {
+    const scene3d::ModelSurface ground = bumpy_ground();
+    const scene3d::ClusterHierarchy hierarchy = scene3d::build_cluster_hierarchy(ground);
+    const auto file =
+        std::make_shared<const std::vector<std::uint8_t>>(scene3d::write_cluster_pages(hierarchy));
+    const scene3d::ClusterStreamingSettings settings{.pool_bytes = 260 * 1024, .max_page_loads = 6};
+    auto opened = scene3d::ClusterStreamer::open(scene3d::cluster_pages_in_memory(file), settings);
+    REQUIRE(opened.ok());
+    scene3d::ClusterStreamer streamer = std::move(opened).value();
+    const std::size_t roots = streamer.stats().resident_bytes;
+
+    // A camera walking over the ground from one corner to the other and back, low down.
+    std::size_t most_pending = 0;
+    for (int step = 0; step <= 80; ++step) {
+        CAPTURE(step);
+        const float along = static_cast<float>(step <= 40 ? step : 80 - step) / 40.0F;
+        scene3d::ClusterView view = view_from(0.0F);
+        view.camera = {-20.0F + (40.0F * along), 2.5F, -20.0F + (40.0F * along)};
+        const std::vector<std::uint32_t> cut = streamer.select(view);
+        const std::vector<std::uint32_t> indices =
+            scene3d::cluster_indices(streamer.hierarchy(), cut);
+        // Whatever has loaded, the cut covers the ground once, its parts meeting. (Coarse cuts
+        // can turn a sliver over without folding it onto its twin, hence the signed area.)
+        CHECK(signed_area_from_above(ground, indices) == doctest::Approx(1600.0).epsilon(1e-6));
+        for (const auto& [edge, uses] : edges_of(ground, indices)) {
+            if (!on_rim(edge.first, edge.second)) {
+                CHECK(uses == 2);
+            }
+        }
+        REQUIRE(streamer.update().ok());
+        const scene3d::ClusterStreamingStats stats = streamer.stats();
+        CHECK(stats.resident_bytes <= std::max(settings.pool_bytes, roots));
+        most_pending = std::max(most_pending, stats.pending_pages);
+    }
+    // The pool can't hold every page the walk needs, so pages were dropped and loaded again.
+    const scene3d::ClusterStreamingStats stats = streamer.stats();
+    CHECK(file->size() > settings.pool_bytes * 2);
+    CHECK(stats.evictions > 0);
+    CHECK(stats.loads > stats.resident_pages);
+    CHECK(most_pending > 0);
+
+    // Far away, the few pages a cut needs are loaded and it is the full cut.
+    const scene3d::ClusterView far = view_from(600.0F);
+    for (int k = 0; k < 4; ++k) {
+        static_cast<void>(streamer.select(far));
+        REQUIRE(streamer.update().ok());
+    }
+    CHECK(streamer.select(far) == scene3d::select_clusters(hierarchy, far));
+}
+
+TEST_CASE("project.json's rendering.virtual_geometry sets the streaming pool") {
+    const scene3d::ClusterStreamingSettings off =
+        scene3d::cluster_streaming_settings(slash::json::Value(slash::json::Object{}));
+    CHECK(off.pool_bytes == 0);
+    CHECK(off.max_page_loads == 32);
+    slash::json::Value rendering;
+    rendering["virtual_geometry"]["streaming_pool_kb"] = 256;
+    rendering["virtual_geometry"]["max_page_loads_per_frame"] = 2;
+    const scene3d::ClusterStreamingSettings on = scene3d::cluster_streaming_settings(rendering);
+    CHECK(on.pool_bytes == 256U * 1024U);
+    CHECK(on.max_page_loads == 2);
+}
+
+TEST_CASE("a broken cluster page file is refused") {
+    const scene3d::ClusterHierarchy hierarchy = scene3d::build_cluster_hierarchy(big_ball());
+    std::vector<std::uint8_t> bytes = scene3d::write_cluster_pages(hierarchy);
+    const auto opens = [](std::vector<std::uint8_t> file) {
+        return scene3d::ClusterStreamer::open(
+                   scene3d::cluster_pages_in_memory(
+                       std::make_shared<const std::vector<std::uint8_t>>(std::move(file))),
+                   {})
+            .ok();
+    };
+    CHECK(opens(bytes));
+    std::vector<std::uint8_t> renamed = bytes;
+    renamed[0] = 'X';
+    CHECK_FALSE(opens(renamed));
+    std::vector<std::uint8_t> later = bytes;
+    later[4] = 2; // version 2
+    CHECK_FALSE(opens(later));
+    // Cut off inside the index, and inside the coarsest groups' pages.
+    CHECK_FALSE(opens({bytes.begin(), bytes.begin() + 100}));
+    CHECK_FALSE(opens({bytes.begin(), bytes.end() - 4}));
+    // A cluster in no group: the first one's group field, after its header, counts, bounds,
+    // cone and refined group.
+    std::vector<std::uint8_t> linked = bytes;
+    const std::size_t group = 16 + 4 + 8 + 4 + (12 * 4) + 4;
+    for (std::size_t k = 0; k < 4; ++k) {
+        linked[group + k] = 0xFF;
+    }
+    CHECK_FALSE(opens(linked));
+}
+
+TEST_CASE("a virtualized MeshInstance3D streams its cluster pages with a pool") {
+    std::map<std::string, std::string, std::less<>> files{{"ground.gltf", ground_gltf()}};
+    slash::asset::Assets assets{slash::asset::FileSource{
+        .read = [&](std::string_view path) -> slash::Result<std::string> {
+            const auto it = files.find(path);
+            if (it == files.end()) {
+                return slash::make_error(slash::ErrorCode::NotFound, "no such file");
+            }
+            return it->second;
+        },
+        .stamp = [&](std::string_view path) -> std::optional<slash::asset::FileStamp> {
+            const auto it = files.find(path);
+            if (it == files.end()) {
+                return std::nullopt;
+            }
+            return slash::asset::FileStamp{.modified = 1, .size = it->second.size()};
+        }}};
+    slash::world::ComponentRegistry components;
+    slash::world::World world{components};
+    slash::world::register_builtin_components(components);
+    slash::canvas::install(world, assets);
+    slash::ui::Settings ui;
+    ui.viewport = {320.0F, 320.0F};
+    slash::ui::set_settings(world, ui);
+    const entt::entity camera = world.create("camera").value();
+    world.ecs().emplace<slash::world::Transform3D>(camera);
+    world.ecs().emplace<slash::world::Camera3D>(camera);
+    const entt::entity ground = world.create("ground").value();
+    world.ecs().emplace<slash::world::Transform3D>(ground).position = {0.0F, -3.0F, -25.0F};
+    auto& instance = world.ecs().emplace<slash::world::MeshInstance3D>(ground);
+    instance.mesh = "ground.gltf";
+    instance.virtualized = true;
+
+    const auto capture = [&] {
+        auto captured = slash::canvas::capture(world, assets);
+        REQUIRE(captured.ok());
+        return std::move(captured).value();
+    };
+    // Without a pool, every page is loaded: none are counted.
+    const slash::canvas::Capture whole = capture();
+    CHECK(whole.pages == 0);
+    CHECK(whole.pending_pages == 0);
+
+    // With one, the first frame draws from the coarsest pages and asks for the rest.
+    slash::canvas::Settings settings = slash::canvas::settings(world);
+    settings.cluster_streaming = {.pool_bytes = 4 * 1024 * 1024, .max_page_loads = 4};
+    slash::canvas::set_settings(world, settings);
+    const slash::canvas::Capture first = capture();
+    CHECK(first.pages > 0);
+    CHECK(first.pending_pages > 0);
+    CHECK(first.clusters < whole.clusters);
+    // Frame by frame the cut fills in until it is the same as without streaming.
+    std::size_t frames = 1;
+    slash::canvas::Capture now = first;
+    while (now.pending_pages > 0 || now.clusters != whole.clusters) {
+        now = capture();
+        REQUIRE(++frames < 200);
+    }
+    CHECK(frames > 2);
+    CHECK(now.pages > first.pages);
+    CHECK(now.image.pixels == whole.image.pixels);
 }

@@ -6,6 +6,7 @@
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/mesh.hpp"
+#include "slash/scene3d/cluster_streaming.hpp"
 #include "slash/scene3d/gpu_particles.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/occlusion.hpp"
@@ -281,6 +282,12 @@ public:
     // of view, seen from behind, or hidden by occluders). A path-traced frame turns it off, since
     // its paths see every cluster; frames with ray-traced effects or SDFGI never cull them.
     void set_cluster_culling(bool on) { cluster_culling_ = on; }
+    // How virtualized surfaces' cluster pages stream (project.json's rendering.virtual_geometry):
+    // with a pool, each surface's hierarchy is kept as a page file and its groups' pages load as
+    // the camera's cuts need them, up to the pool's size; without one, every page stays loaded.
+    void set_cluster_streaming(const ClusterStreamingSettings& settings) {
+        cluster_streaming_ = settings;
+    }
 
     // Where the last frame's world was drawn around: the frame's positions are relative to it,
     // so meshes, lights and the camera stay near the origin in the floats the device draws with.
@@ -352,6 +359,12 @@ public:
     }
     // How many of those clusters the camera culled: out of view, seen from behind or occluded.
     [[nodiscard]] std::size_t clusters_culled() const noexcept { return clusters_culled_; }
+    // With streaming, the cluster pages loaded across the virtualized surfaces cut in the last
+    // frame, and those their cuts asked for that haven't loaded yet.
+    [[nodiscard]] std::size_t cluster_pages() const noexcept { return cluster_pages_; }
+    [[nodiscard]] std::size_t cluster_pages_pending() const noexcept {
+        return cluster_pages_pending_;
+    }
     // How many of the last prepare's meshes the occluders hid from the camera.
     [[nodiscard]] std::size_t occluded() const noexcept { return occluded_; }
     // The occlusion buffer the last prepare cast, empty with occlusion off.
@@ -363,6 +376,7 @@ private:
     std::optional<CameraView> view_;
     bool frame_generation_ = false;
     bool cluster_culling_ = true;
+    ClusterStreamingSettings cluster_streaming_;
     struct Local {
         Vec3 position;
         Quat rotation;
@@ -412,10 +426,15 @@ private:
                    const CameraView* culled = nullptr);
     // A virtualized surface's hierarchy, kept by its kept_mesh key, and one draw's cut of it:
     // the clusters chosen and a mesh of their triangles, made again when they change.
+    // With streaming, the hierarchy is held by a streamer over its page file instead.
     struct Clustered {
         std::shared_ptr<const ClusterHierarchy> hierarchy;
+        std::shared_ptr<ClusterStreamer> streamer;
         std::vector<render::Vertex3D> vertices;
         std::uint64_t used = 0;
+        [[nodiscard]] const ClusterHierarchy& active() const {
+            return streamer != nullptr ? streamer->hierarchy() : *hierarchy;
+        }
     };
     struct Cut {
         std::string clustered;
@@ -434,6 +453,11 @@ private:
         std::unordered_map<std::uint32_t, std::uint64_t> timeouts;
         bool ignore_occlusion = false;
     };
+    // Keeps a virtualized surface's hierarchy, as a streamer over its page file when streaming.
+    void keep_clusters(Clustered& clustered, entt::entity entity, ClusterHierarchy hierarchy,
+                       bool streaming);
+    // Has each streamed surface cut this frame load the pages its cuts asked for.
+    void stream_clusters();
     // Cuts a virtualized draw for a camera at camera_position (pixels_per_unit is the projection's
     // pixels across a unit at a unit's distance; 0 for an orthogonal one) and points it at the
     // cut's mesh.
@@ -745,6 +769,8 @@ private:
     std::size_t clusters_drawn_ = 0;
     std::size_t cluster_triangles_drawn_ = 0;
     std::size_t clusters_culled_ = 0;
+    std::size_t cluster_pages_ = 0;
+    std::size_t cluster_pages_pending_ = 0;
     std::unordered_map<std::string, Clustered> clustered_;
     std::unordered_map<std::string, Cut> cuts_;
     // Occlusion culling: the occluders' triangles, the depth buffer cast into them, each draw's

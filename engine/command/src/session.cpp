@@ -22,6 +22,7 @@
 #include "slash/platform/file.hpp"
 #include "slash/plugin/plugins.hpp"
 #include "slash/scene3d/blend.hpp"
+#include "slash/scene3d/cluster_streaming.hpp"
 #include "slash/services/services.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/scene.hpp"
@@ -259,6 +260,7 @@ canvas::Settings canvas_settings(const json::Value& project) {
         settings.frame_generation = render::frame_generation(*rendering);
         settings.decal_filter = render::decal_filter(*rendering);
         settings.mesh_lod_threshold = render::mesh_lod_threshold(*rendering);
+        settings.cluster_streaming = scene3d::cluster_streaming_settings(*rendering);
         settings.occlusion_culling = render::occlusion_culling(*rendering);
         settings.ray_tracing = render::ray_tracing(*rendering);
     }

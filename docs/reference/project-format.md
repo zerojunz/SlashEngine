@@ -51,6 +51,7 @@ checks it.
 | `rendering.global_illumination.sdfgi` | No | see [SDFGI](sdfgi.md) | SDFGI's `probe_ray_count` (8), `frames_to_converge` (30) and `frames_to_update_lights` (4), as Godot's project settings |
 | `rendering.occlusion_culling` | No | off | Leave out 3D meshes that [occluders](scene-format.md#occlusion-culling) hide: see [Occlusion culling](#occlusion-culling) |
 | `rendering.mesh_lod.lod_change.threshold_pixels` | No | `1` | How many pixels a model's coarser [LODs](scene-format.md#mesh-lods) may be off by where they draw: see [Mesh LODs](#mesh-lods) |
+| `rendering.virtual_geometry` | No | no pool | How [virtualized](virtualized-geometry.md) surfaces' cluster pages stream: `streaming_pool_kb` (0) and `max_page_loads_per_frame` (32): see [Virtualized geometry streaming](#virtualized-geometry-streaming) |
 | `rendering.textures` | No | `lossless`, `linear_mipmaps` | How exports ship textures: as their files, or compressed for each platform's GPUs, and how [decals](scene-format.md#decals) sample theirs: see [Texture forms](#texture-forms) |
 | `rendering.interpolation` | No | `true` | Draw sprites part of the way between fixed ticks, from where they were before the last tick to where they are, so motion looks smooth when the display refreshes faster than the game ticks. Drawing lags the simulation by up to one tick; set `false` to draw exactly where things are |
 | `physics_2d.gravity` | No | `980` | Gravity's strength in pixels per second squared, as Godot's `physics/2d/default_gravity` |
@@ -208,6 +209,19 @@ triangles. `0` draws every mesh in full.
 
 ```json
 "rendering": {"mesh_lod": {"lod_change": {"threshold_pixels": 2}}}
+```
+
+## Virtualized geometry streaming
+
+`rendering.virtual_geometry` sets how [virtualized](virtualized-geometry.md#streaming) surfaces
+stream their cluster pages, as Unreal's Nanite streaming pool (Godot has no virtualized
+geometry). With `streaming_pool_kb` above `0`, each surface keeps that many kilobytes of its
+clusters' triangles loaded: pages load as the camera's cuts need them, at most
+`max_page_loads_per_frame` (default `32`) a frame, and the least recently used are dropped for
+room. `0` (the default) keeps every page loaded.
+
+```json
+"rendering": {"virtual_geometry": {"streaming_pool_kb": 256, "max_page_loads_per_frame": 2}}
 ```
 
 ## Occlusion culling

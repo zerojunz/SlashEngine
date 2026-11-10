@@ -100,6 +100,37 @@ In C++, `cluster_culled(cluster, view, culling)` tests one cluster against a `Cl
 cone. `CaptureOptions::cull_clusters` and `CanvasOptions::cull_clusters` (default `true`) turn
 culling off to compare frames.
 
+## Streaming
+
+As Nanite streams its pages, a virtualized surface can keep only some of its clusters' triangles
+loaded. Project.json's [`rendering.virtual_geometry`](project-format.md#virtualized-geometry-streaming)
+turns it on with `streaming_pool_kb`, the kilobytes each surface may keep, and
+`max_page_loads_per_frame`, how many pages it loads at most in a frame.
+
+- **Page files.** The hierarchy is written as a page file: a 16-byte header (`SLCP`, the
+  version, the index's size and the group count), an index of every cluster's and group's
+  bounds, errors, cone and links, then a page per group holding its clusters' indices, all
+  little-endian. The index stays loaded; pages load and drop.
+- **Cuts from what is loaded.** A view's cut counts a group whose page isn't loaded as fine
+  enough, so the coarser clusters made from it are drawn in its place. A group loads only after
+  the groups its clusters were simplified into, and drops only when no finer group that needs it
+  is loaded. What isn't loaded is then closed toward the fine end, errors stay monotone, and the
+  cut still covers the surface once with no cracks. The coarsest groups load first and stay.
+- **Requests.** The groups the view's full cut needs and lacks are asked for, the most visible
+  (largest projected error) first. After the frame's cuts, each surface loads up to
+  `max_page_loads_per_frame` of them, coarser groups first; the next frame's cut draws them.
+- **The pool.** A page that doesn't fit drops the page no cut used for longest, the finest first
+  among those. Pages the current cut uses are never dropped, so a pool too small for a view's cut
+  stops loading and leaves the rest asked for, until the camera moves on.
+- [`frame.capture`](commands.md#framecapture)'s `drawn` counts the pages loaded as `pages` and
+  those asked for and not loaded as `pending_pages`. Captures keep their renderer, so each
+  capture loads more, as frames of a game do.
+
+In C++, `slash/scene3d/cluster_streaming.hpp` has `write_cluster_pages`,
+`read_cluster_page_index` (which checks every link and page size) and `ClusterStreamer`, whose
+`select` cuts a view from what is loaded and whose `update` loads what was asked for.
+`examples/cluster-streaming` draws a moon as it streams in.
+
 In C++, `slash/scene3d/virtual_geometry.hpp` has the parts:
 
 - `build_cluster_hierarchy(surface)` builds the hierarchy.
@@ -122,7 +153,12 @@ This is a spike to measure the idea. It still does these things the simple way:
   made again whenever the camera turns enough to change them.
 - **No software rasterizer** for triangles smaller than a pixel. They go to the hardware
   rasterizer like any other.
-- **No streaming.** The whole hierarchy stays in memory.
+- **Streaming reads from memory.** The page file is written in memory when a surface first draws
+  virtualized, standing in for one read from disk, and pages load on the CPU between frames, a
+  frame late. Nanite reads pages from disk asynchronously and installs them on the GPU.
+- **A full pool doesn't trade pages.** When a view's cut doesn't fit, the pages it already uses
+  stay, even when a page it asks for would show more. Nanite gives the pool to the most visible
+  pages.
 - **Hierarchies are built when a model first draws virtualized.** They are not stored on disk or
   in exports.
 - **Materials stay per surface.** There is no visibility buffer with deferred materials.

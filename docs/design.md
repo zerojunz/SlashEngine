@@ -123,6 +123,18 @@ SlashEngine covers nearly every Godot 4 feature area at launch and adds UE5 feat
 | Cinematics | AnimationPlayer, cameras | Sequencer | Timeline tracks for cameras and events | After launch |
 | Cloth and soft bodies | SoftBody3D | Chaos Cloth | Jolt soft bodies | After launch |
 | Destruction | None built in | Chaos Destruction | Fracture and debris on Jolt | After launch |
+| Wind | Area3D wind (soft bodies) | Wind Directional Source | One world wind field of sources and areas, read by vegetation shaders, soft bodies, cloth and particles | Launch |
+| Foliage | MultiMesh, plugins | Foliage tool, grass | Painted and scattered grass, flowers, shrubs, bushes, trees, moss and rocks kept per cell, instanced batches, impostors, wind bending and characters' interactions | Launch |
+| Light tools | Light temperature, projectors, physical units | IES profiles, light functions, Lumen tuning | Temperature, projectors, IES profiles, light functions and `light.tune` toward `lighting.check` targets | Launch |
+| Quests, dialogue and NPC scripts | Plugins (Dialogic) | Plugins, Blueprints | Questlines, branching dialogue, movement schedules and per-NPC behavior as text files over the NPC planner's facts | Launch |
+| Hair and fur | None built in | Groom, hair physics | Groomed strands drawn as cards, strands or shells and simulated against the body, wind and skeleton | Launch |
+| Characters | None built in | MetaHuman, Mutable | Character recipes built into rigged models, kept distinct and held to the storyboard's design rules | Launch |
+| Fauna | None built in | Plugins, Mass AI | Distinct animals from creature recipes, with brains for flocking, grazing, fleeing and hunting, placed in habitats, reacting to characters | Launch |
+| Vehicle design | VehicleBody3D, VehicleWheel3D | Chaos Vehicles | Cars, bikes, tracked vehicles, boats and aircraft from vehicle recipes, each with its own tuned physics (engine, gears, suspension, tires, buoyancy, lift), seats characters drive from and contacts that push and hurt characters and creatures | Launch |
+| Damage design | None built in | Chaos Destruction, Geometry Collections | Real-time damage (fracture at the impact as it happens, re-fracture, stress through connected pieces, dents, tears, carving), plus damage profiles by material, damage states and optional authored fracture patterns, connected and anchored pieces, terrain craters, with debris, decals and sounds | Launch |
+| VFX design | GPUParticles3D, particle shaders | Niagara | Effect recipes layering particles, ribbons, flipbooks, decals, lights, distortion, camera shakes and sounds on one timeline, with parameters, attachment and budgets | Launch |
+| One simulation | Jolt module (rigid, soft bodies, ragdolls, vehicles) | Chaos Physics, Chaos Fields, Chaos Cloth, Chaos Cache, Chaos Visual Debugger | Every tool's assets simulate in one Jolt space: shared physics materials and assets, individual ragdoll profiles per character and creature (active ragdolls blending with animation, hit reactions, getting up), fields acting on every kind of body, character cloth, substepping, recorded caches and a debugger record agents read | Launch |
+| Style memory | None built in | None built in | Storyboard style references marked from scenes, assets, frames, materials and lighting, with measured fingerprints; style.check reports drift in numbers and words, prompts and checks every generator and tool, test.run fails drift | Launch |
 | Virtualized geometry | None built in | Nanite | Meshlet rendering research | Research |
 | Fully dynamic GI at UE quality | SDFGI (partial) | Lumen | Research after probe GI ships | Research |
 | Digital humans | None built in | MetaHuman | Research; out of scope for releases | Research |

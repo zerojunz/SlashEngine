@@ -1,0 +1,10 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":4,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"drawn":{"clusters":4,"meshes":1,"pages":3},"height":180,"path":"shots/far.png","width":320}}
+{"id":3,"jsonrpc":"2.0","result":{"colors":[[0.082,0.086,0.11,1]],"drawn":{"clusters":12,"meshes":1,"pages":3},"height":180,"width":320}}
+{"id":4,"jsonrpc":"2.0","result":{"changed":{"Transform3D":{"position":[0.0,0.0,-2.5]}},"id":"moon"}}
+{"id":5,"jsonrpc":"2.0","result":{"colors":[[0.082,0.086,0.11,1]],"drawn":{"clusters":12,"meshes":1,"pages":5,"pending_pages":5},"height":180,"width":320}}
+{"id":6,"jsonrpc":"2.0","result":{"colors":[[0.082,0.086,0.11,1]],"drawn":{"clusters":21,"culled":2,"meshes":1,"pages":7,"pending_pages":3},"height":180,"width":320}}
+{"id":7,"jsonrpc":"2.0","result":{"colors":[[0.082,0.086,0.11,1]],"drawn":{"clusters":32,"culled":6,"meshes":1,"pages":9,"pending_pages":2},"height":180,"width":320}}
+{"id":8,"jsonrpc":"2.0","result":{"colors":[[0.082,0.086,0.11,1]],"drawn":{"clusters":45,"culled":10,"meshes":1,"pages":11},"height":180,"width":320}}
+{"id":9,"jsonrpc":"2.0","result":{"colors":[[0.082,0.086,0.11,1]],"drawn":{"clusters":58,"culled":16,"meshes":1,"pages":11},"height":180,"width":320}}
+{"id":10,"jsonrpc":"2.0","result":{"drawn":{"clusters":58,"culled":16,"meshes":1,"pages":11},"height":180,"path":"shots/close.png","width":320}}

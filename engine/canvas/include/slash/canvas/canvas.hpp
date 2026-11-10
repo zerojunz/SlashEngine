@@ -289,6 +289,11 @@ public:
     [[nodiscard]] std::size_t clusters_culled() const noexcept {
         return scene3d_.clusters_culled();
     }
+    // With streaming, the cluster pages loaded and those still asked for (scene3d.hpp).
+    [[nodiscard]] std::size_t cluster_pages() const noexcept { return scene3d_.cluster_pages(); }
+    [[nodiscard]] std::size_t cluster_pages_pending() const noexcept {
+        return scene3d_.cluster_pages_pending();
+    }
     // 3D meshes the OccluderInstance3Ds hid from the camera in the last frame.
     [[nodiscard]] std::size_t meshes_occluded() const noexcept { return meshes_occluded_; }
     [[nodiscard]] std::size_t lights_3d_drawn() const noexcept { return lights_3d_drawn_; }
@@ -547,6 +552,8 @@ struct Settings {
     // rendering.mesh_lod.lod_change.threshold_pixels: how many pixels a model's coarser LODs may
     // be off by.
     float mesh_lod_threshold = 1.0F;
+    // rendering.virtual_geometry: how virtualized surfaces' cluster pages stream.
+    scene3d::ClusterStreamingSettings cluster_streaming{};
     // rendering.occlusion_culling: whether OccluderInstance3Ds hide meshes from the camera.
     render::OcclusionCulling occlusion_culling{};
     // rendering.ray_tracing: the ray-traced effects devices that trace rays draw.
@@ -590,11 +597,13 @@ struct Capture {
     std::size_t lights = 0;
     std::size_t controls = 0;
     std::size_t shapes = 0;
-    std::size_t meshes = 0;   // 3D meshes (scene3d.hpp)
-    std::size_t lods = 0;     // of those, drawn at a coarser LOD
-    std::size_t clusters = 0; // clusters virtualized meshes were cut into, drawn
-    std::size_t culled = 0;   // clusters of those cuts the camera culled
-    std::size_t occluded = 0; // 3D meshes occluders hid from the camera
+    std::size_t meshes = 0;        // 3D meshes (scene3d.hpp)
+    std::size_t lods = 0;          // of those, drawn at a coarser LOD
+    std::size_t clusters = 0;      // clusters virtualized meshes were cut into, drawn
+    std::size_t culled = 0;        // clusters of those cuts the camera culled
+    std::size_t occluded = 0;      // 3D meshes occluders hid from the camera
+    std::size_t pages = 0;         // cluster pages loaded, with streaming
+    std::size_t pending_pages = 0; // cluster pages asked for and not loaded yet
     // How the settings' render scale scaled the world, if they did.
     CanvasRenderer::Scaled scaled;
     // With path_trace, the samples each pixel's light is the average of.
