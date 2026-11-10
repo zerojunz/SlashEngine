@@ -753,7 +753,81 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                                              "simulates."})
         .describe("angular_velocity", {.doc = "In radians per second about each axis, while it "
                                               "simulates."})
-        .describe("can_sleep", {.doc = "Stop simulating it while it rests."});
+        .describe("can_sleep", {.doc = "Stop simulating it while it rests."})
+        .describe("drive", {.doc = "Its muscle, as Unreal's physical animation drives: while it "
+                                   "simulates, a spring that turns it toward where the animated "
+                                   "pose puts it, as acceleration."});
+    describe_members(
+        bone, "drive",
+        {{"space",
+          {.doc = "\"local\" turns it toward the pose in its parent bone's body, "
+                  "pushing the parent back, \"world\" toward the pose in the world, "
+                  "\"off\" leaves it be.",
+           .choices = {"off", "local", "world"}}},
+         {"orientation_strength",
+          {.doc = "How hard it turns toward the pose, per second squared.", .min = 0}},
+         {"angular_velocity_strength",
+          {.doc = "How much it slows turning away from the pose's, per second.", .min = 0}},
+         {"position_strength",
+          {.doc = "How hard it is pinned to the pose's place in the world, so it holds its own "
+                  "weight, per second squared.",
+           .min = 0}},
+         {"velocity_strength", {.doc = "How much the pin slows its moving, per second.", .min = 0}},
+         {"max_angular_acceleration",
+          {.doc = "Radians a second squared it turns by at most; 0 for no limit.", .min = 0}},
+         {"max_linear_acceleration",
+          {.doc = "Meters a second squared it moves by at most; 0 for no limit.", .min = 0}}});
+    registry.add<Ragdoll3D>()
+        .set_doc("A character's or creature's own ragdoll from a .ragdoll.json profile, after "
+                 "Unreal's physics assets and physical animation, on the entity that draws the "
+                 "model. The ragdoll system keeps a PhysicalBoneSimulator3D on it and a "
+                 "PhysicalBone3D child (\"<id>_<bone>\") for each bone the profile names. Hits "
+                 "weaken muscles and can knock it down; once it lies still it gets up.")
+        .describe("profile", {.doc = "Project path of a .ragdoll.json file."})
+        .describe("overrides", {.doc = "A JSON merge patch over the profile for this one, as "
+                                       "ragdoll.tune writes: {\"bones\": {\"Neck\": "
+                                       "{\"stiffness\": 300}}}."})
+        .describe("state", {.doc = "\"animated\": the bodies follow the animation; \"active\": "
+                                   "they simulate and their muscles drive them toward it; "
+                                   "\"limp\": they simulate with no muscles; \"getting_up\": "
+                                   "the animation takes over again.",
+                            .choices = {"animated", "active", "limp", "getting_up"}})
+        .describe("rest_state", {.doc = "The state getting up and hit reactions end in.",
+                                 .choices = {"animated", "active"}})
+        .describe("strength", {.doc = "A multiplier on every muscle.", .min = 0})
+        .describe("weakness", {.doc = "How much strength hits took from each bone, 0 to 1, "
+                                      "by bone name; it recovers."})
+        .describe("reaction", {.doc = "Seconds a hit reaction has left before the ragdoll "
+                                      "returns to rest_state.",
+                               .min = 0})
+        .describe("still", {.doc = "Seconds the bodies have lain still.", .min = 0})
+        .describe("rising", {.doc = "Seconds into getting up.", .min = 0});
+    registry.add<Ragdoll2D>()
+        .set_doc("A 2D character's or creature's own ragdoll from a .ragdoll.json profile in "
+                 "pixels, on the root of a cut-out character's Transform2D tree. Each profile "
+                 "bone is an entity under it (by ID, without the ragdoll's own \"<id>/\"), which "
+                 "the ragdoll system makes a RigidBody2D with a CollisionShape2D joined to the "
+                 "bone above by a PinJoint2D (\"<bone>_joint\"). Hits weaken muscles and can "
+                 "knock it down; once it lies still it gets up.")
+        .describe("profile", {.doc = "Project path of a .ragdoll.json file."})
+        .describe("overrides", {.doc = "A JSON merge patch over the profile for this one, as "
+                                       "ragdoll.tune writes: {\"bones\": {\"Neck\": "
+                                       "{\"stiffness\": 300}}}."})
+        .describe("state", {.doc = "\"animated\": the bodies follow the animation; \"active\": "
+                                   "they simulate and their muscles drive them toward it; "
+                                   "\"limp\": they simulate with no muscles; \"getting_up\": "
+                                   "the animation takes over again.",
+                            .choices = {"animated", "active", "limp", "getting_up"}})
+        .describe("rest_state", {.doc = "The state getting up and hit reactions end in.",
+                                 .choices = {"animated", "active"}})
+        .describe("strength", {.doc = "A multiplier on every muscle.", .min = 0})
+        .describe("weakness", {.doc = "How much strength hits took from each bone, 0 to 1, "
+                                      "by bone name; it recovers."})
+        .describe("reaction", {.doc = "Seconds a hit reaction has left before the ragdoll "
+                                      "returns to rest_state.",
+                               .min = 0})
+        .describe("still", {.doc = "Seconds the bodies have lain still.", .min = 0})
+        .describe("rising", {.doc = "Seconds into getting up.", .min = 0});
     for (const std::string_view axis : {"x", "y", "z"}) {
         describe_members(
             bone, axis,

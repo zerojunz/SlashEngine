@@ -147,7 +147,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, physics_material, sdk, plugin)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, physics_material, ragdoll, sdk, plugin)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -157,7 +157,7 @@ Validate after editing a scene or prefab by hand, and format before committing o
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
-`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`, `.scatter.json` and `.physics_material.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
+`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`, `.scatter.json`, `.physics_material.json` and `.ragdoll.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -1830,6 +1830,24 @@ physics3d doesn't depend on scene3d. The `skeleton_modifiers` system makes simul
 `top_level` and moves following ones to their bones before the physics step moves them as
 kinematic bodies; `apply_modifiers` puts simulating bones where their bodies are.
 `examples/ragdoll` lets a waving arm go limp.
+
+Characters' and creatures' own ragdolls are SlashEngine's, after Unreal's physics assets and
+Physical Animation component: a `.ragdoll.json` profile (`slash/world/ragdoll.hpp`,
+`engine/world/src/ragdoll.cpp`; `$cli schema ragdoll`) names each bone's body, joint and muscle
+over its file's `defaults`, with its balance, hit reactions and getting up, and an instance's
+`overrides` are a merge patch over it (`world::merge_patch`). `Ragdoll3D`'s system
+(`engine/scene3d/src/ragdoll.cpp`, priority 915) keeps a simulator and a `PhysicalBone3D` per
+bone, sets each body's `PhysicalBoneDrive` from its state (animated, active, limp, getting
+up), weakens hit bones and those under them, makes a ragdoll that leans past its balance limp,
+and once it lies still moves the entity to it and plays its get-up animation;
+`skeleton_modifiers` keeps the animated pose in `world::PhysicalBoneTargets` before the
+simulator replaces it, and physics3d's `apply_drives` (`src/drives.cpp`) turns and pins
+simulating bodies toward it as implicit springs, a local drive pushing its parent back as hard.
+`Ragdoll2D` (`engine/physics2d/src/ragdoll.cpp`, priorities 940 and 955) does the same over a
+cut-out's `Transform2D` tree with `RigidBody2D`s, `CollisionShape2D`s and `PinJoint2D`s, telling
+the animation's pose from where physics left each bone. `ragdoll.generate`, `ragdoll.hit` and
+`ragdoll.tune` (`engine/command/src/ragdoll.cpp`) make, hit and tune them; `generate_ragdoll`
+fits a profile to a skeleton's skin or a 2D tree. `examples/ragdoll-profiles` knocks a kid down.
 
 Bone attachments follow Godot's `BoneAttachment3D` (`engine/scene3d/src/bone_attachment.cpp`):
 at the end of each `skeleton_modifiers` run, `place_attachments` poses each followed model

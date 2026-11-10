@@ -1,0 +1,17 @@
+{"format": 1,
+ "entities": {
+   "floor": {"components": {"Transform2D": {"position": [200, 320]},
+                            "StaticBody2D": {},
+                            "CollisionShape2D": {"size": [2000, 40]}}},
+   "kid": {"components": {"Transform2D": {"position": [200, 300], "children": ["pelvis"]}}},
+   "pelvis": {"components": {"Transform2D": {"position": [0, -60],
+                                             "children": ["chest", "thigh"]}}},
+   "chest": {"components": {"Transform2D": {"position": [0, -40], "children": ["head", "arm"]}}},
+   "head": {"components": {"Transform2D": {"position": [0, -25]}, "Sprite2D": {}}},
+   "arm": {"components": {"Transform2D": {"position": [10, 0], "children": ["hand"]}}},
+   "hand": {"components": {"Transform2D": {"position": [0, 30]}, "Sprite2D": {}}},
+   "thigh": {"components": {"Transform2D": {"children": ["shin"]}}},
+   "shin": {"components": {"Transform2D": {"position": [0, 30], "children": ["foot"]}}},
+   "foot": {"components": {"Transform2D": {"position": [0, 25]}, "Sprite2D": {}}},
+   "arm3d": {"components": {"Transform3D": {"position": [0, 0.6, 0]},
+                            "MeshInstance3D": {"mesh": "models/arm.gltf"}}}}}

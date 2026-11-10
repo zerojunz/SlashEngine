@@ -555,6 +555,13 @@ void Space::sync_joints(world::World& world, const world::Tree3D& tree) {
             exceptions.insert(std::minmax(joint.body_a, joint.body_b));
         }
     }
+    // A physical bone's joint keeps it from colliding with the body it joins, as Godot's joints
+    // do by default.
+    for (const auto& [entity, bone] : bone_joints_) {
+        if (bone.joint.constraint != nullptr && bone.joint.body_a != entt::null) {
+            exceptions.insert(std::minmax(bone.joint.body_a, entity));
+        }
+    }
     for (const auto& [entity, link] : bone_links_) {
         for (const entt::entity other : link.exceptions) {
             if (other != entity && world.valid(other)) {

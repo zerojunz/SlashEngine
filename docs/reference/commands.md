@@ -69,6 +69,7 @@ as `entity.get`, reject it as an unknown param.
 | Terrains | [`terrain.generate`](#terraingenerate), [`terrain.import`](#terrainimport), [`terrain.brush`](#terrainbrush), [`terrain.get`](#terrainget) |
 | Tile maps | [`tilemap.paint`](#tilemappaint), [`tilemap.generate`](#tilemapgenerate), [`tilemap.set`](#tilemapset), [`tilemap.get`](#tilemapget), [`tilemap.convert`](#tilemapconvert) |
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity), [`physics.soft_body`](#physicssoft_body), [`physics.break`](#physicsbreak) |
+| Ragdolls | [`ragdoll.generate`](#ragdollgenerate), [`ragdoll.hit`](#ragdollhit), [`ragdoll.tune`](#ragdolltune) |
 | World streaming | [`streaming.state`](#streamingstate) |
 | Wind | [`wind.sample`](#windsample) |
 | Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent), [`navigation.bake`](#navigationbake) |
@@ -179,7 +180,7 @@ one component or one command.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"npc"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"standard_material"`, `"texture"`, `"scatter"`, `"physics_material"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"npc"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"standard_material"`, `"texture"`, `"scatter"`, `"physics_material"`, `"ragdoll"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -1720,6 +1721,105 @@ out from under its middle:
 
 An unknown ID is an error, as is an entity without a `Destructible3D`, without a body, or whose
 mesh can't be cut, saying why.
+
+## Ragdolls
+
+Characters' and creatures' own ragdolls: [`.ragdoll.json` profiles](scene-format.md#ragdoll-profiles)
+played by a `Ragdoll3D` or `Ragdoll2D`. [examples/ragdoll-profiles](../../examples/ragdoll-profiles/)
+calls all three.
+
+### ragdoll.generate
+
+Writes a ragdoll profile fitted to a model's skeleton, as Unreal's physics asset tool makes a
+physics asset: a capsule from each bone to its one child, or a sphere for a bone with several,
+fitted to the vertices the bone moves most, with masses by volume. A humanoid (one whose bones
+`auto_map_bones` maps) gets bodies on its main bones only, hinges at elbows and knees, cones
+with limits for each kind of joint elsewhere, balance on its hips and its get-up facing; another
+skeleton gets cones on every bone long enough. Given `id`, it also sets the entity's `Ragdoll3D`
+`profile` to the file. An `id` with no model but a `Transform2D` tree gets a 2D profile of the
+tree instead (each entity under it with children or a `Sprite2D` is a bone: a capsule to its one
+child bone, a rectangle round several, a circle at a tip; hinges between them, balance on the
+topmost), and a `Ragdoll2D`. `undo` puts the file back.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | | An entity whose `MeshInstance3D` draws the model, or the root of a 2D tree |
+| `model` | string | the entity's | A skinned model file, in place of `id` |
+| `out` | string | the model's path as `.ragdoll.json`; 2D `ragdolls/<id>.ragdoll.json` | The file to write |
+| `mass` | number | `70` | Kilograms the bodies weigh together |
+| `stiffness`, `damping` | number | `400`, `40` | The muscles' |
+| `pin`, `pin_damping` | number | `200`, `28` | How hard muscles pull bodies to the pose's place |
+| `min_length` | number | 4% of the height | Shorter bones get no body (not humanoids): a share of the skeleton's height, 2D pixels |
+| `dry_run` | boolean | `false` | Return what would change and change nothing |
+
+Needs: `edit`, `filesystem`. It returns the file, the bones and, in 3D, whether it found a
+humanoid. The kid in [examples/ragdoll-profiles](../../examples/ragdoll-profiles/):
+
+```json
+{"id": "kid"}
+```
+
+```json
+{"bones":["arm","chest","foot","hand","head","pelvis","shin","thigh"],"out":"ragdolls/kid.ragdoll.json"}
+```
+
+A model with no skin, a tree with nothing long enough and an `out` that isn't a `.ragdoll.json`
+path are errors.
+
+### ragdoll.hit
+
+Hits a `Ragdoll3D`'s or `Ragdoll2D`'s bone with an impulse, as gameplay code does when a blow
+lands: the bone's body takes it, the bone's muscle and those under it weaken as the profile's
+`hit` says, an animated ragdoll reacts (goes `active` until its muscles recover), and a hit of
+the profile's `knockdown` or more makes it limp. It is a `ragdoll_hit` event, and
+`ragdoll_fell` when it knocks it down. It returns the state, each weakened bone's weakness and
+`knocked_down` when it did.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | An entity with a `Ragdoll3D` or `Ragdoll2D` |
+| `bone` | string | required | The bone, as the profile names it |
+| `impulse` | `[x, y, z]` or `[x, y]` | required | Kilogram-meters per second in the world (2D: kilogram-pixels, two numbers) |
+| `dry_run` | boolean | `false` | Return what would change and change nothing |
+
+Needs: `edit`.
+
+```json
+{"id": "kid", "bone": "arm", "impulse": [0, 2]}
+```
+
+```json
+{"state":"active","weakness":{"arm":1,"hand":0.5}}
+```
+
+A bone the ragdoll has no body for is an error with the closest name ("did you mean").
+
+### ragdoll.tune
+
+Tunes one ragdoll: merges a patch of profile settings into its `overrides` (a JSON merge patch,
+`null` removing one; `replace` puts the patch in their place), checks the result against the
+profile and returns the overrides and each bone the patch touched as it now is, so one guard can
+be stiffer or one creature's leg weaker than the rest of their kind. `undo` puts the overrides
+back.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | An entity with a `Ragdoll3D` or `Ragdoll2D` |
+| `overrides` | object | required | Profile settings, as in a `.ragdoll.json` file: `{"bones": {"Neck": {"stiffness": 300}}, "hit": {...}}` |
+| `replace` | boolean | `false` | Replace the overrides instead of merging into them |
+| `dry_run` | boolean | `false` | Return what would change and change nothing |
+
+Needs: `edit`.
+
+```json
+{"id": "kid", "overrides": {"hit": {"knockdown": 500}}}
+```
+
+```json
+{"overrides":{"hit":{"knockdown":500}}}
+```
+
+A setting the profile's schema refuses is an error at its JSON Pointer in the merged profile.
 
 ## World streaming
 
