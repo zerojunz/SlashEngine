@@ -2363,6 +2363,26 @@ SLASH_REFLECT(PhysicalBone3DAxis, linear_limit_enabled, linear_limit_upper, line
               angular_limit_lower, angular_spring_enabled, angular_spring_stiffness,
               angular_spring_damping, angular_equilibrium_point)
 
+// The muscle of a PhysicalBone3D, SlashEngine's own after Unreal's physical animation drives and
+// PuppetMaster's pins: while the body simulates, it turns toward where the animated pose puts it
+// (in its parent bone's body, pushing the parent back, or in the world) and is pinned to that
+// place in the world, as springs that take effect as acceleration, so a body's mass doesn't
+// change how it moves.
+struct PhysicalBoneDrive {
+    std::string space = "off";              // "off", "local" or "world"
+    float orientation_strength = 0.0F;      // per second squared
+    float angular_velocity_strength = 0.0F; // per second
+    float position_strength = 0.0F;         // the pin, per second squared
+    float velocity_strength = 0.0F;         // the pin's damping, per second
+    float max_angular_acceleration = 0.0F;  // radians a second squared; 0 no limit
+    float max_linear_acceleration = 0.0F;   // meters a second squared; 0 no limit
+
+    friend bool operator==(const PhysicalBoneDrive&, const PhysicalBoneDrive&) = default;
+};
+SLASH_REFLECT(PhysicalBoneDrive, space, orientation_strength, angular_velocity_strength,
+              position_strength, velocity_strength, max_angular_acceleration,
+              max_linear_acceleration)
+
 // A body for one bone of a model, as Godot's PhysicalBone3D: a Transform3D child of a
 // PhysicalBoneSimulator3D's entity, shaped by its CollisionShape3D or those of entities under it,
 // placed at the bone times body_offset. Its joint holds it to the body of the nearest bone above
@@ -2399,6 +2419,7 @@ struct PhysicalBone3D {
     Vec3 linear_velocity;
     Vec3 angular_velocity;
     bool can_sleep = true;
+    PhysicalBoneDrive drive;
 
     friend bool operator==(const PhysicalBone3D&, const PhysicalBone3D&) = default;
 };
@@ -2407,7 +2428,54 @@ SLASH_COMPONENT(PhysicalBone3D, bone_name, body_offset_position, body_offset_rot
                 angular_limit_lower, linear_limit_upper, linear_limit_lower, x, y, z,
                 collision_layer, collision_mask, mass, friction, bounce, physics_material_override,
                 gravity_scale, linear_damp_mode, linear_damp, angular_damp_mode, angular_damp,
-                linear_velocity, angular_velocity, can_sleep)
+                linear_velocity, angular_velocity, can_sleep, drive)
+
+// A character's or creature's own ragdoll from a .ragdoll.json profile, SlashEngine's own after
+// Unreal's physics assets and Physical Animation component, on the entity whose MeshInstance3D
+// draws the model: the ragdoll system keeps a PhysicalBoneSimulator3D on it and a PhysicalBone3D
+// child (made as "<id>_<bone>") for each bone the profile names, set as the profile and
+// overrides say. Its state is "animated" (the bodies follow the animation, so cloth, hair and
+// hits find them), "active" (the bodies simulate and their muscles drive them toward the
+// animation), "limp" (they simulate with no muscles) or "getting_up" (the animation takes over
+// again). Hits weaken muscles and can knock it down; a fall or a knockdown makes it limp, and once
+// it lies still it gets up into rest_state.
+struct Ragdoll3D {
+    std::string profile;                 // project path of a .ragdoll.json file
+    json::Value overrides;               // a merge patch over the profile for this one
+    std::string state = "animated";      // "animated", "active", "limp" or "getting_up"
+    std::string rest_state = "animated"; // what getting up and hit reactions end in
+    float strength = 1.0F;               // a multiplier on every muscle
+    // Kept as it plays: how much strength hits took from each bone (0 to 1), seconds a hit
+    // reaction has left, seconds the bodies have lain still and seconds into getting up.
+    std::map<std::string, float> weakness;
+    float reaction = 0.0F;
+    float still = 0.0F;
+    float rising = 0.0F;
+
+    friend bool operator==(const Ragdoll3D&, const Ragdoll3D&) = default;
+};
+SLASH_COMPONENT(Ragdoll3D, profile, overrides, state, rest_state, strength, weakness, reaction,
+                still, rising)
+
+// A 2D character's or creature's own ragdoll from a .ragdoll.json profile (in pixels), on the
+// root of a cut-out character's Transform2D tree: each profile bone is an entity under it, which
+// the ragdoll system makes a RigidBody2D with a CollisionShape2D joined to the bone above by a
+// PinJoint2D ("<bone>_joint"). The same states, hits and getting up as Ragdoll3D's.
+struct Ragdoll2D {
+    std::string profile;                 // project path of a .ragdoll.json file
+    json::Value overrides;               // a merge patch over the profile for this one
+    std::string state = "animated";      // "animated", "active", "limp" or "getting_up"
+    std::string rest_state = "animated"; // what getting up and hit reactions end in
+    float strength = 1.0F;               // a multiplier on every muscle
+    std::map<std::string, float> weakness;
+    float reaction = 0.0F;
+    float still = 0.0F;
+    float rising = 0.0F;
+
+    friend bool operator==(const Ragdoll2D&, const Ragdoll2D&) = default;
+};
+SLASH_COMPONENT(Ragdoll2D, profile, overrides, state, rest_state, strength, weakness, reaction,
+                still, rising)
 
 // A point of a SoftBody3D's mesh held in place, as Godot's pinned_points and attachments: with an
 // attachment, it follows the attachment's Transform3D at offset in its space; without, it stays

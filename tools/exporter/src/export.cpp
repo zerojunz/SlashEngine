@@ -29,6 +29,7 @@
 #include "slash/library/library.hpp"
 #include "slash/navigation/navigation.hpp"
 #include "slash/npc/npc.hpp"
+#include "slash/physics2d/ragdoll.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/process.hpp"
 #include "slash/plugin/plugins.hpp"
@@ -53,6 +54,7 @@
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/physics_material.hpp"
+#include "slash/world/ragdoll.hpp"
 #include "slash/world/scene.hpp"
 
 #include <algorithm>
@@ -201,6 +203,7 @@ enum class DataFile : std::uint8_t {
     NavigationPolygon,
     NpcBrain,
     PhysicsMaterial,
+    Ragdoll,
     MeshLibrary,
     StandardMaterial,
     Lightmap,
@@ -279,6 +282,9 @@ DataFile data_file(std::string_view name) {
     }
     if (world::is_physics_material_path(name)) {
         return DataFile::PhysicsMaterial;
+    }
+    if (world::is_ragdoll_path(name)) {
+        return DataFile::Ragdoll;
     }
     if (name.ends_with(scene3d::kMeshLibrarySuffix)) {
         return DataFile::MeshLibrary;
@@ -421,6 +427,12 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         return npc::validate_brain(parsed.value());
     case DataFile::PhysicsMaterial:
         return json::validate(parsed.value(), world::physics_material_schema());
+    case DataFile::Ragdoll:
+        errors = json::validate(parsed.value(), world::ragdoll_schema());
+        if (auto profile = world::parse_ragdoll(parsed.value()); errors.empty() && !profile) {
+            errors.push_back({"", profile.error().message});
+        }
+        return errors;
     case DataFile::MeshLibrary:
         return scene3d::validate_mesh_library(parsed.value());
     case DataFile::Lightmap:
@@ -456,6 +468,9 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
     }
     if (errors.empty() && kind == DataFile::Scene) {
         errors = scene3d::check_meshes(components, parsed.value(), reader);
+    }
+    if (errors.empty() && kind == DataFile::Scene) {
+        errors = physics2d::check_ragdolls(components, parsed.value(), reader);
     }
     if (errors.empty()) {
         errors = navigation::check_scene(parsed.value(), reader);

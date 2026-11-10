@@ -1167,6 +1167,8 @@ struct Run {
     std::set<std::string>* seen = nullptr;
     // Stepping: where the physical bones that follow the pose go.
     std::vector<std::pair<entt::entity, world::Affine3D>>* follows = nullptr;
+    // Stepping: where the animated pose puts each physical bone's body, for its drive.
+    world::PhysicalBoneTargets* targets = nullptr;
 
     [[nodiscard]] std::optional<Vec3> where(entt::entity target) const {
         if (target == entt::null || !world->valid(target)) {
@@ -1341,6 +1343,25 @@ void run_simulator(const Run& run, const Modifier& m, Bones& bones) {
         return count;
     };
     std::ranges::stable_sort(physical, {}, depth);
+    // Where the pose as it stands puts each body, orthonormalized, as Godot's: before any
+    // simulated bone replaces it.
+    const auto posed = [&](const PhysicalBone& b, const world::Affine3D& offset) {
+        const world::Affine3D follow = run.place * bones.global_pose(b.bone) * offset;
+        world::Affine3D unscaled =
+            node_transform({.position = {}, .rotation = decompose(follow).rotation});
+        unscaled.origin = follow.origin;
+        return unscaled;
+    };
+    if (run.targets != nullptr) {
+        for (const PhysicalBone& b : physical) {
+            if (b.bone >= 0) {
+                run.targets->insert_or_assign(
+                    b.entity,
+                    posed(b, body_offset(
+                                 run.world->ecs().get<const world::PhysicalBone3D>(b.entity))));
+            }
+        }
+    }
     for (const PhysicalBone& b : physical) {
         if (b.bone < 0) {
             continue;
@@ -1349,12 +1370,7 @@ void run_simulator(const Run& run, const Modifier& m, Bones& bones) {
             body_offset(run.world->ecs().get<const world::PhysicalBone3D>(b.entity));
         if (!b.simulating) {
             if (run.follows != nullptr) {
-                const world::Affine3D follow = run.place * bones.global_pose(b.bone) * offset;
-                // Orthonormalized, as Godot's.
-                world::Affine3D unscaled =
-                    node_transform({.position = {}, .rotation = decompose(follow).rotation});
-                unscaled.origin = follow.origin;
-                run.follows->emplace_back(b.entity, unscaled);
+                run.follows->emplace_back(b.entity, posed(b, offset));
             }
         } else if (simulator.simulating) {
             bones.set_global_pose(b.bone,
@@ -1440,13 +1456,17 @@ void add_modifier_system(world::World& world, ModelLoader load) {
     }
     auto state = std::make_shared<ModifierState>();
     world.ecs().ctx().emplace<std::shared_ptr<ModifierState>>(state);
-    world.add_reset([state](world::World& /*world*/) { state->chains.clear(); });
+    world.add_reset([state](world::World& w) {
+        state->chains.clear();
+        world::set_physical_bone_targets(w, {});
+    });
     world::set_physical_bone_linker(
         world, [load](const world::World& w) { return physical_bone_links(w, load); });
     world.add_system(
         "skeleton_modifiers",
         [state, load = std::move(load)](world::World& w, double /*tick_seconds*/) {
             std::set<std::string> seen;
+            world::PhysicalBoneTargets targets;
             const world::Tree3D tree(w);
             const Placer global = [&tree](entt::entity e) { return tree.global(e); };
             for (const entt::entity entity : w.ecs().view<const world::MeshInstance3D>()) {
@@ -1493,7 +1513,8 @@ void add_modifier_system(world::World& world, ModelLoader load) {
                               .pass = Pass::Step,
                               .state = state.get(),
                               .seen = &seen,
-                              .follows = &follows};
+                              .follows = &follows,
+                              .targets = &targets};
                 run_modifiers(run, pose);
                 for (const auto& [bone, where] : follows) {
                     set_global_transform(w, tree, bone, where);
@@ -1501,6 +1522,7 @@ void add_modifier_system(world::World& world, ModelLoader load) {
             }
             std::erase_if(state->chains,
                           [&](const auto& entry) { return !seen.contains(entry.first); });
+            world::set_physical_bone_targets(w, std::move(targets));
             // Then the bone attachments, where the bones ended up.
             place_attachments(w, load);
         },

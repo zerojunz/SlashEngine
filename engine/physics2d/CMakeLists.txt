@@ -3,6 +3,7 @@ add_library(slash_physics2d
     src/fields.cpp
     src/physics2d.cpp
     src/polygon.cpp
+    src/ragdoll.cpp
     src/space.cpp)
 add_library(slash::physics2d ALIAS slash_physics2d)
 

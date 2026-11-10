@@ -620,6 +620,9 @@ private:
     // What PhysicsField3Ds do this step to rigid bodies, physical bones and soft bodies: forces,
     // velocities, strain that breaks, anchors, sleep, and bodies to remove after it.
     void apply_fields(const world::World& world, const world::Tree3D& tree, float seconds);
+    // What PhysicalBone3D drives do this step: simulating bones turned (and, in the world,
+    // moved) toward where the animated pose puts them (drives.cpp).
+    void apply_drives(const world::World& world, float seconds);
     // A rigid body's or bone's mass: its material's density times its shape's volume, or its
     // own.
     [[nodiscard]] float mass_of(const Body& body, float own) const;
