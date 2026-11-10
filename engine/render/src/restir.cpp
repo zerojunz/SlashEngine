@@ -4,6 +4,7 @@
 #include "slash/core/jobs.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 
