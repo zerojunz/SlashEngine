@@ -942,7 +942,7 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .set_doc("Painted 2D plants and rocks: each group's instances draw their .foliage.json "
                  "type's texture standing on its origin, bend in WindSource2Ds' wind, part for "
                  "character and rigid bodies and block them as the type says.")
-        .describe("groups", {.doc = "Each type's instances, as {\"type\", \"instances\"}."})
+        .describe("groups", {.doc = R"(Each type's instances, as {"type", "instances"}.)"})
         .describe("groups[].type", {.doc = "Project path of the 2D .foliage.json file they are."})
         .describe("groups[].instances",
                   {.doc = "Four numbers an instance: x, y, rotation in radians and scale, a "
@@ -3379,7 +3379,7 @@ void register_3d_components(ComponentRegistry& registry) {
                  "their .foliage.json type's model, bend in WindSource3Ds' wind, part for "
                  "character and rigid bodies and block them as the type says. foliage.paint and "
                  "foliage.erase brush them on and off.")
-        .describe("groups", {.doc = "Each type's instances, as {\"type\", \"instances\"}."})
+        .describe("groups", {.doc = R"(Each type's instances, as {"type", "instances"}.)"})
         .describe("groups[].type", {.doc = "Project path of the .foliage.json file they are."})
         .describe("groups[].instances",
                   {.doc = "Seven numbers an instance: x, y, z, rotation x, y, z in radians "
