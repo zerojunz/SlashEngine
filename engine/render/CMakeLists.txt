@@ -179,10 +179,12 @@ set(slash_shader_headers "")
 # over the shadow atlases and the sky's radiance, which takes tonemap.hlsl's colors, and fog_sky
 # the pass that draws the sky through the fog, whose fragment stage reads it as a storage buffer.
 # Frame generation's passes are one compute shader that includes nothing (compute_alone), and
-# its draw pass reads the generated frame as fog_sky reads the fog.
+# its draw pass reads the generated frame as fog_sky reads the fog. mesh_plain and shadow_plain
+# (3d_plain and depth_plain) are the mesh and shadow shaders without alpha hash, GLSL ES only.
 set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
     mesh_clustered:MeshClustered:clustered mesh_normal:MeshNormal:normal
     mesh_motion:MeshMotion:motion mesh_subsurface:MeshSubsurface:clustered shadow:Shadow:depth
+    mesh_plain:MeshPlain:3d_plain shadow_plain:ShadowPlain:depth_plain
     post:Post:post sky:Sky:post forward_post:ForwardPost:post16 ssao:Ssao:ssao ssr:Ssr:ssao
     ssr_trace:SsrTrace:ssr_trace radiance:Radiance:post taa:Taa:post subsurface:Subsurface:post
     fsr2_luma:Fsr2Luma:fsr2 fsr2_dilate:Fsr2Dilate:fsr2
@@ -214,6 +216,7 @@ foreach(entry IN LISTS slash_shaders)
     set(fragment_only OFF)
     set(storage_buffers OFF)
     set(no_glsl OFF)
+    set(glsl_only OFF)
     if(count GREATER 2)
         list(GET parts 2 kind)
         if(kind STREQUAL "compute")
@@ -245,6 +248,11 @@ foreach(entry IN LISTS slash_shaders)
             set(include shadow)
             set(interface v_uv,v_color,v_object)
             set(fixup ON)
+        elseif(kind STREQUAL "depth_plain")
+            set(include shadow)
+            set(interface v_uv,v_color)
+            set(fixup ON)
+            set(glsl_only ON)
         elseif(kind STREQUAL "post" OR kind STREQUAL "post16" OR kind STREQUAL "ssao"
                OR kind STREQUAL "ssr_trace")
             set(include tonemap)
@@ -265,7 +273,10 @@ foreach(entry IN LISTS slash_shaders)
             set(fixup ON)
             set(pieces ON)
             set(sampler_shift 16)
-            if(kind STREQUAL "clustered")
+            if(kind STREQUAL "3d_plain")
+                set(interface v_world,v_normal,v_tangent,v_binormal,v_uv,v_color,v_uv2)
+                set(glsl_only ON)
+            elseif(kind STREQUAL "clustered")
                 set(fragment_only ON)
                 set(storage_buffers ON)
             elseif(kind STREQUAL "normal")
@@ -284,7 +295,7 @@ foreach(entry IN LISTS slash_shaders)
             -DNAME=${name} -DCOMPUTE=${compute} -DINTERFACE=${interface}
             -DFIXUP_CLIPSPACE=${fixup} -DPIECES=${pieces} -DSAMPLER_SHIFT=${sampler_shift}
             -DFRAGMENT_ONLY=${fragment_only} -DSTORAGE_BUFFERS=${storage_buffers}
-            -DNO_GLSL=${no_glsl}
+            -DNO_GLSL=${no_glsl} -DGLSL_ONLY=${glsl_only}
             -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/shaders
             -DGLSLANG=${SLASH_GLSLANG} -DSPIRV_CROSS=${SLASH_SPIRV_CROSS} -DTINT=${SLASH_TINT}
             -P ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake

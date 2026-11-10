@@ -347,7 +347,8 @@ endforeach()
 
 # The compiled shaders committed in engine/render/src match their HLSL; see
 # cmake/compile_shaders.cmake.
-foreach(shader IN ITEMS sprite material mesh mesh_clustered mesh_normal mesh_motion shadow post
+foreach(shader IN ITEMS sprite material mesh mesh_clustered mesh_normal mesh_motion mesh_plain
+        shadow shadow_plain post
         forward_post ssao ssr ssr_trace sky radiance taa particles_process particles_emit
         particles_draw particles_process_3d particles_sort_3d particles_mesh_3d fsr2_luma fsr2_dilate fsr2_reconstruct fsr2_depth_clip fsr2_lock
         fsr2_accumulate fsr2_rcas fsr3_prepare fsr3_reconstruct fsr3_pyramid fsr3_reduce
