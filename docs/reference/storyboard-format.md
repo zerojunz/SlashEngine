@@ -16,7 +16,8 @@ in one file, so `storyboard.edit` always knows where an entry goes. A missing fi
 
 ```text
 storyboard/
-  style.json       # palette, tone, reference, budget
+  style.json       # palette, tone, reference, budget, style
+  style/           # the frames style references were marked from
   world.json       # character, place, faction, item, lore
   story.json       # act, beat, quest
   design.json      # mechanic, rule, tuning, control
@@ -25,6 +26,7 @@ storyboard/
   decisions.json   # decision
   work.json        # task
   journal.jsonl    # who changed which entries, when and why
+  style_journal.jsonl  # fingerprints style.check recorded
 ```
 
 `tests/data/game/storyboard/world.json`:
@@ -80,6 +82,7 @@ the kind shown.
 | `tone` | style | | The mood and voice of the game, or of a part |
 | `reference` | style | | Art or writing to follow; put the file in `links` |
 | `budget` | style | `triangles`, `texture_size`, `texel_density` (integers) | Limits for the assets in its `links`, or for all; `texel_density` is the texels a meter models' textures should have, from half to twice it |
+| `style` | style | `capture`, `settings`, `fingerprint`, `tolerances` (data `style.mark` writes) | A look the game keeps, measured: see [style references](#style-references) |
 | `character` | world | `faction` (faction), `home` (place), `traits` (strings), `voice` | A person or creature |
 | `place` | world | `region` (place) | A location |
 | `faction` | world | `leader` (character) | A group, side or organization |
@@ -253,6 +256,40 @@ check's verdict doesn't count), and drafts edits for `storyboard.edit`:
 The asset library sends the references with every request for an asset of the same type, so
 what worked before shapes what is made next, and `storyboard.check` holds new models to the
 budgets. [examples/asset-style](../../examples/asset-style/) drafts a cafe's style this way.
+
+## Style references
+
+Palettes and budgets hold assets to rules; a `style` entry holds the whole look of a frame, so a
+game still looks like itself after weeks of autonomous work. [`style.mark`](commands.md#stylemark)
+captures a scene, the open world, an image, a model or a material and writes `style/<name>`,
+keeping the frame as `storyboard/style/<name>.png`. Its fields are data written by the command;
+write `name`, `summary`, `text`, `links` and `tolerances` by hand or through `style.mark`:
+
+| Field | Meaning |
+| --- | --- |
+| `capture` | What was captured and how: `what` (`scene`, `world`, `image`, `model` or `material`), `path`, `camera`, `size` (`[width, height]`), `ticks` and `frame` |
+| `settings` | What made the look, so a check can say what changed: the look's components by entity (environment, camera attributes, lights, cameras, probes, GI, fog volumes, `CanvasModulate`, materials, and those entities' transforms), material files with their params, and project.json's `rendering` |
+| `fingerprint` | The look in numbers, each rounded to 4 places: `palette` (`"#rrggbb"` to its share of the pixels, at most 8), `value` (luma at the 5th, 50th and 95th percentiles, 0 to 1), `contrast` (RMS), `saturation` (mean HSV), `warmth` (mean red less blue), `edges` (the share of pixels on a Sobel edge), `line_weight` (edges' width in pixels), `flat` (the share of pixels within a step of luma of their right and lower neighbors), `texel_density` (a model's albedo texels a meter) and `pixels` (those at least half opaque) |
+| `tolerances` | The drift each measure may show before a check fails, by measure; the rest keep their defaults |
+
+A reference governs its own file and the files of its kind that its `links` cover, so one marked
+from a level and linked to `levels` holds every level to it. [`style.check`](commands.md#stylecheck)
+captures them the way the reference was captured and reports each measure's drift, what is over
+tolerance and which settings changed; [`test.run`](commands.md#testrun) fails a frame over
+tolerance. `storyboard.brief` sends the references that cover a task's files, and the asset
+library tells generators the look in words ("Keep the look: A low warm sun under a blue-gray sky
+(mostly #59668c and #c08060, warm, mid-toned, medium contrast, muted, smooth shading).").
+
+A look can drift by steps no single check fails. With `"record": true`, `style.check` appends a
+line per frame to `storyboard/style_journal.jsonl`:
+
+```json
+{"fingerprint":{"contrast":0.0635,"edges":0.0151,"flat":0.938,"line_weight":2.3243,"palette":{"#59668c":0.4124,"#664637":0.5176,"#b77150":0.0687},"pixels":5184,"saturation":0.4251,"value":[0.2824,0.349,0.4902],"warmth":0.0399},"reference":"style/harbor-dusk","target":"levels/harbor.scene.json","time":"2026-11-10T14:02:11Z"}
+```
+
+and reports as `creeping` each measure whose drift grew at each of the last three recorded
+checks. Commit the journal with the storyboard. [examples/style-memory](../../examples/style-memory/)
+keeps a 3D harbor's look and a 2D title screen's.
 
 ## Model review
 

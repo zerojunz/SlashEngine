@@ -21,6 +21,7 @@
 #include "slash/scene3d/material.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/recipe.hpp"
+#include "slash/storyboard/fingerprint.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/world/scene.hpp"
 
@@ -1068,6 +1069,7 @@ std::string prompt_context(Session& session, std::span<const Record> records, co
         std::vector<std::string> tones;
         std::vector<std::string> colors;
         std::vector<std::string> references;
+        std::vector<std::string> looks;
         std::set<std::string> briefed;
         for (const json::Value& item : storyboard::brief(entries, {}, paths).entries) {
             briefed.insert(field_text(item, "id"));
@@ -1084,6 +1086,22 @@ std::string prompt_context(Session& session, std::span<const Record> records, co
                 tones.push_back(std::move(summary));
             } else if (kind->name == "reference" && !summary.empty()) {
                 references.push_back(std::move(summary));
+            } else if (kind->name == "style") {
+                // A look style.mark kept: its words, then its fingerprint in words.
+                std::string look = field_text(*fields, "text");
+                if (look.empty()) {
+                    look = summary;
+                }
+                if (const json::Value* kept = fields->find("fingerprint"); kept != nullptr) {
+                    if (auto fingerprint = storyboard::fingerprint_from_json(*kept); fingerprint) {
+                        look += (look.empty() ? "" : " (") +
+                                storyboard::describe_look(fingerprint.value()) +
+                                (look.empty() ? "" : ")");
+                    }
+                }
+                if (!look.empty()) {
+                    looks.push_back(std::move(look));
+                }
             } else if (const json::Value* named = fields->find("colors");
                        kind->name == "palette" && named != nullptr && named->is_object()) {
                 for (const auto& [name, color] : named->as_object()) {
@@ -1122,6 +1140,9 @@ std::string prompt_context(Session& session, std::span<const Record> records, co
         }
         if (!references.empty()) {
             lines.push_back("Follow: " + joined(references, "; ") + ".");
+        }
+        if (!looks.empty()) {
+            lines.push_back("Keep the look: " + joined(looks, "; ") + ".");
         }
     }
 

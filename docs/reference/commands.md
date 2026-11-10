@@ -86,7 +86,7 @@ as `entity.get`, reject it as an unknown param.
 | Services | [`services.state`](#servicesstate), [`services.test`](#servicestest) |
 | Network | [`net.host`](#nethost), [`net.join`](#netjoin), [`net.state`](#netstate), [`net.rpc`](#netrpc), [`net.close`](#netclose) |
 | XR | [`xr.state`](#xrstate), [`xr.set`](#xrset) |
-| Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.review`](#storyboardreview), [`storyboard.edit`](#storyboardedit) |
+| Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.review`](#storyboardreview), [`storyboard.edit`](#storyboardedit), [`style.mark`](#stylemark), [`style.check`](#stylecheck) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
 | Query | [`world.query`](#worldquery) |
 | Snapshots | [`world.snapshot`](#worldsnapshot), [`world.diff`](#worlddiff), [`world.restore`](#worldrestore) |
@@ -4284,6 +4284,91 @@ Removing an entry that another entry still names fails; change both in one call.
 `redo` apply the reverse edit and the edit again, with the same version checks, so an undo that
 would overwrite someone else's later change is refused.
 
+### style.mark
+
+Keeps a look the game must hold to as the storyboard entry `style/<name>`, a
+[`style`](storyboard-format.md#style-references) reference, so agents working weeks later can
+check their work against it. It captures a scene, the open world, an image, a model or a material
+the way [`style.check`](#stylecheck) will, writes the frame as `storyboard/style/<name>.png`,
+and records in the entry what was captured (`capture`), the settings that made the look
+(`settings`: the scene's environment, camera attributes, lights, cameras, probes, GI and fog
+volumes, `CanvasModulate`, `StandardMaterial3D`s and material files with their params, the
+transforms of those entities, and project.json's `rendering`) and its `fingerprint`: the palette
+(at most 8 colors with their shares), luma at the 5th, 50th and 95th percentiles (`value`), RMS
+`contrast`, mean HSV `saturation`, `warmth` (red less blue), the share of pixels on an edge
+(`edges`), how many pixels wide edges are (`line_weight`), the share of pixels the same as their
+neighbors (`flat`: high for cel shading and pixel art) and, for a model, its albedo texels per
+meter (`texel_density`). The measures use integer math and correctly rounded square roots, so a
+frame measures the same on every machine.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `name` | string | required | Lowercase letters, digits, `-` and `_`; the entry is `style/<name>` |
+| `scene` | path | | A scene file, captured through its current camera (or `camera`) after `ticks` |
+| `image` | path | | An image, or a `.texture.json` file |
+| `model` | path | | A model, drawn on a gray stage from three quarters |
+| `material` | path | | A `.standard_material.json` on a sphere, or a canvas `.material.json` on a sprite |
+| `camera` | entity ID | the current camera | The camera to see a scene through |
+| `size` | `[width, height]` | the window's shape, at most 320 wide; 160 square for models and materials | The frame's size in pixels |
+| `ticks` | integer | 0 | Ticks to step a scene before capturing it |
+| `summary` | string | "The look of ..." | One line on the look |
+| `text` | string | | What to keep about it, in words: what `storyboard.brief` gives agents and what asset generators' prompts are told |
+| `links` | array of paths | | More files and folders it governs; its own file always is |
+| `tolerances` | object | | The drift each measure may show before a check fails, by measure |
+| `why` | string | | Why, for the storyboard's journal |
+
+Give at most one of `scene`, `image`, `model` and `material`; with none, the open world is marked
+as it is now, and checks open its scene at the same tick. Marking a name again replaces its
+reference. The entry is written through [`storyboard.edit`](#storyboardedit), so `undo` takes the
+entry and its frame away again. Needs: `edit`, `filesystem`.
+
+```json
+{"name": "harbor-dusk", "scene": "levels/harbor.scene.json", "links": ["levels"],
+ "text": "Every level is the harbor at dusk: a low warm sun under a blue-gray sky, walls of warm stone."}
+```
+
+```json
+{"fingerprint":{"contrast":0.0635,"edges":0.0151,"flat":0.938,"line_weight":2.3243,"palette":{"#59668c":0.4124,"#664637":0.5176,"#b77150":0.0687},"pixels":5184,"saturation":0.4251,"value":[0.2824,0.349,0.4902],"warmth":0.0399},"frame":"storyboard/style/harbor-dusk.png","id":"style/harbor-dusk"}
+```
+
+### style.check
+
+Holds what style references govern to them: each reference's own file, and the files of its kind
+(scenes, images, models or materials) that its `links` cover, captured as the reference was
+(its size, ticks and camera). For each, `drift` gives each measure's distance from the
+reference's: for the palette, half the sum over both palettes of each color's share times its
+distance to the nearest color of the other, in RGB over 255; for `value`, the largest change of
+the three percentiles; for `texel_density`, the change over the reference's; for the rest, the
+change. `over` names the measures past their tolerance, the reference's `tolerances` or the
+defaults (palette 0.1, value 0.08, contrast 0.05, saturation 0.08, warmth 0.05, edges 0.05,
+line weight 0.75 pixels, flat 0.1, texel density half the reference's), each as the reference's
+value, the value now, the drift and the tolerance. `changed` lists the settings that differ from
+the reference's, by JSON Pointer (at most 12): in a file other than the reference's own, only
+those of entities both have. `creeping` names measures that drifted further at each of the last
+3 recorded checks, still under tolerance: slow drift no single check fails. A frame that can't
+be captured has an `error` and counts as drifted.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `references` | array of IDs | every `style` entry | The references to check against |
+| `paths` | array of paths | each reference's own file and those its links cover | Files to hold to the references instead |
+| `record` | boolean | `false` | Append each fingerprint to `storyboard/style_journal.jsonl`, the history `creeping` reads |
+| `review` | boolean | `false` | Also write each frame to `.slash/style/<name>/` and ask a vision model through [`storyboard.review`](#storyboardreview) where it strays from the reference's frame |
+
+At most 32 frames a call. `record` and `review` need `filesystem`; `review` also `network`.
+Needs: `read`. [`test.run`](#testrun) with no paths runs it and fails each frame that drifted, at
+the reference's entry.
+
+```json
+{"references": ["style/harbor-dusk"]}
+```
+
+```json
+{"checked":[{"changed":["/entities/environment/WorldEnvironment/background_color","/entities/sun/DirectionalLight3D/light_color","/entities/sun/DirectionalLight3D/light_energy"],"drift":{"contrast":0.0517,"edges":0.0172,"flat":0.059,"line_weight":0.0078,"palette":0.3003,"saturation":0.0081,"value":0.2039,"warmth":0.157},"over":{"contrast":"0.0635 -> 0.1152 (drift 0.0517, tolerance 0.05)","palette":"#664637 52%, #59668c 41%, #b77150 7% -> #886e5d 50%, #73b3ff 41%, #daa98d 7%, #a9846b 1% (drift 0.3003, tolerance 0.1)","value":"[0.2824, 0.349, 0.4902] -> [0.4275, 0.5294, 0.6941] (drift 0.2039, tolerance 0.08)","warmth":"0.0399 -> -0.1171 (drift 0.157, tolerance 0.05)"},"reference":"style/harbor-dusk","target":"levels/pier.scene.json"}],"drifted":1}
+```
+
+The reply above leaves out the harbor's own frame, which has no drift.
+
 ## Components
 
 ### component.set
@@ -4720,7 +4805,8 @@ Needs: `run`, `filesystem`. With neither `paths` nor `tests`, it also runs
 [`storyboard.check`](#storyboardcheck) and adds its errors, runs
 [`soundtrack.check`](#soundtrackcheck) where the soundtrack's commands are registered (as in
 `slash-cli` and `slash-mcp`) and adds its errors, runs [`l10n.check`](#l10ncheck) on a project
-that lists translations and adds its errors, and, where the session may, runs
+that lists translations and adds its errors, runs [`style.check`](#stylecheck) and adds a
+failure at the reference's entry for each frame that drifted from its look, and, where the session may, runs
 [`asset.check`](#assetcheck) on the files the project took from the asset library, which
 records what it sees as their feedback: its problems come back as `assets` without failing a
 test, but for a model that fails the checks it was kept with, which fails at its `check` in
@@ -5968,7 +6054,9 @@ to generate anyway. Needs: `read`, `filesystem`, `network`.
 The generator gets more than the prompt, so results fit the game: the
 [storyboard](storyboard-format.md)'s `tone` entries, `palette` colors (for images) and `reference`
 entries that cover `path` or every asset, up to three more `reference` entries that link assets
-of the same type (as [`asset.style`](#assetstyle) drafts them), and the reasons
+of the same type (as [`asset.style`](#assetstyle) drafts them), the looks of the `style`
+references that cover `path` ("Keep the look: ...", each its text and its fingerprint in words,
+as [`style.mark`](#stylemark) keeps them), and the reasons
 [feedback](#assetfeedback) gave for
 assets like this one (scoring at least 0.5) and for a refine's parent: "What worked before:
 ..." and "Avoid what was wrong before: ...". The record keeps what was added as

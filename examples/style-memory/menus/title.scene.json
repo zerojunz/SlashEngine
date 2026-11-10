@@ -1,0 +1,37 @@
+{
+  "entities": {
+    "sign": {
+      "components": {
+        "ColorRect": {
+          "color": [0.95, 0.8, 0.55, 1.0]
+        },
+        "Control": {
+          "offset_bottom": 42.0,
+          "offset_left": 28.0,
+          "offset_right": 68.0,
+          "offset_top": 30.0
+        }
+      }
+    },
+    "sky": {
+      "components": {
+        "Sprite2D": {
+          "texture": "art/dusk.texture.json"
+        },
+        "Transform2D": {
+          "position": [48.0, 27.0],
+          "rotation": 1.5707963,
+          "scale": [0.5625, 96.0]
+        }
+      }
+    },
+    "tint": {
+      "components": {
+        "CanvasModulate": {
+          "color": [1.0, 0.95, 0.9, 1.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

@@ -1853,6 +1853,52 @@ TEST_CASE("storyboard.review asks a model for contradictions and keeps only thos
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("style.check asks a vision model where a frame strays from its reference's look") {
+    const std::string root = "ai_style_project";
+    std::filesystem::remove_all(root);
+    FakeModelServer server({chat_reply(R"({"findings": [{"item": 3, "quote": "",
+        "entry": "style/dusk", "problem": "The sky is a noon blue, not dusk's.",
+        "confidence": "high"}]})")});
+    write(root + "/providers.json", R"({"providers": {"local": {"type": "openai",
+        "model": "local-model", "url": ")" +
+                                        server.url() + R"("}}})");
+    write(root + "/project.json", R"({"format": 1, "name": "Style", "version": "1.0.0",
+        "main_scene": "yard.scene.json", "window": {"width": 32, "height": 18}})");
+    const auto yard = [](std::string_view sky) {
+        return R"({"format": 1, "entities": {
+            "camera": {"components": {"Camera3D": {"current": true}, "Transform3D": {}}},
+            "environment": {"components": {"WorldEnvironment": {"background_mode": "color",
+                "background_color": )" +
+               std::string(sky) + R"(}}}}})";
+    };
+    write(root + "/yard.scene.json", yard("[0.35, 0.4, 0.55, 1]"));
+    Engine engine(root);
+    engine.ok("style.mark", parse(R"({"name": "dusk", "scene": "yard.scene.json",
+        "text": "A blue-gray dusk."})"));
+    write(root + "/yard.scene.json", yard("[0.55, 0.75, 1, 1]"));
+
+    const json::Value checked = engine.ok("style.check", parse(R"({"review": true})"));
+    const json::Value& item = checked.find("checked")->as_array()[0];
+    CHECK(item.find("over") != nullptr);
+    const json::Value* findings = item.find("review")->find("findings");
+    REQUIRE(findings != nullptr);
+    REQUIRE_MESSAGE(findings->size() == 1, json::write(item, json::Style::Compact));
+    CHECK(*findings->as_array()[0].find("source") == ".slash/style/dusk/yard_scene_json.png");
+    CHECK(*findings->as_array()[0].find("entry") == "style/dusk");
+    CHECK(platform::exists(root + "/.slash/style/dusk/yard_scene_json.png"));
+    // The model saw the reference's frame, then the yard's, with the entry among its facts.
+    const std::string sent = json::write(server.bodies()[0], json::Style::Compact);
+    CHECK(sent.find("style/dusk") != std::string::npos);
+    CHECK(sent.find("A blue-gray dusk.") != std::string::npos);
+    std::size_t images = 0;
+    for (std::size_t at = sent.find("data:image/png"); at != std::string::npos;
+         at = sent.find("data:image/png", at + 1)) {
+        ++images;
+    }
+    CHECK(images == 2);
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("npc.draft has a model write a brain and sends its problems back until it checks") {
     const std::string root = "ai_npc_draft_project";
     std::filesystem::remove_all(root);
