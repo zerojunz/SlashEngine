@@ -118,7 +118,7 @@ void Space::apply_fields(world::World& world, const world::Tree2D& tree, float s
             b2Body_ApplyForceToCenter(body->id, to_b2(force), true);
         }
         if (effect.velocity) {
-            b2Body_SetLinearVelocity(body->id, {effect.velocity->x, effect.velocity->y});
+            b2Body_SetLinearVelocity(body->id, to_b2(Vec2{effect.velocity->x, effect.velocity->y}));
             b2Body_SetAwake(body->id, true);
         }
         if (effect.sleep_below && b2Body_IsAwake(body->id) && force == Vec2{} && !effect.velocity &&
