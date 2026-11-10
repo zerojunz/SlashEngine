@@ -1,6 +1,7 @@
 #include "../engine/render/src/sdfgi.hpp"
 
 #include "slash/core/jobs.hpp"
+#include "slash/core/json.hpp"
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/mesh.hpp"
@@ -13,6 +14,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace render = slash::render;
@@ -250,4 +252,145 @@ TEST_CASE("SDFGI's probes settle over frames_to_converge frames") {
     CHECK(second < settled);
     // Past frames_to_converge, it holds.
     CHECK(std::abs(greens(draw_frames(*device, lit_cube(), 8)) - plain - settled) < settled / 20);
+}
+
+TEST_CASE("SDFGI's cascades scroll: a moved cascade keeps its cells and makes those that came in") {
+    // A floor of four cubes along x, lit by nothing, so only cells are compared.
+    render::Scene3D scene = lit_cube();
+    scene.lights.clear();
+    const std::vector<Vertex3D> box = cube();
+    std::vector<render::detail::MeshDraw> draws;
+    for (int i = 0; i < 4; ++i) {
+        render::detail::MeshDraw draw;
+        draw.transform =
+            placed({1.5F, 0.5F, 1.5F}, {(static_cast<float>(i) * 3.0F) - 4.0F, 0.0F, 0.0F});
+        draw.material.albedo = {0.2F * static_cast<float>(i + 1), 0.5F, 0.5F, 1.0F};
+        draws.push_back(draw);
+    }
+    std::vector<std::uint32_t> triangles(box.size());
+    for (std::size_t i = 0; i < triangles.size(); ++i) {
+        triangles[i] = static_cast<std::uint32_t>(i);
+    }
+    std::vector<render::detail::PathMesh> meshes;
+    for (const render::detail::MeshDraw& draw : draws) {
+        meshes.push_back({.draw = &draw, .vertices = box, .triangles = triangles});
+    }
+    const render::detail::PathScene paths =
+        render::detail::build_path_scene(scene, meshes, 16, 16, {});
+    const White textures;
+    // One state follows the camera along x; the other is made where it ends up.
+    render::detail::SdfgiState moving;
+    render::detail::update_sdfgi(moving, scene, {0.0F, 0.0F, 0.0F}, paths, textures, nullptr);
+    const std::array<std::int32_t, 3> start = moving.cascades[0].position;
+    render::detail::update_sdfgi(moving, scene, {2.0F, 0.0F, 0.0F}, paths, textures, nullptr);
+    REQUIRE(moving.cascades[0].position != start);
+    render::detail::SdfgiState fresh;
+    render::detail::update_sdfgi(fresh, scene, {2.0F, 0.0F, 0.0F}, paths, textures, nullptr);
+    REQUIRE(fresh.cascades[0].position == moving.cascades[0].position);
+    for (std::size_t c = 0; c < fresh.cascades.size(); ++c) {
+        CAPTURE(c);
+        const render::detail::SdfgiCascade& a = moving.cascades[c];
+        const render::detail::SdfgiCascade& b = fresh.cascades[c];
+        CHECK(a.sdf == b.sdf);
+        REQUIRE(a.cells.size() == b.cells.size());
+        for (std::size_t i = 0; i < a.cells.size(); ++i) {
+            CHECK(a.cells[i].index == b.cells[i].index);
+            CHECK(a.cells[i].facing == b.cells[i].facing);
+            CHECK(a.cells[i].neighbors == b.cells[i].neighbors);
+            for (std::size_t k = 0; k < 3; ++k) {
+                CHECK(a.cells[i].albedo.at(k) == doctest::Approx(b.cells[i].albedo.at(k)));
+            }
+        }
+    }
+}
+
+TEST_CASE("SDFGI's settings read project.json's as Godot's") {
+    const render::SdfgiSettings defaults;
+    CHECK(defaults.probe_ray_count == render::Sdfgi3D{}.ray_count);
+    CHECK(defaults.frames_to_converge == render::Sdfgi3D{}.frames_to_converge);
+    CHECK(defaults.frames_to_update_lights == render::Sdfgi3D{}.frames_to_update_light);
+    const auto read = [](std::string_view text) {
+        auto parsed = slash::json::parse(text);
+        REQUIRE(parsed.ok());
+        return render::sdfgi_settings_from_json(parsed.value());
+    };
+    const render::SdfgiSettings set = read(R"({"global_illumination": {"sdfgi": {
+        "probe_ray_count": 96, "frames_to_converge": 10, "frames_to_update_lights": 16}}})");
+    CHECK(set.probe_ray_count == 96);
+    CHECK(set.frames_to_converge == 10);
+    CHECK(set.frames_to_update_lights == 16);
+    // Values Godot doesn't offer, or of the wrong kind, keep their defaults.
+    CHECK(read(R"({"global_illumination": {"sdfgi": {"probe_ray_count": 12,
+        "frames_to_converge": "fast", "frames_to_update_lights": 3}}})") == defaults);
+    CHECK(read(R"({"global_illumination": {"voxel_gi": {"quality": "high"}}})") == defaults);
+    CHECK(read("{}") == defaults);
+}
+
+TEST_CASE("SDFGI's probe occlusion floods out from each probe and stops at walls") {
+    // A cascade of 64 cells (a probe every 4) at the origin, with a wall one cell thick across x
+    // at cell 34, facing both ways.
+    constexpr std::uint32_t kSize = 64;
+    render::detail::SdfgiCascade cascade;
+    cascade.sums.resize(std::size_t{kSize} * kSize * kSize);
+    const auto index = [](std::size_t x, std::size_t y, std::size_t z) {
+        return (((z * kSize) + y) * kSize) + x;
+    };
+    for (std::size_t z = 0; z < kSize; ++z) {
+        for (std::size_t y = 0; y < kSize; ++y) {
+            cascade.sums[index(34, y, z)] = {.count = 1, .facing = 1U | 8U};
+        }
+    }
+    render::detail::make_sdfgi_occlusion(cascade, kSize, nullptr);
+    REQUIRE(cascade.occlusion.size() == cascade.sums.size());
+    // Probe 8 (between cells 31 and 32 on each axis) is of parity 0; probe 9 (between 35 and
+    // 36 in x) of parity 1.
+    const auto seen = [&](std::size_t x, std::uint32_t parity) {
+        return render::detail::sdfgi_occlusion(cascade, index(x, 32, 32), parity);
+    };
+    // Probe 8 sees the cells on its side of the wall and the wall's face toward it, and not
+    // the cell behind the wall.
+    CHECK(seen(32, 0) == 1.0F);
+    CHECK(seen(33, 0) == 1.0F);
+    CHECK(seen(34, 0) == 1.0F);
+    CHECK(seen(35, 0) == 0.0F);
+    // Probe 9, on the other side, sees that cell and not those on probe 8's side.
+    CHECK(seen(35, 1) == 1.0F);
+    CHECK(seen(33, 1) == 0.0F);
+    // The same on any number of threads.
+    slash::jobs::Pool pool(4);
+    render::detail::SdfgiCascade shared = cascade;
+    render::detail::make_sdfgi_occlusion(shared, kSize, &pool);
+    CHECK(shared.occlusion == cascade.occlusion);
+    // With no wall, every probe sees every cell within its spacing.
+    render::detail::SdfgiCascade open;
+    open.sums.resize(cascade.sums.size());
+    render::detail::make_sdfgi_occlusion(open, kSize, nullptr);
+    CHECK(std::all_of(open.occlusion.begin(), open.occlusion.end(),
+                      [](std::uint32_t packed) { return packed == 0xFFFFFFFFU; }));
+}
+
+TEST_CASE("SDFGI with occlusion keeps a wall's bounce from leaking behind it") {
+    auto device = render::create_software_device();
+    // Looking at the floor behind the wall, in its shadow, from beyond it.
+    render::Scene3D leaky = lit_cube();
+    leaky.camera = render::look_at({4.5F, 4.0F, 0.0F}, {2.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F});
+    render::Scene3D occluded = leaky;
+    occluded.sdfgi.use_occlusion = true;
+    const Image without = draw_frames(*device, leaky, 6, Stand::Wall);
+    const Image with = draw_frames(*device, occluded, 6, Stand::Wall);
+    // Without occlusion, the probes on the sunlit side light the floor behind the wall through
+    // it; with it, they don't.
+    constexpr std::array<std::uint32_t, 2> kBehind{12, 15};
+    CHECK(channel(without, kBehind[0], kBehind[1], 0) >= 20);
+    CHECK(channel(with, kBehind[0], kBehind[1], 0) <= 4);
+    CHECK(greens(with) < greens(without));
+    // The floor in front of the wall's lit face still turns red.
+    render::Scene3D front = lit_cube();
+    front.sdfgi.use_occlusion = true;
+    const Image lit = draw_frames(*device, front, 6, Stand::Wall);
+    CHECK(channel(lit, kBounce[0], kBounce[1], 0) - channel(lit, kBounce[0], kBounce[1], 1) > 4);
+    // The same on any number of threads.
+    slash::jobs::Pool pool(4);
+    auto shared = render::create_software_device(&pool);
+    CHECK(draw_frames(*shared, occluded, 6, Stand::Wall).pixels == with.pixels);
 }

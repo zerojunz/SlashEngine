@@ -71,8 +71,9 @@ as `entity.get`, reject it as an unknown param.
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity), [`physics.soft_body`](#physicssoft_body), [`physics.break`](#physicsbreak) |
 | World streaming | [`streaming.state`](#streamingstate) |
 | Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent), [`navigation.bake`](#navigationbake) |
+| NPCs | [`npc.plan`](#npcplan), [`npc.draft`](#npcdraft) |
 | Particles | [`particles.eval`](#particleseval), [`particles.bake_sdf`](#particlesbake_sdf) |
-| Lights | [`light.sample`](#lightsample) |
+| Lights | [`light.sample`](#lightsample), [`lighting.check`](#lightingcheck) |
 | Global illumination | [`lightmap.bake`](#lightmapbake), [`voxel_gi.bake`](#voxel_gibake) |
 | Occlusion culling | [`occluder.bake`](#occluderbake) |
 | UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.drag`](#uidrag), [`ui.tooltip`](#uitooltip), [`ui.focus`](#uifocus), [`ui.accessibility`](#uiaccessibility), [`ui.accessibility_action`](#uiaccessibility_action), [`ui.search`](#uisearch), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
@@ -167,6 +168,7 @@ Returns a JSON Schema: for scene, prefab, [`.frames.json`](scene-format.md#sprit
 [`.bus_layout.json`](scene-format.md#bus-layouts), [`.replay.json`](scene-format.md#replays),
 [`.test.json`](scene-format.md#tests),
 [`.navmesh.json` or `.navpoly.json`](scene-format.md#navigation-meshes-and-polygons),
+[`.npc.json`](scene-format.md#npcs),
 [`.meshlib.json`](scene-format.md#mesh-libraries), [`.model.json`](scene-format.md#model-recipes),
 [`.standard_material.json`](scene-format.md#material-files),
 [`.texture.json`](scene-format.md#procedural-textures),
@@ -175,7 +177,7 @@ command.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"standard_material"`, `"texture"`, `"scatter"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"npc"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"standard_material"`, `"texture"`, `"scatter"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -1909,6 +1911,91 @@ An unknown ID fails at `/id` with a "did you mean"; so do an entity with no regi
 with no file named and a file of the other kind. A file that doesn't validate fails with its
 first error's JSON Pointer.
 
+## NPCs
+
+### npc.plan
+
+Returns the goal an [NPC](scene-format.md#npcs) would choose and the cheapest plan to it, as its
+`npc` system would: the `goal`, the `plan` (its actions' names), its `cost`, how many states the
+planner `searched` and the `facts` it planned from. When no goal is chosen, `goal` is null and
+`goals` says why for each: its when conditions don't hold, its want
+conditions already hold, or no plan reaches it within `search_limit`. With `goal`, it plans for
+that goal whatever its `when` and priority, and says whether a plan was `found`. Planning changes
+nothing.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | | An entity with an `NpcAgent`: plans from its facts |
+| `brain` | string | | A `.npc.json` file: plans from its facts' defaults |
+| `facts` | object | `{}` | Facts to change first, by name: whole numbers or booleans |
+| `goal` | string | | Plan for this goal |
+| `check` | boolean | `false` | Also return the brain's `warnings`: goals no chain of actions reaches from the facts' defaults and actions no plan uses |
+
+Needs: `read`. Give `id` or `brain`. A cook whose brain cooks, then eats:
+
+```json
+{"brain": "cook.npc.json", "check": true}
+```
+
+```json
+{"cost":2,"facts":{"food":1,"has_food":0,"hungry":1},"goal":"eat","plan":["cook","eat"],"searched":3,"warnings":[{"message":"goal \"stock_up\" is out of reach from the facts' defaults","path":"/goals/1"}]}
+```
+
+The same cook with no food left:
+
+```json
+{"id": "cook"}
+```
+
+```json
+{"facts":{"food":0,"has_food":0,"hungry":1},"goal":null,"goals":{"eat":"no plan within search_limit","stock_up":"no plan within search_limit"}}
+```
+
+An unknown ID, goal or fact fails at its path with a "did you mean"; an entity with no
+`NpcAgent`, or a brain that doesn't load, fails at `/id` or `/brain`.
+[examples/npc-planner](../../examples/npc-planner/) asks it about a village.
+
+### npc.draft
+
+Has a model from `providers.json` write an [NPC](scene-format.md#npcs)'s `.npc.json` brain from a
+`brief` and the storyboard entries in `story`, or revise the brain at `path` when it exists. The
+model is told the brief, the entries whole, the entities its `go_to` actions may walk to, the
+events the game's code answers, the brain it revises and the brain file's schema. Each draft is
+checked as `scene validate` checks a brain, and for `go_to` targets outside `targets`, `emit`
+events outside `events` and goals no chain of actions reaches; the problems go back to the model,
+which tries again, up to `attempts` drafts. Only a draft with no problems is written, as one
+undo step. Actions no plan uses are `warnings`, which don't stop it.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | | The `.npc.json` file to write; one that exists is revised |
+| `brief` | string | | Who the NPC is and what it should do |
+| `story` | array | `[]` | Storyboard entry IDs about it (at most 16), sent whole |
+| `targets` | array | the open scene's entities with a transform and no `NpcAgent` | Entity IDs its `go_to` actions may walk to (at most 64) |
+| `events` | array | any | Events the game's code answers, which its `emit` actions may use |
+| `attempts` | integer | `2` | Drafts the model may make (1 to 4) |
+| `role` | string | the `default` role, or the only provider | A role or provider from `providers.json` |
+| `max_tokens` | integer | | The most tokens the model may reply with |
+
+Needs: `read`, `edit`, `filesystem` and `network` (a session without `network` answers only from
+a replay file). It returns the `path`, the `attempts` it took, the `model` and its `usage`, the
+brain's `goals`, `actions`, the entities it walks to (`go_to`) and the events it `emit`s, and
+`replayed` when the answers came from a replay file. A brain the same as the file's comes back
+with `"unchanged": true` and writes nothing.
+
+```json
+{"path": "brains/mira.npc.json", "brief": "Mira sells fruit at the square by day and sleeps at night.", "story": ["character/mira", "place/square"], "events": ["sell"]}
+```
+
+```json
+{"actions":["walk_to_orchard","pick_fruit","walk_to_stall","sell_fruit","walk_home"],"attempts":2,"emits":["sell"],"go_to":["home","orchard","stall"],"goals":["sleep","restock","serve","mind_stall"],"model":"local-model","path":"brains/mira.npc.json","usage":{"input_tokens":2210,"output_tokens":480}}
+```
+
+A path that isn't a `.npc.json` file fails at `/path`, an unknown storyboard ID at `/story/<i>`
+with a "did you mean", and a model whose last draft still has problems fails with them in the
+error's `problems`, writing nothing. [examples/npc-draft](../../examples/npc-draft/) has a model
+write a fruit seller.
+
 ## Particles
 
 ### particles.eval
@@ -2043,6 +2130,50 @@ torch and one behind the crate from it:
 - Normal maps aren't sampled: the pixel faces the viewer. Values are rounded to three decimals.
 - A light that can't shine, such as one whose texture doesn't load, is left out and listed in
   `warnings` with its entity's ID and why.
+
+### lighting.check
+
+Looks at the 3D world's lighting through its current `Camera3D`, for an agent that can't judge a
+picture by eye. It draws the frame on the CPU, as [`frame.capture`](#framecapture) does, so the
+numbers are the same on every machine, and returns its `exposure`: the `mean`, 5th (`p5`) and
+95th (`p95`) percentile of its pixels' brightness from 0 to 1 (Rec. 709's weights over the drawn
+colors), and the shares of pixels `clipped` (a channel at full brightness) and `crushed`
+(brightness below 0.02). With `lights`, it draws the frame again without each 3D light that
+shines (its `light_energy` at 0 for the drawing, then put back) and says what share of the frame
+it lights (`lit`: brightness changed by two 8-bit steps or more), what share of the frame's
+brightness it adds (`share`), and what would not be clipped without it (`clips`). Lights baked
+whole into lightmaps (`light_bake_mode` `"static"`) say `baked`, as taking them away changes
+only moving meshes. The check changes nothing.
+
+`problems` lists what to fix, each with a `kind`, a `message` and, for a light, its `id`:
+
+| Kind | When |
+| --- | --- |
+| `overexposed` | More than 5% of the frame is clipped |
+| `crushed` | More than 40% of the frame is nearly black |
+| `dark`, `bright` | The mean brightness is below 0.08 or above 0.8 |
+| `flat` | The 5th to 95th percentile spans less than 0.1 |
+| `unlit` | A light lights under 0.1% of the frame: out of range, shadowed, culled or facing away |
+| `clips` | Without a light, more than 2% of the frame would not be clipped |
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `scale` | number | `0.25` | Image pixels per window pixel, from 0.05 to 1 |
+| `lights` | boolean | `true` | Measure each light, drawing the frame once more per light |
+| `ids` | array | every 3D light that shines | The lights to measure, by entity ID (at most 32, in ID order) |
+
+Needs: `read`. A courtyard with a flood light at an energy of 40 and a lamp out of view:
+
+```json
+{"scale": 1}
+```
+
+```json
+{"exposure":{"clipped":0.0617,"crushed":0.0,"mean":0.6461,"p5":0.5793,"p95":0.946},"lights":[{"clips":0.0617,"id":"flood","lit":0.0701,"share":0.042,"type":"SpotLight3D"},{"id":"porch_lamp","lit":0.0,"share":0.0,"type":"OmniLight3D"},{"clips":0.0055,"id":"sun","lit":0.6338,"share":0.3965,"type":"DirectionalLight3D"}],"problems":[{"kind":"overexposed","message":"6.2% of the frame is clipped to full brightness"},{"id":"flood","kind":"clips","message":"\"flood\" pushes 6.2% of the frame to full brightness"},{"id":"porch_lamp","kind":"unlit","message":"\"porch_lamp\" lights nothing in view: out of range, shadowed, culled or facing away"}],"size":[160,90]}
+```
+
+A frame with no 3D meshes fails, and an unknown light in `ids` fails at its path with a "did you
+mean". [examples/lighting-check](../../examples/lighting-check/) fixes a courtyard's lights.
 
 ## Global illumination
 
@@ -4863,7 +4994,8 @@ Needs: `read`, and `filesystem` with `path`. A HUD with a health bar at 75%:
 `width` and `height` are the image's, after `region` and `scale`. `drawn` counts what was drawn
 (`sprites`, `tiles`, `particles`, `lights`, `controls`, `shapes`, 3D `meshes` and, of those,
 `lods`: the meshes drawn at a coarser [LOD](scene-format.md#mesh-lods)), `clusters`, the
-clusters [virtualized](virtualized-geometry.md) meshes were cut into, and `occluded`, the 3D
+clusters [virtualized](virtualized-geometry.md) meshes were cut into and drawn, `culled`, the
+clusters of those cuts the camera [culled](virtualized-geometry.md#culling), and `occluded`, the 3D
 meshes [occluders](scene-format.md#occlusion-culling) hid, leaving out
 zeros. When the
 project's `rendering.scaling` ([project-format.md](project-format.md#render-scale)) draws the

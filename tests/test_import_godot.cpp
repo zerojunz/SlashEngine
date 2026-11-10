@@ -3112,6 +3112,8 @@ run/main_scene="res://level.tscn"
 [rendering]
 
 global_illumination/voxel_gi/quality=1
+global_illumination/sdfgi/probe_ray_count=3
+global_illumination/sdfgi/frames_to_update_lights=0
 )");
     // The hall's data saved in Godot's binary form, as Godot's VoxelGI bake saves it.
     {
@@ -3214,7 +3216,8 @@ data = SubResource("broken")
     // Godot's cones.
     const json::Value project_file = parse(files.at("project.json"));
     CHECK(*project_file.find("rendering")->find("global_illumination") ==
-          parse(R"({"voxel_gi": {"quality": "high"}})"));
+          parse(R"({"voxel_gi": {"quality": "high"},
+                    "sdfgi": {"probe_ray_count": 32, "frames_to_update_lights": 1}})"));
     fs::remove_all(project);
 }
 

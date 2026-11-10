@@ -12,6 +12,7 @@
 #include "slash/scene3d/particle_collision.hpp"
 #include "slash/scene3d/recipe.hpp"
 #include "slash/scene3d/skeleton.hpp"
+#include "slash/scene3d/splats.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
 
@@ -1474,6 +1475,7 @@ void add_asset_types(asset::Assets& assets) {
     add_particle_sdf_type(assets);
     add_lightmap_types(assets);
     add_voxel_gi_types(assets);
+    add_splat_type(assets);
 }
 
 } // namespace slash::scene3d

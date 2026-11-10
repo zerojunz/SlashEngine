@@ -4,8 +4,8 @@
 
 #include <string_view>
 
-// Shared by the ai.* commands (commands.cpp), storyboard.review (review.cpp) and l10n.translate
-// (translate.cpp).
+// Shared by the ai.* commands (commands.cpp), storyboard.review (review.cpp), l10n.translate
+// (translate.cpp) and npc.draft (npc_draft.cpp).
 namespace slash::ai::detail {
 
 // The media type of an image file, from its extension: "image/png", "image/jpeg", "image/gif"
@@ -17,5 +17,8 @@ void register_review(command::Registry& registry);
 
 // l10n.translate.
 void register_translate(command::Registry& registry);
+
+// npc.draft.
+void register_npc_draft(command::Registry& registry);
 
 } // namespace slash::ai::detail

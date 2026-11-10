@@ -1,0 +1,12 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"npc.draft","params":{"path":"brains/mira.npc.json","brief":"Mira minds her fruit stall and sells to customers; she restocks in the orchard when out of fruit and goes home at night.","story":["character/mira","place/square"],"events":["sell"]}}
+{"jsonrpc":"2.0","id":3,"method":"entity.create","params":{"id":"mira","components":{"Transform3D":{"position":[-6,0,0]},"NpcAgent":{"brain":"brains/mira.npc.json","facts":{"at_home":1,"customers":2},"speed":3}}}}
+{"jsonrpc":"2.0","id":4,"method":"npc.plan","params":{"id":"mira"}}
+{"jsonrpc":"2.0","id":5,"method":"events.subscribe","params":{"kinds":["npc_goal_changed","sell"]}}
+{"jsonrpc":"2.0","id":6,"method":"step","params":{"ticks":600}}
+{"jsonrpc":"2.0","id":7,"method":"events.read","params":{"subscription":"events_1"}}
+{"jsonrpc":"2.0","id":8,"method":"npc.plan","params":{"id":"mira","facts":{"night":true}}}
+{"jsonrpc":"2.0","id":9,"method":"npc.draft","params":{"path":"brains/mira.npc.json","brief":"Also: when thirsty, Mira drinks at the well before anything but going home.","story":["character/mira"],"events":["sell"]}}
+{"jsonrpc":"2.0","id":10,"method":"npc.plan","params":{"id":"mira","facts":{"thirsty":true}}}
+{"jsonrpc":"2.0","id":11,"method":"undo","params":{}}
+{"jsonrpc":"2.0","id":12,"method":"npc.plan","params":{"id":"mira","facts":{"fruits":3}}}

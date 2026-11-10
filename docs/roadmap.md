@@ -1105,14 +1105,14 @@ launch rows and the after-launch features above.
 
 - Virtualized geometry in the style of Nanite (meshlet rendering). Spike: cluster hierarchies
   built with meshoptimizer's cluster LOD builder and cut per camera on the CPU, crack-free,
-  behind `MeshInstance3D.virtualized`
-  ([virtualized-geometry.md](reference/virtualized-geometry.md)); GPU selection, cluster
+  behind `MeshInstance3D.virtualized`, with clusters out of view, facing away or occluded culled
+  per cut ([virtualized-geometry.md](reference/virtualized-geometry.md)); GPU selection and
   culling, a software rasterizer and streaming remain
 - Fully dynamic global illumination at Lumen quality, after probe GI ships. Spike: Godot 4.6's
   SDFGI ported to the CPU (cascades of distance fields that follow the camera, lit cells and
   probes with spherical harmonics history), behind `WorldEnvironment.sdfgi_enabled` on the
-  software device ([sdfgi.md](reference/sdfgi.md)); the GPU passes, scrolling cascades and probe
-  occlusion remain
+  software device ([sdfgi.md](reference/sdfgi.md)), its cascades scrolling and its probes
+  occluded by walls; the GPU passes remain
 - Digital humans in the style of MetaHuman; out of scope for releases. Research note:
   [digital-humans.md](reference/digital-humans.md). Blend shapes done (glTF morph targets,
   `MeshInstance3D.blend_shapes` and their animation tracks) and hair and eye shading (Godot's rim,
@@ -1120,6 +1120,24 @@ launch rows and the after-launch features above.
   screen-space blur) done, and face capture done (Godot's `XRFaceTracker` and `XRFaceModifier3D`,
   and Live Link Face recordings imported as animations by `animation.import_face_capture`),
   and alpha hash done (Godot's `"alpha_hash"` transparency, with a hash every device makes alike)
+
+## Agent-built worlds and smart NPCs
+
+Ways for agents to build detailed 3D worlds and many smarter NPCs at a fraction of Unreal's
+cost, from the research proposal of 2026-11-07, in order:
+
+1. [x] Planning NPCs: goal-oriented action planning as F.E.A.R.'s, with `.npc.json` brains of
+       facts, goals and actions, `NpcAgent` components planned on the job system, go_to along
+       navigation paths, and the `npc.plan` command
+2. [x] Goals and brains written by a model from the storyboard, checked by `npc.plan`
+3. [x] Lighting checks for agents: `lighting.check` measures a frame's exposure and what each
+       light lights, and names the problems
+4. [x] ReSTIR direct lighting for scenes of many lights (research: the software device; see
+       [restir.md](reference/restir.md))
+5. [x] Generated meshes for detailed scenery: the `fal-trellis` library generator makes textured
+       `.glb` models from a concept image through Microsoft's TRELLIS (MIT), as fal.ai runs it
+6. [x] Gaussian splats for detailed scenery (research: the software device; see
+       [gaussian-splats.md](reference/gaussian-splats.md))
 
 Console ports are not on this roadmap and never will be in this repository. As with Godot,
 PlayStation, Xbox and Switch support comes from licensed porting partners as private backends.

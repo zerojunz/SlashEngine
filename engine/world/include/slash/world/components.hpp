@@ -908,6 +908,19 @@ SLASH_COMPONENT(Decal, size, texture_albedo, texture_normal, texture_orm, textur
                 distance_fade_enabled, distance_fade_begin, distance_fade_length, cull_mask, layers,
                 sorting_offset)
 
+// A cloud of 3D Gaussians captured from a real place or thing, from a 3D Gaussian Splatting .ply
+// file, placed by the entity's Transform3D and blended over the opaque meshes in Forward+ (a
+// research spike of SlashEngine's own, Godot has none: the software device draws them).
+struct GaussianSplat3D {
+    std::string splats;         // project path of the .ply file
+    std::int32_t sh_degree = 3; // the most spherical harmonics degree its colors use, 0 to 3
+    float opacity = 1.0F;       // times each splat's
+    std::uint32_t layers = 1;   // as MeshInstance3D's: the cameras that see it
+
+    friend bool operator==(const GaussianSplat3D&, const GaussianSplat3D&) = default;
+};
+SLASH_COMPONENT(GaussianSplat3D, splats, sh_degree, opacity, layers)
+
 // Forward+: a place where the volumetric fog is thicker, thinner or glows, as Godot's FogVolume:
 // a shape of size centered on the entity, in its space, or the whole fog ("world"), filled as the
 // FogMaterial on the same entity says (with none, a density of 1 and white light scattered, as
@@ -2651,6 +2664,27 @@ struct NavigationObstacle3D {
 };
 SLASH_COMPONENT(NavigationObstacle3D, radius, height, vertices, avoidance_enabled, velocity,
                 avoidance_layers, use_3d_avoidance, affect_navigation_mesh, carve_navigation_mesh)
+
+// An NPC that plans, as F.E.A.R.'s goal-oriented action planning: its .npc.json brain names
+// facts, goals and actions, and the npc system picks the first goal by priority it can reach and
+// runs the cheapest chain of actions to it (slash/npc/npc.hpp). facts holds the values that differ
+// from the brain's defaults; goal, plan and the times are the system's, saved with the rest.
+struct NpcAgent {
+    std::string brain;                // project path of a .npc.json file
+    std::map<std::string, int> facts; // fact values over the brain's defaults
+    std::string goal;                 // the goal it is pursuing, or ""
+    std::vector<std::string> plan;    // the actions left, the running one first
+    float action_time = 0.0F;         // seconds the running action has run
+    float think_interval = 0.5F;      // seconds between thinking again
+    float think_in = 0.0F;            // seconds until it thinks again
+    float speed = 2.0F;               // units a second a go_to action walks
+    float arrive_distance = 0.5F;     // how near a go_to action's target counts as there
+    bool enabled = true;
+
+    friend bool operator==(const NpcAgent&, const NpcAgent&) = default;
+};
+SLASH_COMPONENT(NpcAgent, brain, facts, goal, plan, action_time, think_interval, think_in, speed,
+                arrive_distance, enabled)
 
 // ---- Particles, as Godot's CPUParticles2D.
 

@@ -642,6 +642,7 @@ on its top.
 | `rendering/reflections/reflection_atlas/reflection_size`, `reflection_count` | `rendering.reflections.reflection_atlas`; a size that isn't a power of two from 32 to 2048 is reported |
 | `rendering/textures/decals/filter` | `rendering.textures.decals.filter`: `0` is `"nearest"`, `1` `"linear"` and so on to `5`, `"linear_mipmaps_anisotropic"` |
 | `rendering/global_illumination/voxel_gi/quality` | `rendering.global_illumination.voxel_gi.quality`: `0` is `"low"`, `1` is `"high"` |
+| `rendering/global_illumination/sdfgi/probe_ray_count`, `frames_to_converge`, `frames_to_update_lights` | `rendering.global_illumination.sdfgi`'s settings of the same names, Godot's enum indices made the numbers they stand for |
 | `rendering/anti_aliasing/quality/use_taa` | `rendering.anti_aliasing.quality.use_taa` |
 | `rendering/mesh_lod/lod_change/threshold_pixels` | `rendering.mesh_lod.lod_change.threshold_pixels` |
 | `rendering/occlusion_culling/use_occlusion_culling`, `occlusion_rays_per_thread`, `jitter_projection` | `rendering.occlusion_culling` |

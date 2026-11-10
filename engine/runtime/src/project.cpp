@@ -330,6 +330,31 @@ json::Value global_illumination_schema() {
     out["additionalProperties"] = false;
     out["description"] = "Global illumination, as Godot's rendering/global_illumination settings.";
     out["properties"]["voxel_gi"] = std::move(voxel_gi);
+    const render::SdfgiSettings sdfgi_defaults;
+    const auto choice = [](json::Array choices, std::uint32_t value, std::string_view description) {
+        json::Value field;
+        field["type"] = "integer";
+        field["enum"] = std::move(choices);
+        field["default"] = static_cast<std::int64_t>(value);
+        field["description"] = std::string(description);
+        return field;
+    };
+    json::Value sdfgi;
+    sdfgi["type"] = "object";
+    sdfgi["additionalProperties"] = false;
+    sdfgi["description"] =
+        "SDFGI's probes and light, for every WorldEnvironment with sdfgi_enabled.";
+    sdfgi["properties"]["probe_ray_count"] =
+        choice(json::Array{4, 8, 16, 32, 64, 96, 128}, sdfgi_defaults.probe_ray_count,
+               "Rays each probe traces a frame: more for less noise, at more cost.");
+    sdfgi["properties"]["frames_to_converge"] =
+        choice(json::Array{5, 10, 15, 20, 25, 30}, sdfgi_defaults.frames_to_converge,
+               "Frames a probe averages: fewer to follow changes sooner, with more noise.");
+    sdfgi["properties"]["frames_to_update_lights"] =
+        choice(json::Array{1, 2, 4, 8, 16}, sdfgi_defaults.frames_to_update_lights,
+               "Frames over which the cells' light is updated: fewer to follow lights sooner, at "
+               "more cost a frame.");
+    out["properties"]["sdfgi"] = std::move(sdfgi);
     return out;
 }
 
@@ -429,6 +454,26 @@ json::Value ray_tracing_schema() {
     gi_samples["default"] = render::RayTracing3D{}.global_illumination_samples;
     gi_samples["description"] =
         "Rays a pixel sends for its ambient light: more is less noisy and costs more.";
+    json::Value many;
+    many["type"] = "boolean";
+    many["default"] = false;
+    many["description"] =
+        "Omni and spot lights are lit by ReSTIR: a few lights a pixel resampled from its "
+        "cluster's, last frame's and its neighbors', each with a shadow ray (a research spike: the "
+        "software device draws it, others light every light as before).";
+    json::Value many_candidates;
+    many_candidates["type"] = "integer";
+    many_candidates["minimum"] = 1;
+    many_candidates["maximum"] = 32;
+    many_candidates["default"] = render::RayTracing3D{}.many_light_candidates;
+    many_candidates["description"] = "Lights a pixel draws from its cluster each frame.";
+    json::Value many_samples;
+    many_samples["type"] = "integer";
+    many_samples["minimum"] = 1;
+    many_samples["maximum"] = 4;
+    many_samples["default"] = render::RayTracing3D{}.many_light_samples;
+    many_samples["description"] =
+        "Reservoirs a pixel keeps, each a light and a shadow ray: more is less noisy.";
     json::Value out;
     out["type"] = "object";
     out["additionalProperties"] = false;
@@ -441,6 +486,9 @@ json::Value ray_tracing_schema() {
     out["properties"]["reflection_samples"] = std::move(reflection_samples);
     out["properties"]["global_illumination"] = std::move(gi);
     out["properties"]["global_illumination_samples"] = std::move(gi_samples);
+    out["properties"]["many_lights"] = std::move(many);
+    out["properties"]["many_light_candidates"] = std::move(many_candidates);
+    out["properties"]["many_light_samples"] = std::move(many_samples);
     return out;
 }
 
@@ -1057,6 +1105,7 @@ Result<Project> parse_project(const json::Value& project) {
             }
         }
         out.voxel_gi_high_quality = render::voxel_gi_high_quality(*rendering);
+        out.sdfgi = render::sdfgi_settings_from_json(*rendering);
         out.use_taa = render::use_taa(*rendering);
         out.frame_generation = render::frame_generation(*rendering);
         out.decal_filter = render::decal_filter(*rendering);

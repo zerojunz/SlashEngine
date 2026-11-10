@@ -147,7 +147,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, sdk, plugin)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, sdk, plugin)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -157,7 +157,7 @@ Validate after editing a scene or prefab by hand, and format before committing o
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
-`.score.json`, `.navmesh.json`, `.navpoly.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json` and `.scatter.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
+`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json` and `.scatter.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -232,7 +232,7 @@ generator, model, seed, license, tags, a short description and the parent it was
 Files are written whole and moved into place (`platform::rename_file`), so agents can share a
 library. Generators are `library::Generator` adapters named in `providers.json`'s `generators`,
 as models are `ai::Provider`s: `openai-image`, `gemini-image`, `automatic1111`, `openai-speech`,
-`elevenlabs-sound`, `elevenlabs-music`, `stability-audio`, `stability-3d` and `meshy-rig` (`src/adapters.cpp`, through `ai::post_with_retries`, with images fitted
+`elevenlabs-sound`, `elevenlabs-music`, `stability-audio`, `stability-3d`, `fal-trellis` (Microsoft's TRELLIS on fal.ai) and `meshy-rig` (`src/adapters.cpp`, through `ai::post_with_retries`, with images fitted
 to the size asked for by `fit_image`), and the built-in `test` generator, which draws
 placeholders with integer math only, so they are the same bytes everywhere. `asset.search`, `asset.generate` (an exact repeat
 calls no generator, close matches come back as candidates), `asset.refine`, `asset.info`,
@@ -1202,11 +1202,15 @@ SDFGI is Godot 4.6's fully dynamic GI, a research spike on the CPU
 ([docs/reference/sdfgi.md](docs/reference/sdfgi.md)): `WorldEnvironment`'s `sdfgi_*` fields set
 `Scene3D::sdfgi` (`render::Sdfgi3D`), and the software device, after the prepass, keeps a
 `detail::SdfgiState` per target (`src/sdfgi.cpp`, after `gi.cpp`'s `GI::SDFGI` and its shaders):
-`update_sdfgi` moves the cascades with the camera, makes each moved or changed one's cells from
-the path tracer's scene (`path_surface_at`) with an exact distance field, lights the cells
+`update_sdfgi` moves the cascades with the camera (a moved one keeps the cells it still holds,
+`SdfgiCascade::sums`, while the triangles stay the same), makes the cells that came in or changed
+from the path tracer's scene (`path_surface_at`) with an exact distance field (and, with
+`sdfgi_use_occlusion`, `make_sdfgi_occlusion`'s flood from each probe), lights the cells
 through it and has the probes trace their rays into spherical harmonics history, then
 `run_sdfgi` (`gi.glsl`'s `sdfgi_process`) gives each pixel its ambient light and reflections as
 `MeshMaps::sdfgi`, which `shade_mesh` puts under VoxelGIs' light. Other devices draw without it.
+project.json's `rendering.global_illumination.sdfgi` (`render::SdfgiSettings`) sets every frame's
+probe rays and how fast it follows changes.
 `examples/sdfgi-3d` lights a room with it.
 
 Path tracing makes reference stills on the CPU (`Scene3D::path_trace`, `render::PathTrace3D`;
@@ -1229,6 +1233,35 @@ summing into a float4 storage buffer per target, then averaging over the backgro
 post passes; it keys the sums by `path_scene_key` and a hash of the draws. `display.set`'s
 `path_trace` (`LiveGame::path_trace`) path traces a running game's window, and
 `CanvasRenderer::path_samples` reports its sums. `examples/path-tracing` traces the lightmaps room.
+
+ReSTIR direct lighting is a research spike on the software device
+([docs/reference/restir.md](docs/reference/restir.md)): with `rendering.ray_tracing.many_lights`
+(`RayTracing3D::many_lights`), after the prepass `run_restir` (`src/restir.cpp`, built with
+`-ffp-contract=off`) keeps `many_light_samples` reservoirs a pixel of one omni or spot light
+each: `many_light_candidates` drawn from the pixel's cluster (`LightClusters::sources` names
+their scene lights) and resampled by their unshadowed light, last frame's reservoir where the
+surface was (`RestirState`, kept per target with the camera), then three neighbors' on the same
+surface, with a shadow ray (`path_blocked`) to the light kept for lights with `shadow`.
+`shade_mesh` lights the pixel with those lights, weighed by their reservoirs, in place of its
+cluster's (`MeshMaps::restir`). Other devices light every light as before.
+`examples/many-lights` lights a hall with 64 shadowed lamps.
+
+Gaussian splats are a research spike on the software device
+([docs/reference/gaussian-splats.md](docs/reference/gaussian-splats.md)): a `GaussianSplat3D`
+names a 3D Gaussian Splatting `.ply` file (`render::read_splat_ply` and `write_splat_ply` in
+`engine/render/src/splats.cpp`, loaded as an asset by `scene3d::add_splat_type`), which
+`scene3d::Renderer::add_splats` puts in `Scene3D::splats`; in Forward+ the software device's
+`draw_color` blends them after the opaque meshes and subsurface scattering and before the blended
+meshes with `detail::run_splats` (EWA projection through the view projection's Jacobian, colors
+from spherical harmonics, sorted nearest first, tiles of 16 pixels on the job pool, tested against
+the opaque depth; built with `-ffp-contract=off`). Other devices draw none, and splats are
+neither lit nor in the depth buffer. `examples/gaussian-splats` places a boulder made in code.
+
+`lighting.check` (`engine/command/src/lighting.cpp`) judges a 3D frame's lighting as numbers for
+agents: it draws the frame with `canvas::capture`, measures its exposure (mean, percentiles,
+clipped and crushed shares), draws it again with each light's `light_energy` at 0 (put back
+after) to measure what that light lights, and names problems such as a light that lights nothing
+in view. `examples/lighting-check` fixes a flood light and a lamp out of view.
 
 Ray tracing is SlashEngine's own (Godot 4.6 has none): project.json's `rendering.ray_tracing`
 (`render::RayTracing3D`, `Scene3D::ray_tracing`) turns on ray-traced shadows in Forward+ on
@@ -1559,7 +1592,11 @@ simplifier and dropping triangles folded over their twins; `select_clusters` cut
 `ClusterView` by its groups' projected errors, so a cut covers the surface once with no cracks.
 `MeshInstance3D.virtualized` has `scene3d::Renderer` cut each such surface for the camera in
 `pick_lods` (`cut_clusters`; probes draw the last cut) and draw the cut as a mesh of its own,
-made again when the clusters change; `frame.capture` counts them as `clusters`.
+made again when the clusters change; `frame.capture` counts them as `clusters`. The camera's
+draw then leaves out the clusters out of view, facing away (`Cluster::cone`, from
+`meshopt_computeClusterBounds`) or occluded (`cluster_culled`, `cull_clusters`), drawing the
+rest as a second mesh and the whole cut into shadow maps (`Draw::shadow_mesh`), except where
+rays, SDFGI or path tracing need every cluster (`set_cluster_culling`); `culled` counts them.
 `examples/virtualized-geometry` cuts moons near and far.
 
 Skinned meshes and model animations follow Godot's glTF importer, `Skeleton3D` and
@@ -1947,6 +1984,30 @@ handle until its cells, tile set or transform change, so an unchanged map isn't 
 take a layer's outlines as traversable and its collision polygons as obstructions
 (`add_tiles` in `src/sources.cpp`, as `navmesh_parse_source_geometry`). `examples/navigation-tiles`
 sends a mouse through a maze of tiles.
+
+## NPCs
+
+`engine/npc` is NPCs that plan, as F.E.A.R.'s goal-oriented action planning (Jeff Orkin's "Three
+States and a Plan"; Godot has none). A `.npc.json` brain (`$cli schema npc`; `slash/npc/npc.hpp`,
+`src/brain.cpp`) names facts (whole numbers, booleans as 0 and 1), goals with a priority and
+`when` and `want` conditions, and actions with `needs`, `effects` (a value, or `"+1"` to add), a
+cost and a `do` (`wait`, `go_to` an entity, `emit` an event). `plan` is A* over the facts' values,
+ties going to the action earlier in the file, bounded by `search_limit`; `choose` takes the first
+goal by priority that applies, is unmet and is reached; `check_brain` warns about goals no chain
+reaches and actions no plan uses. An `NpcAgent` names its brain and keeps its facts (those that
+differ from the brain's), goal, plan and timers, so saving, undo and replays keep them. The `npc`
+system (priority 965, after navigation; `src/npc.cpp`) runs each agent's action (a `go_to` walks
+along its `NavigationAgent3D` or 2D's path when it has one), then has those due to think choose on
+the world's job pool, each from its own facts, and starts their plans in entity order, emitting
+`npc_goal_changed`, `npc_action_started`, `npc_action_finished` and `npc_action_failed`.
+Gameplay code answers an `emit` action's event and sets facts with `npc::set_fact`, which has the
+agent think at the next tick. `npc::check_scene` backs `scene validate` and exports, and
+`npc.plan` (`engine/command/src/npc.cpp`) says what an agent or a brain would choose, or why no
+goal is chosen. `npc.draft` (`engine/ai/src/npc_draft.cpp`, in `slash_ai_commands`) has a
+model from `providers.json` write or revise a brain from a brief and storyboard entries, sending
+each draft's problems (`validate_brain`, `go_to` targets, `emit` events, goals `check_brain`
+finds out of reach) back until one checks, and only then writes it. `examples/npc-planner` has
+two farmers and a guard who rings a bell, and `examples/npc-draft` a fruit seller a model wrote.
 
 ## Particles
 
@@ -2721,7 +2782,7 @@ CI rejects unformatted code and any clang-tidy finding.
   `accessibility` (screen readers through AccessKit's adapters), `animation` (`.anim.json` keyframe
   animations, `.animtree.json` animation trees and the systems that play them),
   `scene3d` (3D nodes: primitive meshes, glTF, OBJ, FBX and Blender models, CSG shapes, grid maps, materials, cameras, lights and environments,
-  and drawing them), `physics2d` (2D bodies, areas, joints and queries on Box2D), `physics3d` (3D bodies, areas, character movement and queries on Jolt), `navigation` (navigation meshes, maps, paths and agents), `net` (multiplayer peers, the ENet transport, a world's multiplayer and RPCs), `xr` (the XR server, interfaces, trackers, XR nodes, the test headset and OpenXR), `library` (the asset library, its
+  and drawing them), `physics2d` (2D bodies, areas, joints and queries on Box2D), `physics3d` (3D bodies, areas, character movement and queries on Jolt), `navigation` (navigation meshes, maps, paths and agents), `npc` (NPC brains, goal-oriented action planning and the system that runs agents' plans), `net` (multiplayer peers, the ENet transport, a world's multiplayer and RPCs), `xr` (the XR server, interfaces, trackers, XR nodes, the test headset and OpenXR), `library` (the asset library, its
   generators and commands), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `soundtrack` (`.score.json` scores, MIDI files, rendering stems, drafting cue sheets and arranging them),
   `command` (commands, sessions with undo, JSON-RPC and MCP),

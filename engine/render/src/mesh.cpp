@@ -692,6 +692,19 @@ RayTracing3D ray_tracing(const json::Value& rendering) {
         out.global_illumination_samples = static_cast<std::uint32_t>(
             std::clamp(samples->as_double(), 1.0, static_cast<double>(kMaxRayShadowSamples)));
     }
+    if (const json::Value* many = found->find("many_lights"); many != nullptr && many->is_bool()) {
+        out.many_lights = many->as_bool();
+    }
+    if (const json::Value* candidates = found->find("many_light_candidates");
+        candidates != nullptr && candidates->is_number()) {
+        out.many_light_candidates =
+            static_cast<std::uint32_t>(std::clamp(candidates->as_double(), 1.0, 32.0));
+    }
+    if (const json::Value* samples = found->find("many_light_samples");
+        samples != nullptr && samples->is_number()) {
+        out.many_light_samples =
+            static_cast<std::uint32_t>(std::clamp(samples->as_double(), 1.0, 4.0));
+    }
     return out;
 }
 
@@ -1703,6 +1716,21 @@ std::optional<LightReach> light_reach(const MeshLightUniforms& light, const Floa
     return LightReach{.toward = toward, .distance = distance, .attenuation = attenuation};
 }
 
+float light_falloff(const MeshLightUniforms& light, const Float3& world) {
+    const Float3 to_light = sub({light.position[0], light.position[1], light.position[2]}, world);
+    float attenuation = omni_attenuation(length(to_light), light.position[3], light.params[0]);
+    if (light.direction[3] == 2.0F) {
+        const float cone = light.params[1];
+        const float scos =
+            std::max(dot3(scale(normalize(to_light), -1.0F),
+                          {light.direction[0], light.direction[1], light.direction[2]}),
+                     cone);
+        const float rim = std::max(0.0001F, (1.0F - scos) / (1.0F - cone));
+        attenuation *= 1.0F - power(rim, light.params[2]);
+    }
+    return attenuation;
+}
+
 float ray_shadow(const MeshMaps& maps, std::size_t slot, std::uint32_t x, std::uint32_t y) {
     return maps.ray_shadows[(((std::size_t{y} * maps.ao_width) + x) * kMaxRayShadowLights) + slot];
 }
@@ -1971,7 +1999,27 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     for (std::size_t i = 0; i < count && i < kMaxLights3D; ++i) {
         add_light(scene.lights.at(i));
     }
-    if (maps.clusters != nullptr && maps.uniforms != nullptr) {
+    if (!maps.restir.empty() && maps.clusters != nullptr) {
+        // ReSTIR's reservoirs light the pixel in place of its cluster's omni and spot lights,
+        // each light weighed by its reservoir and what its shadow ray found.
+        const std::size_t at =
+            ((std::size_t{pixel.y} * maps.ao_width) + pixel.x) * maps.restir_samples * 2;
+        for (std::size_t s = 0; s < maps.restir_samples; ++s) {
+            const float index = maps.restir[at + (s * 2)];
+            if (index < 0.0F) {
+                continue;
+            }
+            MeshLightUniforms light = maps.clusters->lights.at(static_cast<std::size_t>(index));
+            const float weight =
+                maps.restir[at + (s * 2) + 1] / static_cast<float>(maps.restir_samples);
+            for (std::size_t c = 0; c < 3; ++c) {
+                light.color.at(c) *= weight;
+            }
+            light.shadow[0] = -1.0F; // its shadow ray stands in for the shadow map
+            light.shadow[3] = 0.0F;
+            add_light(light);
+        }
+    } else if (maps.clusters != nullptr && maps.uniforms != nullptr) {
         add_cluster_lights(*maps.clusters, *maps.uniforms, pixel, add_light);
     }
     if (discarded) {

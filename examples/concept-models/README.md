@@ -13,8 +13,8 @@ rejected, it is made again with the reasons added to the prompt ("The last model
 
 [main.cpp](main.cpp) uses the built-in `test` generator, whose models are reliefs of the concept
 image: its shape in cells a meter across, pushed back into a slab one cell, a sixth or half its
-width deep as the last word about depth says. Stability AI's `stability-3d` generator makes real
-models from the same calls. The vision model is a stand-in on the loopback interface that reads
+width deep as the last word about depth says. Stability AI's `stability-3d` generator and
+`fal-trellis` (Microsoft's TRELLIS on fal.ai) make real models from the same calls. The vision model is a stand-in on the loopback interface that reads
 the size in the request and wants a stool at least 30 cm deep. [expected.txt](expected.txt) holds
 the output:
 

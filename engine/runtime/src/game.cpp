@@ -8,6 +8,7 @@
 #include "slash/input/input.hpp"
 #include "slash/l10n/l10n.hpp"
 #include "slash/net/multiplayer.hpp"
+#include "slash/npc/npc.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/runtime/icon.hpp"
 #include "slash/scene3d/scene3d.hpp"
@@ -288,6 +289,7 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
                                   .subsurface = project_.subsurface,
                                   .reflection_atlas = project_.reflection_atlas,
                                   .voxel_gi_high_quality = project_.voxel_gi_high_quality,
+                                  .sdfgi = project_.sdfgi,
                                   .use_taa = project_.use_taa,
                                   .decal_filter = project_.decal_filter,
                                   .mesh_lod_threshold = project_.mesh_lod_threshold,
@@ -306,6 +308,7 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
     physics2d::install(world_, project_.physics_2d);
     physics3d::install(world_, project_.physics_3d);
     navigation::install(world_, assets_, project_.navigation);
+    npc::install(world_, assets_);
     input::install(world_, project_.input, project_.input_devices);
     audio::install(world_, assets_, project_.audio);
     // With no backends until an SDK package's glue code gives some.

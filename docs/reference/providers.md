@@ -167,6 +167,8 @@ service names them; and `timeout_seconds` and `max_retries` work as a provider's
     "sculptor": {"type": "stability-3d", "api_key_env": "STABILITY_API_KEY",
                  "license": "Stability AI Community License",
                  "options": {"texture_resolution": 1024, "remesh": "quad"}},
+    "trellis": {"type": "fal-trellis", "api_key_env": "FAL_KEY", "license": "MIT (TRELLIS)",
+                "options": {"texture_size": "1024", "mesh_simplify": 0.95}},
     "rigger": {"type": "meshy-rig", "api_key_env": "MESHY_API_KEY", "license": "Meshy terms of use"}
   }
 }
@@ -182,6 +184,7 @@ service names them; and `timeout_seconds` and `max_retries` work as a provider's
 | `elevenlabs-music` | Music, through ElevenLabs' music generation (`/v1/music`), instrumental | No | `music_v1`, `https://api.elevenlabs.io` |
 | `stability-audio` | Music, through Stability AI's Stable Audio 2 and 2.5 (`/v2beta/audio/stable-audio-2/text-to-audio`) | No | `stable-audio-2.5`, `https://api.stability.ai` |
 | `stability-3d` | Models (`.glb`) from a concept image, through Stability AI's Stable Fast 3D or, with `model` `stable-point-aware-3d`, Stable Point Aware 3D (`/v2beta/3d/<model>`) | No | `stable-fast-3d`, `https://api.stability.ai` |
+| `fal-trellis` | Textured models (`.glb`) from a concept image, through Microsoft's TRELLIS as fal.ai runs it (`https://fal.run/<model>`) | No | `fal-ai/trellis`, `https://fal.run` |
 | `meshy-rig` | Rigs (skeletons and skins) for `.glb` models of humanoid figures, through Meshy's rigging API (`/openapi/v1/rigging`) | Rigs only | `https://api.meshy.ai` |
 | `blender` | Models (`.glb`) built by a Blender Python script, by the artist's own Blender run in the background (see [Blender scripts](commands.md#blender-scripts)). Always there as `blender`, even with no `generators`; `options.program` names the Blender to run, else it is found as for `.blend` files, and `timeout_seconds` stops it (600 by default) | With new parameters or a new script | The Blender version that ran it |
 | `test` | Placeholder images, tones, music and models made on the machine, the same on every platform, for tests and CI, and placeholder rigs. Always there as `test`, even with no `generators` | Yes, but not models | |
@@ -220,6 +223,17 @@ Point Aware 3D (Stable Fast 3D takes none) and its options (`texture_resolution`
 `target_count`). The prompt isn't sent: the image is the request. It keeps the `.glb` file it gets
 back. The `test` generator's models are reliefs of the concept image (see
 [`asset.generate`](commands.md#models-from-a-concept-image)).
+
+`fal-trellis` sends the concept image (PNG, JPEG or WebP) as a data URI (`image_url`) with the
+seed and its options (`ss_guidance_strength`, `ss_sampling_steps`, `slat_guidance_strength`,
+`slat_sampling_steps`, `mesh_simplify`, `texture_size`), with the key as `Authorization: Key
+<key>`, as fal's API takes it. fal answers once the model is made with where its `.glb` file is
+(`model_mesh.url`), which the library fetches without the key, or with the file itself as a data
+URI when `options.sync_mode` is set. The prompt isn't sent, and the seed is kept with the asset.
+TRELLIS makes detailed, textured scenery (rocks, props, furniture, buildings) from one picture,
+which `asset.generate`'s `image` names, so `model.cleanup` and the storyboard's budgets decide
+how much of it a game keeps. `model` names another of fal's TRELLIS endpoints, such as
+`fal-ai/trellis/multi` for several views.
 
 `meshy-rig` rigs a figure as a task: it sends the `.glb` file as a data URI (`model_url`) with the
 figure's height in meters (`height_meters`, from the size the library measured) and its options,
