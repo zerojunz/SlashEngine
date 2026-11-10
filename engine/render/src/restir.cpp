@@ -1,9 +1,9 @@
 #include "restir.hpp"
 
+#include "slash/core/bits.hpp"
 #include "slash/core/jobs.hpp"
 
 #include <algorithm>
-#include <bit>
 #include <cmath>
 #include <cstddef>
 
@@ -111,7 +111,7 @@ std::uint64_t restir_lights_key(const Scene3D& scene) {
         key ^= value;
         key *= 0x100000001B3ULL;
     };
-    const auto add_float = [&](float value) { add(std::bit_cast<std::uint32_t>(value)); };
+    const auto add_float = [&](float value) { add(slash::bit_cast<std::uint32_t>(value)); };
     for (const Light3D& light : scene.lights) {
         if (light.type == LightType::Directional) {
             continue;
