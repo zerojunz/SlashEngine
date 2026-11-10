@@ -3691,8 +3691,7 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
 R"hlsl(        float3 turned = float3(dot(sky_rows[0].xyz, ray), dot(sky_rows[1].xyz, ray),
                                dot(sky_rows[2].xyz, ray));
         float level = lerp(0.001, 0.1, sqrt(layers.clearcoat_roughness)) * kRadianceMaxLevel;
-)hlsl",
-R"hlsl(        float3 texel = radiance_map.SampleLevel(radiance_sampler, turned, level).rgb;
+        float3 texel = radiance_map.SampleLevel(radiance_sampler, turned, level).rgb;
         reflected += srgb_to_linear(texel) * horizon * horizon * fc * sky.z;
     }
 #ifdef CLUSTERED
@@ -3936,8 +3935,7 @@ R"hlsl(    // channel affect. Its SSR (alpha below 0 for none) goes over their r
     // game's shader starts them at its AO and AO_LIGHT_AFFECT, as Godot's.
 #ifdef GAME_SHADER
     float ao = game.material.w;
-)hlsl",
-R"hlsl(    float ao_light_affect = game.emission.w;
+    float ao_light_affect = game.emission.w;
 #else
     float ao = 1.0;
     float ao_light_affect = 0.0;
