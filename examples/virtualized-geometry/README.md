@@ -30,5 +30,5 @@ depths meet with no cracks.
   ways to cull.
 
 This is research with no commitment to ship. The cut is picked and culled on the CPU and drawn
-as a mesh, made again when it changes. There is no GPU culling, software rasterizer or
-streaming yet.
+as a mesh, made again when it changes. There is no GPU culling or software rasterizer yet;
+[cluster-streaming](../cluster-streaming/) streams the moon's pages.

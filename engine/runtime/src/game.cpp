@@ -293,6 +293,7 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
                                   .use_taa = project_.use_taa,
                                   .decal_filter = project_.decal_filter,
                                   .mesh_lod_threshold = project_.mesh_lod_threshold,
+                                  .cluster_streaming = project_.cluster_streaming,
                                   .occlusion_culling = project_.occlusion_culling,
                                   .ray_tracing = project_.ray_tracing,
                                   .frame_generation = project_.frame_generation});
