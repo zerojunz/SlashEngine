@@ -93,7 +93,8 @@ struct Project {
         auto drawn = slash::canvas::capture(session->world(), session->assets(), {});
         REQUIRE(drawn.ok());
         const render::Image& image = drawn.value().image;
-        const std::size_t at = ((static_cast<std::size_t>(y) * image.width) + x) * 4;
+        const std::size_t at =
+            ((static_cast<std::size_t>(y) * image.width) + static_cast<std::size_t>(x)) * 4;
         return {image.pixels[at], image.pixels[at + 1], image.pixels[at + 2]};
     }
 
