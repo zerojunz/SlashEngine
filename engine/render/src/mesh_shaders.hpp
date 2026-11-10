@@ -9418,8 +9418,7 @@ R"hlsl(        reflected += srgb_to_linear(texel) * horizon * horizon * fc * sky
     }
 #ifdef CLUSTERED
     if (scene_voxel_gi.x != 0.0 && voxel_gi.x > 0.0 && !lightmapped && !captured) {
-)hlsl",
-R"hlsl(        // Forward+'s VoxelGIs, as Godot's GI buffers light a pixel: their ambient light and
+        // Forward+'s VoxelGIs, as Godot's GI buffers light a pixel: their ambient light and
         // reflections go over the sky's by how much of their cones met something.
         float4 gi_ambient;
         float4 gi_reflection;
@@ -9668,8 +9667,7 @@ R"hlsl(    float4 ssr = float4(0.0, 0.0, 0.0, -1.0);
     rays.on = false;
     rays.low = float4(1.0, 1.0, 1.0, 1.0);
     rays.high = float4(1.0, 1.0, 1.0, 1.0);
-)hlsl",
-R"hlsl(#ifdef CLUSTERED
+#ifdef CLUSTERED
     if (decal_info.x > 0.0) {
         // Forward+'s decals change the surface before it is lit.
         bool flipped = (flags & kSideCheck) != 0u && !front;
