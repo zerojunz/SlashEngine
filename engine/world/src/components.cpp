@@ -938,6 +938,26 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("collision_layer", layer)
         .describe("collision_mask", mask);
 
+    registry.add<Foliage2D>()
+        .set_doc("Painted 2D plants and rocks: each group's instances draw their .foliage.json "
+                 "type's texture standing on its origin, bend in WindSource2Ds' wind, part for "
+                 "character and rigid bodies and block them as the type says.")
+        .describe("groups", {.doc = "Each type's instances, as {\"type\", \"instances\"}."})
+        .describe("groups[].type", {.doc = "Project path of the 2D .foliage.json file they are."})
+        .describe("groups[].instances",
+                  {.doc = "Four numbers an instance: x, y, rotation in radians and scale, a "
+                          "negative scale mirroring it, in the entity's space."})
+        .describe("modulate", {.doc = "Multiplies every instance's color, as [r, g, b, a]."})
+        .describe("collision_layer", {.doc = "The physics layers instances whose type has "
+                                             "collision are on."})
+        .describe("collision_mask", {.doc = "The physics layers they scan, as a static body's."})
+        .describe("z_index", {.doc = "Drawn after lower values."})
+        .describe("z_as_relative", {.doc = "z_index adds to its parents'; off makes it the "
+                                           "whole of it."})
+        .describe("visible", {.doc = "Drawn when on."})
+        .describe("light_mask", {.doc = "Which 2D lights light it, as Sprite2D's."})
+        .describe("texture_filter", {.doc = "How textures are sampled, as Sprite2D's.",
+                                     .choices = {"inherit", "linear", "nearest"}});
     registry.add<Cloth2D>()
         .set_doc("A cut-out character's cloth, as Chaos Cloth on a 2D sheet: a grid of points "
                  "hanging down its entity's y from offset, drawn with texture over it. Its "
@@ -3353,6 +3373,21 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("layers", {.doc = "Render layers, as MeshInstance3D's."})
         .describe("cast_shadow", {.doc = "Which shadows it casts, as MeshInstance3D's.",
                                   .choices = {"off", "on", "double_sided", "shadows_only"}})
+        .describe("lod_bias", {.doc = "As MeshInstance3D's.", .min = 0.001});
+    registry.add<Foliage3D>()
+        .set_doc("Painted plants and rocks, after Unreal's foliage: each group's instances draw "
+                 "their .foliage.json type's model, bend in WindSource3Ds' wind, part for "
+                 "character and rigid bodies and block them as the type says. foliage.paint and "
+                 "foliage.erase brush them on and off.")
+        .describe("groups", {.doc = "Each type's instances, as {\"type\", \"instances\"}."})
+        .describe("groups[].type", {.doc = "Project path of the .foliage.json file they are."})
+        .describe("groups[].instances",
+                  {.doc = "Seven numbers an instance: x, y, z, rotation x, y, z in radians "
+                          "(Godot's YXZ) and scale, in the entity's space."})
+        .describe("layers", {.doc = "Render layers, as MeshInstance3D's."})
+        .describe("collision_layer", {.doc = "The physics layers instances whose type has "
+                                             "collision are on."})
+        .describe("collision_mask", {.doc = "The physics layers they scan, as a static body's."})
         .describe("lod_bias", {.doc = "As MeshInstance3D's.", .min = 0.001});
     registry.add<Skeleton3D>()
         .set_doc("Poses bones of the model the entity's MeshInstance3D draws, by name, in place of "

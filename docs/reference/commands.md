@@ -62,6 +62,7 @@ as `entity.get`, reject it as an unknown param.
 | Materials | [`material.eval`](#materialeval) |
 | Textures | [`texture.generate`](#texturegenerate) |
 | Scatter | [`scatter.run`](#scatterrun) |
+| Foliage | [`foliage.paint`](#foliagepaint), [`foliage.erase`](#foliageerase), [`foliage.get`](#foliageget), [`foliage.harvest`](#foliageharvest) |
 | Animations | [`animation.eval`](#animationeval), [`animation.seek`](#animationseek) |
 | Models | [`model.inspect`](#modelinspect), [`model.cleanup`](#modelcleanup), [`model.retarget`](#modelretarget), [`skeleton.get`](#skeletonget), [`csg.get`](#csgget) |
 | Paths | [`path.get`](#pathget) |
@@ -180,7 +181,7 @@ one component or one command.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"npc"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"standard_material"`, `"texture"`, `"scatter"`, `"physics_material"`, `"ragdoll"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"npc"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"standard_material"`, `"texture"`, `"scatter"`, `"physics_material"`, `"ragdoll"`, `"foliage"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -651,6 +652,71 @@ Asking for more than fits:
 
 Errors in inline rules are at their JSON Pointer under `/rules`, a file's at `/path`, and an `on`
 ID that isn't there names the closest one.
+
+## Foliage
+
+Painting and tending [foliage](scene-format.md#foliage) as Unreal's Foliage tool does, in 3D
+and 2D. A brush is `entity` (the `Foliage3D` or `Foliage2D` entity), `at` (its middle in world
+space: `[x, y, z]`, or `[x, y]` in 2D) and `radius` (default 1 meter, 32 pixels). From
+[examples/foliage](../../examples/foliage/).
+
+### foliage.paint
+
+Paints instances of a type within the brush onto the ground, by the type's `density` (times
+`strength`), `spacing` (from instances of the same type and those of types that block), `slope`,
+`height` and `scale`. The 3D ground is what navigation bakes read (meshes, CSG, terrains, grid
+maps, static bodies' shapes) under the `on` entities, or everything solid, or the plane at y 0
+when there is nothing; the 2D ground is the `on` tile maps' cells, or the brush's area. The
+entity is made with a `Foliage3D` or `Foliage2D` if missing, and a type gets a group of its own
+the first time. Places are seeded by `seed`, or by `at`, so the same stroke places the same.
+Returns `added`, the group's `count` and, when tries were turned away, `rejected` (`slope`,
+`height`, `spacing`); a type of the other space is refused at `/type`. Needs: `edit`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `entity`, `at`, `radius` | | required, required, 1 m or 32 px | The brush |
+| `type` | string | required | The `.foliage.json` file |
+| `strength` | number | `1` | Share of the type's density, 0 to 1 |
+| `on` | array | | IDs of what to paint on |
+| `seed` | integer | from `at` | Seed for where instances go |
+
+```json
+{"entity": "meadow3d", "type": "grass.foliage.json", "at": [0, 0, 0], "radius": 1.5, "seed": 7}
+```
+
+```json
+{"added":39,"count":39,"rejected":{"spacing":9}}
+```
+
+### foliage.erase
+
+Removes the instances within the brush, of `type` only when given, at most `count` of them
+nearest first. Returns `removed`; one undo step. Needs: `edit`.
+
+### foliage.get
+
+Returns the entity's `groups`, each with its `type`, `kind`, `count` and, where they apply,
+`blocks`, `climbable`, `harvest` (the item) and `problem`, and `pushed`, how many instances
+characters hold bent now. With `at`, adds `within` (how many lie within `radius`) and `near`,
+the nearest `limit` (default 20) as `group`, `index` and world `position`. Needs: `read`.
+
+```json
+{"entity": "meadow3d", "at": [1.5, 0, -1.5], "radius": 1.2, "type": "boulder.foliage.json"}
+```
+
+```json
+{"groups":[{"count":77,"kind":"grass","type":"grass.foliage.json"},{"blocks":true,"count":4,"harvest":"stone","kind":"rock","type":"boulder.foliage.json"}],"near":[{"group":1,"index":1,"position":[1.584,0.0,-1.46]},{"group":1,"index":3,"position":[0.538,0.0,-1.665]},{"group":1,"index":0,"position":[2.402,0.0,-1.873]},{"group":1,"index":2,"position":[2.464,0.0,-0.977]}],"within":4}
+```
+
+### foliage.harvest
+
+Harvests the nearest instance within the brush whose type has a `harvest` item: removes it,
+emits a `foliage_harvested` event with the same data, and returns its `type`, `item`, `amount`
+and world `position`. Nothing to harvest there is `-32001` at `/at`. Needs: `edit`.
+
+```json
+{"amount":3,"item":"stone","position":[1.584,0.0,-1.46],"type":"boulder.foliage.json"}
+```
 
 ## Animations
 
@@ -1531,7 +1597,8 @@ hits a [tile map layer's](scene-format.md#tile-collision) tile also gives the `c
 `[column, row]`, and one that hits a [`GridMap`](scene-format.md#grid-maps) gives the `cell` as
 `[x, y, z]` and the `item` in it. A body with a
 [physics material](scene-format.md#physics-materials-and-fields) that names a surface gives it
-as `surface`.
+as `surface`, and one that hits a [foliage](scene-format.md#foliage) instance gives the
+`instance` it hit as `[group, index]`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |

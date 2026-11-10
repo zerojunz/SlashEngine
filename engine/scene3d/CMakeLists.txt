@@ -61,6 +61,7 @@ add_library(slash_scene3d
     src/gltf_writer.cpp
     src/gpu_particles.cpp
     src/particle_collision.cpp
+    src/foliage.cpp
     src/gridmap.cpp
     src/ik.cpp
     src/lightmap.cpp

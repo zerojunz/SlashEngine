@@ -4,6 +4,7 @@ add_library(slash_world
     src/canvas_layer.cpp
     src/cloth2d.cpp
     src/component_registry.cpp
+    src/foliage.cpp
     src/components.cpp
     src/game_module.cpp
     src/legend.cpp

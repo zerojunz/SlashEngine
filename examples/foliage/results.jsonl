@@ -1,0 +1,17 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":6,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"added":39,"count":39,"rejected":{"spacing":9}}}
+{"id":3,"jsonrpc":"2.0","result":{"added":4,"count":4,"rejected":{"spacing":9}}}
+{"id":4,"jsonrpc":"2.0","result":{"added":38,"count":77,"rejected":{"spacing":46}}}
+{"id":5,"jsonrpc":"2.0","result":{"added":29,"count":29,"rejected":{"spacing":12}}}
+{"id":6,"jsonrpc":"2.0","result":{"groups":[{"count":77,"kind":"grass","type":"grass.foliage.json"},{"blocks":true,"count":4,"harvest":"stone","kind":"rock","type":"boulder.foliage.json"}],"near":[{"group":1,"index":1,"position":[1.584,0.0,-1.46]},{"group":1,"index":3,"position":[0.538,0.0,-1.665]},{"group":1,"index":0,"position":[2.402,0.0,-1.873]},{"group":1,"index":2,"position":[2.464,0.0,-0.977]}],"within":4}}
+{"id":7,"jsonrpc":"2.0","result":{"hit":{"fraction":0.625,"id":"meadow3d","instance":[1,1],"normal":[0,1,0],"point":[1.584,0.5,-1.46]}}}
+{"id":8,"jsonrpc":"2.0","result":{"amount":3,"item":"stone","position":[1.584,0.0,-1.46],"type":"boulder.foliage.json"}}
+{"id":9,"jsonrpc":"2.0","result":{"hit":null}}
+{"id":10,"jsonrpc":"2.0","result":{"colors":[[0.478,0.871,0.286,1],[0.298,0.643,0.184,1]],"drawn":{"lods":1,"meshes":81},"height":90,"width":160}}
+{"id":11,"jsonrpc":"2.0","result":{"tick":90,"ticks":90}}
+{"id":12,"jsonrpc":"2.0","result":{"groups":[{"count":77,"kind":"grass","type":"grass.foliage.json"},{"blocks":true,"count":3,"harvest":"stone","kind":"rock","type":"boulder.foliage.json"}],"pushed":12}}
+{"id":13,"jsonrpc":"2.0","result":{"groups":[{"count":29,"kind":"grass","type":"tuft.foliage.json"}],"near":[{"group":0,"index":22,"position":[63.807,85.682]},{"group":0,"index":19,"position":[68.754,85.509]},{"group":0,"index":20,"position":[51.058,85.943]}],"pushed":15,"within":29}}
+{"id":14,"jsonrpc":"2.0","result":{"colors":[[0.478,0.871,0.286,1],[0.294,0.639,0.184,1]],"drawn":{"lods":1,"meshes":81},"height":90,"width":160}}
+{"id":15,"jsonrpc":"2.0","result":{"removed":13}}
+{"id":16,"jsonrpc":"2.0","result":{"can_redo":1,"can_undo":6,"undone":"foliage.erase"}}
+{"id":17,"jsonrpc":"2.0","result":{"groups":[{"count":77,"kind":"grass","type":"grass.foliage.json"},{"blocks":true,"count":3,"harvest":"stone","kind":"rock","type":"boulder.foliage.json"}]}}

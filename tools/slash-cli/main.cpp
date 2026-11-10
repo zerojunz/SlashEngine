@@ -74,6 +74,7 @@
 #include "slash/video/commands.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/foliage.hpp"
 #include "slash/world/physics_material.hpp"
 #include "slash/world/ragdoll.hpp"
 #include "slash/world/scene.hpp"
@@ -1209,6 +1210,7 @@ int cmd_scene_validate(const std::string& path) {
     const bool scatter = path.ends_with(slash::procedural::kScatterSuffix);
     const bool physics_material = world::is_physics_material_path(path);
     const bool ragdoll = world::is_ragdoll_path(path);
+    const bool foliage = world::is_foliage_path(path);
     json::Value result;
     auto parsed = json::parse(text.value());
     std::vector<json::ValidationError> errors;
@@ -1263,6 +1265,8 @@ int cmd_scene_validate(const std::string& path) {
         errors = slash::procedural::validate_scatter(parsed.value());
     } else if (physics_material) {
         errors = json::validate(parsed.value(), world::physics_material_schema());
+    } else if (foliage) {
+        errors = world::validate_foliage(parsed.value());
     } else if (ragdoll) {
         errors = json::validate(parsed.value(), world::ragdoll_schema());
         if (errors.empty()) {
@@ -1305,13 +1309,14 @@ int cmd_scene_validate(const std::string& path) {
     }
     if (parsed && !frames && !material && !process && !animation && !tree && !tileset && !font &&
         !theme && !stream && !buses && !navmesh && !navpoly && !brain && !meshlib && !standard &&
-        !lightmap && !replay && !test && !score && !texture && !physics_material && !ragdoll) {
+        !lightmap && !replay && !test && !score && !texture && !physics_material && !ragdoll &&
+        !foliage) {
         check_story_refs(path, parsed.value(), errors);
     }
     result["valid"] = errors.empty();
     if (!errors.empty()) {
         result["errors"] = errors_to_json(errors);
-    } else if (font || stream || process || standard || physics_material || ragdoll) {
+    } else if (font || stream || process || standard || physics_material || ragdoll || foliage) {
         print(result);
         return kExitOk;
     } else if (brain) {
@@ -1522,6 +1527,10 @@ int cmd_scene_format(const std::string& path, bool check) {
         if (world::is_physics_material_path(path)) {
             return format_checked(text.value(), world::parse_physics_material);
         }
+        if (world::is_foliage_path(path)) {
+            return format_checked(
+                text.value(), [](const json::Value& file) { return world::parse_foliage(file); });
+        }
         if (world::is_ragdoll_path(path)) {
             return format_checked(
                 text.value(), [](const json::Value& file) { return world::parse_ragdoll(file); });
@@ -1586,20 +1595,20 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 34> kKinds = {
+    constexpr std::array<std::string_view, 35> kKinds = {
         "scene",     "prefab",     "frames",           "material", "process_material",
         "animation", "animtree",   "tileset",          "font",     "theme",
         "audio",     "bus_layout", "navmesh",          "navpoly",  "npc",
         "meshlib",   "lightmap",   "voxel_gi",         "model",    "replay",
         "test",      "score",      "storyboard",       "project",  "presets",
         "sdk",       "plugin",     "providers",        "bench",    "standard_material",
-        "texture",   "scatter",    "physics_material", "ragdoll"};
+        "texture",   "scatter",    "physics_material", "ragdoll",  "foliage"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
         return usage_error("schema takes one argument: scene, prefab, frames, material, "
                            "process_material, animation, animtree, tileset, font, theme, audio, "
                            "bus_layout, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, "
                            "standard_material, "
-                           "texture, scatter, physics_material, ragdoll, replay, test, "
+                           "texture, scatter, physics_material, ragdoll, foliage, replay, test, "
                            "score, "
                            "storyboard, "
                            "project, presets, sdk, plugin, providers or bench");
@@ -1653,6 +1662,8 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = world::physics_material_schema();
     } else if (args[0] == "ragdoll") {
         schema = world::ragdoll_schema();
+    } else if (args[0] == "foliage") {
+        schema = world::foliage_schema();
     } else if (args[0] == "replay") {
         schema = command::replay_schema();
     } else if (args[0] == "test") {

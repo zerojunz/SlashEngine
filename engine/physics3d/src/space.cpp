@@ -3,6 +3,7 @@
 #include "slash/core/log.hpp"
 #include "slash/core/profile.hpp"
 #include "slash/scene3d/csg.hpp"
+#include "slash/scene3d/foliage.hpp"
 #include "slash/world/physics_cache.hpp"
 
 #include <Jolt/Core/Factory.h>
@@ -1323,6 +1324,14 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
                std::ranges::any_of(
                    csg, [&](const scene3d::CsgBody& root) { return root.entity == body.entity; });
     });
+    // Foliage3Ds whose instances block, as GridMaps' cells do.
+    for (scene3d::GridBody& body : scene3d::foliage_bodies(world)) {
+        if (!kind_of(registry, body.entity).has_value() &&
+            std::ranges::none_of(
+                grids, [&](const scene3d::GridBody& grid) { return grid.entity == body.entity; })) {
+            grids.push_back(std::move(body));
+        }
+    }
     std::vector<scene3d::TerrainBody> terrains = scene3d::terrain_bodies(world);
     std::erase_if(terrains, [&](const scene3d::TerrainBody& body) {
         return kind_of(registry, body.entity).has_value() ||

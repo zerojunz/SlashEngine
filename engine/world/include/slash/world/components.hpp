@@ -130,6 +130,30 @@ struct MultiMeshInstance3D {
 SLASH_COMPONENT(MultiMeshInstance3D, mesh, instances, visible_instance_count, layers, cast_shadow,
                 lod_bias)
 
+// The instances painted of one foliage type, as a group of Unreal's foliage instances: type names
+// a .foliage.json file (3D) and instances holds seven numbers each, x, y, z, rotation x, y, z
+// (radians, Godot's YXZ) and scale, in the Foliage3D's space. foliage.paint fills it.
+struct FoliageGroup3D {
+    std::string type;
+    std::vector<float> instances;
+
+    friend bool operator==(const FoliageGroup3D&, const FoliageGroup3D&) = default;
+};
+SLASH_REFLECT(FoliageGroup3D, type, instances)
+
+// Painted plants and rocks, after Unreal's InstancedFoliageActor: each group's instances draw
+// their type's model, bend in the wind, part for characters and block them as the type says.
+struct Foliage3D {
+    std::vector<FoliageGroup3D> groups;
+    std::uint32_t layers = 1;          // render layers, as MeshInstance3D's
+    std::uint32_t collision_layer = 1; // the layers types with collision block on
+    std::uint32_t collision_mask = 1;
+    float lod_bias = 1.0F; // as MeshInstance3D's
+
+    friend bool operator==(const Foliage3D&, const Foliage3D&) = default;
+};
+SLASH_COMPONENT(Foliage3D, groups, layers, collision_layer, collision_mask, lod_bias)
+
 // Poses the skeleton of the model the entity's MeshInstance3D draws by hand, as Godot's Skeleton3D
 // bone poses: each bone, or other node of the model, named in these maps takes the position, the
 // rotation (radians about each axis, in Transform3D's order) or the scale given, in its parent's
@@ -2518,6 +2542,35 @@ SLASH_COMPONENT(Cloth2D, texture, color, size, offset, columns, rows, max_distan
                 total_mass, gravity_scale, damping_coefficient, drag_coefficient,
                 simulation_precision, collision_mask, point_radius, z_index, z_as_relative, visible,
                 light_mask, texture_filter)
+
+// The instances painted of one 2D foliage type: type names a .foliage.json file whose space is
+// "2d" and instances holds four numbers each, x, y, rotation (radians) and scale, a negative
+// scale mirroring it, in the Foliage2D's space.
+struct FoliageGroup2D {
+    std::string type;
+    std::vector<float> instances;
+
+    friend bool operator==(const FoliageGroup2D&, const FoliageGroup2D&) = default;
+};
+SLASH_REFLECT(FoliageGroup2D, type, instances)
+
+// Painted 2D plants and rocks: each group's instances draw their type's texture standing on its
+// origin, bend in the wind, part for characters and block them as the type says.
+struct Foliage2D {
+    std::vector<FoliageGroup2D> groups;
+    Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F};
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+    int z_index = 0;
+    bool z_as_relative = true;
+    bool visible = true;
+    int light_mask = 1;
+    std::string texture_filter = "inherit"; // "inherit", "linear" or "nearest"
+
+    friend bool operator==(const Foliage2D&, const Foliage2D&) = default;
+};
+SLASH_COMPONENT(Foliage2D, groups, modulate, collision_layer, collision_mask, z_index,
+                z_as_relative, visible, light_mask, texture_filter)
 
 // A point of a SoftBody3D's mesh held in place, as Godot's pinned_points and attachments: with an
 // attachment, it follows the attachment's Transform3D at offset in its space; without, it stays
