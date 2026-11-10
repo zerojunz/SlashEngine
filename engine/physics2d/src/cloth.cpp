@@ -246,7 +246,7 @@ void Space::step_cloths(world::World& world, const world::Tree2D& tree, float se
                     }
                 }
                 v[i] = v[i] + (accelerate * h);
-                v[i] = v[i] * std::max(0.0F, 1.0F - (cloth.damping_coefficient * h));
+                v[i] = v[i] * std::max<real_t>(0.0F, 1.0F - (cloth.damping_coefficient * h));
                 x[i] = x[i] + (v[i] * h);
             }
             for (const auto& [a, b] : body->edges) {
