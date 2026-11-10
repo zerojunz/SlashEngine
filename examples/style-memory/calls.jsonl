@@ -1,0 +1,20 @@
+{"jsonrpc":"2.0","id":1,"method":"style.mark","params":{"name":"harbor-dusk","scene":"levels/harbor.scene.json","text":"Every level is the harbor at dusk: a low warm sun under a blue-gray sky, walls of warm stone.","links":["levels"],"why":"The art director signed off on the harbor."}}
+{"jsonrpc":"2.0","id":2,"method":"style.mark","params":{"name":"title-card","scene":"menus/title.scene.json","text":"Menus sit on the dusk gradient, under a warm sign.","links":["menus"]}}
+{"jsonrpc":"2.0","id":3,"method":"storyboard.brief","params":{"scenes":["levels/pier.scene.json"]}}
+{"jsonrpc":"2.0","id":4,"method":"style.check","params":{}}
+{"jsonrpc":"2.0","id":5,"method":"scene.open","params":{"path":"levels/pier.scene.json"}}
+{"jsonrpc":"2.0","id":6,"method":"component.set","params":{"id":"environment","components":{"WorldEnvironment":{"background_color":[0.45,0.7,1.0,1.0]}}}}
+{"jsonrpc":"2.0","id":7,"method":"component.set","params":{"id":"sun","components":{"DirectionalLight3D":{"light_color":[1.0,1.0,1.0,1.0],"light_energy":2.0}}}}
+{"jsonrpc":"2.0","id":8,"method":"scene.save","params":{}}
+{"jsonrpc":"2.0","id":9,"method":"scene.open","params":{"path":"menus/title.scene.json"}}
+{"jsonrpc":"2.0","id":10,"method":"component.set","params":{"id":"tint","components":{"CanvasModulate":{"color":[0.5,0.7,1.0,1.0]}}}}
+{"jsonrpc":"2.0","id":11,"method":"scene.save","params":{}}
+{"jsonrpc":"2.0","id":12,"method":"style.check","params":{}}
+{"jsonrpc":"2.0","id":13,"method":"test.run","params":{}}
+{"jsonrpc":"2.0","id":14,"method":"component.set","params":{"id":"tint","components":{"CanvasModulate":{"color":[1.0,0.95,0.9,1.0]}}}}
+{"jsonrpc":"2.0","id":15,"method":"scene.save","params":{}}
+{"jsonrpc":"2.0","id":16,"method":"scene.open","params":{"path":"levels/pier.scene.json"}}
+{"jsonrpc":"2.0","id":17,"method":"component.set","params":{"id":"environment","components":{"WorldEnvironment":{"background_color":[0.35,0.4,0.55,1.0]}}}}
+{"jsonrpc":"2.0","id":18,"method":"component.set","params":{"id":"sun","components":{"DirectionalLight3D":{"light_color":[1.0,0.75,0.55,1.0],"light_energy":1.2}}}}
+{"jsonrpc":"2.0","id":19,"method":"scene.save","params":{}}
+{"jsonrpc":"2.0","id":20,"method":"style.check","params":{"references":["style/harbor-dusk"]}}

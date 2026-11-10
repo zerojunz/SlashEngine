@@ -1,0 +1,10 @@
+{
+  "format": 1,
+  "main_scene": "levels/harbor.scene.json",
+  "name": "Style Memory",
+  "version": "1.0.0",
+  "window": {
+    "height": 54,
+    "width": 96
+  }
+}
