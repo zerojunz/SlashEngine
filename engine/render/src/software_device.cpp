@@ -17,8 +17,10 @@
 #include "post_shading.hpp"
 #include "ray_shadows.hpp"
 #include "reflection.hpp"
+#include "restir.hpp"
 #include "sdfgi.hpp"
 #include "sky_shading.hpp"
+#include "splats.hpp"
 #include "ssao.hpp"
 #include "ssr.hpp"
 #include "subsurface.hpp"
@@ -403,6 +405,7 @@ public:
         std::erase_if(fsr2_states_, [&](const auto& entry) { return entry.first == texture; });
         std::erase_if(fog_states_, [&](const auto& entry) { return entry.first == texture; });
         std::erase_if(sdfgi_states_, [&](const auto& entry) { return entry.first == texture; });
+        std::erase_if(restir_states_, [&](const auto& entry) { return entry.first == texture; });
         std::erase_if(path_states_, [&](const auto& entry) { return entry.first == texture; });
         std::erase_if(frame_generation_states_,
                       [&](const auto& entry) { return entry.first == texture; });
@@ -643,6 +646,11 @@ public:
             std::erase_if(sdfgi_states_,
                           [&](const auto& entry) { return entry.first == frame.target; });
         }
+        // A target's reservoirs are kept while its frames light with them.
+        if (!frame.scene || (!frame.scene->ray_tracing.many_lights && !frame.scene->capture)) {
+            std::erase_if(restir_states_,
+                          [&](const auto& entry) { return entry.first == frame.target; });
+        }
         if (!frame.scene || !detail::uses_fsr2(*frame.scene)) {
             std::erase_if(fsr2_states_,
                           [&](const auto& entry) { return entry.first == frame.target; });
@@ -808,7 +816,7 @@ public:
                                                 size[0], size[1]);
             }
             draw_sky(scene, {.bytes = nullptr, .hdr = &world}, sky_jitter);
-            if (!mesh_draws_.empty()) {
+            if (!mesh_draws_.empty() || !scene.splats.clouds.empty()) {
                 depth = draw_meshes(scene, {.bytes = nullptr, .hdr = &world},
                                     fsr2_state != nullptr ? &fsr2_camera : nullptr);
             } else if (detail::uses_taa(scene)) {
@@ -1733,7 +1741,7 @@ private:
                       world.pixels.begin() + static_cast<std::ptrdiff_t>(i));
         }
         draw_sky(scene, {.bytes = nullptr, .hdr = &world});
-        if (!mesh_draws_.empty()) {
+        if (!mesh_draws_.empty() || !scene.splats.clouds.empty()) {
             draw_meshes(scene, {.bytes = nullptr, .hdr = &world});
         }
         if (capture_raw_.size != size) {
@@ -1811,7 +1819,9 @@ private:
                               .fog = {},
                               .ray_shadows = {},
                               .gi = {},
-                              .sdfgi = {}};
+                              .sdfgi = {},
+                              .restir = {},
+                              .restir_samples = 0};
 
         std::vector<float> depth(std::size_t{target.width()} * target.height(), 0.0F);
         // TAA's frame: the next jitter, from the camera the target's frame before was seen from
@@ -1940,16 +1950,9 @@ private:
         SsrHistory* history = nullptr;
         const detail::SsrCamera seen = detail::ssr_camera(scene);
         const std::size_t pixels = std::size_t{target.width()} * target.height();
-        // The color pass over buffer: with subsurface scattering, the opaque meshes, then those
-        // that scatter light under their surface again where they are seen, into a texture of
-        // half floats, which is blurred across and down and added to the world, then the blended
-        // meshes.
-        const auto draw_color = [&](std::span<float> buffer) {
-            if (target.hdr == nullptr || !detail::uses_subsurface(scene)) {
-                draw_all(buffer, false, shade_color);
-                return;
-            }
-            draw_some(buffer, true, false, shade_color);
+        // The meshes that scatter light under their surface, again where they are seen, into a
+        // texture of half floats, which is blurred across and down and added to the world.
+        const auto scatter_under_surfaces = [&](std::span<float> buffer) {
             std::vector<float> light(pixels * 4, 0.0F);
             bool scattered = false;
             for (const std::size_t index : order) {
@@ -1986,6 +1989,38 @@ private:
                                       was[2] + change[(at * 4) + 2], was[3]});
                 }
             }
+        };
+        // The color pass over buffer: with subsurface scattering or Gaussian splats, the opaque
+        // meshes, then those that scatter light under their surface again where they are seen,
+        // into a texture of half floats, which is blurred across and down and added to the
+        // world, then the splats blended over what is in front of them, then the blended meshes.
+        const bool splats = target.hdr != nullptr && !scene.splats.clouds.empty();
+        const auto draw_color = [&](std::span<float> buffer) {
+            const bool subsurface = target.hdr != nullptr && detail::uses_subsurface(scene);
+            if (!subsurface && !splats) {
+                draw_all(buffer, false, shade_color);
+                return;
+            }
+            draw_some(buffer, true, false, shade_color);
+            if (subsurface) {
+                scatter_under_surfaces(buffer);
+            }
+            if (splats) {
+                const std::vector<float> blend =
+                    detail::run_splats(scene.splats,
+                                       {.width = target.width(),
+                                        .height = target.height(),
+                                        .view_projection = camera.view_projection,
+                                        .camera = detail::camera_place(scene.camera)},
+                                       buffer, pool_);
+                for (std::size_t at = 0; at < pixels; ++at) {
+                    const Float4 was = target.load(at);
+                    const float showing = blend[(at * 4) + 3];
+                    target.store(at, {blend[at * 4] + (was[0] * showing),
+                                      blend[(at * 4) + 1] + (was[1] * showing),
+                                      blend[(at * 4) + 2] + (was[2] * showing), was[3]});
+                }
+            }
             draw_some(buffer, false, true, shade_color);
         };
         std::vector<float> prepass_depth;
@@ -1994,6 +2029,7 @@ private:
         std::vector<float> ray_reflections;
         std::vector<float> ray_light;
         std::vector<float> sdfgi_light;
+        std::vector<float> restir;
         // Godot's SDFGI, in Forward+ and not in a reflection probe's captures (as Godot's, which
         // draw them without GI buffers).
         const bool sdfgi = clustered && scene.sdfgi.enabled && !scene.capture;
@@ -2001,7 +2037,11 @@ private:
             clustered ? detail::ray_gi(scene) : std::optional<detail::RayGI>{};
         const std::vector<detail::RayShadowLight> traced =
             clustered ? detail::ray_shadow_lights(scene) : std::vector<detail::RayShadowLight>{};
-        if (lights->ssao[0] != 0.0F || ssr || motion || !traced.empty() || gi || sdfgi) {
+        // ReSTIR for the omni and spot lights, in Forward+ and not in a probe's captures.
+        const std::optional<detail::ManyLights> many =
+            clustered && !scene.capture && !clusters.lights.empty() ? detail::many_lights(scene)
+                                                                    : std::nullopt;
+        if (lights->ssao[0] != 0.0F || ssr || motion || !traced.empty() || gi || sdfgi || many) {
             prepass_depth.assign(pixels, 0.0F);
             if (motion) {
                 // FSR 2 works the sky's motion vectors out from the depth, as Godot's.
@@ -2047,7 +2087,7 @@ private:
             // And its SSR.
             const std::optional<detail::RayReflection> reflection =
                 ssr ? detail::ray_reflection(scene) : std::nullopt;
-            if (!traced.empty() || occlusion || reflection || gi || sdfgi) {
+            if (!traced.empty() || occlusion || reflection || gi || sdfgi || many) {
                 // Rays from each pixel the prepass drew, through every mesh the frame draws.
                 const std::vector<detail::PathMesh> meshes = path_meshes();
                 const detail::PathScene paths =
@@ -2089,6 +2129,14 @@ private:
                     sdfgi_light =
                         detail::run_sdfgi(state, eye, rays, prepass_depth, normals.values, pool_);
                     maps.sdfgi = sdfgi_light;
+                    maps.ao_width = target.width();
+                }
+                if (many) {
+                    restir = detail::run_restir(restir_state(frame_.target), *many, scene, clusters,
+                                                camera.view_projection, paths, &bindings, rays,
+                                                prepass_depth, normals.values, pool_);
+                    maps.restir = restir;
+                    maps.restir_samples = many->samples;
                     maps.ao_width = target.width();
                 }
             }
@@ -2495,6 +2543,16 @@ private:
             }
         }
         return ssr_histories_.emplace_back(target, SsrHistory{}).second;
+    }
+
+    // target's ReSTIR reservoirs, made empty when it has none.
+    detail::RestirState& restir_state(TextureId target) {
+        for (auto& [id, state] : restir_states_) {
+            if (id == target) {
+                return state;
+            }
+        }
+        return restir_states_.emplace_back(target, detail::RestirState{}).second;
     }
 
     // target's SDFGI, made empty when it has none.
@@ -3207,6 +3265,7 @@ private:
     std::vector<std::pair<TextureId, Fsr2State>> fsr2_states_;
     std::vector<std::pair<TextureId, FogState>> fog_states_;
     std::vector<std::pair<TextureId, detail::SdfgiState>> sdfgi_states_;
+    std::vector<std::pair<TextureId, detail::RestirState>> restir_states_;
     std::vector<std::pair<TextureId, PathState>> path_states_;
     std::vector<std::pair<TextureId, FrameGenerationState>> frame_generation_states_;
     std::uint64_t writes_ = 0; // texture writes so far, for Texture::written

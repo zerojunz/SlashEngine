@@ -1991,7 +1991,7 @@ there is no ambient light and colors stay as they are.
 | `sdfgi_cascades` | `4` | Cascades around the camera, each twice as far as the one before, from 1 to 8 |
 | `sdfgi_min_cell_size` | `0.2` | The nearest cascade's cell size in meters; each holds 128 cells across |
 | `sdfgi_y_scale` | `"75_percent"` | How far cascades reach up and down, as a share of across: `"50_percent"`, `"75_percent"` or `"100_percent"` |
-| `sdfgi_use_occlusion` | `false` | Probes behind walls light less, which cuts light leaks (not drawn yet) |
+| `sdfgi_use_occlusion` | `false` | Probes behind walls light less, which cuts light leaks |
 | `sdfgi_read_sky_light` | `true` | Rays that leave the cascades take the sky's light (or the ambient light) |
 | `sdfgi_bounce_feedback` | `0.5` | How much of the probes' light surfaces bounce again, from 0 to 1.99; `0` for one bounce |
 | `sdfgi_energy` | `1` | Multiplies its light, from 0 to 8 |
@@ -2540,6 +2540,23 @@ duplicate corners and triangles merged. [`frame.capture`](commands.md#framecaptu
 counts the meshes hidden as `occluded`. [examples/occlusion-culling](../../examples/occlusion-culling/)
 hides three houses behind a wall.
 
+### Gaussian splats
+
+A `GaussianSplat3D` draws scenery captured from photos: a 3D Gaussian Splatting `.ply` file of
+small, see-through 3D Gaussians, placed by the entity's `Transform3D` and blended over the opaque
+meshes in Forward+, nearest first, where no mesh is in front of them. It is a research feature of
+SlashEngine's own (Godot has none), and only the software device draws it yet; see
+[gaussian-splats.md](gaussian-splats.md) for how it draws and what it doesn't do.
+
+| `GaussianSplat3D` field | Default | Meaning |
+| --- | --- | --- |
+| `splats` | `""` | Project path of the `.ply` file; `""` draws nothing |
+| `sh_degree` | `3` | The most spherical harmonics degree its colors use, 0 to 3: 0 looks the same from every side, higher shines as the capture did |
+| `opacity` | `1` | Times each splat's opacity, 0 to 1 |
+| `layers` | `1` | Cameras whose `cull_mask` shares a bit see it |
+
+[examples/gaussian-splats](../../examples/gaussian-splats/) puts a captured boulder behind a post.
+
 ### Checks
 
 `scene validate` and exports report an entity with two primitive meshes (at
@@ -2550,7 +2567,8 @@ project, doesn't load, or sits beside a primitive mesh (at its `mesh`), as drawi
 be made, [path followers](#paths) that can't follow, [LightmapGIs](#baked-lightmaps) whose
 `light_data` doesn't load and [VoxelGIs](#voxelgi) whose `data` doesn't load, and [occluders](#occlusion-culling) whose
 `polygon` or `indices` can't make triangles (too few, an index out of range, or a polygon that
-can't be triangulated).
+can't be triangulated), and [GaussianSplat3Ds](#gaussian-splats) whose `splats` isn't a `.ply`
+file of splats or whose `sh_degree` isn't 0 to 3.
 Exports
 check every `.gltf`, `.glb`, `.obj` and `.fbx` file as `scene validate` does, and ship them with their
 `.bin` buffers, `.mtl` libraries and images. `frame.summary` doesn't describe 3D meshes
@@ -4870,6 +4888,72 @@ The maps' settings are `project.json`'s [`navigation_2d` and `navigation_3d`](pr
 validate, or a `.navpoly.json` file on a `NavigationRegion3D`. The
 [`navigation.*` commands](commands.md#navigationpath) find paths and points and report maps and
 agents.
+
+## NPCs
+
+NPCs plan, as F.E.A.R.'s goal-oriented action planning (Jeff Orkin, "Three States and a Plan",
+GDC 2006); Godot has nothing of the kind. An `NpcAgent` names a `.npc.json` brain
+(`slash-cli schema npc`), which lists what the NPC knows, wants and can do:
+
+- `facts`: every fact by name with its starting value, `true`, `false` (1 and 0) or a whole
+  number.
+- `goals`: each with a `name`, a `priority` (default 0), `when` it applies and what it `want`s.
+  Both are maps of conditions: a value the fact must equal, or a string comparing it (`"!=0"`,
+  `"<5"`, `"<=5"`, `">0"`, `">=1"`).
+- `actions`: each with a `name`, a `cost` (default 1, more than 0), what it `needs` (conditions),
+  its `effects` (a value to set, or `"+1"` and `"-2"` to add) and what it does while it runs,
+  `do`: `{"wait": seconds}`, `{"go_to": "<entity ID>"}` (with an optional `speed`) or
+  `{"emit": "<event>"}`. With no `do` it ends at once. Its effects apply when it ends.
+- `search_limit`: the most states a plan may look at (default 2048).
+
+```json
+{"format": 1,
+ "facts": {"hungry": false, "has_food": false, "food": 2, "alarm": false, "at_hall": false},
+ "goals": [
+   {"name": "hide", "priority": 3, "when": {"alarm": true}, "want": {"at_hall": true}},
+   {"name": "eat", "priority": 2, "when": {"hungry": true}, "want": {"hungry": false}}],
+ "actions": [
+   {"name": "take_food", "needs": {"has_food": false, "food": ">0"},
+    "effects": {"has_food": true, "food": "-1"}, "do": {"go_to": "pantry"}},
+   {"name": "eat", "needs": {"has_food": true},
+    "effects": {"has_food": false, "hungry": false}, "do": {"wait": 1}},
+   {"name": "run_to_hall", "cost": 2, "effects": {"at_hall": true},
+    "do": {"go_to": "hall", "speed": 4}}]}
+```
+
+The `npc` system (priority 965, after navigation) runs each agent's current action every tick,
+then has the agents due to think choose: the first goal by priority (ties in the file's order)
+whose `when` holds, whose `want` doesn't yet and that a plan reaches, and the cheapest chain of
+actions to it, found by A* over the facts' values (ties go to the action earlier in the file, so
+a plan is the same everywhere). An agent thinks every `think_interval`, when its plan ends, when
+an action fails and, after gameplay code calls `npc::set_fact`, at the next tick. It keeps its
+plan while its goal stays the same, and drops it when the next action's needs no longer hold.
+Planning runs on the job system's threads, each agent from its own facts, so results don't
+depend on the thread count.
+
+A `go_to` walks the entity toward its target's place at `speed`, along its `NavigationAgent3D` or
+`NavigationAgent2D`'s path when it has one (the system sets the agent's `target_position`), else
+straight. It ends within `arrive_distance` and fails when the target is gone or the path ends
+short of it. An `emit` emits the world event it names about the agent, with the action's name as
+`action`; gameplay code answers it, usually by setting facts. The system emits
+`npc_goal_changed` (`goal`, `previous`), `npc_action_started`, `npc_action_finished` and
+`npc_action_failed` (`action`).
+
+Everything an agent is doing is in its component, so saving, undo, snapshots and replays keep
+it. `facts` holds only the values that differ from the brain's defaults.
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `NpcAgent` | `brain` `""` (a `.npc.json` file), `facts` `{}`, `goal` `""`, `plan` `[]` (the actions left, the running one first), `action_time` `0`, `think_interval` `0.5`, `think_in` `0` (seconds until it thinks again), `speed` `2`, `arrive_distance` `0.5`, `enabled` `true` |
+
+`scene validate` checks a brain file's facts, names and `do`s, and warns about goals no chain of
+actions reaches from the facts' defaults and actions no plan uses. On a scene, it and exports
+check each agent's brain loads and that its `facts`, `goal` and `plan` name what the brain has.
+A goal whose `when` compares (`<`, `>`, `!=`) counts as met with the nearest value that meets it
+for that check. [`npc.plan`](commands.md#npcplan) shows what an agent would choose and why, and
+[`npc.draft`](commands.md#npcdraft) has a model write or revise a brain from a brief and the
+storyboard, checked the same way.
+[examples/npc-planner](../../examples/npc-planner/) has two farmers and a guard.
 
 ## Particles
 

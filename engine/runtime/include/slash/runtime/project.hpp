@@ -100,6 +100,8 @@ struct Project {
     // rendering.global_illumination.voxel_gi.quality "high": VoxelGIs trace six narrower cones
     // for ambient light in place of four wide ones, as Godot's.
     bool voxel_gi_high_quality = false;
+    // rendering.global_illumination.sdfgi: SDFGI's probe rays and how fast it follows changes.
+    render::SdfgiSettings sdfgi{};
     // rendering.anti_aliasing.quality.use_taa: temporal antialiasing of the 3D world in Forward+,
     // as Godot's.
     bool use_taa = false;

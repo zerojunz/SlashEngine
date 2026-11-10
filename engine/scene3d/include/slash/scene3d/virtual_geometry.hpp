@@ -10,6 +10,7 @@
 #include "slash/core/math.hpp"
 #include "slash/scene3d/model.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -24,11 +25,24 @@ struct ClusterBounds {
     float error = 0.0F;
 };
 
+// A cone holding the way a cluster's triangles face, as meshoptimizer's meshopt_Bounds: from a
+// place whose direction from the apex lies within the cone (dot(normalize(apex - place), axis)
+// at least cutoff), every triangle is seen from behind. A cutoff of 1 or more (triangles facing
+// too many ways) culls nothing.
+struct ClusterCone {
+    Vec3f apex;
+    Vec3f axis;
+    float cutoff = 1.0F;
+};
+
 // Up to ClusterSettings::max_triangles triangles over the surface's vertices.
 struct Cluster {
     std::vector<std::uint32_t> indices;
-    // The cluster's own sphere, for culling.
+    // The sphere around the cluster's own triangles, for culling, and the error of the
+    // simplification that made it.
     ClusterBounds bounds;
+    // Its triangles' facing, for culling the clusters seen from behind.
+    ClusterCone cone;
     // The group whose clusters were simplified into this one (its error says when this one is
     // fine enough), or -1 for a cluster of the surface's own triangles.
     int refined = -1;
@@ -86,6 +100,22 @@ struct ClusterView {
 // neighbouring parts are drawn at different depths. In the hierarchy's order.
 [[nodiscard]] std::vector<std::uint32_t> select_clusters(const ClusterHierarchy& hierarchy,
                                                          const ClusterView& view);
+
+// What a view culls of the clusters it chose, as Nanite culls its clusters before drawing them.
+struct ClusterCulling {
+    // The planes around what the view sees, in the surface's space: a point is on the seen side
+    // of plane (a, b, c, d) when a x + b y + c z + d is at least 0, and that value is the
+    // distance to the plane in the world, so a cluster whose sphere (grown by the view's scale)
+    // lies wholly on the other side of one is out of view.
+    std::vector<std::array<float, 4>> planes;
+    // Whether the clusters seen from behind from the view's camera are culled: only for a
+    // surface whose material culls back faces and whose place doesn't mirror it.
+    bool back_faces = false;
+};
+
+// Whether a view culls a cluster: out of its planes, or (with back_faces) seen from behind.
+[[nodiscard]] bool cluster_culled(const Cluster& cluster, const ClusterView& view,
+                                  const ClusterCulling& culling);
 
 // The triangles of some clusters as one index list over the surface's vertices.
 [[nodiscard]] std::vector<std::uint32_t>

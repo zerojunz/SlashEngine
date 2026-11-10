@@ -63,6 +63,8 @@ add_library(slash_render
     src/post.cpp
     src/ray_records.cpp
     src/ray_shadows.cpp
+    src/restir.cpp
+    src/splats.cpp
     src/resize.cpp
     src/sdfgi.cpp
     src/shader.cpp
@@ -82,8 +84,10 @@ add_library(slash_render
     src/voxel_gi.cpp
     src/vulkan_rays.cpp)
 add_library(slash::render ALIAS slash_render)
-# Rays decide which triangles they meet, so their math is the same on every machine.
-set_source_files_properties(src/path_trace.cpp src/ray_shadows.cpp PROPERTIES
+# Rays decide which triangles they meet, and splats blend in order, so their math is the same on
+# every machine.
+set_source_files_properties(src/path_trace.cpp src/ray_shadows.cpp src/restir.cpp src/splats.cpp
+    PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 
 target_include_directories(slash_render PUBLIC include)

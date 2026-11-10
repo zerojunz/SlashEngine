@@ -89,6 +89,7 @@ Result<Capture> capture(world::World& world, asset::Assets& assets, const Captur
     draw.collisions = options.collisions;
     draw.path_trace = options.path_trace;
     draw.view3d = options.view3d;
+    draw.cull_clusters = options.cull_clusters;
     for (std::uint32_t frame_index = 0; frame_index < std::max(options.frames, 1U); ++frame_index) {
         if (auto drawn = capturer.renderer->draw(world, draw); !drawn) {
             return drawn.error();
@@ -109,6 +110,7 @@ Result<Capture> capture(world::World& world, asset::Assets& assets, const Captur
                    .meshes = renderer.meshes_drawn(),
                    .lods = renderer.lods_drawn(),
                    .clusters = renderer.clusters_drawn(),
+                   .culled = renderer.clusters_culled(),
                    .occluded = renderer.meshes_occluded(),
                    .scaled = renderer.scaled(),
                    .path_samples =

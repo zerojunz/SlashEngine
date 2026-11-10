@@ -63,9 +63,42 @@ their [LODs](scene-format.md#mesh-lods):
 - Each frame the renderer cuts each virtualized surface for the camera. It makes the cut's mesh
   again on the device only when the clusters chosen change. Shadow maps draw the camera's cut,
   and reflection probes draw the last one.
+- The camera's own draw then leaves out the clusters of the cut it can't see (see
+  [Culling](#culling)).
 - An orthogonal camera draws the surface's own triangles.
 - Skinned and lightmapped surfaces draw as they are.
-- [`frame.capture`](commands.md#framecapture)'s `drawn` counts the clusters drawn as `clusters`.
+- [`frame.capture`](commands.md#framecapture)'s `drawn` counts the clusters drawn as `clusters`,
+  and those the camera culled as `culled`.
+
+## Culling
+
+As Nanite culls its clusters before it draws them, the camera's draw leaves out each cluster of
+a cut that it can't see:
+
+- **Out of view.** The cluster's sphere lies wholly outside one of the view's sides, or behind
+  the camera. The planes are taken into the surface's space, scaled so they still measure
+  meters, and the sphere grows by the entity's largest scale.
+- **Seen from behind.** Each cluster keeps a cone around the way its triangles face
+  (meshoptimizer's `meshopt_computeClusterBounds`). When the camera lies inside the cone seen
+  from its apex, every triangle is seen from behind. This applies only when the material culls
+  back faces and the entity's place doesn't mirror it. A cone wider than about 168 degrees culls
+  nothing.
+- **Behind occluders.** With [occlusion culling](scene-format.md#occlusion-culling) on, a
+  cluster whose sphere the occlusion buffer hides is left out, with the same jitter timeouts
+  meshes have, unless the `MeshInstance3D` has `ignore_occlusion_culling`.
+
+Culling never changes what the frame shows. A cut with culled clusters draws its visible
+clusters as a second mesh, made again only when they change, and its whole cut into shadow maps
+only. A cut whose every cluster is culled draws only into shadow maps, or not at all when it
+casts no shadow. Draws that cast from both sides (`cast_shadow` `"double_sided"`) and
+shadow-only draws keep their whole cut. Clusters are not culled when the frame needs them from
+elsewhere: path-traced frames, frames with [ray-traced](project-format.md#ray-tracing) effects,
+and frames with SDFGI. An orthogonal camera does not cull them either.
+
+In C++, `cluster_culled(cluster, view, culling)` tests one cluster against a `ClusterCulling`
+(the planes in the surface's space, and whether back faces cull), and `Cluster::cone` holds the
+cone. `CaptureOptions::cull_clusters` and `CanvasOptions::cull_clusters` (default `true`) turn
+culling off to compare frames.
 
 In C++, `slash/scene3d/virtual_geometry.hpp` has the parts:
 
@@ -73,6 +106,7 @@ In C++, `slash/scene3d/virtual_geometry.hpp` has the parts:
 - `select_clusters(hierarchy, view)` cuts it for a `ClusterView` (the camera in the surface's
   space, the projection, the view's height in pixels, the near plane, the threshold and the
   scale).
+- `cluster_culled(cluster, view, culling)` says whether the view culls a cluster.
 - `cluster_indices` gives the cut's triangles.
 - `projected_error` gives a group's error in pixels.
 
@@ -83,7 +117,9 @@ This is a spike to measure the idea. It still does these things the simple way:
 - **The CPU picks the cut.** Each cut is drawn as one ordinary mesh, made again when the cut
   changes. Nanite culls and selects clusters on the GPU each frame and draws them in a
   persistent buffer.
-- **No per-cluster culling.** No frustum culling and no occlusion culling against a depth pyramid.
+- **Culling is per cut, on the CPU.** Nanite culls clusters on the GPU against the last frame's
+  depth pyramid, in two passes. Here the camera's culled clusters become a mesh of their own,
+  made again whenever the camera turns enough to change them.
 - **No software rasterizer** for triangles smaller than a pixel. They go to the hardware
   rasterizer like any other.
 - **No streaming.** The whole hierarchy stays in memory.

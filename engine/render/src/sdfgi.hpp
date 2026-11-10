@@ -46,9 +46,19 @@ struct SdfgiCell {
 // six directions (Godot's aniso0 and aniso1, 8 bits each), its solid cells, and its probes'
 // history, averages and octahedral irradiance and radiance (Godot's lightprobe texture, RGB9E5,
 // (6 + 2) * 17 * 17 texels by (6 + 2) * 17, x fastest).
+// What the triangles touching a cell sum to, kept so a cascade that moves makes only the cells
+// that came in (Godot's scroll): albedo and emission sums, how many triangles, the sides they face.
+struct SdfgiCellSum {
+    Float3 albedo{};
+    Float3 emission{};
+    std::uint32_t count = 0;
+    std::uint32_t facing = 0;
+};
+
 struct SdfgiCascade {
     std::array<std::int32_t, 3> position{};
     float cell_size = 0.0F;
+    std::vector<SdfgiCellSum> sums;
     std::vector<std::uint8_t> sdf;
     std::vector<Float3> light;
     std::vector<std::array<float, 6>> aniso;
@@ -57,6 +67,10 @@ struct SdfgiCascade {
     std::vector<std::array<std::int32_t, 4>> average; // [probe * 16 + i]
     std::vector<Float3> irradiance;
     std::vector<Float3> radiance;
+    // With use_occlusion, how much of each cell each of the eight nearest probes sees, by the
+    // probe's world parity (bit 0 x, 1 y, 2 z), 4 bits each (nibble i at bit 4 * i), as Godot's
+    // occlusion texture holds them.
+    std::vector<std::uint32_t> occlusion;
     bool all_lights_dirty = true;
 };
 
@@ -76,9 +90,10 @@ struct SdfgiState {
 
 // Brings a target's SDFGI up to date for a frame seen from camera (in the world), as Godot's
 // sdfgi_update, render_region, update_light, update_probes and store_probes run in a frame: the
-// cascades follow the camera (moving by 8 cells at a time); a cascade that moved, or all of them
-// when the frame's geometry changed (paths' key) or settings did, is voxelized again from the
-// frame's triangles and its distance field made again; the solid cells' light is worked out (a
+// cascades follow the camera (moving by 8 cells at a time); a cascade that moved keeps the cells
+// it still holds and voxelizes the slab that came in, as Godot scrolls it, and all of them are
+// voxelized whole when the frame's geometry changed (paths' key) or settings did, each with its
+// distance field made again; the solid cells' light is worked out (a
 // frames_to_update_light share of them a frame, all after a cascade is made again); and the
 // probes trace their rays. Work is shared out over pool's threads when there is one; the result
 // doesn't depend on how many.
@@ -93,6 +108,15 @@ void update_sdfgi(SdfgiState& state, const Scene3D& scene, const Float3& camera,
                                            const RayShadowFrame& frame,
                                            std::span<const float> depth,
                                            std::span<const float> normals, jobs::Pool* pool);
+
+// sdfgi_preprocess.glsl's MODE_OCCLUSION and MODE_STORE: from each probe, how much of each cell
+// within a probe's spacing of it the probe sees, flooded out from the probe through the empty
+// cells, solid cells taking their empty neighbors', and empty cells next to solid ones by how many
+// of those face the probe. Reads the cells' sums; fills cascade.occlusion.
+void make_sdfgi_occlusion(SdfgiCascade& cascade, std::uint32_t size, jobs::Pool* pool);
+// A cell's occlusion from the probes of a parity, 0 to 1, in steps of 1/15.
+[[nodiscard]] float sdfgi_occlusion(const SdfgiCascade& cascade, std::size_t cell,
+                                    std::uint32_t parity);
 
 // Godot's RGB9E5 (rgbe_encode in its SDFGI shaders), and back, as its textures filter them.
 [[nodiscard]] std::uint32_t sdfgi_rgbe_encode(const Float3& color);

@@ -48,6 +48,7 @@ checks it.
 | `rendering.ray_tracing` | No | off | 3D shadows, ambient occlusion, reflections and global illumination traced by rays: see [Ray tracing](#ray-tracing) |
 | `rendering.reflections.reflection_atlas` | No | 256 texels, 64 probes | The size of 3D [reflection probes'](scene-format.md#reflection-probes) cubes and how many a frame draws: see [Reflection probes](#reflection-probes) |
 | `rendering.global_illumination.voxel_gi.quality` | No | `low` | How many cones meshes trace through [VoxelGIs](scene-format.md#voxelgi): see [VoxelGI](#voxelgi) |
+| `rendering.global_illumination.sdfgi` | No | see [SDFGI](sdfgi.md) | SDFGI's `probe_ray_count` (8), `frames_to_converge` (30) and `frames_to_update_lights` (4), as Godot's project settings |
 | `rendering.occlusion_culling` | No | off | Leave out 3D meshes that [occluders](scene-format.md#occlusion-culling) hide: see [Occlusion culling](#occlusion-culling) |
 | `rendering.mesh_lod.lod_change.threshold_pixels` | No | `1` | How many pixels a model's coarser [LODs](scene-format.md#mesh-lods) may be off by where they draw: see [Mesh LODs](#mesh-lods) |
 | `rendering.textures` | No | `lossless`, `linear_mipmaps` | How exports ship textures: as their files, or compressed for each platform's GPUs, and how [decals](scene-format.md#decals) sample theirs: see [Texture forms](#texture-forms) |
@@ -353,6 +354,9 @@ these settings are SlashEngine's own. Devices that can't trace rays draw as if t
 | `reflection_samples` | `1` | Rays a pixel reflects, from 1 to 64: more make rough reflections less grainy |
 | `global_illumination` | `false` | Traces each opaque pixel's [ambient light](scene-format.md#ray-traced-global-illumination) by rays bouncing off what is near it; on the software device and on Vulkan, Metal or Direct3D 12 where the GPU traces rays |
 | `global_illumination_samples` | `4` | Rays a pixel sends for its ambient light, from 1 to 64: more is less noisy |
+| `many_lights` | `false` | Lights each opaque pixel's omni and spot lights by [ReSTIR](restir.md): a few lights a pixel, resampled from its cluster's, last frame's and its neighbors', each with one shadow ray. Research: only the software device draws it; others light every light as before |
+| `many_light_candidates` | `8` | Lights a pixel draws from its cluster each frame, from 1 to 32 |
+| `many_light_samples` | `1` | Reservoirs a pixel keeps, each a light and a shadow ray, from 1 to 4: more is less noisy |
 
 ## Reflection probes
 

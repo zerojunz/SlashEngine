@@ -58,6 +58,9 @@ std::string_view default_url(std::string_view type) noexcept {
     if (type == "meshy-rig") {
         return "https://api.meshy.ai";
     }
+    if (type == "fal-trellis") {
+        return "https://fal.run";
+    }
     return "http://127.0.0.1:7860"; // automatic1111
 }
 
@@ -1153,6 +1156,114 @@ private:
                                         .rigs = true};
 };
 
+// Microsoft's TRELLIS (MIT) as fal.ai runs it: the concept image goes up as a data URI with the
+// seed and the options, fal answers when the model is made with where its .glb is, and the file
+// is fetched from there (or read from a data URI, which fal answers with in sync_mode). fal's keys
+// go in an Authorization header of "Key <key>".
+class FalTrellis final : public Generator {
+public:
+    explicit FalTrellis(Service service)
+        : service_(std::move(service)), who_("the " + service_.type + " generator") {}
+
+    [[nodiscard]] const GeneratorCapabilities& capabilities() const override {
+        return capabilities_;
+    }
+
+    [[nodiscard]] Result<Generated> generate(const GenerateRequest& request,
+                                             const ai::CancelFlag* cancel) override {
+        if (!service_.missing_key.empty()) {
+            return make_error(ErrorCode::PermissionDenied, who_ + " reads its key from " +
+                                                               service_.missing_key +
+                                                               ", which is not set");
+        }
+        if (request.image_data.empty()) {
+            return make_error(ErrorCode::InvalidArgument,
+                              who_ + " makes a model from a concept image, and none was given");
+        }
+        const std::string_view data = request.image_data;
+        std::string_view type;
+        if (data.starts_with("\x89PNG")) {
+            type = "image/png";
+        } else if (data.starts_with("\xFF\xD8")) {
+            type = "image/jpeg";
+        } else if (data.size() >= 12 && data.starts_with("RIFF") && data.substr(8, 4) == "WEBP") {
+            type = "image/webp";
+        } else {
+            return make_error(ErrorCode::InvalidArgument,
+                              who_ + " takes a PNG, JPEG or WebP concept image");
+        }
+        json::Value body;
+        body["image_url"] = "data:" + std::string(type) + ";base64," + base64_encode(data);
+        if (request.seed) {
+            body["seed"] = static_cast<std::int64_t>(*request.seed);
+        }
+        merge(body, service_.options);
+        ai::HttpRequest http;
+        http.url = service_.url + "/" + service_.model;
+        http.timeout_seconds = service_.timeout_seconds;
+        http.headers = service_.headers;
+        if (!service_.api_key.empty()) {
+            http.headers.emplace_back("Authorization", "Key " + service_.api_key);
+        }
+        http.body = json::write(body, json::Style::Compact);
+        auto reply =
+            ai::post_with_retries(*service_.transport, http, who_, service_.max_retries, cancel);
+        if (!reply) {
+            return reply.error();
+        }
+        auto parsed = json::parse(reply.value().body);
+        if (!parsed || !parsed.value().is_object()) {
+            return make_error(ErrorCode::PlatformFailure, who_ + " answered with something "
+                                                                 "other than a JSON object");
+        }
+        const std::string url = text_at(parsed.value(), {"model_mesh", "url"});
+        if (url.empty()) {
+            return make_error(ErrorCode::PlatformFailure, who_ + " answered with no model_mesh");
+        }
+        std::string glb;
+        if (url.starts_with("data:")) {
+            const std::size_t comma = url.find(',');
+            std::optional<std::string> decoded =
+                comma == std::string::npos ? std::nullopt
+                                           : base64_decode(std::string_view(url).substr(comma + 1));
+            if (!decoded) {
+                return make_error(ErrorCode::PlatformFailure,
+                                  who_ + " answered with a data URI that isn't base64");
+            }
+            glb = std::move(*decoded);
+        } else {
+            // A file URL, signed or public: no key goes with it.
+            ai::HttpRequest fetch;
+            fetch.url = url;
+            fetch.method = "GET";
+            fetch.timeout_seconds = service_.timeout_seconds;
+            auto file = ai::post_with_retries(*service_.transport, fetch, who_,
+                                              service_.max_retries, cancel);
+            if (!file) {
+                return file.error();
+            }
+            glb = std::move(file).value().body;
+        }
+        if (!glb.starts_with("glTF")) {
+            return make_error(ErrorCode::PlatformFailure,
+                              who_ + " returned something other than a .glb model");
+        }
+        return Generated{
+            .data = std::move(glb), .format = "glb", .model = service_.model, .seed = request.seed};
+    }
+
+private:
+    Service service_;
+    std::string who_;
+    GeneratorCapabilities capabilities_{.images = false,
+                                        .sounds = false,
+                                        .refines_images = false,
+                                        .refines_sounds = false,
+                                        .music = false,
+                                        .refines_music = false,
+                                        .models = true};
+};
+
 // Per output pixel along one axis, the source pixels it covers and by how much, in units of
 // 1/to of a source pixel: output o spans [o * from, (o + 1) * from).
 std::vector<std::vector<std::pair<std::uint32_t, std::uint64_t>>>
@@ -1194,6 +1305,9 @@ std::string_view default_model(std::string_view type) noexcept {
     }
     if (type == "stability-3d") {
         return "stable-fast-3d";
+    }
+    if (type == "fal-trellis") {
+        return "fal-ai/trellis";
     }
     return ""; // automatic1111 draws with the checkpoint it has loaded
 }
@@ -1298,6 +1412,9 @@ Result<std::shared_ptr<Generator>> make_http_generator(const ai::GeneratorConfig
     }
     if (config.type == "meshy-rig") {
         return std::shared_ptr<Generator>(std::make_shared<MeshyRig>(std::move(service)));
+    }
+    if (config.type == "fal-trellis") {
+        return std::shared_ptr<Generator>(std::make_shared<FalTrellis>(std::move(service)));
     }
     return make_error(ErrorCode::InvalidArgument, "no generator of type \"" + config.type + "\"");
 }

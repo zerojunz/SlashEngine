@@ -27,6 +27,7 @@
 #include "slash/l10n/translation.hpp"
 #include "slash/library/library.hpp"
 #include "slash/navigation/navigation.hpp"
+#include "slash/npc/npc.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/process.hpp"
 #include "slash/plugin/plugins.hpp"
@@ -42,6 +43,7 @@
 #include "slash/scene3d/particle_collision.hpp"
 #include "slash/scene3d/recipe.hpp"
 #include "slash/scene3d/scene3d.hpp"
+#include "slash/scene3d/splats.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
 #include "slash/shader_compiler/shader_compiler.hpp"
@@ -173,7 +175,7 @@ std::optional<fs::path> find_emscripten_toolchain() {
 
 // The files a game reads at run time: scenes, prefabs, the assets sprites draw, animations and
 // animation trees, tile sets, particle process materials, fonts, sounds, navigation meshes,
-// models, mesh libraries, terrains' heightmaps and baked lightmaps.
+// NPC brains, models, mesh libraries, terrains' heightmaps and baked lightmaps.
 enum class DataFile : std::uint8_t {
     None,
     Scene,
@@ -195,6 +197,7 @@ enum class DataFile : std::uint8_t {
     BusLayout,
     NavigationMesh,
     NavigationPolygon,
+    NpcBrain,
     MeshLibrary,
     StandardMaterial,
     Lightmap,
@@ -202,7 +205,8 @@ enum class DataFile : std::uint8_t {
     VoxelGI,
     Model,
     Buffer,
-    Translation
+    Translation,
+    Splats
 };
 
 DataFile data_file(std::string_view name) {
@@ -267,6 +271,9 @@ DataFile data_file(std::string_view name) {
     if (name.ends_with(navigation::kPolygonSuffix)) {
         return DataFile::NavigationPolygon;
     }
+    if (name.ends_with(npc::kBrainSuffix)) {
+        return DataFile::NpcBrain;
+    }
     if (name.ends_with(scene3d::kMeshLibrarySuffix)) {
         return DataFile::MeshLibrary;
     }
@@ -278,6 +285,9 @@ DataFile data_file(std::string_view name) {
     }
     if (name.ends_with(scene3d::kVoxelGISuffix)) {
         return DataFile::VoxelGI;
+    }
+    if (name.ends_with(scene3d::kSplatSuffix)) {
+        return DataFile::Splats;
     }
     // A lightmap's texels, light past 1 kept as a Radiance HDR file.
     if (name.ends_with(".hdr")) {
@@ -320,6 +330,12 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
     if (kind == DataFile::Heightmap) {
         if (auto heights = render::decode_gray16(text); !heights) {
             return {{"", heights.error().message}};
+        }
+        return {};
+    }
+    if (kind == DataFile::Splats) {
+        if (auto splats = render::read_splat_ply(text); !splats) {
+            return {{"", splats.error().message}};
         }
         return {};
     }
@@ -395,6 +411,8 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         return navigation::validate_mesh(parsed.value());
     case DataFile::NavigationPolygon:
         return navigation::validate_polygon(parsed.value());
+    case DataFile::NpcBrain:
+        return npc::validate_brain(parsed.value());
     case DataFile::MeshLibrary:
         return scene3d::validate_mesh_library(parsed.value());
     case DataFile::Lightmap:
@@ -412,7 +430,7 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
     // animation and track targets must be in its library and targets, each AnimationTree's tree
     // must play from its libraries, controls must lay out, each sub-emitter must take part in a
     // chain, each 3D mesh must draw, each path follower must have its path and each navigation
-    // region's file must load.
+    // region's file and each NPC's brain must load.
     if (errors.empty()) {
         errors = canvas::check_tile_layers(parsed.value(), reader);
     }
@@ -433,6 +451,9 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
     }
     if (errors.empty()) {
         errors = navigation::check_scene(parsed.value(), reader);
+    }
+    if (errors.empty()) {
+        errors = npc::check_scene(parsed.value(), reader);
     }
     return errors;
 }
@@ -613,9 +634,9 @@ std::optional<std::string> with_quality(std::string_view text, const std::string
 
 // Copies project.json, providers.json and every scene, prefab, texture, .frames.json,
 // .material.json, .anim.json, .animtree.json, .tileset.json, font, .theme.json, sound, .audio.json,
-// .bus_layout.json, .navmesh.json, .navpoly.json, .meshlib.json, .lightmap.json and .voxelgi.json
-// file, translation file (.po, .mo and the CSV files project.json lists), heightmap,
-// lightmap's .hdr texels and model into data, checking each on the way.
+// .bus_layout.json, .navmesh.json, .navpoly.json, .npc.json, .meshlib.json, .lightmap.json and
+// .voxelgi.json file, translation file (.po, .mo and the CSV files project.json lists), heightmap,
+// lightmap's .hdr texels, Gaussian splats' .ply file and model into data, checking each on the way.
 // Materials take their shaders compiled for the platform, and textures ship in the forms
 // project.json's rendering.textures asks for, kept in library_dir's cache. Model recipes ship
 // as the preset's model_quality tier makes them.

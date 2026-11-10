@@ -321,6 +321,9 @@ bool awaits_video_frame(const world::World& world, std::string_view texture) {
 void apply_settings(render::Scene3D& scene, const Settings& project) {
     scene.method = project.rendering_method;
     scene.subsurface = project.subsurface;
+    scene.sdfgi.ray_count = project.sdfgi.probe_ray_count;
+    scene.sdfgi.frames_to_converge = project.sdfgi.frames_to_converge;
+    scene.sdfgi.frames_to_update_light = project.sdfgi.frames_to_update_lights;
 }
 
 } // namespace
@@ -414,6 +417,18 @@ CanvasRenderer::CanvasRenderer(render::RenderDevice& device, asset::Assets& asse
     scene3d_.set_override_materials(
         [this](const std::string& path, const std::map<std::string, json::Value>& params,
                double time) { return override_material(path, params, time); });
+    scene3d_.set_splats(
+        [this](const std::string& path) -> Result<std::shared_ptr<const render::GaussianSplats>> {
+            auto it = splats_.find(path);
+            if (it == splats_.end()) {
+                auto loaded = assets_->load<render::GaussianSplats>(path);
+                if (!loaded) {
+                    return loaded.error();
+                }
+                it = splats_.emplace(path, std::move(loaded).value()).first;
+            }
+            return it->second.share();
+        });
 }
 
 Result<scene3d::OverrideMaterial>
@@ -1212,6 +1227,8 @@ bool ready_scene3d(scene3d::Renderer& scene3d, const render::RenderDevice& devic
     scene3d.set_tick_seconds(settings.tick_seconds);
     scene3d.set_view(options.view3d);
     scene3d.set_frame_generation(generate);
+    // A path-traced frame's paths see every cluster of a virtualized surface.
+    scene3d.set_cluster_culling(options.cull_clusters && !traced);
     return generate;
 }
 

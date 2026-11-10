@@ -171,6 +171,10 @@ using VoxelGISource =
 using ImageSource =
     std::function<Result<std::shared_ptr<const render::Image>>(const std::string& path)>;
 
+// The Gaussian splats a GaussianSplat3D's splats names, loaded by project path (splats.hpp).
+using SplatSource =
+    std::function<Result<std::shared_ptr<const render::GaussianSplats>>(const std::string& path)>;
+
 // A model loaded by project path, and its version: a reload raises it, and its meshes are made
 // again.
 struct SourceModel {
@@ -187,8 +191,8 @@ using ModelSource = std::function<Result<SourceModel>(const std::string& path)>;
 // skeleton modifiers and bone attachments against the models they follow. CSG shapes that can't
 // be made (check_csg), path followers that can't follow (world::check_paths), GridMaps whose
 // cells can't be made (check_gridmaps), terrains (check_terrains), LightmapGIs
-// (check_lightmaps), soft bodies (check_soft_bodies), Destructible3Ds (check_destructibles) and
-// StreamedScene3Ds (check_streaming) come after.
+// (check_lightmaps), soft bodies (check_soft_bodies), Destructible3Ds (check_destructibles),
+// StreamedScene3Ds (check_streaming) and GaussianSplat3Ds (check_splats) come after.
 [[nodiscard]] std::vector<Problem> check_meshes(const world::World& world);
 
 // The same in a parsed scene file, each at its JSON Pointer in the file. Prefabs and instanced
@@ -273,6 +277,10 @@ public:
     // Whether frames keep their prepass for frame generation (render::Scene3D::frame_generation),
     // their meshes given the transforms they were drawn at in the last frame, as with use_taa.
     void set_frame_generation(bool on) { frame_generation_ = on; }
+    // Whether virtualized surfaces leave out of the camera's draw the clusters it can't see (out
+    // of view, seen from behind, or hidden by occluders). A path-traced frame turns it off, since
+    // its paths see every cluster; frames with ray-traced effects or SDFGI never cull them.
+    void set_cluster_culling(bool on) { cluster_culling_ = on; }
 
     // Where the last frame's world was drawn around: the frame's positions are relative to it,
     // so meshes, lights and the camera stay near the origin in the floats the device draws with.
@@ -322,6 +330,9 @@ public:
         override_materials_ = std::move(materials);
     }
     void set_tick_seconds(double seconds) { tick_seconds_ = seconds; }
+    // Where GaussianSplat3Ds' .ply files load from: without a source, they draw nothing, and
+    // each is a problem.
+    void set_splats(SplatSource splats) { splats_ = std::move(splats); }
     // Draws the meshes prepare found into the frame begun with its scene.
     [[nodiscard]] Result<void> draw();
 
@@ -339,6 +350,8 @@ public:
     [[nodiscard]] std::size_t cluster_triangles_drawn() const noexcept {
         return cluster_triangles_drawn_;
     }
+    // How many of those clusters the camera culled: out of view, seen from behind or occluded.
+    [[nodiscard]] std::size_t clusters_culled() const noexcept { return clusters_culled_; }
     // How many of the last prepare's meshes the occluders hid from the camera.
     [[nodiscard]] std::size_t occluded() const noexcept { return occluded_; }
     // The occlusion buffer the last prepare cast, empty with occlusion off.
@@ -349,6 +362,7 @@ public:
 private:
     std::optional<CameraView> view_;
     bool frame_generation_ = false;
+    bool cluster_culling_ = true;
     struct Local {
         Vec3 position;
         Quat rotation;
@@ -382,13 +396,20 @@ private:
         std::uint32_t lod = 0;
         // Its cut in cuts_, when its surface draws virtualized; its mesh is the cut's.
         std::string cut;
+        // When the camera culled some of its cut's clusters: the whole cut, drawn into shadow
+        // maps only, while mesh (the clusters the camera sees) is drawn without shadows.
+        render::MeshId shadow_mesh = render::MeshId::None;
+        // Every cluster of its cut culled, and it casts no shadow: it isn't drawn.
+        bool hidden = false;
     };
     // Picks each draw's LOD as Godot's Forward+ does for a camera at camera_position, seen
     // through projection at width pixels across with a threshold of threshold_pixels.
     // Virtualized draws are cut for the camera into clusters instead, unless cut is false (a
-    // reflection probe's faces draw the camera's cut).
+    // reflection probe's faces draw the camera's cut), and with culled, the clusters out of its
+    // view, seen from behind or hidden by the occlusion buffer are left out of its draw.
     void pick_lods(const Vec3& camera_position, const std::array<float, 16>& projection,
-                   bool orthogonal, float width, float threshold_pixels, bool cut = true);
+                   bool orthogonal, float width, float threshold_pixels, bool cut = true,
+                   const CameraView* culled = nullptr);
     // A virtualized surface's hierarchy, kept by its kept_mesh key, and one draw's cut of it:
     // the clusters chosen and a mesh of their triangles, made again when they change.
     struct Clustered {
@@ -404,6 +425,14 @@ private:
         std::size_t triangles = 0;
         render::MeshId id = render::MeshId::None;
         std::uint64_t used = 0;
+        // The clusters of it the camera last saw, when it culled some, and their mesh.
+        std::vector<std::uint32_t> seen;
+        std::size_t seen_triangles = 0;
+        render::MeshId seen_id = render::MeshId::None;
+        // Each cluster's occlusion jitter timeout, as draws keep theirs, and whether its
+        // MeshInstance3D ignores occlusion culling.
+        std::unordered_map<std::uint32_t, std::uint64_t> timeouts;
+        bool ignore_occlusion = false;
     };
     // Cuts a virtualized draw for a camera at camera_position (pixels_per_unit is the projection's
     // pixels across a unit at a unit's distance; 0 for an orthogonal one) and points it at the
@@ -411,7 +440,10 @@ private:
     // Destroys the cuts' meshes, only those of cuts no draw used this frame when unused_only.
     void destroy_cuts(bool unused_only);
     void cut_clusters(Draw& draw, const Vec3& camera_position, float pixels_per_unit,
-                      float threshold_pixels);
+                      float threshold_pixels, const CameraView* culled);
+    // Leaves out of a cut draw's camera draw the clusters the camera can't see.
+    void cull_clusters(Draw& draw, Cut& cut, const ClusterView& cluster_view,
+                       const CameraView& camera);
     // Casts the occlusion buffer for the camera from the world's occluders and leaves the meshes
     // it hides out of the frame, as Godot's _scene_cull leaves them out of the camera's list:
     // drawn only into shadow maps when they cast shadows.
@@ -602,6 +634,11 @@ private:
     void add_decals(const world::World& world, const world::Tree3D& tree,
                     const std::function<world::Affine3D(entt::entity)>& global,
                     std::uint32_t cull_mask, float exposure, render::Decals3D& out);
+    // The GaussianSplat3Ds the camera's cull_mask sees, in the order they were made, their files
+    // loaded through the splat source; those that can't load are left out, with a problem.
+    void add_splats(const world::World& world, const world::Tree3D& tree,
+                    const std::function<world::Affine3D(entt::entity)>& global,
+                    std::uint32_t cull_mask, render::Splats3D& out);
     // The FogVolumes the camera's cull_mask sees, in the order they were made, each with the
     // FogMaterial on its entity; past render::kMaxFogVolumes they are left out and reported.
     void add_fog_volumes(const world::World& world, const world::Tree3D& tree,
@@ -687,6 +724,7 @@ private:
     std::unordered_map<entt::entity, GpuParticles3D> gpu_particles_;
     ParticleProcessSource processes_;
     ShaderMaterialSource override_materials_;
+    SplatSource splats_;
     // The material in place of an entity's surfaces': its material_override's, else its
     // StandardMaterial3D's; nullopt for neither, or for an override that can't load, with a
     // problem. shadows_disabled says its material casts none.
@@ -706,6 +744,7 @@ private:
     std::size_t lods_drawn_ = 0;
     std::size_t clusters_drawn_ = 0;
     std::size_t cluster_triangles_drawn_ = 0;
+    std::size_t clusters_culled_ = 0;
     std::unordered_map<std::string, Clustered> clustered_;
     std::unordered_map<std::string, Cut> cuts_;
     // Occlusion culling: the occluders' triangles, the depth buffer cast into them, each draw's
