@@ -1146,8 +1146,9 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
        [gaussian-splats.md](reference/gaussian-splats.md))
 7. [x] Wind: `WindSource3D` directional and point sources with gusts and turbulence, as Unreal's
        WindDirectionalSource, and Godot's `Area3D` wind fields, sampled by one world wind field
-       that vegetation shaders (`WIND` built-ins), soft bodies, cloth and particles all read
-       (`slash/world/wind.hpp`, `wind.sample`, `examples/wind`)
+       that vegetation shaders (`WIND` built-ins), soft bodies, cloth and particles all read,
+       and `WindSource2D` for canvas shaders and 2D particles (`slash/world/wind.hpp`,
+       `wind.sample`, `examples/wind`)
 8. [ ] Style memory: the storyboard marks and remembers the look of what agents and people make
        or import, so weeks of autonomous work keep one look. `style.mark` keeps a scene, an
        asset, a captured frame, a material or a lighting setup as a `style/<name>` reference

@@ -133,6 +133,12 @@ std::string mesh_hlsl() {
 }
 
 constexpr std::array<std::string_view, 5> kSwizzles{"", ".x", ".xy", ".xyz", ""};
+
+// Whether the shader reads WIND. Only those declare and load it, so shaders without it (the
+// engine's own FSR shaders among them) compile as they did before there was wind.
+bool reads_wind(const render::ShaderSource& source) {
+    return source.code.find("WIND") != std::string::npos;
+}
 constexpr std::array<std::string_view, 5> kTypes{"", "float", "float2", "float3", "float4"};
 
 // The globals every wrapper declares before the shader's code: the material's params, Godot's
@@ -161,6 +167,9 @@ std::string declarations(const render::ShaderSource& source) {
            "static const float TAU = 6.28318530717958647692;\n"
            "static const float E = 2.71828182845904523536;\n"
            "#define texture(t, uv) ((t).SampleLevel(t##_sampler, (uv), 0.0))\n";
+    if (reads_wind(source)) {
+        out += "static float2 WIND;\n";
+    }
     return out;
 }
 
@@ -178,6 +187,11 @@ std::string load_params(const render::ShaderSource& source, std::string_view con
     }
     out += "    TIME = " + std::string(constants) + "[" +
            std::to_string(render::kShaderTimeConstant) + "].x;\n";
+    if (reads_wind(source)) {
+        out += "    WIND = " + std::string(constants) + "[" +
+               std::to_string(render::kShaderWindConstant) + "]" +
+               (source.type == render::ShaderType::Spatial ? ".xyz" : ".xy") + ";\n";
+    }
     if (!texel.empty()) {
         out += "    TEXTURE_PIXEL_SIZE = " + std::string(texel) + ".xy;\n";
     }
@@ -405,6 +419,9 @@ std::string spatial_declarations(const render::ShaderSource& source, const Scan&
            "static float NORMAL_MAP_DEPTH;\n"
            "static float ALPHA_SCISSOR_THRESHOLD;\n"
            "static float game_specular;\n";
+    if (reads_wind(source)) {
+        out += "static float3 WIND;\n";
+    }
     if (found.light) {
         // light()'s own, as Godot's: LIGHT, VIEW and NORMAL in the camera's space.
         out += "static float3 LIGHT;\n"

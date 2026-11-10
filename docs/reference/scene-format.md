@@ -304,6 +304,7 @@ A reference must name an entity that exists in the same scene.
 | | `direction` | `Vec2` | `[1, 0]` | Which way particles go |
 | | `spread` | `float` | `45` | Degrees either side of `direction`, 0 to 180 |
 | | `gravity` | `Vec2` | `[0, 980]` | In pixels per second squared |
+| | `wind_influence` | `float` | `0` | How much [`WindSource2D`s'](#wind) wind pushes particles: its velocity times this, in pixels per second squared, is added to `gravity` |
 | | `initial_velocity_min`, `_max` | `float` | `0` | Starting speed in pixels per second |
 | | `angular_velocity_min`, `_max` | `float` | `0` | Degrees per second it turns, clockwise |
 | | `orbit_velocity_min`, `_max` | `float` | `0` | Turns per second round the entity, anticlockwise on screen |
@@ -3158,6 +3159,7 @@ void fragment() {
 | `UV` | float2 | both | The texture coordinate, from 0 to 1 across the sprite's frame |
 | `COLOR` | float4 | both | In `vertex()`, the vertex color (the sprite's `modulate`); in `fragment()`, the texture times it, and what the pixel draws |
 | `TIME` | float | both | Seconds of game time, wrapping every hour |
+| `WIND` | float2 | both | The wind at the node in the world, in pixels per second, from the world's [`WindSource2D`s](#wind) |
 | `TEXTURE` | texture | both | The sprite's texture |
 | `TEXTURE_PIXEL_SIZE` | float2 | both | One over the texture's width and height |
 | `FRAGCOORD` | float4 | `fragment()` | The pixel's center in the target, in pixels from the top left (`xy`); `z` is 0 and `w` 1 |
@@ -3167,8 +3169,8 @@ void fragment() {
 - `texture(t, uv)` samples `TEXTURE` or a texture param, as Godot's `texture()`, with the
   texture's filter and repeat; `PI`, `TAU` and `E` are defined.
 - Params are globals of their type: a `float` param is a `float`, `vec2` a `float2`, `vec3` a
-  `float3`, `vec4` and `color` a `float4`, and `texture` a texture. A shader takes at most 31
-  number params (the time takes the last constant) and 3 textures. Names HLSL or the code
+  `float3`, `vec4` and `color` a `float4`, and `texture` a texture. A shader takes at most 30
+  number params (`WIND` and the time take the last two constants) and 3 textures. Names HLSL or the code
   around the shader uses (keywords, types, intrinsic functions such as `length`, and the code's
   own globals) are refused with the param's path.
 - A `vertex()` that moves `VERTEX`, `UV` or `COLOR` moves or recolors the corners, and
@@ -3262,6 +3264,7 @@ In `fragment()`:
 | `SCREEN_UV` | float2 | `FRAGCOORD.xy` over `VIEWPORT_SIZE`, from 0 to 1 across the frame |
 | `FRONT_FACING` | bool | Whether the camera sees the triangle's front |
 | `TIME` | float | Seconds of game time, wrapping every hour |
+| `WIND` | float3 | The wind at the mesh's origin in the world, in meters per second, from the world's [`WindSource3D`s](#wind) |
 | `MODEL_MATRIX`, `VIEW_MATRIX`, `INV_VIEW_MATRIX`, `PROJECTION_MATRIX`, `INV_PROJECTION_MATRIX`, `MODELVIEW_MATRIX` | float4x4 | The mesh's place in the world, the world to view space, and view space to clip space, and back, and the mesh to view space |
 | `MODEL_NORMAL_MATRIX`, `MODELVIEW_NORMAL_MATRIX` | float3x3 | What turns the mesh's normals into the world's and into view space |
 | `CAMERA_POSITION_WORLD`, `CAMERA_DIRECTION_WORLD` | float3 | Where the camera is and the way it looks, in the world |
@@ -3276,7 +3279,7 @@ In `vertex()`, which runs once a corner:
 | `NORMAL`, `TANGENT`, `BINORMAL` | float3 | In and out: its normal, tangent and binormal, in the same space |
 | `UV`, `UV2` | float2 | In and out: its texture coordinates, which `fragment()` then reads |
 | `COLOR` | float4 | In and out: its vertex color |
-| `TIME`, the matrices, `CAMERA_*`, `NODE_*` and `VIEWPORT_SIZE` | | As in `fragment()` |
+| `TIME`, `WIND`, the matrices, `CAMERA_*`, `NODE_*` and `VIEWPORT_SIZE` | | As in `fragment()` |
 
 `texture()` works in `vertex()` too, reading the texture's largest level.
 
@@ -4346,7 +4349,7 @@ from `physics_3d` in [`project.json`](project-format.md).
 | `AnimatableBody3D` | as `StaticBody3D`, and `sync_to_physics` `true` |
 | `RigidBody3D` | `collision_layer`, `collision_mask`, `friction`, `bounce` as `StaticBody3D`; `mass` `1`, `inertia` `[0, 0, 0]` (0 computes that axis's), `gravity_scale` `1`, `linear_velocity` and `angular_velocity` `[0, 0, 0]`, `linear_damp_mode` and `angular_damp_mode` `"combine"`, `linear_damp` and `angular_damp` `0`, `constant_force` and `constant_torque` `[0, 0, 0]`, `lock_rotation` `false`, `axis_lock_linear_x/y/z` and `axis_lock_angular_x/y/z` `false`, `freeze` `false`, `freeze_mode` `"static"`, `continuous_cd` `false`, `can_sleep` `true`, `sleeping` `false`, `contact_monitor` `false` |
 | `CharacterBody3D` | `collision_layer`, `collision_mask`; `motion_mode` `"grounded"` (or `floating`), `up_direction` `[0, 1, 0]`, `velocity` `[0, 0, 0]`, `max_slides` `6`, `slide_on_ceiling` `true`, `wall_min_slide_angle` `0.261799`, `floor_stop_on_slope` `true`, `floor_constant_speed` `false`, `floor_block_on_wall` `true`, `floor_max_angle` `0.785398`, `floor_snap_length` `0.1`, `platform_on_leave` `"add_velocity"`, `platform_floor_layers` all, `platform_wall_layers` `0`, `safe_margin` `0.001`; written by each move: `on_floor`, `on_wall`, `on_ceiling`, `floor_normal`, `wall_normal`, `platform_velocity` |
-| `Area3D` | `collision_layer`, `collision_mask`, `monitoring` `true`, `monitorable` `true`, `priority` `0`, `gravity_space_override` `"disabled"`, `gravity_point` `false`, `gravity_point_unit_distance` `0`, `gravity_point_center` `[0, -1, 0]`, `gravity_direction` `[0, -1, 0]`, `gravity` `9.8`, `linear_damp_space_override` and `angular_damp_space_override` `"disabled"`, `linear_damp` and `angular_damp` `0.1`; for [3D sound](#3d-sound): `audio_bus_override` `false`, `audio_bus_name` `"Master"`, `reverb_bus_enabled` `false`, `reverb_bus_name` `"Master"`, `reverb_bus_amount` `0`, `reverb_bus_uniformity` `0` |
+| `Area3D` | `collision_layer`, `collision_mask`, `monitoring` `true`, `monitorable` `true`, `priority` `0`, `gravity_space_override` `"disabled"`, `gravity_point` `false`, `gravity_point_unit_distance` `0`, `gravity_point_center` `[0, -1, 0]`, `gravity_direction` `[0, -1, 0]`, `gravity` `9.8`, `linear_damp_space_override` and `angular_damp_space_override` `"disabled"`, `linear_damp` and `angular_damp` `0.1`; for [3D sound](#3d-sound): `audio_bus_override` `false`, `audio_bus_name` `"Master"`, `reverb_bus_enabled` `false`, `reverb_bus_name` `"Master"`, `reverb_bus_amount` `0`, `reverb_bus_uniformity` `0`; for soft bodies, as Godot's: `wind_force_magnitude` `0`, `wind_attenuation_factor` `0`, `wind_source_path` `null` (an entity whose -z the wind blows along, from its position) |
 
 - Bodies act as their 2D namesakes do ([2D physics](#2d-physics)): a static body stays put and
   jumps where its `Transform3D` is set, an animatable body moves there during the step and
@@ -4532,8 +4535,14 @@ a ball full of air.
   it, `shrinking_factor` (which shortens every spring by that share) or the mesh makes the body
   again from the mesh; other fields change in place and wake it.
 - `pressure_coefficient` fills a closed mesh with air that pushes its faces out, so a sphere
-  stays round. `drag_coefficient` and `ray_pickable` are kept but do nothing, as on Godot's Jolt
-  module.
+  stays round. `drag_coefficient` is how hard [`WindSource3D`s'](#wind) wind pushes its faces:
+  each face takes `0.5 * 1.225 * drag_coefficient * area * (n . v) * |n . v|` along its normal
+  `n`, `v` the wind less the face's velocity, before each step. `ray_pickable` is kept but does
+  nothing, as on Godot's Jolt module.
+- An `Area3D` with `wind_force_magnitude` blows the faces of soft bodies inside it whose layer
+  its mask holds, as Godot's `_compute_area_windforce`: along the face's normal, by the
+  magnitude, the face's area and how squarely it faces `wind_source_path`'s -z, weakened by the
+  distance from the source to the power of `-wind_attenuation_factor`.
 - Layers and masks work as other bodies': a body whose mask lacks a soft body's layer pushes it
   without being pushed back, and the other way round. Soft bodies feel the project's gravity,
   not areas', and queries, motion tests and areas pass them by, as Godot's Jolt module does.
@@ -4625,6 +4634,45 @@ player down a road of three cells.
   `streaming.state` lists the cells. `scene validate` reports a `StreamedScene3D` without a
   `Transform3D`, a `scene` that is no `.scene.json` file, can't be read or names no root, and
   an ID too long for its root's.
+
+### Wind
+
+Godot's only wind is an `Area3D`'s for soft bodies, so this follows Unreal's
+`WindDirectionalSource`: a `WindSource3D` blows through the whole world along its entity's -z,
+or, with `point_wind`, out from its position to `radius`. Soft bodies (by their
+`drag_coefficient`), 3D particles (by their `wind_influence`) and spatial shaders (`WIND`, for
+grass and leaves that lean) feel the sum of every enabled source. In 2D worlds a `WindSource2D`
+does the same along its entity's x axis (the way its rotation points), in pixels per second,
+for `CPUParticles2D` (`wind_influence`) and canvas shaders (`WIND`).
+[examples/wind](../../examples/wind/) blows a meadow's grass, a banner and falling leaves.
+
+```json
+"breeze": {
+  "components": {
+    "Transform3D": {"rotation": [0.0, -1.5707964, 0.0]},
+    "WindSource3D": {"strength": 3.0, "turbulence": 0.1}
+  }
+}
+```
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `WindSource2D` | As `WindSource3D`, in pixels: `strength` `320` (pixels per second), `radius` `640` (pixels) |
+| `WindSource3D` | `enabled` `true`, `strength` `5` (meters per second), `min_gust_amount` `0.1` and `max_gust_amount` `0.4` (shares of `strength` gusts add), `gust_frequency` `0.25` (gusts a second), `turbulence` `0.1` (a share of `strength` that wanders across the wind), `point_wind` `false`, `radius` `10` (meters, with `point_wind`) |
+
+- The wind at a place is `strength` times one plus a gust between `min_gust_amount` and
+  `max_gust_amount`, along the source's -z (or away from it, fading to nothing at `radius`),
+  plus turbulence across it. Gusts travel downwind at the wind's speed, so a gust reaches a
+  point 5 meters downwind of another a second later in a 5 m/s wind.
+- Gusts and turbulence come from a noise of whole numbers hashed with the source's ID, eased
+  with no libm, so the wind is the same bits everywhere; sources add up in the order they are
+  stored.
+- The `wind` system (priority -650) counts the seconds the wind has blown, from 0 when a replay
+  or recording starts, and the wind follows that clock.
+- `wind.sample` returns the wind at points, now or at a given time: `[x, y, z]` points in 3D,
+  `[x, y]` points in 2D.
+- `GPUParticles2D` and 2D physics bodies don't feel the wind yet; the
+  [simulation's fields](../roadmap.md) bring it to them.
 
 ## Navigation
 
@@ -5067,6 +5115,7 @@ snow.
 | `spread` | `float` | `45` | Degrees from `direction`, in a cone, 0 to 180 |
 | `flatness` | `float` | `0` | Squashes the cone toward the xz plane of `direction`, 0 to 1 |
 | `gravity` | `Vec3` | `[0, -9.8, 0]` | In meters per second squared |
+| `wind_influence` | `float` | `0` | How much the [wind](#wind) pushes particles: its velocity times this, in meters per second squared, is added to `gravity` |
 | `initial_velocity_min`, `_max`, `linear_accel_min`, `_max`, `radial_accel_min`, `_max`, `tangential_accel_min`, `_max`, `damping_min`, `_max` | `float` | `0` | As `CPUParticles2D`'s, in meters |
 | `angular_velocity_min`, `_max`, `angle_min`, `_max` | `float` | `0` | Degrees per second and degrees: the turn a `"particles"` billboard draws it at |
 | `orbit_velocity_min`, `_max` | `float` | `0` | Turns per second round the entity, only with `particle_flag_disable_z` |
@@ -5446,6 +5495,7 @@ steps, placing the meshes on the CPU for now; the software and OpenGL devices, `
 | `visibility_aabb_position`, `visibility_aabb_size` | `Vec3` | `[-4, -4, -4]`, `[8, 8, 8]` | A box in the emitter's space, as Godot's `visibility_aabb`: the emitter isn't drawn when it is out of view |
 | `cast_shadow`, `layers` | | `"on"`, `1` | As `MeshInstance3D`'s |
 | `collision_base_size` | `float` | `0.01` | How near, in meters, a particle comes to a [collider](#particle-collision-3d) before it touches |
+| `wind_influence` | `float` | `0` | How much the [wind](#wind) pushes particles, as `CPUParticles3D`'s, with attractor interaction on |
 
 A process material's 3D fields, beside the [2D ones](#process-materials):
 

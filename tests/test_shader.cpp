@@ -310,10 +310,10 @@ TEST_CASE("param names the code around a shader takes are reserved, and the rest
     }
     CHECK(free.size() > 20);
     std::vector<std::string> names(free.begin(), free.end());
-    for (std::size_t first = 0; first < names.size(); first += render::kShaderTimeConstant) {
+    for (std::size_t first = 0; first < names.size(); first += render::kShaderWindConstant) {
         render::ShaderSource source{.path = "probe.hlsl", .code = {}, .params = {}};
         std::string sum = "0.0";
-        for (std::size_t i = first; i < std::min(names.size(), first + render::kShaderTimeConstant);
+        for (std::size_t i = first; i < std::min(names.size(), first + render::kShaderWindConstant);
              ++i) {
             source.params.push_back(
                 {.name = names[i], .components = 1, .slot = static_cast<std::uint32_t>(i - first)});
@@ -432,7 +432,7 @@ TEST_CASE("shader material mistakes point at the bad value") {
                 std::to_string(i) + R"(": {"type": "float"})";
     }
     CHECK(first_error(many + "}, " + shader + "}") ==
-          "/params/p31: a shader reads at most 31 number params");
+          "/params/p30: a shader reads at most 30 number params");
     CHECK(
         first_error(R"({"format": 1, "params": {"a": {"type": "texture"}, "b": {"type": "texture"},
         "c": {"type": "texture"}, "d": {"type": "texture"}}, )" +

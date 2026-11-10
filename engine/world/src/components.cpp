@@ -489,6 +489,16 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("linear_damp", {.doc = "Slows movement in it, per second.", .min = 0})
         .describe("angular_damp_space_override", override_mode)
         .describe("angular_damp", {.doc = "Slows turning in it, per second.", .min = 0})
+        .describe("wind_force_magnitude",
+                  {.doc = "How hard its wind pushes the faces of SoftBody3Ds in it, as Godot's "
+                          "area wind; other bodies don't feel it."})
+        .describe("wind_attenuation_factor",
+                  {.doc = "How fast its wind weakens with distance from wind_source_path's "
+                          "origin along its direction.",
+                   .min = 0})
+        .describe("wind_source_path",
+                  {.doc = "The entity whose global -Z its wind blows along, from its origin; "
+                          "null blows no wind."})
         .describe("audio_bus_override",
                   {.doc = "AudioStreamPlayer3D sounds in it play through audio_bus_name, when "
                           "its collision_layer is in their area_mask."})
@@ -774,10 +784,11 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("pressure_coefficient",
                   {.doc = "Pushes a closed mesh out, as air in a ball.", .min = 0})
         .describe("damping_coefficient", {.doc = "Slows its points, per second.", .min = 0})
-        .describe("drag_coefficient", {.doc = "Kept for Godot's scenes; Jolt has no drag, so it "
-                                              "does nothing.",
-                                       .min = 0,
-                                       .max = 1})
+        .describe("drag_coefficient",
+                  {.doc = "How hard WindSource3Ds' wind pushes its faces: 0 not at all, 1 as "
+                          "air drags a flat sheet square to it.",
+                   .min = 0,
+                   .max = 1})
         .describe("ray_pickable", {.doc = "Kept for Godot's scenes; queries don't see soft "
                                           "bodies yet."})
         .describe("pinned_points", {.doc = "Points held in place."})
@@ -837,6 +848,40 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .set_doc("Streams in the StreamedScene3Ds near its entity's global position, as Unreal's "
                  "streaming sources: a player or a camera.")
         .describe("enabled", {.doc = "false stops it streaming anything in."});
+    registry.add<WindSource3D>()
+        .set_doc("Blows wind along its entity's global -Z, or out from it with point_wind, as "
+                 "Unreal's WindDirectionalSource: gusts sweep along with the wind and turbulence "
+                 "wanders across it. Spatial shaders read the wind at their node as WIND, "
+                 "SoftBody3Ds feel it by drag_coefficient and 3D particles by wind_influence; "
+                 "wind.sample measures it.")
+        .describe("enabled", {.doc = "false stops it blowing."})
+        .describe("point_wind", {.doc = "Blows out from the entity in every direction, dying "
+                                        "away to nothing at radius."})
+        .describe("strength", {.doc = "Meters per second it blows between gusts.", .min = 0})
+        .describe("min_gust_amount", {.doc = "The least share of strength a gust adds.", .min = 0})
+        .describe("max_gust_amount", {.doc = "The most share of strength a gust adds.", .min = 0})
+        .describe("gust_frequency",
+                  {.doc = "Gusts a second passing any point; 0 holds the gusts still.", .min = 0})
+        .describe("turbulence",
+                  {.doc = "Share of strength the wind wanders across its direction.", .min = 0})
+        .describe("radius",
+                  {.doc = "Meters from the entity at which point wind has died away.", .min = 0});
+    registry.add<WindSource2D>()
+        .set_doc("Blows wind along its entity's global x axis, or out from it with point_wind, "
+                 "as WindSource3D does in 3D. Canvas shaders read the wind at their node as "
+                 "WIND and CPUParticles2D feel it by wind_influence; wind.sample measures it.")
+        .describe("enabled", {.doc = "false stops it blowing."})
+        .describe("point_wind", {.doc = "Blows out from the entity in every direction, dying "
+                                        "away to nothing at radius."})
+        .describe("strength", {.doc = "Pixels per second it blows between gusts.", .min = 0})
+        .describe("min_gust_amount", {.doc = "The least share of strength a gust adds.", .min = 0})
+        .describe("max_gust_amount", {.doc = "The most share of strength a gust adds.", .min = 0})
+        .describe("gust_frequency",
+                  {.doc = "Gusts a second passing any point; 0 holds the gusts still.", .min = 0})
+        .describe("turbulence",
+                  {.doc = "Share of strength the wind wanders across its direction.", .min = 0})
+        .describe("radius",
+                  {.doc = "Pixels from the entity at which point wind has died away.", .min = 0});
 }
 
 // The skeleton modifiers: Godot 4.6's TwoBoneIK3D, FABRIK3D, CCDIK3D and JacobianIK3D.
@@ -2096,7 +2141,11 @@ void register_particle_components(ComponentRegistry& registry) {
                       {.doc = "Turn each particle so its y axis points along its velocity."})
             .describe("direction", {.doc = "Which way particles go, as [x, y]."})
             .describe("spread", {.doc = "Degrees either side of direction.", .min = 0, .max = 180})
-            .describe("gravity", {.doc = "In pixels per second squared, as [x, y]."});
+            .describe("gravity", {.doc = "In pixels per second squared, as [x, y]."})
+            .describe("wind_influence",
+                      {.doc = "Pushes each particle every second by the wind where the emitter "
+                              "is (WindSource2D) times this; 0 leaves them be.",
+                       .min = 0});
     range(type, "initial_velocity", "Starting speed in pixels per second");
     range(type, "angular_velocity", "Degrees per second it turns")
         .describe("angular_velocity_curve", curve);
@@ -2156,6 +2205,10 @@ void register_particle_components(ComponentRegistry& registry) {
                       {.doc = "Shortens each particle's life by up to this fraction.",
                        .min = 0,
                        .max = 1})
+            .describe("wind_influence",
+                      {.doc = "Pushes each particle every second by the wind where the emitter "
+                              "is (WindSource3D) times this; 0 leaves them be.",
+                       .min = 0})
             .describe("seed", {.doc = "Varies the random values; the same seed and entity ID "
                                       "always give the same particles."})
             .describe("local_coords", {.doc = "Particles move with the entity; false leaves them "
@@ -2359,6 +2412,10 @@ void register_particle_components(ComponentRegistry& registry) {
         .describe("collision_base_size",
                   {.doc = "How near a particle comes to a GPUParticlesCollision3D before it "
                           "touches, in meters.",
+                   .min = 0})
+        .describe("wind_influence",
+                  {.doc = "Pushes the particles every second by the wind at the emitter "
+                          "(WindSource3D) times this; 0 leaves them be.",
                    .min = 0})
         .describe("visibility_aabb_position",
                   {.doc = "The corner of the box, in the entity's space, the particles are "
