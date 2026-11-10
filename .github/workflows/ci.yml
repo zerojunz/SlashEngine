@@ -107,9 +107,6 @@ jobs:
       - name: Build
         run: cmake --build --preset ci
 
-      # Temporary: on this branch macOS's CVMCompiler, the software OpenGL renderer's shader
-      # compiler, starts in the first test process and runs on at 100% for the rest of the job,
-      # and every later process's first OpenGL compile waits behind it. Which test case starts it.
       - name: Test
         run: ctest --preset ci
 
@@ -127,17 +124,6 @@ jobs:
           name: engine-reference
           path: build/ci/tests/api-docs/
           if-no-files-found: error
-
-  # Temporary: how long Apple's software OpenGL renderer takes over versions of the mesh shader.
-  gl-compile-times:
-    name: Time GL shader compiles (macOS)
-    runs-on: macos-15
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - run: git fetch origin main && python3 .github/scripts/time-gl-compiles.py
 
   # A build that reports to the Tracy profiler (the tracy preset) must build and run too. With no
   # profiler connected it collects nothing, so the examples print what they always do.

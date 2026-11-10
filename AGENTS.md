@@ -1039,7 +1039,10 @@ Godot's sines. `detail::alpha_hash_threshold` in `src/mesh.cpp` is its CPU twin,
 software device feeds from its quads' coarse derivatives (`MeshRaster::hash_scale`,
 `MeshFragment::alpha_hash`); rays take the surface as alpha (`traced_surface`). A change to one
 goes in both; `tests/test_alpha_hash.cpp` holds every device to the software device and
-`examples/alpha-hash` fades a hair card.
+`examples/alpha-hash` fades a hair card. The OpenGL devices draw other meshes and shadows with
+`mesh_plain.hlsl` and `shadow_plain.hlsl` (GLSL only, `NO_ALPHA_HASH`), linking the hashed
+programs at the first draw that uses alpha hash (`alpha_hashed` in `src/gl_device.cpp`), since
+Apple's software OpenGL renderer takes minutes compiling the mesh shader with it.
 
 Subsurface scattering is Godot 4.6's Forward+ screen-space blur (`Material3D::subsurface`, from
 `StandardMaterial3D`'s `subsurf_scatter_*`; project.json's
