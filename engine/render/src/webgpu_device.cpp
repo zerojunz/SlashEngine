@@ -4552,7 +4552,7 @@ private:
     // decals and, when it changes, the decals' atlas to the GPU, bound as a group made again when a
     // buffer grows.
     void upload_clusters(WGPUBuffer fog) {
-        decal_atlas_.update(frame_.scene->decals);
+        decal_atlas_.update(*frame_.scene);
         const DecalAtlas& atlas = decal_atlas_.atlas();
         clusters_ = build_clusters(*frame_.scene, scene_width_, scene_height_, &atlas);
         if (clusters_.lights.empty()) {

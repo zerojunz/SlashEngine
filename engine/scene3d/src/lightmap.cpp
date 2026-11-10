@@ -5,6 +5,7 @@
 #include "slash/core/math.hpp"
 #include "slash/core/sha256.hpp"
 #include "slash/core/text.hpp"
+#include "slash/render/ies.hpp"
 #include "slash/render/light.hpp"
 #include "slash/scene3d/primitive.hpp"
 #include "slash/scene3d/scene3d.hpp"
@@ -1062,6 +1063,15 @@ void add_lightmap_types(asset::Assets& assets) {
         [](std::string_view bytes, std::string_view /*path*/) { return render::decode_hdr(bytes); },
         [](const render::HdrImage& image) {
             return sizeof(render::HdrImage) + (image.rgb.capacity() * sizeof(float));
+        });
+    assets.add_type<render::IesProfile>(
+        "ies_profile", {std::string(kIesSuffix)},
+        [](std::string_view text, std::string_view /*path*/) { return render::parse_ies(text); },
+        [](const render::IesProfile& profile) {
+            return sizeof(render::IesProfile) +
+                   ((profile.vertical.capacity() + profile.horizontal.capacity() +
+                     profile.candela.capacity()) *
+                    sizeof(float));
         });
 }
 

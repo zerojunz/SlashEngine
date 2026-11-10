@@ -35,7 +35,13 @@ struct SceneLight {
     entt::entity entity = entt::null;
     std::string texture; // its texture's project path; "" for the default light
     render::Light light; // pack_light_atlas sets its atlas_rect
+    // Texels its texture is scrolled across and down by (PointLight2D::texture_scroll), wrapping.
+    std::array<std::uint32_t, 2> roll{};
 };
+
+// What a light's texture takes in the atlas, its own place for each scroll: its texture's path,
+// then its roll when it has one.
+[[nodiscard]] std::string light_atlas_key(const SceneLight& light);
 
 // How lights shade one canvas's draws, as Godot's viewport lights each canvas it draws.
 struct CanvasLighting {
@@ -100,13 +106,14 @@ struct ShadowCache {
 // The world's lighting, through its canvases (or all in the world's with none). A light that
 // can't shine, such as one whose texture doesn't load, is left out with a problem. Tiles cast
 // shadows through their occluders when tile_sets loads their tile sets, as Godot's TileMapLayer
-// makes a light occluder of each. transform_of, cache, canvases and tile_sets may be empty.
+// makes a light occluder of each. transform_of, cache, canvases and tile_sets may be empty. time,
+// in seconds, scrolls point lights' textures by their texture_scroll.
 [[nodiscard]] SceneLighting collect_lighting(const world::World& world, const LightImage& images,
                                              const TransformOf& transform_of,
                                              std::vector<LightProblem>& problems,
                                              ShadowCache* cache = nullptr,
                                              const world::Canvases* canvases = nullptr,
-                                             const TileSetOf& tile_sets = {});
+                                             const TileSetOf& tile_sets = {}, double time = 0.0);
 
 // A light's shadow row from the edges that occlude it, as render::encode_shadow_depth texels.
 // A point light's position and shadow_far must be set; a directional light gets its
@@ -114,7 +121,8 @@ struct ShadowCache {
 [[nodiscard]] std::vector<std::array<std::uint8_t, 4>>
 cast_shadows(render::Light& light, std::span<const OccluderEdge> edges, float max_distance);
 
-// Packs the lights' textures into one image and sets each light's atlas_rect to its place.
+// Packs the lights' textures into one image, each scrolled by its roll, and sets each light's
+// atlas_rect to its place.
 [[nodiscard]] Result<render::Image> pack_light_atlas(std::vector<SceneLight>& lights,
                                                      const LightImage& images);
 

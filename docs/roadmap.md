@@ -1210,7 +1210,8 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
        screen-space reflections in 2D worlds (Godot has none): `Reflection2D` water, mirrors
        and polished floors that reflect the canvas above their line with ripples, fade and
        tint, beside 3D's Forward+ SSR and ray-traced reflections, which are done. Temperature,
-       physical light units, 2D light temperature and `light.tune` over 3D and 2D are done
+       physical light units, 2D light temperature, `light.tune` over 3D and 2D, projectors,
+       IES profiles and scrolling light functions (3D projectors, 2D light textures) are done
        (`examples/light-tools`)
 12. [ ] NPCs with stories of their own: questlines (`.quest.json` stages and objectives over
         facts, with rewards and journal text), movement scripts (patrols, daily schedules and

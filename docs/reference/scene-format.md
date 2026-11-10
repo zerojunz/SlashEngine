@@ -151,6 +151,7 @@ A reference must name an entity that exists in the same scene.
 | | `texture` | `std::string` | `""` | Project path of a PNG, BMP or KTX2 file whose color and alpha shape the light; `""` is a soft round light 256 pixels across |
 | | `texture_scale` | `float` | `1` | Scales the texture |
 | | `offset` | `Vec2` | `[0, 0]` | Moves the texture from the light, in pixels |
+| | `texture_scroll` | `Vec2` | `[0, 0]` | Scrolls the texture by this much of its size a second, wrapping, in whole texels, as a 3D light's `light_projector_scroll`. SlashEngine's own |
 | | `color` | `Vec4` | `[1, 1, 1, 1]` | The light's color, as [r, g, b, a] from 0 to 1 |
 | | `energy` | `float` | `1` | Multiplies the color |
 | | `temperature` | `float` | `0` | Kelvin, 1000 to 20000, tinting the color as a black body that hot glows (1900 a candle, 6500 daylight, 12000 a blue sky); `0` leaves the color as it is. SlashEngine's own: Godot's 2D lights have none |
@@ -1848,6 +1849,9 @@ lights each pixel with only the omni and spot lights whose range reaches it, and
 | `light_temperature` | `6500` | all | With [physical light units](#physical-light-units), the color's black body temperature in kelvin, 1000 to 20000, which tints `light_color` |
 | `light_intensity_lux` | `100000` | directional | With physical light units, its brightness in lux (100000 is the noon sun) |
 | `light_intensity_lumens` | `1000` | omni, spot | With physical light units, its brightness in lumens (about a 75 W bulb's) |
+| `light_projector` | `""` | omni, spot | `forward_plus`: project path of a texture the light casts, as Godot's: through a spot light's cone, or an omni light's [dual paraboloid](#light-projectors-and-ies-profiles); its color times its alpha tints the light |
+| `light_projector_scroll` | `[0, 0]` | omni, spot | Moves the projector's texture coordinates by this much a second, wrapping, so it scrolls (clouds, water caustics). SlashEngine's own |
+| `light_ies` | `""` | omni, spot | `forward_plus`: project path of an IES LM-63 profile (`.ies`) whose pattern the light shines in, baked into its projector. SlashEngine's own, after Unreal's IES textures |
 | `light_specular` | `0.5` | all | How strong its highlights are |
 | `light_negative` | `false` | all | Takes light away instead |
 | `light_cull_mask` | `4294967295` | all | The render layers it lights (layers 1 to 20) |
@@ -1896,6 +1900,26 @@ tinted and shines by its lux. The background and sky shine by the `WorldEnvironm
 Godot. Lightmap and VoxelGI bakes take the same units. Without the setting, these fields change
 nothing. [`light.tune`](commands.md#lighttune) scales lights to a brightness and
 [examples/light-tools](../../examples/light-tools/) lights a street at dusk.
+
+### Light projectors and IES profiles
+
+An omni or spot light's `light_projector` casts a texture, as Godot 4.6's Forward+ does: the
+texture goes into the [decal](#decals) atlas, and each pixel the light reaches is tinted by the
+texture's color times its alpha where the light's ray meets it. A spot light maps it over its
+cone (twice `spot_angle` across, the texture's top toward the light's +y); an omni light maps it
+as a dual paraboloid, the texture's top half round the light's -z and its bottom half round +z,
+each half's top row toward the light's -y. `light_projector_scroll` moves the texture's
+coordinates each second, wrapping, as a light function. `gl_compatibility` casts no projectors,
+as Godot's.
+
+`light_ies` names an IES LM-63 profile (1986 to 2002 files with `TILT=NONE` or `INCLUDE`, type
+C photometry, the kind lamp makers publish), baked into the projector the way the light maps it:
+its brightest direction white, the rest by their share, the profile's axis (vertical angle 0)
+down a spot light's -z or an omni light's -y. With a `light_projector` too, the two multiply.
+The profile changes the light's pattern, not its brightness, which `light_energy` (or its lumens)
+still sets. A 2D light's own `texture` is its pattern, and its `texture_scroll` scrolls it.
+[examples/light-tools](../../examples/light-tools/) shines a street lamp's profile and a stained
+glass window.
 
 ### Ray-traced shadows
 

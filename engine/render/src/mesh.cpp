@@ -1950,12 +1950,21 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
         if ((static_cast<std::uint32_t>(light.params[3]) & surface.options[2]) == 0) {
             return;
         }
-        // A baked light's light is in the lightmap already, as Godot skips BAKE_STATIC lights.
-        if (light.shadow[1] != 0.0F && lightmapped) {
+        // shadow[1] holds 1 for a baked light, plus twice its projector's place after the
+        // decals. A baked light's light is in the lightmap already, as Godot skips BAKE_STATIC
+        // lights.
+        const auto light_bits = static_cast<std::uint32_t>(light.shadow[1]);
+        if ((light_bits & 1U) != 0 && lightmapped) {
             return;
         }
         const float type = light.direction[3];
-        const Float3 light_color{light.color[0], light.color[1], light.color[2]};
+        Float3 light_color{light.color[0], light.color[1], light.color[2]};
+        if ((light_bits >> 1U) != 0 && maps.uniforms != nullptr) {
+            const Float3 projected =
+                projector_light(scene, maps, light_bits >> 1U, type == 2.0F, pixel.world);
+            light_color = {light_color[0] * projected[0], light_color[1] * projected[1],
+                           light_color[2] * projected[2]};
+        }
         float slot = light.shadow[0];
         float traced_shadow = 1.0F;
         if (traced && light.shadow[3] > 0.0F) {

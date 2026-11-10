@@ -455,6 +455,18 @@ CanvasRenderer::CanvasRenderer(render::RenderDevice& device, asset::Assets& asse
             }
             return it->second.share();
         });
+    scene3d_.set_ies(
+        [this](const std::string& path) -> Result<std::shared_ptr<const render::IesProfile>> {
+            auto it = ies_.find(path);
+            if (it == ies_.end()) {
+                auto loaded = assets_->load<render::IesProfile>(path);
+                if (!loaded) {
+                    return loaded.error();
+                }
+                it = ies_.emplace(path, std::move(loaded).value()).first;
+            }
+            return it->second.share();
+        });
 }
 
 Result<scene3d::OverrideMaterial>
@@ -893,13 +905,13 @@ Result<const render::Image*> CanvasRenderer::light_image(const std::string& path
 
 render::Lighting CanvasRenderer::lighting(const world::World& world,
                                           const TransformOf& transform_of,
-                                          const world::Canvases& canvases) {
+                                          const world::Canvases& canvases, double time) {
     constexpr std::string_view kEvent = "a light can't shine";
     const auto images = [this](const std::string& path) { return light_image(path); };
     const auto tile_sets = [this](const std::string& path) { return tile_set(path); };
     std::vector<LightProblem> problems;
     SceneLighting scene = collect_lighting(world, images, transform_of, problems, &shadow_cache_,
-                                           &canvases, tile_sets);
+                                           &canvases, tile_sets, time);
     for (const LightProblem& problem : problems) {
         warn_once(entity_name(world, problem.entity), problem.message, "id", kEvent);
     }
@@ -927,8 +939,9 @@ render::Lighting CanvasRenderer::lighting(const world::World& world,
         }
         const std::uint64_t version =
             light.texture.empty() ? 0 : light_images_.at(light.texture).version();
-        if (std::ranges::find(key, std::pair{light.texture, version}) == key.end()) {
-            key.emplace_back(light.texture, version);
+        const std::string place = light_atlas_key(light);
+        if (std::ranges::find(key, std::pair{place, version}) == key.end()) {
+            key.emplace_back(place, version);
         }
     }
     if (key != atlas_key_) {
@@ -953,7 +966,7 @@ render::Lighting CanvasRenderer::lighting(const world::World& world,
                 atlas_ = made.value();
                 atlas_key_ = key;
                 for (const SceneLight& light : scene.lights) {
-                    atlas_rects_[light.texture] = light.light.atlas_rect;
+                    atlas_rects_[light_atlas_key(light)] = light.light.atlas_rect;
                 }
             }
         }
@@ -961,7 +974,8 @@ render::Lighting CanvasRenderer::lighting(const world::World& world,
     for (SceneLight& light : scene.lights) {
         if (light.light.kind != render::LightKind::Point) {
             out.lights.push_back(light.light);
-        } else if (const auto rect = atlas_rects_.find(light.texture); rect != atlas_rects_.end()) {
+        } else if (const auto rect = atlas_rects_.find(light_atlas_key(light));
+                   rect != atlas_rects_.end()) {
             light.light.atlas_rect = rect->second;
             out.lights.push_back(light.light);
         }
@@ -1679,7 +1693,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             }
         }
     };
-    const render::Lighting lights = lighting(world, transform_of, canvases);
+    const render::Lighting lights = lighting(world, transform_of, canvases, options.time);
     // How lights shade a sprite or layer: as its canvas is lit, or not at all.
     const auto shading_for = [&](render::LightMode mode, int light_mask, int z_index,
                                  std::size_t canvas) {

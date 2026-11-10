@@ -679,6 +679,12 @@ struct OmniLight3D {
     // which light_energy multiplies.
     float light_temperature = 6500.0F;
     float light_intensity_lumens = 1000.0F;
+    // Forward+: the project path of a texture it casts, as Godot's light_projector, scrolled by
+    // light_projector_scroll texture widths and heights a second (SlashEngine's light
+    // functions), and of an IES profile whose pattern it shines in, baked into the projector.
+    std::string light_projector;
+    Vec2 light_projector_scroll;
+    std::string light_ies;
 
     friend bool operator==(const OmniLight3D&, const OmniLight3D&) = default;
 };
@@ -687,7 +693,7 @@ SLASH_COMPONENT(OmniLight3D, light_color, light_energy, light_specular, light_ne
                 shadow_normal_bias, shadow_reverse_cull_face, shadow_opacity, shadow_caster_mask,
                 light_indirect_energy, light_size, light_bake_mode, shadow_blur,
                 light_volumetric_fog_energy, shadow_transmittance_bias, light_temperature,
-                light_intensity_lumens)
+                light_intensity_lumens, light_projector, light_projector_scroll, light_ies)
 
 // Light from a point in a cone down its entity's -z, as Godot's SpotLight3D, such as a torch.
 struct SpotLight3D {
@@ -725,6 +731,12 @@ struct SpotLight3D {
     // which light_energy multiplies.
     float light_temperature = 6500.0F;
     float light_intensity_lumens = 1000.0F;
+    // Forward+: the project path of a texture it casts, as Godot's light_projector, scrolled by
+    // light_projector_scroll texture widths and heights a second (SlashEngine's light
+    // functions), and of an IES profile whose pattern it shines in, baked into the projector.
+    std::string light_projector;
+    Vec2 light_projector_scroll;
+    std::string light_ies;
 
     friend bool operator==(const SpotLight3D&, const SpotLight3D&) = default;
 };
@@ -733,7 +745,8 @@ SLASH_COMPONENT(SpotLight3D, light_color, light_energy, light_specular, light_ne
                 shadow_enabled, shadow_bias, shadow_normal_bias, shadow_reverse_cull_face,
                 shadow_opacity, shadow_caster_mask, light_indirect_energy, light_size,
                 light_bake_mode, shadow_blur, light_volumetric_fog_energy,
-                shadow_transmittance_bias, light_temperature, light_intensity_lumens)
+                shadow_transmittance_bias, light_temperature, light_intensity_lumens,
+                light_projector, light_projector_scroll, light_ies)
 
 // Godot's ProceduralSkyMaterial, on a WorldEnvironment's entity: a sky from its top through the
 // horizon to the ground's bottom, with each DirectionalLight3D's sun on it. Colors are sRGB;
@@ -1660,6 +1673,8 @@ struct PointLight2D {
     std::string texture; // project path of a PNG, BMP or KTX2 file; "" is a soft round light
     float texture_scale = 1.0F;
     Vec2 offset; // moves the texture from the light, in pixels
+    // Scrolls the texture by this much of its size a second, wrapping, in whole texels.
+    Vec2 texture_scroll;
     Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};
     float energy = 1.0F;
     std::string blend_mode = "add"; // "add", "sub" or "mix"
@@ -1679,7 +1694,7 @@ struct PointLight2D {
 SLASH_COMPONENT(PointLight2D, enabled, texture, texture_scale, offset, color, energy, blend_mode,
                 height, range_z_min, range_z_max, range_layer_min, range_layer_max,
                 range_item_cull_mask, shadow_enabled, shadow_color, shadow_filter,
-                shadow_filter_smooth, shadow_item_cull_mask, temperature)
+                shadow_filter_smooth, shadow_item_cull_mask, temperature, texture_scroll)
 
 // Light from one direction over everything, as Godot's DirectionalLight2D, such as the sun or the
 // moon. It shines down the screen, turned by the entity's Transform2D rotation if it has one.

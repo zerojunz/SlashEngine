@@ -149,6 +149,7 @@ add_executable(slash_tests
     test_cloth.cpp
     test_foliage.cpp
     test_light_tools.cpp
+    test_light_projectors.cpp
     test_physics_fields.cpp
     test_playtest.cpp
     test_autopilot.cpp

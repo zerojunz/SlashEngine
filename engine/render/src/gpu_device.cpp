@@ -7614,7 +7614,7 @@ private:
     // Builds the frame's Forward+ clusters and copies them to the GPU, with the decals' atlas when
     // it changes.
     Result<void> upload_clusters(SDL_GPUCopyPass* copy, const Scene3D& scene) {
-        decal_atlas_.update(scene.decals);
+        decal_atlas_.update(scene);
         const DecalAtlas& atlas = decal_atlas_.atlas();
         clusters_ = build_clusters(scene, scene_width_, scene_height_, &atlas);
         if (clusters_.lights.empty()) {

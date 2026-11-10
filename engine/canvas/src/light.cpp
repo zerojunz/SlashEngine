@@ -307,7 +307,7 @@ cast_shadows(render::Light& light, std::span<const OccluderEdge> edges, float ma
 SceneLighting collect_lighting(const world::World& world, const LightImage& images,
                                const TransformOf& transform_of, std::vector<LightProblem>& problems,
                                ShadowCache* cache, const world::Canvases* canvases,
-                               const TileSetOf& tile_sets) {
+                               const TileSetOf& tile_sets, double time) {
     SceneLighting out;
     const auto& ecs = world.ecs();
     const world::Tree2D tree(world);
@@ -494,6 +494,15 @@ SceneLighting collect_lighting(const world::World& world, const LightImage& imag
                     height = static_cast<float>(image.value()->height);
                 }
             }
+            // Scrolled by whole texels, wrapping, so the atlas holds a copy for each step.
+            const std::array<double, 2> scroll{double{point->texture_scroll.x},
+                                               double{point->texture_scroll.y}};
+            for (std::size_t k = 0; k < 2; ++k) {
+                const double moved = scroll.at(k) * time;
+                const double size = k == 0 ? double{width} : double{height};
+                scene_light.roll.at(k) = static_cast<std::uint32_t>(
+                    std::min(std::floor((moved - std::floor(moved)) * size), size - 1.0));
+            }
             width *= point->texture_scale;
             height *= point->texture_scale;
             const float sx = placed.scale.x;
@@ -627,19 +636,30 @@ SceneLighting collect_lighting(const world::World& world, const LightImage& imag
     return out;
 }
 
+std::string light_atlas_key(const SceneLight& light) {
+    if (light.roll[0] == 0 && light.roll[1] == 0) {
+        return light.texture;
+    }
+    return light.texture + "\n" + std::to_string(light.roll[0]) + "," +
+           std::to_string(light.roll[1]);
+}
+
 Result<render::Image> pack_light_atlas(std::vector<SceneLight>& lights, const LightImage& images) {
     struct Placed {
         const render::Image* image = nullptr;
         std::uint32_t x = 0;
         std::uint32_t y = 0;
+        std::array<std::uint32_t, 2> roll{};
     };
     std::map<std::string, Placed> placed;
     std::vector<std::string> order;
     for (const SceneLight& light : lights) {
-        if (light.light.kind != render::LightKind::Point || placed.contains(light.texture)) {
+        const std::string key = light_atlas_key(light);
+        if (light.light.kind != render::LightKind::Point || placed.contains(key)) {
             continue;
         }
         Placed entry;
+        entry.roll = light.roll;
         if (light.texture.empty()) {
             entry.image = &default_light_image();
         } else {
@@ -649,8 +669,8 @@ Result<render::Image> pack_light_atlas(std::vector<SceneLight>& lights, const Li
             }
             entry.image = image.value();
         }
-        placed.emplace(light.texture, entry);
-        order.push_back(light.texture);
+        placed.emplace(key, entry);
+        order.push_back(key);
     }
     // Shelves, tallest first, a pixel apart.
     std::ranges::stable_sort(order, std::greater<>(), [&](const std::string& path) {
@@ -693,10 +713,16 @@ Result<render::Image> pack_light_atlas(std::vector<SceneLight>& lights, const Li
     for (const auto& [path, entry] : placed) {
         const render::Image& image = *entry.image;
         for (std::uint32_t row = 0; row < image.height; ++row) {
-            std::copy_n(image.pixels.data() + (std::size_t{row} * image.width * 4),
-                        std::size_t{image.width} * 4,
-                        atlas.pixels.data() +
-                            ((((std::size_t{entry.y} + row) * width) + entry.x) * 4));
+            // The texture moved by its roll: each atlas texel takes the one roll further on.
+            const std::uint32_t from_row = (row + entry.roll[1]) % image.height;
+            for (std::uint32_t column = 0; column < image.width; ++column) {
+                const std::uint32_t from_column = (column + entry.roll[0]) % image.width;
+                std::copy_n(image.pixels.data() +
+                                (((std::size_t{from_row} * image.width) + from_column) * 4),
+                            4,
+                            atlas.pixels.data() +
+                                ((((std::size_t{entry.y} + row) * width) + entry.x + column) * 4));
+            }
         }
     }
     // Texel middles at the edges, so filtering never reads a neighbor.
@@ -706,7 +732,7 @@ Result<render::Image> pack_light_atlas(std::vector<SceneLight>& lights, const Li
         if (light.light.kind != render::LightKind::Point) {
             continue;
         }
-        const Placed& entry = placed.at(light.texture);
+        const Placed& entry = placed.at(light_atlas_key(light));
         light.light.atlas_rect = {(static_cast<float>(entry.x) + 0.5F) / w,
                                   (static_cast<float>(entry.y) + 0.5F) / h,
                                   static_cast<float>(entry.image->width - 1) / w,

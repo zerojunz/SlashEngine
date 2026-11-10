@@ -3707,6 +3707,13 @@ void register_3d_components(ComponentRegistry& registry) {
                   {.doc = "Lux it shines with, which light_energy multiplies, with physical light "
                           "units: 100000 is direct sunlight, 0.3 a full moon.",
                    .min = 0});
+    const FieldMeta projector{
+        .doc = "Forward+: project path of a texture it casts, as Godot's light_projector, "
+               "tinting its light by color times alpha; \"\" casts none."};
+    const FieldMeta projector_scroll{
+        .doc = "Moves the projector's texture coordinates by this much a second, wrapping."};
+    const FieldMeta ies{.doc = "Forward+: project path of an IES profile (.ies) whose pattern "
+                               "it shines in, baked into its projector; \"\" for none."};
     registry.add<OmniLight3D>()
         .set_doc("Light from the entity in every direction, such as a lamp, as Godot's "
                  "OmniLight3D.")
@@ -3730,7 +3737,10 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("light_volumetric_fog_energy", fog_energy)
         .describe("shadow_transmittance_bias", transmittance_bias)
         .describe("light_temperature", temperature)
-        .describe("light_intensity_lumens", lumens);
+        .describe("light_intensity_lumens", lumens)
+        .describe("light_projector", projector)
+        .describe("light_projector_scroll", projector_scroll)
+        .describe("light_ies", ies);
     registry.add<SpotLight3D>()
         .set_doc("Light from the entity in a cone down its -z, such as a torch, as Godot's "
                  "SpotLight3D.")
@@ -3758,7 +3768,10 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("light_volumetric_fog_energy", fog_energy)
         .describe("shadow_transmittance_bias", transmittance_bias)
         .describe("light_temperature", temperature)
-        .describe("light_intensity_lumens", lumens);
+        .describe("light_intensity_lumens", lumens)
+        .describe("light_projector", projector)
+        .describe("light_projector_scroll", projector_scroll)
+        .describe("light_ies", ies);
 
     const FieldMeta curve{
         .doc = "How sharply it changes; smaller is sharper.", .min = 0.001, .max = 1};
@@ -4514,6 +4527,9 @@ void register_builtin_components(ComponentRegistry& registry) {
                           "across."})
         .describe("texture_scale", {.doc = "Scales the texture.", .min = 0})
         .describe("offset", {.doc = "Moves the texture from the light, in pixels."})
+        .describe("texture_scroll",
+                  {.doc = "Scrolls the texture by this much of its size a second, wrapping, in "
+                          "whole texels."})
         .describe("color", light_color)
         .describe("energy", energy)
         .describe("blend_mode", light_blend)
