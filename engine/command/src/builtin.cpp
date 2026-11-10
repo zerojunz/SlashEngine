@@ -75,6 +75,7 @@
 #include "slash/world/scene.hpp"
 #include "slash/world/tree2d.hpp"
 #include "slash/world/tree3d.hpp"
+#include "slash/world/wind.hpp"
 #include "slash/world/world.hpp"
 #include "slash/xr/xr.hpp"
 
@@ -1878,6 +1879,11 @@ Vec3 vec3_of(const json::Value& value) {
     return {xyz[0], xyz[1], xyz[2]};
 }
 
+Vec2 vec2_of(const json::Value& value) {
+    const auto xy = floats<2>(value);
+    return {xy[0], xy[1]};
+}
+
 json::Value id_array(const world::World& world, const std::vector<entt::entity>& entities) {
     json::Array ids;
     for (const entt::entity entity : entities) {
@@ -2134,6 +2140,49 @@ Reply streaming_state(Session& session, const json::Value& /*params*/) {
     }
     json::Value result;
     result["cells"] = std::move(cells);
+    result["sources"] = static_cast<std::int64_t>(sources);
+    return Reply::success(std::move(result));
+}
+
+// wind.sample: the wind WindSource3Ds (or, at [x, y] points, WindSource2Ds) blow, as soft bodies,
+// particles and WIND feel it.
+Reply wind_sample(Session& session, const json::Value& params) {
+    const world::World& world = session.world();
+    const json::Array& points = params.find("points")->as_array();
+    const bool flat = points.front().as_array().size() == 2;
+    for (std::size_t i = 0; i < points.size(); ++i) {
+        if ((points[i].as_array().size() == 2) != flat) {
+            return param_error(code::kInvalidParams, item_path("/points", i),
+                               "expected " + std::string(flat ? "[x, y]" : "[x, y, z]") +
+                                   " as the first point is; ask about 2D and 3D apart");
+        }
+    }
+    const json::Value* given = params.find("time");
+    const double time = given != nullptr ? given->as_double() : world::wind_time(world);
+    json::Array wind;
+    std::size_t sources = 0;
+    if (flat) {
+        const world::Tree2D tree(world);
+        const world::WindField2D field(world, tree);
+        for (const json::Value& point : points) {
+            wind.push_back(point_value(field.at(vec2_of(point), time)));
+        }
+        for (const auto [entity, source] : world.ecs().view<const world::WindSource2D>().each()) {
+            sources += source.enabled ? 1 : 0;
+        }
+    } else {
+        const world::Tree3D tree(world);
+        const world::WindField field(world, tree);
+        for (const json::Value& point : points) {
+            wind.push_back(point_value(field.at(vec3_of(point), time)));
+        }
+        for (const auto [entity, source] : world.ecs().view<const world::WindSource3D>().each()) {
+            sources += source.enabled ? 1 : 0;
+        }
+    }
+    json::Value result;
+    result["time"] = rounded(json::Value(time));
+    result["wind"] = std::move(wind);
     result["sources"] = static_cast<std::int64_t>(sources);
     return Reply::success(std::move(result));
 }
@@ -7657,6 +7706,27 @@ void register_builtin_commands(Registry& registry) {
         .effect = Effect::Read,
         .params = params_schema(),
         .handler = streaming_state,
+    });
+    json::Value wind_points =
+        property("array", "Places in the world, each [x, y, z], or [x, y] in a 2D world.");
+    wind_points["items"]["type"] = "array";
+    wind_points["items"]["items"]["type"] = "number";
+    wind_points["items"]["minItems"] = 2;
+    wind_points["items"]["maxItems"] = 3;
+    wind_points["minItems"] = 1;
+    wind_points["maxItems"] = 256;
+    json::Value wind_time = property("number", "Seconds on the wind clock. Default: now.");
+    wind_time["minimum"] = 0;
+    registry.add({
+        .name = "wind.sample",
+        .description = "Returns the wind WindSource3Ds blow at [x, y, z] points (meters per "
+                       "second), or WindSource2Ds at [x, y] points (pixels per second), gusts "
+                       "and turbulence included, and how many sources are enabled.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema(
+            {{"points", std::move(wind_points)}, {"time", std::move(wind_time)}}, {"points"}),
+        .handler = wind_sample,
     });
     json::Value break_push = property("number", "Meters per second each piece flies away from "
                                                 "from, on top of the body's own velocity.");

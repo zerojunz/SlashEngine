@@ -881,6 +881,37 @@ TEST_CASE("a game's shaders draw lit on the software device and a GPU, and reloa
     }
 }
 
+TEST_CASE("a canvas shader reads the wind at its node as WIND, on every device") {
+    for (const auto& device : drawing_devices()) {
+        CAPTURE(slash::render::backend_name(device->backend()));
+        Scene scene;
+        scene.files.write("white.png", strip_png({{255, 255, 255, 255}}, 8));
+        scene.files.write("shaders/windy.hlsl",
+                          "void fragment() {\n    COLOR = float4(WIND.x / 200.0, WIND.y / 200.0, "
+                          "0.0, 1.0);\n}\n");
+        scene.files.write("windy.material.json", R"({"format": 1, "light_mode": "unshaded",
+            "shader": "shaders/windy.hlsl"})");
+        scene.create("grass", R"({"Transform2D": {"position": [8, 8]},
+            "Sprite2D": {"texture": "white.png", "material": "windy.material.json"}})");
+        // A steady 100 px/s breeze along +x, and none in y.
+        scene.create("breeze", R"({"Transform2D": {}, "WindSource2D": {"strength": 100,
+            "min_gust_amount": 0, "max_gust_amount": 0, "turbulence": 0}})");
+        auto target = device->create_texture(
+            {.width = 16, .height = 16, .filter = render::Filter::Nearest, .render_target = true});
+        REQUIRE(target.ok());
+        canvas::CanvasRenderer renderer(*device, scene.assets);
+        canvas::CanvasOptions options;
+        options.target = target.value();
+        options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        auto image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        const Rgba blown = pixel(image.value(), 8, 8);
+        CHECK(std::abs(int{blown[0]} - 128) <= 2);
+        CHECK(blown[1] == 0);
+    }
+}
+
 TEST_CASE("a material with its shader compiled in draws where nothing can compile shaders, as in "
           "a game") {
     auto shader = slash::shader_compiler::compile({.path = "shaders/half.hlsl",

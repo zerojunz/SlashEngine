@@ -941,8 +941,8 @@ private:
                              "name the param something else");
             } else if (sampled) {
                 param.slot = texture++;
-            } else if (constant == render::kShaderTimeConstant) {
-                fail(at, "a shader reads at most " + std::to_string(render::kShaderTimeConstant) +
+            } else if (constant == render::kShaderWindConstant) {
+                fail(at, "a shader reads at most " + std::to_string(render::kShaderWindConstant) +
                              " number params");
             } else {
                 param.slot = constant;

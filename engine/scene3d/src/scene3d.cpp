@@ -27,6 +27,7 @@
 #include "slash/scene3d/voxel_gi.hpp"
 #include "slash/world/path.hpp"
 #include "slash/world/serialize.hpp"
+#include "slash/world/wind.hpp"
 #include "slash/world/world.hpp"
 
 #include <algorithm>
@@ -3730,10 +3731,22 @@ std::optional<Frame3D> Renderer::prepare(
     // A spatial shader's vertex() places corners where they were with the time of the frame before
     // too, as Godot's prev_data.time.
     const double step = moving && drawn_time_ && *drawn_time_ <= time ? time - *drawn_time_ : 0.0;
+    // A spatial shader's WIND is the wind at its mesh's origin, as the wind system blows it.
+    const world::WindField wind(world, tree);
+    const double wind_time = world::wind_time(world);
     for (Draw& draw : draws_) {
         if (draw.material.shader != render::ShaderId::None) {
             auto& clock = draw.material.shader_constants.at(render::kShaderTimeConstant);
             clock[1] = clock[0] - static_cast<float>(step);
+            Vec3 blowing;
+            if (!wind.empty()) {
+                const Vec3 at = render_origin_ +
+                                Vec3{draw.transform[12], draw.transform[13], draw.transform[14]};
+                blowing = wind.at(at, wind_time);
+            }
+            draw.material.shader_constants.at(render::kShaderWindConstant) = {
+                static_cast<float>(blowing.x), static_cast<float>(blowing.y),
+                static_cast<float>(blowing.z), 0.0F};
         }
     }
     drawn_time_ = time;
