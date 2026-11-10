@@ -1,6 +1,7 @@
 add_library(slash_physics3d
     src/character.cpp
     src/destruction.cpp
+    src/fields.cpp
     src/joints.cpp
     src/motion.cpp
     src/physics3d.cpp
@@ -13,7 +14,7 @@ add_library(slash::physics3d ALIAS slash_physics3d)
 target_include_directories(slash_physics3d PUBLIC include)
 target_link_libraries(slash_physics3d
     PUBLIC slash::core slash::world
-    PRIVATE Jolt::Jolt slash::scene3d)
+    PRIVATE Jolt::Jolt slash::asset slash::scene3d)
 # The same results on every platform: no fused multiply-adds, as Jolt builds.
 target_compile_options(slash_physics3d PRIVATE
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>)

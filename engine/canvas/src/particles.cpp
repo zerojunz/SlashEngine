@@ -2,6 +2,7 @@
 
 #include "slash/core/jobs.hpp"
 #include "slash/core/json.hpp"
+#include "slash/world/physics_field.hpp"
 #include "slash/world/tree2d.hpp"
 #include "slash/world/wind.hpp"
 
@@ -293,9 +294,11 @@ double emit_time(const Settings& settings, std::uint32_t seed, std::uint32_t cyc
 class Simulation {
 public:
     Simulation(const Settings& settings, const world::Transform2D& transform, std::uint32_t seed,
-               Vec2 wind)
+               Vec2 wind, const world::PhysicsFields2D* fields, double time)
         : settings_(settings), s_(*settings.component), transform_(transform), seed_(seed),
-          origin_(s_.local_coords ? Vec2{} : transform.position), wind_(wind) {}
+          origin_(s_.local_coords ? Vec2{} : transform.position), wind_(wind),
+          fields_(fields != nullptr && !fields->empty() ? fields : nullptr),
+          place_(world::affine(transform)), to_local_(place_.inverse()), time_(time) {}
 
     // Moves the emitter on by seconds of game time. Returns whether a one_shot's cycle ended.
     bool step(Emitter& e, float seconds) const {
@@ -437,6 +440,12 @@ private:
             return lerp(min, max, slot.random.at(which)) * sample(curve, t);
         };
         Vec2 force = s_.gravity + wind_;
+        if (fields_ != nullptr) {
+            // Physics fields with particles on push each particle where it is, as a kilogram.
+            const Vec2 push = fields_->particle_force(
+                s_.local_coords ? place_.apply(p.position) : p.position, seed_, time_);
+            force = force + (s_.local_coords ? to_local_.apply(push) - to_local_.apply({}) : push);
+        }
         const float linear =
             value(s_.linear_accel_min, s_.linear_accel_max, kLinear, settings_.linear_accel);
         if (linear != 0.0F) {
@@ -493,6 +502,10 @@ private:
     std::uint32_t seed_;
     Vec2 origin_; // what radial and tangential acceleration and orbits go round
     Vec2 wind_;   // the wind's push, in the particles' space
+    const world::PhysicsFields2D* fields_; // fields that push particles, or nullptr
+    world::Affine2D place_;                // the emitter's place, for local particles
+    world::Affine2D to_local_;             // its inverse
+    double time_;                          // seconds of game time, for noise fields
 };
 
 bool alive(const Emitter& emitter) {
@@ -507,9 +520,10 @@ std::int64_t ticks_in(double seconds, double tick_seconds) {
 // Runs preprocess, the first time, and then ticks steps. Returns whether a one_shot's cycle
 // ended.
 bool run(Emitter& emitter, const CPUParticles2D& component, const world::Transform2D& transform,
-         std::uint32_t seed, double tick_seconds, std::int64_t ticks, Vec2 wind = {}) {
+         std::uint32_t seed, double tick_seconds, std::int64_t ticks, Vec2 wind = {},
+         const world::PhysicsFields2D* fields = nullptr, double time = 0.0) {
     const Settings settings(component);
-    const Simulation simulation(settings, transform, seed, wind);
+    const Simulation simulation(settings, transform, seed, wind, fields, time);
     if (!emitter.started) {
         emitter.started = true;
         ticks += ticks_in(component.preprocess, tick_seconds);
@@ -563,6 +577,8 @@ struct ParticleSystem {
         std::vector<Run> runs;
         const world::WindField2D field(world, tree);
         const double wind_time = world::wind_time(world);
+        const world::PhysicsFields2D fields(world, tree);
+        const double field_time = static_cast<double>(world.tick()) * tick_seconds;
         for (const entt::entity entity : ecs.view<CPUParticles2D>()) {
             auto& component = ecs.get<CPUParticles2D>(entity);
             const std::string key = key_of(world, entity);
@@ -590,7 +606,7 @@ struct ParticleSystem {
             world.pool().parallel_for(runs.size(), [&](std::size_t i) {
                 Run& each = runs[i];
                 each.ended = run(*each.emitter, *each.component, each.transform, each.seed,
-                                 tick_seconds, 1, each.wind);
+                                 tick_seconds, 1, each.wind, &fields, field_time);
             });
         }
         for (const Run& each : runs) {
@@ -654,7 +670,7 @@ void add_particles_system(world::World& world) {
         {.doc = "Emits, moves and ages each CPUParticles2D's particles.",
          .priority = 1100,
          .threaded = true,
-         .reads = {"Transform2D", "WindSource2D"},
+         .reads = {"Transform2D", "WindSource2D", "PhysicsField2D"},
          .writes = {"CPUParticles2D"}});
 }
 

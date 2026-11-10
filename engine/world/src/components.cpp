@@ -70,6 +70,8 @@ void register_physics_components(ComponentRegistry& registry) {
         .doc = "How much it bounces: 0 not at all, 1 fully. Two bodies add theirs, up to 1.",
         .min = 0,
         .max = 1};
+    const FieldMeta material{.doc = "A .physics_material.json file whose friction, bounce, "
+                                    "density and surface the body takes instead of its own."};
     const FieldMeta one_way{.doc = "Collide only with what comes from the shape's -y side, as "
                                    "platforms one can jump through from below."};
     const FieldMeta one_way_margin{
@@ -122,6 +124,7 @@ void register_physics_components(ComponentRegistry& registry) {
         .describe("collision_mask", mask)
         .describe("friction", friction)
         .describe("bounce", bounce)
+        .describe("physics_material_override", material)
         .describe("constant_linear_velocity", constant_linear)
         .describe("constant_angular_velocity", constant_angular);
 
@@ -132,6 +135,7 @@ void register_physics_components(ComponentRegistry& registry) {
         .describe("collision_mask", mask)
         .describe("friction", friction)
         .describe("bounce", bounce)
+        .describe("physics_material_override", material)
         .describe("constant_linear_velocity",
                   {.doc = "Added to how it moves, in pixels per second, as [x, y]."})
         .describe("constant_angular_velocity",
@@ -146,6 +150,7 @@ void register_physics_components(ComponentRegistry& registry) {
         .describe("collision_mask", mask)
         .describe("friction", friction)
         .describe("bounce", bounce)
+        .describe("physics_material_override", material)
         .describe("mass", {.doc = "In kilograms.", .min = 0.001})
         .describe("inertia", {.doc = "Resistance to turning; 0 computes it from the shapes and "
                                      "the mass.",
@@ -307,6 +312,8 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .doc = "How much it bounces: 0 not at all, 1 fully. Two bodies add theirs, up to 1.",
         .min = 0,
         .max = 1};
+    const FieldMeta material{.doc = "A .physics_material.json file whose friction, bounce, "
+                                    "density and surface the body takes instead of its own."};
     const FieldMeta constant_linear{.doc = "Carries what touches it as if it moved at this many "
                                            "meters per second, as [x, y, z], as a conveyor "
                                            "belt."};
@@ -351,6 +358,7 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("collision_mask", mask)
         .describe("friction", friction)
         .describe("bounce", bounce)
+        .describe("physics_material_override", material)
         .describe("constant_linear_velocity", constant_linear)
         .describe("constant_angular_velocity", constant_angular);
 
@@ -361,6 +369,7 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("collision_mask", mask)
         .describe("friction", friction)
         .describe("bounce", bounce)
+        .describe("physics_material_override", material)
         .describe("constant_linear_velocity", constant_linear)
         .describe("constant_angular_velocity", constant_angular)
         .describe("sync_to_physics", {.doc = "Move during the physics step, pushing and carrying "
@@ -373,6 +382,7 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("collision_mask", mask)
         .describe("friction", friction)
         .describe("bounce", bounce)
+        .describe("physics_material_override", material)
         .describe("mass", {.doc = "In kilograms.", .min = 0.001})
         .describe("inertia", {.doc = "Resistance to turning about x, y and z; an axis left 0 is "
                                      "computed from the shapes and the mass.",
@@ -727,6 +737,7 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("mass", {.doc = "In kilograms.", .min = 0.001})
         .describe("friction", friction)
         .describe("bounce", bounce)
+        .describe("physics_material_override", material)
         .describe("gravity_scale", {.doc = "Multiplies gravity while it simulates; 0 floats."})
         .describe("linear_damp_mode",
                   {.doc = "\"combine\" adds linear_damp to the project's; \"replace\" uses "
@@ -882,6 +893,68 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                   {.doc = "Share of strength the wind wanders across its direction.", .min = 0})
         .describe("radius",
                   {.doc = "Pixels from the entity at which point wind has died away.", .min = 0});
+
+    const std::vector<std::string> types{"radial_force",
+                                         "directional_force",
+                                         "radial_velocity",
+                                         "directional_velocity",
+                                         "noise_force",
+                                         "strain",
+                                         "anchor",
+                                         "kill",
+                                         "sleep"};
+    const FieldMeta type{.doc = "What it does: radial_force and directional_force push, "
+                                "radial_velocity and directional_velocity set velocities, "
+                                "noise_force shakes, strain breaks Destructible3Ds, anchor holds "
+                                "rigid bodies still, kill removes them and sleep puts slow ones "
+                                "to sleep.",
+                         .choices = types};
+    const FieldMeta falloff{.doc = "How it weakens toward the edge of its shape: \"none\", "
+                                   "\"linear\" or \"squared\".",
+                            .choices = {"none", "linear", "squared"}};
+    const FieldMeta field_mask{.doc = "The collision layers of the bodies it acts on."};
+    const FieldMeta noise_frequency{.doc = "noise_force: times a second its push turns.", .min = 0};
+    registry.add<PhysicsField3D>()
+        .set_doc("Acts on every body in its reach at once, as Unreal's Chaos Fields: rigid "
+                 "bodies, ragdolls' bones, soft bodies and CPUParticles3D. Directional types act "
+                 "along its entity's global -Z.")
+        .describe("enabled", {.doc = "false stops it acting."})
+        .describe("type", type)
+        .describe("magnitude", {.doc = "Newtons for forces, meters per second for velocities, "
+                                       "kilogram-meters per second of impact for strain, the "
+                                       "speed in meters per second below which sleep puts "
+                                       "bodies to sleep."})
+        .describe("shape", {.doc = "Where it reaches: a sphere of radius, a box of size, below "
+                                   "its xz plane, or everywhere.",
+                            .choices = {"sphere", "box", "plane", "everywhere"}})
+        .describe("radius", {.doc = "Meters: a sphere's radius, or how far below a plane its "
+                                    "falloff reaches full strength.",
+                             .min = 0})
+        .describe("size", {.doc = "A box's size in its entity's space, as [x, y, z].", .min = 0})
+        .describe("falloff", falloff)
+        .describe("collision_mask", field_mask)
+        .describe("noise_frequency", noise_frequency)
+        .describe("particles", {.doc = "Forces also push CPUParticles3D."});
+    registry.add<PhysicsField2D>()
+        .set_doc("PhysicsField3D in a 2D world: acts on RigidBody2Ds and CPUParticles2D, "
+                 "directional types along its entity's global x axis. Strain does nothing in "
+                 "2D yet.")
+        .describe("enabled", {.doc = "false stops it acting."})
+        .describe("type", type)
+        .describe("magnitude", {.doc = "Kilogram-pixels per second squared for forces, pixels "
+                                       "per second for velocities, the speed in pixels per "
+                                       "second below which sleep puts bodies to sleep."})
+        .describe("shape", {.doc = "Where it reaches: a circle of radius, a box of size, below "
+                                   "its x axis (down the screen), or everywhere.",
+                            .choices = {"sphere", "box", "plane", "everywhere"}})
+        .describe("radius", {.doc = "Pixels: a circle's radius, or how far below a plane its "
+                                    "falloff reaches full strength.",
+                             .min = 0})
+        .describe("size", {.doc = "A box's size in its entity's space, as [x, y].", .min = 0})
+        .describe("falloff", falloff)
+        .describe("collision_mask", field_mask)
+        .describe("noise_frequency", noise_frequency)
+        .describe("particles", {.doc = "Forces also push CPUParticles2D."});
 }
 
 // The skeleton modifiers: Godot 4.6's TwoBoneIK3D, FABRIK3D, CCDIK3D and JacobianIK3D.

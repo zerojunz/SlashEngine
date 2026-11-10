@@ -1,0 +1,15 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"events.subscribe","params":{"kinds":["field_killed","broken"]}}
+{"jsonrpc":"2.0","id":3,"method":"physics.raycast","params":{"from":[0,5,0],"to":[0,-5,0]}}
+{"jsonrpc":"2.0","id":4,"method":"physics.raycast","params":{"from":[2,1,0],"to":[2,-5,0]}}
+{"jsonrpc":"2.0","id":5,"method":"physics.raycast","params":{"from":[0,100],"to":[0,400]}}
+{"jsonrpc":"2.0","id":6,"method":"step","params":{"ticks":60}}
+{"jsonrpc":"2.0","id":7,"method":"world.query","params":{"with":["RigidBody3D"],"include":["Transform3D"],"omit_defaults":true}}
+{"jsonrpc":"2.0","id":8,"method":"world.query","params":{"with":["RigidBody2D"],"include":["Transform2D","RigidBody2D"],"omit_defaults":true}}
+{"jsonrpc":"2.0","id":9,"method":"particles.eval","params":{"id":"sparks"}}
+{"jsonrpc":"2.0","id":10,"method":"component.set","params":{"id":"blast","components":{"PhysicsField3D":{"enabled":true}}}}
+{"jsonrpc":"2.0","id":11,"method":"component.set","params":{"id":"hook","components":{"PhysicsField3D":{"enabled":false}}}}
+{"jsonrpc":"2.0","id":12,"method":"component.set","params":{"id":"press","components":{"PhysicsField3D":{"enabled":true}}}}
+{"jsonrpc":"2.0","id":13,"method":"step","params":{"ticks":90}}
+{"jsonrpc":"2.0","id":14,"method":"events.read","params":{"subscription":"events_1"}}
+{"jsonrpc":"2.0","id":15,"method":"world.query","params":{"with":["RigidBody3D"],"without":["FracturePiece3D"],"include":["Transform3D"],"omit_defaults":true}}

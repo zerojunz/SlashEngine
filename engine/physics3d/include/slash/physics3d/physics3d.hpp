@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string>
 #include <vector>
 
 // 3D physics on Jolt Physics, as Godot 4.4's Jolt module (modules/jolt_physics). The components
@@ -35,6 +36,9 @@ struct Settings {
     float angular_damp = 0.1F; // what RigidBody3D's angular_damp combines with
     // Whether Area3D detects static bodies, which Godot's Jolt module leaves off.
     bool areas_detect_static_bodies = false;
+    // Collision steps each physics tick takes, as Chaos's substeps: more keep fast, small or
+    // stacked bodies steadier, at that many times the cost.
+    int substeps = 1;
 
     friend bool operator==(const Settings&, const Settings&) = default;
 };
@@ -65,6 +69,8 @@ struct RayHit {
     float fraction = 0.0F; // how far along the ray, from 0 to 1
     // The cell hit, when the entity is a GridMap.
     std::optional<Vec3i> cell{}; // NOLINT(readability-redundant-member-init)
+    // The surface its physics material names, such as "wood"; empty without one.
+    std::string surface;
 };
 
 // The first thing a ray from from to to hits, as Godot's intersect_ray. Shapes the ray starts

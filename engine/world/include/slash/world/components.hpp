@@ -1807,11 +1807,12 @@ struct StaticBody2D {
     std::uint32_t collision_mask = 1;
     float friction = 1.0F;
     float bounce = 0.0F;
+    std::string physics_material_override;  // a .physics_material.json file; its values win
     Vec2 constant_linear_velocity;          // pixels per second
     float constant_angular_velocity = 0.0F; // radians per second, clockwise
 };
 SLASH_COMPONENT(StaticBody2D, collision_layer, collision_mask, friction, bounce,
-                constant_linear_velocity, constant_angular_velocity)
+                physics_material_override, constant_linear_velocity, constant_angular_velocity)
 
 // A body that goes where its Transform2D says, as Godot's AnimatableBody2D: moving platforms and
 // doors that gameplay code or an AnimationPlayer moves. With sync_to_physics it moves there
@@ -1821,12 +1822,14 @@ struct AnimatableBody2D {
     std::uint32_t collision_mask = 1;
     float friction = 1.0F;
     float bounce = 0.0F;
-    Vec2 constant_linear_velocity; // added to how it moves, as StaticBody2D's
+    std::string physics_material_override; // a .physics_material.json file; its values win
+    Vec2 constant_linear_velocity;         // added to how it moves, as StaticBody2D's
     float constant_angular_velocity = 0.0F;
     bool sync_to_physics = true;
 };
 SLASH_COMPONENT(AnimatableBody2D, collision_layer, collision_mask, friction, bounce,
-                constant_linear_velocity, constant_angular_velocity, sync_to_physics)
+                physics_material_override, constant_linear_velocity, constant_angular_velocity,
+                sync_to_physics)
 
 // A body that gravity, collisions, forces and joints move, as Godot's RigidBody2D. The physics
 // step writes its Transform2D, velocities and sleeping back each tick.
@@ -1835,6 +1838,7 @@ struct RigidBody2D {
     std::uint32_t collision_mask = 1;
     float friction = 1.0F;
     float bounce = 0.0F;
+    std::string physics_material_override; // a .physics_material.json file; its values win
     float mass = 1.0F;
     float inertia = 0.0F; // 0 computes it from the shapes and the mass
     float gravity_scale = 1.0F;
@@ -1854,10 +1858,11 @@ struct RigidBody2D {
     bool sleeping = false;
     bool contact_monitor = false; // emit body_entered and body_exited
 };
-SLASH_COMPONENT(RigidBody2D, collision_layer, collision_mask, friction, bounce, mass, inertia,
-                gravity_scale, linear_velocity, angular_velocity, linear_damp_mode, linear_damp,
-                angular_damp_mode, angular_damp, constant_force, constant_torque, lock_rotation,
-                freeze, freeze_mode, continuous_cd, can_sleep, sleeping, contact_monitor)
+SLASH_COMPONENT(RigidBody2D, collision_layer, collision_mask, friction, bounce,
+                physics_material_override, mass, inertia, gravity_scale, linear_velocity,
+                angular_velocity, linear_damp_mode, linear_damp, angular_damp_mode, angular_damp,
+                constant_force, constant_torque, lock_rotation, freeze, freeze_mode, continuous_cd,
+                can_sleep, sleeping, contact_monitor)
 
 // A body that gameplay code moves by setting its velocity, as Godot's CharacterBody2D: each tick
 // the physics step runs move_and_slide, sliding it along what it hits, then writes its
@@ -2012,11 +2017,12 @@ struct StaticBody3D {
     std::uint32_t collision_mask = 1;
     float friction = 1.0F;
     float bounce = 0.0F;
-    Vec3 constant_linear_velocity;  // meters per second
-    Vec3 constant_angular_velocity; // radians per second, about each axis
+    std::string physics_material_override; // a .physics_material.json file; its values win
+    Vec3 constant_linear_velocity;         // meters per second
+    Vec3 constant_angular_velocity;        // radians per second, about each axis
 };
 SLASH_COMPONENT(StaticBody3D, collision_layer, collision_mask, friction, bounce,
-                constant_linear_velocity, constant_angular_velocity)
+                physics_material_override, constant_linear_velocity, constant_angular_velocity)
 
 // A body that goes where its Transform3D says, as Godot's AnimatableBody3D. With sync_to_physics
 // it moves there during the physics step, pushing rigid bodies in its way and carrying those on
@@ -2026,12 +2032,14 @@ struct AnimatableBody3D {
     std::uint32_t collision_mask = 1;
     float friction = 1.0F;
     float bounce = 0.0F;
-    Vec3 constant_linear_velocity; // carries what touches it, as StaticBody3D's
+    std::string physics_material_override; // a .physics_material.json file; its values win
+    Vec3 constant_linear_velocity;         // carries what touches it, as StaticBody3D's
     Vec3 constant_angular_velocity;
     bool sync_to_physics = true;
 };
 SLASH_COMPONENT(AnimatableBody3D, collision_layer, collision_mask, friction, bounce,
-                constant_linear_velocity, constant_angular_velocity, sync_to_physics)
+                physics_material_override, constant_linear_velocity, constant_angular_velocity,
+                sync_to_physics)
 
 // A body that gravity, collisions and forces move, as Godot's RigidBody3D. The physics step
 // writes its Transform3D, velocities and sleeping back each tick.
@@ -2040,6 +2048,7 @@ struct RigidBody3D {
     std::uint32_t collision_mask = 1;
     float friction = 1.0F;
     float bounce = 0.0F;
+    std::string physics_material_override; // a .physics_material.json file; its values win
     float mass = 1.0F;
     Vec3 inertia; // about each axis; 0 computes that axis's from the shapes and the mass
     float gravity_scale = 1.0F;
@@ -2065,12 +2074,13 @@ struct RigidBody3D {
     bool sleeping = false;
     bool contact_monitor = false; // emit body_entered and body_exited
 };
-SLASH_COMPONENT(RigidBody3D, collision_layer, collision_mask, friction, bounce, mass, inertia,
-                gravity_scale, linear_velocity, angular_velocity, linear_damp_mode, linear_damp,
-                angular_damp_mode, angular_damp, constant_force, constant_torque, lock_rotation,
-                axis_lock_linear_x, axis_lock_linear_y, axis_lock_linear_z, axis_lock_angular_x,
-                axis_lock_angular_y, axis_lock_angular_z, freeze, freeze_mode, continuous_cd,
-                can_sleep, sleeping, contact_monitor)
+SLASH_COMPONENT(RigidBody3D, collision_layer, collision_mask, friction, bounce,
+                physics_material_override, mass, inertia, gravity_scale, linear_velocity,
+                angular_velocity, linear_damp_mode, linear_damp, angular_damp_mode, angular_damp,
+                constant_force, constant_torque, lock_rotation, axis_lock_linear_x,
+                axis_lock_linear_y, axis_lock_linear_z, axis_lock_angular_x, axis_lock_angular_y,
+                axis_lock_angular_z, freeze, freeze_mode, continuous_cd, can_sleep, sleeping,
+                contact_monitor)
 
 // A body that gameplay code moves by setting its velocity, as Godot's CharacterBody3D: each tick
 // the physics step runs move_and_slide, sliding it along what it hits, then writes its
@@ -2380,6 +2390,7 @@ struct PhysicalBone3D {
     float mass = 1.0F;
     float friction = 1.0F;
     float bounce = 0.0F;
+    std::string physics_material_override; // a .physics_material.json file; its values win
     float gravity_scale = 1.0F;
     std::string linear_damp_mode = "combine"; // "combine" adds to the project's; "replace"
     float linear_damp = 0.0F;
@@ -2394,9 +2405,9 @@ struct PhysicalBone3D {
 SLASH_COMPONENT(PhysicalBone3D, bone_name, body_offset_position, body_offset_rotation, joint_type,
                 joint_rotation, swing_span, twist_span, angular_limit_enabled, angular_limit_upper,
                 angular_limit_lower, linear_limit_upper, linear_limit_lower, x, y, z,
-                collision_layer, collision_mask, mass, friction, bounce, gravity_scale,
-                linear_damp_mode, linear_damp, angular_damp_mode, angular_damp, linear_velocity,
-                angular_velocity, can_sleep)
+                collision_layer, collision_mask, mass, friction, bounce, physics_material_override,
+                gravity_scale, linear_damp_mode, linear_damp, angular_damp_mode, angular_damp,
+                linear_velocity, angular_velocity, can_sleep)
 
 // A point of a SoftBody3D's mesh held in place, as Godot's pinned_points and attachments: with an
 // attachment, it follows the attachment's Transform3D at offset in its space; without, it stays
@@ -2516,6 +2527,53 @@ struct WindSource2D {
 };
 SLASH_COMPONENT(WindSource2D, enabled, strength, min_gust_amount, max_gust_amount, gust_frequency,
                 turbulence, point_wind, radius)
+
+// A field that acts on every body and particle in its reach at once, as Unreal's Chaos Fields
+// (Godot has none): pushes and sets velocities, shakes with noise, breaks Destructible3Ds by
+// strain, holds bodies still, puts them to sleep or removes them. It reaches what its shape
+// holds, around its entity's global transform, weakened toward the edge by its falloff, and acts
+// on bodies in the layers its collision_mask names. world::PhysicsFields3D samples it.
+struct PhysicsField3D {
+    bool enabled = true;
+    // "radial_force", "directional_force", "radial_velocity", "directional_velocity",
+    // "noise_force", "strain", "anchor", "kill" or "sleep"
+    std::string type = "radial_force";
+    // Newtons for forces, meters per second for velocities, kilogram-meters per second of
+    // impact for strain and the speed below which bodies sleep for sleep
+    float magnitude = 10.0F;
+    std::string shape = "sphere";   // "sphere", "box", "plane" (below its xz plane) or "everywhere"
+    float radius = 5.0F;            // meters: a sphere's, and how far a plane's falloff reaches
+    Vec3 size{10.0F, 10.0F, 10.0F}; // a box's, in the entity's space
+    std::string falloff = "none";   // "none", "linear" or "squared", toward the shape's edge
+    std::uint32_t collision_mask = 0xFFFFFFFFU;
+    float noise_frequency = 2.0F; // noise_force: times a second its push turns
+    bool particles = true;        // forces also push CPUParticles3D
+
+    friend bool operator==(const PhysicsField3D&, const PhysicsField3D&) = default;
+};
+SLASH_COMPONENT(PhysicsField3D, enabled, type, magnitude, shape, radius, size, falloff,
+                collision_mask, noise_frequency, particles)
+
+// PhysicsField3D in a 2D world: directional types act along its entity's global x axis, sizes
+// are pixels, forces kilogram-pixels per second squared and velocities pixels per second. 2D has
+// no destruction yet, so strain does nothing.
+struct PhysicsField2D {
+    bool enabled = true;
+    std::string type = "radial_force";
+    float magnitude = 640.0F;
+    std::string shape =
+        "sphere"; // "sphere" (a circle), "box", "plane" (below its x axis) or "everywhere"
+    float radius = 320.0F;
+    Vec2 size{640.0F, 640.0F};
+    std::string falloff = "none";
+    std::uint32_t collision_mask = 0xFFFFFFFFU;
+    float noise_frequency = 2.0F;
+    bool particles = true; // forces also push CPUParticles2D
+
+    friend bool operator==(const PhysicsField2D&, const PhysicsField2D&) = default;
+};
+SLASH_COMPONENT(PhysicsField2D, enabled, type, magnitude, shape, radius, size, falloff,
+                collision_mask, noise_frequency, particles)
 
 // ---- Navigation, as Godot's (engine/navigation): regions of navigation mesh, links between
 // places and agents that follow paths over them, on one 2D and one 3D map per world.

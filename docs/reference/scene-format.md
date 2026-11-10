@@ -206,12 +206,13 @@ A reference must name an entity that exists in the same scene.
 | | `collision_mask` | `int` | `1` | The layers it collides with, as bits. Every body and area has it |
 | | `friction` | `float` | `1` | How much it resists sliding: 0 is ice. Two bodies use the smaller friction |
 | | `bounce` | `float` | `0` | How much it bounces, 0 to 1. Two bodies add theirs, up to 1 |
+| | `physics_material_override` | `std::string` | `""` | A [`.physics_material.json`](#physics-materials-and-fields) file whose friction, bounce, density and surface it takes over its own, as Godot's |
 | | `constant_linear_velocity` | `Vec2` | `[0, 0]` | Moves what touches it as if it moved this fast, in pixels per second, while it stays put: a conveyor belt |
 | | `constant_angular_velocity` | `float` | `0` | The same for turning, in radians per second, clockwise |
-| `AnimatableBody2D` | `collision_layer`, `collision_mask`, `friction`, `bounce` | | | As `StaticBody2D`'s. It goes where its `Transform2D` says, such as a moving platform |
+| `AnimatableBody2D` | `collision_layer`, `collision_mask`, `friction`, `bounce`, `physics_material_override` | | | As `StaticBody2D`'s. It goes where its `Transform2D` says, such as a moving platform |
 | | `constant_linear_velocity`, `constant_angular_velocity` | | | As `StaticBody2D`'s, added to how it moves |
 | | `sync_to_physics` | `bool` | `true` | Move there during the physics step, pushing bodies in the way and carrying those on it; `false` jumps there |
-| `RigidBody2D` | `collision_layer`, `collision_mask`, `friction`, `bounce` | | | As `StaticBody2D`'s |
+| `RigidBody2D` | `collision_layer`, `collision_mask`, `friction`, `bounce`, `physics_material_override` | | | As `StaticBody2D`'s; a material's `density` sets its mass |
 | | `mass` | `float` | `1` | In kilograms, from 0.001 |
 | | `inertia` | `float` | `0` | Resistance to turning; 0 computes it from the shapes and the mass |
 | | `gravity_scale` | `float` | `1` | Multiplies gravity; 0 floats |
@@ -4345,9 +4346,9 @@ from `physics_3d` in [`project.json`](project-format.md).
 | Component | Fields (defaults) |
 | --- | --- |
 | `CollisionShape3D` | `shape` `"box"` (or `sphere`, `capsule`, `cylinder`, `convex_polygon`, `concave_polygon`, `world_boundary`), `size` `[1, 1, 1]`, `radius` `0.5`, `height` `2` (a capsule's end to end), `points` `[]` (a convex polygon's hull), `faces` `[]` (a concave polygon's triangles, three points each), `backface_collision` `false`, `plane` `[0, 1, 0, 0]` (a world boundary's normal and distance; below it is solid), `margin` `0.04`, `position` `[0, 0, 0]`, `rotation` `[0, 0, 0]`, `disabled` `false` |
-| `StaticBody3D` | `collision_layer` `1`, `collision_mask` `1`, `friction` `1`, `bounce` `0`, `constant_linear_velocity` `[0, 0, 0]`, `constant_angular_velocity` `[0, 0, 0]` |
+| `StaticBody3D` | `collision_layer` `1`, `collision_mask` `1`, `friction` `1`, `bounce` `0`, `physics_material_override` `""` (a [physics material](#physics-materials-and-fields) whose values win), `constant_linear_velocity` `[0, 0, 0]`, `constant_angular_velocity` `[0, 0, 0]` |
 | `AnimatableBody3D` | as `StaticBody3D`, and `sync_to_physics` `true` |
-| `RigidBody3D` | `collision_layer`, `collision_mask`, `friction`, `bounce` as `StaticBody3D`; `mass` `1`, `inertia` `[0, 0, 0]` (0 computes that axis's), `gravity_scale` `1`, `linear_velocity` and `angular_velocity` `[0, 0, 0]`, `linear_damp_mode` and `angular_damp_mode` `"combine"`, `linear_damp` and `angular_damp` `0`, `constant_force` and `constant_torque` `[0, 0, 0]`, `lock_rotation` `false`, `axis_lock_linear_x/y/z` and `axis_lock_angular_x/y/z` `false`, `freeze` `false`, `freeze_mode` `"static"`, `continuous_cd` `false`, `can_sleep` `true`, `sleeping` `false`, `contact_monitor` `false` |
+| `RigidBody3D` | `collision_layer`, `collision_mask`, `friction`, `bounce`, `physics_material_override` as `StaticBody3D`; `mass` `1` (a material's `density` replaces it), `inertia` `[0, 0, 0]` (0 computes that axis's), `gravity_scale` `1`, `linear_velocity` and `angular_velocity` `[0, 0, 0]`, `linear_damp_mode` and `angular_damp_mode` `"combine"`, `linear_damp` and `angular_damp` `0`, `constant_force` and `constant_torque` `[0, 0, 0]`, `lock_rotation` `false`, `axis_lock_linear_x/y/z` and `axis_lock_angular_x/y/z` `false`, `freeze` `false`, `freeze_mode` `"static"`, `continuous_cd` `false`, `can_sleep` `true`, `sleeping` `false`, `contact_monitor` `false` |
 | `CharacterBody3D` | `collision_layer`, `collision_mask`; `motion_mode` `"grounded"` (or `floating`), `up_direction` `[0, 1, 0]`, `velocity` `[0, 0, 0]`, `max_slides` `6`, `slide_on_ceiling` `true`, `wall_min_slide_angle` `0.261799`, `floor_stop_on_slope` `true`, `floor_constant_speed` `false`, `floor_block_on_wall` `true`, `floor_max_angle` `0.785398`, `floor_snap_length` `0.1`, `platform_on_leave` `"add_velocity"`, `platform_floor_layers` all, `platform_wall_layers` `0`, `safe_margin` `0.001`; written by each move: `on_floor`, `on_wall`, `on_ceiling`, `floor_normal`, `wall_normal`, `platform_velocity` |
 | `Area3D` | `collision_layer`, `collision_mask`, `monitoring` `true`, `monitorable` `true`, `priority` `0`, `gravity_space_override` `"disabled"`, `gravity_point` `false`, `gravity_point_unit_distance` `0`, `gravity_point_center` `[0, -1, 0]`, `gravity_direction` `[0, -1, 0]`, `gravity` `9.8`, `linear_damp_space_override` and `angular_damp_space_override` `"disabled"`, `linear_damp` and `angular_damp` `0.1`; for [3D sound](#3d-sound): `audio_bus_override` `false`, `audio_bus_name` `"Master"`, `reverb_bus_enabled` `false`, `reverb_bus_name` `"Master"`, `reverb_bus_amount` `0`, `reverb_bus_uniformity` `0`; for soft bodies, as Godot's: `wind_force_magnitude` `0`, `wind_attenuation_factor` `0`, `wind_source_path` `null` (an entity whose -z the wind blows along, from its position) |
 
@@ -4492,7 +4493,7 @@ any body is. [examples/ragdoll](../../examples/ragdoll/) lets a waving arm go li
 | Component | Fields (defaults) |
 | --- | --- |
 | `PhysicalBoneSimulator3D` | `active` `true`, `influence` `1`, `simulating` `false`, `simulated_bones` `[]`, `collision_exceptions` `[]` (entity IDs) |
-| `PhysicalBone3D` | `bone_name` `""`, `body_offset_position` and `body_offset_rotation` `[0, 0, 0]`, `joint_type` `"none"`, `joint_rotation` `[0, 0, 0]`, `swing_span` `0.785398`, `twist_span` `3.14159`, `angular_limit_enabled` `false`, `angular_limit_upper` `1.5708`, `angular_limit_lower` `-1.5708`, `linear_limit_upper` `1`, `linear_limit_lower` `-1`, `x`, `y` and `z` (each with `linear_limit_enabled` and `angular_limit_enabled` `true`, their `_upper` and `_lower` `0`, `linear_spring_enabled` and `angular_spring_enabled` `false` with `_stiffness`, `_damping` and `_equilibrium_point` `0`), `collision_layer` `1`, `collision_mask` `1`, `mass` `1`, `friction` `1`, `bounce` `0`, `gravity_scale` `1`, `linear_damp_mode` and `angular_damp_mode` `"combine"`, `linear_damp` and `angular_damp` `0`, `can_sleep` `true`; written by each step while it simulates: `linear_velocity`, `angular_velocity` |
+| `PhysicalBone3D` | `bone_name` `""`, `body_offset_position` and `body_offset_rotation` `[0, 0, 0]`, `joint_type` `"none"`, `joint_rotation` `[0, 0, 0]`, `swing_span` `0.785398`, `twist_span` `3.14159`, `angular_limit_enabled` `false`, `angular_limit_upper` `1.5708`, `angular_limit_lower` `-1.5708`, `linear_limit_upper` `1`, `linear_limit_lower` `-1`, `x`, `y` and `z` (each with `linear_limit_enabled` and `angular_limit_enabled` `true`, their `_upper` and `_lower` `0`, `linear_spring_enabled` and `angular_spring_enabled` `false` with `_stiffness`, `_damping` and `_equilibrium_point` `0`), `collision_layer` `1`, `collision_mask` `1`, `mass` `1`, `friction` `1`, `bounce` `0`, `physics_material_override` `""`, `gravity_scale` `1`, `linear_damp_mode` and `angular_damp_mode` `"combine"`, `linear_damp` and `angular_damp` `0`, `can_sleep` `true`; written by each step while it simulates: `linear_velocity`, `angular_velocity` |
 
 `scene validate` reports `simulated_bones` and `bone_name`s the model hasn't (with "did you
 mean"), a bone with two bodies and a `PhysicalBone3D` no simulator holds.
@@ -4576,7 +4577,7 @@ breaks a wall with a ball and a crate with `physics.break`.
 
 | Component | Fields (defaults) |
 | --- | --- |
-| `Destructible3D` | `pieces` `8` (cells, 2 to 256), `seed` `0`, `damage_threshold` `0` (an impulse in newton-seconds; 0 breaks only through `physics.break`), `mass` `1` (kilograms, shared by the pieces), `debris_lifetime` `0` (seconds each piece lasts; 0 keeps them) |
+| `Destructible3D` | `pieces` `8` (cells, 2 to 256), `seed` `0`, `damage_threshold` `0` (an impulse in newton-seconds; 0 takes the body's [physics material's](#physics-materials-and-fields) `strength`, and with none breaks only through `physics.break`), `mass` `1` (kilograms, shared by the pieces), `debris_lifetime` `0` (seconds each piece lasts; 0 keeps them) |
 | `FracturePiece3D` | `pieces` `8`, `seed` `0`, `index` `0` (which piece of that cut it draws), `lifetime` `0` (seconds left; 0 keeps it) |
 
 - A contact breaks the body when its impulse, the two bodies' reduced mass times how fast they
@@ -4671,8 +4672,86 @@ for `CPUParticles2D` (`wind_influence`) and canvas shaders (`WIND`).
   or recording starts, and the wind follows that clock.
 - `wind.sample` returns the wind at points, now or at a given time: `[x, y, z]` points in 3D,
   `[x, y]` points in 2D.
-- `GPUParticles2D` and 2D physics bodies don't feel the wind yet; the
-  [simulation's fields](../roadmap.md) bring it to them.
+- `GPUParticles2D` and physics bodies don't feel the wind; a
+  [`PhysicsField3D` or `PhysicsField2D`](#physics-materials-and-fields)'s directional force
+  pushes bodies the same way.
+
+### Physics materials and fields
+
+Everything in a world moves in one simulation, as Unreal's Chaos: bodies of every tool share
+physics materials, and fields act on all the bodies and particles in their reach at once. 2D
+worlds have the same, in pixels. [examples/physics-fields](../../examples/physics-fields/)
+blasts crates, holds a lantern, breaks a window and slides a 2D puck.
+
+A `.physics_material.json` file is Godot's `PhysicsMaterial` with what Chaos's physical
+materials add. A `StaticBody3D`, `AnimatableBody3D`, `RigidBody3D`, `PhysicalBone3D` or 2D body
+names one in `physics_material_override`, and its values win over the body's `friction` and
+`bounce`. `$cli schema physics_material` prints the schema, and `$cli scene validate` and
+`$cli scene format` take the files.
+
+```json
+{
+  "format": 1,
+  "friction": 0.7,
+  "density": 600,
+  "surface": "wood"
+}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `format` | required | `1` |
+| `friction` | `1` | How much it grips, 0 for ice |
+| `rough` | `false` | Its friction wins over a smoother material's, as Godot's: two bodies take the smaller friction, a rough one's counting as below every other |
+| `bounce` | `0` | How much it bounces, 0 to 1; two bodies add theirs, up to 1 |
+| `absorbent` | `false` | Its bounce is taken from the other's instead of added |
+| `density` | `0` | Kilograms a cubic meter: a rigid body made of it weighs its shapes' volume times this (in 2D, a square meter of 64 pixels a side). 0 keeps the body's `mass`; shapes with no volume, such as planes and meshes, keep it too |
+| `strength` | `0` | Newton-seconds of one impact (or strain) that break a [`Destructible3D`](#destruction) made of it whose `damage_threshold` is 0; 0 never |
+| `surface` | `""` | A name such as `"wood"` that [`physics.raycast`](commands.md#physicsraycast) reports, for footsteps, impact sounds and effects |
+
+Materials load through the project's assets and reload when their files change; a file that
+can't be read or is invalid is a warning, once, and the body keeps its own values.
+
+A `PhysicsField3D` acts on what is in its reach each physics tick, before the step, as Chaos's
+fields. A `PhysicsField2D` does the same in a 2D world, in pixels.
+
+```json
+"blast": {
+  "components": {
+    "PhysicsField3D": {"falloff": "linear", "magnitude": 60000.0, "radius": 3.0},
+    "Transform3D": {"position": [-1.0, 0.3, 0.0]}
+  }
+}
+```
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `PhysicsField3D` | `enabled` `true`, `type` `"radial_force"`, `magnitude` `10`, `shape` `"sphere"`, `radius` `5` (meters), `size` `[10, 10, 10]` (a box's, meters), `falloff` `"none"`, `collision_mask` `0xFFFFFFFF`, `noise_frequency` `2` (changes a second), `particles` `true` |
+| `PhysicsField2D` | As `PhysicsField3D`, in pixels: `magnitude` `640`, `radius` `320`, `size` `[640, 640]` |
+
+| `type` | What it does to a body in reach, by `magnitude` times the falloff |
+| --- | --- |
+| `radial_force` | Pushes out from the field's place, in newtons (2D: kilogram-pixels per second squared); a negative magnitude pulls in |
+| `directional_force` | Pushes along the entity's -z (2D: its x axis) |
+| `noise_force` | Pushes each body its own way, which changes `noise_frequency` times a second: a noise of whole numbers hashed with the field's and the body's IDs and the tick, so it repeats everywhere |
+| `radial_velocity`, `directional_velocity` | Sets the body's velocity to this, in meters (2D: pixels) per second, out from the field or along it |
+| `strain` | Breaks a [`Destructible3D`](#destruction) whose threshold (or material `strength`) it reaches, after the step, as an impact that strong would, static ones included. 2D bodies don't break yet |
+| `anchor` | Holds a rigid body where it is, as a kinematic body, until the field lets go; its velocity then is what its components last said |
+| `kill` | Removes the entity after the step, as a `field_killed` event |
+| `sleep` | Puts a body slower than this to sleep, when no force or velocity field also reaches it |
+
+- `shape` is `"sphere"` (to `radius`), `"box"` (`size`, turned with the entity), `"plane"` (the
+  space below the plane through the entity, facing its +y; 2D: its -y, up the screen) or
+  `"everywhere"`. `falloff` is `"none"`, `"linear"` or `"squared"`: from full strength in the
+  middle (a plane's: `radius` below it, or at once with no radius) to none at the edge.
+- Fields act on rigid bodies and physical bones whose `collision_layer` meets their
+  `collision_mask`; fields of the same kind add up, in the order the world stores them. Soft
+  bodies' points feel forces (each point its share) and velocities. Strain also reaches static
+  and animatable `Destructible3D`s.
+- With `particles` on, force fields push `CPUParticles3D` and `CPUParticles2D` particles too,
+  each where it is, as a kilogram: the push adds to `gravity`.
+- `physics_3d.substeps` and `physics_2d.substeps` in [`project.json`](project-format.md) give
+  each tick more collision steps, as Chaos's substeps, for fast or stacked bodies.
 
 ## Navigation
 
