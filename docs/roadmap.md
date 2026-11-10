@@ -1126,7 +1126,11 @@ launch rows and the after-launch features above.
 
 Ways for agents to build detailed 3D worlds and many smarter NPCs at a fraction of Unreal's
 cost, from the research proposal of 2026-11-07, in order. Items 7 on (wind, style memory and the world tools)
-ship in the launch release, which waits for them:
+ship in the launch release, which waits for them. Each works in 2D worlds as well as 3D ones,
+on physics2d and the canvas where 3D uses physics3d and meshes: `WindSource2D` wind for canvas
+shaders and 2D particles, the simulation's fields, materials and ragdolls on Box2D, foliage
+scattered on tile maps and polygons, 2D lights and reflections, sprite and `Skeleton2D` hair,
+characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2D effects:
 
 1. [x] Planning NPCs: goal-oriented action planning as F.E.A.R.'s, with `.npc.json` brains of
        facts, goals and actions, `NpcAgent` components planned on the job system, go_to along
@@ -1182,8 +1186,11 @@ ship in the launch release, which waits for them:
        trees, bending in the wind, and characters' interactions: plants that part, bend and
        spring back as they pass, trees and rocks that block and can be climbed or harvested
 11. [ ] Light tools: Godot 4's `light_temperature` and physical light units, projector textures
-       (`light_projector`), IES profiles and light functions as Unreal's, and `light.tune`, which
-       adjusts lights toward exposure and contribution targets from `lighting.check`
+       (`light_projector`), IES profiles and light functions as Unreal's, `light.tune`, which
+       adjusts lights toward exposure and contribution targets from `lighting.check`, and
+       screen-space reflections in 2D worlds (Godot has none): `Reflection2D` water, mirrors
+       and polished floors that reflect the canvas above their line with ripples, fade and
+       tint, beside 3D's Forward+ SSR and ray-traced reflections, which are done
 12. [ ] NPCs with stories of their own: questlines (`.quest.json` stages and objectives over
         facts, with rewards and journal text), movement scripts (patrols, daily schedules and
         routes per NPC), conversation scripts (`.dialogue.json` branching dialogue with
