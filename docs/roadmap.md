@@ -1139,6 +1139,16 @@ cost, from the research proposal of 2026-11-07, in order:
        `.glb` models from a concept image through Microsoft's TRELLIS (MIT), as fal.ai runs it
 6. [x] Gaussian splats for detailed scenery (research: the software device; see
        [gaussian-splats.md](reference/gaussian-splats.md))
+7. [ ] Wind: `WindSource3D` directional and point sources with gusts and turbulence, as Unreal's
+       WindDirectionalSource, and Godot's `Area3D` wind fields, sampled by one world wind field
+       that vegetation shaders (`WIND` built-ins), soft bodies, cloth and particles all read
+8. [ ] Foliage: painted and scattered foliage as Unreal's Foliage tool, with `foliage.paint` and
+       `foliage.erase` brushes over terrains and meshes, instances kept per cell, grass drawn in
+       instanced batches with distance culling and fades, impostors for far trees, bending in
+       the wind and trampling
+9. [ ] Light tools: Godot 4's `light_temperature` and physical light units, projector textures
+       (`light_projector`), IES profiles and light functions as Unreal's, and `light.tune`, which
+       adjusts lights toward exposure and contribution targets from `lighting.check`
 
 Console ports are not on this roadmap and never will be in this repository. As with Godot,
 PlayStation, Xbox and Switch support comes from licensed porting partners as private backends.
