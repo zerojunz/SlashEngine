@@ -12,6 +12,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 // 2D physics on Box2D v3, as Godot's 2D physics. The components are in slash/world/components.hpp:
@@ -39,6 +40,9 @@ struct Settings {
     Vec2 gravity_vector{0.0F, 1.0F};
     float linear_damp = 0.1F;  // what RigidBody2D's linear_damp combines with
     float angular_damp = 1.0F; // what RigidBody2D's angular_damp combines with
+    // Solver substeps each physics tick takes, as Box2D's: more keep fast, small or stacked
+    // bodies steadier, at more cost.
+    int substeps = 4;
 
     friend bool operator==(const Settings&, const Settings&) = default;
 };
@@ -69,6 +73,8 @@ struct RayHit {
     float fraction = 0.0F; // how far along the ray, from 0 to 1
     // The cell hit, when the entity is a TileMapLayer.
     std::optional<Vec2i> cell{}; // NOLINT(readability-redundant-member-init)
+    // The surface its physics material names, such as "wood"; empty without one.
+    std::string surface;
 };
 
 // The first thing a ray from from to to hits, as Godot's intersect_ray. Shapes the ray starts

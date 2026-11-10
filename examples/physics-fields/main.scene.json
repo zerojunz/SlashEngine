@@ -1,0 +1,191 @@
+{
+  "entities": {
+    "blast": {
+      "components": {
+        "PhysicsField3D": {
+          "enabled": false,
+          "falloff": "linear",
+          "magnitude": 60000.0,
+          "radius": 3.0
+        },
+        "Transform3D": {
+          "position": [-1.0, 0.3, 0.0]
+        }
+      }
+    },
+    "burst": {
+      "components": {
+        "PhysicsField2D": {
+          "magnitude": 200.0,
+          "radius": 300.0
+        },
+        "Transform2D": {
+          "position": [400.0, 100.0]
+        }
+      }
+    },
+    "crate_high": {
+      "components": {
+        "CollisionShape3D": {
+          "size": [0.6, 0.6, 0.6]
+        },
+        "RigidBody3D": {
+          "physics_material_override": "materials/oak.physics_material.json"
+        },
+        "Transform3D": {
+          "position": [0.0, 0.9, 0.0]
+        }
+      }
+    },
+    "crate_low": {
+      "components": {
+        "CollisionShape3D": {
+          "size": [0.6, 0.6, 0.6]
+        },
+        "RigidBody3D": {
+          "physics_material_override": "materials/oak.physics_material.json"
+        },
+        "Transform3D": {
+          "position": [0.0, 0.3, 0.0]
+        }
+      }
+    },
+    "draft": {
+      "components": {
+        "PhysicsField2D": {
+          "magnitude": 300.0,
+          "radius": 60.0,
+          "type": "directional_force"
+        },
+        "Transform2D": {
+          "position": [0.0, 264.0]
+        }
+      }
+    },
+    "floor": {
+      "components": {
+        "CollisionShape3D": {
+          "size": [20.0, 1.0, 20.0]
+        },
+        "StaticBody3D": {
+          "physics_material_override": "materials/stone.physics_material.json"
+        },
+        "Transform3D": {
+          "position": [0.0, -0.5, 0.0]
+        }
+      }
+    },
+    "hook": {
+      "components": {
+        "PhysicsField3D": {
+          "radius": 0.5,
+          "type": "anchor"
+        },
+        "Transform3D": {
+          "position": [3.0, 2.0, 0.0]
+        }
+      }
+    },
+    "lantern": {
+      "components": {
+        "CollisionShape3D": {
+          "radius": 0.2,
+          "shape": "sphere"
+        },
+        "RigidBody3D": {
+          "mass": 2.0
+        },
+        "Transform3D": {
+          "position": [3.0, 2.0, 0.0]
+        }
+      }
+    },
+    "pit": {
+      "components": {
+        "PhysicsField3D": {
+          "shape": "plane",
+          "type": "kill"
+        },
+        "Transform3D": {
+          "position": [0.0, -3.0, 0.0]
+        }
+      }
+    },
+    "press": {
+      "components": {
+        "PhysicsField3D": {
+          "enabled": false,
+          "magnitude": 25.0,
+          "radius": 1.0,
+          "type": "strain"
+        },
+        "Transform3D": {
+          "position": [0.0, 1.5, -3.0]
+        }
+      }
+    },
+    "puck": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [32.0, 32.0]
+        },
+        "RigidBody2D": {
+          "lock_rotation": true,
+          "physics_material_override": "materials/ice.physics_material.json"
+        },
+        "Transform2D": {
+          "position": [0.0, 264.0]
+        }
+      }
+    },
+    "rink": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [2000.0, 40.0]
+        },
+        "StaticBody2D": {
+          "physics_material_override": "materials/ice.physics_material.json"
+        },
+        "Transform2D": {
+          "position": [0.0, 300.0]
+        }
+      }
+    },
+    "sparks": {
+      "components": {
+        "CPUParticles2D": {
+          "amount": 6,
+          "emission_shape": "sphere",
+          "emission_sphere_radius": 20.0,
+          "explosiveness": 1.0,
+          "gravity": [0.0, 0.0],
+          "lifetime": 3.0
+        },
+        "Transform2D": {
+          "position": [400.0, 100.0]
+        }
+      }
+    },
+    "window": {
+      "components": {
+        "BoxMesh": {
+          "size": [1.5, 1.5, 0.05]
+        },
+        "CollisionShape3D": {
+          "size": [1.5, 1.5, 0.05]
+        },
+        "Destructible3D": {
+          "pieces": 4
+        },
+        "MeshInstance3D": {},
+        "StaticBody3D": {
+          "physics_material_override": "materials/glass.physics_material.json"
+        },
+        "Transform3D": {
+          "position": [0.0, 1.5, -3.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

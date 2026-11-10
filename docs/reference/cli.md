@@ -171,8 +171,9 @@ file, a [`.theme.json`](scene-format.md#themes) file, an
 [`.lightmap.json`](scene-format.md#baked-lightmaps) file, a
 [`.standard_material.json`](scene-format.md#material-files) file (and that its textures
 decode), a [`.texture.json`](scene-format.md#procedural-textures) file, a
-[`.scatter.json`](scene-format.md#scatter-rules) file, or a [model](scene-format.md#models)
-(`.gltf`, `.glb`, `.obj`, `.fbx` or `.blend`), and lists every error, each with its JSON Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) and
+[`.scatter.json`](scene-format.md#scatter-rules) file, a
+[`.physics_material.json`](scene-format.md#physics-materials-and-fields) file, or a
+[model](scene-format.md#models) (`.gltf`, `.glb`, `.obj`, `.fbx` or `.blend`), and lists every error, each with its JSON Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) and
 [scenes](scene-format.md#instanced-scenes) a file extends, the tile sets its layers use, the animation libraries and trees its players and trees use, the navigation meshes and polygons its regions place, the brains its NPC agents name, the mesh libraries its grid maps use, the maps its terrains read and the project's window size and theme are read from its
 project: the nearest folder above it with a `project.json`, else the current folder. A `.blend`
 file, and one a scene's `MeshInstance3D` names, is converted with the artist's own Blender first
@@ -280,7 +281,8 @@ Rewrites a scene, prefab, `.frames.json`, `.material.json`, `.anim.json`, `.anim
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
 `.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`,
-`.texture.json` or `.scatter.json` file in [canonical form](scene-format.md#canonical-form).
+`.texture.json`, `.scatter.json` or `.physics_material.json` file in
+[canonical form](scene-format.md#canonical-form).
 
 ```bash
 slash-cli scene format <file>
@@ -315,7 +317,9 @@ for [`.score.json` files](scene-format.md#scores), for
 [`.model.json` recipes](scene-format.md#model-recipes), for
 [`.standard_material.json` files](scene-format.md#material-files), for
 [`.texture.json` files](scene-format.md#procedural-textures), for
-[`.scatter.json` files](scene-format.md#scatter-rules), for [storyboard files](storyboard-format.md),
+[`.scatter.json` files](scene-format.md#scatter-rules), for
+[`.physics_material.json` files](scene-format.md#physics-materials-and-fields), for
+[storyboard files](storyboard-format.md),
 for [`project.json`](project-format.md), for [`export_presets.json`](project-format.md#export-presets),
 for [`sdk.json`](sdk-format.md), for [`.plugin.json` files](project-format.md#plugins), for
 [`providers.json`](providers.md) or for a
@@ -348,6 +352,7 @@ slash-cli schema model
 slash-cli schema standard_material
 slash-cli schema texture
 slash-cli schema scatter
+slash-cli schema physics_material
 slash-cli schema storyboard
 slash-cli schema project
 slash-cli schema presets

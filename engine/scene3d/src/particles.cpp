@@ -2,6 +2,7 @@
 
 #include "slash/core/jobs.hpp"
 #include "slash/core/json.hpp"
+#include "slash/world/physics_field.hpp"
 #include "slash/world/wind.hpp"
 
 #include <algorithm>
@@ -280,9 +281,12 @@ double emit_time(const Settings& settings, std::uint32_t seed, std::uint32_t cyc
 
 class Simulation {
 public:
-    Simulation(const Settings& settings, const Affine3D& transform, std::uint32_t seed, Vec3 wind)
+    Simulation(const Settings& settings, const Affine3D& transform, std::uint32_t seed, Vec3 wind,
+               const world::PhysicsFields3D* fields, double time)
         : settings_(settings), s_(*settings.component), transform_(transform), seed_(seed),
-          origin_(s_.local_coords ? Vec3{} : transform.origin), wind_(wind) {}
+          origin_(s_.local_coords ? Vec3{} : transform.origin), wind_(wind),
+          fields_(fields != nullptr && !fields->empty() ? fields : nullptr),
+          to_local_(transform.inverse()), time_(time) {}
 
     // Moves the emitter on by seconds of game time. Returns whether a one_shot's cycle ended.
     bool step(Emitter& e, float seconds) const {
@@ -499,6 +503,12 @@ private:
         if (flat) {
             position.z = 0.0F;
         }
+        if (fields_ != nullptr) {
+            // Physics fields with particles on push each particle where it is, as a kilogram.
+            const Vec3 push = fields_->particle_force(
+                s_.local_coords ? transform_.apply(position) : position, seed_, time_);
+            force = force + (s_.local_coords ? to_local_.basis(push) : push);
+        }
         const float linear =
             value(s_.linear_accel_min, s_.linear_accel_max, kLinear, settings_.linear_accel);
         force = force + (normalized(p.velocity) * linear);
@@ -615,6 +625,9 @@ private:
     std::uint32_t seed_;
     Vec3 origin_; // what radial and tangential acceleration and orbits go round
     Vec3 wind_;   // the wind's push, in the particles' space
+    const world::PhysicsFields3D* fields_; // fields that push particles, or nullptr
+    Affine3D to_local_;                    // the emitter's inverse, for local particles
+    double time_;                          // seconds of game time, for noise fields
 };
 
 bool alive(const Emitter& emitter) {
@@ -629,9 +642,10 @@ std::int64_t ticks_in(double seconds, double tick_seconds) {
 // Runs preprocess, the first time, and then ticks steps. Returns whether a one_shot's cycle
 // ended.
 bool run(Emitter& emitter, const CPUParticles3D& component, const Affine3D& transform,
-         std::uint32_t seed, double tick_seconds, std::int64_t ticks, Vec3 wind = {}) {
+         std::uint32_t seed, double tick_seconds, std::int64_t ticks, Vec3 wind = {},
+         const world::PhysicsFields3D* fields = nullptr, double time = 0.0) {
     const Settings settings(component);
-    const Simulation simulation(settings, transform, seed, wind);
+    const Simulation simulation(settings, transform, seed, wind, fields, time);
     if (!emitter.started) {
         emitter.started = true;
         ticks += ticks_in(component.preprocess, tick_seconds);
@@ -684,6 +698,8 @@ struct ParticleSystem3D {
         };
         const world::WindField field(world, tree);
         const double wind_time = world::wind_time(world);
+        const world::PhysicsFields3D fields(world, tree);
+        const double field_time = static_cast<double>(world.tick()) * tick_seconds;
         std::vector<Run> runs;
         for (const entt::entity entity : ecs.view<CPUParticles3D>()) {
             auto& component = ecs.get<CPUParticles3D>(entity);
@@ -711,7 +727,7 @@ struct ParticleSystem3D {
             world.pool().parallel_for(runs.size(), [&](std::size_t i) {
                 Run& each = runs[i];
                 each.ended = run(*each.emitter, *each.component, each.transform, each.seed,
-                                 tick_seconds, 1, each.wind);
+                                 tick_seconds, 1, each.wind, &fields, field_time);
             });
         }
         for (const Run& each : runs) {
@@ -770,7 +786,7 @@ void add_particles_system(world::World& world) {
         {.doc = "Emits, moves and ages each CPUParticles3D's particles.",
          .priority = 1100,
          .threaded = true,
-         .reads = {"Transform3D", "WindSource3D"},
+         .reads = {"Transform3D", "WindSource3D", "PhysicsField3D"},
          .writes = {"CPUParticles3D"}});
 }
 

@@ -1,0 +1,15 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":14,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"subscription":"events_1"}}
+{"id":3,"jsonrpc":"2.0","result":{"hit":{"fraction":0.38,"id":"crate_high","normal":[0,1,0],"point":[0,1.2,0],"surface":"wood"}}}
+{"id":4,"jsonrpc":"2.0","result":{"hit":{"fraction":0.1667,"id":"floor","normal":[0,1,0],"point":[2,0,0],"surface":"stone"}}}
+{"id":5,"jsonrpc":"2.0","result":{"hit":{"fraction":0.4933,"id":"puck","normal":[0,-1],"point":[0,248],"surface":"ice"}}}
+{"id":6,"jsonrpc":"2.0","result":{"tick":60,"ticks":60}}
+{"id":7,"jsonrpc":"2.0","result":{"count":3,"entities":[{"components":{"Transform3D":{"position":[0.00008610072,0.90001106,0.000401012],"rotation":[0.00006115654,1.0973157e-7,0.00003110921]}},"id":"crate_high"},{"components":{"Transform3D":{"position":[0.00005993726,0.30000648,0.00017237745],"rotation":[0.000025481617,3.1722994e-10,0.0000040079826]}},"id":"crate_low"},{"components":{"Transform3D":{"position":[3.0,2.0,0.0]}},"id":"lantern"}],"truncated":false}}
+{"id":8,"jsonrpc":"2.0","result":{"count":1,"entities":[{"components":{"RigidBody2D":{"linear_velocity":[168.5229,0.0],"lock_rotation":true,"physics_material_override":"materials/ice.physics_material.json"},"Transform2D":{"position":[119.53539,264.00342]}},"id":"puck"}],"truncated":false}}
+{"id":9,"jsonrpc":"2.0","result":{"alive":6,"bounds":[281.0341,20.1949,236.0596,170.6627]}}
+{"id":10,"jsonrpc":"2.0","result":{"changed":{"PhysicsField3D":{"enabled":true}},"id":"blast"}}
+{"id":11,"jsonrpc":"2.0","result":{"changed":{"PhysicsField3D":{"enabled":false}},"id":"hook"}}
+{"id":12,"jsonrpc":"2.0","result":{"changed":{"PhysicsField3D":{"enabled":true}},"id":"press"}}
+{"id":13,"jsonrpc":"2.0","result":{"tick":150,"ticks":90}}
+{"id":14,"jsonrpc":"2.0","result":{"dropped":0,"events":[{"data":{"pieces":["window_1","window_2","window_3","window_4"]},"id":"window","kind":"broken","seq":1,"tick":60},{"id":"crate_low","kind":"field_killed","seq":2,"tick":139}],"more":false}}
+{"id":15,"jsonrpc":"2.0","result":{"count":2,"entities":[{"components":{"Transform3D":{"position":[27.81979,6.8702917,0.010287629],"rotation":[0.0047940337,0.0029195026,-1.2372477]}},"id":"crate_high"},{"components":{"Transform3D":{"position":[18.5556,-2.9420376,0.0004249348],"rotation":[0.00024648893,-0.0003384248,1.8876671]}},"id":"lantern"}],"truncated":false}}

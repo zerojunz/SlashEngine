@@ -173,12 +173,13 @@ Returns a JSON Schema: for scene, prefab, [`.frames.json`](scene-format.md#sprit
 [`.meshlib.json`](scene-format.md#mesh-libraries), [`.model.json`](scene-format.md#model-recipes),
 [`.standard_material.json`](scene-format.md#material-files),
 [`.texture.json`](scene-format.md#procedural-textures),
-[`.scatter.json`](scene-format.md#scatter-rules) or storyboard files, one component or one
-command.
+[`.scatter.json`](scene-format.md#scatter-rules),
+[`.physics_material.json`](scene-format.md#physics-materials-and-fields) or storyboard files,
+one component or one command.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"npc"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"standard_material"`, `"texture"`, `"scatter"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"npc"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"standard_material"`, `"texture"`, `"scatter"`, `"physics_material"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -1527,7 +1528,9 @@ hits: its ID, the point, the surface normal there and the fraction of the way th
 is `null` if it hits nothing. A ray that starts inside a shape doesn't hit that shape. A ray that
 hits a [tile map layer's](scene-format.md#tile-collision) tile also gives the `cell` it hit, as
 `[column, row]`, and one that hits a [`GridMap`](scene-format.md#grid-maps) gives the `cell` as
-`[x, y, z]` and the `item` in it.
+`[x, y, z]` and the `item` in it. A body with a
+[physics material](scene-format.md#physics-materials-and-fields) that names a surface gives it
+as `surface`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -1565,6 +1568,12 @@ Straight down onto a GridMap's ramp, from [examples/gridmap](../../examples/grid
 
 ```json
 {"hit":{"cell":[4,0,1],"fraction":0.6667,"id":"level","item":"ramp","normal":[-0.7071,0.7071,0],"point":[9,1,3]}}
+```
+
+Down onto an oak crate, from [examples/physics-fields](../../examples/physics-fields/):
+
+```json
+{"hit":{"fraction":0.38,"id":"crate_high","normal":[0,1,0],"point":[0,1.2,0],"surface":"wood"}}
 ```
 
 ### physics.overlap
