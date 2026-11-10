@@ -126,6 +126,8 @@ SlashEngine covers nearly every Godot 4 feature area at launch and adds UE5 feat
 | Wind | Area3D wind (soft bodies) | Wind Directional Source | One world wind field of sources and areas, read by vegetation shaders, soft bodies, cloth and particles | After launch |
 | Foliage | MultiMesh, plugins | Foliage tool, grass | Painted and scattered foliage kept per cell, instanced grass, impostors, wind bending | After launch |
 | Light tools | Light temperature, projectors, physical units | IES profiles, light functions, Lumen tuning | Temperature, projectors, IES profiles, light functions and `light.tune` toward `lighting.check` targets | After launch |
+| Quests, dialogue and NPC scripts | Plugins (Dialogic) | Plugins, Blueprints | Questlines, branching dialogue, movement schedules and per-NPC behavior as text files over the NPC planner's facts | After launch |
+| Characters | None built in | MetaHuman, Mutable | Character recipes built into rigged models, kept distinct and held to the storyboard's design rules | After launch |
 | Virtualized geometry | None built in | Nanite | Meshlet rendering research | Research |
 | Fully dynamic GI at UE quality | SDFGI (partial) | Lumen | Research after probe GI ships | Research |
 | Digital humans | None built in | MetaHuman | Research; out of scope for releases | Research |

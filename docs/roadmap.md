@@ -1149,6 +1149,16 @@ cost, from the research proposal of 2026-11-07, in order:
 9. [ ] Light tools: Godot 4's `light_temperature` and physical light units, projector textures
        (`light_projector`), IES profiles and light functions as Unreal's, and `light.tune`, which
        adjusts lights toward exposure and contribution targets from `lighting.check`
+10. [ ] NPCs with stories of their own: questlines (`.quest.json` stages and objectives over
+        facts, with rewards and journal text), movement scripts (patrols, daily schedules and
+        routes per NPC), conversation scripts (`.dialogue.json` branching dialogue with
+        conditions and effects on facts, translated through l10n) and behavior per NPC (brains
+        that extend a shared one with their own goals, traits and priorities), with `quest.*` and
+        `dialogue.*` commands and checks that every quest can be finished and every line reached
+11. [ ] Characters: a character tool that makes the player and NPCs as `.character.json` recipes
+        (body proportions, face, hair, clothing and props, materials) built into rigged models,
+        each distinct from the others in silhouette and color, following the storyboard's
+        character design rules, which `character.check` enforces
 
 Console ports are not on this roadmap and never will be in this repository. As with Godot,
 PlayStation, Xbox and Switch support comes from licensed porting partners as private backends.
