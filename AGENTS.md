@@ -1597,6 +1597,12 @@ draw then leaves out the clusters out of view, facing away (`Cluster::cone`, fro
 `meshopt_computeClusterBounds`) or occluded (`cluster_culled`, `cull_clusters`), drawing the
 rest as a second mesh and the whole cut into shadow maps (`Draw::shadow_mesh`), except where
 rays, SDFGI or path tracing need every cluster (`set_cluster_culling`); `culled` counts them.
+With project.json's `rendering.virtual_geometry.streaming_pool_kb`, each surface's hierarchy is a
+page file (`write_cluster_pages`, `slash/scene3d/cluster_streaming.hpp`) whose groups' pages a
+`ClusterStreamer` loads as cuts ask for them, coarser groups first, and drops least recently used
+for room; `select` cuts from what is loaded, counting missing groups as fine enough, so cuts stay
+crack-free (`stream_clusters` updates them after the camera's cuts; `pages`, `pending_pages`).
+`examples/cluster-streaming` streams a moon in.
 `examples/virtualized-geometry` cuts moons near and far.
 
 Skinned meshes and model animations follow Godot's glTF importer, `Skeleton3D` and

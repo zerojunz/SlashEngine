@@ -85,6 +85,7 @@ add_library(slash_scene3d
     src/soft_body.cpp
     src/surface_tool.cpp
     src/terrain.cpp
+    src/cluster_streaming.cpp
     src/virtual_geometry.cpp
     src/voxel_gi.cpp)
 add_library(slash::scene3d ALIAS slash_scene3d)

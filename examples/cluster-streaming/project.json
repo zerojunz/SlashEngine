@@ -1,0 +1,13 @@
+{
+  "format": 1,
+  "main_scene": "main.scene.json",
+  "name": "Cluster streaming",
+  "rendering": {
+    "virtual_geometry": {"max_page_loads_per_frame": 2, "streaming_pool_kb": 256}
+  },
+  "version": "1.0.0",
+  "window": {
+    "height": 180,
+    "width": 320
+  }
+}

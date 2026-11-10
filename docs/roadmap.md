@@ -1106,8 +1106,9 @@ launch rows and the after-launch features above.
 - Virtualized geometry in the style of Nanite (meshlet rendering). Spike: cluster hierarchies
   built with meshoptimizer's cluster LOD builder and cut per camera on the CPU, crack-free,
   behind `MeshInstance3D.virtualized`, with clusters out of view, facing away or occluded culled
-  per cut ([virtualized-geometry.md](reference/virtualized-geometry.md)); GPU selection and
-  culling, a software rasterizer and streaming remain
+  per cut, and its pages streamed within a pool as cuts need them
+  ([virtualized-geometry.md](reference/virtualized-geometry.md)); GPU selection and culling and a
+  software rasterizer remain
 - Fully dynamic global illumination at Lumen quality, after probe GI ships. Spike: Godot 4.6's
   SDFGI ported to the CPU (cascades of distance fields that follow the camera, lit cells and
   probes with spherical harmonics history), behind `WorldEnvironment.sdfgi_enabled` on the
