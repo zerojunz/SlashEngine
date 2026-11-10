@@ -6305,17 +6305,14 @@ private:
                         {"transparency", "orm_texture", "next_pass", "render_priority"});
         if (const Value* transparency = section->property("transparency");
             transparency != nullptr && transparency->kind == Value::Kind::Int) {
-            // Alpha hash dithers and depth pre-pass sorts: the nearest modes cut and blend.
+            // Depth pre-pass sorts: the nearest mode blends.
             static constexpr std::array<std::string_view, 5> kModes{
-                "disabled", "alpha", "alpha_scissor", "alpha_scissor", "alpha"};
+                "disabled", "alpha", "alpha_scissor", "alpha_hash", "alpha"};
             const std::int64_t mode = transparency->integer;
             if (mode >= 0 && std::cmp_less(mode, kModes.size())) {
                 material["transparency"] = kModes.at(static_cast<std::size_t>(mode));
             }
-            if (mode == 3) {
-                problems_.add("StandardMaterial3D.transparency", node.declared,
-                              "alpha hash dithers; it cuts at alpha_scissor_threshold instead");
-            } else if (mode == 4) {
+            if (mode == 4) {
                 problems_.add("StandardMaterial3D.transparency", node.declared,
                               "depth pre-pass blends as alpha");
             }

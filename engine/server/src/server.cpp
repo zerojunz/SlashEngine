@@ -369,7 +369,12 @@ struct Server::Impl {
                 }
             }
             std::string response;
-            if (!run_on_owner([&] { response = mcp.handle(req.body); })) {
+            // Plain HTTP can't push tools/list_changed after tools_load; clients see the new
+            // tools when they list them again, and slash-mcp --live tells its client itself.
+            if (!run_on_owner([&] {
+                    response = mcp.handle(req.body);
+                    (void)mcp.take_notifications();
+                })) {
                 unavailable(res);
                 return;
             }

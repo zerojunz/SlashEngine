@@ -893,8 +893,8 @@ constexpr std::array<std::string_view, 8> kSamplerNames{"texture0",    "texture1
 // GLSL ES 3.00 can't place varyings by location, so both stages name them alike to link: the
 // canvas shader's, and the mesh shader's (cmake/compile_shaders.cmake names them so).
 constexpr std::array<std::string_view, 3> kCanvasVaryings{"v_uv", "v_color", "v_world"};
-constexpr std::array<std::string_view, 7> kMeshVaryings{
-    "v_world", "v_normal", "v_tangent", "v_binormal", "v_uv", "v_color", "v_uv2"};
+constexpr std::array<std::string_view, 8> kMeshVaryings{
+    "v_world", "v_normal", "v_tangent", "v_binormal", "v_uv", "v_color", "v_uv2", "v_object"};
 
 // The mesh shader's textures by the names the GL device binds by (gl_device.cpp), in binding
 // order: a spatial shader's texture params take the first five's slots.

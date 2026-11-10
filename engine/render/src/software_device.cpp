@@ -107,13 +107,15 @@ struct SoftwareMesh {
 // A mesh corner in clip space, with what the fragment stage reads from it: world position,
 // normal, tangent, binormal, texture coordinate, color and lightmap coordinate (the first 20,
 // which shading reads), then where it is in clip space without TAA's jitter and where it was in
-// the frame before, which TAA's prepass reads.
+// the frame before, which TAA's prepass reads, then its place on the mesh, which alpha hash reads.
 struct ClipVertex {
     Float4 clip{};
-    std::array<float, 28> varying{};
+    std::array<float, 31> varying{};
 };
 // Where TAA's prepass values start in ClipVertex::varying.
 constexpr std::size_t kMotionVaryings = 20;
+// And where the place on the mesh starts.
+constexpr std::size_t kObjectVaryings = 28;
 
 // The 3D corners are clipped to x and y within this many times w, where GPUs would use their
 // guard band, so that every corner lands near enough the target for edge() not to overflow.
@@ -1510,6 +1512,10 @@ private:
         const MeshShader* game = nullptr;
         // Whether pixels as near as the buffer's pass too, as the subsurface pass's do.
         bool equal = false;
+        // An alpha-hashed draw's alpha_hash_scale, whose pixels get their threshold from their
+        // quad's derivatives of the place on the mesh, as GPUs' coarse ddx and ddy give them; 0
+        // for other draws.
+        float hash_scale = 0.0F;
     };
 
     // A pixel of a triangle: its corners, their perspective-correct shares and whether the
@@ -1522,6 +1528,8 @@ private:
         // The surface a game's spatial shader gave it, when its draw has one. Initialized, as
         // most initializers leave it out.
         std::optional<detail::GameSurface> game{}; // NOLINT(readability-redundant-member-init)
+        // Alpha hash's threshold, in a draw that hashes.
+        float alpha_hash = 0.0F;
 
         [[nodiscard]] float varying(std::size_t k) const {
             return static_cast<float>(((shares[0] * corners[0]->varying.at(k)) +
@@ -2006,10 +2014,9 @@ private:
             draw_all(prepass_depth, true,
                      [&](const MeshShader& shader, const MeshFragment& fragment, std::size_t at) {
                          const detail::MeshPixel pixel =
-                             mesh_pixel(shader, fragment.varyings(), fragment.front,
+                             mesh_pixel(shader, fragment,
                                         {static_cast<std::uint32_t>(at % target.width()),
-                                         static_cast<std::uint32_t>(at / target.width())},
-                                        fragment.game);
+                                         static_cast<std::uint32_t>(at / target.width())});
                          const std::optional<Float4> value =
                              detail::mesh_normal_roughness(shader.surface, *shader.scene, pixel);
                          if (!value) {
@@ -2579,13 +2586,15 @@ private:
             put(corner.uv2);
             put(corner.motion_clip);
             put(corner.previous_clip);
+            put(vertex.position);
         }
         const MeshRaster raster{.depth = buffer,
                                 .stride = target.width(),
                                 .viewport = {.width = target.width(), .height = target.height()},
                                 .cull = material.cull,
                                 .game = shader.game != nullptr ? &shader : nullptr,
-                                .equal = equal};
+                                .equal = equal,
+                                .hash_scale = hash_scale(shader.surface)};
         const auto shade_pixel = [&](const MeshFragment& fragment, std::size_t at) {
             return shade(shader, fragment, at);
         };
@@ -2646,6 +2655,9 @@ private:
                     for (std::size_t k = 0; k < 4; ++k) {
                         out.varying.at(14 + k) = static_cast<float>(vertex.rgba.at(k)) / 255.0F;
                     }
+                    for (std::size_t k = 0; k < 3; ++k) {
+                        out.varying.at(kObjectVaryings + k) = vertex.position.at(k);
+                    }
                     continue;
                 }
                 const detail::MeshCorner corner =
@@ -2671,7 +2683,8 @@ private:
                                     .stride = size,
                                     .viewport = pass.rect,
                                     .cull = detail::shadow_cull(pass, draw),
-                                    .game = shader.game != nullptr && scissor ? &shader : nullptr};
+                                    .game = shader.game != nullptr && scissor ? &shader : nullptr,
+                                    .hash_scale = hash_scale(surface)};
             const auto keep = [&](const MeshFragment& fragment, std::size_t /*at*/) {
                 if (!scissor) {
                     return true;
@@ -2683,7 +2696,8 @@ private:
                 const float v = fragment.varying(13);
                 return detail::shadow_keeps(surface, albedo.sample(u, v),
                                             {fragment.varying(14), fragment.varying(15),
-                                             fragment.varying(16), fragment.varying(17)});
+                                             fragment.varying(16), fragment.varying(17)},
+                                            fragment.alpha_hash);
             };
             const std::span<const std::uint32_t> triangles = mesh.triangles(draw.lod);
             for (std::size_t i = 0; i + 2 < triangles.size(); i += 3) {
@@ -2890,11 +2904,55 @@ private:
                 // Perspective-correct: each corner's share over its w.
                 fragment.shares = {ba * a.inv_w, bb * b.inv_w, bc * c.inv_w};
                 fragment.total = fragment.shares[0] + fragment.shares[1] + fragment.shares[2];
+                if (raster.hash_scale > 0.0F) {
+                    fragment.alpha_hash =
+                        hash_threshold(a, b, c, area, px, py, fragment, raster.hash_scale);
+                }
                 if (shade(fragment, at)) {
                     raster.depth[at] = z;
                 }
             }
         }
+    }
+
+    // Alpha hash's threshold at a pixel of a triangle: the place on the mesh there, and its
+    // derivatives across and down its 2x2 quad from the quad's top left pixel, as GPUs' coarse
+    // derivatives, the quad's other pixels found where the triangle's plane reaches them.
+    static float hash_threshold(const MeshScreenVertex& a, const MeshScreenVertex& b,
+                                const MeshScreenVertex& c, std::int64_t area, std::int64_t px,
+                                std::int64_t py, const MeshFragment& fragment, float scale) {
+        const std::int64_t half = kSubpixel / 2;
+        const auto place = [&](std::int64_t x, std::int64_t y) {
+            const std::int64_t cx = (x * kSubpixel) + half;
+            const std::int64_t cy = (y * kSubpixel) + half;
+            MeshFragment at = fragment;
+            at.shares = {
+                static_cast<double>(edge(b.at, c.at, cx, cy)) / static_cast<double>(area) * a.inv_w,
+                static_cast<double>(edge(c.at, a.at, cx, cy)) / static_cast<double>(area) * b.inv_w,
+                static_cast<double>(edge(a.at, b.at, cx, cy)) / static_cast<double>(area) *
+                    c.inv_w};
+            at.total = at.shares[0] + at.shares[1] + at.shares[2];
+            return detail::Float3{at.varying(kObjectVaryings), at.varying(kObjectVaryings + 1),
+                                  at.varying(kObjectVaryings + 2)};
+        };
+        const std::int64_t qx = px & ~std::int64_t{1};
+        const std::int64_t qy = py & ~std::int64_t{1};
+        const detail::Float3 corner = place(qx, qy);
+        const detail::Float3 across = place(qx + 1, qy);
+        const detail::Float3 down = place(qx, qy + 1);
+        const detail::Float3 here{fragment.varying(kObjectVaryings),
+                                  fragment.varying(kObjectVaryings + 1),
+                                  fragment.varying(kObjectVaryings + 2)};
+        return detail::alpha_hash_threshold(
+            here, {across[0] - corner[0], across[1] - corner[1], across[2] - corner[2]},
+            {down[0] - corner[0], down[1] - corner[1], down[2] - corner[2]}, scale);
+    }
+
+    // A draw's MeshRaster::hash_scale: its alpha_hash_scale when it hashes, else 0.
+    static float hash_scale(const detail::MeshSurfaceUniforms& surface) {
+        return (surface.options[0] & detail::kMeshAlphaHash) != 0
+                   ? detail::same_bits<float>(surface.options[1])
+                   : 0.0F;
     }
 
     // A game's spatial shader's texture params, its material's first slots.
@@ -3076,10 +3134,10 @@ private:
     // fs_main in shaders/mesh.hlsl, through its CPU twin, at a pixel of the target.
     // What the fragment stage reads at a pixel of a draw, with the surface a game's shader gave
     // it, if any.
-    static detail::MeshPixel mesh_pixel(const MeshShader& shader,
-                                        const std::array<float, 20>& varying, bool front,
-                                        std::array<std::uint32_t, 2> at,
-                                        const std::optional<detail::GameSurface>& game = {}) {
+    static detail::MeshPixel mesh_pixel(const MeshShader& shader, const MeshFragment& fragment,
+                                        std::array<std::uint32_t, 2> at) {
+        const std::array<float, 20> varying = fragment.varyings();
+        const bool front = fragment.front;
         const auto take3 = [&](std::size_t k) {
             return detail::Float3{varying.at(k), varying.at(k + 1), varying.at(k + 2)};
         };
@@ -3101,7 +3159,8 @@ private:
                                                     {varying[18], varying[19]});
         }
         pixel.voxel_gi = shader.voxel_gi;
-        pixel.game = game;
+        pixel.game = fragment.game;
+        pixel.alpha_hash = fragment.alpha_hash;
         return pixel;
     }
 
@@ -3109,8 +3168,7 @@ private:
                                                   const MeshFragment& fragment,
                                                   std::array<std::uint32_t, 2> at,
                                                   Float4* subsurface = nullptr) {
-        detail::MeshPixel pixel =
-            mesh_pixel(shader, fragment.varyings(), fragment.front, at, fragment.game);
+        detail::MeshPixel pixel = mesh_pixel(shader, fragment, at);
         if (shader.game != nullptr && shader.game->light) {
             ShaderVm& module = *shader.game->light;
             pixel.game_light = [&](const detail::GameLightInput& light, detail::Float3& diffuse,

@@ -1,0 +1,6 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture","params":{"points":[[20,24],[23,24],[26,24],[29,24],[32,24],[35,24],[38,24],[41,24],[44,24]]}}
+{"jsonrpc":"2.0","id":3,"method":"component.set","params":{"id":"card","components":{"StandardMaterial3D":{"albedo_color":[0.9,0.75,0.3,0.8]}}}}
+{"jsonrpc":"2.0","id":4,"method":"frame.capture","params":{"points":[[20,24],[23,24],[26,24],[29,24],[32,24],[35,24],[38,24],[41,24],[44,24]]}}
+{"jsonrpc":"2.0","id":5,"method":"component.set","params":{"id":"card","components":{"StandardMaterial3D":{"transparency":"alpha_scissor"}}}}
+{"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"points":[[20,24],[23,24],[26,24],[29,24],[32,24],[35,24],[38,24],[41,24],[44,24]]}}

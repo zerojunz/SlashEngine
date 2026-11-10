@@ -915,6 +915,7 @@ slash-mcp [options]
 | `--project <dir>` | Project folder; scene paths are relative to it (default `.`) |
 | `--scene <file>` | Open this scene at startup, or start a new one saved there |
 | `--allow <list>` | Capabilities to grant: `read`, `edit`, `run`, `filesystem`, `build`, `network` or `all` (default `all`), e.g. `--allow read,run` |
+| `--tools <set>` | Tools to offer: `core` (default), the commands most tasks need and `tools_load`, which adds the others by group as a task needs them, or `all` ([MCP](protocols.md#mcp)) |
 | `--live` | Drive the game already running in the project (`slash-cli run --serve` or `slash-cli serve`) instead of an engine of its own |
 | `--version` | Print the engine version |
 | `--help` | Show the usage text |

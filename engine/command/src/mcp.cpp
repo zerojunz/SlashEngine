@@ -18,6 +18,7 @@ constexpr int kResourceNotFound = -32002;
 
 constexpr std::string_view kInstructions =
     R"(SlashEngine is a game engine. These tools change the open scene directly and safely: every change is checked against the engine's schemas, can be undone, and returns a compact result. Use them instead of editing .scene.json files by hand.
+- The tools are the commands most tasks need. tools_load with no arguments lists every command by group; tools_load {"groups": ["ui"]} or {"commands": ["audio.play"]} adds them as tools and returns their params. These notes name commands as tools (ui_layout is the command ui.layout); load one before you call it, or run any command with batch {"commands": [{"command": "ui.layout", "params": {...}}]}.
 - Call engine_describe first: it lists every component with its default field values, and every command.
 - Use batch to run many commands in one call. It is all or nothing, and one undo reverts it.
 - For many similar entities, prefab_save one to a .prefab.json file and entity_create the rest with "extends"; each saves only the fields it overrides.
@@ -41,7 +42,9 @@ constexpr std::string_view kInstructions =
 - CanvasLayer draws what its children list in a canvas of its own, as Godot's: a HUD that stays put over the world, or a background under it (layer -1). Parallax2D scrolls its entity at scroll_scale times the camera's speed; repeat_size draws what it holds again to fill the window and autoscroll drifts it. canvas_convert turns window pixels, such as a click, into the world through the camera, or back.
 - 2D physics is Godot's: StaticBody2D, AnimatableBody2D, RigidBody2D, CharacterBody2D and Area2D take their shapes from CollisionShape2D or CollisionPolygon2D, and collide by collision_layer and collision_mask. A CharacterBody2D moves by its velocity, as move_and_slide, and reports on_floor and on_wall. Area2D space overrides change gravity and damping inside them (physics_gravity reports a body's), and a StaticBody2D's constant velocities make a conveyor. After a step, physics_raycast, physics_overlap and physics_contacts say what is where and what touches what.
 - Navigation is Godot's: NavigationRegion2D and 3D place .navpoly.json and .navmesh.json files of convex polygons (schema_get kinds "navpoly", "navmesh"), a TileMapLayer's cells are regions of its tiles' navigation outlines, and NavigationLink2D and 3D join two points, such as a ladder's ends. navigation_path finds a path. A NavigationAgent2D or 3D finds one to its target_position while gameplay code moves it; navigation_agent shows its progress. Agents with avoidance_enabled steer round each other and NavigationObstacle2D and 3D: gameplay code sets the agent's velocity and moves it at the safe velocity in its velocity_computed event.
-- CSG shapes are Godot's: CSG shapes in a CSG shape's Transform3D children add to it, cut it or intersect it by their operation, in order; only the root draws the result, and with use_collision it is a static body. csg_get returns a root's triangles, volume and problems.
+)"
+    // MSVC takes string literals of at most 16380 bytes, so the text comes in pieces.
+    R"(- CSG shapes are Godot's: CSG shapes in a CSG shape's Transform3D children add to it, cut it or intersect it by their operation, in order; only the root draws the result, and with use_collision it is a static body. csg_get returns a root's triangles, volume and problems.
 - Path2D and Path3D are Godot's curves; a PathFollow2D or PathFollow3D in a path's Transform children sits progress along it, turned along it. Set progress, or animate PathFollow3D/progress. A CSGPolygon3D in mode "path" pushes its polygon along its path_node's Path3D: rails, pipes, roads. path_get samples a curve and finds its nearest point.
 - A GridMap is Godot's: items of a .meshlib.json library (schema_get kind meshlib) in cells written as legend keys and rows per floor, "name:orientation" for one of Godot's 24 turns. Change cells with gridmap_set (cells or a box), read them with gridmap_get; physics_raycast names the cell it hits.
 - An HTerrain is the HTerrain plugin's heightmap terrain: heights from a .height.png file, a splat map weighing up to 4 textures and a color map whose alpha cuts holes; map files that don't exist yet are flat, the first texture and white. Make heights with terrain_generate, paint with terrain_brush (raise, lower, smooth, flatten, level, splat, color, hole), read heights, normals and textures at points with terrain_get; never write the maps by hand.
@@ -79,8 +82,70 @@ constexpr std::array<Resource, 3> kResources{{
      "log.tail"},
 }};
 
+// Kept to the commands nearly every session uses, so the tools fit every client and cost few
+// tokens; the bench's setup counts them.
+constexpr std::array<std::string_view, 45> kCoreCommands{
+    "engine.describe",
+    "schema.get",
+    "project.map",
+    "api.search",
+    "scene.new",
+    "scene.open",
+    "scene.save",
+    "scene.get",
+    "entity.create",
+    "entity.get",
+    "entity.destroy",
+    "component.set",
+    "component.remove",
+    "world.query",
+    "prefab.save",
+    "batch",
+    "undo",
+    "redo",
+    "world.snapshot",
+    "world.diff",
+    "world.restore",
+    "events.subscribe",
+    "events.read",
+    "step",
+    "run.until",
+    "play",
+    "pause",
+    "input.inject",
+    "frame.summary",
+    "frame.capture",
+    "ui.layout",
+    "physics.raycast",
+    "tilemap.paint",
+    "test.run",
+    "playtest.run",
+    "build.check",
+    "gameplay.build",
+    "log.tail",
+    "storyboard.brief",
+    "storyboard.query",
+    "storyboard.edit",
+    "storyboard.check",
+    "asset.search",
+    "asset.use",
+    "asset.generate",
+};
+
 bool has(const Command& command, Capability capability) {
     return std::ranges::find(command.capabilities, capability) != command.capabilities.end();
+}
+
+// A command's group: its name up to the first dot ("ui" for ui.layout), or the whole name.
+std::string_view group_of(std::string_view command) {
+    return command.substr(0, command.find('.'));
+}
+
+// A failure's data: the JSON Pointer of the bad value.
+json::Value error_data(std::string pointer) {
+    json::Value data;
+    data["path"] = std::move(pointer);
+    return data;
 }
 
 json::Value text_content(std::string text) {
@@ -102,11 +167,37 @@ std::string_view instructions() {
     return kInstructions;
 }
 
-Server::Server(Session& session) : session_(&session) {
+std::span<const std::string_view> core_commands() {
+    return kCoreCommands;
+}
+
+Result<Tools> parse_tools(std::string_view text) {
+    if (text == "core") {
+        return Tools::Core;
+    }
+    if (text == "all") {
+        return Tools::All;
+    }
+    return Error{ErrorCode::InvalidArgument,
+                 R"(tools must be "core" or "all", not ")" + std::string(text) + "\""};
+}
+
+Server::Server(Session& session, Tools tools) : session_(&session), offered_(tools) {
     for (const Command& command : session.commands().commands()) {
         const bool added = tools_.emplace(tool_name(command.name), &command).second;
         SLASH_ASSERT(added, "two commands map to the same MCP tool name");
     }
+    SLASH_ASSERT(!tools_.contains(kLoadTool), "a command maps to the tools_load tool's name");
+}
+
+std::vector<std::string> Server::take_notifications() {
+    return std::exchange(notifications_, {});
+}
+
+bool Server::offered(const Command& command) const {
+    return offered_ == Tools::All ||
+           std::ranges::find(kCoreCommands, command.name) != kCoreCommands.end() ||
+           loaded_.contains(command.name);
 }
 
 std::string Server::handle(std::string_view message) {
@@ -152,7 +243,7 @@ Reply Server::dispatch(std::string_view method, const json::Value& params) {
     return Reply::failure(code::kMethodNotFound, "unknown method \"" + std::string(method) + "\"");
 }
 
-Reply Server::initialize(const json::Value& params) {
+Reply Server::initialize(const json::Value& params) const {
     std::string_view version = kProtocolVersions.front();
     if (const json::Value* requested = params.find("protocolVersion");
         requested != nullptr && requested->is_string() &&
@@ -161,7 +252,7 @@ Reply Server::initialize(const json::Value& params) {
     }
     json::Value result;
     result["protocolVersion"] = version;
-    result["capabilities"]["tools"]["listChanged"] = false;
+    result["capabilities"]["tools"]["listChanged"] = offered_ == Tools::Core;
     result["capabilities"]["resources"]["listChanged"] = false;
     result["capabilities"]["resources"]["subscribe"] = false;
     result["serverInfo"]["name"] = "slashengine";
@@ -171,30 +262,163 @@ Reply Server::initialize(const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+json::Value Server::definition(const std::string& name, const Command& command) const {
+    const bool read_only = command.effect == Effect::Read && !has(command, Capability::Edit) &&
+                           !has(command, Capability::Run) &&
+                           !has(command, Capability::Filesystem) &&
+                           !has(command, Capability::Build) && !has(command, Capability::Network);
+    json::Value tool;
+    tool["name"] = name;
+    tool["description"] = command.description;
+    tool["inputSchema"] = command.params;
+    tool["annotations"]["readOnlyHint"] = read_only;
+    if (!read_only) {
+        // Edits can be undone; replacing the scene, writing files or building cannot.
+        tool["annotations"]["destructiveHint"] = command.effect == Effect::Replace ||
+                                                 has(command, Capability::Filesystem) ||
+                                                 has(command, Capability::Build);
+    }
+    // Only commands that reach the network, such as ai.complete, leave the project.
+    tool["annotations"]["openWorldHint"] = has(command, Capability::Network);
+    return tool;
+}
+
 Reply Server::list_tools() const {
     json::Array tools;
+    if (offered_ == Tools::Core) {
+        json::Value load;
+        load["name"] = std::string(kLoadTool);
+        load["description"] =
+            "With no arguments, lists every engine command by group. With groups or commands, "
+            "adds them as tools and returns their descriptions and params.";
+        load["inputSchema"]["type"] = "object";
+        load["inputSchema"]["properties"]["groups"]["type"] = "array";
+        load["inputSchema"]["properties"]["groups"]["items"]["type"] = "string";
+        load["inputSchema"]["properties"]["groups"]["description"] =
+            R"(Groups to load, e.g. "ui" or "audio".)";
+        load["inputSchema"]["properties"]["commands"]["type"] = "array";
+        load["inputSchema"]["properties"]["commands"]["items"]["type"] = "string";
+        load["inputSchema"]["properties"]["commands"]["description"] =
+            R"(Commands to load, e.g. "ui.layout".)";
+        load["inputSchema"]["additionalProperties"] = false;
+        load["annotations"]["readOnlyHint"] = true;
+        load["annotations"]["openWorldHint"] = false;
+        tools.push_back(std::move(load));
+    }
     for (const auto& [name, command] : tools_) {
-        const bool read_only =
-            command->effect == Effect::Read && !has(*command, Capability::Edit) &&
-            !has(*command, Capability::Run) && !has(*command, Capability::Filesystem) &&
-            !has(*command, Capability::Build) && !has(*command, Capability::Network);
-        json::Value tool;
-        tool["name"] = name;
-        tool["description"] = command->description;
-        tool["inputSchema"] = command->params;
-        tool["annotations"]["readOnlyHint"] = read_only;
-        if (!read_only) {
-            // Edits can be undone; replacing the scene, writing files or building cannot.
-            tool["annotations"]["destructiveHint"] = command->effect == Effect::Replace ||
-                                                     has(*command, Capability::Filesystem) ||
-                                                     has(*command, Capability::Build);
+        if (offered(*command)) {
+            tools.push_back(definition(name, *command));
         }
-        // Only commands that reach the network, such as ai.complete, leave the project.
-        tool["annotations"]["openWorldHint"] = has(*command, Capability::Network);
-        tools.push_back(std::move(tool));
     }
     json::Value result;
     result["tools"] = std::move(tools);
+    return Reply::success(std::move(result));
+}
+
+Reply Server::load_tools(const json::Value& arguments) {
+    if (!arguments.is_null() && !arguments.is_object()) {
+        return Reply::failure(code::kInvalidParams, "tools_load takes an object");
+    }
+    std::vector<std::string_view> groups;
+    std::vector<std::string_view> names;
+    for (const auto& [name, command] : tools_) {
+        if (std::ranges::find(groups, group_of(command->name)) == groups.end()) {
+            groups.push_back(group_of(command->name));
+        }
+        names.emplace_back(command->name);
+    }
+    std::vector<const Command*> wanted;
+    const auto add = [&](const Command& command) {
+        if (std::ranges::find(wanted, &command) == wanted.end()) {
+            wanted.push_back(&command);
+        }
+    };
+    const std::array<std::string_view, 2> keys{"groups", "commands"};
+    bool asked = false;
+    if (arguments.is_object()) {
+        for (const auto& [key, value] : arguments.as_object()) {
+            if (std::ranges::find(keys, key) == keys.end()) {
+                return Reply::failure(code::kInvalidParams,
+                                      "tools_load takes groups and commands, not \"" + key + "\"",
+                                      error_data("/" + key));
+            }
+        }
+    }
+    for (std::size_t k = 0; k < keys.size(); ++k) {
+        const json::Value* list = arguments.is_object() ? arguments.find(keys[k]) : nullptr;
+        if (list == nullptr) {
+            continue;
+        }
+        const std::string pointer = "/" + std::string(keys[k]);
+        if (!list->is_array()) {
+            return Reply::failure(code::kInvalidParams, std::string(keys[k]) + " must be an array",
+                                  error_data(pointer));
+        }
+        asked = true;
+        for (std::size_t i = 0; i < list->size(); ++i) {
+            const json::Value& item = list->as_array()[i];
+            const std::string at = pointer + "/" + std::to_string(i);
+            if (!item.is_string()) {
+                return Reply::failure(code::kInvalidParams, "must be a string", error_data(at));
+            }
+            // A tool name ("ui_layout") names its command too.
+            std::string wanted_name = item.as_string();
+            if (k == 1) {
+                if (const auto tool = tools_.find(wanted_name); tool != tools_.end()) {
+                    wanted_name = tool->second->name;
+                }
+            }
+            bool found = false;
+            for (const auto& [name, command] : tools_) {
+                if ((k == 0 && group_of(command->name) == wanted_name) ||
+                    (k == 1 && command->name == wanted_name)) {
+                    add(*command);
+                    found = true;
+                }
+            }
+            if (!found) {
+                std::string message = std::string(k == 0 ? "no group" : "no command") + " \"" +
+                                      item.as_string() + "\"";
+                if (const std::string_view hint =
+                        closest_match(item.as_string(), k == 0 ? groups : names);
+                    !hint.empty()) {
+                    message += "; did you mean \"" + std::string(hint) + "\"?";
+                }
+                return Reply::failure(code::kInvalidParams, std::move(message), error_data(at));
+            }
+        }
+    }
+
+    json::Value result;
+    if (!asked) {
+        // The directory: each group's commands, by name only; loading gives the rest.
+        json::Value directory = json::Object{};
+        for (const auto& [name, command] : tools_) {
+            json::Value& group = directory[std::string(group_of(command->name))];
+            if (group.is_null()) {
+                group = json::Array{};
+            }
+            group.push_back(command->name);
+        }
+        result["groups"] = std::move(directory);
+        return Reply::success(std::move(result));
+    }
+    json::Array added;
+    bool changed = false;
+    for (const Command* command : wanted) {
+        if (!offered(*command)) {
+            loaded_.insert(command->name);
+            changed = true;
+        }
+        json::Value tool = definition(tool_name(command->name), *command);
+        tool.as_object().erase("annotations");
+        added.push_back(std::move(tool));
+    }
+    if (changed) {
+        notifications_.emplace_back(
+            R"({"jsonrpc":"2.0","method":"notifications/tools/list_changed"})");
+    }
+    result["tools"] = std::move(added);
     return Reply::success(std::move(result));
 }
 
@@ -202,6 +426,30 @@ Reply Server::call_tool(const json::Value& params) {
     const json::Value* name = params.find("name");
     if (name == nullptr || !name->is_string()) {
         return Reply::failure(code::kInvalidParams, "tools/call needs a tool name");
+    }
+    if (name->as_string() == kLoadTool && offered_ == Tools::Core) {
+        const json::Value* arguments = params.find("arguments");
+        Reply loaded = load_tools(arguments != nullptr ? *arguments : json::Value());
+        json::Value result;
+        if (loaded.ok) {
+            result["content"] =
+                json::Array{text_content(json::write(loaded.value, json::Style::Compact))};
+            result["structuredContent"] = std::move(loaded.value);
+            result["isError"] = false;
+        } else {
+            json::Value error;
+            error["code"] = loaded.code;
+            error["message"] = std::move(loaded.message);
+            if (!loaded.data.is_null()) {
+                error["data"] = std::move(loaded.data);
+            }
+            json::Value wrapped;
+            wrapped["error"] = std::move(error);
+            result["content"] =
+                json::Array{text_content(json::write(wrapped, json::Style::Compact))};
+            result["isError"] = true;
+        }
+        return Reply::success(std::move(result));
     }
     const auto tool = tools_.find(name->as_string());
     if (tool == tools_.end()) {

@@ -666,7 +666,7 @@ float ShadowAtlas::depth(float u, float v) const {
 }
 
 bool shadow_keeps(const MeshSurfaceUniforms& surface, const Float4& albedo_texel,
-                  const Float4& color) {
+                  const Float4& color, float alpha_hash) {
     const std::uint32_t flags = surface.options[0];
     if ((flags & kMeshAlphaScissor) == 0) {
         return true;
@@ -675,7 +675,9 @@ bool shadow_keeps(const MeshSurfaceUniforms& surface, const Float4& albedo_texel
     if ((flags & kMeshVertexColorAlbedo) != 0) {
         alpha *= color[3];
     }
-    return !(alpha < same_bits<float>(surface.options[1]));
+    const float threshold =
+        (flags & kMeshAlphaHash) != 0 ? alpha_hash : same_bits<float>(surface.options[1]);
+    return !(alpha < threshold);
 }
 
 } // namespace slash::render::detail

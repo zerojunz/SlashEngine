@@ -7,6 +7,7 @@ add_library(slash_ai
     src/gemini.cpp
     src/http_provider.cpp
     src/openai.cpp
+    src/openai_responses.cpp
     src/provider.cpp
     src/replay.cpp
     src/transport.cpp

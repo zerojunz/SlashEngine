@@ -4,12 +4,14 @@
 #include "cpu_particles.hpp"
 #include "gpu_device.hpp"
 #include "material_shaders.hpp"
+#include "mesh_plain_shaders.hpp"
 #include "mesh_shaders.hpp"
 #include "mesh_shading.hpp"
 #include "post_shaders.hpp"
 #include "post_shading.hpp"
 #include "radiance_shaders.hpp"
 #include "shader_code.hpp"
+#include "shadow_plain_shaders.hpp"
 #include "shadow_shaders.hpp"
 #include "sky_shaders.hpp"
 #include "sky_shading.hpp"
@@ -295,6 +297,8 @@ constexpr std::array<std::string_view, kMeshTextures + 3> kMeshSamplerNames{
     "normal_texture",   "ground_texture_2", "ground_texture_3",  "ground_normal_0",
     "ground_normal_1",  "ground_normal_2",  "ground_normal_3",   "directional_atlas",
     "positional_atlas", "radiance_map"};
+// The shadow shader's one texture, read for alpha scissor and alpha hash.
+constexpr std::array<std::string_view, 1> kShadowSamplers{"albedo_texture"};
 constexpr std::array<std::string_view, 3> kPostSamplerNames{"source", "glow_texture", "lut"};
 constexpr std::array<std::string_view, 1> kSkySamplerNames{"sky_texture"};
 constexpr std::array<std::string_view, 1> kRadianceSamplerNames{"source_cube"};
@@ -511,11 +515,11 @@ public:
                 for (const auto& [id, mesh] : meshes_) {
                     delete_mesh(mesh);
                 }
-                if (mesh_program_ != 0) {
-                    gl_.delete_program(mesh_program_);
-                }
-                if (shadow_program_ != 0) {
-                    gl_.delete_program(shadow_program_);
+                for (const GLuint program : {mesh_program_, hashed_mesh_program_, shadow_program_,
+                                             hashed_shadow_program_}) {
+                    if (program != 0) {
+                        gl_.delete_program(program);
+                    }
                 }
                 for (const GlShadowAtlas& atlas :
                      {shadow_atlases_[0], shadow_atlases_[1], no_shadows_}) {
@@ -961,6 +965,20 @@ public:
         }
         if (auto ready = prepare_shadows(*frame_.scene); !ready) {
             return ready;
+        }
+        if (alpha_hashed(material)) {
+            if (auto program = hashed_mesh_program(); !program) {
+                return program.error();
+            }
+            if (shadow_plan_ && !shadow_plan_->passes.empty() && hashed_shadow_program_ == 0) {
+                auto program = link(at_w1_vertex(shaders::kShadowVertexGlsl),
+                                    at_w1_fragment(shaders::kShadowFragmentGlsl), kShadowSamplers,
+                                    "the alpha hash shadow shader");
+                if (!program) {
+                    return program.error();
+                }
+                hashed_shadow_program_ = program.value();
+            }
         }
         if (auto ready = prepare_radiance(*frame_.scene); !ready) {
             return ready;
@@ -1903,19 +1921,42 @@ private:
         gl_.delete_buffers(1, &mesh.indices);
     }
 
+    // Whether a draw cuts its surface by alpha hash, which only the hashed programs do. The
+    // others leave it out (mesh_plain.hlsl, shadow_plain.hlsl): Apple's software OpenGL
+    // renderer takes minutes compiling the mesh shader with it.
+    static bool alpha_hashed(const Material3D& material) {
+        return material.transparency == Transparency::AlphaHash &&
+               material.shader == ShaderId::None;
+    }
+
     // The mesh program, made the first time a frame draws a mesh.
     Result<GLuint> mesh_program() {
         if (mesh_program_ != 0) {
             return mesh_program_;
         }
-        auto program = link(at_w1_vertex(joined(shaders::kMeshVertexGlsl)),
-                            at_w1_fragment(joined(shaders::kMeshFragmentGlsl)), kMeshSamplerNames,
-                            "the mesh shader");
+        auto program = link(at_w1_vertex(joined(shaders::kMeshPlainVertexGlsl)),
+                            at_w1_fragment(joined(shaders::kMeshPlainFragmentGlsl)),
+                            kMeshSamplerNames, "the mesh shader");
         if (!program) {
             return program.error();
         }
         mesh_program_ = program.value();
         return mesh_program_;
+    }
+
+    // The mesh program with alpha hash, made the first time a frame draws a mesh with it.
+    Result<GLuint> hashed_mesh_program() {
+        if (hashed_mesh_program_ != 0) {
+            return hashed_mesh_program_;
+        }
+        auto program = link(at_w1_vertex(joined(shaders::kMeshVertexGlsl)),
+                            at_w1_fragment(joined(shaders::kMeshFragmentGlsl)), kMeshSamplerNames,
+                            "the alpha hash mesh shader");
+        if (!program) {
+            return program.error();
+        }
+        hashed_mesh_program_ = program.value();
+        return hashed_mesh_program_;
     }
 
     // The depth buffer meshes draw over, made again when the target's size changes. It is
@@ -1991,10 +2032,9 @@ private:
             atlas = {.texture = made.value(), .size = sizes.at(i)};
         }
         if (!plan.passes.empty() && shadow_program_ == 0) {
-            const std::array<std::string_view, 1> samplers{"albedo_texture"};
-            auto program =
-                link(at_w1_vertex(shaders::kShadowVertexGlsl),
-                     at_w1_fragment(shaders::kShadowFragmentGlsl), samplers, "the shadow shader");
+            auto program = link(at_w1_vertex(shaders::kShadowPlainVertexGlsl),
+                                at_w1_fragment(shaders::kShadowPlainFragmentGlsl), kShadowSamplers,
+                                "the shadow shader");
             if (!program) {
                 return program.error();
             }
@@ -2082,7 +2122,12 @@ private:
                     // material's first units, in both stages.
                     const auto game = spatial_shadow_programs_.find(draw.material.shader);
                     const bool own = game != spatial_shadow_programs_.end();
-                    gl_.use_program(own ? game->second : shadow_program_);
+                    if (own) {
+                        gl_.use_program(game->second);
+                    } else {
+                        gl_.use_program(alpha_hashed(draw.material) ? hashed_shadow_program_
+                                                                    : shadow_program_);
+                    }
                     if (own) {
                         gl_.bind_buffer_range(
                             gl::kUniformBuffer, kGameBinding, uniform_buffer_,
@@ -2218,9 +2263,10 @@ private:
             }
             gl_.depth_mask(blended ? gl::kFalse : gl::kTrue);
             set_cull(material.cull);
-            const GLuint program = material.shader == ShaderId::None
-                                       ? mesh_program_
-                                       : spatial_programs_.at(material.shader);
+            GLuint program = alpha_hashed(material) ? hashed_mesh_program_ : mesh_program_;
+            if (material.shader != ShaderId::None) {
+                program = spatial_programs_.at(material.shader);
+            }
             if (program != used) {
                 gl_.use_program(program);
                 used = program;
@@ -2689,6 +2735,8 @@ private:
     std::array<GlShadowAtlas, 2> shadow_atlases_{}; // directional, then positional
     GlShadowAtlas no_shadows_;                      // bound for an atlas the frame doesn't draw
     GLuint shadow_program_ = 0;
+    GLuint hashed_mesh_program_ = 0;   // with alpha hash, made at the first draw using it
+    GLuint hashed_shadow_program_ = 0; // the same for shadows
     GLuint shadow_sampler_ = 0;
     GLuint shadow_framebuffer_ = 0;
     std::uint32_t depth_width_ = 0;

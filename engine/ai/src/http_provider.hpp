@@ -12,7 +12,7 @@
 #include <string>
 #include <string_view>
 
-// What the three adapters share: fitting a request to the model, sending it with retries,
+// What the adapters share: fitting a request to the model, sending it with retries,
 // reading a streamed reply event by event, turning error replies into errors and checking the
 // reply against an output schema. Each adapter says how to build its request and read its reply.
 namespace slash::ai::detail {
@@ -45,6 +45,8 @@ protected:
     // The HTTP request for a request already fitted to the model's capabilities.
     [[nodiscard]] virtual HttpRequest build(const Request& request, bool stream) const = 0;
     [[nodiscard]] virtual std::unique_ptr<StreamState> start_stream() const = 0;
+    // Keeps in a reply's native data what later requests need from the request it answered.
+    virtual void note_reply(const Request& /*request*/, Response& /*response*/) const {}
 
     [[nodiscard]] const AdapterOptions& options() const noexcept { return options_; }
     // The base URL, without a trailing '/', followed by path.
@@ -72,6 +74,7 @@ private:
 [[nodiscard]] std::int64_t int_or_zero(const json::Value& value, std::string_view key);
 
 [[nodiscard]] std::shared_ptr<Provider> make_openai(AdapterOptions options);
+[[nodiscard]] std::shared_ptr<Provider> make_openai_responses(AdapterOptions options);
 [[nodiscard]] std::shared_ptr<Provider> make_anthropic(AdapterOptions options);
 [[nodiscard]] std::shared_ptr<Provider> make_gemini(AdapterOptions options);
 

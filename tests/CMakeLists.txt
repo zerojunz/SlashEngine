@@ -3,6 +3,7 @@
 if(EMSCRIPTEN)
     add_executable(slash_web_tests
         test_main.cpp
+        test_alpha_hash.cpp
         test_clusters.cpp
         test_decal.cpp
         test_forward_post.cpp
@@ -53,6 +54,7 @@ endif()
 add_executable(slash_tests
     test_main.cpp
     test_ai.cpp
+    test_alpha_hash.cpp
     test_analytics_endpoint.cpp
     test_android_library.cpp
     test_animation.cpp
@@ -315,12 +317,14 @@ if(SLASH_GAMEPLAY_HOSTS)
         SLASH_TEST_CXX_COMPILER="${CMAKE_CXX_COMPILER}")
 endif()
 
-# The unit tests run as five ctest tests, by the first letter of the file after "test_", so each
-# has its own time limit: on Windows runners, which have no GPU, they take many times longer than
-# on Linux and macOS. The last takes every file the others don't, so a new test file always runs.
+# The unit tests run as six ctest tests, by the first letters of the file after "test_", so each
+# has its own time limit: on Windows runners, which have no GPU, and on macOS runners, where the
+# Metal tests are slow, they take many times longer than on Linux. The last takes every file the
+# others don't (s from "ss" on, then t to z), so a new test file always runs.
 # retry_stuck.cmake runs a shard once more when test_main.cpp's watchdog stops a stuck test case,
 # so each gets twice the presets' ten minutes.
-set(unit_shards "a b c d e f g" "h i j k l m n o" "p q r" "s")
+set(unit_shards "a b c d e f g" "h i j k l m n o" "p q r" "sa sb sc sd se sf sg sh"
+    "si sj sk sl sm sn so sp sq sr")
 set(unit_args "")
 set(unit_others "")
 foreach(letters IN LISTS unit_shards)
@@ -343,7 +347,8 @@ endforeach()
 
 # The compiled shaders committed in engine/render/src match their HLSL; see
 # cmake/compile_shaders.cmake.
-foreach(shader IN ITEMS sprite material mesh mesh_clustered mesh_normal mesh_motion shadow post
+foreach(shader IN ITEMS sprite material mesh mesh_clustered mesh_normal mesh_motion mesh_plain
+        shadow shadow_plain post
         forward_post ssao ssr ssr_trace sky radiance taa particles_process particles_emit
         particles_draw particles_process_3d particles_sort_3d particles_mesh_3d fsr2_luma fsr2_dilate fsr2_reconstruct fsr2_depth_clip fsr2_lock
         fsr2_accumulate fsr2_rcas fsr3_prepare fsr3_reconstruct fsr3_pyramid fsr3_reduce

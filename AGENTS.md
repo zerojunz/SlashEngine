@@ -28,9 +28,13 @@ cmake --build --preset dev       # build engine, slash-cli and tests
 ctest --preset dev               # run unit and smoke tests
 ```
 
-The `ci` preset is what CI runs: same build with warnings as errors. Use it before you push.
+The `ci` preset is what CI runs: warnings as errors and no debug info. Use it before you push.
+`-DSLASH_DEBUG_INFO=OFF` leaves debug info out of any build: compiles take about half as long,
+objects a twentieth of the space (so ccache keeps a whole build) and links far less memory; CI
+and cloud sessions build that way, and a debugger still has function names.
 Ninja links one Debug executable per 6 GB of memory (the `slash_link` pool in `CMakeLists.txt`,
-since each link takes nearly 4 GB with GNU ld); set `CMAKE_JOB_POOL_LINK` to use your own.
+since each link with debug info takes nearly 4 GB with GNU ld); set `CMAKE_JOB_POOL_LINK` to use
+your own.
 
 On Linux, SDL3 needs the X11/Wayland development packages listed in
 `.github/workflows/ci.yml`.
@@ -85,10 +89,11 @@ MSVC's STL; in both, `std::array`, `std::string_view` and `std::span` iterators 
 than pointers and headers include fewer others, so code GCC accepts can fail there. Run it before
 every push that changes C++. It needs `slash-cli toolchain install web`.
 
-The unit tests run as five ctest shards (`unit_1` to `unit_5`, by test file name). A test case
+The unit tests run as six ctest shards (`unit_1` to `unit_6`, by test file name). A test case
 that runs over eight minutes is stuck: the watchdog in `tests/test_main.cpp` names it and stops
 the shard, and `tests/retry_stuck.cmake` runs the shard once more, so a hang that comes back
-still fails.
+still fails. Each case of 5 s or more is written to `build/<preset>/tests/unit_<n>-times.txt`
+(`SLASH_TEST_TIMES`), which CI prints after the tests, slowest first.
 
 Claude Code sessions run `.claude/hooks/task_nudge.py` after each tool call. It says nothing
 until one task has taken 30 minutes, then adds a `[task-nudge]` line asking the agent to check
@@ -388,6 +393,7 @@ backs three front ends, so they never drift apart:
 ```bash
 mcp=./build/dev/tools/slash-mcp/slash-mcp
 $mcp --project . --scene tests/data/basic.scene.json     # MCP over stdio; tools use '_' for '.'
+$mcp --project . --tools all                             # every command as a tool, not core + tools_load
 $cli rpc --project .                                     # JSON-RPC 2.0, one message per line
 $cli call world.query '{"with": ["Transform2D"]}' --scene tests/data/basic.scene.json
 $cli call batch '{"commands": [{"command": "entity.create", "params": {"id": "a"}}]}' \
@@ -404,6 +410,12 @@ go back to a copy of the entities. `events.subscribe` and `events.read` report e
 destroyed, each change to the world and events gameplay code emits with `World::emit`. Systems
 react to them through `World::events()`, the events of the tick before, which each system sees
 once whatever its priority; sessions put them back when a command fails or is a dry run.
+
+MCP clients start with the core commands as tools (`kCoreCommands` in
+`engine/command/src/mcp.cpp`) and `tools_load`, a directory that adds the rest by group as a task
+needs them, since OpenAI's API takes at most 128 tools and each definition costs tokens every turn
+([docs/reference/protocols.md](docs/reference/protocols.md#mcp)). A command most sessions need
+belongs in that list; the bench's setup counts it.
 
 Commands are built for agents, so keep them cheap to call:
 
@@ -1017,6 +1029,20 @@ leave free (`MeshSurfaceUniforms::lightmap`'s z and w, `voxel_gi`'s y, z and w),
 uniforms keep their size; the clearcoat also reflects the sky and anisotropy bends the normal
 reflections take. Their textures aren't read yet (texture slots are full).
 `examples/hair-and-eye-shading` lights a cheek, an eye and hair.
+
+Alpha hash is Godot's `"alpha_hash"` transparency (`Transparency::AlphaHash`,
+`Material3D::alpha_hash_scale`): `mesh_surface_uniforms` sets `kMeshAlphaScissor` and
+`kMeshAlphaHash` with the scale in the threshold's lane, and `mesh.hlsl` and `shadow.hlsl` cut at
+`alpha_hash_threshold` (Godot's `compute_alpha_hash_threshold` over the place on the mesh, a
+varying of its own, and its `ddx` and `ddy`), whose noise is PCG3D of whole numbers in place of
+Godot's sines. `detail::alpha_hash_threshold` in `src/mesh.cpp` is its CPU twin, which the
+software device feeds from its quads' coarse derivatives (`MeshRaster::hash_scale`,
+`MeshFragment::alpha_hash`); rays take the surface as alpha (`traced_surface`). A change to one
+goes in both; `tests/test_alpha_hash.cpp` holds every device to the software device and
+`examples/alpha-hash` fades a hair card. The OpenGL devices draw other meshes and shadows with
+`mesh_plain.hlsl` and `shadow_plain.hlsl` (GLSL only, `NO_ALPHA_HASH`), linking the hashed
+programs at the first draw that uses alpha hash (`alpha_hashed` in `src/gl_device.cpp`), since
+Apple's software OpenGL renderer takes minutes compiling the mesh shader with it.
 
 Subsurface scattering is Godot 4.6's Forward+ screen-space blur (`Material3D::subsurface`, from
 `StandardMaterial3D`'s `subsurf_scatter_*`; project.json's
@@ -2587,7 +2613,8 @@ only looks for one (`xr::openxr_runtime_extensions`) and reports it in its summa
 ([docs/reference/providers.md](docs/reference/providers.md)). Adapters translate a `Request`
 (messages with text, images, tool calls and tool results; tools; an `output_schema`; params) and
 the reply for OpenAI's chat completions (also Ollama, llama.cpp, vLLM, LM Studio and OpenRouter),
-Anthropic's Messages API and Gemini (`src/openai.cpp`, `src/anthropic.cpp`, `src/gemini.cpp` on
+OpenAI's Responses API, Anthropic's Messages API and Gemini (`src/openai.cpp`,
+`src/openai_responses.cpp`, `src/anthropic.cpp`, `src/gemini.cpp` on
 `src/http_provider.cpp`, which retries and streams server-sent events). A reply keeps what its
 provider needs back in later turns (thinking blocks, thought signatures) in `Message::native`.
 `fit_request` puts an output schema in the prompt for models that can't take one, and

@@ -2,18 +2,27 @@ name: Agent benchmark
 
 # Each week a model does the benchmark's tasks (bench/tasks) from their prompts alone, through
 # the same MCP tools agents use, and the calls and tokens it took go in the job summary
-# (slash-cli bench --live; docs/reference/benchmark.md). It runs only where the repository names
-# a model, with these Actions variables and secret:
+# (slash-cli bench --live; docs/reference/benchmark.md). It runs each model the repository names,
+# one after another, with these Actions variables and secrets:
 #
-#   BENCH_PROVIDER_TYPE  openai, anthropic or gemini
-#   BENCH_MODEL          the model's ID
-#   BENCH_URL            a server's API URL, for openai-compatible servers of your own (optional)
-#   BENCH_API_KEY        the key (a secret; optional for a server that needs none)
+#   BENCH_PROVIDER_TYPE      openai-responses (OpenAI's own models), openai, anthropic or gemini
+#   BENCH_MODEL              the model's ID
+#   BENCH_URL                a server's API URL, for openai-compatible servers of your own (optional)
+#   BENCH_API_KEY            the key (a secret; optional for a server that needs none)
+#
+#   BENCH_ANTHROPIC_MODEL    a second model, on Anthropic's API (optional)
+#   BENCH_ANTHROPIC_API_KEY  its key (a secret)
 
 on:
   schedule:
     - cron: '0 6 * * 1'
   workflow_dispatch:
+    inputs:
+      models:
+        description: Which models to run
+        type: choice
+        options: [all, main, anthropic]
+        default: all
 
 permissions:
   contents: read
@@ -27,7 +36,7 @@ env:
 jobs:
   live:
     name: Live agent benchmark
-    if: vars.BENCH_MODEL != ''
+    if: vars.BENCH_MODEL != '' || vars.BENCH_ANTHROPIC_MODEL != ''
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -46,36 +55,49 @@ jobs:
           cmake --preset dev
           cmake --build --preset dev --target slash-cli
 
-      # The key stays in the environment; providers.json only names the variable.
-      - name: Write providers.json
+      # Each model's key stays in the environment; its providers.json only names the variable. A
+      # model that fails its run doesn't stop the next one, but fails the job. The summary goes to
+      # the log too, so the API's job logs show why a run failed.
+      - name: Run the tasks
         env:
           TYPE: ${{ vars.BENCH_PROVIDER_TYPE }}
           MODEL: ${{ vars.BENCH_MODEL }}
           URL: ${{ vars.BENCH_URL }}
-        run: |
-          jq -n --arg type "$TYPE" --arg model "$MODEL" --arg url "$URL" '{providers: {bench:
-            ({type: $type, model: $model, api_key_env: "BENCH_API_KEY"}
-             + (if $url == "" then {} else {url: $url} end))}}' > build/bench-providers.json
-
-      - name: Run the tasks
-        env:
+          ANTHROPIC_MODEL: ${{ vars.BENCH_ANTHROPIC_MODEL }}
+          MODELS: ${{ inputs.models || 'all' }}
           BENCH_API_KEY: ${{ secrets.BENCH_API_KEY }}
+          BENCH_ANTHROPIC_API_KEY: ${{ secrets.BENCH_ANTHROPIC_API_KEY }}
         run: |
-          status=0
-          ./build/dev/tools/slash-cli/slash-cli bench --live build/bench-providers.json \
-            > build/bench-live.json || status=$?
-          jq -r '"Model: \(.model // "unknown"). Calls: \(.total.calls). Tokens: \(.total.tokens).",
-            "", "| Task | Calls | Replies | Input tokens | Output tokens |",
-            "| --- | --- | --- | --- | --- |",
-            (.tasks | to_entries[] | "| \(.key) | \(.value.calls) | \(.value.turns) | \(.value.input_tokens) | \(.value.output_tokens) |"),
-            "", (.failed[] | "- \(.task) at \(.path): \(.message)")' build/bench-live.json \
-            >> "$GITHUB_STEP_SUMMARY"
-          exit $status
+          mkdir -p build/bench
+          failed=0
+          bench() { # name type model key_variable url
+            jq -n --arg type "$2" --arg model "$3" --arg key "$4" --arg url "$5" '{providers: {bench:
+              ({type: $type, model: $model, api_key_env: $key}
+               + (if $url == "" then {} else {url: $url} end))}}' > "build/bench/$1-providers.json"
+            status=0
+            ./build/dev/tools/slash-cli/slash-cli bench --live "build/bench/$1-providers.json" \
+              > "build/bench/$1.json" || status=$?
+            echo "## $3" | tee -a "$GITHUB_STEP_SUMMARY"
+            jq -r '"Calls: \(.total.calls). Tokens: \(.total.tokens).",
+              "", "| Task | Calls | Replies | Input tokens | Output tokens |",
+              "| --- | --- | --- | --- | --- |",
+              (.tasks | to_entries[] | "| \(.key) | \(.value.calls) | \(.value.turns) | \(.value.input_tokens) | \(.value.output_tokens) |"),
+              "", (.failed[] | "- \(.task) at \(.path): \(.message)"), ""' "build/bench/$1.json" \
+              | tee -a "$GITHUB_STEP_SUMMARY" || echo "The run left no report (exit $status)." | tee -a "$GITHUB_STEP_SUMMARY"
+            [ "$status" -eq 0 ] || failed=1
+          }
+          if [ -n "$MODEL" ] && [ "$MODELS" != anthropic ]; then
+            bench main "$TYPE" "$MODEL" BENCH_API_KEY "$URL"
+          fi
+          if [ -n "$ANTHROPIC_MODEL" ] && [ "$MODELS" != main ]; then
+            bench anthropic anthropic "$ANTHROPIC_MODEL" BENCH_ANTHROPIC_API_KEY ""
+          fi
+          exit $failed
 
       - name: Keep the report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: bench-live
-          path: build/bench-live.json
+          path: build/bench/*.json
           if-no-files-found: ignore

@@ -48,7 +48,8 @@ constexpr std::string_view kTakenNames =
 // tonemap.hlsl it includes, its wrappers' and game_surface's parameters, which hide params of the
 // same name where game_surface reads them. A test checks mesh.hlsl's.
 constexpr std::string_view kSpatialTakenNames =
-    " add_light agx_contrast_approx albedo albedo_sampler albedo_texture ambient apply_decal "
+    " add_light agx_contrast_approx albedo albedo_sampler albedo_texture alpha_hash_threshold "
+    "alpha_hash_value ambient apply_decal "
     "apply_decals apply_tonemapping atlas_depth before bicubic_w0 bicubic_w1 bicubic_w2 bicubic_w3 "
     "binormal "
     "camera camera_z capture capture_light clip clip_rows cluster cluster_stride clustered_lights "
@@ -78,7 +79,8 @@ constexpr std::string_view kSpatialTakenNames =
     "ssao sss_params sss_transmittance subsurface_light surface "
     "surface_out surface_steps tangent terrain_opacity terrain_uv texture tonemap tonemap_aces "
     "tonemap_agx tonemap_filmic tonemap_reinhard trace_voxel_gis unpack_ground_normal uv uv1 uv2 "
-    "v_binormal v_color v_ggx v_ggx_anisotropic v_normal v_tangent v_uv v_uv2 v_world vertex view "
+    "v_binormal v_color v_ggx v_ggx_anisotropic v_normal v_object v_tangent v_uv v_uv2 v_world "
+    "vertex view "
     "view_projection "
     "view_rows volumetric_fog volumetric_fog_process voxel_cone_trace voxel_cone_trace_45_degrees "
     "voxel_gi voxel_gi_compute voxel_gi_level voxel_gi_sample voxel_gis vs_main world ";

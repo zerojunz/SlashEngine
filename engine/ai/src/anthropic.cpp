@@ -2,6 +2,7 @@
 
 #include "http_provider.hpp"
 
+#include "slash/core/sha256.hpp"
 #include "slash/core/text.hpp"
 
 #include <cstddef>
@@ -71,13 +72,50 @@ json::Array user_blocks(const Message& message) {
     return blocks;
 }
 
+// The request's tools as the API takes them.
+json::Array tool_items(const Request& request) {
+    json::Array items;
+    for (const ToolSpec& tool : request.tools) {
+        json::Value item;
+        item["name"] = tool.name;
+        item["description"] = tool.description;
+        item["input_schema"] = tool.parameters;
+        items.push_back(std::move(item));
+    }
+    return items;
+}
+
+// The hash of the request's tools. The API binds each thinking block to the tools of the
+// request it came from, and refuses it in a request with others.
+std::string tools_key(const Request& request) {
+    return sha256_hex(json::write(json::Value(tool_items(request)), json::Style::Compact));
+}
+
+bool is_thinking(const json::Value& block) {
+    const std::string type = string_or_empty(block, "type");
+    return type == "thinking" || type == "redacted_thinking";
+}
+
 // An assistant message's content: the blocks the API sent, unchanged, so its thinking blocks
-// and their signatures go back as the API requires; otherwise its text and tool calls.
-json::Value assistant_content(const Message& message) {
+// and their signatures go back as the API requires, unless the tools have changed since (an MCP
+// client loading tools); otherwise its text and tool calls.
+json::Value assistant_content(const Message& message, const std::string& tools) {
     if (const json::Value* type = message.native.find("type");
         type != nullptr && type->is_string() && type->as_string() == "anthropic") {
-        if (const json::Value* content = message.native.find("content"); content != nullptr) {
-            return *content;
+        if (const json::Value* content = message.native.find("content");
+            content != nullptr && content->is_array()) {
+            const json::Value* made_with = message.native.find("tools");
+            if (made_with == nullptr || !made_with->is_string() ||
+                made_with->as_string() == tools) {
+                return *content;
+            }
+            json::Array kept;
+            for (const json::Value& block : content->as_array()) {
+                if (!is_thinking(block)) {
+                    kept.push_back(block);
+                }
+            }
+            return kept;
         }
     }
     json::Array blocks;
@@ -133,11 +171,18 @@ public:
     }
 
 protected:
+    void note_reply(const Request& request, Response& response) const override {
+        if (response.message.native.find("type") != nullptr) {
+            response.message.native["tools"] = tools_key(request);
+        }
+    }
+
     [[nodiscard]] HttpRequest build(const Request& request, bool stream) const override {
         json::Value body;
         body["model"] = options().model;
         body["max_tokens"] = max_tokens(request).value_or(kDefaultMaxTokens);
         std::string system;
+        const std::string tools = tools_key(request);
         json::Array messages;
         for (const Message& message : request.messages) {
             if (message.role == Role::System) {
@@ -145,7 +190,7 @@ protected:
                 continue;
             }
             if (message.role == Role::Assistant) {
-                json::Value content = assistant_content(message);
+                json::Value content = assistant_content(message, tools);
                 if (content.size() == 0) {
                     continue; // the API refuses empty messages
                 }
@@ -173,12 +218,8 @@ protected:
         if (!system.empty()) {
             body["system"] = system;
         }
-        for (const ToolSpec& tool : request.tools) {
-            json::Value item;
-            item["name"] = tool.name;
-            item["description"] = tool.description;
-            item["input_schema"] = tool.parameters;
-            body["tools"].push_back(std::move(item));
+        if (!request.tools.empty()) {
+            body["tools"] = tool_items(request);
         }
         if (request.params.temperature) {
             body["temperature"] = *request.params.temperature;

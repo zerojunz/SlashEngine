@@ -12,6 +12,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace json = slash::json;
 namespace command = slash::command;
@@ -32,12 +33,12 @@ struct Client {
     std::unique_ptr<mcp::Server> server;
     int next_id = 1;
 
-    explicit Client(command::SessionOptions options = {}) {
+    explicit Client(command::SessionOptions options = {}, mcp::Tools tools = mcp::Tools::Core) {
         slash::world::register_builtin_components(components);
         command::register_builtin_commands(commands);
         options.capture_logs = false;
         session = std::make_unique<command::Session>(components, commands, std::move(options));
-        server = std::make_unique<mcp::Server>(*session);
+        server = std::make_unique<mcp::Server>(*session, tools);
     }
 
     // Sends a request and returns the whole response.
@@ -99,8 +100,8 @@ TEST_CASE("initialize negotiates the protocol version and sends instructions") {
           command::code::kMethodNotFound);
 }
 
-TEST_CASE("every command is listed as a tool") {
-    Client client;
+TEST_CASE("with all tools, every command is listed as a tool") {
+    Client client({}, mcp::Tools::All);
     const json::Value tools = *client.result("tools/list").find("tools");
     CHECK(tools.size() == client.commands.commands().size());
     bool saw_query = false;
@@ -127,6 +128,105 @@ TEST_CASE("every command is listed as a tool") {
     }
     CHECK(saw_query);
     CHECK(saw_create);
+}
+
+namespace {
+
+std::vector<std::string> listed_names(Client& client) {
+    std::vector<std::string> names;
+    const json::Value listed = client.result("tools/list");
+    for (const json::Value& tool : listed.find("tools")->as_array()) {
+        names.push_back(tool.find("name")->as_string());
+    }
+    return names;
+}
+
+bool contains(const std::vector<std::string>& names, std::string_view name) {
+    return std::ranges::find(names, name) != names.end();
+}
+
+} // namespace
+
+TEST_CASE("by default the core commands and tools_load are the tools") {
+    Client client;
+    const json::Value hello = client.result("initialize", "{}");
+    CHECK(hello.find("capabilities")->find("tools")->find("listChanged")->as_bool());
+    const std::vector<std::string> names = listed_names(client);
+    // The commands here are the builtin ones; the tools add the core ones other registries
+    // have (asset.search, build.check, api.search).
+    std::size_t core = 0;
+    for (const std::string_view name : mcp::core_commands()) {
+        core += client.commands.find(name) != nullptr ? 1U : 0U;
+    }
+    CHECK(names.size() == core + 1);
+    CHECK(mcp::core_commands().size() < 64);
+    CHECK(contains(names, mcp::kLoadTool));
+    CHECK(contains(names, "entity_create"));
+    CHECK(contains(names, "batch"));
+    CHECK_FALSE(contains(names, "audio_play"));
+    // A command that isn't listed still runs by its tool name.
+    const json::Value state = client.call_tool("audio_state");
+    CHECK_FALSE(state.find("isError")->as_bool());
+}
+
+TEST_CASE("tools_load lists the directory and adds groups and commands as tools") {
+    Client client;
+    const json::Value directory = client.call_tool(mcp::kLoadTool);
+    CHECK_FALSE(directory.find("isError")->as_bool());
+    const json::Value& groups = *directory.find("structuredContent")->find("groups");
+    CHECK(groups.find("audio") != nullptr);
+    CHECK(groups.find("ui")->as_array().size() > 3);
+    CHECK(client.server->take_notifications().empty());
+
+    const json::Value loaded =
+        client.call_tool(mcp::kLoadTool, R"({"groups": ["audio"], "commands": ["light_sample"]})");
+    CHECK_FALSE(loaded.find("isError")->as_bool());
+    const json::Value& tools = *loaded.find("structuredContent")->find("tools");
+    bool saw_play = false;
+    for (const json::Value& tool : tools.as_array()) {
+        CHECK(tool.find("inputSchema") != nullptr);
+        saw_play = saw_play || tool.find("name")->as_string() == "audio_play";
+    }
+    CHECK(saw_play);
+    const std::vector<std::string> notifications = client.server->take_notifications();
+    REQUIRE(notifications.size() == 1);
+    CHECK(parse(notifications.front()).find("method")->as_string() ==
+          "notifications/tools/list_changed");
+    const std::vector<std::string> names = listed_names(client);
+    CHECK(contains(names, "audio_play"));
+    CHECK(contains(names, "light_sample"));
+    CHECK_FALSE(contains(names, "ui_press"));
+
+    // Loading what is already a tool changes nothing, so no notification.
+    CHECK_FALSE(client.call_tool(mcp::kLoadTool, R"({"commands": ["audio.play", "batch"]})")
+                    .find("isError")
+                    ->as_bool());
+    CHECK(client.server->take_notifications().empty());
+}
+
+TEST_CASE("tools_load names what it doesn't know") {
+    Client client;
+    const json::Value wrong = client.call_tool(mcp::kLoadTool, R"({"groups": ["audoi"]})");
+    CHECK(wrong.find("isError")->as_bool());
+    const json::Value error =
+        parse(wrong.find("content")->as_array().front().find("text")->as_string());
+    CHECK(error.find("error")->find("message")->as_string().find("\"audio\"") != std::string::npos);
+    CHECK(*error.find("error")->find("data") == parse(R"({"path": "/groups/0"})"));
+    CHECK(client.call_tool(mcp::kLoadTool, R"({"tools": []})").find("isError")->as_bool());
+    CHECK(client.server->take_notifications().empty());
+}
+
+TEST_CASE("--tools reads core and all") {
+    CHECK(mcp::parse_tools("core").value() == mcp::Tools::Core);
+    CHECK(mcp::parse_tools("all").value() == mcp::Tools::All);
+    CHECK_FALSE(mcp::parse_tools("some").ok());
+    Client client({}, mcp::Tools::All);
+    CHECK_FALSE(contains(listed_names(client), mcp::kLoadTool));
+    CHECK_FALSE(client.result("initialize", "{}")
+                    .find("capabilities")
+                    ->find("tools")
+                    ->find("listChanged")
+                    ->as_bool());
 }
 
 TEST_CASE("tools/call runs the command and returns text and structured content") {

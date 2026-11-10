@@ -8,6 +8,9 @@
 
 string(REPLACE "|" ";" ARGS "${ARGS}")
 set(kStuck 75)
+# test_main.cpp writes the test cases that take 5 s or more here; CI prints the files.
+set(ENV{SLASH_TEST_TIMES} "${CMAKE_CURRENT_BINARY_DIR}/${NAME}-times.txt")
+file(REMOVE "$ENV{SLASH_TEST_TIMES}")
 execute_process(COMMAND "${PROGRAM}" ${ARGS} RESULT_VARIABLE result)
 if(result EQUAL kStuck)
     message(NOTICE "${NAME}: a test case was stuck; running the shard once more")

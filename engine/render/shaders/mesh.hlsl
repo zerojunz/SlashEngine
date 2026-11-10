@@ -19,6 +19,8 @@
 // its vertex() places the corners, through GameVertex and game_vertex, with its texture params
 // in the vertex stage's slots 0 to 4. With GAME_LIGHT, its light() lights the pixel once a light
 // through game_light, with game_albedo the surface's albedo, and may change ALPHA.
+// mesh_plain.hlsl defines NO_ALPHA_HASH, which leaves alpha hash out, for the OpenGL devices'
+// draws that don't use it.
 
 cbuffer Camera : register(b0, space1) {
     float4x4 view_projection;          // world to clip space, with TAA's jitter
@@ -56,6 +58,9 @@ struct VertexOutput {
     float2 uv : TEXCOORD4;
     float4 color : TEXCOORD5;
     float2 uv2 : TEXCOORD6;
+#ifndef NO_ALPHA_HASH
+    float3 object : TEXCOORD9; // the place on the mesh, which alpha hash's cells are fixed to
+#endif
 #ifdef MOTION_VECTORS
     float4 motion_clip : TEXCOORD7;   // where the vertex is in clip space, without the jitter
     float4 previous_clip : TEXCOORD8; // and where it was in the frame before
@@ -79,6 +84,9 @@ VertexOutput vs_main(VertexInput input) {
     output.uv = moved.uv;
     output.color = moved.color;
     output.uv2 = moved.uv2 * lightmap_uv.zw + lightmap_uv.xy;
+#ifndef NO_ALPHA_HASH
+    output.object = input.position;
+#endif
 #else
     float4 world = mul(model, float4(input.position, 1.0));
     output.world = world.xyz;
@@ -91,6 +99,9 @@ VertexOutput vs_main(VertexInput input) {
     output.uv = input.uv * uv1.xy + uv1.zw;
     output.color = input.color;
     output.uv2 = input.uv2 * lightmap_uv.zw + lightmap_uv.xy;
+#ifndef NO_ALPHA_HASH
+    output.object = input.position;
+#endif
 #endif
 #ifdef MOTION_VECTORS
     output.motion_clip = output.position;
@@ -156,10 +167,53 @@ static const uint kHasAlpha = 64u;
 static const uint kDisableFog = 128u;
 static const uint kLightmap = 256u;
 static const uint kLightmapCapture = 512u;
+// With kAlphaScissor: options.y is alpha_hash_scale's bits, and the threshold is hashed.
+static const uint kAlphaHash = 1024u;
 // Terrain flags, in options.w.
 static const uint kTerrain = 1u;
 static const uint kTerrainDepthBlending = 2u;
 static const uint kTerrainNormals = 16u; // shifted left by the layer
+
+#ifndef NO_ALPHA_HASH
+// Alpha hash's noise at a cell of the mesh: 0 to 1 from three whole numbers, by Jarzynski and
+// Olano's PCG3D, where Godot's hash_3d uses sines, so the CPU (alpha_hash_value in src/mesh.cpp)
+// makes the same bits.
+float alpha_hash_value(float3 cell) {
+    uint3 v = uint3(int3(clamp(cell, -1073741824.0, 1073741824.0))) * 1664525u + 1013904223u;
+    v.x += v.y * v.z;
+    v.y += v.z * v.x;
+    v.z += v.x * v.y;
+    v ^= v >> 16u;
+    v.x += v.y * v.z;
+    v.y += v.z * v.x;
+    v.z += v.x * v.y;
+    return float(v.x >> 8u) * (1.0 / 16777216.0);
+}
+
+// Godot's compute_alpha_hash_threshold: the alpha a pixel at pos on the mesh must reach, its
+// neighbors across and down being dx and dy further on, from noise on cells about a pixel wide
+// at two scales, blended so the dither holds still as the mesh moves.
+float alpha_hash_threshold(float3 pos, float3 dx, float3 dy, float hash_scale) {
+    float delta_max = max(length(dx), length(dy));
+    float level = clamp(log2(1.0 / (hash_scale * delta_max)), -64.0, 64.0);
+    float low = floor(level);
+    float lerp_factor = level - low;
+    float high = lerp_factor > 0.0 ? low + 1.0 : low;
+    float a_low = alpha_hash_value(floor(exp2(low) * pos));
+    float a_high = alpha_hash_value(floor(exp2(high) * pos));
+    float a_interp = (1.0 - lerp_factor) * a_low + lerp_factor * a_high;
+    float min_lerp = min(lerp_factor, 1.0 - lerp_factor);
+    float threshold;
+    if (a_interp < 1.0 - min_lerp) {
+        threshold = a_interp < min_lerp
+                        ? a_interp * a_interp / (2.0 * min_lerp * (1.0 - min_lerp))
+                        : (a_interp - 0.5 * min_lerp) / (1.0 - min_lerp);
+    } else {
+        threshold = 1.0 - ((1.0 - a_interp) * (1.0 - a_interp) / (2.0 * min_lerp * (1.0 - min_lerp)));
+    }
+    return clamp(threshold, 0.00001, 1.0);
+}
+#endif
 
 // A VoxelGI a draw traces (Forward+): its light is a 3D texture kept in ground_texture_2 as each
 // level's z slices side by side.
@@ -1732,7 +1786,15 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
     // it is transparent. A terrain's color map cuts its holes here.
     float alpha = (flags & kHasAlpha) != 0u ? color.a : 1.0;
     if ((flags & kAlphaScissor) != 0u) {
-        if (alpha < asfloat(options.y)) {
+        float threshold = asfloat(options.y);
+#ifndef NO_ALPHA_HASH
+        if ((flags & kAlphaHash) != 0u) {
+            // The flags are the draw's, so every pixel of a quad takes this branch together.
+            threshold = alpha_hash_threshold(input.object, ddx(input.object), ddy(input.object),
+                                             threshold);
+        }
+#endif
+        if (alpha < threshold) {
             discard;
         }
         alpha = 1.0;

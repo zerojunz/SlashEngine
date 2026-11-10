@@ -43,7 +43,7 @@ own files.
 | `prompt` | The task as a person would ask an agent for it |
 | `solution` | The MCP tool calls an agent that knows the engine well makes for it, in order: each a `tool` name (dots become `_`) and its `arguments` |
 | `checks` | What must hold afterwards, so a task that stops doing what it says fails |
-| `answer` | Text a [live run](#live-runs)'s final reply must contain, for a task that asks a question (optional) |
+| `answer` | Text a [live run](#live-runs)'s final reply must contain, for a task that asks a question, or a list of texts it must contain one of, for a question with more than one fair answer (optional) |
 
 Each check is either a `command` with `params`, run in the same session once the solution has
 run, or a `step` (from 1) whose reply to check. `expect` works as in a
@@ -126,10 +126,13 @@ every reply's input. A task fails when a request fails, the model is still calli
 Checks on solution steps are skipped, since the model's steps are its own. Live runs vary with
 the model, so they are not compared with the baseline.
 
-`.github/workflows/bench.yml` runs them every week where the repository names a model: the
-`BENCH_PROVIDER_TYPE`, `BENCH_MODEL` and, for a server of your own, `BENCH_URL` Actions
-variables, and the `BENCH_API_KEY` secret. The job summary has a table of each task's calls and
-tokens, and the report is kept as an artifact.
+`.github/workflows/bench.yml` runs them every week for each model the repository names, one
+after another: the `BENCH_PROVIDER_TYPE` (`openai-responses` for OpenAI's own models, whose
+newer ones take tools only there), `BENCH_MODEL` and, for a server of your own,
+`BENCH_URL` Actions variables with the `BENCH_API_KEY` secret, and a second model on Anthropic's
+API with the `BENCH_ANTHROPIC_MODEL` variable and the `BENCH_ANTHROPIC_API_KEY` secret. The job
+summary and log have a table of each model's task calls and tokens, and the reports are kept as
+an artifact. Started by hand, it can run all the models or only one (`models`).
 
 ## Adding a task
 
