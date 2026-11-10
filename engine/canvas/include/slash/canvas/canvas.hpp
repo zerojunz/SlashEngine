@@ -125,7 +125,8 @@ struct FrameItem {
         GpuParticles,
         Control,
         Popup,
-        Tooltip
+        Tooltip,
+        Reflection // a Reflection2D's
     };
     Kind kind = Kind::Sprite;
     entt::entity entity = entt::null;
@@ -416,6 +417,17 @@ private:
     // world, scaled by the settings' render scale if they ask, then the controls and overlay.
     struct Submission;
     Result<void> submit(const Submission& submission);
+    // What draw is gathering a frame's draws into, and the parts of it gathered apart
+    // (src/renderer.cpp): Cloth2D sheets, Foliage2D groups, and Reflection2D rects with the
+    // passes that fill their targets.
+    struct DrawState;
+    void gather_cloths(DrawState& state);
+    void gather_foliage(DrawState& state);
+    void gather_reflections(DrawState& state);
+    // Each call's texture, made now so the null device checks them too; a call whose texture
+    // doesn't load has none.
+    std::vector<std::optional<render::TextureId>> list_textures(const ui::DrawList& list,
+                                                                render::Filter filter);
     void release_generation_targets();
     // Destroys the systems of emitters this frame didn't see.
     void drop_unseen_gpu_systems();
@@ -512,6 +524,14 @@ private:
     std::array<render::TextureId, 2> generation_targets_{render::TextureId::None,
                                                          render::TextureId::None};
     std::array<std::uint32_t, 2> generation_size_{};
+    // Each Reflection2D's target, which what its canvas drew before it draws into upside down,
+    // at the pixel size its rect covers; those not drawn in a frame are destroyed.
+    struct ReflectionTarget {
+        render::TextureId id = render::TextureId::None;
+        std::array<std::uint32_t, 2> size{};
+        bool seen = false;
+    };
+    std::unordered_map<entt::entity, ReflectionTarget> reflection_targets_;
     std::uint64_t frames_generated_ = 0;
     bool generated_ = false;
     // What the last frame drew its path-traced world into, if it was path traced.

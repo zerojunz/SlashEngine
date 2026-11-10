@@ -1,0 +1,14 @@
+{
+  "format": 1,
+  "gradient": {
+    "points": [
+      {
+        "color": [1, 1, 1, 1],
+        "offset": 0
+      }
+    ]
+  },
+  "height": 4,
+  "type": "GradientTexture2D",
+  "width": 4
+}

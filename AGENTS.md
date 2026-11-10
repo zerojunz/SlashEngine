@@ -1293,6 +1293,15 @@ in both. A 2D light's `texture_scroll` rolls its texels as the atlas is packed
 (`pack_light_atlas`, `light_atlas_key`). `examples/light-tools` tunes a dusk street and a 2D
 alley and casts a street lamp's IES profile and a stained glass window.
 
+`Reflection2D` is SlashEngine's own 2D reflection (Godot draws water with a screen texture
+shader): `CanvasRenderer::draw` keeps a render target per reflection
+(`reflection_targets_`, the rect's size in pixels) and draws its rect in strips rippled
+sideways and faded by their vertex colors, as an item among its canvas's; `submit` first
+draws each one's `ReflectionPass` into its target, the items of its canvas that come before
+it (`reflected`) through a view turned upside down about its top edge, with the frame's
+lights, which shade the positions as given. It needs nothing of a device, so every device
+draws it the same. `examples/reflections-2d` mirrors a pond's sky and boat.
+
 Ray tracing is SlashEngine's own (Godot 4.6 has none): project.json's `rendering.ray_tracing`
 (`render::RayTracing3D`, `Scene3D::ray_tracing`) turns on ray-traced shadows in Forward+ on
 devices whose `RenderDevice::ray_tracing()` says so: the software device, and the GPU device on

@@ -1204,15 +1204,15 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
        parting plants that spring back, cull distances with alpha-hash fades and impostors,
        and instances that block on Jolt and Box2D and that `physics.raycast` names
        (`examples/foliage`)
-11. [ ] Light tools: Godot 4's `light_temperature` and physical light units, projector textures
+11. [x] Light tools: Godot 4's `light_temperature` and physical light units, projector textures
        (`light_projector`), IES profiles and light functions as Unreal's, `light.tune`, which
        adjusts lights toward exposure and contribution targets from `lighting.check`, and
        screen-space reflections in 2D worlds (Godot has none): `Reflection2D` water, mirrors
        and polished floors that reflect the canvas above their line with ripples, fade and
        tint, beside 3D's Forward+ SSR and ray-traced reflections, which are done. Temperature,
        physical light units, 2D light temperature, `light.tune` over 3D and 2D, projectors,
-       IES profiles and scrolling light functions (3D projectors, 2D light textures) are done
-       (`examples/light-tools`)
+       IES profiles and scrolling light functions (3D projectors, 2D light textures)
+       (`examples/light-tools`) and `Reflection2D` (`examples/reflections-2d`) are done
 12. [ ] NPCs with stories of their own: questlines (`.quest.json` stages and objectives over
         facts, with rewards and journal text), movement scripts (patrols, daily schedules and
         routes per NPC), conversation scripts (`.dialogue.json` branching dialogue with

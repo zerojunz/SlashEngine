@@ -1,0 +1,10 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":5,"path":"pond.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"colors":[[1,0.969,0.851,1],[0.235,0.302,0.365,1],[0.349,0.2,0.102,1],[0.153,0.125,0.098,1],[0.627,0.384,0.322,1],[0.196,0.169,0.208,1],[0.2,0.502,0.2,1]],"drawn":{"sprites":4},"height":90,"width":160}}
+{"id":3,"jsonrpc":"2.0","result":{"colors":[[0.157,0.125,0.098,1],[0.365,0.294,0.235,1],[0.149,0.118,0.098,1],[0.31,0.255,0.231,1]],"drawn":{"sprites":4},"height":90,"width":160}}
+{"id":4,"jsonrpc":"2.0","result":{"tick":60,"ticks":60}}
+{"id":5,"jsonrpc":"2.0","result":{"colors":[[0.157,0.125,0.098,1],[0.153,0.122,0.098,1],[0.337,0.275,0.231,1],[0.31,0.255,0.231,1]],"drawn":{"sprites":4},"height":90,"width":160}}
+{"id":6,"jsonrpc":"2.0","result":{"changed":{"Reflection2D":{"fade":0.0,"opacity":1.0,"ripple_amplitude":0.0,"tint":[1.0,1.0,1.0,1.0]}},"id":"pond"}}
+{"id":7,"jsonrpc":"2.0","result":{"colors":[[1,0.969,0.851,1],[0.349,0.2,0.102,1]],"drawn":{"sprites":4},"height":90,"width":160}}
+{"id":8,"jsonrpc":"2.0","result":{"changed":{"Sprite2D":{"z_index":2}},"id":"boat"}}
+{"id":9,"jsonrpc":"2.0","result":{"colors":[[0.349,0.2,0.102,1],[0.898,0.522,0.302,1]],"drawn":{"sprites":4},"height":90,"width":160}}
+{"id":10,"jsonrpc":"2.0","result":{"drawn":[{"id":"sky","kind":"Sprite2D","rect":[0,0,160,50],"shown":0.96},{"id":"moon","kind":"Sprite2D","rect":[112,12,16,16]},{"id":"pond","kind":"Reflection2D","rect":[0,50,160,40]},{"id":"reed","kind":"Sprite2D","rect":[19,50,2,24]},{"id":"boat","kind":"Sprite2D","rect":[38,42,24,8]}],"viewport":[160,90]}}

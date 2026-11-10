@@ -1,0 +1,22 @@
+{
+  "fill": "radial",
+  "fill_from": [0.5, 0.5],
+  "fill_to": [1, 0.5],
+  "format": 1,
+  "gradient": {
+    "interpolation_mode": "constant",
+    "points": [
+      {
+        "color": [1, 0.97, 0.85, 1],
+        "offset": 0
+      },
+      {
+        "color": [1, 1, 1, 0],
+        "offset": 0.9
+      }
+    ]
+  },
+  "height": 32,
+  "type": "GradientTexture2D",
+  "width": 32
+}

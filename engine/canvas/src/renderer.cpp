@@ -14,7 +14,8 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
-#include <functional>
+#include <cstdint>
+#include <limits>
 #include <map>
 #include <memory>
 #include <numbers>
@@ -144,6 +145,26 @@ struct Item {
     render::ParticlesId particles = render::ParticlesId::None;
     render::ParticleDraw look;
 };
+
+// A Reflection2D's pass, drawn into its target before the frame: what its canvas draws before
+// it, through view, which turns the screen upside down about its mirror line and puts its rect
+// at the target's corner.
+struct ReflectionPass {
+    std::size_t canvas = 0;
+    int z_index = 0;
+    std::uint64_t order = 0;
+    render::TextureId target = render::TextureId::None;
+    render::Mat4 view{};
+};
+
+// Whether an item draws before a reflection, in its canvas, so the reflection shows it.
+bool reflected(const Item& item, const ReflectionPass& pass) {
+    if (item.canvas != pass.canvas || item.kind == FrameItem::Kind::Reflection ||
+        item.particles != render::ParticlesId::None) {
+        return false;
+    }
+    return item.z_index != pass.z_index ? item.z_index < pass.z_index : item.order < pass.order;
+}
 
 } // namespace
 
@@ -553,6 +574,9 @@ CanvasRenderer::~CanvasRenderer() {
         upscaler_->release(*device_);
     }
     release_generation_targets();
+    for (const auto& [entity, target] : reflection_targets_) {
+        device_->destroy_texture(target.id);
+    }
 }
 
 void CanvasRenderer::release_generation_targets() {
@@ -1246,6 +1270,7 @@ struct CanvasRenderer::Submission {
     const std::vector<std::optional<render::TextureId>>& overlay_textures;
     const std::vector<std::optional<render::Mat4>>& control_matrices;
     std::span<const ParticleJob> particle_jobs;
+    std::span<const ReflectionPass> reflections;
     text::Fonts& fonts;
     const std::optional<scene3d::Frame3D>& scene; // the 3D world's, under every canvas
     // What the frame draws, counted when it draws.
@@ -1283,6 +1308,7 @@ struct CanvasRenderer::DrawState {
     const world::Canvases& canvases;
     std::vector<Item>& items;
     std::vector<render::Vertex2D>& vertices;
+    std::vector<ReflectionPass>& reflections;
     // Something that can't draw as written, for FrameContents: the entity, a JSON Pointer into
     // it and why.
     std::function<void(entt::entity, std::string, std::string)> problem;
@@ -1290,8 +1316,9 @@ struct CanvasRenderer::DrawState {
     std::function<render::Shading(render::LightMode, int, int, std::size_t)> shading_for;
     // Draws the vertices from first on again at each repeat of a Parallax2D over the entity.
     std::function<void(entt::entity, std::size_t)> repeat;
+    // Where an entity draws, part of the way from the last tick's.
+    std::function<world::Transform2D(entt::entity)> transform_of;
 };
-
 // Cloth2D: its sheet where 2D physics put its points, between the last two steps, or where
 // its transform puts it at rest before physics steps it; the texture stretched over it.
 void CanvasRenderer::gather_cloths(DrawState& state) {
@@ -1389,21 +1416,6 @@ void CanvasRenderer::gather_cloths(DrawState& state) {
     }
 }
 
-// How lights shade a draw in a canvas: as the canvas is lit, or not at all.
-render::Shading CanvasRenderer::shading_of(render::LightMode mode, int light_mask, int z_index,
-                                           std::size_t canvas) const {
-    render::Shading shading;
-    if (const CanvasLighting& lit = canvas_lighting_.at(canvas); lit.lit) {
-        shading.mode = mode;
-        shading.light_mask = static_cast<std::uint32_t>(std::max(light_mask, 0));
-        shading.z_index = z_index;
-        shading.layer = lit.layer;
-        shading.ambient = lit.ambient;
-        shading.to_lights = lit.to_lights;
-    }
-    return shading;
-}
-
 // Foliage2D: each group's texture at its instances, standing on the type's origin, leaning in
 // the wind and from characters, the lowest drawn last so nearer plants cover farther ones.
 void CanvasRenderer::gather_foliage(DrawState& state) {
@@ -1415,9 +1427,6 @@ void CanvasRenderer::gather_foliage(DrawState& state) {
     const auto& ecs = world.ecs();
     std::vector<Item>& items = state.items;
     std::vector<render::Vertex2D>& vertices = state.vertices;
-    const auto& problem = state.problem;
-    const auto& shading_for = state.shading_for;
-    const auto& repeat = state.repeat;
     std::optional<world::WindField2D> foliage_wind;
     for (const auto [entity, foliage] : ecs.view<const world::Foliage2D>().each()) {
         const Inherited from_parents = inherited(world, tree, entity);
@@ -1441,18 +1450,18 @@ void CanvasRenderer::gather_foliage(DrawState& state) {
             std::string why;
             const auto type = procedural::foliage_type(world, group.type, &why);
             if (type == nullptr) {
-                problem(entity, field, why);
+                state.problem(entity, field, why);
                 continue;
             }
             if (type->space != "2d") {
-                problem(entity, field, "is a 3D type: a Foliage2D draws 2D ones");
+                state.problem(entity, field, "is a 3D type: a Foliage2D draws 2D ones");
                 continue;
             }
             auto texture = this->texture(
                 type->texture, resolve_filter(foliage.texture_filter, options.texture_filter));
             if (!texture) {
                 warn_once(type->texture, texture.error().message, "texture", "foliage can't draw");
-                problem(entity, field, texture.error().message);
+                state.problem(entity, field, texture.error().message);
                 continue;
             }
             const std::size_t count = procedural::foliage_count(group);
@@ -1466,7 +1475,7 @@ void CanvasRenderer::gather_foliage(DrawState& state) {
             });
             render::Material material;
             material.shading =
-                shading_for(render::LightMode::Normal, foliage.light_mask, z, canvas);
+                state.shading_for(render::LightMode::Normal, foliage.light_mask, z, canvas);
             const std::size_t first = vertices.size();
             for (const std::size_t i : order) {
                 const procedural::FoliagePlace2D each = procedural::foliage_place(group, i);
@@ -1505,7 +1514,7 @@ void CanvasRenderer::gather_foliage(DrawState& state) {
             if (vertices.size() == first) {
                 continue;
             }
-            repeat(entity, first);
+            state.repeat(entity, first);
             items.push_back({.canvas = canvas,
                              .z_index = z,
                              .order = tree.draw_key(entity),
@@ -1523,6 +1532,181 @@ void CanvasRenderer::gather_foliage(DrawState& state) {
                              .look = {}});
         }
     }
+}
+
+// Reflections: each one's rect, drawn in strips that ripple sideways over its target, which
+// submit fills with what its canvas drew before it, upside down about its top edge.
+void CanvasRenderer::gather_reflections(DrawState& state) {
+    std::vector<ReflectionPass>& reflections = state.reflections;
+    const world::World& world = state.world;
+    const CanvasOptions& options = state.options;
+    const world::Tree2D& tree = state.tree;
+    const world::Canvases& canvases = state.canvases;
+    const std::vector<world::Canvas>& canvas_list = canvases.all();
+    const auto& ecs = world.ecs();
+    std::vector<Item>& items = state.items;
+    std::vector<render::Vertex2D>& vertices = state.vertices;
+    for (auto& [entity, target] : reflection_targets_) {
+        target.seen = false;
+    }
+    const float pixels_per_unit_x = options.pixel_width > 0 && options.width > 0.0F
+                                        ? static_cast<float>(options.pixel_width) / options.width
+                                        : 1.0F;
+    const float pixels_per_unit_y = options.pixel_height > 0 && options.height > 0.0F
+                                        ? static_cast<float>(options.pixel_height) / options.height
+                                        : 1.0F;
+    for (const auto [entity, reflection] : ecs.view<const world::Reflection2D>().each()) {
+        const Inherited from_parents = inherited(world, tree, entity);
+        const std::size_t canvas = canvases.of(entity);
+        if (!reflection.visible || !from_parents.visible || !canvas_list[canvas].visible ||
+            !(reflection.size.x > 0.0F) || !(reflection.size.y > 0.0F)) {
+            continue;
+        }
+        const int z = z_index(reflection.z_index, reflection.z_as_relative, from_parents);
+        const world::Affine2D place = world::affine(state.transform_of(entity));
+        const Vec2 top_left = place.apply({0.0F, 0.0F});
+        const Vec2 across = place.apply({reflection.size.x, 0.0F}) - top_left;
+        const Vec2 down = place.apply({0.0F, reflection.size.y}) - top_left;
+        // The rect on the screen, whose top is the mirror line.
+        const world::Affine2D& on_screen = canvas_list[canvas].transform;
+        float left = std::numeric_limits<float>::max();
+        float right = std::numeric_limits<float>::lowest();
+        float top = std::numeric_limits<float>::max();
+        float bottom = std::numeric_limits<float>::lowest();
+        for (const Vec2 corner :
+             {top_left, top_left + across, top_left + down, top_left + across + down}) {
+            const Vec2 at = on_screen.apply(corner);
+            left = std::min(left, static_cast<float>(at.x));
+            right = std::max(right, static_cast<float>(at.x));
+            top = std::min(top, static_cast<float>(at.y));
+            bottom = std::max(bottom, static_cast<float>(at.y));
+        }
+        const float width = right - left;
+        const float height = bottom - top;
+        if (!(width > 0.0F) || !(height > 0.0F)) {
+            continue;
+        }
+        const std::array<std::uint32_t, 2> size{
+            static_cast<std::uint32_t>(
+                std::clamp(std::ceil(width * pixels_per_unit_x), 1.0F, 4096.0F)),
+            static_cast<std::uint32_t>(
+                std::clamp(std::ceil(height * pixels_per_unit_y), 1.0F, 4096.0F))};
+        ReflectionTarget& target = reflection_targets_[entity];
+        if (target.id != render::TextureId::None && target.size != size) {
+            device_->destroy_texture(std::exchange(target.id, render::TextureId::None));
+        }
+        if (target.id == render::TextureId::None) {
+            auto made = device_->create_texture({.width = size[0],
+                                                 .height = size[1],
+                                                 .filter = render::Filter::Linear,
+                                                 .render_target = true});
+            if (!made) {
+                state.problem(entity, "/components/Reflection2D", made.error().message);
+                continue;
+            }
+            target.id = made.value();
+            target.size = size;
+        }
+        target.seen = true;
+        // Screen (x, y) goes to (x - left, top - y) of the target: its top row is the line.
+        render::Mat4 mirror{};
+        mirror[0] = 1.0F;
+        mirror[5] = -1.0F;
+        mirror[10] = 1.0F;
+        mirror[12] = -left;
+        mirror[13] = top;
+        mirror[15] = 1.0F;
+        reflections.push_back(
+            {.canvas = canvas,
+             .z_index = z,
+             .order = tree.draw_key(entity),
+             .target = target.id,
+             .view = render::multiply(render::pixel_projection(width, height), mirror)});
+
+        // Strips down the rect, each shifted sideways by the ripple at its depth and faded
+        // with it; one strip when it doesn't ripple, as the fade is linear.
+        const bool ripples = reflection.ripple_amplitude > 0.0F;
+        const std::size_t strips =
+            ripples ? static_cast<std::size_t>(std::clamp(
+                          std::ceil(static_cast<float>(reflection.size.y) / 2.0F), 1.0F, 256.0F))
+                    : 1;
+        const float wavelength = std::max(reflection.ripple_wavelength, 1.0F);
+        const double waves = options.time * static_cast<double>(reflection.ripple_speed);
+        const auto shift_at = [&](float depth) {
+            if (!ripples) {
+                return 0.0F;
+            }
+            // Whole waves wrap away first, so long times keep their precision.
+            const double turns = (static_cast<double>(depth / wavelength)) - waves;
+            const auto phase = static_cast<float>(turns - std::floor(turns));
+            const Vec2f wave = slash::cos_sin(phase * 2.0F * std::numbers::pi_v<float>);
+            return static_cast<float>(reflection.ripple_amplitude * wave.y / reflection.size.x);
+        };
+        const Vec4 tint{reflection.tint.x * from_parents.modulate.x,
+                        reflection.tint.y * from_parents.modulate.y,
+                        reflection.tint.z * from_parents.modulate.z,
+                        reflection.tint.w * from_parents.modulate.w};
+        const auto corner = [&](float s, float t, float shift) {
+            const Vec2 at = top_left + (across * s) + (down * t);
+            const float alpha = tint.w * reflection.opacity *
+                                (1.0F - (std::clamp(reflection.fade, 0.0F, 1.0F) * t));
+            return render::Vertex2D{
+                .x = static_cast<float>(at.x),
+                .y = static_cast<float>(at.y),
+                .u = s + shift,
+                .v = t,
+                .rgba = {to_byte(tint.x), to_byte(tint.y), to_byte(tint.z), to_byte(alpha)}};
+        };
+        const std::size_t first = vertices.size();
+        for (std::size_t k = 0; k < strips; ++k) {
+            const float t0 = static_cast<float>(k) / static_cast<float>(strips);
+            const float t1 = static_cast<float>(k + 1) / static_cast<float>(strips);
+            const float shift = shift_at((t0 + t1) * 0.5F * reflection.size.y);
+            const render::Vertex2D a = corner(0.0F, t0, shift);
+            const render::Vertex2D b = corner(1.0F, t0, shift);
+            const render::Vertex2D c = corner(1.0F, t1, shift);
+            const render::Vertex2D d = corner(0.0F, t1, shift);
+            vertices.insert(vertices.end(), {a, b, c, a, c, d});
+        }
+        items.push_back({.canvas = canvas,
+                         .z_index = z,
+                         .order = tree.draw_key(entity),
+                         .part = 0,
+                         .texture = target.id,
+                         .first = first,
+                         .count = vertices.size() - first,
+                         .material = {},
+                         .entity = entity,
+                         .kind = FrameItem::Kind::Reflection,
+                         .image = nullptr,
+                         .path = {},
+                         .drawn = 1,
+                         .particles = render::ParticlesId::None,
+                         .look = {}});
+    }
+    std::erase_if(reflection_targets_, [&](const auto& entry) {
+        if (!entry.second.seen) {
+            device_->destroy_texture(entry.second.id);
+            return true;
+        }
+        return false;
+    });
+}
+
+std::vector<std::optional<render::TextureId>>
+CanvasRenderer::list_textures(const ui::DrawList& list, render::Filter filter) {
+    std::vector<std::optional<render::TextureId>> made(list.calls.size());
+    for (std::size_t i = 0; i < list.calls.size(); ++i) {
+        const ui::DrawCall& call = list.calls[i];
+        if (call.source != ui::DrawCall::Source::Texture) {
+            made[i] = render::TextureId::None;
+            continue;
+        }
+        if (auto loaded = texture(call.texture, resolve_filter(call.filter, filter)); loaded) {
+            made[i] = loaded.value()->id;
+        }
+    }
+    return made;
 }
 
 Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions& options) {
@@ -1697,8 +1881,31 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     // How lights shade a sprite or layer: as its canvas is lit, or not at all.
     const auto shading_for = [&](render::LightMode mode, int light_mask, int z_index,
                                  std::size_t canvas) {
-        return shading_of(mode, light_mask, z_index, canvas);
+        render::Shading shading;
+        if (const CanvasLighting& lit = canvas_lighting_.at(canvas); lit.lit) {
+            shading.mode = mode;
+            shading.light_mask = static_cast<std::uint32_t>(std::max(light_mask, 0));
+            shading.z_index = z_index;
+            shading.layer = lit.layer;
+            shading.ambient = lit.ambient;
+            shading.to_lights = lit.to_lights;
+        }
+        return shading;
     };
+    std::vector<ReflectionPass> reflections;
+    DrawState state{.world = world,
+                    .options = options,
+                    .tree = tree,
+                    .canvases = canvases,
+                    .items = items,
+                    .vertices = vertices,
+                    .reflections = reflections,
+                    .problem = problem,
+                    .shading_for = shading_for,
+                    .repeat = repeat,
+                    .transform_of = [&](entt::entity entity) {
+                        return transform_of(entity, world::Transform2D{});
+                    }};
     for (const auto [entity, current, own_sprite] :
          ecs.view<const world::Transform2D, const world::Sprite2D>().each()) {
         const Inherited from_parents = inherited(world, tree, entity);
@@ -1909,16 +2116,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         particles += live.size();
     }
 
-    DrawState state{.world = world,
-                    .options = options,
-                    .tree = tree,
-                    .canvases = canvases,
-                    .items = items,
-                    .vertices = vertices,
-                    .problem = problem,
-                    .shading_for = shading_for,
-                    .repeat = repeat};
     gather_cloths(state);
+
     gather_foliage(state);
 
     // GPUParticles2D: each system runs the steps it hasn't on the device once the frame begins,
@@ -2340,6 +2539,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     }
     std::erase_if(layer_cells_, [](const auto& entry) { return !entry.second.seen; });
 
+    gather_reflections(state);
+
     std::ranges::sort(items, [](const Item& a, const Item& b) {
         if (a.canvas != b.canvas) {
             return a.canvas < b.canvas;
@@ -2399,24 +2600,10 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     }
     // Their textures, made now so the null device checks them too; a call whose texture doesn't
     // load draws nothing (layout leaves out the boxes whose textures don't).
-    const auto textures_of = [&](const ui::DrawList& list) {
-        std::vector<std::optional<render::TextureId>> made(list.calls.size());
-        for (std::size_t i = 0; i < list.calls.size(); ++i) {
-            const ui::DrawCall& call = list.calls[i];
-            if (call.source != ui::DrawCall::Source::Texture) {
-                made[i] = render::TextureId::None;
-                continue;
-            }
-            if (auto loaded =
-                    texture(call.texture, resolve_filter(call.filter, options.texture_filter));
-                loaded) {
-                made[i] = loaded.value()->id;
-            }
-        }
-        return made;
-    };
-    const std::vector<std::optional<render::TextureId>> control_textures = textures_of(controls);
-    const std::vector<std::optional<render::TextureId>> overlay_textures = textures_of(overlay);
+    const std::vector<std::optional<render::TextureId>> control_textures =
+        list_textures(controls, options.texture_filter);
+    const std::vector<std::optional<render::TextureId>> overlay_textures =
+        list_textures(overlay, options.texture_filter);
 
     if (contents != nullptr) {
         // Each item's draws together: a layer's runs, a control's boxes and text.
@@ -2589,6 +2776,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                    .overlay_textures = overlay_textures,
                    .control_matrices = control_matrices,
                    .particle_jobs = particle_jobs,
+                   .reflections = reflections,
                    .fonts = *fonts,
                    .scene = scene,
                    .sprites = sprites,
@@ -2783,6 +2971,31 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
         render::Vertex2D{.x = view_width, .y = view_height, .u = 1.0F, .v = 1.0F},
         render::Vertex2D{.x = 0.0F, .y = view_height, .u = 0.0F, .v = 1.0F}};
 
+    // Each reflection's target first: what its canvas draws before it, upside down about its
+    // line, lit where it is in the world.
+    for (const ReflectionPass& pass : submission.reflections) {
+        render::Frame mirrored;
+        mirrored.target = pass.target;
+        mirrored.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 0.0F};
+        mirrored.view = pass.view;
+        mirrored.lighting = lights;
+        if (auto began = device_->begin_frame(mirrored); !began) {
+            return not_begun(began.error());
+        }
+        for (const Item& item : items) {
+            if (!reflected(item, pass)) {
+                continue;
+            }
+            const std::span<const render::Vertex2D> span(vertices.data() + item.first, item.count);
+            if (auto drawn = device_->draw(item.texture, span, item.material); !drawn) {
+                return end_after(drawn.error());
+            }
+        }
+        if (auto ended = device_->end_frame(); !ended) {
+            return ended;
+        }
+    }
+
     // The world's picture, drawn over the screen before the world's controls, when the world
     // drew apart: upscaled, or into frame generation's target.
     struct Picture {
@@ -2841,10 +3054,12 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
         world_frame.target = generation_targets_[0];
         world_frame.view = render::pixel_projection(view_width, view_height);
         if (picture) {
+            const Picture drawn_picture = picture.value_or(Picture{});
             if (auto began = device_->begin_frame(world_frame); !began) {
                 return began.error();
             }
-            if (auto drawn = device_->draw(picture->texture, screen, picture->material); !drawn) {
+            if (auto drawn = device_->draw(drawn_picture.texture, screen, drawn_picture.material);
+                !drawn) {
                 return end_after(drawn.error());
             }
             if (auto ended = device_->end_frame(); !ended) {

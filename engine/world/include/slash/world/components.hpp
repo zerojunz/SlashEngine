@@ -1741,6 +1741,25 @@ struct CanvasModulate {
 };
 SLASH_COMPONENT(CanvasModulate, color)
 
+// A 2D reflection, SlashEngine's own (Godot draws one with a screen texture shader): a rect
+// whose top edge, at the entity's Transform2D, is a mirror line, showing what its canvas drew
+// before it above the line turned upside down below it, as water or a polished floor does.
+// Rippled sideways in waves down the rect, faded with depth and tinted.
+struct Reflection2D {
+    Vec2 size{128.0F, 64.0F}; // across and down from the line, in the canvas's pixels
+    Vec4 tint{1.0F, 1.0F, 1.0F, 1.0F};
+    float opacity = 0.6F;            // how much of the reflection shows at the line
+    float fade = 1.0F;               // how much of that it loses by the bottom, from 0 to 1
+    float ripple_amplitude = 0.0F;   // pixels the reflection shifts sideways at most
+    float ripple_wavelength = 16.0F; // pixels down the rect from one wave to the next
+    float ripple_speed = 1.0F;       // waves a second that pass down it
+    int z_index = 0;
+    bool z_as_relative = true;
+    bool visible = true;
+};
+SLASH_COMPONENT(Reflection2D, size, tint, opacity, fade, ripple_amplitude, ripple_wavelength,
+                ripple_speed, z_index, z_as_relative, visible)
+
 // The part of the 2D world the window shows, as Godot's Camera2D, from where its Transform2D
 // places it (see camera2d.hpp). The first enabled one in drawing order is current; with none,
 // the window shows world pixels from [0, 0]. Controls stay put on the screen, as in a Godot
