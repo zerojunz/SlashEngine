@@ -1148,7 +1148,12 @@ cost, from the research proposal of 2026-11-07, in order:
        particles) simulates in physics3d's one space and step on Jolt, with one set of layers,
        queries and events. Shared `.physics_material.json` materials (friction, bounce,
        density, strength and the surface's sounds, effects and damage profile); physics assets
-       of capsules per bone that ragdolls, cloth and hair all collide with; Chaos Fields as
+       of capsules per bone that ragdolls, cloth and hair all collide with; individual ragdolls
+       for every character and creature (`.ragdoll.json` profiles: each bone's shape, mass,
+       joint limits, stiffness and damping, muscle strength for active ragdolls that blend
+       with animation as Unreal's Physical Animation component, per-bone hit reactions,
+       balance and getting back up, made by the character and fauna tools and tunable per
+       instance with `ragdoll.tune`); Chaos Fields as
        `PhysicsField3D` components (radial and directional force and velocity, falloffs by
        sphere, box and plane, noise, strain that breaks, anchors, kill and sleep volumes)
        acting on every kind of body at once, with `WindSource3D` one of them; skinned cloth
