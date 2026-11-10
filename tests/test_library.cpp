@@ -922,6 +922,23 @@ TEST_CASE("asset.generate sends the storyboard's style and checks images against
           R"("verdict":"accepted"}])");
 }
 
+TEST_CASE("asset.generate keeps the look of the style references that govern its path") {
+    const fs::path root = fresh("library_look");
+    write(root / "project" / "storyboard" / "style.json", R"({"format": 1, "entries": {
+        "style/dusk": {"name": "dusk", "text": "A low warm sun under a blue-gray sky",
+            "links": ["art"], "fingerprint": {"palette": {"#59668c": 0.6, "#c08060": 0.4},
+            "value": [0.2, 0.4, 0.7], "contrast": 0.2, "saturation": 0.35, "warmth": 0.08,
+            "edges": 0.02, "line_weight": 2, "flat": 0.5}}
+    }})");
+    const Engine engine(root);
+    json::Value made = engine.call("asset.generate", R"({"prompt": "lantern sprite",
+        "generator": "test", "width": 8, "path": "art/lantern.png"})");
+    json::Value info = engine.call("asset.info", R"({"id": ")" + made["id"].as_string() + R"("})");
+    CHECK(info.find("request")->find("context")->as_string() ==
+          "Keep the look: A low warm sun under a blue-gray sky (mostly #59668c and #c08060, warm, "
+          "mid-toned, medium contrast, muted, smooth shading).");
+}
+
 namespace {
 
 // A square image of one color, opaque inside a clear border a pixel wide.

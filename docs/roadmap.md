@@ -1149,18 +1149,19 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
        that vegetation shaders (`WIND` built-ins), soft bodies, cloth and particles all read,
        and `WindSource2D` for canvas shaders and 2D particles (`slash/world/wind.hpp`,
        `wind.sample`, `examples/wind`)
-8. [ ] Style memory: the storyboard marks and remembers the look of what agents and people make
-       or import, so weeks of autonomous work keep one look. `style.mark` keeps a scene, an
-       asset, a captured frame, a material or a lighting setup as a `style/<name>` reference
-       with what made it (files, material and shader params, light and post settings, camera)
-       and a fingerprint measured from its frames: palette and its proportions, value range and
-       contrast, saturation, edge density and line weight, texel density, shading and
-       post-processing. `style.check` captures new scenes and assets the way their references
-       were and reports drift from them as numbers and, with a vision model, in words that
-       quote the reference; `storyboard.brief` hands a task the references it touches, the
-       asset generators and every world tool after this one are prompted and checked with
-       them, `test.run` fails work that drifts past a reference's tolerances, and a journal
-       of fingerprints over time shows slow drift that no single change shows
+8. [x] Style memory: the storyboard marks and remembers the look of what agents and people make
+       or import, so weeks of autonomous work keep one look. `style.mark` keeps a 3D or 2D
+       scene, the open world, an image, a model or a material as a `style/<name>` reference
+       with what made it (files, material params, light, environment and post settings,
+       camera) and a fingerprint measured from its frame: palette and its proportions, value
+       range and contrast, saturation, warmth, edge density and line weight, flatness and
+       texel density (`slash/storyboard/fingerprint.hpp`). `style.check` captures what each
+       governs the way it was captured and reports drift as numbers and the settings that
+       changed, and, with a vision model, in words; `storyboard.brief` hands a task the
+       references it touches, the asset generators are prompted with them, `test.run` fails
+       work that drifts past a reference's tolerances, and a journal of fingerprints shows
+       slow drift that no single change shows (`examples/style-memory`). Each world tool
+       after this one marks and checks its output with them
 9. [ ] One simulation, as Unreal's Chaos Physics: everything every tool builds (foliage,
        hair and fur, cloth, characters' ragdolls, creatures, vehicles, destruction pieces,
        particles) simulates in physics3d's one space and step on Jolt, with one set of layers,

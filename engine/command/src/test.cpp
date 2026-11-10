@@ -383,6 +383,33 @@ Reply test_run(Session& session, const json::Value& params) {
         }
     }
 
+    // And the look, held to the storyboard's style references.
+    if (paths == nullptr && wanted.empty() && session.commands().find("style.check") != nullptr) {
+        Reply checked = session.call("style.check", json::Object{});
+        if (!checked.ok) {
+            failed.push_back(file_failure("storyboard/style.json", "", checked.message));
+        } else {
+            for (const json::Value& item : checked.value.find("checked")->as_array()) {
+                const std::string pointer =
+                    "/entries/" + json::pointer_escape(item.find("reference")->as_string());
+                const std::string& target = item.find("target")->as_string();
+                if (const json::Value* error = item.find("error"); error != nullptr) {
+                    failed.push_back(file_failure("storyboard/style.json", pointer,
+                                                  target + ": " + error->as_string()));
+                }
+                if (const json::Value* over = item.find("over"); over != nullptr) {
+                    // One failure a frame, naming each measure that drifted.
+                    std::string message = target + " drifted from its look:";
+                    for (const auto& [measure, how] : over->as_object()) {
+                        message +=
+                            (message.ends_with(':') ? " " : "; ") + measure + " " + how.as_string();
+                    }
+                    failed.push_back(file_failure("storyboard/style.json", pointer, message));
+                }
+            }
+        }
+    }
+
     // And the music, where the soundtrack's commands are registered.
     if (paths == nullptr && wanted.empty() &&
         session.commands().find("soundtrack.check") != nullptr) {
@@ -538,11 +565,11 @@ std::vector<json::ValidationError> validate_test(const json::Value& test) {
 void register_test_commands(Registry& registry) {
     registry.add({
         .name = "test.run",
-        .description =
-            "Runs the project's .test.json tests headless, each from its scene file, "
-            "and returns only the checks that failed: a step's command failing, its "
-            "reply not holding what it expects, or a warning or error logged. With no "
-            "paths, runs every test file, storyboard.check, soundtrack.check and l10n.check.",
+        .description = "Runs the project's .test.json tests headless, each from its scene file, "
+                       "and returns only the checks that failed: a step's command failing, its "
+                       "reply not holding what it expects, or a warning or error logged. With no "
+                       "paths, runs every test file, storyboard.check, style.check, "
+                       "soundtrack.check and l10n.check.",
         .capabilities = {Capability::Run, Capability::Filesystem},
         .effect = Effect::Read,
         .params =

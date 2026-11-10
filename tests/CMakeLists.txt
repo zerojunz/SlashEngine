@@ -186,6 +186,7 @@ add_executable(slash_tests
     test_ssr.cpp
     test_subsurface.cpp
     test_storyboard.cpp
+    test_style.cpp
     test_syntax_highlighter.cpp
     test_taa.cpp
     test_temporal_upscaler.cpp

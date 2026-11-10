@@ -1,6 +1,7 @@
 #include "slash/storyboard/storyboard.hpp"
 
 #include "slash/core/text.hpp"
+#include "slash/storyboard/fingerprint.hpp"
 
 #include <algorithm>
 #include <array>
@@ -17,6 +18,43 @@ using enum FieldType;
 
 std::string quoted(std::string_view text) {
     return "\"" + std::string(text) + "\"";
+}
+
+json::Value typed(std::string_view type, std::string_view description) {
+    json::Value schema;
+    schema["type"] = type;
+    schema["description"] = description;
+    return schema;
+}
+
+// A style entry's capture: what style.mark measured and how, which style.check repeats.
+json::Value capture_schema() {
+    json::Value schema = typed("object", "How style.mark captured it, which style.check repeats.");
+    schema["additionalProperties"] = false;
+    schema["required"] = json::Array{"what"};
+    json::Value& properties = schema["properties"];
+    properties["what"] = typed("string", "What was marked.");
+    properties["what"]["enum"] = json::Array{"scene", "world", "image", "model", "material"};
+    properties["path"] =
+        typed("string", "The scene, image, model or material file; for the world, the scene it "
+                        "opened, if any.");
+    properties["camera"] = typed("string", "The camera it was seen through, by entity ID.");
+    json::Value side = typed("integer", "Pixels.");
+    side["minimum"] = 1;
+    side["maximum"] = 4096;
+    properties["size"] = typed("array", "The frame's [width, height].");
+    properties["size"]["items"] = std::move(side);
+    properties["size"]["minItems"] = 2;
+    properties["size"]["maxItems"] = 2;
+    properties["ticks"] = typed("integer", "Ticks the world stepped before it was captured.");
+    properties["ticks"]["minimum"] = 0;
+    properties["frame"] = typed("string", "The captured frame, a PNG in storyboard/style/.");
+    return schema;
+}
+
+json::Value settings_schema() {
+    return typed("object", "What made it: lights, environment, cameras, materials and the "
+                           "project's rendering settings.");
 }
 
 std::vector<Kind> make_kinds() {
@@ -46,6 +84,28 @@ std::vector<Kind> make_kinds() {
                      .type = Integer,
                      .doc = "Texels per meter models' textures should have, give or take "
                             "half."}}},
+        {.name = "style",
+         .file = "style",
+         .doc = "A look to keep, which style.mark measures from a scene, the open world, an "
+                "image, a model or a material: how to capture it again, what made it and its "
+                "fingerprint. Its links are what it governs, which style.check holds to it.",
+         .fields = {{.name = "capture",
+                     .type = Data,
+                     .doc = "How style.mark captured it, which style.check repeats.",
+                     .schema = capture_schema},
+                    {.name = "settings",
+                     .type = Data,
+                     .doc = "What made it: lights, environment, cameras, materials and the "
+                            "project's rendering settings.",
+                     .schema = settings_schema},
+                    {.name = "fingerprint",
+                     .type = Data,
+                     .doc = "The look measured from its frame.",
+                     .schema = fingerprint_schema},
+                    {.name = "tolerances",
+                     .type = Data,
+                     .doc = "How far each measure may drift before style.check fails.",
+                     .schema = tolerances_schema}}},
         {.name = "character",
          .file = "world",
          .doc = "A person or creature in the game.",
@@ -220,6 +280,13 @@ json::Value field_schema(const Field& field) {
     case Colors:
         schema["type"] = "object";
         schema["additionalProperties"]["type"] = "string";
+        break;
+    case Data:
+        if (field.schema != nullptr) {
+            schema = field.schema();
+        } else {
+            schema["type"] = "object";
+        }
         break;
     case Choice: {
         schema["type"] = "string";
@@ -1237,8 +1304,8 @@ Brief brief(const json::Object& entries, const std::vector<std::string>& ids,
             chosen.insert(id);
         }
     }
-    constexpr std::array<std::string_view, 5> kEverywhere = {"rule", "tone", "palette", "budget",
-                                                             "loudness"};
+    constexpr std::array<std::string_view, 6> kEverywhere = {"rule",   "tone",     "palette",
+                                                             "budget", "loudness", "style"};
     const auto is_work = [](const Kind& kind) {
         return kind.name == "task" || kind.name == "decision";
     };

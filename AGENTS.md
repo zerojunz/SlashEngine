@@ -199,6 +199,16 @@ than a budget allows (`storyboard::check_models`, `src/style.cpp`); `$cli scene 
 check. `storyboard.review` (`engine/ai/src/review.cpp`) asks a model from `providers.json`
 whether new text, scene text, images or entries contradict the entries they touch; its findings
 are advisory, and one that quotes nothing in the material or names no real entry is dropped.
+`style.mark` and `style.check` (`engine/command/src/style.cpp`) keep the game's look:
+`style.mark` captures a scene (3D or 2D), the open world, an image, a model or a material in a
+private `Session` and writes a `style/<name>` entry with the frame (`storyboard/style/`), the
+settings that made it and a `storyboard::fingerprint` (`slash/storyboard/fingerprint.hpp`,
+integer math, built with `-ffp-contract=off`: palette, values, contrast, saturation, warmth,
+edges, line weight, flatness, texel density); `style.check` captures what each reference's
+links cover the same way and reports `drift`, measures `over` tolerance, `changed` settings
+and, from `storyboard/style_journal.jsonl`, measures `creeping` up, and `test.run` fails what
+drifted. The library's prompts carry the looks that cover a path (`describe_look`).
+`examples/style-memory` keeps a harbor's look and a title screen's.
 Games made by `$cli init` start with a storyboard and are told to brief before a task and check
 after it.
 
