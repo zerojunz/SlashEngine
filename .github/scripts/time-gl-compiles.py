@@ -104,23 +104,34 @@ def hoisted(fragment):
     return fragment[:brace] + "".join(lines) + fragment[brace:]
 
 
+def no_object(shaders):
+    # Takes the place on the mesh out of the varyings; the fragment stage must not use it.
+    out = dict(shaders)
+    vertex = out["kMeshVertexGlsl"]
+    fragment = out["kMeshFragmentGlsl"]
+    assert "out vec3 v_object;\n" in vertex and "    v_object = input_position;\n" in vertex
+    out["kMeshVertexGlsl"] = vertex.replace("out vec3 v_object;\n", "").replace(
+        "    v_object = input_position;\n", "")
+    out["kMeshFragmentGlsl"] = fragment.replace("in highp vec3 v_object;\n", "").replace(
+        "v_object", "vec3(0.0)")
+    return out
+
+
 def versions():
     path = "engine/render/src/mesh_shaders.hpp"
     b = arrays(open(path).read())
     m = arrays(subprocess.run(["git", "show", "origin/main:" + path], capture_output=True,
                               text=True, check=True).stdout)
+    # The last run stalled from its fourth draw on, whatever the shader; main came first. Put
+    # main later to tell a stall that follows the shader from one that follows the run.
     out = [
-        ("main", m),
         ("branch", b),
-        ("branch, multiplier 1", with_fragment(b, multiplier_1)),
-        ("branch, multiplier 1, again", with_fragment(b, multiplier_1)),
-        ("branch, multiplier 1, no derivatives",
-         with_fragment(b, lambda f: no_derivatives(multiplier_1(f)))),
-        ("branch, multiplier 1, hash off", with_fragment(b, lambda f: hash_off(multiplier_1(f)))),
-        ("branch, multiplier 1, derivatives hoisted",
-         with_fragment(b, lambda f: hoisted(multiplier_1(f)))),
-        ("branch, derivatives hoisted", with_fragment(b, hoisted)),
         ("branch, again", b),
+        ("branch, third", b),
+        ("main", m),
+        ("branch, hash off, no object varying", no_object(with_fragment(b, hash_off))),
+        ("main, again", m),
+        ("branch, fourth", b),
     ]
     return [(name + ", at w 1", at_w1(shaders)) for name, shaders in out]
 
