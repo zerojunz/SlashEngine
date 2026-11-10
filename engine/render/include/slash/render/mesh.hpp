@@ -206,7 +206,7 @@ struct Light3D {
     // light by the texture's color times its alpha: through a spot light's cone (its top toward
     // up), or an omni light's dual paraboloid (the top half round its -Z, the bottom half round
     // +Z). Its texture coordinates move by projector_offset first, wrapping, so it can scroll.
-    std::shared_ptr<const Image> projector{};
+    std::shared_ptr<const Image> projector{}; // NOLINT(readability-redundant-member-init)
     std::array<float, 2> projector_offset{};
 
     bool operator==(const Light3D&) const = default;
