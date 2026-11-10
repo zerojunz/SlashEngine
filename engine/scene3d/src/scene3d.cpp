@@ -2382,7 +2382,7 @@ void Renderer::add_impostor(entt::entity entity, const world::FoliageType& type,
     const float scale = std::sqrt((placed.y.x * placed.y.x) + (placed.y.y * placed.y.y) +
                                   (placed.y.z * placed.y.z));
     const float width = std::max(box.max.x - box.min.x, box.max.z - box.min.z) * scale;
-    const float height = (box.max.y - std::min(box.min.y, 0.0F)) * scale;
+    const float height = (box.max.y - std::min<real_t>(box.min.y, 0.0F)) * scale;
     // Turned about the up axis to face the camera.
     Vec3 facing = camera.origin - placed.origin;
     facing.y = 0.0F;

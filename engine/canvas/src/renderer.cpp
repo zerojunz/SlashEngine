@@ -1872,7 +1872,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             items.push_back({.canvas = canvas,
                              .z_index = z,
                              .order = tree.draw_key(entity),
-                             .part = g,
+                             .part = static_cast<std::uint32_t>(g),
                              .texture = texture.value()->id,
                              .first = first,
                              .count = vertices.size() - first,
