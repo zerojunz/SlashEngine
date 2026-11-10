@@ -1267,11 +1267,21 @@ from spherical harmonics, sorted nearest first, tiles of 16 pixels on the job po
 the opaque depth; built with `-ffp-contract=off`). Other devices draw none, and splats are
 neither lit nor in the depth buffer. `examples/gaussian-splats` places a boulder made in code.
 
-`lighting.check` (`engine/command/src/lighting.cpp`) judges a 3D frame's lighting as numbers for
-agents: it draws the frame with `canvas::capture`, measures its exposure (mean, percentiles,
-clipped and crushed shares), draws it again with each light's `light_energy` at 0 (put back
+`lighting.check` (`engine/command/src/lighting.cpp`) judges a 3D or 2D frame's lighting as
+numbers for agents: it draws the frame with `canvas::capture`, measures its exposure (mean,
+percentiles, clipped and crushed shares), draws it again with each light's energy at 0 (put back
 after) to measure what that light lights, and names problems such as a light that lights nothing
-in view. `examples/lighting-check` fixes a flood light and a lamp out of view.
+in view. `examples/lighting-check` fixes a flood light and a lamp out of view. `light.tune`
+(same file) scales lights toward a mean brightness, a clipping limit and per-light shares,
+learning from each step how brightness follows energy and bisecting once it has seen too dark
+and too bright, with one undo step. Physical light units are Godot's
+(`rendering.lights_and_shadows.use_physical_light_units`, `scene3d::physical_light_units`):
+`render::color_temperature` and the unit factors (`engine/render/src/light_units.cpp`, built
+with `-ffp-contract=off`) tint and scale lights in `light_base` (`engine/scene3d/src/scene3d.cpp`)
+and in the lightmap and VoxelGI bakes, with the background's and emission's nits and the
+camera's exposure normalization; light.tune then scales lux and lumens. 2D lights' `temperature`
+is SlashEngine's own (`fill_common` in `engine/canvas/src/light.cpp`). `examples/light-tools`
+tunes a dusk street and a 2D alley.
 
 Ray tracing is SlashEngine's own (Godot 4.6 has none): project.json's `rendering.ray_tracing`
 (`render::RayTracing3D`, `Scene3D::ray_tracing`) turns on ray-traced shadows in Forward+ on

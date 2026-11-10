@@ -4,4 +4,4 @@
 {"id":4,"jsonrpc":"2.0","result":{"changed":{"Transform3D":{"position":[1.4,1.2,2.4]}},"id":"porch_lamp"}}
 {"id":5,"jsonrpc":"2.0","result":{"exposure":{"clipped":0.0083,"crushed":0.0,"mean":0.6357,"p5":0.5793,"p95":0.7595},"lights":[{"clips":0.0013,"id":"flood","lit":0.0675,"share":0.0122,"type":"SpotLight3D"},{"clips":0.007,"id":"porch_lamp","lit":0.1047,"share":0.0141,"type":"OmniLight3D"},{"clips":0.0083,"id":"sun","lit":0.674,"share":0.4067,"type":"DirectionalLight3D"}],"problems":[],"size":[160,90]}}
 {"id":6,"jsonrpc":"2.0","result":{"exposure":{"clipped":0.0086,"crushed":0.0,"mean":0.6354,"p5":0.5793,"p95":0.7579},"problems":[],"size":[80,45]}}
-{"error":{"code":-32001,"data":{"path":"/ids/0"},"message":"/ids/0: no 3D light that shines has the id \"porch_lamb\"; did you mean \"porch_lamp\"?"},"id":7,"jsonrpc":"2.0"}
+{"error":{"code":-32001,"data":{"path":"/ids/0"},"message":"/ids/0: no light that shines has the id \"porch_lamb\"; did you mean \"porch_lamp\"?"},"id":7,"jsonrpc":"2.0"}

@@ -153,6 +153,7 @@ A reference must name an entity that exists in the same scene.
 | | `offset` | `Vec2` | `[0, 0]` | Moves the texture from the light, in pixels |
 | | `color` | `Vec4` | `[1, 1, 1, 1]` | The light's color, as [r, g, b, a] from 0 to 1 |
 | | `energy` | `float` | `1` | Multiplies the color |
+| | `temperature` | `float` | `0` | Kelvin, 1000 to 20000, tinting the color as a black body that hot glows (1900 a candle, 6500 daylight, 12000 a blue sky); `0` leaves the color as it is. SlashEngine's own: Godot's 2D lights have none |
 | | `blend_mode` | `std::string` | `"add"` | How the light changes what it lights: `add` brightens, `sub` darkens and `mix` blends toward its color |
 | | `height` | `float` | `0` | Pixels above the plane, for normal maps: at 0 it lights them only from the side |
 | | `range_z_min`, `range_z_max` | `int` | `-1024`, `1024` | Lights sprites and layers whose `z_index` is in this range |
@@ -163,7 +164,7 @@ A reference must name an entity that exists in the same scene.
 | | `shadow_filter` | `std::string` | `"none"` | Shadow edges: hard (`none`), or softened over 5 or 13 samples (`pcf5`, `pcf13`) |
 | | `shadow_filter_smooth` | `float` | `0` | Spreads the filter's samples further apart |
 | | `shadow_item_cull_mask` | `int` | `1` | Occluders whose `occluder_light_mask`, or tiles' occlusion layer's `light_mask`, shares a bit cast shadows |
-| `DirectionalLight2D` | `enabled`, `color`, `energy`, `blend_mode` | | | As `PointLight2D`'s. It lights everything, down the screen turned by its `Transform2D` rotation |
+| `DirectionalLight2D` | `enabled`, `color`, `energy`, `temperature`, `blend_mode` | | | As `PointLight2D`'s. It lights everything, down the screen turned by its `Transform2D` rotation |
 | | `height` | `float` | `0` | For normal maps: from 0, along the plane, to 1, straight down onto it |
 | | `max_distance` | `float` | `10000` | How far shadows reach past their occluders, in pixels |
 | | `range_*`, `shadow_*` | | | As `PointLight2D`'s |
@@ -1758,6 +1759,7 @@ Godot's do in 3D, unless `texture_repeat` is off.
 | `metallic_specular` | `0.5` | Specular strength of the non-metallic part |
 | `roughness`, `roughness_texture`, `roughness_texture_channel` | `1`, `""`, `"red"` | How rough, as `metallic` |
 | `emission_enabled`, `emission`, `emission_energy_multiplier`, `emission_texture` | `false`, `[0, 0, 0, 1]`, `1`, `""` | Light the surface gives off, unlit: the color (plus the texture) made linear, times the multiplier, as Godot |
+| `emission_intensity` | `1000` | With [physical light units](#physical-light-units), the emission's brightness in nits |
 | `normal_enabled`, `normal_scale`, `normal_texture` | `false`, `1`, `""` | A tangent-space normal map |
 | `shading_mode` | `"per_pixel"` | `"unshaded"` draws the albedo with no lighting |
 | `transparency`, `alpha_scissor_threshold` | `"disabled"`, `0.5` | `"alpha"` blends; `"alpha_scissor"` drops pixels under the threshold; `"alpha_hash"` drops them by a dither fixed to the mesh, so hair cards and eyelashes fade out without sorting (see below) |
@@ -1843,6 +1845,9 @@ lights each pixel with only the omni and spot lights whose range reaches it, and
 | --- | --- | --- | --- |
 | `light_color` | `[1, 1, 1, 1]` | all | sRGB |
 | `light_energy` | `1` | all | Brightness |
+| `light_temperature` | `6500` | all | With [physical light units](#physical-light-units), the color's black body temperature in kelvin, 1000 to 20000, which tints `light_color` |
+| `light_intensity_lux` | `100000` | directional | With physical light units, its brightness in lux (100000 is the noon sun) |
+| `light_intensity_lumens` | `1000` | omni, spot | With physical light units, its brightness in lumens (about a 75 W bulb's) |
 | `light_specular` | `0.5` | all | How strong its highlights are |
 | `light_negative` | `false` | all | Takes light away instead |
 | `light_cull_mask` | `4294967295` | all | The render layers it lights (layers 1 to 20) |
@@ -1875,6 +1880,22 @@ Shadows are Godot's Compatibility renderer's shadow maps, drawn on every device 
 directional lights that cast (up to 4); omni and spot lights (up to 16) share the positional
 atlas, an omni light's cube taking six tiles and a spot light's one. Edges are filtered by the
 project's `rendering.lights_and_shadows` ([project-format.md](project-format.md#shadows)).
+
+### Physical light units
+
+With project.json's `rendering.lights_and_shadows.use_physical_light_units`
+([project-format.md](project-format.md#shadows)), lights, skies and emission shine in real
+units, as Godot's: each light's color is tinted by its `light_temperature` (Krystek's fit of the
+Planckian locus, multiplied in linear light, as Godot's `Light3D::get_correlated_color`), and its
+`light_energy` is multiplied by `light_intensity_lux` / π (directional), `light_intensity_lumens`
+/ 4π² (omni) or `light_intensity_lumens` / π² (spot); a directional light's sun in the sky is
+tinted and shines by its lux. The background and sky shine by the `WorldEnvironment`'s
+`background_intensity` in nits, and emission by each material's `emission_intensity`. A
+[`CameraAttributesPractical`](#cameraattributespractical)'s exposure is then normalized by its
+`exposure_sensitivity` (ISO 100 is 100 / 3072007), so a scene in real units needs one, as in
+Godot. Lightmap and VoxelGI bakes take the same units. Without the setting, these fields change
+nothing. [`light.tune`](commands.md#lighttune) scales lights to a brightness and
+[examples/light-tools](../../examples/light-tools/) lights a street at dusk.
 
 ### Ray-traced shadows
 
@@ -1932,6 +1953,7 @@ there is no ambient light and colors stay as they are.
 | `background_mode` | `"clear_color"` | `"clear_color"` (the project's), `"color"` or `"sky"` (the entity's [sky material](#skies)) |
 | `background_color` | `[0, 0, 0, 1]` | The background for `"color"` |
 | `background_energy_multiplier` | `1` | Brightens the background or sky |
+| `background_intensity` | `30000` | With [physical light units](#physical-light-units), the background's and sky's brightness in nits |
 | `sky_custom_fov` | `0` | Degrees across the target's height the sky is seen with; `0` for the camera's |
 | `sky_rotation` | `[0, 0, 0]` | Turns the sky, in radians about x, y and z, as `Transform3D`'s rotation |
 | `sky_radiance_size` | `256` | Texels across each face of the cube the [sky's light](#sky-light) is drawn into: 32, 64, 128, 256, 512, 1024 or 2048 |

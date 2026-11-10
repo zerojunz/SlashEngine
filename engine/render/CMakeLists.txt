@@ -52,6 +52,7 @@ add_library(slash_render
     src/hlsl_compiler.cpp
     src/image.cpp
     src/light.cpp
+    src/light_units.cpp
     src/material.cpp
     src/mesh.cpp
     src/native_copy.cpp
@@ -84,9 +85,10 @@ add_library(slash_render
     src/voxel_gi.cpp
     src/vulkan_rays.cpp)
 add_library(slash::render ALIAS slash_render)
-# Rays decide which triangles they meet, and splats blend in order, so their math is the same on
-# every machine.
-set_source_files_properties(src/path_trace.cpp src/ray_shadows.cpp src/restir.cpp src/splats.cpp
+# Rays decide which triangles they meet, splats blend in order and color temperatures tint lights,
+# so their math is the same on every machine.
+set_source_files_properties(src/light_units.cpp src/path_trace.cpp src/ray_shadows.cpp src/restir.cpp
+    src/splats.cpp
     PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 

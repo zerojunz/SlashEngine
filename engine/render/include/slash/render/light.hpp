@@ -161,4 +161,24 @@ struct LightHit {
                                          const ShadowTexel& shadows,
                                          std::vector<LightHit>* hits = nullptr);
 
+// The sRGB color of a black body at kelvin, as Godot's Light3D::get_correlated_color: Krystek's
+// fit to the Planckian locus, made linear sRGB, scaled so its brightest channel is 1, clamped and
+// made sRGB again. With slash::exp and ln, so it is the same bits everywhere.
+[[nodiscard]] std::array<float, 3> color_temperature(float kelvin);
+// An sRGB color tinted by a temperature as Godot's Light3D::set_color does with physical light
+// units: both made linear, multiplied and made sRGB again.
+[[nodiscard]] std::array<float, 3> tint_by_temperature(const std::array<float, 3>& color,
+                                                       float kelvin);
+
+// Godot's physical light units, from rendering.lights_and_shadows.use_physical_light_units: what
+// a light's energy is multiplied by, over the energy without them. Godot lights a directional
+// light with energy times lux, and an omni or spot light with energy times lumens over 4 pi or
+// pi, where without units it takes energy times pi.
+[[nodiscard]] float directional_light_units(float lux);
+[[nodiscard]] float omni_light_units(float lumens);
+[[nodiscard]] float spot_light_units(float lumens);
+// Godot's exposure normalization for a CameraAttributesPractical with physical light units:
+// exposure_sensitivity over 3072007, a CameraAttributesPhysical's default at ISO 100.
+[[nodiscard]] float exposure_normalization(float sensitivity);
+
 } // namespace slash::render

@@ -27,6 +27,7 @@ using CapturerHandle = std::shared_ptr<Capturer>;
 
 void set_settings(world::World& world, const Settings& settings) {
     world.ecs().ctx().insert_or_assign(settings);
+    scene3d::set_physical_light_units(world, settings.shadows.use_physical_light_units);
 }
 
 Settings settings(const world::World& world) {
