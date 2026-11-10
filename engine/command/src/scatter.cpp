@@ -6,6 +6,7 @@
 #include "slash/command/session.hpp"
 #include "slash/core/text.hpp"
 #include "slash/navigation/navigation.hpp"
+#include "slash/procedural/foliage.hpp"
 #include "slash/world/scene.hpp"
 #include "slash/world/tree2d.hpp"
 #include "slash/world/tree3d.hpp"
@@ -15,11 +16,13 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <functional>
 #include <optional>
 #include <set>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -468,6 +471,458 @@ Reply scatter_run(Session& session, const json::Value& params) {
     return Reply::success(std::move(out));
 }
 
+std::string short_number(float value) {
+    std::array<char, 32> text{};
+    std::snprintf(text.data(), text.size(), "%g", static_cast<double>(value));
+    return text.data();
+}
+
+// The foliage commands' common params: the entity, its type and the brush.
+struct Brush {
+    entt::entity entity = entt::null;
+    bool flat = false;
+    Vec3 center;
+    float radius = 1.0F;
+};
+
+Vec3 point_of(const json::Value& value) {
+    const json::Array& at = value.as_array();
+    return {static_cast<float>(at[0].as_double()), static_cast<float>(at[1].as_double()),
+            at.size() > 2 ? static_cast<float>(at[2].as_double()) : 0.0F};
+}
+
+float number_or(const json::Value& params, std::string_view key, float fallback) {
+    const json::Value* value = params.find(key);
+    return value != nullptr ? static_cast<float>(value->as_double()) : fallback;
+}
+
+// A Foliage3D's or Foliage2D's instance in world space, and its index in the group.
+struct Found {
+    std::size_t group = 0;
+    std::size_t index = 0;
+    Vec3 position; // world space; 2D in x and y
+    float distance = 0.0F;
+};
+
+// The instances within the brush, nearest first (ties by group and index), of the type given
+// or every type.
+std::vector<Found> instances_in(world::World& world, const Brush& brush, const std::string& type) {
+    std::vector<Found> out;
+    const auto take = [&](std::size_t g, std::size_t i, Vec3 at) {
+        const float dx = at.x - brush.center.x;
+        const float dy = brush.flat ? at.y - brush.center.y : at.z - brush.center.z;
+        const float distance = std::sqrt((dx * dx) + (dy * dy));
+        if (distance <= brush.radius) {
+            out.push_back({.group = g, .index = i, .position = at, .distance = distance});
+        }
+    };
+    if (brush.flat) {
+        const auto* held = world.ecs().try_get<const world::Foliage2D>(brush.entity);
+        if (held == nullptr) {
+            return out;
+        }
+        const world::Foliage2D& foliage = *held;
+        const world::Affine2D place = world::Tree2D(world).global_affine(brush.entity);
+        for (std::size_t g = 0; g < foliage.groups.size(); ++g) {
+            if (!type.empty() && foliage.groups[g].type != type) {
+                continue;
+            }
+            for (std::size_t i = 0; i < procedural::foliage_count(foliage.groups[g]); ++i) {
+                const Vec2 at =
+                    place.apply(procedural::foliage_place(foliage.groups[g], i).position);
+                take(g, i, {at.x, at.y, 0.0F});
+            }
+        }
+    } else {
+        const auto* held = world.ecs().try_get<const world::Foliage3D>(brush.entity);
+        if (held == nullptr) {
+            return out;
+        }
+        const world::Foliage3D& foliage = *held;
+        const world::Affine3D place = world::Tree3D(world).global(brush.entity);
+        for (std::size_t g = 0; g < foliage.groups.size(); ++g) {
+            if (!type.empty() && foliage.groups[g].type != type) {
+                continue;
+            }
+            for (std::size_t i = 0; i < procedural::foliage_count(foliage.groups[g]); ++i) {
+                take(g, i, place.apply(procedural::foliage_place(foliage.groups[g], i).position));
+            }
+        }
+    }
+    std::ranges::stable_sort(
+        out, [](const Found& a, const Found& b) { return a.distance < b.distance; });
+    return out;
+}
+
+// Reads entity, at and radius; the entity must hold a Foliage3D or Foliage2D unless make names
+// the space to give it one in (made with its transform if missing).
+Result<Brush> read_brush(Session& session, const json::Value& params,
+                         const std::optional<bool>& make_flat) {
+    world::World& world = session.world();
+    entt::registry& ecs = world.ecs();
+    Brush brush;
+    const std::string id = params.find("entity")->as_string();
+    brush.entity = world.find(id);
+    if (brush.entity == entt::null && !make_flat) {
+        std::string message = "/entity: no entity has the id " + quoted(id);
+        if (const std::string_view hint = closest_match(id, world.ids()); !hint.empty()) {
+            message += "; did you mean " + quoted(hint) + "?";
+        }
+        return make_error(ErrorCode::NotFound, message);
+    }
+    if (brush.entity != entt::null) {
+        if (ecs.all_of<world::Foliage2D>(brush.entity)) {
+            brush.flat = true;
+        } else if (ecs.all_of<world::Foliage3D>(brush.entity)) {
+            brush.flat = false;
+        } else if (make_flat) {
+            brush.flat = *make_flat;
+        } else {
+            return make_error(ErrorCode::InvalidArgument,
+                              "/entity: " + quoted(id) + " has no Foliage3D or Foliage2D");
+        }
+        if (make_flat && *make_flat != brush.flat) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "/type: a " + std::string(*make_flat ? "2D" : "3D") +
+                                  " type can't be painted into " + quoted(id) + "'s " +
+                                  (brush.flat ? "Foliage2D" : "Foliage3D"));
+        }
+    } else {
+        brush.flat = *make_flat;
+    }
+    const json::Value* at = params.find("at");
+    if (at != nullptr) {
+        if ((at->as_array().size() == 2) != brush.flat) {
+            return make_error(ErrorCode::InvalidArgument,
+                              std::string("/at: give ") + (brush.flat ? "[x, y]" : "[x, y, z]") +
+                                  " for a " + (brush.flat ? "Foliage2D" : "Foliage3D"));
+        }
+        brush.center = point_of(*at);
+    }
+    brush.radius = number_or(params, "radius", brush.flat ? 32.0F : 1.0F);
+    return brush;
+}
+
+Reply brush_error(const Error& error) {
+    const std::string& message = error.message;
+    const std::size_t colon = message.find(':');
+    const std::string path = colon != std::string::npos ? message.substr(0, colon) : "";
+    return param_error(error.code == ErrorCode::NotFound ? code::kNotFound : code::kInvalidParams,
+                       path, colon != std::string::npos ? message.substr(colon + 2) : message);
+}
+
+Reply foliage_paint(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    entt::registry& ecs = world.ecs();
+    const std::string type_path = params.find("type")->as_string();
+    std::string problem;
+    const auto type = procedural::foliage_type(world, type_path, &problem);
+    if (type == nullptr) {
+        return param_error(code::kInvalidArgument, "/type", problem);
+    }
+    const bool flat = type->space == "2d";
+    auto read = read_brush(session, params, flat);
+    if (!read) {
+        return brush_error(read.error());
+    }
+    Brush brush = read.value();
+    const float strength = std::clamp(number_or(params, "strength", 1.0F), 0.0F, 1.0F);
+
+    // The ground under the brush.
+    std::vector<ScatterTriangle> ground;
+    std::vector<std::string> warnings;
+    const json::Value* on = params.find("on");
+    std::vector<entt::entity> on_entities;
+    if (on != nullptr) {
+        const json::Array& names = on->as_array();
+        for (std::size_t k = 0; k < names.size(); ++k) {
+            const entt::entity entity = world.find(names[k].as_string());
+            if (entity == entt::null) {
+                return unknown_entity(world, names[k].as_string(), "/on/" + std::to_string(k));
+            }
+            on_entities.push_back(entity);
+        }
+    }
+    const std::array<float, 4> square =
+        flat ? std::array<float, 4>{brush.center.x - brush.radius, brush.center.y - brush.radius,
+                                    brush.center.x + brush.radius, brush.center.y + brush.radius}
+             : std::array<float, 4>{brush.center.x - brush.radius, brush.center.z - brush.radius,
+                                    brush.center.x + brush.radius, brush.center.z + brush.radius};
+    if (flat) {
+        if (on_entities.empty()) {
+            add_area(square, true, ground);
+        } else {
+            ScatterLayer layer;
+            auto cells = ground_2d(session, layer, on_entities, "");
+            if (!cells) {
+                return param_error(code::kInvalidArgument, "/on", cells.error().message);
+            }
+            ground = std::move(cells).value();
+        }
+    } else {
+        const world::Tree3D tree(world);
+        const navigation::NavigationMesh settings;
+        std::vector<navigation::EntityGeometry> geometry =
+            navigation::world_geometry(world, session.assets(), settings, &warnings);
+        std::set<entt::entity> under_names(on_entities.begin(), on_entities.end());
+        if (on_entities.empty()) {
+            for (const navigation::EntityGeometry& each : geometry) {
+                under_names.insert(each.entity);
+            }
+        }
+        ground = ground_3d(geometry, tree, under_names);
+        if (ground.empty() && on_entities.empty()) {
+            add_area(square, false, ground); // nothing solid: the ground plane
+        }
+    }
+
+    // Kept apart from this type's instances, and from those that block, nearby.
+    std::vector<Vec3> avoid;
+    if (brush.entity != entt::null) {
+        Brush near = brush;
+        near.radius = brush.radius + std::max(type->spacing, 0.0F) + 1.0F;
+        for (const Found& found : instances_in(world, near, "")) {
+            const std::string& other =
+                flat ? ecs.get<world::Foliage2D>(brush.entity).groups[found.group].type
+                     : ecs.get<world::Foliage3D>(brush.entity).groups[found.group].type;
+            const auto other_type = procedural::foliage_type(world, other);
+            if (other == type_path ||
+                (other_type != nullptr && other_type->collision.shape != "none")) {
+                avoid.push_back(flat ? Vec3{found.position.x, found.position.y, 0.0F}
+                                     : found.position);
+            }
+        }
+    }
+    procedural::FoliageStroke stroke{
+        .center = brush.center, .radius = brush.radius, .strength = strength, .seed = 0};
+    if (const json::Value* seed = params.find("seed"); seed != nullptr) {
+        stroke.seed = static_cast<std::uint32_t>(seed->as_int());
+    } else {
+        // Strokes in other places differ; the same stroke again places the same.
+        std::uint32_t hash = 2166136261U;
+        for (const float v : {brush.center.x, brush.center.y, brush.center.z}) {
+            hash = (hash ^ static_cast<std::uint32_t>(std::lround(v * 1000.0F))) * 16777619U;
+        }
+        stroke.seed = hash;
+    }
+    const procedural::FoliagePainted painted =
+        procedural::paint_foliage(*type, stroke, ground, avoid);
+
+    // The entity, made if missing, and the group.
+    if (brush.entity == entt::null) {
+        auto created = world.create(params.find("entity")->as_string());
+        if (!created) {
+            return param_error(code::kInvalidParams, "/entity", created.error().message);
+        }
+        brush.entity = created.value();
+    }
+    std::size_t total = 0;
+    if (flat) {
+        ecs.get_or_emplace<world::Transform2D>(brush.entity);
+        auto& foliage = ecs.get_or_emplace<world::Foliage2D>(brush.entity);
+        const world::Affine2D to_local = world::Tree2D(world).global_affine(brush.entity).inverse();
+        auto group = std::ranges::find(foliage.groups, type_path, &world::FoliageGroup2D::type);
+        if (group == foliage.groups.end()) {
+            foliage.groups.push_back({.type = type_path, .instances = {}});
+            group = foliage.groups.end() - 1;
+        }
+        for (const procedural::FoliagePlace3D& place : painted.places) {
+            procedural::add_foliage(
+                *group, {.position = to_local.apply({place.position.x, place.position.y}),
+                         .rotation = 0.0F,
+                         .scale = place.scale});
+        }
+        total = procedural::foliage_count(*group);
+    } else {
+        ecs.get_or_emplace<world::Transform3D>(brush.entity);
+        auto& foliage = ecs.get_or_emplace<world::Foliage3D>(brush.entity);
+        const world::Affine3D to_local = world::Tree3D(world).global(brush.entity).inverse();
+        auto group = std::ranges::find(foliage.groups, type_path, &world::FoliageGroup3D::type);
+        if (group == foliage.groups.end()) {
+            foliage.groups.push_back({.type = type_path, .instances = {}});
+            group = foliage.groups.end() - 1;
+        }
+        for (const procedural::FoliagePlace3D& place : painted.places) {
+            const world::Transform3D local = local_3d(
+                to_local,
+                {.position = place.position, .rotation = place.rotation, .scale = place.scale});
+            procedural::add_foliage(
+                *group,
+                {.position = local.position, .rotation = local.rotation, .scale = local.scale.y});
+        }
+        total = procedural::foliage_count(*group);
+    }
+    json::Value out;
+    out["added"] = static_cast<std::int64_t>(painted.places.size());
+    out["count"] = static_cast<std::int64_t>(total);
+    if (std::cmp_less(painted.places.size(), painted.wanted)) {
+        json::Value rejected;
+        if (painted.slope > 0) {
+            rejected["slope"] = painted.slope;
+        }
+        if (painted.height > 0) {
+            rejected["height"] = painted.height;
+        }
+        if (painted.spacing > 0) {
+            rejected["spacing"] = painted.spacing;
+        }
+        if (rejected.is_object() && !rejected.as_object().empty()) {
+            out["rejected"] = std::move(rejected);
+        }
+    }
+    if (ground.empty()) {
+        out["problem"] = "no ground under the brush: on gave no geometry there";
+    }
+    return Reply::success(std::move(out));
+}
+
+// Removes the instances found, last first so indices stay good.
+void remove_found(world::World& world, const Brush& brush, std::vector<Found> found) {
+    std::ranges::sort(found, [](const Found& a, const Found& b) {
+        return std::tie(a.group, a.index) > std::tie(b.group, b.index);
+    });
+    for (const Found& each : found) {
+        if (brush.flat) {
+            procedural::remove_foliage(
+                world.ecs().get<world::Foliage2D>(brush.entity).groups[each.group], each.index);
+        } else {
+            procedural::remove_foliage(
+                world.ecs().get<world::Foliage3D>(brush.entity).groups[each.group], each.index);
+        }
+    }
+}
+
+std::string type_of(world::World& world, const Brush& brush, std::size_t group) {
+    return brush.flat ? world.ecs().get<world::Foliage2D>(brush.entity).groups[group].type
+                      : world.ecs().get<world::Foliage3D>(brush.entity).groups[group].type;
+}
+
+Reply foliage_erase(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    auto read = read_brush(session, params, std::nullopt);
+    if (!read) {
+        return brush_error(read.error());
+    }
+    const Brush brush = read.value();
+    const json::Value* type = params.find("type");
+    std::vector<Found> found = instances_in(world, brush, type != nullptr ? type->as_string() : "");
+    if (const json::Value* count = params.find("count"); count != nullptr) {
+        found.resize(std::min(found.size(), static_cast<std::size_t>(count->as_int())));
+    }
+    const std::size_t removed = found.size();
+    remove_found(world, brush, std::move(found));
+    json::Value out;
+    out["removed"] = static_cast<std::int64_t>(removed);
+    return Reply::success(std::move(out));
+}
+
+json::Value point_json(Vec3 at, bool flat) {
+    // Rounded in double, so a thousandth prints as one.
+    const auto round = [](float v) { return std::round(static_cast<double>(v) * 1000.0) / 1000.0; };
+    json::Array point{round(at.x), round(at.y)};
+    if (!flat) {
+        point.emplace_back(round(at.z));
+    }
+    return point;
+}
+
+Reply foliage_get(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    auto read = read_brush(session, params, std::nullopt);
+    if (!read) {
+        return brush_error(read.error());
+    }
+    const Brush brush = read.value();
+    json::Array groups;
+    const std::size_t group_count =
+        brush.flat ? world.ecs().get<world::Foliage2D>(brush.entity).groups.size()
+                   : world.ecs().get<world::Foliage3D>(brush.entity).groups.size();
+    for (std::size_t g = 0; g < group_count; ++g) {
+        const std::string path = type_of(world, brush, g);
+        json::Value entry;
+        entry["type"] = path;
+        entry["count"] = static_cast<std::int64_t>(
+            brush.flat ? procedural::foliage_count(
+                             world.ecs().get<world::Foliage2D>(brush.entity).groups[g])
+                       : procedural::foliage_count(
+                             world.ecs().get<world::Foliage3D>(brush.entity).groups[g]));
+        std::string problem;
+        if (const auto type = procedural::foliage_type(world, path, &problem); type != nullptr) {
+            entry["kind"] = type->kind;
+            if (type->collision.shape != "none") {
+                entry["blocks"] = true;
+            }
+            if (type->climbable) {
+                entry["climbable"] = true;
+            }
+            if (!type->harvest_item.empty()) {
+                entry["harvest"] = type->harvest_item;
+            }
+        } else {
+            entry["problem"] = problem;
+        }
+        groups.push_back(std::move(entry));
+    }
+    json::Value out;
+    out["groups"] = std::move(groups);
+    // Pushed over by characters now.
+    std::int64_t pushed = 0;
+    for (const procedural::FoliagePush& push : procedural::foliage_pushes(world)) {
+        pushed += push.entity == brush.entity ? 1 : 0;
+    }
+    if (pushed > 0) {
+        out["pushed"] = pushed;
+    }
+    if (params.find("at") != nullptr) {
+        const json::Value* type = params.find("type");
+        const std::vector<Found> found =
+            instances_in(world, brush, type != nullptr ? type->as_string() : "");
+        const auto limit = static_cast<std::size_t>(
+            params.find("limit") != nullptr ? params.find("limit")->as_int() : 20);
+        json::Array near;
+        for (std::size_t k = 0; k < found.size() && k < limit; ++k) {
+            json::Value each;
+            each["group"] = static_cast<std::int64_t>(found[k].group);
+            each["index"] = static_cast<std::int64_t>(found[k].index);
+            each["position"] = point_json(found[k].position, brush.flat);
+            near.push_back(std::move(each));
+        }
+        out["near"] = std::move(near);
+        out["within"] = static_cast<std::int64_t>(found.size());
+    }
+    return Reply::success(std::move(out));
+}
+
+Reply foliage_harvest(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    auto read = read_brush(session, params, std::nullopt);
+    if (!read) {
+        return brush_error(read.error());
+    }
+    const Brush brush = read.value();
+    const json::Value* type_param = params.find("type");
+    const std::vector<Found> found =
+        instances_in(world, brush, type_param != nullptr ? type_param->as_string() : "");
+    for (const Found& each : found) {
+        const std::string path = type_of(world, brush, each.group);
+        const auto type = procedural::foliage_type(world, path);
+        if (type == nullptr || type->harvest_item.empty()) {
+            continue;
+        }
+        json::Value data;
+        data["type"] = path;
+        data["item"] = type->harvest_item;
+        data["amount"] = type->harvest_amount;
+        data["position"] = point_json(each.position, brush.flat);
+        remove_found(world, brush, {each});
+        world.emit("foliage_harvested", world.id_of(brush.entity), data);
+        return Reply::success(std::move(data));
+    }
+    return param_error(code::kNotFound, "/at",
+                       "nothing that can be harvested within " + short_number(brush.radius) +
+                           " of there");
+}
+
 } // namespace
 
 void register_scatter_commands(Registry& registry) {
@@ -493,6 +948,102 @@ void register_scatter_commands(Registry& registry) {
         .params = std::move(schema),
         .handler = scatter_run,
     });
+
+    const auto point = [](std::string_view description) {
+        json::Value schema;
+        schema["type"] = "array";
+        schema["items"]["type"] = "number";
+        schema["minItems"] = 2;
+        schema["maxItems"] = 3;
+        schema["description"] = description;
+        return schema;
+    };
+    const auto brush_schema = [&](bool at_required) {
+        json::Value schema;
+        schema["type"] = "object";
+        schema["additionalProperties"] = false;
+        schema["required"] = at_required ? json::Array{"entity", "at"} : json::Array{"entity"};
+        json::Value& p = schema["properties"];
+        p["entity"] = property("string", "ID of the entity with the Foliage3D or Foliage2D.");
+        p["at"] = point("The brush's middle in world space: [x, y, z], or [x, y] in 2D.");
+        p["radius"] = property("number", "The brush's radius: meters, or pixels in 2D "
+                                         "(default 1 m, 32 px).");
+        p["radius"]["exclusiveMinimum"] = 0;
+        return schema;
+    };
+    {
+        json::Value schema = brush_schema(true);
+        schema["required"] = json::Array{"entity", "type", "at"};
+        json::Value& p = schema["properties"];
+        p["entity"]["description"] = "ID of the entity to paint into, made with a Foliage3D or "
+                                     "Foliage2D if missing.";
+        p["type"] = property("string", "The .foliage.json file to paint.");
+        p["strength"] = property("number", "Share of the type's density, 0 to 1 (default 1).");
+        p["strength"]["minimum"] = 0;
+        p["strength"]["maximum"] = 1;
+        p["on"] = property("array", "IDs of what to paint on, with what is under them: 3D "
+                                    "geometry, 2D tile maps. Default: everything solid in 3D, "
+                                    "the brush's area in 2D.");
+        p["on"]["items"]["type"] = "string";
+        p["seed"] = property("integer", "Seed for where instances go (default: from at).");
+        registry.add({
+            .name = "foliage.paint",
+            .description = "Paints instances of a foliage type (.foliage.json) within a brush "
+                           "onto the ground, by the type's density, spacing, slope and scale. "
+                           "Returns added and the group's count. $ slash-cli schema foliage.",
+            .capabilities = {Edit},
+            .effect = Effect::Edit,
+            .params = std::move(schema),
+            .handler = foliage_paint,
+        });
+    }
+    {
+        json::Value schema = brush_schema(true);
+        json::Value& p = schema["properties"];
+        p["type"] = property("string", "Only this .foliage.json type's instances.");
+        p["count"] = property("integer", "At most this many, nearest first.");
+        p["count"]["minimum"] = 0;
+        registry.add({
+            .name = "foliage.erase",
+            .description = "Removes foliage instances within a brush. Returns removed.",
+            .capabilities = {Edit},
+            .effect = Effect::Edit,
+            .params = std::move(schema),
+            .handler = foliage_erase,
+        });
+    }
+    {
+        json::Value schema = brush_schema(false);
+        json::Value& p = schema["properties"];
+        p["type"] = property("string", "With at: only this .foliage.json type's instances.");
+        p["limit"] = property("integer", "With at: at most this many listed (default 20).");
+        p["limit"]["minimum"] = 0;
+        registry.add({
+            .name = "foliage.get",
+            .description = "A Foliage3D's or Foliage2D's groups: type, kind, count and what "
+                           "they do, how many characters push over now and, with at, the "
+                           "instances within radius, nearest first.",
+            .capabilities = {Read},
+            .effect = Effect::Read,
+            .params = std::move(schema),
+            .handler = foliage_get,
+        });
+    }
+    {
+        json::Value schema = brush_schema(true);
+        json::Value& p = schema["properties"];
+        p["type"] = property("string", "Only this .foliage.json type's instances.");
+        registry.add({
+            .name = "foliage.harvest",
+            .description = "Harvests the nearest instance within radius whose type gives an "
+                           "item: removes it, emits foliage_harvested and returns its type, "
+                           "item, amount and position.",
+            .capabilities = {Edit},
+            .effect = Effect::Edit,
+            .params = std::move(schema),
+            .handler = foliage_harvest,
+        });
+    }
 }
 
 } // namespace slash::command

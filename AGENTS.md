@@ -147,7 +147,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, physics_material, ragdoll, sdk, plugin)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, physics_material, ragdoll, foliage, sdk, plugin)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -157,7 +157,7 @@ Validate after editing a scene or prefab by hand, and format before committing o
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
-`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`, `.scatter.json`, `.physics_material.json` and `.ragdoll.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
+`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`, `.scatter.json`, `.physics_material.json`, `.ragdoll.json` and `.foliage.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -1954,6 +1954,23 @@ spatial shaders read it at the mesh's origin as `WIND` (`render::kShaderWindCons
 axis in pixels, which `CPUParticles2D` feel by `wind_influence` and canvas shaders read as `WIND`
 (filled by `CanvasRenderer::draw`'s `blow`). `wind.sample` returns either at points;
 `examples/wind` blows a meadow.
+
+Foliage is Unreal's Foliage tool (Godot has none): a `.foliage.json` type
+(`slash/world/foliage.hpp`; `$cli schema foliage`) says what a plant or rock draws, how thickly a
+brush paints it, how it bends and parts, whether it blocks and what harvesting it gives, and a
+`Foliage3D` or `Foliage2D` holds a group of instances per type as flat numbers (seven or four an
+instance). `engine/procedural`'s `slash/procedural/foliage.hpp` is what drawing, collision and
+commands ask: `foliage_type` (types read through the world's assets, kept by version),
+`paint_foliage` (a brush stroke through `procedural::scatter`), `foliage_lean_3d` and `_2d` (wind
+times `bend` with sway, plus the push of characters, capped) and `install_foliage`, the
+`foliage` system (priority 970) springing instances that `CharacterBody`, `RigidBody` and
+`VehicleBody3D` entities push. `scene3d::Renderer` draws each instance's model bent about its
+foot, fading by alpha hash past `cull_distance` and as an impostor far off; `CanvasRenderer`
+draws 2D instances as quads leaned by their height. Blocking types are a static body of the
+entity's: physics3d takes `scene3d::foliage_bodies` (`src/foliage.cpp`) as grid bodies with a
+cell per instance, physics2d takes polygons through the canvas's tile shape source, so
+`physics.raycast` names the `instance` hit. `foliage.paint`, `erase`, `get` and `harvest` are in
+`engine/command/src/scatter.cpp`. `examples/foliage` paints a meadow in 3D and 2D.
 
 Physics materials and fields make one simulation, after Unreal's Chaos. A
 `.physics_material.json` file (`slash/world/physics_material.hpp`: Godot's `PhysicsMaterial`

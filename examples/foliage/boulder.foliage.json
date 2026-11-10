@@ -1,0 +1,17 @@
+{
+  "collision": {
+    "offset": [0, 0.2, 0],
+    "radius": 0.3,
+    "shape": "sphere"
+  },
+  "density": 1,
+  "format": 1,
+  "harvest": {
+    "amount": 3,
+    "item": "stone"
+  },
+  "kind": "rock",
+  "mesh": "boulder.model.json",
+  "random_yaw": true,
+  "spacing": 0.8
+}

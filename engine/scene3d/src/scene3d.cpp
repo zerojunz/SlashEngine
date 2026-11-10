@@ -5,6 +5,7 @@
 #include "slash/core/log.hpp"
 #include "slash/core/math.hpp"
 #include "slash/core/text.hpp"
+#include "slash/procedural/foliage.hpp"
 #include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
 #include "slash/scene3d/blend_shapes.hpp"
@@ -2252,6 +2253,161 @@ void Renderer::add_gridmap(const world::World& world, entt::entity entity,
     }
 }
 
+void Renderer::add_foliage(const world::World& world, entt::entity entity,
+                           const world::Affine3D& place,
+                           const std::function<world::Affine3D(entt::entity)>& global,
+                           const world::Affine3D& camera, std::uint32_t cull_mask,
+                           float interpolation) {
+    const auto& foliage = world.ecs().get<const world::Foliage3D>(entity);
+    const world::Tree3D tree(world);
+    const world::WindField wind(world, tree);
+    for (std::size_t g = 0; g < foliage.groups.size(); ++g) {
+        const world::FoliageGroup3D& group = foliage.groups[g];
+        const std::string field = "/components/Foliage3D/groups/" + std::to_string(g) + "/type";
+        std::string problem;
+        const auto type = procedural::foliage_type(world, group.type, &problem);
+        if (type == nullptr) {
+            problems_.push_back({entity, field, problem});
+            continue;
+        }
+        if (type->space != "3d") {
+            problems_.push_back({entity, field, "is a 2D type: a Foliage3D draws 3D ones"});
+            continue;
+        }
+        render::ShadowCasting casting = casting_of(type->cast_shadow);
+        if ((foliage.layers & cull_mask) == 0) {
+            if (casting == render::ShadowCasting::Off) {
+                continue;
+            }
+            casting = render::ShadowCasting::ShadowsOnly;
+        }
+        world::MeshInstance3D instance;
+        instance.mesh = type->mesh;
+        instance.layers = foliage.layers;
+        instance.cast_shadow = type->cast_shadow;
+        instance.gi_mode = "disabled";
+        // An impostor: a picture standing on the ground and turning to face the camera.
+        std::optional<Bounds> impostor_box;
+        if (!type->impostor.empty() && type->impostor_distance > 0.0F && models_) {
+            if (auto source = models_(type->mesh)) {
+                impostor_box = bounds(*source.value().model);
+            }
+        }
+        const std::size_t count = procedural::foliage_count(group);
+        for (std::size_t i = 0; i < count; ++i) {
+            const procedural::FoliagePlace3D each = procedural::foliage_place(group, i);
+            world::Transform3D local;
+            local.position = each.position;
+            local.rotation = each.rotation;
+            local.scale = {each.scale, each.scale, each.scale};
+            const world::Affine3D placed = place * world::affine(local);
+            const Vec3 base = placed.origin;
+            const Vec3 to_camera = camera.origin - base;
+            const float distance =
+                std::sqrt((to_camera.x * to_camera.x) + (to_camera.y * to_camera.y) +
+                          (to_camera.z * to_camera.z));
+            // Faded out over its cull distance, as Godot's visibility range fade.
+            float fade = 1.0F;
+            if (type->cull_distance.y > 0.0F) {
+                if (distance >= type->cull_distance.y) {
+                    continue;
+                }
+                if (distance > type->cull_distance.x &&
+                    type->cull_distance.y > type->cull_distance.x) {
+                    fade = (type->cull_distance.y - distance) /
+                           (type->cull_distance.y - type->cull_distance.x);
+                }
+            }
+            const bool far = type->impostor_distance > 0.0F && distance >= type->impostor_distance;
+            const std::size_t before = draws_.size();
+            const std::size_t problems_before = problems_.size();
+            if (far && impostor_box) {
+                add_impostor(entity, *type, *impostor_box, placed, camera, foliage.layers, casting);
+            } else {
+                // Leaning about its base: its up axis turned toward the lean, the rest kept.
+                const Vec2 lean = procedural::foliage_lean_3d(
+                    world, entity, g, i, *type, base,
+                    wind.at(base + render_origin_, world::wind_time(world)));
+                world::Affine3D bend;
+                const float amount = std::sqrt((lean.x * lean.x) + (lean.y * lean.y));
+                if (amount > 1e-5F) {
+                    const Vec2f turn = cos_sin(amount);
+                    bend.y = {lean.x / amount * turn.y, turn.x, lean.y / amount * turn.y};
+                    bend.origin = base - bend.basis(base);
+                }
+                instance.lod_bias = far ? 0.001F : foliage.lod_bias;
+                add_model(world, entity, instance, bend * placed, global, casting, interpolation);
+            }
+            if (problems_.size() > problems_before) {
+                // The model can't draw: say so once, at the group's type.
+                for (std::size_t p = problems_before; p < problems_.size(); ++p) {
+                    if (problems_[p].path == kMeshField) {
+                        problems_[p].path = field;
+                    }
+                }
+                break;
+            }
+            if (fade < 1.0F) {
+                for (std::size_t d = before; d < draws_.size(); ++d) {
+                    draws_[d].material.transparency = render::Transparency::AlphaHash;
+                    draws_[d].material.albedo[3] *= fade;
+                }
+            }
+        }
+    }
+}
+
+void Renderer::add_impostor(entt::entity entity, const world::FoliageType& type, const Bounds& box,
+                            const world::Affine3D& placed, const world::Affine3D& camera,
+                            std::uint32_t layers, render::ShadowCasting casting) {
+    // A quad one unit across and up, standing on its bottom edge, facing +z.
+    static const std::vector<render::Vertex3D> kQuad = [] {
+        std::vector<render::Vertex3D> out(4);
+        const std::array<std::array<float, 2>, 4> corners{
+            {{-0.5F, 0.0F}, {0.5F, 0.0F}, {0.5F, 1.0F}, {-0.5F, 1.0F}}};
+        for (std::size_t i = 0; i < 4; ++i) {
+            out[i].position = {corners[i][0], corners[i][1], 0.0F};
+            out[i].normal = {0.0F, 0.0F, 1.0F};
+            out[i].tangent = {1.0F, 0.0F, 0.0F, 1.0F};
+            out[i].uv = {corners[i][0] + 0.5F, 1.0F - corners[i][1]};
+        }
+        return out;
+    }();
+    static const std::vector<std::uint32_t> kIndices{0, 2, 1, 0, 3, 2};
+    auto made = kept_mesh("foliage:impostor", kQuad, kIndices);
+    if (!made) {
+        problems_.push_back({entity, "/components/Foliage3D", made.error().message});
+        return;
+    }
+    const float scale = std::sqrt((placed.y.x * placed.y.x) + (placed.y.y * placed.y.y) +
+                                  (placed.y.z * placed.y.z));
+    const float width = std::max(box.max.x - box.min.x, box.max.z - box.min.z) * scale;
+    const float height = (box.max.y - std::min(box.min.y, 0.0F)) * scale;
+    // Turned about the up axis to face the camera.
+    Vec3 facing = camera.origin - placed.origin;
+    facing.y = 0.0F;
+    const float length = std::sqrt((facing.x * facing.x) + (facing.z * facing.z));
+    facing =
+        length > 1e-5F ? Vec3{facing.x / length, 0.0F, facing.z / length} : Vec3{0.0F, 0.0F, 1.0F};
+    world::Affine3D quad;
+    quad.x = Vec3{facing.z, 0.0F, -facing.x} * width;
+    quad.y = Vec3{0.0F, height, 0.0F};
+    quad.z = facing;
+    quad.origin = placed.origin;
+    world::StandardMaterial3D standard;
+    standard.albedo_texture = type.impostor;
+    standard.transparency = "alpha_scissor";
+    standard.cull_mode = "disabled";
+    Draw draw;
+    draw.mesh = made.value();
+    draw.transform = quad.matrix();
+    draw.entity = entity;
+    draw.material = material(standard, textures_, problems_, entity);
+    draw.layers = layers;
+    draw.shadows = casting;
+    draws_.push_back(draw);
+}
+
 bool Renderer::particle_pieces(const world::World& world, entt::entity entity,
                                const std::string& path, std::string_view field,
                                std::vector<ParticlePiece>& pieces,
@@ -3726,6 +3882,12 @@ std::optional<Frame3D> Renderer::prepare(
     for (const entt::entity entity : made<world::MultiMeshInstance3D>(world)) {
         if (tree.visible(entity)) {
             add_multimesh(world, entity, global(entity), global, lens.cull_mask, t);
+        }
+    }
+    // Foliage3Ds draw their types' models at their instances.
+    for (const entt::entity entity : made<world::Foliage3D>(world)) {
+        if (tree.visible(entity)) {
+            add_foliage(world, entity, global(entity), global, camera_global, lens.cull_mask, t);
         }
     }
     // CSG roots draw their results; the shapes under them draw nothing of their own.

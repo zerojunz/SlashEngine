@@ -3,6 +3,7 @@
 #include "slash/canvas/particles.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/profile.hpp"
+#include "slash/procedural/foliage.hpp"
 #include "slash/scene3d/material.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/video/video.hpp"
@@ -1777,6 +1778,114 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                     .shading_for = shading_for,
                     .repeat = repeat};
     gather_cloths(state);
+
+    // Foliage2D: each group's texture at its instances, standing on the type's origin, leaning in
+    // the wind and from characters, the lowest drawn last so nearer plants cover farther ones.
+    std::optional<world::WindField2D> foliage_wind;
+    for (const auto [entity, foliage] : ecs.view<const world::Foliage2D>().each()) {
+        const Inherited from_parents = inherited(world, tree, entity);
+        const std::size_t canvas = canvases.of(entity);
+        if (!foliage.visible || !from_parents.visible || !canvas_list[canvas].visible) {
+            continue;
+        }
+        if (!foliage_wind) {
+            foliage_wind.emplace(world, tree);
+        }
+        const int z = z_index(foliage.z_index, foliage.z_as_relative, from_parents);
+        const world::Affine2D place = tree.global_affine(entity);
+        const std::array<std::uint8_t, 4> rgba{
+            to_byte(foliage.modulate.x * from_parents.modulate.x),
+            to_byte(foliage.modulate.y * from_parents.modulate.y),
+            to_byte(foliage.modulate.z * from_parents.modulate.z),
+            to_byte(foliage.modulate.w * from_parents.modulate.w)};
+        for (std::size_t g = 0; g < foliage.groups.size(); ++g) {
+            const world::FoliageGroup2D& group = foliage.groups[g];
+            const std::string field = "/components/Foliage2D/groups/" + std::to_string(g) + "/type";
+            std::string why;
+            const auto type = procedural::foliage_type(world, group.type, &why);
+            if (type == nullptr) {
+                problem(entity, field, why);
+                continue;
+            }
+            if (type->space != "2d") {
+                problem(entity, field, "is a 3D type: a Foliage2D draws 2D ones");
+                continue;
+            }
+            auto texture = this->texture(
+                type->texture, resolve_filter(foliage.texture_filter, options.texture_filter));
+            if (!texture) {
+                warn_once(type->texture, texture.error().message, "texture", "foliage can't draw");
+                problem(entity, field, texture.error().message);
+                continue;
+            }
+            const std::size_t count = procedural::foliage_count(group);
+            std::vector<std::size_t> order(count);
+            for (std::size_t i = 0; i < count; ++i) {
+                order[i] = i;
+            }
+            std::ranges::stable_sort(order, [&](std::size_t a, std::size_t b) {
+                return procedural::foliage_place(group, a).position.y <
+                       procedural::foliage_place(group, b).position.y;
+            });
+            render::Material material;
+            material.shading =
+                shading_for(render::LightMode::Normal, foliage.light_mask, z, canvas);
+            const std::size_t first = vertices.size();
+            for (const std::size_t i : order) {
+                const procedural::FoliagePlace2D each = procedural::foliage_place(group, i);
+                const Vec2 base = place.apply(each.position);
+                const float lean =
+                    procedural::foliage_lean_2d(world, entity, g, i, *type, base,
+                                                foliage_wind->at(base, world::wind_time(world)));
+                const Vec2f turn = cos_sin(lean);
+                const Vec2f spin = cos_sin(each.rotation);
+                const float scale = std::abs(each.scale);
+                const float width = type->size.x * scale;
+                const float height = type->size.y * scale;
+                const bool mirrored = each.scale < 0.0F;
+                const auto corner = [&](float across, float down) {
+                    // Across and down as shares of the image; up from the origin leans over.
+                    const float x = (across - type->origin.x) * width;
+                    const float up = (type->origin.y - down) * height;
+                    const float bent_x = x + (up * turn.y);
+                    const float bent_y = -up * turn.x;
+                    const Vec2 local{each.position.x + (bent_x * spin.x) - (bent_y * spin.y),
+                                     each.position.y + (bent_x * spin.y) + (bent_y * spin.x)};
+                    const Vec2 at = place.apply(local);
+                    return render::Vertex2D{.x = static_cast<float>(at.x),
+                                            .y = static_cast<float>(at.y),
+                                            .u = mirrored ? 1.0F - across : across,
+                                            .v = down,
+                                            .rgba = rgba};
+                };
+                const render::Vertex2D top_left = corner(0.0F, 0.0F);
+                const render::Vertex2D top_right = corner(1.0F, 0.0F);
+                const render::Vertex2D bottom_left = corner(0.0F, 1.0F);
+                const render::Vertex2D bottom_right = corner(1.0F, 1.0F);
+                vertices.insert(vertices.end(), {top_left, top_right, bottom_left, top_right,
+                                                 bottom_right, bottom_left});
+            }
+            if (vertices.size() == first) {
+                continue;
+            }
+            repeat(entity, first);
+            items.push_back({.canvas = canvas,
+                             .z_index = z,
+                             .order = tree.draw_key(entity),
+                             .part = g,
+                             .texture = texture.value()->id,
+                             .first = first,
+                             .count = vertices.size() - first,
+                             .material = std::move(material),
+                             .entity = entity,
+                             .kind = FrameItem::Kind::Sprite,
+                             .image = &texture.value()->pixels(),
+                             .path = texture.value()->path,
+                             .drawn = count,
+                             .particles = render::ParticlesId::None,
+                             .look = {}});
+        }
+    }
 
     // GPUParticles2D: each system runs the steps it hasn't on the device once the frame begins,
     // then draws there.

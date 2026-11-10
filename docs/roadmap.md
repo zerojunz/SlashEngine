@@ -1191,13 +1191,19 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
        as animations, in 3D and 2D (`examples/physics-debugger`); character cloth as Chaos
        Cloth, `Cloth3D` on a model's skin with max distance maps, backstops and long range
        attachments on Jolt and `Cloth2D` sheets on cut-outs (`examples/character-cloth`)
-10. [ ] Foliage: painted and scattered plants and ground cover as Unreal's Foliage tool, with
+10. [x] Foliage: painted and scattered plants and ground cover as Unreal's Foliage tool, with
        `foliage.paint` and `foliage.erase` brushes over terrains and meshes and instances kept
        per cell: distinct kinds of grass, flowers, shrubs, bushes, trees, moss, rocks and
        pebbles (`.foliage.json` types made from recipes or library models, varied by seed),
        grass drawn in instanced batches with distance culling and fades, impostors for far
        trees, bending in the wind, and characters' interactions: plants that part, bend and
-       spring back as they pass, trees and rocks that block and can be climbed or harvested
+       spring back as they pass, trees and rocks that block and can be climbed or harvested.
+       Done in 3D and 2D: `.foliage.json` types, `Foliage3D` and `Foliage2D` groups painted by
+       `foliage.paint` (seeded, spaced, by slope and height) and tended by `foliage.erase`,
+       `foliage.get` and `foliage.harvest`; wind bending with sway, characters and bodies
+       parting plants that spring back, cull distances with alpha-hash fades and impostors,
+       and instances that block on Jolt and Box2D and that `physics.raycast` names
+       (`examples/foliage`)
 11. [ ] Light tools: Godot 4's `light_temperature` and physical light units, projector textures
        (`light_projector`), IES profiles and light functions as Unreal's, `light.tune`, which
        adjusts lights toward exposure and contribution targets from `lighting.check`, and
