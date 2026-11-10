@@ -1,5 +1,6 @@
 add_library(slash_physics3d
     src/character.cpp
+    src/debug.cpp
     src/destruction.cpp
     src/drives.cpp
     src/fields.cpp
@@ -7,6 +8,7 @@ add_library(slash_physics3d
     src/motion.cpp
     src/physics3d.cpp
     src/shapes.cpp
+    src/cloth.cpp
     src/soft_body.cpp
     src/space.cpp
     src/vehicle.cpp)

@@ -71,6 +71,14 @@ void Space::apply_fields(world::World& world, const world::Tree2D& tree, float s
             fields.empty() ? world::FieldEffect{}
                            : fields.at(from_b2(b2Body_GetWorldCenterOfMass(body->id)),
                                        body->shape_key.layer, seed_of(body->name), time);
+        if (debug_ != nullptr && !effect.empty()) {
+            debug_->fields.push_back({.body = body->name,
+                                      .force = effect.force,
+                                      .velocity = effect.velocity,
+                                      .strain = effect.strain,
+                                      .anchored = effect.anchored,
+                                      .killed = effect.killed});
+        }
         // Anchors hold dynamic bodies as kinematic ones, and let go when they leave.
         if (effect.anchored && !body->anchored && b2Body_GetType(body->id) == b2_dynamicBody) {
             body->anchored = true;

@@ -145,6 +145,8 @@ add_executable(slash_tests
     test_path_trace.cpp
     test_physics.cpp
     test_physics3d.cpp
+    test_physics_debug.cpp
+    test_cloth.cpp
     test_physics_fields.cpp
     test_playtest.cpp
     test_autopilot.cpp

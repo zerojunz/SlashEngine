@@ -6,6 +6,7 @@
 #include "slash/scene3d/material.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/video/video.hpp"
+#include "slash/world/cloth2d.hpp"
 #include "slash/world/wind.hpp"
 
 #include <algorithm>
@@ -1650,6 +1651,90 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                          .particles = render::ParticlesId::None,
                          .look = {}});
         particles += live.size();
+    }
+
+    // Cloth2D: its sheet where 2D physics put its points, between the last two steps, or where
+    // its transform puts it at rest before physics steps it; the texture stretched over it.
+    for (const auto [entity, cloth] : ecs.view<const world::Cloth2D>().each()) {
+        const Inherited from_parents = inherited(world, tree, entity);
+        const std::size_t canvas = canvases.of(entity);
+        if (!cloth.visible || !from_parents.visible || !canvas_list[canvas].visible) {
+            continue;
+        }
+        const int z = z_index(cloth.z_index, cloth.z_as_relative, from_parents);
+        const int columns = world::cloth_columns(cloth);
+        const int rows = world::cloth_rows(cloth);
+        const auto count = static_cast<std::size_t>(columns) * static_cast<std::size_t>(rows);
+        std::vector<Vec2> points;
+        const world::ClothPoints2D* simulated = world::cloth_points_2d(world, entity);
+        if (simulated != nullptr && simulated->current.size() == count &&
+            simulated->previous.size() == count) {
+            const auto t = static_cast<float>(std::clamp(options.interpolation, 0.0, 1.0));
+            points.reserve(count);
+            for (std::size_t i = 0; i < count; ++i) {
+                points.push_back(simulated->previous[i] +
+                                 ((simulated->current[i] - simulated->previous[i]) * t));
+            }
+        } else {
+            points = world::cloth_rest_2d(cloth, tree.global_affine(entity));
+        }
+        render::TextureId texture_id = render::TextureId::None;
+        const render::Image* image = nullptr;
+        std::string_view path;
+        if (!cloth.texture.empty()) {
+            auto texture = this->texture(
+                cloth.texture, resolve_filter(cloth.texture_filter, options.texture_filter));
+            if (!texture) {
+                warn_once(cloth.texture, texture.error().message, "texture", "cloth can't draw");
+                problem(entity, "/components/Cloth2D/texture", texture.error().message);
+                continue;
+            }
+            texture_id = texture.value()->id;
+            image = &texture.value()->pixels();
+            path = texture.value()->path;
+        }
+        render::Material material;
+        material.shading = shading_for(render::LightMode::Normal, cloth.light_mask, z, canvas);
+        const std::array<std::uint8_t, 4> rgba{to_byte(cloth.color.x * from_parents.modulate.x),
+                                               to_byte(cloth.color.y * from_parents.modulate.y),
+                                               to_byte(cloth.color.z * from_parents.modulate.z),
+                                               to_byte(cloth.color.w * from_parents.modulate.w)};
+        const auto corner = [&](int row, int column) {
+            const Vec2 point = points[static_cast<std::size_t>((row * columns) + column)];
+            return render::Vertex2D{.x = static_cast<float>(point.x),
+                                    .y = static_cast<float>(point.y),
+                                    .u = static_cast<float>(column) /
+                                         static_cast<float>(columns - 1),
+                                    .v = static_cast<float>(row) / static_cast<float>(rows - 1),
+                                    .rgba = rgba};
+        };
+        const std::size_t first = vertices.size();
+        for (int row = 0; row + 1 < rows; ++row) {
+            for (int column = 0; column + 1 < columns; ++column) {
+                const render::Vertex2D top_left = corner(row, column);
+                const render::Vertex2D top_right = corner(row, column + 1);
+                const render::Vertex2D bottom_left = corner(row + 1, column);
+                const render::Vertex2D bottom_right = corner(row + 1, column + 1);
+                vertices.insert(vertices.end(), {top_left, top_right, bottom_left, top_right,
+                                                 bottom_right, bottom_left});
+            }
+        }
+        repeat(entity, first);
+        items.push_back({.canvas = canvas,
+                         .z_index = z,
+                         .order = tree.draw_key(entity),
+                         .part = 0,
+                         .texture = texture_id,
+                         .first = first,
+                         .count = vertices.size() - first,
+                         .material = std::move(material),
+                         .entity = entity,
+                         .kind = FrameItem::Kind::Sprite,
+                         .image = image,
+                         .path = path,
+                         .drawn = 1,
+                         .particles = render::ParticlesId::None,
+                         .look = {}});
     }
 
     // GPUParticles2D: each system runs the steps it hasn't on the device once the frame begins,

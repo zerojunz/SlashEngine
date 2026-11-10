@@ -3,7 +3,9 @@
 #include "slash/core/assert.hpp"
 #include "slash/core/jobs.hpp"
 #include "slash/physics2d/physics2d.hpp"
+#include "slash/world/cloth2d.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/physics_debug.hpp"
 #include "slash/world/physics_material.hpp"
 #include "slash/world/tree2d.hpp"
 
@@ -286,6 +288,19 @@ struct Tasks {
     std::deque<jobs::GroupId> groups;
 };
 
+// A Cloth2D's sheet as the space steps it (cloth.cpp).
+struct Cloth2DBody {
+    entt::entity entity{entt::null};
+    std::string name;
+    int columns = 0;
+    int rows = 0;
+    std::vector<Vec2> velocity;
+    std::vector<Vec2> targets; // where the transform put the points at the last step
+    std::vector<std::array<int, 2>> edges;
+    std::vector<std::array<int, 2>> bends;
+    world::ClothPoints2D points;
+};
+
 class Space {
 public:
     explicit Space(const Settings& settings);
@@ -312,6 +327,8 @@ public:
     [[nodiscard]] b2WorldId id() const noexcept { return world_; }
     // A body's or a tile map layer's, or nullptr.
     [[nodiscard]] const Body* body(entt::entity entity) const;
+    // Where a Cloth2D's points are after the last step and the one before, or nullptr.
+    [[nodiscard]] const world::ClothPoints2D* cloth_points(entt::entity entity) const;
 
     void queue(const Impulse& impulse) { impulses_.push_back(impulse); }
 
@@ -355,6 +372,10 @@ private:
     void apply_fields(world::World& world, const world::Tree2D& tree, float seconds);
     // Destroys the entities kill fields took, after a step, emitting field_killed.
     void destroy_doomed(world::World& world);
+    // While physics.debug records (debug.cpp): the step's contacts, joints and bodies.
+    void finish_debug(const world::World& world, world::PhysicsDebugStep& step) const;
+    // Steps every Cloth2D's sheet (cloth.cpp), after the bodies moved.
+    void step_cloths(world::World& world, const world::Tree2D& tree, float seconds);
 
     struct CachedMaterial {
         std::uint64_t version = 0;
@@ -362,6 +383,8 @@ private:
     };
     std::map<std::string, CachedMaterial, std::less<>> materials_;
     std::vector<entt::entity> doomed_;
+    // The step physics.debug is recording, during step().
+    world::PhysicsDebugStep* debug_ = nullptr;
 
     Settings settings_;
     Tasks tasks_;
@@ -370,6 +393,7 @@ private:
     EntityMap<std::unique_ptr<Body>> bodies_;
     EntityMap<std::unique_ptr<Body>> tiles_; // tile map layers' static bodies
     EntityMap<Joint> joints_;
+    EntityMap<std::unique_ptr<Cloth2DBody>> cloths_;
     std::vector<Impulse> impulses_;
     // Who touched whom after the last step, by entity ID, for entered and exited events:
     // (entity, other, other is an area).

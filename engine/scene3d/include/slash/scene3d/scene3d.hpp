@@ -602,6 +602,11 @@ private:
     // mesh of its own refilled when the pose changes.
     Result<render::MeshId> soft_mesh(const std::string& key, const Primitive& primitive,
                                      std::shared_ptr<const SoftBodyPose> pose);
+    // A model surface a Cloth3D simulates, its vertices where physics put them in the model's
+    // space, in a mesh of its own refilled when the pose changes.
+    Result<render::MeshId> cloth_mesh(const std::string& key, const ModelSurface& surface,
+                                      const std::shared_ptr<const SoftBodyPose>& pose,
+                                      std::size_t moved);
     // A surface's vertices moved by its blend shapes' weights, then by a skin's joints (none
     // for a surface no skin moves), in its entity's mesh on the device.
     Result<render::MeshId> skinned_mesh(const std::string& key, const ModelSurface& surface,

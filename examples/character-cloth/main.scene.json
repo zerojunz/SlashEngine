@@ -1,0 +1,43 @@
+{
+  "entities": {
+    "breeze": {
+      "components": {
+        "Transform2D": {},
+        "WindSource2D": {
+          "enabled": false,
+          "max_gust_amount": 0,
+          "min_gust_amount": 0,
+          "strength": 400,
+          "turbulence": 0
+        }
+      }
+    },
+    "hero": {
+      "components": {
+        "Cloth3D": {
+          "damping_coefficient": 1,
+          "max_distance": 0.4,
+          "section": "cape"
+        },
+        "MeshInstance3D": {
+          "mesh": "hero.glb"
+        },
+        "Transform3D": {}
+      }
+    },
+    "kid": {
+      "components": {
+        "Cloth2D": {
+          "color": [0.8, 0.1, 0.1, 1],
+          "drag_coefficient": 1,
+          "max_distance": 30,
+          "size": [40, 70]
+        },
+        "Transform2D": {
+          "position": [100, 40]
+        }
+      }
+    }
+  },
+  "format": 1
+}

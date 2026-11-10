@@ -68,7 +68,7 @@ as `entity.get`, reject it as an unknown param.
 | Grid maps | [`gridmap.set`](#gridmapset), [`gridmap.get`](#gridmapget) |
 | Terrains | [`terrain.generate`](#terraingenerate), [`terrain.import`](#terrainimport), [`terrain.brush`](#terrainbrush), [`terrain.get`](#terrainget) |
 | Tile maps | [`tilemap.paint`](#tilemappaint), [`tilemap.generate`](#tilemapgenerate), [`tilemap.set`](#tilemapset), [`tilemap.get`](#tilemapget), [`tilemap.convert`](#tilemapconvert) |
-| Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity), [`physics.soft_body`](#physicssoft_body), [`physics.break`](#physicsbreak) |
+| Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity), [`physics.soft_body`](#physicssoft_body), [`physics.break`](#physicsbreak), [`physics.debug`](#physicsdebug), [`physics.cache`](#physicscache) |
 | Ragdolls | [`ragdoll.generate`](#ragdollgenerate), [`ragdoll.hit`](#ragdollhit), [`ragdoll.tune`](#ragdolltune) |
 | World streaming | [`streaming.state`](#streamingstate) |
 | Wind | [`wind.sample`](#windsample) |
@@ -1670,12 +1670,14 @@ Returns where a [soft body](scene-format.md#soft-bodies)'s points are after the 
 Godot's `SoftBody3D::get_point_transform`: how many there are (one for each vertex of its mesh),
 whether it sleeps, their `bounds` `[x, y, z, w, h, d]` in meters and, with `at`, the place of
 each vertex asked for, keyed by its index. Before the first step they are where the mesh and the
-entity's `Transform3D` put them.
+entity's `Transform3D` put them. A [`Cloth3D`](scene-format.md#character-cloth)'s points are
+its section's welded vertices in the world; a `Cloth2D`'s are its sheet's, row by row from the
+top, with `bounds` `[x, y, w, h]` in pixels and each place `[x, y]`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity with a `SoftBody3D` |
-| `at` | integer array | none | Up to 256 mesh vertex indices |
+| `id` | string | required | An entity with a `SoftBody3D`, `Cloth3D` or `Cloth2D` |
+| `at` | integer array | none | Up to 256 point indices |
 
 Needs: `read`. The flag in [examples/soft-bodies](../../examples/soft-bodies/), a second after
 its pole moved a meter: its pinned corners, 6 and 34, have followed, and corner 0 swings after
@@ -1689,8 +1691,9 @@ them.
 {"at":{"0":[1.3165,1.4773,1.2299],"34":[2.4,2.4,1],"6":[2.4,1.6,1]},"bounds":[1.3165,1.4773,0.9147,1.0894,0.9227,0.8],"points":35,"sleeping":false}
 ```
 
-An unknown ID is an error, as is an entity with no soft body: one without a `SoftBody3D`, or
-whose `MeshInstance3D` draws no primitive mesh. An index past the last vertex is an error at its
+An unknown ID is an error, as is an entity with no soft body: one without a `SoftBody3D`,
+`Cloth3D` or `Cloth2D`, one whose `MeshInstance3D` draws no primitive mesh, or a `Cloth3D` whose
+model has no such section. An index past the last vertex is an error at its
 place in `/at`.
 
 ### physics.break
@@ -1721,6 +1724,84 @@ out from under its middle:
 
 An unknown ID is an error, as is an entity without a `Destructible3D`, without a body, or whose
 mesh can't be cut, saying why.
+
+### physics.debug
+
+Physics' visual debugger, as Unreal's Chaos Visual Debugger records a simulation: with `record`,
+3D and 2D physics keep each step (the last `record` steps of each), then each call returns what
+they did. A step lists:
+
+- `contacts`: two bodies touching (`a` before `b` by ID), at the middle of their contact points,
+  with the `normal` from `a` toward `b`, how deep they overlap (`depth`), how fast they were
+  closing (`speed`, per second) and, in 2D, the `impulse` the solver pushed them apart with.
+  Bodies asleep aren't solved, so their contacts aren't listed.
+- `joints`: each joint after the step, with the bodies it holds (`b` left out for the world), the
+  `force` holding them together (newtons in 3D) and how far its two anchors came apart
+  (`stretch`). A ragdoll's bones are `PhysicalBone3D` joints.
+- `fields`: what [`PhysicsField3D` and `PhysicsField2D`](scene-format.md#physics-materials-and-fields) fields
+  did to each body they reached: `force`, the `velocity` they set, `strain`, `anchored` and
+  `killed`.
+- `awake` and `sleeping`: how many rigid bodies (and bones) moved, and how many slept.
+
+Points are `[x, y, z]` from a 3D step and `[x, y]` from a 2D one (`dimensions`).
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `record` | integer | | Start recording afresh, keeping this many steps (up to 3,600); 0 stops and forgets |
+| `id` | string | | Only what touches this entity, from its space's steps |
+| `last` | integer | `1` | The newest this many ticks |
+| `ticks` | `[first, last]` | | Every step kept from tick `first` to `last` |
+
+Needs: `read`. In [examples/physics-debugger](../../examples/physics-debugger/), the step after
+a blast hits a stack of crates:
+
+```json
+{"id": "top"}
+```
+
+```json
+{"recording":120,"steps":[{"awake":3,"contacts":[{"a":"middle","b":"top","depth":0.0,"normal":[0.0,1.0,0.0],"point":[0.038,2.51,0.0],"speed":0.0}],"dimensions":3,"fields":[{"body":"top","force":[115.86,57.901,0.016]}],"sleeping":1,"tick":61}]}
+```
+
+Reading before `record` is an error, as is an unknown `id`, with the closest one.
+
+### physics.cache
+
+Records a simulation to play back the same every time, as Unreal's Chaos Cache Manager does for
+cinematics. `record` starts recording the rigid bodies named (`[]` for every `RigidBody3D` and
+`RigidBody2D`): where each is now, then after every step. `save` stops and writes the recording
+as a `.anim.json` [animation](scene-format.md#animations): for each body, value tracks
+of its `Transform3D` (or `Transform2D`) `position` and `rotation`, keyed only where the motion
+bends past `tolerance` (angles unwrapped so turns go the way the body turned), and its
+`RigidBody3D/freeze` set with `freeze_mode` `"kinematic"` from the start, so playing it moves
+the bodies as they moved and pushes what they meet. An `AnimationPlayer` whose `targets` name
+the bodies plays it, or a cinematic's `animation` track starts it; `player` sets one up. `stop`
+drops a recording.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `record` | array of IDs | | Start recording these rigid bodies, or every one with `[]` |
+| `save` | string | | Stop and write the recording to this `.anim.json` file |
+| `name` | string | `"cache"` | The animation's name in the file |
+| `tolerance` | number | `0.001` | Keys a straight line passes within this of are dropped (meters, pixels or radians) |
+| `player` | ID | | With `save`: an entity whose `AnimationPlayer` (made if missing) gets the file, the animation and the bodies as targets, stopped at the start |
+| `stop` | boolean | | Stop and drop the recording |
+| `dry_run` | boolean | `false` | Return what would change and change nothing |
+
+Give one of `record`, `save` and `stop`. Needs: `edit`. In
+[examples/physics-debugger](../../examples/physics-debugger/), after two seconds of the stack
+falling:
+
+```json
+{"save": "anims/collapse.anim.json", "name": "collapse", "tolerance": 0.002}
+```
+
+```json
+{"animation":"collapse","bodies":["bottom","middle","top"],"keys":176,"length":2.0,"out":"anims/collapse.anim.json"}
+```
+
+`record` names an unknown ID or an entity with no rigid body is an error; so is `save` with
+nothing recording, or a file name not ending in `.anim.json`.
 
 ## Ragdolls
 
