@@ -644,10 +644,14 @@ Reply foliage_paint(Session& session, const json::Value& params) {
         }
     }
     const std::array<float, 4> square =
-        flat ? std::array<float, 4>{brush.center.x - brush.radius, brush.center.y - brush.radius,
-                                    brush.center.x + brush.radius, brush.center.y + brush.radius}
-             : std::array<float, 4>{brush.center.x - brush.radius, brush.center.z - brush.radius,
-                                    brush.center.x + brush.radius, brush.center.z + brush.radius};
+        flat ? std::array<float, 4>{static_cast<float>(brush.center.x - brush.radius),
+                                    static_cast<float>(brush.center.y - brush.radius),
+                                    static_cast<float>(brush.center.x + brush.radius),
+                                    static_cast<float>(brush.center.y + brush.radius)}
+             : std::array<float, 4>{static_cast<float>(brush.center.x - brush.radius),
+                                    static_cast<float>(brush.center.z - brush.radius),
+                                    static_cast<float>(brush.center.x + brush.radius),
+                                    static_cast<float>(brush.center.z + brush.radius)};
     if (flat) {
         if (on_entities.empty()) {
             add_area(square, true, ground);
@@ -718,7 +722,7 @@ Reply foliage_paint(Session& session, const json::Value& params) {
     }
     std::size_t total = 0;
     if (flat) {
-        ecs.get_or_emplace<world::Transform2D>(brush.entity);
+        static_cast<void>(ecs.get_or_emplace<world::Transform2D>(brush.entity));
         auto& foliage = ecs.get_or_emplace<world::Foliage2D>(brush.entity);
         const world::Affine2D to_local = world::Tree2D(world).global_affine(brush.entity).inverse();
         auto group = std::ranges::find(foliage.groups, type_path, &world::FoliageGroup2D::type);
@@ -734,7 +738,7 @@ Reply foliage_paint(Session& session, const json::Value& params) {
         }
         total = procedural::foliage_count(*group);
     } else {
-        ecs.get_or_emplace<world::Transform3D>(brush.entity);
+        static_cast<void>(ecs.get_or_emplace<world::Transform3D>(brush.entity));
         auto& foliage = ecs.get_or_emplace<world::Foliage3D>(brush.entity);
         const world::Affine3D to_local = world::Tree3D(world).global(brush.entity).inverse();
         auto group = std::ranges::find(foliage.groups, type_path, &world::FoliageGroup3D::type);
@@ -746,9 +750,9 @@ Reply foliage_paint(Session& session, const json::Value& params) {
             const world::Transform3D local = local_3d(
                 to_local,
                 {.position = place.position, .rotation = place.rotation, .scale = place.scale});
-            procedural::add_foliage(
-                *group,
-                {.position = local.position, .rotation = local.rotation, .scale = local.scale.y});
+            procedural::add_foliage(*group, {.position = local.position,
+                                             .rotation = local.rotation,
+                                             .scale = static_cast<float>(local.scale.y)});
         }
         total = procedural::foliage_count(*group);
     }
@@ -927,27 +931,30 @@ Reply foliage_harvest(Session& session, const json::Value& params) {
 
 void register_scatter_commands(Registry& registry) {
     using enum Capability;
-    json::Value schema;
-    schema["type"] = "object";
-    schema["additionalProperties"] = false;
-    schema["required"] = json::Array{"into"};
-    json::Value& p = schema["properties"];
-    p["path"] = property("string", "A .scatter.json file.");
-    p["rules"] = property("object", "A .scatter.json document, to try rules without a file.");
-    p["into"] = property("string", "ID of the parent the places go under, made if missing; what "
-                                   "it held is replaced.");
-    registry.add({
-        .name = "scatter.run",
-        .description =
-            "Places what scatter rules (a .scatter.json \"path\" or inline \"rules\") ask for "
-            "over the ground: entities <into>_<layer>_<n>, or a MultiMeshInstance3D "
-            "<into>_<layer>, under \"into\", replacing what it held. Returns each layer's "
-            "count placed and, when short, why tries failed. $ slash-cli schema scatter.",
-        .capabilities = {Edit},
-        .effect = Effect::Edit,
-        .params = std::move(schema),
-        .handler = scatter_run,
-    });
+    {
+        json::Value schema;
+        schema["type"] = "object";
+        schema["additionalProperties"] = false;
+        schema["required"] = json::Array{"into"};
+        json::Value& p = schema["properties"];
+        p["path"] = property("string", "A .scatter.json file.");
+        p["rules"] = property("object", "A .scatter.json document, to try rules without a file.");
+        p["into"] =
+            property("string", "ID of the parent the places go under, made if missing; what "
+                               "it held is replaced.");
+        registry.add({
+            .name = "scatter.run",
+            .description =
+                "Places what scatter rules (a .scatter.json \"path\" or inline \"rules\") ask for "
+                "over the ground: entities <into>_<layer>_<n>, or a MultiMeshInstance3D "
+                "<into>_<layer>, under \"into\", replacing what it held. Returns each layer's "
+                "count placed and, when short, why tries failed. $ slash-cli schema scatter.",
+            .capabilities = {Edit},
+            .effect = Effect::Edit,
+            .params = std::move(schema),
+            .handler = scatter_run,
+        });
+    }
 
     const auto point = [](std::string_view description) {
         json::Value schema;

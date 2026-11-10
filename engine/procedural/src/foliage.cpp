@@ -179,7 +179,8 @@ void run_foliage(world::World& world, FoliageState& state, double tick_seconds) 
                         std::vector<Mover2> near;
                         for (const Vec3& mover : movers) {
                             if (std::abs(mover.y - base.y) < type->interaction_radius * 4.0F) {
-                                near.push_back({mover.x, mover.z});
+                                near.push_back(
+                                    {static_cast<float>(mover.x), static_cast<float>(mover.z)});
                             }
                         }
                         target = push_from(near, {base.x, base.z}, type->interaction_radius,
@@ -203,7 +204,7 @@ void run_foliage(world::World& world, FoliageState& state, double tick_seconds) 
         const auto gather = [&]<typename Body>() {
             for (const entt::entity e : ecs.view<Body>()) {
                 const Vec2 at = tree.global_affine(e).origin;
-                movers.push_back({at.x, at.y});
+                movers.push_back({static_cast<float>(at.x), static_cast<float>(at.y)});
             }
         };
         gather.template operator()<world::CharacterBody2D>();
@@ -271,8 +272,10 @@ FoliagePlace2D foliage_place(const world::FoliageGroup2D& group, std::size_t ind
 }
 
 void add_foliage(world::FoliageGroup3D& group, const FoliagePlace3D& place) {
-    for (const float value : {place.position.x, place.position.y, place.position.z,
-                              place.rotation.x, place.rotation.y, place.rotation.z, place.scale}) {
+    for (const real_t value :
+         {place.position.x, place.position.y, place.position.z,
+          static_cast<real_t>(place.rotation.x), static_cast<real_t>(place.rotation.y),
+          static_cast<real_t>(place.rotation.z), static_cast<real_t>(place.scale)}) {
         group.instances.push_back(round_thousandth(static_cast<float>(value)));
     }
 }
@@ -360,9 +363,11 @@ FoliagePainted paint_foliage(const world::FoliageType& type, const FoliageStroke
     const float r = stroke.radius;
     // The circle's bounding square at the type's density, whose corners are dropped after.
     if (flat) {
-        layer.area = std::array<float, 4>{c.x - r, c.y - r, c.x + r, c.y + r};
+        layer.area = std::array<float, 4>{static_cast<float>(c.x - r), static_cast<float>(c.y - r),
+                                          static_cast<float>(c.x + r), static_cast<float>(c.y + r)};
     } else {
-        layer.area = std::array<float, 4>{c.x - r, c.z - r, c.x + r, c.z + r};
+        layer.area = std::array<float, 4>{static_cast<float>(c.x - r), static_cast<float>(c.z - r),
+                                          static_cast<float>(c.x + r), static_cast<float>(c.z + r)};
     }
     layer.density = type.density * std::clamp(stroke.strength, 0.0F, 1.0F);
     layer.spacing = type.spacing;
@@ -416,7 +421,7 @@ float foliage_lean_2d(const world::World& world, entt::entity entity, std::size_
     const Vec2 blown = wind_lean(type, {wind.x / 100.0F, 0.0F}, phase_of(entity, group, index),
                                  world::wind_time(world));
     const Vec2 push = pushed(world, entity, group, index);
-    return std::clamp(blown.x + push.x, -type.max_bend, type.max_bend);
+    return static_cast<float>(std::clamp<real_t>(blown.x + push.x, -type.max_bend, type.max_bend));
 }
 
 std::vector<FoliagePush> foliage_pushes(const world::World& world) {
