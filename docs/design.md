@@ -131,6 +131,8 @@ SlashEngine covers nearly every Godot 4 feature area at launch and adds UE5 feat
 | Characters | None built in | MetaHuman, Mutable | Character recipes built into rigged models, kept distinct and held to the storyboard's design rules | After launch |
 | Fauna | None built in | Plugins, Mass AI | Distinct animals from creature recipes, with brains for flocking, grazing, fleeing and hunting, placed in habitats, reacting to characters | After launch |
 | Vehicle design | VehicleBody3D, VehicleWheel3D | Chaos Vehicles | Cars, bikes, tracked vehicles, boats and aircraft from vehicle recipes, each with its own tuned physics (engine, gears, suspension, tires, buoyancy, lift), seats characters drive from and contacts that push and hurt characters and creatures | After launch |
+| Damage design | None built in | Chaos Destruction, Geometry Collections | Damage profiles by material, damage states, dents and holes, authored fracture patterns, connected and anchored pieces, terrain craters, with debris, decals and sounds | After launch |
+| VFX design | GPUParticles3D, particle shaders | Niagara | Effect recipes layering particles, ribbons, flipbooks, decals, lights, distortion, camera shakes and sounds on one timeline, with parameters, attachment and budgets | After launch |
 | Virtualized geometry | None built in | Nanite | Meshlet rendering research | Research |
 | Fully dynamic GI at UE quality | SDFGI (partial) | Lumen | Research after probe GI ships | Research |
 | Digital humans | None built in | MetaHuman | Research; out of scope for releases | Research |
