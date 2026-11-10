@@ -970,7 +970,7 @@ public:
             if (auto program = hashed_mesh_program(); !program) {
                 return program.error();
             }
-            if (!shadow_plan_->passes.empty() && hashed_shadow_program_ == 0) {
+            if (shadow_plan_ && !shadow_plan_->passes.empty() && hashed_shadow_program_ == 0) {
                 auto program = link(at_w1_vertex(shaders::kShadowVertexGlsl),
                                     at_w1_fragment(shaders::kShadowFragmentGlsl), kShadowSamplers,
                                     "the alpha hash shadow shader");
@@ -2122,9 +2122,12 @@ private:
                     // material's first units, in both stages.
                     const auto game = spatial_shadow_programs_.find(draw.material.shader);
                     const bool own = game != spatial_shadow_programs_.end();
-                    gl_.use_program(own                           ? game->second
-                                    : alpha_hashed(draw.material) ? hashed_shadow_program_
-                                                                  : shadow_program_);
+                    if (own) {
+                        gl_.use_program(game->second);
+                    } else {
+                        gl_.use_program(alpha_hashed(draw.material) ? hashed_shadow_program_
+                                                                    : shadow_program_);
+                    }
                     if (own) {
                         gl_.bind_buffer_range(
                             gl::kUniformBuffer, kGameBinding, uniform_buffer_,
@@ -2260,10 +2263,10 @@ private:
             }
             gl_.depth_mask(blended ? gl::kFalse : gl::kTrue);
             set_cull(material.cull);
-            const GLuint program = material.shader != ShaderId::None
-                                       ? spatial_programs_.at(material.shader)
-                                   : alpha_hashed(material) ? hashed_mesh_program_
-                                                            : mesh_program_;
+            GLuint program = alpha_hashed(material) ? hashed_mesh_program_ : mesh_program_;
+            if (material.shader != ShaderId::None) {
+                program = spatial_programs_.at(material.shader);
+            }
             if (program != used) {
                 gl_.use_program(program);
                 used = program;
