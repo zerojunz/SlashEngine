@@ -1207,8 +1207,15 @@ cost, from the research proposal of 2026-11-07, in order:
         meshes, hand-placed or patterned fracture (radial, slices, clusters, levels of pieces
         as Chaos Destruction's geometry collections), anchored and connected pieces that fall
         when what holds them breaks, terrain craters and deformation, and the debris, dust,
-        decals and sounds each break leaves; `damage.apply` and `damage.check` drive and check
-        it, for characters, creatures and vehicles alike
+        decals and sounds each break leaves. Damage simulates in real time, not only as
+        authored: each hit fractures what it hits where and as hard as it hit (pieces fine
+        near the impact and coarse away from it, cut while the game runs on the job pool
+        within a time budget), pieces break again when hit, stress spreads through the
+        connection graph so a weakened wall or bridge gives way under its own load, metal
+        dents and bends by the impulse, cloth tears where it is pulled too far, and terrain
+        and walls are carved where explosions reach, all deterministic so replays repeat;
+        authored patterns are optional. `damage.apply` and `damage.check` drive and check it,
+        for characters, creatures and vehicles alike
 17. [ ] VFX design: a tool that builds special effects as `.vfx.json` recipes, as Unreal's
         Niagara systems: emitters of CPU and GPU particles, ribbons, trails, mesh particles,
         flipbooks, decals, lights, distortion, screen flashes, camera shakes and sounds,
