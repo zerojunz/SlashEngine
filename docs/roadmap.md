@@ -1125,7 +1125,7 @@ launch rows and the after-launch features above.
 ## Agent-built worlds and smart NPCs
 
 Ways for agents to build detailed 3D worlds and many smarter NPCs at a fraction of Unreal's
-cost, from the research proposal of 2026-11-07, in order. Items 7 on (wind and the world tools)
+cost, from the research proposal of 2026-11-07, in order. Items 7 on (wind, style memory and the world tools)
 ship in the launch release, which waits for them:
 
 1. [x] Planning NPCs: goal-oriented action planning as F.E.A.R.'s, with `.npc.json` brains of
@@ -1144,7 +1144,19 @@ ship in the launch release, which waits for them:
        WindDirectionalSource, and Godot's `Area3D` wind fields, sampled by one world wind field
        that vegetation shaders (`WIND` built-ins), soft bodies, cloth and particles all read
        (`slash/world/wind.hpp`, `wind.sample`, `examples/wind`)
-8. [ ] One simulation, as Unreal's Chaos Physics: everything every tool builds (foliage,
+8. [ ] Style memory: the storyboard marks and remembers the look of what agents and people make
+       or import, so weeks of autonomous work keep one look. `style.mark` keeps a scene, an
+       asset, a captured frame, a material or a lighting setup as a `style/<name>` reference
+       with what made it (files, material and shader params, light and post settings, camera)
+       and a fingerprint measured from its frames: palette and its proportions, value range and
+       contrast, saturation, edge density and line weight, texel density, shading and
+       post-processing. `style.check` captures new scenes and assets the way their references
+       were and reports drift from them as numbers and, with a vision model, in words that
+       quote the reference; `storyboard.brief` hands a task the references it touches, the
+       asset generators and every world tool after this one are prompted and checked with
+       them, `test.run` fails work that drifts past a reference's tolerances, and a journal
+       of fingerprints over time shows slow drift that no single change shows
+9. [ ] One simulation, as Unreal's Chaos Physics: everything every tool builds (foliage,
        hair and fur, cloth, characters' ragdolls, creatures, vehicles, destruction pieces,
        particles) simulates in physics3d's one space and step on Jolt, with one set of layers,
        queries and events. Shared `.physics_material.json` materials (friction, bounce,
@@ -1162,38 +1174,38 @@ ship in the launch release, which waits for them:
        fixed-rate steps that stay deterministic; Chaos Cache's recorded simulations played back
        in cinematics; and a visual debugger's record of contacts, constraints and fields per
        step that `physics.debug` returns for agents. Each tool after this one builds on it
-9. [ ] Foliage: painted and scattered plants and ground cover as Unreal's Foliage tool, with
+10. [ ] Foliage: painted and scattered plants and ground cover as Unreal's Foliage tool, with
        `foliage.paint` and `foliage.erase` brushes over terrains and meshes and instances kept
        per cell: distinct kinds of grass, flowers, shrubs, bushes, trees, moss, rocks and
        pebbles (`.foliage.json` types made from recipes or library models, varied by seed),
        grass drawn in instanced batches with distance culling and fades, impostors for far
        trees, bending in the wind, and characters' interactions: plants that part, bend and
        spring back as they pass, trees and rocks that block and can be climbed or harvested
-10. [ ] Light tools: Godot 4's `light_temperature` and physical light units, projector textures
+11. [ ] Light tools: Godot 4's `light_temperature` and physical light units, projector textures
        (`light_projector`), IES profiles and light functions as Unreal's, and `light.tune`, which
        adjusts lights toward exposure and contribution targets from `lighting.check`
-11. [ ] NPCs with stories of their own: questlines (`.quest.json` stages and objectives over
+12. [ ] NPCs with stories of their own: questlines (`.quest.json` stages and objectives over
         facts, with rewards and journal text), movement scripts (patrols, daily schedules and
         routes per NPC), conversation scripts (`.dialogue.json` branching dialogue with
         conditions and effects on facts, translated through l10n) and behavior per NPC (brains
         that extend a shared one with their own goals, traits and priorities), with `quest.*` and
         `dialogue.*` commands and checks that every quest can be finished and every line reached
-12. [ ] Hair and fur: `HairInstance3D` groomed strands (`.groom.json` guides grown over a
+13. [ ] Hair and fur: `HairInstance3D` groomed strands (`.groom.json` guides grown over a
         model's surface with length, density, clumping, curl and color maps) drawn as cards,
         strands or fur shells with the existing hair shading, and simulated as Unreal's
         Groom and Chaos hair: guide strands stepped with constraints, colliding with the
         body's capsules, blown by the wind and following the skeleton, for characters and
         animals
-13. [ ] Characters: a character tool that makes the player and NPCs as `.character.json` recipes
+14. [ ] Characters: a character tool that makes the player and NPCs as `.character.json` recipes
         (body proportions, face, hair, clothing and props, materials) built into rigged models,
         each distinct from the others in silhouette and color, following the storyboard's
         character design rules, which `character.check` enforces
-14. [ ] Fauna: a fauna tool for distinct animals (birds, fish, insects, grazers, predators,
+15. [ ] Fauna: a fauna tool for distinct animals (birds, fish, insects, grazers, predators,
         pets) as `.creature.json` recipes of body plans built into rigged, animated models with
         their own looks per species, NPC brains for flocking, grazing, fleeing, hunting and
         following, placed in habitats by the foliage tool's brushes, and characters'
         interactions: animals that notice, flee, attack, can be fed, ridden or tamed
-15. [ ] Vehicles: a vehicle tool that designs cars, bikes, trucks, tracked vehicles, boats and
+16. [ ] Vehicles: a vehicle tool that designs cars, bikes, trucks, tracked vehicles, boats and
         aircraft as `.vehicle.json` recipes (a body built from model recipes, seats and doors,
         wheels, tracks, hulls or wings) built into a rigged model with its collision, each with
         its own physics to tune as Unreal's Chaos Vehicles: mass and center of mass, engine
@@ -1201,7 +1213,7 @@ ship in the launch release, which waits for them:
         buoyancy and lift, which `vehicle.tune` changes while a game runs and `vehicle.check`
         holds to the design; characters get in, drive and get out through seats, and vehicles
         push, knock down and hurt characters and creatures by their contact impulses
-16. [ ] Damage and destruction design: a tool that authors how each model and piece of the
+17. [ ] Damage and destruction design: a tool that authors how each model and piece of the
         environment takes damage, past today's Voronoi fracture: `.damage.json` profiles by
         material (wood splinters, glass shatters, metal dents, stone crumbles, cloth tears)
         with health, damage states that swap meshes and materials, dents and holes cut into
@@ -1217,7 +1229,7 @@ ship in the launch release, which waits for them:
         and walls are carved where explosions reach, all deterministic so replays repeat;
         authored patterns are optional. `damage.apply` and `damage.check` drive and check it,
         for characters, creatures and vehicles alike
-17. [ ] VFX design: a tool that builds special effects as `.vfx.json` recipes, as Unreal's
+18. [ ] VFX design: a tool that builds special effects as `.vfx.json` recipes, as Unreal's
         Niagara systems: emitters of CPU and GPU particles, ribbons, trails, mesh particles,
         flipbooks, decals, lights, distortion, screen flashes, camera shakes and sounds,
         timed and layered on one timeline with parameters (size, color, intensity) a game sets,
