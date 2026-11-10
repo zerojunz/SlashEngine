@@ -7657,6 +7657,8 @@ R"hlsl(// The 3D shader: meshes lit by a frame's lights as Godot's Compatibility
 // its vertex() places the corners, through GameVertex and game_vertex, with its texture params
 // in the vertex stage's slots 0 to 4. With GAME_LIGHT, its light() lights the pixel once a light
 // through game_light, with game_albedo the surface's albedo, and may change ALPHA.
+// mesh_plain.hlsl defines NO_ALPHA_HASH, which leaves alpha hash out, for the OpenGL devices'
+// draws that don't use it.
 
 cbuffer Camera : register(b0, space1) {
     float4x4 view_projection;          // world to clip space, with TAA's jitter
@@ -7694,7 +7696,9 @@ struct VertexOutput {
     float2 uv : TEXCOORD4;
     float4 color : TEXCOORD5;
     float2 uv2 : TEXCOORD6;
+#ifndef NO_ALPHA_HASH
     float3 object : TEXCOORD9; // the place on the mesh, which alpha hash's cells are fixed to
+#endif
 #ifdef MOTION_VECTORS
     float4 motion_clip : TEXCOORD7;   // where the vertex is in clip space, without the jitter
     float4 previous_clip : TEXCOORD8; // and where it was in the frame before
@@ -7718,7 +7722,9 @@ VertexOutput vs_main(VertexInput input) {
     output.uv = moved.uv;
     output.color = moved.color;
     output.uv2 = moved.uv2 * lightmap_uv.zw + lightmap_uv.xy;
+#ifndef NO_ALPHA_HASH
     output.object = input.position;
+#endif
 #else
     float4 world = mul(model, float4(input.position, 1.0));
     output.world = world.xyz;
@@ -7731,7 +7737,9 @@ VertexOutput vs_main(VertexInput input) {
     output.uv = input.uv * uv1.xy + uv1.zw;
     output.color = input.color;
     output.uv2 = input.uv2 * lightmap_uv.zw + lightmap_uv.xy;
+#ifndef NO_ALPHA_HASH
     output.object = input.position;
+#endif
 #endif
 #ifdef MOTION_VECTORS
     output.motion_clip = output.position;
@@ -7804,6 +7812,7 @@ static const uint kTerrain = 1u;
 static const uint kTerrainDepthBlending = 2u;
 static const uint kTerrainNormals = 16u; // shifted left by the layer
 
+#ifndef NO_ALPHA_HASH
 // Alpha hash's noise at a cell of the mesh: 0 to 1 from three whole numbers, by Jarzynski and
 // Olano's PCG3D, where Godot's hash_3d uses sines, so the CPU (alpha_hash_value in src/mesh.cpp)
 // makes the same bits.
@@ -7842,6 +7851,7 @@ float alpha_hash_threshold(float3 pos, float3 dx, float3 dy, float hash_scale) {
     }
     return clamp(threshold, 0.00001, 1.0);
 }
+#endif
 
 // A VoxelGI a draw traces (Forward+): its light is a 3D texture kept in ground_texture_2 as each
 // level's z slices side by side.
@@ -7864,11 +7874,11 @@ cbuffer Surface : register(b0, space3) {
     uint4 options;
     float4 terrain_uv;      // each ground layer's tiling: the maps' resolution over its uv_scale
     float4 terrain_opacity; // how much the color map tints each ground layer
-    // The lightmap's exposure, then 1 for the bicubic filter; then the rim and its tint.
+)hlsl",
+R"hlsl(    // The lightmap's exposure, then 1 for the bicubic filter; then the rim and its tint.
     float4 lightmap;
     float4 capture[9]; // the light probes' spherical harmonics, RGB
-)hlsl",
-R"hlsl(    // How many of voxel_gis it traces; then the clearcoat, its roughness and the anisotropy.
+    // How many of voxel_gis it traces; then the clearcoat, its roughness and the anisotropy.
     float4 voxel_gi;
     VoxelGI voxel_gis[2];
     // Forward+'s subsurface scattering: its strength (below 0 for skin's profile), the
@@ -8101,11 +8111,11 @@ float3 agx_contrast_approx(float3 x) {
            27.069 * x4 * x2;
 }
 
-// Godot's simplification of EaryChow's AgX, as Blender uses it
+)hlsl",
+R"hlsl(// Godot's simplification of EaryChow's AgX, as Blender uses it
 // (https://github.com/EaryChow/AgX_LUT_Gen/blob/main/AgXBasesRGB.py).
 float3 tonemap_agx(float3 color) {
-)hlsl",
-R"hlsl(    // Linear sRGB to linear Rec. 2020 with AgX's inset, and back with its outset; the rows are
+    // Linear sRGB to linear Rec. 2020 with AgX's inset, and back with its outset; the rows are
     // GLSL's columns, so the color multiplies from the left.
     const float3x3 inset = float3x3(
         float3(0.54490813676363087053, 0.14044005884001287035, 0.088827411851915368603),
@@ -8368,13 +8378,13 @@ void light_compute(float3 n, float3 l, float3 v, float3 light_color, float atten
         float c_l_dot_h5 = schlick_fresnel(c_l_dot_h);
         float f90 = clamp(50.0 * f0.g, 0.0, 1.0);
         float3 f = f0 + (f90 - f0) * c_l_dot_h5;
-        float3 specular_brdf_nl = c_n_dot_l * d * f * g;
+)hlsl",
+R"hlsl(        float3 specular_brdf_nl = c_n_dot_l * d * f * g;
         specular_light += specular_brdf_nl * light_color * attenuation * specular_amount;
     }
 }
 
-)hlsl",
-R"hlsl(float omni_attenuation(float distance, float inv_range, float decay) {
+float omni_attenuation(float distance, float inv_range, float decay) {
     float nd = distance * inv_range;
     nd *= nd;
     nd *= nd;
@@ -8640,15 +8650,15 @@ float3 frame_direction(VertexOutput input, float3 v) {
 
 // An opaque pixel's ray-traced shadows, when its frame has them (on): the screen texture's layers
 // 2 and 3 at the pixel, loaded once before its lights, as a texture load in their loop loses
-// Direct3D 12's WARP device.
+)hlsl",
+R"hlsl(// Direct3D 12's WARP device.
 struct RayShadows {
     bool on;
     float4 low;  // the lights in ray slots 0 to 3, a channel each
     float4 high; // 4 to 7
 };
 
-)hlsl",
-R"hlsl(// One light's share of a pixel's diffuse and specular light, unless its cull mask leaves out the
+// One light's share of a pixel's diffuse and specular light, unless its cull mask leaves out the
 // draw's layers, with the shading normal and the one shadows offset along (geometry). A pixel with
 // ray-traced shadows takes a light's with a ray slot from them in place of its shadow map's.
 void add_light(Light light, float3 world, float3 normal, float3 geometry, float3 view, float3 f0,
@@ -8902,10 +8912,10 @@ void apply_decal(Decal decal, float3 world, float3 geometry, float3 dx, float3 d
 // range, each word's from its highest bit, that share a layer with the mesh, over its surface
 // before it is lit; geometry is its vertex normal, turned to its side, as Godot's geo_normal.
 void apply_decals(VertexOutput input, float3 geometry, inout float3 base, inout float3 normal,
-                  inout float ao, inout float roughness, inout float metallic,
-                  inout float3 emitted) {
 )hlsl",
-R"hlsl(    uint2 tile = (uint2)input.position.xy / kClusterSize;
+R"hlsl(                  inout float ao, inout float roughness, inout float metallic,
+                  inout float3 emitted) {
+    uint2 tile = (uint2)input.position.xy / kClusterSize;
     uint words = (uint)cluster.y;
     uint decal_words = (uint)cluster.w;
     uint cell = (tile.y * (uint)cluster.x + tile.x) * cluster_stride() + words + kClusterSlices;
@@ -9148,9 +9158,9 @@ void voxel_gi_compute(uint index, float3 world, float3 normal, float3 reflection
                                                         dir, gi.params.y);
         }
     }
-    float4 irradiance = voxel_cone_trace(index, cell_size, max_distance, position, ref_vec,
 )hlsl",
-R"hlsl(                                         tan(roughness * 0.5 * 3.14159265 * 0.99), gi.params.y);
+R"hlsl(    float4 irradiance = voxel_cone_trace(index, cell_size, max_distance, position, ref_vec,
+                                         tan(roughness * 0.5 * 3.14159265 * 0.99), gi.params.y);
     light.rgb *= gi.params.x;
     irradiance.rgb *= gi.params.x;
     if (gi.params.w == 0.0) {
@@ -9403,11 +9413,11 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
                                dot(sky_rows[2].xyz, ray));
         float level = lerp(0.001, 0.1, sqrt(layers.clearcoat_roughness)) * kRadianceMaxLevel;
         float3 texel = radiance_map.SampleLevel(radiance_sampler, turned, level).rgb;
-        reflected += srgb_to_linear(texel) * horizon * horizon * fc * sky.z;
+)hlsl",
+R"hlsl(        reflected += srgb_to_linear(texel) * horizon * horizon * fc * sky.z;
     }
 #ifdef CLUSTERED
-)hlsl",
-R"hlsl(    if (scene_voxel_gi.x != 0.0 && voxel_gi.x > 0.0 && !lightmapped && !captured) {
+    if (scene_voxel_gi.x != 0.0 && voxel_gi.x > 0.0 && !lightmapped && !captured) {
         // Forward+'s VoxelGIs, as Godot's GI buffers light a pixel: their ambient light and
         // reflections go over the sky's by how much of their cones met something.
         float4 gi_ambient;
@@ -9532,11 +9542,13 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
     float alpha = (flags & kHasAlpha) != 0u ? color.a : 1.0;
     if ((flags & kAlphaScissor) != 0u) {
         float threshold = asfloat(options.y);
+#ifndef NO_ALPHA_HASH
         if ((flags & kAlphaHash) != 0u) {
             // The flags are the draw's, so every pixel of a quad takes this branch together.
             threshold = alpha_hash_threshold(input.object, ddx(input.object), ddy(input.object),
                                              threshold);
         }
+#endif
         if (alpha < threshold) {
             discard;
         }
@@ -9649,12 +9661,12 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
     float ao = 1.0;
     float ao_light_affect = 0.0;
 #endif
-    float4 ssr = float4(0.0, 0.0, 0.0, -1.0);
+)hlsl",
+R"hlsl(    float4 ssr = float4(0.0, 0.0, 0.0, -1.0);
     RayShadows rays;
     rays.on = false;
     rays.low = float4(1.0, 1.0, 1.0, 1.0);
-)hlsl",
-R"hlsl(    rays.high = float4(1.0, 1.0, 1.0, 1.0);
+    rays.high = float4(1.0, 1.0, 1.0, 1.0);
 #ifdef CLUSTERED
     if (decal_info.x > 0.0) {
         // Forward+'s decals change the surface before it is lit.

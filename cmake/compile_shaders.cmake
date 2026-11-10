@@ -24,6 +24,9 @@
 #
 # With NO_GLSL, there is no GLSL ES, for passes the OpenGL devices don't draw.
 #
+# With GLSL_ONLY, there is only GLSL ES (and the HLSL, which CHECK compares), for variants only the
+# OpenGL devices draw.
+#
 # With PIECES, each stage's MSL, GLSL ES and WGSL and the HLSL are arrays of pieces to join too,
 # for a shader whose code is longer than a string literal may be (the mesh shader's).
 #
@@ -229,8 +232,10 @@ foreach(stage IN LISTS stages)
         run(glslang "${GLSLANG}" -D -V -S ${stage} -e ${entry} --auto-sampled-textures
             -DSLASH_MSL "${standalone}" -o "${msl_spirv}")
     endif()
-    run(spirv-cross "${SPIRV_CROSS}" --msl --msl-version 20100 --msl-decoration-binding
-        --stage ${stage} --entry ${entry} "${msl_spirv}" --output "${msl}")
+    if(NOT GLSL_ONLY)
+        run(spirv-cross "${SPIRV_CROSS}" --msl --msl-version 20100 --msl-decoration-binding
+            --stage ${stage} --entry ${entry} "${msl_spirv}" --output "${msl}")
+    endif()
     # GLSL ES 3.00 can't place varyings by location, so both stages name them alike to link,
     # and fragment shaders compute in full precision as the other backends do.
     if(stage STREQUAL "vert")
@@ -252,6 +257,18 @@ foreach(stage IN LISTS stages)
         run(spirv-cross "${SPIRV_CROSS}" --es --version 300 --stage ${stage} --entry ${entry}
             ${renames} ${fixup} "${spirv}" --output "${glsl}")
     endif()
+    set(glsl_code "")
+    if(NOT STORAGE_BUFFERS AND NOT NO_GLSL)
+        file(READ "${glsl}" glsl_text)
+        string(REPLACE "precision mediump float;" "precision highp float;" glsl_text
+            "${glsl_text}")
+        raw_literals("${glsl_text}" glsl glsl_literals)
+        declare_code(k${NAME}${label}Glsl "${glsl_literals}" glsl glsl_code)
+    endif()
+    if(GLSL_ONLY)
+        string(APPEND body "${glsl_code}")
+        continue()
+    endif()
     set(wgsl_spirv "${WORKDIR}/${base}.${stage}.wgsl.spv")
     set(wgsl "${WORKDIR}/${base}.${stage}.wgsl")
     set(wgsl_defines "")
@@ -265,14 +282,6 @@ foreach(stage IN LISTS stages)
     hex_array("${spirv}" bytes)
     file(READ "${msl}" msl_text)
     raw_literals("${msl_text}" msl msl_literals)
-    set(glsl_code "")
-    if(NOT STORAGE_BUFFERS AND NOT NO_GLSL)
-        file(READ "${glsl}" glsl_text)
-        string(REPLACE "precision mediump float;" "precision highp float;" glsl_text
-            "${glsl_text}")
-        raw_literals("${glsl_text}" glsl glsl_literals)
-        declare_code(k${NAME}${label}Glsl "${glsl_literals}" glsl glsl_code)
-    endif()
     file(READ "${wgsl}" wgsl_text)
     raw_literals("${wgsl_text}" wgsl wgsl_literals)
     declare_code(k${NAME}${label}Msl "${msl_literals}" msl msl_code)

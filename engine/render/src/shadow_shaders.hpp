@@ -1087,7 +1087,8 @@ inline constexpr char kShadowHlsl[] = R"hlsl(// Shadow maps: meshes drawn into a
 // holes in the shadow too. Keep it in step with shadow_vertex and shadow_keeps in
 // src/shadow.cpp, its CPU twins. The vertex input, Instance and Surface are mesh.hlsl's. With
 // GAME_SHADER defined, as mesh.hlsl's, a game's spatial shader's fragment() cuts the holes, and
-// with GAME_VERTEX its vertex() places the corners.
+// with GAME_VERTEX its vertex() places the corners. shadow_plain.hlsl defines NO_ALPHA_HASH, which
+// leaves alpha hash out, for the OpenGL devices' shadows that don't use it.
 
 cbuffer LightView : register(b0, space1) {
     float4x4 view;       // the world to the pass's camera space
@@ -1129,7 +1130,9 @@ struct VertexOutput {
 struct VertexOutput {
     float2 uv : TEXCOORD0;
     float4 color : TEXCOORD1;
+#ifndef NO_ALPHA_HASH
     float3 object : TEXCOORD2; // the place on the mesh, for alpha hash
+#endif
     float4 position : SV_Position;
 };
 #endif
@@ -1174,7 +1177,9 @@ VertexOutput vs_main(VertexInput input) {
 #else
     output.uv = input.uv * uv1.xy + uv1.zw;
     output.color = input.color;
+#ifndef NO_ALPHA_HASH
     output.object = input.position;
+#endif
 #endif
     return output;
 }
@@ -1211,6 +1216,7 @@ void fs_main(VertexOutput input, bool front : SV_IsFrontFace) {
     }
 }
 #else
+#ifndef NO_ALPHA_HASH
 // mesh.hlsl's alpha hash, which cuts the same dither out of the shadow, seen from the light.
 float alpha_hash_value(float3 cell) {
     uint3 v = uint3(int3(clamp(cell, -1073741824.0, 1073741824.0))) * 1664525u + 1013904223u;
@@ -1244,6 +1250,7 @@ float alpha_hash_threshold(float3 pos, float3 dx, float3 dy, float hash_scale) {
     }
     return clamp(threshold, 0.00001, 1.0);
 }
+#endif
 
 void fs_main(VertexOutput input) {
     float4 texel = albedo_texture.Sample(albedo_sampler, input.uv);
@@ -1253,10 +1260,12 @@ void fs_main(VertexOutput input) {
             alpha *= input.color.a;
         }
         float threshold = asfloat(options.y);
+#ifndef NO_ALPHA_HASH
         if ((options.x & kAlphaHash) != 0u) {
             threshold = alpha_hash_threshold(input.object, ddx(input.object), ddy(input.object),
                                              threshold);
         }
+#endif
         if (alpha < threshold) {
             discard;
         }

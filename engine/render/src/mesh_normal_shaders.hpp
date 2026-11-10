@@ -1935,6 +1935,8 @@ R"hlsl(// The 3D shader's fragment stage for Forward+'s normal-roughness prepass
 // its vertex() places the corners, through GameVertex and game_vertex, with its texture params
 // in the vertex stage's slots 0 to 4. With GAME_LIGHT, its light() lights the pixel once a light
 // through game_light, with game_albedo the surface's albedo, and may change ALPHA.
+// mesh_plain.hlsl defines NO_ALPHA_HASH, which leaves alpha hash out, for the OpenGL devices'
+// draws that don't use it.
 
 cbuffer Camera : register(b0, space1) {
     float4x4 view_projection;          // world to clip space, with TAA's jitter
@@ -1972,7 +1974,9 @@ struct VertexOutput {
     float2 uv : TEXCOORD4;
     float4 color : TEXCOORD5;
     float2 uv2 : TEXCOORD6;
+#ifndef NO_ALPHA_HASH
     float3 object : TEXCOORD9; // the place on the mesh, which alpha hash's cells are fixed to
+#endif
 #ifdef MOTION_VECTORS
     float4 motion_clip : TEXCOORD7;   // where the vertex is in clip space, without the jitter
     float4 previous_clip : TEXCOORD8; // and where it was in the frame before
@@ -1996,7 +2000,9 @@ VertexOutput vs_main(VertexInput input) {
     output.uv = moved.uv;
     output.color = moved.color;
     output.uv2 = moved.uv2 * lightmap_uv.zw + lightmap_uv.xy;
+#ifndef NO_ALPHA_HASH
     output.object = input.position;
+#endif
 #else
     float4 world = mul(model, float4(input.position, 1.0));
     output.world = world.xyz;
@@ -2009,7 +2015,9 @@ VertexOutput vs_main(VertexInput input) {
     output.uv = input.uv * uv1.xy + uv1.zw;
     output.color = input.color;
     output.uv2 = input.uv2 * lightmap_uv.zw + lightmap_uv.xy;
+#ifndef NO_ALPHA_HASH
     output.object = input.position;
+#endif
 #endif
 #ifdef MOTION_VECTORS
     output.motion_clip = output.position;
@@ -2082,6 +2090,7 @@ static const uint kTerrain = 1u;
 static const uint kTerrainDepthBlending = 2u;
 static const uint kTerrainNormals = 16u; // shifted left by the layer
 
+#ifndef NO_ALPHA_HASH
 // Alpha hash's noise at a cell of the mesh: 0 to 1 from three whole numbers, by Jarzynski and
 // Olano's PCG3D, where Godot's hash_3d uses sines, so the CPU (alpha_hash_value in src/mesh.cpp)
 // makes the same bits.
@@ -2120,6 +2129,7 @@ float alpha_hash_threshold(float3 pos, float3 dx, float3 dy, float hash_scale) {
     }
     return clamp(threshold, 0.00001, 1.0);
 }
+#endif
 
 // A VoxelGI a draw traces (Forward+): its light is a 3D texture kept in ground_texture_2 as each
 // level's z slices side by side.
@@ -2137,12 +2147,12 @@ cbuffer Surface : register(b0, space3) {
     float4 surface;           // metallic, roughness, specular and the normal map's scale
     float4 metallic_channel;  // which of metallic_texture's channels is metallic
     float4 roughness_channel; // and roughness_texture's roughness
-    // x: the flags above, y: the alpha scissor threshold's bits, z: the draw's layers, w: the
+)hlsl",
+R"hlsl(    // x: the flags above, y: the alpha scissor threshold's bits, z: the draw's layers, w: the
     // terrain flags.
     uint4 options;
     float4 terrain_uv;      // each ground layer's tiling: the maps' resolution over its uv_scale
-)hlsl",
-R"hlsl(    float4 terrain_opacity; // how much the color map tints each ground layer
+    float4 terrain_opacity; // how much the color map tints each ground layer
     // The lightmap's exposure, then 1 for the bicubic filter; then the rim and its tint.
     float4 lightmap;
     float4 capture[9]; // the light probes' spherical harmonics, RGB
@@ -2368,15 +2378,15 @@ float3 tonemap_aces(float3 color, float white) {
     mapped = mul(odt_to_rgb, mapped);
     white *= bias;
     float mapped_white = (white * (white + A) - B) / (white * (C * white + D) + E);
-    return mapped / mapped_white;
+)hlsl",
+R"hlsl(    return mapped / mapped_white;
 }
 
 // A polynomial for EaryChow's AgX sigmoid, for x from 0 to 1.
 float3 agx_contrast_approx(float3 x) {
     float3 x2 = x * x;
     float3 x4 = x2 * x2;
-)hlsl",
-R"hlsl(    return 0.021 * x + 4.0111 * x2 - 25.682 * x2 * x + 70.359 * x4 - 74.778 * x4 * x +
+    return 0.021 * x + 4.0111 * x2 - 25.682 * x2 * x + 70.359 * x4 - 74.778 * x4 * x +
            27.069 * x4 * x2;
 }
 
@@ -2640,12 +2650,12 @@ void light_compute(float3 n, float3 l, float3 v, float3 light_color, float atten
             g = v_ggx_anisotropic(ax, ay, dot(t, v), dot(t, l), dot(b, v), dot(b, l), c_n_dot_v,
                                   c_n_dot_l);
         } else {
-            d = d_ggx(c_n_dot_h, alpha_ggx);
+)hlsl",
+R"hlsl(            d = d_ggx(c_n_dot_h, alpha_ggx);
             g = v_ggx(c_n_dot_l, c_n_dot_v, alpha_ggx);
         }
         float c_l_dot_h5 = schlick_fresnel(c_l_dot_h);
-)hlsl",
-R"hlsl(        float f90 = clamp(50.0 * f0.g, 0.0, 1.0);
+        float f90 = clamp(50.0 * f0.g, 0.0, 1.0);
         float3 f = f0 + (f90 - f0) * c_l_dot_h5;
         float3 specular_brdf_nl = c_n_dot_l * d * f * g;
         specular_light += specular_brdf_nl * light_color * attenuation * specular_amount;
@@ -2913,12 +2923,12 @@ float3 unpack_ground_normal(float4 texel) {
 // A direction in the mesh's space, in the world through the pixel's tangent frame: a terrain's
 // vertices have the normal +Y and the tangent +X, so its binormal is -Z.
 float3 frame_direction(VertexOutput input, float3 v) {
-    return normalize(input.tangent * v.x + input.normal * v.y - input.binormal * v.z);
+)hlsl",
+R"hlsl(    return normalize(input.tangent * v.x + input.normal * v.y - input.binormal * v.z);
 }
 
 // An opaque pixel's ray-traced shadows, when its frame has them (on): the screen texture's layers
-)hlsl",
-R"hlsl(// 2 and 3 at the pixel, loaded once before its lights, as a texture load in their loop loses
+// 2 and 3 at the pixel, loaded once before its lights, as a texture load in their loop loses
 // Direct3D 12's WARP device.
 struct RayShadows {
     bool on;
@@ -3177,10 +3187,10 @@ void apply_decal(Decal decal, float3 world, float3 geometry, float3 dx, float3 d
 }
 
 // Godot's decals (scene_forward_clustered.glsl): those of the pixel's tile within its slice's
-// range, each word's from its highest bit, that share a layer with the mesh, over its surface
-// before it is lit; geometry is its vertex normal, turned to its side, as Godot's geo_normal.
 )hlsl",
-R"hlsl(void apply_decals(VertexOutput input, float3 geometry, inout float3 base, inout float3 normal,
+R"hlsl(// range, each word's from its highest bit, that share a layer with the mesh, over its surface
+// before it is lit; geometry is its vertex normal, turned to its side, as Godot's geo_normal.
+void apply_decals(VertexOutput input, float3 geometry, inout float3 base, inout float3 normal,
                   inout float ao, inout float roughness, inout float metallic,
                   inout float3 emitted) {
     uint2 tile = (uint2)input.position.xy / kClusterSize;
@@ -3421,10 +3431,10 @@ void voxel_gi_compute(uint index, float3 world, float3 normal, float3 reflection
             float3 c = kCones[i];
             float3 turned = tangent * c.x + bitangent * c.y + normal * c.z;
             float3 dir = normalize(float3(dot(gi.rows[0].xyz, turned), dot(gi.rows[1].xyz, turned),
-                                          dot(gi.rows[2].xyz, turned)));
-            light += 0.25 * voxel_cone_trace_45_degrees(index, cell_size, max_distance, position,
 )hlsl",
-R"hlsl(                                                        dir, gi.params.y);
+R"hlsl(                                          dot(gi.rows[2].xyz, turned)));
+            light += 0.25 * voxel_cone_trace_45_degrees(index, cell_size, max_distance, position,
+                                                        dir, gi.params.y);
         }
     }
     float4 irradiance = voxel_cone_trace(index, cell_size, max_distance, position, ref_vec,
@@ -3677,11 +3687,11 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
         ambient_light *= 1.0 - fc;
         reflected *= 1.0 - fc;
         float horizon = min(1.0 + dot(ray, normal), 1.0);
-        float3 turned = float3(dot(sky_rows[0].xyz, ray), dot(sky_rows[1].xyz, ray),
+)hlsl",
+R"hlsl(        float3 turned = float3(dot(sky_rows[0].xyz, ray), dot(sky_rows[1].xyz, ray),
                                dot(sky_rows[2].xyz, ray));
         float level = lerp(0.001, 0.1, sqrt(layers.clearcoat_roughness)) * kRadianceMaxLevel;
-)hlsl",
-R"hlsl(        float3 texel = radiance_map.SampleLevel(radiance_sampler, turned, level).rgb;
+        float3 texel = radiance_map.SampleLevel(radiance_sampler, turned, level).rgb;
         reflected += srgb_to_linear(texel) * horizon * horizon * fc * sky.z;
     }
 #ifdef CLUSTERED
@@ -3810,11 +3820,13 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
     float alpha = (flags & kHasAlpha) != 0u ? color.a : 1.0;
     if ((flags & kAlphaScissor) != 0u) {
         float threshold = asfloat(options.y);
+#ifndef NO_ALPHA_HASH
         if ((flags & kAlphaHash) != 0u) {
             // The flags are the draw's, so every pixel of a quad takes this branch together.
             threshold = alpha_hash_threshold(input.object, ddx(input.object), ddy(input.object),
                                              threshold);
         }
+#endif
         if (alpha < threshold) {
             discard;
         }
@@ -3918,14 +3930,14 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
     float3 geometry = terrain ? frame_direction(input, shape) : normalize(input.normal);
     // Godot's SSAO: the frame's occlusion at the pixel darkens the opaque meshes' ambient light,
     // with the decals' ambient occlusion, and their direct light by its light affect times its AO
-    // channel affect. Its SSR (alpha below 0 for none) goes over their reflections of the sky. A
+)hlsl",
+R"hlsl(    // channel affect. Its SSR (alpha below 0 for none) goes over their reflections of the sky. A
     // game's shader starts them at its AO and AO_LIGHT_AFFECT, as Godot's.
 #ifdef GAME_SHADER
     float ao = game.material.w;
     float ao_light_affect = game.emission.w;
 #else
-)hlsl",
-R"hlsl(    float ao = 1.0;
+    float ao = 1.0;
     float ao_light_affect = 0.0;
 #endif
     float4 ssr = float4(0.0, 0.0, 0.0, -1.0);

@@ -19,6 +19,8 @@
 // its vertex() places the corners, through GameVertex and game_vertex, with its texture params
 // in the vertex stage's slots 0 to 4. With GAME_LIGHT, its light() lights the pixel once a light
 // through game_light, with game_albedo the surface's albedo, and may change ALPHA.
+// mesh_plain.hlsl defines NO_ALPHA_HASH, which leaves alpha hash out, for the OpenGL devices'
+// draws that don't use it.
 
 cbuffer Camera : register(b0, space1) {
     float4x4 view_projection;          // world to clip space, with TAA's jitter
@@ -56,7 +58,9 @@ struct VertexOutput {
     float2 uv : TEXCOORD4;
     float4 color : TEXCOORD5;
     float2 uv2 : TEXCOORD6;
+#ifndef NO_ALPHA_HASH
     float3 object : TEXCOORD9; // the place on the mesh, which alpha hash's cells are fixed to
+#endif
 #ifdef MOTION_VECTORS
     float4 motion_clip : TEXCOORD7;   // where the vertex is in clip space, without the jitter
     float4 previous_clip : TEXCOORD8; // and where it was in the frame before
@@ -80,7 +84,9 @@ VertexOutput vs_main(VertexInput input) {
     output.uv = moved.uv;
     output.color = moved.color;
     output.uv2 = moved.uv2 * lightmap_uv.zw + lightmap_uv.xy;
+#ifndef NO_ALPHA_HASH
     output.object = input.position;
+#endif
 #else
     float4 world = mul(model, float4(input.position, 1.0));
     output.world = world.xyz;
@@ -93,7 +99,9 @@ VertexOutput vs_main(VertexInput input) {
     output.uv = input.uv * uv1.xy + uv1.zw;
     output.color = input.color;
     output.uv2 = input.uv2 * lightmap_uv.zw + lightmap_uv.xy;
+#ifndef NO_ALPHA_HASH
     output.object = input.position;
+#endif
 #endif
 #ifdef MOTION_VECTORS
     output.motion_clip = output.position;
@@ -166,6 +174,7 @@ static const uint kTerrain = 1u;
 static const uint kTerrainDepthBlending = 2u;
 static const uint kTerrainNormals = 16u; // shifted left by the layer
 
+#ifndef NO_ALPHA_HASH
 // Alpha hash's noise at a cell of the mesh: 0 to 1 from three whole numbers, by Jarzynski and
 // Olano's PCG3D, where Godot's hash_3d uses sines, so the CPU (alpha_hash_value in src/mesh.cpp)
 // makes the same bits.
@@ -204,6 +213,7 @@ float alpha_hash_threshold(float3 pos, float3 dx, float3 dy, float hash_scale) {
     }
     return clamp(threshold, 0.00001, 1.0);
 }
+#endif
 
 // A VoxelGI a draw traces (Forward+): its light is a 3D texture kept in ground_texture_2 as each
 // level's z slices side by side.
@@ -1777,11 +1787,13 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
     float alpha = (flags & kHasAlpha) != 0u ? color.a : 1.0;
     if ((flags & kAlphaScissor) != 0u) {
         float threshold = asfloat(options.y);
+#ifndef NO_ALPHA_HASH
         if ((flags & kAlphaHash) != 0u) {
             // The flags are the draw's, so every pixel of a quad takes this branch together.
             threshold = alpha_hash_threshold(input.object, ddx(input.object), ddy(input.object),
                                              threshold);
         }
+#endif
         if (alpha < threshold) {
             discard;
         }
