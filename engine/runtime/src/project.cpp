@@ -378,6 +378,31 @@ json::Value anti_aliasing_schema() {
     return out;
 }
 
+// rendering.virtual_geometry: how virtualized surfaces' cluster pages stream, as Unreal's Nanite
+// streaming pool (Godot has none).
+json::Value virtual_geometry_schema() {
+    json::Value pool;
+    pool["type"] = "integer";
+    pool["minimum"] = 0;
+    pool["default"] = 0;
+    pool["description"] =
+        "Kilobytes of virtualized surfaces' cluster pages kept loaded, per surface: their "
+        "clusters' triangles load as the camera's cuts need them and the least recently used are "
+        "dropped for room. 0 keeps every page loaded.";
+    json::Value loads;
+    loads["type"] = "integer";
+    loads["minimum"] = 1;
+    loads["default"] = 32;
+    loads["description"] = "How many cluster pages a surface loads at most in a frame.";
+    json::Value out;
+    out["type"] = "object";
+    out["additionalProperties"] = false;
+    out["description"] = "Virtualized geometry's cluster streaming.";
+    out["properties"]["streaming_pool_kb"] = std::move(pool);
+    out["properties"]["max_page_loads_per_frame"] = std::move(loads);
+    return out;
+}
+
 // rendering.mesh_lod, as Godot's rendering/mesh_lod settings.
 json::Value mesh_lod_schema() {
     json::Value threshold;
@@ -700,6 +725,7 @@ json::Value project_schema() {
     rendering["properties"]["global_illumination"] = global_illumination_schema();
     rendering["properties"]["anti_aliasing"] = anti_aliasing_schema();
     rendering["properties"]["mesh_lod"] = mesh_lod_schema();
+    rendering["properties"]["virtual_geometry"] = virtual_geometry_schema();
     rendering["properties"]["occlusion_culling"] = occlusion_culling_schema();
     rendering["properties"]["ray_tracing"] = ray_tracing_schema();
     json::Value frame_generation;
@@ -1110,6 +1136,7 @@ Result<Project> parse_project(const json::Value& project) {
         out.frame_generation = render::frame_generation(*rendering);
         out.decal_filter = render::decal_filter(*rendering);
         out.mesh_lod_threshold = render::mesh_lod_threshold(*rendering);
+        out.cluster_streaming = scene3d::cluster_streaming_settings(*rendering);
         out.occlusion_culling = render::occlusion_culling(*rendering);
         out.ray_tracing = render::ray_tracing(*rendering);
         if (const json::Value* textures = rendering->find("textures"); textures != nullptr) {

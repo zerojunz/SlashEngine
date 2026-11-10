@@ -2,12 +2,14 @@
 
 #include "slash/asset/assets.hpp"
 #include "slash/core/json.hpp"
+#include "slash/core/log.hpp"
 #include "slash/core/math.hpp"
 #include "slash/core/text.hpp"
 #include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
 #include "slash/scene3d/blend_shapes.hpp"
 #include "slash/scene3d/bone_attachment.hpp"
+#include "slash/scene3d/cluster_streaming.hpp"
 #include "slash/scene3d/csg.hpp"
 #include "slash/scene3d/fracture.hpp"
 #include "slash/scene3d/gpu_particles.hpp"
@@ -1935,10 +1937,14 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
                 const std::string key =
                     prefix + std::to_string(part.mesh) + "/" + std::to_string(i);
                 Clustered& clustered = clustered_[key];
-                if (clustered.hierarchy == nullptr) {
-                    clustered.hierarchy =
-                        std::make_shared<const ClusterHierarchy>(build_cluster_hierarchy(surface));
+                const bool streaming = cluster_streaming_.pool_bytes > 0;
+                if ((clustered.hierarchy == nullptr && clustered.streamer == nullptr) ||
+                    streaming != (clustered.streamer != nullptr)) {
+                    keep_clusters(clustered, entity, build_cluster_hierarchy(surface), streaming);
                     clustered.vertices = surface.vertices;
+                }
+                if (clustered.streamer != nullptr) {
+                    clustered.streamer->set_settings(cluster_streaming_);
                 }
                 clustered.used = frame_;
                 draw.cut =
@@ -4166,12 +4172,53 @@ void Renderer::pick_lods(const Vec3& camera_position, const std::array<float, 16
         }
     }
     std::erase_if(draws_, [](const Draw& draw) { return draw.hidden; });
+    if (cut) {
+        stream_clusters();
+    }
+}
+
+void Renderer::keep_clusters(Clustered& clustered, entt::entity entity, ClusterHierarchy hierarchy,
+                             bool streaming) {
+    clustered.streamer = nullptr;
+    clustered.hierarchy = nullptr;
+    if (streaming) {
+        // The page file stays in memory here, standing in for one read from disk.
+        auto file =
+            std::make_shared<const std::vector<std::uint8_t>>(write_cluster_pages(hierarchy));
+        auto opened =
+            ClusterStreamer::open(cluster_pages_in_memory(std::move(file)), cluster_streaming_);
+        if (opened) {
+            clustered.streamer = std::make_shared<ClusterStreamer>(std::move(opened).value());
+            return;
+        }
+        problems_.push_back({entity, std::string(kMeshField), opened.error().message});
+    }
+    clustered.hierarchy = std::make_shared<const ClusterHierarchy>(std::move(hierarchy));
+}
+
+void Renderer::stream_clusters() {
+    // Each streamed surface cut this frame loads the pages its cuts asked for, which its next
+    // cuts draw.
+    cluster_pages_ = 0;
+    cluster_pages_pending_ = 0;
+    for (auto& [key, clustered] : clustered_) {
+        if (clustered.streamer == nullptr || clustered.used != frame_) {
+            continue;
+        }
+        if (auto updated = clustered.streamer->update(); !updated) {
+            log::warn("a cluster page didn't load",
+                      {{"surface", key}, {"error", updated.error().message}});
+        }
+        const ClusterStreamingStats stats = clustered.streamer->stats();
+        cluster_pages_ += stats.resident_pages;
+        cluster_pages_pending_ += stats.pending_pages;
+    }
 }
 
 void Renderer::cut_clusters(Draw& draw, const Vec3& camera_position, float pixels_per_unit,
                             float threshold_pixels, const CameraView* culled) {
     Cut& cut = cuts_.at(draw.cut);
-    const Clustered& clustered = clustered_.at(cut.clustered);
+    Clustered& clustered = clustered_.at(cut.clustered);
     const std::array<float, 16>& m = draw.transform;
     const float scale = std::max({std::sqrt((m[0] * m[0]) + (m[1] * m[1]) + (m[2] * m[2])),
                                   std::sqrt((m[4] * m[4]) + (m[5] * m[5]) + (m[6] * m[6])),
@@ -4183,9 +4230,11 @@ void Renderer::cut_clusters(Draw& draw, const Vec3& camera_position, float pixel
                            .near = 0.05F,
                            .threshold = pixels_per_unit > 0.0F ? threshold_pixels : 0.0F,
                            .scale = scale};
-    std::vector<std::uint32_t> chosen = select_clusters(*clustered.hierarchy, view);
+    std::vector<std::uint32_t> chosen = clustered.streamer != nullptr
+                                            ? clustered.streamer->select(view)
+                                            : select_clusters(*clustered.hierarchy, view);
     if (cut.id == render::MeshId::None || chosen != cut.clusters) {
-        const std::vector<std::uint32_t> indices = cluster_indices(*clustered.hierarchy, chosen);
+        const std::vector<std::uint32_t> indices = cluster_indices(clustered.active(), chosen);
         auto made = device_->create_mesh(clustered.vertices, indices);
         if (made) {
             if (cut.id != render::MeshId::None) {
@@ -4212,7 +4261,7 @@ void Renderer::cut_clusters(Draw& draw, const Vec3& camera_position, float pixel
 
 void Renderer::cull_clusters(Draw& draw, Cut& cut, const ClusterView& cluster_view,
                              const CameraView& camera) {
-    const ClusterHierarchy& hierarchy = *clustered_.at(cut.clustered).hierarchy;
+    const ClusterHierarchy& hierarchy = clustered_.at(cut.clustered).active();
     const auto keep_all = [&] {
         clusters_drawn_ += cut.clusters.size();
         cluster_triangles_drawn_ += cut.triangles;
