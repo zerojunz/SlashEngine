@@ -1142,10 +1142,13 @@ cost, from the research proposal of 2026-11-07, in order:
 7. [ ] Wind: `WindSource3D` directional and point sources with gusts and turbulence, as Unreal's
        WindDirectionalSource, and Godot's `Area3D` wind fields, sampled by one world wind field
        that vegetation shaders (`WIND` built-ins), soft bodies, cloth and particles all read
-8. [ ] Foliage: painted and scattered foliage as Unreal's Foliage tool, with `foliage.paint` and
-       `foliage.erase` brushes over terrains and meshes, instances kept per cell, grass drawn in
-       instanced batches with distance culling and fades, impostors for far trees, bending in
-       the wind and trampling
+8. [ ] Foliage: painted and scattered plants and ground cover as Unreal's Foliage tool, with
+       `foliage.paint` and `foliage.erase` brushes over terrains and meshes and instances kept
+       per cell: distinct kinds of grass, flowers, shrubs, bushes, trees, moss, rocks and
+       pebbles (`.foliage.json` types made from recipes or library models, varied by seed),
+       grass drawn in instanced batches with distance culling and fades, impostors for far
+       trees, bending in the wind, and characters' interactions: plants that part, bend and
+       spring back as they pass, trees and rocks that block and can be climbed or harvested
 9. [ ] Light tools: Godot 4's `light_temperature` and physical light units, projector textures
        (`light_projector`), IES profiles and light functions as Unreal's, and `light.tune`, which
        adjusts lights toward exposure and contribution targets from `lighting.check`
@@ -1159,6 +1162,11 @@ cost, from the research proposal of 2026-11-07, in order:
         (body proportions, face, hair, clothing and props, materials) built into rigged models,
         each distinct from the others in silhouette and color, following the storyboard's
         character design rules, which `character.check` enforces
+12. [ ] Fauna: a fauna tool for distinct animals (birds, fish, insects, grazers, predators,
+        pets) as `.creature.json` recipes of body plans built into rigged, animated models with
+        their own looks per species, NPC brains for flocking, grazing, fleeing, hunting and
+        following, placed in habitats by the foliage tool's brushes, and characters'
+        interactions: animals that notice, flee, attack, can be fed, ridden or tamed
 
 Console ports are not on this roadmap and never will be in this repository. As with Godot,
 PlayStation, Xbox and Switch support comes from licensed porting partners as private backends.
