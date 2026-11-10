@@ -7,6 +7,7 @@
 #include "slash/command/command.hpp"
 #include "slash/command/mcp.hpp"
 #include "slash/command/session.hpp"
+#include "slash/core/json.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/version.hpp"
 #include "slash/exporter/commands.hpp"
@@ -46,6 +47,8 @@ Usage:
       --scene <file>         Open this scene at startup, or start a new one saved there
       --allow <list>         Capabilities to grant: read, edit, run, filesystem, build,
                              network or all (default all), e.g. --allow read,run
+      --tools <set>          Tools to offer: core (default), the commands most tasks need and
+                             tools_load, which adds others by group, or all
       --live                 Drive the game already running in the project ("slash-cli run
                              --serve" or "slash-cli serve") instead of an engine of its own
       --version              Print the engine version
@@ -67,6 +70,28 @@ void send(const std::string& line) {
     std::fflush(stdout);
 }
 
+// Whether a forwarded message was a tools_load call that loaded tools.
+bool loaded_tools(std::string_view message, std::string_view response) {
+    auto request = slash::json::parse(message);
+    auto reply = slash::json::parse(response);
+    if (!request || !reply) {
+        return false;
+    }
+    const slash::json::Value* method = request.value().find("method");
+    const slash::json::Value* params = request.value().find("params");
+    if (method == nullptr || !method->is_string() || method->as_string() != "tools/call" ||
+        params == nullptr || !params->is_object()) {
+        return false;
+    }
+    const slash::json::Value* name = params->find("name");
+    const slash::json::Value* arguments = params->find("arguments");
+    const slash::json::Value* result = reply.value().find("result");
+    const slash::json::Value* error = result != nullptr ? result->find("isError") : nullptr;
+    return name != nullptr && name->is_string() && name->as_string() == command::mcp::kLoadTool &&
+           arguments != nullptr && arguments->is_object() && !arguments->as_object().empty() &&
+           error != nullptr && error->is_bool() && !error->as_bool();
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -80,6 +105,8 @@ int main(int argc, char** argv) {
     std::string scene;
     bool live = false;
     bool restricted = false;
+    command::mcp::Tools tools = command::mcp::Tools::Core;
+    bool tools_set = false;
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string& arg = args[i];
         const bool has_value = i + 1 < args.size();
@@ -97,6 +124,13 @@ int main(int argc, char** argv) {
             options.project_root = args[++i];
         } else if (arg == "--scene" && has_value) {
             scene = args[++i];
+        } else if (arg == "--tools" && has_value) {
+            auto parsed = command::mcp::parse_tools(args[++i]);
+            if (!parsed) {
+                return usage_error(parsed.error().message);
+            }
+            tools = parsed.value();
+            tools_set = true;
         } else if (arg == "--allow" && has_value) {
             auto capabilities = command::parse_capabilities(args[++i]);
             if (!capabilities) {
@@ -113,6 +147,10 @@ int main(int argc, char** argv) {
     }
     if (live && restricted) {
         return usage_error("--allow has no effect with --live; pass it to \"slash-cli serve\"");
+    }
+    if (live && tools_set) {
+        return usage_error("--tools has no effect with --live; the running game offers core "
+                           "tools and tools_load");
     }
     if (!slash::platform::exists(options.project_root)) {
         return usage_error("the project folder does not exist: " + options.project_root);
@@ -134,6 +172,10 @@ int main(int argc, char** argv) {
                 slash::server::read_endpoint(options.project_root), line);
             if (!response.empty()) {
                 send(response);
+            }
+            // HTTP gives the game no way to tell the client its tools changed, so say it here.
+            if (loaded_tools(line, response)) {
+                send(R"({"jsonrpc":"2.0","method":"notifications/tools/list_changed"})");
             }
         }
         return kExitOk;
@@ -170,7 +212,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    command::mcp::Server server(session);
+    command::mcp::Server server(session, tools);
     slash::log::info("slash-mcp ready",
                      {{"project", options.project_root}, {"tools", commands.commands().size()}});
 
@@ -183,6 +225,9 @@ int main(int argc, char** argv) {
         }
         if (const std::string response = server.handle(line); !response.empty()) {
             send(response);
+        }
+        for (const std::string& notification : server.take_notifications()) {
+            send(notification);
         }
     }
     return kExitOk;

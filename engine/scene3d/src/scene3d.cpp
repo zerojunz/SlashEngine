@@ -1115,8 +1115,11 @@ render::Material3D material(const world::StandardMaterial3D& standard,
         out.transparency = render::Transparency::Alpha;
     } else if (standard.transparency == "alpha_scissor") {
         out.transparency = render::Transparency::AlphaScissor;
+    } else if (standard.transparency == "alpha_hash") {
+        out.transparency = render::Transparency::AlphaHash;
     }
     out.alpha_scissor_threshold = standard.alpha_scissor_threshold;
+    out.alpha_hash_scale = standard.alpha_hash_scale;
     out.blend = render::parse_blend_mode(standard.blend_mode).value_or(render::BlendMode::Mix);
     if (standard.cull_mode == "front") {
         out.cull = render::CullMode::Front;

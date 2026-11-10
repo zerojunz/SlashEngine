@@ -332,6 +332,8 @@ struct Material3D {
     bool unshaded = false; // albedo as it is, unlit
     Transparency transparency = Transparency::Disabled;
     float alpha_scissor_threshold = 0.5F;
+    // The grain of an AlphaHash mesh's dither: above 1 finer and noisier, below 1 coarser.
+    float alpha_hash_scale = 1.0F;
     BlendMode blend = BlendMode::Mix; // how an Alpha mesh blends
     CullMode cull = CullMode::Back;
     std::array<float, 2> uv1_scale{1.0F, 1.0F};

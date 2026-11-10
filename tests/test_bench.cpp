@@ -383,3 +383,32 @@ TEST_CASE("run_live fails a task the model leaves undone, wrong or unfinished") 
     REQUIRE(unfinished.size() == 1);
     CHECK(unfinished[0].find("message")->as_string() == "not done after 2 replies");
 }
+
+TEST_CASE("run_live takes any of a task's answers") {
+    const TaskFolder folder("bench_live_answers");
+    folder.add("count", R"({"format": 1, "prompt": "How many entities are there?",
+                            "answer": ["1", "one"], "solution": [{"tool": "world_query"}]})");
+    folder.add_file("count", "scenes/level.scene.json", kLevel);
+    auto tasks = bench::load_tasks(folder.path);
+    REQUIRE(tasks.ok());
+    bench::Options options;
+    options.tasks = tasks.value();
+    options.work = "bench_live_answers_work";
+    options.with_session = builtin_session();
+    bench::Live live;
+
+    live.provider =
+        std::make_shared<ScriptedModel>(std::vector<ai::Message>{{.text = "There is one entity."}});
+    auto report = bench::run_live(options, live);
+    REQUIRE(report.ok());
+    CHECK(report.value().find("failed")->as_array().empty());
+
+    live.provider =
+        std::make_shared<ScriptedModel>(std::vector<ai::Message>{{.text = "There are 2."}});
+    report = bench::run_live(options, live);
+    REQUIRE(report.ok());
+    const json::Array& failed = report.value().find("failed")->as_array();
+    REQUIRE(failed.size() == 1);
+    CHECK(failed[0].find("message")->as_string() ==
+          "the final reply lacks \"1\" or \"one\": There are 2.");
+}

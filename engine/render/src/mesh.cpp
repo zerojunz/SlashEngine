@@ -946,12 +946,18 @@ MeshSurfaceUniforms mesh_surface_uniforms(const Material3D& material, std::uint3
     // A game's spatial shader cuts its pixels by its own ALPHA_SCISSOR_THRESHOLD, in its shadows
     // too (shadow.hlsl's GAME_SHADER), so the threshold here cuts nothing.
     float threshold = material.shader != ShaderId::None ? 0.0F : material.alpha_scissor_threshold;
+    if (material.transparency == Transparency::AlphaHash && material.shader == ShaderId::None) {
+        // Cut as alpha scissor is, at a threshold hashed from the place on the mesh, whose grain
+        // takes the scissor's lane.
+        flags |= kMeshAlphaScissor | kMeshAlphaHash;
+        threshold = std::max(material.alpha_hash_scale, 1e-6F);
+    }
     std::uint32_t terrain = 0;
     if (material.terrain.enabled) {
         // The color map's alpha cuts holes, in the mesh and its shadows, as HTerrain's shader
         // discards pixels under 0.5. The emission and normal textures' slots hold ground layers.
         flags |= kMeshAlphaScissor | kMeshHasAlpha;
-        flags &= ~(kMeshEmissionTexture | kMeshNormalMap);
+        flags &= ~(kMeshEmissionTexture | kMeshNormalMap | kMeshAlphaHash);
         threshold = 0.5F;
         terrain = kMeshTerrain;
         if (material.terrain.depth_blending) {
@@ -1454,6 +1460,66 @@ std::uint32_t range_mask(std::uint32_t word, std::uint32_t first, std::uint32_t 
     return below_high & ~below_low;
 }
 
+// mesh.hlsl's alpha_hash_value: PCG3D of the cell's whole numbers, 0 to 1.
+float alpha_hash_value(const Float3& cell) {
+    constexpr float kLimit = 1073741824.0F;
+    std::array<std::uint32_t, 3> v{};
+    for (std::size_t i = 0; i < 3; ++i) {
+        v.at(i) = (static_cast<std::uint32_t>(
+                       static_cast<std::int32_t>(std::clamp(cell.at(i), -kLimit, kLimit))) *
+                   1664525U) +
+                  1013904223U;
+    }
+    const auto mix = [&] {
+        v[0] += v[1] * v[2];
+        v[1] += v[2] * v[0];
+        v[2] += v[0] * v[1];
+    };
+    mix();
+    for (std::uint32_t& lane : v) {
+        lane ^= lane >> 16U;
+    }
+    mix();
+    return static_cast<float>(v[0] >> 8U) * (1.0F / 16777216.0F);
+}
+
+float alpha_hash_threshold(const Float3& position, const Float3& dx, const Float3& dy,
+                           float hash_scale) {
+    const float delta_max = std::max(length(dx), length(dy));
+    // log2(1 / (hash_scale * delta_max)), its whole part exact from the float's exponent and its
+    // fraction through core/math's ln, the same on every machine.
+    const float scaled = hash_scale * delta_max;
+    float level = 64.0F;
+    if (scaled > 0.0F && std::isfinite(scaled)) {
+        int exponent = 0;
+        const float mantissa = std::frexp(scaled, &exponent); // scaled = mantissa * 2^exponent
+        level = static_cast<float>(-exponent) - (slash::ln(mantissa) / std::numbers::ln2_v<float>);
+    } else if (std::isinf(scaled)) {
+        level = -64.0F;
+    }
+    level = std::clamp(level, -64.0F, 64.0F);
+    const float low = std::floor(level);
+    const float lerp_factor = level - low;
+    const float high = lerp_factor > 0.0F ? low + 1.0F : low;
+    const auto noise = [&](float at_level) {
+        const float scale = std::ldexp(1.0F, static_cast<int>(at_level));
+        return alpha_hash_value({std::floor(scale * position[0]), std::floor(scale * position[1]),
+                                 std::floor(scale * position[2])});
+    };
+    const float a_interp = ((1.0F - lerp_factor) * noise(low)) + (lerp_factor * noise(high));
+    const float min_lerp = std::min(lerp_factor, 1.0F - lerp_factor);
+    float threshold = 0.0F;
+    if (a_interp < 1.0F - min_lerp) {
+        threshold = a_interp < min_lerp
+                        ? a_interp * a_interp / (2.0F * min_lerp * (1.0F - min_lerp))
+                        : (a_interp - (0.5F * min_lerp)) / (1.0F - min_lerp);
+    } else {
+        threshold =
+            1.0F - ((1.0F - a_interp) * (1.0F - a_interp) / (2.0F * min_lerp * (1.0F - min_lerp)));
+    }
+    return std::clamp(threshold, 0.00001F, 1.0F);
+}
+
 namespace {
 
 // The clustered loop of lit_color in shaders/mesh.hlsl: each of the pixel's tile's lights within
@@ -1530,7 +1596,9 @@ std::optional<SurfacePixel> surface_pixel(const MeshSurfaceUniforms& surface,
     SurfacePixel out;
     out.alpha = (flags & kMeshHasAlpha) != 0 ? color[3] : 1.0F;
     if ((flags & kMeshAlphaScissor) != 0) {
-        if (out.alpha < same_bits<float>(surface.options[1])) {
+        const float threshold =
+            (flags & kMeshAlphaHash) != 0 ? pixel.alpha_hash : same_bits<float>(surface.options[1]);
+        if (out.alpha < threshold) {
             return std::nullopt;
         }
         out.alpha = 1.0F;

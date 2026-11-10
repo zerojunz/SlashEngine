@@ -35,7 +35,8 @@
       "displayName": "CI build with warnings as errors",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "SLASH_WARNINGS_AS_ERRORS": "ON"
+        "SLASH_WARNINGS_AS_ERRORS": "ON",
+        "SLASH_DEBUG_INFO": "OFF"
       }
     },
     {
@@ -46,7 +47,8 @@
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "SLASH_PRECISION": "double",
         "SLASH_WARNINGS_AS_ERRORS": "ON",
-        "SLASH_BUILD_EXAMPLES": "OFF"
+        "SLASH_BUILD_EXAMPLES": "OFF",
+        "SLASH_DEBUG_INFO": "OFF"
       }
     }
   ],

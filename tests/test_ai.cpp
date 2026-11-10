@@ -675,6 +675,35 @@ TEST_CASE("the anthropic adapter sends messages and returns thinking blocks unch
           parse(R"({"type":"thinking","thinking":"","signature":"sig-2"})"));
 }
 
+TEST_CASE("the anthropic adapter drops thinking blocks made with other tools") {
+    auto transport = std::make_shared<FakeTransport>(std::vector<FakeTransport::Reply>{{200, R"({
+        "model": "test-model", "stop_reason": "tool_use",
+        "content": [{"type": "thinking", "thinking": "", "signature": "sig-1"},
+                    {"type": "redacted_thinking", "data": "abc"},
+                    {"type": "tool_use", "id": "toolu_1", "name": "item_find", "input": {}}]})"}});
+    auto provider = adapter("anthropic", transport);
+    ai::Request request = tool_conversation();
+    request.messages.resize(2);
+    auto first = provider->complete(request);
+    REQUIRE(first.ok());
+    ai::Message result = message(ai::Role::Tool, "{}");
+    result.tool_call_id = "toolu_1";
+    request.messages.push_back(first.value().message);
+    request.messages.push_back(result);
+
+    // The same tools: the blocks go back as they came.
+    REQUIRE(provider->complete(request).ok());
+    CHECK(transport->body(1)["messages"].as_array()[1]["content"].size() == 3);
+
+    // A tool added since (as tools_load adds them): the API would refuse the blocks.
+    request.tools.push_back({.name = "item_sell",
+                             .description = "Sells an item.",
+                             .parameters = parse(R"({"type":"object"})")});
+    REQUIRE(provider->complete(request).ok());
+    CHECK(transport->body(2)["messages"].as_array()[1]["content"] == parse(R"([
+        {"type": "tool_use", "id": "toolu_1", "name": "item_find", "input": {}}])"));
+}
+
 TEST_CASE("the anthropic adapter rebuilds a streamed message block by block") {
     const std::string stream = sse({
         {"message_start",
@@ -718,10 +747,11 @@ TEST_CASE("the anthropic adapter rebuilds a streamed message block by block") {
     CHECK(reply.stop == ai::StopReason::ToolCalls);
     CHECK(reply.usage.input_tokens == 7);
     CHECK(reply.usage.output_tokens == 15);
-    CHECK(reply.message.native == parse(R"({"type":"anthropic","content":[
+    CHECK(*reply.message.native.find("type") == "anthropic");
+    CHECK(*reply.message.native.find("content") == parse(R"([
         {"type":"thinking","thinking":"Hmm.","signature":"sig"},
         {"type":"text","text":"One moment."},
-        {"type":"tool_use","id":"toolu_1","name":"item_find","input":{"name":"bow"}}]})"));
+        {"type":"tool_use","id":"toolu_1","name":"item_find","input":{"name":"bow"}}])"));
 
     auto failing = std::make_shared<FakeTransport>(std::vector<FakeTransport::Reply>{
         {200,
@@ -815,6 +845,102 @@ TEST_CASE("the gemini adapter streams parts and joins their text") {
         {"functionCall":{"name":"door_open","args":{}},"thoughtSignature":"s"}]})"));
 }
 
+TEST_CASE("the openai-responses adapter sends input items and returns reasoning unchanged") {
+    const json::Value native = parse(R"({"type":"openai-responses","output":[
+        {"type":"reasoning","id":"rs_1","summary":[],"encrypted_content":"secret-1"},
+        {"type":"function_call","id":"fc_1","call_id":"call_1","name":"item_find","arguments":"{\"name\":\"sword\"}"}]})");
+    ai::Request request = tool_conversation(native);
+    request.messages.push_back(message(ai::Role::User, "And the shield?"));
+    request.output_schema = parse(R"({"type":"object"})");
+    auto transport = std::make_shared<FakeTransport>(std::vector<FakeTransport::Reply>{{200, R"({
+        "model": "test-model", "status": "completed",
+        "usage": {"input_tokens": 100, "output_tokens": 20},
+        "output": [{"type": "reasoning", "id": "rs_2", "summary": [], "encrypted_content": "secret-2"},
+                   {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Checking."}]},
+                   {"type": "function_call", "call_id": "call_5", "name": "item_find", "arguments": "{\"name\":\"shield\"}"}]})"}});
+    ai::AdapterOptions options;
+    options.api_key = "secret";
+    options.capabilities.json_schema_output = true;
+    auto response = adapter("openai-responses", transport, options)->complete(request);
+    CHECK(text_of(response) == "Checking.");
+
+    CHECK(transport->requests[0].url == "https://api.openai.com/v1/responses");
+    CHECK(transport->header("Authorization") == "Bearer secret");
+    CHECK(transport->body() == parse(R"({
+        "model": "test-model",
+        "input": [
+          {"role": "developer", "content": "You are a shopkeeper."},
+          {"role": "user", "content": [
+            {"type": "input_image", "image_url": "data:image/png;base64,UE5H"},
+            {"type": "input_text", "text": "What is this?"}]},
+          {"type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "secret-1"},
+          {"type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "item_find", "arguments": "{\"name\":\"sword\"}"},
+          {"type": "function_call_output", "call_id": "call_1", "output": "{\"price\":12}"},
+          {"role": "user", "content": [{"type": "input_text", "text": "And the shield?"}]}],
+        "tools": [{"type": "function", "name": "item_find", "description": "Finds an item.",
+                   "parameters": {"type": "object"}, "strict": false}],
+        "temperature": 0.5,
+        "text": {"format": {"type": "json_schema", "name": "output", "schema": {"type": "object"}, "strict": false}},
+        "store": false, "include": ["reasoning.encrypted_content"]})"));
+
+    const ai::Response& reply = response.value();
+    CHECK(reply.stop == ai::StopReason::ToolCalls);
+    CHECK(reply.usage.input_tokens == 100);
+    CHECK(reply.usage.output_tokens == 20);
+    REQUIRE(reply.message.tool_calls.size() == 1);
+    CHECK(reply.message.tool_calls[0].id == "call_5");
+    CHECK(reply.message.tool_calls[0].arguments == parse(R"({"name":"shield"})"));
+    CHECK(reply.message.native.find("output")->as_array()[0] ==
+          parse(R"({"type":"reasoning","id":"rs_2","summary":[],"encrypted_content":"secret-2"})"));
+
+    // A message from another provider goes as its text and calls.
+    ai::Request moved = tool_conversation();
+    REQUIRE(adapter("openai-responses", transport)->complete(moved).ok());
+    const json::Value sent = transport->body(1);
+    CHECK(
+        sent.find("input")->as_array()[2] ==
+        parse(
+            R"({"role": "assistant", "content": [{"type": "output_text", "text": "Let me look."}]})"));
+    CHECK(
+        sent.find("input")->as_array()[3] ==
+        parse(
+            R"({"type": "function_call", "call_id": "call_1", "name": "item_find", "arguments": "{\"name\":\"sword\"}"})"));
+}
+
+TEST_CASE("the openai-responses adapter streams text and reads the response it ends with") {
+    const std::string stream = sse({
+        {"response.created", R"({"type":"response.created","response":{"output":[]}})"},
+        {"response.output_text.delta", R"({"type":"response.output_text.delta","delta":"One "})"},
+        {"response.output_text.delta",
+         R"({"type":"response.output_text.delta","delta":"moment."})"},
+        {"response.completed",
+         json::write(
+             parse(R"({"type":"response.completed","response":{"model":"m","status":"incomplete",
+            "incomplete_details":{"reason":"max_output_tokens"},"usage":{"input_tokens":7,"output_tokens":15},
+            "output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"One moment."}]}]}})"),
+             json::Style::Compact)},
+    });
+    auto transport =
+        std::make_shared<FakeTransport>(std::vector<FakeTransport::Reply>{{200, stream}});
+    std::string streamed;
+    auto response =
+        adapter("openai-responses", transport)
+            ->complete(ask("Hi"), [&streamed](std::string_view text) { streamed += text; });
+    CHECK(text_of(response) == "One moment.");
+    CHECK(streamed == "One moment.");
+    CHECK(response.value().stop == ai::StopReason::MaxTokens);
+    CHECK(response.value().usage.output_tokens == 15);
+    CHECK(*transport->body().find("stream") == true);
+
+    auto failing = std::make_shared<FakeTransport>(std::vector<FakeTransport::Reply>{
+        {200,
+         sse({{"response.failed",
+               R"({"type":"response.failed","response":{"error":{"message":"Overloaded"}}})"}})}});
+    auto failed =
+        adapter("openai-responses", failing)->complete(ask("Hi"), [](std::string_view) {});
+    CHECK(failed.error().message == "the openai-responses provider's stream failed: Overloaded");
+}
+
 TEST_CASE("adapters retry busy servers and report what the provider said") {
     const std::string busy = R"({"error":{"message":"Slow down."}})";
     auto transport = std::make_shared<FakeTransport>(std::vector<FakeTransport::Reply>{
@@ -845,8 +971,8 @@ TEST_CASE("adapters retry busy servers and report what the provider said") {
           ErrorCode::PermissionDenied);
 
     CHECK(ai::make_adapter("open-ai", {}).error().message ==
-          "unknown provider type \"open-ai\"; did you mean \"openai\"? (anthropic, gemini or "
-          "openai)");
+          "unknown provider type \"open-ai\"; did you mean \"openai\"? (anthropic, gemini, "
+          "openai or openai-responses)");
 }
 
 TEST_CASE("a model without schema output gets the schema in its prompt") {
@@ -1604,7 +1730,7 @@ TEST_CASE("ai.complete asks the project's model and ai.providers lists them") {
 
     // Over MCP, ai.complete is marked as reaching outside the machine, and sessions without the
     // network capability can't call it.
-    command::mcp::Server mcp(*engine.session);
+    command::mcp::Server mcp(*engine.session, command::mcp::Tools::All);
     const json::Value listed =
         parse(mcp.handle(R"({"jsonrpc":"2.0","id":1,"method":"tools/list"})"));
     for (const json::Value& tool : listed.find("result")->find("tools")->as_array()) {

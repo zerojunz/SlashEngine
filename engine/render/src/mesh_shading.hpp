@@ -54,6 +54,8 @@ inline constexpr std::uint32_t kMeshHasAlpha = 64;
 inline constexpr std::uint32_t kMeshDisableFog = 128;
 inline constexpr std::uint32_t kMeshLightmap = 256;
 inline constexpr std::uint32_t kMeshLightmapCapture = 512;
+// With kMeshAlphaScissor: options' y is alpha_hash_scale, and the threshold is hashed.
+inline constexpr std::uint32_t kMeshAlphaHash = 1024;
 
 // mesh.hlsl's terrain flags, in MeshSurfaceUniforms::options' w: terrain shading, depth blending,
 // and from kMeshTerrainNormals up, which layers have a normal_roughness texture.
@@ -267,6 +269,15 @@ mesh_instance_uniforms(const Mat4& transform, const Material3D& material, const 
                                                std::uint32_t height, const Mat4& previous);
 [[nodiscard]] MeshSurfaceUniforms mesh_surface_uniforms(const Material3D& material,
                                                         std::uint32_t layers);
+// A surface as rays meet it: an alpha-hashed one stops the share of rays its alpha says, as a
+// blended one does, rather than cutting by a threshold made from screen derivatives rays don't
+// have.
+[[nodiscard]] inline MeshSurfaceUniforms traced_surface(MeshSurfaceUniforms surface) {
+    if ((surface.options[0] & kMeshAlphaHash) != 0) {
+        surface.options[0] &= ~(kMeshAlphaScissor | kMeshAlphaHash);
+    }
+    return surface;
+}
 // The scene's uniforms: in Compatibility its first kMaxLights3D lights, in Forward+ its
 // directional ones, which every pixel takes; its omni and spot lights are in its LightClusters.
 [[nodiscard]] MeshSceneUniforms mesh_scene_uniforms(const Scene3D& scene);
@@ -539,6 +550,8 @@ struct MeshPixel {
     std::optional<GameSurface> game{}; // NOLINT(readability-redundant-member-init): left out
     // Its game's light(), when the shader has one, which lights it in place of light_compute.
     GameLight game_light{}; // NOLINT(readability-redundant-member-init): left out
+    // Alpha hash's threshold there, alpha_hash_threshold's, when the surface hashes.
+    float alpha_hash = 0.0F;
 
     [[nodiscard]] static constexpr std::array<Float4, kMeshTextures> white_texels() {
         std::array<Float4, kMeshTextures> out{};
@@ -688,9 +701,16 @@ struct LightReach {
 [[nodiscard]] std::optional<Float4> mesh_normal_roughness(const MeshSurfaceUniforms& surface,
                                                           const MeshSceneUniforms& scene,
                                                           const MeshPixel& pixel);
-// fs_main in shaders/shadow.hlsl: whether a shadow pass keeps a pixel, as the alpha scissor does.
+// fs_main in shaders/shadow.hlsl: whether a shadow pass keeps a pixel, as the alpha scissor does,
+// or alpha hash with its threshold there.
 [[nodiscard]] bool shadow_keeps(const MeshSurfaceUniforms& surface, const Float4& albedo_texel,
-                                const Float4& color);
+                                const Float4& color, float alpha_hash = 0.0F);
+// mesh.hlsl's alpha_hash_value and alpha_hash_threshold, Godot's compute_alpha_hash_threshold
+// with a hash of whole numbers: the alpha a pixel at position on the mesh (in the mesh's own
+// space) must reach, its neighbors across and down dx and dy further on.
+[[nodiscard]] float alpha_hash_value(const Float3& cell);
+[[nodiscard]] float alpha_hash_threshold(const Float3& position, const Float3& dx, const Float3& dy,
+                                         float hash_scale);
 
 template <typename BoundsOf>
 std::vector<std::size_t> mesh_draw_order(std::span<const MeshDraw> draws, const Scene3D& scene,

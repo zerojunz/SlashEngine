@@ -15,11 +15,13 @@
 
 // The adapters: each turns a Request into one vendor's HTTP API and its reply back into a
 // Response, streaming included. "openai" speaks OpenAI's chat completions, which Ollama,
-// llama.cpp's server, vLLM, LM Studio and OpenRouter serve too; "anthropic" speaks Anthropic's
-// Messages API; "gemini" speaks Google's Gemini API.
+// llama.cpp's server, vLLM, LM Studio and OpenRouter serve too; "openai-responses" speaks
+// OpenAI's Responses API, which its newer reasoning models need for tools; "anthropic" speaks
+// Anthropic's Messages API; "gemini" speaks Google's Gemini API.
 namespace slash::ai {
 
-inline constexpr std::array<std::string_view, 3> kAdapterTypes = {"anthropic", "gemini", "openai"};
+inline constexpr std::array<std::string_view, 4> kAdapterTypes = {"anthropic", "gemini", "openai",
+                                                                  "openai-responses"};
 
 struct AdapterOptions {
     std::string url; // the API's base URL; "" for the vendor's own

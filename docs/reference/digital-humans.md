@@ -44,8 +44,8 @@ follow Godot's design:
    `subsurf_scatter_*` and `subsurf_scatter_transmittance_*` fields, with its screen-space
    blur in Forward+. Their textures remain.
 3. **Hair and eye shading**: Godot's `StandardMaterial3D` `anisotropy`, `rim` and `clearcoat`
-   fields (done: [scene-format.md](scene-format.md#standardmaterial3d)) and alpha hash, which
-   Godot uses for hair cards and eyes. Alpha hash and the fields' textures remain.
+   fields and alpha hash, which Godot uses for hair cards and eyes (done:
+   [scene-format.md](scene-format.md#standardmaterial3d)). The fields' textures remain.
 4. **Face capture data** (done: [scene-format.md](scene-format.md#face-tracking)): Godot's
    `XRFaceTracker` and `XRFaceModifier3D`, which drive a face's blend shapes named in ARKit's,
    Unified Expressions', SRanipal's or Meta's standard live, and

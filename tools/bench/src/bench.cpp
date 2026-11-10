@@ -222,10 +222,17 @@ json::Value task_schema() {
     properties["format"]["description"] = "The task.json format version: 1.";
     properties["prompt"] = property("string", "The task as a person would ask an agent for it.");
     properties["prompt"]["minLength"] = 1;
-    properties["answer"] =
-        property("string", "What a live run's final reply must contain, such as a number the "
-                           "prompt asks for.");
-    properties["answer"]["minLength"] = 1;
+    json::Value text;
+    text["type"] = "string";
+    text["minLength"] = 1;
+    json::Value texts;
+    texts["type"] = "array";
+    texts["minItems"] = 1;
+    texts["items"] = text;
+    properties["answer"]["description"] =
+        "What a live run's final reply must contain, such as a number the prompt asks for, or a "
+        "list of answers it must contain one of.";
+    properties["answer"]["oneOf"] = json::Array{std::move(text), std::move(texts)};
 
     json::Value call = property("object", "An MCP tool call.");
     call["additionalProperties"] = false;
@@ -428,13 +435,18 @@ Result<json::Value> run_live(const Options& options, const Live& live) {
             request.messages.push_back({.role = ai::Role::System, .text = setup.instructions});
             request.messages.push_back(
                 {.role = ai::Role::User, .text = task.spec.find("prompt")->as_string()});
-            for (const json::Value& tool : setup.tools.as_array()) {
-                const json::Value* description = tool.find("description");
-                request.tools.push_back(
-                    {.name = tool.find("name")->as_string(),
-                     .description = description != nullptr ? description->as_string() : "",
-                     .parameters = *tool.find("inputSchema")});
-            }
+            // As a client does, the tools are listed again when tools_load changes them.
+            const auto offer = [&request](const json::Value& tools) {
+                request.tools.clear();
+                for (const json::Value& tool : tools.as_array()) {
+                    const json::Value* description = tool.find("description");
+                    request.tools.push_back(
+                        {.name = tool.find("name")->as_string(),
+                         .description = description != nullptr ? description->as_string() : "",
+                         .parameters = *tool.find("inputSchema")});
+                }
+            };
+            offer(setup.tools);
             request.params.max_tokens = live.max_tokens;
 
             std::int64_t calls = 0;
@@ -478,15 +490,35 @@ Result<json::Value> run_live(const Options& options, const Live& live) {
                     }
                     request.messages.push_back(std::move(message));
                 }
+                if (!server.take_notifications().empty()) {
+                    offer(*server.dispatch("tools/list", json::Object{}).value.find("tools"));
+                }
             }
             if (finished) {
                 run_checks(task, session, nullptr, failed);
-                if (const json::Value* expected = task.spec.find("answer");
-                    expected != nullptr &&
-                    answer.find(expected->as_string()) == std::string::npos) {
-                    failed.push_back(failure(task.name, "/answer",
-                                             "the final reply lacks \"" + expected->as_string() +
-                                                 "\": " + answer));
+                if (const json::Value* expected = task.spec.find("answer"); expected != nullptr) {
+                    // An answer, or the answers a question takes any of.
+                    std::vector<std::string> answers;
+                    if (expected->is_array()) {
+                        for (const json::Value& one : expected->as_array()) {
+                            answers.push_back(one.as_string());
+                        }
+                    } else {
+                        answers.push_back(expected->as_string());
+                    }
+                    if (std::ranges::none_of(answers, [&](const std::string& one) {
+                            return answer.find(one) != std::string::npos;
+                        })) {
+                        std::string message = "the final reply lacks ";
+                        for (std::size_t i = 0; i < answers.size(); ++i) {
+                            message += i == 0 ? "\"" : " or \"";
+                            message += answers[i];
+                            message += '"';
+                        }
+                        message += ": ";
+                        message += answer;
+                        failed.push_back(failure(task.name, "/answer", message));
+                    }
                 }
             } else if (turns >= live.max_turns) {
                 failed.push_back(

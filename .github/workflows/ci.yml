@@ -110,6 +110,12 @@ jobs:
       - name: Test
         run: ctest --preset ci
 
+      # Where the unit tests' time went: tests/test_main.cpp notes each case of 5 s or more.
+      - name: Show the slowest unit test cases
+        if: always()
+        shell: bash
+        run: cat build/ci/tests/unit_*-times.txt 2>/dev/null | sort -rn | head -n 40 || true
+
       # The engine's reference, which the cli_docs_strict test writes with slash-cli docs.
       - name: Upload the engine reference
         if: runner.os == 'Linux'
@@ -644,6 +650,9 @@ jobs:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: .github/scripts/notarize-macos.sh "$RUNNER_TEMP/slashengine"
 
       # A .tar.gz on macOS and Linux, a .zip on Windows: cmake's tar picks the format by name.
