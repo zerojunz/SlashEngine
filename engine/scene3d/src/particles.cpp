@@ -2,6 +2,7 @@
 
 #include "slash/core/jobs.hpp"
 #include "slash/core/json.hpp"
+#include "slash/world/wind.hpp"
 
 #include <algorithm>
 #include <array>
@@ -279,9 +280,9 @@ double emit_time(const Settings& settings, std::uint32_t seed, std::uint32_t cyc
 
 class Simulation {
 public:
-    Simulation(const Settings& settings, const Affine3D& transform, std::uint32_t seed)
+    Simulation(const Settings& settings, const Affine3D& transform, std::uint32_t seed, Vec3 wind)
         : settings_(settings), s_(*settings.component), transform_(transform), seed_(seed),
-          origin_(s_.local_coords ? Vec3{} : transform.origin) {}
+          origin_(s_.local_coords ? Vec3{} : transform.origin), wind_(wind) {}
 
     // Moves the emitter on by seconds of game time. Returns whether a one_shot's cycle ended.
     bool step(Emitter& e, float seconds) const {
@@ -493,7 +494,7 @@ private:
             return lerp(min, max, slot.random.at(which)) * sample(curve, t);
         };
         const bool flat = s_.particle_flag_disable_z;
-        Vec3 force = s_.gravity;
+        Vec3 force = s_.gravity + wind_;
         Vec3 position = p.transform.origin;
         if (flat) {
             position.z = 0.0F;
@@ -613,6 +614,7 @@ private:
     Affine3D transform_;
     std::uint32_t seed_;
     Vec3 origin_; // what radial and tangential acceleration and orbits go round
+    Vec3 wind_;   // the wind's push, in the particles' space
 };
 
 bool alive(const Emitter& emitter) {
@@ -627,9 +629,9 @@ std::int64_t ticks_in(double seconds, double tick_seconds) {
 // Runs preprocess, the first time, and then ticks steps. Returns whether a one_shot's cycle
 // ended.
 bool run(Emitter& emitter, const CPUParticles3D& component, const Affine3D& transform,
-         std::uint32_t seed, double tick_seconds, std::int64_t ticks) {
+         std::uint32_t seed, double tick_seconds, std::int64_t ticks, Vec3 wind = {}) {
     const Settings settings(component);
-    const Simulation simulation(settings, transform, seed);
+    const Simulation simulation(settings, transform, seed, wind);
     if (!emitter.started) {
         emitter.started = true;
         ticks += ticks_in(component.preprocess, tick_seconds);
@@ -677,26 +679,39 @@ struct ParticleSystem3D {
             Emitter* emitter;
             Affine3D transform;
             std::uint32_t seed;
+            Vec3 wind;
             bool ended = false;
         };
+        const world::WindField field(world, tree);
+        const double wind_time = world::wind_time(world);
         std::vector<Run> runs;
         for (const entt::entity entity : ecs.view<CPUParticles3D>()) {
             auto& component = ecs.get<CPUParticles3D>(entity);
             const std::string key = key_of(world, entity);
             seen.insert(key);
             // Emitted from where it is after its parents.
+            const Affine3D transform = tree.global(entity);
+            // The wind where the emitter is pushes its particles, in their space.
+            Vec3 wind;
+            if (component.wind_influence > 0.0F && !field.empty()) {
+                wind = field.at(transform.origin, wind_time) * component.wind_influence;
+                if (component.local_coords) {
+                    wind = transform.inverse().basis(wind);
+                }
+            }
             runs.push_back({.entity = entity,
                             .component = &component,
                             .emitter = &emitters[key],
-                            .transform = tree.global(entity),
-                            .seed = particle_seed(world.id_of(entity), component.seed)});
+                            .transform = transform,
+                            .seed = particle_seed(world.id_of(entity), component.seed),
+                            .wind = wind});
         }
         // Each emitter steps alone, so they share out over the job system's threads.
         if (tick_seconds > 0.0) {
             world.pool().parallel_for(runs.size(), [&](std::size_t i) {
                 Run& each = runs[i];
-                each.ended =
-                    run(*each.emitter, *each.component, each.transform, each.seed, tick_seconds, 1);
+                each.ended = run(*each.emitter, *each.component, each.transform, each.seed,
+                                 tick_seconds, 1, each.wind);
             });
         }
         for (const Run& each : runs) {
@@ -755,7 +770,7 @@ void add_particles_system(world::World& world) {
         {.doc = "Emits, moves and ages each CPUParticles3D's particles.",
          .priority = 1100,
          .threaded = true,
-         .reads = {"Transform3D"},
+         .reads = {"Transform3D", "WindSource3D"},
          .writes = {"CPUParticles3D"}});
 }
 

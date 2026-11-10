@@ -1,0 +1,13 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"wind.sample","params":{"points":[[-0.8,0.6,0.5],[1.4,1.2,0],[-1.5,0.3,1]]}}
+{"jsonrpc":"2.0","id":3,"method":"wind.sample","params":{"points":[[-0.8,0.6,0.5]],"time":4}}
+{"jsonrpc":"2.0","id":4,"method":"wind.sample","params":{"points":[[20,20]]}}
+{"jsonrpc":"2.0","id":5,"method":"frame.capture","params":{"points":[[66,34],[70,34],[74,34]]}}
+{"jsonrpc":"2.0","id":6,"method":"physics.soft_body","params":{"id":"banner"}}
+{"jsonrpc":"2.0","id":7,"method":"step","params":{"ticks":120}}
+{"jsonrpc":"2.0","id":8,"method":"physics.soft_body","params":{"id":"banner"}}
+{"jsonrpc":"2.0","id":9,"method":"particles.eval","params":{"id":"leaves"}}
+{"jsonrpc":"2.0","id":10,"method":"particles.eval","params":{"id":"petals"}}
+{"jsonrpc":"2.0","id":11,"method":"component.set","params":{"id":"breeze","components":{"WindSource3D":{"enabled":false}}}}
+{"jsonrpc":"2.0","id":12,"method":"wind.sample","params":{"points":[[-0.8,0.6,0.5],[-1.5,0.3,1]]}}
+{"jsonrpc":"2.0","id":13,"method":"frame.capture","params":{"points":[[66,34],[70,34],[74,34]]}}

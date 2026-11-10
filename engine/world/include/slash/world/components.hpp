@@ -2125,6 +2125,12 @@ struct Area3D {
     float linear_damp = 0.1F;
     std::string angular_damp_space_override = "disabled";
     float angular_damp = 0.1F;
+    // Godot's area wind, which pushes on the faces of SoftBody3Ds in it: wind_force_magnitude
+    // along wind_source_path's -Z from its origin, weakening by wind_attenuation_factor with
+    // distance. With no source it blows nowhere.
+    float wind_force_magnitude = 0.0F;
+    float wind_attenuation_factor = 0.0F;
+    entt::entity wind_source_path{entt::null};
     // What happens to AudioStreamPlayer3D sounds in it, as Godot's Area3D: they play through
     // audio_bus_name and send to reverb_bus_name.
     bool audio_bus_override = false;
@@ -2137,9 +2143,9 @@ struct Area3D {
 SLASH_COMPONENT(Area3D, collision_layer, collision_mask, monitoring, monitorable, priority,
                 gravity_space_override, gravity_point, gravity_point_unit_distance,
                 gravity_point_center, gravity_direction, gravity, linear_damp_space_override,
-                linear_damp, angular_damp_space_override, angular_damp, audio_bus_override,
-                audio_bus_name, reverb_bus_enabled, reverb_bus_name, reverb_bus_amount,
-                reverb_bus_uniformity)
+                linear_damp, angular_damp_space_override, angular_damp, wind_force_magnitude,
+                wind_attenuation_factor, wind_source_path, audio_bus_override, audio_bus_name,
+                reverb_bus_enabled, reverb_bus_name, reverb_bus_amount, reverb_bus_uniformity)
 
 // 3D joints, as Godot's Joint3D nodes on its Jolt module: node_a and node_b name two bodies, and
 // a missing one is the world. The joint is made at the entity's Transform3D, after its parents',
@@ -2421,7 +2427,7 @@ struct SoftBody3D {
     float shrinking_factor = 0.0F;                    // shortens each edge by this share
     float pressure_coefficient = 0.0F;
     float damping_coefficient = 0.01F;
-    float drag_coefficient = 0.0F; // kept, as Godot's Jolt module keeps it, with no effect
+    float drag_coefficient = 0.0F; // how hard WindSource3Ds' wind pushes its faces
     bool ray_pickable = true;
     std::vector<SoftBodyPin> pinned_points;
 
@@ -2472,6 +2478,44 @@ struct StreamingSource3D {
     bool enabled = true;
 };
 SLASH_COMPONENT(StreamingSource3D, enabled)
+
+// Wind, after Unreal's WindDirectionalSource (Godot has only Area3D's wind for soft bodies): it
+// blows along its entity's -Z, or out from its entity with point_wind, at strength meters a
+// second, with gusts that sweep along with it and turbulence across it. world::WindField sums
+// every enabled source; spatial shaders read the wind as WIND, soft bodies feel it by their
+// drag_coefficient and 3D particles by their wind_influence.
+struct WindSource3D {
+    bool enabled = true;
+    bool point_wind = false;      // blows out from the entity, dying away at radius
+    float strength = 5.0F;        // meters per second
+    float min_gust_amount = 0.1F; // share of strength the gusts add at least
+    float max_gust_amount = 0.4F; // and at most
+    float gust_frequency = 0.25F; // gusts a second passing a point
+    float turbulence = 0.1F;      // share of strength that wanders across the wind
+    float radius = 10.0F;         // meters; point_wind only
+
+    friend bool operator==(const WindSource3D&, const WindSource3D&) = default;
+};
+SLASH_COMPONENT(WindSource3D, enabled, strength, min_gust_amount, max_gust_amount, gust_frequency,
+                turbulence, point_wind, radius)
+
+// WindSource3D's wind in a 2D world: it blows along its entity's global x axis (the way its
+// rotation points), or out from it with point_wind, in pixels a second. world::WindField2D sums
+// every enabled source; canvas shaders read it as WIND and 2D particles by their wind_influence.
+struct WindSource2D {
+    bool enabled = true;
+    bool point_wind = false;
+    float strength = 320.0F; // pixels per second
+    float min_gust_amount = 0.1F;
+    float max_gust_amount = 0.4F;
+    float gust_frequency = 0.25F;
+    float turbulence = 0.1F;
+    float radius = 640.0F; // pixels; point_wind only
+
+    friend bool operator==(const WindSource2D&, const WindSource2D&) = default;
+};
+SLASH_COMPONENT(WindSource2D, enabled, strength, min_gust_amount, max_gust_amount, gust_frequency,
+                turbulence, point_wind, radius)
 
 // ---- Navigation, as Godot's (engine/navigation): regions of navigation mesh, links between
 // places and agents that follow paths over them, on one 2D and one 3D map per world.
@@ -2772,6 +2816,7 @@ struct CPUParticles2D {
     Vec2 emission_rect_extents{1.0F, 1.0F};
     Vec2 direction{1.0F, 0.0F};
     Vec2 gravity{0.0F, 980.0F};
+    float wind_influence = 0.0F; // per second: pushes particles by the wind times this
     Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};
     bool emitting = true;
     bool one_shot = false;
@@ -2788,13 +2833,13 @@ SLASH_COMPONENT(CPUParticles2D, emitting, amount, lifetime, one_shot, preprocess
                 visible, material, material_params, light_mask, emission_shape,
                 emission_sphere_radius, emission_rect_extents, emission_ring_radius,
                 emission_ring_inner_radius, emission_points, emission_normals, emission_colors,
-                particle_flag_align_y, direction, spread, gravity, initial_velocity_min,
-                initial_velocity_max, angular_velocity_min, angular_velocity_max,
-                angular_velocity_curve, orbit_velocity_min, orbit_velocity_max,
-                orbit_velocity_curve, linear_accel_min, linear_accel_max, linear_accel_curve,
-                radial_accel_min, radial_accel_max, radial_accel_curve, tangential_accel_min,
-                tangential_accel_max, tangential_accel_curve, damping_min, damping_max,
-                damping_curve, angle_min, angle_max, angle_curve, scale_amount_min,
+                particle_flag_align_y, direction, spread, gravity, wind_influence,
+                initial_velocity_min, initial_velocity_max, angular_velocity_min,
+                angular_velocity_max, angular_velocity_curve, orbit_velocity_min,
+                orbit_velocity_max, orbit_velocity_curve, linear_accel_min, linear_accel_max,
+                linear_accel_curve, radial_accel_min, radial_accel_max, radial_accel_curve,
+                tangential_accel_min, tangential_accel_max, tangential_accel_curve, damping_min,
+                damping_max, damping_curve, angle_min, angle_max, angle_curve, scale_amount_min,
                 scale_amount_max, scale_amount_curve, color, color_ramp, color_initial_ramp,
                 hue_variation_min, hue_variation_max, hue_variation_curve, anim_speed_min,
                 anim_speed_max, anim_speed_curve, anim_offset_min, anim_offset_max,
@@ -2845,6 +2890,7 @@ struct CPUParticles3D {
     float explosiveness = 0.0F;
     float randomness = 0.0F;
     float lifetime_randomness = 0.0F;
+    float wind_influence = 0.0F; // per second: pushes particles by the wind times this
     float emission_sphere_radius = 1.0F;
     float emission_ring_height = 1.0F;
     float emission_ring_radius = 1.0F;
@@ -2898,16 +2944,17 @@ SLASH_COMPONENT(CPUParticles3D, emitting, amount, lifetime, one_shot, preprocess
                 emission_ring_axis, emission_ring_height, emission_ring_radius,
                 emission_ring_inner_radius, emission_ring_cone_angle, particle_flag_align_y,
                 particle_flag_rotate_y, particle_flag_disable_z, direction, spread, flatness,
-                gravity, initial_velocity_min, initial_velocity_max, angular_velocity_min,
-                angular_velocity_max, angular_velocity_curve, orbit_velocity_min,
-                orbit_velocity_max, orbit_velocity_curve, linear_accel_min, linear_accel_max,
-                linear_accel_curve, radial_accel_min, radial_accel_max, radial_accel_curve,
-                tangential_accel_min, tangential_accel_max, tangential_accel_curve, damping_min,
-                damping_max, damping_curve, angle_min, angle_max, angle_curve, scale_amount_min,
-                scale_amount_max, scale_amount_curve, split_scale, scale_curve_x, scale_curve_y,
-                scale_curve_z, color, color_ramp, color_initial_ramp, hue_variation_min,
-                hue_variation_max, hue_variation_curve, anim_speed_min, anim_speed_max,
-                anim_speed_curve, anim_offset_min, anim_offset_max, anim_offset_curve)
+                gravity, wind_influence, initial_velocity_min, initial_velocity_max,
+                angular_velocity_min, angular_velocity_max, angular_velocity_curve,
+                orbit_velocity_min, orbit_velocity_max, orbit_velocity_curve, linear_accel_min,
+                linear_accel_max, linear_accel_curve, radial_accel_min, radial_accel_max,
+                radial_accel_curve, tangential_accel_min, tangential_accel_max,
+                tangential_accel_curve, damping_min, damping_max, damping_curve, angle_min,
+                angle_max, angle_curve, scale_amount_min, scale_amount_max, scale_amount_curve,
+                split_scale, scale_curve_x, scale_curve_y, scale_curve_z, color, color_ramp,
+                color_initial_ramp, hue_variation_min, hue_variation_max, hue_variation_curve,
+                anim_speed_min, anim_speed_max, anim_speed_curve, anim_offset_min, anim_offset_max,
+                anim_offset_curve)
 
 // Emits particles from the entity's Transform2D and moves them on the GPU, as Godot's
 // GPUParticles2D: process_material names a .process_material.json file (Godot's
@@ -2996,6 +3043,7 @@ struct GPUParticles3D {
     float randomness = 0.0F;
     // How near a particle comes to a GPUParticlesCollision3D before it touches, in meters.
     float collision_base_size = 0.01F;
+    float wind_influence = 0.0F; // per second: pushes particles by the wind times this
     // The box particles are drawn in, in the entity's space: none is drawn when it is out of
     // view, as Godot's culling.
     Vec3 visibility_aabb_position{-4.0F, -4.0F, -4.0F};
@@ -3012,9 +3060,9 @@ struct GPUParticles3D {
 SLASH_COMPONENT(GPUParticles3D, emitting, amount, amount_ratio, process_material, lifetime,
                 interp_to_end, one_shot, preprocess, speed_scale, explosiveness, randomness,
                 use_fixed_seed, seed, fixed_fps, interpolate, fract_delta, collision_base_size,
-                visibility_aabb_position, visibility_aabb_size, local_coords, draw_order,
-                transform_align, draw_passes, draw_pass_1, draw_pass_2, draw_pass_3, draw_pass_4,
-                layers, cast_shadow)
+                wind_influence, visibility_aabb_position, visibility_aabb_size, local_coords,
+                draw_order, transform_align, draw_passes, draw_pass_1, draw_pass_2, draw_pass_3,
+                draw_pass_4, layers, cast_shadow)
 
 // Pulls the particles of GPUParticles3Ds inside a sphere toward its center (a negative strength
 // pushes them away), as Godot's GPUParticlesAttractorSphere3D. Each tick the gpu_particles_3d

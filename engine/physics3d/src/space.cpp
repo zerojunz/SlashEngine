@@ -1710,7 +1710,7 @@ void Space::step(world::World& world, float seconds) {
     }
     pre_step_vehicles(world, tree, seconds);
     pre_step(world, seconds);
-    pre_step_soft_bodies(world, tree);
+    pre_step_soft_bodies(world, tree, seconds);
     {
         SLASH_PROFILE_ZONE("Jolt step");
         const JPH::EPhysicsUpdateError errors =

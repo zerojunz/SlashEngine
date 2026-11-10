@@ -719,11 +719,11 @@ TEST_CASE("param names the code around a spatial shader takes are reserved, and 
         }
     }
     std::vector<std::string> names(free.begin(), free.end());
-    for (std::size_t first = 0; first < names.size(); first += render::kShaderTimeConstant) {
+    for (std::size_t first = 0; first < names.size(); first += render::kShaderWindConstant) {
         render::ShaderSource source{
             .path = "probe.hlsl", .code = {}, .type = render::ShaderType::Spatial, .params = {}};
         std::string sum = "0.0";
-        for (std::size_t i = first; i < std::min(names.size(), first + render::kShaderTimeConstant);
+        for (std::size_t i = first; i < std::min(names.size(), first + render::kShaderWindConstant);
              ++i) {
             source.params.push_back(
                 {.name = names[i], .components = 1, .slot = static_cast<std::uint32_t>(i - first)});
@@ -1254,6 +1254,42 @@ TEST_CASE("spatial material mistakes point at the bad value") {
     }
     CHECK(first_error(many + "}, " + spatial + "}") ==
           "/params/t5: a spatial material samples at most 5 textures");
+    // The constant after its params holds WIND, and the last the time.
+    std::string numbers = R"({"format": 1, "params": {)";
+    for (int i = 0; i < 31; ++i) {
+        numbers += (i == 0 ? "" : ", ") + std::string("\"p") + (i < 10 ? "0" : "") +
+                   std::to_string(i) + R"(": {"type": "float"})";
+    }
+    CHECK(first_error(numbers + "}, " + spatial + "}") ==
+          "/params/p30: a shader reads at most 30 number params");
+}
+
+TEST_CASE("a spatial shader reads the wind at its mesh's origin as WIND") {
+    Scene scene;
+    scene.files["shaders/windy.hlsl"] =
+        "void fragment() {\n    ALBEDO = max(WIND, float3(0.0, 0.0, 0.0)) * 0.1;\n}\n";
+    scene.files["materials/windy.material.json"] = R"({"format": 1,
+        "render_mode": ["unshaded"], "shader": "shaders/windy.hlsl", "shader_type": "spatial"})";
+    scene.create("camera", R"({"Transform3D": {"position": [0, 0, 3]}, "Camera3D": {}})");
+    scene.create("box", R"({"Transform3D": {}, "BoxMesh": {},
+        "MeshInstance3D": {"material_override": "materials/windy.material.json"}})");
+    const auto center = [&] {
+        auto captured = canvas::capture(scene.world, scene.assets, {.scale = 0.125F});
+        REQUIRE_MESSAGE(captured.ok(), (captured.ok() ? "" : captured.error().message));
+        const render::Image& image = captured.value().image;
+        const std::size_t at =
+            ((std::size_t{image.height / 2} * image.width) + (image.width / 2)) * 4;
+        return std::array<int, 3>{image.pixels[at], image.pixels[at + 1], image.pixels[at + 2]};
+    };
+    CHECK(center() == std::array<int, 3>{0, 0, 0});
+    // A steady 5 m/s along +x: the source's -z turned a quarter turn about y.
+    scene.create("breeze", R"({"Transform3D": {"rotation": [0, -1.5707964, 0]},
+        "WindSource3D": {"strength": 5, "min_gust_amount": 0, "max_gust_amount": 0,
+                         "turbulence": 0}})");
+    const std::array<int, 3> blown = center();
+    CHECK(blown[0] > 100);
+    CHECK(blown[1] == 0);
+    CHECK(blown[2] == 0);
 }
 
 TEST_CASE("MeshInstance3D's material_override draws a spatial material or a StandardMaterial3D") {

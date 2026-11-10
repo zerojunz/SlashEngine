@@ -19,6 +19,7 @@
 #include "slash/ui/ui.hpp"
 #include "slash/video/video.hpp"
 #include "slash/world/path.hpp"
+#include "slash/world/wind.hpp"
 
 #include <algorithm>
 #include <array>
@@ -347,6 +348,7 @@ void add_systems(world::World& world, asset::Assets& assets) {
     add_gpu_particles_system(world, &assets);
     scene3d::add_particles_system(world);
     scene3d::add_streaming_system(world);
+    world::add_wind_system(world);
     // Vector field attractors' textures read through assets.
     const scene3d::ImageLoader images =
         [&assets](const std::string& path) -> Result<std::shared_ptr<const render::Image>> {
