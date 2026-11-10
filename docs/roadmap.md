@@ -1173,6 +1173,14 @@ cost, from the research proposal of 2026-11-07, in order:
         their own looks per species, NPC brains for flocking, grazing, fleeing, hunting and
         following, placed in habitats by the foliage tool's brushes, and characters'
         interactions: animals that notice, flee, attack, can be fed, ridden or tamed
+14. [ ] Vehicles: a vehicle tool that designs cars, bikes, trucks, tracked vehicles, boats and
+        aircraft as `.vehicle.json` recipes (a body built from model recipes, seats and doors,
+        wheels, tracks, hulls or wings) built into a rigged model with its collision, each with
+        its own physics to tune as Unreal's Chaos Vehicles: mass and center of mass, engine
+        torque curve, gears, differential, steering, brakes, suspension, tire friction,
+        buoyancy and lift, which `vehicle.tune` changes while a game runs and `vehicle.check`
+        holds to the design; characters get in, drive and get out through seats, and vehicles
+        push, knock down and hurt characters and creatures by their contact impulses
 
 Console ports are not on this roadmap and never will be in this repository. As with Godot,
 PlayStation, Xbox and Switch support comes from licensed porting partners as private backends.
