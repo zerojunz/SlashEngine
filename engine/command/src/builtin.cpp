@@ -5269,8 +5269,11 @@ Reply light_sample(Session& session, const json::Value& params) {
         return sets.back().get();
     };
     std::vector<canvas::LightProblem> problems;
+    // Lights roll their textures by the time the frame at this tick shows, as frame.capture.
+    const double time =
+        canvas::material_time(world.tick(), canvas::settings(world).tick_seconds, 1.0);
     canvas::SceneLighting scene =
-        canvas::collect_lighting(world, load, {}, problems, nullptr, &canvases, load_set);
+        canvas::collect_lighting(world, load, {}, problems, nullptr, &canvases, load_set, time);
     const canvas::CanvasLighting& lit = scene.canvases.at(sampled);
     item.layer = lit.layer;
     if (lit.to_lights) {

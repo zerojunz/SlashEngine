@@ -2927,81 +2927,6 @@ float3 frame_direction(VertexOutput input, float3 v) {
 R"hlsl(    return normalize(input.tangent * v.x + input.normal * v.y - input.binormal * v.z);
 }
 
-// An opaque pixel's ray-traced shadows, when its frame has them (on): the screen texture's layers
-// 2 and 3 at the pixel, loaded once before its lights, as a texture load in their loop loses
-// Direct3D 12's WARP device.
-struct RayShadows {
-    bool on;
-    float4 low;  // the lights in ray slots 0 to 3, a channel each
-    float4 high; // 4 to 7
-};
-
-// One light's share of a pixel's diffuse and specular light, unless its cull mask leaves out the
-// draw's layers, with the shading normal and the one shadows offset along (geometry). A pixel with
-// ray-traced shadows takes a light's with a ray slot from them in place of its shadow map's.
-void add_light(Light light, float3 world, float3 normal, float3 geometry, float3 view, float3 f0,
-               float roughness, float metallic, Layers layers, RayShadows rays,
-               inout float3 diffuse_light, inout float3 specular_light) {
-    if (((uint)light.params.w & options.z) == 0u) {
-        return;
-    }
-    // A baked light's light is in the lightmap already, as Godot skips BAKE_STATIC lights.
-    if (light.shadow.y != 0.0 && (options.x & kLightmap) != 0u) {
-        return;
-    }
-    float type = light.direction.w;
-    float slot = light.shadow.x;
-    bool directional = type == kDirectional;
-    float3 to_light = light.position.xyz - world;
-    float3 toward = directional ? normalize(light.direction.xyz) : normalize(to_light);
-    float attenuation = 1.0;
-    if (!directional) {
-        float distance = length(to_light);
-        attenuation = omni_attenuation(distance, light.position.w, light.params.x);
-        if (type == kSpot) {
-            float cone = light.params.y;
-            float scos = max(dot(-normalize(to_light), light.direction.xyz), cone);
-            float rim = max(0.0001, (1.0 - scos) / (1.0 - cone));
-            attenuation *= 1.0 - pow(rim, light.params.z);
-        }
-    }
-    // The rim fades with distance but not in shadow, as Godot's, and so does the transmittance,
-    // which takes the depth the shadow map sees.
-    layers.rim *= attenuation;
-    float transmittance_z = layers.transmittance_depth;
-#ifdef CLUSTERED
-    [branch] if (layers.transmittance) {
-        layers.transmittance_color.a *= attenuation;
-        [branch] if (slot >= 0.0) {
-            transmittance_z = shadow_thickness(directional, (uint)slot, world, normal, geometry,
-                                               transmittance_z);
-        }
-    }
-#endif
-    float ray = light.shadow.w;
-#ifdef CLUSTERED
-    if (rays.on && ray > 0.0) {
-        uint k = (uint)ray - 1u;
-        // The light's channel by a dot product: an index into a vector is an array to FXC.
-        uint lane = k & 3u;
-        attenuation *= dot(k < 4u ? rays.low : rays.high,
-                           float4(lane == 0u, lane == 1u, lane == 2u, lane == 3u));
-        ray = -1.0;
-    }
-#endif
-    if (ray >= 0.0 && slot >= 0.0) {
-        attenuation *= light_shadow(directional, (uint)slot, world, geometry, toward);
-    }
-#ifdef GAME_LIGHT
-    // A game's light() lights the pixel in place of light_compute, as Godot's LIGHT_CODE_USED.
-    game_light(normal, toward, view, light.color.rgb, directional, attenuation, light.color.w,
-               game_albedo, metallic, roughness, diffuse_light, specular_light);
-#else
-    light_compute(normal, toward, view, light.color.rgb, attenuation, f0, roughness, metallic,
-                  light.color.w, layers, transmittance_z, diffuse_light, specular_light);
-#endif
-}
-
 #ifdef CLUSTERED
 // The bits of a word of a tile's light bits for lights from first up to end: light word * 32 +
 // bit for each bit.
@@ -3090,6 +3015,136 @@ float4 decal_sample(float2 uv, float2 dx, float2 dy, bool srgb) {
     return color;
 }
 
+// What a light's projector (Godot's light_projector) lets through to a point in the world: its
+// texture, from the decal atlas, by the light's record after the frame's decals, as Godot's
+// scene_forward_lights_inc.glsl reads it. A spot light projects it through its cone, an omni light
+// through a dual paraboloid, the texture's top half facing its -Z and the bottom half its +Z.
+// Level 0 between the four texels around the point, written out rather than in a loop, as loops
+// in the light loop lose Direct3D 12's WARP device.
+float3 projector_light(uint projector, bool spot, float3 world) {
+    Decal record = decals[(uint)decal_info.x + projector - 1u];
+    float3 local = float3(dot(record.rows[0], float4(world, 1.0)),
+                          dot(record.rows[1], float4(world, 1.0)),
+                          dot(record.rows[2], float4(world, 1.0)));
+    float4 rect = record.rects[0];
+    float2 uv;
+    if (spot) {
+        // Godot's perspective of twice the spot angle: x and y over the depth in front, by the
+        // cotangent of the angle, from -1 to 1 across the cone.
+        float depth = max(-local.z, 0.00001);
+        // Godot flips a spot light's rect, as its shadow is flipped.
+        uv = local.xy * (record.params.y / depth) * 0.5 + 0.5;
+        uv.y = 1.0 - uv.y;
+    } else {
+        float3 d = normalize(local);
+        if (d.z >= 0.0) {
+            rect.y += rect.w * 0.5;
+        }
+        rect.w *= 0.5;
+        uv = d.xy / (1.0 + abs(d.z)) * 0.5 + 0.5;
+    }
+    uv = frac(uv + record.params.zw);
+    uv = uv * rect.zw + rect.xy;
+    uint width = (uint)decal_info.z;
+    uint height = (uint)decal_info.w;
+    float2 at = uv * float2((float)width, (float)height) - 0.5;
+    float2 low = floor(at);
+    float2 f = at - low;
+    int2 corner = (int2)clamp(low, -2.0, float2((float)width, (float)height) + 1.0);
+    float4 a = decal_texel(0u, width, height, corner, true);
+    float4 b = decal_texel(0u, width, height, corner + int2(1, 0), true);
+    float4 c = decal_texel(0u, width, height, corner + int2(0, 1), true);
+    float4 e = decal_texel(0u, width, height, corner + int2(1, 1), true);
+    float4 texel = lerp(lerp(a, b, f.x), lerp(c, e, f.x), f.y);
+    return texel.rgb * texel.a;
+}
+#endif
+
+// An opaque pixel's ray-traced shadows, when its frame has them (on): the screen texture's layers
+// 2 and 3 at the pixel, loaded once before its lights, as a texture load in their loop loses
+// Direct3D 12's WARP device.
+struct RayShadows {
+    bool on;
+    float4 low;  // the lights in ray slots 0 to 3, a channel each
+    float4 high; // 4 to 7
+};
+
+// One light's share of a pixel's diffuse and specular light, unless its cull mask leaves out the
+// draw's layers, with the shading normal and the one shadows offset along (geometry). A pixel with
+// ray-traced shadows takes a light's with a ray slot from them in place of its shadow map's.
+void add_light(Light light, float3 world, float3 normal, float3 geometry, float3 view, float3 f0,
+               float roughness, float metallic, Layers layers, RayShadows rays,
+               inout float3 diffuse_light, inout float3 specular_light) {
+    if (((uint)light.params.w & options.z) == 0u) {
+        return;
+    }
+    // shadow.y holds 1 for a baked light, plus twice its projector's place after the decals.
+    uint light_bits = (uint)light.shadow.y;
+    // A baked light's light is in the lightmap already, as Godot skips BAKE_STATIC lights.
+    if ((light_bits & 1u) != 0u && (options.x & kLightmap) != 0u) {
+        return;
+    }
+    float type = light.direction.w;
+    float3 color = light.color.rgb;
+#ifdef CLUSTERED
+    [branch] if ((light_bits >> 1u) != 0u) {
+        color *= projector_light(light_bits >> 1u, type == kSpot, world);
+    }
+#endif
+    float slot = light.shadow.x;
+    bool directional = type == kDirectional;
+    float3 to_light = light.position.xyz - world;
+    float3 toward = directional ? normalize(light.direction.xyz) : normalize(to_light);
+    float attenuation = 1.0;
+    if (!directional) {
+        float distance = length(to_light);
+        attenuation = omni_attenuation(distance, light.position.w, light.params.x);
+        if (type == kSpot) {
+            float cone = light.params.y;
+            float scos = max(dot(-normalize(to_light), light.direction.xyz), cone);
+            float rim = max(0.0001, (1.0 - scos) / (1.0 - cone));
+            attenuation *= 1.0 - pow(rim, light.params.z);
+        }
+    }
+    // The rim fades with distance but not in shadow, as Godot's, and so does the transmittance,
+    // which takes the depth the shadow map sees.
+    layers.rim *= attenuation;
+    float transmittance_z = layers.transmittance_depth;
+#ifdef CLUSTERED
+    [branch] if (layers.transmittance) {
+        layers.transmittance_color.a *= attenuation;
+        [branch] if (slot >= 0.0) {
+            transmittance_z = shadow_thickness(directional, (uint)slot, world, normal, geometry,
+                                               transmittance_z);
+        }
+    }
+#endif
+    float ray = light.shadow.w;
+#ifdef CLUSTERED
+    if (rays.on && ray > 0.0) {
+        uint k = (uint)ray - 1u;
+        // The light's channel by a dot product: an index into a vector is an array to FXC.
+        uint lane = k & 3u;
+        attenuation *= dot(k < 4u ? rays.low : rays.high,
+                           float4(lane == 0u, lane == 1u, lane == 2u, lane == 3u));
+        ray = -1.0;
+    }
+#endif
+    if (ray >= 0.0 && slot >= 0.0) {
+        attenuation *= light_shadow(directional, (uint)slot, world, geometry, toward);
+    }
+#ifdef GAME_LIGHT
+    // A game's light() lights the pixel in place of light_compute, as Godot's LIGHT_CODE_USED.
+    game_light(normal, toward, view, color, directional, attenuation, light.color.w,
+               game_albedo, metallic, roughness, diffuse_light, specular_light);
+#else
+    light_compute(normal, toward, view, color, attenuation, f0, roughness, metallic,
+                  light.color.w, layers, transmittance_z, diffuse_light, specular_light);
+#endif
+}
+
+#ifdef CLUSTERED
+
 // How far a point moves across a pixel to the right (dx) and down (dy), along the plane through it
 // facing geometry, from the camera's rows: what Godot takes from dFdx and dFdy of the vertex, worked
 // out so that every device picks the same atlas levels.
@@ -3135,7 +3190,8 @@ void apply_decal(Decal decal, float3 world, float3 geometry, float3 dx, float3 d
                  inout float3 base, inout float3 normal, inout float ao, inout float roughness,
                  inout float metallic, inout float3 emitted) {
     float4 p = float4(world, 1.0);
-    float3 local = float3(dot(decal.rows[0], p), dot(decal.rows[1], p), dot(decal.rows[2], p));
+)hlsl",
+R"hlsl(    float3 local = float3(dot(decal.rows[0], p), dot(decal.rows[1], p), dot(decal.rows[2], p));
     if (local.x < 0.0 || local.y < -1.0 || local.z < 0.0 || local.x > 1.0 || local.y > 1.0 ||
         local.z > 1.0) {
         return; // outside its box
@@ -3187,8 +3243,7 @@ void apply_decal(Decal decal, float3 world, float3 geometry, float3 dx, float3 d
 }
 
 // Godot's decals (scene_forward_clustered.glsl): those of the pixel's tile within its slice's
-)hlsl",
-R"hlsl(// range, each word's from its highest bit, that share a layer with the mesh, over its surface
+// range, each word's from its highest bit, that share a layer with the mesh, over its surface
 // before it is lit; geometry is its vertex normal, turned to its side, as Godot's geo_normal.
 void apply_decals(VertexOutput input, float3 geometry, inout float3 base, inout float3 normal,
                   inout float ao, inout float roughness, inout float metallic,
@@ -3388,7 +3443,8 @@ static const float3 kHighQualityCones[6] = {
     float3(0.0, 0.0, 1.0),           float3(0.866025, 0.0, 0.5),
     float3(0.267617, 0.823639, 0.5), float3(-0.700629, 0.509037, 0.5),
     float3(-0.700629, -0.509037, 0.5), float3(0.267617, -0.823639, 0.5)};
-static const float kHighQualityWeights[6] = {0.25, 0.15, 0.15, 0.15, 0.15, 0.15};
+)hlsl",
+R"hlsl(static const float kHighQualityWeights[6] = {0.25, 0.15, 0.15, 0.15, 0.15, 0.15};
 static const float3 kCones[4] = {float3(0.707107, 0.0, 0.707107), float3(0.0, 0.707107, 0.707107),
                                  float3(-0.707107, 0.0, 0.707107),
                                  float3(0.0, -0.707107, 0.707107)};
@@ -3431,8 +3487,7 @@ void voxel_gi_compute(uint index, float3 world, float3 normal, float3 reflection
             float3 c = kCones[i];
             float3 turned = tangent * c.x + bitangent * c.y + normal * c.z;
             float3 dir = normalize(float3(dot(gi.rows[0].xyz, turned), dot(gi.rows[1].xyz, turned),
-)hlsl",
-R"hlsl(                                          dot(gi.rows[2].xyz, turned)));
+                                          dot(gi.rows[2].xyz, turned)));
             light += 0.25 * voxel_cone_trace_45_degrees(index, cell_size, max_distance, position,
                                                         dir, gi.params.y);
         }
@@ -3646,7 +3701,8 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
     }
 #endif
 
-    // Light from the sky's radiance, as Godot's scene.glsl takes it: reflections by roughness
+)hlsl",
+R"hlsl(    // Light from the sky's radiance, as Godot's scene.glsl takes it: reflections by roughness
     // and ambient light by the normal, then specular occlusion and Lazarov's environment BRDF.
     float3 ambient_light = lightmapped ? lightmap_light(input.uv2)
                            : captured  ? capture_light(normal)
@@ -3687,8 +3743,7 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
         ambient_light *= 1.0 - fc;
         reflected *= 1.0 - fc;
         float horizon = min(1.0 + dot(ray, normal), 1.0);
-)hlsl",
-R"hlsl(        float3 turned = float3(dot(sky_rows[0].xyz, ray), dot(sky_rows[1].xyz, ray),
+        float3 turned = float3(dot(sky_rows[0].xyz, ray), dot(sky_rows[1].xyz, ray),
                                dot(sky_rows[2].xyz, ray));
         float level = lerp(0.001, 0.1, sqrt(layers.clearcoat_roughness)) * kRadianceMaxLevel;
         float3 texel = radiance_map.SampleLevel(radiance_sampler, turned, level).rgb;
@@ -3873,7 +3928,8 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
         roughness = surface.y * dot(roughness_texel, roughness_channel);
     }
     float3 normal = terrain ? frame_direction(input, normalize(float3(shape.x + ground.x, shape.y,
-                                                                      shape.z + ground.z)))
+)hlsl",
+R"hlsl(                                                                      shape.z + ground.z)))
                             : input.normal;
     if ((flags & kSideCheck) != 0u && !front) {
         normal = -normal;
@@ -3930,8 +3986,7 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
     float3 geometry = terrain ? frame_direction(input, shape) : normalize(input.normal);
     // Godot's SSAO: the frame's occlusion at the pixel darkens the opaque meshes' ambient light,
     // with the decals' ambient occlusion, and their direct light by its light affect times its AO
-)hlsl",
-R"hlsl(    // channel affect. Its SSR (alpha below 0 for none) goes over their reflections of the sky. A
+    // channel affect. Its SSR (alpha below 0 for none) goes over their reflections of the sky. A
     // game's shader starts them at its AO and AO_LIGHT_AFFECT, as Godot's.
 #ifdef GAME_SHADER
     float ao = game.material.w;

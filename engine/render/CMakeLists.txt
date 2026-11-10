@@ -48,6 +48,7 @@ add_library(slash_render
     src/fsr2.cpp
     src/fsr3.cpp
     src/gl_device.cpp
+    src/ies.cpp
     src/gpu_device.cpp
     src/hlsl_compiler.cpp
     src/image.cpp
@@ -150,7 +151,7 @@ endif()
 # every platform: no fused multiply-adds, which arm64 compilers would otherwise emit and x86-64
 # ones not.
 set_source_files_properties(src/clusters.cpp src/decal.cpp src/device.cpp src/forward_post.cpp
-    src/frame_generation.cpp src/fsr2.cpp src/fsr3.cpp src/material.cpp src/mesh.cpp
+    src/frame_generation.cpp src/fsr2.cpp src/fsr3.cpp src/ies.cpp src/material.cpp src/mesh.cpp
     src/particle_layout_3d.cpp
     src/particles.cpp src/particles3d.cpp
     src/path_trace.cpp

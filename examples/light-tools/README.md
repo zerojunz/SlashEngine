@@ -45,5 +45,25 @@ whose `CameraAttributesPractical` has an `exposure_sensitivity` of 6400 (ISO 640
 - `light.tune` with `"mean": 0.25` turns both lights down until the frame stops clipping.
 - A misspelled light in `ids` gets a "did you mean".
 
+A 2D light's `texture_scroll` rolls its texture, in turns a second, as a 3D projector's
+`light_projector_scroll` does:
+
+- With the lantern's glow scrolled a quarter turn a second, `light.sample` at the lantern finds
+  its bright middle, orange; after 120 ticks (two seconds, half a turn) the glow's dark edge has
+  rolled there, and only the night's ambient light is left.
+
+[chapel.scene.json](chapel.scene.json) casts light through things, as Godot 4.6's light
+projectors do:
+
+- `streetlamp` is a `SpotLight3D` whose `light_ies` names [lamp.ies](lamp.ies), a street lamp's
+  LM-63 photometric file: a batwing that throws most of its light out at 45 to 60 degrees and
+  little straight down.
+- `window` is a `SpotLight3D` whose `light_projector` is [glass.texture.json](glass.texture.json),
+  a stained glass window of four colored panes, scrolled sideways by `light_projector_scroll`.
+- `lighting.check` measures what each one lights: the street lamp 88% of the frame's brightness
+  and the window 8%, on a frame too dark, with a mean of 0.05.
+- `light.tune` with `"mean": 0.15` raises both to about 40,000 lumens; the IES profile and the
+  glass keep shaping their light.
+
 Everything draws on the CPU, as `frame.capture` does, so the numbers are the same on every
 machine.

@@ -146,6 +146,8 @@ enum class ShadowQuality : std::uint8_t {
 inline constexpr std::array<std::string_view, 6> kShadowQualityNames{
     "hard", "soft_very_low", "soft_low", "soft_medium", "soft_high", "soft_ultra"};
 
+struct Image; // in device.hpp
+
 // A light in a frame's scene, with Godot's Light3D parameters and defaults.
 struct Light3D {
     LightType type = LightType::Directional;
@@ -200,6 +202,12 @@ struct Light3D {
     // radius, as Godot's light_size, or a directional light's angular diameter in degrees, as
     // light_angular_distance. 0 is a point, whose shadows are hard.
     float size = 0.0F;
+    // Forward+: the texture an omni or spot light casts, as Godot's light_projector, tinting its
+    // light by the texture's color times its alpha: through a spot light's cone (its top toward
+    // up), or an omni light's dual paraboloid (the top half round its -Z, the bottom half round
+    // +Z). Its texture coordinates move by projector_offset first, wrapping, so it can scroll.
+    std::shared_ptr<const Image> projector{};
+    std::array<float, 2> projector_offset{};
 
     bool operator==(const Light3D&) const = default;
 };
@@ -775,8 +783,6 @@ struct Reflections3D {
 
     bool operator==(const Reflections3D&) const = default;
 };
-
-struct Image; // in device.hpp
 
 // The most decals a frame draws, Godot's rendering/limits/cluster_builder/max_clustered_elements:
 // those past it are left out.

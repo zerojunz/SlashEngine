@@ -1799,7 +1799,7 @@ private:
         }
         const bool clustered = scene.method == RenderMethod::ForwardPlus;
         if (clustered) {
-            decal_atlas_.update(scene.decals);
+            decal_atlas_.update(scene);
         }
         const detail::DecalAtlas& decal_atlas = decal_atlas_.atlas();
         const detail::LightClusters clusters =

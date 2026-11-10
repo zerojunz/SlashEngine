@@ -441,7 +441,7 @@ private:
     Result<const render::Image*> light_image(const std::string& path);
     // The frame's lights, with the atlas and shadow map uploaded; none when no canvas is lit.
     render::Lighting lighting(const world::World& world, const TransformOf& transform_of,
-                              const world::Canvases& canvases);
+                              const world::Canvases& canvases, double time);
     // The GPU texture of a glyph atlas page, uploaded again when the page changed.
     Result<render::TextureId> atlas_page(const text::Fonts& fonts, std::uint32_t page);
     const LayerCells& cells(entt::entity entity, const world::TileMapLayer& layer,
@@ -470,6 +470,7 @@ private:
     // The cells VoxelGIs name.
     std::map<std::string, asset::Handle<scene3d::VoxelGIData>, std::less<>> voxel_gis_;
     std::map<std::string, asset::Handle<render::GaussianSplats>, std::less<>> splats_;
+    std::map<std::string, asset::Handle<render::IesProfile>, std::less<>> ies_;
     ShadowCache shadow_cache_;
     // The light atlas, and the textures and versions it was packed from.
     render::TextureId atlas_ = render::TextureId::None;
