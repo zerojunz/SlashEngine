@@ -6,6 +6,7 @@
 #include "slash/scene3d/material.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/video/video.hpp"
+#include "slash/world/wind.hpp"
 
 #include <algorithm>
 #include <array>
@@ -307,6 +308,28 @@ int z_index(int own, bool relative, const Inherited& from_parents) {
 }
 
 namespace {
+
+// An entity's ID, or "entity <n>" for one without, for warnings.
+std::string entity_name(const world::World& world, entt::entity entity) {
+    const std::string_view id = world.id_of(entity);
+    return id.empty() ? "entity " + std::to_string(entt::to_entity(entity)) : std::string(id);
+}
+
+// The wind at each node, as the wind system blows it, which canvas shaders read as WIND.
+class NodeWind {
+public:
+    NodeWind(const world::World& world, const world::Tree2D& tree)
+        : tree_(tree), field_(world, tree), time_(world::wind_time(world)) {}
+
+    [[nodiscard]] Vec2 at(entt::entity entity) const {
+        return field_.empty() ? Vec2{} : field_.at(tree_.global(entity).position, time_);
+    }
+
+private:
+    const world::Tree2D& tree_;
+    world::WindField2D field_;
+    double time_;
+};
 
 // Whether a texture is a video's frame that isn't decoded yet, which draws nothing until it is.
 bool awaits_video_frame(const world::World& world, std::string_view texture) {
@@ -874,12 +897,8 @@ render::Lighting CanvasRenderer::lighting(const world::World& world,
     std::vector<LightProblem> problems;
     SceneLighting scene = collect_lighting(world, images, transform_of, problems, &shadow_cache_,
                                            &canvases, tile_sets);
-    const auto name_of = [&](entt::entity entity) {
-        const std::string_view id = world.id_of(entity);
-        return id.empty() ? "entity " + std::to_string(entt::to_entity(entity)) : std::string(id);
-    };
     for (const LightProblem& problem : problems) {
-        warn_once(name_of(problem.entity), problem.message, "id", kEvent);
+        warn_once(entity_name(world, problem.entity), problem.message, "id", kEvent);
     }
     canvas_lighting_ = std::move(scene.canvases);
     render::Lighting out;
@@ -1125,7 +1144,7 @@ CanvasRenderer::material_entry(const std::string& path) {
 
 Result<render::Material> CanvasRenderer::material(const world::Sprite2D& sprite,
                                                   render::Filter filter, double time,
-                                                  render::LightMode* light_mode) {
+                                                  render::LightMode* light_mode, Vec2 wind) {
     auto entry = material_entry(sprite.material);
     if (!entry) {
         return entry.error();
@@ -1141,6 +1160,11 @@ Result<render::Material> CanvasRenderer::material(const world::Sprite2D& sprite,
     *light_mode = instance.value().light_mode;
     out.program = std::move(instance.value().program);
     out.shader = entry.value()->shader;
+    if (out.shader != render::ShaderId::None &&
+        out.program.constants.size() > render::kShaderWindConstant) {
+        out.program.constants[render::kShaderWindConstant] = {
+            static_cast<float>(wind.x), static_cast<float>(wind.y), 0.0F, 0.0F};
+    }
     for (std::size_t slot = 0; slot < out.textures.size(); ++slot) {
         const MaterialTextureRef& ref = instance.value().textures.at(slot);
         if (ref.path.empty()) {
@@ -1245,11 +1269,9 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     std::size_t tiles = 0;
     std::size_t particles = 0;
     const auto& ecs = world.ecs();
-    const auto name_of = [&](entt::entity entity) {
-        const std::string_view id = world.id_of(entity);
-        return id.empty() ? "entity " + std::to_string(entt::to_entity(entity)) : std::string(id);
-    };
     const world::Tree2D tree(world);
+    // A canvas shader's WIND is the wind at its node, as the wind system blows it.
+    const NodeWind wind(world, tree);
     // The Parallax2D whose repeat an entity's drawing takes, the nearest of it and its parents
     // that repeats, as Godot's repeat_source_item; null for none.
     const bool parallaxes = !ecs.view<const world::Parallax2D>().empty();
@@ -1352,7 +1374,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     }
     for (const scene3d::Problem& unseen : scene3d_.problems()) {
         problem(unseen.entity, unseen.path, unseen.message);
-        warn_once(name_of(unseen.entity), unseen.message, "id", "a 3D node can't draw");
+        warn_once(entity_name(world, unseen.entity), unseen.message, "id", "a 3D node can't draw");
     }
     // What the world is seen through: the current camera's view, part of the way from the one
     // before the last tick, as Godot interpolates its canvas transform.
@@ -1452,7 +1474,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         render::Material material;
         render::LightMode light_mode = render::LightMode::Normal;
         if (!sprite.material.empty()) {
-            auto made = this->material(sprite, filter, options.time, &light_mode);
+            auto made = this->material(sprite, filter, options.time, &light_mode, wind.at(entity));
             if (!made) {
                 warn_once(sprite.material, made.error().message, "material");
                 problem(entity, "/components/Sprite2D/material", made.error().message);
@@ -1486,7 +1508,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         auto quad = sprite_quad(sprite, transform_of(entity, current), texture.value()->width,
                                 texture.value()->height);
         if (!quad) {
-            warn_once(name_of(entity), quad.error().message, "id");
+            warn_once(entity_name(world, entity), quad.error().message, "id");
             problem(entity, "/components/Sprite2D", quad.error().message);
             continue;
         }
@@ -1556,7 +1578,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             world::Sprite2D look;
             look.material = emitter.material;
             look.material_params = emitter.material_params;
-            auto made = this->material(look, filter, options.time, &light_mode);
+            auto made = this->material(look, filter, options.time, &light_mode, wind.at(entity));
             if (!made) {
                 warn_once(emitter.material, made.error().message, "material", kEvent);
                 problem(entity, "/components/CPUParticles2D/material", made.error().message);
@@ -1687,7 +1709,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             continue;
         }
         if (auto made = chain_jobs(chain, processes, particle_jobs); !made) {
-            warn_once(name_of(entity), made.error().message, "id", kParticlesEvent);
+            warn_once(entity_name(world, entity), made.error().message, "id", kParticlesEvent);
             problem(entity, "/components/GPUParticles2D/amount", made.error().message);
             continue;
         }
@@ -1743,7 +1765,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             world::Sprite2D sprite;
             sprite.material = emitter.material;
             sprite.material_params = emitter.material_params;
-            auto made = this->material(sprite, filter, options.time, &light_mode);
+            auto made = this->material(sprite, filter, options.time, &light_mode, wind.at(entity));
             if (!made) {
                 warn_once(emitter.material, made.error().message, "material", kParticlesEvent);
                 problem(entity, "/components/GPUParticles2D/material", made.error().message);
@@ -1756,7 +1778,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         if (!in_chain) {
             auto job = particle_job(cached, *kept, process);
             if (!job) {
-                warn_once(name_of(entity), job.error().message, "id", kParticlesEvent);
+                warn_once(entity_name(world, entity), job.error().message, "id", kParticlesEvent);
                 problem(entity, "/components/GPUParticles2D/amount", job.error().message);
                 continue;
             }
@@ -1855,7 +1877,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         const LayerCells& cached =
             cells(entity, layer, *set.value(), tile_sets_.at(layer.tile_set).version());
         if (!cached.error.empty()) {
-            warn_once(name_of(entity), "TileMapLayer" + cached.error, "id", kEvent);
+            warn_once(entity_name(world, entity), "TileMapLayer" + cached.error, "id", kEvent);
             // The error starts with the bad value's JSON Pointer in the layer.
             const std::size_t split = cached.error.find(": ");
             problem(entity,

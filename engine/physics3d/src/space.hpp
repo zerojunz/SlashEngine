@@ -8,6 +8,7 @@
 #include "slash/world/components.hpp"
 #include "slash/world/physical_bones.hpp"
 #include "slash/world/tree3d.hpp"
+#include "slash/world/wind.hpp"
 
 // Jolt's headers, which Jolt.h must come before.
 // clang-format off
@@ -445,6 +446,16 @@ struct SoftBody {
     std::shared_ptr<const scene3d::SoftBodyPose> pose;
 };
 
+// An Area3D's wind, as Godot's Area3D::_initialize_wind leaves it: wind_force_magnitude along
+// wind_source_path's global -Z from its origin.
+struct AreaWind {
+    const Body* area = nullptr;
+    float magnitude = 0.0F;
+    float attenuation = 0.0F;
+    JPH::Vec3 direction;
+    JPH::RVec3 source;
+};
+
 class Space;
 
 // Contact callbacks during a step, as Godot's JoltContactListener3D: bodies a joint keeps apart
@@ -605,7 +616,14 @@ private:
     // Sets each point's inverse mass from the total mass, pinned points' to 0.
     void update_masses(SoftBody& soft);
     // Moves pinned points to their attachments, as Godot's SoftBody3D::_update_physics_server.
-    void pre_step_soft_bodies(const world::World& world, const world::Tree3D& tree);
+    void pre_step_soft_bodies(const world::World& world, const world::Tree3D& tree, float seconds);
+    // The Area3Ds that blow wind, with where from and which way.
+    [[nodiscard]] std::vector<AreaWind> area_winds(const world::World& world,
+                                                   const world::Tree3D& tree) const;
+    // Pushes a soft body's points by the wind on its faces; true if it pushed any.
+    bool blow_soft_body(const SoftBody& soft, const world::SoftBody3D& component, JPH::Body& body,
+                        const world::WindField& field, double time,
+                        const std::vector<AreaWind>& areas, float seconds) const;
     // Notes where each soft body's mesh is after the step.
     void read_soft_bodies();
     // Makes the Jolt constraints match the joint components and physical bones (joints.cpp).

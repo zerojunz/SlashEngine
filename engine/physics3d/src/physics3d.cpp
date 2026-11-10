@@ -2,6 +2,8 @@
 
 #include "space.hpp"
 
+#include "slash/world/wind.hpp"
+
 #include <Jolt/Geometry/ConvexSupport.h>
 #include <Jolt/Geometry/GJKClosestPoint.h>
 #include <Jolt/Physics/Body/BodyLockInterface.h>
@@ -186,6 +188,8 @@ void install(world::World& world, const Settings& settings) {
     auto space = std::make_shared<Space>(settings);
     world.ecs().ctx().emplace<std::shared_ptr<Space>>(space);
     world.add_reset([space](world::World& /*world*/) { space->reset(); });
+    // Soft bodies feel the wind, whose gusts keep time.
+    world::add_wind_system(world);
     // Soft bodies' meshes draw where their points are.
     scene3d::set_soft_body_source(world,
                                   [space](const world::World& /*world*/, entt::entity entity)

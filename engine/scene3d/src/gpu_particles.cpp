@@ -5,6 +5,7 @@
 #include "slash/scene3d/particle_collision.hpp"
 #include "slash/scene3d/particles.hpp"
 #include "slash/scene3d/scene3d.hpp"
+#include "slash/world/wind.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -22,6 +23,9 @@ namespace {
 
 using world::Affine3D;
 using world::GPUParticles3D;
+
+// Meters the wind's attractor reaches from its emitter each way: past any particle's reach.
+constexpr float kWindReach = 1.0e6F;
 
 // A new number for each emitter made, in any world.
 std::uint64_t next_serial() {
@@ -426,6 +430,31 @@ render::ParticleAttractor3D for_particles(const FoundAttractor& found,
     return out;
 }
 
+// The wind as an attractor of the emitter's steps: a box far bigger than any world, pushing
+// every particle in it along the wind by its speed, so the devices need nothing new.
+render::ParticleAttractor3D wind_attractor(Vec3 push, Vec3 at) {
+    const float speed = std::sqrt((push.x * push.x) + (push.y * push.y) + (push.z * push.z));
+    // The box's z points against the wind, as an attractor pushes along -z.
+    const Vec3 z = push * (-1.0F / speed);
+    const Vec3 up = std::abs(z.y) < 0.99F ? Vec3{0.0F, 1.0F, 0.0F} : Vec3{1.0F, 0.0F, 0.0F};
+    Vec3 x{(up.y * z.z) - (up.z * z.y), (up.z * z.x) - (up.x * z.z), (up.x * z.y) - (up.y * z.x)};
+    x = x * (1.0F / std::sqrt((x.x * x.x) + (x.y * x.y) + (x.z * x.z)));
+    const Vec3 y{(z.y * x.z) - (z.z * x.y), (z.z * x.x) - (z.x * x.z), (z.x * x.y) - (z.y * x.x)};
+    Affine3D place;
+    place.x = x;
+    place.y = y;
+    place.z = z;
+    place.origin = at;
+    render::ParticleAttractor3D out;
+    out.shape = render::AttractorShape3D::Box;
+    out.transform = particle_transform(place);
+    out.extents = {kWindReach, kWindReach, kWindReach};
+    out.strength = speed;
+    out.attenuation = 0.0F;
+    out.directionality = 1.0F;
+    return out;
+}
+
 // A collider in the world, as the gpu_particles_3d system found it this tick.
 struct FoundCollider {
     render::ColliderShape3D shape = render::ColliderShape3D::Sphere;
@@ -783,6 +812,8 @@ struct GpuParticleSystem3D {
         const world::Tree3D tree(world);
         const std::vector<FoundAttractor> found = attractors(world, tree);
         const std::vector<FoundCollider> found_colliders = colliders(world, tree);
+        const world::WindField wind(world, tree);
+        const double wind_time = world::wind_time(world);
         Touching paired;
         for (const entt::entity entity : ecs.view<GPUParticles3D>()) {
             auto& component = ecs.get<GPUParticles3D>(entity);
@@ -811,6 +842,19 @@ struct GpuParticleSystem3D {
                 }
                 paired.attractors.push_back(
                     for_particles(attractor, component.local_coords ? &to_particles : nullptr));
+            }
+            // The wind where the emitter is, with its wind_influence, in the particles' space.
+            if (component.wind_influence > 0.0F && !wind.empty() &&
+                paired.attractors.size() < render::kMaxParticleAttractors3D) {
+                Vec3 push = wind.at(transform.origin, wind_time) * component.wind_influence;
+                Vec3 at = transform.origin;
+                if (component.local_coords) {
+                    push = to_particles.basis(push);
+                    at = {};
+                }
+                if ((push.x * push.x) + (push.y * push.y) + (push.z * push.z) > 1e-12F) {
+                    paired.attractors.push_back(wind_attractor(push, at));
+                }
             }
             // The colliders, paired the same way; at most 32, SDFs sharing the vector fields'
             // 7 textures, and the first height field.
@@ -997,7 +1041,7 @@ void add_gpu_particles_system(world::World& world, ImageLoader images, SdfLoader
                    "GPUParticlesAttractorVectorField3D", "GPUParticlesCollisionSphere3D",
                    "GPUParticlesCollisionBox3D", "GPUParticlesCollisionSDF3D",
                    "GPUParticlesCollisionHeightField3D", "Camera3D", "MeshInstance3D", "GridMap",
-                   "HTerrain", "csg"},
+                   "HTerrain", "WindSource3D", "csg"},
          // Height fields that follow the camera move.
          .writes = {"GPUParticles3D", "Transform3D", "assets"}});
 }

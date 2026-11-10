@@ -1299,15 +1299,16 @@ TEST_CASE("engine.describe lists systems in the order they run") {
                      {.doc = "Moves things by their velocity."});
     world.add_system("controls", [](world::World& /*w*/, double /*dt*/) {}, {.priority = -1});
     // Every session applies input, network, XR and service events first, streams the world in,
-    // and plays animations, steps 2D and 3D physics, checks synchronizers' visibility, steps
-    // navigation, runs NPCs, moves the camera and parallax, runs particles, hands over models'
-    // replies and plays sound with built-in systems that run late. The particle systems are
-    // threaded: the CPU ones and GPUParticles2D's run at the same time, and GPUParticles3D's, which
-    // loads vector fields' textures as GPUParticles2D's loads its own, runs after them.
+    // counts the wind's seconds and plays animations, steps 2D and 3D physics, checks
+    // synchronizers' visibility, steps navigation, runs NPCs, moves the camera and parallax, runs
+    // particles, hands over models' replies and plays sound with built-in systems that run late.
+    // The particle systems are threaded: the CPU ones and GPUParticles2D's run at the same time,
+    // and GPUParticles3D's, which loads vector fields' textures as GPUParticles2D's loads its own,
+    // runs after them.
     CHECK(
         *engine.ok("engine.describe").find("systems") ==
         parse(
-            R"(["input", "multiplayer", "gui", "xr", "services", "world_streaming", "controls", "movement", "animation_player",
+            R"(["input", "multiplayer", "gui", "xr", "services", "world_streaming", "wind", "controls", "movement", "animation_player",
                     "animation_tree", "skeleton_modifiers", "path_follow", "physics2d", "physics3d", "multiplayer_visibility", "navigation", "npc", "animated_sprite_2d",
                     "camera_2d", "parallax_2d", "cpu_particles_2d", "cpu_particles_3d", "gpu_particles_2d", "gpu_particles_3d", "video", "ai", "audio"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
@@ -1327,6 +1328,8 @@ TEST_CASE("engine.describe lists systems in the order they run") {
         {"name": "world_streaming",
          "doc": "Loads each StreamedScene3D's scene while a StreamingSource3D is near and unloads it when they have all gone, as Unreal's World Partition streams cells.",
          "priority": -700},
+        {"name": "wind", "doc": "Counts the seconds the wind has blown, which WindSource3Ds' gusts follow.",
+         "priority": -650},
         {"name": "controls", "priority": -1},
         {"name": "movement", "doc": "Moves things by their velocity.", "priority": 0},
         {"name": "animation_player",
@@ -1366,24 +1369,26 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "priority": 1060},
         {"name": "cpu_particles_2d",
          "doc": "Emits, moves and ages each CPUParticles2D's particles.", "priority": 1100,
-         "threaded": true, "stage": 20, "reads": ["Transform2D"], "writes": ["CPUParticles2D"]},
+         "threaded": true, "stage": 21, "reads": ["Transform2D", "WindSource2D"],
+         "writes": ["CPUParticles2D"]},
         {"name": "cpu_particles_3d",
          "doc": "Emits, moves and ages each CPUParticles3D's particles.", "priority": 1100,
-         "threaded": true, "stage": 20, "reads": ["Transform3D"], "writes": ["CPUParticles3D"]},
+         "threaded": true, "stage": 21, "reads": ["Transform3D", "WindSource3D"],
+         "writes": ["CPUParticles3D"]},
         {"name": "gpu_particles_2d",
          "doc": "Steps each GPUParticles2D's emission for renderers to run.", "priority": 1110,
-         "threaded": true, "stage": 20,
+         "threaded": true, "stage": 21,
          "reads": ["Transform2D", "LightOccluder2D", "TileMapLayer", "CanvasLayer", "Control",
                    "Camera2D"],
          "writes": ["GPUParticles2D", "assets"]},
         {"name": "gpu_particles_3d",
          "doc": "Steps each GPUParticles3D's emission for renderers to run.", "priority": 1110,
-         "threaded": true, "stage": 21,
+         "threaded": true, "stage": 22,
          "reads": ["GPUParticlesAttractorSphere3D", "GPUParticlesAttractorBox3D",
                    "GPUParticlesAttractorVectorField3D", "GPUParticlesCollisionSphere3D",
                    "GPUParticlesCollisionBox3D", "GPUParticlesCollisionSDF3D",
                    "GPUParticlesCollisionHeightField3D", "Camera3D", "MeshInstance3D", "GridMap",
-                   "HTerrain", "csg"],
+                   "HTerrain", "WindSource3D", "csg"],
          "writes": ["GPUParticles3D", "Transform3D", "assets"]},
         {"name": "video",
          "doc": "Plays each VideoStreamPlayer and decodes the frame it shows.",
@@ -3168,6 +3173,141 @@ TEST_CASE("streaming.state lists StreamedScene3Ds and how near the sources are")
         "StreamingSource3D": {"enabled": false}}})");
     CHECK(engine.ok("streaming.state") == parse(R"({"sources": 0, "cells": [
         {"id": "north", "scene": "cells/north.scene.json", "loaded": false, "distance": null}]})"));
+}
+
+TEST_CASE("wind.sample returns the wind WindSource3Ds blow, with gusts and point wind") {
+    Engine engine;
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "breeze", "components": {
+            "Transform3D": {}, "WindSource3D": {"turbulence": 0}}}},
+        {"command": "entity.create", "params": {"id": "fan", "components": {
+            "Transform3D": {"position": [100, 0, 0]},
+            "WindSource3D": {"point_wind": true, "radius": 4, "strength": 2,
+                             "min_gust_amount": 0, "max_gust_amount": 0}}}}]})");
+    // The breeze blows along its -z, from 1.1 to 1.4 times its strength as gusts come and go.
+    const json::Value now = engine.ok("wind.sample", R"({"points": [[0, 0, 0]]})");
+    CHECK(now.find("time")->as_double() == 0.0);
+    CHECK(now.find("sources")->as_int() == 2);
+    const json::Array& calm = now.find("wind")->as_array()[0].as_array();
+    CHECK(calm[0].as_double() == 0.0);
+    CHECK(calm[1].as_double() == 0.0);
+    CHECK(-calm[2].as_double() >= 5.5);
+    CHECK(-calm[2].as_double() <= 7.0);
+    double low = 100.0;
+    double high = 0.0;
+    for (int second = 0; second < 40; ++second) {
+        const json::Value sample = engine.ok("wind.sample", R"({"points": [[0, 0, 0]], "time": )" +
+                                                                std::to_string(second) + "}");
+        const double speed = -sample.find("wind")->as_array()[0].as_array()[2].as_double();
+        low = std::min(low, speed);
+        high = std::max(high, speed);
+    }
+    CHECK(low >= 5.5);
+    CHECK(high <= 7.0);
+    CHECK(high - low > 0.5);
+    // A gust that reaches the origin now reaches a point 5 m downwind a second later.
+    const json::Value here = engine.ok("wind.sample", R"({"points": [[0, 0, 0]], "time": 3})");
+    const json::Value there = engine.ok("wind.sample", R"({"points": [[0, 0, -5]], "time": 4})");
+    CHECK(here.find("wind")->as_array()[0].as_array()[2].as_double() ==
+          doctest::Approx(there.find("wind")->as_array()[0].as_array()[2].as_double()));
+    // The fan blows away from itself, weaker further out, and not at all past its radius.
+    const json::Value fan =
+        engine.ok("wind.sample", R"({"points": [[102, 0, 0], [99, 0, 0], [105, 0, 0]]})");
+    const json::Array& near = fan.find("wind")->as_array();
+    CHECK(near[0].as_array()[0].as_double() == doctest::Approx(1.0));
+    CHECK(near[1].as_array()[0].as_double() == doctest::Approx(-1.5));
+    // Only the breeze reaches past the fan's radius.
+    CHECK(near[2].as_array()[0].as_double() == 0.0);
+    // The wind clock runs with the world's ticks.
+    engine.ok("step", R"({"ticks": 60})");
+    CHECK(engine.ok("wind.sample", R"({"points": [[0, 0, 0]]})").find("time")->as_double() ==
+          doctest::Approx(1.0));
+    engine.ok("component.set", R"({"id": "breeze", "components": {
+        "WindSource3D": {"enabled": false}}})");
+    CHECK(engine.ok("wind.sample", R"({"points": [[0, 0, 0]]})") ==
+          parse(R"({"time": 1, "sources": 1, "wind": [[0, 0, 0]]})"));
+    // In a 2D world, WindSource2Ds blow along their x axis in pixels per second.
+    engine.ok("entity.create", R"({"id": "draft", "components": {
+        "Transform2D": {"rotation": 1.5707964},
+        "WindSource2D": {"strength": 100, "min_gust_amount": 0, "max_gust_amount": 0,
+                         "turbulence": 0}}})");
+    const json::Value flat = engine.ok("wind.sample", R"({"points": [[0, 0]]})");
+    CHECK(flat.find("sources")->as_int() == 1);
+    CHECK(flat.find("wind")->as_array()[0].as_array()[0].as_double() ==
+          doctest::Approx(0.0).epsilon(0.001));
+    CHECK(flat.find("wind")->as_array()[0].as_array()[1].as_double() == doctest::Approx(100.0));
+    CHECK(engine
+              .fails("wind.sample", R"({"points": [[0, 0], [0, 0, 0]]})",
+                     command::code::kInvalidParams)
+              .message == "/points/1: expected [x, y] as the first point is; ask about 2D and 3D "
+                          "apart");
+    engine.fails("wind.sample", R"({"points": [[0]]})", command::code::kInvalidParams);
+}
+
+TEST_CASE("wind pushes soft bodies by their drag, Area3Ds blow them as Godot's, and CPU "
+          "particles drift") {
+    // A sheet held up by its corners, in wind blowing straight down through it.
+    const auto sag = [](std::string_view extra) {
+        Engine engine;
+        engine.ok("batch", R"({"commands": [
+            {"command": "entity.create", "params": {"id": "sheet", "components": {
+                "Transform3D": {"position": [0, 2, 0]}, "MeshInstance3D": {},
+                "PlaneMesh": {"size": [1, 1], "subdivide_width": 1, "subdivide_depth": 1},
+                "SoftBody3D": {"drag_coefficient": 0.5,
+                               "pinned_points": [{"point": 0}, {"point": 2}, {"point": 6},
+                                                 {"point": 8}]}}}}
+            )" + std::string(extra) +
+                               "]}");
+        engine.ok("step", R"({"ticks": 120})");
+        const json::Value middle = engine.ok("physics.soft_body", R"({"id": "sheet", "at": [4]})");
+        return middle.find("at")->find("4")->as_array()[1].as_double();
+    };
+    const double still = sag("");
+    const double blown = sag(R"(, {"command": "entity.create", "params": {"id": "gale",
+        "components": {"Transform3D": {"rotation": [-1.5707964, 0, 0]},
+                       "WindSource3D": {"strength": 30, "turbulence": 0}}}})");
+    // An Area3D's wind, as Godot's, from a source above it blowing down its -z.
+    const double area = sag(R"(, {"command": "entity.create", "params": {"id": "vent",
+        "components": {"Transform3D": {"position": [0, 4, 0], "rotation": [-1.5707964, 0, 0]}}}},
+        {"command": "entity.create", "params": {"id": "draft", "components": {
+            "Transform3D": {"position": [0, 2, 0]}, "Area3D": {"wind_force_magnitude": 40,
+            "wind_source_path": "vent"}, "CollisionShape3D": {"size": [4, 4, 4]}}}})");
+    CHECK(blown < still - 0.01);
+    CHECK(area < still - 0.01);
+
+    Engine engine;
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "seeds", "components": {
+            "Transform3D": {}, "CPUParticles3D": {"amount": 1, "lifetime": 10,
+                "explosiveness": 1, "gravity": [0, 0, 0], "initial_velocity_min": 0,
+                "initial_velocity_max": 0, "wind_influence": 1}}}},
+        {"command": "entity.create", "params": {"id": "breeze", "components": {
+            "Transform3D": {"rotation": [0, -1.5707964, 0]},
+            "WindSource3D": {"strength": 3, "min_gust_amount": 0, "max_gust_amount": 0,
+                             "turbulence": 0}}}}]})");
+    engine.ok("step", R"({"ticks": 60})");
+    const json::Value seeds = engine.ok("particles.eval", R"({"id": "seeds", "list": true})");
+    const json::Array& place = seeds.find("particles")->as_array()[0].find("position")->as_array();
+    // A second at 3 m/s^2 along +x moves it about 1.5 m.
+    CHECK(place[0].as_double() == doctest::Approx(1.5).epsilon(0.05));
+    CHECK(place[2].as_double() == doctest::Approx(0.0).epsilon(0.001));
+
+    // And 2D particles by WindSource2Ds.
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "petals", "components": {
+            "Transform2D": {}, "CPUParticles2D": {"amount": 1, "lifetime": 10,
+                "explosiveness": 1, "gravity": [0, 0], "initial_velocity_min": 0,
+                "initial_velocity_max": 0, "wind_influence": 0.5}}}},
+        {"command": "entity.create", "params": {"id": "draft", "components": {
+            "Transform2D": {}, "WindSource2D": {"strength": 200, "min_gust_amount": 0,
+                "max_gust_amount": 0, "turbulence": 0}}}}]})");
+    engine.ok("step", R"({"ticks": 60})");
+    const json::Value petals = engine.ok("particles.eval", R"({"id": "petals", "list": true})");
+    const json::Array& drifted =
+        petals.find("particles")->as_array()[0].find("position")->as_array();
+    // A second at 100 px/s^2 along +x moves it about 50 px.
+    CHECK(drifted[0].as_double() == doctest::Approx(50.0).epsilon(0.05));
+    CHECK(drifted[1].as_double() == doctest::Approx(0.0).epsilon(0.001));
 }
 
 TEST_CASE("particles.eval counts and lists particles, as they are or after a time") {

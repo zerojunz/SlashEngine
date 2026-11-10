@@ -1910,6 +1910,23 @@ after the step `detail::break_and_age` (`src/destruction.cpp`) breaks them with 
 `physics.break` breaks one by hand, and `check_destructibles` backs `scene validate`.
 `examples/destruction-3d` breaks a wall and a crate.
 
+Wind is SlashEngine's own, after Unreal's `WindDirectionalSource` (Godot's only wind is an
+`Area3D`'s for soft bodies, which physics3d ports too: `area_winds` and `blow_soft_body` in
+`engine/physics3d/src/soft_body.cpp`, after `_compute_area_windforce`). `world::WindField`
+(`slash/world/wind.hpp`, `engine/world/src/wind.cpp`, built with `-ffp-contract=off`) sums the
+enabled `WindSource3D`s, directional along the entity's -z or `point_wind` out to `radius`, with
+gusts that travel downwind and turbulence across it from a noise of whole numbers hashed with
+each source's ID, on the clock the `wind` system (priority -650, added by `canvas::install` and
+`physics3d::install`) keeps (`world::wind_time`, reset with the world's state). Soft bodies take
+its drag by their `drag_coefficient` before each step, `CPUParticles3D` add it times
+`wind_influence` to gravity, `GPUParticles3D` get it as a box attractor that pushes everywhere
+(`wind_attractor` in `engine/scene3d/src/gpu_particles.cpp`, so devices need no change), and
+spatial shaders read it at the mesh's origin as `WIND` (`render::kShaderWindConstant`, filled in
+`scene3d::Renderer::prepare`). In 2D, `world::WindField2D` sums `WindSource2D`s along their x
+axis in pixels, which `CPUParticles2D` feel by `wind_influence` and canvas shaders read as `WIND`
+(filled by `CanvasRenderer::draw`'s `blow`). `wind.sample` returns either at points;
+`examples/wind` blows a meadow.
+
 World streaming is SlashEngine's own (Godot has none), after Unreal's World Partition: the
 `world_streaming` system (`engine/scene3d/src/streaming.cpp`, priority -700, added by
 `canvas::install`) measures from each enabled `StreamingSource3D` to each `StreamedScene3D`'s

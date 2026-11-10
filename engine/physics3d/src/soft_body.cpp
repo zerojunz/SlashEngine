@@ -5,10 +5,14 @@
 #include "slash/core/log.hpp"
 #include "slash/scene3d/primitive.hpp"
 #include "slash/world/serialize.hpp"
+#include "slash/world/wind.hpp"
 
 // clang-format off
 #include <Jolt/Jolt.h>
 #include <Jolt/Physics/Body/BodyLock.h>
+#include <Jolt/Physics/Collision/CollidePointResult.h>
+#include <Jolt/Physics/Collision/CollisionCollectorImpl.h>
+#include <Jolt/Physics/Collision/TransformedShape.h>
 #include <Jolt/Physics/SoftBody/SoftBodyCreationSettings.h>
 #include <Jolt/Physics/SoftBody/SoftBodyMotionProperties.h>
 #include <Jolt/Physics/SoftBody/SoftBodySharedSettings.h>
@@ -33,6 +37,8 @@ using world::SoftBody3D;
 constexpr float kPointRadius = 0.01F;
 // Godot's physics/jolt_physics_3d/limits/max_linear_velocity.
 constexpr float kMaxLinearVelocity = 500.0F;
+// Kilograms a cubic meter of air weighs at sea level, for the drag of WindSource3Ds' wind.
+constexpr float kAirDensity = 1.225F;
 
 // The primitive mesh a soft body simulates, with its key, or nullopt when the entity draws none.
 std::optional<std::pair<scene3d::Primitive, std::string>> mesh_of(const world::World& world,
@@ -339,8 +345,122 @@ void Space::sync_soft_bodies(world::World& world, const world::Tree3D& tree) {
     }
 }
 
-void Space::pre_step_soft_bodies(const world::World& world, const world::Tree3D& tree) {
+std::vector<AreaWind> Space::area_winds(const world::World& world,
+                                        const world::Tree3D& tree) const {
+    std::vector<AreaWind> winds;
+    for (const auto& [entity, area] : bodies_) {
+        if (area->kind != Kind::Area || area->id.IsInvalid()) {
+            continue;
+        }
+        const auto& component = world.ecs().get<world::Area3D>(entity);
+        if (component.wind_force_magnitude == 0.0F || component.wind_source_path == entt::null ||
+            !world.valid(component.wind_source_path)) {
+            continue;
+        }
+        const world::Affine3D source = tree.global(component.wind_source_path);
+        const JPH::Vec3 z = to_jolt(source.z);
+        if (z.LengthSq() <= 0.0F) {
+            continue;
+        }
+        winds.push_back({.area = area.get(),
+                         .magnitude = component.wind_force_magnitude,
+                         .attenuation = component.wind_attenuation_factor,
+                         .direction = -z.Normalized(),
+                         .source = to_jolt_place(source.origin)});
+    }
+    return winds;
+}
+
+// The wind on each face pushes its three points: WindSource3Ds' wind as air drags a sheet,
+// by the body's drag_coefficient, and the wind of the Area3Ds whose shapes hold the face's
+// middle, as GodotSoftBody3D::apply_forces and _compute_area_windforce.
+bool Space::blow_soft_body(const SoftBody& soft, const SoftBody3D& component, JPH::Body& body,
+                           const world::WindField& field, double time,
+                           const std::vector<AreaWind>& areas, float seconds) const {
+    const bool drag = component.drag_coefficient > 0.0F && !field.empty();
+    std::vector<const AreaWind*> felt;
+    for (const AreaWind& wind : areas) {
+        if ((wind.area->mask & soft.layer) != 0) {
+            felt.push_back(&wind);
+        }
+    }
+    if (!drag && felt.empty()) {
+        return false;
+    }
+    const JPH::BodyLockInterfaceNoLock& locks = system_->GetBodyLockInterfaceNoLock();
+    JPH::SoftBodyMotionProperties& motion = motion_of(body);
+    JPH::Array<JPH::SoftBodyVertex>& points = motion.GetVertices();
+    const JPH::RVec3 center = body.GetCenterOfMassPosition();
+    std::vector<JPH::Vec3> forces(points.size(), JPH::Vec3::sZero());
+    bool pushed = false;
+    for (const JPH::SoftBodySharedSettings::Face& face : motion.GetSettings()->mFaces) {
+        const JPH::SoftBodyVertex& a = points[face.mVertex[0]];
+        const JPH::SoftBodyVertex& b = points[face.mVertex[1]];
+        const JPH::SoftBodyVertex& c = points[face.mVertex[2]];
+        const JPH::Vec3 twice = (b.mPosition - a.mPosition).Cross(c.mPosition - a.mPosition);
+        const float doubled = twice.Length();
+        if (doubled <= 0.0F) {
+            continue;
+        }
+        const JPH::Vec3 normal = twice / doubled;
+        const float area = 0.5F * doubled;
+        const JPH::RVec3 middle =
+            center + ((a.mPosition + b.mPosition + c.mPosition) * (1.0F / 3.0F));
+        JPH::Vec3 force = JPH::Vec3::sZero();
+        if (drag) {
+            const JPH::Vec3 air = to_jolt(field.at(from_jolt_place(middle), time));
+            const JPH::Vec3 moving = (a.mVelocity + b.mVelocity + c.mVelocity) * (1.0F / 3.0F);
+            const float across = normal.Dot(air - moving);
+            force += normal * (0.5F * kAirDensity * component.drag_coefficient * area * across *
+                               std::abs(across));
+        }
+        for (const AreaWind* wind : felt) {
+            const JPH::Body* shape_body = locks.TryGetBody(wind->area->id);
+            if (shape_body == nullptr) {
+                continue;
+            }
+            JPH::AnyHitCollisionCollector<JPH::CollidePointCollector> inside;
+            shape_body->GetTransformedShape().CollidePoint(middle, inside);
+            if (!inside.HadHit()) {
+                continue;
+            }
+            const float toward_normal = normal.Dot(wind->direction);
+            const float toward_middle = JPH::Vec3(middle - wind->source).Dot(wind->direction);
+            // pow(toward_middle, -attenuation), which Godot leaves undefined behind the source.
+            float attenuated = 1.0F;
+            if (wind->attenuation != 0.0F) {
+                if (toward_middle <= 0.0F) {
+                    continue;
+                }
+                attenuated = slash::exp(-wind->attenuation * slash::ln(toward_middle));
+            }
+            force += normal * (wind->magnitude * area * toward_normal * attenuated);
+        }
+        if (force.IsNearZero(0.0F)) {
+            continue;
+        }
+        // A third of the face's force to each of its points.
+        const JPH::Vec3 share = force * (1.0F / 3.0F);
+        for (const JPH::uint32 point : face.mVertex) {
+            forces[point] += share;
+        }
+        pushed = true;
+    }
+    if (!pushed) {
+        return false;
+    }
+    for (std::size_t i = 0; i < points.size(); ++i) {
+        points[i].mVelocity += forces[i] * (points[i].mInvMass * seconds);
+    }
+    return true;
+}
+
+void Space::pre_step_soft_bodies(const world::World& world, const world::Tree3D& tree,
+                                 float seconds) {
     const entt::registry& registry = world.ecs();
+    const world::WindField field(world, tree);
+    const double time = world::wind_time(world);
+    const std::vector<AreaWind> areas = area_winds(world, tree);
     for (auto& [entity, soft] : soft_bodies_) {
         if (soft->id.IsInvalid()) {
             continue;
@@ -373,6 +493,9 @@ void Space::pre_step_soft_bodies(const world::World& world, const world::Tree3D&
                 vertex.mPosition = position;
                 moved = true;
             }
+        }
+        if (blow_soft_body(*soft, component, body, field, time, areas, seconds)) {
+            moved = true;
         }
         if (moved) {
             lock.ReleaseLock();

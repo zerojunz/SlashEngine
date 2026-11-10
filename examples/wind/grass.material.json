@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "params": {
+    "bend": {"type": "float", "value": 0.06}
+  },
+  "render_mode": ["cull_disabled"],
+  "shader": "shaders/grass.hlsl",
+  "shader_type": "spatial"
+}

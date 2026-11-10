@@ -560,6 +560,37 @@ TEST_CASE("GPUParticles3D pairs with the attractors its box touches, as Godot's 
     CHECK(live[0].origin.x == doctest::Approx(1.0));
 }
 
+TEST_CASE("GPUParticles3D drifts with the wind by its wind_influence") {
+    Scene scene;
+    scene.files["still.process_material.json"] =
+        R"({"format": 1, "gravity": [0, 0, 0], "emission_shape": "points",
+            "emission_points": [[0, 0, 0]]})";
+    const char* emitter = R"({"Transform3D": {},
+        "GPUParticles3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
+                           "process_material": "still.process_material.json",
+                           "wind_influence": 0.5},
+        "QuadMesh": {}})";
+    const entt::entity blown = scene.create("leaf", emitter);
+    const entt::entity calm =
+        scene.create("stone", R"({"Transform3D": {}, "GPUParticles3D": {"amount": 1, "lifetime": 10,
+            "explosiveness": 1, "process_material": "still.process_material.json"},
+            "QuadMesh": {}})");
+    // A steady breeze along +x: the source faces -z, turned a quarter turn about y.
+    scene.create("breeze", R"({"Transform3D": {"rotation": [0, -1.5707964, 0]},
+        "WindSource3D": {"strength": 4, "min_gust_amount": 0, "max_gust_amount": 0,
+                         "turbulence": 0}})");
+    scene.step(60);
+    const auto leaf = scene.live(blown);
+    REQUIRE(leaf.size() == 1);
+    // Half of 4 m/s of wind, as an acceleration, for about a second.
+    CHECK(leaf[0].velocity.x == doctest::Approx(2.0).epsilon(0.05));
+    CHECK(leaf[0].velocity.y == doctest::Approx(0.0).epsilon(0.001));
+    CHECK(leaf[0].origin.x > 0.5F);
+    const auto stone = scene.live(calm);
+    REQUIRE(stone.size() == 1);
+    CHECK(stone[0].velocity.x == 0.0F);
+}
+
 TEST_CASE("GPUParticles3D falls onto a collision box and bounces off a sphere, as Godot's") {
     Scene scene;
     scene.files["drop.process_material.json"] =

@@ -70,6 +70,7 @@ as `entity.get`, reject it as an unknown param.
 | Tile maps | [`tilemap.paint`](#tilemappaint), [`tilemap.generate`](#tilemapgenerate), [`tilemap.set`](#tilemapset), [`tilemap.get`](#tilemapget), [`tilemap.convert`](#tilemapconvert) |
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity), [`physics.soft_body`](#physicssoft_body), [`physics.break`](#physicsbreak) |
 | World streaming | [`streaming.state`](#streamingstate) |
+| Wind | [`wind.sample`](#windsample) |
 | Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent), [`navigation.bake`](#navigationbake) |
 | NPCs | [`npc.plan`](#npcplan), [`npc.draft`](#npcdraft) |
 | Particles | [`particles.eval`](#particleseval), [`particles.bake_sdf`](#particlesbake_sdf) |
@@ -1736,6 +1737,22 @@ regions or links changed since the last step. Numbers are rounded to four decima
 are the scene of [examples/navigation](../../examples/navigation/): a house of two rooms joined
 the long way round by a corridor and the short way by a hatch, a link that costs one and a half
 times as much to cross as to walk.
+
+### wind.sample
+
+Returns the wind the [`WindSource3D`s](scene-format.md#wind) blow at each of `points` (each
+`[x, y, z]` in the world, at most 256), in meters per second with gusts and turbulence, at
+`time` seconds on the wind clock (default: now), and how many sources are enabled. Given `[x, y]`
+points it returns the `WindSource2D`s' wind in pixels per second; one call asks about one or the
+other.
+
+```json
+{"points": [[0, 1, 0]]}
+```
+
+```json
+{"time": 2.5, "sources": 1, "wind": [[3.6, 0.05, -0.12]]}
+```
 
 ### navigation.path
 

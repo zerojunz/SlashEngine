@@ -354,9 +354,10 @@ private:
     Result<const Texture*> texture(const std::string& path, render::Filter filter);
     // The material at a path; its shader is compiled and made again when it or its file changes.
     Result<const MaterialEntry*> material_entry(const std::string& path);
-    // The material a sprite draws with, its params and the time filled in, and its light mode.
+    // The material a sprite draws with, its params, the time and the wind its shader reads as
+    // WIND filled in, and its light mode.
     Result<render::Material> material(const world::Sprite2D& sprite, render::Filter filter,
-                                      double time, render::LightMode* light_mode);
+                                      double time, render::LightMode* light_mode, Vec2 wind = {});
     // A GPUParticles2D's process material.
     Result<const render::ParticleProcess*> process_material(const std::string& path);
     // A MeshInstance3D's material_override, for scene3d::Renderer: a .standard_material.json

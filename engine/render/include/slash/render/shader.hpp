@@ -103,9 +103,15 @@ struct CompiledShader {
 };
 
 // The constant a game's shader reads the time from, in x: the last of a material's constants.
-// Number params take the ones before it, so a shader has at most 31. A spatial shader's y is the
+// Number params take the ones before it and kShaderWindConstant. A spatial shader's y is the
 // time of the frame before, which its vertex() runs with again for the motion prepass.
 inline constexpr std::uint32_t kShaderTimeConstant = 31;
+
+// The constant a shader reads WIND from: the wind at its node in the world, from the world's
+// WindSource3Ds (a spatial shader's xyz, in meters a second) or WindSource2Ds (a canvas shader's
+// xy, in pixels a second). Number params take the constants before it, so a shader has at most
+// 30.
+inline constexpr std::uint32_t kShaderWindConstant = 30;
 
 // What a game's shader is compiled from: its code and the material params it reads, which the
 // compiler declares for it.
