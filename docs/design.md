@@ -133,6 +133,7 @@ SlashEngine covers nearly every Godot 4 feature area at launch and adds UE5 feat
 | Vehicle design | VehicleBody3D, VehicleWheel3D | Chaos Vehicles | Cars, bikes, tracked vehicles, boats and aircraft from vehicle recipes, each with its own tuned physics (engine, gears, suspension, tires, buoyancy, lift), seats characters drive from and contacts that push and hurt characters and creatures | After launch |
 | Damage design | None built in | Chaos Destruction, Geometry Collections | Damage profiles by material, damage states, dents and holes, authored fracture patterns, connected and anchored pieces, terrain craters, with debris, decals and sounds | After launch |
 | VFX design | GPUParticles3D, particle shaders | Niagara | Effect recipes layering particles, ribbons, flipbooks, decals, lights, distortion, camera shakes and sounds on one timeline, with parameters, attachment and budgets | After launch |
+| One simulation | Jolt module (rigid, soft bodies, ragdolls, vehicles) | Chaos Physics, Chaos Fields, Chaos Cloth, Chaos Cache, Chaos Visual Debugger | Every tool's assets simulate in one Jolt space: shared physics materials and assets, fields acting on every kind of body, character cloth, substepping, recorded caches and a debugger record agents read | After launch |
 | Virtualized geometry | None built in | Nanite | Meshlet rendering research | Research |
 | Fully dynamic GI at UE quality | SDFGI (partial) | Lumen | Research after probe GI ships | Research |
 | Digital humans | None built in | MetaHuman | Research; out of scope for releases | Research |
