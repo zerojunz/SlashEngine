@@ -107,7 +107,8 @@ struct Environment {
     std::string sky_texture_field;
     entt::entity entity = entt::null; // the WorldEnvironment, if there is one
     // The entity whose CameraAttributesPractical the camera uses, or entt::null, and its
-    // exposure_multiplier, as Godot's exposure normalization without physical light units: the
+    // exposure_multiplier (times its sensitivity's normalization with physical light units), as
+    // Godot's exposure normalization: the
     // background, the sky (and so its light) and post's auto exposure have it already, and the
     // frame's lights, the sky's suns and emission take it too.
     entt::entity attributes = entt::null;
@@ -119,6 +120,12 @@ struct Environment {
 // The environment of the first WorldEnvironment made, before any camera's attributes, as
 // Godot's environment bakes take it (a LightmapGI's).
 [[nodiscard]] Environment world_environment(const world::World& world, render::Color clear);
+
+// Whether the world's lights, backgrounds and emission use Godot's physical light units: lux,
+// lumens and nits, with lights tinted by their color temperature. canvas::set_settings sets it from
+// rendering.lights_and_shadows.use_physical_light_units.
+void set_physical_light_units(world::World& world, bool on);
+[[nodiscard]] bool physical_light_units(const world::World& world);
 
 // The entity whose CameraAttributesPractical a camera uses, as Godot's Camera3D.attributes and
 // WorldEnvironment.camera_attributes: the camera's own, else the first WorldEnvironment's;

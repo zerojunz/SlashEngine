@@ -3502,6 +3502,10 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("emission_enabled", {.doc = "Glows with emission, lit or not."})
         .describe("emission", color)
         .describe("emission_energy_multiplier", energy)
+        .describe("emission_intensity",
+                  {.doc = "Nits of its emission, which emission_energy_multiplier multiplies, "
+                          "with physical light units.",
+                   .min = 0})
         .describe("emission_texture", {.doc = "Added to emission. " + texture.doc})
         .describe("normal_enabled", {.doc = "Bumps its lighting with normal_texture."})
         .describe("normal_scale", {.doc = "How strong the bumps are.", .min = -16, .max = 16})
@@ -3640,6 +3644,15 @@ void register_3d_components(ComponentRegistry& registry) {
         .doc = "How far its baked shadows blur, times the light's size.", .min = 0.0, .max = 10.0};
     const FieldMeta light_size{
         .doc = "Its radius in meters, for a lightmap's soft shadows.", .min = 0.0, .max = 64.0};
+    const FieldMeta temperature{
+        .doc = "Kelvin that tints light_color with physical light units: 1900 is a candle, 2700 a "
+               "household bulb, 6500 daylight's white.",
+        .min = 1000,
+        .max = 20000};
+    const FieldMeta lumens{
+        .doc = "Lumens it gives out, which light_energy multiplies, with physical light units: "
+               "800 is a household bulb.",
+        .min = 0};
     registry.add<DirectionalLight3D>()
         .set_doc("Light from one direction everywhere, such as the sun, shining down the "
                  "entity's -z, as Godot's DirectionalLight3D.")
@@ -3688,7 +3701,12 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("light_bake_mode", bake_mode)
         .describe("shadow_blur", shadow_blur)
         .describe("light_volumetric_fog_energy", fog_energy)
-        .describe("shadow_transmittance_bias", transmittance_bias);
+        .describe("shadow_transmittance_bias", transmittance_bias)
+        .describe("light_temperature", temperature)
+        .describe("light_intensity_lux",
+                  {.doc = "Lux it shines with, which light_energy multiplies, with physical light "
+                          "units: 100000 is direct sunlight, 0.3 a full moon.",
+                   .min = 0});
     registry.add<OmniLight3D>()
         .set_doc("Light from the entity in every direction, such as a lamp, as Godot's "
                  "OmniLight3D.")
@@ -3710,7 +3728,9 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("light_bake_mode", bake_mode)
         .describe("shadow_blur", shadow_blur)
         .describe("light_volumetric_fog_energy", fog_energy)
-        .describe("shadow_transmittance_bias", transmittance_bias);
+        .describe("shadow_transmittance_bias", transmittance_bias)
+        .describe("light_temperature", temperature)
+        .describe("light_intensity_lumens", lumens);
     registry.add<SpotLight3D>()
         .set_doc("Light from the entity in a cone down its -z, such as a torch, as Godot's "
                  "SpotLight3D.")
@@ -3736,7 +3756,9 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("light_bake_mode", bake_mode)
         .describe("shadow_blur", shadow_blur)
         .describe("light_volumetric_fog_energy", fog_energy)
-        .describe("shadow_transmittance_bias", transmittance_bias);
+        .describe("shadow_transmittance_bias", transmittance_bias)
+        .describe("light_temperature", temperature)
+        .describe("light_intensity_lumens", lumens);
 
     const FieldMeta curve{
         .doc = "How sharply it changes; smaller is sharper.", .min = 0.001, .max = 1};
@@ -3990,6 +4012,10 @@ void register_3d_components(ComponentRegistry& registry) {
                    .choices = {"clear_color", "color", "sky"}})
         .describe("background_color", color)
         .describe("background_energy_multiplier", energy)
+        .describe("background_intensity",
+                  {.doc = "Nits of the background and sky, which background_energy_multiplier "
+                          "multiplies, with physical light units.",
+                   .min = 0})
         .describe(
             "sky_custom_fov",
             {.doc = "Degrees the sky is seen across; 0 for the camera's.", .min = 0, .max = 180})
@@ -4502,7 +4528,12 @@ void register_builtin_components(ComponentRegistry& registry) {
         .describe("shadow_color", shadow_color)
         .describe("shadow_filter", shadow_filter)
         .describe("shadow_filter_smooth", shadow_smooth)
-        .describe("shadow_item_cull_mask", shadow_mask);
+        .describe("shadow_item_cull_mask", shadow_mask)
+        .describe("temperature",
+                  {.doc = "Kelvin that tints color, as a 3D light's light_temperature; 0 keeps "
+                          "color as it is.",
+                   .min = 0,
+                   .max = 20000});
 
     registry.add<DirectionalLight2D>()
         .set_doc("Light from one direction over everything, such as the sun. It shines down the "
@@ -4527,7 +4558,12 @@ void register_builtin_components(ComponentRegistry& registry) {
         .describe("shadow_color", shadow_color)
         .describe("shadow_filter", shadow_filter)
         .describe("shadow_filter_smooth", shadow_smooth)
-        .describe("shadow_item_cull_mask", shadow_mask);
+        .describe("shadow_item_cull_mask", shadow_mask)
+        .describe("temperature",
+                  {.doc = "Kelvin that tints color, as a 3D light's light_temperature; 0 keeps "
+                          "color as it is.",
+                   .min = 0,
+                   .max = 20000});
 
     registry.add<LightOccluder2D>()
         .set_doc("A polygon that casts shadows from lights with shadow_enabled, placed by the "

@@ -5,7 +5,9 @@
 #include "slash/core/math.hpp"
 #include "slash/core/sha256.hpp"
 #include "slash/core/text.hpp"
+#include "slash/render/light.hpp"
 #include "slash/scene3d/primitive.hpp"
+#include "slash/scene3d/scene3d.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/tree3d.hpp"
 #include "slash/world/world.hpp"
@@ -454,9 +456,9 @@ struct MaterialImages {
 
 // A StandardMaterial3D as a bake sees it: what StandardMaterial3D's shader gives as albedo and
 // emission at a point, Godot's bake_render_uv2, with metals' albedo taken out (they reflect
-// rather than scatter light).
+// rather than scatter light). With physical light units (units), emission shines by its nits.
 void set_material(LightmapMesh::Surface& surface, const world::StandardMaterial3D& standard,
-                  const MaterialImages& images) {
+                  const MaterialImages& images, bool units = false) {
     const bool nearest = standard.texture_filter.starts_with("nearest");
     const render::Filter filter = nearest ? render::Filter::Nearest : render::Filter::Linear;
     const bool repeat = standard.texture_repeat;
@@ -497,7 +499,7 @@ void set_material(LightmapMesh::Surface& surface, const world::StandardMaterial3
         };
         return;
     }
-    surface.emission = [standard, images, sample](const LightmapPoint& at) {
+    surface.emission = [standard, images, sample, units](const LightmapPoint& at) {
         std::array<float, 3> color{standard.emission.x, standard.emission.y, standard.emission.z};
         if (images.emission) {
             const std::array<float, 4> texel = sample(*images.emission, at);
@@ -505,7 +507,8 @@ void set_material(LightmapMesh::Surface& surface, const world::StandardMaterial3
                 color.at(c) += texel.at(c);
             }
         }
-        const float energy = standard.emission_energy_multiplier;
+        const float energy =
+            standard.emission_energy_multiplier * (units ? standard.emission_intensity : 1.0F);
         return std::array<float, 3>{srgb_to_linear(color[0]) * energy,
                                     srgb_to_linear(color[1]) * energy,
                                     srgb_to_linear(color[2]) * energy};
@@ -632,7 +635,7 @@ public:
             mesh.texel_scale = instance.gi_lightmap_texel_scale;
             LightmapMesh::Surface surface;
             if (standard != nullptr && override_images) {
-                set_material(surface, *standard, *override_images);
+                set_material(surface, *standard, *override_images, physical_light_units(world_));
             } else {
                 set_default_material(surface);
             }
@@ -697,7 +700,7 @@ private:
                 const auto base = static_cast<std::uint32_t>(mesh.vertices.size());
                 LightmapMesh::Surface made;
                 if (standard != nullptr && override_images) {
-                    set_material(made, *standard, *override_images);
+                    set_material(made, *standard, *override_images, physical_light_units(world_));
                 } else if (surface.material >= 0 &&
                            static_cast<std::size_t>(surface.material) < materials.size()) {
                     auto& kept = materials[static_cast<std::size_t>(surface.material)];
@@ -710,7 +713,8 @@ private:
                                       .metallic = model_image(material.metallic_image),
                                       .emission = material.standard.emission_enabled
                                                       ? model_image(material.emission_image)
-                                                      : nullptr});
+                                                      : nullptr},
+                                     physical_light_units(world_));
                     }
                     made = *kept;
                 } else {
@@ -762,6 +766,21 @@ private:
             }
             out.color = linear_rgb(light.light_color);
             out.energy = light.light_energy;
+            if (physical_light_units(world_)) {
+                // Physical light units, as the frame's lights take them.
+                const std::array<float, 3> tint =
+                    render::color_temperature(light.light_temperature);
+                out.color = {out.color[0] * srgb_to_linear(tint[0]),
+                             out.color[1] * srgb_to_linear(tint[1]),
+                             out.color[2] * srgb_to_linear(tint[2])};
+                if constexpr (std::is_same_v<T, world::DirectionalLight3D>) {
+                    out.energy *= render::directional_light_units(light.light_intensity_lux);
+                } else if constexpr (std::is_same_v<T, world::OmniLight3D>) {
+                    out.energy *= render::omni_light_units(light.light_intensity_lumens);
+                } else {
+                    out.energy *= render::spot_light_units(light.light_intensity_lumens);
+                }
+            }
             out.indirect_energy = light.light_indirect_energy;
             out.shadow_blur = light.shadow_blur;
             out.static_bake = light.light_bake_mode == "static";

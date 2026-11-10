@@ -1,0 +1,46 @@
+{
+  "entities": {
+    "lantern": {
+      "components": {
+        "PointLight2D": {
+          "energy": 2.0,
+          "temperature": 1900.0,
+          "texture": "glow.texture.json",
+          "texture_scale": 1.5
+        },
+        "Transform2D": {
+          "position": [40.0, 45.0]
+        }
+      }
+    },
+    "neon": {
+      "components": {
+        "PointLight2D": {
+          "energy": 1.5,
+          "temperature": 12000.0,
+          "texture": "glow.texture.json"
+        },
+        "Transform2D": {
+          "position": [120.0, 30.0]
+        }
+      }
+    },
+    "night": {
+      "components": {
+        "CanvasModulate": {
+          "color": [0.15, 0.17, 0.3, 1.0]
+        }
+      }
+    },
+    "wall": {
+      "components": {
+        "Sprite2D": {
+          "centered": false,
+          "texture": "wall.texture.json"
+        },
+        "Transform2D": {}
+      }
+    }
+  },
+  "format": 1
+}

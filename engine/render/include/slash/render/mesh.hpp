@@ -212,12 +212,17 @@ struct ShadowSettings {
     ShadowQuality directional_quality = ShadowQuality::SoftLow;
     std::uint32_t positional_size = 4096;
     ShadowQuality positional_quality = ShadowQuality::SoftLow;
+    // use_physical_light_units: lights shine by their lux and lumens, tinted by their color
+    // temperature, and backgrounds and emission by their nits, scaled by the camera's exposure
+    // normalization, as Godot's.
+    bool use_physical_light_units = false;
 
     bool operator==(const ShadowSettings&) const = default;
 };
 // Reads project.json's rendering.lights_and_shadows: {"directional_shadow": {"size",
 // "soft_shadow_filter_quality"}, "positional_shadow": {"atlas_size",
-// "soft_shadow_filter_quality"}}. What is missing or not valid keeps its default.
+// "soft_shadow_filter_quality"}, "use_physical_light_units"}. What is missing or not valid keeps
+// its default.
 [[nodiscard]] ShadowSettings shadow_settings_from_json(const json::Value& value);
 // Whether size is an atlas size: a power of two from 256 to 16384.
 [[nodiscard]] bool valid_shadow_atlas_size(std::uint32_t size);

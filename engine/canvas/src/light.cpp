@@ -99,8 +99,12 @@ std::optional<std::string> fill_common(const LightComponent& component, render::
         return "shadow_filter \"" + component.shadow_filter + "\" is not none, pcf5 or pcf13";
     }
     light.blend = *blend;
-    light.color = {component.color.x * component.energy, component.color.y * component.energy,
-                   component.color.z * component.energy, component.color.w};
+    std::array<float, 3> color{component.color.x, component.color.y, component.color.z};
+    if (component.temperature > 0.0F) {
+        color = render::tint_by_temperature(color, component.temperature);
+    }
+    light.color = {color[0] * component.energy, color[1] * component.energy,
+                   color[2] * component.energy, component.color.w};
     light.item_cull_mask = mask_of(component.range_item_cull_mask);
     light.z_min = component.range_z_min;
     light.z_max = component.range_z_max;

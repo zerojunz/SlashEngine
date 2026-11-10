@@ -14,7 +14,9 @@
 #include "slash/core/json_schema.hpp"
 #include "slash/core/math.hpp"
 #include "slash/core/text.hpp"
+#include "slash/render/light.hpp"
 #include "slash/scene3d/primitive.hpp"
+#include "slash/scene3d/scene3d.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/world.hpp"
 
@@ -1434,8 +1436,9 @@ private:
                            ? image(standard.emission_texture, entity, field + "emission_texture")
                            : nullptr;
         }
-        return std::make_shared<const VoxelGIMaterial>(
-            voxel_gi_material(standard, albedo.get(), emission.get(), exposure_));
+        return std::make_shared<const VoxelGIMaterial>(voxel_gi_material(
+            standard, albedo.get(), emission.get(),
+            exposure_ * (physical_light_units(world_) ? standard.emission_intensity : 1.0F)));
     }
 
     void add_model(entt::entity entity, const world::MeshInstance3D& instance,

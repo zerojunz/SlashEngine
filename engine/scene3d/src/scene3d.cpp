@@ -8,6 +8,7 @@
 #include "slash/procedural/foliage.hpp"
 #include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
+#include "slash/render/light.hpp"
 #include "slash/scene3d/blend_shapes.hpp"
 #include "slash/scene3d/bone_attachment.hpp"
 #include "slash/scene3d/cloth.hpp"
@@ -140,11 +141,23 @@ render::TextureChannel channel_of(const std::string& name) {
 
 // The light's own fields, which the three kinds share.
 template <typename T>
-render::Light3D light_base(const T& light, render::LightType type) {
+render::Light3D light_base(const T& light, render::LightType type, bool units) {
     render::Light3D out;
     out.type = type;
     out.color = rgb(light.light_color);
     out.energy = light.light_negative ? -light.light_energy : light.light_energy;
+    if (units) {
+        // Godot's physical light units: the color tinted by the temperature in linear light, and
+        // the energy by the lux or lumens.
+        out.color = render::tint_by_temperature(out.color, light.light_temperature);
+        if constexpr (std::is_same_v<T, world::DirectionalLight3D>) {
+            out.energy *= render::directional_light_units(light.light_intensity_lux);
+        } else if constexpr (std::is_same_v<T, world::OmniLight3D>) {
+            out.energy *= render::omni_light_units(light.light_intensity_lumens);
+        } else {
+            out.energy *= render::spot_light_units(light.light_intensity_lumens);
+        }
+    }
     out.specular = light.light_specular;
     out.cull_mask = light.light_cull_mask;
     out.shadow = light.shadow_enabled;
@@ -197,6 +210,7 @@ void add_lights(const world::World& world, const world::Tree3D& tree,
                 const std::function<world::Affine3D(entt::entity)>& global,
                 const std::unordered_map<entt::entity, std::size_t>& order,
                 std::vector<Shone>& out) {
+    const bool units = physical_light_units(world);
     for (const entt::entity entity : made<T>(world)) {
         if (!tree.visible(entity)) {
             continue;
@@ -207,7 +221,7 @@ void add_lights(const world::World& world, const world::Tree3D& tree,
             if (light.sky_mode == "sky_only") {
                 continue;
             }
-            shone = light_base(light, render::LightType::Directional);
+            shone = light_base(light, render::LightType::Directional, units);
             shone.shadow_mode = shadow_mode_of(light.directional_shadow_mode);
             shone.shadow_splits = {light.directional_shadow_split_1,
                                    light.directional_shadow_split_2,
@@ -218,12 +232,12 @@ void add_lights(const world::World& world, const world::Tree3D& tree,
             shone.shadow_pancake_size = light.directional_shadow_pancake_size;
             shone.size = light.light_angular_distance;
         } else if constexpr (std::is_same_v<T, world::OmniLight3D>) {
-            shone = light_base(light, render::LightType::Omni);
+            shone = light_base(light, render::LightType::Omni, units);
             shone.size = light.light_size;
             shone.range = light.omni_range;
             shone.attenuation = light.omni_attenuation;
         } else {
-            shone = light_base(light, render::LightType::Spot);
+            shone = light_base(light, render::LightType::Spot, units);
             shone.size = light.light_size;
             shone.range = light.spot_range;
             shone.attenuation = light.spot_attenuation;
@@ -451,6 +465,22 @@ Vec3 render_origin_for(Vec3 eye) {
     }
 }
 
+namespace {
+// Whether the world uses physical light units, in its context.
+struct PhysicalLightUnits {
+    bool on = false;
+};
+} // namespace
+
+void set_physical_light_units(world::World& world, bool on) {
+    world.ecs().ctx().insert_or_assign(PhysicalLightUnits{.on = on});
+}
+
+bool physical_light_units(const world::World& world) {
+    const auto* found = world.ecs().ctx().find<PhysicalLightUnits>();
+    return found != nullptr && found->on;
+}
+
 Environment world_environment(const world::World& world, render::Color clear) {
     Environment out;
     out.background = clear;
@@ -466,7 +496,9 @@ Environment world_environment(const world::World& world, render::Color clear) {
                       .b = env.background_color.z,
                       .a = env.background_color.w};
     }
-    const float energy = env.background_energy_multiplier;
+    // With physical light units, the background and sky shine by their nits too, as Godot's.
+    const float energy = env.background_energy_multiplier *
+                         (physical_light_units(world) ? env.background_intensity : 1.0F);
     out.background = {.r = background.r * energy,
                       .g = background.g * energy,
                       .b = background.b * energy,
@@ -678,6 +710,11 @@ Environment environment(const world::World& world, render::Color clear, entt::en
     // light, but not ambient_light_color or fog; a fogged background's sky, which the background's
     // energy multiplies twice, takes it twice.
     out.exposure = attributes.exposure_multiplier;
+    if (physical_light_units(world)) {
+        // With physical light units, times the sensitivity's exposure normalization, as Godot's
+        // CameraAttributesPractical::calculate_exposure_normalization.
+        out.exposure *= render::exposure_normalization(attributes.exposure_sensitivity);
+    }
     out.background.r *= out.exposure;
     out.background.g *= out.exposure;
     out.background.b *= out.exposure;
@@ -757,6 +794,11 @@ sky_lights(const world::World& world, const world::Tree3D& tree,
                          static_cast<float>(forward.z)};
         sun.color = rgb(light.light_color);
         sun.energy = light.light_negative ? -light.light_energy : light.light_energy;
+        if (physical_light_units(world)) {
+            // As Godot's sky: the sun's color as the light's, energy times its lux.
+            sun.color = render::tint_by_temperature(sun.color, light.light_temperature);
+            sun.energy *= light.light_intensity_lux;
+        }
         sun.angular_distance = light.light_angular_distance;
         const auto at = order.find(entity);
         found.emplace_back(at != order.end() ? at->second : order.size(), sun);
@@ -1120,6 +1162,7 @@ render::Material3D material(const world::StandardMaterial3D& standard,
     if (standard.emission_enabled) {
         out.emission = rgb(standard.emission);
         out.emission_energy = standard.emission_energy_multiplier;
+        out.emission_intensity = standard.emission_intensity;
         out.emission_texture = texture(standard.emission_texture, "emission_texture");
     }
     if (standard.normal_enabled) {
@@ -3927,9 +3970,12 @@ std::optional<Frame3D> Renderer::prepare(
         voxel_objects_.clear();
         destroy_voxel_gis();
     }
-    if (env.exposure != 1.0F) {
+    if (env.exposure != 1.0F || physical_light_units(world)) {
+        // With physical light units, emission shines by its nits too, as Godot's.
+        const bool units = physical_light_units(world);
         for (Draw& draw : draws_) {
-            draw.material.emission_energy *= env.exposure;
+            draw.material.emission_energy *=
+                env.exposure * (units ? draw.material.emission_intensity : 1.0F);
         }
     }
     // TAA, FSR 2 and frame generation move each mesh's pixels by how far it moved since the last

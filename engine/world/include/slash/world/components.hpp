@@ -442,6 +442,8 @@ struct StandardMaterial3D {
     bool emission_enabled = false;
     Vec4 emission{0.0F, 0.0F, 0.0F, 1.0F};
     float emission_energy_multiplier = 1.0F;
+    // Nits, which emission_energy_multiplier multiplies with physical light units, as Godot's.
+    float emission_intensity = 1000.0F;
     std::string emission_texture;
     bool normal_enabled = false;
     float normal_scale = 1.0F;
@@ -496,15 +498,15 @@ SLASH_COMPONENT(StandardMaterial3D, transparency, alpha_scissor_threshold, alpha
                 blend_mode, cull_mode, shading_mode, vertex_color_use_as_albedo, albedo_color,
                 albedo_texture, metallic, metallic_specular, metallic_texture,
                 metallic_texture_channel, roughness, roughness_texture, roughness_texture_channel,
-                emission_enabled, emission, emission_energy_multiplier, emission_texture,
-                normal_enabled, normal_scale, normal_texture, uv1_scale, uv1_offset, texture_filter,
-                texture_repeat, disable_fog, billboard_mode, billboard_keep_scale,
-                particles_anim_h_frames, particles_anim_v_frames, particles_anim_loop, rim_enabled,
-                rim, rim_tint, clearcoat_enabled, clearcoat, clearcoat_roughness,
-                anisotropy_enabled, anisotropy, subsurf_scatter_enabled, subsurf_scatter_strength,
-                subsurf_scatter_skin_mode, subsurf_scatter_transmittance_enabled,
-                subsurf_scatter_transmittance_color, subsurf_scatter_transmittance_depth,
-                subsurf_scatter_transmittance_boost)
+                emission_enabled, emission, emission_energy_multiplier, emission_intensity,
+                emission_texture, normal_enabled, normal_scale, normal_texture, uv1_scale,
+                uv1_offset, texture_filter, texture_repeat, disable_fog, billboard_mode,
+                billboard_keep_scale, particles_anim_h_frames, particles_anim_v_frames,
+                particles_anim_loop, rim_enabled, rim, rim_tint, clearcoat_enabled, clearcoat,
+                clearcoat_roughness, anisotropy_enabled, anisotropy, subsurf_scatter_enabled,
+                subsurf_scatter_strength, subsurf_scatter_skin_mode,
+                subsurf_scatter_transmittance_enabled, subsurf_scatter_transmittance_color,
+                subsurf_scatter_transmittance_depth, subsurf_scatter_transmittance_boost)
 
 // What the 3D world is seen through, as Godot's Camera3D: it looks down its entity's -z. The
 // world is seen through the current camera: the first with current set, else the first one,
@@ -625,6 +627,11 @@ struct DirectionalLight3D {
     float light_volumetric_fog_energy = 1.0F; // Forward+: how much it lights volumetric fog
     // Forward+: how far subsurface materials' transmittance moves points into its shadow map.
     float shadow_transmittance_bias = 0.05F;
+    // With project.json's rendering.lights_and_shadows.use_physical_light_units, as Godot's: its
+    // color temperature in Kelvin, which tints light_color, and its illuminance in lux, which
+    // light_energy multiplies.
+    float light_temperature = 6500.0F;
+    float light_intensity_lux = 100000.0F;
 
     friend bool operator==(const DirectionalLight3D&, const DirectionalLight3D&) = default;
 };
@@ -636,7 +643,7 @@ SLASH_COMPONENT(DirectionalLight3D, light_color, light_energy, light_specular, l
                 directional_shadow_fade_start, directional_shadow_max_distance,
                 directional_shadow_pancake_size, light_angular_distance, sky_mode,
                 light_indirect_energy, light_bake_mode, shadow_blur, light_volumetric_fog_energy,
-                shadow_transmittance_bias)
+                shadow_transmittance_bias, light_temperature, light_intensity_lux)
 
 // Light from a point in every direction, as Godot's OmniLight3D, such as a lamp.
 struct OmniLight3D {
@@ -667,6 +674,11 @@ struct OmniLight3D {
     float light_volumetric_fog_energy = 1.0F; // Forward+: how much it lights volumetric fog
     // Forward+: how far subsurface materials' transmittance moves points into its shadow map.
     float shadow_transmittance_bias = 0.05F;
+    // With project.json's rendering.lights_and_shadows.use_physical_light_units, as Godot's: its
+    // color temperature in Kelvin, which tints light_color, and its luminous power in lumens,
+    // which light_energy multiplies.
+    float light_temperature = 6500.0F;
+    float light_intensity_lumens = 1000.0F;
 
     friend bool operator==(const OmniLight3D&, const OmniLight3D&) = default;
 };
@@ -674,7 +686,8 @@ SLASH_COMPONENT(OmniLight3D, light_color, light_energy, light_specular, light_ne
                 light_cull_mask, omni_range, omni_attenuation, shadow_enabled, shadow_bias,
                 shadow_normal_bias, shadow_reverse_cull_face, shadow_opacity, shadow_caster_mask,
                 light_indirect_energy, light_size, light_bake_mode, shadow_blur,
-                light_volumetric_fog_energy, shadow_transmittance_bias)
+                light_volumetric_fog_energy, shadow_transmittance_bias, light_temperature,
+                light_intensity_lumens)
 
 // Light from a point in a cone down its entity's -z, as Godot's SpotLight3D, such as a torch.
 struct SpotLight3D {
@@ -707,6 +720,11 @@ struct SpotLight3D {
     float light_volumetric_fog_energy = 1.0F; // Forward+: how much it lights volumetric fog
     // Forward+: how far subsurface materials' transmittance moves points into its shadow map.
     float shadow_transmittance_bias = 0.05F;
+    // With project.json's rendering.lights_and_shadows.use_physical_light_units, as Godot's: its
+    // color temperature in Kelvin, which tints light_color, and its luminous power in lumens,
+    // which light_energy multiplies.
+    float light_temperature = 6500.0F;
+    float light_intensity_lumens = 1000.0F;
 
     friend bool operator==(const SpotLight3D&, const SpotLight3D&) = default;
 };
@@ -715,7 +733,7 @@ SLASH_COMPONENT(SpotLight3D, light_color, light_energy, light_specular, light_ne
                 shadow_enabled, shadow_bias, shadow_normal_bias, shadow_reverse_cull_face,
                 shadow_opacity, shadow_caster_mask, light_indirect_energy, light_size,
                 light_bake_mode, shadow_blur, light_volumetric_fog_energy,
-                shadow_transmittance_bias)
+                shadow_transmittance_bias, light_temperature, light_intensity_lumens)
 
 // Godot's ProceduralSkyMaterial, on a WorldEnvironment's entity: a sky from its top through the
 // horizon to the ground's bottom, with each DirectionalLight3D's sun on it. Colors are sRGB;
@@ -982,6 +1000,8 @@ struct WorldEnvironment {
     std::string background_mode = "clear_color"; // "clear_color", "color" or "sky"
     Vec4 background_color{0.0F, 0.0F, 0.0F, 1.0F};
     float background_energy_multiplier = 1.0F;
+    // Nits, which background_energy_multiplier multiplies with physical light units, as Godot's.
+    float background_intensity = 30000.0F;
     float sky_custom_fov = 0.0F; // degrees the sky is seen across; 0 for the camera's
     Vec3 sky_rotation;           // radians about x, y and z, turned as Transform3D's rotation
     // Texels across each face of the cube the sky's light is drawn into, as Sky.radiance_size:
@@ -1084,28 +1104,26 @@ struct WorldEnvironment {
 
     friend bool operator==(const WorldEnvironment&, const WorldEnvironment&) = default;
 };
-SLASH_COMPONENT(WorldEnvironment, background_mode, background_color, background_energy_multiplier,
-                sky_custom_fov, sky_rotation, sky_radiance_size, ambient_light_source,
-                ambient_light_color, ambient_light_sky_contribution, ambient_light_energy,
-                reflected_light_source, tonemap_mode, tonemap_exposure, tonemap_white,
-                tonemap_agx_white, tonemap_agx_contrast, ssr_enabled, ssr_max_steps, ssr_fade_in,
-                ssr_fade_out, ssr_depth_tolerance, ssao_enabled, ssao_radius, ssao_intensity,
-                ssao_power, ssao_detail, ssao_horizon, ssao_sharpness, ssao_light_affect,
-                ssao_ao_channel_affect, glow_enabled, glow_levels, glow_normalized, glow_intensity,
-                glow_strength, glow_mix, glow_blend_mode, glow_bloom, glow_hdr_threshold,
-                glow_hdr_scale, glow_hdr_luminance_cap, fog_enabled, fog_mode, fog_light_color,
-                fog_light_energy, fog_sun_scatter, fog_density, fog_aerial_perspective,
-                fog_sky_affect, fog_height, fog_height_density, fog_depth_curve, fog_depth_begin,
-                fog_depth_end, volumetric_fog_enabled, volumetric_fog_density,
-                volumetric_fog_albedo, volumetric_fog_emission, volumetric_fog_emission_energy,
-                volumetric_fog_anisotropy, volumetric_fog_length, volumetric_fog_detail_spread,
-                volumetric_fog_ambient_inject, volumetric_fog_gi_inject, volumetric_fog_sky_affect,
-                volumetric_fog_temporal_reprojection_enabled,
-                volumetric_fog_temporal_reprojection_amount, sdfgi_enabled, sdfgi_use_occlusion,
-                sdfgi_read_sky_light, sdfgi_bounce_feedback, sdfgi_cascades, sdfgi_min_cell_size,
-                sdfgi_y_scale, sdfgi_energy, sdfgi_normal_bias, sdfgi_probe_bias,
-                adjustment_enabled, adjustment_brightness, adjustment_contrast,
-                adjustment_saturation, adjustment_color_correction)
+SLASH_COMPONENT(
+    WorldEnvironment, background_mode, background_color, background_energy_multiplier,
+    background_intensity, sky_custom_fov, sky_rotation, sky_radiance_size, ambient_light_source,
+    ambient_light_color, ambient_light_sky_contribution, ambient_light_energy,
+    reflected_light_source, tonemap_mode, tonemap_exposure, tonemap_white, tonemap_agx_white,
+    tonemap_agx_contrast, ssr_enabled, ssr_max_steps, ssr_fade_in, ssr_fade_out,
+    ssr_depth_tolerance, ssao_enabled, ssao_radius, ssao_intensity, ssao_power, ssao_detail,
+    ssao_horizon, ssao_sharpness, ssao_light_affect, ssao_ao_channel_affect, glow_enabled,
+    glow_levels, glow_normalized, glow_intensity, glow_strength, glow_mix, glow_blend_mode,
+    glow_bloom, glow_hdr_threshold, glow_hdr_scale, glow_hdr_luminance_cap, fog_enabled, fog_mode,
+    fog_light_color, fog_light_energy, fog_sun_scatter, fog_density, fog_aerial_perspective,
+    fog_sky_affect, fog_height, fog_height_density, fog_depth_curve, fog_depth_begin, fog_depth_end,
+    volumetric_fog_enabled, volumetric_fog_density, volumetric_fog_albedo, volumetric_fog_emission,
+    volumetric_fog_emission_energy, volumetric_fog_anisotropy, volumetric_fog_length,
+    volumetric_fog_detail_spread, volumetric_fog_ambient_inject, volumetric_fog_gi_inject,
+    volumetric_fog_sky_affect, volumetric_fog_temporal_reprojection_enabled,
+    volumetric_fog_temporal_reprojection_amount, sdfgi_enabled, sdfgi_use_occlusion,
+    sdfgi_read_sky_light, sdfgi_bounce_feedback, sdfgi_cascades, sdfgi_min_cell_size, sdfgi_y_scale,
+    sdfgi_energy, sdfgi_normal_bias, sdfgi_probe_bias, adjustment_enabled, adjustment_brightness,
+    adjustment_contrast, adjustment_saturation, adjustment_color_correction)
 
 // How the 3D world is exposed and focused, as Godot's CameraAttributesPractical: on a Camera3D's
 // entity for that camera, or on the WorldEnvironment's entity for cameras without their own.
@@ -1656,11 +1674,12 @@ struct PointLight2D {
     std::string shadow_filter = "none"; // "none", "pcf5" or "pcf13"
     float shadow_filter_smooth = 0.0F;
     int shadow_item_cull_mask = 1;
+    float temperature = 0.0F; // Kelvin that tints color, as a 3D light's; 0 keeps color as it is
 };
 SLASH_COMPONENT(PointLight2D, enabled, texture, texture_scale, offset, color, energy, blend_mode,
                 height, range_z_min, range_z_max, range_layer_min, range_layer_max,
                 range_item_cull_mask, shadow_enabled, shadow_color, shadow_filter,
-                shadow_filter_smooth, shadow_item_cull_mask)
+                shadow_filter_smooth, shadow_item_cull_mask, temperature)
 
 // Light from one direction over everything, as Godot's DirectionalLight2D, such as the sun or the
 // moon. It shines down the screen, turned by the entity's Transform2D rotation if it has one.
@@ -1682,11 +1701,12 @@ struct DirectionalLight2D {
     std::string shadow_filter = "none"; // "none", "pcf5" or "pcf13"
     float shadow_filter_smooth = 0.0F;
     int shadow_item_cull_mask = 1;
+    float temperature = 0.0F; // Kelvin that tints color, as a 3D light's; 0 keeps color as it is
 };
 SLASH_COMPONENT(DirectionalLight2D, enabled, color, energy, blend_mode, height, max_distance,
                 range_z_min, range_z_max, range_layer_min, range_layer_max, range_item_cull_mask,
                 shadow_enabled, shadow_color, shadow_filter, shadow_filter_smooth,
-                shadow_item_cull_mask)
+                shadow_item_cull_mask, temperature)
 
 // A polygon that casts shadows from 2D lights, as Godot's LightOccluder2D with its
 // OccluderPolygon2D, placed by the entity's Transform2D if it has one.

@@ -76,7 +76,7 @@ as `entity.get`, reject it as an unknown param.
 | Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent), [`navigation.bake`](#navigationbake) |
 | NPCs | [`npc.plan`](#npcplan), [`npc.draft`](#npcdraft) |
 | Particles | [`particles.eval`](#particleseval), [`particles.bake_sdf`](#particlesbake_sdf) |
-| Lights | [`light.sample`](#lightsample), [`lighting.check`](#lightingcheck) |
+| Lights | [`light.sample`](#lightsample), [`light.tune`](#lighttune), [`lighting.check`](#lightingcheck) |
 | Global illumination | [`lightmap.bake`](#lightmapbake), [`voxel_gi.bake`](#voxel_gibake) |
 | Occlusion culling | [`occluder.bake`](#occluderbake) |
 | UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.drag`](#uidrag), [`ui.tooltip`](#uitooltip), [`ui.focus`](#uifocus), [`ui.accessibility`](#uiaccessibility), [`ui.accessibility_action`](#uiaccessibility_action), [`ui.search`](#uisearch), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
@@ -2405,15 +2405,60 @@ torch and one behind the crate from it:
 - A light that can't shine, such as one whose texture doesn't load, is left out and listed in
   `warnings` with its entity's ID and why.
 
+### light.tune
+
+Scales lights' energy until the frame reaches a brightness, for an agent that can't judge a
+picture by eye: the 3D world through its current `Camera3D`, or a 2D world's lights. Each step
+draws the frame on the CPU, as [`lighting.check`](#lightingcheck) does, measures its mean
+brightness and clipped share, and scales every light by one factor toward `mean`, held back
+while more than `clipped` of the frame clips; it learns from each step how brightness follows
+energy (about as its 2.2nd root in 3D, which shades in linear light, and nearly in step in 2D)
+and halves the gap once it has seen one factor too dark and one too bright. A light named in
+`shares` is also scaled toward that share of the frame's brightness, measured by drawing the
+frame without it. Energies keep three decimals. It stops when the mean is within 0.02 of
+`mean`, the clipped share is at most `clipped` and each share is within 0.02 (`converged`), or
+after `iterations` steps; then it keeps the closest frame that clipped least. One undo step puts
+every energy back.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `mean` | number | `0.4` | The frame's mean brightness to reach, 0.02 to 0.98 |
+| `clipped` | number | `0.02` | The largest share of the frame that may clip |
+| `shares` | object | | The share of the frame's brightness, 0 to 1, each named light should give, by entity ID |
+| `ids` | array | every light that shines | The lights to scale, by entity ID (at most 32) |
+| `scale` | number | `0.25` | Image pixels per window pixel, from 0.05 to 1 |
+| `iterations` | integer | `6` | The most steps, 1 to 16 |
+
+Needs: `edit`. Takes `dry_run`. It returns each light it changed with its energy `from` and
+`to`, the exposure `before` and `after` (with the `shares` measured), the steps taken and
+whether it `converged`. [examples/light-tools](../../examples/light-tools/) brings a street at
+dusk to a mean of 0.35:
+
+```json
+{"mean": 0.35, "scale": 1}
+```
+
+```json
+{"after":{"clipped":0.0183,"mean":0.3603},"before":{"clipped":0.0,"mean":0.1498},"changes":[{"field":"light_intensity_lux","from":400.0,"id":"dusk","to":4189.112,"type":"DirectionalLight3D"},{"field":"light_intensity_lumens","from":3000.0,"id":"lamp_east","to":31418.342,"type":"OmniLight3D"},{"field":"light_intensity_lumens","from":6000.0,"id":"lamp_west","to":62836.684,"type":"OmniLight3D"}],"converged":true,"iterations":2}
+```
+
+With physical light units on, it scales a 3D light's `light_intensity_lux` or
+`light_intensity_lumens` and leaves its `light_energy`; each change names the `field`. Targets
+that can't all be met, such as a mean that only comes with clipping, end with `converged` false
+and the closest frame kept.
+
+An unknown light in `ids`, or in `shares` (at `/shares/<id>`), fails with a "did you mean", and
+a world with no light that shines and has an ID fails.
+
 ### lighting.check
 
-Looks at the 3D world's lighting through its current `Camera3D`, for an agent that can't judge a
-picture by eye. It draws the frame on the CPU, as [`frame.capture`](#framecapture) does, so the
+Looks at the world's lighting, for an agent that can't judge a picture by eye: the 3D world
+through its current `Camera3D`, or a 2D world's `PointLight2D`s and `DirectionalLight2D`s. It draws the frame on the CPU, as [`frame.capture`](#framecapture) does, so the
 numbers are the same on every machine, and returns its `exposure`: the `mean`, 5th (`p5`) and
 95th (`p95`) percentile of its pixels' brightness from 0 to 1 (Rec. 709's weights over the drawn
 colors), and the shares of pixels `clipped` (a channel at full brightness) and `crushed`
-(brightness below 0.02). With `lights`, it draws the frame again without each 3D light that
-shines (its `light_energy` at 0 for the drawing, then put back) and says what share of the frame
+(brightness below 0.02). With `lights`, it draws the frame again without each light that
+shines (its `light_energy`, or a 2D light's `energy`, at 0 for the drawing, then put back) and says what share of the frame
 it lights (`lit`: brightness changed by two 8-bit steps or more), what share of the frame's
 brightness it adds (`share`), and what would not be clipped without it (`clips`). Lights baked
 whole into lightmaps (`light_bake_mode` `"static"`) say `baked`, as taking them away changes
@@ -2434,7 +2479,7 @@ only moving meshes. The check changes nothing.
 | --- | --- | --- | --- |
 | `scale` | number | `0.25` | Image pixels per window pixel, from 0.05 to 1 |
 | `lights` | boolean | `true` | Measure each light, drawing the frame once more per light |
-| `ids` | array | every 3D light that shines | The lights to measure, by entity ID (at most 32, in ID order) |
+| `ids` | array | every light that shines | The lights to measure, 3D or 2D, by entity ID (at most 32, in ID order) |
 
 Needs: `read`. A courtyard with a flood light at an energy of 40 and a lamp out of view:
 
@@ -2446,7 +2491,7 @@ Needs: `read`. A courtyard with a flood light at an energy of 40 and a lamp out 
 {"exposure":{"clipped":0.0617,"crushed":0.0,"mean":0.6461,"p5":0.5793,"p95":0.946},"lights":[{"clips":0.0617,"id":"flood","lit":0.0701,"share":0.042,"type":"SpotLight3D"},{"id":"porch_lamp","lit":0.0,"share":0.0,"type":"OmniLight3D"},{"clips":0.0055,"id":"sun","lit":0.6338,"share":0.3965,"type":"DirectionalLight3D"}],"problems":[{"kind":"overexposed","message":"6.2% of the frame is clipped to full brightness"},{"id":"flood","kind":"clips","message":"\"flood\" pushes 6.2% of the frame to full brightness"},{"id":"porch_lamp","kind":"unlit","message":"\"porch_lamp\" lights nothing in view: out of range, shadowed, culled or facing away"}],"size":[160,90]}
 ```
 
-A frame with no 3D meshes fails, and an unknown light in `ids` fails at its path with a "did you
+A frame with no 3D meshes and no 2D light fails, and an unknown light in `ids` fails at its path with a "did you
 mean". [examples/lighting-check](../../examples/lighting-check/) fixes a courtyard's lights.
 
 ## Global illumination
