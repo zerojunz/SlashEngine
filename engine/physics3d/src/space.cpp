@@ -3,6 +3,7 @@
 #include "slash/core/log.hpp"
 #include "slash/core/profile.hpp"
 #include "slash/scene3d/csg.hpp"
+#include "slash/world/physics_cache.hpp"
 
 #include <Jolt/Core/Factory.h>
 #include <Jolt/Core/JobSystemSingleThreaded.h>
@@ -575,6 +576,7 @@ void ContactListener::OnContactAdded(const JPH::Body& a, const JPH::Body& b,
                                      const JPH::ContactManifold& manifold,
                                      JPH::ContactSettings& settings) {
     contact(a, b, settings);
+    space_->note_debug_contact(a, b, manifold);
     if (space_->note_impact(a, b, manifold)) {
         // What breaks it goes on into its pieces, which take its place after the step.
         settings.mIsSensor = true;
@@ -637,9 +639,10 @@ bool Space::note_impact(const JPH::Body& a, const JPH::Body& b,
 }
 
 void ContactListener::OnContactPersisted(const JPH::Body& a, const JPH::Body& b,
-                                         const JPH::ContactManifold& /*manifold*/,
+                                         const JPH::ContactManifold& manifold,
                                          JPH::ContactSettings& settings) {
     contact(a, b, settings);
+    space_->note_debug_contact(a, b, manifold);
 }
 
 void ContactListener::contact(const JPH::Body& a, const JPH::Body& b,
@@ -737,10 +740,12 @@ Space::~Space() {
     }
     joints_.clear();
     bone_joints_.clear();
-    for (auto& [entity, soft] : soft_bodies_) {
-        destroy(*soft);
+    for (auto* bodies : {&soft_bodies_, &cloths_}) {
+        for (auto& [entity, soft] : *bodies) {
+            destroy(*soft);
+        }
+        bodies->clear();
     }
-    soft_bodies_.clear();
     bodies_.clear();
     system_.reset();
 }
@@ -758,10 +763,12 @@ void Space::reset() {
     exceptions_.clear();
     wheels_.clear();
     vehicles_.clear();
-    for (auto& [entity, soft] : soft_bodies_) {
-        destroy(*soft);
+    for (auto* bodies : {&soft_bodies_, &cloths_}) {
+        for (auto& [entity, soft] : *bodies) {
+            destroy(*soft);
+        }
+        bodies->clear();
     }
-    soft_bodies_.clear();
     bodies_.clear();
     system_.reset();
     jobs_.reset();
@@ -779,9 +786,11 @@ void Space::set_settings(const Settings& settings) {
     if (gravity_changed && system_ != nullptr) {
         system_->SetGravity(to_jolt(settings_.gravity_vector * settings_.gravity));
         JPH::BodyInterface& interface = system_->GetBodyInterfaceNoLock();
-        for (auto& [entity, soft] : soft_bodies_) {
-            if (!soft->id.IsInvalid()) {
-                interface.ActivateBody(soft->id);
+        for (const auto* bodies : {&soft_bodies_, &cloths_}) {
+            for (const auto& [entity, soft] : *bodies) {
+                if (!soft->id.IsInvalid()) {
+                    interface.ActivateBody(soft->id);
+                }
             }
         }
         for (auto& [entity, body] : bodies_) {
@@ -1337,7 +1346,7 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
     if (system_ == nullptr) {
         if (csg.empty() && grids.empty() && terrains.empty() && models.empty() &&
             !has_any<RigidBody3D, CharacterBody3D, AnimatableBody3D, StaticBody3D, Area3D,
-                     PhysicalBone3D, world::SoftBody3D>(registry)) {
+                     PhysicalBone3D, world::SoftBody3D, world::Cloth3D>(registry)) {
             return;
         }
         create_system();
@@ -1436,6 +1445,7 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
         sync_body(world, tree, body.entity, Kind::Static, &shape);
     }
     sync_soft_bodies(world, tree);
+    sync_cloths(world, tree);
     sync_joints(world, tree);
     if (added_ >= kOptimizeAfter) {
         system_->OptimizeBroadPhase();
@@ -1751,11 +1761,15 @@ void Space::step(world::World& world, float seconds) {
         impulses_.clear();
         return;
     }
+    world::PhysicsDebug* debug = world::physics_debug(world);
+    debug_ = debug != nullptr ? &debug->add(world.tick(), 3) : nullptr;
+    debug_contacts_.clear();
     pre_step_vehicles(world, tree, seconds);
     pre_step(world, seconds);
     apply_fields(world, tree, seconds);
     apply_drives(world, seconds);
     pre_step_soft_bodies(world, tree, seconds);
+    pre_step_cloths(world, tree, seconds);
     {
         SLASH_PROFILE_ZONE("Jolt step");
         const JPH::EPhysicsUpdateError errors =
@@ -1768,11 +1782,22 @@ void Space::step(world::World& world, float seconds) {
         }
     }
     read_soft_bodies();
+    read_cloths(tree);
     step_vehicles(world, tree, seconds);
     read_back(world, tree);
     move_characters(world, tree, seconds);
     find_overlaps(world);
     emit_events(world);
+    finish_debug(world, seconds);
+    if (world::PhysicsCache* cache = world::physics_cache(world); cache != nullptr) {
+        for (const auto& [entity, body] : bodies_) {
+            const auto* transform = world.ecs().try_get<const Transform3D>(entity);
+            if (body->kind == Kind::Rigid && transform != nullptr && cache->records(entity)) {
+                cache->add(body->name, 3, world.tick(), seconds, transform->position,
+                           transform->rotation);
+            }
+        }
+    }
     // What kill fields reached goes, as Chaos's kill fields remove particles.
     for (const entt::entity entity : std::exchange(doomed_, {})) {
         if (world.valid(entity)) {
@@ -1841,8 +1866,10 @@ world::MemoryPart Space::memory() const {
         shapes += body->parts.size();
     }
     std::uint64_t points = 0;
-    for (const auto& [entity, soft] : soft_bodies_) {
-        points += soft->mesh_to_physics.size();
+    for (const auto* bodies : {&soft_bodies_, &cloths_}) {
+        for (const auto& [entity, soft] : *bodies) {
+            points += soft->mesh_to_physics.size();
+        }
     }
     part.counts = {{"active", 0},
                    {"bodies", bodies_.size()},
@@ -1857,7 +1884,7 @@ world::MemoryPart Space::memory() const {
     part.bytes += bodies_.size() * (sizeof(Body) + sizeof(EntityMap<std::unique_ptr<Body>>::Entry));
     part.bytes += (joints_.size() * sizeof(EntityMap<Joint>::Entry)) +
                   (wheels_.size() * sizeof(EntityMap<Wheel>::Entry));
-    part.bytes += (soft_bodies_.size() *
+    part.bytes += ((soft_bodies_.size() + cloths_.size()) *
                    (sizeof(SoftBody) + sizeof(EntityMap<std::unique_ptr<SoftBody>>::Entry))) +
                   (points * (sizeof(int) + sizeof(Vec3)));
     return part;

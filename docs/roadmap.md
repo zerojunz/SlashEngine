@@ -1162,7 +1162,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
        work that drifts past a reference's tolerances, and a journal of fingerprints shows
        slow drift that no single change shows (`examples/style-memory`). Each world tool
        after this one marks and checks its output with them
-9. [ ] One simulation, as Unreal's Chaos Physics: everything every tool builds (foliage,
+9. [x] One simulation, as Unreal's Chaos Physics: everything every tool builds (foliage,
        hair and fur, cloth, characters' ragdolls, creatures, vehicles, destruction pieces,
        particles) simulates in physics3d's one space and step on Jolt, with one set of layers,
        queries and events. Shared `.physics_material.json` materials (friction, bounce,
@@ -1186,7 +1186,11 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
        `substeps` (`examples/physics-fields`); individual ragdolls in 3D and 2D, with
        `.ragdoll.json` profiles, muscles that drive bodies toward the animation, balance, hit
        reactions, knockdowns and getting back up, `ragdoll.generate`, `ragdoll.hit` and
-       `ragdoll.tune` (`examples/ragdoll-profiles`). Next: cloth, caches and `physics.debug`
+       `ragdoll.tune` (`examples/ragdoll-profiles`); `physics.debug`'s per-step record of
+       contacts, joints, fields and sleeping bodies, and `physics.cache` recordings played back
+       as animations, in 3D and 2D (`examples/physics-debugger`); character cloth as Chaos
+       Cloth, `Cloth3D` on a model's skin with max distance maps, backstops and long range
+       attachments on Jolt and `Cloth2D` sheets on cut-outs (`examples/character-cloth`)
 10. [ ] Foliage: painted and scattered plants and ground cover as Unreal's Foliage tool, with
        `foliage.paint` and `foliage.erase` brushes over terrains and meshes and instances kept
        per cell: distinct kinds of grass, flowers, shrubs, bushes, trees, moss, rocks and

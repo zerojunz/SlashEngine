@@ -1,0 +1,21 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":10,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"tick":60,"ticks":60}}
+{"id":3,"jsonrpc":"2.0","result":{"entities":10,"name":"default"}}
+{"id":4,"jsonrpc":"2.0","result":{"recording":120}}
+{"id":5,"jsonrpc":"2.0","result":{"recording":["bottom","middle","top"]}}
+{"id":6,"jsonrpc":"2.0","result":{"changed":{"PhysicsField3D":{"enabled":true}},"id":"blast"}}
+{"id":7,"jsonrpc":"2.0","result":{"tick":62,"ticks":2}}
+{"id":8,"jsonrpc":"2.0","result":{"changed":{"PhysicsField3D":{"enabled":false}},"id":"blast"}}
+{"id":9,"jsonrpc":"2.0","result":{"recording":120,"steps":[{"awake":3,"contacts":[{"a":"middle","b":"top","depth":0.0,"normal":[0.0,1.0,0.0],"point":[0.038,2.51,0.0],"speed":0.0}],"dimensions":3,"fields":[{"body":"top","force":[115.86,57.901,0.016]}],"sleeping":1,"tick":61}]}}
+{"id":10,"jsonrpc":"2.0","result":{"tick":92,"ticks":30}}
+{"id":11,"jsonrpc":"2.0","result":{"recording":120,"steps":[{"awake":3,"contacts":[{"a":"bottom","b":"middle","depth":0.0,"normal":[0.859,0.512,0.0],"point":[1.125,1.418,0.0],"speed":0.0}],"dimensions":3,"sleeping":1,"tick":91}]}}
+{"id":12,"jsonrpc":"2.0","result":{"recording":120,"steps":[{"awake":3,"dimensions":3,"joints":[{"a":"lamp","force":19.6,"id":"chain","kind":"PinJoint3D","stretch":0.0}],"sleeping":1,"tick":91}]}}
+{"id":13,"jsonrpc":"2.0","result":{"recording":120,"steps":[{"awake":0,"contacts":[{"a":"ground","b":"puck","depth":0.007,"impulse":32.665,"normal":[0.0,-1.0],"point":[0.0,180.003],"speed":0.0}],"dimensions":2,"sleeping":1,"tick":91}]}}
+{"id":14,"jsonrpc":"2.0","result":{"tick":180,"ticks":88}}
+{"id":15,"jsonrpc":"2.0","result":{"components":{"Transform3D":{"children":[],"position":[4.1602015,0.9912062,0.020858413],"rotation":[0.000032538548,-0.009939211,-1.5882009],"scale":[1.0,1.0,1.0],"top_level":false,"visible":true}},"id":"top"}}
+{"id":16,"jsonrpc":"2.0","result":{"animation":"collapse","bodies":["bottom","middle","top"],"keys":176,"length":2.0,"out":"anims/collapse.anim.json"}}
+{"id":17,"jsonrpc":"2.0","result":{"entities":10,"restored":"default"}}
+{"id":18,"jsonrpc":"2.0","result":{"added":["AnimationPlayer"],"changed":{"AnimationPlayer":{"animation":"collapse","library":"anims/collapse.anim.json","targets":{"bottom":"bottom","middle":"middle","top":"top"}}},"id":"director"}}
+{"id":19,"jsonrpc":"2.0","result":{"tick":300,"ticks":120}}
+{"id":20,"jsonrpc":"2.0","result":{"components":{"Transform3D":{"children":[],"position":[4.1602,0.9912,0.0209],"rotation":[0.0,-0.0099,-1.5882],"scale":[1.0,1.0,1.0],"top_level":false,"visible":true}},"id":"top"}}
+{"error":{"code":-32001,"data":{"path":"/id"},"message":"/id: no entity has the id \"tp\"; did you mean \"top\"?"},"id":21,"jsonrpc":"2.0"}

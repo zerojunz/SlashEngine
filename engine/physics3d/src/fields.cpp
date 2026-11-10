@@ -96,6 +96,14 @@ void Space::apply_fields(const world::World& world, const world::Tree3D& tree, f
             fields.empty() ? world::FieldEffect{}
                            : fields.at(from_jolt_place(jolt->GetCenterOfMassPosition()),
                                        body->layer, seed_of(body->name), time);
+        if (debug_ != nullptr && !effect.empty()) {
+            debug_->fields.push_back({.body = body->name,
+                                      .force = effect.force,
+                                      .velocity = effect.velocity,
+                                      .strain = effect.strain,
+                                      .anchored = effect.anchored,
+                                      .killed = effect.killed});
+        }
         // Strain at or past a breakable body's threshold breaks it after the step, as an impact
         // that strong would.
         if (effect.strain > 0.0F && threshold != breakable_.end() &&
@@ -151,41 +159,43 @@ void Space::apply_fields(const world::World& world, const world::Tree3D& tree, f
     if (fields.empty()) {
         return;
     }
-    for (auto& [entity, soft] : soft_bodies_) {
-        if (soft->id.IsInvalid()) {
-            continue;
-        }
-        JPH::Body* jolt = locks.TryGetBody(soft->id);
-        if (jolt == nullptr || !jolt->IsSoftBody()) {
-            continue;
-        }
-        auto& motion = static_cast<JPH::SoftBodyMotionProperties&>( // NOLINT
-            *jolt->GetMotionProperties());
-        JPH::Array<JPH::SoftBodyVertex>& points = motion.GetVertices();
-        if (points.empty()) {
-            continue;
-        }
-        const JPH::RVec3 center = jolt->GetCenterOfMassPosition();
-        const std::uint32_t seed = seed_of(soft->name);
-        const float share = 1.0F / static_cast<float>(points.size());
-        bool moved = false;
-        for (JPH::SoftBodyVertex& point : points) {
-            if (point.mInvMass <= 0.0F) {
+    for (auto* bodies : {&soft_bodies_, &cloths_}) {
+        for (auto& [entity, soft] : *bodies) {
+            if (soft->id.IsInvalid()) {
                 continue;
             }
-            const world::FieldEffect effect =
-                fields.at(from_jolt_place(center + point.mPosition), soft->layer, seed, time);
-            if (effect.velocity) {
-                point.mVelocity = to_jolt(*effect.velocity);
-                moved = true;
-            } else if (effect.force != Vec3{}) {
-                // The body's force spread over its points: each takes its share.
-                point.mVelocity += to_jolt(effect.force) * (point.mInvMass * seconds * share);
-                moved = true;
+            JPH::Body* jolt = locks.TryGetBody(soft->id);
+            if (jolt == nullptr || !jolt->IsSoftBody()) {
+                continue;
             }
-        }
-        if (moved) {
-            interface.ActivateBody(soft->id);
+            auto& motion = static_cast<JPH::SoftBodyMotionProperties&>( // NOLINT
+                *jolt->GetMotionProperties());
+            JPH::Array<JPH::SoftBodyVertex>& points = motion.GetVertices();
+            if (points.empty()) {
+                continue;
+            }
+            const JPH::RVec3 center = jolt->GetCenterOfMassPosition();
+            const std::uint32_t seed = seed_of(soft->name);
+            const float share = 1.0F / static_cast<float>(points.size());
+            bool moved = false;
+            for (JPH::SoftBodyVertex& point : points) {
+                if (point.mInvMass <= 0.0F) {
+                    continue;
+                }
+                const world::FieldEffect effect =
+                    fields.at(from_jolt_place(center + point.mPosition), soft->layer, seed, time);
+                if (effect.velocity) {
+                    point.mVelocity = to_jolt(*effect.velocity);
+                    moved = true;
+                } else if (effect.force != Vec3{}) {
+                    // The body's force spread over its points: each takes its share.
+                    point.mVelocity += to_jolt(effect.force) * (point.mInvMass * seconds * share);
+                    moved = true;
+                }
+            }
+            if (moved) {
+                interface.ActivateBody(soft->id);
+            }
         }
     }
 }

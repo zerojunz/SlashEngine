@@ -884,6 +884,126 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("pinned_points[].offset",
                   {.doc = "Where the point is in the attachment's space, as [x, y, z]."});
 
+    registry.add<Cloth3D>()
+        .set_doc("Simulates the surfaces of its entity's model drawn with the section material "
+                 "as cloth on the model's skin, as Unreal's Chaos Cloth: each point may move up "
+                 "to its share of max_distance from where the skin puts it, the share given by "
+                 "max_distance_map, and is kept out of a backstop sphere behind the skin.")
+        .describe("section", {.doc = "The name of the model's material whose surfaces are the "
+                                     "cloth; \"\" makes every surface cloth."})
+        .describe("max_distance",
+                  {.doc = "How far a point may move from where the skin puts it, in meters, at "
+                          "a share of 1; points with no share are skinned exactly.",
+                   .min = 0})
+        .describe("max_distance_map",
+                  {.doc = "Each point's share of max_distance: \"uniform\" all of it, "
+                          "\"gradient\" 0 to 1 along gradient across the section, "
+                          "\"vertex_color\" a channel of its vertex's color.",
+                   .choices = {"uniform", "gradient", "vertex_color"}})
+        .describe("gradient", {.doc = "The way, in the model's space at rest, along which the "
+                                      "share grows from 0 to 1, as [x, y, z]: down by default, "
+                                      "so a cape hangs from its top."})
+        .describe("vertex_color_channel",
+                  {.doc = "The color channel vertex_color reads.", .choices = {"r", "g", "b", "a"}})
+        .describe("backstop_distance",
+                  {.doc = "How far behind the skinned point, against its normal, the backstop "
+                          "sphere starts, in meters; negative values start it in front."})
+        .describe("backstop_radius",
+                  {.doc = "The backstop sphere's radius in meters, which points are pushed out "
+                          "of, so cloth stays outside the body it covers; 0 for none.",
+                   .min = 0})
+        .describe("stiffness",
+                  {.doc = "How hard its edges keep their length: 0 stretches, 1 hardly.",
+                   .min = 0,
+                   .max = 1})
+        .describe("bend_stiffness", {.doc = "How hard it keeps the folds it was made with: 0 "
+                                            "drapes freely, 1 hardly bends.",
+                                     .min = 0,
+                                     .max = 1})
+        .describe("long_range_attachment",
+                  {.doc = "Tethers each free point to the skinned points nearest across the "
+                          "cloth, so it can't stretch past its length at rest."})
+        .describe("total_mass", {.doc = "In kilograms, shared by the free points.", .min = 0.01})
+        .describe("gravity_scale", {.doc = "How much gravity pulls it."})
+        .describe("damping_coefficient", {.doc = "Slows its points, per second.", .min = 0})
+        .describe("drag_coefficient",
+                  {.doc = "How hard WindSource3Ds' wind pushes its faces: 0 not at all, 1 as "
+                          "air drags a flat sheet square to it.",
+                   .min = 0,
+                   .max = 1})
+        .describe("simulation_precision",
+                  {.doc = "Iterations per step: more keeps it stiffer and steadier.",
+                   .min = 1,
+                   .max = 100})
+        .describe("collision_layer", layer)
+        .describe("collision_mask", mask);
+
+    registry.add<Cloth2D>()
+        .set_doc("A cut-out character's cloth, as Chaos Cloth on a 2D sheet: a grid of points "
+                 "hanging down its entity's y from offset, drawn with texture over it. Its "
+                 "entity's global transform carries the points, each free to move up to its "
+                 "share of max_distance from where the transform puts it; points with no share "
+                 "are held exactly. It is pushed out of the 2D bodies its mask meets and feels "
+                 "gravity, PhysicsField2Ds and WindSource2Ds' wind.")
+        .describe("texture", {.doc = "Project path of an image stretched over the sheet; \"\" "
+                                     "draws it in color."})
+        .describe("color", {.doc = "Multiplies the texture, as [r, g, b, a]."})
+        .describe("size", {.doc = "The sheet's width and height at rest, in pixels."})
+        .describe("offset", {.doc = "Where the middle of its top edge is, in its entity's "
+                                    "space, as [x, y]."})
+        .describe("columns", {.doc = "Points across.", .min = 2, .max = 64})
+        .describe("rows", {.doc = "Points down.", .min = 2, .max = 64})
+        .describe("max_distance",
+                  {.doc = "How far a point may move from where the transform puts it, in "
+                          "pixels, at a share of 1.",
+                   .min = 0})
+        .describe("max_distance_map",
+                  {.doc = "Each point's share of max_distance: \"uniform\" all of it, "
+                          "\"gradient\" 0 to 1 along gradient across the sheet.",
+                   .choices = {"uniform", "gradient"}})
+        .describe("gradient", {.doc = "The way, in its own space, along which the share grows "
+                                      "from 0 to 1, as [x, y]: down by default, so the top row "
+                                      "is held."})
+        .describe("stiffness",
+                  {.doc = "How hard its edges keep their length: 0 stretches, 1 hardly.",
+                   .min = 0,
+                   .max = 1})
+        .describe("bend_stiffness",
+                  {.doc = "How hard it keeps from folding and shearing: 0 swings and folds "
+                          "freely, 1 hardly.",
+                   .min = 0,
+                   .max = 1})
+        .describe("long_range_attachment",
+                  {.doc = "Tethers each free point to the held point nearest, so it can't hang "
+                          "farther from it than at rest."})
+        .describe("total_mass", {.doc = "In kilograms, shared by the free points; fields' "
+                                        "forces move lighter cloth further.",
+                                 .min = 0.01})
+        .describe("gravity_scale", {.doc = "How much gravity pulls it."})
+        .describe("damping_coefficient", {.doc = "Slows its points, per second.", .min = 0})
+        .describe("drag_coefficient",
+                  {.doc = "How hard WindSource2Ds' wind carries its points: 0 not at all, 1 "
+                          "quickly up to the wind's speed.",
+                   .min = 0,
+                   .max = 1})
+        .describe("simulation_precision",
+                  {.doc = "Small steps per tick: more keeps it stiffer and steadier.",
+                   .min = 1,
+                   .max = 100})
+        .describe("collision_mask", {.doc = "The collision layers of the bodies it is pushed "
+                                            "out of; 0 passes through everything."})
+        .describe("point_radius",
+                  {.doc = "How far, in pixels, each point keeps from what it collides with; 0 "
+                          "collides with nothing.",
+                   .min = 0})
+        .describe("z_index", {.doc = "Drawn after lower values."})
+        .describe("z_as_relative", {.doc = "z_index adds to its parents'; off makes it the "
+                                           "whole of it."})
+        .describe("visible", {.doc = "Drawn when on; it simulates either way."})
+        .describe("light_mask", {.doc = "Lit by 2D lights whose item_cull_mask shares a bit."})
+        .describe("texture_filter", {.doc = "How the texture is sampled.",
+                                     .choices = {"inherit", "linear", "nearest"}});
+
     registry.add<Destructible3D>()
         .set_doc("Breaks its entity into pieces: the mesh its MeshInstance3D draws is cut into "
                  "Voronoi cells, and an impact at least damage_threshold hard, or physics.break, "

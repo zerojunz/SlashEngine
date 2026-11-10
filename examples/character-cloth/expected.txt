@@ -1,0 +1,26 @@
+scene.open {"path":"main.scene.json"}
+{"entities":3,"path":"main.scene.json"}
+step 30 ticks
+physics.soft_body {"at":[5,27],"id":"hero"}
+{"at":{"27":[0,0.5,-0.25],"5":[0,1.5,-0.25]},"bounds":[-0.3,0.5,-0.2501,0.6,1,0.0003],"points":30,"sleeping":true}
+physics.soft_body {"at":[1,29],"id":"kid"}
+{"at":{"1":[93.3333,40],"29":[93.3333,110]},"bounds":[80,40,40,70],"points":32,"sleeping":false}
+component.set {"components":{"Skeleton3D":{"bone_positions":{"Spine":[0,1.5,0.5]}}},"id":"hero"}
+{"added":["Skeleton3D"],"changed":{"Skeleton3D":{"bone_positions":{"Spine":[0.0,1.5,0.5]}}},"id":"hero"}
+component.set {"components":{"Transform2D":{"position":[140,40]}},"id":"kid"}
+{"changed":{"Transform2D":{"position":[140.0,40.0]}},"id":"kid"}
+step 1 ticks
+physics.soft_body {"at":[5,27],"id":"hero"}
+{"at":{"27":[-0.0013,0.5852,-0.1412],"5":[0,1.5,0.25]},"bounds":[-0.3008,0.5847,-0.1418,0.6054,0.9153,0.3918],"points":30,"sleeping":false}
+physics.soft_body {"at":[1,29],"id":"kid"}
+{"at":{"1":[133.3333,40],"29":[104.4395,101.9286]},"bounds":[91.1308,40,68.8692,61.9958],"points":32,"sleeping":false}
+step 240 ticks
+physics.soft_body {"at":[5,27],"id":"hero"}
+{"at":{"27":[0,0.5001,0.2376],"5":[0,1.5,0.25]},"bounds":[-0.3,0.5001,0.2376,0.6,0.9999,0.0124],"points":30,"sleeping":false}
+physics.soft_body {"at":[1,29],"id":"kid"}
+{"at":{"1":[133.3333,40],"29":[131.3655,109.9723]},"bounds":[118.0284,40,41.9716,69.9723],"points":32,"sleeping":false}
+component.set {"components":{"WindSource2D":{"enabled":true}},"id":"breeze"}
+{"changed":{"WindSource2D":{"enabled":true}},"id":"breeze"}
+step 120 ticks
+physics.soft_body {"at":[1,29],"id":"kid"}
+{"at":{"1":[133.3333,40],"29":[150.8514,107.676]},"bounds":[120,40,57.5654,67.7465],"points":32,"sleeping":false}

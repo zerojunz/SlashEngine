@@ -374,10 +374,10 @@ std::vector<AreaWind> Space::area_winds(const world::World& world,
 // The wind on each face pushes its three points: WindSource3Ds' wind as air drags a sheet,
 // by the body's drag_coefficient, and the wind of the Area3Ds whose shapes hold the face's
 // middle, as GodotSoftBody3D::apply_forces and _compute_area_windforce.
-bool Space::blow_soft_body(const SoftBody& soft, const SoftBody3D& component, JPH::Body& body,
+bool Space::blow_soft_body(const SoftBody& soft, float drag_coefficient, JPH::Body& body,
                            const world::WindField& field, double time,
                            const std::vector<AreaWind>& areas, float seconds) const {
-    const bool drag = component.drag_coefficient > 0.0F && !field.empty();
+    const bool drag = drag_coefficient > 0.0F && !field.empty();
     std::vector<const AreaWind*> felt;
     for (const AreaWind& wind : areas) {
         if ((wind.area->mask & soft.layer) != 0) {
@@ -411,8 +411,8 @@ bool Space::blow_soft_body(const SoftBody& soft, const SoftBody3D& component, JP
             const JPH::Vec3 air = to_jolt(field.at(from_jolt_place(middle), time));
             const JPH::Vec3 moving = (a.mVelocity + b.mVelocity + c.mVelocity) * (1.0F / 3.0F);
             const float across = normal.Dot(air - moving);
-            force += normal * (0.5F * kAirDensity * component.drag_coefficient * area * across *
-                               std::abs(across));
+            force +=
+                normal * (0.5F * kAirDensity * drag_coefficient * area * across * std::abs(across));
         }
         for (const AreaWind* wind : felt) {
             const JPH::Body* shape_body = locks.TryGetBody(wind->area->id);
@@ -494,7 +494,7 @@ void Space::pre_step_soft_bodies(const world::World& world, const world::Tree3D&
                 moved = true;
             }
         }
-        if (blow_soft_body(*soft, component, body, field, time, areas, seconds)) {
+        if (blow_soft_body(*soft, component.drag_coefficient, body, field, time, areas, seconds)) {
             moved = true;
         }
         if (moved) {
@@ -518,13 +518,18 @@ void Space::read_soft_bodies() {
 
 const SoftBody* Space::soft_body(entt::entity entity) const {
     const std::unique_ptr<SoftBody>* found = soft_bodies_.find(entity);
+    if (found == nullptr) {
+        found = cloths_.find(entity);
+    }
     return found != nullptr && !(*found)->id.IsInvalid() ? found->get() : nullptr;
 }
 
 const SoftBody* Space::soft_body(const JPH::BodyID& id) const {
-    for (const auto& [entity, soft] : soft_bodies_) {
-        if (soft->id == id) {
-            return soft.get();
+    for (const auto* bodies : {&soft_bodies_, &cloths_}) {
+        for (const auto& [entity, soft] : *bodies) {
+            if (soft->id == id) {
+                return soft.get();
+            }
         }
     }
     return nullptr;

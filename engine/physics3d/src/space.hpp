@@ -1,12 +1,14 @@
 #pragma once
 
 #include "slash/physics3d/physics3d.hpp"
+#include "slash/scene3d/cloth.hpp"
 #include "slash/scene3d/collision.hpp"
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/soft_body.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/physical_bones.hpp"
+#include "slash/world/physics_debug.hpp"
 #include "slash/world/physics_material.hpp"
 #include "slash/world/tree3d.hpp"
 #include "slash/world/wind.hpp"
@@ -453,6 +455,14 @@ struct SoftBody {
     entt::entity ignore = entt::null;
     // Where its mesh is now, after its last step or since it was made.
     std::shared_ptr<const scene3d::SoftBodyPose> pose;
+    // A Cloth3D's (cloth.cpp): the model section it was made from (mesh_key is its key, and
+    // mesh_to_physics maps the section's vertices), the component, the entity's scale then,
+    // and where the skin put its joints last, in the world.
+    std::shared_ptr<const scene3d::ClothSection> section;
+    std::optional<world::Cloth3D> cloth;
+    Vec3 scale;
+    std::vector<world::Affine3D> skin;
+    float drag = 0.0F;
 };
 
 // An Area3D's wind, as Godot's Area3D::_initialize_wind leaves it: wind_force_magnitude along
@@ -571,6 +581,9 @@ public:
 
     // Contact callbacks call these, on the stepping thread.
     void note_contact(Body& a, Body& b);
+    // While physics.debug records: keeps the deepest point of each pair's contact this step.
+    void note_debug_contact(const JPH::Body& a, const JPH::Body& b,
+                            const JPH::ContactManifold& manifold);
     // True when the impact breaks a Destructible3D.
     bool note_impact(const JPH::Body& a, const JPH::Body& b, const JPH::ContactManifold& manifold);
 
@@ -630,6 +643,8 @@ private:
     void move_characters(world::World& world, const world::Tree3D& tree, float seconds);
     void find_overlaps(const world::World& world);
     void emit_events(world::World& world);
+    // While physics.debug records (debug.cpp): the step's contacts, joints and bodies.
+    void finish_debug(const world::World& world, float seconds);
     // Makes the soft bodies match the SoftBody3D components (soft_body.cpp): made, made again or
     // removed, their settings, pins and transforms brought up to date.
     void sync_soft_bodies(world::World& world, const world::Tree3D& tree);
@@ -644,11 +659,21 @@ private:
     [[nodiscard]] std::vector<AreaWind> area_winds(const world::World& world,
                                                    const world::Tree3D& tree) const;
     // Pushes a soft body's points by the wind on its faces; true if it pushed any.
-    bool blow_soft_body(const SoftBody& soft, const world::SoftBody3D& component, JPH::Body& body,
+    bool blow_soft_body(const SoftBody& soft, float drag_coefficient, JPH::Body& body,
                         const world::WindField& field, double time,
                         const std::vector<AreaWind>& areas, float seconds) const;
     // Notes where each soft body's mesh is after the step.
     void read_soft_bodies();
+    // Makes the cloth bodies match the Cloth3D components (cloth.cpp): made from their model's
+    // section, made again when it or their shape changes, their other settings brought up to
+    // date.
+    void sync_cloths(world::World& world, const world::Tree3D& tree);
+    void create_cloth(SoftBody& soft, const world::Cloth3D& cloth, const world::Affine3D& place,
+                      const std::vector<world::Affine3D>& joints);
+    // Skins each cloth's points to where its model's skin is now and blows it by the wind.
+    void pre_step_cloths(const world::World& world, const world::Tree3D& tree, float seconds);
+    // Notes where each cloth's surfaces are after the step, in its model's space.
+    void read_cloths(const world::Tree3D& tree);
     // Makes the Jolt constraints match the joint components and physical bones (joints.cpp).
     void sync_joints(world::World& world, const world::Tree3D& tree);
     void sync_bone_joints(world::World& world, const world::Tree3D& tree);
@@ -677,6 +702,7 @@ private:
     std::unique_ptr<JPH::PhysicsSystem> system_;
     EntityMap<std::unique_ptr<Body>> bodies_;
     EntityMap<std::unique_ptr<SoftBody>> soft_bodies_;
+    EntityMap<std::unique_ptr<SoftBody>> cloths_;
     EntityMap<Joint> joints_;
     EntityMap<BoneJoint> bone_joints_;
     // What each physical bone's simulator makes of it, as the last sync found.
@@ -686,6 +712,9 @@ private:
     // Destructible3D bodies' damage thresholds, read before each step, and their impacts.
     std::unordered_map<entt::entity, float> breakable_;
     std::unordered_map<entt::entity, Impact> impacts_;
+    // The step physics.debug is recording, during step(), and its contacts by pair of IDs.
+    world::PhysicsDebugStep* debug_ = nullptr;
+    std::map<std::pair<std::string, std::string>, world::DebugContact> debug_contacts_;
     EntityMap<Wheel> wheels_;
     EntityMap<VehicleInputs> vehicles_;
     std::vector<Impulse> impulses_;

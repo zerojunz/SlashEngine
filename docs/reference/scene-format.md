@@ -4638,6 +4638,57 @@ a ball full of air.
   `MeshInstance3D`, one drawing a model file, pinned points past the mesh's vertices and
   attachments with no `Transform3D`.
 
+### Character cloth
+
+Godot has no skinned cloth, so `Cloth3D` and `Cloth2D` follow Unreal's Chaos Cloth: cloth that
+a character's skin, or a cut-out's transform, carries along, each point free to move only up to
+its share of a max distance from where the skin puts it. A cape's top stays on the shoulders
+while its hem swings; a skirt flares but never crosses the legs.
+
+```json
+"hero": {
+    "components": {
+        "Transform3D": {},
+        "MeshInstance3D": {"mesh": "hero.glb"},
+        "Cloth3D": {"section": "cape", "max_distance": 0.4, "backstop_radius": 0.5,
+                    "backstop_distance": 0.05}
+    }
+}
+```
+
+| Component | Fields (default) |
+| --- | --- |
+| `Cloth3D` | `section` `""` (the material whose surfaces are cloth; `""` for every surface), `max_distance` `0.1` (meters at a share of 1), `max_distance_map` `"gradient"` (`"uniform"`, `"gradient"` or `"vertex_color"`), `gradient` `[0, -1, 0]` (in the model's space at rest), `vertex_color_channel` `"r"`, `backstop_distance` `0`, `backstop_radius` `0` (meters; 0 for none), `stiffness` `0.9`, `bend_stiffness` `0.2`, `long_range_attachment` `true`, `total_mass` `1`, `gravity_scale` `1`, `damping_coefficient` `0.01`, `drag_coefficient` `0`, `simulation_precision` `5`, `collision_layer` `1`, `collision_mask` `1` |
+| `Cloth2D` | `texture` `""` (stretched over the sheet), `color` `[1, 1, 1, 1]`, `size` `[48, 96]` (pixels), `offset` `[0, 0]` (its top edge's middle), `columns` `4`, `rows` `8` (2 to 64 each), `max_distance` `48` (pixels), `max_distance_map` `"gradient"` (`"uniform"` or `"gradient"`), `gradient` `[0, 1]`, `stiffness` `0.9`, `bend_stiffness` `0.2`, `long_range_attachment` `true`, `total_mass` `1`, `gravity_scale` `1`, `damping_coefficient` `0.5`, `drag_coefficient` `0`, `simulation_precision` `5`, `collision_mask` `1`, `point_radius` `2`, `z_index` `0`, `z_as_relative` `true`, `visible` `true`, `light_mask` `1`, `texture_filter` `"inherit"` |
+
+- A `Cloth3D` makes the surfaces of its entity's model drawn with `section`'s material one Jolt
+  soft body, its vertices welded by position into points. Each point is skinned as the model
+  is (its skeleton as `AnimationPlayer`s, `AnimationTree`s, `Skeleton3D` and IK pose it, or
+  its nodes) and may move up to its share of `max_distance` from there. The map gives the share:
+  `"uniform"` all of it, `"gradient"` from 0 where the section is farthest back along
+  `gradient` at rest to 1 where it is farthest along it, `"vertex_color"` a channel of the
+  vertices' colors as an artist painted it. Points with no share are skinned exactly.
+- The backstop is a sphere of `backstop_radius` whose surface is `backstop_distance` behind
+  each point's skinned place, against its normal; points are pushed out of it, so cloth stays
+  outside the body it covers. Long range attachments tether each free point to the skinned
+  points nearest across the cloth.
+- It collides with the bodies its mask meets, a character's `PhysicalBone3D`s and ragdolls
+  included, and feels gravity times `gravity_scale`, `PhysicsField3D`s and `WindSource3D`s'
+  wind by `drag_coefficient`. The model draws the section where physics put it, in place of
+  its skin; mass, gravity, damping, drag and layers change without making it again.
+- A `Cloth2D` is a sheet of `columns` by `rows` points hanging down its entity's y from
+  `offset`, `size` across and down, carried by its entity's global transform, so a
+  `Transform2D` tree's animation or a `Ragdoll2D` swings it. 2D physics steps it after the
+  bodies with small steps of position-based dynamics: edges, bends and tethers keep its shape,
+  each free point stays within its share of `max_distance` of where the transform puts it, and
+  points keep `point_radius` from the 2D bodies its mask meets. It feels gravity,
+  `PhysicsField2D`s and `WindSource2D`s' wind; the canvas draws it with its `texture` stretched
+  over it, between the last two steps.
+- `physics.soft_body` returns a `Cloth3D`'s points as a soft body's. `scene validate` reports a
+  `Cloth3D` without a model or with a `section` the model lacks (with the closest name).
+  [examples/character-cloth](../../examples/character-cloth/) swings a hero's cape in 3D and a
+  cut-out's in 2D.
+
 ### Destruction
 
 Godot has no destruction of its own, so `Destructible3D` follows Unreal's geometry collections:
