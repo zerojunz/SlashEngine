@@ -127,6 +127,7 @@ SlashEngine covers nearly every Godot 4 feature area at launch and adds UE5 feat
 | Foliage | MultiMesh, plugins | Foliage tool, grass | Painted and scattered grass, flowers, shrubs, bushes, trees, moss and rocks kept per cell, instanced batches, impostors, wind bending and characters' interactions | After launch |
 | Light tools | Light temperature, projectors, physical units | IES profiles, light functions, Lumen tuning | Temperature, projectors, IES profiles, light functions and `light.tune` toward `lighting.check` targets | After launch |
 | Quests, dialogue and NPC scripts | Plugins (Dialogic) | Plugins, Blueprints | Questlines, branching dialogue, movement schedules and per-NPC behavior as text files over the NPC planner's facts | After launch |
+| Hair and fur | None built in | Groom, hair physics | Groomed strands drawn as cards, strands or shells and simulated against the body, wind and skeleton | After launch |
 | Characters | None built in | MetaHuman, Mutable | Character recipes built into rigged models, kept distinct and held to the storyboard's design rules | After launch |
 | Fauna | None built in | Plugins, Mass AI | Distinct animals from creature recipes, with brains for flocking, grazing, fleeing and hunting, placed in habitats, reacting to characters | After launch |
 | Virtualized geometry | None built in | Nanite | Meshlet rendering research | Research |
