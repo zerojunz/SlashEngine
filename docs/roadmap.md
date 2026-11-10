@@ -1125,7 +1125,8 @@ launch rows and the after-launch features above.
 ## Agent-built worlds and smart NPCs
 
 Ways for agents to build detailed 3D worlds and many smarter NPCs at a fraction of Unreal's
-cost, from the research proposal of 2026-11-07, in order:
+cost, from the research proposal of 2026-11-07, in order. Items 7 on (wind and the world tools)
+ship in the launch release, which waits for them:
 
 1. [x] Planning NPCs: goal-oriented action planning as F.E.A.R.'s, with `.npc.json` brains of
        facts, goals and actions, `NpcAgent` components planned on the job system, go_to along
