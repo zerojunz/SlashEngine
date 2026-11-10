@@ -1158,11 +1158,17 @@ cost, from the research proposal of 2026-11-07, in order:
         conditions and effects on facts, translated through l10n) and behavior per NPC (brains
         that extend a shared one with their own goals, traits and priorities), with `quest.*` and
         `dialogue.*` commands and checks that every quest can be finished and every line reached
-11. [ ] Characters: a character tool that makes the player and NPCs as `.character.json` recipes
+11. [ ] Hair and fur: `HairInstance3D` groomed strands (`.groom.json` guides grown over a
+        model's surface with length, density, clumping, curl and color maps) drawn as cards,
+        strands or fur shells with the existing hair shading, and simulated as Unreal's
+        Groom and Chaos hair: guide strands stepped with constraints, colliding with the
+        body's capsules, blown by the wind and following the skeleton, for characters and
+        animals
+12. [ ] Characters: a character tool that makes the player and NPCs as `.character.json` recipes
         (body proportions, face, hair, clothing and props, materials) built into rigged models,
         each distinct from the others in silhouette and color, following the storyboard's
         character design rules, which `character.check` enforces
-12. [ ] Fauna: a fauna tool for distinct animals (birds, fish, insects, grazers, predators,
+13. [ ] Fauna: a fauna tool for distinct animals (birds, fish, insects, grazers, predators,
         pets) as `.creature.json` recipes of body plans built into rigged, animated models with
         their own looks per species, NPC brains for flocking, grazing, fleeing, hunting and
         following, placed in habitats by the foliage tool's brushes, and characters'
