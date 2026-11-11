@@ -1,0 +1,47 @@
+{
+  "body": {
+    "height": 1.68,
+    "skin": [0.78, 0.58, 0.45]
+  },
+  "clothing": [
+    {
+      "color": [0.2, 0.35, 0.45],
+      "kind": "shirt"
+    },
+    {
+      "color": [0.25, 0.22, 0.2],
+      "kind": "pants"
+    }
+  ],
+  "face": {
+    "brows": {
+      "shape": "arched"
+    },
+    "controls": {
+      "cheeks.fullness": 0.3,
+      "chin.length": -0.2,
+      "eyes.size": 0.4,
+      "lips.lower": 0.4,
+      "nose.length": -0.3,
+      "nose.upturn": 0.4
+    },
+    "eyes": [0.25, 0.4, 0.3],
+    "marks": [
+      {
+        "amount": 0.6,
+        "at": "nose_bridge",
+        "kind": "freckles",
+        "offset": [0, -0.05]
+      }
+    ],
+    "style": "stylized"
+  },
+  "format": 1,
+  "hair": {
+    "color": [0.35, 0.18, 0.1],
+    "length": 0.6,
+    "style": "ponytail"
+  },
+  "name": "Ana",
+  "role": "player"
+}

@@ -20,6 +20,7 @@
 #include "slash/canvas/tilemap.hpp"
 #include "slash/command/character.hpp"
 #include "slash/command/creature.hpp"
+#include "slash/command/face.hpp"
 #include "slash/command/l10n.hpp"
 #include "slash/command/lighting.hpp"
 #include "slash/command/lightmap.hpp"
@@ -8859,6 +8860,7 @@ void register_builtin_commands(Registry& registry) {
     register_npc_commands(registry);
     register_ragdoll_commands(registry);
     register_character_commands(registry);
+    register_face_commands(registry);
     register_creature_commands(registry);
     register_vehicle_commands(registry);
     register_physics_debug_commands(registry);

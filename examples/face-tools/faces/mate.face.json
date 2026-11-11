@@ -1,0 +1,13 @@
+{
+  "controls": {
+    "brow.ridge": 0.4,
+    "cheeks.bones": 0.35,
+    "chin.protrusion": 0.3,
+    "jaw.angle": 0.6,
+    "jaw.width": 0.45,
+    "nose.bridge": 0.5
+  },
+  "format": 1,
+  "name": "First mate",
+  "style": "stylized"
+}

@@ -2073,6 +2073,13 @@ placed at landmarks as carves are, `mark_texel`), which `build_character` draws 
 material; `face_marks_2d` gives the marks the profile shows as polygons for the cut-out.
 `examples/character-faces` sculpts an elder and a toon, has them smile, blink and talk, and
 marks a fighter.
+The face tools (`engine/command/src/face.cpp`) design a cast against the storyboard's
+`face_rules` (shape and profile differences, styles, control ranges, marks): `face.check`
+sculpts each face file and designed recipe face on one head and measures each pair by rays at
+the front and `face_profile`'s rows (`test.run` runs it), `face.generate` reads a brief into
+controls, marks and a style and keeps the first seeded candidate far enough from the cast, and
+`face.portrait` draws one in 3D or as a cut-out in a private `Session`. `examples/face-tools`
+designs a ship's crew.
 Characters have anatomy and flesh, after Chaos Flesh (Godot has none): `slash/world/flesh.hpp`
 (`engine/world/src/flesh.cpp`, `flesh_solver.cpp` and `flesh2d.cpp`, built with
 `-ffp-contract=off`) places a recipe's bones and 28 kinds of muscle on a body's `BodyFrames`

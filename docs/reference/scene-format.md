@@ -5278,6 +5278,19 @@ extends and blends, with a crease carved in a cheek, and a toon, has them smile,
 in 3D and 2D, and marks a fighter with a stitched scar, freckles, a bruise, a tattoo and war
 paint.
 
+The storyboard's `face_rules` entries (in `storyboard/design.json`) keep a cast's faces apart
+and in the game's look, over the faces in their links, or every one with neither links nor refs:
+`shape_difference` (how far apart each face's sculpt must be from every other's where they
+differ most, in percent of the head's size; 0.5 if unset), `profile_difference` (the same of
+their side profiles, in percent of the head's depth, for 2D casts; off if unset), `styles` (the
+sculpt styles faces may have), `controls` (each sculpt control's `[lowest, highest]`), `marks`
+(the kinds of mark allowed), `max_marks` and `palette` (a palette entry the eyes, lips, brows and
+marks keep to). [`face.check`](commands.md#facecheck) holds the project's faces to them,
+[`face.generate`](commands.md#facegenerate) drafts a face from a brief in words within them, and
+[`face.portrait`](commands.md#faceportrait) draws a face's portrait, in 3D or as its 2D cut-out,
+into a PNG for dialogue boxes and menus. [examples/face-tools](../../examples/face-tools/)
+drafts a cast from briefs, catches a face too like another and draws their portraits.
+
 ### Creatures
 
 Godot has no animals, so this follows Unreal's Mutable and its animal AI: a `.creature.json`

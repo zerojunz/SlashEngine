@@ -1,0 +1,26 @@
+{
+  "brows": {
+    "shape": "straight",
+    "thickness": 0.7
+  },
+  "controls": {
+    "brow.ridge": 0.4,
+    "cheeks.bones": 0.4,
+    "chin.protrusion": 0.3,
+    "jaw.angle": 0.6,
+    "jaw.width": 0.5,
+    "nose.bridge": 0.5
+  },
+  "format": 1,
+  "marks": [
+    {
+      "age": 0.7,
+      "angle": 80,
+      "at": "brow_left",
+      "kind": "scar",
+      "length": 0.2
+    }
+  ],
+  "name": "Captain",
+  "style": "stylized"
+}

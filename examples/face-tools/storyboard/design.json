@@ -1,0 +1,18 @@
+{
+  "entries": {
+    "face_rules/cast": {
+      "controls": {
+        "nose.length": [-0.6, 0.8]
+      },
+      "links": ["characters", "faces"],
+      "marks": ["scar", "freckles", "mole", "paint"],
+      "max_marks": 2,
+      "name": "Cast",
+      "profile_difference": 2,
+      "shape_difference": 0.6,
+      "styles": ["stylized"],
+      "summary": "Every face reads apart from the others, front and side, in the game's stylized look."
+    }
+  },
+  "format": 1
+}
