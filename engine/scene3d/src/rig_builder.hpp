@@ -238,6 +238,44 @@ struct Builder {
         return static_cast<int>(model.materials.size()) - 1;
     }
 
+    // Names the body's blend shapes, which add_shaped's offsets follow; each starts at 0.
+    void set_blend_shapes(const std::vector<std::string_view>& names) {
+        body.blend_shapes.assign(names.begin(), names.end());
+        body.blend_weights.assign(names.size(), 0.0F);
+    }
+
+    // As add, with each blend shape's offset for each of the mesh's corners (offset(shape,
+    // corner)), in the model's space.
+    template <typename Offset>
+    void add_shaped(const MeshData& mesh, const Affine3D& place, int material, const Weigh& weigh,
+                    Offset offset) {
+        if (mesh.vertices.empty()) {
+            return;
+        }
+        add(mesh, place, material, weigh);
+        ModelSurface& surface = body.surfaces.at(
+            static_cast<std::size_t>(surface_of.at(static_cast<std::size_t>(material))));
+        const std::size_t first = surface.vertices.size() - mesh.vertices.size();
+        surface.blend_shapes.resize(body.blend_shapes.size());
+        for (std::size_t s = 0; s < body.blend_shapes.size(); ++s) {
+            auto& positions = surface.blend_shapes[s].positions;
+            positions.resize(first, {0.0F, 0.0F, 0.0F});
+            for (std::size_t v = 0; v < mesh.vertices.size(); ++v) {
+                const Vec3 o = offset(s, v);
+                positions.push_back({to_float(o.x), to_float(o.y), to_float(o.z)});
+            }
+        }
+    }
+
+    // Each shaped surface's offsets padded with zeros to all its corners, once the body is built.
+    void finish_blend_shapes() {
+        for (ModelSurface& surface : body.surfaces) {
+            for (SurfaceBlendShape& shape : surface.blend_shapes) {
+                shape.positions.resize(surface.vertices.size(), {0.0F, 0.0F, 0.0F});
+            }
+        }
+    }
+
     // The mesh's corners placed by place, drawn with material and moved by one joint.
     void add(const MeshData& mesh, const Affine3D& place, int material, std::size_t joint) {
         const VertexWeights weights = one_joint(joint);

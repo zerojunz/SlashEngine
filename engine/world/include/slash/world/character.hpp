@@ -15,6 +15,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -161,7 +162,9 @@ struct CutoutBone {
     int z_index = 0;
     std::vector<CutoutShape> shapes;
 };
-[[nodiscard]] std::vector<CutoutBone> character_cutout(const CharacterRecipe& recipe);
+// expressions are weights by face_expression_names (missing ones 0), which move the face.
+[[nodiscard]] std::vector<CutoutBone> character_cutout(const CharacterRecipe& recipe,
+                                                       std::span<const float> expressions = {});
 
 // The recipe a Character2D names, read through the world's assets (kept by version).
 [[nodiscard]] Result<std::shared_ptr<const CharacterRecipe>> load_character(const World& world,

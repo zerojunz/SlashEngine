@@ -35,3 +35,7 @@ cut-out's side-on profile.
 - Placed at two numbers, Ida is a 2D cut-out whose head is the sculpt's profile; its eye sits
   where the sculpt's near eye is.
 - A face with a misspelled control is an error naming the control it meant.
+- Every sculpt carries ARKit's 52 expression shapes, made from it. Setting Ida's
+  `MeshInstance3D.blend_shapes` makes her smile, squint her cheeks and close her eyes, which
+  the second `frame.capture` sees as skin over the pupil; in 2D her `Character2D`'s
+  `expressions` open her jaw, close her eyes and raise her brows.

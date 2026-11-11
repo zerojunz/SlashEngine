@@ -1037,7 +1037,13 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                                         "to animations.",
                                  .choices = {"", "open", "relaxed", "grip", "fist", "point"}})
         .describe("hand_back", {.doc = "The far hand's pose, as hand_front.",
-                                .choices = {"", "open", "relaxed", "grip", "fist", "point"}});
+                                .choices = {"", "open", "relaxed", "grip", "fist", "point"}})
+        .describe("expressions",
+                  {.doc = "ARKit's expression shapes by name (\"eyeBlinkLeft\", "
+                          "\"mouthSmileLeft\", ...), each 0 to 1, as a 3D character's "
+                          "MeshInstance3D blend_shapes: the face's outline, brow and near eye "
+                          "move, and jawOpen turns the jaw with jaw_open."})
+        .describe("expressions{}", {.doc = "How far it is on, 0 to 1.", .min = 0.0, .max = 1.0});
 
     // The fields of flesh, the same in 3D and 2D.
     const auto describe_flesh = [](ComponentType& type) -> ComponentType& {

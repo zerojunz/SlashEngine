@@ -15,6 +15,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -142,6 +143,24 @@ struct SculptedHead {
 };
 [[nodiscard]] SculptedHead sculpt_head(const CharacterFace& face, const HeadShape& head);
 
+// ARKit's 52 expression shapes (Apple's ARFaceAnchor.BlendShapeLocation), in the order Live Link
+// Face records them: what face capture records and XRFaceModifier3D drives. "Left" is the face's
+// own left (+x).
+[[nodiscard]] const std::vector<std::string_view>& face_expression_names();
+[[nodiscard]] std::optional<std::size_t> face_expression_index(std::string_view name);
+
+// How each expression moves a sculpted head's vertices fully on, in meters: offsets[expression]
+// [vertex], in face_expression_names' order. tongueOut moves no skin (the tongue is a mesh of
+// its own).
+[[nodiscard]] std::vector<std::vector<Vec3>>
+face_expressions(const CharacterFace& face, const HeadShape& head, const SculptedHead& sculpt);
+
+// How a point inside the mouth that moves with the jaw (the lower teeth and the tongue) moves
+// when an expression is fully on, in meters: the jaw's expressions turn or shift it; the others
+// leave it.
+[[nodiscard]] Vec3 face_jaw_offset(const CharacterFace& face, const HeadShape& head,
+                                   std::size_t expression, Vec3 point);
+
 // The head's outline seen from its left side, facing +x (its front, +z, along x and up along
 // y), in meters from the head's center: from under the chin up the face, over the crown and
 // down the back. front_count is how many of its points are the face's, chin to crown.
@@ -153,7 +172,11 @@ struct FaceProfile {
     real_t eye_radius = 0.0F;
     Vec2 brow; // the brow's middle above the near eye, on the skin
     Vec2 ear;
+    real_t eye_open = 1.0F; // how open the near eye is, 0 shut to about 1.3 wide
 };
-[[nodiscard]] FaceProfile face_profile(const CharacterFace& face, const HeadShape& head);
+// expressions are weights by face_expression_names (missing ones 0), which move the outline,
+// the brow and the near eye's lids; the jaw's own turn (jawOpen) is left to the jaw's bone.
+[[nodiscard]] FaceProfile face_profile(const CharacterFace& face, const HeadShape& head,
+                                       std::span<const float> expressions = {});
 
 } // namespace slash::world

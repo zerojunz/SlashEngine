@@ -9,3 +9,8 @@
 {"jsonrpc":"2.0","id":9,"method":"step","params":{"ticks":1}}
 {"jsonrpc":"2.0","id":10,"method":"entity.get","params":{"id":"ida_2d_eye","components":["Transform2D"],"omit_defaults":true}}
 {"jsonrpc":"2.0","id":11,"method":"character.place","params":{"recipe":"characters/typo.character.json","id":"typo","at":[0,0,0]}}
+{"jsonrpc":"2.0","id":12,"method":"component.set","params":{"id":"ida","components":{"MeshInstance3D":{"blend_shapes":{"mouthSmileLeft":1,"mouthSmileRight":1,"cheekSquintLeft":0.5,"cheekSquintRight":0.5,"eyeBlinkLeft":1,"eyeBlinkRight":1}}}}}
+{"jsonrpc":"2.0","id":13,"method":"frame.capture","params":{"points":[[71,91],[202,118],[120,118]]}}
+{"jsonrpc":"2.0","id":14,"method":"component.set","params":{"id":"ida_2d","components":{"Character2D":{"expressions":{"jawOpen":0.7,"eyeBlinkLeft":1,"eyeBlinkRight":1,"browInnerUp":1}}}}}
+{"jsonrpc":"2.0","id":15,"method":"step","params":{"ticks":1}}
+{"jsonrpc":"2.0","id":16,"method":"entity.get","params":{"id":"ida_2d_jaw","components":["Transform2D"],"omit_defaults":true}}
