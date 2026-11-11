@@ -1971,7 +1971,32 @@ step (forces, velocities, anchors as kinematic bodies, strain as impacts, kill a
 as `field_killed`, sleep), soft bodies' points included, and `CPUParticles3D` and
 `CPUParticles2D` add `particle_force` per particle. `physics_3d.substeps` and
 `physics_2d.substeps` set Jolt's collision steps and Box2D's substeps.
-`examples/physics-fields` blasts crates and slides a 2D puck.
+`examples/physics-fields` blasts crates and slides a 2D puck. While `world::record_physics`
+records (`physics.debug`'s `record`; `slash/world/physics_debug.hpp`), each space adds a
+`PhysicsDebugStep` per step, as Chaos's Visual Debugger: contacts (3D from the contact
+listener's manifolds, `note_debug_contact`; 2D from `b2Body_GetContactData`), joints' force and
+stretch and bodies awake after it (`finish_debug` in each `src/debug.cpp`) and fields' effects
+where `apply_fields` applies them. `physics.cache` records rigid bodies' transforms after each
+step (`world::PhysicsCache`, `slash/world/physics_cache.hpp`, added to by both spaces) and
+writes them as a `.anim.json` animation that freezes them kinematic and keys them where their
+motion bends, as Chaos Cache, for an `AnimationPlayer` or a cinematic to play back
+(`engine/command/src/physics_debug.cpp`). `examples/physics-debugger` reads a blast and replays
+the collapse.
+
+Character cloth is Chaos Cloth's: `Cloth3D` makes the surfaces of its entity's model drawn
+with its `section` material one Jolt soft body (`engine/physics3d/src/cloth.cpp`) skinned by
+Jolt's `SoftBodySharedSettings::Skinned`: `scene3d::cloth_section` (`src/cloth.cpp`) gathers
+the surfaces, welded vertices, skin weights and rest joints, `cloth_shares` gives each vertex
+its share of `max_distance` (uniform, a gradient or a vertex color channel), and before each
+step `cloth_joints` poses the skeleton as drawing does and `SkinVertices` moves the skinned
+points, the free ones held within their max distance, out of the backstop sphere and tethered
+by long range attachments. The pose goes back in `SoftBodyPose::surfaces`, in the model's
+space, which `Renderer` draws in place of the skin (`cloth_mesh`). `Cloth2D` is a sheet of
+points on a cut-out that physics2d steps after the bodies with position-based dynamics of its
+own (`engine/physics2d/src/cloth.cpp`: edges, bends, tethers, max distance, Box2D rays and
+closest points for collision, `WindField2D` and `PhysicsFields2D`), handing the points to the
+canvas through `world::set_cloth_2d_source` (`slash/world/cloth2d.hpp`), which draws them with
+its texture. `examples/character-cloth` swings both capes.
 
 World streaming is SlashEngine's own (Godot has none), after Unreal's World Partition: the
 `world_streaming` system (`engine/scene3d/src/streaming.cpp`, priority -700, added by

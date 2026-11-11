@@ -4,6 +4,7 @@
 
 #include "slash/core/log.hpp"
 #include "slash/core/profile.hpp"
+#include "slash/world/physics_cache.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -391,6 +392,7 @@ void Space::reset() {
     bodies_.clear();
     tiles_.clear();
     joints_.clear();
+    cloths_.clear();
     world_ = b2_nullWorldId;
     ground_ = b2_nullBodyId;
     impulses_.clear();
@@ -1452,9 +1454,12 @@ void Space::step(world::World& world, float seconds) {
     sync(world, tree);
     if (!b2World_IsValid(world_)) {
         impulses_.clear();
+        step_cloths(world, tree, seconds);
         return;
     }
     entt::registry& registry = world.ecs();
+    world::PhysicsDebug* debug = world::physics_debug(world);
+    debug_ = debug != nullptr ? &debug->add(world.tick(), 2) : nullptr;
 
     // Animatable bodies move to their Transform2D during the step, pushing what is in the way.
     // Bodies with constant velocities move at them too, from half a step behind where they are
@@ -1545,7 +1550,21 @@ void Space::step(world::World& world, float seconds) {
     }
     read_back(world, tree);
     move_characters(world, tree, seconds);
+    step_cloths(world, tree, seconds);
     emit_events(world);
+    if (debug_ != nullptr) {
+        finish_debug(world, *std::exchange(debug_, nullptr));
+    }
+    if (world::PhysicsCache* cache = world::physics_cache(world); cache != nullptr) {
+        for (const auto& [entity, body] : bodies_) {
+            const auto* transform = registry.try_get<const Transform2D>(entity);
+            if (body->kind == Kind::Rigid && transform != nullptr && cache->records(entity)) {
+                cache->add(body->name, 2, world.tick(), seconds,
+                           {transform->position.x, transform->position.y, 0.0F},
+                           {transform->rotation, 0.0F, 0.0F});
+            }
+        }
+    }
     destroy_doomed(world);
 }
 
@@ -1624,6 +1643,20 @@ world::MemoryPart Space::memory() const {
     }
     part.bytes += ((bodies_.size() + tiles_.size()) * (sizeof(Body) + sizeof(void*))) +
                   (joints_.size() * sizeof(EntityMap<Joint>::Entry));
+    // Cloth2Ds' sheets, counted only in worlds that have them.
+    std::uint64_t points = 0;
+    for (const auto& [entity, cloth] : cloths_) {
+        points += cloth->points.current.size();
+        part.bytes +=
+            sizeof(Cloth2DBody) +
+            ((cloth->velocity.capacity() + cloth->targets.capacity() +
+              cloth->points.current.capacity() + cloth->points.previous.capacity()) *
+             sizeof(Vec2)) +
+            ((cloth->edges.capacity() + cloth->bends.capacity()) * sizeof(std::array<int, 2>));
+    }
+    if (points > 0) {
+        part.counts["cloth_points"] = points;
+    }
     return part;
 }
 

@@ -3133,7 +3133,8 @@ TEST_CASE("physics.soft_body reports where a soft body's points are") {
               .message == "/at/0: point 9 is out of bounds: \"sheet\" has 9 points");
     CHECK(engine.fails("physics.soft_body", R"({"id": "floor"})", command::code::kInvalidParams)
               .message == "/id: \"floor\" has no soft body: it needs a SoftBody3D and a "
-                          "MeshInstance3D drawing a primitive mesh");
+                          "MeshInstance3D drawing a primitive mesh, a Cloth3D on a model or a "
+                          "Cloth2D");
     engine.fails("physics.soft_body", R"({"id": "nobody"})", command::code::kNotFound);
 }
 

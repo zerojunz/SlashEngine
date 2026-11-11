@@ -4,6 +4,7 @@
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/world/world.hpp"
 
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <vector>
@@ -14,10 +15,19 @@
 namespace slash::scene3d {
 
 // Where a soft body's mesh is now: a position and a smooth normal for each vertex of the mesh,
-// in world space.
+// in world space. A Cloth3D's positions are its welded points in world space, with no normals,
+// and what draws is its surfaces, each by its part and its index in the part's mesh, in the
+// model's space (the entity's, scale included).
 struct SoftBodyPose {
     std::vector<Vec3> positions;
     std::vector<Vec3> normals;
+    struct Surface {
+        std::size_t part = 0;
+        std::size_t surface = 0;
+        std::vector<Vec3> positions;
+        std::vector<Vec3> normals;
+    };
+    std::vector<Surface> surfaces;
 };
 
 // The pose of an entity's soft body, or null when it has none yet.

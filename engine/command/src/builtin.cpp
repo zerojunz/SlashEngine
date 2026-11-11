@@ -26,6 +26,7 @@
 #include "slash/command/net.hpp"
 #include "slash/command/npc.hpp"
 #include "slash/command/perf.hpp"
+#include "slash/command/physics_debug.hpp"
 #include "slash/command/place.hpp"
 #include "slash/command/ragdoll.hpp"
 #include "slash/command/replay.hpp"
@@ -71,6 +72,7 @@
 #include "slash/ui/accessibility.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/camera2d.hpp"
+#include "slash/world/cloth2d.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/path.hpp"
@@ -99,6 +101,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <type_traits>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -2203,6 +2206,53 @@ Reply wind_sample(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+// physics.soft_body's reply for points in 2D or 3D.
+template <typename Point>
+Reply soft_body_reply(std::string_view id, const std::vector<Point>& points, bool sleeping,
+                      const json::Value& params) {
+    json::Value result;
+    result["points"] = static_cast<std::int64_t>(points.size());
+    result["sleeping"] = sleeping;
+    if (points.empty()) {
+        result["bounds"] = nullptr;
+    } else {
+        Point low = points.front();
+        Point high = low;
+        for (const Point p : points) {
+            low.x = std::min(low.x, p.x);
+            low.y = std::min(low.y, p.y);
+            high.x = std::max(high.x, p.x);
+            high.y = std::max(high.y, p.y);
+            if constexpr (std::is_same_v<Point, Vec3>) {
+                low.z = std::min(low.z, p.z);
+                high.z = std::max(high.z, p.z);
+            }
+        }
+        if constexpr (std::is_same_v<Point, Vec3>) {
+            result["bounds"] = rounded(
+                json::Array{low.x, low.y, low.z, high.x - low.x, high.y - low.y, high.z - low.z});
+        } else {
+            result["bounds"] = rounded(json::Array{low.x, low.y, high.x - low.x, high.y - low.y});
+        }
+    }
+    if (const json::Value* asked = params.find("at"); asked != nullptr) {
+        json::Object at;
+        const json::Array& indices = asked->as_array();
+        for (std::size_t i = 0; i < indices.size(); ++i) {
+            const std::int64_t index = indices[i].as_int();
+            if (index < 0 || static_cast<std::size_t>(index) >= points.size()) {
+                return param_error(code::kInvalidParams, item_path("/at", i),
+                                   "point " + std::to_string(index) +
+                                       " is out of bounds: " + quoted(id) + " has " +
+                                       std::to_string(points.size()) + " points");
+            }
+            at[std::to_string(index)] = point_value(points[static_cast<std::size_t>(index)]);
+        }
+        result["at"] = std::move(at);
+    }
+    return Reply::success(std::move(result));
+}
+
 Reply physics_soft_body(Session& session, const json::Value& params) {
     world::World& world = session.world();
     const std::string id = text(params, "id");
@@ -2210,44 +2260,24 @@ Reply physics_soft_body(Session& session, const json::Value& params) {
     if (entity == entt::null) {
         return unknown_entity(world, id, "/id");
     }
+    if (world.ecs().all_of<world::Cloth2D>(entity)) {
+        // A sheet physics hasn't stepped yet hangs where its transform puts it.
+        const world::ClothPoints2D* stepped = world::cloth_points_2d(world, entity);
+        const std::vector<Vec2> points =
+            stepped != nullptr ? stepped->current
+                               : world::cloth_rest_2d(world.ecs().get<world::Cloth2D>(entity),
+                                                      world::Tree2D(world).global_affine(entity));
+        return soft_body_reply(id, points, false, params);
+    }
     const std::optional<physics3d::SoftBodyPoints> found =
         physics3d::soft_body_points(world, entity);
     if (!found) {
         return param_error(code::kInvalidParams, "/id",
                            quoted(id) + " has no soft body: it needs a SoftBody3D and a "
-                                        "MeshInstance3D drawing a primitive mesh");
+                                        "MeshInstance3D drawing a primitive mesh, a Cloth3D on "
+                                        "a model or a Cloth2D");
     }
-    json::Value result;
-    result["points"] = static_cast<std::int64_t>(found->points.size());
-    result["sleeping"] = found->sleeping;
-    if (found->points.empty()) {
-        result["bounds"] = nullptr;
-    } else {
-        Vec3 low = found->points.front();
-        Vec3 high = low;
-        for (const Vec3 p : found->points) {
-            low = {std::min(low.x, p.x), std::min(low.y, p.y), std::min(low.z, p.z)};
-            high = {std::max(high.x, p.x), std::max(high.y, p.y), std::max(high.z, p.z)};
-        }
-        result["bounds"] = rounded(
-            json::Array{low.x, low.y, low.z, high.x - low.x, high.y - low.y, high.z - low.z});
-    }
-    if (const json::Value* points = params.find("at"); points != nullptr) {
-        json::Object at;
-        const json::Array& indices = points->as_array();
-        for (std::size_t i = 0; i < indices.size(); ++i) {
-            const std::int64_t index = indices[i].as_int();
-            if (index < 0 || static_cast<std::size_t>(index) >= found->points.size()) {
-                return param_error(code::kInvalidParams, item_path("/at", i),
-                                   "point " + std::to_string(index) +
-                                       " is out of bounds: " + quoted(id) + " has " +
-                                       std::to_string(found->points.size()) + " points");
-            }
-            at[std::to_string(index)] = point_value(found->points[static_cast<std::size_t>(index)]);
-        }
-        result["at"] = std::move(at);
-    }
-    return Reply::success(std::move(result));
+    return soft_body_reply(id, found->points, found->sleeping, params);
 }
 
 Reply physics_break(Session& session, const json::Value& params) {
@@ -7707,9 +7737,9 @@ void register_builtin_commands(Registry& registry) {
     soft_at["maxItems"] = 256;
     registry.add({
         .name = "physics.soft_body",
-        .description = "Returns a SoftBody3D's points after the last step: how many (one per "
-                       "mesh vertex), whether it sleeps, their bounds [x, y, z, w, h, d] and, "
-                       "with at, the places of the points asked for.",
+        .description = "Returns a SoftBody3D's, Cloth3D's or Cloth2D's points after the last "
+                       "step: how many, whether it sleeps, their bounds [x, y, z, w, h, d] (2D: "
+                       "[x, y, w, h]) and, with at, the places of the points asked for.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({{"id", id_property("A soft body.")}, {"at", std::move(soft_at)}},
@@ -8770,6 +8800,7 @@ void register_builtin_commands(Registry& registry) {
     register_navigation_commands(registry);
     register_npc_commands(registry);
     register_ragdoll_commands(registry);
+    register_physics_debug_commands(registry);
     register_lighting_commands(registry);
     register_style_commands(registry);
     register_place_commands(registry);
