@@ -384,7 +384,7 @@ Reply lighting_check(Session& session, const json::Value& params) {
             double added = 0.0;
             for (std::size_t i = 0; i < base.brightness.size(); ++i) {
                 const double change = base.brightness[i] - dark.brightness[i];
-                lit += base.level[i] - dark.level[i] >= kLitStep ? 1 : 0;
+                lit += base.level[i] - dark.level[i] >= kLitStep ? 1U : 0U;
                 added += std::max(change, 0.0);
                 clips += base.clipped[i] && !dark.clipped[i] ? 1U : 0U;
             }
