@@ -172,7 +172,8 @@ file, a [`.theme.json`](scene-format.md#themes) file, an
 [`.standard_material.json`](scene-format.md#material-files) file (and that its textures
 decode), a [`.texture.json`](scene-format.md#procedural-textures) file, a
 [`.scatter.json`](scene-format.md#scatter-rules) file, a
-[`.physics_material.json`](scene-format.md#physics-materials-and-fields) file, or a
+[`.physics_material.json`](scene-format.md#physics-materials-and-fields) file, a
+[`.ragdoll.json`](scene-format.md#ragdoll-profiles) profile, or a
 [model](scene-format.md#models) (`.gltf`, `.glb`, `.obj`, `.fbx` or `.blend`), and lists every error, each with its JSON Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) and
 [scenes](scene-format.md#instanced-scenes) a file extends, the tile sets its layers use, the animation libraries and trees its players and trees use, the navigation meshes and polygons its regions place, the brains its NPC agents name, the mesh libraries its grid maps use, the maps its terrains read and the project's window size and theme are read from its
 project: the nearest folder above it with a `project.json`, else the current folder. A `.blend`
@@ -281,7 +282,7 @@ Rewrites a scene, prefab, `.frames.json`, `.material.json`, `.anim.json`, `.anim
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
 `.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`,
-`.texture.json`, `.scatter.json` or `.physics_material.json` file in
+`.texture.json`, `.scatter.json`, `.physics_material.json` or `.ragdoll.json` file in
 [canonical form](scene-format.md#canonical-form).
 
 ```bash
@@ -319,6 +320,7 @@ for [`.score.json` files](scene-format.md#scores), for
 [`.texture.json` files](scene-format.md#procedural-textures), for
 [`.scatter.json` files](scene-format.md#scatter-rules), for
 [`.physics_material.json` files](scene-format.md#physics-materials-and-fields), for
+[`.ragdoll.json` profiles](scene-format.md#ragdoll-profiles), for
 [storyboard files](storyboard-format.md),
 for [`project.json`](project-format.md), for [`export_presets.json`](project-format.md#export-presets),
 for [`sdk.json`](sdk-format.md), for [`.plugin.json` files](project-format.md#plugins), for
@@ -353,6 +355,7 @@ slash-cli schema standard_material
 slash-cli schema texture
 slash-cli schema scatter
 slash-cli schema physics_material
+slash-cli schema ragdoll
 slash-cli schema storyboard
 slash-cli schema project
 slash-cli schema presets

@@ -1,0 +1,16 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"ragdoll.generate","params":{"id":"kid"}}
+{"jsonrpc":"2.0","id":3,"method":"ragdoll.generate","params":{"id":"arm3d","out":"models/arm.ragdoll.json"}}
+{"jsonrpc":"2.0","id":4,"method":"events.subscribe","params":{"kinds":["ragdoll_hit","ragdoll_fell","ragdoll_getting_up","ragdoll_got_up"]}}
+{"jsonrpc":"2.0","id":5,"method":"step","params":{"ticks":10}}
+{"jsonrpc":"2.0","id":6,"method":"entity.get","params":{"id":"arm_joint","components":["PinJoint2D"]}}
+{"jsonrpc":"2.0","id":7,"method":"ragdoll.hit","params":{"id":"kid","bone":"arm","impulse":[0,2]}}
+{"jsonrpc":"2.0","id":8,"method":"step","params":{"ticks":30}}
+{"jsonrpc":"2.0","id":9,"method":"entity.get","params":{"id":"kid","components":["Ragdoll2D"]}}
+{"jsonrpc":"2.0","id":10,"method":"ragdoll.tune","params":{"id":"kid","overrides":{"hit":{"knockdown":500}}}}
+{"jsonrpc":"2.0","id":11,"method":"ragdoll.hit","params":{"id":"kid","bone":"chest","impulse":[-3000,0]}}
+{"jsonrpc":"2.0","id":12,"method":"run.until","params":{"with":["Ragdoll2D"],"where":[{"component":"Ragdoll2D","field":"state","op":"==","value":"getting_up"}],"ticks":900}}
+{"jsonrpc":"2.0","id":13,"method":"entity.get","params":{"id":"kid","components":["Transform2D"]}}
+{"jsonrpc":"2.0","id":14,"method":"run.until","params":{"with":["Ragdoll2D"],"where":[{"component":"Ragdoll2D","field":"state","op":"==","value":"animated"}],"ticks":120}}
+{"jsonrpc":"2.0","id":15,"method":"events.read","params":{"subscription":"events_1"}}
+{"jsonrpc":"2.0","id":16,"method":"ragdoll.hit","params":{"id":"kid","bone":"hnd","impulse":[0,1]}}

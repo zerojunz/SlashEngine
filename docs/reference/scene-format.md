@@ -4482,9 +4482,16 @@ any body is. [examples/ragdoll](../../examples/ragdoll/) lets a waving arm go li
   `ConeTwistJoint3D` with `swing_span` and `twist_span`), `"hinge"` (about z, with its angular
   limit), `"slider"` (along x, with its linear limit) or `"6dof"` (`x`, `y` and `z`, each with
   Godot's linear and angular limits and springs); for a bone along y, a `joint_rotation` of
-  `[0, 0, 1.5707964]` turns a cone's or slider's x axis along it. Joined bodies collide with
-  each other, as on Godot's Jolt module, so leave room between their shapes. `"none"` holds
-  nothing.
+  `[0, 0, 1.5707964]` turns a cone's or slider's x axis along it. A body never collides with
+  the body its joint holds it to, as Godot's joints' `exclude_nodes_from_collision`, but does
+  with the others. `"none"` holds nothing.
+- `drive` is a muscle, as Unreal's physical animation: while the body simulates, it is turned
+  toward its bone's place in the animated pose, in its parent body's space (`space` `"local"`)
+  or the world's (`"world"`), by `orientation_strength` (per second squared) and
+  `angular_velocity_strength` (per second), as an implicit spring that stays stable at any
+  strength. A local drive pushes the parent body back as hard. `position_strength` and
+  `velocity_strength` also pull the body to the pose's place in the world, so a body holds its
+  own weight; `max_angular_acceleration` and `max_linear_acceleration` cap them.
 - `collision_exceptions` names bodies the simulator's bodies never collide with, such as the
   character's own capsule.
 - A bone with no body, or a second body for one bone, is a body that never moves or collides;
@@ -4493,10 +4500,89 @@ any body is. [examples/ragdoll](../../examples/ragdoll/) lets a waving arm go li
 | Component | Fields (defaults) |
 | --- | --- |
 | `PhysicalBoneSimulator3D` | `active` `true`, `influence` `1`, `simulating` `false`, `simulated_bones` `[]`, `collision_exceptions` `[]` (entity IDs) |
-| `PhysicalBone3D` | `bone_name` `""`, `body_offset_position` and `body_offset_rotation` `[0, 0, 0]`, `joint_type` `"none"`, `joint_rotation` `[0, 0, 0]`, `swing_span` `0.785398`, `twist_span` `3.14159`, `angular_limit_enabled` `false`, `angular_limit_upper` `1.5708`, `angular_limit_lower` `-1.5708`, `linear_limit_upper` `1`, `linear_limit_lower` `-1`, `x`, `y` and `z` (each with `linear_limit_enabled` and `angular_limit_enabled` `true`, their `_upper` and `_lower` `0`, `linear_spring_enabled` and `angular_spring_enabled` `false` with `_stiffness`, `_damping` and `_equilibrium_point` `0`), `collision_layer` `1`, `collision_mask` `1`, `mass` `1`, `friction` `1`, `bounce` `0`, `physics_material_override` `""`, `gravity_scale` `1`, `linear_damp_mode` and `angular_damp_mode` `"combine"`, `linear_damp` and `angular_damp` `0`, `can_sleep` `true`; written by each step while it simulates: `linear_velocity`, `angular_velocity` |
+| `PhysicalBone3D` | `bone_name` `""`, `body_offset_position` and `body_offset_rotation` `[0, 0, 0]`, `joint_type` `"none"`, `joint_rotation` `[0, 0, 0]`, `swing_span` `0.785398`, `twist_span` `3.14159`, `angular_limit_enabled` `false`, `angular_limit_upper` `1.5708`, `angular_limit_lower` `-1.5708`, `linear_limit_upper` `1`, `linear_limit_lower` `-1`, `x`, `y` and `z` (each with `linear_limit_enabled` and `angular_limit_enabled` `true`, their `_upper` and `_lower` `0`, `linear_spring_enabled` and `angular_spring_enabled` `false` with `_stiffness`, `_damping` and `_equilibrium_point` `0`), `collision_layer` `1`, `collision_mask` `1`, `mass` `1`, `friction` `1`, `bounce` `0`, `physics_material_override` `""`, `gravity_scale` `1`, `linear_damp_mode` and `angular_damp_mode` `"combine"`, `linear_damp` and `angular_damp` `0`, `can_sleep` `true`, `drive` (`space` `"off"`, `orientation_strength`, `angular_velocity_strength`, `position_strength`, `velocity_strength`, `max_angular_acceleration` and `max_linear_acceleration` `0`); written by each step while it simulates: `linear_velocity`, `angular_velocity` |
 
 `scene validate` reports `simulated_bones` and `bone_name`s the model hasn't (with "did you
 mean"), a bone with two bodies and a `PhysicalBone3D` no simulator holds.
+
+### Ragdoll profiles
+
+Characters' and creatures' own ragdolls are SlashEngine's, after Unreal's physics assets and
+Physical Animation component, made of the ragdolls above (Godot builds them one physical bone at
+a time). A `.ragdoll.json` profile (`slash-cli schema ragdoll`) names each bone's body, joint and
+muscle, and how the whole keeps its balance, takes hits and gets back up; a `Ragdoll3D` on the
+entity that draws a model, or a `Ragdoll2D` on the root of a cut-out character's `Transform2D`
+tree, plays it. `ragdoll.generate` writes one fitted to a model or tree, `ragdoll.hit` hits a
+bone and `ragdoll.tune` changes one instance. [examples/ragdoll-profiles](../../examples/ragdoll-profiles/)
+knocks a cut-out kid down and generates an arm's profile.
+
+```json
+{"format": 1,
+ "defaults": {"drive": "local", "stiffness": 400, "damping": 40, "pin": 200, "pin_damping": 28},
+ "bones": {
+   "mixamorig_Hips": {"shape": "sphere", "radius": 0.12, "mass": 12, "joint": "none"},
+   "mixamorig_LeftForeArm": {"radius": 0.04, "height": 0.3, "offset": [0, 0.13, 0],
+                             "mass": 1.6, "joint": "hinge", "joint_rotation": [0, 1.57, 0],
+                             "lower": 0, "upper": 2.5}},
+ "balance": {"bone": "mixamorig_Hips", "stiffness": 400, "damping": 40,
+             "position_stiffness": 200, "position_damping": 28, "max_tilt": 0.6},
+ "hit": {"weaken": 0.5, "spread": 0.5, "recovery": 1, "knockdown": 40},
+ "get_up": {"face_up": "GetUpBack", "face_down": "GetUpFront", "blend": 0.4,
+            "forward": [0, 0, 1]}}
+```
+
+- `bones` are a model's bone names (3D, in meters) or the entities under a `Ragdoll2D` (2D, in
+  pixels), by ID without the ragdoll's own `"<id>/"` when it is part of an instance. Each bone is
+  `defaults` with its own members over them.
+- A bone's body is a `shape` (`"capsule"` `radius` and `height` end to end along its y,
+  `"sphere"` or `"circle"` `radius`, `"box"` or `"rectangle"` `size`) at `offset` and
+  `rotation` in the bone's space (2D: z alone), weighing `mass` kilograms, with
+  `linear_damp`, `angular_damp` and a `physics_material`.
+- Its `joint` holds it to the body of the nearest bone above with one: `"none"`, `"pin"`,
+  `"cone"` (`swing_span`, `twist_span`; 3D only) or `"hinge"` (`lower`, `upper`, in radians
+  from the pose it is made in), in the axes `joint_rotation` turns.
+- Its muscle turns it toward the animated pose: `drive` `"local"` (in the parent bone's body),
+  `"world"` or `"off"`, `stiffness` (per second squared), `damping` (per second), `strength` (a
+  multiplier on both, 0 for none) and `max_acceleration`; `pin` and `pin_damping` also pull it
+  to the pose's place, as PuppetMaster's pins, so it holds its own weight.
+- `balance.bone`'s body is driven toward the pose in the world (orientation and place) instead,
+  and an active ragdoll falls (goes limp) once it leans more than `max_tilt` radians from it (0
+  never falls).
+- A hit takes `weaken` of its bone's strength per kilogram-meter per second (2D: kilogram-pixel),
+  `spread` of that from each bone to the ones under it, and muscles get it back over `recovery`
+  seconds. A hit of `knockdown` or more makes the ragdoll limp (0 never).
+- Once every body has moved slower than `get_up.settle_speed` for `settle_time` seconds, a limp
+  ragdoll gets up: its entity moves to where it lies (3D: under its balance bone, facing as it
+  lies; 2D: across, keeping its height), its `AnimationPlayer` plays `face_up` or `face_down` as
+  `forward`, in the balance bone's space, points up or down, and the bodies blend into the
+  animation over `blend` seconds. `enabled` `false` leaves it lying.
+- `collision_layer` and `collision_mask` are every body's; `self_collision` (default `false`)
+  lets a ragdoll's own bodies collide with each other. 2D bodies leave their own layer out of
+  their masks for that.
+
+`Ragdoll3D` keeps a `PhysicalBoneSimulator3D` on its entity and a `PhysicalBone3D` child
+(`"<id>_<bone>"`) per profile bone the model has, made at the bone's rest pose, with its joint
+and its `drive` set from the profile and state. `Ragdoll2D` makes each bone entity a
+`RigidBody2D` with a `CollisionShape2D`, frozen as a kinematic body while the animation moves
+it, and joins it to the bone above with a `PinJoint2D` entity (`"<bone>_joint"`) made where the
+bone is when the ragdoll first runs, so its limits count from that pose. Its muscles set the
+bodies' velocities before the step as the same implicit springs.
+
+| `state` | Bodies |
+| --- | --- |
+| `"animated"` | Follow the animation (Ragdoll3D: the simulator doesn't simulate; Ragdoll2D: frozen) |
+| `"active"` | Simulate, their muscles driving them toward the animation; a hit reaction's state |
+| `"limp"` | Simulate with no muscles |
+| `"getting_up"` | Blend back into the animation |
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `Ragdoll3D`, `Ragdoll2D` | `profile` `""`, `overrides` (a JSON merge patch over the profile), `state` `"animated"`, `rest_state` `"animated"` (what hit reactions and getting up end in), `strength` `1`; kept as it plays: `weakness` (by bone, 0 to 1), `reaction`, `still`, `rising` (seconds) |
+
+Events: `ragdoll_hit` (`bone`, `impulse`), `ragdoll_fell` (`reason` `"hit"` or `"balance"`),
+`ragdoll_getting_up` (`face` `"up"` or `"down"`) and `ragdoll_got_up`. `scene validate` and
+exports check profiles, bones the model or tree lacks (with "did you mean"), and 2D profiles'
+cone joints, 3D shapes and bones that are the `Ragdoll2D`'s own entity.
 
 ### Soft bodies
 

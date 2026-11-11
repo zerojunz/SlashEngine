@@ -10,6 +10,7 @@ add_library(slash_world
     src/physical_bones.cpp
     src/physics_field.cpp
     src/physics_material.cpp
+    src/ragdoll.cpp
     src/scene.cpp
     src/tree2d.cpp
     src/tree3d.cpp

@@ -1,10 +1,12 @@
 #pragma once
 
+#include "slash/world/tree3d.hpp"
 #include "slash/world/world.hpp"
 
 #include <cstdint>
 #include <entt/entity/entity.hpp>
 #include <functional>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -46,5 +48,13 @@ using PhysicalBoneLinker = std::function<PhysicalBoneLinks(const World& world)>;
 void set_physical_bone_linker(World& world, PhysicalBoneLinker linker);
 // The links as they are now; none when no linker was set.
 [[nodiscard]] PhysicalBoneLinks physical_bone_links(const World& world);
+
+// Where the animated pose puts each physical bone's body this tick, in the world: what
+// engine/scene3d's skeleton_modifiers system works out before the physics step, and what
+// physics3d turns bodies toward with their PhysicalBone3D drive.
+using PhysicalBoneTargets = std::unordered_map<entt::entity, Affine3D>;
+void set_physical_bone_targets(World& world, PhysicalBoneTargets targets);
+// The targets as they were last set; null when none were.
+[[nodiscard]] const PhysicalBoneTargets* physical_bone_targets(const World& world);
 
 } // namespace slash::world
