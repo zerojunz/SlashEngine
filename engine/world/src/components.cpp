@@ -938,6 +938,49 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("collision_layer", layer)
         .describe("collision_mask", mask);
 
+    registry.add<HairInstance3D>()
+        .set_doc("Grows hair or fur over the model its entity's MeshInstance3D draws, as "
+                 "Unreal's Groom: groom names a .groom.json file saying how its strands grow, "
+                 "draw and move. Guide strands follow the model's skin and skeleton, are stepped "
+                 "by 3D physics (gravity, WindSource3Ds' wind, PhysicsField3Ds, the shapes of "
+                 "the body it grows on) and the strands drawn follow them.")
+        .describe("groom", {.doc = "Project path of the 3D .groom.json file it grows."})
+        .describe("section", {.doc = "The name of the model's material whose surfaces it grows "
+                                     "on; \"\" grows it on every surface."})
+        .describe("visible", {.doc = "Drawn when on."})
+        .describe("simulate", {.doc = "Moves its guides with physics; off keeps them in their "
+                                      "groomed shape on the skin."})
+        .describe("collide", {.doc = "Keeps its strands out of the enabled sphere, capsule and "
+                                     "box CollisionShape3Ds in its tree, but a "
+                                     "CharacterBody3D's."})
+        .describe("cast_shadow", {.doc = "As MeshInstance3D's.",
+                                  .choices = {"off", "on", "double_sided", "shadows_only"}});
+    registry.add<Hair2D>()
+        .set_doc("Grows hair along a line in its entity's space, for sprites and Skeleton2D "
+                 "bones: groom names a 2D .groom.json file. Its entity's global transform "
+                 "carries its guide strands, which 2D physics steps (gravity, WindSource2Ds' "
+                 "wind, PhysicsField2Ds, the shapes of the body it grows on); the strands drawn "
+                 "follow them.")
+        .describe("groom", {.doc = "Project path of the 2D .groom.json file it grows."})
+        .describe("root_line", {.doc = "The points of the line its roots spread along, in its "
+                                       "space, as [[x, y], ...]; strands stand out to the "
+                                       "line's left on screen (up for a line drawn left to "
+                                       "right)."})
+        .describe("modulate", {.doc = "Multiplies the strands' colors, as [r, g, b, a]."})
+        .describe("simulate", {.doc = "Moves its guides with physics; off keeps them in their "
+                                      "groomed shape."})
+        .describe("collide", {.doc = "Keeps its strands out of the enabled circle, capsule and "
+                                     "rectangle CollisionShape2Ds in its tree, but a "
+                                     "CharacterBody2D's."})
+        .describe("z_index", {.doc = "Drawn after lower values."})
+        .describe("z_as_relative", {.doc = "z_index adds to its parents'; off makes it the "
+                                           "whole of it."})
+        .describe("visible", {.doc = "Drawn when on."})
+        .describe("light_mask", {.doc = "Which 2D lights light it, as Sprite2D's."})
+        .describe("texture_filter", {.doc = "How a cards groom's texture is sampled, as "
+                                            "Sprite2D's.",
+                                     .choices = {"inherit", "linear", "nearest"}});
+
     registry.add<Foliage2D>()
         .set_doc("Painted 2D plants and rocks: each group's instances draw their .foliage.json "
                  "type's texture standing on its origin, bend in WindSource2Ds' wind, part for "

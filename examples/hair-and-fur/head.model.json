@@ -1,0 +1,29 @@
+{
+  "format": 1,
+  "materials": {
+    "scalp": {
+      "albedo_color": [0.3, 0.2, 0.12, 1]
+    },
+    "skin": {
+      "albedo_color": [0.85, 0.65, 0.5, 1]
+    }
+  },
+  "parts": [
+    {
+      "name": "head",
+      "radius": 0.12,
+      "shape": "sphere",
+      "material": "skin",
+      "children": [
+        {
+          "material": "scalp",
+          "name": "scalp",
+          "operation": "union",
+          "position": [0, 0.03, -0.015],
+          "radius": 0.118,
+          "shape": "sphere"
+        }
+      ]
+    }
+  ]
+}

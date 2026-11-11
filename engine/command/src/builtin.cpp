@@ -77,6 +77,7 @@
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/foliage.hpp"
+#include "slash/world/hair.hpp"
 #include "slash/world/path.hpp"
 #include "slash/world/physics_material.hpp"
 #include "slash/world/ragdoll.hpp"
@@ -536,6 +537,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "foliage") {
         return Reply::success(world::foliage_schema());
+    }
+    if (kind == "groom") {
+        return Reply::success(world::groom_schema());
     }
     if (name.empty()) {
         return param_error(code::kInvalidParams, "/name",
@@ -7127,7 +7131,8 @@ void register_builtin_commands(Registry& registry) {
                                "scatter",
                                "physics_material",
                                "ragdoll",
-                               "foliage"};
+                               "foliage",
+                               "groom"};
     registry.add({
         .name = "schema.get",
         .description =
@@ -7137,7 +7142,7 @@ void register_builtin_commands(Registry& registry) {
             ".bus_layout.json, .navmesh.json, .navpoly.json, .npc.json, .meshlib.json, "
             ".lightmap.json, "
             ".voxelgi.json, .model.json, .standard_material.json, .texture.json, .scatter.json, "
-            ".physics_material.json, .ragdoll.json, .foliage.json, "
+            ".physics_material.json, .ragdoll.json, .foliage.json, .groom.json, "
             ".replay.json, "
             ".test.json, "
             ".score.json or storyboard "
@@ -8835,6 +8840,7 @@ void register_builtin_commands(Registry& registry) {
     register_terrain_commands(registry);
     register_procedural_commands(registry);
     register_scatter_commands(registry);
+    register_hair_commands(registry);
     register_lightmap_commands(registry);
     register_model_cleanup_commands(registry);
     register_services_commands(registry);

@@ -1,0 +1,93 @@
+{
+  "entities": {
+    "breeze": {
+      "components": {
+        "Transform3D": {
+          "rotation": [0.0, -1.5707964, 0.0]
+        },
+        "WindSource3D": {
+          "max_gust_amount": 0.0,
+          "min_gust_amount": 0.0,
+          "strength": 3.0,
+          "turbulence": 0.0
+        }
+      }
+    },
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true
+        },
+        "Transform3D": {
+          "position": [0.0, 0.05, 1.1]
+        }
+      }
+    },
+    "creature": {
+      "components": {
+        "HairInstance3D": {
+          "groom": "fur.groom.json"
+        },
+        "MeshInstance3D": {
+          "mesh": "creature.model.json"
+        },
+        "Transform3D": {
+          "position": [0.35, -0.1, 0.0]
+        }
+      }
+    },
+    "doll": {
+      "components": {
+        "Hair2D": {
+          "groom": "mane.groom.json",
+          "root_line": [
+            [12.0, 0.0],
+            [-12.0, 0.0]
+          ]
+        },
+        "Transform2D": {
+          "position": [80.0, 20.0]
+        }
+      }
+    },
+    "draft": {
+      "components": {
+        "Transform2D": {},
+        "WindSource2D": {
+          "max_gust_amount": 0.0,
+          "min_gust_amount": 0.0,
+          "strength": 300.0,
+          "turbulence": 0.0
+        }
+      }
+    },
+    "head": {
+      "components": {
+        "CollisionShape3D": {
+          "radius": 0.12,
+          "shape": "sphere"
+        },
+        "HairInstance3D": {
+          "groom": "long.groom.json",
+          "section": "scalp"
+        },
+        "MeshInstance3D": {
+          "mesh": "head.model.json"
+        },
+        "StaticBody3D": {},
+        "Transform3D": {
+          "position": [-0.3, 0.05, 0.0]
+        }
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {},
+        "Transform3D": {
+          "rotation": [-0.6, 0.4, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

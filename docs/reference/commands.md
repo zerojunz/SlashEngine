@@ -63,6 +63,7 @@ as `entity.get`, reject it as an unknown param.
 | Textures | [`texture.generate`](#texturegenerate) |
 | Scatter | [`scatter.run`](#scatterrun) |
 | Foliage | [`foliage.paint`](#foliagepaint), [`foliage.erase`](#foliageerase), [`foliage.get`](#foliageget), [`foliage.harvest`](#foliageharvest) |
+| Hair | [`hair.get`](#hairget) |
 | Animations | [`animation.eval`](#animationeval), [`animation.seek`](#animationseek) |
 | Models | [`model.inspect`](#modelinspect), [`model.cleanup`](#modelcleanup), [`model.retarget`](#modelretarget), [`skeleton.get`](#skeletonget), [`csg.get`](#csgget) |
 | Paths | [`path.get`](#pathget) |
@@ -183,7 +184,7 @@ one component or one command.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"npc"`, `"quest"`, `"dialogue"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"standard_material"`, `"texture"`, `"scatter"`, `"physics_material"`, `"ragdoll"`, `"foliage"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"npc"`, `"quest"`, `"dialogue"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"standard_material"`, `"texture"`, `"scatter"`, `"physics_material"`, `"ragdoll"`, `"foliage"`, `"groom"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -718,6 +719,28 @@ and world `position`. Nothing to harvest there is `-32001` at `/at`. Needs: `edi
 
 ```json
 {"amount":3,"item":"stone","position":[1.584,0.0,-1.46],"type":"boulder.foliage.json"}
+```
+
+## Hair
+
+Reading [hair and fur](scene-format.md#hair-and-fur) as it grew and where physics put it.
+[examples/hair-and-fur](../../examples/hair-and-fur/).
+
+### hair.get
+
+Returns a `HairInstance3D`'s or `Hair2D`'s `groom` and `render`, how many `guides` and drawn
+`strands` grew, the `points` along each guide (and in 3D the `area` grown on), whether physics
+has `simulated` it yet, the guides' world `bounds`, each guide's tip (`tips`) and `tip_moved`,
+the `max` and `mean` distance of the tips from the groomed shape (what gravity, wind and motion
+did). `points: true` adds `guide_points`, each guide's points root first. A groom that can't
+grow is `-32002` at `/entity` with why. Needs: `read`.
+
+```json
+{"entity": "doll"}
+```
+
+```json
+{"bounds":{"max":[103.884,45.857],"min":[70.0,20.0]},"groom":"mane.groom.json","guides":6,"points":6,"render":"strands","simulated":true,"strands":36,"tip_moved":{"max":3.417,"mean":3.417},"tips":[[103.884,45.857],[99.884,45.857],[95.884,45.857],[91.884,45.857],[87.884,45.857],[83.884,45.857]]}
 ```
 
 ## Animations

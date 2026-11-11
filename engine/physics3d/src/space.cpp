@@ -764,6 +764,7 @@ void Space::reset() {
     exceptions_.clear();
     wheels_.clear();
     vehicles_.clear();
+    hairs_.clear();
     for (auto* bodies : {&soft_bodies_, &cloths_}) {
         for (auto& [entity, soft] : *bodies) {
             destroy(*soft);
@@ -1768,6 +1769,7 @@ void Space::step(world::World& world, float seconds) {
     }
     if (system_ == nullptr) {
         impulses_.clear();
+        step_hair(world, seconds);
         return;
     }
     world::PhysicsDebug* debug = world::physics_debug(world);
@@ -1795,6 +1797,7 @@ void Space::step(world::World& world, float seconds) {
     step_vehicles(world, tree, seconds);
     read_back(world, tree);
     move_characters(world, tree, seconds);
+    step_hair(world, seconds);
     find_overlaps(world);
     emit_events(world);
     finish_debug(world, seconds);

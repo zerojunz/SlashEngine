@@ -8,6 +8,7 @@
 #include "slash/ui/ui.hpp"
 #include "slash/video/video.hpp"
 #include "slash/world/cloth2d.hpp"
+#include "slash/world/hair.hpp"
 #include "slash/world/wind.hpp"
 
 #include <algorithm>
@@ -1416,6 +1417,156 @@ void CanvasRenderer::gather_cloths(DrawState& state) {
     }
 }
 
+// Hair2D: its groom's strands (or cards) as ribbons following its guides, where 2D physics put
+// them between the last two steps, or where its transform puts them at rest before physics steps
+// them; strands narrow from root to tip and blend from the root's color to the tip's.
+void CanvasRenderer::gather_hair(DrawState& state) {
+    const world::World& world = state.world;
+    const CanvasOptions& options = state.options;
+    const world::Tree2D& tree = state.tree;
+    const world::Canvases& canvases = state.canvases;
+    const std::vector<world::Canvas>& canvas_list = canvases.all();
+    const auto& ecs = world.ecs();
+    std::vector<Item>& items = state.items;
+    std::vector<render::Vertex2D>& vertices = state.vertices;
+    std::vector<Vec3> line;
+    for (const auto [entity, hair] : ecs.view<const world::Hair2D>().each()) {
+        const Inherited from_parents = inherited(world, tree, entity);
+        const std::size_t canvas = canvases.of(entity);
+        if (!hair.visible || !from_parents.visible || !canvas_list[canvas].visible) {
+            continue;
+        }
+        auto grown = world::hair_growth_2d(world, entity);
+        if (!grown) {
+            state.problem(entity, "/components/Hair2D/groom", grown.error().message);
+            continue;
+        }
+        const world::Groom& groom = *grown.value().groom;
+        const world::HairGrowth2D& growth = *grown.value().growth;
+        const auto n = static_cast<std::size_t>(std::max(groom.segments, 1) + 1);
+        const std::size_t count = growth.guides.size() * n;
+        const world::Affine2D place = tree.global_affine(entity);
+        // The guides' points in the world.
+        std::vector<Vec3> guides;
+        guides.reserve(count);
+        const world::HairStrands* simulated = world::hair_strands_2d(world, entity);
+        if (simulated != nullptr && simulated->current.size() == count &&
+            simulated->previous.size() == count) {
+            const auto t = static_cast<float>(std::clamp(options.interpolation, 0.0, 1.0));
+            for (std::size_t i = 0; i < count; ++i) {
+                guides.push_back(simulated->previous[i] +
+                                 ((simulated->current[i] - simulated->previous[i]) * t));
+            }
+        } else {
+            for (const world::HairGuide2D& guide : growth.guides) {
+                for (const Vec2 point : guide.rest) {
+                    const Vec2 at = place.apply(point);
+                    guides.push_back({at.x, at.y, 0.0F});
+                }
+            }
+        }
+        if (guides.size() != count) {
+            continue;
+        }
+        const bool cards = groom.render == "cards";
+        render::TextureId texture_id = render::TextureId::None;
+        const render::Image* image = nullptr;
+        std::string_view path;
+        if (cards && !groom.texture.empty()) {
+            auto texture = this->texture(
+                groom.texture, resolve_filter(hair.texture_filter, options.texture_filter));
+            if (!texture) {
+                warn_once(groom.texture, texture.error().message, "texture", "hair can't draw");
+                state.problem(entity, "/components/Hair2D/groom", texture.error().message);
+                continue;
+            }
+            texture_id = texture.value()->id;
+            image = &texture.value()->pixels();
+            path = texture.value()->path;
+        }
+        const int z = z_index(hair.z_index, hair.z_as_relative, from_parents);
+        render::Material material;
+        material.shading = state.shading_for(render::LightMode::Normal, hair.light_mask, z, canvas);
+        const Vec4 tint{
+            hair.modulate.x * from_parents.modulate.x, hair.modulate.y * from_parents.modulate.y,
+            hair.modulate.z * from_parents.modulate.z, hair.modulate.w * from_parents.modulate.w};
+        const std::size_t first = vertices.size();
+        // A ribbon along points, narrowing from root to tip.
+        const auto ribbon = [&](std::span<const Vec3> along, Vec4 color, real_t root_width,
+                                real_t tip_width) {
+            const std::size_t size = along.size();
+            if (size < 2) {
+                return;
+            }
+            const auto corner = [&](std::size_t k, float side) {
+                const float t = static_cast<float>(k) / static_cast<float>(size - 1);
+                const Vec3 way = along[std::min(k + 1, size - 1)] - along[k == 0 ? 0 : k - 1];
+                const real_t way_size = std::sqrt((way.x * way.x) + (way.y * way.y));
+                const Vec2 across =
+                    way_size > 0.0F ? Vec2{-way.y / way_size, way.x / way_size} : Vec2{1.0F, 0.0F};
+                const real_t width = root_width + ((tip_width - root_width) * t);
+                const Vec2 at = Vec2{along[k].x, along[k].y} + (across * (width * side));
+                const auto mix = [&](float a, float b, float c) {
+                    return to_byte((a + ((b - a) * t)) * c);
+                };
+                return render::Vertex2D{
+                    .x = static_cast<float>(at.x),
+                    .y = static_cast<float>(at.y),
+                    .u = side + 0.5F,
+                    .v = t,
+                    .rgba = {mix(groom.root_color.x, groom.tip_color.x, color.x * tint.x),
+                             mix(groom.root_color.y, groom.tip_color.y, color.y * tint.y),
+                             mix(groom.root_color.z, groom.tip_color.z, color.z * tint.z),
+                             mix(groom.root_color.w, groom.tip_color.w, color.w * tint.w)}};
+            };
+            for (std::size_t k = 0; k + 1 < size; ++k) {
+                const render::Vertex2D a = corner(k, -0.5F);
+                const render::Vertex2D b = corner(k, 0.5F);
+                const render::Vertex2D c = corner(k + 1, -0.5F);
+                const render::Vertex2D d = corner(k + 1, 0.5F);
+                vertices.insert(vertices.end(), {a, b, c, b, d, c});
+            }
+        };
+        if (cards) {
+            for (std::size_t g = 0; g < growth.guides.size(); ++g) {
+                ribbon(std::span(guides).subspan(g * n, n), {1.0F, 1.0F, 1.0F, 1.0F},
+                       groom.card_width, groom.card_width);
+            }
+        } else {
+            for (const world::HairStrand2D& strand : growth.strands) {
+                const world::HairGuide2D& guide = growth.guides[strand.guide];
+                const Vec2 offset2 = (place.x * (strand.root.x - guide.root.x)) +
+                                     (place.y * (strand.root.y - guide.root.y));
+                const Vec2 side2 = (place.x * guide.normal.y) - (place.y * guide.normal.x);
+                world::follow_guide(std::span(guides).subspan(strand.guide * n, n),
+                                    {offset2.x, offset2.y, 0.0F}, strand.length, strand.clump,
+                                    groom.curl_radius, groom.curl_turns, strand.phase,
+                                    {side2.x, side2.y, 0.0F}, true, line);
+                ribbon(line, strand.color, groom.width, groom.tip_width);
+            }
+        }
+        if (vertices.size() == first) {
+            continue;
+        }
+        state.repeat(entity, first);
+        items.push_back({.canvas = canvas,
+                         .z_index = z,
+                         .order = tree.draw_key(entity),
+                         .part = 0,
+                         .texture = texture_id,
+                         .first = first,
+                         .count = vertices.size() - first,
+                         .material = std::move(material),
+                         .entity = entity,
+                         .kind = FrameItem::Kind::Sprite,
+                         .image = image,
+                         .path = path,
+                         .drawn = 1,
+                         .particles = render::ParticlesId::None,
+                         .look = {}});
+    }
+}
+
 // Foliage2D: each group's texture at its instances, standing on the type's origin, leaning in
 // the wind and from characters, the lowest drawn last so nearer plants cover farther ones.
 void CanvasRenderer::gather_foliage(DrawState& state) {
@@ -2117,6 +2268,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     }
 
     gather_cloths(state);
+    gather_hair(state);
 
     gather_foliage(state);
 

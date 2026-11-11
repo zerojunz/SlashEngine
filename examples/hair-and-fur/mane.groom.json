@@ -1,0 +1,21 @@
+{
+  "clumping": 0.3,
+  "comb": [1, 1, 0],
+  "curl_radius": 2,
+  "curl_turns": 1,
+  "density": 1.5,
+  "format": 1,
+  "guides": 6,
+  "length": 30,
+  "lift": 0.2,
+  "render": "strands",
+  "root_color": [0.9, 0.7, 0.2, 1],
+  "seed": 5,
+  "segments": 5,
+  "simulation": {
+    "stiffness": 0.15,
+    "tip_stiffness": 0.01
+  },
+  "space": "2d",
+  "tip_color": [1, 0.9, 0.5, 1]
+}
