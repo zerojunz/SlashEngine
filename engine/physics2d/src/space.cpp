@@ -34,7 +34,6 @@ using world::TileMapLayer;
 using world::Transform2D;
 
 // Box2D substeps per tick, as its documentation recommends.
-constexpr int kSubSteps = 4;
 // Joint motors push as hard as it takes, as Godot's do.
 constexpr float kMaxMotorTorque = 1.0e9F;
 // Box2D's revolute limits stop just short of half a turn.
@@ -103,13 +102,43 @@ void finish_task(void* user_task, void* user_context) {
     tasks.pool->wait_for_group_task_completion(*static_cast<const jobs::GroupId*>(user_task));
 }
 
-// Godot's rules for two bodies' materials: the smaller friction, the sum of bounces up to 1.
-float combine_friction(float a, int /*material_a*/, float b, int /*material_b*/) {
-    return std::min(a, b);
+// Box2D takes no negative friction or bounce, so a rough or absorbent material's sign goes in
+// its shapes' material ID.
+constexpr int kRough = 1;
+constexpr int kAbsorbent = 2;
+
+int material_id(float friction, float bounce) {
+    return (friction < 0.0F ? kRough : 0) | (bounce < 0.0F ? kAbsorbent : 0);
 }
 
-float combine_bounce(float a, int /*material_a*/, float b, int /*material_b*/) {
-    return std::clamp(a + b, 0.0F, 1.0F);
+// Godot's rules for two bodies' materials: the smaller computed friction without its sign (a
+// rough one wins), the sum of computed bounces (an absorbent one takes away) from 0 to 1.
+float combine_friction(float a, int material_a, float b, int material_b) {
+    const float signed_a = (material_a & kRough) != 0 ? -a : a;
+    const float signed_b = (material_b & kRough) != 0 ? -b : b;
+    return std::abs(std::min(signed_a, signed_b));
+}
+
+float combine_bounce(float a, int material_a, float b, int material_b) {
+    const float signed_a = (material_a & kAbsorbent) != 0 ? -a : a;
+    const float signed_b = (material_b & kAbsorbent) != 0 ? -b : b;
+    return std::clamp(signed_a + signed_b, 0.0F, 1.0F);
+}
+
+// The physics material file a body names, or an empty one.
+std::string_view material_path(const entt::registry& registry, entt::entity entity, Kind kind) {
+    switch (kind) {
+    case Kind::Rigid:
+        return registry.get<RigidBody2D>(entity).physics_material_override;
+    case Kind::Animatable:
+        return registry.get<AnimatableBody2D>(entity).physics_material_override;
+    case Kind::Static:
+        return registry.get<StaticBody2D>(entity).physics_material_override;
+    case Kind::Character:
+    case Kind::Area:
+        break;
+    }
+    return {};
 }
 
 // The kind of body an entity is, by Godot's node it stands for; the first wins if it has two.
@@ -466,8 +495,9 @@ void Space::build_shapes(world::World& world, Body& body, const ShapeKey& key) {
 
     const auto shape_def = [&](ShapeInfo& info, bool one_way, float margin, b2Vec2 up) {
         b2ShapeDef def = b2DefaultShapeDef();
-        def.material.friction = key.friction;
-        def.material.restitution = key.bounce;
+        def.material.friction = std::abs(key.friction);
+        def.material.restitution = std::abs(key.bounce);
+        def.material.userMaterialId = material_id(key.friction, key.bounce);
         def.density = 1.0F;
         def.isSensor = area;
         // Areas that change gravity or damping need their overlaps even when they monitor
@@ -620,7 +650,17 @@ void Space::sync_body(world::World& world, const world::Tree2D& tree, entt::enti
                       Kind kind) {
     entt::registry& registry = world.ecs();
     const Transform2D transform = transform_of(tree, entity);
-    const ShapeKey shape_key = shape_key_of(registry, tree, entity, kind);
+    ShapeKey shape_key = shape_key_of(registry, tree, entity, kind);
+    // A physics material overrides the body's own friction and bounce, as Godot's
+    // physics_material_override.
+    std::optional<world::PhysicsMaterial> made_of;
+    if (const std::string_view path = material_path(registry, entity, kind); !path.empty()) {
+        made_of = material(world, std::string(path));
+    }
+    if (made_of) {
+        shape_key.friction = world::computed_friction(*made_of);
+        shape_key.bounce = world::computed_bounce(*made_of);
+    }
 
     const auto [constant_linear, constant_angular] = constant_velocity_of(registry, entity, kind);
     std::unique_ptr<Body>* found = bodies_.find(entity);
@@ -654,10 +694,15 @@ void Space::sync_body(world::World& world, const world::Tree2D& tree, entt::enti
         build_shapes(world, **found, shape_key);
     }
     Body& body = **found;
+    body.surface = made_of ? made_of->surface : std::string();
 
     if (kind == Kind::Rigid) {
         auto& rigid = registry.get<RigidBody2D>(entity);
-        const RigidKey key = rigid_key_of(rigid, settings_);
+        RigidKey key = rigid_key_of(rigid, settings_);
+        key.density = made_of ? made_of->density : 0.0F;
+        if (body.anchored) {
+            key.type = b2_kinematicBody;
+        }
         if (key != body.rigid_key) {
             if (key.type != b2Body_GetType(body.id)) {
                 b2Body_SetType(body.id, key.type);
@@ -673,13 +718,18 @@ void Space::sync_body(world::World& world, const world::Tree2D& tree, entt::enti
                 // scales them.
                 b2Body_ApplyMassFromShapes(body.id);
                 const b2MassData shapes = b2Body_GetMassData(body.id);
-                b2MassData mass{.mass = key.mass,
+                // A material's density weighs the shapes' area, in square meters of
+                // kPixelsPerMeter pixels a side.
+                const float weight =
+                    key.density > 0.0F && shapes.mass > 0.0F
+                        ? key.density * shapes.mass / (kPixelsPerMeter * kPixelsPerMeter)
+                        : key.mass;
+                b2MassData mass{.mass = weight,
                                 .center = shapes.mass > 0.0F ? shapes.center : b2Vec2_zero,
                                 .rotationalInertia = key.inertia};
                 if (key.inertia <= 0.0F) {
-                    mass.rotationalInertia = shapes.mass > 0.0F
-                                                 ? shapes.rotationalInertia * key.mass / shapes.mass
-                                                 : 0.0F;
+                    mass.rotationalInertia =
+                        shapes.mass > 0.0F ? shapes.rotationalInertia * weight / shapes.mass : 0.0F;
                 }
                 b2Body_SetMassData(body.id, mass);
             }
@@ -1455,6 +1505,7 @@ void Space::step(world::World& world, float seconds) {
     }
 
     apply_areas(world, tree);
+    apply_fields(world, tree, seconds);
 
     // Constant forces every tick, and impulses queued since the last.
     for (auto& [entity, body] : bodies_) {
@@ -1486,7 +1537,7 @@ void Space::step(world::World& world, float seconds) {
 
     {
         SLASH_PROFILE_ZONE("Box2D step");
-        b2World_Step(world_, seconds, kSubSteps);
+        b2World_Step(world_, seconds, std::max(settings_.substeps, 1));
         tasks_.groups.clear();
     }
     for (const Body* body : carriers) {
@@ -1495,6 +1546,7 @@ void Space::step(world::World& world, float seconds) {
     read_back(world, tree);
     move_characters(world, tree, seconds);
     emit_events(world);
+    destroy_doomed(world);
 }
 
 void Space::emit_events(world::World& world) {

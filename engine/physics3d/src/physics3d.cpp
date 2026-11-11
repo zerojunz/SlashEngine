@@ -153,6 +153,15 @@ json::Value settings_schema() {
     properties["linear_damp"] = std::move(linear_damp);
     properties["angular_damp"] = std::move(angular_damp);
     properties["areas_detect_static_bodies"] = std::move(detect_static);
+    json::Value substeps;
+    substeps["type"] = "integer";
+    substeps["minimum"] = 1;
+    substeps["maximum"] = 16;
+    substeps["default"] = defaults.substeps;
+    substeps["description"] =
+        "Collision steps each physics tick takes, as Chaos's substeps: more keep fast, small or "
+        "stacked bodies steadier, at that many times the cost.";
+    properties["substeps"] = std::move(substeps);
     return schema;
 }
 
@@ -175,6 +184,9 @@ Settings parse_settings(const json::Value& settings) {
     if (const json::Value* detect = settings.find("areas_detect_static_bodies");
         detect != nullptr) {
         out.areas_detect_static_bodies = detect->as_bool();
+    }
+    if (const json::Value* substeps = settings.find("substeps"); substeps != nullptr) {
+        out.substeps = static_cast<int>(substeps->as_int());
     }
     return out;
 }
@@ -443,7 +455,8 @@ std::optional<RayHit> Space::cast_ray(Vec3 from, Vec3 to, const QueryFilter& fil
                   .point = from_jolt_place(position),
                   .normal = from_jolt(normal),
                   .fraction = hit.mFraction,
-                  .cell = grid_cell(*found, hit.mSubShapeID2)};
+                  .cell = grid_cell(*found, hit.mSubShapeID2),
+                  .surface = found->surface};
 }
 
 std::optional<Vec3i> Space::grid_cell(const Body& body, const JPH::SubShapeID& id) {

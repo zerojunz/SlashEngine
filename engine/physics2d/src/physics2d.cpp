@@ -17,6 +17,7 @@ namespace slash::physics2d {
 
 namespace {
 
+using detail::Body;
 using detail::find_space;
 using detail::from_b2;
 using detail::info_of;
@@ -125,7 +126,12 @@ float closest_hit(b2ShapeId shape, b2Vec2 point, b2Vec2 normal, float fraction, 
                        .point = from_b2(point),
                        .normal = from_b2(normal),
                        .fraction = fraction,
-                       .cell = info->cell};
+                       .cell = info->cell,
+                       .surface = {}};
+    if (const Body* body = static_cast<const Body*>(b2Body_GetUserData(b2Shape_GetBody(shape)));
+        body != nullptr) {
+        query.hit->surface = body->surface;
+    }
     return fraction;
 }
 
@@ -207,6 +213,15 @@ json::Value settings_schema() {
     properties["gravity_vector"] = std::move(gravity_vector);
     properties["linear_damp"] = std::move(linear_damp);
     properties["angular_damp"] = std::move(angular_damp);
+    json::Value substeps;
+    substeps["type"] = "integer";
+    substeps["minimum"] = 1;
+    substeps["maximum"] = 16;
+    substeps["default"] = defaults.substeps;
+    substeps["description"] =
+        "Solver substeps each physics tick takes, as Box2D's: more keep fast, small or stacked "
+        "bodies steadier, at more cost.";
+    properties["substeps"] = std::move(substeps);
     return schema;
 }
 
@@ -224,6 +239,9 @@ Settings parse_settings(const json::Value& settings) {
         const json::Array& xy = vector->as_array();
         out.gravity_vector = {static_cast<float>(xy.at(0).as_double()),
                               static_cast<float>(xy.at(1).as_double())};
+    }
+    if (const json::Value* substeps = settings.find("substeps"); substeps != nullptr) {
+        out.substeps = static_cast<int>(substeps->as_int());
     }
     return out;
 }

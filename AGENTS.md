@@ -147,7 +147,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, sdk, plugin)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, physics_material, sdk, plugin)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -157,7 +157,7 @@ Validate after editing a scene or prefab by hand, and format before committing o
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
-`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json` and `.scatter.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
+`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`, `.scatter.json` and `.physics_material.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -1936,6 +1936,24 @@ spatial shaders read it at the mesh's origin as `WIND` (`render::kShaderWindCons
 axis in pixels, which `CPUParticles2D` feel by `wind_influence` and canvas shaders read as `WIND`
 (filled by `CanvasRenderer::draw`'s `blow`). `wind.sample` returns either at points;
 `examples/wind` blows a meadow.
+
+Physics materials and fields make one simulation, after Unreal's Chaos. A
+`.physics_material.json` file (`slash/world/physics_material.hpp`: Godot's `PhysicsMaterial`
+with Chaos's density, strength and surface; `$cli schema physics_material`) is named by a
+body's `physics_material_override`; each space reads it through the world's assets
+(`Space::material`, kept by version) and gives the body its computed friction and bounce
+(Box2D takes no negative values, so 2D keeps rough and absorbent in the shapes'
+`userMaterialId` for `combine_friction` and `combine_bounce`), its mass by density times its
+shapes' volume or area, its `strength` as a `Destructible3D`'s fallback threshold and its
+`surface`, which `RayHit` and `physics.raycast` report. `world::PhysicsFields3D` and
+`PhysicsFields2D` (`slash/world/physics_field.hpp`, built with `-ffp-contract=off`) sample the
+enabled `PhysicsField3D`s and `PhysicsField2D`s at a place; `Space::apply_fields`
+(`engine/physics3d/src/fields.cpp`, `engine/physics2d/src/fields.cpp`) applies them before each
+step (forces, velocities, anchors as kinematic bodies, strain as impacts, kill after the step
+as `field_killed`, sleep), soft bodies' points included, and `CPUParticles3D` and
+`CPUParticles2D` add `particle_force` per particle. `physics_3d.substeps` and
+`physics_2d.substeps` set Jolt's collision steps and Box2D's substeps.
+`examples/physics-fields` blasts crates and slides a 2D puck.
 
 World streaming is SlashEngine's own (Godot has none), after Unreal's World Partition: the
 `world_streaming` system (`engine/scene3d/src/streaming.cpp`, priority -700, added by

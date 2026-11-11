@@ -1179,7 +1179,12 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
        on characters with painted max distances and backstops, as Chaos Cloth; substepped
        fixed-rate steps that stay deterministic; Chaos Cache's recorded simulations played back
        in cinematics; and a visual debugger's record of contacts, constraints and fields per
-       step that `physics.debug` returns for agents. Each tool after this one builds on it
+       step that `physics.debug` returns for agents. Each tool after this one builds on it.
+       Done: shared `.physics_material.json` materials (friction, rough, bounce, absorbent,
+       density, strength, surface) on 3D and 2D bodies, `PhysicsField3D` and
+       `PhysicsField2D` fields on rigid bodies, bones, soft bodies and CPU particles, and
+       `substeps` (`examples/physics-fields`). Next: ragdolls, cloth, caches and
+       `physics.debug`
 10. [ ] Foliage: painted and scattered plants and ground cover as Unreal's Foliage tool, with
        `foliage.paint` and `foliage.erase` brushes over terrains and meshes and instances kept
        per cell: distinct kinds of grass, flowers, shrubs, bushes, trees, moss, rocks and

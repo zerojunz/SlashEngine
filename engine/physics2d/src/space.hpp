@@ -4,6 +4,7 @@
 #include "slash/core/jobs.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/physics_material.hpp"
 #include "slash/world/tree2d.hpp"
 
 #include <algorithm>
@@ -193,6 +194,8 @@ struct RigidKey {
     bool fixed_rotation = false;
     bool bullet = false;
     bool sleep_enabled = true;
+    // Kilograms a square meter from the body's physics material; above 0 it sets the mass.
+    float density = 0.0F;
 
     friend bool operator==(const RigidKey&, const RigidKey&) = default;
 };
@@ -248,6 +251,11 @@ struct Body {
     std::uint32_t platform_layer = 0;
     // Tile map layers: the shapes the body was built from.
     TileShapes tiles;
+    // The surface its physics material names.
+    std::string surface;
+    // Rigid bodies an anchor field holds as kinematic ones, and their mass to go back to.
+    bool anchored = false;
+    b2MassData anchored_mass{};
 };
 
 using JointKey = std::variant<world::PinJoint2D, world::DampedSpringJoint2D, world::GrooveJoint2D>;
@@ -315,6 +323,10 @@ public:
     // settings, as Godot's GodotBody2D::integrate_forces.
     [[nodiscard]] AreaForces forces(const world::World& world, const world::Tree2D& tree,
                                     entt::entity entity) const;
+    // The .physics_material.json file at a path, read through the world's assets and kept until
+    // the file changes; nullopt, with a warning once, for one that can't be read or is invalid.
+    std::optional<world::PhysicsMaterial> material(const world::World& world,
+                                                   const std::string& path);
 
 private:
     void create_world(jobs::Pool& pool);
@@ -338,6 +350,18 @@ private:
     void apply_areas(world::World& world, const world::Tree2D& tree);
     void emit_events(world::World& world);
     void destroy(Body& body);
+    // Pushes, sets the velocity of, holds, removes and puts to sleep rigid bodies in the world's
+    // PhysicsField2Ds' reach, before a step (fields.cpp).
+    void apply_fields(world::World& world, const world::Tree2D& tree, float seconds);
+    // Destroys the entities kill fields took, after a step, emitting field_killed.
+    void destroy_doomed(world::World& world);
+
+    struct CachedMaterial {
+        std::uint64_t version = 0;
+        std::optional<world::PhysicsMaterial> material;
+    };
+    std::map<std::string, CachedMaterial, std::less<>> materials_;
+    std::vector<entt::entity> doomed_;
 
     Settings settings_;
     Tasks tasks_;

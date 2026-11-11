@@ -8,6 +8,8 @@ add_library(slash_world
     src/legend.cpp
     src/path.cpp
     src/physical_bones.cpp
+    src/physics_field.cpp
+    src/physics_material.cpp
     src/scene.cpp
     src/tree2d.cpp
     src/tree3d.cpp
@@ -23,7 +25,7 @@ target_compile_definitions(slash_world PUBLIC ENTT_NOEXCEPTION)
 # Global transforms and the wind feed physics, and camera views, canvas layers and paths drawing
 # and sound, so they give the same bits everywhere: no fused multiply-adds.
 set_source_files_properties(src/camera2d.cpp src/canvas_layer.cpp src/path.cpp src/tree2d.cpp
-    src/tree3d.cpp src/wind.cpp
+    src/tree3d.cpp src/wind.cpp src/physics_field.cpp
     PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 slash_engine_target(slash_world)
