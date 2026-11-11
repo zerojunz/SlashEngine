@@ -1024,9 +1024,15 @@ void Space::sync_tiles(world::World& world, const world::Tree2D& tree) {
     entt::registry& registry = world.ecs();
     const auto* source = registry.ctx().find<TileShapeSource>();
     const auto shapes_of = [&](entt::entity entity) -> TileShapes {
-        if (source == nullptr || !*source || !world.valid(entity) ||
-            !registry.all_of<TileMapLayer>(entity) ||
-            !registry.get<TileMapLayer>(entity).collision_enabled) {
+        if (source == nullptr || !*source || !world.valid(entity)) {
+            return nullptr;
+        }
+        if (registry.all_of<TileMapLayer>(entity)) {
+            if (!registry.get<TileMapLayer>(entity).collision_enabled) {
+                return nullptr;
+            }
+        } else if (!registry.all_of<world::Foliage2D>(entity) ||
+                   kind_of(registry, entity).has_value()) {
             return nullptr;
         }
         const TileShapes shapes = (*source)(world, entity);
@@ -1035,6 +1041,15 @@ void Space::sync_tiles(world::World& world, const world::Tree2D& tree) {
     std::vector<std::pair<entt::entity, TileShapes>> layers;
     if (source != nullptr) {
         for (const entt::entity entity : registry.view<TileMapLayer>()) {
+            if (TileShapes shapes = shapes_of(entity); shapes != nullptr) {
+                layers.emplace_back(entity, std::move(shapes));
+            }
+        }
+        // Foliage2Ds whose instances block are static bodies the same way, after the layers.
+        for (const entt::entity entity : registry.view<world::Foliage2D>()) {
+            if (registry.all_of<TileMapLayer>(entity)) {
+                continue;
+            }
             if (TileShapes shapes = shapes_of(entity); shapes != nullptr) {
                 layers.emplace_back(entity, std::move(shapes));
             }
@@ -1094,8 +1109,8 @@ void Space::sync(world::World& world) {
 void Space::sync(world::World& world, const world::Tree2D& tree) {
     entt::registry& registry = world.ecs();
     if (!b2World_IsValid(world_)) {
-        const bool tiles =
-            registry.ctx().contains<TileShapeSource>() && has_any<TileMapLayer>(registry);
+        const bool tiles = registry.ctx().contains<TileShapeSource>() &&
+                           (has_any<TileMapLayer>(registry) || has_any<world::Foliage2D>(registry));
         if (!tiles &&
             !has_any<RigidBody2D, CharacterBody2D, AnimatableBody2D, StaticBody2D, Area2D>(
                 registry)) {

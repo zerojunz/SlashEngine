@@ -1,0 +1,17 @@
+{
+  "cull_distance": [30, 40],
+  "density": 6,
+  "format": 1,
+  "interaction": {
+    "bend": 0.9,
+    "radius": 0.6
+  },
+  "kind": "grass",
+  "mesh": "blade.model.json",
+  "scale": [0.8, 1.2],
+  "spacing": 0.15,
+  "wind": {
+    "bend": 0.08,
+    "sway": 0.3
+  }
+}

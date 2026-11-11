@@ -432,6 +432,9 @@ private:
     // What draw() hands the parts it gathers in functions of their own.
     struct DrawState;
     void gather_cloths(DrawState& state);
+    void gather_foliage(DrawState& state);
+    [[nodiscard]] render::Shading shading_of(render::LightMode mode, int light_mask, int z_index,
+                                             std::size_t canvas) const;
     // The tile set at a path.
     Result<const TileSet*> tile_set(const std::string& path);
     // A light texture's image.

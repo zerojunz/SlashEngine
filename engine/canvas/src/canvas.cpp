@@ -8,10 +8,12 @@
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
 #include "slash/physics2d/physics2d.hpp"
+#include "slash/procedural/foliage.hpp"
 #include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
 #include "slash/scene3d/collision.hpp"
 #include "slash/scene3d/csg.hpp"
+#include "slash/scene3d/foliage.hpp"
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/particles.hpp"
 #include "slash/scene3d/streaming.hpp"
@@ -319,6 +321,106 @@ struct TileShapeCache {
     }
 };
 
+// Gives 2D physics each Foliage2D's blocking instances as polygons, one a "cell" of [group,
+// instance], made again only when its instances or types change.
+struct FoliageShapeCache {
+    struct Entry {
+        world::Foliage2D foliage;
+        std::vector<std::shared_ptr<const world::FoliageType>> types;
+        physics2d::TileShapes shapes;
+    };
+    std::unordered_map<entt::entity, Entry> entries;
+
+    // A type's collision as a polygon in an instance's space, before its offset: a circle and
+    // a capsule's ends of twelve sides a turn.
+    static std::vector<Vec2> outline(const world::FoliageCollision& collision) {
+        constexpr int kSides = 12;
+        constexpr float kTurn = 6.28318530718F;
+        std::vector<Vec2> points;
+        if (collision.shape == "rectangle") {
+            const float x = collision.size.x * 0.5F;
+            const float y = collision.size.y * 0.5F;
+            points = {{-x, -y}, {x, -y}, {x, y}, {-x, y}};
+        } else if (collision.shape == "circle") {
+            for (int i = 0; i < kSides; ++i) {
+                const Vec2f at = cos_sin(kTurn * static_cast<float>(i) / kSides);
+                points.push_back({at.x * collision.radius, at.y * collision.radius});
+            }
+        } else if (collision.shape == "capsule") {
+            const float half = std::max((collision.height * 0.5F) - collision.radius, 0.0F);
+            for (int i = 0; i <= kSides / 2; ++i) {
+                const Vec2f at = cos_sin(kTurn * static_cast<float>(i) / kSides);
+                points.push_back({at.x * collision.radius, half + (at.y * collision.radius)});
+            }
+            for (int i = kSides / 2; i <= kSides; ++i) {
+                const Vec2f at = cos_sin(kTurn * static_cast<float>(i) / kSides);
+                points.push_back({at.x * collision.radius, -half + (at.y * collision.radius)});
+            }
+        }
+        return points;
+    }
+
+    static physics2d::TileShapes
+    make(const world::Foliage2D& foliage,
+         const std::vector<std::shared_ptr<const world::FoliageType>>& types) {
+        auto shapes = std::make_shared<std::vector<physics2d::TileShape>>();
+        for (std::size_t g = 0; g < foliage.groups.size(); ++g) {
+            if (types[g] == nullptr || types[g]->space != "2d") {
+                continue;
+            }
+            const std::vector<Vec2> base = outline(types[g]->collision);
+            if (base.empty()) {
+                continue;
+            }
+            const Vec3 offset = types[g]->collision.offset;
+            const std::size_t count = procedural::foliage_count(foliage.groups[g]);
+            for (std::size_t i = 0; i < count; ++i) {
+                const procedural::FoliagePlace2D place =
+                    procedural::foliage_place(foliage.groups[g], i);
+                const Vec2f spin = cos_sin(place.rotation);
+                const float scale = std::abs(place.scale);
+                const float mirror = place.scale < 0.0F ? -1.0F : 1.0F;
+                physics2d::TileShape shape;
+                shape.cell = {static_cast<int>(g), static_cast<int>(i)};
+                shape.collision_layer = foliage.collision_layer;
+                shape.collision_mask = foliage.collision_mask;
+                for (const Vec2 point : base) {
+                    const float x = (point.x + offset.x) * scale * mirror;
+                    const float y = (point.y + offset.y) * scale;
+                    shape.points.push_back({place.position.x + (x * spin.x) - (y * spin.y),
+                                            place.position.y + (x * spin.y) + (y * spin.x)});
+                }
+                shapes->push_back(std::move(shape));
+            }
+        }
+        return shapes;
+    }
+
+    physics2d::TileShapes shapes(const world::World& world, entt::entity entity) {
+        const auto* foliage = world.ecs().try_get<world::Foliage2D>(entity);
+        if (foliage == nullptr) {
+            return nullptr;
+        }
+        std::vector<std::shared_ptr<const world::FoliageType>> types;
+        types.reserve(foliage->groups.size());
+        for (const world::FoliageGroup2D& group : foliage->groups) {
+            types.push_back(procedural::foliage_type(world, group.type));
+        }
+        Entry& entry = entries[entity];
+        if (entry.shapes == nullptr || entry.foliage != *foliage || entry.types != types) {
+            entry = {.foliage = *foliage, .types = types, .shapes = make(*foliage, types)};
+        }
+        const std::size_t kept = world.ecs().view<const world::Foliage2D>().size();
+        if (entries.size() > (2 * kept) + 8) {
+            std::erase_if(entries, [&](const auto& pair) {
+                return !world.valid(pair.first) ||
+                       !world.ecs().all_of<world::Foliage2D>(pair.first);
+            });
+        }
+        return entries[entity].shapes;
+    }
+};
+
 // An asset as a pointer that also keeps its handle, so the asset stays loaded, and loading it
 // again gives the same pointer, for as long as anything holds it.
 template <typename T>
@@ -331,9 +433,14 @@ std::shared_ptr<const T> held(const asset::Handle<T>& handle) {
 void add_systems(world::World& world, asset::Assets& assets) {
     auto tiles = std::make_shared<TileShapeCache>();
     tiles->assets = &assets;
-    physics2d::set_tile_shape_source(world, [tiles](const world::World& w, entt::entity entity) {
-        return tiles->shapes(w, entity);
-    });
+    auto foliage = std::make_shared<FoliageShapeCache>();
+    physics2d::set_tile_shape_source(world,
+                                     [tiles, foliage](const world::World& w, entt::entity entity) {
+                                         if (!w.ecs().all_of<world::TileMapLayer>(entity)) {
+                                             return foliage->shapes(w, entity);
+                                         }
+                                         return tiles->shapes(w, entity);
+                                     });
     auto state = std::make_shared<AnimationState>();
     state->assets = &assets;
     world.add_system(
@@ -349,6 +456,7 @@ void add_systems(world::World& world, asset::Assets& assets) {
     scene3d::add_particles_system(world);
     scene3d::add_streaming_system(world);
     world::add_wind_system(world);
+    procedural::install_foliage(world);
     // Vector field attractors' textures read through assets.
     const scene3d::ImageLoader images =
         [&assets](const std::string& path) -> Result<std::shared_ptr<const render::Image>> {
@@ -380,6 +488,7 @@ void add_systems(world::World& world, asset::Assets& assets) {
     scene3d::add_gpu_particles_system(world, images, sdfs, models);
     scene3d::install_csg(world, models);
     scene3d::install_model_collision(world, models);
+    scene3d::install_foliage_collision(world);
     scene3d::install_gridmap(
         world, models,
         [&assets](const std::string& path) -> Result<std::shared_ptr<const scene3d::MeshLibrary>> {
