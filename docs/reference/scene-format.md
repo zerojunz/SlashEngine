@@ -5075,6 +5075,104 @@ nearest by its share, the larger way), `min_height`, `max_height`, `palette` (a 
 skin, hair and clothing colors keep to, within its `tolerance`) and `max_props`. Without one,
 outlines 0.05 apart and colors 5 apart tell characters apart.
 
+### Creatures
+
+Godot has no animals, so this follows Unreal's Mutable and its animal AI: a `.creature.json`
+recipe says an animal's body plan, look, parts and behavior, and both dimensions build it. A
+`MeshInstance3D` whose `mesh` names the file draws it as a rigged, animated model, as any model;
+a `Creature2D` draws it as a side-view cut-out of `Polygon2D` parts. The `fauna` system (priority
+964, after navigation) runs each `Creature3D` and `Creature2D` as its behavior says.
+[`creature.place`](commands.md#creatureplace) and
+[`creature.populate`](commands.md#creaturepopulate) put them in a scene,
+[`creature.interact`](commands.md#creatureinteract) feeds, tames, rides and scares them and
+[`creature.state`](commands.md#creaturestate) says what they are doing. `slash-cli schema
+creature` prints the schema, `scene validate` and `scene format` take the files, and exports ship
+them. [examples/fauna](../../examples/fauna/) keeps a meadow of deer, sparrows, a wolf and a dog,
+and a pond of minnows in 2D.
+
+```json
+{"format": 1, "name": "Deer", "kind": "grazer",
+ "body": {"length": 1.6, "height": 1.1, "build": 0.4, "legs": 1.2},
+ "look": {"coat": [0.6, 0.4, 0.22], "pattern": "spots", "markings": [0.95, 0.92, 0.85]},
+ "parts": {"ears": "long", "horns": "antlers"},
+ "behavior": {"temperament": "wary", "flee": 6, "notice": 12, "herd": true,
+              "herd_radius": 5, "roam": 15, "walk_speed": 1.2, "run_speed": 6}}
+```
+
+Colors are `[r, g, b]` or `[r, g, b, a]` from 0 to 1, lengths meters and speeds meters a second.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `format` | required | `1` |
+| `extends` | | A `.creature.json` file this one changes, as a JSON Merge Patch: objects merge, other values (lists included) replace; at most 8 deep |
+| `name`, `species` | `""`, the name | What it is called, and what herds keep to and hunters hunt |
+| `kind` | `"grazer"` | `"bird"`, `"fish"`, `"insect"`, `"grazer"`, `"predator"` or `"pet"`, which hunters may hunt by |
+| `body` | | `plan` (`"quadruped"`, `"bird"`, `"fish"` or `"insect"`; by kind), `length` (`1`, nose to rump, 0.02 to 8), `height` (`0.8`, to the top of the back), `build` (`0.5`, 0 slight to 1 heavy), `head`, `neck`, `legs` (`1`, 0.5 to 2) and `tail` (`1`, 0 for none, to 2) |
+| `look` | | `coat`, `belly`, `markings` (the pattern, hooves, manes and fins), `pattern` (`"plain"`, `"spots"`, `"stripes"` or `"patches"`) and `eyes` |
+| `parts` | | `ears` (`"short"`; `"none"`, `"long"` or `"pointed"`), `horns` (`"none"`, `"horns"` or `"antlers"`) and `mane` on quadrupeds; `antennae` on insects; `wings` (meters tip to tip; twice its length for a bird) on birds and insects, which fly with them |
+| `behavior` | | See below |
+
+`behavior` says how the fauna system runs it:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `temperament` | `"wary"` | `"timid"` flees whoever it notices, `"wary"` whoever comes within `flee`, `"calm"` only what hunts it, `"aggressive"` attacks people it notices, `"friendly"` comes to them |
+| `walk_speed`, `run_speed` | `1.2`, `4` | Meters a second; running is never slower than walking |
+| `notice`, `flee` | `10`, `5` | How far it sees people and predators, and how near a wary one lets them come |
+| `roam` | `12` | How far it wanders from where it started |
+| `herd`, `herd_radius` | `false`, `6` | Keeps with others of its species (a herd, flock or school), within that of their middle |
+| `hunts` | `[]` | Kinds or species it hunts once hungry |
+| `food` | `[]` | What it eats from people's hands; empty for anything |
+| `tame`, `ride` | `0`, `false` | Feedings that tame it (0 for never), and whether its owner can ride it then (needs `tame`) |
+| `damage`, `reach`, `attack_cooldown` | `10`, `1.2`, `1` | What an attack does, how near it must be to attack or catch, and seconds between attacks |
+| `hunger_rate` | `0.02` | Hunger it gains a second, from 0 full to 1; a hunter hunts past 0.5 |
+| `altitude` | `0` | How high `creature.place` and `creature.populate` put fliers above the ground, how deep fish below it: 6 for birds, 1 for insects that fly, 1.5 for fish when 0 |
+
+- **The model** is a skeleton of the plan's bones: a quadruped's `body`, `neck`, `head`, `tail`,
+  `leg_front_near`, `leg_front_far`, `leg_back_near` and `leg_back_far`; a bird's `body`, `neck`,
+  `head`, `tail`, `leg_near`, `leg_far`, `wing_near` and `wing_far`; a fish's `body`, `head` and
+  `tail`; an insect's `body`, `head`, `tail` and `leg_` `front`, `middle` and `back` `_near` and
+  `_far`, with `wing_near` and `wing_far` when it has wings (near is +x). Primitive meshes over
+  the recipe's measures make the body and parts, facing +z with the feet at 0, each moved by one
+  bone. Materials are `coat`, `belly`, `markings` and `eyes`, with `horn`, `antler`, `beak` and
+  `wings` (see-through on insects) as it has them; `saddle` and `mouth` are points. Its
+  animations are `idle`, `walk`, `run`, `eat`, `attack` (once), `fly` for fliers and `swim` for
+  swimmers, timed by its stride and speeds.
+- **The 2D cut-out** is seen from the side, facing right (`flip_h` faces left): the same bones
+  as the model's, the far legs and wing behind the body a shade darker. The `character_2d`
+  system keeps each as a child entity `<id>_<bone>` with a `Transform2D` and a `Polygon2D` of its
+  shapes, `pixels_per_meter` big, and makes them again when the recipe changes; the fauna system
+  poses them as the model's animations would.
+- **Behavior**, each tick, in order: a caught creature stays still; a ridden one goes where its
+  rider steers; one that sees what hunts it, or a person its temperament flees, runs away until
+  half as far again as it noticed them; an aggressive one attacks people it notices; a hungry
+  hunter chases its prey and catches it within `reach`; a tame one follows its owner and a
+  friendly one comes to people; the rest idle, graze and wander within `roam` of home, keeping
+  with their herd. People are entities with a `CharacterBody3D` or a `MeshInstance3D` drawing a
+  `.character.json` in 3D, a `CharacterBody2D` or `Character2D` in 2D. A creature moves its
+  `Transform3D` (or sets its `CharacterBody3D`'s `velocity`) and faces where it goes, or its
+  `Transform2D` in pixels (its `CharacterBody2D`'s `velocity`), flipping to face left; walkers
+  keep their height, fliers and fish drift back to theirs. An `AnimationPlayer` whose library is
+  the recipe plays the animation for what it does. It emits `creature_noticed` (`who`),
+  `creature_fled` (`from`), `creature_attacked` (`target`, `damage`), `creature_caught` (`prey`),
+  `creature_fed` (`by`, `food`), `creature_tamed` (`owner`), `creature_mounted` and
+  `creature_dismounted` (`rider`), each with its `creature`. An `NpcAgent` on it has its brain's
+  `threatened`, `hungry` and `tamed` facts set as they change. Random choices hash the creature's
+  ID and the tick, so runs repeat. `ragdoll.generate` fits a ragdoll to either form.
+- Gameplay code calls `npc::feed`, `ride`, `dismount`, `steer`, `release` and `scare`
+  (`slash/npc/fauna.hpp`).
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `Creature3D` | `recipe` `""`, `enabled` `true`, `mind` |
+| `Creature2D` | `recipe` `""`, `pixels_per_meter` `100`, `flip_h` `false`, `enabled` `true`, `mind` |
+
+`mind` is what the fauna system keeps, saved with the scene: `mode` (`"idle"`, `"grazing"`,
+`"wandering"`, `"eating"`, `"fleeing"`, `"hunting"`, `"attacking"`, `"following"`, `"ridden"` or
+`"caught"`), `target`, `owner` and `rider` (entities), `fed` (feedings), `hunger`, `timer`,
+`homed` and `home` (where it started, in meters), `goal`, `velocity` and `steer` (meters, y up)
+and `gait` (the animation playing).
+
 ### Physics materials and fields
 
 Everything in a world moves in one simulation, as Unreal's Chaos: bodies of every tool share

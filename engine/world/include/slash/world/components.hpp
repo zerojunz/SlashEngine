@@ -2653,6 +2653,56 @@ struct Character2D {
 };
 SLASH_COMPONENT(Character2D, recipe, pixels_per_meter, flip_h)
 
+// What an animal is doing and has learned, which the fauna system keeps (slash/npc/fauna.hpp):
+// its mode ("idle", "grazing", "wandering", "fleeing", "hunting", "attacking", "following",
+// "ridden" or "caught"), what it flees, hunts, attacks or follows, the person it is tamed by and
+// the one riding it, how often it has been fed and how hungry it is. Places are in its world's
+// units (meters in 3D, pixels in 2D).
+struct CreatureMind {
+    std::string mode = "idle";
+    entt::entity target{entt::null};
+    entt::entity owner{entt::null};
+    entt::entity rider{entt::null};
+    int fed = 0;
+    float hunger = 0.0F;
+    float timer = 0.0F; // seconds left of a pause or until it may attack again
+    bool homed = false; // home is set: where it was first seen, unless placed with one
+    Vec3 home;
+    Vec3 goal; // where it is wandering to
+    Vec3 velocity;
+    Vec3 steer;        // ridden: where its rider steers it, each axis -1 to 1
+    float gait = 0.0F; // its walk cycle's phase, 0 to 1
+
+    friend bool operator==(const CreatureMind&, const CreatureMind&) = default;
+};
+SLASH_REFLECT(CreatureMind, mode, target, owner, rider, fed, hunger, timer, homed, home, goal,
+              velocity, steer, gait)
+
+// An animal in 3D, behaving as its .creature.json recipe says. Its MeshInstance3D draws the
+// recipe and its AnimationPlayer plays the recipe's animations, which the fauna system picks by
+// what it is doing; it moves its Transform3D, or a CharacterBody3D's velocity when it has one.
+struct Creature3D {
+    std::string recipe;
+    bool enabled = true;
+    CreatureMind mind;
+
+    friend bool operator==(const Creature3D&, const Creature3D&) = default;
+};
+SLASH_COMPONENT(Creature3D, recipe, enabled, mind)
+
+// An animal in 2D, seen from the side: the character_2d system keeps its cut-out as children
+// <id>_<bone> with Polygon2Ds, which the fauna system poses as it walks, runs, flies or swims.
+struct Creature2D {
+    std::string recipe;
+    float pixels_per_meter = 100.0F;
+    bool flip_h = false;
+    bool enabled = true;
+    CreatureMind mind;
+
+    friend bool operator==(const Creature2D&, const Creature2D&) = default;
+};
+SLASH_COMPONENT(Creature2D, recipe, pixels_per_meter, flip_h, enabled, mind)
+
 // The instances painted of one 2D foliage type: type names a .foliage.json file whose space is
 // "2d" and instances holds four numbers each, x, y, rotation (radians) and scale, a negative
 // scale mirroring it, in the Foliage2D's space.

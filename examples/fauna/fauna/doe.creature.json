@@ -1,0 +1,8 @@
+{
+  "extends": "fauna/deer.creature.json",
+  "format": 1,
+  "name": "Doe",
+  "parts": {
+    "horns": "none"
+  }
+}

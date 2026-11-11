@@ -1,5 +1,6 @@
 add_library(slash_npc
     src/brain.cpp
+    src/fauna.cpp
     src/npc.cpp
     src/story.cpp
     src/story_check.cpp

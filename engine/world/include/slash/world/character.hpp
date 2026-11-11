@@ -171,7 +171,7 @@ struct CutoutBone {
 [[nodiscard]] Result<std::shared_ptr<const CharacterRecipe>> load_character(const World& world,
                                                                             std::string_view path);
 
-// Adds the character_2d system (priority -640): each Character2D keeps a child entity per
+// Adds the character_2d system (priority 880): each Character2D keeps a child entity per
 // cut-out bone, <id>_<bone>, with its Transform2D (made where the cut-out puts it, then left to
 // animations and ragdolls) and a Polygon2D of its shapes in pixels.
 void add_character_system(World& world);

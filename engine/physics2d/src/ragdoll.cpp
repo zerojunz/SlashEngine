@@ -30,6 +30,7 @@ namespace {
 using world::AnimationPlayer;
 using world::CollisionShape2D;
 using world::PinJoint2D;
+using world::Polygon2D;
 using world::RigidBody2D;
 using world::Sprite2D;
 using world::Transform2D;
@@ -738,12 +739,14 @@ Result<json::Value> generate_ragdoll(const world::World& world, entt::entity ent
     const float min_length =
         options.min_length > 0.0F ? options.min_length : 0.04F * std::max(bottom - top, 1.0F);
 
-    // The bones: entities with children or a sprite.
+    // The bones: entities with children, a sprite or a polygon (a cut-out's part).
     std::vector<entt::entity> chosen;
     std::set<entt::entity> chosen_set;
     for (const entt::entity part : order) {
         const auto& transform = ecs.get<const Transform2D>(part);
-        if (!transform.children.empty() || ecs.all_of<Sprite2D>(part)) {
+        const auto* polygon = ecs.try_get<const Polygon2D>(part);
+        if (!transform.children.empty() || ecs.all_of<Sprite2D>(part) ||
+            (polygon != nullptr && !polygon->polygon.empty())) {
             chosen.push_back(part);
             chosen_set.insert(part);
         }
@@ -800,6 +803,40 @@ Result<json::Value> generate_ragdoll(const world::World& world, entt::entity ent
             bone["offset"] = json::Array{rounded(static_cast<double>(low.x + high.x) / 2.0),
                                          rounded(static_cast<double>(low.y + high.y) / 2.0)};
             area = static_cast<float>(size.x * size.y);
+        } else if (const auto* polygon = ecs.try_get<const Polygon2D>(part);
+                   polygon != nullptr && !polygon->polygon.empty()) {
+            // A cut-out's tip (a leg, a tail, a head): a capsule from the bone out to its
+            // polygon's farthest point, as wide as the polygon is across it.
+            Vec2 far{0.0F, 0.0F};
+            for (const Vec2 point : polygon->polygon) {
+                const Vec2 p = point + polygon->offset;
+                if (length(p) > length(far)) {
+                    far = p;
+                }
+            }
+            span = length(far);
+            if (span < min_length) {
+                continue;
+            }
+            const float along_x = static_cast<float>(far.x) / span;
+            const float along_y = static_cast<float>(far.y) / span;
+            float across = 0.0F;
+            for (const Vec2 point : polygon->polygon) {
+                const Vec2 p = point + polygon->offset;
+                const auto x = static_cast<float>(p.x);
+                const auto y = static_cast<float>(p.y);
+                across = std::max(across, std::abs((x * along_y) - (y * along_x)));
+            }
+            const float radius = std::clamp(across, 1.0F, 0.5F * span);
+            bone["shape"] = "capsule";
+            bone["radius"] = rounded(radius);
+            bone["height"] = rounded(span);
+            bone["offset"] = json::Array{rounded(static_cast<double>(far.x) / 2.0),
+                                         rounded(static_cast<double>(far.y) / 2.0)};
+            bone["rotation"] =
+                rounded(slash::atan2(-static_cast<float>(far.x), static_cast<float>(far.y)));
+            area =
+                (2.0F * radius * std::max(span - (2.0F * radius), 0.0F)) + (kPi * radius * radius);
         } else {
             // A tip (a hand, a head): a circle half its parent bone's length across.
             const auto parent = lengths.find(bone_above(tree, part, entity, chosen_set));
@@ -821,7 +858,7 @@ Result<json::Value> generate_ragdoll(const world::World& world, entt::entity ent
     if (made.empty()) {
         return make_error(ErrorCode::InvalidArgument,
                           "no entity under it is a bone long enough: a 2D ragdoll needs a tree "
-                          "of entities with children or sprites");
+                          "of entities with children, sprites or polygons");
     }
     std::set<entt::entity> made_set;
     for (const Made& each : made) {
