@@ -3708,8 +3708,8 @@ TEST_CASE("lighting.check measures a 3D frame's exposure and what each light lig
 
     // Nothing 3D to look at.
     CHECK(engine.fails("lighting.check", "{}", command::code::kInvalidParams).message ==
-          "the frame draws no 3D meshes; lighting.check looks at a 3D world through its current "
-          "Camera3D");
+          "the frame draws no 3D meshes and has no 2D lights; lighting.check looks at a 3D world "
+          "through its current Camera3D or a 2D one's lights");
 
     engine.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "camera", "components": {
@@ -3767,7 +3767,7 @@ TEST_CASE("lighting.check measures a 3D frame's exposure and what each light lig
     CHECK(alone.find("lights") == nullptr);
     CHECK(alone["size"] == parse("[32, 18]"));
     CHECK(engine.fails("lighting.check", R"({"ids": ["son"]})", command::code::kNotFound).message ==
-          "/ids/0: no 3D light that shines has the id \"son\"; did you mean "
+          "/ids/0: no light that shines has the id \"son\"; did you mean "
           "\"sun\"?");
     std::filesystem::remove_all(root);
 }

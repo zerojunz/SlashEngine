@@ -125,7 +125,8 @@ struct FrameItem {
         GpuParticles,
         Control,
         Popup,
-        Tooltip
+        Tooltip,
+        Reflection // a Reflection2D's
     };
     Kind kind = Kind::Sprite;
     entt::entity entity = entt::null;
@@ -416,6 +417,17 @@ private:
     // world, scaled by the settings' render scale if they ask, then the controls and overlay.
     struct Submission;
     Result<void> submit(const Submission& submission);
+    // What draw is gathering a frame's draws into, and the parts of it gathered apart
+    // (src/renderer.cpp): Cloth2D sheets, Foliage2D groups, and Reflection2D rects with the
+    // passes that fill their targets.
+    struct DrawState;
+    void gather_cloths(DrawState& state);
+    void gather_foliage(DrawState& state);
+    void gather_reflections(DrawState& state);
+    // Each call's texture, made now so the null device checks them too; a call whose texture
+    // doesn't load has none.
+    std::vector<std::optional<render::TextureId>> list_textures(const ui::DrawList& list,
+                                                                render::Filter filter);
     void release_generation_targets();
     // Destroys the systems of emitters this frame didn't see.
     void drop_unseen_gpu_systems();
@@ -429,19 +441,13 @@ private:
         bool seen = false;
     };
 
-    // What draw() hands the parts it gathers in functions of their own.
-    struct DrawState;
-    void gather_cloths(DrawState& state);
-    void gather_foliage(DrawState& state);
-    [[nodiscard]] render::Shading shading_of(render::LightMode mode, int light_mask, int z_index,
-                                             std::size_t canvas) const;
     // The tile set at a path.
     Result<const TileSet*> tile_set(const std::string& path);
     // A light texture's image.
     Result<const render::Image*> light_image(const std::string& path);
     // The frame's lights, with the atlas and shadow map uploaded; none when no canvas is lit.
     render::Lighting lighting(const world::World& world, const TransformOf& transform_of,
-                              const world::Canvases& canvases);
+                              const world::Canvases& canvases, double time);
     // The GPU texture of a glyph atlas page, uploaded again when the page changed.
     Result<render::TextureId> atlas_page(const text::Fonts& fonts, std::uint32_t page);
     const LayerCells& cells(entt::entity entity, const world::TileMapLayer& layer,
@@ -470,6 +476,7 @@ private:
     // The cells VoxelGIs name.
     std::map<std::string, asset::Handle<scene3d::VoxelGIData>, std::less<>> voxel_gis_;
     std::map<std::string, asset::Handle<render::GaussianSplats>, std::less<>> splats_;
+    std::map<std::string, asset::Handle<render::IesProfile>, std::less<>> ies_;
     ShadowCache shadow_cache_;
     // The light atlas, and the textures and versions it was packed from.
     render::TextureId atlas_ = render::TextureId::None;
@@ -511,6 +518,14 @@ private:
     std::array<render::TextureId, 2> generation_targets_{render::TextureId::None,
                                                          render::TextureId::None};
     std::array<std::uint32_t, 2> generation_size_{};
+    // Each Reflection2D's target, which what its canvas drew before it draws into upside down,
+    // at the pixel size its rect covers; those not drawn in a frame are destroyed.
+    struct ReflectionTarget {
+        render::TextureId id = render::TextureId::None;
+        std::array<std::uint32_t, 2> size{};
+        bool seen = false;
+    };
+    std::unordered_map<entt::entity, ReflectionTarget> reflection_targets_;
     std::uint64_t frames_generated_ = 0;
     bool generated_ = false;
     // What the last frame drew its path-traced world into, if it was path traced.

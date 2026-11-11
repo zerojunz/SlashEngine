@@ -8,6 +8,7 @@
 #include "slash/procedural/foliage.hpp"
 #include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
+#include "slash/render/light.hpp"
 #include "slash/scene3d/blend_shapes.hpp"
 #include "slash/scene3d/bone_attachment.hpp"
 #include "slash/scene3d/cloth.hpp"
@@ -138,13 +139,45 @@ render::TextureChannel channel_of(const std::string& name) {
     return render::TextureChannel::Red;
 }
 
+// A light's IES pattern times its projector texture, read at the pattern's texels by the
+// nearest texel, a channel's bytes multiplied and rounded, so the same everywhere.
+render::Image multiply_projector(const render::Image& pattern, const render::Image& texture) {
+    render::Image out = pattern;
+    for (std::uint32_t y = 0; y < pattern.height; ++y) {
+        const std::uint32_t ty = (y * texture.height) / pattern.height;
+        for (std::uint32_t x = 0; x < pattern.width; ++x) {
+            const std::uint32_t tx = (x * texture.width) / pattern.width;
+            const std::size_t at = ((std::size_t{y} * pattern.width) + x) * 4;
+            const std::size_t from = ((std::size_t{ty} * texture.width) + tx) * 4;
+            for (std::size_t c = 0; c < 4; ++c) {
+                const std::uint32_t product =
+                    std::uint32_t{pattern.pixels[at + c]} * std::uint32_t{texture.pixels[from + c]};
+                out.pixels[at + c] = static_cast<std::uint8_t>((product + 127U) / 255U);
+            }
+        }
+    }
+    return out;
+}
+
 // The light's own fields, which the three kinds share.
 template <typename T>
-render::Light3D light_base(const T& light, render::LightType type) {
+render::Light3D light_base(const T& light, render::LightType type, bool units) {
     render::Light3D out;
     out.type = type;
     out.color = rgb(light.light_color);
     out.energy = light.light_negative ? -light.light_energy : light.light_energy;
+    if (units) {
+        // Godot's physical light units: the color tinted by the temperature in linear light, and
+        // the energy by the lux or lumens.
+        out.color = render::tint_by_temperature(out.color, light.light_temperature);
+        if constexpr (std::is_same_v<T, world::DirectionalLight3D>) {
+            out.energy *= render::directional_light_units(light.light_intensity_lux);
+        } else if constexpr (std::is_same_v<T, world::OmniLight3D>) {
+            out.energy *= render::omni_light_units(light.light_intensity_lumens);
+        } else {
+            out.energy *= render::spot_light_units(light.light_intensity_lumens);
+        }
+    }
     out.specular = light.light_specular;
     out.cull_mask = light.light_cull_mask;
     out.shadow = light.shadow_enabled;
@@ -197,6 +230,7 @@ void add_lights(const world::World& world, const world::Tree3D& tree,
                 const std::function<world::Affine3D(entt::entity)>& global,
                 const std::unordered_map<entt::entity, std::size_t>& order,
                 std::vector<Shone>& out) {
+    const bool units = physical_light_units(world);
     for (const entt::entity entity : made<T>(world)) {
         if (!tree.visible(entity)) {
             continue;
@@ -207,7 +241,7 @@ void add_lights(const world::World& world, const world::Tree3D& tree,
             if (light.sky_mode == "sky_only") {
                 continue;
             }
-            shone = light_base(light, render::LightType::Directional);
+            shone = light_base(light, render::LightType::Directional, units);
             shone.shadow_mode = shadow_mode_of(light.directional_shadow_mode);
             shone.shadow_splits = {light.directional_shadow_split_1,
                                    light.directional_shadow_split_2,
@@ -218,12 +252,12 @@ void add_lights(const world::World& world, const world::Tree3D& tree,
             shone.shadow_pancake_size = light.directional_shadow_pancake_size;
             shone.size = light.light_angular_distance;
         } else if constexpr (std::is_same_v<T, world::OmniLight3D>) {
-            shone = light_base(light, render::LightType::Omni);
+            shone = light_base(light, render::LightType::Omni, units);
             shone.size = light.light_size;
             shone.range = light.omni_range;
             shone.attenuation = light.omni_attenuation;
         } else {
-            shone = light_base(light, render::LightType::Spot);
+            shone = light_base(light, render::LightType::Spot, units);
             shone.size = light.light_size;
             shone.range = light.spot_range;
             shone.attenuation = light.spot_attenuation;
@@ -451,6 +485,22 @@ Vec3 render_origin_for(Vec3 eye) {
     }
 }
 
+namespace {
+// Whether the world uses physical light units, in its context.
+struct PhysicalLightUnits {
+    bool on = false;
+};
+} // namespace
+
+void set_physical_light_units(world::World& world, bool on) {
+    world.ecs().ctx().insert_or_assign(PhysicalLightUnits{.on = on});
+}
+
+bool physical_light_units(const world::World& world) {
+    const auto* found = world.ecs().ctx().find<PhysicalLightUnits>();
+    return found != nullptr && found->on;
+}
+
 Environment world_environment(const world::World& world, render::Color clear) {
     Environment out;
     out.background = clear;
@@ -466,7 +516,9 @@ Environment world_environment(const world::World& world, render::Color clear) {
                       .b = env.background_color.z,
                       .a = env.background_color.w};
     }
-    const float energy = env.background_energy_multiplier;
+    // With physical light units, the background and sky shine by their nits too, as Godot's.
+    const float energy = env.background_energy_multiplier *
+                         (physical_light_units(world) ? env.background_intensity : 1.0F);
     out.background = {.r = background.r * energy,
                       .g = background.g * energy,
                       .b = background.b * energy,
@@ -678,6 +730,11 @@ Environment environment(const world::World& world, render::Color clear, entt::en
     // light, but not ambient_light_color or fog; a fogged background's sky, which the background's
     // energy multiplies twice, takes it twice.
     out.exposure = attributes.exposure_multiplier;
+    if (physical_light_units(world)) {
+        // With physical light units, times the sensitivity's exposure normalization, as Godot's
+        // CameraAttributesPractical::calculate_exposure_normalization.
+        out.exposure *= render::exposure_normalization(attributes.exposure_sensitivity);
+    }
     out.background.r *= out.exposure;
     out.background.g *= out.exposure;
     out.background.b *= out.exposure;
@@ -715,7 +772,8 @@ Environment environment(const world::World& world, render::Color clear, entt::en
 }
 
 std::vector<render::Light3D> lights(const world::World& world, const world::Tree3D& tree,
-                                    const std::function<world::Affine3D(entt::entity)>& global) {
+                                    const std::function<world::Affine3D(entt::entity)>& global,
+                                    std::vector<entt::entity>* entities) {
     std::vector<Shone> found = shining(world, tree, global);
     // Directional lights first, so Compatibility's first render::kMaxLights3D keep them all.
     std::ranges::stable_partition(found, [](const Shone& shone) {
@@ -734,6 +792,9 @@ std::vector<render::Light3D> lights(const world::World& world, const world::Tree
             break;
         }
         out.push_back(light);
+        if (entities != nullptr) {
+            entities->push_back(shone.entity);
+        }
     }
     return out;
 }
@@ -757,6 +818,11 @@ sky_lights(const world::World& world, const world::Tree3D& tree,
                          static_cast<float>(forward.z)};
         sun.color = rgb(light.light_color);
         sun.energy = light.light_negative ? -light.light_energy : light.light_energy;
+        if (physical_light_units(world)) {
+            // As Godot's sky: the sun's color as the light's, energy times its lux.
+            sun.color = render::tint_by_temperature(sun.color, light.light_temperature);
+            sun.energy *= light.light_intensity_lux;
+        }
         sun.angular_distance = light.light_angular_distance;
         const auto at = order.find(entity);
         found.emplace_back(at != order.end() ? at->second : order.size(), sun);
@@ -1120,6 +1186,7 @@ render::Material3D material(const world::StandardMaterial3D& standard,
     if (standard.emission_enabled) {
         out.emission = rgb(standard.emission);
         out.emission_energy = standard.emission_energy_multiplier;
+        out.emission_intensity = standard.emission_intensity;
         out.emission_texture = texture(standard.emission_texture, "emission_texture");
     }
     if (standard.normal_enabled) {
@@ -3771,10 +3838,12 @@ std::optional<Frame3D> Renderer::prepare(
             frame.scene.sky.panorama.panorama = texture.value().id;
         }
     }
-    frame.scene.lights = scene3d::lights(world, tree, global);
+    std::vector<entt::entity> light_entities;
+    frame.scene.lights = scene3d::lights(world, tree, global, &light_entities);
     for (render::Light3D& light : frame.scene.lights) {
         light.energy *= env.exposure;
     }
+    add_projectors(world, light_entities, time, frame.scene.lights);
     frame.scene.shadows = shadows;
     frame.scene.voxel_gi_high_quality = voxel_gi_high_quality;
     frame.scene.use_taa = use_taa;
@@ -3927,9 +3996,12 @@ std::optional<Frame3D> Renderer::prepare(
         voxel_objects_.clear();
         destroy_voxel_gis();
     }
-    if (env.exposure != 1.0F) {
+    if (env.exposure != 1.0F || physical_light_units(world)) {
+        // With physical light units, emission shines by its nits too, as Godot's.
+        const bool units = physical_light_units(world);
         for (Draw& draw : draws_) {
-            draw.material.emission_energy *= env.exposure;
+            draw.material.emission_energy *=
+                env.exposure * (units ? draw.material.emission_intensity : 1.0F);
         }
     }
     // TAA, FSR 2 and frame generation move each mesh's pixels by how far it moved since the last
@@ -4043,6 +4115,113 @@ std::optional<Frame3D> Renderer::prepare(
     pick_lods(camera_global.origin, view.projection, lens.projection == "orthogonal", width,
               mesh_lod_threshold, true, cull_clusters ? &view : nullptr);
     return frame;
+}
+
+void Renderer::add_projectors(const world::World& world, const std::vector<entt::entity>& entities,
+                              double time, std::vector<render::Light3D>& lights) {
+    for (Projector& projector : projectors_) {
+        projector.used = false;
+    }
+    for (std::size_t i = 0; i < lights.size() && i < entities.size(); ++i) {
+        render::Light3D& light = lights[i];
+        const entt::entity entity = entities[i];
+        const std::string* texture_path = nullptr;
+        const std::string* ies_path = nullptr;
+        Vec2 scroll;
+        std::string component;
+        if (const auto* omni = world.ecs().try_get<const world::OmniLight3D>(entity);
+            omni != nullptr && light.type == render::LightType::Omni) {
+            texture_path = &omni->light_projector;
+            ies_path = &omni->light_ies;
+            scroll = omni->light_projector_scroll;
+            component = "OmniLight3D";
+        } else if (const auto* spot = world.ecs().try_get<const world::SpotLight3D>(entity);
+                   spot != nullptr && light.type == render::LightType::Spot) {
+            texture_path = &spot->light_projector;
+            ies_path = &spot->light_ies;
+            scroll = spot->light_projector_scroll;
+            component = "SpotLight3D";
+        }
+        if (texture_path == nullptr || (texture_path->empty() && ies_path->empty())) {
+            continue;
+        }
+        const std::string at = "/components/" + component + "/";
+        std::shared_ptr<const render::Image> texture;
+        if (!texture_path->empty()) {
+            Result<std::shared_ptr<const render::Image>> read =
+                make_error(ErrorCode::NotFound, "this renderer reads no images for projectors");
+            if (images_) {
+                read = images_(*texture_path);
+            }
+            if (!read) {
+                problems_.push_back({.entity = entity,
+                                     .path = at + "light_projector",
+                                     .message = read.error().message});
+                continue;
+            }
+            texture = read.value();
+            if (texture == nullptr || texture->width == 0 || texture->height == 0 ||
+                texture->width > render::kMaxTextureSize ||
+                texture->height > render::kMaxTextureSize ||
+                texture->pixels.size() != std::size_t{texture->width} * texture->height * 4) {
+                problems_.push_back({.entity = entity,
+                                     .path = at + "light_projector",
+                                     .message = "is not RGBA8 pixels, 1 to " +
+                                                std::to_string(render::kMaxTextureSize) +
+                                                " texels across"});
+                continue;
+            }
+        }
+        std::shared_ptr<const render::IesProfile> ies;
+        if (!ies_path->empty()) {
+            Result<std::shared_ptr<const render::IesProfile>> read =
+                make_error(ErrorCode::NotFound, "this renderer reads no IES profiles");
+            if (ies_) {
+                read = ies_(*ies_path);
+            }
+            if (!read) {
+                problems_.push_back(
+                    {.entity = entity, .path = at + "light_ies", .message = read.error().message});
+                continue;
+            }
+            ies = read.value();
+        }
+        if (ies == nullptr) {
+            light.projector = texture;
+        } else {
+            // The profile baked as the light maps it, times the texture where both are set; made
+            // again only when either, or a spot light's angle, changes.
+            const float angle = light.type == render::LightType::Spot ? light.spot_angle : 0.0F;
+            auto found = std::ranges::find_if(projectors_, [&](const Projector& p) {
+                return p.texture == texture && p.ies == ies && p.spot_angle == angle;
+            });
+            if (found == projectors_.end()) {
+                constexpr std::uint32_t kIesSize = 64;
+                render::Image baked = light.type == render::LightType::Spot
+                                          ? render::bake_ies_spot(*ies, angle, kIesSize)
+                                          : render::bake_ies_omni(*ies, kIesSize);
+                if (texture != nullptr) {
+                    baked = multiply_projector(baked, *texture);
+                }
+                projectors_.push_back(
+                    {.texture = texture,
+                     .ies = ies,
+                     .spot_angle = angle,
+                     .image = std::make_shared<const render::Image>(std::move(baked)),
+                     .used = false});
+                found = projectors_.end() - 1;
+            }
+            found->used = true;
+            light.projector = found->image;
+        }
+        // Scrolled by game time, wrapping, so offsets stay small.
+        for (std::size_t k = 0; k < 2; ++k) {
+            const double rate = k == 0 ? double{scroll.x} : double{scroll.y};
+            const double moved = rate * time;
+            light.projector_offset.at(k) = static_cast<float>(moved - std::floor(moved));
+        }
+    }
+    std::erase_if(projectors_, [](const Projector& p) { return !p.used; });
 }
 
 void Renderer::add_decals(const world::World& world, const world::Tree3D& tree,

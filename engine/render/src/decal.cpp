@@ -23,8 +23,10 @@
 #include <limits>
 #include <memory>
 #include <numbers>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace slash::render {
@@ -334,6 +336,21 @@ std::vector<std::shared_ptr<const Image>> decal_images(const Decals3D& decals) {
     return out;
 }
 
+std::vector<std::shared_ptr<const Image>> decal_images(const Scene3D& scene) {
+    std::vector<std::shared_ptr<const Image>> out = decal_images(scene.decals);
+    if (scene.method != RenderMethod::ForwardPlus) {
+        return out;
+    }
+    for (std::size_t i = 0; i < lights_drawn(scene); ++i) {
+        const Light3D& light = scene.lights[i];
+        if (light.type != LightType::Directional && light.projector != nullptr &&
+            std::ranges::find(out, light.projector) == out.end()) {
+            out.push_back(light.projector);
+        }
+    }
+    return out;
+}
+
 DecalAtlasLayout layout_decal_atlas(const std::vector<std::array<std::uint32_t, 2>>& sizes) {
     DecalAtlasLayout out;
     if (sizes.empty()) {
@@ -423,9 +440,11 @@ Float4 DecalAtlas::rect(const std::shared_ptr<const Image>& image) const {
     return {};
 }
 
-DecalAtlas pack_decal_atlas(const Decals3D& decals) {
+namespace {
+
+DecalAtlas pack_images(std::vector<std::shared_ptr<const Image>> images) {
     DecalAtlas out;
-    out.images = decal_images(decals);
+    out.images = std::move(images);
     std::vector<std::array<std::uint32_t, 2>> sizes;
     sizes.reserve(out.images.size());
     for (const std::shared_ptr<const Image>& image : out.images) {
@@ -482,13 +501,105 @@ DecalAtlas pack_decal_atlas(const Decals3D& decals) {
     return out;
 }
 
-bool DecalAtlasCache::update(const Decals3D& decals) {
-    if (packed_ != 0 && decal_images(decals) == atlas_.images) {
+} // namespace
+
+DecalAtlas pack_decal_atlas(const Decals3D& decals) {
+    return pack_images(decal_images(decals));
+}
+
+DecalAtlas pack_decal_atlas(const Scene3D& scene) {
+    return pack_images(decal_images(scene));
+}
+
+bool DecalAtlasCache::update(std::vector<std::shared_ptr<const Image>> images) {
+    if (packed_ != 0 && images == atlas_.images) {
         return false;
     }
-    atlas_ = pack_decal_atlas(decals);
+    atlas_ = pack_images(std::move(images));
     atlas_.generation = ++packed_;
     return true;
+}
+
+bool DecalAtlasCache::update(const Decals3D& decals) {
+    return update(decal_images(decals));
+}
+
+bool DecalAtlasCache::update(const Scene3D& scene) {
+    return update(decal_images(scene));
+}
+
+std::optional<MeshDecalUniforms> projector_record(const Light3D& light, const DecalAtlas& atlas) {
+    if (light.type == LightType::Directional || light.projector == nullptr) {
+        return std::nullopt;
+    }
+    const Float4 rect = atlas.rect(light.projector);
+    if (rect[2] == 0.0F || rect[3] == 0.0F) {
+        return std::nullopt;
+    }
+    // The light's space, as Godot's light_inverse: z back from its direction, y its up made
+    // square to that (or any square to it where they are parallel), x across.
+    const Float3 z = scale(normalize(light.direction), -1.0F);
+    Float3 up = sub(light.up, scale(z, dot3(light.up, z)));
+    if (!(dot3(up, up) > 1.0e-12F)) {
+        const Float3 helper =
+            std::abs(z[1]) < 0.999F ? Float3{0.0F, 1.0F, 0.0F} : Float3{1.0F, 0.0F, 0.0F};
+        up = sub(helper, scale(z, dot3(helper, z)));
+    }
+    const Float3 y = normalize(up);
+    const Float3 x = cross(y, z);
+    const Float3 place{light.position[0], light.position[1], light.position[2]};
+    MeshDecalUniforms record;
+    const std::array<const Float3*, 3> axes{&x, &y, &z};
+    for (std::size_t r = 0; r < 3; ++r) {
+        const Float3& axis = *axes.at(r);
+        record.rows.at(r) = {axis[0], axis[1], axis[2], -dot3(axis, place)};
+    }
+    record.rects[0] = rect;
+    // Godot's projection of twice the spot angle: x and y over the depth times its cotangent.
+    const Vec2f cone = slash::cos_sin(std::clamp(light.spot_angle, 0.01F, 89.99F) *
+                                      (std::numbers::pi_v<float> / 180.0F));
+    const bool spot = light.type == LightType::Spot;
+    record.params = {spot ? 2.0F : 1.0F, spot ? cone.x / cone.y : 0.0F, light.projector_offset[0],
+                     light.projector_offset[1]};
+    return record;
+}
+
+Float3 projector_light(const MeshSceneUniforms& scene, const MeshMaps& maps,
+                       std::uint32_t projector, bool spot, const Float3& world) {
+    if (maps.clusters == nullptr || maps.decal_atlas == nullptr) {
+        return {1.0F, 1.0F, 1.0F};
+    }
+    const std::size_t index = static_cast<std::size_t>(scene.decal_info[0]) + projector - 1;
+    if (index >= maps.clusters->decals.size()) {
+        return {1.0F, 1.0F, 1.0F};
+    }
+    const MeshDecalUniforms& record = maps.clusters->decals[index];
+    const Float4 point{world[0], world[1], world[2], 1.0F};
+    const Float3 local{dot4(record.rows[0], point), dot4(record.rows[1], point),
+                       dot4(record.rows[2], point)};
+    Float4 rect = record.rects[0];
+    std::array<float, 2> uv{};
+    if (spot) {
+        const float depth = std::max(-local[2], 0.00001F);
+        uv = {(local[0] * (record.params[1] / depth) * 0.5F) + 0.5F,
+              (local[1] * (record.params[1] / depth) * 0.5F) + 0.5F};
+        uv[1] = 1.0F - uv[1];
+    } else {
+        const Float3 d = normalize(local);
+        if (d[2] >= 0.0F) {
+            rect[1] += rect[3] * 0.5F;
+        }
+        rect[3] *= 0.5F;
+        uv = {((d[0] / (1.0F + std::abs(d[2]))) * 0.5F) + 0.5F,
+              ((d[1] / (1.0F + std::abs(d[2]))) * 0.5F) + 0.5F};
+    }
+    for (std::size_t k = 0; k < 2; ++k) {
+        const float moved = uv.at(k) + record.params.at(2 + k);
+        uv.at(k) = moved - std::floor(moved); // HLSL's frac
+        uv.at(k) = (uv.at(k) * rect.at(2 + k)) + rect.at(k);
+    }
+    const Float4 texel = sample_level(*maps.decal_atlas, 0, uv, true, true);
+    return {texel[0] * texel[3], texel[1] * texel[3], texel[2] * texel[3]};
 }
 
 PlacedDecals place_decals(const Scene3D& scene, const DecalAtlas& atlas) {
@@ -603,10 +714,9 @@ void set_cluster_uniforms(MeshSceneUniforms& uniforms, const LightClusters& clus
     uniforms.cluster = clusters.uniform();
     uniforms.screen = {static_cast<float>(clusters.width), static_cast<float>(clusters.height),
                        0.0F, 0.0F};
-    if (atlas != nullptr && clusters.decal_words > 0) {
-        uniforms.decal_info = {static_cast<float>(clusters.decals.size()),
-                               static_cast<float>(filter), static_cast<float>(atlas->width),
-                               static_cast<float>(atlas->height)};
+    if (atlas != nullptr && !atlas->images.empty()) {
+        uniforms.decal_info = {static_cast<float>(clusters.decal_count), static_cast<float>(filter),
+                               static_cast<float>(atlas->width), static_cast<float>(atlas->height)};
     }
 }
 

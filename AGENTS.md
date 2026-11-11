@@ -1267,11 +1267,40 @@ from spherical harmonics, sorted nearest first, tiles of 16 pixels on the job po
 the opaque depth; built with `-ffp-contract=off`). Other devices draw none, and splats are
 neither lit nor in the depth buffer. `examples/gaussian-splats` places a boulder made in code.
 
-`lighting.check` (`engine/command/src/lighting.cpp`) judges a 3D frame's lighting as numbers for
-agents: it draws the frame with `canvas::capture`, measures its exposure (mean, percentiles,
-clipped and crushed shares), draws it again with each light's `light_energy` at 0 (put back
+`lighting.check` (`engine/command/src/lighting.cpp`) judges a 3D or 2D frame's lighting as
+numbers for agents: it draws the frame with `canvas::capture`, measures its exposure (mean,
+percentiles, clipped and crushed shares), draws it again with each light's energy at 0 (put back
 after) to measure what that light lights, and names problems such as a light that lights nothing
-in view. `examples/lighting-check` fixes a flood light and a lamp out of view.
+in view. `examples/lighting-check` fixes a flood light and a lamp out of view. `light.tune`
+(same file) scales lights toward a mean brightness, a clipping limit and per-light shares,
+learning from each step how brightness follows energy and bisecting once it has seen too dark
+and too bright, with one undo step. Physical light units are Godot's
+(`rendering.lights_and_shadows.use_physical_light_units`, `scene3d::physical_light_units`):
+`render::color_temperature` and the unit factors (`engine/render/src/light_units.cpp`, built
+with `-ffp-contract=off`) tint and scale lights in `light_base` (`engine/scene3d/src/scene3d.cpp`)
+and in the lightmap and VoxelGI bakes, with the background's and emission's nits and the
+camera's exposure normalization; light.tune then scales lux and lumens. 2D lights' `temperature`
+is SlashEngine's own (`fill_common` in `engine/canvas/src/light.cpp`). Light projectors are
+Godot 4.6's Forward+ `light_projector`: `scene3d::Renderer::add_projectors` loads each omni and
+spot light's texture into `render::Light3D::projector`, baking a `light_ies` profile
+(`slash/render/ies.hpp`, `src/ies.cpp`: LM-63 files, `bake_ies_spot` and `bake_ies_omni`, the
+same bytes everywhere) into it and scrolling it by `light_projector_scroll` (`projector_offset`);
+the decal atlas holds the textures (`decal_images(const Scene3D&)`), `build_clusters` appends a
+record per projector after the decals (`projector_record`, `LightClusters::decal_count`) and
+marks its place in the light's `shadow[1]` above the baked bit, and `mesh.hlsl`'s
+`projector_light` tints the light, `detail::projector_light` its CPU twin; a change to one goes
+in both. A 2D light's `texture_scroll` rolls its texels as the atlas is packed
+(`pack_light_atlas`, `light_atlas_key`). `examples/light-tools` tunes a dusk street and a 2D
+alley and casts a street lamp's IES profile and a stained glass window.
+
+`Reflection2D` is SlashEngine's own 2D reflection (Godot draws water with a screen texture
+shader): `CanvasRenderer::draw` keeps a render target per reflection
+(`reflection_targets_`, the rect's size in pixels) and draws its rect in strips rippled
+sideways and faded by their vertex colors, as an item among its canvas's; `submit` first
+draws each one's `ReflectionPass` into its target, the items of its canvas that come before
+it (`reflected`) through a view turned upside down about its top edge, with the frame's
+lights, which shade the positions as given. It needs nothing of a device, so every device
+draws it the same. `examples/reflections-2d` mirrors a pond's sky and boat.
 
 Ray tracing is SlashEngine's own (Godot 4.6 has none): project.json's `rendering.ray_tracing`
 (`render::RayTracing3D`, `Scene3D::ray_tracing`) turns on ray-traced shadows in Forward+ on

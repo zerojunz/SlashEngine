@@ -323,6 +323,9 @@ struct Material3D {
     float specular = 0.5F;
     std::array<float, 3> emission{0.0F, 0.0F, 0.0F};
     float emission_energy = 1.0F;
+    // Nits of emission, which scene3d multiplies emission_energy by with physical light units
+    // before the draw; devices don't read it.
+    float emission_intensity = 1000.0F;
     // Added to emission when it is a texture: None adds nothing.
     MaterialTexture emission_texture{};
     // A normal map, OpenGL style (green up), mixed in by normal_scale: None has none.

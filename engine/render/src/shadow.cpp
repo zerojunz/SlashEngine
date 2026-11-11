@@ -716,6 +716,10 @@ ShadowSettings shadow_settings_from_json(const json::Value& value) {
     read(value.find("directional_shadow"), "size", out.directional_size, out.directional_quality);
     read(value.find("positional_shadow"), "atlas_size", out.positional_size,
          out.positional_quality);
+    if (const json::Value* units = value.find("use_physical_light_units");
+        units != nullptr && units->is_bool()) {
+        out.use_physical_light_units = units->as_bool();
+    }
     return out;
 }
 

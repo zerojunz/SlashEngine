@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 // What every device shares to draw decals (Decals3D, in mesh.hpp) as Godot 4.6's Forward+ draws
@@ -33,6 +34,9 @@ inline constexpr std::size_t kMaxDecalAtlasTexels = kMaxStorageBytes / 4;
 // The textures a frame's decals use, each once, in the order they first use them: each decal's
 // albedo, normal, ORM and emission, the decals in order.
 [[nodiscard]] std::vector<std::shared_ptr<const Image>> decal_images(const Decals3D& decals);
+// Those of a frame: its decals', then the projectors of the omni and spot lights it draws, in
+// Forward+ (Compatibility casts none, as Godot's).
+[[nodiscard]] std::vector<std::shared_ptr<const Image>> decal_images(const Scene3D& scene);
 
 // Where Godot's packing puts textures of these sizes in an atlas: its width and height in texels,
 // and each texture's first texel. Each takes its size over kDecalAtlasBorder plus one cells, and
@@ -68,15 +72,21 @@ struct DecalAtlas {
 // place, transparent black around them, and each level after it the average of each 2x2 texels of
 // the level before, rounded.
 [[nodiscard]] DecalAtlas pack_decal_atlas(const Decals3D& decals);
+// With the frame's light projectors after the decals' textures.
+[[nodiscard]] DecalAtlas pack_decal_atlas(const Scene3D& scene);
 
 // A device's atlas, packed again only when a frame's decal textures change.
 class DecalAtlasCache {
 public:
     // Brings the atlas up to date with a frame's decals, and returns whether it packed it again.
     bool update(const Decals3D& decals);
+    // With the frame's light projectors too.
+    bool update(const Scene3D& scene);
     [[nodiscard]] const DecalAtlas& atlas() const { return atlas_; }
 
 private:
+    bool update(std::vector<std::shared_ptr<const Image>> images);
+
     DecalAtlas atlas_;
     std::uint64_t packed_ = 0;
 };
@@ -92,8 +102,18 @@ struct PlacedDecals {
 };
 [[nodiscard]] PlacedDecals place_decals(const Scene3D& scene, const DecalAtlas& atlas);
 
+// The record of a light's projector in LightClusters::decals, or nothing for a light with none,
+// one whose texture the atlas lacks, or a directional light.
+[[nodiscard]] std::optional<MeshDecalUniforms> projector_record(const Light3D& light,
+                                                                const DecalAtlas& atlas);
+
+// The CPU twin of projector_light in shaders/mesh.hlsl: what the projector of the record one past
+// projector after the decals lets through to a point in the world, its color times its alpha.
+[[nodiscard]] Float3 projector_light(const MeshSceneUniforms& scene, const MeshMaps& maps,
+                                     std::uint32_t projector, bool spot, const Float3& world);
+
 // Sets the scene uniforms Forward+'s clusters give: MeshSceneUniforms::cluster, decal_info and
-// screen.
+// screen. decal_info holds the atlas whenever it has textures, and its count only the decals.
 void set_cluster_uniforms(MeshSceneUniforms& uniforms, const LightClusters& clusters,
                           const DecalAtlas* atlas, DecalFilter filter);
 

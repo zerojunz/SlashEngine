@@ -3502,6 +3502,10 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("emission_enabled", {.doc = "Glows with emission, lit or not."})
         .describe("emission", color)
         .describe("emission_energy_multiplier", energy)
+        .describe("emission_intensity",
+                  {.doc = "Nits of its emission, which emission_energy_multiplier multiplies, "
+                          "with physical light units.",
+                   .min = 0})
         .describe("emission_texture", {.doc = "Added to emission. " + texture.doc})
         .describe("normal_enabled", {.doc = "Bumps its lighting with normal_texture."})
         .describe("normal_scale", {.doc = "How strong the bumps are.", .min = -16, .max = 16})
@@ -3640,6 +3644,15 @@ void register_3d_components(ComponentRegistry& registry) {
         .doc = "How far its baked shadows blur, times the light's size.", .min = 0.0, .max = 10.0};
     const FieldMeta light_size{
         .doc = "Its radius in meters, for a lightmap's soft shadows.", .min = 0.0, .max = 64.0};
+    const FieldMeta temperature{
+        .doc = "Kelvin that tints light_color with physical light units: 1900 is a candle, 2700 a "
+               "household bulb, 6500 daylight's white.",
+        .min = 1000,
+        .max = 20000};
+    const FieldMeta lumens{
+        .doc = "Lumens it gives out, which light_energy multiplies, with physical light units: "
+               "800 is a household bulb.",
+        .min = 0};
     registry.add<DirectionalLight3D>()
         .set_doc("Light from one direction everywhere, such as the sun, shining down the "
                  "entity's -z, as Godot's DirectionalLight3D.")
@@ -3688,7 +3701,19 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("light_bake_mode", bake_mode)
         .describe("shadow_blur", shadow_blur)
         .describe("light_volumetric_fog_energy", fog_energy)
-        .describe("shadow_transmittance_bias", transmittance_bias);
+        .describe("shadow_transmittance_bias", transmittance_bias)
+        .describe("light_temperature", temperature)
+        .describe("light_intensity_lux",
+                  {.doc = "Lux it shines with, which light_energy multiplies, with physical light "
+                          "units: 100000 is direct sunlight, 0.3 a full moon.",
+                   .min = 0});
+    const FieldMeta projector{
+        .doc = "Forward+: project path of a texture it casts, as Godot's light_projector, "
+               "tinting its light by color times alpha; \"\" casts none."};
+    const FieldMeta projector_scroll{
+        .doc = "Moves the projector's texture coordinates by this much a second, wrapping."};
+    const FieldMeta ies{.doc = "Forward+: project path of an IES profile (.ies) whose pattern "
+                               "it shines in, baked into its projector; \"\" for none."};
     registry.add<OmniLight3D>()
         .set_doc("Light from the entity in every direction, such as a lamp, as Godot's "
                  "OmniLight3D.")
@@ -3710,7 +3735,12 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("light_bake_mode", bake_mode)
         .describe("shadow_blur", shadow_blur)
         .describe("light_volumetric_fog_energy", fog_energy)
-        .describe("shadow_transmittance_bias", transmittance_bias);
+        .describe("shadow_transmittance_bias", transmittance_bias)
+        .describe("light_temperature", temperature)
+        .describe("light_intensity_lumens", lumens)
+        .describe("light_projector", projector)
+        .describe("light_projector_scroll", projector_scroll)
+        .describe("light_ies", ies);
     registry.add<SpotLight3D>()
         .set_doc("Light from the entity in a cone down its -z, such as a torch, as Godot's "
                  "SpotLight3D.")
@@ -3736,7 +3766,12 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("light_bake_mode", bake_mode)
         .describe("shadow_blur", shadow_blur)
         .describe("light_volumetric_fog_energy", fog_energy)
-        .describe("shadow_transmittance_bias", transmittance_bias);
+        .describe("shadow_transmittance_bias", transmittance_bias)
+        .describe("light_temperature", temperature)
+        .describe("light_intensity_lumens", lumens)
+        .describe("light_projector", projector)
+        .describe("light_projector_scroll", projector_scroll)
+        .describe("light_ies", ies);
 
     const FieldMeta curve{
         .doc = "How sharply it changes; smaller is sharper.", .min = 0.001, .max = 1};
@@ -3990,6 +4025,10 @@ void register_3d_components(ComponentRegistry& registry) {
                    .choices = {"clear_color", "color", "sky"}})
         .describe("background_color", color)
         .describe("background_energy_multiplier", energy)
+        .describe("background_intensity",
+                  {.doc = "Nits of the background and sky, which background_energy_multiplier "
+                          "multiplies, with physical light units.",
+                   .min = 0})
         .describe(
             "sky_custom_fov",
             {.doc = "Degrees the sky is seen across; 0 for the camera's.", .min = 0, .max = 180})
@@ -4488,6 +4527,9 @@ void register_builtin_components(ComponentRegistry& registry) {
                           "across."})
         .describe("texture_scale", {.doc = "Scales the texture.", .min = 0})
         .describe("offset", {.doc = "Moves the texture from the light, in pixels."})
+        .describe("texture_scroll",
+                  {.doc = "Scrolls the texture by this much of its size a second, wrapping, in "
+                          "whole texels."})
         .describe("color", light_color)
         .describe("energy", energy)
         .describe("blend_mode", light_blend)
@@ -4502,7 +4544,12 @@ void register_builtin_components(ComponentRegistry& registry) {
         .describe("shadow_color", shadow_color)
         .describe("shadow_filter", shadow_filter)
         .describe("shadow_filter_smooth", shadow_smooth)
-        .describe("shadow_item_cull_mask", shadow_mask);
+        .describe("shadow_item_cull_mask", shadow_mask)
+        .describe("temperature",
+                  {.doc = "Kelvin that tints color, as a 3D light's light_temperature; 0 keeps "
+                          "color as it is.",
+                   .min = 0,
+                   .max = 20000});
 
     registry.add<DirectionalLight2D>()
         .set_doc("Light from one direction over everything, such as the sun. It shines down the "
@@ -4527,7 +4574,12 @@ void register_builtin_components(ComponentRegistry& registry) {
         .describe("shadow_color", shadow_color)
         .describe("shadow_filter", shadow_filter)
         .describe("shadow_filter_smooth", shadow_smooth)
-        .describe("shadow_item_cull_mask", shadow_mask);
+        .describe("shadow_item_cull_mask", shadow_mask)
+        .describe("temperature",
+                  {.doc = "Kelvin that tints color, as a 3D light's light_temperature; 0 keeps "
+                          "color as it is.",
+                   .min = 0,
+                   .max = 20000});
 
     registry.add<LightOccluder2D>()
         .set_doc("A polygon that casts shadows from lights with shadow_enabled, placed by the "
@@ -4550,6 +4602,36 @@ void register_builtin_components(ComponentRegistry& registry) {
         .set_doc("Tints everything lit in its canvas: the light the world, or the CanvasLayer "
                  "it is in, has where no light reaches. One per canvas.")
         .describe("color", {.doc = "As [r, g, b, a] from 0 to 1.", .min = 0, .max = 1});
+
+    registry.add<Reflection2D>()
+        .set_doc("A 2D reflection, SlashEngine's own: a rect whose top edge, at the entity's "
+                 "Transform2D, is a mirror line, showing what its canvas drew before it above "
+                 "the line upside down below it, rippled, faded and tinted, as water or a "
+                 "polished floor.")
+        .describe("size",
+                  {.doc = "Across and down from the line, in the canvas's pixels.", .min = 0})
+        .describe(
+            "tint",
+            {.doc = "Multiplies the reflection, as [r, g, b, a] from 0 to 1.", .min = 0, .max = 1})
+        .describe("opacity", {.doc = "How much of the reflection shows at the line, from 0 to 1.",
+                              .min = 0,
+                              .max = 1})
+        .describe("fade",
+                  {.doc = "How much of that opacity it loses by the bottom, from 0 (none) to 1 "
+                          "(all of it).",
+                   .min = 0,
+                   .max = 1})
+        .describe(
+            "ripple_amplitude",
+            {.doc = "Pixels the reflection shifts sideways at most; 0 keeps it still.", .min = 0})
+        .describe("ripple_wavelength",
+                  {.doc = "Pixels down the rect from one ripple to the next.", .min = 1})
+        .describe("ripple_speed", {.doc = "Ripples a second that pass down the rect."})
+        .describe("z_index",
+                  {.doc = "Draw order among its canvas's sprites; it reflects what draws before "
+                          "it."})
+        .describe("z_as_relative", {.doc = "Whether z_index adds to its parents'."})
+        .describe("visible", {.doc = "Hidden reflections draw nothing."});
 
     const FieldMeta limit{.doc = "Edge of the world the view stays inside, in pixels."};
     const FieldMeta drag_margin{

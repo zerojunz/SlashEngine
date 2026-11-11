@@ -308,7 +308,13 @@ struct LightClusters {
     float slices_per_depth = 0.0F;
     std::vector<MeshLightUniforms> lights;
     std::vector<std::uint32_t> sources; // each of lights' index into Scene3D::lights
+    // The decals in place_decals' order, then each light's projector (Light3D::projector) as a
+    // record of its own: rows the world to the light's space (its -Z its direction), rects[0]
+    // the texture's rect in the atlas, params its kind (1 omni, 2 spot), the cotangent of a spot
+    // light's angle and its texture's offset. A light's shadow[1] holds 1 when it is baked plus
+    // twice one past its record's place after the decals.
     std::vector<MeshDecalUniforms> decals;
+    std::uint32_t decal_count = 0; // the decals in decals, before the projectors
     std::vector<std::uint32_t> cells;
 
     // MeshSceneUniforms::cluster: tiles across, words, slices per unit of depth, decal words.

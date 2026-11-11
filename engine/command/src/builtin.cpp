@@ -5269,8 +5269,11 @@ Reply light_sample(Session& session, const json::Value& params) {
         return sets.back().get();
     };
     std::vector<canvas::LightProblem> problems;
+    // Lights roll their textures by the time the frame at this tick shows, as frame.capture.
+    const double time =
+        canvas::material_time(world.tick(), canvas::settings(world).tick_seconds, 1.0);
     canvas::SceneLighting scene =
-        canvas::collect_lighting(world, load, {}, problems, nullptr, &canvases, load_set);
+        canvas::collect_lighting(world, load, {}, problems, nullptr, &canvases, load_set, time);
     const canvas::CanvasLighting& lit = scene.canvases.at(sampled);
     item.layer = lit.layer;
     if (lit.to_lights) {
@@ -5746,6 +5749,8 @@ Reply frame_summary(Session& session, const json::Value& params) {
             return "PopupMenu";
         case canvas::FrameItem::Kind::Tooltip:
             return "Tooltip";
+        case canvas::FrameItem::Kind::Reflection:
+            return "Reflection2D";
         case canvas::FrameItem::Kind::Control:
             break;
         }
@@ -5880,6 +5885,8 @@ Reply frame_summary(Session& session, const json::Value& params) {
             if (layout.tooltip) {
                 each["text"] = layout.tooltip->text;
             }
+            break;
+        case canvas::FrameItem::Kind::Reflection:
             break;
         }
         drawn.push_back(std::move(each));

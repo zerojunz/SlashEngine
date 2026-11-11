@@ -1,0 +1,109 @@
+{
+  "entities": {
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true
+        },
+        "CameraAttributesPractical": {
+          "exposure_sensitivity": 6400.0
+        },
+        "Transform3D": {
+          "position": [0.0, 2.0, 7.0],
+          "rotation": [-0.2, 0.0, 0.0]
+        }
+      }
+    },
+    "dusk": {
+      "components": {
+        "DirectionalLight3D": {
+          "light_intensity_lux": 400.0,
+          "light_temperature": 9000.0
+        },
+        "Transform3D": {
+          "rotation": [-0.4, 0.8, 0.0]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "WorldEnvironment": {
+          "ambient_light_color": [0.3, 0.35, 0.5, 1.0],
+          "ambient_light_energy": 0.2,
+          "ambient_light_source": "color",
+          "background_color": [0.2, 0.25, 0.4, 1.0],
+          "background_intensity": 200.0,
+          "background_mode": "color"
+        }
+      }
+    },
+    "lamp_east": {
+      "components": {
+        "OmniLight3D": {
+          "light_intensity_lumens": 3000.0,
+          "light_temperature": 4000.0,
+          "omni_range": 8.0
+        },
+        "Transform3D": {
+          "position": [3.0, 3.0, 0.0]
+        }
+      }
+    },
+    "lamp_west": {
+      "components": {
+        "OmniLight3D": {
+          "light_intensity_lumens": 6000.0,
+          "light_temperature": 2000.0,
+          "omni_range": 8.0
+        },
+        "Transform3D": {
+          "position": [-3.0, 3.0, 0.0]
+        }
+      }
+    },
+    "road": {
+      "components": {
+        "MeshInstance3D": {},
+        "PlaneMesh": {
+          "size": [30.0, 30.0]
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.45, 0.45, 0.47, 1.0]
+        },
+        "Transform3D": {}
+      }
+    },
+    "shop": {
+      "components": {
+        "BoxMesh": {
+          "size": [6.0, 4.0, 1.0]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.7, 0.6, 0.5, 1.0]
+        },
+        "Transform3D": {
+          "position": [-2.0, 2.0, -3.0]
+        }
+      }
+    },
+    "sign": {
+      "components": {
+        "BoxMesh": {
+          "size": [2.0, 0.5, 0.1]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.1, 0.1, 0.1, 1.0],
+          "emission": [0.2, 0.8, 1.0, 1.0],
+          "emission_enabled": true,
+          "emission_intensity": 200.0
+        },
+        "Transform3D": {
+          "position": [-2.0, 3.2, -2.4]
+        }
+      }
+    }
+  },
+  "format": 1
+}

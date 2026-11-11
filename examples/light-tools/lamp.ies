@@ -1,0 +1,11 @@
+IESNA:LM-63-2002
+[TEST] SlashEngine example
+[MANUFAC] SlashEngine
+[LUMCAT] STREET-1
+[LUMINAIRE] Batwing street lamp
+TILT=NONE
+1 6000 1 7 1 1 2 0.4 0.4 0.1
+1 1 60
+0 15 30 45 60 75 90
+0
+900 1100 1500 2100 2400 600 0

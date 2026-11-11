@@ -151,8 +151,10 @@ A reference must name an entity that exists in the same scene.
 | | `texture` | `std::string` | `""` | Project path of a PNG, BMP or KTX2 file whose color and alpha shape the light; `""` is a soft round light 256 pixels across |
 | | `texture_scale` | `float` | `1` | Scales the texture |
 | | `offset` | `Vec2` | `[0, 0]` | Moves the texture from the light, in pixels |
+| | `texture_scroll` | `Vec2` | `[0, 0]` | Scrolls the texture by this much of its size a second, wrapping, in whole texels, as a 3D light's `light_projector_scroll`. SlashEngine's own |
 | | `color` | `Vec4` | `[1, 1, 1, 1]` | The light's color, as [r, g, b, a] from 0 to 1 |
 | | `energy` | `float` | `1` | Multiplies the color |
+| | `temperature` | `float` | `0` | Kelvin, 1000 to 20000, tinting the color as a black body that hot glows (1900 a candle, 6500 daylight, 12000 a blue sky); `0` leaves the color as it is. SlashEngine's own: Godot's 2D lights have none |
 | | `blend_mode` | `std::string` | `"add"` | How the light changes what it lights: `add` brightens, `sub` darkens and `mix` blends toward its color |
 | | `height` | `float` | `0` | Pixels above the plane, for normal maps: at 0 it lights them only from the side |
 | | `range_z_min`, `range_z_max` | `int` | `-1024`, `1024` | Lights sprites and layers whose `z_index` is in this range |
@@ -163,7 +165,7 @@ A reference must name an entity that exists in the same scene.
 | | `shadow_filter` | `std::string` | `"none"` | Shadow edges: hard (`none`), or softened over 5 or 13 samples (`pcf5`, `pcf13`) |
 | | `shadow_filter_smooth` | `float` | `0` | Spreads the filter's samples further apart |
 | | `shadow_item_cull_mask` | `int` | `1` | Occluders whose `occluder_light_mask`, or tiles' occlusion layer's `light_mask`, shares a bit cast shadows |
-| `DirectionalLight2D` | `enabled`, `color`, `energy`, `blend_mode` | | | As `PointLight2D`'s. It lights everything, down the screen turned by its `Transform2D` rotation |
+| `DirectionalLight2D` | `enabled`, `color`, `energy`, `temperature`, `blend_mode` | | | As `PointLight2D`'s. It lights everything, down the screen turned by its `Transform2D` rotation |
 | | `height` | `float` | `0` | For normal maps: from 0, along the plane, to 1, straight down onto it |
 | | `max_distance` | `float` | `10000` | How far shadows reach past their occluders, in pixels |
 | | `range_*`, `shadow_*` | | | As `PointLight2D`'s |
@@ -173,6 +175,14 @@ A reference must name an entity that exists in the same scene.
 | | `sdf_collision` | `bool` | `true` | [GPU particles](#gpu-particle-collision) whose process material has a `collision_mode` collide with it |
 | | `occluder_light_mask` | `int` | `1` | Casts shadows from lights whose `shadow_item_cull_mask` shares a bit |
 | `CanvasModulate` | `color` | `Vec4` | `[1, 1, 1, 1]` | Tints everything lit in its canvas (the world's, or the `CanvasLayer`'s that holds it): the light it has where no light reaches. One per canvas |
+| `Reflection2D` | `size` | `Vec2` | `[128, 64]` | A 2D reflection, SlashEngine's own: a rect from the entity's `Transform2D`, this far across and down, whose top edge is a mirror line. What its canvas drew before it (by `z_index`, then drawing order) shows upside down below the line, lit where it is in the world; draws of a `GPUParticles2D` are left out. Water, mirrors and polished floors |
+| | `tint` | `Vec4` | `[1, 1, 1, 1]` | Multiplies the reflection, with its parents' `modulate` |
+| | `opacity` | `float` | `0.6` | How much of the reflection shows at the line, from 0 to 1 |
+| | `fade` | `float` | `1` | How much of that it loses by the bottom: 0 none, 1 all of it |
+| | `ripple_amplitude` | `float` | `0` | Pixels the reflection shifts sideways at most, in waves down the rect; 0 keeps it still |
+| | `ripple_wavelength` | `float` | `16` | Pixels down the rect from one wave to the next |
+| | `ripple_speed` | `float` | `1` | Waves a second that pass down the rect, by the frame's time |
+| | `z_index`, `z_as_relative`, `visible` | | | As `Sprite2D`'s |
 | `Camera2D` | `enabled` | `bool` | `true` | Can be the [current camera](#2d-camera): the first enabled one in drawing order |
 | | `anchor_mode` | `std::string` | `"drag_center"` | `drag_center` puts the middle of the screen at the camera; `fixed_top_left` its top left corner |
 | | `ignore_rotation` | `bool` | `true` | Keep the view upright when the camera's `Transform2D` turns |
@@ -1758,6 +1768,7 @@ Godot's do in 3D, unless `texture_repeat` is off.
 | `metallic_specular` | `0.5` | Specular strength of the non-metallic part |
 | `roughness`, `roughness_texture`, `roughness_texture_channel` | `1`, `""`, `"red"` | How rough, as `metallic` |
 | `emission_enabled`, `emission`, `emission_energy_multiplier`, `emission_texture` | `false`, `[0, 0, 0, 1]`, `1`, `""` | Light the surface gives off, unlit: the color (plus the texture) made linear, times the multiplier, as Godot |
+| `emission_intensity` | `1000` | With [physical light units](#physical-light-units), the emission's brightness in nits |
 | `normal_enabled`, `normal_scale`, `normal_texture` | `false`, `1`, `""` | A tangent-space normal map |
 | `shading_mode` | `"per_pixel"` | `"unshaded"` draws the albedo with no lighting |
 | `transparency`, `alpha_scissor_threshold` | `"disabled"`, `0.5` | `"alpha"` blends; `"alpha_scissor"` drops pixels under the threshold; `"alpha_hash"` drops them by a dither fixed to the mesh, so hair cards and eyelashes fade out without sorting (see below) |
@@ -1843,6 +1854,12 @@ lights each pixel with only the omni and spot lights whose range reaches it, and
 | --- | --- | --- | --- |
 | `light_color` | `[1, 1, 1, 1]` | all | sRGB |
 | `light_energy` | `1` | all | Brightness |
+| `light_temperature` | `6500` | all | With [physical light units](#physical-light-units), the color's black body temperature in kelvin, 1000 to 20000, which tints `light_color` |
+| `light_intensity_lux` | `100000` | directional | With physical light units, its brightness in lux (100000 is the noon sun) |
+| `light_intensity_lumens` | `1000` | omni, spot | With physical light units, its brightness in lumens (about a 75 W bulb's) |
+| `light_projector` | `""` | omni, spot | `forward_plus`: project path of a texture the light casts, as Godot's: through a spot light's cone, or an omni light's [dual paraboloid](#light-projectors-and-ies-profiles); its color times its alpha tints the light |
+| `light_projector_scroll` | `[0, 0]` | omni, spot | Moves the projector's texture coordinates by this much a second, wrapping, so it scrolls (clouds, water caustics). SlashEngine's own |
+| `light_ies` | `""` | omni, spot | `forward_plus`: project path of an IES LM-63 profile (`.ies`) whose pattern the light shines in, baked into its projector. SlashEngine's own, after Unreal's IES textures |
 | `light_specular` | `0.5` | all | How strong its highlights are |
 | `light_negative` | `false` | all | Takes light away instead |
 | `light_cull_mask` | `4294967295` | all | The render layers it lights (layers 1 to 20) |
@@ -1875,6 +1892,42 @@ Shadows are Godot's Compatibility renderer's shadow maps, drawn on every device 
 directional lights that cast (up to 4); omni and spot lights (up to 16) share the positional
 atlas, an omni light's cube taking six tiles and a spot light's one. Edges are filtered by the
 project's `rendering.lights_and_shadows` ([project-format.md](project-format.md#shadows)).
+
+### Physical light units
+
+With project.json's `rendering.lights_and_shadows.use_physical_light_units`
+([project-format.md](project-format.md#shadows)), lights, skies and emission shine in real
+units, as Godot's: each light's color is tinted by its `light_temperature` (Krystek's fit of the
+Planckian locus, multiplied in linear light, as Godot's `Light3D::get_correlated_color`), and its
+`light_energy` is multiplied by `light_intensity_lux` / π (directional), `light_intensity_lumens`
+/ 4π² (omni) or `light_intensity_lumens` / π² (spot); a directional light's sun in the sky is
+tinted and shines by its lux. The background and sky shine by the `WorldEnvironment`'s
+`background_intensity` in nits, and emission by each material's `emission_intensity`. A
+[`CameraAttributesPractical`](#cameraattributespractical)'s exposure is then normalized by its
+`exposure_sensitivity` (ISO 100 is 100 / 3072007), so a scene in real units needs one, as in
+Godot. Lightmap and VoxelGI bakes take the same units. Without the setting, these fields change
+nothing. [`light.tune`](commands.md#lighttune) scales lights to a brightness and
+[examples/light-tools](../../examples/light-tools/) lights a street at dusk.
+
+### Light projectors and IES profiles
+
+An omni or spot light's `light_projector` casts a texture, as Godot 4.6's Forward+ does: the
+texture goes into the [decal](#decals) atlas, and each pixel the light reaches is tinted by the
+texture's color times its alpha where the light's ray meets it. A spot light maps it over its
+cone (twice `spot_angle` across, the texture's top toward the light's +y); an omni light maps it
+as a dual paraboloid, the texture's top half round the light's -z and its bottom half round +z,
+each half's top row toward the light's -y. `light_projector_scroll` moves the texture's
+coordinates each second, wrapping, as a light function. `gl_compatibility` casts no projectors,
+as Godot's.
+
+`light_ies` names an IES LM-63 profile (1986 to 2002 files with `TILT=NONE` or `INCLUDE`, type
+C photometry, the kind lamp makers publish), baked into the projector the way the light maps it:
+its brightest direction white, the rest by their share, the profile's axis (vertical angle 0)
+down a spot light's -z or an omni light's -y. With a `light_projector` too, the two multiply.
+The profile changes the light's pattern, not its brightness, which `light_energy` (or its lumens)
+still sets. A 2D light's own `texture` is its pattern, and its `texture_scroll` scrolls it.
+[examples/light-tools](../../examples/light-tools/) shines a street lamp's profile and a stained
+glass window.
 
 ### Ray-traced shadows
 
@@ -1932,6 +1985,7 @@ there is no ambient light and colors stay as they are.
 | `background_mode` | `"clear_color"` | `"clear_color"` (the project's), `"color"` or `"sky"` (the entity's [sky material](#skies)) |
 | `background_color` | `[0, 0, 0, 1]` | The background for `"color"` |
 | `background_energy_multiplier` | `1` | Brightens the background or sky |
+| `background_intensity` | `30000` | With [physical light units](#physical-light-units), the background's and sky's brightness in nits |
 | `sky_custom_fov` | `0` | Degrees across the target's height the sky is seen with; `0` for the camera's |
 | `sky_rotation` | `[0, 0, 0]` | Turns the sky, in radians about x, y and z, as `Transform3D`'s rotation |
 | `sky_radiance_size` | `256` | Texels across each face of the cube the [sky's light](#sky-light) is drawn into: 32, 64, 128, 256, 512, 1024 or 2048 |

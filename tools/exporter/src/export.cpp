@@ -34,6 +34,7 @@
 #include "slash/platform/process.hpp"
 #include "slash/plugin/plugins.hpp"
 #include "slash/procedural/texture.hpp"
+#include "slash/render/ies.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/shader.hpp"
 #include "slash/runtime/gameplay.hpp"
@@ -214,7 +215,8 @@ enum class DataFile : std::uint8_t {
     Model,
     Buffer,
     Translation,
-    Splats
+    Splats,
+    Ies
 };
 
 DataFile data_file(std::string_view name) {
@@ -306,6 +308,9 @@ DataFile data_file(std::string_view name) {
     if (name.ends_with(scene3d::kSplatSuffix)) {
         return DataFile::Splats;
     }
+    if (name.ends_with(scene3d::kIesSuffix)) {
+        return DataFile::Ies;
+    }
     // A lightmap's texels, light past 1 kept as a Radiance HDR file.
     if (name.ends_with(".hdr")) {
         return DataFile::LightmapTexels;
@@ -353,6 +358,12 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
     if (kind == DataFile::Splats) {
         if (auto splats = render::read_splat_ply(text); !splats) {
             return {{"", splats.error().message}};
+        }
+        return {};
+    }
+    if (kind == DataFile::Ies) {
+        if (auto profile = render::parse_ies(text); !profile) {
+            return {{"", profile.error().message}};
         }
         return {};
     }

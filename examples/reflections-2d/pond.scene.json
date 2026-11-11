@@ -1,0 +1,69 @@
+{
+  "entities": {
+    "boat": {
+      "components": {
+        "Sprite2D": {
+          "modulate": [0.35, 0.2, 0.1, 1.0],
+          "texture": "white.texture.json"
+        },
+        "Transform2D": {
+          "position": [50.0, 46.0],
+          "scale": [6.0, 2.0]
+        }
+      }
+    },
+    "moon": {
+      "components": {
+        "Sprite2D": {
+          "texture": "moon.texture.json"
+        },
+        "Transform2D": {
+          "position": [120.0, 20.0],
+          "scale": [0.5, 0.5]
+        }
+      }
+    },
+    "pond": {
+      "components": {
+        "Reflection2D": {
+          "fade": 0.7,
+          "opacity": 0.8,
+          "ripple_amplitude": 1.5,
+          "ripple_speed": 0.5,
+          "ripple_wavelength": 6.0,
+          "size": [160.0, 40.0],
+          "tint": [0.55, 0.75, 0.95, 1.0]
+        },
+        "Transform2D": {
+          "position": [0.0, 50.0]
+        }
+      }
+    },
+    "reed": {
+      "components": {
+        "Sprite2D": {
+          "modulate": [0.2, 0.5, 0.2, 1.0],
+          "texture": "white.texture.json",
+          "z_index": 1
+        },
+        "Transform2D": {
+          "position": [20.0, 62.0],
+          "scale": [0.5, 6.0]
+        }
+      }
+    },
+    "sky": {
+      "components": {
+        "Sprite2D": {
+          "centered": false,
+          "texture": "sky.texture.json",
+          "z_index": -1
+        },
+        "Transform2D": {
+          "scale": [40.0, 3.125]
+        }
+      }
+    }
+  },
+  "format": 1
+}
