@@ -81,6 +81,27 @@ const std::vector<std::string_view> kLandmarks = {
     "ear_left",      "ear_right",         "back",
 };
 
+const std::vector<std::string_view> kExpressions = {
+    "eyeBlinkLeft",      "eyeLookDownLeft",    "eyeLookInLeft",
+    "eyeLookOutLeft",    "eyeLookUpLeft",      "eyeSquintLeft",
+    "eyeWideLeft",       "eyeBlinkRight",      "eyeLookDownRight",
+    "eyeLookInRight",    "eyeLookOutRight",    "eyeLookUpRight",
+    "eyeSquintRight",    "eyeWideRight",       "jawForward",
+    "jawLeft",           "jawRight",           "jawOpen",
+    "mouthClose",        "mouthFunnel",        "mouthPucker",
+    "mouthLeft",         "mouthRight",         "mouthSmileLeft",
+    "mouthSmileRight",   "mouthFrownLeft",     "mouthFrownRight",
+    "mouthDimpleLeft",   "mouthDimpleRight",   "mouthStretchLeft",
+    "mouthStretchRight", "mouthRollLower",     "mouthRollUpper",
+    "mouthShrugLower",   "mouthShrugUpper",    "mouthPressLeft",
+    "mouthPressRight",   "mouthLowerDownLeft", "mouthLowerDownRight",
+    "mouthUpperUpLeft",  "mouthUpperUpRight",  "browDownLeft",
+    "browDownRight",     "browInnerUp",        "browOuterUpLeft",
+    "browOuterUpRight",  "cheekPuff",          "cheekSquintLeft",
+    "cheekSquintRight",  "noseSneerLeft",      "noseSneerRight",
+    "tongueOut",
+};
+
 std::string face_fields() {
     std::string controls;
     for (const FaceControl& control : kControls) {
@@ -396,6 +417,17 @@ real_t asin_of(real_t y) {
 // A point on the unit sphere's front at x and y.
 Vec3 front_at(real_t x, real_t y) {
     return {x, y, std::sqrt(std::max<real_t>(1.0F - (x * x) - (y * y), 0.0F))};
+}
+
+// p turned by angle about the line through pivot along x: a positive angle takes what is in front
+// of the pivot down.
+Vec3 turned_down(Vec3 p, Vec3 pivot, real_t angle) {
+    const Vec2f turn = cos_sin(to_float(angle));
+    const real_t c = turn.x;
+    const real_t s = turn.y;
+    const real_t y = p.y - pivot.y;
+    const real_t z = p.z - pivot.z;
+    return {p.x, pivot.y + (y * c) - (z * s), pivot.z + (y * s) + (z * c)};
 }
 
 // A small whole-number hash, for the asymmetry's picks: -1 to 1.
@@ -831,6 +863,33 @@ public:
         return gauss(((ox * ox) + (oy * oy)) / (width * width));
     }
 
+    // Where a direction is about eye s: across its opening (u, -1 to 1 inside it), up from its
+    // middle line (dy, in the unit sphere's units), the opening's top and bottom edges there
+    // (above and below the line) and the eye's radius in those units.
+    struct EyeFrame {
+        real_t u = 0.0F;
+        real_t dy = 0.0F;
+        real_t upper = 0.0F;
+        real_t lower = 0.0F;
+        real_t rn = 0.0F;
+    };
+    [[nodiscard]] EyeFrame eye_frame(std::size_t s, Vec3 d) const {
+        const real_t side = s == 0 ? 1.0F : -1.0F;
+        const real_t rn = eye_radius_ / head_.radii.x;
+        const real_t openness = std::clamp<real_t>(
+            1.0F + (0.35F * c("eyes.openness")) - (0.15F * c("eyes.hooded")), 0.3F, 1.6F);
+        const Vec3 e = eye_dir_[s];
+        const real_t dx = (d.x - e.x) * side;
+        const real_t u = dx / (rn * 0.92F);
+        const real_t edge = std::clamp<real_t>(u, -0.999F, 0.999F);
+        const real_t span = 1.0F - (edge * edge);
+        return {.u = u,
+                .dy = (d.y - e.y) - ((0.04F + (0.18F * c("eyes.tilt"))) * dx),
+                .upper = rn * 0.33F * openness * span * (1.0F - (0.15F * edge)),
+                .lower = rn * 0.24F * openness * span * (1.0F + (0.1F * edge)),
+                .rn = rn};
+    }
+
     // Whether a direction is in an eye's opening (behind which it hides), and in its lids.
     struct EyeZone {
         int side = -1;
@@ -843,27 +902,17 @@ public:
         if (!style_.tucks || d.z <= 0.0F) {
             return zone;
         }
-        const real_t rn = eye_radius_ / head_.radii.x;
-        const real_t openness = std::clamp<real_t>(
-            1.0F + (0.35F * c("eyes.openness")) - (0.15F * c("eyes.hooded")), 0.3F, 1.6F);
         for (std::size_t s = 0; s < 2; ++s) {
-            const real_t side = s == 0 ? 1.0F : -1.0F;
-            const Vec3 e = eye_dir_[s];
-            const real_t dx = (d.x - e.x) * side;
-            const real_t width = rn * 0.92F;
-            const real_t u = dx / width;
-            const real_t dy = (d.y - e.y) - (((0.04F + (0.18F * c("eyes.tilt")))) * dx);
-            if (std::abs(u) > 1.35F || std::abs(dy) > rn * 1.2F) {
+            const EyeFrame f = eye_frame(s, d);
+            if (std::abs(f.u) > 1.35F || std::abs(f.dy) > f.rn * 1.2F) {
                 continue;
             }
             zone.side = static_cast<int>(s);
             zone.lid = true;
-            if (std::abs(u) < 1.0F) {
-                const real_t span = 1.0F - (u * u);
-                const real_t upper = rn * 0.33F * openness * span * (1.0F - (0.15F * u));
-                const real_t lower = rn * 0.24F * openness * span * (1.0F + (0.1F * u));
-                zone.open = dy < upper && dy > -lower;
-                zone.rim = !zone.open && dy < upper + (rn * 0.12F) && dy > -lower - (rn * 0.1F);
+            if (std::abs(f.u) < 1.0F) {
+                zone.open = f.dy < f.upper && f.dy > -f.lower;
+                zone.rim = !zone.open && f.dy < f.upper + (f.rn * 0.12F) &&
+                           f.dy > -f.lower - (f.rn * 0.1F);
             }
             return zone;
         }
@@ -901,6 +950,16 @@ public:
                 p = e + (way * std::max<real_t>(dist, eye_radius_ * 1.08F));
             } else if (zone.lid && dist < eye_radius_ * 1.05F) {
                 p = e + (way * (eye_radius_ * 1.05F));
+            }
+        }
+        // Skin anywhere else keeps clear of both eyeballs, so a big or shallow eye never shows
+        // through the temple or the cheek.
+        if (!zone.open && style_.tucks) {
+            for (const Vec3& e : eye_center_) {
+                const real_t dist = length3(p - e);
+                if (dist < eye_radius_ * 1.04F && dist > 1e-6F) {
+                    p = e + ((p - e) * (eye_radius_ * 1.04F / dist));
+                }
             }
         }
         return p;
@@ -941,6 +1000,54 @@ public:
         return FaceArea::Skin;
     }
 
+    // How expression index moves the head's point p at direction d fully on, in meters.
+    [[nodiscard]] Vec3 expression(std::size_t index, Vec3 d, Vec3 p) const {
+        const std::string_view name = kExpressions[index];
+        const real_t front = smooth(-0.2F, 0.25F, d.z);
+        if (front <= 0.0F || name == "tongueOut") {
+            return {};
+        }
+        real_t side = 0.0F;
+        if (name.ends_with("Left")) {
+            side = 1.0F;
+        } else if (name.ends_with("Right")) {
+            side = -1.0F;
+        }
+        // The share of a one-sided shape a direction takes, fading across the middle.
+        const real_t half = side == 0.0F ? 1.0F : smooth(-0.06F, 0.06F, side * d.x);
+        if (name.starts_with("eye")) {
+            return eye_expression(name, side > 0.0F ? 0 : 1, d, p) * front;
+        }
+        if (name.starts_with("jaw") || name == "mouthClose") {
+            return jaw_expression(name, d, p) * front;
+        }
+        if (name.starts_with("mouth")) {
+            return mouth_expression(name, side, half, d, p) * front;
+        }
+        return upper_face_expression(name, side, half, d, p) * front;
+    }
+
+    // Where the jaw turns, in meters: in front of the ears, below the eyes.
+    [[nodiscard]] Vec3 jaw_pivot() const { return meters_of({0.0F, -0.22F, -0.05F}); }
+
+    // How the jaw's expressions move what moves with the jaw wholly (weight 1).
+    [[nodiscard]] Vec3 jaw_motion(std::string_view name, Vec3 p) const {
+        const real_t m = head_.radii.y;
+        if (name == "jawOpen") {
+            return turned_down(p, jaw_pivot(), 0.32F) - p;
+        }
+        if (name == "jawForward") {
+            return {0.0F, 0.0F, 0.07F * m};
+        }
+        if (name == "jawLeft") {
+            return {0.07F * m, 0.0F, 0.0F};
+        }
+        if (name == "jawRight") {
+            return {-0.07F * m, 0.0F, 0.0F};
+        }
+        return {};
+    }
+
     // Whether a beard grows at a direction: the jaw, chin and cheeks below a line from the ear
     // to the nose's side, and the lip under the nose.
     [[nodiscard]] bool bearded(Vec3 d) const {
@@ -966,6 +1073,220 @@ public:
     }
 
 private:
+    // The lips' seam's height at x, its corners raised or lowered.
+    [[nodiscard]] real_t seam_at(real_t x) const {
+        const real_t t = std::min<real_t>(std::abs(x) / mouth_w_, 1.0F);
+        return mouth_y_ + (mouth_tilt_ * x) + (0.02F * c("mouth.corners") * t * t);
+    }
+
+    // How much a direction is the upper lip (and the skin above it) and the lower lip (and the
+    // skin below it), each 0 to 1.
+    [[nodiscard]] Vec2 lips_at(Vec3 d) const {
+        const real_t lw = 1.0F - smooth(0.85F, 1.3F, std::abs(d.x) / mouth_w_);
+        const real_t dy = d.y - seam_at(d.x);
+        return {lw * smooth(-0.004F, 0.006F, dy) * (1.0F - smooth(0.05F, 0.12F, dy)),
+                lw * smooth(0.004F, -0.006F, dy) * (1.0F - smooth(-0.06F, -0.14F, dy))};
+    }
+
+    // How much a direction moves with the jaw: below the seam, its line rising toward the ears.
+    [[nodiscard]] real_t jaw_share(Vec3 d) const {
+        const real_t ax = std::abs(d.x);
+        const real_t line = seam_at(d.x) + (std::max<real_t>(ax - mouth_w_, 0.0F) * 0.5F);
+        return smooth(0.006F, -0.02F, d.y - line) * smooth(-0.35F, 0.1F, d.z) *
+               smooth(-0.97F, -0.88F, d.y);
+    }
+
+    // How much a direction is round the mouth's corner on a side (1 the face's left).
+    [[nodiscard]] real_t corner_at(real_t side, Vec3 d) const {
+        const real_t x = d.x - (side * mouth_w_);
+        const real_t dy = d.y - seam_at(d.x);
+        const real_t q = ((x * x) + (dy * dy));
+        return std::min<real_t>(gauss(q / (0.07F * 0.07F)) + (0.5F * gauss(q / (0.14F * 0.14F))),
+                                1.0F);
+    }
+
+    [[nodiscard]] real_t blob_at(Vec3 d, real_t x, real_t y, real_t rx, real_t ry) const {
+        const real_t qx = (d.x - x) / rx;
+        const real_t qy = (d.y - y) / ry;
+        return gauss((qx * qx) + (qy * qy));
+    }
+
+    [[nodiscard]] Vec3 eye_expression(std::string_view name, std::size_t s, Vec3 d, Vec3 p) const {
+        const EyeFrame f = eye_frame(s, d);
+        if (std::abs(f.u) > 1.4F || f.dy > f.rn * 2.0F || f.dy < -f.rn * 1.8F) {
+            return {};
+        }
+        const real_t across = 1.0F - smooth(0.95F, 1.35F, std::abs(f.u));
+        const real_t edge = std::clamp<real_t>(f.u, -0.99F, 0.99F);
+        const real_t span = 1.0F - (edge * edge);
+        const real_t rn = f.rn;
+        // The opening's height in turns of the eye, at its middle.
+        const real_t open = 1.6F * (rn * 0.57F) * std::max<real_t>(span, 0.6F) * head_.radii.y /
+                            (eye_radius_ * 1.05F);
+        const real_t upper_lid =
+            across * smooth(-0.05F * rn, 0.05F * rn, f.dy) *
+            (1.0F - smooth(f.upper + (rn * 0.15F), f.upper + (rn * 0.65F), f.dy));
+        const real_t lower_lid =
+            across * smooth(0.05F * rn, -0.05F * rn, f.dy) *
+            (1.0F - smooth(-f.lower - (rn * 0.2F), -f.lower - (rn * 0.8F), f.dy));
+        const Vec3 e = eye_center_[s];
+        // A closing lid is held out over the cornea, which stands a tenth of the eye proud of the
+        // ball (the iris and pupil reach 1.1 of its radius).
+        const auto clear = [&](Vec3 q, real_t closing) {
+            const Vec3 v = q - e;
+            const real_t r = length3(v);
+            const real_t want = eye_radius_ * 1.14F;
+            if (closing <= 0.0F || r <= 1e-6F || r >= want) {
+                return q;
+            }
+            // Only over the front of the eye, where the cornea is.
+            const real_t front = smooth(0.55F, 0.85F, v.z / r);
+            return q + (v * ((want - r) / r * std::min<real_t>(closing * 4.0F, 1.0F) * front));
+        };
+        const auto lids = [&](real_t upper, real_t lower) {
+            const Vec3 top = clear(turned_down(p, e, open * upper * upper_lid), upper * upper_lid);
+            const Vec3 bottom =
+                clear(turned_down(p, e, open * lower * lower_lid), -lower * lower_lid);
+            return (top - p) + (bottom - p);
+        };
+        const real_t side = s == 0 ? 1.0F : -1.0F;
+        const real_t unit_m = head_.radii.y;
+        if (name.starts_with("eyeBlink")) {
+            return lids(0.9F, -0.12F);
+        }
+        if (name.starts_with("eyeWide")) {
+            return lids(-0.3F, 0.05F);
+        }
+        if (name.starts_with("eyeSquint")) {
+            const real_t cheek =
+                blob_at(d, eye_dir_[s].x, eye_dir_[s].y - (rn * 2.5F), rn * 2.0F, rn * 1.5F);
+            return lids(0.12F, -0.35F) + (Vec3{0.0F, 0.03F * unit_m, 0.01F * unit_m} * cheek);
+        }
+        if (name.starts_with("eyeLookUp")) {
+            return lids(-0.15F, -0.08F);
+        }
+        if (name.starts_with("eyeLookDown")) {
+            return lids(0.35F, 0.1F);
+        }
+        // Looking in (toward the nose) or out, the lids follow the eye a little.
+        const real_t way = name.starts_with("eyeLookIn") ? -side : side;
+        return Vec3{way * 0.012F * unit_m, 0.0F, 0.0F} *
+               std::min<real_t>(upper_lid + lower_lid, 1.0F);
+    }
+
+    [[nodiscard]] Vec3 jaw_expression(std::string_view name, Vec3 d, Vec3 p) const {
+        if (name == "mouthClose") {
+            // The lower lip back up as the jaw stays open, the upper lip down a little.
+            const Vec2 lips = lips_at(d);
+            return (jaw_motion("jawOpen", p) * (-0.85F * lips.y)) +
+                   (Vec3{0.0F, -0.015F * head_.radii.y, 0.0F} * lips.x);
+        }
+        return jaw_motion(name, p) * jaw_share(d);
+    }
+
+    [[nodiscard]] Vec3 mouth_expression(std::string_view name, real_t side, real_t half, Vec3 d,
+                                        Vec3 p) const {
+        const real_t m = head_.radii.y;
+        const Vec2 lips = lips_at(d);
+        const real_t upper = lips.x;
+        const real_t lower = lips.y;
+        const real_t both = std::min<real_t>(upper + lower, 1.0F);
+        const real_t across = p.x - head_.center.x;
+        if (name == "mouthFunnel") {
+            return (Vec3{-0.2F * across, 0.0F, 0.07F * m} * both) +
+                   (Vec3{0.0F, 0.025F * m, 0.0F} * upper) + (Vec3{0.0F, -0.03F * m, 0.0F} * lower);
+        }
+        if (name == "mouthPucker") {
+            return Vec3{-0.35F * across, 0.0F, 0.09F * m} * both;
+        }
+        if (name == "mouthLeft" || name == "mouthRight") {
+            const real_t wide = (1.0F - smooth(0.9F, 1.6F, std::abs(d.x) / mouth_w_)) *
+                                (1.0F - smooth(0.12F, 0.24F, std::abs(d.y - seam_at(d.x))));
+            return Vec3{side * 0.08F * m, 0.0F, 0.0F} * wide;
+        }
+        if (name == "mouthRollLower") {
+            return Vec3{0.0F, 0.02F * m, -0.035F * m} * lower;
+        }
+        if (name == "mouthRollUpper") {
+            return Vec3{0.0F, -0.02F * m, -0.035F * m} * upper;
+        }
+        if (name == "mouthShrugLower") {
+            const real_t chin = (1.0F - smooth(0.9F, 1.5F, std::abs(d.x) / mouth_w_)) *
+                                gauss(((d.y - seam_at(d.x) + 0.22F) / 0.1F) *
+                                      ((d.y - seam_at(d.x) + 0.22F) / 0.1F));
+            return Vec3{0.0F, 0.04F * m, 0.015F * m} * std::min<real_t>(lower + chin, 1.0F);
+        }
+        if (name == "mouthShrugUpper") {
+            return Vec3{0.0F, 0.035F * m, 0.01F * m} * upper;
+        }
+        if (name.starts_with("mouthPress")) {
+            return ((Vec3{0.0F, -0.015F * m, -0.01F * m} * upper) +
+                    (Vec3{0.0F, 0.015F * m, -0.01F * m} * lower)) *
+                   half;
+        }
+        if (name.starts_with("mouthLowerDown")) {
+            return Vec3{0.0F, -0.05F * m, 0.0F} * (lower * half);
+        }
+        if (name.starts_with("mouthUpperUp")) {
+            return Vec3{0.0F, 0.05F * m, 0.0F} * (upper * half);
+        }
+        const real_t corner = corner_at(side, d);
+        if (name.starts_with("mouthSmile")) {
+            const real_t cheek = blob_at(d, side * 0.4F, mouth_y_ + 0.15F, 0.14F, 0.14F);
+            return (Vec3{side * 0.03F * m, 0.065F * m, -0.02F * m} * corner) +
+                   (Vec3{0.0F, 0.025F * m, 0.02F * m} * cheek);
+        }
+        if (name.starts_with("mouthFrown")) {
+            return Vec3{side * 0.005F * m, -0.06F * m, 0.0F} * corner;
+        }
+        if (name.starts_with("mouthDimple")) {
+            return Vec3{side * 0.015F * m, 0.0F, -0.035F * m} * corner;
+        }
+        if (name.starts_with("mouthStretch")) {
+            return Vec3{side * 0.065F * m, -0.025F * m, -0.015F * m} * corner;
+        }
+        return {};
+    }
+
+    [[nodiscard]] Vec3 upper_face_expression(std::string_view name, real_t side, real_t half,
+                                             Vec3 d, Vec3 p) const {
+        const real_t m = head_.radii.y;
+        // How much a direction is a brow on a side, and how far out along it (0 inner, 1 outer).
+        const auto brow = [&](real_t on) -> Vec2 {
+            const real_t u = ((d.x * on) - 0.1F) / 0.5F;
+            const real_t inside = smooth(-0.3F, 0.0F, u) * (1.0F - smooth(1.0F, 1.3F, u));
+            const real_t line = brow_line(std::clamp<real_t>(u, 0.0F, 1.0F), on > 0.0F ? 0 : 1);
+            const real_t dy = (d.y - line) / 0.12F;
+            return {inside * gauss(dy * dy), std::clamp<real_t>(u, 0.0F, 1.0F)};
+        };
+        if (name.starts_with("browDown")) {
+            const Vec2 b = brow(side);
+            return Vec3{-side * 0.02F * m * (1.0F - b.y), -0.07F * m, 0.01F * m} * b.x;
+        }
+        if (name == "browInnerUp") {
+            const Vec2 b = brow(d.x >= 0.0F ? 1.0F : -1.0F);
+            return Vec3{0.0F, 0.08F * m, 0.0F} * (b.x * (1.0F - smooth(0.0F, 0.6F, b.y)));
+        }
+        if (name.starts_with("browOuterUp")) {
+            const Vec2 b = brow(side);
+            return Vec3{0.0F, 0.08F * m, 0.0F} * (b.x * smooth(0.3F, 0.9F, b.y));
+        }
+        if (name == "cheekPuff") {
+            const real_t cheeks = blob_at(d, 0.45F, mouth_y_ + 0.1F, 0.17F, 0.17F) +
+                                  blob_at(d, -0.45F, mouth_y_ + 0.1F, 0.17F, 0.17F);
+            return unit(p - head_.center) * (0.09F * m * std::min<real_t>(cheeks, 1.0F));
+        }
+        if (name.starts_with("cheekSquint")) {
+            return Vec3{0.0F, 0.04F * m, 0.015F * m} *
+                   blob_at(d, side * 0.42F, eye_y_ - 0.22F, 0.12F, 0.12F);
+        }
+        if (name.starts_with("noseSneer")) {
+            const real_t nose = blob_at(d, side * 0.09F * nose_w_, nose_tip_ + 0.07F, 0.06F, 0.07F);
+            return Vec3{side * 0.005F * m, 0.045F * m, 0.005F * m} * (nose * half);
+        }
+        return {};
+    }
+
     const CharacterFace& face_;
     HeadShape head_;
     Style style_;
@@ -1076,6 +1397,40 @@ FaceEyes face_eyes(const CharacterFace& face, const HeadShape& head) {
 real_t face_mouth(const CharacterFace& face, const HeadShape& head) {
     const Sculptor sculptor(face, head);
     return sculptor.meters_of(sculptor.shape(front_at(0.0F, sculptor.mouth_y()))).y;
+}
+
+const std::vector<std::string_view>& face_expression_names() {
+    return kExpressions;
+}
+
+std::optional<std::size_t> face_expression_index(std::string_view name) {
+    for (std::size_t i = 0; i < kExpressions.size(); ++i) {
+        if (kExpressions[i] == name) {
+            return i;
+        }
+    }
+    return std::nullopt;
+}
+
+std::vector<std::vector<Vec3>> face_expressions(const CharacterFace& face, const HeadShape& head,
+                                                const SculptedHead& sculpt) {
+    const Sculptor sculptor(face, head);
+    std::vector<std::vector<Vec3>> out(kExpressions.size());
+    for (std::size_t e = 0; e < kExpressions.size(); ++e) {
+        out[e].reserve(sculpt.positions.size());
+        for (std::size_t v = 0; v < sculpt.positions.size(); ++v) {
+            out[e].push_back(sculptor.expression(e, sculpt.directions[v], sculpt.positions[v]));
+        }
+    }
+    return out;
+}
+
+Vec3 face_jaw_offset(const CharacterFace& face, const HeadShape& head, std::size_t expression,
+                     Vec3 point) {
+    if (expression >= kExpressions.size()) {
+        return {};
+    }
+    return Sculptor(face, head).jaw_motion(kExpressions[expression], point);
 }
 
 SculptedHead sculpt_head(const CharacterFace& face, const HeadShape& head) {
@@ -1237,9 +1592,25 @@ SculptedHead sculpt_head(const CharacterFace& face, const HeadShape& head) {
     return out;
 }
 
-FaceProfile face_profile(const CharacterFace& face, const HeadShape& head) {
+FaceProfile face_profile(const CharacterFace& face, const HeadShape& head,
+                         std::span<const float> expressions) {
     const Sculptor sculptor(face, head);
     FaceProfile out;
+    // A point at a direction, moved by the expressions (the jaw's turn is its bone's).
+    const auto moved = [&](Vec3 d, Vec3 p) {
+        Vec3 sum = p;
+        for (std::size_t e = 0; e < expressions.size() && e < kExpressions.size(); ++e) {
+            if (expressions[e] != 0.0F && kExpressions[e] != "jawOpen") {
+                sum = sum + (sculptor.expression(e, d, p) * static_cast<real_t>(expressions[e]));
+            }
+        }
+        return sum;
+    };
+    const auto weight = [&](std::string_view name) -> real_t {
+        const auto index = face_expression_index(name);
+        return index && *index < expressions.size() ? static_cast<real_t>(expressions[*index])
+                                                    : 0.0F;
+    };
     const real_t seam = sculptor.mouth_latitude();
     std::vector<real_t> lat = latitudes(48, seam);
     // The lips' edges as points of their own, so the profile shows them.
@@ -1255,22 +1626,25 @@ FaceProfile face_profile(const CharacterFace& face, const HeadShape& head) {
         if (l == seam) {
             out.mouth_index = out.points.size();
         }
-        out.points.push_back(side_view(sculptor.place(d, l == seam, 0.965F, nullptr)));
+        out.points.push_back(side_view(moved(d, sculptor.place(d, l == seam, 0.965F, nullptr))));
     }
     out.front_count = out.points.size();
     for (auto it = lat.rbegin() + 1; it != lat.rend(); ++it) {
         const Vec2f ring = cos_sin(to_float(*it));
-        out.points.push_back(side_view(
-            sculptor.place({0.0F, static_cast<real_t>(ring.y), -static_cast<real_t>(ring.x)}, false,
-                           1.0F, nullptr)));
+        const Vec3 d{0.0F, static_cast<real_t>(ring.y), -static_cast<real_t>(ring.x)};
+        out.points.push_back(side_view(moved(d, sculptor.place(d, false, 1.0F, nullptr))));
     }
     // The bottom's point was the first; leave its copy at the end off.
     out.points.pop_back();
     const FaceEyes eyes = sculptor.eyes();
     out.eye = {eyes.left.z - head.center.z + (eyes.radius * 0.45F), eyes.left.y - head.center.y};
     out.eye_radius = eyes.radius * 0.7F;
-    out.brow =
-        side_view(sculptor.place(sculptor.landmark_direction("brow_left"), false, 1.0F, nullptr));
+    const Vec3 brow = sculptor.landmark_direction("brow_left");
+    out.brow = side_view(moved(brow, sculptor.place(brow, false, 1.0F, nullptr)));
+    out.eye_open = std::clamp<real_t>(
+        1.0F - (0.95F * weight("eyeBlinkLeft")) + (0.3F * weight("eyeWideLeft")) -
+            (0.35F * weight("eyeSquintLeft")) - (0.25F * weight("eyeLookDownLeft")),
+        0.0F, 1.3F);
     const Vec3 ear = sculptor.place(sculptor.landmark_direction("ear_left"), false, 1.0F, nullptr);
     out.ear = side_view(ear);
     return out;

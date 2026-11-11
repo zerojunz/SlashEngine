@@ -333,3 +333,128 @@ TEST_CASE("face: 2D faces are the sculpt's profile, the chin on the jaw") {
     CHECK(head_points > 40);
     CHECK(chin);
 }
+
+TEST_CASE("face: ARKit's 52 expressions move the sculpt where each says") {
+    const std::vector<std::string_view>& names = world::face_expression_names();
+    REQUIRE(names.size() == 52);
+    CHECK(std::set<std::string_view>(names.begin(), names.end()).size() == 52);
+    CHECK(world::face_expression_index("jawOpen").has_value());
+    CHECK_FALSE(world::face_expression_index("smile").has_value());
+    const world::CharacterFace face;
+    const world::SculptedHead head = world::sculpt_head(face, kHead);
+    const std::vector<std::vector<Vec3>> shapes = world::face_expressions(face, kHead, head);
+    REQUIRE(shapes.size() == 52);
+    const auto shape = [&](std::string_view name) -> const std::vector<Vec3>& {
+        return shapes[*world::face_expression_index(name)];
+    };
+    for (std::size_t e = 0; e < shapes.size(); ++e) {
+        REQUIRE(shapes[e].size() == head.positions.size());
+        real_t most = 0.0F;
+        for (const Vec3 offset : shapes[e]) {
+            REQUIRE(std::isfinite(offset.x + offset.y + offset.z));
+            most = std::max(most, length(offset));
+        }
+        // Each moves something but nothing far (the skin stays on the head).
+        if (names[e] == "tongueOut") {
+            CHECK(most == 0.0F);
+        } else {
+            CHECK_MESSAGE(most > 0.001F, names[e]);
+            CHECK_MESSAGE(most < 0.04F, names[e]);
+        }
+    }
+    // The vertex an expression moves most, where it is and how it moves.
+    const auto most_moved = [&](std::string_view name) {
+        const std::vector<Vec3>& offsets = shape(name);
+        std::size_t best = 0;
+        for (std::size_t v = 0; v < offsets.size(); ++v) {
+            if (length(offsets[v]) > length(offsets[best])) {
+                best = v;
+            }
+        }
+        return std::pair{head.positions[best], offsets[best]};
+    };
+    const auto [lid, blink] = most_moved("eyeBlinkLeft");
+    CHECK(lid.x > 0.0F); // the face's own left
+    CHECK(blink.y < 0.0F);
+    CHECK(lid.y > head.eyes.left.y);
+    const auto [right_lid, right_blink] = most_moved("eyeBlinkRight");
+    CHECK(right_lid.x < 0.0F);
+    CHECK(right_blink.y < 0.0F);
+    const auto [corner, smile] = most_moved("mouthSmileLeft");
+    CHECK(corner.x > 0.0F);
+    CHECK(smile.y > 0.0F);
+    const auto [frown_at, frown] = most_moved("mouthFrownRight");
+    CHECK(frown_at.x < 0.0F);
+    CHECK(frown.y < 0.0F);
+    const auto [chin, open] = most_moved("jawOpen");
+    CHECK(chin.y < head.mouth);
+    CHECK(open.y < -0.01F);
+    const auto [brow, raised] = most_moved("browInnerUp");
+    CHECK(brow.y > head.eyes.left.y);
+    CHECK(raised.y > 0.0F);
+    const auto [lips, pucker] = most_moved("mouthPucker");
+    CHECK(std::abs(lips.y - head.mouth) < 0.03F);
+    CHECK(pucker.z > 0.0F);
+    // The jaw's own: what moves with it wholly turns down and back as it opens.
+    const Vec3 tooth{0.0F, head.mouth - 0.01F, 0.08F};
+    const Vec3 turned =
+        world::face_jaw_offset(face, kHead, *world::face_expression_index("jawOpen"), tooth);
+    CHECK(turned.y < -0.01F);
+    CHECK(world::face_jaw_offset(face, kHead, *world::face_expression_index("eyeBlinkLeft"),
+                                 tooth) == Vec3{});
+}
+
+TEST_CASE("face: characters carry the expressions as blend shapes, in 3D and in 2D") {
+    auto recipe =
+        world::parse_character(parse(R"({"format": 1, "face": {"beard": "short"}})"), nullptr);
+    REQUIRE(recipe.ok());
+    auto model = scene3d::build_character(recipe.value(), {});
+    REQUIRE_MESSAGE(model.ok(), model.error().message);
+    REQUIRE(model.value().meshes.size() == 1);
+    const scene3d::ModelMesh& mesh = model.value().meshes.front();
+    REQUIRE(mesh.blend_shapes.size() == 52);
+    CHECK(mesh.blend_shapes.front() == "eyeBlinkLeft");
+    CHECK(mesh.blend_weights.size() == 52);
+    const auto material_of = [&](const scene3d::ModelSurface& surface) {
+        return model.value().materials[static_cast<std::size_t>(surface.material)].name;
+    };
+    const std::size_t tongue_out = *world::face_expression_index("tongueOut");
+    const std::size_t smile = *world::face_expression_index("mouthSmileLeft");
+    std::set<std::string> shaped;
+    for (const scene3d::ModelSurface& surface : mesh.surfaces) {
+        if (surface.blend_shapes.empty()) {
+            continue;
+        }
+        shaped.insert(material_of(surface));
+        REQUIRE(surface.blend_shapes.size() == 52);
+        for (const scene3d::SurfaceBlendShape& blend : surface.blend_shapes) {
+            CHECK(blend.positions.size() == surface.vertices.size());
+        }
+        const auto moves = [&](std::size_t e) {
+            return std::ranges::any_of(surface.blend_shapes[e].positions,
+                                       [](const auto& p) { return p[0] != 0.0F || p[1] != 0.0F; });
+        };
+        if (material_of(surface) == "tongue") {
+            CHECK(moves(tongue_out));
+        }
+        if (material_of(surface) == "skin" || material_of(surface) == "hair") {
+            CHECK(moves(smile));
+        }
+    }
+    for (const std::string_view name : {"skin", "lips", "brows", "hair", "teeth", "tongue"}) {
+        CHECK_MESSAGE(shaped.contains(std::string(name)), name);
+    }
+    // In 2D, a blink shuts the near eye and a smile moves the outline; the jaw's turn is left to
+    // its bone.
+    const world::FaceProfile plain = world::face_profile(world::CharacterFace{}, kHead);
+    std::vector<float> weights(52, 0.0F);
+    weights[*world::face_expression_index("eyeBlinkLeft")] = 1.0F;
+    weights[*world::face_expression_index("mouthSmileLeft")] = 1.0F;
+    const world::FaceProfile shut = world::face_profile(world::CharacterFace{}, kHead, weights);
+    CHECK(plain.eye_open == doctest::Approx(1.0F));
+    CHECK(shut.eye_open < 0.1F);
+    CHECK(shut.points != plain.points);
+    std::vector<float> jaw(52, 0.0F);
+    jaw[*world::face_expression_index("jawOpen")] = 1.0F;
+    CHECK(world::face_profile(world::CharacterFace{}, kHead, jaw).points == plain.points);
+}

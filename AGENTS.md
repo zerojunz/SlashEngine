@@ -2061,7 +2061,12 @@ eyeballs (`face_eyes`, which the rig's eye bones follow) and its lips' seam tuck
 `face_mouth`, where the jaw opens, each triangle marked skin, lips, brows, mouth or hidden and
 bearded or not. `scene3d::build_character` draws its parts with their own materials
 (`head_part` in `engine/scene3d/src/character.cpp`) and `character_cutout` draws its side-on
-outline, `face_profile`, as the 2D head. `examples/character-faces` sculpts an elder and a toon.
+outline, `face_profile`, as the 2D head. Sculpts carry ARKit's 52 expression shapes
+(`face_expressions`, `face_expression_names`: lids turned about the eye, the jaw about its hinge,
+lips, cheeks and brows moved by soft weights), which `build_character` gives the head, lower
+teeth and tongue as blend shapes (`ModelBuilder::add_shaped`) and which a `Character2D`'s
+`expressions` move its profile by (`face_profile`'s weights). `examples/character-faces` sculpts
+an elder and a toon and has them smile, blink and talk.
 Characters have anatomy and flesh, after Chaos Flesh (Godot has none): `slash/world/flesh.hpp`
 (`engine/world/src/flesh.cpp`, `flesh_solver.cpp` and `flesh2d.cpp`, built with
 `-ffp-contract=off`) places a recipe's bones and 28 kinds of muscle on a body's `BodyFrames`

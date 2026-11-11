@@ -501,6 +501,20 @@ TEST_CASE("character: a Character2D keeps its cut-out's parts as Polygon2D child
     CHECK(transform("farmer_jaw").rotation == 0.0F);
     CHECK(transform("farmer_fingers_front").rotation == 0.0F);
     CHECK(transform("farmer_eye").position == eye_rest);
+    // ARKit's expressions move the face: jawOpen turns the jaw, a blink remakes the head's
+    // outline with its eye shut.
+    const std::vector<slash::Vec2> open_head =
+        world.ecs().get<world::Polygon2D>(world.find("farmer_head")).polygon;
+    project.ok("component.set", R"({"id": "farmer", "components": {"Character2D": {
+        "expressions": {"jawOpen": 1, "eyeBlinkLeft": 1, "browDownLeft": 1}}}})");
+    project.ok("step", R"({"ticks": 1})");
+    CHECK(transform("farmer_jaw").rotation > 0.3F);
+    CHECK(world.ecs().get<world::Polygon2D>(world.find("farmer_head")).polygon != open_head);
+    project.ok("component.set", R"({"id": "farmer", "components": {"Character2D": {
+        "expressions": {}}}})");
+    project.ok("step", R"({"ticks": 1})");
+    CHECK(transform("farmer_jaw").rotation == 0.0F);
+    CHECK(world.ecs().get<world::Polygon2D>(world.find("farmer_head")).polygon == open_head);
     // A changed recipe rebuilds them; the parts stay where animations put them.
     project.ok("component.set", R"({"id": "farmer", "components": {"Character2D": {
         "recipe": "characters/knight.character.json"}}})");

@@ -1342,7 +1342,11 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
                     presets, `extends` and a recipe's `from`, brows, asymmetry and styles; the
                     sculpted head with lids over the eyes and the lips' seam, drawn by 3D
                     characters and as 2D cut-outs' profiles
-              - [ ] ARKit's 52 expression shapes, skin detail maps and skin marks
+              - [x] ARKit's 52 expression shapes made from the sculpt: blend shapes on 3D
+                    characters (lids, jaw, lower teeth and tongue included) and a
+                    `Character2D`'s `expressions` on its profile
+              - [ ] Skin detail maps and skin marks (scars, freckles, moles, rashes, burns,
+                    bruises, wounds, tattoos and face paint)
               - [ ] `face.generate`, `face.check`, portraits and the storyboard's face rules
 21. [ ] Procedural worlds with every tool: the procedural generation tool (noise, gradients,
         scatter rules, `tilemap.generate`, `terrain.generate`) extended to drive everything this

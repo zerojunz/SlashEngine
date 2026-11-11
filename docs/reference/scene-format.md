@@ -5162,7 +5162,7 @@ cloth, and only one prop may be at a point; `scene validate` reports each at its
 | --- | --- |
 | `Flesh3D` | `enabled` `true`, `stiffness` `0.5` (0 soft to 1 firm), `damping` `0.5`, `jiggle` `0.5` (how far and long flesh swings after the body moves), `activation` `0` (every muscle's), `automatic` `true`, `muscles` `{}` (activations by muscle name, kind or group), `substeps` `4` (1 to 16) |
 | `Flesh2D` | `Flesh3D`'s, and `view` `"skin"` (`"muscles"` or `"skeleton"` drawn over the cut-out) |
-| `Character2D` | `recipe` `""`, `pixels_per_meter` `100`, `flip_h` `false`, `look_at` none, `jaw_open` `0`, `hand_front` `""`, `hand_back` `""` |
+| `Character2D` | `recipe` `""`, `pixels_per_meter` `100`, `flip_h` `false`, `look_at` none, `jaw_open` `0`, `hand_front` `""`, `hand_back` `""`, `expressions` `{}` (ARKit's [expression shapes](#faces) by name, 0 to 1) |
 | `Polygon2D` | Godot's: `polygon` `[]` (points in its space), `polygons` `[]` (lists of indices into it, each drawn as its own polygon; empty draws `polygon` whole), `color` `[1, 1, 1, 1]`, `vertex_colors` `[]` (a color a point, else `color`), `offset` `[0, 0]`, `texture` `""`, `uv` `[]` (texture pixels a point, else the point itself), `modulate` `[1, 1, 1, 1]`, `z_index` `0`, `z_as_relative` `true`, `visible` `true`, `light_mask` `1`, `texture_filter` `"inherit"` |
 
 The storyboard's `character_rules` entries (in `storyboard/design.json`) cover the recipes in
@@ -5230,8 +5230,23 @@ eyeballs, the eyes' openings tucked behind them, and the lips' seam is tucked in
 the jaw opens it over the teeth. Each triangle is skin, lips, brows or the inside of the mouth,
 which draw with their own materials, and the beard grows out over the triangles it covers. It is
 built with integer hashes and `slash::exp`, so a face sculpts the same bits everywhere.
+
+Every sculpt carries ARKit's 52 expression shapes, as MetaHuman faces do, so face capture
+(Live Link Face, an `XRFaceTracker`) and animations drive any face, whatever its controls: a
+character's 3D model has them as blend shapes (set `MeshInstance3D.blend_shapes`, play blend
+shape tracks, or follow a tracker with `XRFaceModifier3D`), and a `Character2D`'s `expressions`
+pose its profile. They are made from the sculpt, so a hooded eye blinks and a wide mouth smiles
+as itself: `eyeBlinkLeft`/`Right`, `eyeLookDown`/`In`/`Out`/`Up` (the lids follow the gaze),
+`eyeSquint`, `eyeWide`, `jawForward`, `jawLeft`, `jawRight`, `jawOpen` (the chin, lower lip,
+lower teeth and tongue turn about the jaw's hinge), `mouthClose`, `mouthFunnel`, `mouthPucker`,
+`mouthLeft`, `mouthRight`, `mouthSmile`, `mouthFrown`, `mouthDimple`, `mouthStretch`,
+`mouthRollLower`/`Upper`, `mouthShrugLower`/`Upper`, `mouthPress`, `mouthLowerDown`,
+`mouthUpperUp`, `browDown`, `browInnerUp`, `browOuterUp`, `cheekPuff`, `cheekSquint`,
+`noseSneer` and `tongueOut`, each `Left` and `Right` where ARKit has them, `Left` being the
+face's own left. In 2D only the side facing the camera shows, and `jawOpen` turns the jaw bone.
 [examples/character-faces](../../examples/character-faces/) sculpts an elder from a preset it
-extends and blends, with a crease carved in a cheek, and a toon.
+extends and blends, with a crease carved in a cheek, and a toon, and has them smile, blink and
+talk in 3D and 2D.
 
 ### Creatures
 
