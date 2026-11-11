@@ -7,6 +7,7 @@
 #include "slash/scene3d/terrain.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/physical_bones.hpp"
+#include "slash/world/physics_material.hpp"
 #include "slash/world/tree3d.hpp"
 #include "slash/world/wind.hpp"
 
@@ -26,6 +27,7 @@
 // clang-format on
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -291,6 +293,13 @@ struct Body {
     std::uint32_t mask = 1;
     float friction = 1.0F;
     float bounce = 0.0F;
+    // From its physics material: kilograms a cubic meter (0: its own mass), the impact that
+    // breaks it and the surface's name.
+    float density = 0.0F;
+    float strength = 0.0F;
+    std::string surface;
+    // Held still by an anchor field, as a kinematic body until it leaves.
+    bool anchored = false;
     // Static and animatable bodies: their constant velocities, which carry what touches them as
     // Godot's surface velocities do.
     Vec3 constant_linear_velocity;
@@ -542,6 +551,11 @@ public:
     [[nodiscard]] std::optional<RayHit> cast_ray(Vec3 from, Vec3 to, const QueryFilter& filter,
                                                  bool hit_back_faces) const;
 
+    // A .physics_material.json file as the world's assets have it now, or nothing if it can't
+    // be read (warned once a version).
+    [[nodiscard]] std::optional<world::PhysicsMaterial> material(const world::World& world,
+                                                                 const std::string& path);
+
     // The cell of a GridMap's body a sub-shape is in; nothing for other bodies.
     [[nodiscard]] static std::optional<Vec3i> grid_cell(const Body& body,
                                                         const JPH::SubShapeID& id);
@@ -603,6 +617,12 @@ private:
     // Wakes what rests in a box, which Jolt leaves asleep when a static body moves or changes.
     void wake_in(const JPH::AABox& box);
     void pre_step(const world::World& world, float seconds);
+    // What PhysicsField3Ds do this step to rigid bodies, physical bones and soft bodies: forces,
+    // velocities, strain that breaks, anchors, sleep, and bodies to remove after it.
+    void apply_fields(const world::World& world, const world::Tree3D& tree, float seconds);
+    // A rigid body's or bone's mass: its material's density times its shape's volume, or its
+    // own.
+    [[nodiscard]] float mass_of(const Body& body, float own) const;
     void read_back(world::World& world, const world::Tree3D& tree);
     void move_characters(world::World& world, const world::Tree3D& tree, float seconds);
     void find_overlaps(const world::World& world);
@@ -666,6 +686,14 @@ private:
     EntityMap<Wheel> wheels_;
     EntityMap<VehicleInputs> vehicles_;
     std::vector<Impulse> impulses_;
+    // Physics materials by path, with the asset version each was read from.
+    struct CachedMaterial {
+        std::uint64_t version = 0;
+        std::optional<world::PhysicsMaterial> material;
+    };
+    std::map<std::string, CachedMaterial, std::less<>> materials_;
+    // Bodies kill fields reached in the last step, removed after it.
+    std::vector<entt::entity> doomed_;
     int added_ = 0; // bodies added since the broad phase was last optimized
     bool warned_full_ = false;
     // Who touched whom after the last step, by entity ID, for entered and exited events:

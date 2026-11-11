@@ -13,6 +13,7 @@
 #include "slash/canvas/material.hpp"
 #include "slash/canvas/sprite_frames.hpp"
 #include "slash/canvas/tilemap.hpp"
+#include "slash/core/json_schema.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
 #include "slash/exporter/android.hpp"
@@ -51,6 +52,7 @@
 #include "slash/ui/ui.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/physics_material.hpp"
 #include "slash/world/scene.hpp"
 
 #include <algorithm>
@@ -198,6 +200,7 @@ enum class DataFile : std::uint8_t {
     NavigationMesh,
     NavigationPolygon,
     NpcBrain,
+    PhysicsMaterial,
     MeshLibrary,
     StandardMaterial,
     Lightmap,
@@ -273,6 +276,9 @@ DataFile data_file(std::string_view name) {
     }
     if (name.ends_with(npc::kBrainSuffix)) {
         return DataFile::NpcBrain;
+    }
+    if (world::is_physics_material_path(name)) {
+        return DataFile::PhysicsMaterial;
     }
     if (name.ends_with(scene3d::kMeshLibrarySuffix)) {
         return DataFile::MeshLibrary;
@@ -413,6 +419,8 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         return navigation::validate_polygon(parsed.value());
     case DataFile::NpcBrain:
         return npc::validate_brain(parsed.value());
+    case DataFile::PhysicsMaterial:
+        return json::validate(parsed.value(), world::physics_material_schema());
     case DataFile::MeshLibrary:
         return scene3d::validate_mesh_library(parsed.value());
     case DataFile::Lightmap:

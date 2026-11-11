@@ -73,6 +73,7 @@
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/path.hpp"
+#include "slash/world/physics_material.hpp"
 #include "slash/world/scene.hpp"
 #include "slash/world/tree2d.hpp"
 #include "slash/world/tree3d.hpp"
@@ -513,6 +514,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "scatter") {
         return Reply::success(procedural::scatter_schema());
+    }
+    if (kind == "physics_material") {
+        return Reply::success(world::physics_material_schema());
     }
     if (name.empty()) {
         return param_error(code::kInvalidParams, "/name",
@@ -1938,6 +1942,9 @@ Reply physics_raycast_3d(Session& session, const json::Value& params) {
     found["point"] = point_value(hit->point);
     found["normal"] = point_value(hit->normal);
     found["fraction"] = rounded(hit->fraction);
+    if (!hit->surface.empty()) {
+        found["surface"] = hit->surface;
+    }
     // A GridMap's cell hit and the item in it.
     if (hit->cell) {
         found["cell"] = json::Array{hit->cell->x, hit->cell->y, hit->cell->z};
@@ -1978,6 +1985,9 @@ Reply physics_raycast(Session& session, const json::Value& params) {
     found["point"] = point_value(hit->point);
     found["normal"] = point_value(hit->normal);
     found["fraction"] = rounded(hit->fraction);
+    if (!hit->surface.empty()) {
+        found["surface"] = hit->surface;
+    }
     if (hit->cell) {
         found["cell"] = json::Array{hit->cell->x, hit->cell->y};
     }
@@ -7052,7 +7062,8 @@ void register_builtin_commands(Registry& registry) {
                                "command",
                                "standard_material",
                                "texture",
-                               "scatter"};
+                               "scatter",
+                               "physics_material"};
     registry.add({
         .name = "schema.get",
         .description =
@@ -7062,6 +7073,7 @@ void register_builtin_commands(Registry& registry) {
             ".bus_layout.json, .navmesh.json, .navpoly.json, .npc.json, .meshlib.json, "
             ".lightmap.json, "
             ".voxelgi.json, .model.json, .standard_material.json, .texture.json, .scatter.json, "
+            ".physics_material.json, "
             ".replay.json, "
             ".test.json, "
             ".score.json or storyboard "

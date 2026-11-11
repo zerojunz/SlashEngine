@@ -171,37 +171,50 @@ struct Fields {
     float bounce = 0.0F;
     Vec3 constant_linear_velocity;
     Vec3 constant_angular_velocity;
+    std::string_view material; // physics_material_override
 };
 
 Fields fields_of(const entt::registry& registry, entt::entity entity, Kind kind) {
     switch (kind) {
     case Kind::Rigid: {
         const auto& body = registry.get<RigidBody3D>(entity);
-        return {body.collision_layer, body.collision_mask, body.friction, body.bounce, {}, {}};
+        return {
+            body.collision_layer,          body.collision_mask, body.friction, body.bounce, {}, {},
+            body.physics_material_override};
     }
     case Kind::Animatable: {
         const auto& body = registry.get<AnimatableBody3D>(entity);
-        return {
-            body.collision_layer, body.collision_mask,           body.friction,
-            body.bounce,          body.constant_linear_velocity, body.constant_angular_velocity};
+        return {body.collision_layer,
+                body.collision_mask,
+                body.friction,
+                body.bounce,
+                body.constant_linear_velocity,
+                body.constant_angular_velocity,
+                body.physics_material_override};
     }
     case Kind::Static: {
         const auto& body = registry.get<StaticBody3D>(entity);
-        return {
-            body.collision_layer, body.collision_mask,           body.friction,
-            body.bounce,          body.constant_linear_velocity, body.constant_angular_velocity};
+        return {body.collision_layer,
+                body.collision_mask,
+                body.friction,
+                body.bounce,
+                body.constant_linear_velocity,
+                body.constant_angular_velocity,
+                body.physics_material_override};
     }
     case Kind::Character: {
         const auto& body = registry.get<CharacterBody3D>(entity);
-        return {body.collision_layer, body.collision_mask, 0.0F, 0.0F, {}, {}};
+        return {body.collision_layer, body.collision_mask, 0.0F, 0.0F, {}, {}, {}};
     }
     case Kind::Area: {
         const auto& area = registry.get<Area3D>(entity);
-        return {area.collision_layer, area.collision_mask, 0.0F, 0.0F, {}, {}};
+        return {area.collision_layer, area.collision_mask, 0.0F, 0.0F, {}, {}, {}};
     }
     case Kind::Bone: {
         const auto& bone = registry.get<PhysicalBone3D>(entity);
-        return {bone.collision_layer, bone.collision_mask, bone.friction, bone.bounce, {}, {}};
+        return {
+            bone.collision_layer,          bone.collision_mask, bone.friction, bone.bounce, {}, {},
+            bone.physics_material_override};
     }
     }
     return {};
@@ -1023,7 +1036,7 @@ void Space::create_body(Body& body, const world::Affine3D& global, const world::
         Vec3 inertia;
         if (body.kind == Kind::Rigid) {
             const auto& rigid = registry.get<RigidBody3D>(body.entity);
-            mass = rigid.mass;
+            mass = mass_of(body, rigid.mass);
             inertia = rigid.inertia;
             settings.mAllowedDOFs = body.rigid_key.dofs;
             settings.mMotionQuality = body.rigid_key.ccd ? JPH::EMotionQuality::LinearCast
@@ -1035,7 +1048,7 @@ void Space::create_body(Body& body, const world::Affine3D& global, const world::
             awake = motion == JPH::EMotionType::Dynamic && !rigid.sleeping;
         } else if (body.kind == Kind::Bone) {
             const auto& bone = registry.get<PhysicalBone3D>(body.entity);
-            mass = bone.mass;
+            mass = mass_of(body, bone.mass);
             settings.mAllowSleeping = body.rigid_key.can_sleep;
             settings.mLinearVelocity = to_jolt(bone.linear_velocity);
             settings.mAngularVelocity = to_jolt(bone.angular_velocity);
@@ -1064,8 +1077,24 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
                                                    made_shape->friction,
                                                    made_shape->bounce,
                                                    {},
+                                                   {},
                                                    {}}
                                           : fields_of(registry, entity, kind);
+    // A physics material overrides the body's own friction and bounce, as Godot's
+    // physics_material_override.
+    float density = 0.0F;
+    float strength = 0.0F;
+    std::string surface;
+    if (!fields.material.empty()) {
+        if (const std::optional<world::PhysicsMaterial> material =
+                this->material(world, std::string(fields.material))) {
+            fields.friction = world::computed_friction(*material);
+            fields.bounce = world::computed_bounce(*material);
+            density = material->density;
+            strength = material->strength;
+            surface = material->surface;
+        }
+    }
     auto bone_mode = world::PhysicalBoneMode::Static;
     if (kind == Kind::Bone) {
         const auto link = bone_links_.find(entity);
@@ -1106,6 +1135,9 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
         made->mask = fields.mask;
         made->friction = fields.friction;
         made->bounce = fields.bounce;
+        made->density = density;
+        made->strength = strength;
+        made->surface = surface;
         made->constant_linear_velocity = fields.constant_linear_velocity;
         made->constant_angular_velocity = fields.constant_angular_velocity;
         made->placed = global;
@@ -1166,6 +1198,9 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
         body.bounce = fields.bounce;
         interface.SetRestitution(body.id, body.bounce);
     }
+    body.density = density;
+    body.strength = strength;
+    body.surface = std::move(surface);
     body.constant_linear_velocity = fields.constant_linear_velocity;
     body.constant_angular_velocity = fields.constant_angular_velocity;
 
@@ -1174,11 +1209,14 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
     const auto update_motion = [&](const RigidKey& key, Vec3 linear_velocity, Vec3 angular_velocity,
                                    bool asleep) {
         if (key != body.rigid_key) {
-            if (key.motion != jolt->GetMotionType()) {
-                interface.SetMotionType(body.id, key.motion, JPH::EActivation::DontActivate);
-                interface.SetObjectLayer(
-                    body.id,
-                    layers_.to_object_layer(broad_of(kind, key.motion), body.layer, body.mask));
+            // An anchor field holds a dynamic body as a kinematic one until it lets go.
+            const JPH::EMotionType motion = body.anchored && key.motion == JPH::EMotionType::Dynamic
+                                                ? JPH::EMotionType::Kinematic
+                                                : key.motion;
+            if (motion != jolt->GetMotionType()) {
+                interface.SetMotionType(body.id, motion, JPH::EActivation::DontActivate);
+                interface.SetObjectLayer(body.id, layers_.to_object_layer(broad_of(kind, motion),
+                                                                          body.layer, body.mask));
             }
             jolt->GetMotionPropertiesUnchecked()->SetMassProperties(
                 key.dofs, mass_properties(*body.shape, key.mass, key.inertia));
@@ -1206,8 +1244,9 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
     };
     if (kind == Kind::Rigid) {
         const auto& rigid = registry.get<RigidBody3D>(entity);
-        update_motion(rigid_key_of(rigid), rigid.linear_velocity, rigid.angular_velocity,
-                      rigid.sleeping);
+        RigidKey key = rigid_key_of(rigid);
+        key.mass = mass_of(body, key.mass);
+        update_motion(key, rigid.linear_velocity, rigid.angular_velocity, rigid.sleeping);
         if (jolt->GetUseManifoldReduction() == rigid.contact_monitor) {
             jolt->SetUseManifoldReduction(!rigid.contact_monitor);
         }
@@ -1223,8 +1262,9 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
     } else if (kind == Kind::Bone) {
         const auto& bone = registry.get<PhysicalBone3D>(entity);
         body.bone_mode = bone_mode;
-        update_motion(bone_key_of(bone, bone_mode), bone.linear_velocity, bone.angular_velocity,
-                      false);
+        RigidKey key = bone_key_of(bone, bone_mode);
+        key.mass = mass_of(body, key.mass);
+        update_motion(key, bone.linear_velocity, bone.angular_velocity, false);
         if (bone_mode != world::PhysicalBoneMode::Follow) {
             body.target.reset();
         }
@@ -1702,6 +1742,9 @@ void Space::step(world::World& world, float seconds) {
     for (const auto [entity, destructible] : world.ecs().view<const Destructible3D>().each()) {
         if (destructible.damage_threshold > 0.0F) {
             breakable_.emplace(entity, destructible.damage_threshold);
+        } else if (const Body* made = body(entity); made != nullptr && made->strength > 0.0F) {
+            // Its material's strength, when it sets no threshold of its own.
+            breakable_.emplace(entity, made->strength);
         }
     }
     if (system_ == nullptr) {
@@ -1710,11 +1753,12 @@ void Space::step(world::World& world, float seconds) {
     }
     pre_step_vehicles(world, tree, seconds);
     pre_step(world, seconds);
+    apply_fields(world, tree, seconds);
     pre_step_soft_bodies(world, tree, seconds);
     {
         SLASH_PROFILE_ZONE("Jolt step");
         const JPH::EPhysicsUpdateError errors =
-            system_->Update(seconds, 1, temp_.get(), jobs_.get());
+            system_->Update(seconds, std::max(settings_.substeps, 1), temp_.get(), jobs_.get());
         if (errors != JPH::EPhysicsUpdateError::None && !warned_full_) {
             warned_full_ = true;
             log::warn("3D physics ran out of room for contacts; some were ignored",
@@ -1728,6 +1772,13 @@ void Space::step(world::World& world, float seconds) {
     move_characters(world, tree, seconds);
     find_overlaps(world);
     emit_events(world);
+    // What kill fields reached goes, as Chaos's kill fields remove particles.
+    for (const entt::entity entity : std::exchange(doomed_, {})) {
+        if (world.valid(entity)) {
+            world.emit("field_killed", world.id_of(entity));
+            world.destroy(entity);
+        }
+    }
 }
 
 void Space::emit_events(world::World& world) {

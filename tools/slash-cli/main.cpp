@@ -73,6 +73,7 @@
 #include "slash/video/commands.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/physics_material.hpp"
 #include "slash/world/scene.hpp"
 #include "slash/world/world.hpp"
 #include "slash/xr/openxr.hpp"
@@ -1204,6 +1205,7 @@ int cmd_scene_validate(const std::string& path) {
     const bool score = path.ends_with(slash::soundtrack::kScoreSuffix);
     const bool texture = path.ends_with(slash::procedural::kTextureSuffix);
     const bool scatter = path.ends_with(slash::procedural::kScatterSuffix);
+    const bool physics_material = world::is_physics_material_path(path);
     json::Value result;
     auto parsed = json::parse(text.value());
     std::vector<json::ValidationError> errors;
@@ -1256,6 +1258,8 @@ int cmd_scene_validate(const std::string& path) {
         errors = slash::procedural::validate_texture(parsed.value());
     } else if (scatter) {
         errors = slash::procedural::validate_scatter(parsed.value());
+    } else if (physics_material) {
+        errors = json::validate(parsed.value(), world::physics_material_schema());
     } else {
         errors = prefab ? world::validate_prefab(registry, parsed.value(), prefab_reader(path))
                         : world::validate_scene(registry, parsed.value(), prefab_reader(path));
@@ -1287,13 +1291,13 @@ int cmd_scene_validate(const std::string& path) {
     }
     if (parsed && !frames && !material && !process && !animation && !tree && !tileset && !font &&
         !theme && !stream && !buses && !navmesh && !navpoly && !brain && !meshlib && !standard &&
-        !lightmap && !replay && !test && !score && !texture) {
+        !lightmap && !replay && !test && !score && !texture && !physics_material) {
         check_story_refs(path, parsed.value(), errors);
     }
     result["valid"] = errors.empty();
     if (!errors.empty()) {
         result["errors"] = errors_to_json(errors);
-    } else if (font || stream || process || standard) {
+    } else if (font || stream || process || standard || physics_material) {
         print(result);
         return kExitOk;
     } else if (brain) {
@@ -1501,6 +1505,9 @@ int cmd_scene_format(const std::string& path, bool check) {
         if (path.ends_with(slash::procedural::kScatterSuffix)) {
             return format_checked(text.value(), slash::procedural::parse_scatter);
         }
+        if (world::is_physics_material_path(path)) {
+            return format_checked(text.value(), world::parse_physics_material);
+        }
         if (path.ends_with(world::kPrefabSuffix)) {
             return world::format_prefab(registry, text.value(), prefab_reader(path));
         }
@@ -1561,20 +1568,20 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 32> kKinds = {
-        "scene",     "prefab",     "frames",     "material", "process_material",
-        "animation", "animtree",   "tileset",    "font",     "theme",
-        "audio",     "bus_layout", "navmesh",    "navpoly",  "npc",
-        "meshlib",   "lightmap",   "voxel_gi",   "model",    "replay",
-        "test",      "score",      "storyboard", "project",  "presets",
-        "sdk",       "plugin",     "providers",  "bench",    "standard_material",
-        "texture",   "scatter"};
+    constexpr std::array<std::string_view, 33> kKinds = {
+        "scene",     "prefab",     "frames",          "material", "process_material",
+        "animation", "animtree",   "tileset",         "font",     "theme",
+        "audio",     "bus_layout", "navmesh",         "navpoly",  "npc",
+        "meshlib",   "lightmap",   "voxel_gi",        "model",    "replay",
+        "test",      "score",      "storyboard",      "project",  "presets",
+        "sdk",       "plugin",     "providers",       "bench",    "standard_material",
+        "texture",   "scatter",    "physics_material"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
         return usage_error("schema takes one argument: scene, prefab, frames, material, "
                            "process_material, animation, animtree, tileset, font, theme, audio, "
                            "bus_layout, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, "
                            "standard_material, "
-                           "texture, scatter, replay, test, "
+                           "texture, scatter, physics_material, replay, test, "
                            "score, "
                            "storyboard, "
                            "project, presets, sdk, plugin, providers or bench");
@@ -1624,6 +1631,8 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = slash::procedural::texture_schema();
     } else if (args[0] == "scatter") {
         schema = slash::procedural::scatter_schema();
+    } else if (args[0] == "physics_material") {
+        schema = world::physics_material_schema();
     } else if (args[0] == "replay") {
         schema = command::replay_schema();
     } else if (args[0] == "test") {
