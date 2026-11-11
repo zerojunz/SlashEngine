@@ -20,9 +20,12 @@
 #include <array>
 #include <cfloat>
 #include <map>
+#include <optional>
+#include <set>
 #include <string>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 namespace slash::physics3d::detail {
 
@@ -66,8 +69,44 @@ bool same_shape(world::Cloth3D a, world::Cloth3D b) {
         cloth->simulation_precision = 0;
         cloth->collision_layer = 0;
         cloth->collision_mask = 0;
+        cloth->tear_stretch = 0.0F;
+        cloth->torn.clear();
     }
     return a == b;
+}
+
+std::vector<int> sorted(std::vector<int> numbers) {
+    std::ranges::sort(numbers);
+    const auto [first, last] = std::ranges::unique(numbers);
+    numbers.erase(first, last);
+    return numbers;
+}
+
+// Each point's group: points joined by faces share one, numbered from 0 by their lowest point.
+std::vector<std::size_t> joined(std::size_t count,
+                                const JPH::Array<JPH::SoftBodySharedSettings::Face>& faces) {
+    std::vector<std::size_t> parent(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        parent[i] = i;
+    }
+    const auto root = [&](std::size_t i) {
+        while (parent[i] != i) {
+            parent[i] = parent[parent[i]];
+            i = parent[i];
+        }
+        return i;
+    };
+    for (const JPH::SoftBodySharedSettings::Face& face : faces) {
+        for (std::size_t k = 1; k < 3; ++k) {
+            const std::size_t a = root(face.mVertex[0]);
+            const std::size_t b = root(face.mVertex[k]);
+            parent[std::max(a, b)] = std::min(a, b);
+        }
+    }
+    for (std::size_t i = 0; i < count; ++i) {
+        parent[i] = root(i);
+    }
+    return parent;
 }
 
 // Godot's soft body stiffness mapping (see create_soft_body), as a compliance.
@@ -99,6 +138,53 @@ std::vector<JPH::Mat44> joint_matrices(const std::vector<world::Affine3D>& skin,
     return out;
 }
 
+// Cloth3D's tear_stretch, as a SoftBody3D's: edges stretched past it tear the faces they bound.
+void tear_stretched(world::World& world, const SoftBody& soft,
+                    const JPH::SoftBodyMotionProperties& motion) {
+    auto* component = world.ecs().try_get<world::Cloth3D>(soft.entity);
+    if (component == nullptr || component->tear_stretch <= 0.0F) {
+        return;
+    }
+    const JPH::Array<JPH::SoftBodyVertex>& points = motion.GetVertices();
+    std::set<std::pair<std::uint32_t, std::uint32_t>> stretched;
+    for (const JPH::SoftBodySharedSettings::Edge& edge : motion.GetSettings()->mEdgeConstraints) {
+        const float now =
+            (points[edge.mVertex[1]].mPosition - points[edge.mVertex[0]].mPosition).Length();
+        if (edge.mRestLength > 0.0F && now > edge.mRestLength * component->tear_stretch) {
+            stretched.insert(std::minmax(edge.mVertex[0], edge.mVertex[1]));
+        }
+    }
+    if (stretched.empty()) {
+        return;
+    }
+    std::vector<int> tore;
+    for (const JPH::SoftBodySharedSettings::Face& face : motion.GetFaces()) {
+        const std::array<std::uint32_t, 3> v{face.mVertex[0], face.mVertex[1], face.mVertex[2]};
+        const bool torn = stretched.contains(std::minmax(v[0], v[1])) ||
+                          stretched.contains(std::minmax(v[1], v[2])) ||
+                          stretched.contains(std::minmax(v[0], v[2]));
+        std::array<std::uint32_t, 3> key = v;
+        std::ranges::sort(key);
+        if (const auto found = soft.face_triangles.find(key);
+            torn && found != soft.face_triangles.end()) {
+            tore.push_back(found->second);
+        }
+    }
+    if (tore.empty()) {
+        return;
+    }
+    tore = sorted(std::move(tore));
+    component->torn.insert(component->torn.end(), tore.begin(), tore.end());
+    component->torn = sorted(std::move(component->torn));
+    json::Array triangles;
+    for (const int triangle : tore) {
+        triangles.emplace_back(triangle);
+    }
+    json::Value data;
+    data["triangles"] = std::move(triangles);
+    world.emit("torn", soft.name, std::move(data));
+}
+
 } // namespace
 
 void Space::create_cloth(SoftBody& soft, const world::Cloth3D& cloth, const world::Affine3D& place,
@@ -111,6 +197,8 @@ void Space::create_cloth(SoftBody& soft, const world::Cloth3D& cloth, const worl
     // Vertices at one place at rest are one point, as a SoftBody3D welds them; each point keeps
     // its first vertex's skin.
     soft.mesh_to_physics.assign(section.positions.size(), -1);
+    soft.torn = sorted(cloth.torn);
+    soft.face_triangles.clear();
     std::map<std::tuple<real_t, real_t, real_t>, int> points;
     std::vector<std::size_t> first_vertex;
     for (std::size_t i = 0; i + 2 < section.indices.size(); i += 3) {
@@ -131,9 +219,16 @@ void Space::create_cloth(SoftBody& soft, const world::Cloth3D& cloth, const worl
             face[j] = found->second;
             soft.mesh_to_physics[index] = found->second;
         }
-        if (face[0] == face[1] || face[0] == face[2] || face[1] == face[2]) {
-            continue;
+        const auto triangle = static_cast<int>(i / 3);
+        if (face[0] == face[1] || face[0] == face[2] || face[1] == face[2] ||
+            std::ranges::binary_search(soft.torn, triangle)) {
+            continue; // torn out: its points stay, but nothing joins them here
         }
+        std::array<std::uint32_t, 3> key{static_cast<std::uint32_t>(face[0]),
+                                         static_cast<std::uint32_t>(face[1]),
+                                         static_cast<std::uint32_t>(face[2])};
+        std::ranges::sort(key);
+        soft.face_triangles.try_emplace(key, triangle);
         // Jolt winds faces the other way.
         shared->mFaces.emplace_back(static_cast<JPH::uint32>(face[2]),
                                     static_cast<JPH::uint32>(face[1]),
@@ -150,9 +245,28 @@ void Space::create_cloth(SoftBody& soft, const world::Cloth3D& cloth, const worl
                           std::max(cloth.max_distance, 0.0F) * std::clamp(shares[v], 0.0F, 1.0F));
         }
     }
+    // Points no face holds any more ride the skin unseen. A piece torn off every point the skin
+    // holds still is no longer held to the skin at all: it falls free.
+    std::vector<bool> faced(first_vertex.size(), false);
+    for (const JPH::SoftBodySharedSettings::Face& face : shared->mFaces) {
+        for (const JPH::uint32 point : face.mVertex) {
+            faced[point] = true;
+        }
+    }
+    const std::vector<std::size_t> groups = joined(first_vertex.size(), shared->mFaces);
+    std::vector<bool> anchored(first_vertex.size(), false);
+    for (std::size_t p = 0; p < first_vertex.size(); ++p) {
+        if (!faced[p]) {
+            reach[p] = 0.0F;
+        } else if (reach[p] <= 0.0F) {
+            anchored[groups[p]] = true;
+        }
+    }
     std::vector<bool> free(first_vertex.size());
+    std::vector<bool> loose(first_vertex.size());
     for (std::size_t p = 0; p < free.size(); ++p) {
         free[p] = reach[p] > 0.0F;
+        loose[p] = free[p] && !soft.torn.empty() && !anchored[groups[p]];
         shared->mVertices[p].mInvMass = free[p] ? 1.0F : 0.0F;
     }
     JPH::SoftBodySharedSettings::VertexAttributes attributes;
@@ -171,6 +285,9 @@ void Space::create_cloth(SoftBody& soft, const world::Cloth3D& cloth, const worl
     }
     const bool backstop = cloth.backstop_radius > 0.0F;
     for (std::size_t p = 0; p < first_vertex.size(); ++p) {
+        if (loose[p]) {
+            continue;
+        }
         JPH::SoftBodySharedSettings::Skinned skinned(
             static_cast<JPH::uint32>(p), free[p] ? reach[p] : 0.0F,
             backstop ? cloth.backstop_distance : FLT_MAX, backstop ? cloth.backstop_radius : 40.0F);
@@ -247,6 +364,18 @@ void Space::sync_cloths(world::World& world, const world::Tree3D& tree) {
             if (soft->mesh_key != key || !soft->cloth || !same_shape(*soft->cloth, cloth) ||
                 soft->scale != scale_of(place)) {
                 destroy(*soft);
+            } else if (!soft->id.IsInvalid() && soft->torn != sorted(cloth.torn)) {
+                // A tear makes it again without the torn faces, its points kept where they are.
+                const std::vector<std::optional<KeptPoint>> kept = keep_points(*soft);
+                destroy(*soft);
+                soft->cloth = cloth;
+                create_cloth(*soft, cloth, place,
+                             scene3d::cloth_joints(world, tree, entity, *soft->section));
+                if (!soft->id.IsInvalid()) {
+                    restore_points(*soft, kept);
+                }
+                soft->pose = nullptr;
+                continue;
             }
         } else {
             auto made = std::make_unique<SoftBody>();
@@ -343,7 +472,7 @@ void Space::pre_step_cloths(const world::World& world, const world::Tree3D& tree
     }
 }
 
-void Space::read_cloths(const world::Tree3D& tree) {
+void Space::read_cloths(world::World& world, const world::Tree3D& tree) {
     for (auto& [entity, soft] : cloths_) {
         if (soft->id.IsInvalid()) {
             continue;
@@ -389,7 +518,14 @@ void Space::read_cloths(const world::Tree3D& tree) {
                 .part = piece.part,
                 .surface = piece.surface,
                 .positions = std::vector<Vec3>(piece.count),
-                .normals = std::vector<Vec3>(piece.count, Vec3{0.0F, 1.0F, 0.0F})};
+                .normals = std::vector<Vec3>(piece.count, Vec3{0.0F, 1.0F, 0.0F}),
+                .torn = {}};
+            for (const int triangle : soft->torn) {
+                const auto local = static_cast<std::size_t>(triangle);
+                if (local >= piece.first_triangle) {
+                    surface.torn.push_back(static_cast<int>(local - piece.first_triangle));
+                }
+            }
             for (std::size_t v = 0; v < piece.count; ++v) {
                 const std::size_t vertex = piece.first + v;
                 if (const int point = soft->mesh_to_physics[vertex]; point >= 0) {
@@ -401,8 +537,67 @@ void Space::read_cloths(const world::Tree3D& tree) {
             }
             pose->surfaces.push_back(std::move(surface));
         }
+        pose->torn = soft->torn;
         soft->pose = std::move(pose);
+        tear_stretched(world, *soft, motion);
     }
 }
 
 } // namespace slash::physics3d::detail
+
+namespace slash::physics3d {
+
+std::vector<int> tear_cloth(world::World& world, entt::entity entity, Vec3 center, float radius) {
+    auto* component = world.valid(entity) ? world.ecs().try_get<world::Cloth3D>(entity) : nullptr;
+    if (component == nullptr || radius <= 0.0F) {
+        return {};
+    }
+    auto section = scene3d::cloth_section(world, entity);
+    if (!section) {
+        return {};
+    }
+    const scene3d::ClothSection& cut = *section.value();
+    // Each vertex in the model's space: where physics put it, else at rest.
+    std::vector<Vec3> positions = cut.positions;
+    if (const auto pose = scene3d::soft_body_pose(world, entity);
+        pose != nullptr && pose->surfaces.size() == cut.pieces.size()) {
+        for (std::size_t k = 0; k < cut.pieces.size(); ++k) {
+            const auto& piece = cut.pieces[k];
+            const auto& moved = pose->surfaces[k].positions;
+            for (std::size_t v = 0; v < piece.count && v < moved.size(); ++v) {
+                positions[piece.first + v] = moved[v];
+            }
+        }
+    }
+    const world::Affine3D placed = world::Tree3D(world).global(entity);
+    const std::vector<int> torn = detail::sorted(component->torn);
+    const real_t reach = static_cast<real_t>(radius) * radius;
+    std::vector<int> tore;
+    for (std::size_t i = 0; i + 2 < cut.indices.size(); i += 3) {
+        const auto triangle = static_cast<int>(i / 3);
+        const Vec3 middle =
+            placed.apply((positions[cut.indices[i]] + positions[cut.indices[i + 1]] +
+                          positions[cut.indices[i + 2]]) *
+                         (1.0F / 3.0F));
+        const Vec3 d = middle - center;
+        if (!std::ranges::binary_search(torn, triangle) && detail::dot(d, d) <= reach) {
+            tore.push_back(triangle);
+        }
+    }
+    if (tore.empty()) {
+        return tore;
+    }
+    std::vector<int> all = torn;
+    all.insert(all.end(), tore.begin(), tore.end());
+    component->torn = detail::sorted(std::move(all));
+    json::Array triangles;
+    for (const int triangle : tore) {
+        triangles.emplace_back(triangle);
+    }
+    json::Value data;
+    data["triangles"] = std::move(triangles);
+    world.emit("torn", world.id_of(entity), std::move(data));
+    return tore;
+}
+
+} // namespace slash::physics3d

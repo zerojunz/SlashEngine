@@ -2123,10 +2123,12 @@ center, none at the radius). Each takes `amount` times its profile's resistance 
 the damage state it reaches, and at no health breaks where it was hit; a standing linked piece
 that breaks no more comes loose. Damage that leaves health dents, holes or carves it as its
 profile's `deform` says (an `HTerrain` is dug into, a `TileMapLayer` loses cells). Without a
-profile, damage at least the body's `damage_threshold` breaks it. Cuts, shots and blasts tear a
-`Cloth2D` or `SoftBody3D` that `id` names, or every one within `radius` of `at`. It is a
-`damaged` event (and `broken`, `collapsed` and `torn` where it breaks or tears), and `undo` takes
-it back.
+profile, damage at least the body's `damage_threshold` breaks it. A hit at a point leaves the
+profile's hit effects (debris, dust, a decal, a sound) and a break its break effects. Someone or
+something living dies at no health instead of breaking, and a vehicle is wrecked. Cuts, shots
+and blasts tear a `Cloth2D`, `Cloth3D` or `SoftBody3D` that `id` names, or every one within
+`radius` of `at`. It is a `damaged` event (and `broken`, `collapsed`, `killed`, `wrecked` and
+`torn` where it breaks, kills, wrecks or tears), and `undo` takes it back.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -2137,11 +2139,13 @@ it back.
 | `amount` | number | required | Damage before resistance |
 | `kind` | string | `"blunt"` | `blunt`, `pierce`, `cut`, `explosive`, `fire` or `impact` |
 | `push` | number | the profile's | Meters (pixels) a second loose pieces fly from the hit |
+| `by` | string | | Who dealt it, put in the events: a creature runs from them or, if aggressive, turns on them |
 | `dry_run` | boolean | `false` | Return what would change and change nothing |
 
 Needs: `edit`. Returns each body `hurt`: its `id`, the health `dealt` and left, its `state` once
-it has one, `deformed` (`dent`, `hole`, `carve` or `crater`) when its shape changed, and `broke`
-with its `pieces` or `fell`; and the cloth `torn`, with how many edges (2D) or triangles (3D). The wall in
+it has one, `deformed` (`dent`, `hole`, `carve` or `crater`) when its shape changed, `broke`
+with its `pieces` or `fell`, `killed` or `wrecked`, `queued` when a break waits for a later
+tick's budget, and the `effects` it left; and the cloth `torn`, with how many edges (2D) or triangles (3D). The wall in
 [examples/destruction-profiles](../../examples/destruction-profiles/):
 
 ```json
@@ -2152,7 +2156,8 @@ with its `pieces` or `fell`; and the cloth `torn`, with how many edges (2D) or t
 
 Each `Destructible3D` and `Destructible2D` (or those `ids` names) with its profile's `material`,
 the `health` it has left and its `full` health at its level, its damage `state` and `level`, how
-many `dents`, `carves` and `craters` it has, each broken body's group of pieces (named by the
+many `dents`, `carves` and `craters` it has, `dead` or `wrecked` for the living and vehicles out
+of health, each broken body's group of pieces (named by the
 body's ID): how many stand, are loose and are anchored, and the links between them, and the
 cloth `torn`.
 
@@ -2168,7 +2173,8 @@ Reads a damage profile as its material's defaults fill it: its health, its resis
 kind, its states, fracture and links, and with `amount` the `hits` of that much of each kind it
 takes to break (`null` for a kind it shrugs off). With no `profile`, it checks every profile the
 world's Destructibles name and reports `problems`: profiles that can't be read, linked pieces
-with no anchors and a `Destructible3D` with nothing to cut.
+with no anchors, a `Destructible3D` with nothing to cut and effects naming files that aren't
+there.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |

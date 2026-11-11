@@ -25,6 +25,9 @@ namespace {
 using world::CreatureMind;
 using world::CreatureRecipe;
 
+// A creature's recipe (defined below).
+Result<std::shared_ptr<const CreatureRecipe>> recipe_of(world::World& world, entt::entity creature);
+
 constexpr real_t kMoving = 0.05F; // meters a second below which it stands
 constexpr real_t kNear = 1.5F;    // how near a friendly or tame creature comes, in meters
 constexpr real_t kFollow = 3.0F;  // how far its owner goes before it follows
@@ -692,6 +695,31 @@ void step(world::World& world, FaunaState& state, double dt) {
                                .place = {p.x, p.y, 0.0F},
                                .ppm = 1.0F,
                                .recipe = nullptr});
+    }
+    // Struck by someone: the creature runs from them, or, if aggressive, turns on them.
+    for (const world::Event& event : world.events()) {
+        if (event.kind != "damaged" || !event.data.is_object()) {
+            continue;
+        }
+        const json::Value* by = event.data.find("by");
+        const entt::entity hurt = world.find(event.id);
+        if (by == nullptr || !by->is_string() || hurt == entt::null) {
+            continue;
+        }
+        const entt::entity attacker = world.find(by->as_string());
+        CreatureMind* mind = creature_mind(world, hurt);
+        if (attacker == entt::null || attacker == hurt || mind == nullptr || mind->mode == "dead" ||
+            mind->mode == "caught" || mind->owner == attacker) {
+            continue;
+        }
+        const auto recipe = recipe_of(world, hurt);
+        if (recipe && recipe.value()->behavior.temperament == "aggressive") {
+            mind->mode = "attacking";
+            mind->target = attacker;
+            emit(world, "creature_provoked", hurt, "by", attacker);
+        } else {
+            (void)scare(world, hurt, attacker);
+        }
     }
     for (const Thing& creature : tick.creatures) {
         const bool enabled = creature.two_d

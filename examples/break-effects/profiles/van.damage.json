@@ -1,0 +1,18 @@
+{
+  "effects": {
+    "break": {
+      "dust": {
+        "amount": 16,
+        "color": [0.2, 0.2, 0.2, 0.6],
+        "gravity": -0.05,
+        "lifetime": 2,
+        "size": 0.6,
+        "speed": 0.5
+      }
+    }
+  },
+  "format": 1,
+  "health": 300,
+  "material": "metal",
+  "name": "van"
+}

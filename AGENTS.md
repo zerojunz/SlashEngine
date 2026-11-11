@@ -2000,8 +2000,23 @@ tile map layers through the `TileCarver` the canvas sets (`set_tile_carver`). Cl
 every held point fall free, and drawing leaves out their triangles (`cloth_triangles_2d`); a
 `SoftBody3D` is made again without its `torn` triangles, keeping its points (`keep_points`,
 `restore_points` in `engine/physics3d/src/soft_body.cpp`); both tear by `tear_stretch` after a
-step, and `tear_cloth_2d` and `tear_soft_body` tear them where `damage.apply` cuts.
-`examples/damage-deform` dents, holes, craters and tears.
+step, and `tear_cloth_2d` and `tear_soft_body` tear them where `damage.apply` cuts. A `Cloth3D`
+is made again the same way (`create_cloth` leaves out its `torn` triangles and frees from the
+skin each part no skinned point holds; `tear_cloth`, `tear_stretched` in
+`engine/physics3d/src/cloth.cpp`), and the renderer's `cloth_mesh` leaves out each surface's
+`SoftBodyPose::Surface::torn`. `examples/damage-deform` dents, holes, craters and tears.
+A profile's `effects` (`world::DamageEffects`) say what hits and breaks leave: `leave_effects`
+in each `src/destruction.cpp` makes `<id>_debris`, `_dust`, `_decal` and `_sound` entities
+(one-shot CPU particles, a `Decal` or `Sprite2D`, a positional audio player) with a
+`DamageEffect` that `break_and_age` removes when its lifetime runs out. `kind_of` sorts bodies
+into things, the living and vehicles: the living are struck through `hit_ragdoll` and die
+(`finish`: limp ragdolls, stopped creatures, `killed`), vehicles are wrecked; `damage.apply`'s
+`by` goes into the events, which the `fauna` system answers (fleeing or attacking) and the
+`npc` system turns into a brain's `health` and `dead` facts (`feel_health`). `break_budget`
+(`may_cut`) lets the first break of a step cut and queues the rest in `DestructionState::pending`
+for later steps, counting pieces so replays repeat; scene3d's `cut_cells` cuts a body's cells on
+the world's job pool (`fracture_of` passes it), in the same order on any number of threads.
+`examples/break-effects` scorches a crate, fells a deer and wrecks a van.
 
 Wind is SlashEngine's own, after Unreal's `WindDirectionalSource` (Godot's only wind is an
 `Area3D`'s for soft bodies, which physics3d ports too: `area_winds` and `blow_soft_body` in

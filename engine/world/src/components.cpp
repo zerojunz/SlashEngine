@@ -957,7 +957,16 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                    .min = 1,
                    .max = 100})
         .describe("collision_layer", layer)
-        .describe("collision_mask", mask);
+        .describe("collision_mask", mask)
+        .describe("tear_stretch", {.doc = "How many times its length an edge stretches before "
+                                          "the faces along it tear away; 0 never. damage.apply's "
+                                          "cut, pierce and explosive damage tear it within "
+                                          "radius.",
+                                   .min = 0})
+        .describe("torn", {.doc = "The section's triangles torn away, by number in its "
+                                  "surfaces' index order; they neither draw nor hold its points "
+                                  "together, and a part torn off every point the skin holds "
+                                  "still falls free."});
 
     registry.add<HairInstance3D>()
         .set_doc("Grows hair or fur over the model its entity's MeshInstance3D draws, as "
@@ -1413,6 +1422,13 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                      "Polygon2D hold its outline, in the body's space.")
             .describe("lifetime", {.doc = "Seconds left before it goes; 0 keeps it.", .min = 0}),
         "Pixels of the edge they share.");
+    registry.add<DamageEffect>()
+        .set_doc("Something a hit, a break, a death or a wreck left, made from a .damage.json "
+                 "profile's effects: debris or dust (a one-shot CPUParticles3D or "
+                 "CPUParticles2D), a decal (a Decal or a Sprite2D) or a sound (an "
+                 "AudioStreamPlayer3D or AudioStreamPlayer2D).")
+        .describe("lifetime", {.doc = "Seconds left before it goes; 0 keeps it.", .min = 0})
+        .describe("body", {.doc = "The ID of the body it came from."});
     registry.add<StreamedScene3D>()
         .set_doc("A part of a large world kept in a scene file of its own, loaded as the entity "
                  "\"<id>_scene\" under this one while a StreamingSource3D is within load_radius "

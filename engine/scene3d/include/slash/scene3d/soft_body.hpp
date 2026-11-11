@@ -29,6 +29,7 @@ struct SoftBodyPose {
         std::size_t surface = 0;
         std::vector<Vec3> positions;
         std::vector<Vec3> normals;
+        std::vector<int> torn; // its triangles torn out, by number in its indices, lowest first
     };
     std::vector<Surface> surfaces;
 };

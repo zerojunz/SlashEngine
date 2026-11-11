@@ -719,7 +719,7 @@ private:
     // Skins each cloth's points to where its model's skin is now and blows it by the wind.
     void pre_step_cloths(const world::World& world, const world::Tree3D& tree, float seconds);
     // Notes where each cloth's surfaces are after the step, in its model's space.
-    void read_cloths(const world::Tree3D& tree);
+    void read_cloths(world::World& world, const world::Tree3D& tree);
     // Steps every HairInstance3D's guides (hair.cpp), after the bodies moved.
     void step_hair(world::World& world, float seconds);
 

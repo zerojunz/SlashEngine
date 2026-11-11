@@ -3034,13 +3034,18 @@ struct Cloth3D {
     int simulation_precision = 5;
     std::uint32_t collision_layer = 1;
     std::uint32_t collision_mask = 1;
+    // How many times its length an edge stretches before the faces along it tear; 0 never.
+    float tear_stretch = 0.0F;
+    // The section's triangles torn away, by number in its surfaces' index order, lowest first.
+    std::vector<int> torn;
 
     friend bool operator==(const Cloth3D&, const Cloth3D&) = default;
 };
 SLASH_COMPONENT(Cloth3D, section, max_distance, max_distance_map, gradient, vertex_color_channel,
                 backstop_distance, backstop_radius, stiffness, bend_stiffness,
                 long_range_attachment, total_mass, gravity_scale, damping_coefficient,
-                drag_coefficient, simulation_precision, collision_layer, collision_mask)
+                drag_coefficient, simulation_precision, collision_layer, collision_mask,
+                tear_stretch, torn)
 
 // Hair or fur grown over the model its entity's MeshInstance3D draws, as Unreal's Groom
 // component: groom names a .groom.json file saying how its strands grow, draw and move. A few
@@ -3190,6 +3195,17 @@ struct FracturePiece2D {
     friend bool operator==(const FracturePiece2D&, const FracturePiece2D&) = default;
 };
 SLASH_COMPONENT(FracturePiece2D, lifetime, group, links, anchored)
+
+// Something a hit, a break, a death or a wreck left, made from a .damage.json profile's effects:
+// debris or dust (a one-shot CPUParticles3D or CPUParticles2D), a decal (a Decal or a Sprite2D)
+// or a sound (an AudioStreamPlayer3D or AudioStreamPlayer2D). It goes when its lifetime runs out.
+struct DamageEffect {
+    float lifetime = 0.0F; // seconds left; 0 keeps it
+    std::string body;      // the body it came from
+
+    friend bool operator==(const DamageEffect&, const DamageEffect&) = default;
+};
+SLASH_COMPONENT(DamageEffect, lifetime, body)
 
 // A part of a large world kept in a scene file of its own, loaded while a StreamingSource3D is
 // near it and unloaded when they have all gone, as Unreal's World Partition streams its cells.

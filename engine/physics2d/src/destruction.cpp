@@ -11,6 +11,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/log.hpp"
 #include "slash/physics2d/physics2d.hpp"
+#include "slash/physics2d/ragdoll.hpp"
 #include "slash/world/cloth2d.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/damage.hpp"
@@ -304,6 +305,14 @@ std::vector<Piece2D> cut_outline(const Polygon& outline, const world::FractureCu
 struct DestructionState2D {
     std::set<std::string> unsettled;
     bool started = false;
+    // Breaks that waited for the next tick's budget, in the order they came.
+    struct Pending {
+        std::string id;
+        std::optional<Vec2> at;
+        float push = 0.0F;
+    };
+    std::vector<Pending> pending;
+    int budget = -1; // pieces breaks may still cut this step; below 0 while no step runs
 };
 
 DestructionState2D& state_of(world::World& world) {
@@ -1138,9 +1147,268 @@ Result<std::vector<entt::entity>> break_body_2d(world::World& world, entt::entit
     return made;
 }
 
+namespace {
+
+// How hard each point of damage dealt hits a ragdoll's bone, in kilogram-pixels per second.
+constexpr float kHitImpulse = 2.0F * kPixelsPerMeter;
+
+// What a Destructible2D is on: a thing that breaks, someone or something living, which dies, or
+// a vehicle, which is wrecked.
+enum class BodyKind : std::uint8_t { Thing, Living, Vehicle };
+
+BodyKind kind_of(const entt::registry& ecs, entt::entity entity) {
+    if (ecs.all_of<world::Vehicle2D>(entity)) {
+        return BodyKind::Vehicle;
+    }
+    if (ecs.any_of<world::Ragdoll2D, world::Creature2D, world::Character2D, world::NpcAgent>(
+            entity)) {
+        return BodyKind::Living;
+    }
+    return BodyKind::Thing;
+}
+
+entt::entity create_effect(world::World& world, std::string_view body, std::string_view what) {
+    const std::string base = std::string(body.empty() ? "damage" : body) + "_" + std::string(what);
+    for (std::size_t n = 1;; ++n) {
+        const std::string id = n == 1 ? base : base + "_" + std::to_string(n);
+        if (world.find(id) == entt::null) {
+            auto made = world.create(id);
+            return made ? made.value() : entt::null;
+        }
+    }
+}
+
+Vec2 normalized_or(Vec2 v, Vec2 fallback) {
+    const float l = to_float(std::sqrt((v.x * v.x) + (v.y * v.y)));
+    return l > 1e-6F ? v * (1.0F / l) : fallback;
+}
+
+Transform2D placed_at(Vec2 position, float rotation) {
+    Transform2D out;
+    out.position = position;
+    out.rotation = rotation;
+    return out;
+}
+
+// A one-shot burst of particles, as 3D's: pixels drawn size across.
+std::string leave_particles(world::World& world, std::string_view body, std::string_view what,
+                            const world::ParticleEffect& effect, Vec2 at, Vec2 out, float scale) {
+    const auto amount = static_cast<int>(
+        std::lround(static_cast<float>(effect.amount) * std::clamp(scale, 0.0F, 1.0F)));
+    if (amount <= 0) {
+        return {};
+    }
+    const entt::entity made = create_effect(world, body, what);
+    if (made == entt::null) {
+        return {};
+    }
+    auto& ecs = world.ecs();
+    const bool dust = what == "dust";
+    Vec2 down{0.0F, 980.0F};
+    if (const detail::Space* space = detail::find_space(world); space != nullptr) {
+        down = space->settings().gravity_vector * space->settings().gravity;
+    }
+    world::CPUParticles2D particles;
+    particles.amount = amount;
+    particles.lifetime = effect.lifetime;
+    particles.one_shot = true;
+    particles.explosiveness = 1.0F;
+    particles.randomness = 0.5F;
+    particles.lifetime_randomness = 0.3F;
+    particles.seed = static_cast<int>(hash_id(world.id_of(made)) & 0x7FFFFFFFU);
+    particles.direction = out;
+    particles.spread = effect.spread;
+    particles.initial_velocity_min = effect.speed * 0.5F * kPixelsPerMeter;
+    particles.initial_velocity_max = effect.speed * kPixelsPerMeter;
+    particles.gravity = down * effect.gravity;
+    particles.color = effect.color;
+    const float size = effect.size * kPixelsPerMeter;
+    particles.scale_amount_min = size * (dust ? 1.0F : 0.5F);
+    particles.scale_amount_max = size;
+    if (dust) {
+        particles.damping_min = effect.speed * kPixelsPerMeter;
+        particles.damping_max = particles.damping_min;
+        particles.scale_amount_curve = {Vec2{0.0F, 0.4F}, Vec2{1.0F, 1.0F}};
+        particles.color_ramp = {
+            world::GradientPoint{.offset = 0.0F, .color = {1.0F, 1.0F, 1.0F, 1.0F}},
+            world::GradientPoint{.offset = 1.0F, .color = {1.0F, 1.0F, 1.0F, 0.0F}}};
+    } else {
+        particles.angle_max = 360.0F;
+        particles.angular_velocity_min = -360.0F;
+        particles.angular_velocity_max = 360.0F;
+    }
+    ecs.emplace<Transform2D>(made, placed_at(at, 0.0F));
+    ecs.emplace<world::CPUParticles2D>(made, std::move(particles));
+    ecs.emplace<world::DamageEffect>(
+        made, world::DamageEffect{.lifetime = effect.lifetime * 1.5F, .body = std::string(body)});
+    return std::string(world.id_of(made));
+}
+
+// What one EffectSet leaves at a place, as 3D's: a decal is a Sprite2D turned along out.
+std::vector<std::string> leave_effects(world::World& world, std::string_view body,
+                                       const world::EffectSet& set, Vec2 at, Vec2 out,
+                                       float scale) {
+    std::vector<std::string> made;
+    if (set.empty()) {
+        return made;
+    }
+    auto& ecs = world.ecs();
+    for (const auto& [what, effect] :
+         {std::pair<std::string_view, const world::ParticleEffect*>{"debris", &set.debris},
+          std::pair<std::string_view, const world::ParticleEffect*>{"dust", &set.dust}}) {
+        if (std::string id = leave_particles(world, body, what, *effect, at, out, scale);
+            !id.empty()) {
+            made.push_back(std::move(id));
+        }
+    }
+    if (!set.decal.texture.empty()) {
+        if (const entt::entity decal = create_effect(world, body, "decal"); decal != entt::null) {
+            Transform2D place = placed_at(at, slash::atan2(out.y, out.x));
+            // Its texture's size is unknown here: scale it to size across from 64 pixels.
+            const float across = set.decal.size * kPixelsPerMeter / 64.0F;
+            place.scale = {across, across};
+            ecs.emplace<Transform2D>(decal, place);
+            world::Sprite2D sprite;
+            sprite.texture = set.decal.texture;
+            sprite.modulate = set.decal.modulate;
+            sprite.z_index = 1;
+            ecs.emplace<world::Sprite2D>(decal, std::move(sprite));
+            ecs.emplace<world::DamageEffect>(
+                decal,
+                world::DamageEffect{.lifetime = set.decal.lifetime, .body = std::string(body)});
+            made.emplace_back(world.id_of(decal));
+        }
+    }
+    if (!set.sound.stream.empty()) {
+        if (const entt::entity sound = create_effect(world, body, "sound"); sound != entt::null) {
+            ecs.emplace<Transform2D>(sound, placed_at(at, 0.0F));
+            world::AudioStreamPlayer2D player;
+            player.stream = set.sound.stream;
+            player.volume_db = set.sound.volume_db;
+            player.pitch_scale = set.sound.pitch_scale;
+            player.bus = set.sound.bus;
+            player.autoplay = true;
+            player.playing = true;
+            ecs.emplace<world::AudioStreamPlayer2D>(sound, std::move(player));
+            ecs.emplace<world::DamageEffect>(
+                sound,
+                world::DamageEffect{.lifetime = set.sound.lifetime, .body = std::string(body)});
+            made.emplace_back(world.id_of(sound));
+        }
+    }
+    return made;
+}
+
+// Where a body's effects go when nothing says: the middle of its outline, else its place.
+Vec2 middle_of(const world::World& world, entt::entity entity) {
+    const world::Tree2D tree(world);
+    const Transform2D place = tree.global(entity);
+    if (kind_of(world.ecs(), entity) == BodyKind::Thing &&
+        !world.ecs().all_of<world::TileMapLayer>(entity)) {
+        if (const auto outline = outline_of(world, entity); outline.has_value()) {
+            return world::affine(place).apply(centroid_of(*outline));
+        }
+    }
+    return place.position;
+}
+
+// Hits the bone of a Ragdoll2D nearest a point, as hard as the damage it took.
+void hit_ragdoll_at(world::World& world, entt::entity entity, Vec2 at, Vec2 way, float dealt) {
+    const std::map<std::string, entt::entity> bones = ragdoll_bones(world, entity);
+    if (bones.empty()) {
+        return;
+    }
+    const world::Tree2D tree(world);
+    std::string nearest;
+    real_t best = 1e30F;
+    for (const auto& [bone, body] : bones) {
+        const Vec2 d = tree.global(body).position - at;
+        const real_t distance = (d.x * d.x) + (d.y * d.y);
+        if (distance < best) {
+            best = distance;
+            nearest = bone;
+        }
+    }
+    if (auto hit = hit_ragdoll(world, entity, nearest, way * (dealt * kHitImpulse)); !hit) {
+        log::warn("a hit can't reach a ragdoll",
+                  {{"id", std::string(world.id_of(entity))}, {"error", hit.error().message}});
+    }
+}
+
+// A living body with no health left dies; a vehicle with none is wrecked.
+void finish(world::World& world, entt::entity entity, BodyKind kind, std::string_view by) {
+    auto& ecs = world.ecs();
+    json::Value data;
+    if (!by.empty()) {
+        data["by"] = std::string(by);
+    }
+    if (kind == BodyKind::Vehicle) {
+        auto& vehicle = ecs.get<world::Vehicle2D>(entity);
+        vehicle.enabled = false;
+        vehicle.controls = {};
+        world.emit("wrecked", world.id_of(entity), std::move(data));
+        return;
+    }
+    if (auto* ragdoll = ecs.try_get<world::Ragdoll2D>(entity); ragdoll != nullptr) {
+        ragdoll->state = "limp";
+        ragdoll->rest_state = "limp";
+    }
+    if (auto* creature = ecs.try_get<world::Creature2D>(entity); creature != nullptr) {
+        creature->enabled = false;
+        creature->mind.mode = "dead";
+        creature->mind.velocity = {};
+    }
+    world.emit("killed", world.id_of(entity), std::move(data));
+}
+
+// Whether a break may cut its pieces now, as 3D's.
+bool may_cut(world::World& world, const world::DamageProfile* profile,
+             const Destructible2D& destructible) {
+    DestructionState2D& state = state_of(world);
+    if (state.budget < 0) {
+        return true;
+    }
+    int pieces = destructible.pieces;
+    if (profile != nullptr) {
+        pieces =
+            destructible.level == 0 ? profile->fracture.pieces : profile->fracture.level_pieces;
+    }
+    const detail::Space* space = detail::find_space(world);
+    const int full = space != nullptr ? space->settings().break_budget : 0;
+    if (state.budget < pieces && state.budget < full) {
+        return false;
+    }
+    state.budget = std::max(state.budget - std::max(pieces, 1), 0);
+    return true;
+}
+
+Result<void> break_now(world::World& world, entt::entity entity,
+                       const world::DamageProfile* profile, float push, std::optional<Vec2> at,
+                       DamageReport2D& report) {
+    const std::string id(world.id_of(entity));
+    const Vec2 where = at.value_or(middle_of(world, entity));
+    auto broken = break_body_2d(world, entity, push, at);
+    if (!broken) {
+        return broken.error();
+    }
+    report.broke = true;
+    for (const entt::entity made : broken.value()) {
+        report.pieces.emplace_back(world.id_of(made));
+    }
+    if (profile != nullptr) {
+        for (std::string& made :
+             leave_effects(world, id, profile->effects.broken, where, {0.0F, -1.0F}, 1.0F)) {
+            report.effects.push_back(std::move(made));
+        }
+    }
+    return {};
+}
+
+} // namespace
+
 Result<DamageReport2D> damage_body_2d(world::World& world, entt::entity entity, float amount,
                                       std::string_view kind, std::optional<Vec2> at, float push,
-                                      std::optional<Vec2> direction) {
+                                      std::optional<Vec2> direction, std::string_view by) {
     auto& ecs = world.ecs();
     auto* destructible = world.valid(entity) ? ecs.try_get<Destructible2D>(entity) : nullptr;
     if (destructible == nullptr) {
@@ -1170,7 +1438,11 @@ Result<DamageReport2D> damage_body_2d(world::World& world, entt::entity entity, 
         }
         return report;
     }
+    const BodyKind body = kind_of(ecs, entity);
     const float full = destructible->health < 0.0F ? profile->health : destructible->health;
+    if (full <= 0.0F && body != BodyKind::Thing) {
+        return report;
+    }
     report.dealt = world::damage_taken(*profile, amount, kind);
     report.health = std::max(full - report.dealt, 0.0F);
     destructible->health = report.health;
@@ -1182,7 +1454,7 @@ Result<DamageReport2D> damage_body_2d(world::World& world, entt::entity entity, 
         destructible->state = state;
         show_state(world, entity, *profile, before, state);
     }
-    if (report.health > 0.0F && report.dealt > 0.0F) {
+    if (report.health > 0.0F && report.dealt > 0.0F && body == BodyKind::Thing) {
         report.deformed =
             deform_body_2d(world, entity, *profile, report.dealt, kind, at, direction);
         destructible = ecs.try_get<Destructible2D>(entity);
@@ -1198,9 +1470,45 @@ Result<DamageReport2D> damage_body_2d(world::World& world, entt::entity entity, 
         if (!report.deformed.empty()) {
             data["deformed"] = report.deformed;
         }
+        if (!by.empty()) {
+            data["by"] = std::string(by);
+        }
         world.emit("damaged", report.id, std::move(data));
+        if (at.has_value() && !profile->effects.hit.empty() && world.valid(entity)) {
+            const Vec2 out = direction.has_value()
+                                 ? normalized_or(*direction * -1.0F, {0.0F, -1.0F})
+                                 : normalized_or(*at - middle_of(world, entity), {0.0F, -1.0F});
+            const float scale = report.dealt / std::max(profile->effects.hit_scale, 1e-6F);
+            report.effects = leave_effects(world, report.id, profile->effects.hit, *at, out, scale);
+        }
+        if (body == BodyKind::Living && report.health > 0.0F &&
+            ecs.all_of<world::Ragdoll2D>(entity)) {
+            const Vec2 middle = middle_of(world, entity);
+            const Vec2 where = at.value_or(middle);
+            const Vec2 way = direction.has_value() ? normalized_or(*direction, {1.0F, 0.0F})
+                                                   : normalized_or(middle - where, {1.0F, 0.0F});
+            hit_ragdoll_at(world, entity, where, way, report.dealt);
+        }
     }
-    if (report.health > 0.0F || report.dealt <= 0.0F) {
+    if (report.health > 0.0F || report.dealt <= 0.0F || destructible == nullptr) {
+        return report;
+    }
+    if (body != BodyKind::Thing) {
+        const Vec2 where = middle_of(world, entity);
+        if (body == BodyKind::Living) {
+            if (ecs.all_of<world::Ragdoll2D>(entity)) {
+                hit_ragdoll_at(world, entity, at.value_or(where),
+                               direction.value_or(Vec2{1.0F, 0.0F}), report.dealt);
+            }
+            report.killed = true;
+        } else {
+            report.wrecked = true;
+        }
+        finish(world, entity, body, by);
+        for (std::string& made :
+             leave_effects(world, report.id, profile->effects.broken, where, {0.0F, -1.0F}, 1.0F)) {
+            report.effects.push_back(std::move(made));
+        }
         return report;
     }
     bool breaks =
@@ -1212,13 +1520,13 @@ Result<DamageReport2D> damage_body_2d(world::World& world, entt::entity entity, 
         }
     }
     if (breaks) {
-        auto broken = break_body_2d(world, entity, push, at);
-        if (!broken) {
-            return broken.error();
+        if (!may_cut(world, profile, *destructible)) {
+            state_of(world).pending.push_back({.id = report.id, .at = at, .push = push});
+            report.queued = true;
+            return report;
         }
-        report.broke = true;
-        for (const entt::entity made : broken.value()) {
-            report.pieces.emplace_back(world.id_of(made));
+        if (auto broken = break_now(world, entity, profile, push, at, report); !broken) {
+            return broken.error();
         }
     } else if (piece) {
         const bool was_standing = ecs.all_of<world::RigidBody2D>(entity) &&
@@ -1230,7 +1538,8 @@ Result<DamageReport2D> damage_body_2d(world::World& world, entt::entity entity, 
 }
 
 std::vector<DamageReport2D> damage_area_2d(world::World& world, Vec2 center, float radius,
-                                           float amount, std::string_view kind, float push) {
+                                           float amount, std::string_view kind, float push,
+                                           std::string_view by) {
     std::vector<DamageReport2D> out;
     const world::Tree2D tree(world);
     std::vector<std::pair<entt::entity, float>> hit;
@@ -1254,7 +1563,10 @@ std::vector<DamageReport2D> damage_area_2d(world::World& world, Vec2 center, flo
                     distance = 0.0F;
                 }
             }
-        } else if (const auto outline = outline_of(world, entity); outline.has_value()) {
+        } else if (const auto outline = kind_of(world.ecs(), entity) == BodyKind::Thing
+                                            ? outline_of(world, entity)
+                                            : std::nullopt;
+                   outline.has_value()) {
             const world::Affine2D global = world::affine(place);
             const real_t scale =
                 std::max<real_t>(std::sqrt(std::abs(place.scale.x * place.scale.y)), 1e-6F);
@@ -1270,8 +1582,8 @@ std::vector<DamageReport2D> damage_area_2d(world::World& world, Vec2 center, flo
         if (!world.valid(entity)) {
             continue;
         }
-        if (auto report =
-                damage_body_2d(world, entity, amount * falloff, kind, center, push * falloff);
+        if (auto report = damage_body_2d(world, entity, amount * falloff, kind, center,
+                                         push * falloff, std::nullopt, by);
             report) {
             out.push_back(std::move(report.value()));
         }
@@ -1377,6 +1689,30 @@ void break_and_age_2d(world::World& world, Space& space, float seconds) {
             }
         }
     }
+    const int budget = space.settings().break_budget;
+    state.budget = budget > 0 ? budget : -1;
+    std::vector<DestructionState2D::Pending> waiting;
+    waiting.swap(state.pending);
+    for (const DestructionState2D::Pending& pending : waiting) {
+        const entt::entity entity = world.find(pending.id);
+        const auto* destructible =
+            entity != entt::null ? ecs.try_get<const Destructible2D>(entity) : nullptr;
+        if (destructible == nullptr || destructible->health != 0.0F) {
+            continue;
+        }
+        std::shared_ptr<const world::DamageProfile> keep;
+        const world::DamageProfile* profile = profile_of(world, *destructible, keep);
+        if (!may_cut(world, profile, *destructible)) {
+            state.pending.push_back(pending);
+            continue;
+        }
+        DamageReport2D report;
+        if (auto broken = break_now(world, entity, profile, pending.push, pending.at, report);
+            !broken) {
+            log::warn("a Destructible2D can't break",
+                      {{"id", pending.id}, {"error", broken.error().message}});
+        }
+    }
     std::unordered_map<entt::entity, Space::Impact> impacts = space.take_impacts();
     if (!impacts.empty()) {
         std::vector<std::pair<entt::entity, Space::Impact>> hit;
@@ -1428,6 +1764,7 @@ void break_and_age_2d(world::World& world, Space& space, float seconds) {
         state.unsettled.erase(state.unsettled.begin());
         (void)settle_group_2d(world, group);
     }
+    state.budget = -1;
     std::vector<entt::entity> gone;
     for (const auto [entity, piece] : ecs.view<FracturePiece2D>().each()) {
         if (piece.lifetime <= 0.0F) {
@@ -1435,6 +1772,16 @@ void break_and_age_2d(world::World& world, Space& space, float seconds) {
         }
         piece.lifetime -= seconds;
         if (piece.lifetime <= 0.0F) {
+            gone.push_back(entity);
+        }
+    }
+    for (const auto [entity, effect, placed] :
+         ecs.view<world::DamageEffect, const Transform2D>().each()) {
+        if (effect.lifetime <= 0.0F) {
+            continue;
+        }
+        effect.lifetime -= seconds;
+        if (effect.lifetime <= 0.0F) {
             gone.push_back(entity);
         }
     }

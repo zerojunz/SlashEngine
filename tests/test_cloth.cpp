@@ -259,6 +259,55 @@ TEST_CASE("cloth: a uniform map lets every point swing, and the backstop keeps i
     }
 }
 
+TEST_CASE("cloth: a cut tears a cape across, and the part torn off the skin falls free") {
+    Project project("cloth_tear_project",
+                    R"({"section": "cape", "max_distance": 0.4, "gradient": [0, -1, 0]})");
+    // Two cuts across the cape's middle band (rows 2 to 3), at rest, take its eight triangles.
+    for (const char* x : {"-0.15", "0.15"}) {
+        project.ok("damage.apply", std::string(R"({"id": "hero", "kind": "cut", "amount": 10,
+            "at": [)") + x + R"(, 1.0, -0.25], "radius": 0.125})");
+    }
+    const world::World& w = project.session->world();
+    const auto& cloth = w.ecs().get<const world::Cloth3D>(w.find("hero"));
+    // The section's triangles, the cape's, eight a row.
+    REQUIRE(cloth.torn.size() == 8);
+    CHECK(cloth.torn.front() == 16);
+    CHECK(cloth.torn.back() == 23);
+    const json::Value state = project.ok("damage.state");
+    const json::Value* torn = state.find("torn");
+    REQUIRE(torn != nullptr);
+    REQUIRE(torn->size() == 1);
+    CHECK(*torn->as_array().front().find("torn") == 8);
+
+    project.steps(60);
+    const auto pose = scene3d::soft_body_pose(w, w.find("hero"));
+    REQUIRE(pose != nullptr);
+    REQUIRE(pose->surfaces.size() == 1);
+    // Drawing leaves out the cape's own triangles 16 to 23.
+    CHECK(pose->surfaces[0].torn.size() == 8);
+    CHECK(pose->surfaces[0].torn.front() == 16);
+    const std::vector<Vec3> cape = project.cape();
+    // The top still hangs from the skin; the bottom, held by no skinned point, fell away.
+    CHECK(distance(cape[2], rest(0, 2)) < 0.001F);
+    CHECK(distance(cape[static_cast<std::size_t>(kColumns) + 2], rest(1, 2)) <=
+          0.4F * 0.2F + 0.01F);
+    const Vec3 hem = cape[static_cast<std::size_t>(((kRows - 1) * kColumns) + 2)];
+    CHECK(hem.y < rest(kRows - 1, 2).y - 1.0F);
+}
+
+TEST_CASE("cloth: a cape pulled past its tear_stretch tears by itself") {
+    Project project("cloth_stretch_project",
+                    R"({"section": "cape", "max_distance": 10, "gradient": [0, -1, 0],
+                        "long_range_attachment": false, "tear_stretch": 1.5})");
+    // The spine leaps away: the top follows at once and the edges below it stretch and tear.
+    project.steps(5);
+    project.ok("component.set", R"({"id": "hero", "components": {
+        "Skeleton3D": {"bone_positions": {"Spine": [0, 4.5, 0]}}}})");
+    project.steps(10);
+    const world::World& w = project.session->world();
+    CHECK_FALSE(w.ecs().get<const world::Cloth3D>(w.find("hero")).torn.empty());
+}
+
 TEST_CASE("cloth: scene validate names a section the model lacks") {
     Project project("cloth_section_project", R"({"section": "cpae"})");
     const auto problems = scene3d::check_cloths(project.session->world());

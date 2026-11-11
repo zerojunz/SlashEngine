@@ -224,6 +224,15 @@ json::Value settings_schema() {
         "Solver substeps each physics tick takes, as Box2D's: more keep fast, small or stacked "
         "bodies steadier, at more cost.";
     properties["substeps"] = std::move(substeps);
+    json::Value budget;
+    budget["type"] = "integer";
+    budget["minimum"] = 0;
+    budget["maximum"] = 100000;
+    budget["default"] = defaults.break_budget;
+    budget["description"] =
+        "The most pieces breaks from impacts may cut a tick, so a chain of breaks spreads over "
+        "ticks (the first break of a tick always cuts); 0 for no limit.";
+    properties["break_budget"] = std::move(budget);
     return schema;
 }
 
@@ -244,6 +253,9 @@ Settings parse_settings(const json::Value& settings) {
     }
     if (const json::Value* substeps = settings.find("substeps"); substeps != nullptr) {
         out.substeps = static_cast<int>(substeps->as_int());
+    }
+    if (const json::Value* budget = settings.find("break_budget"); budget != nullptr) {
+        out.break_budget = static_cast<int>(budget->as_int());
     }
     return out;
 }
