@@ -39,7 +39,7 @@ checks it.
 | `rendering.rendering_method` | No | `forward_plus` | How 3D meshes are lit and their colors finished, as Godot's `rendering/renderer/rendering_method`: see [Rendering methods](#rendering-methods) |
 | `rendering.texture_filter` | No | `linear` | How sprites whose `texture_filter` is `inherit` are sampled when scaled: `linear` is smooth, `nearest` keeps pixel art sharp |
 | `rendering.scaling` | No | no scaling | Draw the world at another size and scale it to the window, under controls drawn at full size: see [Render scale](#render-scale) |
-| `rendering.lights_and_shadows` | No | 4096-texel atlases, `soft_low` | The 3D shadow atlases' sizes and edge filters: see [Shadows](#shadows) |
+| `rendering.lights_and_shadows` | No | 4096-texel atlases, `soft_low` | The 3D shadow atlases' sizes and edge filters, and physical light units: see [Shadows](#shadows) |
 | `rendering.camera.depth_of_field` | No | `hexagon`, `low`, no jitter | The bokeh shape and quality of 3D [depth of field](scene-format.md#cameraattributespractical): see [Depth of field](#depth-of-field) |
 | `rendering.environment.ssao` | No | `medium`, half size, 2 blur passes | The quality and cost of 3D [ambient occlusion](scene-format.md#ambient-occlusion): see [SSAO](#ssao) |
 | `rendering.environment.screen_space_reflection` | No | half size | The resolution of 3D [screen-space reflections](scene-format.md#screen-space-reflections): see [Screen-space reflections](#screen-space-reflections) |
@@ -262,6 +262,7 @@ into the occluders through a small depth buffer.
 | `directional_shadow.soft_shadow_filter_quality` | `soft_low` | `hard` takes one sample a pixel; `soft_very_low` and `soft_low` 5, filtered between texels; `soft_medium`, `soft_high` and `soft_ultra` 13, softer still |
 | `positional_shadow.atlas_size` | `4096` | The atlas omni and spot lights share, as `size` |
 | `positional_shadow.soft_shadow_filter_quality` | `soft_low` | As the directional one's |
+| `use_physical_light_units` | `false` | Lights shine by their lux or lumens and temperature, skies and emission by their nits, and cameras' exposure is normalized by their sensitivity, as Godot's `rendering/lights_and_shadows/use_physical_light_units`: see [physical light units](scene-format.md#physical-light-units) |
 
 A device draws an atlas at most as large as its largest texture (8192 texels for WebGPU), and a
 frame with no shadowed light draws none. Larger atlases make sharper shadows and cost GPU

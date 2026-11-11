@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <vector>
 
 namespace slash::render::detail {
@@ -173,6 +174,7 @@ LightClusters build_clusters(const Scene3D& scene, std::uint32_t width, std::uin
     if (decal_atlas != nullptr) {
         decals = place_decals(scene, *decal_atlas);
         out.decal_words = static_cast<std::uint32_t>((decals.uniforms.size() + 31) / 32);
+        out.decal_count = static_cast<std::uint32_t>(decals.uniforms.size());
         out.decals = std::move(decals.uniforms);
     }
     out.cells.assign(std::size_t{out.tiles_across} * out.tiles_down * out.stride(), 0);
@@ -186,6 +188,15 @@ LightClusters build_clusters(const Scene3D& scene, std::uint32_t width, std::uin
         const Sphere& sphere = spheres[k];
         out.lights.push_back(mesh_light_uniforms(scene.lights[sphere.light], slots[sphere.light],
                                                  rays[sphere.light]));
+        if (decal_atlas != nullptr) {
+            // Its projector's record after the decals, its place in shadow[1]'s higher bits.
+            if (const std::optional<MeshDecalUniforms> record =
+                    projector_record(scene.lights[sphere.light], *decal_atlas)) {
+                const std::size_t place = out.decals.size() - out.decal_count + 1;
+                out.decals.push_back(*record);
+                out.lights.back().shadow[1] += 2.0F * static_cast<float>(place);
+            }
+        }
         out.sources.push_back(static_cast<std::uint32_t>(sphere.light));
         Reach reach{.nearest = sphere.depth - sphere.radius,
                     .farthest = sphere.depth + sphere.radius};

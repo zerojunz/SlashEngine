@@ -1,0 +1,61 @@
+{
+  "entities": {
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true
+        },
+        "CameraAttributesPractical": {
+          "exposure_sensitivity": 6400.0
+        },
+        "Transform3D": {
+          "position": [0.0, 6.0, 6.0],
+          "rotation": [-0.8, 0.0, 0.0]
+        }
+      }
+    },
+    "floor": {
+      "components": {
+        "MeshInstance3D": {},
+        "PlaneMesh": {
+          "size": [20.0, 20.0]
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.8, 0.8, 0.8, 1.0]
+        },
+        "Transform3D": {}
+      }
+    },
+    "streetlamp": {
+      "components": {
+        "SpotLight3D": {
+          "light_ies": "lamp.ies",
+          "light_intensity_lumens": 6000.0,
+          "light_temperature": 3000.0,
+          "spot_angle": 70.0,
+          "spot_range": 10.0
+        },
+        "Transform3D": {
+          "position": [-2.5, 3.0, 0.0],
+          "rotation": [-1.5708, 0.0, 0.0]
+        }
+      }
+    },
+    "window": {
+      "components": {
+        "SpotLight3D": {
+          "light_intensity_lumens": 6000.0,
+          "light_projector": "glass.texture.json",
+          "light_projector_scroll": [0.25, 0.0],
+          "spot_angle": 35.0,
+          "spot_range": 10.0
+        },
+        "Transform3D": {
+          "position": [2.5, 4.0, 0.0],
+          "rotation": [-1.5708, 0.0, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

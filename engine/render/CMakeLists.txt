@@ -48,10 +48,12 @@ add_library(slash_render
     src/fsr2.cpp
     src/fsr3.cpp
     src/gl_device.cpp
+    src/ies.cpp
     src/gpu_device.cpp
     src/hlsl_compiler.cpp
     src/image.cpp
     src/light.cpp
+    src/light_units.cpp
     src/material.cpp
     src/mesh.cpp
     src/native_copy.cpp
@@ -84,9 +86,10 @@ add_library(slash_render
     src/voxel_gi.cpp
     src/vulkan_rays.cpp)
 add_library(slash::render ALIAS slash_render)
-# Rays decide which triangles they meet, and splats blend in order, so their math is the same on
-# every machine.
-set_source_files_properties(src/path_trace.cpp src/ray_shadows.cpp src/restir.cpp src/splats.cpp
+# Rays decide which triangles they meet, splats blend in order and color temperatures tint lights,
+# so their math is the same on every machine.
+set_source_files_properties(src/light_units.cpp src/path_trace.cpp src/ray_shadows.cpp src/restir.cpp
+    src/splats.cpp
     PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 
@@ -148,12 +151,12 @@ endif()
 # every platform: no fused multiply-adds, which arm64 compilers would otherwise emit and x86-64
 # ones not.
 set_source_files_properties(src/clusters.cpp src/decal.cpp src/device.cpp src/forward_post.cpp
-    src/frame_generation.cpp src/fsr2.cpp src/fsr3.cpp src/material.cpp src/mesh.cpp
+    src/frame_generation.cpp src/fsr2.cpp src/fsr3.cpp src/ies.cpp src/material.cpp src/mesh.cpp
     src/particle_layout_3d.cpp
     src/particles.cpp src/particles3d.cpp
     src/path_trace.cpp
     src/post.cpp src/resize.cpp src/shader_vm.cpp src/shadow.cpp src/reflection.cpp src/sky.cpp
-    src/sdfgi.cpp src/software_device.cpp
+    src/light.cpp src/sdfgi.cpp src/software_device.cpp
     src/ssao.cpp src/ssr.cpp src/subsurface.cpp src/taa.cpp src/upscaler.cpp
     src/volumetric_fog.cpp src/voxel_gi.cpp
     PROPERTIES

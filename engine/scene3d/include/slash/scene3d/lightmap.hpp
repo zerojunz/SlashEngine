@@ -146,8 +146,11 @@ struct LightmapData {
 // values.
 [[nodiscard]] json::Value lightmap_json(const LightmapData& data);
 
-// Registers .lightmap.json files with assets as LightmapData, and .hdr files as render::HdrImage.
-// Called by add_asset_types.
+// IES light profiles, which OmniLight3D's and SpotLight3D's light_ies name.
+inline constexpr std::string_view kIesSuffix = ".ies";
+
+// Registers .lightmap.json files with assets as LightmapData, .hdr files as render::HdrImage and
+// .ies files as render::IesProfile. Called by add_asset_types.
 void add_lightmap_types(asset::Assets& assets);
 
 // The light a bake traces, as Godot's LightmapGI properties (world::LightmapGI's docs).

@@ -4,6 +4,7 @@
 #include "slash/core/json_schema.hpp"
 #include "slash/core/result.hpp"
 #include "slash/render/device.hpp"
+#include "slash/render/ies.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/mesh.hpp"
 #include "slash/scene3d/cluster_streaming.hpp"
@@ -107,7 +108,8 @@ struct Environment {
     std::string sky_texture_field;
     entt::entity entity = entt::null; // the WorldEnvironment, if there is one
     // The entity whose CameraAttributesPractical the camera uses, or entt::null, and its
-    // exposure_multiplier, as Godot's exposure normalization without physical light units: the
+    // exposure_multiplier (times its sensitivity's normalization with physical light units), as
+    // Godot's exposure normalization: the
     // background, the sky (and so its light) and post's auto exposure have it already, and the
     // frame's lights, the sky's suns and emission take it too.
     entt::entity attributes = entt::null;
@@ -120,6 +122,12 @@ struct Environment {
 // Godot's environment bakes take it (a LightmapGI's).
 [[nodiscard]] Environment world_environment(const world::World& world, render::Color clear);
 
+// Whether the world's lights, backgrounds and emission use Godot's physical light units: lux,
+// lumens and nits, with lights tinted by their color temperature. canvas::set_settings sets it from
+// rendering.lights_and_shadows.use_physical_light_units.
+void set_physical_light_units(world::World& world, bool on);
+[[nodiscard]] bool physical_light_units(const world::World& world);
+
 // The entity whose CameraAttributesPractical a camera uses, as Godot's Camera3D.attributes and
 // WorldEnvironment.camera_attributes: the camera's own, else the first WorldEnvironment's;
 // entt::null when neither has one.
@@ -127,10 +135,12 @@ struct Environment {
 
 // The lights of the world that shine, as a frame's lights: those visible in the tree whose
 // sky_mode isn't "sky_only", placed by global, the directional ones first, each kind in tree
-// order and at most render::kMaxDirectionalLights3D and render::kMaxClusteredLights3D.
+// order and at most render::kMaxDirectionalLights3D and render::kMaxClusteredLights3D. With
+// entities, each light's entity, in the same order.
 [[nodiscard]] std::vector<render::Light3D>
 lights(const world::World& world, const world::Tree3D& tree,
-       const std::function<world::Affine3D(entt::entity)>& global);
+       const std::function<world::Affine3D(entt::entity)>& global,
+       std::vector<entt::entity>* entities = nullptr);
 
 // The suns a sky shows, as Godot's: the DirectionalLight3Ds visible in the tree whose sky_mode
 // isn't "light_only", in tree order, at most render::kMaxSkyLights.
@@ -172,6 +182,10 @@ using VoxelGISource =
 // VoxelGIs: a reload gives new ones.
 using ImageSource =
     std::function<Result<std::shared_ptr<const render::Image>>(const std::string& path)>;
+
+// The IES profiles OmniLight3D's and SpotLight3D's light_ies names, loaded by project path.
+using IesSource =
+    std::function<Result<std::shared_ptr<const render::IesProfile>>(const std::string& path)>;
 
 // The Gaussian splats a GaussianSplat3D's splats names, loaded by project path (splats.hpp).
 using SplatSource =
@@ -341,6 +355,8 @@ public:
     // Where GaussianSplat3Ds' .ply files load from: without a source, they draw nothing, and
     // each is a problem.
     void set_splats(SplatSource splats) { splats_ = std::move(splats); }
+    // Where lights' light_ies profiles load from: without a source, each is a problem.
+    void set_ies(IesSource ies) { ies_ = std::move(ies); }
     // Draws the meshes prepare found into the frame begun with its scene.
     [[nodiscard]] Result<void> draw();
 
@@ -763,6 +779,21 @@ private:
     ParticleProcessSource processes_;
     ShaderMaterialSource override_materials_;
     SplatSource splats_;
+    IesSource ies_;
+    // Lights' projector textures with their IES profiles baked in, by what made them, kept while
+    // frames use them.
+    struct Projector {
+        std::shared_ptr<const render::Image> texture;
+        std::shared_ptr<const render::IesProfile> ies;
+        float spot_angle = 0.0F; // a spot light's, 0 for an omni light's
+        std::shared_ptr<const render::Image> image;
+        bool used = false;
+    };
+    std::vector<Projector> projectors_;
+    // Gives the frame's omni and spot lights their light_projector and light_ies, scrolled to
+    // time.
+    void add_projectors(const world::World& world, const std::vector<entt::entity>& entities,
+                        double time, std::vector<render::Light3D>& lights);
     // The material in place of an entity's surfaces': its material_override's, else its
     // StandardMaterial3D's; nullopt for neither, or for an override that can't load, with a
     // problem. shadows_disabled says its material casts none.

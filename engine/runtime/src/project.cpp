@@ -580,13 +580,22 @@ json::Value lights_and_shadows_schema() {
     json::Value out;
     out["type"] = "object";
     out["additionalProperties"] = false;
-    out["description"] = "The 3D shadow maps, as Godot's lights_and_shadows settings.";
+    out["description"] =
+        "The 3D shadow maps and light units, as Godot's lights_and_shadows settings.";
     out["properties"]["directional_shadow"] =
         atlas("size", defaults.directional_size, defaults.directional_quality,
               "The atlas directional lights' shadow cascades share.");
     out["properties"]["positional_shadow"] =
         atlas("atlas_size", defaults.positional_size, defaults.positional_quality,
               "The atlas omni and spot lights' shadow maps share.");
+    json::Value units;
+    units["type"] = "boolean";
+    units["default"] = false;
+    units["description"] =
+        "Lights shine by their light_intensity_lux and light_intensity_lumens, tinted by their "
+        "light_temperature, and backgrounds and emission by their nits, scaled by the camera's "
+        "exposure_sensitivity, as Godot's physical light units.";
+    out["properties"]["use_physical_light_units"] = std::move(units);
     return out;
 }
 
