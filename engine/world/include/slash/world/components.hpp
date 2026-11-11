@@ -2617,6 +2617,42 @@ struct Hair2D {
 SLASH_COMPONENT(Hair2D, groom, root_line, modulate, simulate, collide, z_index, z_as_relative,
                 visible, light_mask, texture_filter)
 
+// A filled polygon, as Godot's Polygon2D: polygon's points in the entity's space after offset,
+// filled with color times vertex_colors (one per point, else white), or, when polygons lists
+// index lists into polygon, each of those in turn, later ones over earlier ones. A texture
+// samples at uv (one per point, in pixels) or else at the points themselves.
+struct Polygon2D {
+    std::vector<Vec2> polygon;
+    std::vector<std::vector<int>> polygons;
+    Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};
+    std::vector<Vec4> vertex_colors;
+    Vec2 offset;
+    std::string texture;
+    std::vector<Vec2> uv;
+    Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F};
+    int z_index = 0;
+    bool z_as_relative = true;
+    bool visible = true;
+    int light_mask = 1;
+    std::string texture_filter = "inherit"; // "inherit", "linear" or "nearest"
+
+    friend bool operator==(const Polygon2D&, const Polygon2D&) = default;
+};
+SLASH_COMPONENT(Polygon2D, polygon, polygons, color, vertex_colors, offset, texture, uv, modulate,
+                z_index, z_as_relative, visible, light_mask, texture_filter)
+
+// A 2D character from a .character.json recipe (slash/world/character.hpp): the character_2d
+// system keeps its cut-out's bones as children, <id>_<bone>, each a Transform2D and a Polygon2D,
+// pixels_per_meter big, facing right or (flip_h) left.
+struct Character2D {
+    std::string recipe;
+    float pixels_per_meter = 100.0F;
+    bool flip_h = false;
+
+    friend bool operator==(const Character2D&, const Character2D&) = default;
+};
+SLASH_COMPONENT(Character2D, recipe, pixels_per_meter, flip_h)
+
 // The instances painted of one 2D foliage type: type names a .foliage.json file whose space is
 // "2d" and instances holds four numbers each, x, y, rotation (radians) and scale, a negative
 // scale mirroring it, in the Foliage2D's space.

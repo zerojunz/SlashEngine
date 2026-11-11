@@ -20,7 +20,7 @@ storyboard/
   style/           # the frames style references were marked from
   world.json       # character, place, faction, item, lore
   story.json       # act, beat, quest
-  design.json      # mechanic, rule, tuning, control
+  design.json      # mechanic, rule, character_rules, tuning, control
   music.json       # theme, cue, loudness
   glossary.json    # term
   decisions.json   # decision
@@ -93,6 +93,7 @@ the kind shown.
 | `quest` | story | `giver` (character), `steps` (strings) | A goal the player can take on |
 | `mechanic` | design | `controls` (controls) | A system the player interacts with |
 | `rule` | design | | A design rule every change must keep |
+| `character_rules` | design | `silhouette_difference`, `color_difference`, `min_height`, `max_height` (numbers), `palette` (a `palette/` ref), `max_props` | How far apart the [characters](scene-format.md#characters) it covers must look, and what they may be; `character.check` holds them to it |
 | `tuning` | design | `value`, `min`, `max` (numbers), `unit` | A gameplay number and its limits |
 | `control` | design | `action`, `keys` (strings), `gamepad` (strings) | An input action and its bindings |
 | `theme` | music | `subjects` (any), `key`, `tempo` (number), `bar_beats` (integer), `instruments`, `mood` (strings) | A musical theme for characters, places or factions |
