@@ -5,7 +5,9 @@
 // (slash/world/damage.hpp) it is cut by its pattern where it was hit, its pieces break again
 // while under its levels, and a connected one's pieces stand frozen and linked, settling by
 // world::settle_stress whenever a link or piece goes, until what no link holds to an anchored
-// piece falls. Pieces with a lifetime go when it runs out.
+// piece falls. Pieces with a lifetime go when it runs out. Before it breaks, its profile's deform
+// dents its mesh, holes it and carves it (Destructible3D's dents and carves, which scene3d cuts
+// into the mesh its pieces come from), or digs craters into an HTerrain.
 
 #include "space.hpp"
 
@@ -14,6 +16,7 @@
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/scene3d/fracture.hpp"
 #include "slash/scene3d/primitive.hpp"
+#include "slash/scene3d/terrain.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/damage.hpp"
 #include "slash/world/tree3d.hpp"
@@ -202,19 +205,219 @@ std::pair<Vec3, Vec3> whole_bounds(const world::World& world, entt::entity entit
 
 // A piece's bounds in the mesh's space.
 std::optional<std::pair<Vec3, Vec3>> piece_bounds(const world::World& world, entt::entity entity) {
-    const auto* piece = world.ecs().try_get<const FracturePiece3D>(entity);
-    if (piece == nullptr) {
+    if (!world.ecs().all_of<FracturePiece3D>(entity)) {
         return std::nullopt;
     }
-    const std::vector<world::FractureCut> cuts = scene3d::piece_cuts(*piece);
-    auto fracture = scene3d::fracture_of(world, entity, cuts);
-    const auto index = static_cast<std::size_t>(std::max(cuts.back().index, 0));
-    if (!fracture || index >= fracture.value()->pieces.size()) {
+    auto made = scene3d::damaged_piece_of(world, entity);
+    if (!made) {
         return std::nullopt;
     }
-    const scene3d::FracturePiece& made = fracture.value()->pieces[index];
+    return std::pair{made.value()->low, made.value()->high};
+}
+
+// The bounds of what a body draws in the mesh's space: its piece, its damaged mesh, or its mesh
+// as one cell.
+std::optional<std::pair<Vec3, Vec3>> mesh_bounds(const world::World& world, entt::entity entity) {
+    if (scene3d::draws_damaged(world, entity)) {
+        auto made = scene3d::damaged_piece_of(world, entity);
+        if (!made) {
+            return std::nullopt;
+        }
+        return std::pair{made.value()->low, made.value()->high};
+    }
+    const world::FractureCut whole{.pattern = "voronoi",
+                                   .cells = 1,
+                                   .seed = 0,
+                                   .at = {},
+                                   .fine = 0.0F,
+                                   .index = 0,
+                                   .dents = {},
+                                   .carves = {}};
+    auto fracture =
+        scene3d::fracture_of(world, entity, std::span<const world::FractureCut>(&whole, 1));
+    if (!fracture || fracture.value()->pieces.empty()) {
+        return std::nullopt;
+    }
+    const scene3d::FracturePiece& made = fracture.value()->pieces.front();
     return std::pair{made.low, made.high};
 }
+
+Vec3 clamped(Vec3 p, const std::pair<Vec3, Vec3>& box) {
+    return {std::clamp(p.x, box.first.x, box.second.x), std::clamp(p.y, box.first.y, box.second.y),
+            std::clamp(p.z, box.first.z, box.second.z)};
+}
+
+// Where a point in the world is over an HTerrain: its cell along x and z, and how far above
+// the ground there it is in meters (below is negative); nullopt off the map or with no heights.
+struct OverTerrain {
+    Vec2 cell;
+    float above = 0.0F;
+};
+std::optional<OverTerrain> over_terrain(const world::World& world, entt::entity entity, Vec3 at) {
+    const auto* terrain = world.ecs().try_get<const world::HTerrain>(entity);
+    if (terrain == nullptr) {
+        return std::nullopt;
+    }
+    const auto data = scene3d::terrain_data(world, entity);
+    if (data->empty()) {
+        return std::nullopt;
+    }
+    const world::Tree3D tree(world);
+    const world::Affine3D cells =
+        scene3d::terrain_transform(*terrain, data->resolution, tree.global(entity));
+    const Vec3 local = cells.inverse().apply(at);
+    const auto last = static_cast<float>(data->resolution - 1);
+    if (local.x < 0.0F || local.z < 0.0F || local.x > last || local.z > last) {
+        return std::nullopt;
+    }
+    const float ground =
+        data->interpolated_height(static_cast<float>(local.x), static_cast<float>(local.z));
+    return OverTerrain{.cell = {local.x, local.z},
+                       .above = static_cast<float>((local.y - ground) * terrain->map_scale.y)};
+}
+
+constexpr std::size_t kMaxDents = 64;
+constexpr std::size_t kMaxCarves = 64;
+constexpr std::size_t kMaxCraters = 256;
+
+// Gives a body whose mesh was carved collision of what is left: a static body's own
+// CollisionShape3D its triangles, a rigid body's its hull.
+void reshape(world::World& world, entt::entity entity) {
+    auto& ecs = world.ecs();
+    auto* shape = ecs.try_get<world::CollisionShape3D>(entity);
+    if (shape == nullptr || shape->shape == "world_boundary") {
+        return;
+    }
+    auto made = scene3d::damaged_piece_of(world, entity);
+    if (!made) {
+        return;
+    }
+    const scene3d::FracturePiece& piece = *made.value();
+    world::CollisionShape3D out = *shape;
+    out.position = {};
+    out.rotation = {};
+    out.points.clear();
+    out.faces.clear();
+    if (ecs.all_of<world::RigidBody3D>(entity)) {
+        out.shape = "convex_polygon";
+        out.points = piece.hull;
+    } else {
+        out.shape = "concave_polygon";
+        for (const scene3d::MeshSurface& surface : piece.mesh.surfaces) {
+            for (const std::uint32_t index : surface.indices) {
+                const auto& p = surface.vertices[index].position;
+                out.faces.push_back({p[0], p[1], p[2]});
+            }
+        }
+    }
+    *shape = std::move(out);
+}
+
+} // namespace
+
+std::string deform_body(world::World& world, entt::entity entity,
+                        const world::DamageProfile& profile, float dealt, std::string_view kind,
+                        std::optional<Vec3> at, std::optional<Vec3> direction) {
+    auto& ecs = world.ecs();
+    auto* destructible = world.valid(entity) ? ecs.try_get<Destructible3D>(entity) : nullptr;
+    const world::DeformSettings& deform = profile.deform;
+    if (destructible == nullptr || dealt <= 0.0F || !at.has_value()) {
+        return {};
+    }
+    const bool explosive = kind == "explosive";
+    // An HTerrain is dug into where a blast reaches its ground.
+    if (auto* terrain = ecs.try_get<world::HTerrain>(entity); terrain != nullptr) {
+        if (!explosive || deform.carve <= 0.0F || terrain->craters.size() >= kMaxCraters) {
+            return {};
+        }
+        const float radius = std::min(dealt * deform.carve, deform.max_carve);
+        const auto over = over_terrain(world, entity, *at);
+        if (!over.has_value() || std::abs(over->above) >= radius || radius <= 0.0F) {
+            return {};
+        }
+        // A blast above the ground digs less of it.
+        const float reach = std::sqrt((radius * radius) - (over->above * over->above));
+        const auto across = static_cast<float>(std::max<real_t>(terrain->map_scale.x, 1e-6F));
+        terrain->craters.push_back(
+            {.center = over->cell,
+             .radius = reach / across,
+             .depth = reach * deform.crater_depth /
+                      static_cast<float>(std::max<real_t>(terrain->map_scale.y, 1e-6F))});
+        return "crater";
+    }
+    if (!ecs.all_of<world::MeshInstance3D>(entity)) {
+        return {};
+    }
+    const auto bounds = mesh_bounds(world, entity);
+    if (!bounds.has_value()) {
+        return {};
+    }
+    const world::Tree3D tree(world);
+    const world::Transform3D place = placed(world, tree, entity);
+    const world::Affine3D inverse = world::affine(place).inverse();
+    const Vec3 local = inverse.apply(*at);
+    const float scale = std::max(std::cbrt(volume_scale(place.scale)), 1e-6F);
+    const Vec3 middle = (bounds->first + bounds->second) * 0.5F;
+    const Vec3 surface = clamped(local, *bounds);
+    Vec3 along = middle - surface;
+    if (direction.has_value()) {
+        along = inverse.basis(*direction);
+    } else if (length(along) <= 1e-6F) {
+        along = middle - local;
+    }
+    if (const float size = length(along); size > 1e-6F) {
+        along = along * (1.0F / size);
+    } else {
+        along = {0.0F, -1.0F, 0.0F};
+    }
+    const bool carves = explosive && deform.carve > 0.0F;
+    if (carves) {
+        const float radius = std::min(dealt * deform.carve, deform.max_carve) / scale;
+        if (length(surface - local) >= radius || destructible->carves.size() >= kMaxCarves) {
+            return {};
+        }
+        destructible->carves.push_back({.from = local, .to = local, .radius = radius});
+        reshape(world, entity);
+        return "carve";
+    }
+    if (kind == "pierce" && deform.hole > 0.0F) {
+        if (destructible->carves.size() >= kMaxCarves) {
+            return {};
+        }
+        const float radius = std::min(dealt * deform.hole, deform.max_hole) / scale;
+        const float through = length(bounds->second - bounds->first) + (2.0F * radius);
+        const Vec3 from = surface - (along * radius);
+        destructible->carves.push_back(
+            {.from = from, .to = from + (along * through), .radius = radius});
+        reshape(world, entity);
+        return "hole";
+    }
+    const bool dents = kind == "blunt" || kind == "impact" || explosive;
+    if (dents && deform.dent > 0.0F) {
+        const float radius = deform.dent_radius / scale;
+        const float depth = std::min(dealt * deform.dent, deform.max_dent) / scale;
+        // A dent near another deepens it, up to the most it goes.
+        for (world::MeshDent& dent : destructible->dents) {
+            if (length(dent.at - surface) < radius * 0.5F) {
+                const float deeper = std::min(dent.depth + depth, deform.max_dent / scale);
+                if (deeper <= dent.depth) {
+                    return {};
+                }
+                dent.depth = deeper;
+                return "dent";
+            }
+        }
+        if (destructible->dents.size() >= kMaxDents) {
+            return {};
+        }
+        destructible->dents.push_back(
+            {.at = surface, .direction = along, .radius = radius, .depth = depth});
+        return "dent";
+    }
+    return {};
+}
+
+namespace {
 
 bool touching(const std::pair<Vec3, Vec3>& a, const std::pair<Vec3, Vec3>& b, float eps) {
     return a.first.x <= b.second.x + eps && b.first.x <= a.second.x + eps &&
@@ -337,6 +540,8 @@ Result<std::vector<entt::entity>> break_body(world::World& world, entt::entity e
         if (!from.has_value() && own_piece == nullptr) {
             cut.at = {};
         }
+        cut.dents = destructible->dents;
+        cut.carves = destructible->carves;
         cuts.push_back(cut);
     } else {
         cuts.push_back({.pattern = "voronoi",
@@ -344,7 +549,9 @@ Result<std::vector<entt::entity>> break_body(world::World& world, entt::entity e
                         .seed = destructible->seed,
                         .at = {},
                         .fine = 0.0F,
-                        .index = 0});
+                        .index = 0,
+                        .dents = destructible->dents,
+                        .carves = destructible->carves});
     }
     auto fracture = scene3d::fracture_of(world, entity, cuts);
     if (!fracture) {
@@ -538,6 +745,9 @@ Result<std::vector<entt::entity>> break_body(world::World& world, entt::entity e
             // Pieces take damage too, and break again while under the profile's levels.
             Destructible3D again = settings;
             again.level = settings.level + 1;
+            // What damage did before it broke is in the cut; the piece starts unmarked.
+            again.dents.clear();
+            again.carves.clear();
             again.state = 0;
             float health =
                 profile->health *
@@ -613,7 +823,8 @@ Result<std::vector<entt::entity>> break_body(world::World& world, entt::entity e
 }
 
 Result<DamageReport> damage_body(world::World& world, entt::entity entity, float amount,
-                                 std::string_view kind, std::optional<Vec3> at, float push) {
+                                 std::string_view kind, std::optional<Vec3> at, float push,
+                                 std::optional<Vec3> direction) {
     auto& ecs = world.ecs();
     auto* destructible = world.valid(entity) ? ecs.try_get<Destructible3D>(entity) : nullptr;
     if (destructible == nullptr) {
@@ -656,6 +867,9 @@ Result<DamageReport> damage_body(world::World& world, entt::entity entity, float
         destructible->state = state;
         show_state(world, entity, *profile, before, state);
     }
+    if (report.health > 0.0F) {
+        report.deformed = deform_body(world, entity, *profile, report.dealt, kind, at, direction);
+    }
     if (report.dealt > 0.0F) {
         json::Value data;
         data["dealt"] = report.dealt;
@@ -663,6 +877,9 @@ Result<DamageReport> damage_body(world::World& world, entt::entity entity, float
         data["kind"] = std::string(kind);
         if (state != before) {
             data["state"] = state;
+        }
+        if (!report.deformed.empty()) {
+            data["deformed"] = report.deformed;
         }
         world.emit("damaged", report.id, std::move(data));
     }
@@ -706,13 +923,23 @@ std::vector<DamageReport> damage_area(world::World& world, Vec3 center, float ra
     const world::Tree3D tree(world);
     std::vector<std::pair<entt::entity, float>> hit;
     for (const entt::entity entity : world.ecs().view<const Destructible3D>()) {
-        const Vec3 at = tree.global(entity).origin;
-        Vec3 near = at;
-        if (const auto bounds = piece_bounds(world, entity); bounds.has_value()) {
-            near = tree.global(entity).apply((bounds->first + bounds->second) * 0.5F);
+        // How far the blast is from the nearest of it: a terrain's ground below it, or the
+        // nearest point of its bounds.
+        float distance = 0.0F;
+        if (world.ecs().all_of<world::HTerrain>(entity)) {
+            const auto over = over_terrain(world, entity, center);
+            if (!over.has_value()) {
+                continue;
+            }
+            distance = std::abs(over->above);
+        } else {
+            const world::Affine3D global = tree.global(entity);
+            Vec3 near = global.origin;
+            if (const auto bounds = mesh_bounds(world, entity); bounds.has_value()) {
+                near = global.apply(clamped(global.inverse().apply(center), *bounds));
+            }
+            distance = length(near - center);
         }
-        const Vec3 d = near - center;
-        const float distance = std::sqrt((d.x * d.x) + (d.y * d.y) + (d.z * d.z));
         if (distance <= radius) {
             hit.emplace_back(entity, radius > 0.0F ? 1.0F - (distance / radius) : 1.0F);
         }

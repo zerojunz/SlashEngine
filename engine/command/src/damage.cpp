@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <map>
 #include <optional>
 #include <string>
@@ -102,6 +103,21 @@ json::Value report_value(const Report& report) {
     if (report.fell) {
         out["fell"] = true;
     }
+    if (!report.deformed.empty()) {
+        out["deformed"] = report.deformed;
+    }
+    return out;
+}
+
+// Whether damage of a kind tears cloth: cuts, shots and blasts do.
+bool tears(std::string_view kind) {
+    return kind == "cut" || kind == "pierce" || kind == "explosive";
+}
+
+json::Value torn_value(std::string_view id, std::size_t count) {
+    json::Value out;
+    out["id"] = id;
+    out["torn"] = static_cast<std::int64_t>(count);
     return out;
 }
 
@@ -119,30 +135,65 @@ Reply damage_apply(Session& session, const json::Value& params) {
         return std::move(*refused);
     }
     const auto push = static_cast<float>(number_or(params, "push", 0.0));
-    std::optional<Vec3> at;
-    bool flat_at = false;
-    if (const json::Value* point = params.find("at"); point != nullptr) {
+    const auto point_of = [](const json::Value* point, bool& flat) -> std::optional<Vec3> {
+        if (point == nullptr) {
+            return std::nullopt;
+        }
         const json::Array& numbers = point->as_array();
-        flat_at = numbers.size() == 2;
-        at = Vec3{static_cast<real_t>(numbers[0].as_double()),
-                  static_cast<real_t>(numbers[1].as_double()),
-                  flat_at ? real_t{0} : static_cast<real_t>(numbers[2].as_double())};
+        flat = numbers.size() == 2;
+        return Vec3{static_cast<real_t>(numbers[0].as_double()),
+                    static_cast<real_t>(numbers[1].as_double()),
+                    flat ? real_t{0} : static_cast<real_t>(numbers[2].as_double())};
+    };
+    bool flat_at = false;
+    bool flat_direction = false;
+    const std::optional<Vec3> at = point_of(params.find("at"), flat_at);
+    const std::optional<Vec3> direction = point_of(params.find("direction"), flat_direction);
+    if (at && direction && flat_at != flat_direction) {
+        return param_error(code::kInvalidParams, "/direction",
+                           "a direction has as many numbers as at");
     }
+    const auto flat = [](const std::optional<Vec3>& v) {
+        return v ? std::optional<Vec2>(Vec2{v->x, v->y}) : std::nullopt;
+    };
+    const json::Value* radius_value = params.find("radius");
     json::Array hurt;
+    json::Array torn;
     if (const json::Value* id_value = params.find("id"); id_value != nullptr) {
         const std::string& id = id_value->as_string();
         const entt::entity entity = world.find(id);
         if (entity == entt::null) {
             return unknown_id(world, id, "/id");
         }
-        if (world.ecs().all_of<world::Destructible2D>(entity)) {
+        const auto& ecs = world.ecs();
+        const bool cloth_2d = ecs.all_of<world::Cloth2D>(entity);
+        if ((cloth_2d || ecs.all_of<world::SoftBody3D>(entity)) &&
+            !ecs.any_of<world::Destructible2D, world::Destructible3D>(entity)) {
+            // Cloth tears where a cut, a shot or a blast reaches it.
+            if (!at || radius_value == nullptr) {
+                return param_error(code::kInvalidParams, at ? "/radius" : "/at",
+                                   "tearing cloth takes a point at and a radius");
+            }
+            if (cloth_2d != flat_at) {
+                return param_error(code::kInvalidParams, "/at",
+                                   cloth_2d ? "a Cloth2D is torn at [x, y] in pixels"
+                                            : "a SoftBody3D is torn at [x, y, z] in meters");
+            }
+            const auto radius = static_cast<float>(radius_value->as_double());
+            std::size_t count = 0;
+            if (tears(kind) && cloth_2d) {
+                count = physics2d::tear_cloth_2d(world, entity, *flat(at), radius).size();
+            } else if (tears(kind)) {
+                count = physics3d::tear_soft_body(world, entity, *at, radius).size();
+            }
+            torn.emplace_back(torn_value(id, count));
+        } else if (ecs.all_of<world::Destructible2D>(entity)) {
             if (at && !flat_at) {
                 return param_error(code::kInvalidParams, "/at",
                                    "a Destructible2D is hit at [x, y] in pixels");
             }
-            const std::optional<Vec2> at_2d =
-                at ? std::optional<Vec2>(Vec2{at->x, at->y}) : std::nullopt;
-            auto report = physics2d::damage_body_2d(world, entity, amount, kind, at_2d, push);
+            auto report = physics2d::damage_body_2d(world, entity, amount, kind, flat(at), push,
+                                                    flat(direction));
             if (!report) {
                 return param_error(code::kInvalidParams, "/id",
                                    quoted(id) + " " + report.error().message);
@@ -153,7 +204,7 @@ Reply damage_apply(Session& session, const json::Value& params) {
                 return param_error(code::kInvalidParams, "/at",
                                    "a Destructible3D is hit at [x, y, z] in meters");
             }
-            auto report = physics3d::damage_body(world, entity, amount, kind, at, push);
+            auto report = physics3d::damage_body(world, entity, amount, kind, at, push, direction);
             if (!report) {
                 return param_error(code::kInvalidParams, "/id",
                                    quoted(id) + " " + report.error().message);
@@ -164,7 +215,6 @@ Reply damage_apply(Session& session, const json::Value& params) {
         if (!at) {
             return param_error(code::kInvalidParams, "", "name an id, or a point at and a radius");
         }
-        const json::Value* radius_value = params.find("radius");
         if (radius_value == nullptr) {
             return param_error(code::kInvalidParams, "/radius",
                                "damage at a point reaches what is within a radius");
@@ -181,9 +231,33 @@ Reply damage_apply(Session& session, const json::Value& params) {
                 hurt.emplace_back(report_value(report));
             }
         }
+        if (tears(kind)) {
+            std::vector<entt::entity> cloths;
+            if (flat_at) {
+                for (const entt::entity entity : world.ecs().view<const world::Cloth2D>()) {
+                    cloths.push_back(entity);
+                }
+            } else {
+                for (const entt::entity entity : world.ecs().view<const world::SoftBody3D>()) {
+                    cloths.push_back(entity);
+                }
+            }
+            std::ranges::sort(cloths, {}, [](entt::entity e) { return entt::to_entity(e); });
+            for (const entt::entity entity : cloths) {
+                const std::size_t count =
+                    flat_at ? physics2d::tear_cloth_2d(world, entity, *flat(at), radius).size()
+                            : physics3d::tear_soft_body(world, entity, *at, radius).size();
+                if (count > 0) {
+                    torn.emplace_back(torn_value(world.id_of(entity), count));
+                }
+            }
+        }
     }
     json::Value result;
     result["hurt"] = std::move(hurt);
+    if (!torn.empty()) {
+        result["torn"] = std::move(torn);
+    }
     return Reply::success(std::move(result));
 }
 
@@ -261,13 +335,38 @@ Reply damage_state(Session& session, const json::Value& params) {
     for (const auto [entity, destructible] : ecs.view<const world::Destructible3D>().each()) {
         const std::string_view id = world.id_of(entity);
         if (!id.empty() && included(id)) {
-            bodies.emplace_back(destructible_state(world, id, destructible, false));
+            json::Value body = destructible_state(world, id, destructible, false);
+            if (!destructible.dents.empty()) {
+                body["dents"] = static_cast<std::int64_t>(destructible.dents.size());
+            }
+            if (!destructible.carves.empty()) {
+                body["carves"] = static_cast<std::int64_t>(destructible.carves.size());
+            }
+            if (const auto* terrain = ecs.try_get<const world::HTerrain>(entity);
+                terrain != nullptr && !terrain->craters.empty()) {
+                body["craters"] = static_cast<std::int64_t>(terrain->craters.size());
+            }
+            bodies.emplace_back(std::move(body));
         }
     }
     for (const auto [entity, destructible] : ecs.view<const world::Destructible2D>().each()) {
         const std::string_view id = world.id_of(entity);
         if (!id.empty() && included(id)) {
             bodies.emplace_back(destructible_state(world, id, destructible, true));
+        }
+    }
+    // Cloth torn, by how many edges (2D) or triangles (3D).
+    json::Array torn;
+    for (const auto [entity, cloth] : ecs.view<const world::Cloth2D>().each()) {
+        const std::string_view id = world.id_of(entity);
+        if (!cloth.torn.empty() && !id.empty() && included(id)) {
+            torn.emplace_back(torn_value(id, cloth.torn.size()));
+        }
+    }
+    for (const auto [entity, soft] : ecs.view<const world::SoftBody3D>().each()) {
+        const std::string_view id = world.id_of(entity);
+        if (!soft.torn.empty() && !id.empty() && included(id)) {
+            torn.emplace_back(torn_value(id, soft.torn.size()));
         }
     }
     std::map<std::string, GroupState, std::less<>> groups;
@@ -306,6 +405,9 @@ Reply damage_state(Session& session, const json::Value& params) {
             list.emplace_back(std::move(out));
         }
         result["groups"] = std::move(list);
+    }
+    if (!torn.empty()) {
+        result["torn"] = std::move(torn);
     }
     return Reply::success(std::move(result));
 }
@@ -420,7 +522,8 @@ void register_damage_commands(Registry& registry) {
         schema["additionalProperties"] = false;
         schema["required"] = json::Array{"amount"};
         json::Value& p = schema["properties"];
-        p["id"] = property("string", "A Destructible3D or Destructible2D to damage.");
+        p["id"] = property("string", "A Destructible3D or Destructible2D to damage, or a "
+                                     "Cloth2D or SoftBody3D to tear within radius of at.");
         p["at"] = point_property("Where it is hit: [x, y, z] in meters, or [x, y] in pixels for "
                                  "2D. Without an id, the center of an area.");
         p["radius"] =
@@ -430,14 +533,17 @@ void register_damage_commands(Registry& registry) {
         p["amount"] = property("number", "Damage before the profile's resistance.");
         p["amount"]["minimum"] = 0;
         p["kind"] = property("string", "blunt (default), pierce, cut, explosive, fire or impact.");
+        p["direction"] = point_property("Which way the hit goes, as at: dents and holes go in "
+                                        "along it. Default: toward the body's middle.");
         p["push"] = property("number", "Speed loose pieces fly from the hit at (m/s, 2D px/s); "
                                        "0 takes the profile's.");
         p["push"]["minimum"] = 0;
         registry.add({
             .name = "damage.apply",
             .description = "Damages a Destructible3D or Destructible2D by its .damage.json "
-                           "profile, or all within a radius: damage states, breaking where hit, "
-                           "linked pieces collapsing. Returns each one hurt.",
+                           "profile, or all within a radius: damage states, dents, holes and "
+                           "craters, breaking where hit, linked pieces collapsing; cuts, shots "
+                           "and blasts tear cloth. Returns each one hurt and torn.",
             .capabilities = {Capability::Edit},
             .effect = Effect::Edit,
             .params = std::move(schema),
@@ -454,9 +560,9 @@ void register_damage_commands(Registry& registry) {
         p["ids"]["items"]["type"] = "string";
         registry.add({
             .name = "damage.state",
-            .description = "Each Destructible3D and Destructible2D's health, full health and "
-                           "damage state, and each broken body's linked pieces standing and "
-                           "loose.",
+            .description = "Each Destructible3D and Destructible2D's health, full health, "
+                           "damage state, dents, carves and craters, each broken body's linked "
+                           "pieces standing and loose, and cloth torn.",
             .capabilities = {Capability::Read},
             .effect = Effect::Read,
             .params = std::move(schema),

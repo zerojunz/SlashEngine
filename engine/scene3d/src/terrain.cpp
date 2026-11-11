@@ -114,6 +114,7 @@ struct Settings {
     Vec2 height_range;
     std::string splatmap;
     std::string colormap;
+    std::vector<world::TerrainCrater> craters;
 
     friend bool operator==(const Settings&, const Settings&) = default;
 };
@@ -123,7 +124,8 @@ Settings settings_of(const world::HTerrain& terrain) {
             .resolution = terrain.resolution,
             .height_range = terrain.height_range,
             .splatmap = terrain.splatmap,
-            .colormap = terrain.colormap};
+            .colormap = terrain.colormap,
+            .craters = terrain.craters};
 }
 
 // A map's pointer, or why it didn't load: a path of "" or a file that doesn't exist yet is
@@ -150,6 +152,46 @@ Sources sources_of(const world::HTerrain& terrain, const HeightmapLoader& height
     load(terrain.colormap, images, sources.color, sources.color_error);
     return sources;
 }
+
+} // namespace
+
+void dig_crater(std::vector<float>& heights, int resolution, const world::TerrainCrater& crater) {
+    if (crater.radius <= 0.0F || resolution <= 0 ||
+        heights.size() !=
+            static_cast<std::size_t>(resolution) * static_cast<std::size_t>(resolution)) {
+        return;
+    }
+    const float reach = crater.radius * kCraterRimReach;
+    const int x0 = std::max(0, static_cast<int>(std::floor(crater.center.x - reach)));
+    const int x1 = std::min(resolution - 1, static_cast<int>(std::ceil(crater.center.x + reach)));
+    const int z0 = std::max(0, static_cast<int>(std::floor(crater.center.y - reach)));
+    const int z1 = std::min(resolution - 1, static_cast<int>(std::ceil(crater.center.y + reach)));
+    const float rim = crater.depth * kCraterRim;
+    for (int z = z0; z <= z1; ++z) {
+        for (int x = x0; x <= x1; ++x) {
+            const float dx =
+                (static_cast<float>(x) - static_cast<float>(crater.center.x)) / crater.radius;
+            const float dz =
+                (static_cast<float>(z) - static_cast<float>(crater.center.y)) / crater.radius;
+            const float d2 = (dx * dx) + (dz * dz);
+            float change = 0.0F;
+            if (d2 < 1.0F) {
+                // The bowl, with the rim's inner slope rising to its top at the edge.
+                change = (-crater.depth * (1.0F - d2)) + (rim * d2 * d2);
+            } else {
+                const float out = (std::sqrt(d2) - 1.0F) / (kCraterRimReach - 1.0F);
+                if (out >= 1.0F) {
+                    continue;
+                }
+                change = rim * (1.0F - out) * (1.0F - out);
+            }
+            heights[(static_cast<std::size_t>(z) * static_cast<std::size_t>(resolution)) +
+                    static_cast<std::size_t>(x)] += change;
+        }
+    }
+}
+
+namespace {
 
 std::shared_ptr<const TerrainData> make_data(const world::HTerrain& terrain, entt::entity entity,
                                              const Sources& sources) {
@@ -209,6 +251,9 @@ std::shared_ptr<const TerrainData> make_data(const world::HTerrain& terrain, ent
         data->heights = decode_heights(*sources.heights, terrain.height_range);
     } else {
         data->heights.assign(std::size_t{r} * r, terrain.height_range.x);
+    }
+    for (const world::TerrainCrater& crater : terrain.craters) {
+        dig_crater(data->heights, resolution, crater);
     }
     data->splatmap = sources.splat;
     data->colormap = sources.color;

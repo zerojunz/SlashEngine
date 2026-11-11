@@ -68,6 +68,17 @@ fracture_of(const world::World& world, entt::entity entity,
 [[nodiscard]] Result<std::shared_ptr<const Fracture>>
 fracture_of(const world::World& world, entt::entity entity, int cells, std::uint32_t seed);
 
+// Whether an entity draws (and collides as) a damaged_piece_of: a FracturePiece3D, or a
+// Destructible3D whose mesh has dents or carves.
+[[nodiscard]] bool draws_damaged(const world::World& world, entt::entity entity);
+// What such an entity is now: a FracturePiece3D's piece of its mesh (its cuts, each with the
+// damage of what it cut, then its Destructible3D's own), or a Destructible3D's whole mesh with its
+// carves taken out and dents pushed in, the faces they make drawn with the mesh's material. Kept
+// in the world (install_csg) while the mesh and damage stay the same; fails, saying why, for one
+// that can't be cut.
+[[nodiscard]] Result<std::shared_ptr<const FracturePiece>>
+damaged_piece_of(const world::World& world, entt::entity entity);
+
 // The Destructible3Ds of a world that can't break, in the order their entities were made: those
 // with no StaticBody3D or RigidBody3D, and those whose mesh can't be cut (fracture_of's reason).
 [[nodiscard]] std::vector<Problem> check_destructibles(const world::World& world);

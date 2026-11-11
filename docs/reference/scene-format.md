@@ -4853,7 +4853,7 @@ window and two 2D crates.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `material` | `"stone"` | `wood`, `glass`, `metal`, `stone`, `concrete`, `brick`, `ceramic`, `ice`, `plastic`, `flesh` or `cloth`: the defaults every field it leaves out takes (`damage.check` shows them) |
+| `material` | `"stone"` | `wood`, `glass`, `metal`, `stone`, `concrete`, `brick`, `ceramic`, `ice`, `plastic`, `flesh`, `cloth` or `soil` (ground that never breaks but is dug into): the defaults every field it leaves out takes (`damage.check` shows them) |
 | `health` | the material's | What damage takes away before it breaks |
 | `resist` | the material's | What each kind of damage (`blunt`, `pierce`, `cut`, `explosive`, `fire`, `impact`) is multiplied by; a kind not named is 1 |
 | `impact` | the material's | `threshold`: kilogram-meters a second (2D: kilogram-pixels) of a collision past which it does damage, `damage` health for each one past it |
@@ -4863,6 +4863,7 @@ window and two 2D crates.
 | `connected` | the material's | Whether its pieces stand linked, held by `anchors` (`bottom`, `ends` of its longest level axis as a bridge's, `all` or `none`) |
 | `strength`, `compression` | the material's | Newtons a square meter of a link holds (2D: a newton a pixel of edge, per 64), and how many times more it holds what stands on it |
 | `debris` | `lifetime` `0`, `push` the material's | Seconds loose pieces last (0 keeps them) and meters (pixels) a second they fly from the hit |
+| `deform` | the material's | How damage that doesn't break it changes its shape: `dent` (meters deep a point of blunt, impact or explosive damage pushes in), `dent_radius`, `max_dent`; `hole` (meters across a point of pierce damage shoots through), `max_hole`; `carve` (meters of radius a point of explosive damage blasts out), `max_carve`; `crater_depth` (how deep a crater is for its radius, on an `HTerrain`). 0 does none. 2D outlines take them at 64 pixels a meter |
 
 - Damage of a kind, times its resistance, comes off `health`, and the body's `state` follows the
   states it is below; at no health it breaks where it was hit. `damaged`, `broken` and
@@ -4884,11 +4885,28 @@ window and two 2D crates.
   an anchor falls.
 - A profile's `impact` takes the place of `damage_threshold`: a collision past it does damage,
   and one that breaks the body is let through to its pieces (in 2D the body that hit bounces).
+- Damage that leaves health changes the shape as `deform` says, after Chaos's field-driven
+  damage: a 3D mesh keeps its `dents` (a patch pushed in along the hit, deepened by later blows
+  nearby) and `carves` (a hole shot through along the hit, or a ball blasted out of it) in its
+  own space, and draws and cuts with them (`scene3d::damaged_piece_of`). A carved or holed
+  static body collides as its triangles, a rigid one as their hull. When it breaks, its damage
+  goes into the cut, so each piece keeps its share of the holes, and a piece's own later damage
+  is applied after its cuts. An `HTerrain` with a `Destructible3D` (a `soil` profile) is dug into
+  where a blast reaches its ground, as a bowl with a rim, kept in its `craters`. A 2D outline is
+  carved, holed (opened to its edge by a slot, so it stays one polygon) and dented with
+  Clipper2; parts cut off fall as debris, and the body draws as a `Polygon2D` of what is left. A
+  `TileMapLayer` with a `Destructible2D` loses the cells a blast reaches.
+- Cuts, shots and blasts tear cloth: `damage.apply` tears a `Cloth2D`'s edges or a
+  `SoftBody3D`'s triangles within its `radius`, and cloth with a `tear_stretch` tears by itself
+  where an edge is pulled past that many times its length. `torn` events say which.
 
 | Component | Fields (defaults) |
 | --- | --- |
-| `Destructible3D` (with a profile) | `profile` `""`, `overrides` `null`, `health` `-1` (what is left; below 0 the profile's full health), `state` `0`, `level` `0` |
-| `FracturePiece3D` | `cuts` `[]` (the cuts that made it, each naming the piece the next cut), `group` `""` (the body it broke from), `links` `[]` (`piece` and `area` of each linked piece), `anchored` `false` |
+| `Destructible3D` (with a profile) | `profile` `""`, `overrides` `null`, `health` `-1` (what is left; below 0 the profile's full health), `state` `0`, `level` `0`, `dents` `[]` (`at`, `direction`, `radius`, `depth` in its mesh's space), `carves` `[]` (`from`, `to`, `radius`: a capsule taken out) |
+| `FracturePiece3D` | `cuts` `[]` (the cuts that made it, each naming the piece the next cut and the `dents` and `carves` of what it cut), `group` `""` (the body it broke from), `links` `[]` (`piece` and `area` of each linked piece), `anchored` `false` |
+| `HTerrain` | `craters` `[]`: `center` (cells), `radius` (cells) and `depth` (meters before `map_scale`) of each dug |
+| `Cloth2D` | `tear_stretch` `0` (how many times its length an edge stretches before it tears; 0 never), `torn` `[]` (the edges torn: from each point, row by row, the one right of it, then the one below it) |
+| `SoftBody3D` | `tear_stretch` `0`, `torn` `[]` (its mesh's triangles torn out, by number) |
 | `Destructible2D` | as `Destructible3D`'s, of a `StaticBody2D` or `RigidBody2D` whose outline is its `CollisionPolygon2D`, else its `CollisionShape2D`, else its `Sprite2D`'s rectangle |
 | `FracturePiece2D` | `lifetime` `0`, `group` `""`, `links` `[]`, `anchored` `false` |
 

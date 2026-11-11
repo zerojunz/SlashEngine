@@ -303,6 +303,7 @@ struct Cloth2DBody {
     std::vector<Vec2> targets; // where the transform put the points at the last step
     std::vector<std::array<int, 2>> edges;
     std::vector<std::array<int, 2>> bends;
+    std::vector<std::array<int, 4>> bend_sides; // the edges each bend spans, -1 for none
     world::ClothPoints2D points;
 };
 

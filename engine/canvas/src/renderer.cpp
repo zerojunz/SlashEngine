@@ -1389,15 +1389,22 @@ void CanvasRenderer::gather_cloths(DrawState& state) {
                                     .v = static_cast<float>(row) / static_cast<float>(rows - 1),
                                     .rgba = rgba};
         };
+        // Triangles with a torn side leave a gap.
+        const std::vector<bool> whole = world::cloth_triangles_2d(world::cloth_grid_2d(cloth));
         const std::size_t first = vertices.size();
+        std::size_t triangle = 0;
         for (int row = 0; row + 1 < rows; ++row) {
             for (int column = 0; column + 1 < columns; ++column) {
                 const render::Vertex2D top_left = corner(row, column);
                 const render::Vertex2D top_right = corner(row, column + 1);
                 const render::Vertex2D bottom_left = corner(row + 1, column);
                 const render::Vertex2D bottom_right = corner(row + 1, column + 1);
-                vertices.insert(vertices.end(), {top_left, top_right, bottom_left, top_right,
-                                                 bottom_right, bottom_left});
+                if (whole[triangle++]) {
+                    vertices.insert(vertices.end(), {top_left, top_right, bottom_left});
+                }
+                if (whole[triangle++]) {
+                    vertices.insert(vertices.end(), {top_right, bottom_right, bottom_left});
+                }
             }
         }
         state.repeat(entity, first);

@@ -5,6 +5,7 @@
 #include "slash/core/math.hpp"
 #include "slash/core/result.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/damage.hpp"
 #include "slash/world/world.hpp"
 
 #include <cstddef>
@@ -157,20 +158,44 @@ struct DamageReport2D {
     bool broke = false;
     std::vector<std::string> pieces;
     bool fell = false;
+    // How the damage changed its shape while it held: "dent", "hole", "carve" or "".
+    std::string deformed;
 };
+
+// Carves the cells of a TileMapLayer whose centers are within radius pixels of center, as the
+// canvas module sets it (physics2d doesn't depend on canvas); returns how many it took away, or
+// without apply how many it would.
+using TileCarver = std::function<int(world::World& world, entt::entity layer, Vec2 center,
+                                     float radius, bool apply)>;
+void set_tile_carver(world::World& world, TileCarver carver);
+
+// Changes a Destructible2D's outline by damage that didn't break it, as its profile's deform
+// settings say: blunt, impact and explosive damage dent it, pierce damage holes it and
+// explosive damage carves it (a TileMapLayer loses the cells a blast reaches). Parts cut off
+// fall away as debris pieces. The settings' meters are 64 pixels each, as Box2D's length unit.
+// Returns "dent", "hole", "carve" or "" when nothing changed.
+std::string deform_body_2d(world::World& world, entt::entity entity,
+                           const world::DamageProfile& profile, float dealt, std::string_view kind,
+                           std::optional<Vec2> at, std::optional<Vec2> direction = std::nullopt);
 
 // Breaks a Destructible2D into pieces now, as its profile (or its legacy cells) cuts it, the
 // pieces flying push pixels a second from from (else from its center). Returns the pieces.
 [[nodiscard]] Result<std::vector<entt::entity>>
 break_body_2d(world::World& world, entt::entity entity, float push = 0.0F,
               std::optional<Vec2> from = std::nullopt);
+// Tears a Cloth2D's edges whose middles are within radius pixels of center, where physics last
+// put its points (else where they rest), as a cut, a shot or a blast does; returns the edges it
+// tore (world::cloth_grid_2d's numbers) and emits "torn" with them.
+std::vector<int> tear_cloth_2d(world::World& world, entt::entity entity, Vec2 center, float radius);
 // Does amount damage of a kind ("blunt", "pierce", "cut", "explosive", "fire", "impact") to a
 // Destructible2D at a point in the world, breaking it once its health runs out.
 [[nodiscard]] Result<DamageReport2D> damage_body_2d(world::World& world, entt::entity entity,
                                                     float amount, std::string_view kind,
                                                     std::optional<Vec2> at = std::nullopt,
-                                                    float push = 0.0F);
-// Damages every Destructible2D within radius pixels of center, less with distance.
+                                                    float push = 0.0F,
+                                                    std::optional<Vec2> direction = std::nullopt);
+// Damages every Destructible2D within radius pixels of center (its outline's nearest point, a
+// tile map layer's place), less with distance.
 [[nodiscard]] std::vector<DamageReport2D> damage_area_2d(world::World& world, Vec2 center,
                                                          float radius, float amount,
                                                          std::string_view kind, float push = 0.0F);

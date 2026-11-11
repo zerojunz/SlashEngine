@@ -3,6 +3,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/math.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/damage.hpp"
 #include "slash/world/world.hpp"
 
 #include <cstddef>
@@ -129,6 +130,13 @@ struct SoftBodyPoints {
 [[nodiscard]] std::optional<SoftBodyPoints> soft_body_points(world::World& world,
                                                              entt::entity entity);
 
+// Tears out the triangles of a SoftBody3D's mesh whose middles are within radius meters of
+// center, where physics last put them (else where the mesh rests), as a cut, a shot or a blast
+// does; returns the triangles it tore (by number in the mesh) and emits "torn" with them. The
+// body is made again without them at the next step, its points kept where they are.
+std::vector<int> tear_soft_body(world::World& world, entt::entity entity, Vec3 center,
+                                float radius);
+
 // Whether an entity is a 3D body or area now, as the next step sees it.
 [[nodiscard]] bool has_body(const world::World& world, entt::entity entity);
 
@@ -160,6 +168,8 @@ struct DamageReport {
     bool broke = false;  // whether it broke, into pieces
     std::vector<std::string> pieces;
     bool fell = false; // whether a standing piece that breaks no more came loose
+    // What it did to its shape, short of breaking it: "dent", "hole", "carve", "crater" or "".
+    std::string deformed;
 };
 
 // Damages a Destructible3D by amount of a kind ("blunt", "pierce", "cut", "explosive", "fire",
@@ -170,7 +180,19 @@ struct DamageReport {
 // hit at; 0 takes the profile's.
 [[nodiscard]] Result<DamageReport> damage_body(world::World& world, entt::entity entity,
                                                float amount, std::string_view kind,
-                                               std::optional<Vec3> at, float push = 0.0F);
+                                               std::optional<Vec3> at, float push = 0.0F,
+                                               std::optional<Vec3> direction = std::nullopt);
+// What damage dealt of a kind does to a body's shape short of breaking it, by its profile's
+// deform: explosive damage carves a sphere out of a profile that carves (and digs a crater into
+// an HTerrain, the entity's Destructible3D naming a soil profile), pierce damage holes it through
+// along direction (from at toward its middle when nullopt), and blunt, impact and explosive
+// damage dent a profile that dents, deepening a dent near the last. at is in the world, and the
+// dent or hole starts at the nearest point of its bounds. A carved or holed body's own
+// CollisionShape3D becomes what is left (a static body's triangles, a rigid body's hull).
+// damage_body calls it while health is left. Returns "dent", "hole", "carve", "crater" or "".
+std::string deform_body(world::World& world, entt::entity entity,
+                        const world::DamageProfile& profile, float dealt, std::string_view kind,
+                        std::optional<Vec3> at, std::optional<Vec3> direction = std::nullopt);
 // Damages every Destructible3D within radius of center, as an explosion: each by amount less
 // the share of radius it is away, nearest the center its pieces' middles count from.
 [[nodiscard]] std::vector<DamageReport> damage_area(world::World& world, Vec3 center, float radius,

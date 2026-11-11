@@ -1,0 +1,14 @@
+{
+  "format": 1,
+  "sources": {
+    "rock": {
+      "texture": "rock.png",
+      "tiles": {
+        "0,0": {
+          "name": "rock"
+        }
+      }
+    }
+  },
+  "tile_size": [16, 16]
+}
