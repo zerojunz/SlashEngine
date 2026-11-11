@@ -1291,9 +1291,13 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
           links, in 3D (`Destructible3D`) and 2D (`Destructible2D`, cut with Clipper2 and drawn
           as `Polygon2D`s), with `damage.apply`, `damage.state`, `damage.check` and 2D
           `physics.break` (`examples/destruction-profiles`)
-    - [ ] Dents, holes and carving: metal dented and bent by the impulse, holes cut into meshes,
-          walls and terrain carved and cratered where explosions reach, cloth torn where it is
-          pulled too far, in 3D and 2D
+    - [x] Dents, holes and carving: profiles' `deform` settings; meshes dented, holed and
+          carved by damage that doesn't break them (kept as `dents` and `carves`, carried into
+          the pieces' cuts, carved bodies colliding as what is left), `HTerrain` craters, 2D
+          outlines carved, holed and dented with Clipper2 (parts cut off falling as debris),
+          tile map cells blasted away, and `Cloth2D` and `SoftBody3D` torn by cuts, shots,
+          blasts and stretching (`tear_stretch`, `torn`); Cloth3D's skinned cloth doesn't tear
+          yet (`examples/damage-deform`)
     - [ ] Break effects and every body: the debris, dust, decals and sounds each break leaves,
           damage to characters, creatures and vehicles, and runtime cuts on the job pool
           within a time budget

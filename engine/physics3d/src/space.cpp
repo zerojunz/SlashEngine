@@ -1829,7 +1829,7 @@ void Space::step(world::World& world, float seconds) {
                        {"max_contact_constraints", static_cast<int>(kMaxContacts)}});
         }
     }
-    read_soft_bodies();
+    read_soft_bodies(world);
     read_cloths(tree);
     step_vehicles(world, tree, seconds);
     read_back(world, tree);

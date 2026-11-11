@@ -21,7 +21,7 @@ namespace {
 constexpr std::string_view kSchema = R"({
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "SlashEngine damage profile",
-  "description": "How a body takes damage and breaks, after Chaos Destruction: its material (whose defaults fill what is left out), health, resistances, damage states, fracture pattern and levels, and whether its pieces stand linked until what holds them goes. Lengths are meters (2D: pixels), weights kilograms, colors [r, g, b] or [r, g, b, a] from 0 to 1.",
+  "description": "How a body takes damage and breaks, after Chaos Destruction: its material (whose defaults fill what is left out), health, resistances, damage states, fracture pattern and levels, whether its pieces stand linked until what holds them goes, and how it dents, is holed and carved before it breaks. Lengths are meters (2D: pixels), weights kilograms, colors [r, g, b] or [r, g, b, a] from 0 to 1.",
   "type": "object",
   "additionalProperties": false,
   "required": ["format"],
@@ -32,7 +32,7 @@ constexpr std::string_view kSchema = R"({
     "format": {"const": 1, "description": "Format version. Must be 1."},
     "extends": {"type": "string", "pattern": "\\.damage\\.json$", "description": "A .damage.json file this one changes, as a JSON Merge Patch."},
     "name": {"type": "string", "description": "What it is called, for checks and reports."},
-    "material": {"enum": ["wood", "glass", "metal", "stone", "concrete", "brick", "ceramic", "ice", "plastic", "flesh", "cloth"], "description": "What it is made of, whose defaults fill what is left out. Default stone."},
+    "material": {"enum": ["wood", "glass", "metal", "stone", "concrete", "brick", "ceramic", "ice", "plastic", "flesh", "cloth", "soil"], "description": "What it is made of, whose defaults fill what is left out. Default stone."},
     "health": {"type": "number", "exclusiveMinimum": 0, "description": "Damage it takes before it breaks."},
     "resist": {
       "type": "object", "additionalProperties": false,
@@ -87,6 +87,20 @@ constexpr std::string_view kSchema = R"({
         "lifetime": {"type": "number", "minimum": 0, "description": "Seconds before loose pieces go; 0 keeps them."},
         "push": {"type": "number", "minimum": 0, "description": "Speed loose pieces fly from the hit at."}
       }
+    },
+    "deform": {
+      "type": "object", "additionalProperties": false,
+      "description": "What damage does to its shape before it breaks: blunt, impact and explosive damage dent it, pierce damage holes it, explosive damage and explosive damage carves it (and craters a terrain).",
+      "properties": {
+        "dent": {"type": "number", "minimum": 0, "description": "How deep a dent goes for each point of damage dealt; 0: it doesn't dent."},
+        "dent_radius": {"type": "number", "exclusiveMinimum": 0, "description": "How far around the hit a dent spreads."},
+        "max_dent": {"type": "number", "minimum": 0, "description": "The deepest dents in one place add up to."},
+        "hole": {"type": "number", "minimum": 0, "description": "The radius of the hole each point of pierce damage cuts through it; 0: no holes."},
+        "max_hole": {"type": "number", "minimum": 0, "description": "The widest one hole's radius gets."},
+        "carve": {"type": "number", "minimum": 0, "description": "The radius of what each point of explosive damage carves out of it; 0: it isn't carved."},
+        "max_carve": {"type": "number", "minimum": 0, "description": "The widest one carve's radius gets."},
+        "crater_depth": {"type": "number", "minimum": 0, "maximum": 2, "description": "How deep a terrain's crater goes, as a share of its radius."}
+      }
     }
   }
 })";
@@ -98,7 +112,8 @@ constexpr std::string_view kDefaults = R"({
   "wood": {"health": 60, "resist": {"pierce": 0.6, "cut": 1.2, "fire": 2, "explosive": 1.2},
            "impact": {"threshold": 30, "damage": 0.5},
            "fracture": {"pattern": "splinters", "pieces": 10, "levels": 2, "level_pieces": 3},
-           "density": 600, "strength": 80000, "compression": 8, "debris": {"push": 1}},
+           "density": 600, "strength": 80000, "compression": 8, "debris": {"push": 1},
+           "deform": {"hole": 0.003, "max_hole": 0.15, "carve": 0.002, "max_carve": 0.5}},
   "glass": {"health": 10, "resist": {"pierce": 1.5, "blunt": 1.5, "fire": 0.2},
             "impact": {"threshold": 5, "damage": 2},
             "fracture": {"pattern": "radial", "pieces": 24, "levels": 1},
@@ -107,21 +122,23 @@ constexpr std::string_view kDefaults = R"({
   "metal": {"health": 400, "resist": {"pierce": 0.4, "blunt": 0.5, "cut": 0.3, "fire": 0.2, "explosive": 0.8},
             "impact": {"threshold": 400, "damage": 0.2},
             "fracture": {"pattern": "slices", "pieces": 4, "levels": 1},
-            "density": 7800, "strength": 2000000, "compression": 2},
+            "density": 7800, "strength": 2000000, "compression": 2,
+            "deform": {"dent": 0.002, "dent_radius": 0.3, "max_dent": 0.2, "hole": 0.002, "max_hole": 0.1}},
   "stone": {"health": 200, "resist": {"pierce": 0.3, "cut": 0.3, "fire": 0, "explosive": 1.5},
             "impact": {"threshold": 150, "damage": 0.4},
             "fracture": {"pattern": "clusters", "pieces": 8, "levels": 2, "level_pieces": 4},
-            "density": 2600, "strength": 150000, "compression": 20, "debris": {"push": 0.5}},
+            "density": 2600, "strength": 150000, "compression": 20, "debris": {"push": 0.5},
+            "deform": {"carve": 0.004, "max_carve": 1.5}},
   "concrete": {"health": 250, "resist": {"pierce": 0.3, "cut": 0.2, "fire": 0, "explosive": 1.5},
                "impact": {"threshold": 200, "damage": 0.4},
                "fracture": {"pattern": "impact", "pieces": 12, "levels": 2, "level_pieces": 4},
                "density": 2400, "connected": true, "strength": 200000, "compression": 20,
-               "debris": {"push": 0.5}},
+               "debris": {"push": 0.5}, "deform": {"carve": 0.004, "max_carve": 1.5}},
   "brick": {"health": 150, "resist": {"pierce": 0.4, "cut": 0.3, "fire": 0, "explosive": 1.5},
             "impact": {"threshold": 120, "damage": 0.5},
             "fracture": {"pattern": "clusters", "pieces": 10, "levels": 2, "level_pieces": 3},
             "density": 1900, "connected": true, "strength": 100000, "compression": 15,
-            "debris": {"push": 0.5}},
+            "debris": {"push": 0.5}, "deform": {"carve": 0.005, "max_carve": 1.5}},
   "ceramic": {"health": 15, "resist": {"blunt": 1.5, "fire": 0},
               "impact": {"threshold": 8, "damage": 1.5},
               "fracture": {"pattern": "impact", "pieces": 10, "levels": 1},
@@ -130,17 +147,24 @@ constexpr std::string_view kDefaults = R"({
   "ice": {"health": 40, "resist": {"fire": 3, "pierce": 0.8},
           "impact": {"threshold": 20, "damage": 1},
           "fracture": {"pattern": "impact", "pieces": 12, "levels": 2, "level_pieces": 3},
-          "density": 917, "strength": 40000, "compression": 6, "debris": {"push": 1}},
+          "density": 917, "strength": 40000, "compression": 6, "debris": {"push": 1},
+          "deform": {"hole": 0.004, "max_hole": 0.2, "carve": 0.005, "max_carve": 1}},
   "plastic": {"health": 50, "resist": {"pierce": 0.8, "fire": 1.5},
               "impact": {"threshold": 40, "damage": 0.5},
               "fracture": {"pattern": "slices", "pieces": 4, "levels": 1},
-              "density": 950, "strength": 60000, "compression": 4},
+              "density": 950, "strength": 60000, "compression": 4,
+              "deform": {"dent": 0.003, "dent_radius": 0.15, "max_dent": 0.1, "hole": 0.003, "max_hole": 0.1}},
   "flesh": {"health": 100, "resist": {"fire": 1.5, "explosive": 1.2},
             "impact": {"threshold": 60, "damage": 0.3},
             "fracture": {"pattern": "none"}, "density": 1000},
   "cloth": {"health": 20, "resist": {"cut": 3, "pierce": 1.5, "blunt": 0.2, "fire": 2},
             "impact": {"threshold": 1000, "damage": 0},
-            "fracture": {"pattern": "none"}, "density": 300}
+            "fracture": {"pattern": "none"}, "density": 300,
+            "deform": {"hole": 0.01, "max_hole": 0.3}},
+  "soil": {"health": 1000000, "resist": {"pierce": 0.1, "cut": 0.1, "blunt": 0.2, "fire": 0},
+           "impact": {"threshold": 100000, "damage": 0},
+           "fracture": {"pattern": "none"}, "density": 1600,
+           "deform": {"carve": 0.02, "max_carve": 8, "crater_depth": 0.4}}
 })";
 
 const json::Value& defaults() {
@@ -262,7 +286,7 @@ const std::vector<std::string>& damage_kinds() {
 const std::vector<std::string>& damage_materials() {
     static const std::vector<std::string> materials{"wood",     "glass", "metal",   "stone",
                                                     "concrete", "brick", "ceramic", "ice",
-                                                    "plastic",  "flesh", "cloth"};
+                                                    "plastic",  "flesh", "cloth",   "soil"};
     return materials;
 }
 
@@ -390,6 +414,17 @@ Result<DamageProfile> parse_damage(const json::Value& resolved) {
     if (const json::Value* debris = doc.find("debris"); debris != nullptr) {
         out.debris.lifetime = number_or(*debris, "lifetime", out.debris.lifetime);
         out.debris.push = number_or(*debris, "push", out.debris.push);
+    }
+    if (const json::Value* deform = doc.find("deform"); deform != nullptr) {
+        DeformSettings& d = out.deform;
+        d.dent = number_or(*deform, "dent", d.dent);
+        d.dent_radius = number_or(*deform, "dent_radius", d.dent_radius);
+        d.max_dent = number_or(*deform, "max_dent", d.max_dent);
+        d.hole = number_or(*deform, "hole", d.hole);
+        d.max_hole = number_or(*deform, "max_hole", d.max_hole);
+        d.carve = number_or(*deform, "carve", d.carve);
+        d.max_carve = number_or(*deform, "max_carve", d.max_carve);
+        d.crater_depth = number_or(*deform, "crater_depth", d.crater_depth);
     }
     return out;
 }

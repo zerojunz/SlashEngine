@@ -1096,6 +1096,15 @@ struct CsgCache {
     ModelLoader load;
     std::unordered_map<entt::entity, Entry> entries;
     std::unordered_map<entt::entity, FractureEntry> fractures;
+    // An entity's one damaged piece: its cuts (the last naming its piece) and its own damage.
+    struct DamagedEntry {
+        CsgNode input;
+        std::vector<world::FractureCut> cuts;
+        std::vector<world::MeshDent> dents;
+        std::vector<world::MeshCarve> carves;
+        std::shared_ptr<const Fracture> fracture;
+    };
+    std::unordered_map<entt::entity, DamagedEntry> damaged;
 
     world::MemoryPart memory() {
         const std::scoped_lock lock(mutex);
@@ -1117,8 +1126,16 @@ struct CsgCache {
                 triangles += piece.mesh.triangles;
             }
         }
-        part.counts = {
-            {"meshes", entries.size()}, {"fractures", counted.size()}, {"triangles", triangles}};
+        for (const auto& [entity, entry] : damaged) {
+            for (const FracturePiece& piece : entry.fracture->pieces) {
+                part.bytes += bytes_of(piece.mesh) + (piece.hull.size() * sizeof(Vec3));
+                triangles += piece.mesh.triangles;
+            }
+        }
+        part.counts = {{"meshes", entries.size()},
+                       {"fractures", counted.size()},
+                       {"damaged", damaged.size()},
+                       {"triangles", triangles}};
         return part;
     }
 };
@@ -1425,8 +1442,111 @@ void find_neighbors(const CutCells& cut, std::size_t piece, const Brush& brush,
     }
 }
 
-std::shared_ptr<const Fracture> make_fracture(const CsgNode& node,
-                                              std::span<const world::FractureCut> cuts) {
+// A carve's shape: a capsule (a sphere where its ends meet) as the hull of rings of points
+// around both ends, made with the engine's sines so it is the same everywhere.
+manifold::Manifold carve_shape(const world::MeshCarve& carve) {
+    constexpr std::size_t kAround = 12;
+    constexpr std::size_t kRings = 6;
+    const double r = std::max(static_cast<double>(carve.radius), 1e-4);
+    std::vector<manifold::vec3> points;
+    constexpr std::size_t kPoints = 2 * (2 + ((kRings - 1) * kAround));
+    points.reserve(kPoints);
+    for (const Vec3 end : {carve.from, carve.to}) {
+        const manifold::vec3 c{end.x, end.y, end.z};
+        points.push_back(c + manifold::vec3(0.0, r, 0.0));
+        points.push_back(c - manifold::vec3(0.0, r, 0.0));
+        for (std::size_t ring = 1; ring < kRings; ++ring) {
+            const Vec2 lat = cos_sin(
+                angle(static_cast<double>(ring) * kTau * 0.5 / static_cast<double>(kRings)));
+            for (std::size_t a = 0; a < kAround; ++a) {
+                const Vec2 lon =
+                    cos_sin(angle(static_cast<double>(a) * kTau / static_cast<double>(kAround)));
+                points.push_back(c +
+                                 manifold::vec3(r * lat.y * lon.x, r * lat.x, r * lat.y * lon.y));
+            }
+        }
+    }
+    return manifold::Manifold::Hull(points);
+}
+
+// The most triangles a dented mesh is refined to.
+constexpr double kMaxDentTriangles = 20000.0;
+
+// A region with its carves taken out (their faces drawn with inside) and its dents pushed in:
+// first refined so no edge is longer than a third of the smallest dent's radius (or longer, to
+// keep under kMaxDentTriangles), then each corner within a dent moved along it by its depth times
+// (1 - (d/r)^2)^2, a dent no deeper than 0.45 of the region's thinnest side.
+manifold::Manifold deform(manifold::Manifold region, const std::vector<world::MeshDent>& dents,
+                          const std::vector<world::MeshCarve>& carves, Materials& materials,
+                          const SurfaceMaterial& inside) {
+    if (!carves.empty()) {
+        std::vector<manifold::Manifold> tools;
+        tools.reserve(carves.size());
+        for (const world::MeshCarve& carve : carves) {
+            tools.push_back(carve_shape(carve));
+        }
+        manifold::Manifold tool =
+            tools.size() == 1 ? tools.front()
+                              : manifold::Manifold::BatchBoolean(tools, manifold::OpType::Add);
+        tool = tool.AsOriginal();
+        materials[static_cast<std::uint32_t>(tool.OriginalID())] = inside;
+        region = region - tool;
+    }
+    if (dents.empty() || region.IsEmpty()) {
+        return region;
+    }
+    const manifold::Box box = region.BoundingBox();
+    const manifold::vec3 size = box.max - box.min;
+    const double thin = std::min({size.x, size.y, size.z});
+    double smallest = std::numeric_limits<double>::max();
+    struct Push {
+        manifold::vec3 at;
+        manifold::vec3 along;
+        double r2 = 0.0;
+    };
+    std::vector<Push> pushes;
+    for (const world::MeshDent& dent : dents) {
+        const manifold::vec3 direction{dent.direction.x, dent.direction.y, dent.direction.z};
+        const double length = manifold::la::length(direction);
+        if (dent.radius <= 0.0F || dent.depth <= 0.0F || length == 0.0) {
+            continue;
+        }
+        smallest = std::min(smallest, static_cast<double>(dent.radius));
+        const double depth = std::min(static_cast<double>(dent.depth), 0.45 * thin);
+        pushes.push_back({.at = {dent.at.x, dent.at.y, dent.at.z},
+                          .along = direction * (depth / length),
+                          .r2 = static_cast<double>(dent.radius) * dent.radius});
+    }
+    if (pushes.empty()) {
+        return region;
+    }
+    // An equilateral triangle of edge e covers e^2 sqrt(3) / 4.
+    const double floor_length = std::sqrt(region.SurfaceArea() / (0.4330127 * kMaxDentTriangles));
+    const manifold::Manifold fine = region.RefineToLength(std::max(smallest / 3.0, floor_length));
+    return fine.Warp([&pushes](manifold::vec3& p) {
+        const manifold::vec3 was = p;
+        for (const Push& push : pushes) {
+            const manifold::vec3 d = was - push.at;
+            const double d2 = manifold::la::dot(d, d);
+            if (d2 < push.r2) {
+                const double t = 1.0 - (d2 / push.r2);
+                p = p + (push.along * (t * t));
+            }
+        }
+    });
+}
+
+// What damage left of one piece, after its cuts.
+struct After {
+    std::size_t index = 0; // the last cut's piece; any, with no cuts
+    const std::vector<world::MeshDent>* dents = nullptr;
+    const std::vector<world::MeshCarve>* carves = nullptr;
+};
+
+// The pieces of a mesh by its cuts, or, with after, the one piece the last cut names (or the
+// whole mesh with no cuts) with after's damage done to it, as piece 0.
+std::shared_ptr<const Fracture>
+make_pieces(const CsgNode& node, std::span<const world::FractureCut> cuts, const After* after) {
     auto out = std::make_shared<Fracture>();
     const Brush own = own_brush(node, out->problems);
     if (!out->problems.empty()) {
@@ -1442,42 +1562,74 @@ std::shared_ptr<const Fracture> make_fracture(const CsgNode& node,
                  "), so it has no inside to break: each edge must join exactly two faces"});
         return out;
     }
-    if (cuts.empty()) {
+    if (cuts.empty() && after == nullptr) {
         return out;
     }
     // The faces a cut makes draw with the mesh's own material.
     SurfaceMaterial inside;
     inside.standard = node.material;
-    // The piece each earlier cut names is what the next one cuts.
-    manifold::Manifold region = whole;
-    for (std::size_t level = 0; level + 1 < cuts.size(); ++level) {
-        const auto index = static_cast<std::size_t>(std::max(cuts[level].index, 0));
-        CutCells cells = cut_cells(region, cuts[level], materials, inside, index + 1);
-        if (cells.cells.size() <= index) {
-            out->problems.push_back(
-                {node.entity, where_of(node),
-                 "its cut " + std::to_string(level) + " has no piece " + std::to_string(index)});
-            return out;
-        }
-        region = std::move(cells.cells[index].share);
-    }
-    const CutCells cells =
-        cut_cells(region, cuts.back(), materials, inside, std::numeric_limits<std::size_t>::max());
-    for (std::size_t i = 0; i < cells.cells.size(); ++i) {
-        const Brush brush = unpack(cells.cells[i].share, materials);
+    const auto add_piece = [&](const manifold::Manifold& share, const CutCells* cells,
+                               std::size_t i) {
+        const Brush brush = unpack(share, materials);
         FracturePiece piece;
         piece.mesh = mesh_of(brush, csg_settings(node.shape));
         piece.mesh.version = next_version.fetch_add(1);
         measure(brush, piece);
-        const manifold::Box box = cells.cells[i].share.BoundingBox();
+        const manifold::Box box = share.BoundingBox();
         piece.low = {static_cast<float>(box.min.x), static_cast<float>(box.min.y),
                      static_cast<float>(box.min.z)};
         piece.high = {static_cast<float>(box.max.x), static_cast<float>(box.max.y),
                       static_cast<float>(box.max.z)};
-        find_neighbors(cells, i, brush, piece);
+        if (cells != nullptr) {
+            find_neighbors(*cells, i, brush, piece);
+        }
         out->pieces.push_back(std::move(piece));
+    };
+    // The piece each earlier cut names is what the next one cuts.
+    manifold::Manifold region = whole;
+    const std::size_t levels = after != nullptr ? cuts.size() : cuts.size() - 1;
+    for (std::size_t level = 0; level < levels; ++level) {
+        region =
+            deform(std::move(region), cuts[level].dents, cuts[level].carves, materials, inside);
+        const auto index = level + 1 == cuts.size() && after != nullptr
+                               ? after->index
+                               : static_cast<std::size_t>(std::max(cuts[level].index, 0));
+        CutCells cells = cut_cells(region, cuts[level], materials, inside, index + 1);
+        if (cells.cells.size() <= index) {
+            out->problems.push_back({node.entity, where_of(node),
+                                     "its cut " + std::to_string(level) + " has no piece " +
+                                         std::to_string(index) + ": it breaks into " +
+                                         std::to_string(cells.cells.size())});
+            return out;
+        }
+        region = std::move(cells.cells[index].share);
+    }
+    if (after != nullptr) {
+        static const std::vector<world::MeshDent> no_dents;
+        static const std::vector<world::MeshCarve> no_carves;
+        region = deform(std::move(region), after->dents != nullptr ? *after->dents : no_dents,
+                        after->carves != nullptr ? *after->carves : no_carves, materials, inside);
+        if (region.Status() != manifold::Manifold::Error::NoError) {
+            out->problems.push_back(
+                {node.entity, where_of(node),
+                 "its damage can't be cut into it (" + status_name(region.Status()) + ")"});
+            return out;
+        }
+        add_piece(region, nullptr, 0);
+        return out;
+    }
+    region = deform(std::move(region), cuts.back().dents, cuts.back().carves, materials, inside);
+    const CutCells cells =
+        cut_cells(region, cuts.back(), materials, inside, std::numeric_limits<std::size_t>::max());
+    for (std::size_t i = 0; i < cells.cells.size(); ++i) {
+        add_piece(cells.cells[i].share, &cells, i);
     }
     return out;
+}
+
+std::shared_ptr<const Fracture> make_fracture(const CsgNode& node,
+                                              std::span<const world::FractureCut> cuts) {
+    return make_pieces(node, cuts, nullptr);
 }
 
 } // namespace
@@ -1631,8 +1783,14 @@ std::shared_ptr<const Fracture> fracture(const CsgTree& mesh,
 }
 
 std::shared_ptr<const Fracture> fracture(const CsgTree& mesh, int cells, std::uint32_t seed) {
-    const world::FractureCut cut{
-        .pattern = "voronoi", .cells = cells, .seed = seed, .at = {}, .fine = 0.0F, .index = 0};
+    const world::FractureCut cut{.pattern = "voronoi",
+                                 .cells = cells,
+                                 .seed = seed,
+                                 .at = {},
+                                 .fine = 0.0F,
+                                 .index = 0,
+                                 .dents = {},
+                                 .carves = {}};
     return fracture(mesh, std::span<const world::FractureCut>(&cut, 1));
 }
 
@@ -1645,7 +1803,9 @@ std::vector<world::FractureCut> piece_cuts(const world::FracturePiece3D& piece) 
                                .seed = piece.seed,
                                .at = {},
                                .fine = 0.0F,
-                               .index = piece.index}};
+                               .index = piece.index,
+                               .dents = {},
+                               .carves = {}}};
 }
 
 Result<std::shared_ptr<const Fracture>> fracture_of(const world::World& world, entt::entity entity,
@@ -1707,10 +1867,107 @@ Result<std::shared_ptr<const Fracture>> fracture_of(const world::World& world, e
     return made(fracture);
 }
 
+bool draws_damaged(const world::World& world, entt::entity entity) {
+    const auto& ecs = world.ecs();
+    if (!world.valid(entity) || !ecs.all_of<world::MeshInstance3D>(entity)) {
+        return false;
+    }
+    if (ecs.all_of<world::FracturePiece3D>(entity)) {
+        return true;
+    }
+    const auto* destructible = ecs.try_get<const world::Destructible3D>(entity);
+    return destructible != nullptr &&
+           (!destructible->dents.empty() || !destructible->carves.empty());
+}
+
+Result<std::shared_ptr<const FracturePiece>> damaged_piece_of(const world::World& world,
+                                                              entt::entity entity) {
+    const auto& ecs = world.ecs();
+    if (!draws_damaged(world, entity)) {
+        return Error{.code = ErrorCode::InvalidArgument,
+                     .message = "is no broken piece and has no dents or carves"};
+    }
+    const auto* instance = &ecs.get<const world::MeshInstance3D>(entity);
+    std::vector<world::FractureCut> cuts;
+    std::size_t index = 0;
+    if (const auto* piece = ecs.try_get<const world::FracturePiece3D>(entity); piece != nullptr) {
+        cuts = piece_cuts(*piece);
+        index = static_cast<std::size_t>(std::max(cuts.back().index, 0));
+    }
+    static const world::Destructible3D kNone;
+    const auto* found_destructible = ecs.try_get<const world::Destructible3D>(entity);
+    const world::Destructible3D& destructible =
+        found_destructible != nullptr ? *found_destructible : kNone;
+    // A piece with no damage of its own is its fracture's.
+    if (!cuts.empty() && destructible.dents.empty() && destructible.carves.empty()) {
+        auto fracture = fracture_of(world, entity, cuts);
+        if (!fracture) {
+            return fracture.error();
+        }
+        const std::vector<FracturePiece>& pieces = fracture.value()->pieces;
+        if (index >= pieces.size()) {
+            return Error{.code = ErrorCode::InvalidArgument,
+                         .message = "its mesh breaks into " + std::to_string(pieces.size()) +
+                                    " pieces, so there is no piece " + std::to_string(index)};
+        }
+        return std::shared_ptr<const FracturePiece>(fracture.value(), &pieces[index]);
+    }
+    const After after{.index = index, .dents = &destructible.dents, .carves = &destructible.carves};
+    const auto read = [&](const ModelLoader& load) {
+        CsgNode node;
+        node.shape = world::CSGMesh3D{.mesh = instance->mesh};
+        if (const auto* standard = ecs.try_get<const world::StandardMaterial3D>(entity);
+            standard != nullptr) {
+            node.material = *standard;
+        }
+        read_mesh(node, world, entity, instance->mesh, load);
+        return node;
+    };
+    const auto made = [](const std::shared_ptr<const Fracture>& fracture)
+        -> Result<std::shared_ptr<const FracturePiece>> {
+        if (!fracture->problems.empty()) {
+            return Error{.code = ErrorCode::InvalidArgument,
+                         .message = fracture->problems.front().message};
+        }
+        if (fracture->pieces.empty()) {
+            return Error{.code = ErrorCode::InvalidArgument,
+                         .message = "its damage left nothing of it"};
+        }
+        return std::shared_ptr<const FracturePiece>(fracture, &fracture->pieces.front());
+    };
+    CsgCache* cache = find_cache(world);
+    if (cache == nullptr) {
+        return made(make_pieces(read(file_loader(world)), cuts, &after));
+    }
+    const std::scoped_lock lock(cache->mutex);
+    const CsgNode input = read(cache->load);
+    if (const auto found = cache->damaged.find(entity);
+        found != cache->damaged.end() && found->second.cuts == cuts &&
+        found->second.dents == destructible.dents && found->second.carves == destructible.carves &&
+        found->second.input == input) {
+        return made(found->second.fracture);
+    }
+    std::erase_if(cache->damaged,
+                  [&](const auto& entry) { return !draws_damaged(world, entry.first); });
+    const std::shared_ptr<const Fracture> fracture = make_pieces(input, cuts, &after);
+    cache->damaged[entity] = {.input = input,
+                              .cuts = cuts,
+                              .dents = destructible.dents,
+                              .carves = destructible.carves,
+                              .fracture = fracture};
+    return made(fracture);
+}
+
 Result<std::shared_ptr<const Fracture>> fracture_of(const world::World& world, entt::entity entity,
                                                     int cells, std::uint32_t seed) {
-    const world::FractureCut cut{
-        .pattern = "voronoi", .cells = cells, .seed = seed, .at = {}, .fine = 0.0F, .index = 0};
+    const world::FractureCut cut{.pattern = "voronoi",
+                                 .cells = cells,
+                                 .seed = seed,
+                                 .at = {},
+                                 .fine = 0.0F,
+                                 .index = 0,
+                                 .dents = {},
+                                 .carves = {}};
     return fracture_of(world, entity, std::span<const world::FractureCut>(&cut, 1));
 }
 
@@ -1723,6 +1980,26 @@ std::vector<Problem> check_destructibles(const world::World& world) {
     }
     std::ranges::sort(entities, {}, [](entt::entity entity) { return entt::to_entity(entity); });
     for (const entt::entity entity : entities) {
+        // A terrain's is dug into, never broken: it needs a profile that carves.
+        if (ecs.all_of<world::HTerrain>(entity)) {
+            const auto& destructible = ecs.get<const world::Destructible3D>(entity);
+            if (destructible.profile.empty()) {
+                problems.push_back({entity, "/components/Destructible3D/profile",
+                                    "an HTerrain is dug into by its profile's deform: name a "
+                                    ".damage.json profile that carves, such as a soil one"});
+                continue;
+            }
+            auto profile = world::load_damage(world, destructible.profile, destructible.overrides);
+            if (!profile) {
+                problems.push_back(
+                    {entity, "/components/Destructible3D/profile", profile.error().message});
+            } else if (profile.value()->deform.carve <= 0.0F) {
+                problems.push_back({entity, "/components/Destructible3D/profile",
+                                    "its profile doesn't carve, so blasts leave the terrain as "
+                                    "it is: give its deform a carve"});
+            }
+            continue;
+        }
         if (!ecs.any_of<world::StaticBody3D, world::RigidBody3D>(entity)) {
             problems.push_back({entity, "/components/Destructible3D",
                                 "breaks only a StaticBody3D or RigidBody3D: give it one"});
@@ -1734,7 +2011,9 @@ std::vector<Problem> check_destructibles(const world::World& world) {
                                .seed = destructible.seed,
                                .at = {},
                                .fine = 0.0F,
-                               .index = 0};
+                               .index = 0,
+                               .dents = {},
+                               .carves = {}};
         if (!destructible.profile.empty()) {
             auto profile = world::load_damage(world, destructible.profile, destructible.overrides);
             if (!profile) {

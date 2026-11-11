@@ -1,0 +1,53 @@
+{
+  "entities": {
+    "banner": {
+      "components": {
+        "Cloth2D": {
+          "color": [0.7, 0.1, 0.1, 1.0]
+        },
+        "Transform2D": {
+          "position": [400.0, 0.0]
+        }
+      }
+    },
+    "boulder": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [64.0, 64.0]
+        },
+        "Destructible2D": {
+          "profile": "profiles/rock.damage.json"
+        },
+        "Polygon2D": {
+          "color": [0.5, 0.48, 0.45, 1.0],
+          "polygon": [
+            [-32.0, -32.0],
+            [32.0, -32.0],
+            [32.0, 32.0],
+            [-32.0, 32.0]
+          ]
+        },
+        "StaticBody2D": {},
+        "Transform2D": {
+          "position": [240.0, 64.0]
+        }
+      }
+    },
+    "cave": {
+      "components": {
+        "Destructible2D": {
+          "profile": "profiles/soil.damage.json"
+        },
+        "TileMapLayer": {
+          "legend": {
+            "r": "rock"
+          },
+          "rows": ["rrrrrrrr", "rrrrrrrr", "rrrrrrrr", "rrrrrrrr", "rrrrrrrr", "rrrrrrrr", "rrrrrrrr", "rrrrrrrr"],
+          "tile_set": "rock.tileset.json"
+        },
+        "Transform2D": {}
+      }
+    }
+  },
+  "format": 1
+}

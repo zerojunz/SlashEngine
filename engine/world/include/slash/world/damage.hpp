@@ -56,10 +56,22 @@ struct DebrisSettings {
     float push = 0.0F;     // meters (2D: pixels) a second they fly from the hit
 };
 
+// What damage does to its shape before it breaks. Lengths are meters (2D: pixels).
+struct DeformSettings {
+    float dent = 0.0F;         // deep a dent goes per point of blunt, impact or explosive damage
+    float dent_radius = 0.25F; // how far around the hit a dent spreads
+    float max_dent = 0.1F;     // the deepest dents in one place add up to
+    float hole = 0.0F;         // radius per point of pierce damage of the hole it cuts through
+    float max_hole = 0.1F;
+    float carve = 0.0F; // radius per point of explosive damage of what it carves out (a crater)
+    float max_carve = 1.0F;
+    float crater_depth = 0.4F; // a terrain crater's depth, as a share of its radius
+};
+
 struct DamageProfile {
     std::string name;
     // "wood", "glass", "metal", "stone", "concrete", "brick", "ceramic", "ice", "plastic",
-    // "flesh" or "cloth", whose defaults fill what the file leaves out
+    // "flesh", "cloth" or "soil", whose defaults fill what the file leaves out
     std::string material = "stone";
     float health = 100.0F;
     // What each kind of damage is multiplied by: "blunt", "pierce", "cut", "explosive", "fire"
@@ -82,6 +94,7 @@ struct DamageProfile {
     // of its longest level axis, as a bridge's), "all" or "none".
     std::string anchors = "bottom";
     DebrisSettings debris;
+    DeformSettings deform;
 };
 
 // The kinds of damage profiles name.

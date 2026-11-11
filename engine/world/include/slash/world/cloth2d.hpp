@@ -9,6 +9,7 @@
 #include "slash/world/tree2d.hpp"
 #include "slash/world/world.hpp"
 
+#include <array>
 #include <functional>
 #include <vector>
 
@@ -24,6 +25,23 @@ namespace slash::world {
 
 // Each point's share of max_distance, 0 to 1, by max_distance_map.
 [[nodiscard]] std::vector<float> cloth_shares_2d(const Cloth2D& cloth);
+
+// A sheet's edges: from each point, row by row, to the point right of it, then to the one below
+// it. A Cloth2D's torn edges are numbered in this order.
+struct ClothGrid2D {
+    int columns = 2;
+    int rows = 2;
+    std::vector<std::array<int, 2>> edges; // the two points each edge joins
+    std::vector<int> across;               // each point's edge to the one right of it, or -1
+    std::vector<int> down;                 // each point's edge to the one below it, or -1
+    std::vector<bool> torn;                // by edge, from the Cloth2D's torn
+};
+[[nodiscard]] ClothGrid2D cloth_grid_2d(const Cloth2D& cloth);
+
+// Whether each of the sheet's triangles still draws: two a cell, row by row, first the one with
+// the cell's top and left sides, then the one with its right and bottom sides. A triangle with a
+// torn side doesn't.
+[[nodiscard]] std::vector<bool> cloth_triangles_2d(const ClothGrid2D& grid);
 
 // Where physics put a sheet's points after its last step and the step before, in the world.
 struct ClothPoints2D {

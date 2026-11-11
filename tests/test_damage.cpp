@@ -203,8 +203,14 @@ TEST_CASE("damage: a profile extends another as a merge patch") {
 TEST_CASE("damage: fracture patterns place their sites the same on every machine") {
     const Vec3 low{-1.0F, -1.0F, -0.1F};
     const Vec3 high{1.0F, 1.0F, 0.1F};
-    world::FractureCut cut{
-        .pattern = "voronoi", .cells = 12, .seed = 7, .at = {}, .fine = 0.0F, .index = 0};
+    world::FractureCut cut{.pattern = "voronoi",
+                           .cells = 12,
+                           .seed = 7,
+                           .at = {},
+                           .fine = 0.0F,
+                           .index = 0,
+                           .dents = {},
+                           .carves = {}};
     const world::FractureSites a = world::fracture_sites(cut, low, high, false);
     const world::FractureSites b = world::fracture_sites(cut, low, high, false);
     REQUIRE(a.points.size() == 12);

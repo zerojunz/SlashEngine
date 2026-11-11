@@ -1987,7 +1987,21 @@ their `impact` settings. physics2d does the same (`src/destruction.cpp`): Box2D'
 each a `RigidBody2D` with a `CollisionPolygon2D` and a `Polygon2D` of its part of the look
 (`FracturePiece2D`). `damage.apply`, `damage.state` and `damage.check`
 (`engine/command/src/damage.cpp`) drive and read them; `examples/destruction-profiles` breaks a
-garden wall, a window and 2D crates.
+garden wall, a window and 2D crates. Damage short of breaking deforms by the profile's `deform`:
+physics3d's `deform_body` adds a `Destructible3D`'s `dents` and `carves` (in its mesh's space),
+which scene3d's `deform` (in `src/csg.cpp`: carves as hulls of rings subtracted in Manifold,
+dents by `Warp` on a refined mesh) applies, `damaged_piece_of` keeps and the renderer draws;
+`reshape` makes a carved body collide as what is left, and a break moves its damage into the new
+`FractureCut`, so pieces keep it. An `HTerrain`'s `craters` are dug into its heights by
+`scene3d::dig_crater` as the data is made. physics2d's `deform_body_2d` cuts a 2D outline with
+Clipper2 (`open_holes` slots holes to the edge), drops the parts cut off as debris and carves
+tile map layers through the `TileCarver` the canvas sets (`set_tile_carver`). Cloth tears:
+`Cloth2D`'s `torn` edges (`world::cloth_grid_2d`) hold nothing in `step_cloths`, parts torn off
+every held point fall free, and drawing leaves out their triangles (`cloth_triangles_2d`); a
+`SoftBody3D` is made again without its `torn` triangles, keeping its points (`keep_points`,
+`restore_points` in `engine/physics3d/src/soft_body.cpp`); both tear by `tear_stretch` after a
+step, and `tear_cloth_2d` and `tear_soft_body` tear them where `damage.apply` cuts.
+`examples/damage-deform` dents, holes, craters and tears.
 
 Wind is SlashEngine's own, after Unreal's `WindDirectionalSource` (Godot's only wind is an
 `Area3D`'s for soft bodies, which physics3d ports too: `area_winds` and `blow_soft_body` in

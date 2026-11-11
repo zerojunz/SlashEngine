@@ -4,6 +4,7 @@
 // Box2D's shapes, solved with small steps of position based dynamics.
 #include "space.hpp"
 
+#include "slash/core/json.hpp"
 #include "slash/core/math.hpp"
 #include "slash/world/cloth2d.hpp"
 #include "slash/world/physics_field.hpp"
@@ -149,31 +150,66 @@ void Space::step_cloths(world::World& world, const world::Tree2D& tree, float se
             body->points.previous = targets;
             body->targets = targets;
             body->velocity.assign(count, Vec2{});
-            // Each point's neighbors across and down, and diagonally and two along for bending.
-            body->edges.clear();
+            // Each point's neighbors across and down, and diagonally and two along for bending,
+            // with the edges each bend spans, so a tear between its points lets it go.
+            const world::ClothGrid2D made = world::cloth_grid_2d(cloth);
+            body->edges = made.edges;
             body->bends.clear();
+            body->bend_sides.clear();
             const auto at = [columns](int r, int c) { return (r * columns) + c; };
+            const auto across = [&](int r, int c) {
+                return made.across[static_cast<std::size_t>(at(r, c))];
+            };
+            const auto down = [&](int r, int c) {
+                return made.down[static_cast<std::size_t>(at(r, c))];
+            };
             for (int r = 0; r < rows; ++r) {
                 for (int c = 0; c < columns; ++c) {
-                    if (c + 1 < columns) {
-                        body->edges.push_back({at(r, c), at(r, c + 1)});
-                    }
-                    if (r + 1 < rows) {
-                        body->edges.push_back({at(r, c), at(r + 1, c)});
-                    }
                     // Diagonals keep it from shearing as hard as bends keep it flat: a
                     // sheet held along its top swings sideways only by shearing.
                     if (r + 1 < rows && c + 1 < columns) {
+                        const std::array<int, 4> cell{across(r, c), down(r, c), down(r, c + 1),
+                                                      across(r + 1, c)};
                         body->bends.push_back({at(r, c), at(r + 1, c + 1)});
+                        body->bend_sides.push_back(cell);
                         body->bends.push_back({at(r, c + 1), at(r + 1, c)});
+                        body->bend_sides.push_back(cell);
                     }
                     if (c + 2 < columns) {
                         body->bends.push_back({at(r, c), at(r, c + 2)});
+                        body->bend_sides.push_back({across(r, c), across(r, c + 1), -1, -1});
                     }
                     if (r + 2 < rows) {
                         body->bends.push_back({at(r, c), at(r + 2, c)});
+                        body->bend_sides.push_back({down(r, c), down(r + 1, c), -1, -1});
                     }
                 }
+            }
+        }
+        // Torn edges hold nothing, nor do the bends across them; a part torn off every held
+        // point falls free of its max distance and tethers.
+        const world::ClothGrid2D grid = world::cloth_grid_2d(cloth);
+        const std::vector<bool>& torn = grid.torn;
+        const auto is_torn = [&](int edge) {
+            return edge >= 0 && torn[static_cast<std::size_t>(edge)];
+        };
+        std::vector<int> part(count);
+        for (std::size_t i = 0; i < count; ++i) {
+            part[i] = static_cast<int>(i);
+        }
+        const auto root = [&](int i) {
+            while (part[static_cast<std::size_t>(i)] != i) {
+                part[static_cast<std::size_t>(i)] =
+                    part[static_cast<std::size_t>(part[static_cast<std::size_t>(i)])];
+                i = part[static_cast<std::size_t>(i)];
+            }
+            return i;
+        };
+        for (std::size_t e = 0; e < body->edges.size(); ++e) {
+            if (!torn[e]) {
+                const int a = root(body->edges[e][0]);
+                const int b = root(body->edges[e][1]);
+                part[static_cast<std::size_t>(std::max(a, b))] = std::min(a, b);
             }
         }
         // Each point's reach from where the transform puts it, and the skinned point nearest
@@ -185,12 +221,22 @@ void Space::step_cloths(world::World& world, const world::Tree2D& tree, float se
             reach[i] = std::max(cloth.max_distance, 0.0F) * std::clamp(shares[i], 0.0F, 1.0F);
             free[i] = reach[i] > 0.0F;
         }
+        std::vector<bool> held_part(count, false);
+        for (std::size_t i = 0; i < count; ++i) {
+            if (!free[i]) {
+                held_part[static_cast<std::size_t>(root(static_cast<int>(i)))] = true;
+            }
+        }
+        std::vector<bool> loose(count, false);
+        for (std::size_t i = 0; i < count; ++i) {
+            loose[i] = !held_part[static_cast<std::size_t>(root(static_cast<int>(i)))];
+        }
         std::vector<int> anchor(count, -1);
         if (cloth.long_range_attachment) {
             for (std::size_t i = 0; i < count; ++i) {
                 real_t best = 0.0F;
-                for (std::size_t j = 0; j < count && free[i]; ++j) {
-                    if (free[j]) {
+                for (std::size_t j = 0; j < count && free[i] && !loose[i]; ++j) {
+                    if (free[j] || root(static_cast<int>(j)) != root(static_cast<int>(i))) {
                         continue;
                     }
                     const real_t d = length(targets[j] - targets[i]);
@@ -249,14 +295,22 @@ void Space::step_cloths(world::World& world, const world::Tree2D& tree, float se
                 v[i] = v[i] * std::max<real_t>(0.0F, 1.0F - (cloth.damping_coefficient * h));
                 x[i] = x[i] + (v[i] * h);
             }
-            for (const auto& [a, b] : body->edges) {
+            for (std::size_t e = 0; e < body->edges.size(); ++e) {
+                if (torn[e]) {
+                    continue;
+                }
+                const auto [a, b] = body->edges[e];
                 hold(
                     x[static_cast<std::size_t>(a)], x[static_cast<std::size_t>(b)],
                     free[static_cast<std::size_t>(a)], free[static_cast<std::size_t>(b)],
                     length(place[static_cast<std::size_t>(b)] - place[static_cast<std::size_t>(a)]),
                     stretch);
             }
-            for (const auto& [a, b] : body->bends) {
+            for (std::size_t k = 0; k < body->bends.size(); ++k) {
+                if (std::ranges::any_of(body->bend_sides[k], is_torn)) {
+                    continue;
+                }
+                const auto [a, b] = body->bends[k];
                 hold(
                     x[static_cast<std::size_t>(a)], x[static_cast<std::size_t>(b)],
                     free[static_cast<std::size_t>(a)], free[static_cast<std::size_t>(b)],
@@ -271,7 +325,9 @@ void Space::step_cloths(world::World& world, const world::Tree2D& tree, float se
                     const Vec2 tether = place[static_cast<std::size_t>(a)];
                     within(x[i], tether, length(place[i] - tether));
                 }
-                within(x[i], place[i], reach[i]);
+                if (!loose[i]) {
+                    within(x[i], place[i], reach[i]);
+                }
                 if (solids && radius > 0.0F) {
                     // Through a shape on the way: back out at its surface.
                     if (const Vec2 moved = x[i] - start[i]; moved != Vec2{}) {
@@ -307,6 +363,32 @@ void Space::step_cloths(world::World& world, const world::Tree2D& tree, float se
             }
         }
         body->targets = targets;
+        // Edges stretched past tear_stretch times their length at rest tear.
+        if (cloth.tear_stretch > 0.0F) {
+            std::vector<int> tore;
+            for (std::size_t e = 0; e < body->edges.size(); ++e) {
+                const auto a = static_cast<std::size_t>(body->edges[e][0]);
+                const auto b = static_cast<std::size_t>(body->edges[e][1]);
+                if (!torn[e] &&
+                    length(x[b] - x[a]) > length(targets[b] - targets[a]) * cloth.tear_stretch) {
+                    tore.push_back(static_cast<int>(e));
+                }
+            }
+            if (!tore.empty()) {
+                auto& changed = world.ecs().get<world::Cloth2D>(entity);
+                changed.torn.insert(changed.torn.end(), tore.begin(), tore.end());
+                std::ranges::sort(changed.torn);
+                const auto [first, last] = std::ranges::unique(changed.torn);
+                changed.torn.erase(first, last);
+                json::Array edges;
+                for (const int edge : tore) {
+                    edges.emplace_back(edge);
+                }
+                json::Value data;
+                data["edges"] = std::move(edges);
+                world.emit("torn", body->name, std::move(data));
+            }
+        }
     }
 }
 

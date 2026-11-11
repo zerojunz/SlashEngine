@@ -862,6 +862,13 @@ void register_physics_3d_components(ComponentRegistry& registry) {
     }
 
     registry.add<SoftBody3D>()
+        .describe("tear_stretch", {.doc = "How many times its length an edge stretches before "
+                                          "the faces along it tear away; 0 never. damage.apply's "
+                                          "cut, pierce and explosive damage tear it within "
+                                          "radius.",
+                                   .min = 0})
+        .describe("torn", {.doc = "The mesh's triangles torn away, by number in its index "
+                                  "order; they neither draw nor hold its points together."})
         .set_doc("Makes the primitive mesh its entity draws a soft body, as cloth or a ball: "
                  "its vertices are points gravity and collisions move, held together by springs "
                  "along its edges. The physics step keeps them in world space; the Transform3D "
@@ -1206,6 +1213,13 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("texture_filter", {.doc = "How textures are sampled, as Sprite2D's.",
                                      .choices = {"inherit", "linear", "nearest"}});
     registry.add<Cloth2D>()
+        .describe("tear_stretch", {.doc = "How many times its length an edge stretches before "
+                                          "it tears; 0 never. damage.apply's cut, pierce and "
+                                          "explosive damage tear it within radius.",
+                                   .min = 0})
+        .describe("torn", {.doc = "The edges torn, by number: across then down from each point "
+                                  "of each row, top row first. Faces on a torn edge don't draw, "
+                                  "and points no edge joins to a held one hang free."})
         .set_doc("A cut-out character's cloth, as Chaos Cloth on a 2D sheet: a grid of points "
                  "hanging down its entity's y from offset, drawn with texture over it. Its "
                  "entity's global transform carries the points, each free to move up to its "
@@ -1314,7 +1328,21 @@ void register_physics_3d_components(ComponentRegistry& registry) {
             "says how its material takes damage, how it looks as it does, how it breaks where it "
             "is hit and whether its pieces stand linked until what holds them goes. Its entity "
             "is a StaticBody3D or a RigidBody3D."),
-        "kilogram-meters per second");
+        "kilogram-meters per second")
+        .describe("dents", {.doc = "Dents its profile's deform pushed in, in the mesh's space, "
+                                   "oldest first: the surface within radius of at goes in along "
+                                   "direction, depth at the middle."})
+        .describe("dents[].at", {.doc = "Where it was hit."})
+        .describe("dents[].direction", {.doc = "Which way the surface went in."})
+        .describe("dents[].radius", {.doc = "How far around at the surface moved.", .min = 0})
+        .describe("dents[].depth", {.doc = "How far the middle went in.", .min = 0})
+        .describe("carves", {.doc = "Holes and blasts cut out of its mesh, in the mesh's space, "
+                                    "oldest first: all within radius of the line from `from` "
+                                    "to `to` (a sphere where they meet). Its pieces are cut from "
+                                    "what is left."})
+        .describe("carves[].from", {.doc = "Where the hole starts, or the blast's middle."})
+        .describe("carves[].to", {.doc = "Where the hole ends; `from` for a blast."})
+        .describe("carves[].radius", {.doc = "How wide it is.", .min = 0});
     const auto describe_cuts = [](ComponentType& type) -> ComponentType& {
         return type
             .describe("cuts", {.doc = "The cuts that made it, first to last, each naming the "
@@ -1331,7 +1359,17 @@ void register_physics_3d_components(ComponentRegistry& registry) {
             .describe("cuts[].fine", {.doc = "How far from the hit the fine pieces reach; 0 a "
                                              "quarter of the size.",
                                       .min = 0})
-            .describe("cuts[].index", {.doc = "Which of the cut's pieces.", .min = 0});
+            .describe("cuts[].index", {.doc = "Which of the cut's pieces.", .min = 0})
+            .describe("cuts[].dents", {.doc = "The dents what it cut had, as Destructible3D's."})
+            .describe("cuts[].dents[].at", {.doc = "Where it was hit."})
+            .describe("cuts[].dents[].direction", {.doc = "Which way the surface went in."})
+            .describe("cuts[].dents[].radius", {.doc = "How far around at it moved.", .min = 0})
+            .describe("cuts[].dents[].depth", {.doc = "How far the middle went in.", .min = 0})
+            .describe("cuts[].carves",
+                      {.doc = "The holes and blasts cut out of what it cut, as Destructible3D's."})
+            .describe("cuts[].carves[].from", {.doc = "Where the hole starts, or the blast."})
+            .describe("cuts[].carves[].to", {.doc = "Where the hole ends."})
+            .describe("cuts[].carves[].radius", {.doc = "How wide it is.", .min = 0});
     };
     const auto describe_links = [](ComponentType& type, std::string_view area) -> ComponentType& {
         return type
@@ -3721,7 +3759,15 @@ void register_terrain_components(ComponentRegistry& registry) {
         .describe("bounce", {.doc = "Its physics material's bounce.", .min = 0, .max = 1})
         .describe("render_layers", {.doc = "Render layers, as MeshInstance3D's layers."})
         .describe("cast_shadow", {.doc = "Which shadows it casts, as MeshInstance3D's.",
-                                  .choices = {"off", "on", "double_sided", "shadows_only"}});
+                                  .choices = {"off", "on", "double_sided", "shadows_only"}})
+        .describe("craters",
+                  {.doc = "Craters blasts left (damage.apply's explosive damage, with a "
+                          "Destructible3D whose profile carves), cut into its heights oldest "
+                          "first: a bowl with its rim thrown up around it."})
+        .describe("craters[].center", {.doc = "Cells along x and z from the map's corner."})
+        .describe("craters[].radius", {.doc = "Cells across from its middle to its rim.", .min = 0})
+        .describe("craters[].depth",
+                  {.doc = "Meters its middle goes down, before map_scale's y.", .min = 0});
     describe_members(
         *registry.find_mutable("HTerrain"), "textures[]",
         {{"albedo_bump",

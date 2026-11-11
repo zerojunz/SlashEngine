@@ -84,6 +84,15 @@ struct TerrainData {
     [[nodiscard]] std::array<float, 2> point_range(int x, int z) const;
 };
 
+// How far out a crater's rim reaches, as a share of its radius, and how high it stands at the
+// edge, as a share of the crater's depth.
+inline constexpr float kCraterRimReach = 1.5F;
+inline constexpr float kCraterRim = 0.2F;
+
+// Cuts a crater into resolution x resolution heights (TerrainData::heights' layout): a bowl
+// depth deep at its middle, its rim thrown up around it out to kCraterRimReach radii.
+void dig_crater(std::vector<float>& heights, int resolution, const world::TerrainCrater& crater);
+
 // The range map of heights, as HTerrainDataRangeMap.update.
 void update_ranges(TerrainData& data);
 

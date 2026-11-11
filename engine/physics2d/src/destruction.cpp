@@ -11,6 +11,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/log.hpp"
 #include "slash/physics2d/physics2d.hpp"
+#include "slash/world/cloth2d.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/damage.hpp"
 #include "slash/world/tree2d.hpp"
@@ -21,6 +22,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <numbers>
 #include <optional>
 #include <set>
@@ -365,16 +367,36 @@ std::optional<world::Polygon2D> look_of(const world::World& world, entt::entity 
         if (polygon->uv.size() >= 3 && polygon->uv.size() == polygon->polygon.size()) {
             // The body's mapping from places to texture coordinates, as an affine fit (exact for
             // the rectangles and turned shapes most are), from three of its corners.
-            const Vec2 p0 = polygon->polygon[0];
-            const Vec2 p1 = polygon->polygon[1];
-            const Vec2 p2 = polygon->polygon[polygon->polygon.size() - 1];
-            const Vec2 e1 = p1 - p0;
-            const Vec2 e2 = p2 - p0;
+            // Three corners as far apart as can be: the first, the one farthest from it and
+            // the one farthest off the line through both, so a dented outline still fits.
+            const std::vector<Vec2>& points = polygon->polygon;
+            std::size_t i1 = 1;
+            std::size_t i2 = points.size() - 1;
+            real_t far = -1.0F;
+            for (std::size_t i = 1; i < points.size(); ++i) {
+                const Vec2 d = points[i] - points[0];
+                if (const real_t d2 = (d.x * d.x) + (d.y * d.y); d2 > far) {
+                    far = d2;
+                    i1 = i;
+                }
+            }
+            far = -1.0F;
+            for (std::size_t i = 1; i < points.size(); ++i) {
+                const Vec2 a = points[i1] - points[0];
+                const Vec2 b = points[i] - points[0];
+                if (const real_t off = std::abs((a.x * b.y) - (a.y * b.x)); off > far) {
+                    far = off;
+                    i2 = i;
+                }
+            }
+            const Vec2 p0 = points[0];
+            const Vec2 e1 = points[i1] - p0;
+            const Vec2 e2 = points[i2] - p0;
             const real_t det = (e1.x * e2.y) - (e1.y * e2.x);
             if (std::abs(det) > 1e-9F) {
                 const Vec2 u0 = polygon->uv[0];
-                const Vec2 f1 = polygon->uv[1] - u0;
-                const Vec2 f2 = polygon->uv[polygon->uv.size() - 1] - u0;
+                const Vec2 f1 = polygon->uv[i1] - u0;
+                const Vec2 f2 = polygon->uv[i2] - u0;
                 for (const Vec2 p : piece) {
                     const Vec2 d = p - p0;
                     const real_t a = ((d.x * e2.y) - (d.y * e2.x)) / det;
@@ -497,7 +519,321 @@ void show_state(world::World& world, entt::entity entity, const world::DamagePro
     }
 }
 
+// How far a point is from an outline: 0 inside it, else to its nearest edge.
+real_t outside_by(const Polygon& outline, Vec2 p) {
+    bool inside = false;
+    real_t nearest = 1e30F;
+    for (std::size_t i = 0, j = outline.size() - 1; i < outline.size(); j = i++) {
+        const Vec2 a = outline[i];
+        const Vec2 b = outline[j];
+        if ((a.y > p.y) != (b.y > p.y) && p.x < ((b.x - a.x) * (p.y - a.y) / (b.y - a.y)) + a.x) {
+            inside = !inside;
+        }
+        const Vec2 ab = b - a;
+        const real_t len2 = (ab.x * ab.x) + (ab.y * ab.y);
+        const real_t t =
+            len2 > 0.0F
+                ? std::clamp<real_t>((((p - a).x * ab.x) + ((p - a).y * ab.y)) / len2, 0.0F, 1.0F)
+                : 0.0F;
+        const Vec2 d = p - (a + (ab * t));
+        nearest = std::min<real_t>(nearest, std::sqrt((d.x * d.x) + (d.y * d.y)));
+    }
+    return inside ? 0.0F : nearest;
+}
+
+// The nearest point of an outline's edges to a point.
+Vec2 nearest_on(const Polygon& outline, Vec2 p) {
+    Vec2 best = outline.front();
+    real_t best_d2 = 1e30F;
+    for (std::size_t i = 0, j = outline.size() - 1; i < outline.size(); j = i++) {
+        const Vec2 a = outline[j];
+        const Vec2 ab = outline[i] - a;
+        const real_t len2 = (ab.x * ab.x) + (ab.y * ab.y);
+        const real_t t =
+            len2 > 0.0F
+                ? std::clamp<real_t>((((p - a).x * ab.x) + ((p - a).y * ab.y)) / len2, 0.0F, 1.0F)
+                : 0.0F;
+        const Vec2 q = a + (ab * t);
+        const Vec2 d = p - q;
+        if (const real_t d2 = (d.x * d.x) + (d.y * d.y); d2 < best_d2) {
+            best_d2 = d2;
+            best = q;
+        }
+    }
+    return best;
+}
+
+// A circle as a polygon, made with the engine's sines.
+Polygon circle(Vec2 center, real_t radius) {
+    constexpr int kAround = 24;
+    Polygon out;
+    out.reserve(kAround);
+    for (int i = 0; i < kAround; ++i) {
+        const Vec2f cs = cos_sin(static_cast<float>(i) * 2.0F * std::numbers::pi_v<float> /
+                                 static_cast<float>(kAround));
+        out.push_back({center.x + (cs.x * radius), center.y + (cs.y * radius)});
+    }
+    return out;
+}
+
+// What is left of outlines with holes cut into them, as simple outlines: each hole opened to the
+// outline it is in by a slot a pixel wide, leftward from its leftmost corner, so a body keeps one
+// outline Box2D and drawing take; largest first.
+std::vector<Polygon> open_holes(Clipper2Lib::PathsD paths) {
+    constexpr int kTries = 16;
+    for (int attempt = 0; attempt < kTries; ++attempt) {
+        const auto hole = std::ranges::find_if(
+            paths, [](const Clipper2Lib::PathD& path) { return Clipper2Lib::Area(path) < 0.0; });
+        if (hole == paths.end()) {
+            break;
+        }
+        const auto left =
+            std::ranges::min_element(*hole, {}, [](const Clipper2Lib::PointD& p) { return p.x; });
+        double reach = left->x;
+        for (const Clipper2Lib::PathD& path : paths) {
+            for (const auto& p : path) {
+                reach = std::min(reach, p.x);
+            }
+        }
+        const double half = 0.5;
+        const Clipper2Lib::PathsD slot{{{reach - 1.0, left->y - half},
+                                        {left->x + half, left->y - half},
+                                        {left->x + half, left->y + half},
+                                        {reach - 1.0, left->y + half}}};
+        // The slot runs out of the outline only through what lies left of the hole, which it
+        // opens to the outside.
+        paths =
+            Clipper2Lib::Difference(paths, slot, Clipper2Lib::FillRule::NonZero, kClipperPrecision);
+    }
+    std::vector<Polygon> out;
+    for (const Clipper2Lib::PathD& path : paths) {
+        if (Clipper2Lib::Area(path) > 0.0) {
+            out.push_back(to_polygon(path));
+        }
+    }
+    std::ranges::stable_sort(out, std::greater<>{}, [](const Polygon& p) { return area_of(p); });
+    return out;
+}
+
+// An outline with a dent pushed into it: its edges near the hit split to a third of the dent's
+// radius, then each corner within it moved along direction by depth (1 - (d/r)^2)^2.
+Polygon dented(const Polygon& outline, Vec2 at, Vec2 direction, real_t radius, real_t depth) {
+    Polygon fine;
+    const real_t step = std::max<real_t>(radius / 3.0F, 0.5F);
+    for (std::size_t i = 0; i < outline.size(); ++i) {
+        const Vec2 a = outline[i];
+        const Vec2 b = outline[(i + 1) % outline.size()];
+        fine.push_back(a);
+        const Vec2 ab = b - a;
+        const real_t length = std::sqrt((ab.x * ab.x) + (ab.y * ab.y));
+        // Only edges that pass near the dent are split.
+        const real_t len2 = length * length;
+        const real_t t =
+            len2 > 0.0F
+                ? std::clamp<real_t>((((at - a).x * ab.x) + ((at - a).y * ab.y)) / len2, 0.0F, 1.0F)
+                : 0.0F;
+        const Vec2 d = at - (a + (ab * t));
+        if ((d.x * d.x) + (d.y * d.y) >= radius * radius || length <= step) {
+            continue;
+        }
+        const int parts = std::min(static_cast<int>(length / step), 256);
+        for (int k = 1; k < parts; ++k) {
+            fine.push_back(a + (ab * (static_cast<real_t>(k) / static_cast<real_t>(parts))));
+        }
+    }
+    const real_t r2 = radius * radius;
+    for (Vec2& p : fine) {
+        const Vec2 d = p - at;
+        const real_t d2 = (d.x * d.x) + (d.y * d.y);
+        if (d2 < r2) {
+            const real_t t = 1.0F - (d2 / r2);
+            p = p + (direction * (depth * t * t));
+        }
+    }
+    return fine;
+}
+
 } // namespace
+
+void set_tile_carver(world::World& world, TileCarver carver) {
+    world.ecs().ctx().insert_or_assign<TileCarver>(std::move(carver));
+}
+
+std::string deform_body_2d(world::World& world, entt::entity entity,
+                           const world::DamageProfile& profile, float dealt, std::string_view kind,
+                           std::optional<Vec2> at, std::optional<Vec2> direction) {
+    auto& ecs = world.ecs();
+    const auto* destructible = world.valid(entity) ? ecs.try_get<Destructible2D>(entity) : nullptr;
+    const world::DeformSettings& deform = profile.deform;
+    if (destructible == nullptr || dealt <= 0.0F || !at.has_value()) {
+        return {};
+    }
+    const bool explosive = kind == "explosive";
+    // A tile map layer loses the cells a blast reaches.
+    if (ecs.all_of<world::TileMapLayer>(entity)) {
+        const auto* carver = ecs.ctx().find<TileCarver>();
+        if (!explosive || deform.carve <= 0.0F || carver == nullptr || !*carver) {
+            return {};
+        }
+        const float radius = std::min(dealt * deform.carve, deform.max_carve) * kPixelsPerMeter;
+        return (*carver)(world, entity, *at, radius, true) > 0 ? "carve" : "";
+    }
+    const auto outline = outline_of(world, entity);
+    if (!outline.has_value()) {
+        return {};
+    }
+    const world::Tree2D tree(world);
+    const Transform2D place = tree.global(entity);
+    const world::Affine2D global = world::affine(place);
+    const world::Affine2D inverse = global.inverse();
+    const Vec2 local = inverse.apply(*at);
+    const real_t scale =
+        std::max<real_t>(std::sqrt(std::abs(place.scale.x * place.scale.y)), 1e-6F);
+    const Vec2 surface = outside_by(*outline, local) > 0.0F ? nearest_on(*outline, local) : local;
+    const Vec2 middle = centroid_of(*outline);
+    Vec2 along = middle - surface;
+    if (direction.has_value()) {
+        along = inverse.apply(*at + *direction) - local;
+    }
+    if (const real_t size = std::sqrt((along.x * along.x) + (along.y * along.y)); size > 1e-6F) {
+        along = along * (1.0F / size);
+    } else {
+        along = {0.0F, 1.0F};
+    }
+    std::string done;
+    Clipper2Lib::PathsD left;
+    if (explosive && deform.carve > 0.0F) {
+        const real_t radius =
+            std::min(dealt * deform.carve, deform.max_carve) * kPixelsPerMeter / scale;
+        if (outside_by(*outline, local) >= radius) {
+            return {};
+        }
+        left = Clipper2Lib::Difference(Clipper2Lib::PathsD{to_path(*outline)},
+                                       Clipper2Lib::PathsD{to_path(circle(local, radius))},
+                                       Clipper2Lib::FillRule::NonZero, kClipperPrecision);
+        done = "carve";
+    } else if (kind == "pierce" && deform.hole > 0.0F) {
+        // A hole the bullet's size, just inside where it went in.
+        const real_t radius =
+            std::min(dealt * deform.hole, deform.max_hole) * kPixelsPerMeter / scale;
+        left = Clipper2Lib::Difference(
+            Clipper2Lib::PathsD{to_path(*outline)},
+            Clipper2Lib::PathsD{to_path(circle(surface + (along * (radius * 1.5F)), radius))},
+            Clipper2Lib::FillRule::NonZero, kClipperPrecision);
+        done = "hole";
+    } else if ((kind == "blunt" || kind == "impact" || explosive) && deform.dent > 0.0F) {
+        const auto [low, high] = bounds_of(*outline);
+        const real_t thin = std::min(high.x - low.x, high.y - low.y);
+        const real_t depth = std::min<real_t>(
+            std::min(dealt * deform.dent, deform.max_dent) * kPixelsPerMeter / scale, 0.45F * thin);
+        const Polygon made =
+            dented(*outline, surface, along, deform.dent_radius * kPixelsPerMeter / scale, depth);
+        // A dent that folds the outline over itself is cleaned up as what it covers.
+        left = Clipper2Lib::Union(Clipper2Lib::PathsD{to_path(made)},
+                                  Clipper2Lib::FillRule::NonZero, kClipperPrecision);
+        done = "dent";
+    } else {
+        return {};
+    }
+    std::vector<Polygon> parts = open_holes(std::move(left));
+    if (parts.empty()) {
+        return {};
+    }
+    // The largest part stays the body; the rest fall away as debris.
+    const real_t total = area_of(*outline);
+    auto look = look_of(world, entity, parts.front());
+    for (std::size_t i = 1; i < parts.size(); ++i) {
+        auto created = create_piece(world, world.id_of(entity), i);
+        if (!created) {
+            continue;
+        }
+        const entt::entity out = created.value();
+        ecs.emplace<Transform2D>(out, place);
+        if (auto part_look = look_of(world, entity, parts[i]); part_look.has_value()) {
+            ecs.emplace<world::Polygon2D>(out, std::move(*part_look));
+        }
+        ecs.emplace<world::CollisionPolygon2D>(out, world::CollisionPolygon2D{.polygon = parts[i]});
+        world::RigidBody2D body;
+        const real_t area = std::abs(area_of(parts[i])) * scale * scale;
+        body.mass = std::max(
+            static_cast<float>(area / (kPixelsPerMeter * kPixelsPerMeter) * profile.density),
+            0.001F);
+        if (const auto* fixed = ecs.try_get<const world::StaticBody2D>(entity); fixed != nullptr) {
+            body.collision_layer = fixed->collision_layer;
+            body.collision_mask = fixed->collision_mask;
+        } else if (const auto* rigid = ecs.try_get<const world::RigidBody2D>(entity);
+                   rigid != nullptr) {
+            body.collision_layer = rigid->collision_layer;
+            body.collision_mask = rigid->collision_mask;
+            body.linear_velocity = rigid->linear_velocity;
+        }
+        ecs.emplace<world::RigidBody2D>(out, body);
+        ecs.emplace<FracturePiece2D>(out, FracturePiece2D{.lifetime = profile.debris.lifetime,
+                                                          .group = {},
+                                                          .links = {},
+                                                          .anchored = false});
+    }
+    // The body's own outline is what is left, drawn as before.
+    if (auto* rigid = ecs.try_get<world::RigidBody2D>(entity);
+        rigid != nullptr && total > 0.0F && rigid->center_of_mass_mode == "auto") {
+        rigid->mass =
+            std::max(static_cast<float>(rigid->mass * area_of(parts.front()) / total), 0.001F);
+    }
+    ecs.remove<world::CollisionShape2D>(entity);
+    if (auto* shape = ecs.try_get<world::CollisionPolygon2D>(entity); shape != nullptr) {
+        shape->polygon = parts.front();
+    } else {
+        ecs.emplace<world::CollisionPolygon2D>(entity,
+                                               world::CollisionPolygon2D{.polygon = parts.front()});
+    }
+    if (look.has_value()) {
+        ecs.remove<world::Sprite2D>(entity);
+        ecs.emplace_or_replace<world::Polygon2D>(entity, std::move(*look));
+    }
+    return done;
+}
+
+std::vector<int> tear_cloth_2d(world::World& world, entt::entity entity, Vec2 center,
+                               float radius) {
+    auto* cloth = world.valid(entity) ? world.ecs().try_get<world::Cloth2D>(entity) : nullptr;
+    if (cloth == nullptr || radius <= 0.0F) {
+        return {};
+    }
+    const world::ClothGrid2D grid = world::cloth_grid_2d(*cloth);
+    std::vector<Vec2> points;
+    if (const world::ClothPoints2D* simulated = world::cloth_points_2d(world, entity);
+        simulated != nullptr && simulated->current.size() == grid.down.size()) {
+        points = simulated->current;
+    } else {
+        points = world::cloth_rest_2d(*cloth, world::Tree2D(world).global_affine(entity));
+    }
+    std::vector<int> tore;
+    const real_t reach = static_cast<real_t>(radius) * radius;
+    for (std::size_t e = 0; e < grid.edges.size(); ++e) {
+        const Vec2 middle = (points[static_cast<std::size_t>(grid.edges[e][0])] +
+                             points[static_cast<std::size_t>(grid.edges[e][1])]) *
+                            0.5F;
+        const Vec2 d = middle - center;
+        if (!grid.torn[e] && (d.x * d.x) + (d.y * d.y) <= reach) {
+            tore.push_back(static_cast<int>(e));
+        }
+    }
+    if (tore.empty()) {
+        return tore;
+    }
+    cloth->torn.insert(cloth->torn.end(), tore.begin(), tore.end());
+    std::ranges::sort(cloth->torn);
+    const auto [first, last] = std::ranges::unique(cloth->torn);
+    cloth->torn.erase(first, last);
+    json::Array edges;
+    for (const int edge : tore) {
+        edges.emplace_back(edge);
+    }
+    json::Value data;
+    data["edges"] = std::move(edges);
+    world.emit("torn", world.id_of(entity), std::move(data));
+    return tore;
+}
 
 void detail::Space::collect_hits() {
     if (B2_IS_NULL(world_)) {
@@ -580,7 +916,9 @@ Result<std::vector<entt::entity>> break_body_2d(world::World& world, entt::entit
                            .seed = destructible->seed,
                            .at = {hit_local.x, hit_local.y, 0.0F},
                            .fine = 0.0F,
-                           .index = 0};
+                           .index = 0,
+                           .dents = {},
+                           .carves = {}};
     if (profile != nullptr) {
         cut = world::damage_cut(*profile, {hit_local.x, hit_local.y, 0.0F}, destructible->level,
                                 hash_id(id) ^ static_cast<std::uint32_t>(world.tick()));
@@ -801,7 +1139,8 @@ Result<std::vector<entt::entity>> break_body_2d(world::World& world, entt::entit
 }
 
 Result<DamageReport2D> damage_body_2d(world::World& world, entt::entity entity, float amount,
-                                      std::string_view kind, std::optional<Vec2> at, float push) {
+                                      std::string_view kind, std::optional<Vec2> at, float push,
+                                      std::optional<Vec2> direction) {
     auto& ecs = world.ecs();
     auto* destructible = world.valid(entity) ? ecs.try_get<Destructible2D>(entity) : nullptr;
     if (destructible == nullptr) {
@@ -843,6 +1182,11 @@ Result<DamageReport2D> damage_body_2d(world::World& world, entt::entity entity, 
         destructible->state = state;
         show_state(world, entity, *profile, before, state);
     }
+    if (report.health > 0.0F && report.dealt > 0.0F) {
+        report.deformed =
+            deform_body_2d(world, entity, *profile, report.dealt, kind, at, direction);
+        destructible = ecs.try_get<Destructible2D>(entity);
+    }
     if (report.dealt > 0.0F) {
         json::Value data;
         data["dealt"] = report.dealt;
@@ -850,6 +1194,9 @@ Result<DamageReport2D> damage_body_2d(world::World& world, entt::entity entity, 
         data["kind"] = std::string(kind);
         if (state != before) {
             data["state"] = state;
+        }
+        if (!report.deformed.empty()) {
+            data["deformed"] = report.deformed;
         }
         world.emit("damaged", report.id, std::move(data));
     }
@@ -889,12 +1236,31 @@ std::vector<DamageReport2D> damage_area_2d(world::World& world, Vec2 center, flo
     std::vector<std::pair<entt::entity, float>> hit;
     for (const entt::entity entity : world.ecs().view<const Destructible2D>()) {
         const Transform2D place = tree.global(entity);
-        Vec2 near = place.position;
-        if (const auto outline = outline_of(world, entity); outline.has_value()) {
-            near = world::affine(place).apply(centroid_of(*outline));
+        const Vec2 d = place.position - center;
+        float distance = std::sqrt((d.x * d.x) + (d.y * d.y));
+        if (world.ecs().all_of<world::TileMapLayer>(entity)) {
+            // A blast reaches a layer where it would take cells out, all of it at once.
+            distance = radius + 1.0F;
+            std::shared_ptr<const world::DamageProfile> keep;
+            const world::DamageProfile* profile =
+                profile_of(world, world.ecs().get<const Destructible2D>(entity), keep);
+            const auto* carver = world.ecs().ctx().find<TileCarver>();
+            if (profile != nullptr && carver != nullptr && *carver && kind == "explosive") {
+                const float dealt = world::damage_taken(*profile, amount, kind);
+                const float reach =
+                    std::min(dealt * profile->deform.carve, profile->deform.max_carve) *
+                    kPixelsPerMeter;
+                if ((*carver)(world, entity, center, reach, false) > 0) {
+                    distance = 0.0F;
+                }
+            }
+        } else if (const auto outline = outline_of(world, entity); outline.has_value()) {
+            const world::Affine2D global = world::affine(place);
+            const real_t scale =
+                std::max<real_t>(std::sqrt(std::abs(place.scale.x * place.scale.y)), 1e-6F);
+            distance =
+                static_cast<float>(outside_by(*outline, global.inverse().apply(center)) * scale);
         }
-        const Vec2 d = near - center;
-        const float distance = std::sqrt((d.x * d.x) + (d.y * d.y));
         if (distance <= radius) {
             hit.emplace_back(entity, radius > 0.0F ? 1.0F - (distance / radius) : 1.0F);
         }

@@ -30,6 +30,7 @@
 #include <Jolt/Physics/SoftBody/SoftBodyContactListener.h>
 // clang-format on
 
+#include <array>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -456,6 +457,11 @@ struct SoftBody {
     float damping = 0.01F;
     int precision = 5;
     std::vector<int> pinned; // the points pinned, sorted
+    // The mesh triangles left out when it was made (its SoftBody3D's torn), each face's mesh
+    // triangle by its points, lowest first, and how much shorter its edges were made at rest.
+    std::vector<int> torn;
+    std::map<std::array<std::uint32_t, 3>, int> face_triangles;
+    float rest_scale = 1.0F;
     entt::entity ignore = entt::null;
     // Where its mesh is now, after its last step or since it was made.
     std::shared_ptr<const scene3d::SoftBodyPose> pose;
@@ -467,6 +473,14 @@ struct SoftBody {
     Vec3 scale;
     std::vector<world::Affine3D> skin;
     float drag = 0.0F;
+};
+
+// A soft body's point kept across a tear: where it is, where it was a step before (Jolt's
+// mPreviousPosition) and how fast it goes.
+struct KeptPoint {
+    JPH::RVec3 place;
+    JPH::RVec3 before;
+    JPH::Vec3 velocity;
 };
 
 // An Area3D's wind, as Godot's Area3D::_initialize_wind leaves it: wind_force_magnitude along
@@ -680,6 +694,8 @@ private:
     void create_soft_body(SoftBody& soft, const scene3d::MeshData& mesh,
                           const world::SoftBody3D& component);
     void destroy(SoftBody& soft);
+    [[nodiscard]] std::vector<std::optional<KeptPoint>> keep_points(const SoftBody& soft) const;
+    void restore_points(SoftBody& soft, const std::vector<std::optional<KeptPoint>>& kept);
     // Sets each point's inverse mass from the total mass, pinned points' to 0.
     void update_masses(SoftBody& soft);
     // Moves pinned points to their attachments, as Godot's SoftBody3D::_update_physics_server.
@@ -691,8 +707,9 @@ private:
     bool blow_soft_body(const SoftBody& soft, float drag_coefficient, JPH::Body& body,
                         const world::WindField& field, double time,
                         const std::vector<AreaWind>& areas, float seconds) const;
-    // Notes where each soft body's mesh is after the step.
-    void read_soft_bodies();
+    // Notes where each soft body's mesh is after the step, and tears the faces of edges
+    // stretched past their SoftBody3D's tear_stretch.
+    void read_soft_bodies(world::World& world);
     // Makes the cloth bodies match the Cloth3D components (cloth.cpp): made from their model's
     // section, made again when it or their shape changes, their other settings brought up to
     // date.

@@ -1,0 +1,7 @@
+{
+  "format": 1,
+  "main_scene": "yard.scene.json",
+  "name": "Damage deform",
+  "version": "1.0.0",
+  "window": {"height": 90, "width": 160}
+}

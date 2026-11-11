@@ -2121,22 +2121,27 @@ Damages a `Destructible3D` or `Destructible2D` by its [damage profile](scene-for
 or every one within `radius` of `at`, as an explosion, less with distance (all of it at the
 center, none at the radius). Each takes `amount` times its profile's resistance to `kind`, shows
 the damage state it reaches, and at no health breaks where it was hit; a standing linked piece
-that breaks no more comes loose. Without a profile, damage at least the body's
-`damage_threshold` breaks it. It is a `damaged` event (and `broken` and `collapsed` where it
-breaks), and `undo` takes it back.
+that breaks no more comes loose. Damage that leaves health dents, holes or carves it as its
+profile's `deform` says (an `HTerrain` is dug into, a `TileMapLayer` loses cells). Without a
+profile, damage at least the body's `damage_threshold` breaks it. Cuts, shots and blasts tear a
+`Cloth2D` or `SoftBody3D` that `id` names, or every one within `radius` of `at`. It is a
+`damaged` event (and `broken`, `collapsed` and `torn` where it breaks or tears), and `undo` takes
+it back.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | | The body; left out, `at` and `radius` name an area |
+| `id` | string | | The body, or cloth to tear within `radius` of `at`; left out, `at` and `radius` name an area |
 | `at` | `[x, y, z]` or `[x, y]` | | Where it is hit, in the world (meters, 2D pixels) |
-| `radius` | number | | Without `id`: how far the damage reaches |
+| `direction` | as `at` | toward its middle | Which way the hit goes: dents and holes go in along it |
+| `radius` | number | | Without `id`, or for cloth: how far the damage reaches |
 | `amount` | number | required | Damage before resistance |
 | `kind` | string | `"blunt"` | `blunt`, `pierce`, `cut`, `explosive`, `fire` or `impact` |
 | `push` | number | the profile's | Meters (pixels) a second loose pieces fly from the hit |
 | `dry_run` | boolean | `false` | Return what would change and change nothing |
 
 Needs: `edit`. Returns each body `hurt`: its `id`, the health `dealt` and left, its `state` once
-it has one, and `broke` with its `pieces` or `fell`. The wall in
+it has one, `deformed` (`dent`, `hole`, `carve` or `crater`) when its shape changed, and `broke`
+with its `pieces` or `fell`; and the cloth `torn`, with how many edges (2D) or triangles (3D). The wall in
 [examples/destruction-profiles](../../examples/destruction-profiles/):
 
 ```json
@@ -2146,9 +2151,10 @@ it has one, and `broke` with its `pieces` or `fell`. The wall in
 ### damage.state
 
 Each `Destructible3D` and `Destructible2D` (or those `ids` names) with its profile's `material`,
-the `health` it has left and its `full` health at its level, its damage `state` and `level`, and
-each broken body's group of pieces (named by the body's ID): how many stand, are loose and are
-anchored, and the links between them.
+the `health` it has left and its `full` health at its level, its damage `state` and `level`, how
+many `dents`, `carves` and `craters` it has, each broken body's group of pieces (named by the
+body's ID): how many stand, are loose and are anchored, and the links between them, and the
+cloth `torn`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
