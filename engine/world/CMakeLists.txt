@@ -21,6 +21,7 @@ add_library(slash_world
     src/scene.cpp
     src/tree2d.cpp
     src/tree3d.cpp
+    src/vehicle.cpp
     src/wind.cpp
     src/world.cpp)
 add_library(slash::world ALIAS slash_world)
@@ -34,6 +35,7 @@ target_compile_definitions(slash_world PUBLIC ENTT_NOEXCEPTION)
 # and sound, so they give the same bits everywhere: no fused multiply-adds.
 set_source_files_properties(src/camera2d.cpp src/canvas_layer.cpp src/path.cpp src/tree2d.cpp
     src/tree3d.cpp src/wind.cpp src/physics_field.cpp src/cloth2d.cpp src/hair.cpp src/character.cpp src/creature.cpp
+    src/vehicle.cpp
     PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 slash_engine_target(slash_world)

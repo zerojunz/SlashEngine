@@ -1,0 +1,4 @@
+{"format": 1, "extends": "vehicles/hatchback.vehicle.json", "name": "Hot hatch",
+ "body": {"color": [0.85, 0.75, 0.1]},
+ "physics": {"engine": {"max_torque": 360}, "tires": {"friction": 12}},
+ "design": {"acceleration": [3, 6], "top_speed": [40, 80]}}

@@ -20,6 +20,7 @@
 #include "slash/canvas/tilemap.hpp"
 #include "slash/command/character.hpp"
 #include "slash/command/creature.hpp"
+#include "slash/command/vehicle.hpp"
 #include "slash/command/l10n.hpp"
 #include "slash/command/lighting.hpp"
 #include "slash/command/lightmap.hpp"
@@ -80,6 +81,7 @@
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/creature.hpp"
+#include "slash/world/vehicle.hpp"
 #include "slash/world/foliage.hpp"
 #include "slash/world/hair.hpp"
 #include "slash/world/path.hpp"
@@ -550,6 +552,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "creature") {
         return Reply::success(world::creature_schema());
+    }
+    if (kind == "vehicle") {
+        return Reply::success(world::vehicle_schema());
     }
     if (name.empty()) {
         return param_error(code::kInvalidParams, "/name",
@@ -7147,7 +7152,8 @@ void register_builtin_commands(Registry& registry) {
                                "foliage",
                                "groom",
                                "character",
-                               "creature"};
+                               "creature",
+                               "vehicle"};
     registry.add({
         .name = "schema.get",
         .description =
@@ -7158,7 +7164,7 @@ void register_builtin_commands(Registry& registry) {
             ".lightmap.json, "
             ".voxelgi.json, .model.json, .standard_material.json, .texture.json, .scatter.json, "
             ".physics_material.json, .ragdoll.json, .foliage.json, .groom.json, "
-            ".character.json, .creature.json, .replay.json, "
+            ".character.json, .creature.json, .vehicle.json, .replay.json, "
             ".test.json, "
             ".score.json or storyboard "
             "files, one component or one command.",
@@ -8850,6 +8856,7 @@ void register_builtin_commands(Registry& registry) {
     register_ragdoll_commands(registry);
     register_character_commands(registry);
     register_creature_commands(registry);
+    register_vehicle_commands(registry);
     register_physics_debug_commands(registry);
     register_lighting_commands(registry);
     register_style_commands(registry);

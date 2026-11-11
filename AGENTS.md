@@ -147,7 +147,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, physics_material, ragdoll, foliage, groom, character, creature, sdk, plugin)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, physics_material, ragdoll, foliage, groom, character, creature, vehicle, sdk, plugin)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -157,7 +157,7 @@ Validate after editing a scene or prefab by hand, and format before committing o
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
-`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`, `.scatter.json`, `.physics_material.json`, `.ragdoll.json`, `.foliage.json`, `.groom.json`, `.character.json` and `.creature.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
+`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`, `.scatter.json`, `.physics_material.json`, `.ragdoll.json`, `.foliage.json`, `.groom.json`, `.character.json`, `.creature.json` and `.vehicle.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -2059,6 +2059,34 @@ character body, playing its animations and posing its cut-out, and setting an `N
 `creature.interact` and `creature.state` (`engine/command/src/creature.cpp`) an agent's.
 `examples/fauna` keeps a meadow and a pond.
 
+Vehicles are recipes, after Unreal's Chaos Vehicles (Godot has only `VehicleBody3D`): a
+`.vehicle.json` file (`slash/world/vehicle.hpp`, `engine/world/src/vehicle.cpp`, built with
+`-ffp-contract=off`; `$cli schema vehicle`) says what a car, bike, truck, tracked vehicle, boat
+or aircraft looks like (body, seats, doors, wheels, wings, and `parts` of its own: shapes or
+model files placed in its space) and its own physics (mass and center
+of mass, the engine's torque curve, gears, differential, steering, brakes, suspension, tires,
+buoyancy, lift), what it does to whoever it hits and the `design` a test drive must meet, and
+`extends` another. `world::drive_step` is the drivetrain both dimensions share (rpm from the
+wheels, an automatic gearbox, throttle against the way it rolls braking, steering eased and
+reduced at speed), and `vehicle_side_view` its 2D profile. `scene3d::build_vehicle`
+(`engine/scene3d/src/vehicle.cpp`) builds its model, with `seat_` and `door_` points and convex
+collision, which `load_model` and `check_model` take as recipes. The `vehicles_3d` system
+(`engine/physics3d/src/vehicle_tool.cpp`, priority 945) keeps each `Vehicle3D`'s `RigidBody3D`
+(the recipe's mass and `center_of_mass`, a field `RigidBody3D` and `RigidBody2D` now have, as
+Godot's) and `VehicleBody3D` with a `VehicleWheel3D` child a wheel, drives the wheels from its
+`controls` (tracked vehicles slewing on tracks that slide), floats boats at four corners, flies
+aircraft by thrust, lift and control torques through `constant_force` and `constant_torque`,
+keeps bikes upright, carries `VehicleRider`s in their seats and hits characters, creatures and
+ragdolls (`vehicle_hit`); `vehicles_2d` (`engine/physics2d/src/vehicle_tool.cpp`) does the same
+for a `Vehicle2D` from the side, its wheels `RigidBody2D` circles on `GrooveJoint2D`s and
+`DampedSpringJoint2D`s. `enter_vehicle` and `exit_vehicle` are gameplay code's; `vehicle.place`,
+`vehicle.control`, `vehicle.tune` (a merge patch kept in the vehicle's `overrides`),
+`vehicle.check` (a test drive in a private `Session` held to the design), `vehicle.design`
+(writes a recipe an agent designed after fitting its torque, drag, brakes and steering to
+targets by test drives, the unwritten recipe handed to each drive's session through
+`SessionOptions::files`) and `vehicle.state` (`engine/command/src/vehicle.cpp`) an agent's.
+`examples/vehicles` drives a car, a boat and a tank and a 2D pickup, and designs a dune buggy.
+
 Physics materials and fields make one simulation, after Unreal's Chaos. A
 `.physics_material.json` file (`slash/world/physics_material.hpp`: Godot's `PhysicsMaterial`
 with Chaos's density, strength and surface; `$cli schema physics_material`) is named by a
@@ -2997,7 +3025,7 @@ CI rejects unformatted code and any clang-tidy finding.
   `accessibility` (screen readers through AccessKit's adapters), `animation` (`.anim.json` keyframe
   animations, `.animtree.json` animation trees and the systems that play them),
   `scene3d` (3D nodes: primitive meshes, glTF, OBJ, FBX and Blender models, CSG shapes, grid maps, materials, cameras, lights and environments,
-  and drawing them), `physics2d` (2D bodies, areas, joints and queries on Box2D), `physics3d` (3D bodies, areas, character movement and queries on Jolt), `navigation` (navigation meshes, maps, paths and agents), `npc` (NPC brains, goal-oriented action planning and the system that runs agents' plans), `net` (multiplayer peers, the ENet transport, a world's multiplayer and RPCs), `xr` (the XR server, interfaces, trackers, XR nodes, the test headset and OpenXR), `library` (the asset library, its
+  and drawing them), `physics2d` (2D bodies, areas, joints, queries and vehicles on Box2D), `physics3d` (3D bodies, areas, character movement, queries and vehicles on Jolt), `navigation` (navigation meshes, maps, paths and agents), `npc` (NPC brains, goal-oriented action planning and the system that runs agents' plans), `net` (multiplayer peers, the ENet transport, a world's multiplayer and RPCs), `xr` (the XR server, interfaces, trackers, XR nodes, the test headset and OpenXR), `library` (the asset library, its
   generators and commands), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `soundtrack` (`.score.json` scores, MIDI files, rendering stems, drafting cue sheets and arranging them),
   `command` (commands, sessions with undo, JSON-RPC and MCP),

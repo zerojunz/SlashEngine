@@ -1257,14 +1257,16 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         the `fauna` system (herds, flocks and schools, fleeing, hunting, attacking, taming,
         following and riding, with `NpcAgent` facts), `creature.place`, `creature.populate`,
         `creature.interact` and `creature.state` (`examples/fauna`)
-16. [ ] Vehicles: a vehicle tool that designs cars, bikes, trucks, tracked vehicles, boats and
+16. [x] Vehicles: a vehicle tool that designs cars, bikes, trucks, tracked vehicles, boats and
         aircraft as `.vehicle.json` recipes (a body built from model recipes, seats and doors,
         wheels, tracks, hulls or wings) built into a rigged model with its collision, each with
         its own physics to tune as Unreal's Chaos Vehicles: mass and center of mass, engine
         torque curve, gears, differential, steering, brakes, suspension, tire friction,
         buoyancy and lift, which `vehicle.tune` changes while a game runs and `vehicle.check`
         holds to the design; characters get in, drive and get out through seats, and vehicles
-        push, knock down and hurt characters and creatures by their contact impulses
+        push, knock down and hurt characters and creatures by their contact impulses, in 3D
+        (`vehicles_3d` on `VehicleBody3D`) and 2D (`vehicles_2d`, sprung wheels on Box2D
+        joints) (`examples/vehicles`)
 17. [ ] Damage and destruction design: a tool that authors how each model and piece of the
         environment takes damage, past today's Voronoi fracture: `.damage.json` profiles by
         material (wood splinters, glass shatters, metal dents, stone crumbles, cloth tears)
@@ -1289,6 +1291,35 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         checks; `vfx.play`, `vfx.preview` (frames and numbers an agent reads) and `vfx.check`
         drive and check them, and the damage, foliage, character, fauna and vehicle tools play
         their effects through it
+19. [ ] Fluids and smoke: a real-time simulator with no grids (Godot has none; after Niagara's
+        fluids and Unreal's water tools, built on particles instead of Niagara Fluids' grids):
+        liquids as position-based fluid particles (density, incompressibility, viscosity,
+        surface tension, vorticity) that pour, splash, fill containers and push and float the
+        bodies of the one simulation; smoke, steam and fire as gas particles carrying
+        temperature, density and fuel, with buoyancy, vortex particles for swirls, burning and
+        cooling; neighbors found by sorting particles along a space-filling curve, not a grid;
+        liquids drawn as screen-space surfaces (splatted depth, smoothed, refracted, with foam
+        and spray) and smoke as lit, self-shadowed splats; oceans, lakes and rivers as summed
+        Gerstner waves with shorelines, foam where waves fold (the surface's Jacobian), wakes
+        and buoyancy, coupled to the particles near them; emitters, sinks and colliders from
+        every tool's bodies, wind and physics fields; the same in 2D worlds (side-on liquids,
+        smoke and water surfaces); `.fluid.json` recipes, `fluid.place`, `fluid.state`,
+        `fluid.preview` and `fluid.check` (volume kept, particle and step budgets), and the VFX
+        tool's effects can emit fluids
+20. [ ] Character anatomy and faces: the character tool's skeleton made whole and a face tool, after
+        MetaHuman Creator and Chaos Flesh: Godot's full humanoid profile (fingers, eyes and
+        jaw) with twist bones, so hands grip and faces open; an anatomical layer of bones
+        (skull, ribs, pelvis, limbs) and muscles sized from the body's measures, the bones
+        colliding as ragdoll and hit bodies and the muscles bulging and sliding under the
+        skin as joints bend; and a face tool that designs and carves faces as `.face.json`
+        recipes: a sculpted head of regions (brow, eyes, nose, cheeks, mouth, jaw, ears) moved,
+        scaled and carved by named controls, blends between face presets, skin detail (pores,
+        wrinkles, scars, freckles and makeup as maps), teeth, tongue and eyes, and the 52
+        ARKit expression shapes made from the sculpt so face capture drives any face; styles
+        from realistic to stylized (toon, painterly, low poly) taken from the storyboard's
+        style entries and design drafts, so every face fits the game's look; distinct faces
+        kept apart by `face.check` against the cast and the storyboard's rules, `face.generate`
+        drafting faces from a brief, and side-on 2D faces and portraits for 2D worlds
 
 Console ports are not on this roadmap and never will be in this repository. As with Godot,
 PlayStation, Xbox and Switch support comes from licensed porting partners as private backends.
