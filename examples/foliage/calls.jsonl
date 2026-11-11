@@ -1,0 +1,17 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"foliage.paint","params":{"entity":"meadow3d","type":"grass.foliage.json","at":[0,0,0],"radius":1.5,"seed":7}}
+{"jsonrpc":"2.0","id":3,"method":"foliage.paint","params":{"entity":"meadow3d","type":"boulder.foliage.json","at":[1.5,0,-1.5],"radius":1.2,"seed":3}}
+{"jsonrpc":"2.0","id":4,"method":"foliage.paint","params":{"entity":"meadow3d","type":"grass.foliage.json","at":[0,0,0],"radius":1.5,"seed":8}}
+{"jsonrpc":"2.0","id":5,"method":"foliage.paint","params":{"entity":"meadow2d","type":"tuft.foliage.json","at":[60,80],"radius":30,"seed":1}}
+{"jsonrpc":"2.0","id":6,"method":"foliage.get","params":{"entity":"meadow3d","at":[1.5,0,-1.5],"radius":1.2,"type":"boulder.foliage.json"}}
+{"jsonrpc":"2.0","id":7,"method":"physics.raycast","params":{"from":[1.584,3,-1.46],"to":[1.584,-1,-1.46]}}
+{"jsonrpc":"2.0","id":8,"method":"foliage.harvest","params":{"entity":"meadow3d","at":[1.584,0,-1.46],"radius":0.5}}
+{"jsonrpc":"2.0","id":9,"method":"physics.raycast","params":{"from":[1.584,3,-1.46],"to":[1.584,-1,-1.46]}}
+{"jsonrpc":"2.0","id":10,"method":"frame.capture","params":{"points":[[80,50],[64,78]]}}
+{"jsonrpc":"2.0","id":11,"method":"step","params":{"ticks":90}}
+{"jsonrpc":"2.0","id":12,"method":"foliage.get","params":{"entity":"meadow3d"}}
+{"jsonrpc":"2.0","id":13,"method":"foliage.get","params":{"entity":"meadow2d","at":[60,80],"radius":30,"limit":3}}
+{"jsonrpc":"2.0","id":14,"method":"frame.capture","params":{"points":[[80,50],[64,78]]}}
+{"jsonrpc":"2.0","id":15,"method":"foliage.erase","params":{"entity":"meadow3d","type":"grass.foliage.json","at":[0,0,0],"radius":0.5}}
+{"jsonrpc":"2.0","id":16,"method":"undo","params":{}}
+{"jsonrpc":"2.0","id":17,"method":"foliage.get","params":{"entity":"meadow3d"}}

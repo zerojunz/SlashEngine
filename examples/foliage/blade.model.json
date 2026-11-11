@@ -1,0 +1,18 @@
+{
+  "format": 1,
+  "materials": {
+    "leaf": {
+      "albedo_color": [0.3, 0.75, 0.25, 1],
+      "shading_mode": "unshaded"
+    }
+  },
+  "parts": [
+    {
+      "material": "leaf",
+      "name": "blade",
+      "position": [0, 0.3, 0],
+      "shape": "box",
+      "size": [0.06, 0.6, 0.06]
+    }
+  ]
+}

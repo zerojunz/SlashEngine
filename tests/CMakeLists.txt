@@ -147,6 +147,7 @@ add_executable(slash_tests
     test_physics3d.cpp
     test_physics_debug.cpp
     test_cloth.cpp
+    test_foliage.cpp
     test_physics_fields.cpp
     test_playtest.cpp
     test_autopilot.cpp

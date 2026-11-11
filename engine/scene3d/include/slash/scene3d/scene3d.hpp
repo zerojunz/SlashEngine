@@ -16,6 +16,7 @@
 #include "slash/scene3d/virtual_geometry.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/foliage.hpp"
 #include "slash/world/scene.hpp"
 #include "slash/world/tree3d.hpp"
 
@@ -557,6 +558,14 @@ private:
     void add_multimesh(const world::World& world, entt::entity entity, const world::Affine3D& place,
                        const std::function<world::Affine3D(entt::entity)>& global,
                        std::uint32_t cull_mask, float interpolation);
+    // A Foliage3D's instances: each its type's model, leaning in the wind and from characters,
+    // faded out over its cull distance and drawn at its last LOD or as an impostor far away.
+    void add_foliage(const world::World& world, entt::entity entity, const world::Affine3D& place,
+                     const std::function<world::Affine3D(entt::entity)>& global,
+                     const world::Affine3D& camera, std::uint32_t cull_mask, float interpolation);
+    void add_impostor(entt::entity entity, const world::FoliageType& type, const Bounds& box,
+                      const world::Affine3D& placed, const world::Affine3D& camera,
+                      std::uint32_t layers, render::ShadowCasting casting);
     // A GridMap's octants, drawn as Godot draws their MultiMeshes.
     void add_gridmap(const world::World& world, entt::entity entity, const world::Affine3D& place,
                      std::uint32_t cull_mask);

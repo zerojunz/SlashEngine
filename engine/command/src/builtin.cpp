@@ -75,6 +75,7 @@
 #include "slash/world/cloth2d.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/foliage.hpp"
 #include "slash/world/path.hpp"
 #include "slash/world/physics_material.hpp"
 #include "slash/world/ragdoll.hpp"
@@ -525,6 +526,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "ragdoll") {
         return Reply::success(world::ragdoll_schema());
+    }
+    if (kind == "foliage") {
+        return Reply::success(world::foliage_schema());
     }
     if (name.empty()) {
         return param_error(code::kInvalidParams, "/name",
@@ -1953,8 +1957,11 @@ Reply physics_raycast_3d(Session& session, const json::Value& params) {
     if (!hit->surface.empty()) {
         found["surface"] = hit->surface;
     }
-    // A GridMap's cell hit and the item in it.
-    if (hit->cell) {
+    // A Foliage3D's instance hit, as its group and index.
+    if (hit->cell && world.ecs().all_of<world::Foliage3D>(hit->entity)) {
+        found["instance"] = json::Array{hit->cell->x, hit->cell->y};
+    } else if (hit->cell) {
+        // A GridMap's cell hit and the item in it.
         found["cell"] = json::Array{hit->cell->x, hit->cell->y, hit->cell->z};
         const auto* map = world.ecs().try_get<const world::GridMap>(hit->entity);
         auto cells = map != nullptr ? scene3d::decode_grid_cells(*map)
@@ -1996,7 +2003,11 @@ Reply physics_raycast(Session& session, const json::Value& params) {
     if (!hit->surface.empty()) {
         found["surface"] = hit->surface;
     }
-    if (hit->cell) {
+    // A Foliage2D's instance hit, as its group and index, or a TileMapLayer's cell.
+    if (hit->cell && world.ecs().all_of<world::Foliage2D>(hit->entity) &&
+        !world.ecs().all_of<world::TileMapLayer>(hit->entity)) {
+        found["instance"] = json::Array{hit->cell->x, hit->cell->y};
+    } else if (hit->cell) {
         found["cell"] = json::Array{hit->cell->x, hit->cell->y};
     }
     return Reply::success(std::move(result));
@@ -7099,7 +7110,8 @@ void register_builtin_commands(Registry& registry) {
                                "texture",
                                "scatter",
                                "physics_material",
-                               "ragdoll"};
+                               "ragdoll",
+                               "foliage"};
     registry.add({
         .name = "schema.get",
         .description =
@@ -7109,7 +7121,7 @@ void register_builtin_commands(Registry& registry) {
             ".bus_layout.json, .navmesh.json, .navpoly.json, .npc.json, .meshlib.json, "
             ".lightmap.json, "
             ".voxelgi.json, .model.json, .standard_material.json, .texture.json, .scatter.json, "
-            ".physics_material.json, "
+            ".physics_material.json, .ragdoll.json, .foliage.json, "
             ".replay.json, "
             ".test.json, "
             ".score.json or storyboard "

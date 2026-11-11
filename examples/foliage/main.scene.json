@@ -1,0 +1,84 @@
+{
+  "entities": {
+    "breeze": {
+      "components": {
+        "Transform3D": {
+          "rotation": [0.0, -1.5707964, 0.0]
+        },
+        "WindSource3D": {
+          "max_gust_amount": 0.0,
+          "min_gust_amount": 0.0,
+          "strength": 2.0,
+          "turbulence": 0.0
+        }
+      }
+    },
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true
+        },
+        "Transform3D": {
+          "position": [0.0, 2.0, 5.0],
+          "rotation": [-0.35, 0.0, 0.0]
+        }
+      }
+    },
+    "draft": {
+      "components": {
+        "Transform2D": {},
+        "WindSource2D": {
+          "max_gust_amount": 0.0,
+          "min_gust_amount": 0.0,
+          "strength": 150.0,
+          "turbulence": 0.0
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "MeshInstance3D": {},
+        "PlaneMesh": {
+          "size": [12.0, 12.0]
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.35, 0.25, 0.15, 1.0],
+          "shading_mode": "unshaded"
+        },
+        "Transform3D": {}
+      }
+    },
+    "hiker": {
+      "components": {
+        "CharacterBody3D": {
+          "motion_mode": "floating",
+          "velocity": [1.5, 0.0, 0.0]
+        },
+        "CollisionShape3D": {
+          "height": 1.8,
+          "radius": 0.3,
+          "shape": "capsule"
+        },
+        "Transform3D": {
+          "position": [-3.0, 0.9, 0.0]
+        }
+      }
+    },
+    "kid": {
+      "components": {
+        "CharacterBody2D": {
+          "motion_mode": "floating",
+          "velocity": [60.0, 0.0]
+        },
+        "CollisionShape2D": {
+          "radius": 4.0,
+          "shape": "circle"
+        },
+        "Transform2D": {
+          "position": [0.0, 80.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

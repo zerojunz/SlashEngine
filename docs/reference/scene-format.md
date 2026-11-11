@@ -4813,6 +4813,69 @@ for `CPUParticles2D` (`wind_influence`) and canvas shaders (`WIND`).
   [`PhysicsField3D` or `PhysicsField2D`](#physics-materials-and-fields)'s directional force
   pushes bodies the same way.
 
+### Foliage
+
+Godot has no foliage tool, so this follows Unreal's Foliage tool and its grass that parts for
+characters. A `.foliage.json` file is one kind of plant or rock (grass, flowers, shrubs, bushes,
+trees, moss, rocks, pebbles): what it draws, how thickly a brush paints it, how it bends in the
+wind and parts for characters, whether it blocks them, can be climbed or harvested and how far it
+is drawn. A `Foliage3D` or `Foliage2D` component holds the instances painted of each type, a
+group per type. [`foliage.paint`](commands.md#foliagepaint) paints them,
+`slash-cli schema foliage` prints the file's schema, and `scene validate` and `scene format`
+take the files; exports ship them. [examples/foliage](../../examples/foliage/) paints a meadow in
+both.
+
+```json
+{"format": 1, "kind": "grass", "mesh": "blade.model.json", "density": 6, "spacing": 0.15,
+ "scale": [0.8, 1.2], "cull_distance": [30, 40],
+ "wind": {"bend": 0.08, "sway": 0.3}, "interaction": {"radius": 0.6, "bend": 0.9}}
+```
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `format` | required | `1` |
+| `space` | `"3d"` | `"3d"` or `"2d"` |
+| `kind` | `"grass"` | `grass`, `flower`, `shrub`, `bush`, `tree`, `moss`, `rock` or `pebble` |
+| `mesh` | 3D: required | The model file drawn at each instance (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`) |
+| `texture` | 2D: required | The image drawn at each instance (any texture, `.texture.json` included) |
+| `size`, `origin` | `[16, 16]`, `[0.5, 1]` | 2D: pixels across and up at scale 1, and the point of the image on the ground as shares of `size` |
+| `density` | `1` | Instances a brush paints per square meter (3D) or square pixel (2D) at full strength |
+| `spacing` | `0` | The least distance between two instances of the type |
+| `scale` | `[1, 1]` | `[min, max]` each instance is scaled between |
+| `random_yaw`, `random_flip` | `true` | 3D: each turns about its up axis at random; 2D: each is mirrored at random |
+| `align_to_normal`, `tilt` | `false`, `0` | 3D: stand along the ground's normal; radians each leans at random |
+| `slope`, `height` | `[0, 90]`, anywhere | 3D: degrees from flat the ground may be, and world heights it grows between |
+| `sink` | `0` | How far into the ground it stands |
+| `cull_distance` | `[0, 0]` | 3D: meters from the camera where it starts to fade (alpha hash) and is gone; `[0, 0]` never |
+| `impostor_distance`, `impostor` | `0`, `""` | 3D: past this distance it draws as `impostor`, an image facing the camera sized by the model's bounds, or without one as the model's last LOD |
+| `cast_shadow` | `"on"` | 3D: as `MeshInstance3D`'s |
+| `wind` | | `bend` (radians per meter a second, or per 100 pixels a second in 2D, of `WindSource3D` or `WindSource2D` wind; `0`), `sway` (the share it rocks by; `0`), `frequency` (`0.5` a second), `max` (radians at most, wind and characters together; `0.8`) |
+| `interaction` | | `radius` (how near a body's middle has to come; `0`, never), `bend` (radians a body at its foot pushes it by; `0.8`), `stiffness` (`40` per second squared), `damping` (`8` per second) |
+| `collision` | none | `shape` (3D `capsule`, `sphere`, `cylinder`, `box`; 2D `circle`, `rectangle`, `capsule`; `none`), `radius` (`0.25`), `height` (`2`), `size`, `offset` (default: standing on the ground), in the instance's space, scaled with it |
+| `climbable` | `false` | Characters may climb it; `foliage.get` says so |
+| `harvest` | none | `item` and `amount` (`1`): what [`foliage.harvest`](commands.md#foliageharvest) gives |
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `Foliage2D` | `groups` `[]` (each `{"type": ".foliage.json file", "instances": [x, y, rotation, scale, ...]}`, four numbers an instance in the entity's space, a negative scale mirrored), `modulate` `[1, 1, 1, 1]`, `collision_layer` `1`, `collision_mask` `1`, `z_index` `0`, `z_as_relative` `true`, `visible` `true`, `light_mask` `1`, `texture_filter` `"inherit"` |
+| `Foliage3D` | `groups` `[]` (each `{"type": ".foliage.json file", "instances": [x, y, z, rx, ry, rz, scale, ...]}`, seven numbers an instance in the entity's space, rotations in radians in Godot's YXZ), `layers` `1`, `collision_layer` `1`, `collision_mask` `1`, `lod_bias` `1` |
+
+- Each instance leans as the wind at its foot says, rocked by `sway` with a phase of its own,
+  plus the push of characters, held within `wind.max`. 3D instances turn about their foot; a 2D
+  instance's corners lean over by their height above its origin.
+- The `foliage` system (priority 970, after physics) has `CharacterBody3D`, `RigidBody3D` and
+  `VehicleBody3D` entities push the `Foliage3D` instances within `interaction.radius` over
+  (`CharacterBody2D` and `RigidBody2D` the `Foliage2D` ones; 2D pushes are sideways), and each
+  springs back by its `stiffness` and `damping`, substepped at 240 Hz. The springs are reset with
+  the world's state, so replays repeat.
+- Instances of a type with a `collision` shape are one static body of the entity's (unless the
+  entity is a body itself): 3D on Jolt with a sub-shape per instance, 2D on Box2D as polygons
+  (circles and capsules as 12-sided ones). `physics.raycast` returns the `instance` it hit as
+  `[group, index]`.
+- 2D instances draw by their foot's height, lowest last, so nearer plants cover farther ones.
+- Problems (a missing type file, a type of the other space) are reported at
+  `/components/Foliage3D/groups/<n>/type` by `frame.summary` and drawing.
+
 ### Physics materials and fields
 
 Everything in a world moves in one simulation, as Unreal's Chaos: bodies of every tool share

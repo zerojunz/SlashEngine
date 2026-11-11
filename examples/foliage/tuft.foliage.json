@@ -1,0 +1,17 @@
+{
+  "density": 0.01,
+  "format": 1,
+  "interaction": {
+    "bend": 0.7,
+    "radius": 12
+  },
+  "kind": "grass",
+  "scale": [0.8, 1.2],
+  "size": [8, 16],
+  "space": "2d",
+  "spacing": 4,
+  "texture": "tuft.texture.json",
+  "wind": {
+    "bend": 0.2
+  }
+}
