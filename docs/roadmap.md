@@ -1345,7 +1345,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
               - [x] ARKit's 52 expression shapes made from the sculpt: blend shapes on 3D
                     characters (lids, jaw, lower teeth and tongue included) and a
                     `Character2D`'s `expressions` on its profile
-              - [ ] Skin detail maps and skin marks (scars, freckles, moles, rashes, burns,
+              - [x] Skin detail maps and skin marks (scars, freckles, moles, rashes, burns,
                     bruises, wounds, tattoos and face paint)
               - [ ] `face.generate`, `face.check`, portraits and the storyboard's face rules
 21. [ ] Procedural worlds with every tool: the procedural generation tool (noise, gradients,

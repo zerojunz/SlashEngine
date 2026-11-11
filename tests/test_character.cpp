@@ -234,7 +234,7 @@ TEST_CASE("character: a recipe builds a rigged humanoid with its points, layers 
         materials.push_back(material.name);
     }
     for (const std::string_view name :
-         {"skin", "eyes", "lips", "hair", "shirt", "armor", "cape", "steel"}) {
+         {"skin", "face", "eyes", "hair", "shirt", "armor", "cape", "steel"}) {
         CHECK_MESSAGE(std::ranges::find(materials, name) != materials.end(), name);
     }
     const auto armor = std::ranges::find(materials, "armor") - materials.begin();

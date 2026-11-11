@@ -134,6 +134,8 @@ struct Bone {
 
 // Which joints move a corner, and how much: up to eight, their weights summing to 1.
 using Weigh = std::function<VertexWeights(Vec3)>;
+// The same for a mesh's corner by its index, for corners that share a place but not joints.
+using WeighEach = std::function<VertexWeights(std::size_t, Vec3)>;
 
 // The weights of one joint, or of two blended weight of the way from a to b.
 inline VertexWeights one_joint(std::size_t joint) {
@@ -249,6 +251,12 @@ struct Builder {
     template <typename Offset>
     void add_shaped(const MeshData& mesh, const Affine3D& place, int material, const Weigh& weigh,
                     Offset offset) {
+        add_shaped(mesh, place, material,
+                   WeighEach([&weigh](std::size_t, Vec3 p) { return weigh(p); }), offset);
+    }
+    template <typename Offset>
+    void add_shaped(const MeshData& mesh, const Affine3D& place, int material,
+                    const WeighEach& weigh, Offset offset) {
         if (mesh.vertices.empty()) {
             return;
         }
@@ -284,6 +292,11 @@ struct Builder {
 
     // The same, each corner moved by the joints weigh gives for its place at rest.
     void add(const MeshData& mesh, const Affine3D& place, int material, const Weigh& weigh) {
+        add(mesh, place, material, WeighEach([&weigh](std::size_t, Vec3 p) { return weigh(p); }));
+    }
+
+    // The same, each corner moved by the joints weigh gives for its index and place at rest.
+    void add(const MeshData& mesh, const Affine3D& place, int material, const WeighEach& weigh) {
         if (mesh.vertices.empty()) {
             return; // nothing to draw, such as a low poly head too coarse for lips
         }
@@ -315,8 +328,8 @@ struct Builder {
                              static_cast<float>(normal.z)};
             vertex.tangent = {static_cast<float>(tangent.x), static_cast<float>(tangent.y),
                               static_cast<float>(tangent.z), vertex.tangent[3]};
+            surface.weights.push_back(weigh(surface.vertices.size() - first, p));
             surface.vertices.push_back(vertex);
-            surface.weights.push_back(weigh(p));
         }
         for (const std::uint32_t i : mesh.indices) {
             surface.indices.push_back(first + i);

@@ -63,6 +63,36 @@ struct FaceBrows {
     std::string shape = "soft"; // "soft", "straight", "arched" or "angled"
 };
 
+// A mark on the skin: painted into a 3D head's skin maps (its color, relief and shine) and drawn
+// over a 2D cut-out's profile where it shows. kind is "mole", "freckles", "scar", "wound",
+// "burn", "bruise", "rash", "birthmark", "tattoo" or "paint"; sizes are in half the head's width
+// (the sculpt's carves' units), 0 for the kind's own.
+struct FaceMark {
+    std::string kind = "mole";
+    std::string at = "cheek_left";
+    Vec2 offset;
+    float size = 0.0F;
+    float length = 0.0F; // along it, for scars, wounds and patterns that run (0: the kind's own)
+    float angle = 0.0F;  // degrees from across, toward up
+    Vec4 color{0.0F, 0.0F, 0.0F, 0.0F}; // alpha 0: the kind's own
+    float amount = 1.0F;                // how strong: opacity, density or depth, 0 to 1
+    float age = 0.0F;    // 0 fresh to 1 old: wounds scab, bruises yellow, scars and tattoos fade
+    std::string pattern; // a tattoo's or paint's shape, or a scar's "stitched"
+    bool mirror = false;
+    std::uint32_t seed = 0;
+};
+
+// The skin's own detail in a 3D head's maps, each 0 to 1, or -1 for the style's: pores, wrinkles
+// (the forehead's lines, crow's feet, the folds from the nose and under the eyes), blotches (the
+// skin's uneven color and flush) and oil (a shine over the forehead, nose and chin).
+struct FaceSkin {
+    float pores = -1.0F;
+    float wrinkles = 0.0F;
+    float blotches = -1.0F;
+    float oil = -1.0F;
+    std::uint32_t resolution = 0; // the maps' width (their height is half): 0 for the style's
+};
+
 struct CharacterFace {
     Vec4 eyes{0.3F, 0.22F, 0.12F, 1.0F};
     float eye_size = 1.0F;
@@ -76,6 +106,8 @@ struct CharacterFace {
     std::vector<float> controls; // by face_controls(); missing ones are 0
     std::vector<FaceCarve> carves;
     FaceBrows brows;
+    FaceSkin skin;
+    std::vector<FaceMark> marks;
     float asymmetry = 0.0F; // 0 to 1: how far its sides differ, as the seed picks
     std::uint32_t seed = 0;
 
@@ -122,7 +154,8 @@ struct FaceLandmark {
     Vec3 normal;
 };
 
-// A sculpted head: a grid of rings from the bottom up and segments round from the back, its
+// A sculpted head: a grid of rings from the bottom up and segments round from the back (then
+// the lower lip's corners on the seam, split from the upper lip's), its
 // vertices denser over the face, each with the direction on the unit sphere it was sculpted
 // from (directions), and a triangle list with each triangle's area and whether a beard grows
 // on it. Low poly heads are flat shaded: each triangle has corners of its own.
@@ -136,6 +169,10 @@ struct SculptedHead {
     std::vector<std::uint32_t> indices;
     std::vector<FaceArea> areas;       // a triangle's
     std::vector<std::uint8_t> bearded; // a triangle's: 1 where a beard grows
+    // A vertex's: 1 for the upper lip's corner on the seam the lips close on, 2 for the lower
+    // lip's copy of it (after the grid's vertices, at the same place), so the jaw opens the
+    // mouth; 0 elsewhere. The two directions are nudged above and below the seam.
+    std::vector<std::uint8_t> seam;
     std::vector<FaceLandmark> landmarks;
     FaceEyes eyes;
     real_t mouth = 0.0F;
@@ -160,6 +197,32 @@ face_expressions(const CharacterFace& face, const HeadShape& head, const Sculpte
 // leave it.
 [[nodiscard]] Vec3 face_jaw_offset(const CharacterFace& face, const HeadShape& head,
                                    std::size_t expression, Vec3 point);
+
+// The skin maps of a sculpted head, laid out as its uvs: width by height RGBA8 texels, rows from
+// the crown down. albedo is the skin's color (skin's, varied and marked), normal its relief in
+// tangent space (the head's tangent runs round it toward the face's left, its binormal up) and
+// roughness its shine in the red channel. Empty (width 0) when the face asks for no detail and
+// has no marks.
+struct FaceSkinMaps {
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::vector<std::uint8_t> albedo;
+    std::vector<std::uint8_t> normal;
+    std::vector<std::uint8_t> roughness;
+};
+[[nodiscard]] FaceSkinMaps face_skin_maps(const CharacterFace& face, const HeadShape& head,
+                                          Vec4 skin);
+
+// The marks a 2D cut-out's profile shows (those on the face's left side and its middle), as
+// polygons in the profile's space (meters from the head's center, front along x), each with its
+// color and whether it is below the lips' seam, where it moves with the jaw.
+struct FaceMarkShape {
+    std::vector<Vec2> points;
+    Vec4 color;
+    bool on_jaw = false;
+};
+[[nodiscard]] std::vector<FaceMarkShape> face_marks_2d(const CharacterFace& face,
+                                                       const HeadShape& head);
 
 // The head's outline seen from its left side, facing +x (its front, +z, along x and up along
 // y), in meters from the head's center: from under the chin up the face, over the crown and

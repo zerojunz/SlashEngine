@@ -947,6 +947,18 @@ std::vector<CutoutBone> character_cutout(const CharacterRecipe& recipe,
              ellipse_points(face_center + profile.ear - Vec2{hr * 0.1F, 0.0F}, 0.012F * ears * s,
                             0.022F * ears * s, 10),
              darker(skin, 0.9F));
+    // The skin's marks on the side the profile shows: those over the head before the eye, those
+    // below the lips' seam on the jaw after the chin.
+    const std::vector<FaceMarkShape> marks = face_marks_2d(recipe.face, character_head(m));
+    for (const FaceMarkShape& mark : marks) {
+        if (!mark.on_jaw) {
+            std::vector<Vec2> points = mark.points;
+            for (Vec2& point : points) {
+                point = point + face_center;
+            }
+            sink.add("head", std::move(points), mark.color);
+        }
+    }
     const real_t eye = profile.eye_radius;
     // The eye, its white and iris narrowed as its lids close.
     const real_t open = std::max<real_t>(profile.eye_open, 0.06F);
@@ -1010,6 +1022,15 @@ std::vector<CutoutBone> character_cutout(const CharacterRecipe& recipe,
         point = on_jaw(point);
     }
     sink.add("jaw", std::move(lower), recipe.face.lips);
+    for (const FaceMarkShape& mark : marks) {
+        if (mark.on_jaw) {
+            std::vector<Vec2> points = mark.points;
+            for (Vec2& point : points) {
+                point = on_jaw(point + face_center);
+            }
+            sink.add("jaw", std::move(points), mark.color);
+        }
+    }
     const Vec4 hair = recipe.hair.color;
     if (recipe.face.beard != "none") {
         const real_t reach = recipe.face.beard == "long" ? hh * 0.9F : hh * 0.25F;

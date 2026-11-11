@@ -2058,15 +2058,21 @@ asymmetry by a seed and a style, and `extends` another (a recipe's face comes `f
 as JSON Merge Patch. `sculpt_head` shapes a head from it: a grid of rings and segments denser
 over the face, sized by the style, pushed by the controls and carves, its lids wrapped over the
 eyeballs (`face_eyes`, which the rig's eye bones follow) and its lips' seam tucked in at
-`face_mouth`, where the jaw opens, each triangle marked skin, lips, brows, mouth or hidden and
-bearded or not. `scene3d::build_character` draws its parts with their own materials
+`face_mouth` and split (`SculptedHead::seam`: the lower lip's copies move with the jaw), so the
+jaw opens it, each triangle marked skin, lips, brows, mouth or hidden and bearded or not. `scene3d::build_character` draws its parts with their own materials
 (`head_part` in `engine/scene3d/src/character.cpp`) and `character_cutout` draws its side-on
 outline, `face_profile`, as the 2D head. Sculpts carry ARKit's 52 expression shapes
 (`face_expressions`, `face_expression_names`: lids turned about the eye, the jaw about its hinge,
 lips, cheeks and brows moved by soft weights), which `build_character` gives the head, lower
 teeth and tongue as blend shapes (`ModelBuilder::add_shaped`) and which a `Character2D`'s
-`expressions` move its profile by (`face_profile`'s weights). `examples/character-faces` sculpts
-an elder and a toon and has them smile, blink and talk.
+`expressions` move its profile by (`face_profile`'s weights). `face_skin_maps` paints the 3D
+head's albedo, normal and roughness maps over the sculpt's uvs with integer noise: the style's
+pores, blotches and shine, the face's `skin` wrinkles, the lips (sampled finer than texels) and
+`marks` (moles, freckles, scars, wounds, burns, bruises, rashes, birthmarks, tattoos and paint,
+placed at landmarks as carves are, `mark_texel`), which `build_character` draws as the `face`
+material; `face_marks_2d` gives the marks the profile shows as polygons for the cut-out.
+`examples/character-faces` sculpts an elder and a toon, has them smile, blink and talk, and
+marks a fighter.
 Characters have anatomy and flesh, after Chaos Flesh (Godot has none): `slash/world/flesh.hpp`
 (`engine/world/src/flesh.cpp`, `flesh_solver.cpp` and `flesh2d.cpp`, built with
 `-ffp-contract=off`) places a recipe's bones and 28 kinds of muscle on a body's `BodyFrames`
