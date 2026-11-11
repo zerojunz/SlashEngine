@@ -1,0 +1,11 @@
+{
+  "controls": {
+    "cheeks.fullness": 0.8,
+    "chin.length": -0.5,
+    "face.width": 0.6,
+    "jaw.width": 0.5,
+    "nose.width": 0.4
+  },
+  "format": 1,
+  "name": "Round"
+}

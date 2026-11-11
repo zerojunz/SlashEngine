@@ -246,6 +246,9 @@ struct Builder {
 
     // The same, each corner moved by the joints weigh gives for its place at rest.
     void add(const MeshData& mesh, const Affine3D& place, int material, const Weigh& weigh) {
+        if (mesh.vertices.empty()) {
+            return; // nothing to draw, such as a low poly head too coarse for lips
+        }
         if (surface_of.size() < model.materials.size()) {
             surface_of.resize(model.materials.size(), -1);
         }

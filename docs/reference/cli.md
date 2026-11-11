@@ -177,6 +177,7 @@ decode), a [`.texture.json`](scene-format.md#procedural-textures) file, a
 [`.ragdoll.json`](scene-format.md#ragdoll-profiles) profile, a
 [`.foliage.json`](scene-format.md#foliage) type, a [`.groom.json`](scene-format.md#hair-and-fur)
 groom, a [`.character.json`](scene-format.md#characters) recipe (and that its model builds), a
+[`.face.json`](scene-format.md#faces) face, a
 [`.creature.json`](scene-format.md#creatures) recipe (and that its model builds), a
 [`.vehicle.json`](scene-format.md#vehicles) recipe (and that its model builds), or a
 [model](scene-format.md#models) (`.gltf`, `.glb`, `.obj`, `.fbx` or `.blend`), and lists every error, each with its JSON Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) and
@@ -287,7 +288,9 @@ Rewrites a scene, prefab, `.frames.json`, `.material.json`, `.anim.json`, `.anim
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
 `.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.quest.json`, `.dialogue.json`,
-`.meshlib.json`, `.lightmap.json`, `.texture.json`, `.scatter.json`, `.physics_material.json` or `.ragdoll.json` file in
+`.meshlib.json`, `.lightmap.json`, `.texture.json`, `.scatter.json`, `.physics_material.json`,
+`.ragdoll.json`, `.foliage.json`, `.groom.json`, `.character.json`, `.face.json`, `.creature.json` or
+`.vehicle.json` file in
 [canonical form](scene-format.md#canonical-form).
 
 ```bash
@@ -367,6 +370,7 @@ slash-cli schema ragdoll
 slash-cli schema foliage
 slash-cli schema groom
 slash-cli schema character
+slash-cli schema face
 slash-cli schema creature
 slash-cli schema vehicle
 slash-cli schema storyboard
