@@ -549,8 +549,9 @@ std::optional<MeshDecalUniforms> projector_record(const Light3D& light, const De
     const Float3 x = cross(y, z);
     const Float3 place{light.position[0], light.position[1], light.position[2]};
     MeshDecalUniforms record;
+    const std::array<const Float3*, 3> axes{&x, &y, &z};
     for (std::size_t r = 0; r < 3; ++r) {
-        const Float3& axis = r == 0 ? x : (r == 1 ? y : z);
+        const Float3& axis = *axes.at(r);
         record.rows.at(r) = {axis[0], axis[1], axis[2], -dot3(axis, place)};
     }
     record.rects[0] = rect;

@@ -43,6 +43,7 @@ if(TARGET slash_tinyexr)
     target_link_libraries(slash_command PRIVATE slash_tinyexr)
     target_compile_definitions(slash_command PRIVATE SLASH_HAS_TINYEXR=1)
 endif()
-# Placing is the same everywhere, as the navigation geometry it reads.
-set_source_files_properties(src/place.cpp PROPERTIES
+# Placing is the same everywhere, as the navigation geometry it reads, and so are
+# lighting.check's measures.
+set_source_files_properties(src/place.cpp src/lighting.cpp PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
