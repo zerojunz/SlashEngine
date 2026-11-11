@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <numbers>
 #include <utility>
 
@@ -149,6 +150,40 @@ std::string face_fields() {
           "length": {"type": "number", "minimum": 0, "maximum": 1, "description": "A crease's or ridge's length, in half the head's width. Default 0."},
           "angle": {"type": "number", "description": "A crease's or ridge's direction, degrees from across. Default 0."},
           "mirror": {"type": "boolean", "description": "Carve the other side the same. Default false."}
+        }
+      }
+    },
+    "skin": {
+      "type": "object", "additionalProperties": false,
+      "description": "The skin's own detail in a 3D head's maps, each 0 to 1. Unset ones are the style's: realistic heads have pores, blotches and oil, stylized ones a little, toon, painterly and low_poly ones none.",
+      "properties": {
+        "pores": {"$ref": "#/$defs/share", "description": "Pores' fine relief, most over the nose and cheeks."},
+        "wrinkles": {"$ref": "#/$defs/share", "description": "Lines across the forehead, crow's feet, frown lines and the folds from the nose and under the eyes. Default 0."},
+        "blotches": {"$ref": "#/$defs/share", "description": "Uneven color: flush on the cheeks, nose and ears, and blotches."},
+        "oil": {"$ref": "#/$defs/share", "description": "A shine over the forehead, nose and chin."},
+        "resolution": {"enum": [256, 512, 1024, 2048], "description": "The maps' width; their height is half. Default the style's: 1024 realistic, 512 stylized and painterly, 256 toon and low_poly."}
+      }
+    },
+    "marks": {
+      "type": "array", "maxItems": 64,
+      "description": "Marks on the skin, painted into a 3D head's skin maps and drawn over a 2D profile where it shows.",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["kind", "at"],
+        "properties": {
+          "kind": {"enum": ["mole", "freckles", "scar", "wound", "burn", "bruise", "rash", "birthmark", "tattoo", "paint"], "description": "What it is: a mole, a scatter of freckles, a scar or wound along a line, a burn, bruise, rash or birthmark over a patch, or a tattoo or face paint in a pattern."},
+          "at": {"enum": [)" +
+           landmarks + R"(], "description": "The landmark it is at."},
+          "offset": {"type": "array", "items": {"type": "number", "minimum": -1, "maximum": 1}, "minItems": 2, "maxItems": 2, "description": "Moved from the landmark across (toward the face's left) and up, in half the head's width and height. Default [0, 0]."},
+          "size": {"type": "number", "minimum": 0, "maximum": 1, "description": "How big, in half the head's width: a mole's or freckles' patch's radius, a scar's width, a pattern's size. Default the kind's own."},
+          "length": {"type": "number", "minimum": 0, "maximum": 1, "description": "How long a scar, wound or a pattern that runs is, in half the head's width. Default the kind's own."},
+          "angle": {"type": "number", "description": "Its direction, degrees from across toward up. Default 0."},
+          "color": {"$ref": "#/$defs/color", "description": "Default the kind's own: a mole's brown, a scar's pale pink, a tattoo's ink, paint's red."},
+          "amount": {"$ref": "#/$defs/share", "description": "How strong: its opacity, a freckles' patch's density, a scar's or wound's depth. Default 1."},
+          "age": {"$ref": "#/$defs/share", "description": "0 fresh to 1 old: a wound scabs over, a bruise turns from purple to green and yellow, a scar and a burn pale and a tattoo blurs. Default 0."},
+          "pattern": {"enum": ["", "stitched", "stripes", "chevron", "dots", "ring", "star", "spiral", "teardrop", "cross", "lines", "band", "mask", "half"], "description": "A tattoo's or paint's shape (default lines for tattoos, band for paint), or stitched for a scar or wound's stitches."},
+          "mirror": {"type": "boolean", "description": "The same mark on the other side too. Default false."},
+          "seed": {"type": "integer", "minimum": 0, "maximum": 4294967295, "description": "Picks where freckles fall and how a patch's edge runs. Default 0."}
         }
       }
     },
@@ -336,6 +371,41 @@ Result<CharacterFace> parse_resolved(const json::Value& source, const FileReader
                 carve.mirror = mirror->as_bool();
             }
             face.carves.push_back(std::move(carve));
+        }
+    }
+    if (const json::Value* skin = doc.find("skin"); skin != nullptr) {
+        read(*skin, "pores", face.skin.pores);
+        read(*skin, "wrinkles", face.skin.wrinkles);
+        read(*skin, "blotches", face.skin.blotches);
+        read(*skin, "oil", face.skin.oil);
+        if (const json::Value* resolution = skin->find("resolution"); resolution != nullptr) {
+            face.skin.resolution = static_cast<std::uint32_t>(resolution->as_double());
+        }
+    }
+    if (const json::Value* marks = doc.find("marks"); marks != nullptr) {
+        face.marks.reserve(marks->as_array().size());
+        for (const json::Value& item : marks->as_array()) {
+            FaceMark mark;
+            read(item, "kind", mark.kind);
+            read(item, "at", mark.at);
+            if (const json::Value* offset = item.find("offset"); offset != nullptr) {
+                mark.offset = {static_cast<real_t>(offset->as_array()[0].as_double()),
+                               static_cast<real_t>(offset->as_array()[1].as_double())};
+            }
+            read(item, "size", mark.size);
+            read(item, "length", mark.length);
+            read(item, "angle", mark.angle);
+            read(item, "color", mark.color);
+            read(item, "amount", mark.amount);
+            read(item, "age", mark.age);
+            read(item, "pattern", mark.pattern);
+            if (const json::Value* mirror = item.find("mirror"); mirror != nullptr) {
+                mark.mirror = mirror->as_bool();
+            }
+            if (const json::Value* seed = item.find("seed"); seed != nullptr) {
+                mark.seed = static_cast<std::uint32_t>(seed->as_double());
+            }
+            face.marks.push_back(std::move(mark));
         }
     }
     if (const json::Value* brows = doc.find("brows"); brows != nullptr) {
@@ -1072,6 +1142,34 @@ public:
         return d.y < line;
     }
 
+    // Where the face's features are on the unit sphere, for the skin's maps and marks.
+    struct Features {
+        std::array<Vec3, 2> eye_dir;
+        real_t eye_y = 0.0F;
+        real_t eye_x = 0.0F;
+        real_t eye_rn = 0.0F; // an eye's radius in the unit sphere's units
+        real_t brow_y = 0.0F;
+        real_t mouth_y = 0.0F;
+        real_t mouth_w = 0.0F;
+        real_t nose_top = 0.0F;
+        real_t nose_tip = 0.0F;
+        real_t nose_w = 0.0F;
+        real_t chin_y = 0.0F;
+    };
+    [[nodiscard]] Features features() const {
+        return {.eye_dir = eye_dir_,
+                .eye_y = eye_y_,
+                .eye_x = eye_x_,
+                .eye_rn = eye_radius_ / head_.radii.x,
+                .brow_y = brow_line(0.4F, 0) + 0.02F,
+                .mouth_y = mouth_y_,
+                .mouth_w = mouth_w_,
+                .nose_top = nose_top_,
+                .nose_tip = nose_tip_,
+                .nose_w = nose_w_,
+                .chin_y = chin_y_};
+    }
+
 private:
     // The lips' seam's height at x, its corners raised or lowered.
     [[nodiscard]] real_t seam_at(real_t x) const {
@@ -1339,6 +1437,511 @@ std::vector<real_t> latitudes(std::size_t rings, real_t seam) {
     return out;
 }
 
+// --- Skin maps and marks ----------------------------------------------------------------------
+
+// Colors mixed and scaled channel by channel.
+Vec4 mix4(Vec4 a, Vec4 b, real_t t) {
+    const auto f = static_cast<float>(t);
+    return {a.x + ((b.x - a.x) * f), a.y + ((b.y - a.y) * f), a.z + ((b.z - a.z) * f),
+            a.w + ((b.w - a.w) * f)};
+}
+
+// A lattice value of a seed, 0 to 1, and value noise over it, smooth and the same everywhere.
+real_t lattice(std::int64_t x, std::int64_t y, std::int64_t z, std::uint32_t seed) {
+    std::uint32_t h = seed ^ (static_cast<std::uint32_t>(x) * 0x8DA6B343U) ^
+                      (static_cast<std::uint32_t>(y) * 0xD8163841U) ^
+                      (static_cast<std::uint32_t>(z) * 0xCB1AB31FU);
+    h ^= h >> 16U;
+    h *= 0x7FEB352DU;
+    h ^= h >> 15U;
+    h *= 0x846CA68BU;
+    h ^= h >> 16U;
+    return static_cast<real_t>(h & 0xFFFFU) / 65535.0F;
+}
+
+real_t value_noise(Vec3 p, std::uint32_t seed) {
+    const real_t fx = std::floor(p.x);
+    const real_t fy = std::floor(p.y);
+    const real_t fz = std::floor(p.z);
+    const auto x = static_cast<std::int64_t>(fx);
+    const auto y = static_cast<std::int64_t>(fy);
+    const auto z = static_cast<std::int64_t>(fz);
+    const auto fade = [](real_t t) { return t * t * (3.0F - (2.0F * t)); };
+    const real_t u = fade(p.x - fx);
+    const real_t v = fade(p.y - fy);
+    const real_t w = fade(p.z - fz);
+    const auto mix = [](real_t a, real_t b, real_t t) { return a + ((b - a) * t); };
+    const auto at = [&](std::int64_t i, std::int64_t j, std::int64_t k) {
+        return lattice(x + i, y + j, z + k, seed);
+    };
+    return mix(mix(mix(at(0, 0, 0), at(1, 0, 0), u), mix(at(0, 1, 0), at(1, 1, 0), u), v),
+               mix(mix(at(0, 0, 1), at(1, 0, 1), u), mix(at(0, 1, 1), at(1, 1, 1), u), v), w);
+}
+
+// How much of the skin's detail a style keeps, and the maps' size.
+struct SkinStyle {
+    real_t pores = 0.0F;
+    real_t blotches = 0.0F;
+    real_t oil = 0.0F;
+    real_t relief = 1.0F; // marks' relief
+    real_t soft = 1.0F;   // how soft marks' edges are
+    std::uint32_t width = 256;
+};
+
+SkinStyle skin_style(std::string_view style) {
+    if (style == "realistic") {
+        return {.pores = 0.5F, .blotches = 0.35F, .oil = 0.35F, .width = 1024};
+    }
+    if (style == "stylized") {
+        return {.pores = 0.15F, .blotches = 0.25F, .oil = 0.2F, .relief = 0.6F, .width = 512};
+    }
+    if (style == "painterly") {
+        return {.blotches = 0.2F, .relief = 0.3F, .soft = 2.5F, .width = 512};
+    }
+    return {.relief = 0.0F, .soft = 0.3F, .width = 256}; // toon and low_poly: flat marks
+}
+
+// A mark's own sizes and colors where the face leaves them out.
+struct MarkKind {
+    real_t size = 0.02F;
+    real_t length = 0.0F;
+    Vec4 color{0.0F, 0.0F, 0.0F, 1.0F};
+};
+
+MarkKind mark_kind(const FaceMark& mark) {
+    const std::string& k = mark.kind;
+    const real_t age = clamp01(mark.age);
+    const auto mixed = [](Vec4 a, Vec4 b, real_t t) { return mix4(a, b, t); };
+    if (k == "mole") {
+        return {.size = 0.012F, .color = {0.24F, 0.15F, 0.11F, 1.0F}};
+    }
+    if (k == "freckles") {
+        return {.size = 0.14F, .color = {0.6F, 0.38F, 0.24F, 1.0F}};
+    }
+    if (k == "scar") {
+        return {.size = 0.012F,
+                .length = 0.12F,
+                .color = mixed({0.86F, 0.46F, 0.46F, 1.0F}, {0.95F, 0.84F, 0.8F, 1.0F}, age)};
+    }
+    if (k == "wound") {
+        return {.size = 0.01F,
+                .length = 0.07F,
+                .color = mixed({0.36F, 0.02F, 0.03F, 1.0F}, {0.3F, 0.13F, 0.08F, 1.0F}, age)};
+    }
+    if (k == "burn") {
+        return {.size = 0.07F,
+                .color = mixed({0.8F, 0.3F, 0.24F, 1.0F}, {0.88F, 0.72F, 0.68F, 1.0F}, age)};
+    }
+    if (k == "bruise") {
+        // Purple, then blue and green, then yellow as it heals.
+        const Vec4 purple{0.36F, 0.12F, 0.3F, 1.0F};
+        const Vec4 blue{0.3F, 0.24F, 0.42F, 1.0F};
+        const Vec4 green{0.48F, 0.52F, 0.3F, 1.0F};
+        const Vec4 yellow{0.8F, 0.7F, 0.36F, 1.0F};
+        Vec4 color = mixed(green, yellow, (age - 0.7F) / 0.3F);
+        if (age < 0.35F) {
+            color = mixed(purple, blue, age / 0.35F);
+        } else if (age < 0.7F) {
+            color = mixed(blue, green, (age - 0.35F) / 0.35F);
+        }
+        return {.size = 0.05F, .color = color};
+    }
+    if (k == "rash") {
+        return {.size = 0.09F, .color = {0.85F, 0.3F, 0.28F, 1.0F}};
+    }
+    if (k == "birthmark") {
+        return {.size = 0.06F, .color = {0.62F, 0.18F, 0.25F, 1.0F}};
+    }
+    if (k == "tattoo") {
+        return {.size = 0.05F,
+                .color = mixed({0.08F, 0.1F, 0.18F, 1.0F}, {0.16F, 0.26F, 0.3F, 1.0F}, age)};
+    }
+    // Paint.
+    return {.size = 0.12F, .color = {0.75F, 0.08F, 0.08F, 1.0F}};
+}
+
+std::string_view mark_pattern(const FaceMark& mark) {
+    if (!mark.pattern.empty() && mark.pattern != "stitched") {
+        return mark.pattern;
+    }
+    if (mark.kind == "tattoo") {
+        return "lines";
+    }
+    return mark.kind == "paint" ? "band" : "";
+}
+
+// A mark placed on the head: its center on the unit sphere, a frame across and up there, its
+// sizes and turn, and which copy it is (a mirrored one is flipped across).
+struct PlacedMark {
+    const FaceMark* mark = nullptr;
+    Vec3 center;
+    Vec3 across;
+    Vec3 up;
+    real_t size = 0.0F;
+    real_t half = 0.0F; // half its length
+    Vec4 color;
+    Vec2 turn{1.0F, 0.0F};
+    real_t flip = 1.0F;
+    real_t reach = 0.0F; // how far from the center it can cover
+    std::string_view pattern;
+};
+
+std::vector<PlacedMark> place_marks(const CharacterFace& face, const Sculptor& sculptor) {
+    std::vector<PlacedMark> out;
+    for (const FaceMark& mark : face.marks) {
+        const MarkKind kind = mark_kind(mark);
+        const Vec3 at = sculptor.landmark_direction(mark.at);
+        const Vec2f turn = cos_sin(mark.angle * std::numbers::pi_v<float> / 180.0F);
+        for (int copy = 0; copy < (mark.mirror ? 2 : 1); ++copy) {
+            const real_t flip = copy == 0 ? 1.0F : -1.0F;
+            const real_t x = (at.x * flip) + (mark.offset.x * flip);
+            const real_t y = at.y + mark.offset.y;
+            PlacedMark made;
+            made.mark = &mark;
+            made.center = at.z >= 0.0F ? front_at(std::clamp<real_t>(x, -0.99F, 0.99F),
+                                                  std::clamp<real_t>(y, -0.99F, 0.99F))
+                                       : unit({x, y, at.z});
+            const Vec3 c = made.center;
+            made.across = std::abs(c.y) > 0.98F ? Vec3{1.0F, 0.0F, 0.0F} : unit({c.z, 0.0F, -c.x});
+            made.up = cross3(c, made.across);
+            made.size = mark.size > 0.0F ? mark.size : kind.size;
+            const real_t length = mark.length > 0.0F ? mark.length : kind.length;
+            made.pattern = mark_pattern(mark);
+            const bool long_pattern = made.pattern == "band" || made.pattern == "mask";
+            made.half = made.size * (long_pattern ? 3.0F : 1.2F);
+            if (length > 0.0F) {
+                made.half = length * 0.5F;
+            }
+            made.color = mark.color.w > 0.0F ? mark.color : kind.color;
+            made.turn = {static_cast<real_t>(turn.x), static_cast<real_t>(turn.y)};
+            made.flip = flip;
+            made.reach = (std::max(made.size, made.half) * 1.8F) + 0.02F;
+            out.push_back(made);
+        }
+    }
+    return out;
+}
+
+// A direction's place in a mark's own frame: along it (x) and across it (y), in the unit
+// sphere's units. False when it is too far to be in it.
+bool mark_coords(const PlacedMark& m, Vec3 d, Vec2& local) {
+    if (dot3(d, m.center) < 0.2F) {
+        return false;
+    }
+    const Vec3 v = d - m.center;
+    if (std::abs(v.x) > m.reach || std::abs(v.y) > m.reach || std::abs(v.z) > m.reach) {
+        return false;
+    }
+    const real_t ax = dot3(v, m.across) * m.flip;
+    const real_t ay = dot3(v, m.up);
+    local = {(m.turn.x * ax) + (m.turn.y * ay), (-m.turn.y * ax) + (m.turn.x * ay)};
+    return true;
+}
+
+// The distance from p to the segment from a to b.
+real_t segment_distance(Vec2 p, Vec2 a, Vec2 b) {
+    const Vec2 ab = b - a;
+    const real_t len2 = std::max<real_t>((ab.x * ab.x) + (ab.y * ab.y), 1e-12F);
+    const real_t t = clamp01((((p.x - a.x) * ab.x) + ((p.y - a.y) * ab.y)) / len2);
+    const Vec2 q = p - (a + (ab * t));
+    return std::sqrt((q.x * q.x) + (q.y * q.y));
+}
+
+// A pattern's signed distance at a point in its frame: below 0 inside, in its units.
+real_t pattern_distance(std::string_view pattern, Vec2 p, real_t s, real_t half) {
+    const real_t r = std::sqrt((p.x * p.x) + (p.y * p.y));
+    const real_t big = 1.0F;
+    if (pattern == "stripes") {
+        real_t best = big;
+        for (const real_t row : {-0.45F, 0.0F, 0.45F}) {
+            best =
+                std::min(best, segment_distance(p, {-half, row * s}, {half, row * s}) - (0.1F * s));
+        }
+        return best;
+    }
+    if (pattern == "chevron") {
+        const Vec2 tip{0.0F, -0.25F * s};
+        return std::min(segment_distance(p, {-0.6F * s, 0.35F * s}, tip),
+                        segment_distance(p, tip, {0.6F * s, 0.35F * s})) -
+               (0.1F * s);
+    }
+    if (pattern == "dots") {
+        real_t best = big;
+        for (const real_t at : {-0.6F, 0.0F, 0.6F}) {
+            const Vec2 q = p - Vec2{at * s, 0.0F};
+            best = std::min(best, std::sqrt((q.x * q.x) + (q.y * q.y)) - (0.16F * s));
+        }
+        return best;
+    }
+    if (pattern == "ring") {
+        return std::abs(r - (0.6F * s)) - (0.1F * s);
+    }
+    if (pattern == "star" || pattern == "spiral") {
+        const real_t theta = slash::atan2(to_float(p.y), to_float(p.x));
+        if (pattern == "star") {
+            constexpr real_t kPoint = kPi / 5.0F;
+            real_t folded = std::fmod(theta + (kPi * 2.5F), 2.0F * kPoint) - kPoint;
+            folded = std::abs(folded) / kPoint;
+            return r - (s * (0.4F + (0.6F * (1.0F - folded))) * 0.85F);
+        }
+        // An Archimedean spiral of two and a half turns, its arm 0.06 of the size wide.
+        const real_t pitch = 0.22F * s;
+        const real_t wound = (theta + kPi) / (2.0F * kPi) * pitch;
+        real_t best = big;
+        for (int k = 0; k < 5; ++k) {
+            const real_t arm = wound + (static_cast<real_t>(k) * pitch);
+            if (arm <= s) {
+                best = std::min(best, std::abs(r - arm));
+            }
+        }
+        return std::max(best - (0.06F * s), r - s);
+    }
+    if (pattern == "teardrop") {
+        const real_t drop = 0.3F * s;
+        const Vec2 q = p - Vec2{0.0F, -drop};
+        const real_t round = std::sqrt((q.x * q.x) + (q.y * q.y)) - drop;
+        if (p.y < -drop || p.y > 0.5F * s) {
+            return p.y < -drop ? round : std::max(round, p.y - (0.5F * s));
+        }
+        const real_t width = drop * (1.0F - ((p.y + drop) / (0.8F * s)));
+        return std::min(round, std::abs(p.x) - width);
+    }
+    if (pattern == "cross") {
+        const auto box = [&](real_t w, real_t h) {
+            return std::max(std::abs(p.x) - w, std::abs(p.y) - h);
+        };
+        return std::min(box(0.12F * s, 0.6F * s), box(0.6F * s, 0.12F * s));
+    }
+    if (pattern == "band" || pattern == "mask") {
+        const real_t along = clamp01(std::abs(p.x) / std::max<real_t>(half, 1e-6F));
+        const real_t width =
+            pattern == "band" ? 0.35F * s : 0.4F * s * (1.0F - (0.55F * along * along));
+        return std::max(std::abs(p.y) - width, std::abs(p.x) - half);
+    }
+    if (pattern == "half") {
+        return std::max(-p.x, r - s);
+    }
+    // Lines: a sweep along it that waves and tapers at both ends.
+    if (std::abs(p.x) > half) {
+        return std::abs(p.x) - half;
+    }
+    const real_t along = p.x / std::max<real_t>(half, 1e-6F);
+    const real_t wave = 0.35F * s * cos_sin(to_float(kPi * along)).y;
+    return std::abs(p.y - wave) - (0.14F * s * (1.0F - (along * along)));
+}
+
+// What a mark does at a texel: how much of its color covers the skin (and the color), how it
+// raises (meters) and how shiny it makes it (a roughness and how much of it).
+struct MarkTexel {
+    real_t cover = 0.0F;
+    Vec4 color;
+    real_t height = 0.0F;
+    real_t roughness = 0.0F;
+    real_t shine = 0.0F;
+};
+
+MarkTexel mark_texel(const PlacedMark& m, Vec2 p, Vec3 d, const SkinStyle& style) {
+    const FaceMark& mark = *m.mark;
+    const std::string& kind = mark.kind;
+    const real_t amount = clamp01(mark.amount);
+    const real_t age = clamp01(mark.age);
+    const real_t s = m.size;
+    const real_t r = std::sqrt((p.x * p.x) + (p.y * p.y));
+    const real_t relief = style.relief;
+    const real_t edge = 0.0025F * style.soft;
+    MarkTexel out;
+    out.color = m.color;
+    // A line's distance and its width there, tapered toward its ends.
+    const auto line = [&](real_t width, real_t& dist) {
+        const real_t t = std::clamp(p.x, -m.half, m.half);
+        const real_t taper = m.half > 0.0F ? t / m.half : 0.0F;
+        dist = std::sqrt(((p.x - t) * (p.x - t)) + (p.y * p.y));
+        return width * (1.0F - (0.7F * taper * taper));
+    };
+    const auto stitches = [&](real_t width) -> real_t {
+        if (mark.pattern != "stitched") {
+            return 0.0F;
+        }
+        const real_t spacing = std::max<real_t>(0.018F, width * 1.8F);
+        const real_t k = std::round(p.x / spacing);
+        if (std::abs(k * spacing) > m.half) {
+            return 0.0F;
+        }
+        const real_t across = std::abs(p.x - (k * spacing));
+        return (1.0F - smooth(0.0015F, 0.0025F, across)) *
+               (1.0F - smooth(width * 2.0F, width * 2.4F, std::abs(p.y)));
+    };
+    // A patch's rim: its radius wanders as noise over the head says.
+    const auto patch = [&](real_t wander, real_t frequency) {
+        const real_t n = value_noise(d * frequency, mark.seed + 17U);
+        return r / (s * (1.0F - (wander * 0.5F) + (wander * n)));
+    };
+    if (kind == "mole") {
+        out.cover = amount * (1.0F - smooth(s * 0.75F, s * 0.75F + edge, r));
+        out.height = 0.4e-3F * relief * amount * gauss((r * r) / (s * s * 0.5F));
+    } else if (kind == "freckles") {
+        const real_t inside = 1.0F - smooth(s * 0.6F, s, r);
+        if (inside > 0.0F) {
+            constexpr real_t kCell = 0.014F;
+            const auto cx = static_cast<std::int64_t>(std::floor(p.x / kCell));
+            const auto cy = static_cast<std::int64_t>(std::floor(p.y / kCell));
+            real_t dot = 0.0F;
+            for (std::int64_t i = -1; i <= 1; ++i) {
+                for (std::int64_t j = -1; j <= 1; ++j) {
+                    const std::int64_t gx = cx + i;
+                    const std::int64_t gy = cy + j;
+                    if (lattice(gx, gy, 0, mark.seed) > 0.25F + (0.6F * amount)) {
+                        continue;
+                    }
+                    const Vec2 at{(static_cast<real_t>(gx) + lattice(gx, gy, 1, mark.seed)) * kCell,
+                                  (static_cast<real_t>(gy) + lattice(gx, gy, 2, mark.seed)) *
+                                      kCell};
+                    const real_t radius = 0.0028F + (0.0025F * lattice(gx, gy, 3, mark.seed));
+                    const Vec2 q = p - at;
+                    const real_t dist = std::sqrt((q.x * q.x) + (q.y * q.y));
+                    dot = std::max(dot, 1.0F - smooth(radius * 0.6F, radius + (edge * 0.4F), dist));
+                }
+            }
+            out.cover = 0.75F * inside * dot;
+        }
+    } else if (kind == "scar") {
+        real_t dist = 0.0F;
+        const real_t width = line(s, dist);
+        const real_t on = std::abs(p.x) <= m.half + width
+                              ? 1.0F - smooth(width * 0.6F, width + edge, dist)
+                              : 0.0F;
+        out.cover = amount * 0.85F * on;
+        out.height = 0.5e-3F * relief * amount * (1.0F - age * 0.5F) *
+                     std::max<real_t>(1.0F - (dist / std::max<real_t>(width, 1e-6F)), 0.0F);
+        out.roughness = 0.38F;
+        out.shine = on * amount;
+        if (const real_t stitch = stitches(width); stitch > 0.0F) {
+            out.cover = std::max(out.cover, stitch * amount);
+            out.color = mix4({0.0F, 0.0F, 0.0F, 1.0F}, out.color, 0.55F);
+            out.height -= 0.2e-3F * relief * stitch;
+        }
+    } else if (kind == "wound") {
+        real_t dist = 0.0F;
+        const real_t width = line(s, dist);
+        if (std::abs(p.x) <= m.half + (width * 2.0F)) {
+            const real_t core = 1.0F - smooth(width * 0.5F, width + edge, dist);
+            const real_t rim = (1.0F - smooth(width, width * 2.6F, dist)) * (1.0F - age);
+            const Vec4 swollen{0.72F, 0.24F, 0.22F, 1.0F};
+            out.color = mix4(swollen, m.color, core);
+            out.cover = amount * std::max(core, rim * 0.6F);
+            out.height = relief * amount * ((-0.8e-3F * (1.0F - age) * core) + (0.2e-3F * rim));
+            out.roughness = age > 0.5F ? 0.85F : 0.15F;
+            out.shine = core * amount;
+        }
+        if (const real_t stitch = stitches(width); stitch > 0.0F) {
+            out.cover = std::max(out.cover, stitch * amount);
+            out.color = {0.08F, 0.08F, 0.1F, 1.0F};
+        }
+    } else if (kind == "burn" || kind == "birthmark") {
+        const bool burn = kind == "burn";
+        const real_t q = patch(burn ? 0.4F : 0.6F, burn ? 22.0F : 9.0F);
+        const real_t on = 1.0F - smooth(0.75F, 1.0F + (edge * 10.0F), q);
+        if (on > 0.0F) {
+            const real_t mottle = value_noise(d * 60.0F, mark.seed + 3U);
+            if (burn) {
+                const Vec4 deep =
+                    age < 0.5F ? Vec4{0.55F, 0.12F, 0.1F, 1.0F} : Vec4{0.58F, 0.38F, 0.34F, 1.0F};
+                out.color = mix4(m.color, deep,
+                                 smooth(0.45F, 0.8F, mottle) * (1.0F - smooth(0.4F, 0.9F, q)));
+                out.cover = amount * on;
+                out.height = 0.4e-3F * relief * amount * (mottle - 0.5F) * on;
+                out.roughness = 0.3F;
+                out.shine = on * amount;
+            } else {
+                out.cover = amount * 0.7F * on * (0.85F + (0.15F * mottle));
+            }
+        }
+    } else if (kind == "bruise") {
+        const real_t q = patch(0.35F, 14.0F);
+        const real_t on = gauss(q * q * 1.6F);
+        out.cover = amount * 0.8F * on;
+        out.height = 0.6e-3F * relief * amount * (1.0F - age) * on;
+    } else if (kind == "rash") {
+        const real_t q = patch(0.5F, 10.0F);
+        const real_t on = 1.0F - smooth(0.6F, 1.0F, q);
+        if (on > 0.0F) {
+            const real_t bumps = value_noise(d * 140.0F, mark.seed + 5U);
+            const real_t blotch = smooth(0.35F, 0.7F, value_noise(d * 35.0F, mark.seed + 9U));
+            out.cover = amount * on * (0.35F + (0.45F * blotch) + (0.2F * bumps));
+            out.height = 0.15e-3F * relief * amount * on * smooth(0.5F, 0.9F, bumps);
+        }
+    } else {
+        // Tattoos and paint: a pattern, blurred as a tattoo ages.
+        const bool paint = kind == "paint";
+        const real_t blur = edge + (paint ? 0.0F : 0.004F * age);
+        const real_t sd = pattern_distance(m.pattern, p, s, m.half);
+        const real_t on = 1.0F - smooth(-blur, blur, sd);
+        out.cover = amount * on * (paint ? 0.95F : 1.0F - (0.35F * age));
+        if (paint) {
+            out.roughness = 0.85F;
+            out.shine = on * amount;
+        }
+    }
+    return out;
+}
+
+// The skin's wrinkles at a direction, 0 to 1: lines across the forehead, frown lines between
+// the brows, crow's feet, the folds from the nose and the lines under the eyes.
+real_t wrinkle_depth(const Sculptor::Features& f, Vec3 d) {
+    if (d.z <= 0.0F) {
+        return 0.0F;
+    }
+    real_t depth = 0.0F;
+    const auto add = [&](Vec2 a, Vec2 b, real_t width, real_t weight) {
+        depth = std::max(depth, weight * Sculptor::crease(d, a, b, width));
+    };
+    for (int k = 0; k < 3; ++k) {
+        const real_t y = f.brow_y + 0.1F + (0.07F * static_cast<real_t>(k));
+        add({-0.32F, y}, {0.32F, y + 0.01F}, 0.008F, 0.8F - (0.15F * static_cast<real_t>(k)));
+    }
+    for (const real_t side : {1.0F, -1.0F}) {
+        add({side * 0.05F, f.brow_y - 0.02F}, {side * 0.07F, f.brow_y + 0.07F}, 0.007F, 0.7F);
+        const Vec3 eye = f.eye_dir[side > 0.0F ? 0 : 1];
+        const real_t outer = eye.x + (side * f.eye_rn * 1.2F);
+        for (const real_t spread : {-0.05F, 0.0F, 0.05F}) {
+            add({outer, eye.y}, {outer + (side * 0.09F), eye.y + spread}, 0.006F, 0.7F);
+        }
+        add({eye.x - (side * f.eye_rn * 0.6F), eye.y - (f.eye_rn * 1.3F)},
+            {eye.x + (side * f.eye_rn * 0.9F), eye.y - (f.eye_rn * 1.2F)}, 0.006F, 0.5F);
+        add({side * f.nose_w * 0.13F, f.nose_tip + 0.03F},
+            {side * f.mouth_w * 1.15F, f.mouth_y - 0.03F}, 0.012F, 1.0F);
+    }
+    return depth;
+}
+
+// Shares of the face that flush (cheeks, nose, ears) and shine (the forehead, nose and chin).
+real_t flush_share(const Sculptor::Features& f, Vec3 d) {
+    real_t share = 0.0F;
+    for (const real_t side : {1.0F, -1.0F}) {
+        const real_t dx = d.x - (side * 0.45F);
+        const real_t dy = d.y - (f.mouth_y + 0.25F);
+        share = std::max(share, gauss(((dx * dx) + (dy * dy)) / 0.03F));
+    }
+    const real_t ny = d.y - f.nose_tip;
+    share = std::max(share, gauss(((d.x * d.x) + (ny * ny)) / 0.006F));
+    share = std::max(share, smooth(0.85F, 0.97F, std::abs(d.x)) * smooth(-0.4F, 0.0F, d.z));
+    return d.z < -0.4F ? 0.0F : share;
+}
+
+real_t shine_share(const Sculptor::Features& f, Vec3 d) {
+    if (d.z <= 0.0F) {
+        return 0.0F;
+    }
+    const real_t forehead = (1.0F - smooth(0.25F, 0.4F, std::abs(d.x))) *
+                            smooth(f.brow_y + 0.02F, f.brow_y + 0.1F, d.y);
+    const real_t nose = (1.0F - smooth(f.nose_w * 0.1F, f.nose_w * 0.2F, std::abs(d.x))) *
+                        smooth(f.nose_tip - 0.04F, f.nose_tip, d.y) *
+                        (1.0F - smooth(f.eye_y, f.eye_y + 0.06F, d.y));
+    const real_t cy = d.y - f.chin_y - 0.08F;
+    const real_t chin = gauss(((d.x * d.x) + (cy * cy)) / 0.006F);
+    return std::max({forehead, nose, chin});
+}
+
 } // namespace
 
 bool is_face_path(std::string_view path) {
@@ -1462,7 +2065,7 @@ SculptedHead sculpt_head(const CharacterFace& face, const HeadShape& head) {
                                  static_cast<real_t>(ring.y),
                                  static_cast<real_t>(around.x) * static_cast<real_t>(ring.x)});
             int tucked = 0;
-            out.positions.push_back(sculptor.place(d, on_seam, 0.78F, &tucked));
+            out.positions.push_back(sculptor.place(d, on_seam, 0.9F, &tucked));
             out.directions.push_back(d);
             out.uvs.push_back({static_cast<real_t>(j) / static_cast<real_t>(style.segments),
                                1.0F - (static_cast<real_t>(i) / static_cast<real_t>(style.rings))});
@@ -1473,13 +2076,40 @@ SculptedHead sculpt_head(const CharacterFace& face, const HeadShape& head) {
     const auto at = [&](std::size_t i, std::size_t j) {
         return static_cast<std::uint32_t>((i * columns) + j);
     };
-    const auto triangle = [&](std::uint32_t a, std::uint32_t b, std::uint32_t c) {
+    // The seam's tucked corners split in two: the upper lip keeps the grid's, the lower lip
+    // takes copies after it, so the jaw parts them. Their directions are nudged off the seam,
+    // so expressions and weights tell the two lips apart.
+    const auto seam_ring =
+        static_cast<std::size_t>(std::find(lat.begin(), lat.end(), seam) - lat.begin());
+    std::vector<std::uint32_t> lower(columns, UINT32_MAX);
+    out.seam.assign(out.positions.size(), 0);
+    if (seam_ring > 0 && seam_ring < style.rings) {
+        for (std::size_t j = 0; j < columns; ++j) {
+            const std::uint32_t upper = at(seam_ring, j);
+            if (hidden[upper] != 2) {
+                continue;
+            }
+            const Vec3 d = out.directions[upper];
+            lower[j] = static_cast<std::uint32_t>(out.positions.size());
+            out.positions.push_back(out.positions[upper]);
+            out.directions.push_back(unit(d + Vec3{0.0F, -0.025F, 0.0F}));
+            out.uvs.push_back(out.uvs[upper]);
+            hidden.push_back(2);
+            out.seam.push_back(2);
+            out.directions[upper] = unit(d + Vec3{0.0F, 0.01F, 0.0F});
+            out.seam[upper] = 1;
+        }
+    }
+    const auto below_seam = [&](std::size_t i, std::size_t j) {
+        return i == seam_ring && lower[j] != UINT32_MAX ? lower[j] : at(i, j);
+    };
+    // A quad's two triangles take the same part, by how many of its corners the mouth's seam
+    // tucked in, so the lips' line inside is one band rather than teeth of two colors.
+    const auto triangle = [&](std::uint32_t a, std::uint32_t b, std::uint32_t c, int tucked_mouth) {
         const Vec3 da = out.directions[a];
         const Vec3 db = out.directions[b];
         const Vec3 dc = out.directions[c];
         const Vec3 middle = unit(da + db + dc);
-        const int tucked_mouth =
-            (hidden[a] == 2 ? 1 : 0) + (hidden[b] == 2 ? 1 : 0) + (hidden[c] == 2 ? 1 : 0);
         FaceArea area = sculptor.area(middle);
         if (tucked_mouth >= 2) {
             area = FaceArea::Mouth;
@@ -1496,15 +2126,19 @@ SculptedHead sculpt_head(const CharacterFace& face, const HeadShape& head) {
     out.indices.reserve(style.rings * style.segments * 6);
     for (std::size_t i = 0; i < style.rings; ++i) {
         for (std::size_t j = 0; j < style.segments; ++j) {
-            const std::uint32_t up_a = at(i + 1, j);
-            const std::uint32_t up_b = at(i + 1, j + 1);
+            const std::uint32_t up_a = below_seam(i + 1, j);
+            const std::uint32_t up_b = below_seam(i + 1, j + 1);
             const std::uint32_t low_a = at(i, j);
             const std::uint32_t low_b = at(i, j + 1);
+            int tucked_mouth = 0;
+            for (const std::uint32_t corner : {up_a, up_b, low_a, low_b}) {
+                tucked_mouth += hidden[corner] == 2 ? 1 : 0;
+            }
             if (i + 1 < style.rings) {
-                triangle(up_a, up_b, low_a);
+                triangle(up_a, up_b, low_a, tucked_mouth);
             }
             if (i > 0) {
-                triangle(up_b, low_b, low_a);
+                triangle(up_b, low_b, low_a, tucked_mouth);
             }
         }
     }
@@ -1545,6 +2179,7 @@ SculptedHead sculpt_head(const CharacterFace& face, const HeadShape& head) {
         flat.normals.clear();
         flat.directions.clear();
         flat.uvs.clear();
+        flat.seam.clear();
         flat.indices.clear();
         for (std::size_t t = 0; t + 2 < out.indices.size(); t += 3) {
             const Vec3 a = out.positions[out.indices[t]];
@@ -1558,6 +2193,7 @@ SculptedHead sculpt_head(const CharacterFace& face, const HeadShape& head) {
                 flat.normals.push_back(n);
                 flat.directions.push_back(out.directions[index]);
                 flat.uvs.push_back(out.uvs[index]);
+                flat.seam.push_back(out.seam[index]);
             }
         }
         out = std::move(flat);
@@ -1647,6 +2283,431 @@ FaceProfile face_profile(const CharacterFace& face, const HeadShape& head,
         0.0F, 1.3F);
     const Vec3 ear = sculptor.place(sculptor.landmark_direction("ear_left"), false, 1.0F, nullptr);
     out.ear = side_view(ear);
+    return out;
+}
+
+FaceSkinMaps face_skin_maps(const CharacterFace& face, const HeadShape& head, Vec4 skin) {
+    const SkinStyle style = skin_style(face.style);
+    const auto pick_share = [](float own, real_t style_share) {
+        return own >= 0.0F ? clamp01(own) : style_share;
+    };
+    const real_t pores = pick_share(face.skin.pores, style.pores);
+    const real_t blotches = pick_share(face.skin.blotches, style.blotches);
+    const real_t oil = pick_share(face.skin.oil, style.oil);
+    const real_t wrinkles = clamp01(face.skin.wrinkles);
+    FaceSkinMaps out;
+    if (pores + blotches + oil + wrinkles <= 0.0F && face.marks.empty()) {
+        return out;
+    }
+    const Sculptor sculptor(face, head);
+    const Style& sculpt_style = sculptor.style();
+    const Sculptor::Features features = sculptor.features();
+    const std::vector<PlacedMark> marks = place_marks(face, sculptor);
+    out.width = face.skin.resolution != 0 ? face.skin.resolution : style.width;
+    out.height = out.width / 2;
+    const std::size_t w = out.width;
+    const std::size_t h = out.height;
+    // Each column's turn round the head and each row's latitude, as the sculpt's uvs lay them.
+    const std::vector<real_t> lat = latitudes(sculpt_style.rings, sculptor.mouth_latitude());
+    std::vector<Vec2f> around(w);
+    for (std::size_t x = 0; x < w; ++x) {
+        const real_t u = (static_cast<real_t>(x) + 0.5F) / static_cast<real_t>(w);
+        around[x] = cos_sin(to_float(kPi * gather((2.0F * u) - 1.0F, 1.5F)));
+    }
+    std::vector<Vec2f> rows(h);
+    for (std::size_t y = 0; y < h; ++y) {
+        const real_t v = (static_cast<real_t>(y) + 0.5F) / static_cast<real_t>(h);
+        const real_t ring = (1.0F - v) * static_cast<real_t>(sculpt_style.rings);
+        const auto below = std::min(static_cast<std::size_t>(ring), sculpt_style.rings - 1);
+        const real_t t = ring - static_cast<real_t>(below);
+        rows[y] = cos_sin(to_float(lat[below] + ((lat[below + 1] - lat[below]) * t)));
+    }
+    const auto direction = [&](std::size_t x, std::size_t y) {
+        return Vec3{around[x].y * rows[y].x, rows[y].y, around[x].x * rows[y].x};
+    };
+    // A direction between texels' centers, for sampling the lips' outline finer than texels.
+    const auto direction_at = [&](real_t fx, real_t fy) {
+        const real_t u = fx / static_cast<real_t>(w);
+        const Vec2f a = cos_sin(to_float(kPi * gather((2.0F * u) - 1.0F, 1.5F)));
+        const real_t ring =
+            (1.0F - (fy / static_cast<real_t>(h))) * static_cast<real_t>(sculpt_style.rings);
+        const auto below = std::min(static_cast<std::size_t>(std::max<real_t>(ring, 0.0F)),
+                                    sculpt_style.rings - 1);
+        const real_t t = ring - static_cast<real_t>(below);
+        const Vec2f r = cos_sin(to_float(lat[below] + ((lat[below + 1] - lat[below]) * t)));
+        return Vec3{static_cast<real_t>(a.y) * static_cast<real_t>(r.x), static_cast<real_t>(r.y),
+                    static_cast<real_t>(a.x) * static_cast<real_t>(r.x)};
+    };
+    // How much of a texel the lips cover, from 16 samples, so their outline is smooth however
+    // coarse the sculpt's triangles are.
+    const auto lip_cover = [&](std::size_t x, std::size_t y, Vec3 d) -> real_t {
+        if (d.z <= 0.0F || std::abs(d.x) > features.mouth_w * 1.1F ||
+            std::abs(d.y - features.mouth_y) > 0.16F) {
+            return 0.0F;
+        }
+        int inside = 0;
+        for (int sy = 0; sy < 4; ++sy) {
+            for (int sx = 0; sx < 4; ++sx) {
+                const Vec3 at = direction_at(
+                    static_cast<real_t>(x) + ((static_cast<real_t>(sx) + 0.5F) / 4.0F),
+                    static_cast<real_t>(y) + ((static_cast<real_t>(sy) + 0.5F) / 4.0F));
+                inside += sculptor.area(at) == FaceArea::Lips ? 1 : 0;
+            }
+        }
+        return static_cast<real_t>(inside) / 16.0F;
+    };
+    // The lips' inner walls, the sculpt's quads beside the seam whose corners on it are tucked
+    // in: lip colored at the lips, darkening into the mouth.
+    const auto seam_ring = static_cast<real_t>(
+        std::find(lat.begin(), lat.end(), sculptor.mouth_latitude()) - lat.begin());
+    std::vector<std::uint8_t> tucked(sculpt_style.segments + 1, 0);
+    {
+        const Vec2f ring = cos_sin(to_float(sculptor.mouth_latitude()));
+        for (std::size_t j = 0; j <= sculpt_style.segments; ++j) {
+            const real_t t =
+                ((2.0F * static_cast<real_t>(j)) / static_cast<real_t>(sculpt_style.segments)) -
+                1.0F;
+            const Vec2f a = cos_sin(to_float(kPi * gather(t, 1.5F)));
+            int hidden = 0;
+            static_cast<void>(
+                sculptor.place(unit({static_cast<real_t>(a.y) * static_cast<real_t>(ring.x),
+                                     static_cast<real_t>(ring.y),
+                                     static_cast<real_t>(a.x) * static_cast<real_t>(ring.x)}),
+                               true, 0.9F, &hidden));
+            tucked[j] = hidden == 2 ? 1 : 0;
+        }
+    }
+    const auto mouth_wall = [&](std::size_t x, std::size_t y) -> real_t {
+        const real_t ring = (1.0F - ((static_cast<real_t>(y) + 0.5F) / static_cast<real_t>(h))) *
+                            static_cast<real_t>(sculpt_style.rings);
+        const real_t near = 1.0F - std::abs(ring - seam_ring);
+        if (near <= 0.0F) {
+            return 0.0F;
+        }
+        const auto j = std::min(
+            static_cast<std::size_t>(((static_cast<real_t>(x) + 0.5F) / static_cast<real_t>(w)) *
+                                     static_cast<real_t>(sculpt_style.segments)),
+            sculpt_style.segments - 1);
+        return tucked[j] != 0 || tucked[j + 1] != 0 ? near : 0.0F;
+    };
+    constexpr Vec4 kInside{0.25F, 0.08F, 0.08F, 1.0F};
+    std::vector<real_t> heights(w * h, 0.0F);
+    out.albedo.resize(w * h * 4);
+    out.roughness.resize(w * h * 4);
+    const auto byte = [](real_t value) {
+        return static_cast<std::uint8_t>(std::lround(clamp01(value) * 255.0F));
+    };
+    for (std::size_t y = 0; y < h; ++y) {
+        for (std::size_t x = 0; x < w; ++x) {
+            const Vec3 d = direction(x, y);
+            Vec4 color = skin;
+            real_t height = 0.0F;
+            real_t rough = 0.6F - (0.28F * oil * shine_share(features, d));
+            if (blotches > 0.0F) {
+                const real_t broad = value_noise(d * 7.0F, face.seed + 101U) - 0.5F;
+                const real_t fine = value_noise(d * 24.0F, face.seed + 202U) - 0.5F;
+                const real_t flush =
+                    blotches * ((0.6F * flush_share(features, d)) + (0.5F * broad));
+                const real_t light = blotches * 0.06F * fine;
+                color.x += (0.07F * flush) + light;
+                color.y += (-0.035F * flush) + light;
+                color.z += (-0.03F * flush) + light;
+            }
+            if (pores > 0.0F && d.z > -0.5F) {
+                const real_t where =
+                    0.5F + (0.5F * std::max(flush_share(features, d), shine_share(features, d)));
+                const real_t pit = smooth(0.55F, 0.85F, value_noise(d * 320.0F, face.seed + 7U));
+                height -= pores * where * 0.08e-3F * pit;
+                rough += pores * 0.05F * pit;
+            }
+            if (wrinkles > 0.0F) {
+                height -= wrinkles * 0.45e-3F * wrinkle_depth(features, d) * sculpt_style.fine;
+            }
+            // The lips: their color, shine and the fine lines that run up them.
+            if (const real_t lip = lip_cover(x, y, d); lip > 0.0F) {
+                color = mix4(color, face.lips, lip);
+                rough += (0.4F - rough) * lip;
+                const Vec2f line = cos_sin(to_float(d.x * 260.0F));
+                height -= lip * pores * 0.05e-3F * (0.5F + (0.5F * static_cast<real_t>(line.x)));
+            }
+            if (const real_t wall = mouth_wall(x, y); wall > 0.0F) {
+                color = mix4(face.lips, kInside, smooth(0.3F, 1.0F, wall));
+                rough = 0.45F;
+            }
+            for (const PlacedMark& mark : marks) {
+                Vec2 local;
+                if (!mark_coords(mark, d, local)) {
+                    continue;
+                }
+                const MarkTexel hit = mark_texel(mark, local, d, style);
+                if (hit.cover > 0.0F) {
+                    color = mix4(color, hit.color, clamp01(hit.cover));
+                }
+                height += hit.height;
+                rough += (hit.roughness - rough) * clamp01(hit.shine);
+            }
+            const std::size_t at = ((y * w) + x) * 4;
+            out.albedo[at] = byte(color.x);
+            out.albedo[at + 1] = byte(color.y);
+            out.albedo[at + 2] = byte(color.z);
+            out.albedo[at + 3] = 255;
+            out.roughness[at] = byte(rough);
+            out.roughness[at + 1] = out.roughness[at];
+            out.roughness[at + 2] = out.roughness[at];
+            out.roughness[at + 3] = 255;
+            heights[(y * w) + x] = height;
+        }
+    }
+    // The relief's slopes round the head (its tangent) and up it (its binormal), by how far apart
+    // the neighboring texels are on the head.
+    const auto place = [&](std::size_t x, std::size_t y) {
+        const Vec3 d = direction(x, y);
+        return Vec3{d.x * head.radii.x, d.y * head.radii.y, d.z * head.radii.z};
+    };
+    out.normal.resize(w * h * 4);
+    for (std::size_t y = 0; y < h; ++y) {
+        const std::size_t up = y == 0 ? 0 : y - 1;
+        const std::size_t down = std::min(y + 1, h - 1);
+        for (std::size_t x = 0; x < w; ++x) {
+            const std::size_t left = (x + w - 1) % w;
+            const std::size_t right = (x + 1) % w;
+            const real_t across =
+                std::max<real_t>(length3(place(right, y) - place(left, y)), 1e-6F);
+            const real_t along = std::max<real_t>(length3(place(x, up) - place(x, down)), 1e-6F);
+            const real_t tx = (heights[(y * w) + right] - heights[(y * w) + left]) / across;
+            const real_t ty = (heights[(up * w) + x] - heights[(down * w) + x]) / along;
+            const Vec3 n = unit({-tx, -ty, 1.0F});
+            const std::size_t at = ((y * w) + x) * 4;
+            out.normal[at] = byte((n.x * 0.5F) + 0.5F);
+            out.normal[at + 1] = byte((n.y * 0.5F) + 0.5F);
+            out.normal[at + 2] = byte((n.z * 0.5F) + 0.5F);
+            out.normal[at + 3] = 255;
+        }
+    }
+    return out;
+}
+
+std::vector<FaceMarkShape> face_marks_2d(const CharacterFace& face, const HeadShape& head) {
+    std::vector<FaceMarkShape> out;
+    if (face.marks.empty()) {
+        return out;
+    }
+    const Sculptor sculptor(face, head);
+    const Sculptor::Features features = sculptor.features();
+    // How far forward the profile's face reaches at a height, so marks near its edge stay on
+    // it rather than sticking out past the outline.
+    const FaceProfile profile = face_profile(face, head);
+    const auto front_at = [&profile](real_t y) {
+        real_t most = -1e9F;
+        for (std::size_t i = 0; i + 1 < profile.front_count; ++i) {
+            const Vec2 a = profile.points[i];
+            const Vec2 b = profile.points[i + 1];
+            if ((y - a.y) * (y - b.y) > 0.0F || a.y == b.y) {
+                continue;
+            }
+            most = std::max(most, a.x + ((b.x - a.x) * (y - a.y) / (b.y - a.y)));
+        }
+        return most > -1e8F ? most - 0.0005F : 1e9F;
+    };
+    for (const PlacedMark& m : place_marks(face, sculptor)) {
+        if (m.center.x < -0.2F) {
+            continue; // on the far side
+        }
+        const FaceMark& mark = *m.mark;
+        const Vec3 at = sculptor.place(m.center, false, 1.0F, nullptr);
+        const Vec2 middle{at.z - head.center.z, at.y - head.center.y};
+        // The mark's frame as the side view sees it, foreshortened.
+        const Vec2 across{m.across.z * head.radii.z, m.across.y * head.radii.y};
+        const Vec2 upward{m.up.z * head.radii.z, m.up.y * head.radii.y};
+        const auto side = [&](Vec2 p) {
+            const real_t ax = ((m.turn.x * p.x) - (m.turn.y * p.y)) * m.flip;
+            const real_t ay = (m.turn.y * p.x) + (m.turn.x * p.y);
+            return middle + (across * ax) + (upward * ay);
+        };
+        const bool on_jaw = m.center.y < features.mouth_y - 0.03F && m.center.z > 0.0F;
+        const real_t amount = clamp01(mark.amount);
+        const auto shape = [&](std::vector<Vec2> points, Vec4 color, real_t alpha) {
+            for (Vec2& point : points) {
+                point = side(point);
+                point.x = std::min(point.x, front_at(point.y));
+            }
+            color.w = alpha;
+            out.push_back({.points = std::move(points), .color = color, .on_jaw = on_jaw});
+        };
+        const auto ellipse = [](Vec2 c, real_t rx, real_t ry, int count) {
+            std::vector<Vec2> points;
+            points.reserve(static_cast<std::size_t>(count));
+            for (int i = 0; i < count; ++i) {
+                const Vec2f t = cos_sin(2.0F * std::numbers::pi_v<float> * static_cast<float>(i) /
+                                        static_cast<float>(count));
+                points.push_back(
+                    {c.x + (rx * static_cast<real_t>(t.x)), c.y + (ry * static_cast<real_t>(t.y))});
+            }
+            return points;
+        };
+        // A strip of half width along a run of points.
+        const auto strip = [](const std::vector<Vec2>& run, const std::vector<real_t>& widths) {
+            std::vector<Vec2> points;
+            points.reserve(run.size() * 2);
+            std::vector<Vec2> lower;
+            lower.reserve(run.size());
+            for (std::size_t i = 0; i < run.size(); ++i) {
+                const Vec2 a = run[i == 0 ? 0 : i - 1];
+                const Vec2 b = run[std::min(i + 1, run.size() - 1)];
+                const Vec2 way = b - a;
+                const real_t len =
+                    std::max<real_t>(std::sqrt((way.x * way.x) + (way.y * way.y)), 1e-9F);
+                const Vec2 normal{-way.y / len, way.x / len};
+                points.push_back(run[i] + (normal * widths[i]));
+                lower.push_back(run[i] - (normal * widths[i]));
+            }
+            points.insert(points.end(), lower.rbegin(), lower.rend());
+            return points;
+        };
+        const auto line = [&](real_t width) {
+            std::vector<Vec2> run;
+            std::vector<real_t> widths;
+            for (int i = 0; i <= 8; ++i) {
+                const real_t t = (static_cast<real_t>(i) / 4.0F) - 1.0F;
+                run.push_back({t * m.half, 0.0F});
+                widths.push_back(width * (1.0F - (0.7F * t * t)));
+            }
+            return strip(run, widths);
+        };
+        const real_t s = m.size;
+        const std::string& kind = mark.kind;
+        const real_t age = clamp01(mark.age);
+        if (kind == "mole") {
+            shape(ellipse({}, s * 0.75F, s * 0.75F, 10), m.color, amount);
+        } else if (kind == "freckles") {
+            constexpr real_t kCell = 0.014F;
+            const auto cells = static_cast<std::int64_t>(std::ceil(s / kCell));
+            for (std::int64_t gx = -cells; gx <= cells; ++gx) {
+                for (std::int64_t gy = -cells; gy <= cells; ++gy) {
+                    if (lattice(gx, gy, 0, mark.seed) > 0.25F + (0.6F * amount)) {
+                        continue;
+                    }
+                    const Vec2 c{(static_cast<real_t>(gx) + lattice(gx, gy, 1, mark.seed)) * kCell,
+                                 (static_cast<real_t>(gy) + lattice(gx, gy, 2, mark.seed)) * kCell};
+                    if ((c.x * c.x) + (c.y * c.y) > s * s * 0.64F) {
+                        continue;
+                    }
+                    const real_t radius = 0.0028F + (0.0025F * lattice(gx, gy, 3, mark.seed));
+                    shape(ellipse(c, radius, radius, 6), m.color, 0.75F);
+                }
+            }
+        } else if (kind == "scar" || kind == "wound") {
+            if (kind == "wound") {
+                shape(line(s * 2.0F), {0.72F, 0.24F, 0.22F, 1.0F}, amount * 0.6F * (1.0F - age));
+            }
+            shape(line(s * (kind == "wound" ? 0.7F : 0.8F)), m.color, amount * 0.85F);
+            if (mark.pattern == "stitched") {
+                const real_t spacing = std::max<real_t>(0.018F, s * 1.8F);
+                const auto stitches = static_cast<int>(std::floor(m.half / spacing));
+                for (int k = -stitches; k <= stitches; ++k) {
+                    const real_t x = static_cast<real_t>(k) * spacing;
+                    shape({{x - 0.002F, -s * 2.2F},
+                           {x + 0.002F, -s * 2.2F},
+                           {x + 0.002F, s * 2.2F},
+                           {x - 0.002F, s * 2.2F}},
+                          {0.08F, 0.08F, 0.1F, 1.0F}, amount);
+                }
+            }
+        } else if (kind == "burn" || kind == "birthmark" || kind == "bruise" || kind == "rash") {
+            // A patch whose rim wanders as its seed says.
+            std::vector<Vec2> rim;
+            constexpr int kRim = 16;
+            for (int i = 0; i < kRim; ++i) {
+                const Vec2f t = cos_sin(2.0F * std::numbers::pi_v<float> * static_cast<float>(i) /
+                                        static_cast<float>(kRim));
+                const real_t wander = 0.8F + (0.4F * lattice(i, 0, 7, mark.seed));
+                rim.push_back(
+                    {s * wander * static_cast<real_t>(t.x), s * wander * static_cast<real_t>(t.y)});
+            }
+            const real_t alpha = kind == "burn" ? amount : amount * 0.65F;
+            shape(rim, m.color, alpha);
+            if (kind == "burn") {
+                const Vec4 deep =
+                    age < 0.5F ? Vec4{0.55F, 0.12F, 0.1F, 1.0F} : Vec4{0.58F, 0.38F, 0.34F, 1.0F};
+                shape(ellipse({s * 0.1F, -s * 0.05F}, s * 0.45F, s * 0.35F, 10), deep,
+                      amount * 0.6F);
+            }
+        } else {
+            const real_t alpha = kind == "paint" ? amount * 0.95F : amount * (1.0F - (0.35F * age));
+            const std::string_view pattern = m.pattern;
+            const real_t half = m.half;
+            const auto capsule = [&](Vec2 a, Vec2 b, real_t width) {
+                shape(strip({a, (a + b) * 0.5F, b}, {width, width, width}), m.color, alpha);
+            };
+            if (pattern == "stripes") {
+                for (const real_t row : {-0.45F, 0.0F, 0.45F}) {
+                    capsule({-half, row * s}, {half, row * s}, 0.1F * s);
+                }
+            } else if (pattern == "chevron") {
+                capsule({-0.6F * s, 0.35F * s}, {0.0F, -0.25F * s}, 0.1F * s);
+                capsule({0.0F, -0.25F * s}, {0.6F * s, 0.35F * s}, 0.1F * s);
+            } else if (pattern == "dots") {
+                for (const real_t x : {-0.6F, 0.0F, 0.6F}) {
+                    shape(ellipse({x * s, 0.0F}, 0.16F * s, 0.16F * s, 8), m.color, alpha);
+                }
+            } else if (pattern == "ring" || pattern == "spiral") {
+                std::vector<Vec2> run;
+                std::vector<real_t> widths;
+                constexpr int kSteps = 48;
+                for (int i = 0; i <= kSteps; ++i) {
+                    const real_t t = static_cast<real_t>(i) / static_cast<real_t>(kSteps);
+                    const real_t turn = pattern == "ring" ? t : t * 2.5F;
+                    const real_t radius =
+                        pattern == "ring" ? 0.6F * s : (0.22F * s * turn) + (0.02F * s);
+                    const Vec2f a = cos_sin(2.0F * std::numbers::pi_v<float> * to_float(turn));
+                    run.push_back(
+                        {radius * static_cast<real_t>(a.x), radius * static_cast<real_t>(a.y)});
+                    widths.push_back((pattern == "ring" ? 0.1F : 0.06F) * s);
+                }
+                shape(strip(run, widths), m.color, alpha);
+            } else if (pattern == "star") {
+                std::vector<Vec2> points;
+                for (int i = 0; i < 10; ++i) {
+                    const real_t radius = s * 0.85F * (i % 2 == 0 ? 1.0F : 0.4F);
+                    const Vec2f a =
+                        cos_sin((std::numbers::pi_v<float> * 0.5F) +
+                                (std::numbers::pi_v<float> * static_cast<float>(i) / 5.0F));
+                    points.push_back(
+                        {radius * static_cast<real_t>(a.x), radius * static_cast<real_t>(a.y)});
+                }
+                shape(points, m.color, alpha);
+            } else if (pattern == "teardrop") {
+                std::vector<Vec2> points = ellipse({0.0F, -0.3F * s}, 0.3F * s, 0.3F * s, 12);
+                points.erase(points.begin() + 1, points.begin() + 6);
+                points.insert(points.begin() + 1, Vec2{0.0F, 0.5F * s});
+                shape(points, m.color, alpha);
+            } else if (pattern == "cross") {
+                capsule({0.0F, -0.6F * s}, {0.0F, 0.6F * s}, 0.12F * s);
+                capsule({-0.6F * s, 0.0F}, {0.6F * s, 0.0F}, 0.12F * s);
+            } else if (pattern == "band" || pattern == "mask" || pattern == "lines") {
+                std::vector<Vec2> run;
+                std::vector<real_t> widths;
+                for (int i = 0; i <= 16; ++i) {
+                    const real_t t = (static_cast<real_t>(i) / 8.0F) - 1.0F;
+                    const real_t wave =
+                        pattern == "lines" ? 0.35F * s * cos_sin(to_float(kPi * t)).y : 0.0F;
+                    run.push_back({t * half, wave});
+                    real_t width = (0.14F * s * (1.0F - (t * t))) + 0.002F;
+                    if (pattern == "band") {
+                        width = 0.35F * s;
+                    } else if (pattern == "mask") {
+                        width = 0.4F * s * (1.0F - (0.55F * t * t));
+                    }
+                    widths.push_back(width);
+                }
+                shape(strip(run, widths), m.color, alpha);
+            } else if (pattern == "half") {
+                std::vector<Vec2> points = ellipse({}, s, s, 24);
+                std::erase_if(points, [](Vec2 p) { return p.x < -1e-6F; });
+                shape(points, m.color, alpha);
+            }
+        }
+    }
     return out;
 }
 

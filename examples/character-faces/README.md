@@ -23,12 +23,22 @@ cut-out's side-on profile.
 
 - [pip.character.json](characters/pip.character.json) is sculpted `"style": "toon"`: big eyes,
   a small upturned nose and little fine detail.
+- [kit.character.json](characters/kit.character.json) is a fighter with `marks` on the skin and
+  some `wrinkles`: a stitched scar by the left eye, freckles over the nose, a bruise going green
+  on the right cheekbone, a star tattoo on the left cheekbone, blue war paint stripes `mirror`ed
+  onto both cheeks and a mole by the mouth:
+
+```json
+"marks": [{"kind": "scar", "at": "eye_left", "length": 0.3, "angle": 80, "age": 0.6, "pattern": "stitched"},
+          {"kind": "tattoo", "at": "cheekbone_left", "pattern": "star", "size": 0.07}, ...]
+```
 
 [calls.jsonl](calls.jsonl) works with them the way an agent does over MCP or JSON-RPC, and
 [results.jsonl](results.jsonl) holds the replies:
 
 - `character.place` puts Ida and Pip in the 3D scene. `model.inspect` reads Ida's model: the
-  sculpted head's skin, lips, the inside of the mouth and brows are materials of their own.
+  sculpted head draws with its skin maps (pores, blotches, shine and the lips) on a `face`
+  material, and the inside of the mouth and the brows have materials of their own.
 - `skeleton.get` reads each one's eye and jaw bones, which the sculpt places: Pip's toon eyes
   are further apart than Ida's.
 - `frame.capture` samples each one's pupil and Ida's cheek.
@@ -39,3 +49,6 @@ cut-out's side-on profile.
   `MeshInstance3D.blend_shapes` makes her smile, squint her cheeks and close her eyes, which
   the second `frame.capture` sees as skin over the pupil; in 2D her `Character2D`'s
   `expressions` open her jaw, close her eyes and raise her brows.
+- Kit's 3D head draws the marks in its skin maps: `frame.capture` samples the star tattoo's ink,
+  the bruise, a stripe of the paint and bare skin. His 2D cut-out draws the marks on the side its
+  profile shows; the second capture samples the tattoo there and bare skin.

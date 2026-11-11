@@ -5207,6 +5207,8 @@ draw it: a character's 3D head is the sculpt, and its 2D cut-out's head the scul
 | `brows` | | `color` (the hair's, darkened), `thickness` (`0.5`, 0 for none) and `shape` (`"soft"`, `"straight"`, `"arched"` or `"angled"`) |
 | `beard` | `"none"` | `"stubble"`, `"short"` or `"long"`, in the hair's color, grown out from the sculpt's jaw, chin and upper lip |
 | `asymmetry`, `seed` | `0`, `0` | How far the sides differ (0 to 1): eyes, brows, cheeks, the nose and mouth a little off, as `seed` picks |
+| `skin` | | The 3D head's skin detail, each 0 to 1: `pores`, `blotches` (uneven color and flush) and `oil` (a shine on the forehead, nose and chin), each the style's when left out, and `wrinkles` (`0`: the forehead's lines, crow's feet, the folds from the nose and under the eyes); `resolution` is the maps' width (`256`, `512`, `1024` or `2048`; their height is half), the style's when left out |
+| `marks` | `[]` | Up to 64 marks on the skin (below): `kind`, `at` (a landmark, `"cheek_left"`), `offset`, `size` and `length` (in half the head's width, `0` for the kind's own), `angle` (degrees from across), `color` (the kind's own when left out), `amount` (`1`, how strong), `age` (`0` fresh to `1` old), `pattern`, `mirror` (`false`) and `seed` |
 
 The controls: `head.width`, `head.length`, `head.height`, `forehead.height`, `forehead.slope`,
 `brow.height`, `brow.ridge`, `brow.tilt`, `eyes.size`, `eyes.spacing`, `eyes.height`,
@@ -5226,10 +5228,37 @@ The sculpt (`world::sculpt_head` in `slash/world/face.hpp`) is a grid of rings r
 denser over the face, each vertex moved out or in by soft bumps and grooves at the landmarks
 (the brow ridge, sockets, nose, philtrum, cheekbones, lips, chin, the corners of the jaw and the
 carves) after the skull, jaw and face are stretched as the controls say. The eyelids wrap the
-eyeballs, the eyes' openings tucked behind them, and the lips' seam is tucked into the mouth, so
-the jaw opens it over the teeth. Each triangle is skin, lips, brows or the inside of the mouth,
-which draw with their own materials, and the beard grows out over the triangles it covers. It is
+eyeballs, the eyes' openings tucked behind them, and the lips' seam is tucked into the mouth
+and split in two (the lower lip's corners on it are copies that move with the jaw), so the jaw
+opens it over the teeth. Each triangle is skin, lips, brows or the inside of the mouth, which
+draw with their own materials (or, with skin maps, skin, lips and the mouth's walls with the
+maps), and the beard grows out over the triangles it covers. It is
 built with integer hashes and `slash::exp`, so a face sculpts the same bits everywhere.
+
+The skin is MetaHuman's too: a 3D head draws with skin maps laid over the sculpt's uvs
+(`world::face_skin_maps`), an albedo, a tangent-space normal map and a roughness map, made in
+code with integer noise, so they are the same bytes everywhere. They carry the style's pores,
+blotches and shine (`realistic` most, `stylized` and `painterly` less; `toon` and `low_poly`
+none, and no maps at all unless the face has marks or asks for detail), the `skin`'s wrinkles,
+the lips' color with a smooth outline and fine lines, and the marks. Marks follow the sculpt's
+carves, at a landmark and offset, turned by `angle`:
+
+| `kind` | Draws |
+| --- | --- |
+| `mole` | A dark, slightly raised spot |
+| `freckles` | Scattered small spots over `size`, as dense as `amount` |
+| `scar` | A raised, shiny line (`length`), pink when fresh and pale when old; `"stitched"` adds the stitches |
+| `wound` | An open, wet cut (`length`) with a dark middle and swollen edges, drying to a scab as it ages; `"stitched"` stitches it |
+| `burn` | A mottled patch, raw red when fresh and pale and shiny when old |
+| `bruise` | A soft blotch, purple when fresh, then green and yellow as it ages |
+| `rash` | Small raised red bumps over a flush |
+| `birthmark` | A soft patch with a ragged edge, as `seed` picks |
+| `tattoo` | Ink in a `pattern`: `stripes`, `chevron`, `dots`, `ring`, `star`, `spiral`, `teardrop`, `cross` or `lines` (the default), fading and blurring as it ages |
+| `paint` | Matte face paint in a `pattern`: those, or `band` (the default, across the face), `mask` (round the eyes) or `half` (the face's side) |
+
+A character's 2D cut-out draws the marks on the side its profile shows (the face's left and its
+middle; `mirror` brings a right-side mark round) as polygons over its head, those below the lips
+on its jaw, clipped to the outline (`world::face_marks_2d`).
 
 Every sculpt carries ARKit's 52 expression shapes, as MetaHuman faces do, so face capture
 (Live Link Face, an `XRFaceTracker`) and animations drive any face, whatever its controls: a
@@ -5245,8 +5274,9 @@ lower teeth and tongue turn about the jaw's hinge), `mouthClose`, `mouthFunnel`,
 `noseSneer` and `tongueOut`, each `Left` and `Right` where ARKit has them, `Left` being the
 face's own left. In 2D only the side facing the camera shows, and `jawOpen` turns the jaw bone.
 [examples/character-faces](../../examples/character-faces/) sculpts an elder from a preset it
-extends and blends, with a crease carved in a cheek, and a toon, and has them smile, blink and
-talk in 3D and 2D.
+extends and blends, with a crease carved in a cheek, and a toon, has them smile, blink and talk
+in 3D and 2D, and marks a fighter with a stitched scar, freckles, a bruise, a tattoo and war
+paint.
 
 ### Creatures
 

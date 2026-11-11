@@ -591,24 +591,59 @@ void add_face(const CharacterRecipe& recipe, const Body& body, int skin) {
         return [&sculpt, area](std::size_t t) { return sculpt.areas[t] == area; };
     };
     const Affine3D none;
+    // The lips' corners on the seam move wholly with the head (the upper lip's) or the jaw (the
+    // lower lip's copies), so the jaw parts them.
+    const VertexWeights head_only = one_joint(head);
+    const VertexWeights jaw_only = one_joint(jaw);
     const auto add_head = [&](const auto& keep, int material, const Weigh& weigh, real_t grow) {
         std::vector<std::uint32_t> from;
         const MeshData part = head_part(sculpt, keep, grow, &from);
-        out.add_shaped(part, none, material, weigh, [&](std::size_t shape, std::size_t v) {
-            return expressions[shape][from[v]];
-        });
+        out.add_shaped(
+            part, none, material, WeighEach([&](std::size_t v, Vec3 p) {
+                const std::uint8_t side = sculpt.seam[from[v]];
+                if (side == 0) {
+                    return weigh(p);
+                }
+                return side == 1 ? head_only : jaw_only;
+            }),
+            [&](std::size_t shape, std::size_t v) { return expressions[shape][from[v]]; });
     };
+    // The face's skin maps (pores, wrinkles, blotches, shine and marks) on a material of its
+    // own, over the sculpt's uvs.
+    int face_skin = skin;
+    if (world::FaceSkinMaps maps = world::face_skin_maps(face, head_shape, recipe.body.skin);
+        maps.width > 0) {
+        const auto image = [&](std::vector<std::uint8_t> pixels) {
+            ModelImage made;
+            made.image = {.width = maps.width, .height = maps.height, .pixels = std::move(pixels)};
+            out.model.images.push_back(std::move(made));
+            return static_cast<int>(out.model.images.size()) - 1;
+        };
+        ModelMaterial made;
+        made.name = "face";
+        made.standard.albedo_color = {1.0F, 1.0F, 1.0F, 1.0F};
+        made.standard.roughness = 1.0F;
+        made.standard.roughness_texture_channel = "red";
+        made.standard.normal_enabled = true;
+        made.albedo_image = image(std::move(maps.albedo));
+        made.normal_image = image(std::move(maps.normal));
+        made.roughness_image = image(std::move(maps.roughness));
+        out.model.materials.push_back(std::move(made));
+        face_skin = static_cast<int>(out.model.materials.size()) - 1;
+    }
     add_head(
         [&](std::size_t t) {
             return sculpt.areas[t] == world::FaceArea::Skin ||
                    sculpt.areas[t] == world::FaceArea::Hidden ||
                    (sculpt.areas[t] == world::FaceArea::Brows && face.brows.thickness <= 0.0F);
         },
-        skin, body.jaw_weights(), 0.0F);
-    const int lips = out.material("lips", face.lips, 0.5F, 0.0F);
+        face_skin, body.jaw_weights(), 0.0F);
+    // The maps color the lips too, with a smoother outline than the sculpt's triangles.
+    const int lips = face_skin != skin ? face_skin : out.material("lips", face.lips, 0.5F, 0.0F);
     add_head(is(world::FaceArea::Lips), lips, body.jaw_weights(), 0.0F);
     const int inside = out.material("mouth", {0.25F, 0.08F, 0.08F, 1.0F}, 0.7F, 0.0F);
-    add_head(is(world::FaceArea::Mouth), inside, body.jaw_weights(), 0.0F);
+    add_head(is(world::FaceArea::Mouth), face_skin != skin ? face_skin : inside, body.jaw_weights(),
+             0.0F);
     if (face.brows.thickness > 0.0F) {
         const Vec4 color = face.brows.color.w > 0.0F
                                ? face.brows.color
@@ -671,9 +706,17 @@ void add_face(const CharacterRecipe& recipe, const Body& body, int skin) {
         out.add(unit_sphere(), place, skin, head);
     }
     // Inside the mouth, behind the seam: its dark, the teeth and the tongue, which show as the
-    // jaw opens.
+    // jaw opens. They stay behind where the seam tucks the lips in, so closed lips cover them.
     const real_t line = body.mouth();
-    out.add(unit_sphere(), placed({hr * 0.25F, hh * 0.08F, hr * 0.25F}, {0.0F, line, hr * 0.7F}),
+    real_t seam_z = hr * 0.9F;
+    for (const Vec3& p : sculpt.positions) {
+        if (std::abs(p.x) < hr * 0.002F && p.z > 0.0F && std::abs(p.y - line) < hh * 0.01F) {
+            seam_z = std::min(seam_z, p.z);
+        }
+    }
+    const real_t front = seam_z - (hr * 0.01F);
+    out.add(unit_sphere(),
+            placed({hr * 0.25F, hh * 0.08F, hr * 0.25F}, {0.0F, line, front - (hr * 0.25F)}),
             inside, [=](Vec3 p) {
                 return blend_joints(
                     head, jaw,
@@ -681,14 +724,17 @@ void add_face(const CharacterRecipe& recipe, const Body& body, int skin) {
             });
     const int teeth = out.material("teeth", {0.92F, 0.9F, 0.82F, 1.0F}, 0.3F, 0.0F);
     out.add(unit_sphere(),
-            placed({hr * 0.22F, hh * 0.03F, hr * 0.12F}, {0.0F, line + (hh * 0.015F), hr * 0.8F}),
+            placed({hr * 0.22F, hh * 0.03F, hr * 0.12F},
+                   {0.0F, line + (hh * 0.015F), front - (hr * 0.12F)}),
             teeth, head);
     with_jaw(unit_sphere(),
-             placed({hr * 0.2F, hh * 0.03F, hr * 0.12F}, {0.0F, line - (hh * 0.015F), hr * 0.78F}),
+             placed({hr * 0.2F, hh * 0.03F, hr * 0.12F},
+                    {0.0F, line - (hh * 0.015F), front - (hr * 0.14F)}),
              teeth, false);
     const int tongue = out.material("tongue", {0.75F, 0.35F, 0.38F, 1.0F}, 0.5F, 0.0F);
     with_jaw(unit_sphere(),
-             placed({hr * 0.15F, hh * 0.025F, hr * 0.25F}, {0.0F, line - (hh * 0.03F), hr * 0.62F}),
+             placed({hr * 0.15F, hh * 0.025F, hr * 0.25F},
+                    {0.0F, line - (hh * 0.03F), front - (hr * 0.3F)}),
              tongue, true);
     // A beard grows over the sculpt's jaw, chin and upper lip, out from the skin by its length.
     if (face.beard != "none") {

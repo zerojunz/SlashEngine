@@ -14,3 +14,10 @@
 {"jsonrpc":"2.0","id":14,"method":"component.set","params":{"id":"ida_2d","components":{"Character2D":{"expressions":{"jawOpen":0.7,"eyeBlinkLeft":1,"eyeBlinkRight":1,"browInnerUp":1}}}}}
 {"jsonrpc":"2.0","id":15,"method":"step","params":{"ticks":1}}
 {"jsonrpc":"2.0","id":16,"method":"entity.get","params":{"id":"ida_2d_jaw","components":["Transform2D"],"omit_defaults":true}}
+{"jsonrpc":"2.0","id":17,"method":"character.place","params":{"recipe":"characters/kit.character.json","id":"kit","at":[1,0,0]}}
+{"jsonrpc":"2.0","id":18,"method":"component.set","params":{"id":"camera","components":{"Transform3D":{"position":[1,1.63,0.42]}}}}
+{"jsonrpc":"2.0","id":19,"method":"frame.capture","params":{"points":[[222,112],[98,107],[113,153],[233,133]]}}
+{"jsonrpc":"2.0","id":20,"method":"entity.destroy","params":{"id":"kit"}}
+{"jsonrpc":"2.0","id":21,"method":"character.place","params":{"recipe":"characters/kit.character.json","id":"kit_2d","at":[130,930],"pixels_per_meter":500}}
+{"jsonrpc":"2.0","id":22,"method":"step","params":{"ticks":1}}
+{"jsonrpc":"2.0","id":23,"method":"frame.capture","params":{"points":[[181,125],[160,140]]}}

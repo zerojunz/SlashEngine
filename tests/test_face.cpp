@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <ranges>
 #include <set>
 #include <string>
 #include <string_view>
@@ -152,7 +153,20 @@ TEST_CASE("face: a face extends another, blends presets and is set inline in a c
 TEST_CASE("face: a sculpted head is closed, faces out and has lips, brows, eyes and a mouth") {
     const world::CharacterFace face;
     const world::SculptedHead head = world::sculpt_head(face, kHead);
-    CHECK(head.positions.size() == (head.rings + 1) * (head.segments + 1));
+    // The grid, then the lower lip's copies of the seam's corners, at the upper lip's places.
+    const std::size_t grid = (head.rings + 1) * (head.segments + 1);
+    REQUIRE(head.positions.size() > grid);
+    REQUIRE(head.seam.size() == head.positions.size());
+    CHECK(std::count(head.seam.begin(), head.seam.end(), 1) ==
+          static_cast<std::ptrdiff_t>(head.positions.size() - grid));
+    for (std::size_t v = grid; v < head.positions.size(); ++v) {
+        CHECK(head.seam[v] == 2);
+        CHECK(std::ranges::any_of(std::views::iota(std::size_t{0}, grid), [&](std::size_t u) {
+            return head.seam[u] == 1 && head.positions[u].x == head.positions[v].x &&
+                   head.positions[u].y == head.positions[v].y &&
+                   head.positions[u].z == head.positions[v].z;
+        }));
+    }
     CHECK(head.areas.size() * 3 == head.indices.size());
     CHECK(head.bearded.size() == head.areas.size());
     // Godot's front faces turn clockwise seen from outside, so (c - a) x (b - a) points out.
@@ -273,7 +287,8 @@ TEST_CASE("face: a character's head is its sculpt, its eyes on its eye bones") {
     for (const scene3d::ModelMaterial& material : model.value().materials) {
         materials.insert(material.name);
     }
-    for (const std::string_view name : {"lips", "brows", "mouth", "hair", "eyes", "teeth"}) {
+    // The face's skin maps color its skin and lips on a material of their own.
+    for (const std::string_view name : {"face", "brows", "mouth", "hair", "eyes", "teeth"}) {
         CHECK_MESSAGE(materials.contains(std::string(name)), name);
     }
     const world::CharacterMeasures m = world::character_measures(recipe.value());
@@ -437,11 +452,11 @@ TEST_CASE("face: characters carry the expressions as blend shapes, in 3D and in 
         if (material_of(surface) == "tongue") {
             CHECK(moves(tongue_out));
         }
-        if (material_of(surface) == "skin" || material_of(surface) == "hair") {
+        if (material_of(surface) == "face" || material_of(surface) == "hair") {
             CHECK(moves(smile));
         }
     }
-    for (const std::string_view name : {"skin", "lips", "brows", "hair", "teeth", "tongue"}) {
+    for (const std::string_view name : {"face", "brows", "hair", "teeth", "tongue"}) {
         CHECK_MESSAGE(shaped.contains(std::string(name)), name);
     }
     // In 2D, a blink shuts the near eye and a smile moves the outline; the jaw's turn is left to
@@ -457,4 +472,140 @@ TEST_CASE("face: characters carry the expressions as blend shapes, in 3D and in 
     std::vector<float> jaw(52, 0.0F);
     jaw[*world::face_expression_index("jawOpen")] = 1.0F;
     CHECK(world::face_profile(world::CharacterFace{}, kHead, jaw).points == plain.points);
+}
+
+TEST_CASE("face: the jaw parts the lips at their seam") {
+    const world::CharacterFace face;
+    const world::SculptedHead head = world::sculpt_head(face, kHead);
+    const std::vector<std::vector<Vec3>> shapes = world::face_expressions(face, kHead, head);
+    const std::vector<Vec3>& open = shapes[*world::face_expression_index("jawOpen")];
+    std::size_t upper = 0;
+    std::size_t lower = 0;
+    for (std::size_t v = 0; v < head.positions.size(); ++v) {
+        if (head.seam[v] == 1) {
+            ++upper;
+            CHECK(open[v].y > -0.002F); // the upper lip stays
+        } else if (head.seam[v] == 2) {
+            ++lower;
+            CHECK(open[v].y < -0.005F); // the lower lip goes down with the jaw
+        }
+    }
+    CHECK(upper > 4);
+    CHECK(upper == lower);
+}
+
+TEST_CASE("face: skin maps carry the style's detail, and are empty for a plain toon") {
+    const world::HeadShape head{.center = {0.0F, 1.6F, 0.0F}, .radii = {0.1F, 0.12F, 0.112F}};
+    const slash::Vec4 skin{0.8F, 0.62F, 0.5F, 1.0F};
+    const world::FaceSkinMaps realistic =
+        world::face_skin_maps(face_of(R"({"format": 1, "skin": {"resolution": 256}})"), head, skin);
+    REQUIRE(realistic.width == 256);
+    CHECK(realistic.height == 128);
+    CHECK(realistic.albedo.size() == 256U * 128U * 4U);
+    CHECK(realistic.normal.size() == realistic.albedo.size());
+    CHECK(realistic.roughness.size() == realistic.albedo.size());
+    // Pores make relief; the lips are their own color.
+    CHECK(std::ranges::any_of(realistic.normal, [](std::uint8_t b) { return b < 120; }));
+    CHECK(world::face_skin_maps(face_of(R"({"format": 1, "style": "toon"})"), head, skin).width ==
+          0);
+    const world::FaceSkinMaps marked = world::face_skin_maps(
+        face_of(R"({"format": 1, "style": "toon", "marks": [{"kind": "mole"}]})"), head, skin);
+    CHECK(marked.width == 256);
+}
+
+TEST_CASE("face: marks color their side of the face, and mirror to the other") {
+    const slash::Vec4 skin{0.8F, 0.62F, 0.5F, 1.0F};
+    const auto changed = [&](std::string_view marks) {
+        const std::string text =
+            R"({"format": 1, "style": "toon", "skin": {"resolution": 256}, "marks": [)" +
+            std::string(marks) + "]}";
+        const world::FaceSkinMaps plain = world::face_skin_maps(
+            face_of(R"({"format": 1, "style": "toon", "marks": [{"kind": "mole", "at": "crown",
+                       "color": [0.8, 0.62, 0.5, 1], "amount": 0}]})"),
+            kHead, skin);
+        const world::FaceSkinMaps maps = world::face_skin_maps(face_of(text), kHead, skin);
+        REQUIRE(maps.width == plain.width);
+        // Which halves (columns left and right of the face's middle) the mark changed.
+        std::pair<bool, bool> sides{false, false};
+        for (std::size_t i = 0; i < maps.albedo.size(); i += 4) {
+            if (maps.albedo[i] != plain.albedo[i] || maps.albedo[i + 1] != plain.albedo[i + 1]) {
+                const std::size_t x = (i / 4) % maps.width;
+                (x >= maps.width / 2 ? sides.first : sides.second) = true;
+            }
+        }
+        return sides;
+    };
+    // The face's left is +x, toward the maps' right half.
+    const std::pair<bool, bool> left{true, false};
+    const std::pair<bool, bool> right{false, true};
+    const std::pair<bool, bool> both{true, true};
+    CHECK(changed(R"({"kind": "tattoo", "at": "cheek_left", "pattern": "star"})") == left);
+    CHECK(changed(R"({"kind": "bruise", "at": "cheek_right"})") == right);
+    CHECK(
+        changed(R"({"kind": "paint", "at": "cheek_left", "pattern": "stripes", "mirror": true})") ==
+        both);
+    for (const std::string_view kind :
+         {"mole", "freckles", "scar", "wound", "burn", "rash", "birthmark"}) {
+        CHECK_MESSAGE(changed(R"({"kind": ")" + std::string(kind) + R"(", "at": "cheek_left"})") ==
+                          left,
+                      kind);
+    }
+}
+
+TEST_CASE("face: marks are checked, with the closest kind for a misspelled one") {
+    auto errors =
+        world::validate_face(parse(R"({"format": 1, "marks": [{"kind": "scarr", "at": "chin"}]})"));
+    REQUIRE_FALSE(errors.empty());
+    CHECK(errors.front().path == "/marks/0/kind");
+    CHECK(errors.front().message.find("scar") != std::string::npos);
+    CHECK_FALSE(world::validate_face(parse(R"({"format": 1, "marks": [{"kind": "tattoo",
+        "pattern": "dragon"}]})"))
+                    .empty());
+    CHECK_FALSE(
+        world::validate_face(parse(R"({"format": 1, "skin": {"resolution": 300}})")).empty());
+    CHECK(world::validate_face(parse(R"({"format": 1, "skin": {"pores": 0.3, "wrinkles": 1},
+        "marks": [{"kind": "scar", "at": "eye_left", "pattern": "stitched", "age": 0.5}]})"))
+              .empty());
+}
+
+TEST_CASE("face: 2D cut-outs show the marks on their profile's side") {
+    const auto shapes = [](std::string_view marks) {
+        return world::face_marks_2d(
+            face_of(R"({"format": 1, "marks": [)" + std::string(marks) + "]}"), kHead);
+    };
+    CHECK_FALSE(shapes(R"({"kind": "scar", "at": "cheek_left"})").empty());
+    CHECK(shapes(R"({"kind": "scar", "at": "cheek_right"})").empty());
+    CHECK_FALSE(shapes(R"({"kind": "scar", "at": "cheek_right", "mirror": true})").empty());
+    const std::vector<world::FaceMarkShape> chin = shapes(R"({"kind": "mole", "at": "chin"})");
+    REQUIRE_FALSE(chin.empty());
+    CHECK(chin.front().on_jaw);
+    CHECK_FALSE(shapes(R"({"kind": "mole", "at": "forehead"})").front().on_jaw);
+    // In front of the head's center, where the profile's face is.
+    for (const world::FaceMarkShape& shape : shapes(R"({"kind": "tattoo", "at": "cheek_left",
+                                                        "pattern": "star"})")) {
+        for (const Vec2 p : shape.points) {
+            CHECK(p.x > 0.0F);
+        }
+    }
+    // A character's cut-out draws them over its head and jaw.
+    auto recipe = world::parse_character(
+        parse(R"({"format": 1, "face": {"marks": [{"kind": "mole", "at": "cheek_left"},
+            {"kind": "scar", "at": "chin"}]}})"),
+        reader({}));
+    REQUIRE_MESSAGE(recipe.ok(), recipe.error().message);
+    auto plain = world::parse_character(parse(R"({"format": 1})"), reader({}));
+    REQUIRE(plain.ok());
+    const auto shape_count = [](const std::vector<world::CutoutBone>& bones,
+                                std::string_view name) {
+        for (const world::CutoutBone& bone : bones) {
+            if (bone.name == name) {
+                return bone.shapes.size();
+            }
+        }
+        return std::size_t{0};
+    };
+    const auto marked = world::character_cutout(recipe.value());
+    const auto bare = world::character_cutout(plain.value());
+    CHECK(shape_count(marked, "head") > shape_count(bare, "head"));
+    CHECK(shape_count(marked, "jaw") > shape_count(bare, "jaw"));
 }
