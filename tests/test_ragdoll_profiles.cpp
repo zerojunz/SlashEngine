@@ -307,10 +307,16 @@ TEST_CASE("ragdoll.tune merges overrides and reports the bones it touched") {
         R"({"id": "hero", "overrides": {"bones": {"mixamorig_Head": {"shape": "cube"}}}})",
         command::code::kInvalidParams);
     CHECK(bad.message.find("/bones/mixamorig_Head/shape") != std::string::npos);
+    // Undo takes the tunes back one at a time.
     engine.ok("undo");
+    const json::Value* head = engine.ragdoll().overrides.find("bones") != nullptr
+                                  ? engine.ragdoll().overrides.find("bones")->find("mixamorig_Head")
+                                  : nullptr;
+    REQUIRE(head != nullptr);
+    CHECK(head->find("mass") == nullptr);
+    CHECK(head->find("stiffness")->as_double() == 900.0);
     engine.ok("undo");
-    CHECK(engine.ragdoll().overrides.find("bones")->find("mixamorig_Head")->find("mass") ==
-          nullptr);
+    CHECK(engine.ragdoll().overrides.is_null());
 }
 
 namespace {
