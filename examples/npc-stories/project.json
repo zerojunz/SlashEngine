@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "internationalization": {"locale": {"translations": ["translations/story.csv"]}},
+  "main_scene": "village.scene.json",
+  "name": "NPC stories",
+  "npc": {"day_seconds": 24, "start_hour": 7},
+  "version": "1.0.0"
+}

@@ -100,6 +100,15 @@ navigation::Settings navigation_settings(const json::Value& project) {
     return out;
 }
 
+// The project's npc clock; settings that don't validate keep the defaults.
+npc::Settings npc_settings(const json::Value& project) {
+    const json::Value* settings = project.is_object() ? project.find("npc") : nullptr;
+    if (settings == nullptr || !json::validate(*settings, npc::settings_schema()).empty()) {
+        return {};
+    }
+    return npc::parse_settings(*settings);
+}
+
 // The project's threading.max_threads, or -1 (one thread per core) if it doesn't validate.
 int max_threads(const json::Value& project) {
     const json::Value* threading = project.is_object() ? project.find("threading") : nullptr;
@@ -317,7 +326,7 @@ Session::Session(const world::ComponentRegistry& component_registry,
     physics2d::install(world_, physics_settings(project));
     physics3d::install(world_, physics_3d_settings(project));
     navigation::install(world_, assets_, navigation_settings(project));
-    npc::install(world_, assets_);
+    npc::install(world_, assets_, npc_settings(project));
     input::install(world_, input_map(project), input_settings(project));
     audio::install(world_, assets_, audio_settings(project));
     // Ads load and purchases complete as services.test says, with no store account.
@@ -982,6 +991,7 @@ void Session::poll_project() {
     physics2d::set_settings(world_, physics_settings(project));
     physics3d::set_settings(world_, physics_3d_settings(project));
     navigation::set_settings(world_, navigation_settings(project));
+    npc::set_settings(world_, npc_settings(project));
     input::install(world_, input_map(project), input_settings(project));
     audio::set_settings(world_, audio_settings(project));
     services::install(world_, services_settings(project));

@@ -75,6 +75,7 @@ as `entity.get`, reject it as an unknown param.
 | Wind | [`wind.sample`](#windsample) |
 | Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent), [`navigation.bake`](#navigationbake) |
 | NPCs | [`npc.plan`](#npcplan), [`npc.draft`](#npcdraft) |
+| Quests and dialogue | [`quest.start`](#queststart), [`quest.set`](#questset), [`quest.state`](#queststate), [`quest.check`](#questcheck), [`dialogue.start`](#dialoguestart), [`dialogue.choose`](#dialoguechoose), [`dialogue.state`](#dialoguestate) |
 | Particles | [`particles.eval`](#particleseval), [`particles.bake_sdf`](#particlesbake_sdf) |
 | Lights | [`light.sample`](#lightsample), [`light.tune`](#lighttune), [`lighting.check`](#lightingcheck) |
 | Global illumination | [`lightmap.bake`](#lightmapbake), [`voxel_gi.bake`](#voxel_gibake) |
@@ -171,7 +172,8 @@ Returns a JSON Schema: for scene, prefab, [`.frames.json`](scene-format.md#sprit
 [`.bus_layout.json`](scene-format.md#bus-layouts), [`.replay.json`](scene-format.md#replays),
 [`.test.json`](scene-format.md#tests),
 [`.navmesh.json` or `.navpoly.json`](scene-format.md#navigation-meshes-and-polygons),
-[`.npc.json`](scene-format.md#npcs),
+[`.npc.json`](scene-format.md#npcs), [`.quest.json`](scene-format.md#quests),
+[`.dialogue.json`](scene-format.md#dialogue),
 [`.meshlib.json`](scene-format.md#mesh-libraries), [`.model.json`](scene-format.md#model-recipes),
 [`.standard_material.json`](scene-format.md#material-files),
 [`.texture.json`](scene-format.md#procedural-textures),
@@ -181,7 +183,7 @@ one component or one command.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"npc"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"standard_material"`, `"texture"`, `"scatter"`, `"physics_material"`, `"ragdoll"`, `"foliage"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"npc"`, `"quest"`, `"dialogue"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"standard_material"`, `"texture"`, `"scatter"`, `"physics_material"`, `"ragdoll"`, `"foliage"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -2269,6 +2271,137 @@ A path that isn't a `.npc.json` file fails at `/path`, an unknown storyboard ID 
 with a "did you mean", and a model whose last draft still has problems fails with them in the
 error's `problems`, writing nothing. [examples/npc-draft](../../examples/npc-draft/) has a model
 write a fruit seller.
+
+## Quests and dialogue
+
+### quest.start
+
+Starts a [`.quest.json` quest](scene-format.md#quests) in an entity's `QuestLog` (usually the
+player's; one is added if it has none) at its first stage, whatever its `start_when`, and moves
+it on as far as the entity's story facts take it, as the `quests` system would.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | The entity whose `QuestLog` it is |
+| `quest` | string | required | The `.quest.json` file |
+
+Needs: `edit`. It returns the entity's story `facts` and the `quests` that started or moved, as
+`quest.state` gives them; a quest the log has already started is left as it is. An unknown ID
+fails at `/id` with a "did you mean", and a path that isn't a `.quest.json` file or a quest file
+that doesn't load fails at `/quest`.
+
+### quest.set
+
+Sets story facts in an entity's `QuestLog` and moves its quests on: objectives that hold are
+done, stages whose objectives are done take their rewards and go on, a stage's `fail_when` fails
+the quest, and a waiting quest whose `start_when` holds starts. Undo puts the facts and quests
+back.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | The entity whose `QuestLog` it is; one is added if it has none |
+| `facts` | object | required | Facts by name: whole numbers or booleans (1 and 0) |
+
+Needs: `edit`. It returns the `facts` and the `quests` that moved:
+
+```json
+{"id": "player", "facts": {"lamb_found": true}}
+```
+
+```json
+{"facts":{"lamb_found":1,"met_mira":1},"quests":[{"journal":["Mira's lamb ran off into the hills.","I found the lamb."],"objectives":[{"done":false,"id":"give","text":"Bring it to Mira"}],"quest":"quests/lamb.quest.json","stage":"return","state":"active","title":"The lost lamb"}]}
+```
+
+### quest.state
+
+Returns an entity's story `facts` and its `quests` as a journal shows them, translated into the
+current locale: each quest's `title`, `state` (`waiting`, `active`, `succeeded` or `failed`), the
+`stage` it is at, the `journal` text of the stages it reached and, for an active quest, the
+current stage's `objectives` with whether each is `done` (and `optional`).
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | The entity with the `QuestLog` |
+| `quest` | string | all | Only this `.quest.json` quest |
+
+Needs: `read`. A quest the log doesn't have fails at `/quest`.
+
+### quest.check
+
+Checks the project's quests and dialogue without playing them: from every value any file sets
+each story fact to (quest rewards, dialogue effects, NPC brains' `story.<name>` effects) and the
+facts quests list as `external` (set by the game's code, so any value), it finds quests that
+can't start or be finished, stages and lines nothing reaches, objectives and choices whose
+`when` never holds, and `start_quest`s naming quest files the project doesn't have. A speaking
+NPC's own facts (`self.<name>`) count as able to hold anything.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `paths` | string array | every `.quest.json`, `.dialogue.json` and `.npc.json` file | Only these files |
+
+Needs: `read`. It returns how many `quests` and `dialogues` it read, its `errors` and, when there
+are any, `warnings` (optional objectives and branches that never hold), each with the `file`,
+the JSON Pointer `path` into it and a `message`:
+
+```json
+{"dialogues":1,"errors":[{"file":"quests/lamb.quest.json","message":"objective \"search\" never holds: nothing sets \"lamb_found\" to a value that meets it","path":"/stages/0/objectives/0/when/lamb_found"},{"file":"quests/lamb.quest.json","message":"no way through the quest reaches stage \"return\"","path":"/stages/1"}],"quests":1}
+```
+
+[`test.run`](#testrun) with no paths runs it and fails on its errors.
+
+### dialogue.start
+
+Starts a [`.dialogue.json` conversation](scene-format.md#dialogue) for a listener (usually the
+player) with an NPC: at the first `start` branch whose `when` holds, or at `line`. The line's
+effects apply and its quest starts, and the reply is the line as `dialogue.state` gives it.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | The listener, whose `QuestLog` holds the story facts |
+| `speaker` | string | none | The NPC talking, whose `NpcAgent` facts are `self.<name>` |
+| `dialogue` | string | required | The `.dialogue.json` file |
+| `line` | string | the file's `start` | Start at this line |
+
+Needs: `edit`. A path that isn't a `.dialogue.json` file or doesn't load fails at `/dialogue`, a
+line the file lacks or a start none of whose branches hold at `/line` or `/dialogue`.
+
+### dialogue.choose
+
+Moves a listener's conversation on: by the choice numbered among those shown, which applies its
+effects and starts its quest, or to the line's `next` when it has no choices. The conversation
+ends where no next line holds.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | The listener |
+| `choice` | integer | | The choice's number among those shown, from 0; leave out for a line without choices |
+
+Needs: `edit`. It returns the line reached, or `{"talking": false}` at the end. A missing or
+out-of-range choice on a line with choices fails at `/choice` ("choose one of the 2 choices
+shown, from 0"), as does a choice on a line without any; a listener not in a conversation fails
+at `/id`.
+
+### dialogue.state
+
+Returns the line a listener is hearing: `talking`, the `dialogue`, the `line`'s ID, its
+`speaker` and `text` translated into the current locale and the `choices` whose `when` holds,
+also translated, in the order `dialogue.choose` numbers them.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | The listener |
+
+Needs: `read`.
+
+```json
+{"id": "player"}
+```
+
+```json
+{"choices":["La voici.","Pas encore."],"dialogue":"dialogue/mira.dialogue.json","line":"found","speaker":"Mira","talking":true,"text":"Des nouvelles de mon agneau ?"}
+```
+
+[examples/npc-stories](../../examples/npc-stories/) plays a questline through these commands.
 
 ## Particles
 
@@ -5107,7 +5240,8 @@ Needs: `run`, `filesystem`. With neither `paths` nor `tests`, it also runs
 [`storyboard.check`](#storyboardcheck) and adds its errors, runs
 [`soundtrack.check`](#soundtrackcheck) where the soundtrack's commands are registered (as in
 `slash-cli` and `slash-mcp`) and adds its errors, runs [`l10n.check`](#l10ncheck) on a project
-that lists translations and adds its errors, runs [`style.check`](#stylecheck) and adds a
+that lists translations and adds its errors, runs [`quest.check`](#questcheck) and adds its
+errors, runs [`style.check`](#stylecheck) and adds a
 failure at the reference's entry for each frame that drifted from its look, and, where the session may, runs
 [`asset.check`](#assetcheck) on the files the project took from the asset library, which
 records what it sees as their feedback: its problems come back as `assets` without failing a
@@ -5118,7 +5252,7 @@ The result counts the tests run and those that passed, and lists each failed che
 
 | Field | Meaning |
 | --- | --- |
-| `file` | The test file, or for a storyboard or music error the file it is in |
+| `file` | The test file, or for a storyboard, music, quest or dialogue error the file it is in |
 | `test` | The test's name |
 | `path` | JSON Pointer into the file: the expected value that didn't match, the bad param of a command that failed (`/tests/<name>/steps/<i>/params/...`), the step during which something was logged, or the scene that didn't open |
 | `message` | What was wrong, quoting long values cut short |

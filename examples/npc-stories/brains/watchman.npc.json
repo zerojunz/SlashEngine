@@ -1,0 +1,56 @@
+{
+  "actions": [
+    {
+      "do": {
+        "follow_route": "round"
+      },
+      "effects": {
+        "patrolled": true
+      },
+      "name": "walk_round"
+    },
+    {
+      "do": {
+        "go_to": "bed"
+      },
+      "effects": {
+        "patrolled": false
+      },
+      "name": "go_to_bed"
+    }
+  ],
+  "extends": "brains/villager.npc.json",
+  "facts": {
+    "hour": 0,
+    "patrolled": false
+  },
+  "format": 1,
+  "goals": [
+    {
+      "name": "patrol",
+      "priority": 3,
+      "want": {
+        "patrolled": true
+      },
+      "when": {
+        "hour": [">=8", "<20"]
+      }
+    },
+    {
+      "name": "go_home",
+      "priority": 3,
+      "want": {
+        "patrolled": false
+      },
+      "when": {
+        "hour": ">=20"
+      }
+    }
+  ],
+  "routes": {
+    "round": {
+      "closed": true,
+      "points": ["gate", "well"]
+    }
+  }
+}

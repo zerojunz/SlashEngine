@@ -1,0 +1,68 @@
+{
+  "external": ["kept_lamb", "lamb_found", "wolf_seen"],
+  "format": 1,
+  "stages": [
+    {
+      "id": "find",
+      "journal": "Mira's lamb ran off into the hills.",
+      "next": [
+        {
+          "stage": "thief",
+          "when": {
+            "kept_lamb": true
+          }
+        },
+        {
+          "stage": "return"
+        }
+      ],
+      "objectives": [
+        {
+          "id": "search",
+          "text": "Find the lamb",
+          "when": {
+            "lamb_found": true
+          }
+        },
+        {
+          "id": "wolf",
+          "optional": true,
+          "text": "Spot the wolf",
+          "when": {
+            "wolf_seen": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "return",
+      "journal": "I found the lamb.",
+      "objectives": [
+        {
+          "id": "give",
+          "text": "Bring it to Mira",
+          "when": {
+            "lamb_returned": true
+          }
+        }
+      ],
+      "rewards": {
+        "coins": "+5"
+      }
+    },
+    {
+      "end": "success",
+      "id": "thanks",
+      "journal": "Mira was overjoyed."
+    },
+    {
+      "end": "failure",
+      "id": "thief",
+      "journal": "I kept the lamb."
+    }
+  ],
+  "start_when": {
+    "met_mira": true
+  },
+  "title": "The lost lamb"
+}

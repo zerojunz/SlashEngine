@@ -1,0 +1,78 @@
+{
+  "entities": {
+    "barracks": {
+      "components": {
+        "Transform3D": {
+          "position": [0.0, 0.0, -4.0]
+        }
+      }
+    },
+    "bed": {
+      "components": {
+        "Transform2D": {
+          "position": [0.0, 60.0]
+        }
+      }
+    },
+    "fold": {
+      "components": {
+        "Transform2D": {
+          "position": [-40.0, 0.0]
+        }
+      }
+    },
+    "gate": {
+      "components": {
+        "Transform2D": {
+          "position": [100.0, 0.0]
+        }
+      }
+    },
+    "guard": {
+      "components": {
+        "NpcAgent": {
+          "arrive_distance": 0.1,
+          "brain": "brains/watchman_3d.npc.json",
+          "speed": 6.0
+        },
+        "Transform3D": {}
+      }
+    },
+    "mira": {
+      "components": {
+        "NpcAgent": {
+          "brain": "brains/mira.npc.json",
+          "speed": 40.0
+        },
+        "Transform2D": {}
+      }
+    },
+    "player": {
+      "components": {
+        "QuestLog": {},
+        "Transform2D": {
+          "position": [20.0, 0.0]
+        }
+      }
+    },
+    "watchman": {
+      "components": {
+        "NpcAgent": {
+          "brain": "brains/watchman.npc.json",
+          "speed": 120.0
+        },
+        "Transform2D": {
+          "position": [0.0, 60.0]
+        }
+      }
+    },
+    "well": {
+      "components": {
+        "Transform2D": {
+          "position": [100.0, 60.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

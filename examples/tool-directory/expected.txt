@@ -1,6 +1,6 @@
-commands: 140
+commands: 147
 tools: tools_load batch component_remove component_set engine_describe entity_create entity_destroy entity_get events_read events_subscribe frame_capture frame_summary input_inject log_tail physics_raycast playtest_run prefab_save project_map redo run_until scene_get scene_new scene_open scene_save schema_get step storyboard_brief storyboard_check storyboard_edit storyboard_query test_run tilemap_paint ui_layout undo world_diff world_query world_restore world_snapshot
-groups: 57
+groups: 59
 audio: ["audio.analyze","audio.capture","audio.input","audio.play","audio.record","audio.set_bus","audio.spectrum","audio.state","audio.stop"]
 loaded audio_analyze: 4 params
 loaded audio_capture: 4 params

@@ -167,6 +167,7 @@ file, a [`.theme.json`](scene-format.md#themes) file, an
 [`.score.json`](scene-format.md#scores) file, a
 [`.navmesh.json` or `.navpoly.json`](scene-format.md#navigation-meshes-and-polygons) file, a
 [`.npc.json`](scene-format.md#npcs) brain, a
+[`.quest.json`](scene-format.md#quests) or [`.dialogue.json`](scene-format.md#dialogue) file, a
 [`.meshlib.json`](scene-format.md#mesh-libraries) file, a
 [`.lightmap.json`](scene-format.md#baked-lightmaps) file, a
 [`.standard_material.json`](scene-format.md#material-files) file (and that its textures
@@ -193,7 +194,7 @@ For a prefab the result counts its `components` instead of `entities`, for a `.f
 output node among them), for a `.tileset.json` file its `tiles`, for a `.theme.json`
 file its `types`, for a `.bus_layout.json` file its `buses`, for a `.replay.json` file the
 `ticks` it covers, for a `.test.json` file its `tests`, for a `.score.json` file its `bars`,
-`tracks` and `notes`, for a `.navmesh.json` or `.navpoly.json` file its `polygons`, for a `.npc.json` file its `goals` and `actions` and, as `warnings`, goals no chain of actions reaches from the facts' defaults and actions no plan uses, for a `.meshlib.json` file its `items`, for a `.lightmap.json` file its `users`, for a `.texture.json` file the `width` and `height` it makes, for a `.scatter.json` file its `layers`, for a model its `meshes`, `materials`, `images` and `bounds` (the corners
+`tracks` and `notes`, for a `.navmesh.json` or `.navpoly.json` file its `polygons`, for a `.npc.json` file its `goals` and `actions` and, as `warnings`, goals no chain of actions reaches from the facts' defaults and actions no plan uses, for a `.quest.json` file its `stages`, for a `.dialogue.json` file its `lines`, for a `.meshlib.json` file its `items`, for a `.lightmap.json` file its `users`, for a `.texture.json` file the `width` and `height` it makes, for a `.scatter.json` file its `layers`, for a model its `meshes`, `materials`, `images` and `bounds` (the corners
 of the box its parts fill, in meters), for a `.font.json`, `.audio.json` or `.process_material.json` file nothing more, and for a `.material.json` file the
 `instructions` its graph compiles to, of the 64 a material can run. A material with a
 [shader](scene-format.md#shaders) has no graph: its shader is compiled, and each error in it is
@@ -281,8 +282,8 @@ When the project has a
 Rewrites a scene, prefab, `.frames.json`, `.material.json`, `.anim.json`, `.animtree.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
-`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`,
-`.texture.json`, `.scatter.json`, `.physics_material.json` or `.ragdoll.json` file in
+`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.quest.json`, `.dialogue.json`,
+`.meshlib.json`, `.lightmap.json`, `.texture.json`, `.scatter.json`, `.physics_material.json` or `.ragdoll.json` file in
 [canonical form](scene-format.md#canonical-form).
 
 ```bash
@@ -311,7 +312,8 @@ for [`.theme.json` files](scene-format.md#themes), for
 [`.replay.json` files](scene-format.md#replays), for [`.test.json` files](scene-format.md#tests),
 for [`.score.json` files](scene-format.md#scores), for
 [`.navmesh.json` and `.navpoly.json` files](scene-format.md#navigation-meshes-and-polygons), for
-[`.npc.json` brains](scene-format.md#npcs), for
+[`.npc.json` brains](scene-format.md#npcs), for [`.quest.json` files](scene-format.md#quests), for
+[`.dialogue.json` files](scene-format.md#dialogue), for
 [`.meshlib.json` files](scene-format.md#mesh-libraries), for
 [`.lightmap.json` files](scene-format.md#baked-lightmaps), for
 [`.voxelgi.json` files](scene-format.md#voxelgi), for
@@ -347,6 +349,8 @@ slash-cli schema score
 slash-cli schema navmesh
 slash-cli schema navpoly
 slash-cli schema npc
+slash-cli schema quest
+slash-cli schema dialogue
 slash-cli schema meshlib
 slash-cli schema lightmap
 slash-cli schema voxel_gi
