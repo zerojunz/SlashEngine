@@ -1,0 +1,18 @@
+{
+  "brows": {
+    "color": [0.55, 0.55, 0.55],
+    "shape": "straight",
+    "thickness": 0.9
+  },
+  "controls": {
+    "brow.ridge": 0.4,
+    "cheeks.hollow": 0.6,
+    "ears.size": 0.3,
+    "eyes.hooded": 0.7,
+    "jaw.angle": 0.3,
+    "lips.upper": -0.4,
+    "nose.length": 0.4
+  },
+  "format": 1,
+  "name": "Elder"
+}

@@ -9,6 +9,7 @@
 #include "slash/core/json_schema.hpp"
 #include "slash/core/math.hpp"
 #include "slash/core/result.hpp"
+#include "slash/world/face.hpp"
 #include "slash/world/world.hpp"
 
 #include <cstddef>
@@ -38,16 +39,6 @@ struct CharacterBody {
     Vec4 skin{0.87F, 0.68F, 0.55F, 1.0F};
     float muscle = 0.5F; // 0 to 1: the size of the muscles (slash/world/flesh.hpp)
     float fat = 0.3F;    // 0 to 1: how much fat lies over them
-};
-
-struct CharacterFace {
-    Vec4 eyes{0.3F, 0.22F, 0.12F, 1.0F};
-    float eye_size = 1.0F;
-    float eye_spacing = 1.0F;
-    float nose = 1.0F;
-    float ears = 1.0F;
-    Vec4 lips{0.7F, 0.42F, 0.38F, 1.0F};
-    std::string beard = "none"; // "none", "stubble", "short" or "long"
 };
 
 struct CharacterHair {
@@ -120,6 +111,9 @@ struct CharacterMeasures {
     float neck_radius = 0.0F;
 };
 [[nodiscard]] CharacterMeasures character_measures(const CharacterRecipe& recipe);
+// Where a character's head is (slash/world/face.hpp sculpts it there): an ellipsoid above the
+// neck, as wide as head_radius and as tall as head_height.
+[[nodiscard]] HeadShape character_head(const CharacterMeasures& measures);
 
 // What a garment covers: a region of the body and, along limbs, skirts and capes, the share of
 // its length from the top (from) to how far down (to).

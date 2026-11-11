@@ -1,0 +1,11 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"character.place","params":{"recipe":"characters/ida.character.json","id":"ida","at":[-0.13,0,0]}}
+{"jsonrpc":"2.0","id":3,"method":"character.place","params":{"recipe":"characters/pip.character.json","id":"pip","at":[0.13,0.22,0]}}
+{"jsonrpc":"2.0","id":4,"method":"model.inspect","params":{"id":"ida","brief":true}}
+{"jsonrpc":"2.0","id":5,"method":"skeleton.get","params":{"id":"ida","bones":["LeftEye","Jaw"]}}
+{"jsonrpc":"2.0","id":6,"method":"skeleton.get","params":{"id":"pip","bones":["LeftEye","Jaw"]}}
+{"jsonrpc":"2.0","id":7,"method":"frame.capture","params":{"points":[[71,91],[202,118],[120,118]]}}
+{"jsonrpc":"2.0","id":8,"method":"character.place","params":{"recipe":"characters/ida.character.json","id":"ida_2d","at":[60,85],"pixels_per_meter":40}}
+{"jsonrpc":"2.0","id":9,"method":"step","params":{"ticks":1}}
+{"jsonrpc":"2.0","id":10,"method":"entity.get","params":{"id":"ida_2d_eye","components":["Transform2D"],"omit_defaults":true}}
+{"jsonrpc":"2.0","id":11,"method":"character.place","params":{"recipe":"characters/typo.character.json","id":"typo","at":[0,0,0]}}

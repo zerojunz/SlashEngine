@@ -1321,7 +1321,9 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         skin as joints bend; and a face tool that designs and carves faces as `.face.json`
         recipes: a sculpted head of regions (brow, eyes, nose, cheeks, mouth, jaw, ears) moved,
         scaled and carved by named controls, blends between face presets, skin detail (pores,
-        wrinkles, scars, freckles and makeup as maps), teeth, tongue and eyes, and the 52
+        wrinkles and makeup as maps) and skin marks placed on the face's landmarks (scars,
+        freckles, moles, rashes, burns, bruises, wounds, tattoos and face paint), drawn in 3D
+        and on 2D faces alike, teeth, tongue and eyes, and the 52
         ARKit expression shapes made from the sculpt so face capture drives any face; styles
         from realistic to stylized (toon, painterly, low poly) taken from the storyboard's
         style entries and design drafts, so every face fits the game's look; distinct faces
@@ -1336,6 +1338,12 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
               jiggles under the skin in 3D and 2D, `::skeleton` and `::muscles` model forms,
               `Flesh3D`, `Flesh2D` and `flesh.get`
         - [ ] The face tool
+              - [x] `.face.json` recipes: 46 sculpt controls, carves at 27 landmarks, blends of
+                    presets, `extends` and a recipe's `from`, brows, asymmetry and styles; the
+                    sculpted head with lids over the eyes and the lips' seam, drawn by 3D
+                    characters and as 2D cut-outs' profiles
+              - [ ] ARKit's 52 expression shapes, skin detail maps and skin marks
+              - [ ] `face.generate`, `face.check`, portraits and the storyboard's face rules
 21. [ ] Procedural worlds with every tool: the procedural generation tool (noise, gradients,
         scatter rules, `tilemap.generate`, `terrain.generate`) extended to drive everything this
         list adds, as Unreal's PCG graphs do, in 2D and 3D worlds: scatter layers that paint

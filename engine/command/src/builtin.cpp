@@ -550,6 +550,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     if (kind == "character") {
         return Reply::success(world::character_schema());
     }
+    if (kind == "face") {
+        return Reply::success(world::face_schema());
+    }
     if (kind == "creature") {
         return Reply::success(world::creature_schema());
     }
@@ -7152,6 +7155,7 @@ void register_builtin_commands(Registry& registry) {
                                "foliage",
                                "groom",
                                "character",
+                               "face",
                                "creature",
                                "vehicle"};
     registry.add({
@@ -7164,7 +7168,7 @@ void register_builtin_commands(Registry& registry) {
             ".lightmap.json, "
             ".voxelgi.json, .model.json, .standard_material.json, .texture.json, .scatter.json, "
             ".physics_material.json, .ragdoll.json, .foliage.json, .groom.json, "
-            ".character.json, .creature.json, .vehicle.json, .replay.json, "
+            ".character.json, .face.json, .creature.json, .vehicle.json, .replay.json, "
             ".test.json, "
             ".score.json or storyboard "
             "files, one component or one command.",
