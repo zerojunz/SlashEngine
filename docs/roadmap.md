@@ -1213,12 +1213,18 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
        physical light units, 2D light temperature, `light.tune` over 3D and 2D, projectors,
        IES profiles and scrolling light functions (3D projectors, 2D light textures)
        (`examples/light-tools`) and `Reflection2D` (`examples/reflections-2d`) are done
-12. [ ] NPCs with stories of their own: questlines (`.quest.json` stages and objectives over
+12. [x] NPCs with stories of their own: questlines (`.quest.json` stages and objectives over
         facts, with rewards and journal text), movement scripts (patrols, daily schedules and
         routes per NPC), conversation scripts (`.dialogue.json` branching dialogue with
         conditions and effects on facts, translated through l10n) and behavior per NPC (brains
         that extend a shared one with their own goals, traits and priorities), with `quest.*` and
-        `dialogue.*` commands and checks that every quest can be finished and every line reached
+        `dialogue.*` commands and checks that every quest can be finished and every line reached.
+        Done in 2D and 3D: `QuestLog`s moved by the `quests` system, `Conversation`s with
+        `self.<name>` NPC facts, the npc clock's `hour` and `day` facts, `routes` and
+        `follow_route`, `story.<name>` facts NPCs share with the player, brains with `extends`
+        and `traits`, `quest.start`, `quest.set`, `quest.state`, `quest.check` (run by
+        `test.run`), `dialogue.start`, `dialogue.choose` and `dialogue.state`
+        (`examples/npc-stories`)
 13. [ ] Hair and fur: `HairInstance3D` groomed strands (`.groom.json` guides grown over a
         model's surface with length, density, clumping, curl and color maps) drawn as cards,
         strands or fur shells with the existing hair shading, and simulated as Unreal's

@@ -29,6 +29,7 @@
 #include "slash/library/library.hpp"
 #include "slash/navigation/navigation.hpp"
 #include "slash/npc/npc.hpp"
+#include "slash/npc/story.hpp"
 #include "slash/physics2d/ragdoll.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/process.hpp"
@@ -204,6 +205,8 @@ enum class DataFile : std::uint8_t {
     NavigationMesh,
     NavigationPolygon,
     NpcBrain,
+    Quest,
+    Dialogue,
     PhysicsMaterial,
     Ragdoll,
     Foliage,
@@ -283,6 +286,12 @@ DataFile data_file(std::string_view name) {
     }
     if (name.ends_with(npc::kBrainSuffix)) {
         return DataFile::NpcBrain;
+    }
+    if (name.ends_with(npc::kQuestSuffix)) {
+        return DataFile::Quest;
+    }
+    if (name.ends_with(npc::kDialogueSuffix)) {
+        return DataFile::Dialogue;
     }
     if (world::is_physics_material_path(name)) {
         return DataFile::PhysicsMaterial;
@@ -440,7 +449,11 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
     case DataFile::NavigationPolygon:
         return navigation::validate_polygon(parsed.value());
     case DataFile::NpcBrain:
-        return npc::validate_brain(parsed.value());
+        return npc::validate_brain(parsed.value(), reader);
+    case DataFile::Quest:
+        return npc::validate_quest(parsed.value());
+    case DataFile::Dialogue:
+        return npc::validate_dialogue(parsed.value());
     case DataFile::PhysicsMaterial:
         return json::validate(parsed.value(), world::physics_material_schema());
     case DataFile::Ragdoll:

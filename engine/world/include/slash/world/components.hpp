@@ -3034,12 +3034,48 @@ struct NpcAgent {
     float think_in = 0.0F;            // seconds until it thinks again
     float speed = 2.0F;               // units a second a go_to action walks
     float arrive_distance = 0.5F;     // how near a go_to action's target counts as there
+    int waypoint = 0;                 // the route point a follow_route walks to next
+    entt::entity story = entt::null;  // whose QuestLog its story.<name> facts are; null: the first
     bool enabled = true;
 
     friend bool operator==(const NpcAgent&, const NpcAgent&) = default;
 };
 SLASH_COMPONENT(NpcAgent, brain, facts, goal, plan, action_time, think_interval, think_in, speed,
-                arrive_distance, enabled)
+                arrive_distance, waypoint, story, enabled)
+
+// Where one quest of a QuestLog is.
+struct QuestProgress {
+    std::string state = "waiting";    // "waiting", "active", "succeeded" or "failed"
+    std::string stage;                // the stage it is at; "" while it waits
+    std::vector<std::string> reached; // the stages it has reached, in order, for the journal
+    std::vector<std::string> done;    // the current stage's objectives met, by id
+
+    friend bool operator==(const QuestProgress&, const QuestProgress&) = default;
+};
+SLASH_REFLECT(QuestProgress, state, stage, reached, done)
+
+// The story's facts and the quests started, usually on the player: .quest.json questlines move
+// on as its facts change, dialogue changes them, and NPC brains read and change them as
+// story.<name> facts.
+struct QuestLog {
+    std::map<std::string, QuestProgress> quests; // by .quest.json path
+    std::map<std::string, int> facts;            // the story's facts; missing ones are 0
+    bool enabled = true;
+
+    friend bool operator==(const QuestLog&, const QuestLog&) = default;
+};
+SLASH_COMPONENT(QuestLog, quests, facts, enabled)
+
+// Where a conversation from a .dialogue.json file is, on the entity hearing it.
+struct Conversation {
+    std::string dialogue;              // the .dialogue.json file; "" when not talking
+    std::string line;                  // the line being said
+    entt::entity speaker = entt::null; // who says it: its NpcAgent's facts are self.<name>
+    std::vector<std::string> said;     // the lines said so far, in order
+
+    friend bool operator==(const Conversation&, const Conversation&) = default;
+};
+SLASH_COMPONENT(Conversation, dialogue, line, speaker, said)
 
 // ---- Particles, as Godot's CPUParticles2D.
 

@@ -1503,7 +1503,43 @@ void register_navigation_components(ComponentRegistry& registry) {
                   {.doc = "How near a go_to action's target counts as there, in meters (2D: "
                           "pixels).",
                    .min = 0})
+        .describe("waypoint", {.doc = "The point of its route a follow_route action walks to "
+                                      "next; set by the system.",
+                               .min = 0})
+        .describe("story", {.doc = "The entity whose QuestLog its story.<name> facts are; null is "
+                                   "the first QuestLog in the world."})
         .describe("enabled", {.doc = "Whether it thinks and acts."});
+
+    registry.add<QuestLog>()
+        .set_doc("The story's facts and the quests started, usually on the player. Each tick the "
+                 "quests system starts waiting .quest.json quests whose start_when holds, meets "
+                 "objectives, applies rewards and moves stages on, emitting quest_started, "
+                 "quest_objective_done, quest_stage_changed and quest_finished. Dialogue changes "
+                 "its facts, and NPC brains read and change them as story.<name> facts.")
+        .describe("quests", {.doc = "Each quest started or waiting, by .quest.json path."})
+        .describe("quests{}.state",
+                  {.doc = "Where it is: waiting to start, active, succeeded or failed.",
+                   .choices = {"waiting", "active", "succeeded", "failed"}})
+        .describe("quests{}.stage", {.doc = "The stage it is at; \"\" while it waits."})
+        .describe("quests{}.reached", {.doc = "The stages reached, in order, for the journal."})
+        .describe("quests{}.reached[]", {.doc = "A stage's id."})
+        .describe("quests{}.done", {.doc = "The current stage's objectives met, by id."})
+        .describe("quests{}.done[]", {.doc = "An objective's id."})
+        .describe("facts", {.doc = "The story's facts by name (false is 0, true 1); one that is "
+                                   "missing is 0."})
+        .describe("facts{}", {.doc = "The fact's value."})
+        .describe("enabled", {.doc = "Whether its quests move on."});
+
+    registry.add<Conversation>()
+        .set_doc("Where a conversation from a .dialogue.json file is, on the entity hearing it; "
+                 "dialogue.start, dialogue.choose and npc::advance_dialogue move it on, emitting "
+                 "dialogue_line and dialogue_ended.")
+        .describe("dialogue", {.doc = "The .dialogue.json file; \"\" when not talking."})
+        .describe("line", {.doc = "The line being said."})
+        .describe("speaker", {.doc = "The entity saying it, whose NpcAgent's facts are "
+                                     "self.<name>."})
+        .describe("said", {.doc = "The lines said so far, in order."})
+        .describe("said[]", {.doc = "A line's id."});
 }
 
 } // namespace

@@ -1,0 +1,34 @@
+{
+  "actions": [
+    {
+      "do": {
+        "go_to": "fold"
+      },
+      "effects": {
+        "at_fold": true
+      },
+      "name": "wait_at_fold"
+    }
+  ],
+  "extends": "brains/villager.npc.json",
+  "facts": {
+    "at_fold": false,
+    "hopeful": false
+  },
+  "format": 1,
+  "goals": [
+    {
+      "name": "hope",
+      "priority": 3,
+      "want": {
+        "at_fold": true
+      },
+      "when": {
+        "hopeful": true
+      }
+    }
+  ],
+  "traits": {
+    "kindness": 3
+  }
+}

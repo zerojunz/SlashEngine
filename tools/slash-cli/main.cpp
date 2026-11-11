@@ -45,6 +45,7 @@
 #include "slash/library/team.hpp"
 #include "slash/navigation/navigation.hpp"
 #include "slash/npc/npc.hpp"
+#include "slash/npc/story.hpp"
 #include "slash/physics2d/ragdoll.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/platform.hpp"
@@ -1199,6 +1200,8 @@ int cmd_scene_validate(const std::string& path) {
     const bool navmesh = path.ends_with(slash::navigation::kMeshSuffix);
     const bool navpoly = path.ends_with(slash::navigation::kPolygonSuffix);
     const bool brain = path.ends_with(slash::npc::kBrainSuffix);
+    const bool quest = path.ends_with(slash::npc::kQuestSuffix);
+    const bool dialogue = path.ends_with(slash::npc::kDialogueSuffix);
     const bool meshlib = path.ends_with(slash::scene3d::kMeshLibrarySuffix);
     const bool standard = path.ends_with(slash::scene3d::kStandardMaterialSuffix);
     const bool lightmap = path.ends_with(slash::scene3d::kLightmapSuffix);
@@ -1244,7 +1247,11 @@ int cmd_scene_validate(const std::string& path) {
     } else if (navpoly) {
         errors = slash::navigation::validate_polygon(parsed.value());
     } else if (brain) {
-        errors = slash::npc::validate_brain(parsed.value());
+        errors = slash::npc::validate_brain(parsed.value(), prefab_reader(path));
+    } else if (quest) {
+        errors = slash::npc::validate_quest(parsed.value());
+    } else if (dialogue) {
+        errors = slash::npc::validate_dialogue(parsed.value());
     } else if (meshlib) {
         errors = slash::scene3d::validate_mesh_library(parsed.value());
     } else if (standard) {
@@ -1308,9 +1315,9 @@ int cmd_scene_validate(const std::string& path) {
         }
     }
     if (parsed && !frames && !material && !process && !animation && !tree && !tileset && !font &&
-        !theme && !stream && !buses && !navmesh && !navpoly && !brain && !meshlib && !standard &&
-        !lightmap && !replay && !test && !score && !texture && !physics_material && !ragdoll &&
-        !foliage) {
+        !theme && !stream && !buses && !navmesh && !navpoly && !brain && !quest && !dialogue &&
+        !meshlib && !standard && !lightmap && !replay && !test && !score && !texture &&
+        !physics_material && !ragdoll && !foliage) {
         check_story_refs(path, parsed.value(), errors);
     }
     result["valid"] = errors.empty();
@@ -1321,13 +1328,21 @@ int cmd_scene_validate(const std::string& path) {
         return kExitOk;
     } else if (brain) {
         // Its goals and actions, and what no plan reaches or uses.
-        const auto parsed_brain = slash::npc::parse_brain(parsed.value());
+        const auto parsed_brain = slash::npc::parse_brain(parsed.value(), prefab_reader(path));
         result["goals"] = parsed_brain.value().goals.size();
         result["actions"] = parsed_brain.value().actions.size();
         if (const auto warnings = slash::npc::check_brain(parsed_brain.value());
             !warnings.empty()) {
             result["warnings"] = errors_to_json(warnings);
         }
+    } else if (quest) {
+        // Its stages.
+        result["stages"] = static_cast<std::int64_t>(
+            slash::npc::parse_quest(parsed.value()).value().stages.size());
+    } else if (dialogue) {
+        // Its lines.
+        result["lines"] = static_cast<std::int64_t>(
+            slash::npc::parse_dialogue(parsed.value()).value().lines.size());
     } else if (scatter) {
         // Its layers.
         result["layers"] = static_cast<std::int64_t>(
@@ -1480,7 +1495,19 @@ int cmd_scene_format(const std::string& path, bool check) {
             return format_checked(text.value(), slash::navigation::parse_polygon);
         }
         if (path.ends_with(slash::npc::kBrainSuffix)) {
-            return format_checked(text.value(), slash::npc::parse_brain);
+            return format_checked(text.value(), [&path](const json::Value& brain) {
+                return slash::npc::parse_brain(brain, prefab_reader(path));
+            });
+        }
+        if (path.ends_with(slash::npc::kQuestSuffix)) {
+            return format_checked(text.value(), [](const json::Value& quest) {
+                return slash::npc::parse_quest(quest);
+            });
+        }
+        if (path.ends_with(slash::npc::kDialogueSuffix)) {
+            return format_checked(text.value(), [](const json::Value& dialogue) {
+                return slash::npc::parse_dialogue(dialogue);
+            });
         }
         if (path.ends_with(slash::scene3d::kMeshLibrarySuffix)) {
             return format_checked(text.value(), slash::scene3d::parse_mesh_library);
@@ -1595,18 +1622,48 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 35> kKinds = {
-        "scene",     "prefab",     "frames",           "material", "process_material",
-        "animation", "animtree",   "tileset",          "font",     "theme",
-        "audio",     "bus_layout", "navmesh",          "navpoly",  "npc",
-        "meshlib",   "lightmap",   "voxel_gi",         "model",    "replay",
-        "test",      "score",      "storyboard",       "project",  "presets",
-        "sdk",       "plugin",     "providers",        "bench",    "standard_material",
-        "texture",   "scatter",    "physics_material", "ragdoll",  "foliage"};
+    constexpr std::array<std::string_view, 37> kKinds = {"scene",
+                                                         "prefab",
+                                                         "frames",
+                                                         "material",
+                                                         "process_material",
+                                                         "animation",
+                                                         "animtree",
+                                                         "tileset",
+                                                         "font",
+                                                         "theme",
+                                                         "audio",
+                                                         "bus_layout",
+                                                         "navmesh",
+                                                         "navpoly",
+                                                         "npc",
+                                                         "quest",
+                                                         "dialogue",
+                                                         "meshlib",
+                                                         "lightmap",
+                                                         "voxel_gi",
+                                                         "model",
+                                                         "replay",
+                                                         "test",
+                                                         "score",
+                                                         "storyboard",
+                                                         "project",
+                                                         "presets",
+                                                         "sdk",
+                                                         "plugin",
+                                                         "providers",
+                                                         "bench",
+                                                         "standard_material",
+                                                         "texture",
+                                                         "scatter",
+                                                         "physics_material",
+                                                         "ragdoll",
+                                                         "foliage"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
         return usage_error("schema takes one argument: scene, prefab, frames, material, "
                            "process_material, animation, animtree, tileset, font, theme, audio, "
-                           "bus_layout, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, "
+                           "bus_layout, navmesh, navpoly, npc, quest, dialogue, meshlib, lightmap, "
+                           "voxel_gi, model, "
                            "standard_material, "
                            "texture, scatter, physics_material, ragdoll, foliage, replay, test, "
                            "score, "
@@ -1644,6 +1701,10 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = slash::navigation::polygon_schema();
     } else if (args[0] == "npc") {
         schema = slash::npc::brain_schema();
+    } else if (args[0] == "quest") {
+        schema = slash::npc::quest_schema();
+    } else if (args[0] == "dialogue") {
+        schema = slash::npc::dialogue_schema();
     } else if (args[0] == "meshlib") {
         schema = slash::scene3d::mesh_library_schema();
     } else if (args[0] == "lightmap") {

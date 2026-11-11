@@ -4,15 +4,19 @@
 
 #include "slash/npc/npc.hpp"
 
+#include "facts.hpp"
+
 #include "slash/core/jobs.hpp"
 #include "slash/core/log.hpp"
 #include "slash/navigation/navigation.hpp"
+#include "slash/npc/story.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/tree2d.hpp"
 #include "slash/world/tree3d.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <map>
 #include <optional>
 #include <set>
@@ -26,6 +30,8 @@ namespace {
 
 struct State {
     asset::Assets* assets = nullptr;
+    Settings settings;
+    double tick_seconds = 1.0 / 60.0; // the last tick's, for the clock
     // Brains whose load failed, so each is reported once until it loads.
     std::set<std::string, std::less<>> warned;
 };
@@ -58,19 +64,44 @@ std::shared_ptr<const Brain> load_brain(State& state, std::string_view path, std
     return loaded.value().share();
 }
 
-std::vector<int> facts_from(const Brain& brain, const world::NpcAgent& agent) {
+// An agent's facts: the brain's defaults, the agent's own over them, then the world's: the
+// clock's and the story's.
+std::vector<int> facts_from(const world::World& world, entt::entity entity, const Brain& brain,
+                            const world::NpcAgent& agent) {
     std::vector<int> facts = brain.defaults;
     for (const auto& [name, value] : agent.facts) {
         if (const std::size_t index = brain.fact(name); index < facts.size()) {
             facts[index] = value;
         }
     }
+    if (brain.hour != kNoFact || brain.day != kNoFact) {
+        const Clock now = clock(world);
+        if (brain.hour != kNoFact) {
+            facts[brain.hour] = now.hour;
+        }
+        if (brain.day != kNoFact) {
+            facts[brain.day] = now.day;
+        }
+    }
+    if (!brain.story.empty()) {
+        const entt::entity log = story_log(world, entity);
+        for (const std::size_t index : brain.story) {
+            facts[index] =
+                log == entt::null
+                    ? brain.defaults[index]
+                    : story_fact(world, log,
+                                 std::string_view(brain.facts[index]).substr(kStoryPrefix.size()));
+        }
+    }
     return facts;
 }
 
-// Keeps in the agent only the facts that differ from the brain's defaults.
+// Keeps in the agent only its own facts that differ from the brain's defaults.
 void store_facts(const Brain& brain, std::span<const int> facts, world::NpcAgent& agent) {
     for (std::size_t i = 0; i < facts.size(); ++i) {
+        if (brain.world_fact(i)) {
+            continue;
+        }
         if (facts[i] == brain.defaults[i]) {
             agent.facts.erase(brain.facts[i]);
         } else {
@@ -150,32 +181,27 @@ struct Places {
 
 enum class Progress : std::uint8_t { Running, Done, Failed };
 
-// One tick of a go_to: along the agent's navigation path when it has one, else straight.
-Progress walk(world::World& world, Places& places, entt::entity entity,
-              const world::NpcAgent& agent, const Behavior& behavior, double seconds) {
-    const entt::entity target = world.find(behavior.target);
-    if (target == entt::null) {
-        return Progress::Failed;
-    }
+// One tick of walking to a place: along the agent's navigation path when it has one, else
+// straight.
+Progress walk_to(world::World& world, Places& places, entt::entity entity,
+                 const world::NpcAgent& agent, Vec3 there, float speed, double seconds) {
     const std::optional<Vec3> here = places.of(entity);
-    const std::optional<Vec3> there = places.of(target);
-    if (!here || !there) {
+    if (!here) {
         return Progress::Failed;
     }
-    if (distance(*here, *there) <= static_cast<real_t>(agent.arrive_distance)) {
+    if (distance(*here, there) <= static_cast<real_t>(agent.arrive_distance)) {
         return Progress::Done;
     }
-    const auto step =
-        static_cast<real_t>((behavior.speed > 0.0F ? behavior.speed : agent.speed) * seconds);
-    Vec3 next = *there;
+    const auto step = static_cast<real_t>((speed > 0.0F ? speed : agent.speed) * seconds);
+    Vec3 next = there;
     if (const auto* nav = world.ecs().try_get<world::NavigationAgent3D>(entity); nav != nullptr) {
-        if (distance(nav->target_position, *there) > static_cast<real_t>(0.001)) {
-            navigation::set_target_position(world, entity, *there);
+        if (distance(nav->target_position, there) > static_cast<real_t>(0.001)) {
+            navigation::set_target_position(world, entity, there);
         }
         next = navigation::next_path_position_3d(world, entity);
     } else if (const auto* nav2 = world.ecs().try_get<world::NavigationAgent2D>(entity);
                nav2 != nullptr) {
-        const Vec2 target2{there->x, there->y};
+        const Vec2 target2{there.x, there.y};
         const Vec2 d = nav2->target_position - target2;
         if ((d.x * d.x) + (d.y * d.y) > static_cast<real_t>(1e-6)) {
             navigation::set_target_position(world, entity, target2);
@@ -189,9 +215,79 @@ Progress walk(world::World& world, Places& places, entt::entity entity,
     }
     const Vec3 moved = toward(*here, next, step);
     places.move(entity, moved);
-    return distance(moved, *there) <= static_cast<real_t>(agent.arrive_distance)
-               ? Progress::Done
-               : Progress::Running;
+    return distance(moved, there) <= static_cast<real_t>(agent.arrive_distance) ? Progress::Done
+                                                                                : Progress::Running;
+}
+
+// One tick of a go_to.
+Progress walk(world::World& world, Places& places, entt::entity entity,
+              const world::NpcAgent& agent, const Behavior& behavior, double seconds) {
+    const entt::entity target = world.find(behavior.target);
+    if (target == entt::null) {
+        return Progress::Failed;
+    }
+    const std::optional<Vec3> there = places.of(target);
+    if (!there) {
+        return Progress::Failed;
+    }
+    return walk_to(world, places, entity, agent, *there, behavior.speed, seconds);
+}
+
+// One tick of a follow_route: toward the agent's waypoint, then the next, until the last (the
+// first again on a closed route), where it starts over for the next time.
+Progress follow(world::World& world, Places& places, entt::entity entity, world::NpcAgent& agent,
+                const Brain& brain, const Behavior& behavior, double seconds) {
+    const Route* route = brain.route(behavior.target);
+    if (route == nullptr || route->points.empty()) {
+        return Progress::Failed;
+    }
+    const std::size_t count = route->points.size() + (route->closed ? 1 : 0);
+    if (agent.waypoint < 0 || static_cast<std::size_t>(agent.waypoint) >= count) {
+        agent.waypoint = 0;
+    }
+    const RoutePoint& point =
+        route->points[static_cast<std::size_t>(agent.waypoint) % route->points.size()];
+    std::optional<Vec3> there = point.place;
+    if (!there) {
+        const entt::entity target = world.find(point.target);
+        if (target == entt::null) {
+            return Progress::Failed;
+        }
+        there = places.of(target);
+        if (!there) {
+            return Progress::Failed;
+        }
+    }
+    const Progress progress =
+        walk_to(world, places, entity, agent, *there, behavior.speed, seconds);
+    if (progress != Progress::Done) {
+        return progress;
+    }
+    ++agent.waypoint;
+    if (static_cast<std::size_t>(agent.waypoint) >= count) {
+        agent.waypoint = 0;
+        return Progress::Done;
+    }
+    return Progress::Running;
+}
+
+// Writes the story facts an action changed back to the story's QuestLog.
+void write_story(world::World& world, entt::entity entity, const Brain& brain,
+                 std::span<const int> before, std::span<const int> after) {
+    if (brain.story.empty()) {
+        return;
+    }
+    const entt::entity log = story_log(world, entity);
+    if (log == entt::null) {
+        return;
+    }
+    for (const std::size_t index : brain.story) {
+        if (before[index] != after[index]) {
+            set_story_fact(world, log,
+                           std::string_view(brain.facts[index]).substr(kStoryPrefix.size()),
+                           after[index]);
+        }
+    }
 }
 
 json::Value action_data(std::string_view action) {
@@ -225,6 +321,7 @@ struct Thought {
 };
 
 void step(world::World& world, State& state, double seconds) {
+    state.tick_seconds = seconds;
     std::vector<Thought> thoughts;
     std::optional<Places> places;
     auto view = world.ecs().view<world::NpcAgent>();
@@ -243,7 +340,7 @@ void step(world::World& world, State& state, double seconds) {
             continue;
         }
         state.warned.erase(agent.brain);
-        std::vector<int> facts = facts_from(*brain, agent);
+        std::vector<int> facts = facts_from(world, entity, *brain, agent);
         bool replan = false;
         if (!agent.plan.empty()) {
             const Action* action = action_named(*brain, agent.plan.front());
@@ -266,6 +363,14 @@ void step(world::World& world, State& state, double seconds) {
                     agent.action_time += static_cast<float>(seconds);
                     progress = walk(world, *places, entity, agent, action->behavior, seconds);
                     break;
+                case Behavior::Kind::FollowRoute:
+                    if (!places) {
+                        places.emplace(world);
+                    }
+                    agent.action_time += static_cast<float>(seconds);
+                    progress =
+                        follow(world, *places, entity, agent, *brain, action->behavior, seconds);
+                    break;
                 }
             }
             const std::string_view id = world.id_of(entity);
@@ -275,8 +380,10 @@ void step(world::World& world, State& state, double seconds) {
                 agent.action_time = 0.0F;
                 replan = true;
             } else if (progress == Progress::Done) {
+                const std::vector<int> before = facts;
                 apply_effects(action->effects, facts);
                 store_facts(*brain, facts, agent);
+                write_story(world, entity, *brain, before, facts);
                 world.emit("npc_action_finished", id, action_data(action->name));
                 agent.plan.erase(agent.plan.begin());
                 if (agent.plan.empty()) {
@@ -330,15 +437,39 @@ void step(world::World& world, State& state, double seconds) {
 
 } // namespace
 
+asset::Assets* detail::assets_of(const world::World& world) {
+    const auto* state = world.ecs().ctx().find<std::shared_ptr<State>>();
+    return state != nullptr ? (*state)->assets : nullptr;
+}
+
 void add_asset_types(asset::Assets& assets) {
-    assets.add_type<Brain>(
-        "npc_brain", {std::string(kBrainSuffix)},
-        [](std::string_view text, std::string_view /*path*/) -> Result<Brain> {
+    assets.add_type<Quest>("quest", {std::string(kQuestSuffix)},
+                           [](std::string_view text, std::string_view /*path*/) -> Result<Quest> {
+                               auto doc = json::parse(text);
+                               if (!doc) {
+                                   return doc.error();
+                               }
+                               return parse_quest(doc.value());
+                           });
+    assets.add_type<Dialogue>(
+        "dialogue", {std::string(kDialogueSuffix)},
+        [](std::string_view text, std::string_view /*path*/) -> Result<Dialogue> {
             auto doc = json::parse(text);
             if (!doc) {
                 return doc.error();
             }
-            return parse_brain(doc.value());
+            return parse_dialogue(doc.value());
+        });
+    assets.add_type<Brain>(
+        "npc_brain", {std::string(kBrainSuffix)},
+        [&assets](std::string_view text, std::string_view /*path*/) -> Result<Brain> {
+            auto doc = json::parse(text);
+            if (!doc) {
+                return doc.error();
+            }
+            return parse_brain(doc.value(), [&assets](std::string_view path) {
+                return assets.read(path, "npc_brain");
+            });
         },
         [](const Brain& brain) {
             std::size_t bytes = sizeof(brain);
@@ -359,14 +490,69 @@ void add_asset_types(asset::Assets& assets) {
         });
 }
 
-void install(world::World& world, asset::Assets& assets) {
+json::Value settings_schema() {
+    json::Value schema;
+    schema["type"] = "object";
+    schema["additionalProperties"] = false;
+    schema["description"] =
+        "The npc clock, which sets NPC brains' hour and day facts so their goals can keep daily "
+        "schedules.";
+    schema["properties"]["day_seconds"]["type"] = "number";
+    schema["properties"]["day_seconds"]["minimum"] = 0;
+    schema["properties"]["day_seconds"]["default"] = 0;
+    schema["properties"]["day_seconds"]["description"] =
+        "Seconds of game time a day lasts; 0 stops the clock at start_hour.";
+    schema["properties"]["start_hour"]["type"] = "number";
+    schema["properties"]["start_hour"]["minimum"] = 0;
+    schema["properties"]["start_hour"]["exclusiveMaximum"] = 24;
+    schema["properties"]["start_hour"]["default"] = 6;
+    schema["properties"]["start_hour"]["description"] = "The hour the game starts at, 0 to 24.";
+    return schema;
+}
+
+Settings parse_settings(const json::Value& value) {
+    Settings out;
+    if (const json::Value* day = value.find("day_seconds"); day != nullptr) {
+        out.day_seconds = day->as_double();
+    }
+    if (const json::Value* hour = value.find("start_hour"); hour != nullptr) {
+        out.start_hour = hour->as_double();
+    }
+    return out;
+}
+
+void set_settings(world::World& world, const Settings& settings) {
+    if (State* state = find_state(world); state != nullptr) {
+        state->settings = settings;
+    }
+}
+
+Clock clock(const world::World& world) {
+    const auto* found = world.ecs().ctx().find<std::shared_ptr<State>>();
+    const Settings settings = found != nullptr ? (*found)->settings : Settings{};
+    const double tick_seconds = found != nullptr ? (*found)->tick_seconds : 1.0 / 60.0;
+    double hours = settings.start_hour;
+    if (settings.day_seconds > 0.0) {
+        hours += static_cast<double>(world.tick()) * tick_seconds / settings.day_seconds * 24.0;
+    }
+    const double whole = std::floor(hours);
+    Clock out;
+    out.day = static_cast<int>(std::floor(whole / 24.0));
+    out.hour = static_cast<int>(whole - (24.0 * out.day));
+    out.minute = std::clamp(static_cast<int>(std::floor((hours - whole) * 60.0)), 0, 59);
+    return out;
+}
+
+void install(world::World& world, asset::Assets& assets, const Settings& settings) {
     add_asset_types(assets);
     if (State* state = find_state(world); state != nullptr) {
         state->assets = &assets;
+        state->settings = settings;
         return;
     }
     auto state = std::make_shared<State>();
     state->assets = &assets;
+    state->settings = settings;
     world.ecs().ctx().emplace<std::shared_ptr<State>>(state);
     world.add_reset([state](world::World& /*world*/) { state->warned.clear(); });
     world.add_system(
@@ -374,6 +560,22 @@ void install(world::World& world, asset::Assets& assets) {
         {.doc = "Runs each NpcAgent's action, then has those due to think choose a goal and plan "
                 "the cheapest chain of actions to it.",
          .priority = 965});
+    world.add_system(
+        "quests",
+        [](world::World& w, double /*tick_seconds*/) {
+            std::vector<entt::entity> logs;
+            for (const entt::entity entity : w.ecs().view<world::QuestLog>()) {
+                logs.push_back(entity);
+            }
+            // In storage order, the order entities were made, so every run goes the same way.
+            std::ranges::reverse(logs);
+            for (const entt::entity entity : logs) {
+                update_quests(w, entity);
+            }
+        },
+        {.doc = "Moves each QuestLog's quests on: starts waiting ones whose start_when holds, "
+                "meets objectives, applies rewards and moves stages on.",
+         .priority = 966});
 }
 
 std::shared_ptr<const Brain> brain_of(world::World& world, entt::entity entity,
@@ -401,7 +603,7 @@ std::vector<int> facts_of(world::World& world, entt::entity entity) {
     if (brain == nullptr) {
         return {};
     }
-    return facts_from(*brain, world.ecs().get<world::NpcAgent>(entity));
+    return facts_from(world, entity, *brain, world.ecs().get<world::NpcAgent>(entity));
 }
 
 bool set_fact(world::World& world, entt::entity entity, std::string_view fact, int value) {
@@ -410,11 +612,21 @@ bool set_fact(world::World& world, entt::entity entity, std::string_view fact, i
         return false;
     }
     const std::size_t index = brain->fact(fact);
-    if (index >= brain->facts.size()) {
+    if (index >= brain->facts.size() || index == brain->hour || index == brain->day ||
+        std::ranges::find(brain->traits, index) != brain->traits.end()) {
         return false;
     }
+    if (fact.starts_with(kStoryPrefix)) {
+        const entt::entity log = story_log(world, entity);
+        if (log == entt::null) {
+            return false;
+        }
+        set_story_fact(world, log, fact.substr(kStoryPrefix.size()), value);
+        world.ecs().get<world::NpcAgent>(entity).think_in = 0.0F;
+        return true;
+    }
     auto& agent = world.ecs().get<world::NpcAgent>(entity);
-    std::vector<int> facts = facts_from(*brain, agent);
+    std::vector<int> facts = facts_from(world, entity, *brain, agent);
     facts[index] = value;
     store_facts(*brain, facts, agent);
     agent.think_in = 0.0F; // think again at the next tick
