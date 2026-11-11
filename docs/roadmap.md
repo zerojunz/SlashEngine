@@ -1247,11 +1247,16 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         `character.generate` (candidates kept by how unlike the cast they look),
         `character.check` (run by `test.run`) and `character.place`
         (`examples/character-design`)
-15. [ ] Fauna: a fauna tool for distinct animals (birds, fish, insects, grazers, predators,
+15. [x] Fauna: a fauna tool for distinct animals (birds, fish, insects, grazers, predators,
         pets) as `.creature.json` recipes of body plans built into rigged, animated models with
         their own looks per species, NPC brains for flocking, grazing, fleeing, hunting and
         following, placed in habitats by the foliage tool's brushes, and characters'
-        interactions: animals that notice, flee, attack, can be fed, ridden or tamed
+        interactions: animals that notice, flee, attack, can be fed, ridden or tamed. Done in
+        3D and 2D: recipes of four body plans that `extends` others, built into skinned models
+        with idle, walk, run, eat, attack, fly and swim animations or `Creature2D` cut-outs,
+        the `fauna` system (herds, flocks and schools, fleeing, hunting, attacking, taming,
+        following and riding, with `NpcAgent` facts), `creature.place`, `creature.populate`,
+        `creature.interact` and `creature.state` (`examples/fauna`)
 16. [ ] Vehicles: a vehicle tool that designs cars, bikes, trucks, tracked vehicles, boats and
         aircraft as `.vehicle.json` recipes (a body built from model recipes, seats and doors,
         wheels, tracks, hulls or wings) built into a rigged model with its collision, each with

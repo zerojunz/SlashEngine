@@ -792,6 +792,66 @@ when given. Returns the `id`, its `components` and `height`. A recipe that doesn
 {"recipe": "characters/hero.character.json", "id": "hero", "at": [0, 0, 0]}
 ```
 
+## Creatures
+
+Placing, populating and working [creatures](scene-format.md#creatures).
+[examples/fauna](../../examples/fauna/).
+
+### creature.place
+
+Makes an entity `id` of a `.creature.json` recipe in the open scene. `at` of three numbers places
+it in 3D: a `Transform3D` turned by `yaw`, a `MeshInstance3D` drawing the rigged model, an
+`AnimationPlayer` playing its `idle` and a `Creature3D`; fliers go their `altitude` above `at`.
+Two numbers place a 2D cut-out: a `Transform2D` and a `Creature2D` at `pixels_per_meter` (default
+100), facing left with `flip_h`, whose bones the `character_2d` system keeps as `<id>_<bone>`
+children. Under `parent` when given. Returns the `id`, its `components` and whether it `flies`
+and `swims`. A recipe that doesn't validate is `-32002` at `/recipe`, a taken `id` at `/id`.
+Needs: `read`, `edit`.
+
+```json
+{"recipe": "fauna/dog.creature.json", "id": "rex", "at": [-6, 0, 6]}
+```
+
+### creature.populate
+
+Places `count` creatures of a recipe (default 5, at most 200) around `at`, within `radius`
+(default the recipe's `herd_radius`; pixels in 2D) and a body and a half apart, at places `seed`
+picks. In 3D walkers stand on the ground below (what a navigation bake would read), fliers their
+`altitude` above it and fish their depth below `at`; in 2D walkers keep `at`'s height and fliers
+and fish spread up and down too. Each is made as `creature.place` makes one, with IDs
+`<prefix>_<n>` (default the species) from the first free number, under `parent` when given.
+Returns `placed`, their IDs; `short` says how many fewer fit. The same params and scene place
+them in the same spots. Needs: `read`, `edit`.
+
+```json
+{"recipe": "fauna/deer.creature.json", "at": [0, 0, 0], "count": 5}
+```
+
+### creature.interact
+
+Does what gameplay code does with `npc::feed`, `ride`, `dismount`, `steer`, `release` and
+`scare` to `creature`: `feed` (`by` who, with `food`; refused when it doesn't eat that food or is
+caught, and tames it once fed as often as its `tame` says), `ride` (`by` its owner, when its
+recipe lets it), `dismount`, `steer` (`direction` as a share of its run speed: `[x, y]` in 2D, y
+down, `[x, y, z]` in 3D; zero stops it), `release` (no owner, feedings or rider) and `scare`
+(`by`; it flees for three seconds whatever its temperament). Returns its `mode` and `fed`, and for
+`feed` whether it was `tamed`. A refusal is `-32002` with what it eats or who may ride it.
+Needs: `read`, `edit`.
+
+```json
+{"creature": "rex", "action": "feed", "by": "ranger", "food": "bone"}
+```
+
+### creature.state
+
+What `creature` is doing, or every creature by ID: `id`, `recipe`, `mode`, its `target`, `owner`
+and `rider` when it has them, `fed`, `hunger`, `position` (meters in 3D, pixels in 2D) and
+`speed` (meters a second), in `creatures`. Needs: `read`.
+
+```json
+{"creature": "deer_1"}
+```
+
 ## Animations
 
 ### animation.eval
@@ -1959,9 +2019,9 @@ fitted to the vertices the bone moves most, with masses by volume. A humanoid (o
 with limits for each kind of joint elsewhere, balance on its hips and its get-up facing; another
 skeleton gets cones on every bone long enough. Given `id`, it also sets the entity's `Ragdoll3D`
 `profile` to the file. An `id` with no model but a `Transform2D` tree gets a 2D profile of the
-tree instead (each entity under it with children or a `Sprite2D` is a bone: a capsule to its one
-child bone, a rectangle round several, a circle at a tip; hinges between them, balance on the
-topmost), and a `Ragdoll2D`. `undo` puts the file back.
+tree instead (each entity under it with children, a `Sprite2D` or a `Polygon2D` is a bone: a
+capsule to its one child bone, a rectangle round several, at a tip a capsule out to its polygon's
+farthest point or else a circle; hinges between them, balance on the topmost), and a `Ragdoll2D`. `undo` puts the file back.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
