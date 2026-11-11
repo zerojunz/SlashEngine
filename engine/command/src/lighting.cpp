@@ -26,7 +26,7 @@ constexpr std::uint8_t kClipped = 254;
 constexpr double kCrushed = 0.02;
 // A light lights a pixel when taking it away changes the pixel's brightness by this much, two
 // steps of an 8-bit channel.
-constexpr double kLitStep = 2.0 / 255.0;
+constexpr std::int32_t kLitStep = 2 * 10000;
 // What counts as a problem: a frame more than 5% clipped, more than 40% crushed, whose mean
 // brightness is below 0.08 or above 0.8, or whose 5th to 95th percentile spans less than 0.1; a
 // light that lights under 0.1% of the frame, or without which 2% of it would not be clipped.
@@ -59,8 +59,10 @@ double rounded(double value) {
 }
 
 // Each pixel's brightness from 0 to 1, Rec. 709's weights over the drawn (display) values, and
-// whether a channel is clipped.
+// whether a channel is clipped. `level` is the brightness in whole numbers (the weights times
+// 10000 over the channels), so a light's change compares exactly on every machine.
 struct Pixels {
+    std::vector<std::int32_t> level;
     std::vector<double> brightness;
     std::vector<bool> clipped;
 };
@@ -68,13 +70,15 @@ struct Pixels {
 Pixels pixels_of(const render::Image& image) {
     Pixels out;
     const std::size_t count = static_cast<std::size_t>(image.width) * image.height;
+    out.level.resize(count);
     out.brightness.resize(count);
     out.clipped.resize(count);
     for (std::size_t i = 0; i < count; ++i) {
         const std::uint8_t r = image.pixels[i * 4];
         const std::uint8_t g = image.pixels[(i * 4) + 1];
         const std::uint8_t b = image.pixels[(i * 4) + 2];
-        out.brightness[i] = ((0.2126 * r) + (0.7152 * g) + (0.0722 * b)) / 255.0;
+        out.level[i] = (2126 * r) + (7152 * g) + (722 * b);
+        out.brightness[i] = static_cast<double>(out.level[i]) / (10000.0 * 255.0);
         out.clipped[i] = r >= kClipped || g >= kClipped || b >= kClipped;
     }
     return out;
@@ -380,7 +384,7 @@ Reply lighting_check(Session& session, const json::Value& params) {
             double added = 0.0;
             for (std::size_t i = 0; i < base.brightness.size(); ++i) {
                 const double change = base.brightness[i] - dark.brightness[i];
-                lit += change >= kLitStep ? 1 : 0;
+                lit += base.level[i] - dark.level[i] >= kLitStep ? 1 : 0;
                 added += std::max(change, 0.0);
                 clips += base.clipped[i] && !dark.clipped[i] ? 1U : 0U;
             }
