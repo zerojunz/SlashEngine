@@ -7,6 +7,7 @@
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
 #include "slash/scene3d/ik.hpp"
+#include "slash/scene3d/ragdoll.hpp"
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/world/components.hpp"
 
@@ -708,14 +709,17 @@ void add_systems(world::World& world, asset::Assets& assets) {
                       .priority = 910});
     // IK modifiers turn bones after the animations, as Godot's SkeletonModifier3Ds process after
     // the AnimationMixer.
-    scene3d::add_modifier_system(
-        world, [&assets](const std::string& path) -> Result<std::shared_ptr<const scene3d::Model>> {
-            auto found = assets.load<scene3d::Model>(path);
-            if (!found) {
-                return found.error();
-            }
-            return found.value().share();
-        });
+    const scene3d::ModelLoader models =
+        [&assets](const std::string& path) -> Result<std::shared_ptr<const scene3d::Model>> {
+        auto found = assets.load<scene3d::Model>(path);
+        if (!found) {
+            return found.error();
+        }
+        return found.value().share();
+    };
+    // Ragdolls set their simulators and bodies before the modifiers run them.
+    scene3d::add_ragdoll_system(world, models);
+    scene3d::add_modifier_system(world, models);
 }
 
 Result<void> seek(world::World& world, asset::Assets& assets, entt::entity entity, double time,

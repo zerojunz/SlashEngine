@@ -1299,17 +1299,17 @@ TEST_CASE("engine.describe lists systems in the order they run") {
                      {.doc = "Moves things by their velocity."});
     world.add_system("controls", [](world::World& /*w*/, double /*dt*/) {}, {.priority = -1});
     // Every session applies input, network, XR and service events first, streams the world in,
-    // counts the wind's seconds and plays animations, steps 2D and 3D physics, checks
-    // synchronizers' visibility, steps navigation, runs NPCs, moves the camera and parallax, runs
-    // particles, hands over models' replies and plays sound with built-in systems that run late.
-    // The particle systems are threaded: the CPU ones and GPUParticles2D's run at the same time,
-    // and GPUParticles3D's, which loads vector fields' textures as GPUParticles2D's loads its own,
-    // runs after them.
+    // counts the wind's seconds and plays animations, runs ragdolls, steps 2D and 3D physics,
+    // checks synchronizers' visibility, steps navigation, runs NPCs, moves the camera and parallax,
+    // runs particles, hands over models' replies and plays sound with built-in systems that run
+    // late. The particle systems are threaded: the CPU ones and GPUParticles2D's run at the same
+    // time, and GPUParticles3D's, which loads vector fields' textures as GPUParticles2D's loads its
+    // own, runs after them.
     CHECK(
         *engine.ok("engine.describe").find("systems") ==
         parse(
             R"(["input", "multiplayer", "gui", "xr", "services", "world_streaming", "wind", "controls", "movement", "animation_player",
-                    "animation_tree", "skeleton_modifiers", "path_follow", "physics2d", "physics3d", "multiplayer_visibility", "navigation", "npc", "animated_sprite_2d",
+                    "animation_tree", "ragdoll", "skeleton_modifiers", "path_follow", "ragdoll_2d", "physics2d", "physics3d", "ragdoll_2d_pose", "multiplayer_visibility", "navigation", "npc", "animated_sprite_2d",
                     "camera_2d", "parallax_2d", "cpu_particles_2d", "cpu_particles_3d", "gpu_particles_2d", "gpu_particles_3d", "video", "ai", "audio"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
         {"name": "input", "doc": "Applies the input events queued since the last tick.",
@@ -1338,18 +1338,27 @@ TEST_CASE("engine.describe lists systems in the order they run") {
         {"name": "animation_tree",
          "doc": "Blends each AnimationTree's animations into its entity's components.",
          "priority": 910},
+        {"name": "ragdoll",
+         "doc": "Keeps each Ragdoll3D's bodies, joints and muscles as its profile says and runs its states: hit reactions, falls and getting back up.",
+         "priority": 915},
         {"name": "skeleton_modifiers",
          "doc": "Steps the chains of FABRIK3D, CCDIK3D and JacobianIK3D modifiers that aren't deterministic toward their targets, moves the physical bones that follow the pose and puts bone attachments where their bones are.",
          "priority": 920},
         {"name": "path_follow",
          "doc": "Wraps each PathFollow2D's and PathFollow3D's progress and places it on its parent's curve.",
          "priority": 930},
+        {"name": "ragdoll_2d",
+         "doc": "Keeps each Ragdoll2D's bodies, shapes, joints and muscles as its profile says and runs its states: hit reactions, falls and getting back up.",
+         "priority": 940},
         {"name": "physics2d",
          "doc": "Steps 2D physics: moves rigid and character bodies and reports contacts.",
          "priority": 950},
         {"name": "physics3d",
          "doc": "Steps 3D physics: moves rigid and character bodies, reports contacts and breaks Destructible3Ds hit hard enough.",
          "priority": 950},
+        {"name": "ragdoll_2d_pose",
+         "doc": "Keeps where the physics step left each Ragdoll2D bone, so the next tick tells the animation's pose from it.",
+         "priority": 955},
         {"name": "multiplayer_visibility",
          "doc": "Checks the visibility filters of synchronizers whose visibility_update_mode is \"physics\", after physics, as Godot's MultiplayerSynchronizer.",
          "priority": 955},
@@ -1369,21 +1378,21 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "priority": 1060},
         {"name": "cpu_particles_2d",
          "doc": "Emits, moves and ages each CPUParticles2D's particles.", "priority": 1100,
-         "threaded": true, "stage": 21, "reads": ["Transform2D", "WindSource2D", "PhysicsField2D"],
+         "threaded": true, "stage": 24, "reads": ["Transform2D", "WindSource2D", "PhysicsField2D"],
          "writes": ["CPUParticles2D"]},
         {"name": "cpu_particles_3d",
          "doc": "Emits, moves and ages each CPUParticles3D's particles.", "priority": 1100,
-         "threaded": true, "stage": 21, "reads": ["Transform3D", "WindSource3D", "PhysicsField3D"],
+         "threaded": true, "stage": 24, "reads": ["Transform3D", "WindSource3D", "PhysicsField3D"],
          "writes": ["CPUParticles3D"]},
         {"name": "gpu_particles_2d",
          "doc": "Steps each GPUParticles2D's emission for renderers to run.", "priority": 1110,
-         "threaded": true, "stage": 21,
+         "threaded": true, "stage": 24,
          "reads": ["Transform2D", "LightOccluder2D", "TileMapLayer", "CanvasLayer", "Control",
                    "Camera2D"],
          "writes": ["GPUParticles2D", "assets"]},
         {"name": "gpu_particles_3d",
          "doc": "Steps each GPUParticles3D's emission for renderers to run.", "priority": 1110,
-         "threaded": true, "stage": 22,
+         "threaded": true, "stage": 25,
          "reads": ["GPUParticlesAttractorSphere3D", "GPUParticlesAttractorBox3D",
                    "GPUParticlesAttractorVectorField3D", "GPUParticlesCollisionSphere3D",
                    "GPUParticlesCollisionBox3D", "GPUParticlesCollisionSDF3D",

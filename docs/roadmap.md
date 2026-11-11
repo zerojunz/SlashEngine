@@ -1183,8 +1183,10 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
        Done: shared `.physics_material.json` materials (friction, rough, bounce, absorbent,
        density, strength, surface) on 3D and 2D bodies, `PhysicsField3D` and
        `PhysicsField2D` fields on rigid bodies, bones, soft bodies and CPU particles, and
-       `substeps` (`examples/physics-fields`). Next: ragdolls, cloth, caches and
-       `physics.debug`
+       `substeps` (`examples/physics-fields`); individual ragdolls in 3D and 2D, with
+       `.ragdoll.json` profiles, muscles that drive bodies toward the animation, balance, hit
+       reactions, knockdowns and getting back up, `ragdoll.generate`, `ragdoll.hit` and
+       `ragdoll.tune` (`examples/ragdoll-profiles`). Next: cloth, caches and `physics.debug`
 10. [ ] Foliage: painted and scattered plants and ground cover as Unreal's Foliage tool, with
        `foliage.paint` and `foliage.erase` brushes over terrains and meshes and instances kept
        per cell: distinct kinds of grass, flowers, shrubs, bushes, trees, moss, rocks and

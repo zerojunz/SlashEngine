@@ -19,6 +19,7 @@
 #include "slash/scene3d/material.hpp"
 #include "slash/scene3d/particle_collision.hpp"
 #include "slash/scene3d/particles.hpp"
+#include "slash/scene3d/ragdoll.hpp"
 #include "slash/scene3d/soft_body.hpp"
 #include "slash/scene3d/splats.hpp"
 #include "slash/scene3d/streaming.hpp"
@@ -824,6 +825,9 @@ std::vector<Problem> check_meshes(const world::World& world) {
             problems.push_back(
                 {problem.entity, std::move(problem.path), std::move(problem.message)});
         }
+        for (RagdollProblem& problem : check_ragdoll(world, entity, model)) {
+            problems.push_back({entity, std::move(problem.path), std::move(problem.message)});
+        }
     };
     // The entities bone attachments follow, and the models they draw, loaded for their checks.
     std::set<entt::entity> followed;
@@ -869,7 +873,7 @@ std::vector<Problem> check_meshes(const world::World& world) {
                                     (error.path.empty() ? "" : " at " + error.path) + ": " +
                                     error.message});
         }
-        if (errors.empty() && (world.ecs().all_of<world::Skeleton3D>(entity) ||
+        if (errors.empty() && (world.ecs().any_of<world::Skeleton3D, world::Ragdoll3D>(entity) ||
                                has_modifiers(world, entity) || followed.contains(entity))) {
             if (auto model = load_model(bytes.value(), path, reader); model) {
                 check_bones(entity, &model.value());

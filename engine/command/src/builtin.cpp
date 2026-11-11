@@ -27,6 +27,7 @@
 #include "slash/command/npc.hpp"
 #include "slash/command/perf.hpp"
 #include "slash/command/place.hpp"
+#include "slash/command/ragdoll.hpp"
 #include "slash/command/replay.hpp"
 #include "slash/command/services.hpp"
 #include "slash/command/session.hpp"
@@ -74,6 +75,7 @@
 #include "slash/world/components.hpp"
 #include "slash/world/path.hpp"
 #include "slash/world/physics_material.hpp"
+#include "slash/world/ragdoll.hpp"
 #include "slash/world/scene.hpp"
 #include "slash/world/tree2d.hpp"
 #include "slash/world/tree3d.hpp"
@@ -517,6 +519,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "physics_material") {
         return Reply::success(world::physics_material_schema());
+    }
+    if (kind == "ragdoll") {
+        return Reply::success(world::ragdoll_schema());
     }
     if (name.empty()) {
         return param_error(code::kInvalidParams, "/name",
@@ -7063,7 +7068,8 @@ void register_builtin_commands(Registry& registry) {
                                "standard_material",
                                "texture",
                                "scatter",
-                               "physics_material"};
+                               "physics_material",
+                               "ragdoll"};
     registry.add({
         .name = "schema.get",
         .description =
@@ -8763,6 +8769,7 @@ void register_builtin_commands(Registry& registry) {
     register_project_map(registry);
     register_navigation_commands(registry);
     register_npc_commands(registry);
+    register_ragdoll_commands(registry);
     register_lighting_commands(registry);
     register_style_commands(registry);
     register_place_commands(registry);
