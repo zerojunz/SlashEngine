@@ -1025,7 +1025,19 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                  "remade when the recipe changes.")
         .describe("recipe", {.doc = "Project path of the .character.json file."})
         .describe("pixels_per_meter", {.doc = "How big it is drawn.", .min = 1.0})
-        .describe("flip_h", {.doc = "Faces left instead of right."});
+        .describe("flip_h", {.doc = "Faces left instead of right."})
+        .describe("look_at", {.doc = "An entity its eye looks toward; none leaves the eye to "
+                                     "animations."})
+        .describe("jaw_open",
+                  {.doc = "How far its jaw is open, 0 to 1; 0 leaves the jaw to animations.",
+                   .min = 0.0,
+                   .max = 1.0})
+        .describe("hand_front", {.doc = "The near hand's pose: \"open\", \"relaxed\", "
+                                        "\"grip\", \"fist\" or \"point\"; \"\" leaves it "
+                                        "to animations.",
+                                 .choices = {"", "open", "relaxed", "grip", "fist", "point"}})
+        .describe("hand_back", {.doc = "The far hand's pose, as hand_front.",
+                                .choices = {"", "open", "relaxed", "grip", "fist", "point"}});
 
     // The fields of a creature's mind, the same in 3D and 2D.
     const auto describe_mind = [](ComponentType& type) -> ComponentType& {
@@ -1361,7 +1373,8 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("particles", {.doc = "Forces also push CPUParticles2D."});
 }
 
-// The skeleton modifiers: Godot 4.6's TwoBoneIK3D, FABRIK3D, CCDIK3D and JacobianIK3D.
+// The skeleton modifiers: Godot 4.6's TwoBoneIK3D, FABRIK3D, CCDIK3D, JacobianIK3D,
+// LookAtModifier3D and CopyTransformModifier3D.
 void register_ik_components(ComponentRegistry& registry) {
     const FieldMeta active{.doc = "Whether it turns bones."};
     const FieldMeta influence{
@@ -1470,6 +1483,105 @@ void register_ik_components(ComponentRegistry& registry) {
                                    "joint at a time from the end, as Godot's CCDIK3D.");
     chain(registry.add<JacobianIK3D>(), "Turns a chain of bones so its end reaches a target by "
                                         "the Jacobian transpose, as Godot's JacobianIK3D.");
+
+    const std::string limit = " in radians";
+    registry.add<LookAtModifier3D>()
+        .set_doc("Turns one bone of the model the entity (or its Transform3D parent) draws so "
+                 "its forward_axis points at a target, as Godot's LookAtModifier3D: eyes, a head "
+                 "or a turret.")
+        .describe("bone", {.doc = "The bone it turns."})
+        .describe("target_node", {.doc = "ID of the entity it looks at."})
+        .describe("forward_axis",
+                  {.doc = "The bone's axis that points at the target: " + axes + "."})
+        .describe("primary_rotation_axis",
+                  {.doc = R"(The bone's axis it turns about first: "x", "y" or "z".)"})
+        .describe("use_secondary_rotation",
+                  {.doc = "Also turns about the axis across the forward and primary axes."})
+        .describe("relative", {.doc = "Turns from the bone's pose; false: from its rest."})
+        .describe("origin_from", {.doc = "Where it looks from: \"self\" (the bone), "
+                                         "\"specific_bone\" (origin_bone) or \"external_node\" "
+                                         "(origin_external_node)."})
+        .describe("origin_bone", {.doc = "The bone it looks from, for \"specific_bone\"."})
+        .describe("origin_external_node",
+                  {.doc = "ID of the entity it looks from, for \"external_node\"."})
+        .describe("origin_offset", {.doc = "Moves the place it looks from, in its space."})
+        .describe("origin_safe_margin",
+                  {.doc = "How near an axis the target may pass before the turn eases over "
+                          "duration instead of flipping.",
+                   .min = 0})
+        .describe("duration", {.doc = "Seconds it takes to turn when the target crosses an axis "
+                                      "or the limits; 0 turns at once.",
+                               .min = 0})
+        .describe("transition_type",
+                  {.doc = "How that turn eases, as Godot's Tween: \"linear\", \"sine\", "
+                          "\"quint\", \"quart\", \"quad\", \"expo\", \"elastic\", \"cubic\", "
+                          "\"circ\", \"bounce\", \"back\" or \"spring\"."})
+        .describe("ease_type", {.doc = R"("in", "out", "in_out" or "out_in".)"})
+        .describe("use_angle_limitation", {.doc = "Holds each turn within its limit angles."})
+        .describe("symmetry_limitation",
+                  {.doc = "Each axis has one limit (limit_angle, across both ways); false: a "
+                          "positive and a negative one."})
+        .describe("primary_limit_angle",
+                  {.doc = "The primary turn's whole range" + limit + ".", .min = 0})
+        .describe("primary_damp_threshold",
+                  {.doc = "Share of the limit past which the turn eases into it; 1 for none.",
+                   .min = 0,
+                   .max = 1})
+        .describe("primary_positive_limit_angle",
+                  {.doc = "The primary turn's positive limit" + limit + ".", .min = 0})
+        .describe("primary_positive_damp_threshold",
+                  {.doc = "The positive limit's damp threshold.", .min = 0, .max = 1})
+        .describe("primary_negative_limit_angle",
+                  {.doc = "The primary turn's negative limit" + limit + ".", .min = 0})
+        .describe("primary_negative_damp_threshold",
+                  {.doc = "The negative limit's damp threshold.", .min = 0, .max = 1})
+        .describe("secondary_limit_angle",
+                  {.doc = "The secondary turn's whole range" + limit + ".", .min = 0})
+        .describe("secondary_damp_threshold",
+                  {.doc = "Share of the limit past which the turn eases into it; 1 for none.",
+                   .min = 0,
+                   .max = 1})
+        .describe("secondary_positive_limit_angle",
+                  {.doc = "The secondary turn's positive limit" + limit + ".", .min = 0})
+        .describe("secondary_positive_damp_threshold",
+                  {.doc = "The positive limit's damp threshold.", .min = 0, .max = 1})
+        .describe("secondary_negative_limit_angle",
+                  {.doc = "The secondary turn's negative limit" + limit + ".", .min = 0})
+        .describe("secondary_negative_damp_threshold",
+                  {.doc = "The negative limit's damp threshold.", .min = 0, .max = 1})
+        .describe("influence", influence)
+        .describe("active", active);
+
+    ComponentType& copy = registry.add<CopyTransformModifier3D>();
+    copy.set_doc("Copies bones' transforms onto other bones of the model the entity (or its "
+                 "Transform3D parent) draws, as Godot's CopyTransformModifier3D: twist bones "
+                 "taking a share of a hand's roll, an eyelid following its eye.")
+        .describe("settings", {.doc = "One bone it moves each, in order."})
+        .describe("influence", influence)
+        .describe("active", active);
+    describe_members(
+        copy, "settings[]",
+        {{"amount", {.doc = "How much of the copy it takes: 0 none, 1 all.", .min = 0, .max = 1}},
+         {"apply_bone", {.doc = "The bone it moves."}},
+         {"reference_type",
+          {.doc = R"(What it copies: "bone" (reference_bone) or "node" (reference_node).)"}},
+         {"reference_bone", {.doc = "The bone it copies the pose of."}},
+         {"reference_node", {.doc = "ID of the entity it copies the place of."}},
+         {"copy_position", {.doc = "Copies the position."}},
+         {"copy_rotation", {.doc = "Copies the rotation."}},
+         {"copy_scale", {.doc = "Copies the scale."}},
+         {"axis_x_enabled",
+          {.doc = "Copies along and about x; a rotation with only one axis enabled is its roll "
+                  "about it."}},
+         {"axis_y_enabled", {.doc = "Copies along and about y."}},
+         {"axis_z_enabled", {.doc = "Copies along and about z."}},
+         {"axis_x_inverted", {.doc = "Turns the copy about x the other way."}},
+         {"axis_y_inverted", {.doc = "Turns the copy about y the other way."}},
+         {"axis_z_inverted", {.doc = "Turns the copy about z the other way."}},
+         {"relative",
+          {.doc = "Copies how far the reference is from its rest onto apply_bone's rest; false: "
+                  "copies the pose itself. A node reference is never relative."}},
+         {"additive", {.doc = "Adds the copy to apply_bone's pose."}}});
 
     registry.add<BoneAttachment3D>()
         .set_doc("Puts the entity where a bone of a model is posed each tick, after animations "

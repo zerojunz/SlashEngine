@@ -782,11 +782,15 @@ adds `pairs`, how far apart each pair is. `test.run` runs it. Needs: `read`, `fi
 
 Makes an entity `id` of a recipe in the open scene. `at` of three numbers places it in 3D: a
 `Transform3D` turned by `yaw`, a `MeshInstance3D` drawing the rigged model, a `HairInstance3D` on
-its scalp for a groom and a `Cloth3D` on its cloth garment. Two numbers place a 2D cut-out: a
+its scalp for a groom and a `Cloth3D` on its cloth garment, with modifier children: `<id>_twists`,
+a `CopyTransformModifier3D` giving each arm's and thigh's twist bones half their limb's roll, and
+with `look_at` (an entity's ID), `<id>_look_left` and `<id>_look_right`, a
+`LookAtModifier3D` each turning an eye toward it within limits. Two numbers place a 2D cut-out: a
 `Transform2D` and a `Character2D` at `pixels_per_meter` (default 100), facing left with
-`flip_h`, whose bones the `character_2d` system keeps as `<id>_<bone>` children. Under `parent`
-when given. Returns the `id`, its `components` and `height`. A recipe that doesn't validate is
-`-32002` at `/recipe`, a taken `id` at `/id`. Needs: `read`, `edit`.
+`flip_h` and its eye on `look_at`, whose bones the `character_2d` system keeps as `<id>_<bone>`
+children. Under `parent` when given. Returns the `id`, its `components`, in 3D its `modifiers`,
+and `height`. A recipe that doesn't validate is `-32002` at `/recipe`, a taken `id` at `/id`,
+an unknown `look_at` at `/look_at`. Needs: `read`, `edit`.
 
 ```json
 {"recipe": "characters/hero.character.json", "id": "hero", "at": [0, 0, 0]}

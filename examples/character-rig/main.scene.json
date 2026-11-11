@@ -1,0 +1,33 @@
+{
+  "entities": {
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true
+        },
+        "Transform3D": {
+          "position": [0.0, 1.5, 1.2]
+        }
+      }
+    },
+    "lantern": {
+      "components": {
+        "Transform2D": {
+          "position": [140.0, 20.0]
+        },
+        "Transform3D": {
+          "position": [0.8, 1.9, 1.0]
+        }
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {},
+        "Transform3D": {
+          "rotation": [-0.8, 0.4, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

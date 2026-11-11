@@ -6,15 +6,20 @@
 #include "slash/core/json.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/scene3d/character.hpp"
+#include "slash/scene3d/humanoid.hpp"
 #include "slash/scene3d/model.hpp"
+#include "slash/scene3d/scene3d.hpp"
+#include "slash/scene3d/skeleton.hpp"
 #include "slash/world/character.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/tree3d.hpp"
 #include "slash/world/world.hpp"
 
 #include <doctest/doctest.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <map>
@@ -213,7 +218,7 @@ TEST_CASE("character: a recipe builds a rigged humanoid with its points, layers 
     const scene3d::Model& knight = model.value();
     // Godot's humanoid bones, skinned, then the points under their bones.
     REQUIRE(knight.skins.size() == 1);
-    CHECK(knight.skins[0].joints.size() == 23);
+    CHECK(knight.skins[0].joints.size() == 64);
     const auto node = [&](std::string_view name) {
         return std::ranges::find_if(knight.nodes, [&](const auto& n) { return n.name == name; });
     };
@@ -234,7 +239,7 @@ TEST_CASE("character: a recipe builds a rigged humanoid with its points, layers 
     }
     const auto armor = std::ranges::find(materials, "armor") - materials.begin();
     CHECK(knight.materials.at(static_cast<std::size_t>(armor)).standard.metallic == 1.0F);
-    // Every vertex follows one joint.
+    // Every vertex has its joints' weights.
     for (const scene3d::ModelSurface& surface : knight.meshes.at(0).surfaces) {
         REQUIRE(surface.weights.size() == surface.vertices.size());
     }
@@ -254,6 +259,129 @@ TEST_CASE("character: a recipe builds a rigged humanoid with its points, layers 
     auto no_sword = scene3d::build_character(recipe_of(kKnight), files_reader({}));
     REQUIRE_FALSE(no_sword.ok());
     CHECK(no_sword.error().message.find("sword.model.json") != std::string::npos);
+}
+
+namespace {
+
+float distance(slash::Vec3 a, slash::Vec3 b) {
+    const slash::Vec3 d = a - b;
+    return static_cast<float>(std::sqrt((d.x * d.x) + (d.y * d.y) + (d.z * d.z)));
+}
+
+// Where a model's node is in its space, posed by an animation of its own (or at rest).
+std::vector<world::Affine3D> posed(const scene3d::Model& model, std::string_view animation) {
+    std::vector<scene3d::NodePose> pose = scene3d::rest_pose(model);
+    for (const scene3d::ModelAnimation& clip : model.animations) {
+        if (clip.name == animation) {
+            scene3d::blend_animation(model, model, clip, 0.0, 1.0F, {}, pose);
+        }
+    }
+    return scene3d::node_globals(model, pose);
+}
+
+// The middle of the vertices of a material's surface, skinned by globals.
+slash::Vec3 middle_of(const scene3d::Model& model, std::string_view material,
+                      const std::vector<world::Affine3D>& globals) {
+    const auto joints = scene3d::joint_transforms(model.skins.at(0), globals);
+    for (const scene3d::ModelSurface& surface : model.meshes.at(0).surfaces) {
+        if (model.materials.at(static_cast<std::size_t>(surface.material)).name != material) {
+            continue;
+        }
+        std::vector<slash::render::Vertex3D> moved;
+        scene3d::skin_vertices(surface, joints, moved);
+        slash::Vec3 sum;
+        for (const auto& vertex : moved) {
+            sum = sum + slash::Vec3{vertex.position[0], vertex.position[1], vertex.position[2]};
+        }
+        return sum * (1.0F / static_cast<float>(moved.size()));
+    }
+    return {};
+}
+
+} // namespace
+
+TEST_CASE("character: the rig has fingers, eyes, a jaw and twist bones, turned as Godot's") {
+    auto model = scene3d::build_character(recipe_of(kKnight), files_reader(kFiles));
+    REQUIRE(model.ok());
+    const scene3d::Model& knight = model.value();
+    const auto index = [&](std::string_view name) {
+        const int found = scene3d::find_node(knight, name);
+        REQUIRE_MESSAGE(found >= 0, name);
+        return static_cast<std::size_t>(found);
+    };
+    // Every bone of Godot's humanoid profile, in its order, then the twist bones.
+    const auto profile = scene3d::humanoid_profile();
+    for (std::size_t i = 0; i < profile.size(); ++i) {
+        CHECK(knight.nodes.at(i).name == profile[i].name);
+    }
+    for (const std::string_view name :
+         {"LeftUpperArmTwist", "LeftLowerArmTwist", "RightUpperLegTwist", "RightLowerLegTwist"}) {
+        const int parent = knight.nodes.at(index(name)).parent;
+        REQUIRE(parent >= 0);
+        CHECK(knight.nodes.at(static_cast<std::size_t>(parent)).name ==
+              std::string(name.substr(0, name.size() - 5)));
+    }
+    // Each bone's y points down its limb, as the profile's do.
+    const std::vector<world::Affine3D> rest = posed(knight, "");
+    for (const auto& [bone, next] : std::vector<std::pair<std::string_view, std::string_view>>{
+             {"LeftUpperArm", "LeftLowerArm"},
+             {"RightLowerArm", "RightHand"},
+             {"LeftIndexProximal", "LeftIndexIntermediate"},
+             {"RightThumbMetacarpal", "RightThumbProximal"},
+             {"LeftUpperLeg", "LeftLowerLeg"}}) {
+        const slash::Vec3 way = rest[index(next)].origin - rest[index(bone)].origin;
+        const slash::Vec3 y = rest[index(bone)].y;
+        const float cosine =
+            static_cast<float>((way.x * y.x) + (way.y * y.y) + (way.z * y.z)) / distance(way, {});
+        CHECK_MESSAGE(cosine > 0.999F, bone);
+    }
+    // The skin at rest is the mesh, and it bends smoothly: some corners follow several joints.
+    const auto joints = scene3d::joint_transforms(knight.skins.at(0), rest);
+    bool blended = false;
+    for (const scene3d::ModelSurface& surface : knight.meshes.at(0).surfaces) {
+        std::vector<slash::render::Vertex3D> moved;
+        scene3d::skin_vertices(surface, joints, moved);
+        for (std::size_t v = 0; v < moved.size(); ++v) {
+            for (std::size_t c = 0; c < 3; ++c) {
+                REQUIRE(std::abs(moved[v].position.at(c) - surface.vertices[v].position.at(c)) <
+                        0.0001F);
+            }
+            float sum = 0.0F;
+            for (const float weight : surface.weights[v].weights) {
+                sum += weight;
+            }
+            REQUIRE(sum == doctest::Approx(1.0F));
+            blended = blended || surface.weights[v].weights[1] > 0.0F;
+        }
+    }
+    CHECK(blended);
+    // A fist closes the fingers onto the palm; the thumb tucks in.
+    const std::vector<world::Affine3D> fist = posed(knight, "fist_left");
+    const auto reach = [&](const std::vector<world::Affine3D>& globals, std::string_view tip) {
+        return distance(globals[index(tip)].origin, globals[index("LeftHand")].origin);
+    };
+    CHECK(reach(fist, "LeftMiddleDistal") < reach(rest, "LeftMiddleDistal") * 0.75F);
+    CHECK(reach(fist, "LeftThumbDistal") < reach(rest, "LeftThumbDistal"));
+    // Pointing keeps the index straight while the rest close.
+    const std::vector<world::Affine3D> point = posed(knight, "point_left");
+    CHECK(reach(point, "LeftIndexDistal") == doctest::Approx(reach(rest, "LeftIndexDistal")));
+    CHECK(reach(point, "LeftRingDistal") < reach(rest, "LeftRingDistal") * 0.75F);
+    // The right hand's poses leave the left alone.
+    const std::vector<world::Affine3D> right = posed(knight, "fist_right");
+    CHECK(reach(right, "LeftMiddleDistal") == doctest::Approx(reach(rest, "LeftMiddleDistal")));
+    // Opening the jaw drops the lower teeth and leaves the upper ones.
+    const std::vector<world::Affine3D> open = posed(knight, "jaw_open");
+    CHECK(middle_of(knight, "tongue", open).y < middle_of(knight, "tongue", rest).y - 0.01F);
+    CHECK(rest[index("Jaw")].origin.y == doctest::Approx(open[index("Jaw")].origin.y));
+    // Godot's bone mapper finds every bone by its name, the twist bones aside.
+    const scene3d::BoneMap map = scene3d::auto_map_bones(knight);
+    for (const std::string_view name :
+         {"Hips", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperLeg", "RightLowerLeg",
+          "Jaw", "LeftEye", "LeftIndexProximal", "RightThumbDistal"}) {
+        const auto found = map.find(name);
+        REQUIRE_MESSAGE(found != map.end(), name);
+        CHECK(found->second == name);
+    }
 }
 
 TEST_CASE("character: a groom grows on a scalp of its own, and loads as any model") {
@@ -311,6 +439,16 @@ TEST_CASE("character: a 2D cut-out keeps bones in a tree, the far limbs behind")
     CHECK(find("upper_arm_back").z_index < find("chest").z_index);
     CHECK(find("upper_arm_front").z_index > find("chest").z_index);
     CHECK_FALSE(find("head").shapes.empty());
+    // The face's jaw and eye hang from the head, the fingers and thumb from each hand.
+    const auto parent_of = [&](std::string_view name) {
+        return bones.at(static_cast<std::size_t>(find(name).parent)).name;
+    };
+    CHECK(parent_of("jaw") == "head");
+    CHECK(parent_of("eye") == "head");
+    for (const std::string_view finger : {"thumb_front", "index_front", "fingers_back"}) {
+        CHECK(parent_of(finger).starts_with("hand_"));
+        CHECK_FALSE(find(finger).shapes.empty());
+    }
 }
 
 TEST_CASE("character: a Character2D keeps its cut-out's parts as Polygon2D children") {
@@ -335,6 +473,34 @@ TEST_CASE("character: a Character2D keeps its cut-out's parts as Polygon2D child
     // They draw.
     json::Value summary = project.ok("frame.summary", "{}");
     CHECK(json::write(summary).find("farmer_head") != std::string::npos);
+    // Its jaw opens, its hands close and its eye follows what it looks at, turned the way it
+    // faces; unset, they go back to rest.
+    project.ok("entity.create", R"({"id": "bird", "components": {"Transform2D": {
+        "position": [600, 0]}}})");
+    project.ok("component.set", R"({"id": "farmer", "components": {"Character2D": {
+        "jaw_open": 1, "hand_front": "fist", "hand_back": "point", "look_at": "bird"}}})");
+    const auto transform = [&](std::string_view id) {
+        return world.ecs().get<world::Transform2D>(world.find(id));
+    };
+    const slash::Vec2 eye_rest = transform("farmer_eye").position;
+    project.ok("step", R"({"ticks": 1})");
+    CHECK(transform("farmer_jaw").rotation > 0.3F);
+    CHECK(transform("farmer_fingers_front").rotation > 1.0F);
+    CHECK(transform("farmer_index_back").rotation == 0.0F);
+    CHECK(transform("farmer_fingers_back").rotation > 1.0F);
+    const slash::Vec2 eye = transform("farmer_eye").position;
+    CHECK(eye.x > eye_rest.x);
+    CHECK(eye.y < eye_rest.y);
+    project.ok("component.set", R"({"id": "farmer", "components": {"Character2D": {
+        "flip_h": true}}})");
+    project.ok("step", R"({"ticks": 1})");
+    CHECK(transform("farmer_jaw").rotation < -0.3F);
+    project.ok("component.set", R"({"id": "farmer", "components": {"Character2D": {
+        "flip_h": false, "jaw_open": 0, "hand_front": "", "hand_back": "", "look_at": null}}})");
+    project.ok("step", R"({"ticks": 1})");
+    CHECK(transform("farmer_jaw").rotation == 0.0F);
+    CHECK(transform("farmer_fingers_front").rotation == 0.0F);
+    CHECK(transform("farmer_eye").position == eye_rest);
     // A changed recipe rebuilds them; the parts stay where animations put them.
     project.ok("component.set", R"({"id": "farmer", "components": {"Character2D": {
         "recipe": "characters/knight.character.json"}}})");
@@ -351,14 +517,24 @@ TEST_CASE("character: character.place draws a 3D character with its cloth and gr
         "character.place",
         R"({"recipe": "characters/knight.character.json", "id": "knight", "at": [0, 0, 0]})");
     CHECK(placed["components"] == parse(R"(["Transform3D", "MeshInstance3D", "Cloth3D"])"));
+    // Its twist bones take half their limbs' turns, from a child.
+    CHECK(placed["modifiers"] == parse(R"(["knight_twists"])"));
+    const auto& copy = project.session->world().ecs().get<world::CopyTransformModifier3D>(
+        project.session->world().find("knight_twists"));
+    CHECK(copy.settings.size() == 6);
+    CHECK(scene3d::check_meshes(project.session->world()).empty());
     CHECK(project.session->world()
               .ecs()
               .get<world::Cloth3D>(project.session->world().find("knight"))
               .section == "cape");
-    placed = project.ok(
-        "character.place",
-        R"({"recipe": "groomed.character.json", "id": "groomed", "at": [1, 0, 0], "yaw": 1})");
+    placed = project.ok("character.place",
+                        R"({"recipe": "groomed.character.json", "id": "groomed", "at": [1, 0, 0],
+                            "yaw": 1, "look_at": "camera"})");
     CHECK(placed["components"].as_array().back().as_string() == "HairInstance3D");
+    // With look_at, its eyes turn toward it.
+    CHECK(placed["modifiers"] ==
+          parse(R"(["groomed_twists", "groomed_look_left", "groomed_look_right"])"));
+    CHECK(scene3d::check_meshes(project.session->world()).empty());
     json::Value frame = project.ok("frame.capture", R"({"points": [[0, 0]]})");
     CHECK(frame["drawn"]["meshes"].as_int() >= 2);
     // Errors name the bad param.

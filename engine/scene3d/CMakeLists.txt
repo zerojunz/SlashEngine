@@ -64,6 +64,7 @@ add_library(slash_scene3d
     src/foliage.cpp
     src/gridmap.cpp
     src/hair.cpp
+    src/bone_constraints.cpp
     src/ik.cpp
     src/lightmap.cpp
     src/lightmap_probes.cpp
