@@ -20,6 +20,7 @@
 #include "slash/scene3d/terrain.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/video/video.hpp"
+#include "slash/world/character.hpp"
 #include "slash/world/hair.hpp"
 #include "slash/world/path.hpp"
 #include "slash/world/wind.hpp"
@@ -457,6 +458,7 @@ void add_systems(world::World& world, asset::Assets& assets) {
     scene3d::add_particles_system(world);
     scene3d::add_streaming_system(world);
     world::add_wind_system(world);
+    world::add_character_system(world);
     procedural::install_foliage(world);
     // Grooms' length, density and color maps read through assets.
     world::install_hair(world);

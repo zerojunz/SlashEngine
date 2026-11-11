@@ -1,0 +1,26 @@
+{
+  "clothing": [
+    {
+      "color": [0.627, 0.125, 0.125],
+      "kind": "shirt"
+    },
+    {
+      "color": [0.353, 0.227, 0.133],
+      "kind": "pants"
+    },
+    {
+      "color": [0.063, 0.063, 0.063],
+      "kind": "boots",
+      "material": "leather"
+    },
+    {
+      "color": [0.941, 0.91, 0.816],
+      "kind": "cape",
+      "length": 0.8
+    }
+  ],
+  "extends": "characters/hero.character.json",
+  "format": 1,
+  "name": "Hero's double",
+  "role": "npc"
+}
