@@ -9,6 +9,7 @@
 #include "slash/render/image.hpp"
 #include "slash/scene3d/blend_shapes.hpp"
 #include "slash/scene3d/bone_attachment.hpp"
+#include "slash/scene3d/cloth.hpp"
 #include "slash/scene3d/cluster_streaming.hpp"
 #include "slash/scene3d/csg.hpp"
 #include "slash/scene3d/fracture.hpp"
@@ -1053,6 +1054,9 @@ std::vector<Problem> check_meshes(const world::World& world) {
     for (Problem& problem : check_soft_bodies(world)) {
         problems.push_back(std::move(problem));
     }
+    for (Problem& problem : check_cloths(world)) {
+        problems.push_back(std::move(problem));
+    }
     for (Problem& problem : check_destructibles(world)) {
         problems.push_back(std::move(problem));
     }
@@ -1652,6 +1656,49 @@ Result<render::MeshId> Renderer::soft_mesh(const std::string& key, const Primiti
     return soft.id;
 }
 
+Result<render::MeshId> Renderer::cloth_mesh(const std::string& key, const ModelSurface& surface,
+                                            const std::shared_ptr<const SoftBodyPose>& pose,
+                                            std::size_t moved) {
+    Skinned& cloth = skinned_[key];
+    cloth.used = frame_;
+    if (cloth.id != render::MeshId::None && cloth.soft == pose) {
+        return cloth.id;
+    }
+    const SoftBodyPose::Surface& where = pose->surfaces[moved];
+    if (where.positions.size() != surface.vertices.size() ||
+        where.normals.size() != surface.vertices.size()) {
+        if (cloth.id == render::MeshId::None) {
+            skinned_.erase(key);
+        }
+        return make_error(ErrorCode::InvalidArgument,
+                          "the cloth's points don't match its surface's vertices");
+    }
+    skinned_vertices_ = surface.vertices;
+    for (std::size_t i = 0; i < skinned_vertices_.size(); ++i) {
+        const Vec3 position = where.positions[i];
+        const Vec3 normal = where.normals[i];
+        skinned_vertices_[i].position = {static_cast<float>(position.x),
+                                         static_cast<float>(position.y),
+                                         static_cast<float>(position.z)};
+        skinned_vertices_[i].normal = {static_cast<float>(normal.x), static_cast<float>(normal.y),
+                                       static_cast<float>(normal.z)};
+    }
+    if (cloth.id == render::MeshId::None) {
+        auto made = device_->create_mesh(skinned_vertices_, surface.indices);
+        if (!made) {
+            skinned_.erase(key);
+            return made.error();
+        }
+        cloth.id = made.value();
+    } else if (auto updated = device_->update_mesh(cloth.id, skinned_vertices_); !updated) {
+        return updated.error();
+    }
+    cloth.soft = pose;
+    cloth.joints.clear();
+    cloth.box = bounds_of(skinned_vertices_);
+    return cloth.id;
+}
+
 Result<render::MeshId> Renderer::skinned_mesh(const std::string& key, const ModelSurface& surface,
                                               const std::vector<world::Affine3D>& joints,
                                               const std::vector<float>& shape_weights) {
@@ -1828,6 +1875,10 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
         center->second.second = frame_;
         captured = capture(entity, place.apply(center->second.first));
     }
+    std::shared_ptr<const SoftBodyPose> cloth;
+    if (world.ecs().all_of<world::Cloth3D>(entity)) {
+        cloth = soft_body_pose(world, entity);
+    }
     for (std::size_t p = 0; p < model.parts.size(); ++p) {
         const ModelPart& part = model.parts[p];
         const bool posed = !globals.empty() && part.node_index >= 0 &&
@@ -1867,13 +1918,27 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
                 surface_weights = mesh_weights(mesh, shape_weights);
             }
             const bool morphed = any_blend(surface_weights);
-            const bool deformed = skinned || morphed;
-            auto made =
-                deformed ? skinned_mesh(skin_prefix + std::to_string(p) + "/" + std::to_string(i),
-                                        surface, skinned ? joints : std::vector<world::Affine3D>{},
-                                        morphed ? surface_weights : std::vector<float>{})
-                         : kept_mesh(prefix + std::to_string(part.mesh) + "/" + std::to_string(i),
-                                     surface.vertices, surface.indices, surface.lods);
+            // A Cloth3D's surfaces draw where physics put them, in the model's space.
+            std::size_t moved = 0;
+            while (cloth != nullptr && moved < cloth->surfaces.size() &&
+                   (cloth->surfaces[moved].part != p || cloth->surfaces[moved].surface != i)) {
+                ++moved;
+            }
+            const bool simulated = cloth != nullptr && moved < cloth->surfaces.size();
+            const bool deformed = skinned || morphed || simulated;
+            const std::string deformed_key =
+                skin_prefix + std::to_string(p) + "/" + std::to_string(i) + (simulated ? "c" : "");
+            Result<render::MeshId> made = render::MeshId::None;
+            if (simulated) {
+                made = cloth_mesh(deformed_key, surface, cloth, moved);
+            } else if (deformed) {
+                made = skinned_mesh(deformed_key, surface,
+                                    skinned ? joints : std::vector<world::Affine3D>{},
+                                    morphed ? surface_weights : std::vector<float>{});
+            } else {
+                made = kept_mesh(prefix + std::to_string(part.mesh) + "/" + std::to_string(i),
+                                 surface.vertices, surface.indices, surface.lods);
+            }
             if (!made) {
                 problems_.push_back({entity, std::string(kMeshField), made.error().message});
                 continue;
@@ -1881,10 +1946,9 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
             Draw draw;
             draw.mesh = made.value();
             draw.entity = entity;
-            draw.transform = skinned ? place.matrix() : transform;
+            draw.transform = skinned || simulated ? place.matrix() : transform;
             if (deformed) {
-                const Skinned& kept =
-                    skinned_.at(skin_prefix + std::to_string(p) + "/" + std::to_string(i));
+                const Skinned& kept = skinned_.at(deformed_key);
                 draw.lods = &kept.lods;
                 draw.box = kept.box;
             } else {

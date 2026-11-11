@@ -2477,6 +2477,48 @@ struct Ragdoll2D {
 SLASH_COMPONENT(Ragdoll2D, profile, overrides, state, rest_state, strength, weakness, reaction,
                 still, rising)
 
+// A cut-out character's cloth, as Unreal's Chaos Cloth on a 2D sheet (Godot has none): a grid of
+// columns by rows points hanging down its entity's y from offset, size pixels across and down,
+// drawn with texture over it. Its entity's global transform carries the points along, each free
+// to move up to its share of max_distance from where the transform puts it ("uniform" all of
+// it; "gradient" from 0 where the sheet is farthest back along gradient to 1 where it is
+// farthest along it, so a cape's top row is held and its hem swings). Points with no share are
+// held exactly. Edges, bends and tethers to the held points keep its shape; it is pushed out of
+// the 2D bodies its mask meets and feels gravity, PhysicsField2Ds and WindSource2Ds' wind.
+struct Cloth2D {
+    std::string texture; // project path of an image drawn over the sheet; "" draws it in color
+    Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};        // multiplies the texture, as a modulate
+    Vec2 size{48.0F, 96.0F};                   // pixels across and down
+    Vec2 offset;                               // where its top edge's middle is, in its space
+    int columns = 4;                           // points across, 2 to 64
+    int rows = 8;                              // points down, 2 to 64
+    float max_distance = 48.0F;                // pixels, at a share of 1
+    std::string max_distance_map = "gradient"; // "uniform" or "gradient"
+    Vec2 gradient{0.0F, 1.0F};                 // in its own space: down by default
+    float stiffness = 0.9F;                    // 0 to 1: how hard edges keep their length
+    float bend_stiffness = 0.2F;       // 0 to 1: how hard it keeps from folding and shearing
+    bool long_range_attachment = true; // tethers points to the held ones nearest
+    float total_mass = 1.0F;           // kilograms, shared by the free points
+    float gravity_scale = 1.0F;
+    float damping_coefficient = 0.5F;
+    float drag_coefficient = 0.0F; // how hard WindSource2Ds' wind carries it, 0 to 1
+    int simulation_precision = 5;  // small steps per tick
+    std::uint32_t collision_mask = 1;
+    float point_radius = 2.0F; // pixels each point keeps from what it collides with
+    int z_index = 0;
+    bool z_as_relative = true;
+    bool visible = true;
+    int light_mask = 1;
+    std::string texture_filter = "inherit"; // "inherit", "linear" or "nearest"
+
+    friend bool operator==(const Cloth2D&, const Cloth2D&) = default;
+};
+SLASH_COMPONENT(Cloth2D, texture, color, size, offset, columns, rows, max_distance,
+                max_distance_map, gradient, stiffness, bend_stiffness, long_range_attachment,
+                total_mass, gravity_scale, damping_coefficient, drag_coefficient,
+                simulation_precision, collision_mask, point_radius, z_index, z_as_relative, visible,
+                light_mask, texture_filter)
+
 // A point of a SoftBody3D's mesh held in place, as Godot's pinned_points and attachments: with an
 // attachment, it follows the attachment's Transform3D at offset in its space; without, it stays
 // where it is.
@@ -2516,6 +2558,42 @@ SLASH_COMPONENT(SoftBody3D, collision_layer, collision_mask, parent_collision_ig
                 simulation_precision, total_mass, linear_stiffness, shrinking_factor,
                 pressure_coefficient, damping_coefficient, drag_coefficient, ray_pickable,
                 pinned_points)
+
+// Simulates part of the model its entity's MeshInstance3D draws as cloth on its skin, as Unreal's
+// Chaos Cloth (Godot has none): the surfaces drawn with the material named section become a
+// Jolt soft body whose points the model's skin (its skeleton as animated, or its nodes) carries
+// along, each free to move up to its share of max_distance from where the skin puts it and kept
+// out of a backstop sphere behind it, as Chaos's painted max distance and backstop maps. The
+// map gives each point its share: "uniform" all of it, "gradient" from 0 where the section is
+// farthest back along gradient to 1 where it is farthest along it (a cape's top to its hem), and
+// "vertex_color" a channel of the vertices' colors, as an artist painted it. A point with no
+// share is skinned exactly. It collides with the bodies its mask meets, a character's
+// PhysicalBone3Ds included, and feels gravity, fields and WindSource3Ds' wind.
+struct Cloth3D {
+    std::string section;                       // the material's name; "" for every surface
+    float max_distance = 0.1F;                 // meters, at a share of 1
+    std::string max_distance_map = "gradient"; // "uniform", "gradient" or "vertex_color"
+    Vec3 gradient{0.0F, -1.0F, 0.0F};          // in the model's space, at rest
+    std::string vertex_color_channel = "r";    // "r", "g", "b" or "a"
+    float backstop_distance = 0.0F;            // meters behind the skin the sphere starts
+    float backstop_radius = 0.0F;              // meters; 0 for no backstop
+    float stiffness = 0.9F;                    // 0 to 1: how hard edges keep their length
+    float bend_stiffness = 0.2F;               // 0 to 1: how hard it keeps its folds
+    bool long_range_attachment = true;         // tethers points to the skinned ones nearest
+    float total_mass = 1.0F;                   // kilograms, shared by the free points
+    float gravity_scale = 1.0F;
+    float damping_coefficient = 0.01F;
+    float drag_coefficient = 0.0F; // how hard WindSource3Ds' wind pushes its faces
+    int simulation_precision = 5;
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+
+    friend bool operator==(const Cloth3D&, const Cloth3D&) = default;
+};
+SLASH_COMPONENT(Cloth3D, section, max_distance, max_distance_map, gradient, vertex_color_channel,
+                backstop_distance, backstop_radius, stiffness, bend_stiffness,
+                long_range_attachment, total_mass, gravity_scale, damping_coefficient,
+                drag_coefficient, simulation_precision, collision_layer, collision_mask)
 
 // Breaks a body into pieces, as Unreal's geometry collections (Godot has no destruction): the
 // mesh its entity's MeshInstance3D draws is cut into Voronoi cells around seeded points, and

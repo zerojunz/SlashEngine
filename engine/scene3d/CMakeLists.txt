@@ -75,6 +75,7 @@ add_library(slash_scene3d
     src/particles.cpp
     src/occlusion.cpp
     src/physical_bones.cpp
+    src/cloth.cpp
     src/ragdoll.cpp
     src/primitive.cpp
     src/recipe.cpp

@@ -256,6 +256,9 @@ void install(world::World& world, const Settings& settings) {
     auto space = std::make_shared<Space>(settings);
     world.ecs().ctx().emplace<std::shared_ptr<Space>>(space);
     world.add_reset([space](world::World& /*world*/) { space->reset(); });
+    world::set_cloth_2d_source(world, [space](const world::World& /*world*/, entt::entity entity) {
+        return space->cloth_points(entity);
+    });
     world.add_memory_source("physics2d",
                             [space](const world::World& /*world*/) { return space->memory(); });
     world.add_system(

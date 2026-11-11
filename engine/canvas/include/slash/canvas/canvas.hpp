@@ -429,6 +429,9 @@ private:
         bool seen = false;
     };
 
+    // What draw() hands the parts it gathers in functions of their own.
+    struct DrawState;
+    void gather_cloths(DrawState& state);
     // The tile set at a path.
     Result<const TileSet*> tile_set(const std::string& path);
     // A light texture's image.

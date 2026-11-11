@@ -1,5 +1,7 @@
 add_library(slash_physics2d
     src/character.cpp
+    src/cloth.cpp
+    src/debug.cpp
     src/fields.cpp
     src/physics2d.cpp
     src/polygon.cpp
