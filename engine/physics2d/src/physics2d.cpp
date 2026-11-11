@@ -259,6 +259,10 @@ void install(world::World& world, const Settings& settings) {
     world::set_cloth_2d_source(world, [space](const world::World& /*world*/, entt::entity entity) {
         return space->cloth_points(entity);
     });
+    world::install_hair(world);
+    world::set_hair_source_2d(world, [space](const world::World& /*world*/, entt::entity entity) {
+        return space->hair_strands(entity);
+    });
     world.add_memory_source("physics2d",
                             [space](const world::World& /*world*/) { return space->memory(); });
     world.add_system(

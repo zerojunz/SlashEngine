@@ -147,7 +147,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, physics_material, ragdoll, foliage, sdk, plugin)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, physics_material, ragdoll, foliage, groom, sdk, plugin)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -157,7 +157,7 @@ Validate after editing a scene or prefab by hand, and format before committing o
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
-`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`, `.scatter.json`, `.physics_material.json`, `.ragdoll.json` and `.foliage.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
+`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`, `.scatter.json`, `.physics_material.json`, `.ragdoll.json`, `.foliage.json` and `.groom.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -2000,6 +2000,25 @@ entity's: physics3d takes `scene3d::foliage_bodies` (`src/foliage.cpp`) as grid 
 cell per instance, physics2d takes polygons through the canvas's tile shape source, so
 `physics.raycast` names the `instance` hit. `foliage.paint`, `erase`, `get` and `harvest` are in
 `engine/command/src/scatter.cpp`. `examples/foliage` paints a meadow in 3D and 2D.
+
+Hair and fur are Unreal's Groom and its Chaos hair (Godot has none): a `.groom.json` file
+(`slash/world/hair.hpp`, `engine/world/src/hair.cpp`, built with `-ffp-contract=off`;
+`$cli schema groom`) says how strands grow, draw and move. `world::step_strands` is the solver
+both dimensions share (2D at z 0): small steps of position-based dynamics with a pull toward the
+groomed shape that weakens toward the tips, bends, follow-the-leader lengths with Müller's
+damping correction, wind, fields and the `StrandCollider`s `strand_colliders_3d` and `_2d` find
+under the hair's tree root. `scene3d::hair_growth` (`src/hair.cpp`) grows a `HairInstance3D`'s
+guides over `model_section` (cloth's section, which now carries normals and texture
+coordinates) by area with hashed randoms, and the strands drawn that `world::follow_guide`
+places, kept in the world by key (`world::keep_hair_3d`); `hair_frames` carries each root by its
+joints' blend. physics3d's `Space::step_hair` and physics2d's `step_hair_2d` (each
+`src/hair.cpp`) step the guides after the bodies and hand them to drawing through
+`world::set_hair_source_3d` and `_2d`; `scene3d::Renderer::add_hair` draws strands and cards
+(`hair_ribbons`) and fur shells (`hair_shell`, the pattern `hair_shell_image` at
+`made:hair/shells`), and `CanvasRenderer::gather_hair` 2D ribbons. Maps read through
+`world::set_hair_image_reader`, which `canvas::install` sets. `hair.get`
+(`engine/command/src/hair.cpp`) reads them; `examples/hair-and-fur` grows a head, a creature and
+a mane.
 
 Physics materials and fields make one simulation, after Unreal's Chaos. A
 `.physics_material.json` file (`slash/world/physics_material.hpp`: Godot's `PhysicsMaterial`

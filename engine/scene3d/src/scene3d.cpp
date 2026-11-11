@@ -17,6 +17,7 @@
 #include "slash/scene3d/fracture.hpp"
 #include "slash/scene3d/gpu_particles.hpp"
 #include "slash/scene3d/gridmap.hpp"
+#include "slash/scene3d/hair.hpp"
 #include "slash/scene3d/ik.hpp"
 #include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/material.hpp"
@@ -29,6 +30,7 @@
 #include "slash/scene3d/terrain.hpp"
 #include "slash/scene3d/virtual_geometry.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
+#include "slash/world/hair.hpp"
 #include "slash/world/path.hpp"
 #include "slash/world/serialize.hpp"
 #include "slash/world/wind.hpp"
@@ -1122,6 +1124,9 @@ std::vector<Problem> check_meshes(const world::World& world) {
         problems.push_back(std::move(problem));
     }
     for (Problem& problem : check_cloths(world)) {
+        problems.push_back(std::move(problem));
+    }
+    for (Problem& problem : check_hair(world)) {
         problems.push_back(std::move(problem));
     }
     for (Problem& problem : check_destructibles(world)) {
@@ -2729,6 +2734,165 @@ void Renderer::add_particles(const world::World& world, entt::entity entity,
 
 namespace {
 
+world::Affine3D mixed(const world::Affine3D& a, const world::Affine3D& b, float t) {
+    world::Affine3D out;
+    out.x = a.x + ((b.x - a.x) * t);
+    out.y = a.y + ((b.y - a.y) * t);
+    out.z = a.z + ((b.z - a.z) * t);
+    out.origin = a.origin + ((b.origin - a.origin) * t);
+    return out;
+}
+
+constexpr std::string_view kHairShells = "made:hair/shells";
+
+} // namespace
+
+void Renderer::hair_mesh(const std::string& key, entt::entity entity,
+                         std::span<const render::Vertex3D> vertices,
+                         std::span<const std::uint32_t> indices, const render::Material3D& material,
+                         std::uint32_t layers, render::ShadowCasting casting) {
+    if (vertices.empty() || indices.empty()) {
+        return;
+    }
+    if (vertices.size() > render::kMaxMeshVertices || indices.size() > render::kMaxMeshIndices) {
+        problems_.push_back({entity, "/components/HairInstance3D/groom",
+                             "the groom makes too many corners to draw; lower its density, "
+                             "max_strands, segments or shell_count"});
+        return;
+    }
+    ParticleMesh& kept = particle_meshes_[key];
+    kept.used = frame_;
+    if (kept.id != render::MeshId::None && kept.vertices != vertices.size()) {
+        device_->destroy_mesh(kept.id);
+        kept.id = render::MeshId::None;
+    }
+    if (kept.id == render::MeshId::None) {
+        auto created = device_->create_mesh(vertices, indices);
+        if (!created) {
+            problems_.push_back(
+                {entity, "/components/HairInstance3D/groom", created.error().message});
+            particle_meshes_.erase(key);
+            return;
+        }
+        kept.id = created.value();
+        kept.vertices = vertices.size();
+    } else if (auto updated = device_->update_mesh(kept.id, vertices); !updated) {
+        problems_.push_back({entity, "/components/HairInstance3D/groom", updated.error().message});
+        return;
+    }
+    Draw draw;
+    draw.mesh = kept.id;
+    draw.entity = entity;
+    draw.transform = world::Affine3D{}.matrix();
+    draw.material = material;
+    draw.layers = layers;
+    draw.shadows = casting;
+    draw.box = bounds_of(vertices);
+    draws_.push_back(draw);
+}
+
+void Renderer::add_hair(const world::World& world, const world::Tree3D& tree, entt::entity entity,
+                        std::uint32_t cull_mask, float interpolation) {
+    const auto& hair = world.ecs().get<const world::HairInstance3D>(entity);
+    if (!hair.visible) {
+        return;
+    }
+    const auto* instance = world.ecs().try_get<const world::MeshInstance3D>(entity);
+    const std::uint32_t layers = instance != nullptr ? instance->layers : 1U;
+    render::ShadowCasting casting = casting_of(hair.cast_shadow);
+    if ((layers & cull_mask) == 0) {
+        if (casting == render::ShadowCasting::Off) {
+            return;
+        }
+        casting = render::ShadowCasting::ShadowsOnly;
+    }
+    auto grown = hair_growth(world, entity);
+    if (!grown) {
+        return; // check_hair says why
+    }
+    const HairGrowth3D& growth = *grown.value();
+    const world::Groom& groom = *growth.groom;
+    // The guides and their roots' frames now, relative to the render origin.
+    std::vector<world::Affine3D> frames;
+    std::vector<Vec3> guides;
+    const world::HairStrands* simulated = world::hair_strands_3d(world, entity);
+    if (simulated != nullptr && simulated->points == growth.points &&
+        simulated->current.size() == growth.rest.size() &&
+        simulated->previous.size() == growth.rest.size() &&
+        simulated->frames.size() == growth.guides.size() &&
+        simulated->previous_frames.size() == growth.guides.size()) {
+        for (std::size_t g = 0; g < simulated->frames.size(); ++g) {
+            frames.push_back(
+                mixed(simulated->previous_frames[g], simulated->frames[g], interpolation));
+        }
+        guides.reserve(simulated->current.size());
+        for (std::size_t i = 0; i < simulated->current.size(); ++i) {
+            guides.push_back(simulated->previous[i] +
+                             ((simulated->current[i] - simulated->previous[i]) * interpolation));
+        }
+    } else {
+        frames = hair_frames(world, tree, entity, growth);
+        guides = hair_targets(growth, frames);
+    }
+    for (world::Affine3D& frame : frames) {
+        frame.origin = frame.origin - render_origin_;
+    }
+    for (Vec3& point : guides) {
+        point = point - render_origin_;
+    }
+    world::StandardMaterial3D look;
+    look.vertex_color_use_as_albedo = true;
+    look.roughness = groom.roughness;
+    look.metallic_specular = groom.specular;
+    look.anisotropy_enabled = groom.anisotropy != 0.0F;
+    look.anisotropy = groom.anisotropy;
+    look.cull_mode = "disabled";
+    const std::string prefix = "hair:" + std::to_string(entt::to_integral(entity)) + "/" +
+                               std::to_string(std::hash<std::string>{}(growth.key)) + "/";
+    if (groom.render != "shells") {
+        if (groom.render == "cards" && !groom.texture.empty()) {
+            look.albedo_texture = groom.texture;
+            look.transparency = "alpha_scissor";
+        }
+        const render::Material3D made = material(look, textures_, problems_, entity);
+        std::vector<render::Vertex3D> vertices;
+        std::vector<std::uint32_t> indices;
+        hair_ribbons(growth, guides, frames, camera_place_.origin - render_origin_, vertices,
+                     indices);
+        hair_mesh(prefix + "0", entity, vertices, indices, made, layers, casting);
+        return;
+    }
+    // Fur: the skin where it is now, raised in layers, each showing the pattern's strands taller
+    // than its height.
+    if (asset::Assets* assets = asset::assets_of(world.ecs());
+        assets != nullptr && !assets->load<render::Image>(kHairShells)) {
+        render::Image image = hair_shell_image();
+        const std::size_t bytes = image.pixels.size();
+        (void)assets->put(kHairShells, std::move(image), bytes);
+    }
+    const std::vector<Vec3> targets = hair_targets(growth, frames);
+    std::vector<Vec3> positions;
+    std::vector<Vec3> normals;
+    hair_skin(world, tree, entity, growth, positions, normals);
+    for (Vec3& point : positions) {
+        point = point - render_origin_;
+    }
+    look.albedo_texture = std::string(kHairShells);
+    look.transparency = "alpha_scissor";
+    const int count = std::clamp(groom.shell_count, 1, 64);
+    std::vector<render::Vertex3D> vertices;
+    for (int layer = 0; layer < count; ++layer) {
+        look.alpha_scissor_threshold =
+            static_cast<float>(layer + 1) / static_cast<float>(count + 1);
+        const render::Material3D made = material(look, textures_, problems_, entity);
+        hair_shell(growth, positions, normals, guides, targets, layer, vertices);
+        hair_mesh(prefix + std::to_string(layer), entity, vertices, growth.section->indices, made,
+                  layers, casting);
+    }
+}
+
+namespace {
+
 // Defined with the VoxelGIs' code below.
 Bounds placed_bounds(const Bounds& box, const std::array<float, 16>& m);
 
@@ -3975,6 +4139,12 @@ std::optional<Frame3D> Renderer::prepare(
     for (const entt::entity entity : made<world::CPUParticles3D>(world)) {
         if (tree.visible(entity)) {
             add_particles(world, entity, global(entity), camera_global, lens.cull_mask, t);
+        }
+    }
+    // HairInstance3Ds draw their grooms over their models.
+    for (const entt::entity entity : made<world::HairInstance3D>(world)) {
+        if (tree.visible(entity)) {
+            add_hair(world, tree, entity, lens.cull_mask, t);
         }
     }
     // GPUParticles3Ds run the steps their device hasn't, then draw their draw passes there.

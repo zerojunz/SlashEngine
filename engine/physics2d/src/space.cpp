@@ -393,6 +393,7 @@ void Space::reset() {
     tiles_.clear();
     joints_.clear();
     cloths_.clear();
+    hairs_.clear();
     world_ = b2_nullWorldId;
     ground_ = b2_nullBodyId;
     impulses_.clear();
@@ -1470,6 +1471,7 @@ void Space::step(world::World& world, float seconds) {
     if (!b2World_IsValid(world_)) {
         impulses_.clear();
         step_cloths(world, tree, seconds);
+        step_hair_2d(world, seconds);
         return;
     }
     entt::registry& registry = world.ecs();
@@ -1566,6 +1568,7 @@ void Space::step(world::World& world, float seconds) {
     read_back(world, tree);
     move_characters(world, tree, seconds);
     step_cloths(world, tree, seconds);
+    step_hair_2d(world, seconds);
     emit_events(world);
     if (debug_ != nullptr) {
         finish_debug(world, *std::exchange(debug_, nullptr));
