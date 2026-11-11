@@ -4,9 +4,11 @@
 #include "slash/core/text.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/scene3d/character.hpp"
+#include "slash/scene3d/flesh.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/world/character.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/flesh.hpp"
 
 #include <algorithm>
 #include <array>
@@ -20,7 +22,7 @@
 #include <utility>
 #include <vector>
 
-// character.generate, character.check and character.place, over .character.json recipes
+// character.generate, character.check, character.place and flesh.get, over .character.json recipes
 // (slash/world/character.hpp) and the models they build (slash/scene3d/character.hpp). Built with
 // -ffp-contract=off, so a generated recipe is the same everywhere.
 namespace slash::command {
@@ -1012,6 +1014,8 @@ Reply character_place(Session& session, const json::Value& params) {
     }
     const json::Array& at = params.find("at")->as_array();
     const bool flat = at.size() == 2;
+    const json::Value* flesh = params.find("flesh");
+    const bool with_flesh = flesh != nullptr && flesh->as_bool();
     entt::entity parent{entt::null};
     if (const json::Value* given = params.find("parent"); given != nullptr) {
         parent = world.find(given->as_string());
@@ -1053,6 +1057,10 @@ Reply character_place(Session& session, const json::Value& params) {
         character.look_at = look_at;
         ecs.emplace<world::Character2D>(entity, character);
         components = {"Transform2D", "Character2D"};
+        if (with_flesh) {
+            ecs.emplace<world::Flesh2D>(entity);
+            components.emplace_back("Flesh2D");
+        }
         if (parent != entt::null) {
             if (auto* tree = ecs.try_get<world::Transform2D>(parent); tree != nullptr) {
                 tree->children.push_back(entity);
@@ -1071,6 +1079,10 @@ Reply character_place(Session& session, const json::Value& params) {
         instance.mesh = recipe_path;
         ecs.emplace<world::MeshInstance3D>(entity, instance);
         components = {"Transform3D", "MeshInstance3D"};
+        if (with_flesh) {
+            ecs.emplace<world::Flesh3D>(entity);
+            components.emplace_back("Flesh3D");
+        }
         if (!recipe.value().hair.groom.empty()) {
             world::HairInstance3D hair;
             hair.groom = recipe.value().hair.groom;
@@ -1147,6 +1159,72 @@ Reply character_place(Session& session, const json::Value& params) {
     }
     result["components"] = std::move(components);
     result["height"] = rounded(recipe.value().body.height, 100.0);
+    return Reply::success(std::move(result));
+}
+
+// Whether a muscle is one of those asked for, by its name, kind or group.
+bool asked_for(const world::MuscleReport& muscle, const json::Value* only) {
+    if (only == nullptr) {
+        return true;
+    }
+    return std::ranges::any_of(only->as_array(), [&muscle](const json::Value& name) {
+        const std::string& text = name.as_string();
+        return text == muscle.name || text == muscle.kind || text == muscle.group;
+    });
+}
+
+Reply flesh_get(Session& session, const json::Value& params) {
+    const world::World& world = session.world();
+    const std::string& id = params.find("id")->as_string();
+    const entt::entity entity = world.find(id);
+    if (entity == entt::null) {
+        return param_error(code::kNotFound, "/id", "no entity has the id " + quoted(id));
+    }
+    const auto& ecs = world.ecs();
+    const bool three_d = ecs.all_of<world::Flesh3D>(entity);
+    if (!three_d && !ecs.all_of<world::Flesh2D>(entity)) {
+        return param_error(code::kInvalidParams, "/id", quoted(id) + " has no Flesh3D or Flesh2D");
+    }
+    const world::FleshView view =
+        three_d ? scene3d::flesh_3d(world, entity) : world::flesh_2d(world, entity);
+    if (view.body == nullptr) {
+        return param_error(code::kInvalidParams, "/id",
+                           quoted(id) +
+                               " has no flesh yet: it steps once its flesh is enabled, draws a "
+                               ".character.json recipe and a tick has passed");
+    }
+    const json::Value* only = params.find("muscles");
+    json::Value result;
+    result["dimensions"] = view.body->dimensions;
+    result["points"] = static_cast<std::int64_t>(view.body->points.size());
+    result["elements"] = static_cast<std::int64_t>(view.body->elements.size());
+    json::Array muscles;
+    for (const world::MuscleReport& muscle : world::muscle_reports(*view.body, *view.state)) {
+        if (!asked_for(muscle, only)) {
+            continue;
+        }
+        json::Value item;
+        item["name"] = muscle.name;
+        item["kind"] = muscle.kind;
+        item["group"] = muscle.group;
+        item["activation"] = rounded(muscle.activation) + 0.0;
+        item["length"] = rounded(muscle.length) + 0.0;
+        item["bulge"] = rounded(muscle.bulge) + 0.0;
+        muscles.push_back(std::move(item));
+    }
+    result["muscles"] = std::move(muscles);
+    const json::Value* bones = params.find("bones");
+    if (bones != nullptr && bones->as_bool() && view.anatomy != nullptr) {
+        json::Array out;
+        for (const world::AnatomyBone& bone : view.anatomy->bones) {
+            json::Value item;
+            item["name"] = bone.name;
+            item["kind"] = bone.kind;
+            item["bone"] = bone.bone;
+            out.push_back(std::move(item));
+        }
+        result["bones"] = std::move(out);
+    }
     return Reply::success(std::move(result));
 }
 
@@ -1236,9 +1314,27 @@ void register_character_commands(Registry& registry) {
                              {"yaw", property("number", "3D: radians it is turned about y.")},
                              {"pixels_per_meter", std::move(ppm)},
                              {"flip_h", property("boolean", "2D: face left.")},
-                             {"look_at", text_property("An entity its eyes follow.")}},
+                             {"look_at", text_property("An entity its eyes follow.")},
+                             {"flesh", property("boolean", "Adds a Flesh3D or Flesh2D: muscles "
+                                                           "under its skin that bulge and "
+                                                           "jiggle.")}},
                             {"recipe", "id", "at"}),
         .handler = character_place,
+    });
+    json::Value only = property("array", "Muscles by name, kind or group. Default all.");
+    only["items"] = text_property("A muscle's name (biceps_left), kind (biceps) or group (arm).");
+    registry.add({
+        .name = "flesh.get",
+        .description = "Reads a Flesh3D's or Flesh2D's muscles as they stepped last: each one's "
+                       "activation, length against its rest length and how far it bulges; with "
+                       "bones, the skeleton's bones and the rig bone moving each.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = schema_of({{"id", text_property("An entity with Flesh3D or Flesh2D.")},
+                             {"muscles", std::move(only)},
+                             {"bones", property("boolean", "Also list the anatomy's bones.")}},
+                            {"id"}),
+        .handler = flesh_get,
     });
 }
 

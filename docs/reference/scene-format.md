@@ -5068,7 +5068,7 @@ from 0.5 to 1.5.
 | `format` | required | `1` |
 | `extends` | | A `.character.json` file this one changes, as a JSON Merge Patch: objects merge, other values (`clothing` and `props` included) replace; at most 8 deep |
 | `name`, `role`, `faction` | `""`, `"npc"`, `""` | Who it is, `"player"` or `"npc"`, and a storyboard faction's ID |
-| `body` | | `height` (`1.75` meters to the top of the head, 0.4 to 3), `build` (`0.5`, 0 slight to 1 heavy), `head`, `neck`, `shoulders`, `hips`, `arms`, `legs` (`1`) and `skin` |
+| `body` | | `height` (`1.75` meters to the top of the head, 0.4 to 3), `build` (`0.5`, 0 slight to 1 heavy), `head`, `neck`, `shoulders`, `hips`, `arms`, `legs` (`1`), `skin`, `muscle` (`0.5`, 0 to 1: how big its muscles are) and `fat` (`0.3`, 0 to 1: how thick the fat over them is, which softens how much they show) |
 | `face` | | `eyes` (the irises' color), `eye_size`, `eye_spacing`, `nose`, `ears` (`1`), `lips` and `beard` (`"none"`, `"stubble"`, `"short"` or `"long"`, in the hair's color) |
 | `hair` | | `style` (`"short"`; `"none"`, `"long"`, `"ponytail"`, `"bun"` or `"mohawk"`), `color`, `length` (`0.5`, how far long hair and ponytails hang) and `groom` (a [`.groom.json`](#hair-and-fur) file grown over the model's `"scalp"` in place of the style; 3D only) |
 | `clothing` | `[]` | Up to 16 garments from the skin out, each over the ones before: `kind`, `color`, `material` (`"cloth"`, `"leather"`, `"metal"`, `"silk"` or `"fur"`, which set its roughness and metallic), `length` (`1`: sleeves, legs, hems and boots' shafts), `loose` (`0`, how far it stands off the body) and `cloth` (capes, coats, robes, dresses and skirts: simulated as cloth) |
@@ -5119,8 +5119,47 @@ cloth, and only one prop may be at a point; `scene validate` reports each at its
   curl back toward the palm (`"open"`, `"relaxed"`, `"grip"`, `"fist"`, or `"point"` with the
   index straight), turned the way it faces; unset, they go back to rest. Props draw only in 3D.
 
+- **Its anatomy** is a skeleton and muscles under the skin, after Chaos Flesh, sized by the
+  recipe's measures and its body's `muscle` and `fat`, the same in both dimensions. The bones are
+  tapered capsules of 20 kinds (`skull`, `mandible`, `cervical_spine`, `thoracic_spine`,
+  `lumbar_spine`, `ribcage` (eight ribs a side), `sternum`, `pelvis`, `sacrum`, `clavicle`, `scapula`, `humerus`, `radius`, `ulna`, `hand`,
+  `femur`, `patella`, `tibia`, `fibula`, `foot`), each on the rig bone that moves it. The muscles
+  are 28 kinds, each a spindle from its origin to its insertion that stays outside the bone it
+  rests on: `deltoid`, `biceps`, `triceps`, `brachialis`, `brachioradialis`, `forearm_flexors`,
+  `forearm_extensors`, `pectoralis`, `latissimus`, `trapezius`, `rhomboids`, `rectus_abdominis`,
+  `external_oblique`, `erector_spinae`, `gluteus_maximus`, `gluteus_medius`, `rectus_femoris`,
+  `vastus_lateralis`, `vastus_medialis`, `biceps_femoris`, `semitendinosus`, `adductors`,
+  `gastrocnemius`, `soleus`, `tibialis_anterior`, `sternocleidomastoid`, `masseter` and
+  `temporalis`, named `<kind>_left` and `_right` (`_back` and `_front` in 2D, where a pair in the
+  middle of the body keeps only the front one) and in groups (`shoulder`, `arm`, `chest`,
+  `back`, `core`, `hip`, `thigh`, `calf`, `neck`, `jaw`). A model drawn as
+  `"<file>.character.json::skeleton"` is the bones alone, material `bone`, and
+  `"::muscles"` adds the muscles (`muscle`, their tendons `tendon`), both on the same rig as the
+  character's own model, so its animations, `Skeleton3D` and modifiers move them, and a
+  `Flesh3D` on it shows the muscles themselves bulge and jiggle.
+- **Flesh** makes the muscles soft bodies under the skin. Each muscle is rings of points (six
+  round a center in 3D, three across in 2D) joined into tetrahedra (triangles in 2D), its end
+  rings held where its origin's and insertion's bones carry them. The `flesh_3d` and `flesh_2d`
+  systems (priority 957, after physics and ragdolls) step each enabled `Flesh3D` on a character's
+  `MeshInstance3D`, and each `Flesh2D` on a `Character2D`, from where its posed bones are, as
+  Chaos Flesh's XPBD solver does: each element keeps its shape (stiffness) and volume, the
+  fibers pull by the muscle's activation, each point springs toward the shape the muscle takes
+  between its moved ends (shorter is thicker, and an active muscle thicker in its belly) and
+  stays outside its bone, and the body's own acceleration (its root's motion, felt the other way)
+  makes the flesh lag and jiggle. A muscle's activation is the larger of `activation` and its
+  entry in `muscles` (by name, kind or group), plus, when `automatic`, how far it is shorter
+  than at rest. The skin follows: each vertex of the model's skinned surfaces (each point of a
+  cut-out part's `Polygon2D`) is bound at rest to the two muscles nearest it under its own part
+  and moves as they move from where its bones alone carry them, less under thicker fat; the
+  renderer adds it after skinning, eased between ticks. A `Flesh2D`'s `view` shows `"muscles"`
+  or `"skeleton"` over the cut-out as a child `<id>_anatomy` with a `Polygon2D`.
+  [`flesh.get`](commands.md#fleshget) reads the muscles as they are.
+  [examples/character-anatomy](../../examples/character-anatomy/) flexes a strong arm.
+
 | Component | Fields (defaults) |
 | --- | --- |
+| `Flesh3D` | `enabled` `true`, `stiffness` `0.5` (0 soft to 1 firm), `damping` `0.5`, `jiggle` `0.5` (how far and long flesh swings after the body moves), `activation` `0` (every muscle's), `automatic` `true`, `muscles` `{}` (activations by muscle name, kind or group), `substeps` `4` (1 to 16) |
+| `Flesh2D` | `Flesh3D`'s, and `view` `"skin"` (`"muscles"` or `"skeleton"` drawn over the cut-out) |
 | `Character2D` | `recipe` `""`, `pixels_per_meter` `100`, `flip_h` `false`, `look_at` none, `jaw_open` `0`, `hand_front` `""`, `hand_back` `""` |
 | `Polygon2D` | Godot's: `polygon` `[]` (points in its space), `polygons` `[]` (lists of indices into it, each drawn as its own polygon; empty draws `polygon` whole), `color` `[1, 1, 1, 1]`, `vertex_colors` `[]` (a color a point, else `color`), `offset` `[0, 0]`, `texture` `""`, `uv` `[]` (texture pixels a point, else the point itself), `modulate` `[1, 1, 1, 1]`, `z_index` `0`, `z_as_relative` `true`, `visible` `true`, `light_mask` `1`, `texture_filter` `"inherit"` |
 

@@ -13,6 +13,7 @@
 #include "slash/render/image.hpp"
 #include "slash/scene3d/collision.hpp"
 #include "slash/scene3d/csg.hpp"
+#include "slash/scene3d/flesh.hpp"
 #include "slash/scene3d/foliage.hpp"
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/particles.hpp"
@@ -21,6 +22,7 @@
 #include "slash/ui/ui.hpp"
 #include "slash/video/video.hpp"
 #include "slash/world/character.hpp"
+#include "slash/world/flesh.hpp"
 #include "slash/world/hair.hpp"
 #include "slash/world/path.hpp"
 #include "slash/world/wind.hpp"
@@ -459,6 +461,7 @@ void add_systems(world::World& world, asset::Assets& assets) {
     scene3d::add_streaming_system(world);
     world::add_wind_system(world);
     world::add_character_system(world);
+    world::add_flesh_2d_system(world);
     procedural::install_foliage(world);
     // Grooms' length, density and color maps read through assets.
     world::install_hair(world);
@@ -506,6 +509,7 @@ void add_systems(world::World& world, asset::Assets& assets) {
     };
     scene3d::add_gpu_particles_system(world, images, sdfs, models);
     scene3d::install_csg(world, models);
+    scene3d::install_flesh(world, models);
     scene3d::install_model_collision(world, models);
     scene3d::install_foliage_collision(world);
     scene3d::install_gridmap(

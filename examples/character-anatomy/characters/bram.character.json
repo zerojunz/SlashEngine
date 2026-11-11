@@ -1,0 +1,21 @@
+{
+  "body": {
+    "build": 0.6,
+    "fat": 0.15,
+    "height": 1.8,
+    "muscle": 0.85,
+    "skin": [0.62, 0.45, 0.34]
+  },
+  "clothing": [
+    {
+      "color": [0.3, 0.25, 0.2],
+      "kind": "pants"
+    }
+  ],
+  "format": 1,
+  "hair": {
+    "color": [0.12, 0.08, 0.05],
+    "style": "short"
+  },
+  "name": "Bram"
+}
