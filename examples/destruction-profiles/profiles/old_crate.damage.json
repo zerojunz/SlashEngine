@@ -1,0 +1,9 @@
+{
+  "extends": "profiles/crate.damage.json",
+  "format": 1,
+  "health": 12,
+  "name": "old crate",
+  "resist": {
+    "fire": 3
+  }
+}

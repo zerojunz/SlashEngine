@@ -17,6 +17,7 @@ add_library(slash_command
     src/character.cpp
     src/face.cpp
     src/creature.cpp
+    src/damage.cpp
     src/scatter.cpp
     src/hair.cpp
     src/playtest.cpp

@@ -1283,6 +1283,20 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         and walls are carved where explosions reach, all deterministic so replays repeat;
         authored patterns are optional. `damage.apply` and `damage.check` drive and check it,
         for characters, creatures and vehicles alike
+    - [x] Profiles, patterns, levels and connected pieces: `.damage.json` profiles by material
+          (eleven materials' defaults, resistances by kind, damage states that tint and swap
+          materials and meshes, `extends`), the voronoi, impact, radial, splinters, slices and
+          clusters patterns, pieces fine near the hit that break again by level, linked pieces
+          standing on anchors until `settle_stress` (the connection graph's load) breaks their
+          links, in 3D (`Destructible3D`) and 2D (`Destructible2D`, cut with Clipper2 and drawn
+          as `Polygon2D`s), with `damage.apply`, `damage.state`, `damage.check` and 2D
+          `physics.break` (`examples/destruction-profiles`)
+    - [ ] Dents, holes and carving: metal dented and bent by the impulse, holes cut into meshes,
+          walls and terrain carved and cratered where explosions reach, cloth torn where it is
+          pulled too far, in 3D and 2D
+    - [ ] Break effects and every body: the debris, dust, decals and sounds each break leaves,
+          damage to characters, creatures and vehicles, and runtime cuts on the job pool
+          within a time budget
 18. [ ] VFX design: a tool that builds special effects as `.vfx.json` recipes, as Unreal's
         Niagara systems: emitters of CPU and GPU particles, ribbons, trails, mesh particles,
         flipbooks, decals, lights, distortion, screen flashes, camera shakes and sounds,

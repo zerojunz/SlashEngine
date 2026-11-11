@@ -182,6 +182,7 @@ struct ShapeKey {
     bool monitoring = true;
     bool monitorable = true;
     bool overrides = false; // an area that changes gravity or damping
+    bool hits = false;      // a Destructible2D, whose shapes report how hard they are hit
 
     friend bool operator==(const ShapeKey&, const ShapeKey&) = default;
 };
@@ -346,6 +347,17 @@ public:
 
     void queue(const Impulse& impulse) { impulses_.push_back(impulse); }
 
+    // The hardest hit on each Destructible2D in the last step (destruction.cpp), taken by the
+    // destruction pass after it: kilogram-pixels per second, and where, in the world.
+    struct Impact {
+        float impulse = 0.0F;
+        Vec2 point;
+    };
+    [[nodiscard]] std::unordered_map<entt::entity, Impact> take_impacts() {
+        return std::exchange(impacts_, {});
+    }
+    [[nodiscard]] const Settings& settings() const { return settings_; }
+
     [[nodiscard]] Contacts contacts(const world::World& world, entt::entity entity) const;
 
     // Box2D's allocations and what its world holds, for World::memory.
@@ -392,6 +404,8 @@ private:
     void step_cloths(world::World& world, const world::Tree2D& tree, float seconds);
     // Steps every Hair2D's guides (hair.cpp), after the cloths.
     void step_hair_2d(world::World& world, float seconds);
+    // Reads the step's hit events into impacts_ (destruction.cpp).
+    void collect_hits();
 
     struct CachedMaterial {
         std::uint64_t version = 0;
@@ -412,6 +426,7 @@ private:
     EntityMap<std::unique_ptr<Cloth2DBody>> cloths_;
     EntityMap<std::unique_ptr<Hair2DBody>> hairs_;
     std::vector<Impulse> impulses_;
+    std::unordered_map<entt::entity, Impact> impacts_;
     // Who touched whom after the last step, by entity ID, for entered and exited events:
     // (entity, other, other is an area).
     std::set<std::tuple<std::string, std::string, bool>> touching_;
@@ -435,5 +450,9 @@ void move_character(b2WorldId space, Body& body, world::Transform2D& transform,
 // Whether an entity is a Vehicle2D's wheel ("<vehicle>_wheel_<n>"), which may spin faster than
 // Box2D lets other bodies turn, as its allowFastRotation is for (vehicle_tool.cpp).
 [[nodiscard]] bool is_vehicle_wheel(const world::World& world, entt::entity entity);
+
+// Breaks the Destructible2Ds this step's impacts broke, settles linked groups and counts down
+// loose pieces' lifetimes, after a step (destruction.cpp).
+void break_and_age_2d(world::World& world, Space& space, float seconds);
 
 } // namespace slash::physics2d::detail

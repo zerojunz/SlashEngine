@@ -3038,19 +3038,58 @@ struct HairInstance3D {
 };
 SLASH_COMPONENT(HairInstance3D, groom, section, visible, simulate, collide, cast_shadow)
 
+// One cut of a fracture (slash/world/damage.hpp's fracture_sites): cells grown around points
+// a pattern places in the bounds of what is cut, and which of its pieces is meant (a piece's
+// own cut, or the one a later cut cuts again).
+struct FractureCut {
+    // "voronoi" (points anywhere), "impact" (fine near at, coarse away), "radial" (rings and
+    // spokes around at, as glass), "splinters" (long along the longest axis, as wood), "slices"
+    // (slabs across it) or "clusters" (chunks of small cells, as stone crumbles)
+    std::string pattern = "voronoi";
+    int cells = 8;
+    std::uint32_t seed = 0;
+    Vec3 at;           // where it was hit, in the mesh's space (2D: the body's, in pixels)
+    float fine = 0.0F; // how far from at the fine pieces reach; 0: a quarter of the size
+    int index = 0;     // which of its pieces
+
+    friend bool operator==(const FractureCut&, const FractureCut&) = default;
+};
+SLASH_REFLECT(FractureCut, pattern, cells, seed, at, fine, index)
+
+// A piece of a broken body joined to another, as Chaos's connection graph: what it shares with
+// it holds until the load through it is more than its profile's strength times area.
+struct FractureLink {
+    std::string piece; // the other piece's ID
+    float area = 0.0F; // square meters of the face they share (2D: pixels of the edge)
+
+    friend bool operator==(const FractureLink&, const FractureLink&) = default;
+};
+SLASH_REFLECT(FractureLink, piece, area)
+
 // Breaks a body into pieces, as Unreal's geometry collections (Godot has no destruction): the
-// mesh its entity's MeshInstance3D draws is cut into Voronoi cells around seeded points, and
-// when an impact is hard enough, or physics.break says so, the entity is replaced by a rigid
-// body per piece (FracturePiece3D) moving as it moved. Its entity is a StaticBody3D or a
-// RigidBody3D.
+// mesh its entity's MeshInstance3D draws is cut into cells, and when its health runs out (an
+// impact, damage.apply, a strain field) or physics.break says so, the entity is replaced by a
+// rigid body per piece (FracturePiece3D) moving as it moved. With a profile (a .damage.json
+// file, slash/world/damage.hpp) it takes damage as its material does, changes its looks by its
+// damage states, breaks where it was hit by its fracture pattern, breaks again into smaller
+// pieces and, when connected, stands as linked pieces that fall when what holds them goes. Its
+// entity is a StaticBody3D or a RigidBody3D.
 struct Destructible3D {
     int pieces = 8;                // cells the mesh is cut into; empty ones are left out
     std::uint32_t seed = 0;        // picks the cells' points
     float damage_threshold = 0.0F; // kilogram-meters per second of one impact; 0: never by impact
     float mass = 1.0F;             // kilograms the pieces share when the entity isn't a RigidBody3D
     float debris_lifetime = 0.0F;  // seconds the pieces stay; 0 keeps them
+    std::string profile;           // a .damage.json file; "" breaks as the fields above say
+    json::Value overrides;         // a JSON Merge Patch over the profile
+    float health = -1.0F;          // what is left; below 0: the profile's full health
+    int state = 0;                 // the damage state it has reached (0: none)
+    int level = 0;                 // how many times what it is a piece of has broken
+
+    friend bool operator==(const Destructible3D&, const Destructible3D&) = default;
 };
-SLASH_COMPONENT(Destructible3D, pieces, seed, damage_threshold, mass, debris_lifetime)
+SLASH_COMPONENT(Destructible3D, pieces, seed, damage_threshold, mass, debris_lifetime, profile,
+                overrides, health, state, level)
 
 // One piece of a broken Destructible3D: the entity's MeshInstance3D draws only this cell of its
 // mesh's fracture, and its CollisionShape3D is the cell's hull.
@@ -3059,8 +3098,48 @@ struct FracturePiece3D {
     std::uint32_t seed = 0;
     int index = 0;         // which cell
     float lifetime = 0.0F; // seconds before it goes; 0 keeps it
+    // The cuts that made it, first to last, each naming the piece the next one cut (the last
+    // names this one); empty: one voronoi cut of pieces cells by seed, piece index.
+    std::vector<FractureCut> cuts;
+    std::string group;               // the body it broke from, whose linked pieces stand together
+    std::vector<FractureLink> links; // the pieces it is joined to, while it stands
+    bool anchored = false;           // held in place, as the ground holds what stands on it
+
+    friend bool operator==(const FracturePiece3D&, const FracturePiece3D&) = default;
 };
-SLASH_COMPONENT(FracturePiece3D, pieces, seed, index, lifetime)
+SLASH_COMPONENT(FracturePiece3D, pieces, seed, index, lifetime, cuts, group, links, anchored)
+
+// Breaks a 2D body into pieces, as Destructible3D does in 3D: its outline (a CollisionPolygon2D,
+// else its CollisionShape2D, else its Sprite2D's rectangle) is cut into cells, and each piece is
+// a RigidBody2D with a CollisionPolygon2D and a Polygon2D drawing that part of its texture
+// (FracturePiece2D). Its entity is a StaticBody2D or a RigidBody2D.
+struct Destructible2D {
+    int pieces = 8;
+    std::uint32_t seed = 0;
+    float damage_threshold = 0.0F; // kilogram-pixels per second of one impact; 0: never by impact
+    float mass = 1.0F;             // kilograms the pieces share when the entity isn't a RigidBody2D
+    float debris_lifetime = 0.0F;
+    std::string profile; // a .damage.json file
+    json::Value overrides;
+    float health = -1.0F;
+    int state = 0;
+    int level = 0;
+
+    friend bool operator==(const Destructible2D&, const Destructible2D&) = default;
+};
+SLASH_COMPONENT(Destructible2D, pieces, seed, damage_threshold, mass, debris_lifetime, profile,
+                overrides, health, state, level)
+
+// One piece of a broken Destructible2D: its CollisionPolygon2D and Polygon2D hold its outline.
+struct FracturePiece2D {
+    float lifetime = 0.0F;
+    std::string group;
+    std::vector<FractureLink> links;
+    bool anchored = false;
+
+    friend bool operator==(const FracturePiece2D&, const FracturePiece2D&) = default;
+};
+SLASH_COMPONENT(FracturePiece2D, lifetime, group, links, anchored)
 
 // A part of a large world kept in a scene file of its own, loaded while a StreamingSource3D is
 // near it and unloaded when they have all gone, as Unreal's World Partition streams its cells.

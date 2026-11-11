@@ -107,7 +107,7 @@ void Space::apply_fields(const world::World& world, const world::Tree3D& tree, f
         // Strain at or past a breakable body's threshold breaks it after the step, as an impact
         // that strong would.
         if (effect.strain > 0.0F && threshold != breakable_.end() &&
-            effect.strain >= threshold->second) {
+            effect.strain >= threshold->second.threshold) {
             Impact& impact = impacts_[entity];
             if (effect.strain > impact.impulse) {
                 impact = {.impulse = effect.strain,

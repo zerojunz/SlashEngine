@@ -13,6 +13,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 // 2D physics on Box2D v3, as Godot's 2D physics. The components are in slash/world/components.hpp:
@@ -144,5 +145,37 @@ void set_tile_shape_source(world::World& world, TileShapeSource source);
 void apply_impulse(world::World& world, entt::entity entity, Vec2 impulse, Vec2 offset = {});
 // Turns a rigid body at the next physics step, as Godot's apply_torque_impulse.
 void apply_torque_impulse(world::World& world, entt::entity entity, float impulse);
+
+// What damage did to a Destructible2D: how much its health went down (after its profile's
+// resistance), its health and damage state after, and whether it broke, into which pieces, and
+// whether linked pieces fell.
+struct DamageReport2D {
+    std::string id;
+    float dealt = 0.0F;
+    float health = 0.0F;
+    int state = 0;
+    bool broke = false;
+    std::vector<std::string> pieces;
+    bool fell = false;
+};
+
+// Breaks a Destructible2D into pieces now, as its profile (or its legacy cells) cuts it, the
+// pieces flying push pixels a second from from (else from its center). Returns the pieces.
+[[nodiscard]] Result<std::vector<entt::entity>>
+break_body_2d(world::World& world, entt::entity entity, float push = 0.0F,
+              std::optional<Vec2> from = std::nullopt);
+// Does amount damage of a kind ("blunt", "pierce", "cut", "explosive", "fire", "impact") to a
+// Destructible2D at a point in the world, breaking it once its health runs out.
+[[nodiscard]] Result<DamageReport2D> damage_body_2d(world::World& world, entt::entity entity,
+                                                    float amount, std::string_view kind,
+                                                    std::optional<Vec2> at = std::nullopt,
+                                                    float push = 0.0F);
+// Damages every Destructible2D within radius pixels of center, less with distance.
+[[nodiscard]] std::vector<DamageReport2D> damage_area_2d(world::World& world, Vec2 center,
+                                                         float radius, float amount,
+                                                         std::string_view kind, float push = 0.0F);
+// Works out the load through a linked group's pieces now, breaking the links it is too much for;
+// returns the pieces that came loose.
+std::vector<std::string> settle_group_2d(world::World& world, std::string_view group);
 
 } // namespace slash::physics2d

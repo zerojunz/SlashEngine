@@ -1,0 +1,12 @@
+{
+  "format": 1,
+  "fracture": {
+    "levels": 1,
+    "pattern": "splinters",
+    "pieces": 6,
+    "seed": 1
+  },
+  "health": 30,
+  "material": "wood",
+  "name": "crate"
+}

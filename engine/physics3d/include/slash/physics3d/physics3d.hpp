@@ -10,6 +10,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 // 3D physics on Jolt Physics, as Godot 4.4's Jolt module (modules/jolt_physics). The components
@@ -137,15 +138,48 @@ void apply_impulse(world::World& world, entt::entity entity, Vec3 impulse, Vec3 
 // Turns a rigid body at the next physics step, as Godot's apply_torque_impulse.
 void apply_torque_impulse(world::World& world, entt::entity entity, Vec3 impulse);
 
-// Breaks a Destructible3D into its pieces now, as an impact at least its damage_threshold does
-// after a step: the entity goes, and a rigid body per piece of its mesh's fracture takes its
-// place (FracturePiece3D), each moving as that part of the body moved, sharing its mass by
-// volume, and emitting a "broken" event with the pieces' IDs. push moves each piece away from
-// `from` (world space; the body's center when nullopt) at that many meters per second more.
+// Breaks a Destructible3D into its pieces now, as running out of health does: the entity goes,
+// and a rigid body per piece of its mesh's fracture takes its place (FracturePiece3D), each
+// moving as that part of the body moved, sharing its mass by volume (by its profile's density,
+// when it has one and isn't a rigid body), and emitting a "broken" event with the pieces' IDs.
+// A profile cuts it by its pattern where `from` is (world space), gives each piece health and
+// a Destructible3D of its own while under its levels, and a connected one that stood leaves
+// its pieces standing, frozen and linked, but those near the hit. push moves loose pieces away
+// from `from` (the body's center when nullopt) at that many meters per second more.
 // Fails, changing nothing, for an entity with no Destructible3D or body, or a mesh it can't cut.
 [[nodiscard]] Result<std::vector<entt::entity>> break_body(world::World& world, entt::entity entity,
                                                            float push = 0.0F,
                                                            std::optional<Vec3> from = std::nullopt);
+
+// What damage did to a Destructible3D.
+struct DamageReport {
+    std::string id;
+    float dealt = 0.0F;  // health taken, after its profile's resistance
+    float health = 0.0F; // left
+    int state = 0;       // the damage state it is in
+    bool broke = false;  // whether it broke, into pieces
+    std::vector<std::string> pieces;
+    bool fell = false; // whether a standing piece that breaks no more came loose
+};
+
+// Damages a Destructible3D by amount of a kind ("blunt", "pierce", "cut", "explosive", "fire",
+// "impact"), as its profile resists it, at a point in the world: its damage state changes its
+// looks, and at no health left it breaks where it was hit (break_body), or comes loose when it
+// is a standing piece that breaks no more. Emits "damaged" with what it took. With no profile,
+// damage at least its damage_threshold breaks it. push is the speed loose pieces fly from the
+// hit at; 0 takes the profile's.
+[[nodiscard]] Result<DamageReport> damage_body(world::World& world, entt::entity entity,
+                                               float amount, std::string_view kind,
+                                               std::optional<Vec3> at, float push = 0.0F);
+// Damages every Destructible3D within radius of center, as an explosion: each by amount less
+// the share of radius it is away, nearest the center its pieces' middles count from.
+[[nodiscard]] std::vector<DamageReport> damage_area(world::World& world, Vec3 center, float radius,
+                                                    float amount, std::string_view kind,
+                                                    float push = 0.0F);
+// Works out the load through the links of a group of standing pieces now (settle_stress),
+// breaking those that give way and setting loose what no link holds to an anchored piece, and
+// returns those. Physics does it after each step for groups that changed, emitting "collapsed".
+std::vector<std::string> settle_group(world::World& world, std::string_view group);
 
 // The convex hull of points as triangles, three points each, wound clockwise as seen from
 // outside, as Godot's faces are: what a convex_polygon shape bakes into a navigation mesh as.

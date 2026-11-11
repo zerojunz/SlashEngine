@@ -270,6 +270,7 @@ void install(world::World& world, const Settings& settings) {
         "physics2d",
         [space](world::World& w, double tick_seconds) {
             space->step(w, static_cast<float>(tick_seconds));
+            detail::break_and_age_2d(w, *space, static_cast<float>(tick_seconds));
         },
         {.doc = "Steps 2D physics: moves rigid and character bodies and reports contacts.",
          .priority = 950});

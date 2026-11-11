@@ -1,0 +1,29 @@
+{
+  "anchors": "bottom",
+  "debris": {
+    "lifetime": 0,
+    "push": 1
+  },
+  "format": 1,
+  "fracture": {
+    "fine": 0.9,
+    "level_pieces": 3,
+    "levels": 2,
+    "pattern": "clusters",
+    "pieces": 10,
+    "seed": 4
+  },
+  "health": 120,
+  "material": "brick",
+  "name": "garden wall",
+  "states": [
+    {
+      "below": 0.6,
+      "tint": [0.8, 0.75, 0.7, 1.0]
+    },
+    {
+      "below": 0.3,
+      "tint": [0.6, 0.55, 0.5, 1.0]
+    }
+  ]
+}
