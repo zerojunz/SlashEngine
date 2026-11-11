@@ -3,6 +3,7 @@ add_library(slash_physics2d
     src/cloth.cpp
     src/hair.cpp
     src/debug.cpp
+    src/destruction.cpp
     src/fields.cpp
     src/physics2d.cpp
     src/polygon.cpp
@@ -14,7 +15,7 @@ add_library(slash::physics2d ALIAS slash_physics2d)
 target_include_directories(slash_physics2d PUBLIC include)
 target_link_libraries(slash_physics2d
     PUBLIC slash::core slash::world
-    PRIVATE box2d::box2d slash::asset)
+    PRIVATE box2d::box2d slash::asset slash_clipper2)
 # The same results on every platform: no fused multiply-adds, which arm64 compilers would
 # otherwise emit and x86-64 ones not (Box2D builds this way too).
 target_compile_options(slash_physics2d PRIVATE

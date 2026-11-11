@@ -147,7 +147,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, physics_material, ragdoll, foliage, groom, character, face, creature, vehicle, sdk, plugin)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, physics_material, ragdoll, foliage, groom, damage, character, face, creature, vehicle, sdk, plugin)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -157,7 +157,7 @@ Validate after editing a scene or prefab by hand, and format before committing o
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
-`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`, `.scatter.json`, `.physics_material.json`, `.ragdoll.json`, `.foliage.json`, `.groom.json`, `.character.json`, `.face.json`, `.creature.json` and `.vehicle.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
+`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`, `.scatter.json`, `.physics_material.json`, `.ragdoll.json`, `.foliage.json`, `.groom.json`, `.damage.json`, `.character.json`, `.face.json`, `.creature.json` and `.vehicle.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -1970,7 +1970,24 @@ after the step `detail::break_and_age` (`src/destruction.cpp`) breaks them with 
 (rigid pieces `<id>_<n>` with convex hulls, mass by volume, the body's velocity) and counts down
 `FracturePiece3D` lifetimes; `Renderer::add_piece` draws a piece's part of the cut.
 `physics.break` breaks one by hand, and `check_destructibles` backs `scene validate`.
-`examples/destruction-3d` breaks a wall and a crate.
+`examples/destruction-3d` breaks a wall and a crate. Damage is after Chaos Destruction: a
+`.damage.json` profile (`slash/world/damage.hpp`, `engine/world/src/damage.cpp`, built with
+`-ffp-contract=off`; `$cli schema damage`), named by a `Destructible3D`'s or `Destructible2D`'s
+`profile` with `overrides` over it, gives a material's defaults, health, resistances by kind,
+damage states (`show_state` tints, swaps materials and meshes), a fracture pattern
+(`world::fracture_sites`: voronoi, impact, radial, splinters, slices, clusters), levels of pieces
+that break again (`damage_cut`; scene3d's `fracture` takes chains of `FractureCut`s, each piece
+of one cut the region of the next, and finds each piece's neighbors) and linked pieces standing
+on anchors: physics3d's `damage_body`, `damage_area` and `settle_group` (`src/destruction.cpp`)
+freeze them with `FracturePiece3D` links, loosen those near the hit and, after each break, let
+`world::settle_stress` (the connection graph's load, down a tree from the anchors) break the
+links too weak and drop what no link holds. `Space::note_impact` damages profiled bodies by
+their `impact` settings. physics2d does the same (`src/destruction.cpp`): Box2D's hit events
+(`Space::collect_hits`) and `damage_body_2d` cut a body's outline into cells with Clipper2,
+each a `RigidBody2D` with a `CollisionPolygon2D` and a `Polygon2D` of its part of the look
+(`FracturePiece2D`). `damage.apply`, `damage.state` and `damage.check`
+(`engine/command/src/damage.cpp`) drive and read them; `examples/destruction-profiles` breaks a
+garden wall, a window and 2D crates.
 
 Wind is SlashEngine's own, after Unreal's `WindDirectionalSource` (Godot's only wind is an
 `Area3D`'s for soft bodies, which physics3d ports too: `area_winds` and `blow_soft_body` in

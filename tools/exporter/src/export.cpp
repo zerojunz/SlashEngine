@@ -55,6 +55,7 @@
 #include "slash/ui/ui.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/damage.hpp"
 #include "slash/world/face.hpp"
 #include "slash/world/foliage.hpp"
 #include "slash/world/hair.hpp"
@@ -213,6 +214,7 @@ enum class DataFile : std::uint8_t {
     Ragdoll,
     Foliage,
     Groom,
+    Damage,
     Face,
     MeshLibrary,
     StandardMaterial,
@@ -308,6 +310,9 @@ DataFile data_file(std::string_view name) {
     }
     if (world::is_groom_path(name)) {
         return DataFile::Groom;
+    }
+    if (world::is_damage_path(name)) {
+        return DataFile::Damage;
     }
     if (world::is_face_path(name)) {
         return DataFile::Face;
@@ -476,6 +481,17 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         return world::validate_foliage(parsed.value());
     case DataFile::Groom:
         return world::validate_groom(parsed.value());
+    case DataFile::Damage:
+        errors = world::validate_damage(parsed.value());
+        if (errors.empty()) {
+            auto resolved = world::resolve_damage(parsed.value(), reader);
+            if (!resolved) {
+                errors.push_back({"", resolved.error().message});
+            } else if (auto profile = world::parse_damage(resolved.value()); !profile) {
+                errors.push_back({"", profile.error().message});
+            }
+        }
+        return errors;
     case DataFile::Face:
         errors = world::validate_face(parsed.value());
         if (auto face = world::parse_face(parsed.value(), reader); errors.empty() && !face) {

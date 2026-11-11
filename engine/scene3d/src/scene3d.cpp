@@ -2204,19 +2204,23 @@ void Renderer::add_piece(const world::World& world, entt::entity entity,
                          const world::MeshInstance3D& instance, const world::Affine3D& place,
                          render::ShadowCasting casting) {
     const auto& piece = world.ecs().get<const world::FracturePiece3D>(entity);
-    auto fracture = fracture_of(world, entity, piece.pieces, piece.seed);
+    const std::vector<world::FractureCut> cuts = piece_cuts(piece);
+    auto fracture = fracture_of(world, entity, cuts);
     if (!fracture) {
         problems_.push_back({entity, "/components/MeshInstance3D", fracture.error().message});
         return;
     }
     const std::vector<FracturePiece>& pieces = fracture.value()->pieces;
-    if (piece.index < 0 || static_cast<std::size_t>(piece.index) >= pieces.size()) {
-        problems_.push_back({entity, "/components/FracturePiece3D/index",
+    const int index = cuts.back().index;
+    if (index < 0 || static_cast<std::size_t>(index) >= pieces.size()) {
+        problems_.push_back({entity,
+                             piece.cuts.empty() ? "/components/FracturePiece3D/index"
+                                                : "/components/FracturePiece3D/cuts",
                              "its mesh breaks into " + std::to_string(pieces.size()) +
-                                 " pieces, so there is no piece " + std::to_string(piece.index)});
+                                 " pieces, so there is no piece " + std::to_string(index)});
         return;
     }
-    const CsgMesh& mesh = pieces[static_cast<std::size_t>(piece.index)].mesh;
+    const CsgMesh& mesh = pieces[static_cast<std::size_t>(index)].mesh;
     const std::array<float, 16> transform = place.matrix();
     const std::string prefix = "piece:" + std::to_string(mesh.version) + "/";
     for (std::size_t i = 0; i < mesh.surfaces.size(); ++i) {

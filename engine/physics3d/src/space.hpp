@@ -600,8 +600,22 @@ public:
     // True when the impact breaks a Destructible3D.
     bool note_impact(const JPH::Body& a, const JPH::Body& b, const JPH::ContactManifold& manifold);
 
+    // How a Destructible3D takes impacts: those at least threshold hard do damage for each
+    // kilogram-meter per second past it (with no profile, any breaks it), and one that takes the
+    // rest of its health breaks it.
+    struct Breakable {
+        float threshold = 0.0F;
+        float damage = 0.0F; // health for each kilogram-meter per second past threshold
+        float health = 0.0F;
+        bool breaks = true; // whether running out of health breaks it
+
+        // Whether an impact this hard breaks it.
+        [[nodiscard]] bool broken_by(float impulse) const {
+            return breaks && impulse >= threshold && (impulse - threshold) * damage >= health;
+        }
+    };
     // The hardest impact on each Destructible3D in the last step that was at least its
-    // damage_threshold, taken by the destruction pass after it.
+    // threshold, taken by the destruction pass after it.
     struct Impact {
         float impulse = 0.0F; // kilogram-meters per second
         Vec3 point;           // where, in world space
@@ -609,6 +623,8 @@ public:
     [[nodiscard]] std::unordered_map<entt::entity, Impact> take_impacts() {
         return std::exchange(impacts_, {});
     }
+
+    [[nodiscard]] const Settings& settings() const { return settings_; }
 
     // Jolt's allocations and what its system holds, for World::memory.
     [[nodiscard]] world::MemoryPart memory() const;
@@ -731,8 +747,8 @@ private:
     std::unordered_map<entt::entity, world::PhysicalBoneLink> bone_links_;
     // Pairs of bodies joints keep apart, the lower entity first.
     std::set<std::pair<entt::entity, entt::entity>> exceptions_;
-    // Destructible3D bodies' damage thresholds, read before each step, and their impacts.
-    std::unordered_map<entt::entity, float> breakable_;
+    // How Destructible3D bodies take impacts, read before each step, and their impacts.
+    std::unordered_map<entt::entity, Breakable> breakable_;
     std::unordered_map<entt::entity, Impact> impacts_;
     // The step physics.debug is recording, during step(), and its contacts by pair of IDs.
     world::PhysicsDebugStep* debug_ = nullptr;
