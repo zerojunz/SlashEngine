@@ -16,6 +16,7 @@
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/scene3d/fracture.hpp"
 #include "slash/scene3d/primitive.hpp"
+#include "slash/scene3d/ragdoll.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/damage.hpp"
@@ -130,6 +131,14 @@ float volume_scale(Vec3 scale) {
 struct DestructionState {
     std::set<std::string> unsettled;
     bool started = false;
+    // Breaks that waited for the next tick's budget, in the order they came.
+    struct Pending {
+        std::string id;
+        std::optional<Vec3> at;
+        float push = 0.0F;
+    };
+    std::vector<Pending> pending;
+    int budget = -1; // pieces breaks may still cut this step; below 0 while no step runs
 };
 
 DestructionState& state_of(world::World& world) {
@@ -822,9 +831,308 @@ Result<std::vector<entt::entity>> break_body(world::World& world, entt::entity e
     return made;
 }
 
+namespace {
+
+// How hard each point of damage dealt hits a ragdoll's bone, in kilogram-meters per second.
+constexpr float kHitImpulse = 2.0F;
+
+// What a Destructible3D is on: a thing that breaks, someone or something living (a character, a
+// creature, a ragdoll, an NPC), which dies, or a vehicle, which is wrecked.
+enum class BodyKind : std::uint8_t { Thing, Living, Vehicle };
+
+BodyKind kind_of(const entt::registry& ecs, entt::entity entity) {
+    if (ecs.all_of<world::Vehicle3D>(entity)) {
+        return BodyKind::Vehicle;
+    }
+    if (ecs.any_of<world::Ragdoll3D, world::Creature3D, world::Flesh3D, world::NpcAgent>(entity)) {
+        return BodyKind::Living;
+    }
+    if (const auto* instance = ecs.try_get<const world::MeshInstance3D>(entity);
+        instance != nullptr && (instance->mesh.ends_with(".character.json") ||
+                                instance->mesh.ends_with(".creature.json"))) {
+        return BodyKind::Living;
+    }
+    return BodyKind::Thing;
+}
+
+// An entity named for the body it came from: "<body>_<what>", numbered past those taken.
+entt::entity create_effect(world::World& world, std::string_view body, std::string_view what) {
+    const std::string base = std::string(body.empty() ? "damage" : body) + "_" + std::string(what);
+    for (std::size_t n = 1;; ++n) {
+        const std::string id = n == 1 ? base : base + "_" + std::to_string(n);
+        if (world.find(id) == entt::null) {
+            auto made = world.create(id);
+            return made ? made.value() : entt::null;
+        }
+    }
+}
+
+world::Transform3D placed_at(Vec3 position, Vec3 rotation) {
+    world::Transform3D out;
+    out.position = position;
+    out.rotation = rotation;
+    return out;
+}
+
+Vec3 normalized_or(Vec3 v, Vec3 fallback) {
+    const float l = length(v);
+    return l > 1e-6F ? v * (1.0F / l) : fallback;
+}
+
+// A one-shot burst of particles: debris flies out, chips tumbling, and dust swells as it fades.
+std::string leave_particles(world::World& world, std::string_view body, std::string_view what,
+                            const world::ParticleEffect& effect, Vec3 at, Vec3 out, float scale) {
+    const int amount = static_cast<int>(
+        std::lround(static_cast<float>(effect.amount) * std::clamp(scale, 0.0F, 1.0F)));
+    if (amount <= 0) {
+        return {};
+    }
+    const entt::entity made = create_effect(world, body, what);
+    if (made == entt::null) {
+        return {};
+    }
+    auto& ecs = world.ecs();
+    const bool dust = what == "dust";
+    Vec3 down{0.0F, -9.8F, 0.0F};
+    if (const detail::Space* space = detail::find_space(world); space != nullptr) {
+        down = space->settings().gravity_vector * space->settings().gravity;
+    }
+    world::CPUParticles3D particles;
+    particles.amount = amount;
+    particles.lifetime = effect.lifetime;
+    particles.one_shot = true;
+    particles.explosiveness = 1.0F;
+    particles.randomness = 0.5F;
+    particles.lifetime_randomness = 0.3F;
+    particles.seed = static_cast<int>(hash_id(world.id_of(made)) & 0x7FFFFFFFU);
+    particles.direction = out;
+    particles.spread = effect.spread;
+    particles.initial_velocity_min = effect.speed * 0.5F;
+    particles.initial_velocity_max = effect.speed;
+    particles.gravity = down * effect.gravity;
+    particles.color = effect.color;
+    if (dust) {
+        particles.damping_min = effect.speed;
+        particles.damping_max = effect.speed;
+        particles.scale_amount_curve = {Vec2{0.0F, 0.4F}, Vec2{1.0F, 1.0F}};
+        particles.color_ramp = {
+            world::GradientPoint{.offset = 0.0F, .color = {1.0F, 1.0F, 1.0F, 1.0F}},
+            world::GradientPoint{.offset = 1.0F, .color = {1.0F, 1.0F, 1.0F, 0.0F}}};
+    } else {
+        particles.angle_max = 360.0F;
+        particles.angular_velocity_min = -360.0F;
+        particles.angular_velocity_max = 360.0F;
+        particles.scale_amount_min = 0.5F;
+    }
+    ecs.emplace<world::Transform3D>(made, placed_at(at, {}));
+    ecs.emplace<world::CPUParticles3D>(made, std::move(particles));
+    const float size = effect.size;
+    if (dust) {
+        ecs.emplace<world::SphereMesh>(
+            made, world::SphereMesh{
+                      .radius = size * 0.5F, .height = size, .radial_segments = 8, .rings = 4});
+    } else {
+        ecs.emplace<world::BoxMesh>(made, world::BoxMesh{.size = {size, size * 0.6F, size}});
+    }
+    world::StandardMaterial3D material;
+    material.vertex_color_use_as_albedo = true;
+    if (dust || effect.color.w < 1.0F) {
+        material.transparency = "alpha";
+    }
+    if (dust) {
+        material.shading_mode = "unshaded";
+    }
+    ecs.emplace<world::StandardMaterial3D>(made, std::move(material));
+    ecs.emplace<world::DamageEffect>(
+        made, world::DamageEffect{.lifetime = effect.lifetime * 1.5F, .body = std::string(body)});
+    return std::string(world.id_of(made));
+}
+
+// What one EffectSet leaves at a place: debris and dust flying out along out, a decal facing
+// along it and a sound. scale thins a light hit's particles. Returns the IDs made.
+std::vector<std::string> leave_effects(world::World& world, std::string_view body,
+                                       const world::EffectSet& set, Vec3 at, Vec3 out,
+                                       float scale) {
+    std::vector<std::string> made;
+    if (set.empty()) {
+        return made;
+    }
+    auto& ecs = world.ecs();
+    for (const auto& [what, effect] :
+         {std::pair<std::string_view, const world::ParticleEffect*>{"debris", &set.debris},
+          std::pair<std::string_view, const world::ParticleEffect*>{"dust", &set.dust}}) {
+        if (std::string id = leave_particles(world, body, what, *effect, at, out, scale);
+            !id.empty()) {
+            made.push_back(std::move(id));
+        }
+    }
+    if (!set.decal.texture.empty()) {
+        if (const entt::entity decal = create_effect(world, body, "decal"); decal != entt::null) {
+            // A Decal projects along its -y: onto what was hit, from the side the hit came.
+            world::Affine3D basis;
+            basis.y = out;
+            const Vec3 side =
+                std::abs(out.y) < 0.9F ? Vec3{0.0F, 1.0F, 0.0F} : Vec3{1.0F, 0.0F, 0.0F};
+            basis.x = normalized_or(cross(side, out), {1.0F, 0.0F, 0.0F});
+            basis.z = cross(basis.x, out);
+            const float size = set.decal.size;
+            ecs.emplace<world::Transform3D>(decal, placed_at(at, world::euler(basis)));
+            world::Decal look;
+            look.size = {size, size, size};
+            look.texture_albedo = set.decal.texture;
+            look.modulate = set.decal.modulate;
+            ecs.emplace<world::Decal>(decal, std::move(look));
+            ecs.emplace<world::DamageEffect>(
+                decal,
+                world::DamageEffect{.lifetime = set.decal.lifetime, .body = std::string(body)});
+            made.emplace_back(world.id_of(decal));
+        }
+    }
+    if (!set.sound.stream.empty()) {
+        if (const entt::entity sound = create_effect(world, body, "sound"); sound != entt::null) {
+            ecs.emplace<world::Transform3D>(sound, placed_at(at, {}));
+            world::AudioStreamPlayer3D player;
+            player.stream = set.sound.stream;
+            player.volume_db = set.sound.volume_db;
+            player.pitch_scale = set.sound.pitch_scale;
+            player.bus = set.sound.bus;
+            player.autoplay = true;
+            player.playing = true;
+            ecs.emplace<world::AudioStreamPlayer3D>(sound, std::move(player));
+            ecs.emplace<world::DamageEffect>(
+                sound,
+                world::DamageEffect{.lifetime = set.sound.lifetime, .body = std::string(body)});
+            made.emplace_back(world.id_of(sound));
+        }
+    }
+    return made;
+}
+
+// Where a body's effects go when nothing says: the middle of what it draws, else its origin.
+Vec3 middle_of(const world::World& world, entt::entity entity) {
+    const world::Tree3D tree(world);
+    const world::Affine3D global = tree.global(entity);
+    if (kind_of(world.ecs(), entity) == BodyKind::Thing) {
+        if (const auto bounds = mesh_bounds(world, entity); bounds.has_value()) {
+            return global.apply((bounds->first + bounds->second) * 0.5F);
+        }
+    }
+    return global.origin;
+}
+
+// Hits the bone of a Ragdoll3D nearest a point, as hard as the damage it took.
+void hit_ragdoll_at(world::World& world, entt::entity entity, Vec3 at, Vec3 way, float dealt) {
+    const std::map<std::string, entt::entity> bones = scene3d::ragdoll_bones(world, entity);
+    if (bones.empty()) {
+        return;
+    }
+    const world::Tree3D tree(world);
+    std::string nearest;
+    float best = 1e30F;
+    for (const auto& [bone, body] : bones) {
+        const float d = length(tree.global(body).origin - at);
+        if (d < best) {
+            best = d;
+            nearest = bone;
+        }
+    }
+    if (auto hit = scene3d::hit_ragdoll(world, entity, nearest, way * (dealt * kHitImpulse));
+        !hit) {
+        log::warn("a hit can't reach a ragdoll",
+                  {{"id", std::string(world.id_of(entity))}, {"error", hit.error().message}});
+    }
+}
+
+// What a hit does to a living body that lives through it: its ragdoll takes the blow.
+void hurt(world::World& world, entt::entity entity, std::optional<Vec3> at,
+          std::optional<Vec3> direction, float dealt) {
+    if (!world.ecs().all_of<world::Ragdoll3D>(entity)) {
+        return;
+    }
+    const Vec3 middle = middle_of(world, entity);
+    const Vec3 where = at.value_or(middle);
+    const Vec3 way = direction.has_value() ? normalized_or(*direction, {0.0F, 0.0F, -1.0F})
+                                           : normalized_or(middle - where, {0.0F, 0.0F, -1.0F});
+    hit_ragdoll_at(world, entity, where, way, dealt);
+}
+
+// A living body with no health left dies: its ragdoll goes limp for good and a creature stops.
+// A vehicle with none is wrecked: it drives no more.
+void finish(world::World& world, entt::entity entity, BodyKind kind, std::string_view by) {
+    auto& ecs = world.ecs();
+    json::Value data;
+    if (!by.empty()) {
+        data["by"] = std::string(by);
+    }
+    if (kind == BodyKind::Vehicle) {
+        auto& vehicle = ecs.get<world::Vehicle3D>(entity);
+        vehicle.enabled = false;
+        vehicle.controls = {};
+        world.emit("wrecked", world.id_of(entity), std::move(data));
+        return;
+    }
+    if (auto* ragdoll = ecs.try_get<world::Ragdoll3D>(entity); ragdoll != nullptr) {
+        ragdoll->state = "limp";
+        ragdoll->rest_state = "limp";
+    }
+    if (auto* creature = ecs.try_get<world::Creature3D>(entity); creature != nullptr) {
+        creature->enabled = false;
+        creature->mind.mode = "dead";
+        creature->mind.velocity = {};
+    }
+    world.emit("killed", world.id_of(entity), std::move(data));
+}
+
+// Whether a break of a body may cut its pieces now: always outside a physics step, and within
+// the step's break budget inside one (the first break of a step always may).
+bool may_cut(world::World& world, const world::DamageProfile* profile,
+             const Destructible3D& destructible) {
+    DestructionState& state = state_of(world);
+    if (state.budget < 0) {
+        return true;
+    }
+    int pieces = destructible.pieces;
+    if (profile != nullptr) {
+        pieces =
+            destructible.level == 0 ? profile->fracture.pieces : profile->fracture.level_pieces;
+    }
+    const detail::Space* space = detail::find_space(world);
+    const int full = space != nullptr ? space->settings().break_budget : 0;
+    if (state.budget < pieces && state.budget < full) {
+        return false;
+    }
+    state.budget = std::max(state.budget - std::max(pieces, 1), 0);
+    return true;
+}
+
+// Breaks a body whose health ran out, leaving its break effects.
+Result<void> break_now(world::World& world, entt::entity entity,
+                       const world::DamageProfile* profile, float push, std::optional<Vec3> at,
+                       DamageReport& report) {
+    const std::string id(world.id_of(entity));
+    const Vec3 where = at.value_or(middle_of(world, entity));
+    auto broken = break_body(world, entity, push, at);
+    if (!broken) {
+        return broken.error();
+    }
+    report.broke = true;
+    for (const entt::entity made : broken.value()) {
+        report.pieces.emplace_back(world.id_of(made));
+    }
+    if (profile != nullptr) {
+        for (std::string& made :
+             leave_effects(world, id, profile->effects.broken, where, {0.0F, 1.0F, 0.0F}, 1.0F)) {
+            report.effects.push_back(std::move(made));
+        }
+    }
+    return {};
+}
+
+} // namespace
+
 Result<DamageReport> damage_body(world::World& world, entt::entity entity, float amount,
                                  std::string_view kind, std::optional<Vec3> at, float push,
-                                 std::optional<Vec3> direction) {
+                                 std::optional<Vec3> direction, std::string_view by) {
     auto& ecs = world.ecs();
     auto* destructible = world.valid(entity) ? ecs.try_get<Destructible3D>(entity) : nullptr;
     if (destructible == nullptr) {
@@ -855,7 +1163,11 @@ Result<DamageReport> damage_body(world::World& world, entt::entity entity, float
         }
         return report;
     }
+    const BodyKind body = kind_of(ecs, entity);
     const float full = destructible->health < 0.0F ? profile->health : destructible->health;
+    if (full <= 0.0F && body != BodyKind::Thing) {
+        return report; // already dead or wrecked
+    }
     report.dealt = world::damage_taken(*profile, amount, kind);
     report.health = std::max(full - report.dealt, 0.0F);
     destructible->health = report.health;
@@ -867,7 +1179,7 @@ Result<DamageReport> damage_body(world::World& world, entt::entity entity, float
         destructible->state = state;
         show_state(world, entity, *profile, before, state);
     }
-    if (report.health > 0.0F) {
+    if (report.health > 0.0F && body == BodyKind::Thing) {
         report.deformed = deform_body(world, entity, *profile, report.dealt, kind, at, direction);
     }
     if (report.dealt > 0.0F) {
@@ -881,12 +1193,46 @@ Result<DamageReport> damage_body(world::World& world, entt::entity entity, float
         if (!report.deformed.empty()) {
             data["deformed"] = report.deformed;
         }
+        if (!by.empty()) {
+            data["by"] = std::string(by);
+        }
         world.emit("damaged", report.id, std::move(data));
+        // A hit leaves its effects, fewer particles for a lighter one.
+        if (at.has_value() && !profile->effects.hit.empty()) {
+            const Vec3 middle = middle_of(world, entity);
+            const Vec3 out = direction.has_value()
+                                 ? normalized_or(*direction * -1.0F, {0.0F, 1.0F, 0.0F})
+                                 : normalized_or(*at - middle, {0.0F, 1.0F, 0.0F});
+            const float scale = report.dealt / std::max(profile->effects.hit_scale, 1e-6F);
+            report.effects = leave_effects(world, report.id, profile->effects.hit, *at, out, scale);
+        }
+        if (body == BodyKind::Living && report.health > 0.0F) {
+            hurt(world, entity, at, direction, report.dealt);
+        }
     }
     if (report.health > 0.0F || report.dealt <= 0.0F) {
         return report;
     }
-    // Out of health: it breaks, or, a piece that breaks no more, it comes loose.
+    // Out of health: someone living dies and a vehicle is wrecked, leaving its break effects.
+    if (body != BodyKind::Thing) {
+        const Vec3 where = middle_of(world, entity);
+        if (body == BodyKind::Living) {
+            if (ecs.all_of<world::Ragdoll3D>(entity)) {
+                hit_ragdoll_at(world, entity, at.value_or(where),
+                               direction.value_or(Vec3{0.0F, 0.0F, -1.0F}), report.dealt);
+            }
+            report.killed = true;
+        } else {
+            report.wrecked = true;
+        }
+        finish(world, entity, body, by);
+        for (std::string& made : leave_effects(world, report.id, profile->effects.broken, where,
+                                               {0.0F, 1.0F, 0.0F}, 1.0F)) {
+            report.effects.push_back(std::move(made));
+        }
+        return report;
+    }
+    // A thing breaks, or, a piece that breaks no more, it comes loose.
     bool breaks =
         profile->fracture.pattern != "none" && destructible->level < profile->fracture.levels;
     if (breaks && piece && profile->fracture.min_size > 0.0F) {
@@ -900,13 +1246,14 @@ Result<DamageReport> damage_body(world::World& world, entt::entity entity, float
         }
     }
     if (breaks) {
-        auto broken = break_body(world, entity, push, at);
-        if (!broken) {
-            return broken.error();
+        if (!may_cut(world, profile, *destructible)) {
+            // Past this step's budget: it breaks in a later step.
+            state_of(world).pending.push_back({.id = report.id, .at = at, .push = push});
+            report.queued = true;
+            return report;
         }
-        report.broke = true;
-        for (const entt::entity made : broken.value()) {
-            report.pieces.emplace_back(world.id_of(made));
+        if (auto broken = break_now(world, entity, profile, push, at, report); !broken) {
+            return broken.error();
         }
     } else if (piece) {
         const bool was_standing = ecs.all_of<world::RigidBody3D>(entity) &&
@@ -918,7 +1265,7 @@ Result<DamageReport> damage_body(world::World& world, entt::entity entity, float
 }
 
 std::vector<DamageReport> damage_area(world::World& world, Vec3 center, float radius, float amount,
-                                      std::string_view kind, float push) {
+                                      std::string_view kind, float push, std::string_view by) {
     std::vector<DamageReport> out;
     const world::Tree3D tree(world);
     std::vector<std::pair<entt::entity, float>> hit;
@@ -935,8 +1282,10 @@ std::vector<DamageReport> damage_area(world::World& world, Vec3 center, float ra
         } else {
             const world::Affine3D global = tree.global(entity);
             Vec3 near = global.origin;
-            if (const auto bounds = mesh_bounds(world, entity); bounds.has_value()) {
-                near = global.apply(clamped(global.inverse().apply(center), *bounds));
+            if (kind_of(world.ecs(), entity) == BodyKind::Thing) {
+                if (const auto bounds = mesh_bounds(world, entity); bounds.has_value()) {
+                    near = global.apply(clamped(global.inverse().apply(center), *bounds));
+                }
             }
             distance = length(near - center);
         }
@@ -949,7 +1298,8 @@ std::vector<DamageReport> damage_area(world::World& world, Vec3 center, float ra
         if (!world.valid(entity)) {
             continue;
         }
-        auto report = damage_body(world, entity, amount * falloff, kind, center, push * falloff);
+        auto report = damage_body(world, entity, amount * falloff, kind, center, push * falloff,
+                                  std::nullopt, by);
         if (report) {
             out.push_back(std::move(report.value()));
         }
@@ -1052,6 +1402,31 @@ void break_and_age(world::World& world, Space& space, float seconds) {
             }
         }
     }
+    // Breaks cut no more pieces a step than the budget allows; those that waited go first.
+    const int budget = space.settings().break_budget;
+    state.budget = budget > 0 ? budget : -1;
+    std::vector<DestructionState::Pending> waiting;
+    waiting.swap(state.pending);
+    for (const DestructionState::Pending& pending : waiting) {
+        const entt::entity entity = world.find(pending.id);
+        const auto* destructible =
+            entity != entt::null ? ecs.try_get<const Destructible3D>(entity) : nullptr;
+        if (destructible == nullptr || destructible->health != 0.0F) {
+            continue;
+        }
+        std::shared_ptr<const world::DamageProfile> keep;
+        const world::DamageProfile* profile = profile_of(world, *destructible, keep);
+        if (!may_cut(world, profile, *destructible)) {
+            state.pending.push_back(pending);
+            continue;
+        }
+        DamageReport report;
+        if (auto broken = break_now(world, entity, profile, pending.push, pending.at, report);
+            !broken) {
+            log::warn("a Destructible3D can't break",
+                      {{"id", pending.id}, {"error", broken.error().message}});
+        }
+    }
     // Bodies hit hard enough take damage, or break, in the order the world keeps them.
     std::unordered_map<entt::entity, Space::Impact> impacts = space.take_impacts();
     if (!impacts.empty()) {
@@ -1105,7 +1480,8 @@ void break_and_age(world::World& world, Space& space, float seconds) {
         state.unsettled.erase(state.unsettled.begin());
         (void)settle_group(world, group);
     }
-    // Debris goes when its lifetime runs out.
+    state.budget = -1;
+    // Debris, and what hits and breaks left, goes when its lifetime runs out.
     std::vector<entt::entity> gone;
     for (const auto [entity, piece] : ecs.view<FracturePiece3D>().each()) {
         if (piece.lifetime <= 0.0F) {
@@ -1113,6 +1489,16 @@ void break_and_age(world::World& world, Space& space, float seconds) {
         }
         piece.lifetime -= seconds;
         if (piece.lifetime <= 0.0F) {
+            gone.push_back(entity);
+        }
+    }
+    for (const auto [entity, effect, placed] :
+         ecs.view<world::DamageEffect, const world::Transform3D>().each()) {
+        if (effect.lifetime <= 0.0F) {
+            continue;
+        }
+        effect.lifetime -= seconds;
+        if (effect.lifetime <= 0.0F) {
             gone.push_back(entity);
         }
     }

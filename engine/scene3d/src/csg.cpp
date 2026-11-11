@@ -2,6 +2,7 @@
 
 #include "model_internal.hpp"
 
+#include "slash/core/jobs.hpp"
 #include "slash/core/text.hpp"
 #include "slash/scene3d/fracture.hpp"
 #include "slash/world/damage.hpp"
@@ -1317,13 +1318,17 @@ struct CutCells {
 };
 
 CutCells cut_cells(const manifold::Manifold& region, const world::FractureCut& cut,
-                   Materials& materials, const SurfaceMaterial& inside, std::size_t limit) {
+                   Materials& materials, const SurfaceMaterial& inside, std::size_t limit,
+                   jobs::Pool* pool) {
     CutCells out;
     const manifold::Box box = region.BoundingBox();
     const manifold::vec3 size = box.max - box.min;
     const double pad = 0.001 + (0.01 * std::max({size.x, size.y, size.z}));
     const manifold::Manifold bounds = manifold::Manifold::Cube(size + manifold::vec3(2.0 * pad))
                                           .Translate(box.min - manifold::vec3(pad));
+    // Works the box out now: every cell starts as a copy of it, and a copy shares the work
+    // still to do, which threads cutting cells at once must not do together.
+    (void)bounds.NumVert();
     const world::FractureSites sites =
         world::fracture_sites(cut,
                               {static_cast<float>(box.min.x), static_cast<float>(box.min.y),
@@ -1363,6 +1368,50 @@ CutCells cut_cells(const manifold::Manifold& region, const world::FractureCut& c
             groups[static_cast<std::size_t>(sites.groups[i])].push_back(i);
         }
     }
+    const auto group_cell = [&](const std::vector<std::size_t>& group) {
+        std::vector<manifold::Manifold> parts;
+        parts.reserve(group.size());
+        for (const std::size_t i : group) {
+            parts.push_back(cell_of(i));
+        }
+        return parts.size() == 1 ? parts.front()
+                                 : manifold::Manifold::BatchBoolean(parts, manifold::OpType::Add);
+    };
+    if (pool != nullptr && limit == std::numeric_limits<std::size_t>::max()) {
+        // Every cell is wanted: they are cut at once on the job pool, each group's cell and its
+        // share of the region apart, and gathered in order, so pieces are the same on any
+        // number of threads.
+        std::vector<manifold::Manifold> cells(groups.size());
+        pool->parallel_for(groups.size(), [&](std::size_t g) {
+            if (!groups[g].empty()) {
+                cells[g] = group_cell(groups[g]);
+                (void)cells[g].NumVert(); // works it out here, on this thread
+            }
+        });
+        for (std::size_t g = 0; g < groups.size(); ++g) {
+            if (!groups[g].empty()) {
+                cells[g] = cells[g].AsOriginal();
+                materials[static_cast<std::uint32_t>(cells[g].OriginalID())] = inside;
+            }
+        }
+        std::vector<manifold::Manifold> shares(groups.size());
+        pool->parallel_for(groups.size(), [&](std::size_t g) {
+            if (!groups[g].empty()) {
+                shares[g] = region ^ cells[g];
+                (void)shares[g].NumVert();
+            }
+        });
+        for (std::size_t g = 0; g < groups.size(); ++g) {
+            if (groups[g].empty() || shares[g].IsEmpty()) {
+                continue;
+            }
+            for (const std::size_t i : groups[g]) {
+                out.owner[i] = static_cast<int>(out.cells.size());
+            }
+            out.cells.push_back({.share = std::move(shares[g]), .sites = groups[g]});
+        }
+        return out;
+    }
     for (const std::vector<std::size_t>& group : groups) {
         if (out.cells.size() >= limit) {
             break;
@@ -1370,15 +1419,7 @@ CutCells cut_cells(const manifold::Manifold& region, const world::FractureCut& c
         if (group.empty()) {
             continue;
         }
-        std::vector<manifold::Manifold> parts;
-        parts.reserve(group.size());
-        for (const std::size_t i : group) {
-            parts.push_back(cell_of(i));
-        }
-        manifold::Manifold cell =
-            parts.size() == 1 ? parts.front()
-                              : manifold::Manifold::BatchBoolean(parts, manifold::OpType::Add);
-        cell = cell.AsOriginal();
+        const manifold::Manifold cell = group_cell(group).AsOriginal();
         materials[static_cast<std::uint32_t>(cell.OriginalID())] = inside;
         manifold::Manifold share = region ^ cell;
         if (share.IsEmpty()) {
@@ -1545,8 +1586,9 @@ struct After {
 
 // The pieces of a mesh by its cuts, or, with after, the one piece the last cut names (or the
 // whole mesh with no cuts) with after's damage done to it, as piece 0.
-std::shared_ptr<const Fracture>
-make_pieces(const CsgNode& node, std::span<const world::FractureCut> cuts, const After* after) {
+std::shared_ptr<const Fracture> make_pieces(const CsgNode& node,
+                                            std::span<const world::FractureCut> cuts,
+                                            const After* after, jobs::Pool* pool) {
     auto out = std::make_shared<Fracture>();
     const Brush own = own_brush(node, out->problems);
     if (!out->problems.empty()) {
@@ -1568,12 +1610,11 @@ make_pieces(const CsgNode& node, std::span<const world::FractureCut> cuts, const
     // The faces a cut makes draw with the mesh's own material.
     SurfaceMaterial inside;
     inside.standard = node.material;
-    const auto add_piece = [&](const manifold::Manifold& share, const CutCells* cells,
-                               std::size_t i) {
+    const auto make_piece = [&](const manifold::Manifold& share, const CutCells* cells,
+                                std::size_t i) {
         const Brush brush = unpack(share, materials);
         FracturePiece piece;
         piece.mesh = mesh_of(brush, csg_settings(node.shape));
-        piece.mesh.version = next_version.fetch_add(1);
         measure(brush, piece);
         const manifold::Box box = share.BoundingBox();
         piece.low = {static_cast<float>(box.min.x), static_cast<float>(box.min.y),
@@ -1583,6 +1624,12 @@ make_pieces(const CsgNode& node, std::span<const world::FractureCut> cuts, const
         if (cells != nullptr) {
             find_neighbors(*cells, i, brush, piece);
         }
+        return piece;
+    };
+    const auto add_piece = [&](const manifold::Manifold& share, const CutCells* cells,
+                               std::size_t i) {
+        FracturePiece piece = make_piece(share, cells, i);
+        piece.mesh.version = next_version.fetch_add(1);
         out->pieces.push_back(std::move(piece));
     };
     // The piece each earlier cut names is what the next one cuts.
@@ -1594,7 +1641,7 @@ make_pieces(const CsgNode& node, std::span<const world::FractureCut> cuts, const
         const auto index = level + 1 == cuts.size() && after != nullptr
                                ? after->index
                                : static_cast<std::size_t>(std::max(cuts[level].index, 0));
-        CutCells cells = cut_cells(region, cuts[level], materials, inside, index + 1);
+        CutCells cells = cut_cells(region, cuts[level], materials, inside, index + 1, nullptr);
         if (cells.cells.size() <= index) {
             out->problems.push_back({node.entity, where_of(node),
                                      "its cut " + std::to_string(level) + " has no piece " +
@@ -1619,17 +1666,30 @@ make_pieces(const CsgNode& node, std::span<const world::FractureCut> cuts, const
         return out;
     }
     region = deform(std::move(region), cuts.back().dents, cuts.back().carves, materials, inside);
-    const CutCells cells =
-        cut_cells(region, cuts.back(), materials, inside, std::numeric_limits<std::size_t>::max());
-    for (std::size_t i = 0; i < cells.cells.size(); ++i) {
-        add_piece(cells.cells[i].share, &cells, i);
+    const CutCells cells = cut_cells(region, cuts.back(), materials, inside,
+                                     std::numeric_limits<std::size_t>::max(), pool);
+    if (pool == nullptr) {
+        for (std::size_t i = 0; i < cells.cells.size(); ++i) {
+            add_piece(cells.cells[i].share, &cells, i);
+        }
+        return out;
+    }
+    // Each piece's mesh is made on the job pool, and the pieces kept in order.
+    std::vector<FracturePiece> pieces(cells.cells.size());
+    pool->parallel_for(cells.cells.size(), [&](std::size_t i) {
+        pieces[i] = make_piece(cells.cells[i].share, &cells, i);
+    });
+    for (FracturePiece& piece : pieces) {
+        piece.mesh.version = next_version.fetch_add(1);
+        out->pieces.push_back(std::move(piece));
     }
     return out;
 }
 
 std::shared_ptr<const Fracture> make_fracture(const CsgNode& node,
-                                              std::span<const world::FractureCut> cuts) {
-    return make_pieces(node, cuts, nullptr);
+                                              std::span<const world::FractureCut> cuts,
+                                              jobs::Pool* pool = nullptr) {
+    return make_pieces(node, cuts, nullptr, pool);
 }
 
 } // namespace
@@ -1841,7 +1901,7 @@ Result<std::shared_ptr<const Fracture>> fracture_of(const world::World& world, e
         return fracture;
     };
     if (cache == nullptr) {
-        return made(make_fracture(read(file_loader(world)), key));
+        return made(make_fracture(read(file_loader(world)), key, &world.pool()));
     }
     const std::scoped_lock lock(cache->mutex);
     const CsgNode input = read(cache->load);
@@ -1861,7 +1921,7 @@ Result<std::shared_ptr<const Fracture>> fracture_of(const world::World& world, e
         }
     }
     if (fracture == nullptr) {
-        fracture = make_fracture(input, key);
+        fracture = make_fracture(input, key, &world.pool());
     }
     cache->fractures[entity] = {.input = input, .cuts = key, .fracture = fracture};
     return made(fracture);
@@ -1937,7 +1997,7 @@ Result<std::shared_ptr<const FracturePiece>> damaged_piece_of(const world::World
     };
     CsgCache* cache = find_cache(world);
     if (cache == nullptr) {
-        return made(make_pieces(read(file_loader(world)), cuts, &after));
+        return made(make_pieces(read(file_loader(world)), cuts, &after, nullptr));
     }
     const std::scoped_lock lock(cache->mutex);
     const CsgNode input = read(cache->load);
@@ -1949,7 +2009,7 @@ Result<std::shared_ptr<const FracturePiece>> damaged_piece_of(const world::World
     }
     std::erase_if(cache->damaged,
                   [&](const auto& entry) { return !draws_damaged(world, entry.first); });
-    const std::shared_ptr<const Fracture> fracture = make_pieces(input, cuts, &after);
+    const std::shared_ptr<const Fracture> fracture = make_pieces(input, cuts, &after, nullptr);
     cache->damaged[entity] = {.input = input,
                               .cuts = cuts,
                               .dents = destructible.dents,
@@ -1998,6 +2058,14 @@ std::vector<Problem> check_destructibles(const world::World& world) {
                                     "its profile doesn't carve, so blasts leave the terrain as "
                                     "it is: give its deform a carve"});
             }
+            continue;
+        }
+        // The living die and vehicles are wrecked; neither breaks, so neither needs a body.
+        const auto* instance = ecs.try_get<const world::MeshInstance3D>(entity);
+        if (ecs.any_of<world::Vehicle3D, world::Ragdoll3D, world::Creature3D, world::Flesh3D,
+                       world::NpcAgent>(entity) ||
+            (instance != nullptr && (instance->mesh.ends_with(".character.json") ||
+                                     instance->mesh.ends_with(".creature.json")))) {
             continue;
         }
         if (!ecs.any_of<world::StaticBody3D, world::RigidBody3D>(entity)) {

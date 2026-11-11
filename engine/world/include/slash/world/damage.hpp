@@ -68,6 +68,57 @@ struct DeformSettings {
     float crater_depth = 0.4F; // a terrain crater's depth, as a share of its radius
 };
 
+// A burst of particles a hit or a break leaves: chips and shards (debris) or a cloud (dust),
+// made a one-shot CPUParticles3D or CPUParticles2D. Lengths are meters, which 2D takes at 64
+// pixels a meter.
+struct ParticleEffect {
+    int amount = 0;        // particles; 0: none
+    float lifetime = 1.0F; // seconds each lives
+    float speed = 2.0F;    // how fast they fly out of the hit
+    float spread = 180.0F; // degrees around the way out they scatter
+    float size = 0.05F;    // across, each
+    float gravity = 1.0F;  // times the world's gravity; below 0 rises, as smoke
+    Vec4 color{0.5F, 0.5F, 0.5F, 1.0F};
+};
+
+// A mark a hit or a break leaves where it was: a Decal (2D: a Sprite2D) of a texture, as a
+// scorch or a crack.
+struct DecalEffect {
+    std::string texture;   // a texture file; "" for none
+    float size = 0.5F;     // across
+    float lifetime = 0.0F; // seconds before it goes; 0 keeps it
+    Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F};
+};
+
+// A sound a hit or a break makes: an AudioStreamPlayer3D (2D: AudioStreamPlayer2D) where it was.
+struct SoundEffect {
+    std::string stream; // a sound file; "" for none
+    float volume_db = 0.0F;
+    float pitch_scale = 1.0F;
+    std::string bus = "Master";
+    float lifetime = 3.0F; // seconds before its player goes
+};
+
+// What one hit or break leaves.
+struct EffectSet {
+    ParticleEffect debris;
+    ParticleEffect dust;
+    DecalEffect decal;
+    SoundEffect sound;
+    // Whether it leaves anything.
+    [[nodiscard]] bool empty() const {
+        return debris.amount <= 0 && dust.amount <= 0 && decal.texture.empty() &&
+               sound.stream.empty();
+    }
+};
+
+// What hits leave (scaled by how hard they hit) and what a break, a death or a wreck leaves.
+struct DamageEffects {
+    EffectSet hit;
+    EffectSet broken;        // "break" in the file
+    float hit_scale = 20.0F; // damage dealt at which a hit makes all its particles; fewer below
+};
+
 struct DamageProfile {
     std::string name;
     // "wood", "glass", "metal", "stone", "concrete", "brick", "ceramic", "ice", "plastic",
@@ -95,6 +146,7 @@ struct DamageProfile {
     std::string anchors = "bottom";
     DebrisSettings debris;
     DeformSettings deform;
+    DamageEffects effects;
 };
 
 // The kinds of damage profiles name.

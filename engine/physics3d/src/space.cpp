@@ -1830,7 +1830,7 @@ void Space::step(world::World& world, float seconds) {
         }
     }
     read_soft_bodies(world);
-    read_cloths(tree);
+    read_cloths(world, tree);
     step_vehicles(world, tree, seconds);
     read_back(world, tree);
     move_characters(world, tree, seconds);

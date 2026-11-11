@@ -1,0 +1,20 @@
+{
+  "effects": {
+    "hit": {
+      "debris": {
+        "amount": 12,
+        "lifetime": 0.8
+      },
+      "decal": {
+        "lifetime": 4,
+        "size": 0.3,
+        "texture": "textures/scorch.texture.json"
+      }
+    },
+    "hit_scale": 30
+  },
+  "format": 1,
+  "health": 80,
+  "material": "wood",
+  "name": "crate"
+}

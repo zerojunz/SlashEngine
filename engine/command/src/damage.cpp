@@ -5,10 +5,12 @@
 
 #include "procedural.hpp"
 
+#include "slash/asset/assets.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/text.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/physics3d/physics3d.hpp"
+#include "slash/platform/file.hpp"
 #include "slash/world/tree2d.hpp"
 #include "slash/world/tree3d.hpp"
 
@@ -106,6 +108,22 @@ json::Value report_value(const Report& report) {
     if (!report.deformed.empty()) {
         out["deformed"] = report.deformed;
     }
+    if (report.killed) {
+        out["killed"] = true;
+    }
+    if (report.wrecked) {
+        out["wrecked"] = true;
+    }
+    if (report.queued) {
+        out["queued"] = true;
+    }
+    if (!report.effects.empty()) {
+        json::Array effects;
+        for (const std::string& effect : report.effects) {
+            effects.emplace_back(effect);
+        }
+        out["effects"] = std::move(effects);
+    }
     return out;
 }
 
@@ -135,6 +153,13 @@ Reply damage_apply(Session& session, const json::Value& params) {
         return std::move(*refused);
     }
     const auto push = static_cast<float>(number_or(params, "push", 0.0));
+    std::string by;
+    if (const json::Value* by_value = params.find("by"); by_value != nullptr) {
+        by = by_value->as_string();
+        if (world.find(by) == entt::null) {
+            return unknown_id(world, by, "/by");
+        }
+    }
     const auto point_of = [](const json::Value* point, bool& flat) -> std::optional<Vec3> {
         if (point == nullptr) {
             return std::nullopt;
@@ -167,7 +192,7 @@ Reply damage_apply(Session& session, const json::Value& params) {
         }
         const auto& ecs = world.ecs();
         const bool cloth_2d = ecs.all_of<world::Cloth2D>(entity);
-        if ((cloth_2d || ecs.all_of<world::SoftBody3D>(entity)) &&
+        if ((cloth_2d || ecs.any_of<world::SoftBody3D, world::Cloth3D>(entity)) &&
             !ecs.any_of<world::Destructible2D, world::Destructible3D>(entity)) {
             // Cloth tears where a cut, a shot or a blast reaches it.
             if (!at || radius_value == nullptr) {
@@ -177,12 +202,14 @@ Reply damage_apply(Session& session, const json::Value& params) {
             if (cloth_2d != flat_at) {
                 return param_error(code::kInvalidParams, "/at",
                                    cloth_2d ? "a Cloth2D is torn at [x, y] in pixels"
-                                            : "a SoftBody3D is torn at [x, y, z] in meters");
+                                            : "3D cloth is torn at [x, y, z] in meters");
             }
             const auto radius = static_cast<float>(radius_value->as_double());
             std::size_t count = 0;
             if (tears(kind) && cloth_2d) {
                 count = physics2d::tear_cloth_2d(world, entity, *flat(at), radius).size();
+            } else if (tears(kind) && ecs.all_of<world::Cloth3D>(entity)) {
+                count = physics3d::tear_cloth(world, entity, *at, radius).size();
             } else if (tears(kind)) {
                 count = physics3d::tear_soft_body(world, entity, *at, radius).size();
             }
@@ -193,7 +220,7 @@ Reply damage_apply(Session& session, const json::Value& params) {
                                    "a Destructible2D is hit at [x, y] in pixels");
             }
             auto report = physics2d::damage_body_2d(world, entity, amount, kind, flat(at), push,
-                                                    flat(direction));
+                                                    flat(direction), by);
             if (!report) {
                 return param_error(code::kInvalidParams, "/id",
                                    quoted(id) + " " + report.error().message);
@@ -204,7 +231,8 @@ Reply damage_apply(Session& session, const json::Value& params) {
                 return param_error(code::kInvalidParams, "/at",
                                    "a Destructible3D is hit at [x, y, z] in meters");
             }
-            auto report = physics3d::damage_body(world, entity, amount, kind, at, push, direction);
+            auto report =
+                physics3d::damage_body(world, entity, amount, kind, at, push, direction, by);
             if (!report) {
                 return param_error(code::kInvalidParams, "/id",
                                    quoted(id) + " " + report.error().message);
@@ -221,13 +249,13 @@ Reply damage_apply(Session& session, const json::Value& params) {
         }
         const auto radius = static_cast<float>(radius_value->as_double());
         if (flat_at) {
-            for (const auto& report :
-                 physics2d::damage_area_2d(world, Vec2{at->x, at->y}, radius, amount, kind, push)) {
+            for (const auto& report : physics2d::damage_area_2d(world, Vec2{at->x, at->y}, radius,
+                                                                amount, kind, push, by)) {
                 hurt.emplace_back(report_value(report));
             }
         } else {
             for (const auto& report :
-                 physics3d::damage_area(world, *at, radius, amount, kind, push)) {
+                 physics3d::damage_area(world, *at, radius, amount, kind, push, by)) {
                 hurt.emplace_back(report_value(report));
             }
         }
@@ -241,12 +269,20 @@ Reply damage_apply(Session& session, const json::Value& params) {
                 for (const entt::entity entity : world.ecs().view<const world::SoftBody3D>()) {
                     cloths.push_back(entity);
                 }
+                for (const entt::entity entity : world.ecs().view<const world::Cloth3D>()) {
+                    cloths.push_back(entity);
+                }
             }
             std::ranges::sort(cloths, {}, [](entt::entity e) { return entt::to_entity(e); });
             for (const entt::entity entity : cloths) {
-                const std::size_t count =
-                    flat_at ? physics2d::tear_cloth_2d(world, entity, *flat(at), radius).size()
-                            : physics3d::tear_soft_body(world, entity, *at, radius).size();
+                std::size_t count = 0;
+                if (flat_at) {
+                    count = physics2d::tear_cloth_2d(world, entity, *flat(at), radius).size();
+                } else if (world.ecs().all_of<world::Cloth3D>(entity)) {
+                    count = physics3d::tear_cloth(world, entity, *at, radius).size();
+                } else {
+                    count = physics3d::tear_soft_body(world, entity, *at, radius).size();
+                }
                 if (count > 0) {
                     torn.emplace_back(torn_value(world.id_of(entity), count));
                 }
@@ -331,11 +367,25 @@ Reply damage_state(Session& session, const json::Value& params) {
     const auto included = [&](std::string_view id) {
         return wanted.empty() || std::ranges::find(wanted, id) != wanted.end();
     };
+    // Someone or something living out of health is dead; a vehicle, wrecked.
+    const auto fate = [&](entt::entity entity, json::Value& body) {
+        const json::Value* health = body.find("health");
+        if (health == nullptr || health->as_double() > 0.0) {
+            return;
+        }
+        if (ecs.any_of<world::Vehicle3D, world::Vehicle2D>(entity)) {
+            body["wrecked"] = true;
+        } else if (ecs.any_of<world::Ragdoll3D, world::Ragdoll2D, world::Creature3D,
+                              world::Creature2D, world::Character2D, world::NpcAgent>(entity)) {
+            body["dead"] = true;
+        }
+    };
     json::Array bodies;
     for (const auto [entity, destructible] : ecs.view<const world::Destructible3D>().each()) {
         const std::string_view id = world.id_of(entity);
         if (!id.empty() && included(id)) {
             json::Value body = destructible_state(world, id, destructible, false);
+            fate(entity, body);
             if (!destructible.dents.empty()) {
                 body["dents"] = static_cast<std::int64_t>(destructible.dents.size());
             }
@@ -352,7 +402,9 @@ Reply damage_state(Session& session, const json::Value& params) {
     for (const auto [entity, destructible] : ecs.view<const world::Destructible2D>().each()) {
         const std::string_view id = world.id_of(entity);
         if (!id.empty() && included(id)) {
-            bodies.emplace_back(destructible_state(world, id, destructible, true));
+            json::Value body = destructible_state(world, id, destructible, true);
+            fate(entity, body);
+            bodies.emplace_back(std::move(body));
         }
     }
     // Cloth torn, by how many edges (2D) or triangles (3D).
@@ -367,6 +419,12 @@ Reply damage_state(Session& session, const json::Value& params) {
         const std::string_view id = world.id_of(entity);
         if (!soft.torn.empty() && !id.empty() && included(id)) {
             torn.emplace_back(torn_value(id, soft.torn.size()));
+        }
+    }
+    for (const auto [entity, cloth] : ecs.view<const world::Cloth3D>().each()) {
+        const std::string_view id = world.id_of(entity);
+        if (!cloth.torn.empty() && !id.empty() && included(id)) {
+            torn.emplace_back(torn_value(id, cloth.torn.size()));
         }
     }
     std::map<std::string, GroupState, std::less<>> groups;
@@ -493,6 +551,23 @@ Reply damage_check(Session& session, const json::Value& params) {
             problem["message"] = "its pieces stand linked with no anchors, so all of them fall";
             problems.emplace_back(std::move(problem));
         }
+        // Files its effects leave that aren't there.
+        const world::DamageEffects& effects = profile.value()->effects;
+        for (const world::EffectSet* set : {&effects.hit, &effects.broken}) {
+            for (const std::string* file : {&set->decal.texture, &set->sound.stream}) {
+                if (file->empty() || asset::is_made_path(*file)) {
+                    continue;
+                }
+                if (auto found = session.resolve_path(*file);
+                    !found || !platform::exists(found.value())) {
+                    json::Value problem;
+                    problem["id"] = id;
+                    problem["message"] =
+                        "its profile's effects name " + quoted(*file) + ", which doesn't exist";
+                    problems.emplace_back(std::move(problem));
+                }
+            }
+        }
         if (!flat && !world.ecs().all_of<world::MeshInstance3D>(entity)) {
             json::Value problem;
             problem["id"] = id;
@@ -523,7 +598,8 @@ void register_damage_commands(Registry& registry) {
         schema["required"] = json::Array{"amount"};
         json::Value& p = schema["properties"];
         p["id"] = property("string", "A Destructible3D or Destructible2D to damage, or a "
-                                     "Cloth2D or SoftBody3D to tear within radius of at.");
+                                     "Cloth2D, Cloth3D or SoftBody3D to tear within radius of "
+                                     "at.");
         p["at"] = point_property("Where it is hit: [x, y, z] in meters, or [x, y] in pixels for "
                                  "2D. Without an id, the center of an area.");
         p["radius"] =
@@ -538,12 +614,15 @@ void register_damage_commands(Registry& registry) {
         p["push"] = property("number", "Speed loose pieces fly from the hit at (m/s, 2D px/s); "
                                        "0 takes the profile's.");
         p["push"]["minimum"] = 0;
+        p["by"] = property("string", "Who dealt it, put in the damaged, killed and wrecked "
+                                     "events: creatures flee or turn on them.");
         registry.add({
             .name = "damage.apply",
             .description = "Damages a Destructible3D or Destructible2D by its .damage.json "
                            "profile, or all within a radius: damage states, dents, holes and "
-                           "craters, breaking where hit, linked pieces collapsing; cuts, shots "
-                           "and blasts tear cloth. Returns each one hurt and torn.",
+                           "craters, breaking where hit with debris, dust, decals and sound, "
+                           "linked pieces collapsing; the living die and vehicles wreck; cuts, "
+                           "shots and blasts tear cloth. Returns each one hurt and torn.",
             .capabilities = {Capability::Edit},
             .effect = Effect::Edit,
             .params = std::move(schema),

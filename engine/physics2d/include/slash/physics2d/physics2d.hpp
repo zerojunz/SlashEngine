@@ -45,6 +45,8 @@ struct Settings {
     // Solver substeps each physics tick takes, as Box2D's: more keep fast, small or stacked
     // bodies steadier, at more cost.
     int substeps = 4;
+    // The most pieces breaks from impacts may cut a tick, as physics_3d's; 0 for no limit.
+    int break_budget = 0;
 
     friend bool operator==(const Settings&, const Settings&) = default;
 };
@@ -160,6 +162,10 @@ struct DamageReport2D {
     bool fell = false;
     // How the damage changed its shape while it held: "dent", "hole", "carve" or "".
     std::string deformed;
+    bool killed = false;              // someone or something living died of it
+    bool wrecked = false;             // a vehicle was wrecked by it
+    bool queued = false;              // it breaks in a later tick, past this one's break budget
+    std::vector<std::string> effects; // what the hit or break left (debris, dust, decal, sound)
 };
 
 // Carves the cells of a TileMapLayer whose centers are within radius pixels of center, as the
@@ -188,17 +194,20 @@ break_body_2d(world::World& world, entt::entity entity, float push = 0.0F,
 // tore (world::cloth_grid_2d's numbers) and emits "torn" with them.
 std::vector<int> tear_cloth_2d(world::World& world, entt::entity entity, Vec2 center, float radius);
 // Does amount damage of a kind ("blunt", "pierce", "cut", "explosive", "fire", "impact") to a
-// Destructible2D at a point in the world, breaking it once its health runs out.
-[[nodiscard]] Result<DamageReport2D> damage_body_2d(world::World& world, entt::entity entity,
-                                                    float amount, std::string_view kind,
-                                                    std::optional<Vec2> at = std::nullopt,
-                                                    float push = 0.0F,
-                                                    std::optional<Vec2> direction = std::nullopt);
+// Destructible2D at a point in the world, breaking it once its health runs out, as 3D's
+// damage_body does: hits and breaks leave the profile's effects, someone or something living (a
+// Ragdoll2D, Creature2D, Character2D or NpcAgent) is struck and dies instead of breaking, and a
+// Vehicle2D is wrecked. by names whoever dealt it.
+[[nodiscard]] Result<DamageReport2D>
+damage_body_2d(world::World& world, entt::entity entity, float amount, std::string_view kind,
+               std::optional<Vec2> at = std::nullopt, float push = 0.0F,
+               std::optional<Vec2> direction = std::nullopt, std::string_view by = {});
 // Damages every Destructible2D within radius pixels of center (its outline's nearest point, a
 // tile map layer's place), less with distance.
 [[nodiscard]] std::vector<DamageReport2D> damage_area_2d(world::World& world, Vec2 center,
                                                          float radius, float amount,
-                                                         std::string_view kind, float push = 0.0F);
+                                                         std::string_view kind, float push = 0.0F,
+                                                         std::string_view by = {});
 // Works out the load through a linked group's pieces now, breaking the links it is too much for;
 // returns the pieces that came loose.
 std::vector<std::string> settle_group_2d(world::World& world, std::string_view group);

@@ -4864,6 +4864,7 @@ window and two 2D crates.
 | `strength`, `compression` | the material's | Newtons a square meter of a link holds (2D: a newton a pixel of edge, per 64), and how many times more it holds what stands on it |
 | `debris` | `lifetime` `0`, `push` the material's | Seconds loose pieces last (0 keeps them) and meters (pixels) a second they fly from the hit |
 | `deform` | the material's | How damage that doesn't break it changes its shape: `dent` (meters deep a point of blunt, impact or explosive damage pushes in), `dent_radius`, `max_dent`; `hole` (meters across a point of pierce damage shoots through), `max_hole`; `carve` (meters of radius a point of explosive damage blasts out), `max_carve`; `crater_depth` (how deep a crater is for its radius, on an `HTerrain`). 0 does none. 2D outlines take them at 64 pixels a meter |
+| `effects` | the material's | What hits and breaks leave, as Chaos's break events drive Niagara: `hit` and `break`, each with `debris` and `dust` (`amount` of particles, `lifetime` seconds, `speed` meters a second, `spread` degrees, `size` meters, `gravity` scale, `color`), `decal` (`texture`, `size` meters, `lifetime` seconds, 0 keeps it, `modulate`) and `sound` (`stream`, `volume_db`, `pitch_scale`, `bus`, `lifetime`); `hit_scale` is the damage at which a hit throws all its particles (fewer for less). `null` takes out one the material has |
 
 - Damage of a kind, times its resistance, comes off `health`, and the body's `state` follows the
   states it is below; at no health it breaks where it was hit. `damaged`, `broken` and
@@ -4898,7 +4899,28 @@ window and two 2D crates.
   `TileMapLayer` with a `Destructible2D` loses the cells a blast reaches.
 - Cuts, shots and blasts tear cloth: `damage.apply` tears a `Cloth2D`'s edges or a
   `SoftBody3D`'s triangles within its `radius`, and cloth with a `tear_stretch` tears by itself
-  where an edge is pulled past that many times its length. `torn` events say which.
+  where an edge is pulled past that many times its length. `torn` events say which. A `Cloth3D`
+  tears the same way: its section is made again without the torn triangles, its points kept,
+  and a part torn free of every point the skin holds still falls free.
+- A hit at a point leaves its profile's hit effects, and a break, death or wreck its break
+  effects, as entities of their own named for the body (`<id>_debris`, `<id>_dust`,
+  `<id>_decal`, `<id>_sound`, numbered past those taken): a one-shot `CPUParticles3D` of small
+  boxes (dust: fading spheres), a `Decal` facing back along the hit and an
+  `AudioStreamPlayer3D`, or in 2D a `CPUParticles2D` (in pixels), a `Sprite2D` and an
+  `AudioStreamPlayer2D`. Each has a `DamageEffect` that removes it when its `lifetime` runs out.
+- Someone or something living (a `Ragdoll3D`, `Creature3D`, `Flesh3D`, `NpcAgent` or a model
+  drawing a `.character.json` or `.creature.json` recipe; in 2D a `Ragdoll2D`, `Creature2D`,
+  `Character2D` or `NpcAgent`) with a `Destructible3D` or `Destructible2D` never breaks or
+  deforms: a hit strikes its ragdoll's nearest bone, and at no health its ragdoll goes limp for
+  good, a creature stops (`mode` `dead`) and a `killed` event says so. A `Vehicle3D` or
+  `Vehicle2D` at no health is wrecked: it stops driving and a `wrecked` event says so. An NPC's
+  brain that has `health` and `dead` facts gets its health as a share of full in percent and
+  whether it is dead; a creature hurt by someone (`damage.apply`'s `by`, in the `damaged`
+  event) runs from them, or turns on them if it is aggressive.
+- `physics_3d.break_budget` and `physics_2d.break_budget` in [`project.json`](project-format.md)
+  cap the pieces breaks from impacts cut each tick: the first break of a tick always cuts, and
+  those past the budget break in the ticks after, in the order they came. A 3D body's cells are
+  cut on the job pool, the same pieces on any number of threads.
 
 | Component | Fields (defaults) |
 | --- | --- |
@@ -4907,6 +4929,8 @@ window and two 2D crates.
 | `HTerrain` | `craters` `[]`: `center` (cells), `radius` (cells) and `depth` (meters before `map_scale`) of each dug |
 | `Cloth2D` | `tear_stretch` `0` (how many times its length an edge stretches before it tears; 0 never), `torn` `[]` (the edges torn: from each point, row by row, the one right of it, then the one below it) |
 | `SoftBody3D` | `tear_stretch` `0`, `torn` `[]` (its mesh's triangles torn out, by number) |
+| `Cloth3D` | `tear_stretch` `0`, `torn` `[]` (its section's triangles torn out, by number in its surfaces' index order) |
+| `DamageEffect` | `lifetime` `0` (seconds left; 0 keeps it), `body` `""` (the body whose hit or break left it) |
 | `Destructible2D` | as `Destructible3D`'s, of a `StaticBody2D` or `RigidBody2D` whose outline is its `CollisionPolygon2D`, else its `CollisionShape2D`, else its `Sprite2D`'s rectangle |
 | `FracturePiece2D` | `lifetime` `0`, `group` `""`, `links` `[]`, `anchored` `false` |
 

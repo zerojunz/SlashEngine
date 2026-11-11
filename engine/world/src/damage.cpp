@@ -26,7 +26,47 @@ constexpr std::string_view kSchema = R"({
   "additionalProperties": false,
   "required": ["format"],
   "$defs": {
-    "color": {"type": "array", "items": {"type": "number", "minimum": 0}, "minItems": 3, "maxItems": 4}
+    "color": {"type": "array", "items": {"type": "number", "minimum": 0}, "minItems": 3, "maxItems": 4},
+    "particles": {
+      "type": ["object", "null"], "additionalProperties": false,
+      "properties": {
+        "amount": {"type": "integer", "minimum": 0, "maximum": 512, "description": "Particles; 0 for none."},
+        "lifetime": {"type": "number", "exclusiveMinimum": 0, "maximum": 60, "description": "Seconds each lives."},
+        "speed": {"type": "number", "minimum": 0, "description": "How fast they fly out of the hit."},
+        "spread": {"type": "number", "minimum": 0, "maximum": 180, "description": "Degrees around the way out they scatter."},
+        "size": {"type": "number", "exclusiveMinimum": 0, "description": "Across, each."},
+        "gravity": {"type": "number", "description": "Times the world's gravity; below 0 rises, as smoke."},
+        "color": {"$ref": "#/$defs/color"}
+      }
+    },
+    "effects": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "debris": {"$ref": "#/$defs/particles", "description": "Chips and shards."},
+        "dust": {"$ref": "#/$defs/particles", "description": "A cloud."},
+        "decal": {
+          "type": ["object", "null"], "additionalProperties": false,
+          "description": "A mark left where it was: a Decal (2D: a Sprite2D).",
+          "properties": {
+            "texture": {"type": "string", "description": "A texture file; empty for none."},
+            "size": {"type": "number", "exclusiveMinimum": 0},
+            "lifetime": {"type": "number", "minimum": 0, "description": "Seconds before it goes; 0 keeps it."},
+            "modulate": {"$ref": "#/$defs/color"}
+          }
+        },
+        "sound": {
+          "type": ["object", "null"], "additionalProperties": false,
+          "description": "A sound played where it was.",
+          "properties": {
+            "stream": {"type": "string", "description": "A sound file; empty for none."},
+            "volume_db": {"type": "number"},
+            "pitch_scale": {"type": "number", "exclusiveMinimum": 0},
+            "bus": {"type": "string", "minLength": 1},
+            "lifetime": {"type": "number", "exclusiveMinimum": 0, "description": "Seconds before its player goes."}
+          }
+        }
+      }
+    }
   },
   "properties": {
     "format": {"const": 1, "description": "Format version. Must be 1."},
@@ -101,6 +141,15 @@ constexpr std::string_view kSchema = R"({
         "max_carve": {"type": "number", "minimum": 0, "description": "The widest one carve's radius gets."},
         "crater_depth": {"type": "number", "minimum": 0, "maximum": 2, "description": "How deep a terrain's crater goes, as a share of its radius."}
       }
+    },
+    "effects": {
+      "type": "object", "additionalProperties": false,
+      "description": "What hits and breaks leave: debris, dust, a decal and a sound, each made an entity of its own where it was. A death or a wreck leaves what a break does.",
+      "properties": {
+        "hit": {"$ref": "#/$defs/effects", "description": "What a hit leaves, its particles fewer for lighter hits."},
+        "break": {"$ref": "#/$defs/effects", "description": "What breaking, dying or being wrecked leaves."},
+        "hit_scale": {"type": "number", "exclusiveMinimum": 0, "description": "Damage dealt at which a hit makes all its particles."}
+      }
     }
   }
 })";
@@ -113,58 +162,70 @@ constexpr std::string_view kDefaults = R"({
            "impact": {"threshold": 30, "damage": 0.5},
            "fracture": {"pattern": "splinters", "pieces": 10, "levels": 2, "level_pieces": 3},
            "density": 600, "strength": 80000, "compression": 8, "debris": {"push": 1},
-           "deform": {"hole": 0.003, "max_hole": 0.15, "carve": 0.002, "max_carve": 0.5}},
+           "deform": {"hole": 0.003, "max_hole": 0.15, "carve": 0.002, "max_carve": 0.5},
+           "effects": {"hit": {"debris": {"amount": 6, "speed": 2, "size": 0.03, "color": [0.55, 0.38, 0.2]}}, "break": {"debris": {"amount": 24, "speed": 3, "size": 0.05, "color": [0.55, 0.38, 0.2]}, "dust": {"amount": 8, "lifetime": 1.5, "speed": 0.6, "size": 0.25, "gravity": -0.02, "color": [0.7, 0.6, 0.45, 0.5]}}}},
   "glass": {"health": 10, "resist": {"pierce": 1.5, "blunt": 1.5, "fire": 0.2},
             "impact": {"threshold": 5, "damage": 2},
             "fracture": {"pattern": "radial", "pieces": 24, "levels": 1},
             "density": 2500, "strength": 30000, "compression": 4,
-            "debris": {"lifetime": 6, "push": 1.5}},
+            "debris": {"lifetime": 6, "push": 1.5},
+           "effects": {"hit": {"debris": {"amount": 4, "speed": 1.5, "size": 0.02, "color": [0.8, 0.9, 1.0, 0.8]}}, "break": {"debris": {"amount": 32, "speed": 3, "size": 0.03, "color": [0.8, 0.9, 1.0, 0.8]}}}},
   "metal": {"health": 400, "resist": {"pierce": 0.4, "blunt": 0.5, "cut": 0.3, "fire": 0.2, "explosive": 0.8},
             "impact": {"threshold": 400, "damage": 0.2},
             "fracture": {"pattern": "slices", "pieces": 4, "levels": 1},
             "density": 7800, "strength": 2000000, "compression": 2,
-            "deform": {"dent": 0.002, "dent_radius": 0.3, "max_dent": 0.2, "hole": 0.002, "max_hole": 0.1}},
+            "deform": {"dent": 0.002, "dent_radius": 0.3, "max_dent": 0.2, "hole": 0.002, "max_hole": 0.1},
+           "effects": {"hit": {"debris": {"amount": 8, "lifetime": 0.4, "speed": 4, "spread": 60, "size": 0.015, "gravity": 0.5, "color": [1.0, 0.75, 0.3]}}, "break": {"debris": {"amount": 24, "lifetime": 0.6, "speed": 5, "size": 0.02, "gravity": 0.5, "color": [1.0, 0.75, 0.3]}, "dust": {"amount": 10, "lifetime": 3, "speed": 0.5, "size": 0.6, "gravity": -0.05, "color": [0.15, 0.15, 0.15, 0.6]}}}},
   "stone": {"health": 200, "resist": {"pierce": 0.3, "cut": 0.3, "fire": 0, "explosive": 1.5},
             "impact": {"threshold": 150, "damage": 0.4},
             "fracture": {"pattern": "clusters", "pieces": 8, "levels": 2, "level_pieces": 4},
             "density": 2600, "strength": 150000, "compression": 20, "debris": {"push": 0.5},
-            "deform": {"carve": 0.004, "max_carve": 1.5}},
+            "deform": {"carve": 0.004, "max_carve": 1.5},
+           "effects": {"hit": {"dust": {"amount": 4, "lifetime": 1, "speed": 0.5, "size": 0.2, "gravity": -0.02, "color": [0.6, 0.58, 0.55, 0.5]}}, "break": {"debris": {"amount": 20, "speed": 2.5, "size": 0.08, "color": [0.5, 0.48, 0.45]}, "dust": {"amount": 16, "lifetime": 2.5, "speed": 0.8, "size": 0.5, "gravity": -0.02, "color": [0.6, 0.58, 0.55, 0.5]}}}},
   "concrete": {"health": 250, "resist": {"pierce": 0.3, "cut": 0.2, "fire": 0, "explosive": 1.5},
                "impact": {"threshold": 200, "damage": 0.4},
                "fracture": {"pattern": "impact", "pieces": 12, "levels": 2, "level_pieces": 4},
                "density": 2400, "connected": true, "strength": 200000, "compression": 20,
-               "debris": {"push": 0.5}, "deform": {"carve": 0.004, "max_carve": 1.5}},
+               "debris": {"push": 0.5}, "deform": {"carve": 0.004, "max_carve": 1.5},
+           "effects": {"hit": {"dust": {"amount": 4, "lifetime": 1, "speed": 0.5, "size": 0.2, "gravity": -0.02, "color": [0.65, 0.65, 0.63, 0.5]}}, "break": {"debris": {"amount": 20, "speed": 2.5, "size": 0.08, "color": [0.6, 0.6, 0.58]}, "dust": {"amount": 20, "lifetime": 3, "speed": 0.8, "size": 0.6, "gravity": -0.02, "color": [0.65, 0.65, 0.63, 0.5]}}}},
   "brick": {"health": 150, "resist": {"pierce": 0.4, "cut": 0.3, "fire": 0, "explosive": 1.5},
             "impact": {"threshold": 120, "damage": 0.5},
             "fracture": {"pattern": "clusters", "pieces": 10, "levels": 2, "level_pieces": 3},
             "density": 1900, "connected": true, "strength": 100000, "compression": 15,
-            "debris": {"push": 0.5}, "deform": {"carve": 0.005, "max_carve": 1.5}},
+            "debris": {"push": 0.5}, "deform": {"carve": 0.005, "max_carve": 1.5},
+           "effects": {"hit": {"dust": {"amount": 4, "lifetime": 1, "speed": 0.5, "size": 0.2, "gravity": -0.02, "color": [0.65, 0.4, 0.3, 0.5]}}, "break": {"debris": {"amount": 20, "speed": 2.5, "size": 0.07, "color": [0.6, 0.3, 0.22]}, "dust": {"amount": 16, "lifetime": 2.5, "speed": 0.8, "size": 0.5, "gravity": -0.02, "color": [0.65, 0.4, 0.3, 0.5]}}}},
   "ceramic": {"health": 15, "resist": {"blunt": 1.5, "fire": 0},
               "impact": {"threshold": 8, "damage": 1.5},
               "fracture": {"pattern": "impact", "pieces": 10, "levels": 1},
               "density": 2300, "strength": 50000, "compression": 6,
-              "debris": {"lifetime": 8, "push": 1}},
+              "debris": {"lifetime": 8, "push": 1},
+           "effects": {"break": {"debris": {"amount": 20, "speed": 2, "size": 0.03, "color": [0.9, 0.88, 0.85]}}}},
   "ice": {"health": 40, "resist": {"fire": 3, "pierce": 0.8},
           "impact": {"threshold": 20, "damage": 1},
           "fracture": {"pattern": "impact", "pieces": 12, "levels": 2, "level_pieces": 3},
           "density": 917, "strength": 40000, "compression": 6, "debris": {"push": 1},
-          "deform": {"hole": 0.004, "max_hole": 0.2, "carve": 0.005, "max_carve": 1}},
+          "deform": {"hole": 0.004, "max_hole": 0.2, "carve": 0.005, "max_carve": 1},
+           "effects": {"hit": {"debris": {"amount": 4, "speed": 1.5, "size": 0.02, "color": [0.8, 0.92, 1.0, 0.9]}}, "break": {"debris": {"amount": 24, "speed": 2.5, "size": 0.04, "color": [0.8, 0.92, 1.0, 0.9]}, "dust": {"amount": 6, "lifetime": 1, "speed": 0.5, "size": 0.2, "gravity": -0.01, "color": [0.95, 0.97, 1.0, 0.4]}}}},
   "plastic": {"health": 50, "resist": {"pierce": 0.8, "fire": 1.5},
               "impact": {"threshold": 40, "damage": 0.5},
               "fracture": {"pattern": "slices", "pieces": 4, "levels": 1},
               "density": 950, "strength": 60000, "compression": 4,
-              "deform": {"dent": 0.003, "dent_radius": 0.15, "max_dent": 0.1, "hole": 0.003, "max_hole": 0.1}},
+              "deform": {"dent": 0.003, "dent_radius": 0.15, "max_dent": 0.1, "hole": 0.003, "max_hole": 0.1},
+           "effects": {"break": {"debris": {"amount": 10, "speed": 2, "size": 0.04, "color": [0.8, 0.8, 0.8]}}}},
   "flesh": {"health": 100, "resist": {"fire": 1.5, "explosive": 1.2},
             "impact": {"threshold": 60, "damage": 0.3},
-            "fracture": {"pattern": "none"}, "density": 1000},
+            "fracture": {"pattern": "none"}, "density": 1000,
+           "effects": {"hit": {"debris": {"amount": 6, "lifetime": 0.6, "speed": 1.5, "spread": 40, "size": 0.02, "color": [0.55, 0.05, 0.05]}}}},
   "cloth": {"health": 20, "resist": {"cut": 3, "pierce": 1.5, "blunt": 0.2, "fire": 2},
             "impact": {"threshold": 1000, "damage": 0},
             "fracture": {"pattern": "none"}, "density": 300,
-            "deform": {"hole": 0.01, "max_hole": 0.3}},
+            "deform": {"hole": 0.01, "max_hole": 0.3},
+           "effects": {"hit": {"debris": {"amount": 4, "lifetime": 1.5, "speed": 0.5, "size": 0.02, "gravity": 0.1, "color": [0.85, 0.85, 0.8]}}}},
   "soil": {"health": 1000000, "resist": {"pierce": 0.1, "cut": 0.1, "blunt": 0.2, "fire": 0},
            "impact": {"threshold": 100000, "damage": 0},
            "fracture": {"pattern": "none"}, "density": 1600,
-           "deform": {"carve": 0.02, "max_carve": 8, "crater_depth": 0.4}}
+           "deform": {"carve": 0.02, "max_carve": 8, "crater_depth": 0.4},
+           "effects": {"hit": {"debris": {"amount": 12, "speed": 3, "size": 0.05, "color": [0.4, 0.3, 0.2]}, "dust": {"amount": 12, "lifetime": 2.5, "speed": 1, "size": 0.6, "gravity": -0.02, "color": [0.55, 0.45, 0.32, 0.5]}}}}
 })";
 
 const json::Value& defaults() {
@@ -339,6 +400,73 @@ Result<json::Value> resolve_damage(const json::Value& doc, const FileReader& rea
     return resolve(doc, read_file, chain);
 }
 
+namespace {
+
+Vec4 color_of(const json::Value& value, Vec4 fallback) {
+    if (!value.is_array()) {
+        return fallback;
+    }
+    const json::Array& c = value.as_array();
+    if (c.size() < 3) {
+        return fallback;
+    }
+    return {static_cast<float>(c[0].as_double()), static_cast<float>(c[1].as_double()),
+            static_cast<float>(c[2].as_double()),
+            c.size() > 3 ? static_cast<float>(c[3].as_double()) : 1.0F};
+}
+
+void read_particles(const json::Value& doc, ParticleEffect& out) {
+    if (!doc.is_object()) {
+        return;
+    }
+    if (const json::Value* amount = doc.find("amount"); amount != nullptr) {
+        out.amount = static_cast<int>(amount->as_int());
+    }
+    out.lifetime = number_or(doc, "lifetime", out.lifetime);
+    out.speed = number_or(doc, "speed", out.speed);
+    out.spread = number_or(doc, "spread", out.spread);
+    out.size = number_or(doc, "size", out.size);
+    out.gravity = number_or(doc, "gravity", out.gravity);
+    if (const json::Value* color = doc.find("color"); color != nullptr) {
+        out.color = color_of(*color, out.color);
+    }
+}
+
+void read_effects(const json::Value& doc, EffectSet& out) {
+    if (!doc.is_object()) {
+        return;
+    }
+    if (const json::Value* debris = doc.find("debris"); debris != nullptr) {
+        read_particles(*debris, out.debris);
+    }
+    if (const json::Value* dust = doc.find("dust"); dust != nullptr) {
+        read_particles(*dust, out.dust);
+    }
+    if (const json::Value* decal = doc.find("decal"); decal != nullptr && decal->is_object()) {
+        if (const json::Value* texture = decal->find("texture"); texture != nullptr) {
+            out.decal.texture = texture->as_string();
+        }
+        out.decal.size = number_or(*decal, "size", out.decal.size);
+        out.decal.lifetime = number_or(*decal, "lifetime", out.decal.lifetime);
+        if (const json::Value* modulate = decal->find("modulate"); modulate != nullptr) {
+            out.decal.modulate = color_of(*modulate, out.decal.modulate);
+        }
+    }
+    if (const json::Value* sound = doc.find("sound"); sound != nullptr && sound->is_object()) {
+        if (const json::Value* stream = sound->find("stream"); stream != nullptr) {
+            out.sound.stream = stream->as_string();
+        }
+        out.sound.volume_db = number_or(*sound, "volume_db", out.sound.volume_db);
+        out.sound.pitch_scale = number_or(*sound, "pitch_scale", out.sound.pitch_scale);
+        if (const json::Value* bus = sound->find("bus"); bus != nullptr) {
+            out.sound.bus = bus->as_string();
+        }
+        out.sound.lifetime = number_or(*sound, "lifetime", out.sound.lifetime);
+    }
+}
+
+} // namespace
+
 Result<DamageProfile> parse_damage(const json::Value& resolved) {
     if (const auto errors = validate_damage(resolved); !errors.empty()) {
         return make_error(ErrorCode::InvalidArgument, pointer_message(errors));
@@ -425,6 +553,15 @@ Result<DamageProfile> parse_damage(const json::Value& resolved) {
         d.carve = number_or(*deform, "carve", d.carve);
         d.max_carve = number_or(*deform, "max_carve", d.max_carve);
         d.crater_depth = number_or(*deform, "crater_depth", d.crater_depth);
+    }
+    if (const json::Value* effects = doc.find("effects"); effects != nullptr) {
+        if (const json::Value* hit = effects->find("hit"); hit != nullptr) {
+            read_effects(*hit, out.effects.hit);
+        }
+        if (const json::Value* broken = effects->find("break"); broken != nullptr) {
+            read_effects(*broken, out.effects.broken);
+        }
+        out.effects.hit_scale = number_or(*effects, "hit_scale", out.effects.hit_scale);
     }
     return out;
 }

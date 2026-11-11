@@ -1780,13 +1780,36 @@ Result<render::MeshId> Renderer::cloth_mesh(const std::string& key, const ModelS
         skinned_vertices_[i].normal = {static_cast<float>(normal.x), static_cast<float>(normal.y),
                                        static_cast<float>(normal.z)};
     }
+    // A tear takes triangles out: the mesh is made again with the indices left.
+    if (cloth.id != render::MeshId::None && cloth.torn != where.torn) {
+        device_->destroy_mesh(cloth.id);
+        cloth.id = render::MeshId::None;
+    }
     if (cloth.id == render::MeshId::None) {
-        auto made = device_->create_mesh(skinned_vertices_, surface.indices);
+        std::vector<std::uint32_t> indices;
+        indices.reserve(surface.indices.size());
+        auto torn = where.torn.begin();
+        for (std::size_t i = 0; i + 2 < surface.indices.size(); i += 3) {
+            const auto triangle = static_cast<int>(i / 3);
+            while (torn != where.torn.end() && *torn < triangle) {
+                ++torn;
+            }
+            if (torn == where.torn.end() || *torn != triangle) {
+                indices.insert(indices.end(), {surface.indices[i], surface.indices[i + 1],
+                                               surface.indices[i + 2]});
+            }
+        }
+        if (indices.empty()) {
+            skinned_.erase(key);
+            return render::MeshId::None; // torn to nothing: nothing draws
+        }
+        auto made = device_->create_mesh(skinned_vertices_, indices);
         if (!made) {
             skinned_.erase(key);
             return made.error();
         }
         cloth.id = made.value();
+        cloth.torn = where.torn;
     } else if (auto updated = device_->update_mesh(cloth.id, skinned_vertices_); !updated) {
         return updated.error();
     }
@@ -2073,6 +2096,9 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
             if (!made) {
                 problems_.push_back({entity, std::string(kMeshField), made.error().message});
                 continue;
+            }
+            if (made.value() == render::MeshId::None) {
+                continue; // cloth torn to nothing
             }
             Draw draw;
             draw.mesh = made.value();
