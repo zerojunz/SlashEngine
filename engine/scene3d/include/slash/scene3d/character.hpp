@@ -23,11 +23,15 @@ namespace slash::scene3d {
 // Cloth3D's section names; the rest of it "<kind>_fitted") and the props' own. Attachment points
 // are nodes under their bones: "right_hand", "left_hand", "back", "hip_left", "hip_right" and
 // "head_top".
+// A form picks what it draws instead of the person: "skeleton" the bones under the skin and
+// "muscles" the muscles over them too (slash/world/flesh.hpp), on the same rig, as a path's
+// "::skeleton" and "::muscles" name them.
 [[nodiscard]] Result<Model> build_character(const world::CharacterRecipe& recipe,
-                                            const ModelReader& read);
+                                            const ModelReader& read, std::string_view form = {});
 
 // A .character.json file's model (load_model calls it), and its problems (check_model's).
-[[nodiscard]] Result<Model> load_character_model(std::string_view bytes, const ModelReader& read);
+[[nodiscard]] Result<Model> load_character_model(std::string_view bytes, const ModelReader& read,
+                                                 std::string_view form = {});
 [[nodiscard]] std::vector<json::ValidationError> check_character_model(std::string_view bytes,
                                                                        const ModelReader& read);
 

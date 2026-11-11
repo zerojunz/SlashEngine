@@ -55,7 +55,9 @@ constexpr std::string_view kSchema = R"({
         "hips": {"$ref": "#/$defs/scale", "description": "The hips' width. Default 1."},
         "arms": {"$ref": "#/$defs/scale", "description": "The arms' length. Default 1."},
         "legs": {"$ref": "#/$defs/scale", "description": "The legs' length. Default 1."},
-        "skin": {"$ref": "#/$defs/color", "description": "Default [0.87, 0.68, 0.55]."}
+        "skin": {"$ref": "#/$defs/color", "description": "Default [0.87, 0.68, 0.55]."},
+        "muscle": {"$ref": "#/$defs/share", "description": "How muscular, 0 to 1: the size of the muscles flesh simulates. Default 0.5."},
+        "fat": {"$ref": "#/$defs/share", "description": "How much fat lies over the muscles, 0 to 1, softening how the skin follows them. Default 0.3."}
       }
     },
     "face": {
@@ -600,6 +602,8 @@ Result<CharacterRecipe> parse_character(const json::Value& source, const FileRea
         read(*body, "arms", b.arms);
         read(*body, "legs", b.legs);
         read(*body, "skin", b.skin);
+        read(*body, "muscle", b.muscle);
+        read(*body, "fat", b.fat);
     }
     if (const json::Value* face = doc.find("face"); face != nullptr) {
         CharacterFace& f = recipe.face;
