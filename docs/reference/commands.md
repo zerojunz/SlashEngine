@@ -812,6 +812,76 @@ stepped yet (it steps the tick after it is placed), is `-32602` at `/id`. Needs:
 {"id": "hero", "muscles": ["biceps", "core"]}
 ```
 
+## Faces
+
+Checking, drafting and drawing [faces](scene-format.md#characters): `.face.json` files and the
+designed faces of character recipes. [examples/face-tools](../../examples/face-tools/).
+
+### face.check
+
+Checks the project's faces (or `paths`, each against every other): every `.face.json` file and
+every character recipe whose `face` is designed (it has `from`, `controls`, `carves`, `blend` or
+`style`), but the files another face extends, blends or comes `from`, whose fields those faces
+take. Each face is sculpted on the same head and measured along 990 rays over its front, from
+under the chin to the forehead and ear to ear, and its side profile's front along 96 rows; two
+are too alike where they differ most (the mean of the largest tenth of the differences) by less
+than the [`face_rules`](storyboard-format.md#fields)' `shape_difference` (default 0.5, in percent
+of the head's size), or, when the rules set `profile_difference`, their profiles by less than it
+(in percent of the head's depth), reported once a pair. A wider face tells apart from the front
+and hardly from the side; a nose or a chin from both.
+A face whose `style` the rules' `styles` lack, whose sculpt controls leave their `controls`
+ranges, with more marks than `max_marks` or a kind of mark not in `marks`, or whose eyes, lips,
+brows or marks' colors are off the rules' palette is an error at its JSON Pointer (under
+`/face` in a recipe), and so is a misspelled control in the rules, with the one meant. Returns how
+many `faces` it measured and `errors` (`file`, `path`, `message`); `measures: true` adds `pairs`
+with their `shape` and `profile` differences. `test.run` runs it. Needs: `read`, `filesystem`.
+
+```json
+{"measures": true}
+```
+
+### face.generate
+
+Writes a `.face.json` face for a `name` from a `brief` in words, such as "a stern old soldier
+with a scar and a hooked nose". The brief's words lean its sculpt controls and the rest of the
+face: traits of the whole face (old, young, child, stern, kind, sly, tired, tough, noble, gaunt,
+round, weathered and words like them), a size or shape before a feature (big nose, thin lips,
+strong jaw, high cheekbones, deep-set eyes), shapes by themselves (hooked, button, cleft,
+hooded, protruding), marks (scar, freckles, mole, tattoo, warpaint, burn, bruise, wound,
+birthmark, rash), beards (beard, stubble, clean-shaven), brows (arched, bushy) and styles (toon,
+cartoon, stylized, painterly, low poly, realistic). `controls` are kept as given. The `style` is
+the param's, else the brief's, else the first of the covering `face_rules`' `styles`. It makes
+`candidates` faces (default 12, at most 64) from `seed`, each control near what the brief leans
+it to and within the rules' ranges, with the marks the rules allow, and keeps the first as far
+from every other face as the rules ask, else the farthest, writing it to `out` (default
+`faces/<name>.face.json`) with undo. Returns `out`, its `style`, the words it `understood` and
+`ignored`, `marks_left_out` when the rules allowed fewer, and its `nearest` face with how far
+apart their `shape` and `profile` are; a `warning` says none was as far apart as the rules ask.
+A misspelled control is `-32602` at `/controls/<name>`, with the one meant. The same name,
+brief, seed and project make the same file. Needs: `read`, `edit`, `filesystem`.
+
+```json
+{"name": "Old Brann", "brief": "a stern old soldier with a scar and a hooked nose"}
+```
+
+### face.portrait
+
+Draws a portrait of a `face`, a `.face.json` file (on a bald, average head and shoulders) or a
+character recipe as it is (its hair, beard and clothes), into the PNG `out` (default
+`portraits/<file>.png`), as dialogue boxes and menus show them. `view` is `front`,
+`three_quarter` (the default, turned toward the face's left) or `side` in 3D, framed by a 30
+degree lens and lit by a key and a fill light, or `cutout`: the recipe's 2D side-on cut-out with
+its head filling the frame, for 2D worlds. `size` is `[width, height]` (default `[256, 256]`),
+`background` the color behind it and `expressions` ARKit's shapes by name, 0 to 1, which move
+the 3D head's blend shapes or the cut-out's profile. Returns `out`, `width` and `height`. A
+misspelled expression is `-32602` at `/expressions/<name>`, with the one meant. Needs: `read`,
+`filesystem`.
+
+```json
+{"face": "characters/brann.character.json", "view": "front",
+ "expressions": {"mouthSmileLeft": 0.6, "mouthSmileRight": 0.6}}
+```
+
 ## Creatures
 
 Placing, populating and working [creatures](scene-format.md#creatures).

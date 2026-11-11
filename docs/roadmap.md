@@ -1337,7 +1337,9 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
               by the body's `muscle` and `fat`, XPBD flesh after Chaos Flesh that bulges and
               jiggles under the skin in 3D and 2D, `::skeleton` and `::muscles` model forms,
               `Flesh3D`, `Flesh2D` and `flesh.get`
-        - [ ] The face tool
+        - [ ] The anatomy's bones as the ragdoll's and hit reactions' bodies (`ragdoll.generate`
+              fitting them, not the skin's capsules)
+        - [x] The face tool
               - [x] `.face.json` recipes: 46 sculpt controls, carves at 27 landmarks, blends of
                     presets, `extends` and a recipe's `from`, brows, asymmetry and styles; the
                     sculpted head with lids over the eyes and the lips' seam, drawn by 3D
@@ -1347,7 +1349,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
                     `Character2D`'s `expressions` on its profile
               - [x] Skin detail maps and skin marks (scars, freckles, moles, rashes, burns,
                     bruises, wounds, tattoos and face paint)
-              - [ ] `face.generate`, `face.check`, portraits and the storyboard's face rules
+              - [x] `face.generate`, `face.check`, portraits and the storyboard's face rules
 21. [ ] Procedural worlds with every tool: the procedural generation tool (noise, gradients,
         scatter rules, `tilemap.generate`, `terrain.generate`) extended to drive everything this
         list adds, as Unreal's PCG graphs do, in 2D and 3D worlds: scatter layers that paint
