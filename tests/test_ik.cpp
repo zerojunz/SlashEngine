@@ -450,3 +450,111 @@ TEST_CASE("modifier settings are checked against the model, with did you mean") 
               "children",
           });
 }
+
+TEST_CASE("LookAtModifier3D turns a bone's forward axis toward its target, within its limits") {
+    Scene scene;
+    const entt::entity goal = scene.create("goal", R"({"Transform3D": {"position": [3, 2, 0]}})");
+    const entt::entity arm = scene.create("arm", R"({"Transform3D": {},
+        "MeshInstance3D": {"mesh": "models/arm.gltf"},
+        "LookAtModifier3D": {"bone": "Wrist", "target_node": "goal", "forward_axis": "plus_y",
+            "primary_rotation_axis": "z"}})");
+    CHECK(scene3d::check_meshes(scene.world).empty());
+    // The wrist points its y at the goal, a quarter turn to the side; the bones above stay.
+    auto at = scene.positions(arm);
+    CHECK(near(at["Wrist"], {0.0F, 2.0F, 0.0F}));
+    CHECK(near(at["Hand"], {1.0F, 2.0F, 0.0F}));
+    CHECK(near(at["Elbow"], {0.0F, 1.0F, 0.0F}));
+    // Up and to the side, it looks there too, with its second axis.
+    scene.move(goal, {1.0F, 3.0F, 1.0F});
+    at = scene.positions(arm);
+    const Vec3 way = at["Hand"] - at["Wrist"];
+    CHECK(near(way, Vec3{1.0F, 1.0F, 1.0F} * (1.0F / std::sqrt(3.0F))));
+    // Limited to half a turn across, it stops a quarter of the way round each side.
+    scene.move(goal, {3.0F, 2.0F, 0.0F});
+    auto& look = scene.world.ecs().get<world::LookAtModifier3D>(arm);
+    look.use_angle_limitation = true;
+    look.primary_limit_angle = 1.5707964F;
+    at = scene.positions(arm);
+    CHECK(near(at["Hand"], {std::sqrt(0.5F), 2.0F + std::sqrt(0.5F), 0.0F}, 0.02F));
+    // Without a target it leaves the bone as it is.
+    look.target_node = entt::null;
+    CHECK(near(scene.positions(arm)["Hand"], {0.0F, 3.0F, 0.0F}));
+}
+
+TEST_CASE("LookAtModifier3D eases into a new direction over its duration") {
+    Scene scene;
+    const entt::entity goal =
+        scene.create("goal", R"({"Transform3D": {"position": [3, 2.05, 0]}})");
+    const entt::entity arm = scene.create("arm", R"({"Transform3D": {},
+        "MeshInstance3D": {"mesh": "models/arm.gltf"},
+        "LookAtModifier3D": {"bone": "Wrist", "target_node": "goal", "forward_axis": "plus_y",
+            "primary_rotation_axis": "x", "duration": 0.5, "transition_type": "sine",
+            "ease_type": "in_out"}})");
+    for (int i = 0; i < 40; ++i) {
+        scene.world.step(1.0 / 60.0);
+    }
+    const Vec3 before = scene.positions(arm).at("Hand");
+    // The goal crosses the wrist's x axis close by, which Godot's look-at takes as a flip: the
+    // bone swings over to the other side, easing through the half second.
+    scene.move(goal, {-3.0F, 2.05F, 0.0F});
+    for (int i = 0; i < 15; ++i) {
+        scene.world.step(1.0 / 60.0);
+    }
+    const Vec3 halfway = scene.positions(arm).at("Hand");
+    for (int i = 0; i < 30; ++i) {
+        scene.world.step(1.0 / 60.0);
+    }
+    const Vec3 after = scene.positions(arm).at("Hand");
+    CHECK(before.x > 0.5F);
+    CHECK(after.x < -0.5F);
+    CHECK(halfway.x < before.x - 0.2F);
+    CHECK(halfway.x > after.x + 0.2F);
+}
+
+TEST_CASE("CopyTransformModifier3D copies another bone's turn about its axes, by amount") {
+    Scene scene;
+    // The shoulder rolls a quarter turn about its y and tips forward a little about x.
+    const entt::entity arm = scene.create("arm", R"({"Transform3D": {},
+        "MeshInstance3D": {"mesh": "models/arm.gltf"},
+        "Skeleton3D": {"bone_rotations": {"Shoulder": [0, 1.5707964, 0]}},
+        "CopyTransformModifier3D": {"settings": [{"apply_bone": "Wrist",
+            "reference_bone": "Shoulder", "amount": 0.5, "copy_position": false,
+            "copy_scale": false, "axis_x_enabled": false, "axis_z_enabled": false}]}})");
+    CHECK(scene3d::check_meshes(scene.world).empty());
+    // Half the roll on top of the shoulder's: the wrist's x is three eighths of a turn round.
+    const auto x_of = [&](std::string_view bone) {
+        const world::Affine3D t = scene.bones(arm).at(std::string(bone));
+        return t.apply({1.0F, 0.0F, 0.0F}) - t.origin;
+    };
+    CHECK(near(x_of("Elbow"), {0.0F, 0.0F, -1.0F}));
+    CHECK(near(x_of("Wrist"), {-std::sqrt(0.5F), 0.0F, -std::sqrt(0.5F)}));
+    // Inverted, it rolls back half the way.
+    auto& setting = scene.world.ecs().get<world::CopyTransformModifier3D>(arm).settings[0];
+    setting.axis_y_inverted = true;
+    CHECK(near(x_of("Wrist"), {std::sqrt(0.5F), 0.0F, -std::sqrt(0.5F)}));
+    // A turn about x alone has no roll about y to copy.
+    setting.axis_y_inverted = false;
+    scene.world.ecs().get<world::Skeleton3D>(arm).bone_rotations["Shoulder"] = {0.5F, 0.0F, 0.0F};
+    const world::Affine3D elbow = scene.bones(arm).at("Elbow");
+    const world::Affine3D wrist = scene.bones(arm).at("Wrist");
+    CHECK(near(wrist.x, elbow.x));
+    CHECK(near(wrist.z, elbow.z));
+    // A whole copy takes the turn as it is; the hand moves with the wrist.
+    setting.amount = 1.0F;
+    setting.axis_x_enabled = true;
+    setting.axis_z_enabled = true;
+    const auto at = scene.positions(arm);
+    const Vec3 forearm = at.at("Wrist") - at.at("Elbow");
+    const Vec3 hand = at.at("Hand") - at.at("Wrist");
+    CHECK(dot(forearm, hand) == doctest::Approx(std::cos(0.5F)).epsilon(0.001));
+    // Bad settings are named.
+    setting.reference_bone = "Shouldr";
+    setting.reference_type = "bones";
+    std::vector<std::string> problems;
+    for (const scene3d::Problem& problem : scene3d::check_meshes(scene.world)) {
+        problems.push_back(problem.path + ": " + problem.message);
+    }
+    REQUIRE(problems.size() == 2);
+    CHECK(problems[0].starts_with("/components/CopyTransformModifier3D/settings/0/reference_type"));
+    CHECK(problems[1].starts_with("/components/CopyTransformModifier3D/settings/0/reference_bone"));
+}

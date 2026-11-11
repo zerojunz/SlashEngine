@@ -1020,6 +1020,14 @@ Reply character_place(Session& session, const json::Value& params) {
                                "no entity has the id " + quoted(given->as_string()));
         }
     }
+    entt::entity look_at{entt::null};
+    if (const json::Value* given = params.find("look_at"); given != nullptr) {
+        look_at = world.find(given->as_string());
+        if (look_at == entt::null) {
+            return param_error(code::kNotFound, "/look_at",
+                               "no entity has the id " + quoted(given->as_string()));
+        }
+    }
     auto created = world.create(id);
     if (!created) {
         return param_error(code::kInvalidParams, "/id", created.error().message);
@@ -1042,6 +1050,7 @@ Reply character_place(Session& session, const json::Value& params) {
         if (const json::Value* flip = params.find("flip_h"); flip != nullptr) {
             character.flip_h = flip->as_bool();
         }
+        character.look_at = look_at;
         ecs.emplace<world::Character2D>(entity, character);
         components = {"Transform2D", "Character2D"};
         if (parent != entt::null) {
@@ -1083,6 +1092,58 @@ Reply character_place(Session& session, const json::Value& params) {
                 tree->children.push_back(entity);
             }
         }
+        // The rig's modifiers, on children: the twist bones taking half their limbs' turns
+        // about them, and with look_at, each eye turned toward it.
+        json::Array modifiers;
+        const auto child = [&](const std::string& name) -> entt::entity {
+            auto made = world.create(id + "_" + name);
+            if (!made) {
+                return entt::null;
+            }
+            ecs.emplace<world::Transform3D>(made.value());
+            ecs.get<world::Transform3D>(entity).children.push_back(made.value());
+            modifiers.emplace_back(id + "_" + name);
+            return made.value();
+        };
+        if (const entt::entity twists = child("twists"); twists != entt::null) {
+            world::CopyTransformModifier3D copy;
+            const auto twist = [&](std::string apply, std::string reference, bool inverted) {
+                world::CopyTransformSetting setting;
+                setting.amount = 0.5F;
+                setting.apply_bone = std::move(apply);
+                setting.reference_bone = std::move(reference);
+                setting.copy_position = false;
+                setting.copy_scale = false;
+                setting.axis_x_enabled = false;
+                setting.axis_z_enabled = false;
+                setting.axis_y_inverted = inverted;
+                copy.settings.push_back(std::move(setting));
+            };
+            for (const std::string side : {"Left", "Right"}) {
+                twist(side + "UpperArmTwist", side + "UpperArm", true);
+                twist(side + "LowerArmTwist", side + "Hand", false);
+                twist(side + "UpperLegTwist", side + "UpperLeg", true);
+            }
+            ecs.emplace<world::CopyTransformModifier3D>(twists, std::move(copy));
+        }
+        if (look_at != entt::null) {
+            for (const std::string side : {"Left", "Right"}) {
+                const entt::entity eye = child(side == "Left" ? "look_left" : "look_right");
+                if (eye == entt::null) {
+                    continue;
+                }
+                world::LookAtModifier3D look;
+                look.bone = side + "Eye";
+                look.target_node = look_at;
+                look.forward_axis = "plus_y";
+                look.primary_rotation_axis = "z";
+                look.use_angle_limitation = true;
+                look.primary_limit_angle = 1.2F;
+                look.secondary_limit_angle = 0.8F;
+                ecs.emplace<world::LookAtModifier3D>(eye, look);
+            }
+        }
+        result["modifiers"] = std::move(modifiers);
     }
     result["components"] = std::move(components);
     result["height"] = rounded(recipe.value().body.height, 100.0);
@@ -1162,9 +1223,10 @@ void register_character_commands(Registry& registry) {
     registry.add({
         .name = "character.place",
         .description = "Makes an entity of a .character.json recipe: in 3D a MeshInstance3D "
-                       "drawing its rigged model, with a HairInstance3D on its scalp for a groom "
-                       "and a Cloth3D on a cloth garment; in 2D a Character2D, whose cut-out's "
-                       "bones the character_2d system keeps as <id>_<bone> children.",
+                       "drawing its rigged model, with a HairInstance3D on its scalp for a groom, "
+                       "a Cloth3D on a cloth garment and modifier children for its twist bones "
+                       "and eyes; in 2D a Character2D, whose cut-out's bones the character_2d "
+                       "system keeps as <id>_<bone> children.",
         .capabilities = {Read, Edit},
         .effect = Effect::Edit,
         .params = schema_of({{"recipe", text_property("A .character.json file.")},
@@ -1173,7 +1235,8 @@ void register_character_commands(Registry& registry) {
                              {"parent", text_property("An entity to place it under.")},
                              {"yaw", property("number", "3D: radians it is turned about y.")},
                              {"pixels_per_meter", std::move(ppm)},
-                             {"flip_h", property("boolean", "2D: face left.")}},
+                             {"flip_h", property("boolean", "2D: face left.")},
+                             {"look_at", text_property("An entity its eyes follow.")}},
                             {"recipe", "id", "at"}),
         .handler = character_place,
     });

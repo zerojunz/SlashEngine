@@ -299,6 +299,96 @@ struct JacobianIK3D {
 SLASH_COMPONENT(JacobianIK3D, settings, active, influence, mutable_bone_axes, max_iterations,
                 min_distance, angular_delta_limit, deterministic)
 
+// Turns one bone so an axis of it points at a target, as Godot's LookAtModifier3D: about its
+// primary_rotation_axis first, then (use_secondary_rotation) the axis across, each within its
+// limit angles when use_angle_limitation is on, eased toward the limits past their damp
+// thresholds. A target that jumps across an axis turns the bone over duration seconds by
+// transition_type and ease_type, as Godot's Tween equations.
+struct LookAtModifier3D {
+    std::string bone;
+    entt::entity target_node{entt::null};
+    std::string forward_axis = "plus_z";     // "plus_x", "minus_x", ... "minus_z"
+    std::string primary_rotation_axis = "y"; // "x", "y" or "z"
+    bool use_secondary_rotation = true;
+    bool relative = true;             // from the bone's pose rather than its rest
+    std::string origin_from = "self"; // "self", "specific_bone" or "external_node"
+    std::string origin_bone;
+    entt::entity origin_external_node{entt::null};
+    Vec3 origin_offset;
+    float origin_safe_margin = 0.1F;
+    float duration = 0.0F;
+    std::string transition_type = "linear"; // Godot's Tween transitions, by name
+    std::string ease_type = "in";           // "in", "out", "in_out" or "out_in"
+    bool use_angle_limitation = false;
+    bool symmetry_limitation = true;
+    float primary_limit_angle = 6.2831855F;
+    float primary_damp_threshold = 1.0F;
+    float primary_positive_limit_angle = std::numbers::pi_v<float>;
+    float primary_positive_damp_threshold = 1.0F;
+    float primary_negative_limit_angle = std::numbers::pi_v<float>;
+    float primary_negative_damp_threshold = 1.0F;
+    float secondary_limit_angle = 6.2831855F;
+    float secondary_damp_threshold = 1.0F;
+    float secondary_positive_limit_angle = std::numbers::pi_v<float>;
+    float secondary_positive_damp_threshold = 1.0F;
+    float secondary_negative_limit_angle = std::numbers::pi_v<float>;
+    float secondary_negative_damp_threshold = 1.0F;
+    float influence = 1.0F;
+    bool active = true;
+
+    friend bool operator==(const LookAtModifier3D&, const LookAtModifier3D&) = default;
+};
+SLASH_COMPONENT(LookAtModifier3D, bone, target_node, forward_axis, primary_rotation_axis,
+                use_secondary_rotation, relative, origin_from, origin_bone, origin_external_node,
+                origin_offset, origin_safe_margin, duration, transition_type, ease_type,
+                use_angle_limitation, symmetry_limitation, primary_limit_angle,
+                primary_damp_threshold, primary_positive_limit_angle,
+                primary_positive_damp_threshold, primary_negative_limit_angle,
+                primary_negative_damp_threshold, secondary_limit_angle, secondary_damp_threshold,
+                secondary_positive_limit_angle, secondary_positive_damp_threshold,
+                secondary_negative_limit_angle, secondary_negative_damp_threshold, influence,
+                active)
+
+// One bone a CopyTransformModifier3D moves, as a Godot BoneConstraint3D setting: apply_bone takes
+// amount of the reference's transform (reference_type "bone": reference_bone's pose; "node": the
+// reference_node entity's place in the bone's parent's space), masked to the axes enabled.
+struct CopyTransformSetting {
+    float amount = 1.0F;
+    std::string apply_bone;
+    std::string reference_type = "bone"; // "bone" or "node"
+    std::string reference_bone;
+    entt::entity reference_node{entt::null};
+    bool copy_position = true;
+    bool copy_rotation = true;
+    bool copy_scale = true;
+    bool axis_x_enabled = true;
+    bool axis_y_enabled = true;
+    bool axis_z_enabled = true;
+    bool axis_x_inverted = false;
+    bool axis_y_inverted = false;
+    bool axis_z_inverted = false;
+    bool relative = true; // from rest to pose, onto apply_bone's rest
+    bool additive = false;
+
+    friend bool operator==(const CopyTransformSetting&, const CopyTransformSetting&) = default;
+};
+SLASH_REFLECT(CopyTransformSetting, amount, apply_bone, reference_type, reference_bone,
+              reference_node, copy_position, copy_rotation, copy_scale, axis_x_enabled,
+              axis_y_enabled, axis_z_enabled, axis_x_inverted, axis_y_inverted, axis_z_inverted,
+              relative, additive)
+
+// Copies bones' transforms onto others, as Godot 4.5's CopyTransformModifier3D: a twist bone
+// takes a share of its hand's roll, an eyelid follows its eye.
+struct CopyTransformModifier3D {
+    std::vector<CopyTransformSetting> settings;
+    float influence = 1.0F;
+    bool active = true;
+
+    friend bool operator==(const CopyTransformModifier3D&,
+                           const CopyTransformModifier3D&) = default;
+};
+SLASH_COMPONENT(CopyTransformModifier3D, settings, influence, active)
+
 // Follows a bone of a model, as Godot's BoneAttachment3D: each tick, after the model's animations
 // and skeleton modifiers, the entity goes where the bone is posed, so what hangs under it in its
 // Transform3D children (a sword in a hand, a hit box on a head) moves with the bone. The model is
@@ -2647,15 +2737,22 @@ SLASH_COMPONENT(Polygon2D, polygon, polygons, color, vertex_colors, offset, text
 
 // A 2D character from a .character.json recipe (slash/world/character.hpp): the character_2d
 // system keeps its cut-out's bones as children, <id>_<bone>, each a Transform2D and a Polygon2D,
-// pixels_per_meter big, facing right or (flip_h) left.
+// pixels_per_meter big, facing right or (flip_h) left. While set, look_at turns its eye toward an
+// entity, jaw_open opens its jaw (0 to 1) and hand_front and hand_back pose its hands ("open",
+// "relaxed", "grip", "fist" or "point"); left unset, animations pose them.
 struct Character2D {
     std::string recipe;
     float pixels_per_meter = 100.0F;
     bool flip_h = false;
+    entt::entity look_at{entt::null};
+    float jaw_open = 0.0F;
+    std::string hand_front;
+    std::string hand_back;
 
     friend bool operator==(const Character2D&, const Character2D&) = default;
 };
-SLASH_COMPONENT(Character2D, recipe, pixels_per_meter, flip_h)
+SLASH_COMPONENT(Character2D, recipe, pixels_per_meter, flip_h, look_at, jaw_open, hand_front,
+                hand_back)
 
 // What an animal is doing and has learned, which the fauna system keeps (slash/npc/fauna.hpp):
 // its mode ("idle", "grazing", "wandering", "fleeing", "hunting", "attacking", "following",

@@ -1,5 +1,6 @@
 add_library(slash_core
     src/assert.cpp
+    src/easing.cpp
     src/expression.cpp
     src/fixed_step.cpp
     src/jobs.cpp
@@ -54,6 +55,6 @@ set_source_files_properties(src/version.cpp PROPERTIES
     COMPILE_DEFINITIONS "SLASH_VERSION=\"${PROJECT_VERSION}\"")
 # cos_sin gives the same bits everywhere: no fused multiply-adds, which arm64 compilers would
 # otherwise emit and x86-64 ones not.
-set_source_files_properties(src/math.cpp PROPERTIES
+set_source_files_properties(src/math.cpp src/easing.cpp PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 slash_engine_target(slash_core)

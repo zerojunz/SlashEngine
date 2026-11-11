@@ -1,0 +1,26 @@
+{
+  "body": {
+    "height": 1.7,
+    "skin": [0.71, 0.53, 0.4]
+  },
+  "clothing": [
+    {
+      "color": [0.2, 0.35, 0.55],
+      "kind": "shirt",
+      "length": 0.3
+    },
+    {
+      "color": [0.25, 0.2, 0.15],
+      "kind": "pants"
+    }
+  ],
+  "face": {
+    "eyes": [0.2, 0.4, 0.25]
+  },
+  "format": 1,
+  "hair": {
+    "color": [0.3, 0.15, 0.08],
+    "style": "bun"
+  },
+  "name": "Ada"
+}

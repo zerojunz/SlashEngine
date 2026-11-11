@@ -1849,6 +1849,11 @@ to tick, as Godot's do from frame to frame, in a `ModifierState` in the world's 
 tick and `apply_modifiers` only shows. Angles go through `slash::atan2` and `cos_sin` and
 scene3d builds with `-ffp-contract=off`, so chains converge the same everywhere.
 `check_modifiers` backs `scene validate`; `examples/ik` reaches with an arm.
+`LookAtModifier3D` and `CopyTransformModifier3D` are Godot 4.6's too, ported line for line in
+`src/bone_constraints.cpp` (its look-at with limits, damping and flip detection, and
+`BoneConstraint3D`'s copies by axis), run after the chains; a look's easing over `duration` is
+kept in the `ModifierState` and stepped with Godot's tween equations (`slash/core/easing.hpp`,
+Penner's, through `slash::cos_sin`, `exp` and `ln`).
 
 Ragdolls follow Godot 4.6's `PhysicalBoneSimulator3D` and `PhysicalBone3D`
 (`engine/scene3d/src/physical_bones.cpp`, `run_simulator` in `ik.cpp`, and the `Kind::Bone`
@@ -2026,8 +2031,11 @@ a body's measures, a face, hair (and a `.groom.json`), clothing in layers (one g
 as cloth) and props at points, and `extends` another, merged as JSON Merge Patch.
 `world::load_character` reads it through the world's assets (the `.character.json` suffix is a
 model's, so it reads the text with `Assets::read`). In 3D, `scene3d::build_character`
-(`engine/scene3d/src/character.cpp`) builds it into a skinned `Model` with Godot's humanoid bone
-names, so animations retarget onto it, of primitive meshes placed by `character_measures`, each
+(`engine/scene3d/src/character.cpp`) builds it into a skinned `Model` of Godot's whole
+humanoid profile (fingers, eyes and jaw) plus twist bones, each turned as the profile's and then onto its next bone
+(`skeleton`), so animations retarget onto it, its skin weighted smoothly across joints
+(`Body::along`, `trunk_at`, `jaw_weights`; `rig::mix_weights`), with hand poses and `jaw_open`
+as its own animations (`add_clips`), of primitive meshes placed by `character_measures`, each
 garment's coverage (`garment_coverage`) pushed out by its layer, the groom's `scalp`, a cloth
 garment's free part as the material a `Cloth3D` names and props loaded at attachment nodes;
 `load_model` and `check_model` take recipes, so `MeshInstance3D` draws them. In 2D,
@@ -2038,7 +2046,10 @@ drawn by `CanvasRenderer::gather_polygons`. `scene3d::silhouette` and `world::co
 by `test.run`) holds the cast to the storyboard's `character_rules` (outlines and main colors
 apart, heights, palette, props), `character.generate` keeps the most distinct of seeded
 candidates within them, and `character.place` puts one in a 3D or 2D scene.
-`examples/character-design` designs a cast.
+`character.place` adds the twist bones' `CopyTransformModifier3D` and, with `look_at`, the eyes'
+`LookAtModifier3D`s, and a `Character2D`'s `look_at`, `jaw_open` and hands pose its cut-out
+(`pose_character`). `examples/character-design` designs a cast and `examples/character-rig`
+looks, grips and twists.
 
 Animals are creature recipes, after Unreal's Mutable and its animal AI (Godot has none): a
 `.creature.json` file (`slash/world/creature.hpp`, `engine/world/src/creature.cpp`, built with
