@@ -14,6 +14,7 @@
 #include <Jolt/Physics/Collision/CollideShape.h>
 #include <Jolt/Physics/Collision/CollisionCollectorImpl.h>
 #include <Jolt/Physics/Collision/Shape/EmptyShape.h>
+#include <Jolt/Physics/Collision/Shape/OffsetCenterOfMassShape.h>
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include <Jolt/RegisterTypes.h>
@@ -255,6 +256,11 @@ world::Affine3D shape_transform(const CollisionShape3D& shape) {
 ShapeKey shape_key_of(const entt::registry& registry, const world::Tree3D& tree,
                       entt::entity entity) {
     ShapeKey key;
+    // Godot's custom center of mass, which its Jolt module puts in with an offset shape.
+    if (const auto* rigid = registry.try_get<RigidBody3D>(entity);
+        rigid != nullptr && rigid->center_of_mass_mode == "custom") {
+        key.center_of_mass = rigid->center_of_mass;
+    }
     if (const auto* shape = registry.try_get<CollisionShape3D>(entity); shape != nullptr) {
         key.parts.push_back({.entity = entity, .shape = *shape, .local = shape_transform(*shape)});
     }
@@ -1014,6 +1020,15 @@ void Space::build_shape(const world::World& world, Body& body, const ShapeKey& k
         whole = new JPH::EmptyShape(); // NOLINT(cppcoreguidelines-owning-memory): ref counted
     } else {
         whole = scaled(whole.GetPtr(), key.scale);
+        if (key.center_of_mass) {
+            const JPH::ShapeSettings::ShapeResult result =
+                JPH::OffsetCenterOfMassShapeSettings(
+                    to_jolt(*key.center_of_mass) - whole->GetCenterOfMass(), whole.GetPtr())
+                    .Create();
+            if (!result.HasError()) {
+                whole = result.Get();
+            }
+        }
     }
     body.shape = whole;
 }

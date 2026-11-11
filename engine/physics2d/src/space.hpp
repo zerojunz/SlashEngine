@@ -199,6 +199,9 @@ struct RigidKey {
     bool sleep_enabled = true;
     // Kilograms a square meter from the body's physics material; above 0 it sets the mass.
     float density = 0.0F;
+    // Godot's custom center of mass, in pixels in the body's space.
+    bool custom_center = false;
+    Vec2 center;
 
     friend bool operator==(const RigidKey&, const RigidKey&) = default;
 };
@@ -428,5 +431,9 @@ inline const ShapeInfo* info_of(b2ShapeId shape) {
 // Moves a character one tick, as Godot's move_and_slide (character.cpp).
 void move_character(b2WorldId space, Body& body, world::Transform2D& transform,
                     world::CharacterBody2D& character, float seconds);
+
+// Whether an entity is a Vehicle2D's wheel ("<vehicle>_wheel_<n>"), which may spin faster than
+// Box2D lets other bodies turn, as its allowFastRotation is for (vehicle_tool.cpp).
+[[nodiscard]] bool is_vehicle_wheel(const world::World& world, entt::entity entity);
 
 } // namespace slash::physics2d::detail

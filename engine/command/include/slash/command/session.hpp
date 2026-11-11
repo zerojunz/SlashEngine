@@ -58,6 +58,11 @@ struct SessionOptions {
     // The asset library's folder (slash/library/library.hpp); "" for SLASH_LIBRARY_DIR or
     // ~/.slash/library.
     std::string library_dir{}; // NOLINT(readability-redundant-member-init)
+    // Files the session reads in place of what is on disk, by project path, as if they were
+    // written: a command's private session tries a file it hasn't written yet (vehicle.design
+    // test-drives the recipe it is fitting).
+    std::map<std::string, std::string, std::less<>>
+        files{}; // NOLINT(readability-redundant-member-init)
 };
 
 // One editing session: a world, the commands that act on it, undo history and recent logs.

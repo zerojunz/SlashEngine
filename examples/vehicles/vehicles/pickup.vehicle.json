@@ -1,0 +1,4 @@
+{"format": 1, "name": "Pickup", "kind": "car",
+ "body": {"length": 5.2, "width": 1.9, "height": 1.8, "clearance": 0.4, "cabin": 0.4,
+          "color": [0.75, 0.2, 0.15]},
+ "physics": {"mass": 1800, "engine": {"max_torque": 420}, "differential": "all"}}

@@ -1299,7 +1299,7 @@ TEST_CASE("engine.describe lists systems in the order they run") {
                      {.doc = "Moves things by their velocity."});
     world.add_system("controls", [](world::World& /*w*/, double /*dt*/) {}, {.priority = -1});
     // Every session applies input, network, XR and service events first, streams the world in,
-    // counts the wind's seconds and plays animations, runs ragdolls, steps 2D and 3D physics,
+    // counts the wind's seconds and plays animations, runs ragdolls, drives vehicles, steps 2D and 3D physics,
     // checks synchronizers' visibility, steps navigation, runs NPCs, moves the camera and parallax,
     // runs particles, hands over models' replies and plays sound with built-in systems that run
     // late. The particle systems are threaded: the CPU ones and GPUParticles2D's run at the same
@@ -1309,7 +1309,7 @@ TEST_CASE("engine.describe lists systems in the order they run") {
         *engine.ok("engine.describe").find("systems") ==
         parse(
             R"(["input", "multiplayer", "gui", "xr", "services", "world_streaming", "wind", "controls", "movement", "character_2d", "animation_player",
-                    "animation_tree", "ragdoll", "skeleton_modifiers", "path_follow", "ragdoll_2d", "physics2d", "physics3d", "ragdoll_2d_pose", "multiplayer_visibility", "navigation", "fauna", "npc", "quests", "foliage", "animated_sprite_2d",
+                    "animation_tree", "ragdoll", "skeleton_modifiers", "path_follow", "ragdoll_2d", "vehicles_2d", "vehicles_3d", "physics2d", "physics3d", "ragdoll_2d_pose", "multiplayer_visibility", "navigation", "fauna", "npc", "quests", "foliage", "animated_sprite_2d",
                     "camera_2d", "parallax_2d", "cpu_particles_2d", "cpu_particles_3d", "gpu_particles_2d", "gpu_particles_3d", "video", "ai", "audio"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
         {"name": "input", "doc": "Applies the input events queued since the last tick.",
@@ -1353,6 +1353,12 @@ TEST_CASE("engine.describe lists systems in the order they run") {
         {"name": "ragdoll_2d",
          "doc": "Keeps each Ragdoll2D's bodies, shapes, joints and muscles as its profile says and runs its states: hit reactions, falls and getting back up.",
          "priority": 940},
+        {"name": "vehicles_2d",
+         "doc": "Drives each Vehicle2D as its .vehicle.json recipe says, seen from the side: keeps its body, pieces and sprung wheels, runs its drivetrain from its controls, floats boats, flies aircraft, carries its riders and hits what it runs into.",
+         "priority": 945},
+        {"name": "vehicles_3d",
+         "doc": "Drives each Vehicle3D as its .vehicle.json recipe says: keeps its body and wheels, runs its drivetrain from its controls, floats boats, flies aircraft, carries its riders and hits what it runs into.",
+         "priority": 945},
         {"name": "physics2d",
          "doc": "Steps 2D physics: moves rigid and character bodies and reports contacts.",
          "priority": 950},
@@ -1390,21 +1396,21 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "priority": 1060},
         {"name": "cpu_particles_2d",
          "doc": "Emits, moves and ages each CPUParticles2D's particles.", "priority": 1100,
-         "threaded": true, "stage": 28, "reads": ["Transform2D", "WindSource2D", "PhysicsField2D"],
+         "threaded": true, "stage": 30, "reads": ["Transform2D", "WindSource2D", "PhysicsField2D"],
          "writes": ["CPUParticles2D"]},
         {"name": "cpu_particles_3d",
          "doc": "Emits, moves and ages each CPUParticles3D's particles.", "priority": 1100,
-         "threaded": true, "stage": 28, "reads": ["Transform3D", "WindSource3D", "PhysicsField3D"],
+         "threaded": true, "stage": 30, "reads": ["Transform3D", "WindSource3D", "PhysicsField3D"],
          "writes": ["CPUParticles3D"]},
         {"name": "gpu_particles_2d",
          "doc": "Steps each GPUParticles2D's emission for renderers to run.", "priority": 1110,
-         "threaded": true, "stage": 28,
+         "threaded": true, "stage": 30,
          "reads": ["Transform2D", "LightOccluder2D", "TileMapLayer", "CanvasLayer", "Control",
                    "Camera2D"],
          "writes": ["GPUParticles2D", "assets"]},
         {"name": "gpu_particles_3d",
          "doc": "Steps each GPUParticles3D's emission for renderers to run.", "priority": 1110,
-         "threaded": true, "stage": 29,
+         "threaded": true, "stage": 31,
          "reads": ["GPUParticlesAttractorSphere3D", "GPUParticlesAttractorBox3D",
                    "GPUParticlesAttractorVectorField3D", "GPUParticlesCollisionSphere3D",
                    "GPUParticlesCollisionBox3D", "GPUParticlesCollisionSDF3D",
