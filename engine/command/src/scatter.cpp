@@ -559,7 +559,7 @@ std::vector<Found> instances_in(world::World& world, const Brush& brush, const s
 Result<Brush> read_brush(Session& session, const json::Value& params,
                          const std::optional<bool>& make_flat) {
     world::World& world = session.world();
-    entt::registry& ecs = world.ecs();
+    const entt::registry& ecs = world.ecs();
     Brush brush;
     const std::string id = params.find("entity")->as_string();
     brush.entity = world.find(id);
@@ -588,7 +588,7 @@ Result<Brush> read_brush(Session& session, const json::Value& params,
                                   (brush.flat ? "Foliage2D" : "Foliage3D"));
         }
     } else {
-        brush.flat = *make_flat;
+        brush.flat = make_flat.value_or(false);
     }
     const json::Value* at = params.find("at");
     if (at != nullptr) {
@@ -656,7 +656,7 @@ Reply foliage_paint(Session& session, const json::Value& params) {
         if (on_entities.empty()) {
             add_area(square, true, ground);
         } else {
-            ScatterLayer layer;
+            const ScatterLayer layer;
             auto cells = ground_2d(session, layer, on_entities, "");
             if (!cells) {
                 return param_error(code::kInvalidArgument, "/on", cells.error().message);
@@ -666,7 +666,7 @@ Reply foliage_paint(Session& session, const json::Value& params) {
     } else {
         const world::Tree3D tree(world);
         const navigation::NavigationMesh settings;
-        std::vector<navigation::EntityGeometry> geometry =
+        const std::vector<navigation::EntityGeometry> geometry =
             navigation::world_geometry(world, session.assets(), settings, &warnings);
         std::set<entt::entity> under_names(on_entities.begin(), on_entities.end());
         if (on_entities.empty()) {

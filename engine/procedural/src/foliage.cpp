@@ -12,6 +12,8 @@
 #include <cmath>
 #include <map>
 #include <mutex>
+#include <numbers>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -20,7 +22,7 @@ namespace slash::procedural {
 
 namespace {
 
-constexpr float kPi = 3.14159265358979F;
+constexpr float kPi = std::numbers::pi_v<float>;
 constexpr std::string_view kSystem = "foliage";
 
 // A pushed instance's spring: how far it leans and how fast that changes, in radians.
@@ -230,10 +232,10 @@ void run_foliage(world::World& world, FoliageState& state, double tick_seconds) 
                                 near.push_back({mover.x, 0.0F});
                             }
                         }
-                        target = push_from(near, {base.x, 0.0F}, type->interaction_radius,
-                                           type->interaction_bend);
-                        if (target) {
-                            target->y = 0.0F;
+                        const std::optional<Vec2> pushed = push_from(
+                            near, {base.x, 0.0F}, type->interaction_radius, type->interaction_bend);
+                        if (pushed.has_value()) {
+                            target = Vec2{pushed.value().x, 0.0F};
                         }
                     }
                     if (!target && had == state.springs.end()) {

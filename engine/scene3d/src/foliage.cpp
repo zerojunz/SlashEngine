@@ -53,11 +53,12 @@ make_shapes(const world::Foliage3D& foliage,
             continue;
         }
         const std::optional<world::CollisionShape3D> shape = shape_of(types[g]->collision);
-        if (!shape) {
+        if (!shape.has_value()) {
             continue;
         }
+        const world::CollisionShape3D& base = shape.value();
         world::Transform3D offset;
-        offset.position = shape->position;
+        offset.position = base.position;
         const std::size_t count = procedural::foliage_count(foliage.groups[g]);
         for (std::size_t i = 0; i < count; ++i) {
             const procedural::FoliagePlace3D place =
@@ -68,7 +69,7 @@ make_shapes(const world::Foliage3D& foliage,
             local.scale = {place.scale, place.scale, place.scale};
             GridShape made;
             made.cell = {static_cast<int>(g), static_cast<int>(i), 0};
-            made.shape = *shape;
+            made.shape = base;
             made.shape.position = {};
             made.local = world::affine(local) * world::affine(offset);
             shapes->push_back(std::move(made));
