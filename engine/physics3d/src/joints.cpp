@@ -555,10 +555,12 @@ void Space::sync_joints(world::World& world, const world::Tree3D& tree) {
             exceptions.insert(std::minmax(joint.body_a, joint.body_b));
         }
     }
-    // A physical bone's joint keeps it from colliding with the body it joins, as Godot's joints
-    // do by default.
+    // A Ragdoll3D's bone doesn't collide with the body its joint holds it to, as Unreal's
+    // physics assets' constraints disable collision; Godot's PhysicalBone3D joints don't.
     for (const auto& [entity, bone] : bone_joints_) {
-        if (bone.joint.constraint != nullptr && bone.joint.body_a != entt::null) {
+        if (bone.joint.constraint != nullptr && bone.joint.body_a != entt::null &&
+            tree.parent(entity) != entt::null &&
+            world.ecs().all_of<world::Ragdoll3D>(tree.parent(entity))) {
             exceptions.insert(std::minmax(bone.joint.body_a, entity));
         }
     }
