@@ -6400,7 +6400,7 @@ says what a fluid is, and `extends` another as a JSON Merge Patch:
 | `max_particles` | `4096` | The most it holds (up to 65536) |
 | `bounce`, `friction` | `0`, `0.1` | What surfaces send back and take along them |
 | `gas` | | `buoyancy` (1.5: lift as a share of gravity, times the gas's rise over its absolute temperature, as Boussinesq's), `ambient_temperature` (20), `cooling` (0.6), `diffusion` (0.3), `dissipation` (0.15), `ignition` (250), `burn_rate` (1.5), `heat` (600), `smoke_yield` (1), `vortex_share` (0.1), `vortex_strength` (0.5), `spread` (0.05) |
-| `look` | | `color`, `foam`, `smoke` and `fire`, as `[r, g, b, a]` |
+| `look` | | `color`, `foam`, `smoke` and `fire`, as `[r, g, b, a]`; `surface` (`true`: a liquid draws as one smoothed surface with its spray as drops; `false`, a disc a particle), `depth` (8 particle radii: how deep a liquid shows its color's full alpha) and `shadow` (`1`: how dark smoke shades the smoke behind it from the light) |
 | `budget` | | `particles` and `work` (neighbor visits a tick), which `fluid.check` holds it to |
 
 A liquid is position-based fluids (Macklin and Müller): each substep moves particles by gravity

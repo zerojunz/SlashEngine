@@ -14,3 +14,6 @@
 {"jsonrpc":"2.0","id":14,"method":"step","params":{"ticks":120}}
 {"jsonrpc":"2.0","id":15,"method":"fluid.state","params":{"points":4}}
 {"jsonrpc":"2.0","id":16,"method":"fluid.check","params":{"stage":false}}
+{"jsonrpc":"2.0","id":17,"method":"fluid.preview","params":{"recipe":"liquids/water.fluid.json","times":[1],"capture":{"at":1,"out":"previews/water.png"}}}
+{"jsonrpc":"2.0","id":18,"method":"fluid.preview","params":{"recipe":"gases/fire.fluid.json","times":[1],"capture":{"at":1,"out":"previews/fire.png"}}}
+{"jsonrpc":"2.0","id":19,"method":"fluid.preview","params":{"recipe":"liquids/water2d.fluid.json","times":[1],"capture":{"at":1,"out":"previews/water2d.png"}}}
