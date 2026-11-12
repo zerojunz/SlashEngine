@@ -6371,6 +6371,68 @@ body starts to push an instance aside (at most 8 a tick; data `type`, `group`, `
 `position`). `world::vfx_hooks_of`, `foliage_vfx_hooks` and `play_vfx`
 (`slash/world/vfx.hpp`) do the same from gameplay code.
 
+## Fluids
+
+Liquids and gases simulated as particles with no grid (SlashEngine's own; Godot has none),
+after Niagara Fluids. A `.fluid.json` recipe (`slash-cli schema fluid`; `slash/world/fluid.hpp`)
+says what a fluid is, and `extends` another as a JSON Merge Patch:
+
+```json
+{"format": 1, "name": "Water", "particle_radius": 0.05, "iterations": 3, "viscosity": 0.02,
+ "max_particles": 2000, "look": {"color": [0.15, 0.4, 0.85, 0.9]},
+ "budget": {"particles": 2000, "work": 200000}}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `kind` | `"liquid"` | `"liquid"` or `"gas"` (smoke, steam, fire) |
+| `space` | `"3d"` | `"3d"` (meters) or `"2d"` (pixels, seen from the side, y down) |
+| `particle_radius` | `0.05`, `4` in 2D | Particles sit twice this apart at rest |
+| `rest_density` | `1000`, `1.2` for a gas | Mass a cubic meter (a square meter in 2D) |
+| `iterations`, `substeps` | `3`, `1` (`2` for 2D liquids) | Density solver passes a step, steps a tick |
+| `relaxation` | `0.2` | How soft the density constraint is |
+| `viscosity` | `0.02` | The share of neighbors' relative velocity taken (XSPH) |
+| `surface_tension` | `0.2`, `0` for a gas | How hard particles pull together |
+| `vorticity` | `0.05` | Vorticity confinement |
+| `gravity_scale` | `1`, `0` for a gas | How much gravity pulls |
+| `drag` | `0`, `2` for a gas | Velocity lost a second; a gas's pull toward the wind |
+| `lifetime` | `0`, `4` for a gas | Seconds a particle lives; 0 for ever |
+| `max_particles` | `4096` | The most it holds (up to 65536) |
+| `bounce`, `friction` | `0`, `0.1` | What surfaces send back and take along them |
+| `gas` | | `buoyancy` (1.5: lift as a share of gravity, times the gas's rise over its absolute temperature, as Boussinesq's), `ambient_temperature` (20), `cooling` (0.6), `diffusion` (0.3), `dissipation` (0.15), `ignition` (250), `burn_rate` (1.5), `heat` (600), `smoke_yield` (1), `vortex_share` (0.1), `vortex_strength` (0.5), `spread` (0.05) |
+| `look` | | `color`, `foam`, `smoke` and `fire`, as `[r, g, b, a]` |
+| `budget` | | `particles` and `work` (neighbor visits a tick), which `fluid.check` holds it to |
+
+A liquid is position-based fluids (Macklin and Müller): each substep moves particles by gravity
+and the acceleration given, then a density constraint pushes apart those packed past rest
+density, then they collide, take XSPH viscosity, pull together by cohesion and keep their
+swirls by vorticity confinement. A gas carries `temperature`, `smoke` and `fuel`: hotter than
+ambient it rises, it cools toward ambient and shares heat and smoke with its neighbors, fuel
+above `ignition` burns into heat and smoke, smoke thins away, a `vortex_share` of particles (by a
+hash of their number) swirl their neighbors, and crowded particles push apart by `spread`.
+Neighbors are found by sorting particles along a Morton curve (`world::NeighborIndex`), at most
+48 each in the curve's order; the work is split over the job pool by particle and the module
+builds with `-ffp-contract=off`, so a fluid steps the same bits on any number of threads.
+
+| Component | Fields |
+| --- | --- |
+| `Fluid3D`, `Fluid2D` | `recipe`, `enabled`, `overrides` (a merge patch), `fill_size` (a block filled once at the entity), `fill_velocity`, `bounds_size` (a box at the entity the particles stay in); 3D: `visible`, `layers`, `cast_shadow`; 2D: `visible`, `z_index`, `z_as_relative`, `modulate`, `light_mask` |
+| `FluidEmitter3D`, `FluidEmitter2D` | `fluid` (the fluid entity), `rate` a second, `speed`, `spread` (radians), `radius`, `temperature`, `smoke`, `fuel`, `enabled`, `direction` |
+| `FluidSink3D`, `FluidSink2D` | `fluid` (empty for every fluid), `size`, `enabled`: removes the particles in its box |
+
+The `fluids` system (priority 958, after physics; added by `canvas::install`) fills, pours into,
+steps and drains each fluid, and drops particles that go non-finite or outlive `lifetime`.
+Particles live beside the components by entity ID (`world::fluid_particles`), so saving and
+undo leave them alone. Gravity is the project's `physics_3d` or `physics_2d` gravity; gases with
+`drag` drift with `WindSource3D`s and `WindSource2D`s. Particles collide with 3D and 2D physics
+bodies (`world::FluidHost`, which physics3d and physics2d set: each particle a sphere against the
+Jolt bodies its bounds reach, or a circle against the Box2D shapes by their manifolds), and push
+rigid bodies back with the impulse it took to move them out. A `Fluid3D` draws its particles as
+discs facing the camera, a liquid's lit and whiter as foam where it runs faster than 40 particle
+radii a second, a gas's blended by its smoke and glowing toward the fire color from four fifths
+of ignition; a `Fluid2D` draws the same discs in its canvas (`world::fluid_color`,
+`scene3d::fluid_quads`).
+
 ## Particles
 
 Particles follow Godot's `CPUParticles2D`. Each tick, after physics, the `cpu_particles_2d`

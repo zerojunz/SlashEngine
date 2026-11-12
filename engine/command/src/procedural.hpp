@@ -23,6 +23,10 @@ void register_damage_commands(Registry& registry);
 // Adds vfx.play, vfx.state, vfx.check and vfx.preview, over slash/world/vfx.hpp (vfx.cpp).
 void register_vfx_commands(Registry& registry);
 
+// Adds fluid.place, fluid.pour, fluid.state and fluid.check, over slash/world/fluid.hpp
+// (fluid.cpp).
+void register_fluid_commands(Registry& registry);
+
 // The noise a command samples: a .texture.json NoiseTexture2D's (its noise, normalize and
 // invert), or inline FastNoiseLite settings, normalized.
 struct NoiseSource {

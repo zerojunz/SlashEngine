@@ -79,6 +79,7 @@
 #include "slash/world/creature.hpp"
 #include "slash/world/damage.hpp"
 #include "slash/world/face.hpp"
+#include "slash/world/fluid.hpp"
 #include "slash/world/foliage.hpp"
 #include "slash/world/hair.hpp"
 #include "slash/world/physics_material.hpp"
@@ -1225,6 +1226,7 @@ int cmd_scene_validate(const std::string& path) {
     const bool damage = world::is_damage_path(path);
     const bool face = world::is_face_path(path);
     const bool vfx = world::is_vfx_path(path);
+    const bool fluid = world::is_fluid_path(path);
     json::Value result;
     auto parsed = json::parse(text.value());
     std::vector<json::ValidationError> errors;
@@ -1289,6 +1291,8 @@ int cmd_scene_validate(const std::string& path) {
         errors = world::validate_groom(parsed.value());
     } else if (vfx) {
         errors = world::validate_vfx(parsed.value());
+    } else if (fluid) {
+        errors = world::validate_fluid(parsed.value());
     } else if (damage) {
         errors = world::validate_damage(parsed.value());
         if (errors.empty()) {
@@ -1348,14 +1352,14 @@ int cmd_scene_validate(const std::string& path) {
     if (parsed && !frames && !material && !process && !animation && !tree && !tileset && !font &&
         !theme && !stream && !buses && !navmesh && !navpoly && !brain && !quest && !dialogue &&
         !meshlib && !standard && !lightmap && !replay && !test && !score && !texture &&
-        !physics_material && !ragdoll && !foliage && !groom && !damage && !face && !vfx) {
+        !physics_material && !ragdoll && !foliage && !groom && !damage && !face && !vfx && !fluid) {
         check_story_refs(path, parsed.value(), errors);
     }
     result["valid"] = errors.empty();
     if (!errors.empty()) {
         result["errors"] = errors_to_json(errors);
     } else if (font || stream || process || standard || physics_material || ragdoll || foliage ||
-               groom || damage || face || vfx) {
+               groom || damage || face || vfx || fluid) {
         print(result);
         return kExitOk;
     } else if (brain) {
@@ -1624,6 +1628,11 @@ int cmd_scene_format(const std::string& path, bool check) {
                                       return world::validate_vfx(doc);
                                   }));
         }
+        if (world::is_fluid_path(path)) {
+            return format_checked(text.value(), checked_by([](const json::Value& doc) {
+                                      return world::validate_fluid(doc);
+                                  }));
+        }
         if (world::is_ragdoll_path(path)) {
             return format_checked(
                 text.value(), [](const json::Value& file) { return world::parse_ragdoll(file); });
@@ -1689,7 +1698,7 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 44> kKinds = {"scene",
+    constexpr std::array<std::string_view, 45> kKinds = {"scene",
                                                          "prefab",
                                                          "frames",
                                                          "material",
@@ -1732,7 +1741,8 @@ int cmd_schema(const std::vector<std::string>& args) {
                                                          "face",
                                                          "creature",
                                                          "vehicle",
-                                                         "vfx"};
+                                                         "vfx",
+                                                         "fluid"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
         return usage_error("schema takes one argument: scene, prefab, frames, material, "
                            "process_material, animation, animtree, tileset, font, theme, audio, "
@@ -1741,7 +1751,7 @@ int cmd_schema(const std::vector<std::string>& args) {
                            "standard_material, "
                            "texture, scatter, physics_material, ragdoll, foliage, groom, damage, "
                            "character, face, creature, "
-                           "vehicle, vfx, "
+                           "vehicle, vfx, fluid, "
                            "replay, test, score, "
                            "storyboard, "
                            "project, presets, sdk, plugin, providers or bench");
@@ -1815,6 +1825,8 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = world::vehicle_schema();
     } else if (args[0] == "vfx") {
         schema = world::vfx_schema();
+    } else if (args[0] == "fluid") {
+        schema = world::fluid_schema();
     } else if (args[0] == "replay") {
         schema = command::replay_schema();
     } else if (args[0] == "test") {

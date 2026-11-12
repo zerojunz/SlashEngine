@@ -37,6 +37,7 @@ add_library(slash_command
     src/terrain.cpp
     src/vehicle.cpp
     src/vfx.cpp
+    src/fluid.cpp
     src/test.cpp)
 add_library(slash::command ALIAS slash_command)
 

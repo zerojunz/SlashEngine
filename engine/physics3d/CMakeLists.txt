@@ -4,6 +4,7 @@ add_library(slash_physics3d
     src/destruction.cpp
     src/drives.cpp
     src/fields.cpp
+    src/fluid.cpp
     src/joints.cpp
     src/motion.cpp
     src/physics3d.cpp

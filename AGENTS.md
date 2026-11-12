@@ -2494,6 +2494,24 @@ recipes' `vfx` name an effect per world event; `play_hooks` in `engine/world/src
 them (`play_vfx`) and keeps vehicles' `running` effects, and the foliage system emits
 `foliage_parted`. `examples/vfx-tool-effects` feeds a dog, runs a van and parts grass.
 
+Fluids and smoke are SlashEngine's own, after Niagara Fluids but with no grid (Godot has none):
+a `.fluid.json` recipe (`slash/world/fluid.hpp`, `engine/world/src/fluid.cpp`, built with
+`-ffp-contract=off`; `$cli schema fluid`) is a liquid or a gas in 3D or 2D, and a `Fluid3D` or
+`Fluid2D` steps one with `FluidEmitter3D`/`2D`s pouring in and `FluidSink3D`/`2D`s draining it.
+`world::step_fluid` is the solver both dimensions share (2D at z 0): liquids as position-based
+fluids (a density constraint, XSPH viscosity, cohesion, vorticity confinement), gases as
+particles carrying temperature, smoke and fuel that rise, cool, burn, diffuse and swirl round
+vortex particles, neighbors along a Morton curve (`NeighborIndex`, the particle simulation's)
+and the work split over the job pool by particle, so steps don't depend on the thread count. The
+`fluids` system (priority 958, added by `canvas::install`) keeps particles by entity ID
+(`world::fluid_particles`); physics3d and physics2d set a `world::FluidHost`
+(`src/fluid.cpp` in each: spheres against Jolt bodies, circles against Box2D shapes by their
+manifolds, impulses back on rigid bodies, the project's gravity). `scene3d::Renderer::add_fluid`
+and `CanvasRenderer::gather_fluids` draw particles as discs (`scene3d::fluid_quads`,
+`world::fluid_color`). `fluid.place`, `fluid.pour`, `fluid.state` and `fluid.check` (a stage in
+a private `Session`) are in `engine/command/src/fluid.cpp`. `examples/fluids` splashes water,
+lights a campfire and pours 2D water.
+
 ## Job system
 
 `engine/core`'s `jobs::Pool` (`slash/core/jobs.hpp`) is Godot's `WorkerThreadPool`: tasks, group

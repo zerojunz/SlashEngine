@@ -5,6 +5,7 @@ add_library(slash_physics2d
     src/debug.cpp
     src/destruction.cpp
     src/fields.cpp
+    src/fluid.cpp
     src/physics2d.cpp
     src/polygon.cpp
     src/ragdoll.cpp

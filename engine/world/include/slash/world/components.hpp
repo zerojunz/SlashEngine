@@ -3306,6 +3306,102 @@ struct ScreenDistortion2D : ScreenDistortion {
 SLASH_COMPONENT(ScreenDistortion2D, mode, radius, strength, progress, width, frequency, speed,
                 enabled)
 
+// A body of fluid from a .fluid.json recipe (slash/world/fluid.hpp): liquid or gas particles
+// in the world, stepped by the fluids system with no grid. fill_size fills a box centered on
+// the entity once; bounds_size, when not zero, is a box at the entity they stay in.
+struct Fluid3D {
+    std::string recipe;
+    bool enabled = true;
+    json::Value overrides; // a merge patch over the recipe
+    Vec3 fill_size;
+    Vec3 fill_velocity;
+    Vec3 bounds_size;
+    bool visible = true;
+    std::uint32_t layers = 1;
+    std::string cast_shadow = "on";
+
+    friend bool operator==(const Fluid3D&, const Fluid3D&) = default;
+};
+SLASH_COMPONENT(Fluid3D, recipe, enabled, overrides, fill_size, fill_velocity, bounds_size, visible,
+                layers, cast_shadow)
+
+// A fluid seen from the side in 2D, in pixels with y down.
+struct Fluid2D {
+    std::string recipe;
+    bool enabled = true;
+    json::Value overrides;
+    Vec2 fill_size;
+    Vec2 fill_velocity;
+    Vec2 bounds_size;
+    bool visible = true;
+    int z_index = 0;
+    bool z_as_relative = true;
+    Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F};
+    int light_mask = 1;
+
+    friend bool operator==(const Fluid2D&, const Fluid2D&) = default;
+};
+SLASH_COMPONENT(Fluid2D, recipe, enabled, overrides, fill_size, fill_velocity, bounds_size, visible,
+                z_index, z_as_relative, modulate, light_mask)
+
+// Pours particles into the fluid entity named by fluid at rate a second, from a disc of radius
+// at the entity, along direction (in its space) at speed, spread up to spread radians; gases
+// start at temperature with smoke and fuel.
+struct FluidEmitter {
+    std::string fluid;
+    float rate = 200.0F;
+    float speed = 2.0F;
+    float spread = 0.1F;
+    float radius = 0.05F;
+    float temperature = 20.0F;
+    float smoke = 0.0F;
+    float fuel = 0.0F;
+    bool enabled = true;
+
+    friend bool operator==(const FluidEmitter&, const FluidEmitter&) = default;
+};
+SLASH_REFLECT(FluidEmitter, fluid, rate, speed, spread, radius, temperature, smoke, fuel, enabled)
+
+struct FluidEmitter3D : FluidEmitter {
+    Vec3 direction{0.0F, -1.0F, 0.0F};
+
+    friend bool operator==(const FluidEmitter3D&, const FluidEmitter3D&) = default;
+};
+SLASH_COMPONENT(FluidEmitter3D, fluid, rate, speed, spread, radius, temperature, smoke, fuel,
+                enabled, direction)
+
+struct FluidEmitter2D : FluidEmitter {
+    Vec2 direction{0.0F, 1.0F};
+    FluidEmitter2D() {
+        speed = 120.0F;
+        radius = 4.0F;
+    }
+
+    friend bool operator==(const FluidEmitter2D&, const FluidEmitter2D&) = default;
+};
+SLASH_COMPONENT(FluidEmitter2D, fluid, rate, speed, spread, radius, temperature, smoke, fuel,
+                enabled, direction)
+
+// Drains the fluid entity named by fluid (every fluid when empty) of the particles in a box of
+// size at the entity.
+struct FluidSink3D {
+    std::string fluid;
+    Vec3 size{1.0F, 1.0F, 1.0F};
+    bool enabled = true;
+
+    friend bool operator==(const FluidSink3D&, const FluidSink3D&) = default;
+};
+SLASH_COMPONENT(FluidSink3D, fluid, size, enabled)
+
+struct FluidSink2D {
+    std::string fluid;
+    Vec2 size{32.0F, 32.0F};
+    bool enabled = true;
+
+    friend bool operator==(const FluidSink2D&, const FluidSink2D&) = default;
+};
+SLASH_COMPONENT(FluidSink2D, fluid, size, enabled)
+
 // A value each particle of a simulation carries, as Niagara's particle attributes: an Expression
 // over the particle (age, life, lifetime, speed, x, y, z, vx, vy, vz, neighbors, collided,
 // index, random, time and the attributes before it), worked out when the particle starts or,

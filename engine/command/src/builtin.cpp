@@ -83,6 +83,7 @@
 #include "slash/world/components.hpp"
 #include "slash/world/creature.hpp"
 #include "slash/world/damage.hpp"
+#include "slash/world/fluid.hpp"
 #include "slash/world/foliage.hpp"
 #include "slash/world/hair.hpp"
 #include "slash/world/path.hpp"
@@ -555,6 +556,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "vfx") {
         return Reply::success(world::vfx_schema());
+    }
+    if (kind == "fluid") {
+        return Reply::success(world::fluid_schema());
     }
     if (kind == "character") {
         return Reply::success(world::character_schema());
@@ -7188,7 +7192,8 @@ void register_builtin_commands(Registry& registry) {
                                "face",
                                "creature",
                                "vehicle",
-                               "vfx"};
+                               "vfx",
+                               "fluid"};
     registry.add({
         .name = "schema.get",
         .description =
@@ -7199,7 +7204,8 @@ void register_builtin_commands(Registry& registry) {
             ".lightmap.json, "
             ".voxelgi.json, .model.json, .standard_material.json, .texture.json, .scatter.json, "
             ".physics_material.json, .ragdoll.json, .foliage.json, .groom.json, .damage.json, "
-            ".character.json, .face.json, .creature.json, .vehicle.json, .vfx.json, .replay.json, "
+            ".character.json, .face.json, .creature.json, .vehicle.json, .vfx.json, .fluid.json, "
+            ".replay.json, "
             ".test.json, "
             ".score.json or storyboard "
             "files, one component or one command.",
@@ -8903,6 +8909,7 @@ void register_builtin_commands(Registry& registry) {
     register_hair_commands(registry);
     register_damage_commands(registry);
     register_vfx_commands(registry);
+    register_fluid_commands(registry);
     register_lightmap_commands(registry);
     register_model_cleanup_commands(registry);
     register_services_commands(registry);
