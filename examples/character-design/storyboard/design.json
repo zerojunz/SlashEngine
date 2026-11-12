@@ -1,0 +1,16 @@
+{
+  "entries": {
+    "character_rules/cast": {
+      "color_difference": 6,
+      "links": ["characters"],
+      "max_height": 1.9,
+      "max_props": 1,
+      "min_height": 1.5,
+      "name": "Cast",
+      "palette": "palette/cast",
+      "silhouette_difference": 0.08,
+      "summary": "Every character reads apart from the others at a glance, in the cast's colors."
+    }
+  },
+  "format": 1
+}

@@ -1,4 +1,5 @@
 #include "slash/canvas/canvas.hpp"
+#include "slash/canvas/debug_draw.hpp"
 #include "slash/canvas/gpu_particles.hpp"
 #include "slash/canvas/particles.hpp"
 #include "slash/core/log.hpp"
@@ -1567,6 +1568,118 @@ void CanvasRenderer::gather_hair(DrawState& state) {
     }
 }
 
+// Polygon2D: its polygon, or each of its polygons, cut into triangles as Godot's Polygon2D
+// draws them, colored by vertex_colors (or color) and textured by uv in the texture's pixels.
+void CanvasRenderer::gather_polygons(DrawState& state) {
+    const world::World& world = state.world;
+    const CanvasOptions& options = state.options;
+    const world::Tree2D& tree = state.tree;
+    const world::Canvases& canvases = state.canvases;
+    const std::vector<world::Canvas>& canvas_list = canvases.all();
+    std::vector<Item>& items = state.items;
+    std::vector<render::Vertex2D>& vertices = state.vertices;
+    const auto polygons = world.ecs().view<const world::Polygon2D>();
+    for (const entt::entity entity : polygons) {
+        // A reference, not a structured binding, as the lambdas below capture it.
+        const world::Polygon2D& polygon = polygons.get<const world::Polygon2D>(entity);
+        const Inherited from_parents = inherited(world, tree, entity);
+        const std::size_t canvas = canvases.of(entity);
+        if (!polygon.visible || !from_parents.visible || !canvas_list[canvas].visible ||
+            polygon.polygon.size() < 3) {
+            continue;
+        }
+        render::TextureId texture_id = render::TextureId::None;
+        const render::Image* image = nullptr;
+        std::string_view path;
+        Vec2 texture_size{1.0F, 1.0F};
+        if (!polygon.texture.empty()) {
+            auto texture = this->texture(
+                polygon.texture, resolve_filter(polygon.texture_filter, options.texture_filter));
+            if (!texture) {
+                warn_once(polygon.texture, texture.error().message, "texture",
+                          "polygon can't draw");
+                state.problem(entity, "/components/Polygon2D/texture", texture.error().message);
+                continue;
+            }
+            texture_id = texture.value()->id;
+            image = &texture.value()->pixels();
+            path = texture.value()->path;
+            texture_size = {static_cast<real_t>(std::max(image->width, 1U)),
+                            static_cast<real_t>(std::max(image->height, 1U))};
+        }
+        const world::Affine2D place = tree.global_affine(entity);
+        const int z = z_index(polygon.z_index, polygon.z_as_relative, from_parents);
+        render::Material material;
+        material.shading =
+            state.shading_for(render::LightMode::Normal, polygon.light_mask, z, canvas);
+        const Vec4 tint{polygon.modulate.x * from_parents.modulate.x,
+                        polygon.modulate.y * from_parents.modulate.y,
+                        polygon.modulate.z * from_parents.modulate.z,
+                        polygon.modulate.w * from_parents.modulate.w};
+        const auto corner = [&](std::size_t i) {
+            const Vec2 at = place.apply(polygon.polygon[i] + polygon.offset);
+            const Vec4 color =
+                i < polygon.vertex_colors.size() ? polygon.vertex_colors[i] : polygon.color;
+            const Vec2 uv = i < polygon.uv.size() ? polygon.uv[i] : polygon.polygon[i];
+            return render::Vertex2D{.x = static_cast<float>(at.x),
+                                    .y = static_cast<float>(at.y),
+                                    .u = static_cast<float>(uv.x / texture_size.x),
+                                    .v = static_cast<float>(uv.y / texture_size.y),
+                                    .rgba = {to_byte(color.x * tint.x), to_byte(color.y * tint.y),
+                                             to_byte(color.z * tint.z), to_byte(color.w * tint.w)}};
+        };
+        const std::size_t first = vertices.size();
+        const auto add = [&](const std::vector<std::size_t>& indices) {
+            std::vector<Vec2> outline;
+            outline.reserve(indices.size());
+            for (const std::size_t i : indices) {
+                outline.push_back(polygon.polygon[i]);
+            }
+            for (const std::uint32_t k : triangulate(outline)) {
+                vertices.push_back(corner(indices.at(k)));
+            }
+        };
+        if (polygon.polygons.empty()) {
+            std::vector<std::size_t> all(polygon.polygon.size());
+            for (std::size_t i = 0; i < all.size(); ++i) {
+                all[i] = i;
+            }
+            add(all);
+        } else {
+            for (const std::vector<int>& part : polygon.polygons) {
+                std::vector<std::size_t> indices;
+                for (const int i : part) {
+                    if (i >= 0 && static_cast<std::size_t>(i) < polygon.polygon.size()) {
+                        indices.push_back(static_cast<std::size_t>(i));
+                    }
+                }
+                if (indices.size() >= 3) {
+                    add(indices);
+                }
+            }
+        }
+        if (vertices.size() == first) {
+            continue;
+        }
+        state.repeat(entity, first);
+        items.push_back({.canvas = canvas,
+                         .z_index = z,
+                         .order = tree.draw_key(entity),
+                         .part = 0,
+                         .texture = texture_id,
+                         .first = first,
+                         .count = vertices.size() - first,
+                         .material = std::move(material),
+                         .entity = entity,
+                         .kind = FrameItem::Kind::Polygon,
+                         .image = image,
+                         .path = path,
+                         .drawn = 1,
+                         .particles = render::ParticlesId::None,
+                         .look = {}});
+    }
+}
+
 // Foliage2D: each group's texture at its instances, standing on the type's origin, leaning in
 // the wind and from characters, the lowest drawn last so nearer plants cover farther ones.
 void CanvasRenderer::gather_foliage(DrawState& state) {
@@ -2269,6 +2382,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
 
     gather_cloths(state);
     gather_hair(state);
+    gather_polygons(state);
 
     gather_foliage(state);
 

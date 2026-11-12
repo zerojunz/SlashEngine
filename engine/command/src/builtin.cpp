@@ -18,6 +18,7 @@
 #include "slash/canvas/particles.hpp"
 #include "slash/canvas/sprite_frames.hpp"
 #include "slash/canvas/tilemap.hpp"
+#include "slash/command/character.hpp"
 #include "slash/command/l10n.hpp"
 #include "slash/command/lighting.hpp"
 #include "slash/command/lightmap.hpp"
@@ -73,6 +74,7 @@
 #include "slash/ui/accessibility.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/camera2d.hpp"
+#include "slash/world/character.hpp"
 #include "slash/world/cloth2d.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
@@ -540,6 +542,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "groom") {
         return Reply::success(world::groom_schema());
+    }
+    if (kind == "character") {
+        return Reply::success(world::character_schema());
     }
     if (name.empty()) {
         return param_error(code::kInvalidParams, "/name",
@@ -5762,6 +5767,8 @@ Reply frame_summary(Session& session, const json::Value& params) {
             return "Tooltip";
         case canvas::FrameItem::Kind::Reflection:
             return "Reflection2D";
+        case canvas::FrameItem::Kind::Polygon:
+            return "Polygon2D";
         case canvas::FrameItem::Kind::Control:
             break;
         }
@@ -5898,6 +5905,7 @@ Reply frame_summary(Session& session, const json::Value& params) {
             }
             break;
         case canvas::FrameItem::Kind::Reflection:
+        case canvas::FrameItem::Kind::Polygon:
             break;
         }
         drawn.push_back(std::move(each));
@@ -7132,7 +7140,8 @@ void register_builtin_commands(Registry& registry) {
                                "physics_material",
                                "ragdoll",
                                "foliage",
-                               "groom"};
+                               "groom",
+                               "character"};
     registry.add({
         .name = "schema.get",
         .description =
@@ -7143,7 +7152,7 @@ void register_builtin_commands(Registry& registry) {
             ".lightmap.json, "
             ".voxelgi.json, .model.json, .standard_material.json, .texture.json, .scatter.json, "
             ".physics_material.json, .ragdoll.json, .foliage.json, .groom.json, "
-            ".replay.json, "
+            ".character.json, .replay.json, "
             ".test.json, "
             ".score.json or storyboard "
             "files, one component or one command.",
@@ -8833,6 +8842,7 @@ void register_builtin_commands(Registry& registry) {
     register_navigation_commands(registry);
     register_npc_commands(registry);
     register_ragdoll_commands(registry);
+    register_character_commands(registry);
     register_physics_debug_commands(registry);
     register_lighting_commands(registry);
     register_style_commands(registry);

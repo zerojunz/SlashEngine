@@ -4996,6 +4996,85 @@ Lengths are meters in 3D and pixels in 2D; a 2D file's defaults (in brackets) ar
   no model, a section the model lacks) is reported at `/components/HairInstance3D/groom` or
   `section` by `scene validate`, and at `/components/Hair2D/groom` by `frame.summary`.
 
+### Characters
+
+Godot has no character creator, so this follows Unreal's MetaHuman Creator and Mutable: a
+`.character.json` recipe says a person's body, face, hair, clothing and props, and both
+dimensions build it. A `MeshInstance3D` whose `mesh` names the file draws it as a rigged humanoid
+model, as any model; a `Character2D` draws it as a side-view cut-out of `Polygon2D` parts.
+[`character.generate`](commands.md#charactergenerate) writes new ones unlike the project's others,
+[`character.check`](commands.md#charactercheck) holds them to the storyboard's `character_rules`,
+and [`character.place`](commands.md#characterplace) puts one in a scene. `slash-cli schema
+character` prints the schema, `scene validate` and `scene format` take the files, and exports ship
+them. [examples/character-design](../../examples/character-design/) designs a cast.
+
+```json
+{"format": 1, "name": "Hero", "role": "player",
+ "body": {"height": 1.82, "build": 0.7, "shoulders": 1.15, "skin": [0.78, 0.6, 0.44]},
+ "face": {"beard": "stubble"},
+ "hair": {"style": "short", "color": [0.06, 0.06, 0.06]},
+ "clothing": [{"kind": "shirt", "color": [0.63, 0.13, 0.13]},
+              {"kind": "pants", "color": [0.35, 0.23, 0.13]},
+              {"kind": "boots", "color": [0.06, 0.06, 0.06], "material": "leather"},
+              {"kind": "cape", "color": [0.13, 0.25, 0.63], "cloth": true, "length": 0.8}],
+ "props": [{"model": "props/sword.model.json", "point": "right_hand",
+            "rotation": [1.5708, 0, 0]}]}
+```
+
+Colors are `[r, g, b]` or `[r, g, b, a]` from 0 to 1. Proportions are 1 for an average adult's,
+from 0.5 to 1.5.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `format` | required | `1` |
+| `extends` | | A `.character.json` file this one changes, as a JSON Merge Patch: objects merge, other values (`clothing` and `props` included) replace; at most 8 deep |
+| `name`, `role`, `faction` | `""`, `"npc"`, `""` | Who it is, `"player"` or `"npc"`, and a storyboard faction's ID |
+| `body` | | `height` (`1.75` meters to the top of the head, 0.4 to 3), `build` (`0.5`, 0 slight to 1 heavy), `head`, `neck`, `shoulders`, `hips`, `arms`, `legs` (`1`) and `skin` |
+| `face` | | `eyes` (the irises' color), `eye_size`, `eye_spacing`, `nose`, `ears` (`1`), `lips` and `beard` (`"none"`, `"stubble"`, `"short"` or `"long"`, in the hair's color) |
+| `hair` | | `style` (`"short"`; `"none"`, `"long"`, `"ponytail"`, `"bun"` or `"mohawk"`), `color`, `length` (`0.5`, how far long hair and ponytails hang) and `groom` (a [`.groom.json`](#hair-and-fur) file grown over the model's `"scalp"` in place of the style; 3D only) |
+| `clothing` | `[]` | Up to 16 garments from the skin out, each over the ones before: `kind`, `color`, `material` (`"cloth"`, `"leather"`, `"metal"`, `"silk"` or `"fur"`, which set its roughness and metallic), `length` (`1`: sleeves, legs, hems and boots' shafts), `loose` (`0`, how far it stands off the body) and `cloth` (capes, coats, robes, dresses and skirts: simulated as cloth) |
+| `props` | `[]` | Up to 8 models held or worn, one a point: `model` (any model file), `point` (`"right_hand"`, `"left_hand"`, `"back"`, `"hip_left"`, `"hip_right"` or `"head_top"`), `position` (meters), `rotation` (radians, YXZ) and `scale` |
+
+Garment kinds and what they cover: `shirt` (torso, sleeves by `length`), `jacket`, `coat` and
+`robe` (torso and arms; coats and robes also hang below the waist by `length`), `dress` (torso
+and a skirt), `skirt`, `pants` (to the ankle by `length`), `shorts`, `boots` (feet and a shaft by
+`length`), `shoes`, `gloves`, `hat` (a brim and a crown `length` tall), `hood`, `helmet`, `cape`
+(behind, from the shoulders down by `length`), `belt`, `armor` (a plate over the torso and
+shoulder guards) and `scarf`. Two garments can't cover the same place (a shirt and a dress, a
+jacket and a coat, pants and a skirt, boots and shoes, a hat and a hood), only one garment may be
+cloth, and only one prop may be at a point; `scene validate` reports each at its pointer.
+
+- **The model** is a skeleton with Godot's humanoid profile's bones (`Hips`, `Spine`, `Chest`,
+  `UpperChest`, `Neck`, `Head`, and `Left`/`Right` `Shoulder`, `UpperArm`, `LowerArm`, `Hand`,
+  `UpperLeg`, `LowerLeg`, `Foot` and `Toes`), so animations retarget onto it, its arms hanging
+  12 degrees out. The body, face and hair are primitive meshes placed and stretched over the
+  recipe's measures, each moved by one bone, facing +z with the feet at 0. Each garment is the
+  body's shape it covers a little further out (more when loose, more for each later layer).
+  Materials are named for what they draw: `skin`, `eyes`, `lips`, `hair`, `scalp` (with a groom),
+  each garment's kind (a cloth garment's free part, its fitted part `<kind>_fitted`), and the
+  props' own. The points are nodes under their bones, which `BoneAttachment3D` follows by name.
+- **The 2D cut-out** is seen from the side, facing right (`flip_h` faces left): bones `pelvis`,
+  `chest`, `head`, and `upper_arm`, `lower_arm`, `hand`, `upper_leg`, `lower_leg` and `foot`,
+  each `_back` (behind the body, a shade darker) and `_front`. The `character_2d` system
+  (priority 880) keeps each as a child entity `<id>_<bone>` with a `Transform2D` placed where the
+  cut-out puts it and a `Polygon2D` of its shapes, `pixels_per_meter` big, and makes them again
+  when the recipe changes; after that their transforms are animations' and ragdolls' to move.
+  Props draw only in 3D.
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `Character2D` | `recipe` `""`, `pixels_per_meter` `100`, `flip_h` `false` |
+| `Polygon2D` | Godot's: `polygon` `[]` (points in its space), `polygons` `[]` (lists of indices into it, each drawn as its own polygon; empty draws `polygon` whole), `color` `[1, 1, 1, 1]`, `vertex_colors` `[]` (a color a point, else `color`), `offset` `[0, 0]`, `texture` `""`, `uv` `[]` (texture pixels a point, else the point itself), `modulate` `[1, 1, 1, 1]`, `z_index` `0`, `z_as_relative` `true`, `visible` `true`, `light_mask` `1`, `texture_filter` `"inherit"` |
+
+The storyboard's `character_rules` entries (in `storyboard/design.json`) cover the recipes in
+their links, or every one with neither links nor refs: `silhouette_difference` (how different, 0
+to 1, each one's outline, front or side, must be from every other's: 1 less the share of cells
+they cover together), `color_difference` (how far apart, in Oklab times 100, each one's main
+colors must be: each color covering a twentieth of the model or more, its distance to the other's
+nearest by its share, the larger way), `min_height`, `max_height`, `palette` (a palette entry
+skin, hair and clothing colors keep to, within its `tolerance`) and `max_props`. Without one,
+outlines 0.05 apart and colors 5 apart tell characters apart.
+
 ### Physics materials and fields
 
 Everything in a world moves in one simulation, as Unreal's Chaos: bodies of every tool share

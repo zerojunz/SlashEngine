@@ -1236,10 +1236,17 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         follow-the-leader lengths, wind, fields and the body's spheres, capsules and boxes),
         drawn as strands, cards, fur shells and 2D ribbons, and `hair.get`
         (`examples/hair-and-fur`)
-14. [ ] Characters: a character tool that makes the player and NPCs as `.character.json` recipes
+14. [x] Characters: a character tool that makes the player and NPCs as `.character.json` recipes
         (body proportions, face, hair, clothing and props, materials) built into rigged models,
         each distinct from the others in silhouette and color, following the storyboard's
-        character design rules, which `character.check` enforces
+        character design rules, which `character.check` enforces. Done in 3D and 2D: recipes
+        that `extends` others, built into a skinned model with Godot's humanoid bone names
+        (so animations retarget onto it), clothing over the body with a cloth garment for
+        `Cloth3D`, a groom's scalp for `HairInstance3D` and props at attachment points, or into
+        a `Character2D` cut-out of `Polygon2D` bones; `character_rules` storyboard entries,
+        `character.generate` (candidates kept by how unlike the cast they look),
+        `character.check` (run by `test.run`) and `character.place`
+        (`examples/character-design`)
 15. [ ] Fauna: a fauna tool for distinct animals (birds, fish, insects, grazers, predators,
         pets) as `.creature.json` recipes of body plans built into rigged, animated models with
         their own looks per species, NPC brains for flocking, grazing, fleeing, hunting and

@@ -1,0 +1,13 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"character.check","params":{"measures":true}}
+{"jsonrpc":"2.0","id":3,"method":"character.generate","params":{"name":"Mira","seed":1}}
+{"jsonrpc":"2.0","id":4,"method":"character.generate","params":{"name":"Oren","seed":2}}
+{"jsonrpc":"2.0","id":5,"method":"character.check","params":{"paths":["characters/mira.character.json","characters/oren.character.json"]}}
+{"jsonrpc":"2.0","id":6,"method":"character.place","params":{"recipe":"characters/hero.character.json","id":"hero","at":[-0.8,0,0]}}
+{"jsonrpc":"2.0","id":7,"method":"character.place","params":{"recipe":"characters/mira.character.json","id":"mira","at":[0.8,0,0],"yaw":-0.5}}
+{"jsonrpc":"2.0","id":8,"method":"model.inspect","params":{"id":"hero","brief":true}}
+{"jsonrpc":"2.0","id":9,"method":"character.place","params":{"recipe":"characters/oren.character.json","id":"oren","at":[30,85],"pixels_per_meter":40}}
+{"jsonrpc":"2.0","id":10,"method":"step","params":{"ticks":1}}
+{"jsonrpc":"2.0","id":11,"method":"world.query","params":{"with":["Polygon2D"]}}
+{"jsonrpc":"2.0","id":12,"method":"frame.summary","params":{}}
+{"jsonrpc":"2.0","id":13,"method":"character.place","params":{"recipe":"characters/nobody.character.json","id":"x","at":[0,0]}}

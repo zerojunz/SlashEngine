@@ -126,7 +126,8 @@ struct FrameItem {
         Control,
         Popup,
         Tooltip,
-        Reflection // a Reflection2D's
+        Reflection, // a Reflection2D's
+        Polygon     // a Polygon2D's
     };
     Kind kind = Kind::Sprite;
     entt::entity entity = entt::null;
@@ -423,6 +424,7 @@ private:
     struct DrawState;
     void gather_cloths(DrawState& state);
     void gather_hair(DrawState& state);
+    void gather_polygons(DrawState& state);
     void gather_foliage(DrawState& state);
     void gather_reflections(DrawState& state);
     // Each call's texture, made now so the null device checks them too; a call whose texture
