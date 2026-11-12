@@ -1,0 +1,66 @@
+{
+  "format": 1,
+  "lines": {
+    "bye": {
+      "speaker": "Mira",
+      "text": "Oh."
+    },
+    "found": {
+      "choices": [
+        {
+          "effects": {
+            "lamb_returned": true
+          },
+          "next": "thanks",
+          "text": "Here she is."
+        },
+        {
+          "next": "bye",
+          "text": "Not yet."
+        }
+      ],
+      "speaker": "Mira",
+      "text": "Any sign of my lamb?"
+    },
+    "hello": {
+      "choices": [
+        {
+          "effects": {
+            "met_mira": true
+          },
+          "next": "hope",
+          "start_quest": "quests/lamb.quest.json",
+          "text": "I'll look for her."
+        },
+        {
+          "next": "bye",
+          "text": "Not now."
+        }
+      ],
+      "speaker": "Mira",
+      "text": "Have you seen my lamb?"
+    },
+    "hope": {
+      "effects": {
+        "self.hopeful": true
+      },
+      "speaker": "Mira",
+      "text": "Thank you! I'll wait by the fold."
+    },
+    "thanks": {
+      "speaker": "Mira",
+      "text": "My lamb! Take these coins."
+    }
+  },
+  "start": [
+    {
+      "line": "found",
+      "when": {
+        "lamb_found": true
+      }
+    },
+    {
+      "line": "hello"
+    }
+  ]
+}

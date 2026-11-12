@@ -45,6 +45,7 @@
 #include "slash/input/input.hpp"
 #include "slash/navigation/navigation.hpp"
 #include "slash/npc/npc.hpp"
+#include "slash/npc/story.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/platform/file.hpp"
@@ -490,6 +491,12 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "npc") {
         return Reply::success(npc::brain_schema());
+    }
+    if (kind == "quest") {
+        return Reply::success(npc::quest_schema());
+    }
+    if (kind == "dialogue") {
+        return Reply::success(npc::dialogue_schema());
     }
     if (kind == "meshlib") {
         return Reply::success(scene3d::mesh_library_schema());
@@ -7103,6 +7110,8 @@ void register_builtin_commands(Registry& registry) {
                                "navmesh",
                                "navpoly",
                                "npc",
+                               "quest",
+                               "dialogue",
                                "meshlib",
                                "lightmap",
                                "voxel_gi",

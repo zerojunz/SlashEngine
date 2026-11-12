@@ -2149,6 +2149,23 @@ each draft's problems (`validate_brain`, `go_to` targets, `emit` events, goals `
 finds out of reach) back until one checks, and only then writes it. `examples/npc-planner` has
 two farmers and a guard who rings a bell, and `examples/npc-draft` a fruit seller a model wrote.
 
+NPCs have stories of their own (`slash/npc/story.hpp`). A brain `extends` a shared one
+(`resolve_brain` in `src/brain.cpp` merges the chain: facts, `traits` and `routes` by key, goals
+and actions by name field by field, `"remove"` dropping one), `traits` are facts no action
+changes, and a list of conditions on one fact must all hold. project.json's `npc` sets the npc
+clock (`npc::clock`, from the world's ticks), which fills brains' `hour` and `day` facts;
+`follow_route` walks a brain's `routes` from `NpcAgent::waypoint`. Facts named `story.<name>`
+are a `QuestLog`'s (`npc::story_log`), written back when an action ends. `.quest.json` quests
+and `.dialogue.json` conversations (`src/story.cpp`) run in `src/story_world.cpp`: the `quests`
+system (priority 966) and `set_story_fact` move each `QuestLog`'s quests through their stages,
+and `start_dialogue` and `advance_dialogue` keep a listener's `Conversation`, its effects on the
+listener's story facts or the speaker's own (`self.<name>`), translating through `l10n::tr`.
+`check_story` (`src/story_check.cpp`) works out every value any file sets each story fact to and
+reports quests that can't finish and lines nothing reaches; `quest.check` serves it and
+`test.run` runs it. `quest.*` and `dialogue.*` are in `engine/command/src/npc.cpp`, and
+`l10n.extract` collects quests' and dialogue's text. `examples/npc-stories` runs a questline,
+a conversation in two languages and watchmen in 2D and 3D.
+
 ## Particles
 
 `CPUParticles2D` is Godot's, with Godot's field names and angles in degrees. The

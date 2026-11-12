@@ -75,6 +75,8 @@ checks it.
 | `navigation_3d.edge_connection_margin` | No | `0.25` | How close, in meters, two regions' edges must come to join |
 | `navigation_3d.link_connection_radius` | No | `1` | How far, in meters, a link's ends reach for a region |
 | `navigation_3d.up` | No | `[0, 1, 0]` | Which way is up for paths, as Godot's `navigation/3d/default_up` |
+| `npc.day_seconds` | No | `0` | Seconds of game time in a day of the [npc clock](scene-format.md#daily-schedules-and-routes), which NPC brains' `hour` and `day` facts read; `0` stops the clock at `start_hour` |
+| `npc.start_hour` | No | `6` | The hour the npc clock shows when the world starts, from 0 up to 24 |
 | `gui.theme` | No | | A [`.theme.json`](scene-format.md#themes) file every control uses after its own and its parents' themes, before Godot's default theme, as Godot's `gui/theme/custom`. `project validate` checks that it exists and `export` checks and ships it |
 | `gui.allow_system_fallback` | No | `true` | Let text take characters its fonts and their [fallbacks](scene-format.md#fonts) lack from fonts installed on the machine. Off, text lays out the same on every machine, as on the web, which has none; a `.font.json` file's `allow_system_fallback` turns them off for one font |
 | `gui.tooltip_delay_sec` | No | `0.5` | Seconds the pointer rests on a control before its [tooltip](scene-format.md#tooltips-and-drag-and-drop) shows, as Godot's `gui/timers/tooltip_delay_sec` |
