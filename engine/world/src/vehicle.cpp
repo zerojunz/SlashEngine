@@ -5,6 +5,7 @@
 #include "slash/asset/assets.hpp"
 #include "slash/world/ragdoll.hpp"
 #include "slash/world/tree3d.hpp"
+#include "slash/world/vfx.hpp"
 
 #include <algorithm>
 #include <array>
@@ -682,6 +683,7 @@ VehicleRecipe recipe_of(const json::Value& doc) {
             wheel.drive = false; // its engines pull it
         }
     }
+    out.vfx = read_vfx_hooks(doc);
     return out;
 }
 
@@ -846,7 +848,11 @@ bool is_vehicle_path(std::string_view path) {
 }
 
 json::Value vehicle_schema() {
-    static const json::Value schema = json::parse(kSchema).value();
+    static const json::Value schema = [] {
+        json::Value made = json::parse(kSchema).value();
+        made["properties"]["vfx"] = vfx_hooks_schema();
+        return made;
+    }();
     return schema;
 }
 

@@ -1,5 +1,7 @@
 #include "slash/world/foliage.hpp"
 
+#include "slash/world/vfx.hpp"
+
 #include <utility>
 
 namespace slash::world {
@@ -92,7 +94,9 @@ constexpr std::string_view kSchema = R"({
 })";
 
 json::Value make_schema() {
-    return json::parse(kSchema).value();
+    json::Value made = json::parse(kSchema).value();
+    made["properties"]["vfx"] = vfx_hooks_schema();
+    return made;
 }
 
 Vec2 vec2(const json::Value& value) {
@@ -259,6 +263,7 @@ Result<FoliageType> parse_foliage(const json::Value& doc) {
             type.harvest_amount = static_cast<int>(amount->as_int());
         }
     }
+    type.vfx = read_vfx_hooks(doc);
     return type;
 }
 

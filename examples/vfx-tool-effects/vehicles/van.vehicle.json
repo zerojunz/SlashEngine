@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "kind": "car",
+  "name": "Van",
+  "vfx": {
+    "running": "fx/exhaust.vfx.json"
+  }
+}

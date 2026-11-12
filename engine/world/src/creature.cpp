@@ -8,6 +8,7 @@
 #include "slash/core/log.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/ragdoll.hpp"
+#include "slash/world/vfx.hpp"
 
 #include <algorithm>
 #include <array>
@@ -431,7 +432,11 @@ bool is_creature_path(std::string_view path) {
 }
 
 json::Value creature_schema() {
-    static const json::Value schema = json::parse(kSchema).value();
+    static const json::Value schema = [] {
+        json::Value made = json::parse(kSchema).value();
+        made["properties"]["vfx"] = vfx_hooks_schema();
+        return made;
+    }();
     return schema;
 }
 
@@ -587,6 +592,7 @@ Result<CreatureRecipe> parse_creature(const json::Value& source, const FileReade
     if (out.behavior.run_speed < out.behavior.walk_speed) {
         out.behavior.run_speed = out.behavior.walk_speed;
     }
+    out.vfx = read_vfx_hooks(doc);
     return out;
 }
 

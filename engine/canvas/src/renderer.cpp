@@ -1,5 +1,6 @@
 #include "slash/canvas/canvas.hpp"
 #include "slash/canvas/debug_draw.hpp"
+#include "slash/canvas/distortion.hpp"
 #include "slash/canvas/gpu_particles.hpp"
 #include "slash/canvas/particles.hpp"
 #include "slash/core/log.hpp"
@@ -577,6 +578,9 @@ CanvasRenderer::~CanvasRenderer() {
         upscaler_->release(*device_);
     }
     release_generation_targets();
+    if (distortion_target_ != render::TextureId::None) {
+        device_->destroy_texture(distortion_target_);
+    }
     for (const auto& [entity, target] : reflection_targets_) {
         device_->destroy_texture(target.id);
     }
@@ -1283,6 +1287,9 @@ struct CanvasRenderer::Submission {
     std::size_t shadows = 0;
     // Show a generated frame before the drawn one (CanvasOptions::generate).
     bool generate = false;
+    // The grid the world's picture shows through when distortions bend it, or none.
+    std::span<const render::Vertex2D> distortion;
+    std::size_t distortions = 0;
 };
 
 namespace {
@@ -3038,6 +3045,11 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         lights_3d_drawn_ = scene ? scene3d_.lights() : 0;
         return {};
     }
+    const Vec2f view_size{
+        options.width > 0.0F ? options.width : static_cast<float>(options.pixel_width),
+        options.height > 0.0F ? options.height : static_cast<float>(options.pixel_height)};
+    const std::vector<Distortion> bending = distortions(world, view_size, !options.view3d);
+    const std::vector<render::Vertex2D> bent = distortion_mesh(bending, view_size, options.time);
     return submit({.options = options,
                    .lighting = lights,
                    .scaling = settings(world).scaling,
@@ -3060,7 +3072,9 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                    .tiles = tiles,
                    .particles = particles,
                    .shadows = shadows,
-                   .generate = generate});
+                   .generate = generate,
+                   .distortion = bent,
+                   .distortions = bending.size()});
 }
 
 Result<void> CanvasRenderer::submit(const Submission& submission) {
@@ -3305,6 +3319,40 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
         scaled_ = {.upscaler = upscaler_name_, .size = size};
     }
 
+    // Distortions: the world draws into a target of its own, shown through their grid.
+    distortions_drawn_ = 0;
+    const bool distort = !submission.distortion.empty() && output_width > 0 && output_height > 0;
+    if (distort && !picture) {
+        if (distortion_size_ != std::array{output_width, output_height}) {
+            if (distortion_target_ != render::TextureId::None) {
+                device_->destroy_texture(
+                    std::exchange(distortion_target_, render::TextureId::None));
+            }
+            auto made = device_->create_texture({.width = output_width,
+                                                 .height = output_height,
+                                                 .filter = render::Filter::Linear,
+                                                 .render_target = true});
+            if (!made) {
+                return not_begun(made.error());
+            }
+            distortion_target_ = made.value();
+            distortion_size_ = {output_width, output_height};
+        }
+        render::Frame world_frame = frame;
+        world_frame.target = distortion_target_;
+        world_frame.view = render::pixel_projection(view_width, view_height);
+        if (auto drawn = draw_world(world_frame); !drawn) {
+            return drawn;
+        }
+        picture = Picture{.texture = distortion_target_, .material = {}};
+        frame.view = render::pixel_projection(view_width, view_height);
+    } else if (!distort && distortion_target_ != render::TextureId::None) {
+        device_->destroy_texture(std::exchange(distortion_target_, render::TextureId::None));
+        distortion_size_ = {};
+    }
+    const std::span<const render::Vertex2D> shown_mesh =
+        distort ? submission.distortion : std::span<const render::Vertex2D>(screen);
+
     // Frame generation: the world's picture goes into the first of its targets, and the frame
     // halfway between it and the one before into the second, shown first.
     generated_ = false;
@@ -3375,7 +3423,7 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
         }
         std::size_t first_canvas = 0;
         if (shown) {
-            if (auto drawn = device_->draw(shown->texture, screen, shown->material); !drawn) {
+            if (auto drawn = device_->draw(shown->texture, shown_mesh, shown->material); !drawn) {
                 return end_after(drawn.error()).error();
             }
             if (auto drawn = draw_controls(world_canvas); !drawn) {
@@ -3424,6 +3472,7 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
     if (!began) {
         return began.error();
     }
+    distortions_drawn_ = began.value() && distort ? submission.distortions : 0;
     controls_drawn_ = began.value() ? controls.controls : 0;
     glyphs_drawn_ = began.value() ? controls.glyphs : 0;
     boxes_drawn_ = began.value() ? controls.boxes : 0;

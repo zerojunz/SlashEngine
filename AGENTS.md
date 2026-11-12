@@ -2485,7 +2485,14 @@ the `particle_simulation_3d` and `particle_simulation_2d` systems (priority 1105
 slots, colliding with `GPUParticlesCollision*3D`s (`scene3d::particle_surroundings_3d`), what the
 current camera sees (`camera_depth_view`, `particle_depth_contact`) or 2D occluders
 (`canvas::particle_collision_shapes`), and spawning events' particles into other emitters as
-extra slots. `examples/particle-simulation` flocks fireflies and settles sand.
+extra slots. `examples/particle-simulation` flocks fireflies and settles sand. Screen distortion
+is `ScreenDistortion3D` and `ScreenDistortion2D` (heat, shockwaves, ripples, lenses;
+`slash/canvas/distortion.hpp`, `src/distortion.cpp`): `CanvasRenderer` draws the world into
+`distortion_target_` and shows it through a grid whose texture coordinates `distortion_offset`
+moves, so devices need no shader of their own. The creature, vehicle, character and foliage
+recipes' `vfx` name an effect per world event; `play_hooks` in `engine/world/src/vfx.cpp` plays
+them (`play_vfx`) and keeps vehicles' `running` effects, and the foliage system emits
+`foliage_parted`. `examples/vfx-tool-effects` feeds a dog, runs a van and parts grass.
 
 ## Job system
 

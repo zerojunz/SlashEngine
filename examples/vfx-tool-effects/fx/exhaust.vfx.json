@@ -1,0 +1,30 @@
+{
+  "duration": 1,
+  "format": 1,
+  "layers": [
+    {
+      "components": {
+        "ScreenDistortion3D": {
+          "mode": "heat",
+          "radius": 0.6,
+          "speed": 3,
+          "strength": 2
+        }
+      },
+      "name": "haze",
+      "offset": [0, 0.4, 1.6]
+    },
+    {
+      "components": {
+        "CPUParticles3D": {
+          "amount": 8,
+          "lifetime": 0.8
+        }
+      },
+      "name": "smoke",
+      "offset": [0, 0.4, 1.6]
+    }
+  ],
+  "loop": true,
+  "name": "Exhaust"
+}

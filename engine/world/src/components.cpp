@@ -1479,6 +1479,37 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                                     "everywhere.",
                              .min = 0})
         .describe("enabled", {.doc = "Whether it shakes."});
+    const auto describe_distortion = [&](ComponentType& type, bool flat) {
+        type.describe("mode", {.doc = "How it bends the picture: heat (shimmer that rises), "
+                                      "shockwave (a ring at progress), ripple (rings that run "
+                                      "out) or lens (a bulge, or a pinch with a negative "
+                                      "strength).",
+                               .choices = {"heat", "shockwave", "ripple", "lens"}})
+            .describe("radius", {.doc = flat ? "How far it reaches, in its canvas's pixels."
+                                             : "How far it reaches, in meters.",
+                                 .min = 0})
+            .describe("strength", {.doc = "The most the picture moves, in screen pixels."})
+            .describe("progress", {.doc = "Shockwave: where its ring is, as a share of radius; "
+                                          "animate it from 0 to 1.",
+                                   .min = 0})
+            .describe("width",
+                      {.doc = "Shockwave: the ring's width, as a share of radius.", .min = 0})
+            .describe("frequency", {.doc = "Heat and ripple: waves across the radius.", .min = 0})
+            .describe("speed", {.doc = "Heat and ripple: waves a second."})
+            .describe("enabled", {.doc = "Whether it bends the picture."});
+    };
+    describe_distortion(
+        registry.add<ScreenDistortion3D>().set_doc(
+            "Bends what the screen shows round the entity's place as the current Camera3D sees "
+            "it: heat shimmer, a shockwave, ripples or a lens, as Niagara's distortion. The "
+            "world and the canvases below it bend, the controls over it don't."),
+        false);
+    describe_distortion(
+        registry.add<ScreenDistortion2D>().set_doc(
+            "Bends what the screen shows round the entity's place in its canvas: heat shimmer, "
+            "a shockwave, ripples or a lens. The world and the canvases below it bend, the "
+            "controls over it don't."),
+        true);
     const auto describe_simulation = [&](ComponentType& type, bool flat) {
         const char* unit = flat ? "pixels" : "meters";
         type.describe("enabled", {.doc = "Whether the stages run."})

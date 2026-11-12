@@ -5060,6 +5060,7 @@ both.
 | `collision` | none | `shape` (3D `capsule`, `sphere`, `cylinder`, `box`; 2D `circle`, `rectangle`, `capsule`; `none`), `radius` (`0.25`), `height` (`2`), `size`, `offset` (default: standing on the ground), in the instance's space, scaled with it |
 | `climbable` | `false` | Characters may climb it; `foliage.get` says so |
 | `harvest` | none | `item` and `amount` (`1`): what [`foliage.harvest`](commands.md#foliageharvest) gives |
+| `vfx` | `{}` | Effects its instances play: a `.vfx.json` recipe for `foliage_parted` and `foliage_harvested` ([effects from the tools](#effects-from-the-tools)) |
 
 | Component | Fields (defaults) |
 | --- | --- |
@@ -5183,6 +5184,7 @@ from 0.5 to 1.5.
 | `name`, `role`, `faction` | `""`, `"npc"`, `""` | Who it is, `"player"` or `"npc"`, and a storyboard faction's ID |
 | `body` | | `height` (`1.75` meters to the top of the head, 0.4 to 3), `build` (`0.5`, 0 slight to 1 heavy), `head`, `neck`, `shoulders`, `hips`, `arms`, `legs` (`1`), `skin`, `muscle` (`0.5`, 0 to 1: how big its muscles are) and `fat` (`0.3`, 0 to 1: how thick the fat over them is, which softens how much they show) |
 | `face` | | A [face](#faces): a `.face.json` file's fields inline, with `from` naming a `.face.json` file they are a merge patch over |
+| `vfx` | `{}` | Effects it plays: a `.vfx.json` recipe by world event about it ([effects from the tools](#effects-from-the-tools)) |
 | `hair` | | `style` (`"short"`; `"none"`, `"long"`, `"ponytail"`, `"bun"` or `"mohawk"`), `color`, `length` (`0.5`, how far long hair and ponytails hang) and `groom` (a [`.groom.json`](#hair-and-fur) file grown over the model's `"scalp"` in place of the style; 3D only) |
 | `clothing` | `[]` | Up to 16 garments from the skin out, each over the ones before: `kind`, `color`, `material` (`"cloth"`, `"leather"`, `"metal"`, `"silk"` or `"fur"`, which set its roughness and metallic), `length` (`1`: sleeves, legs, hems and boots' shafts), `loose` (`0`, how far it stands off the body) and `cloth` (capes, coats, robes, dresses and skirts: simulated as cloth) |
 | `props` | `[]` | Up to 8 models held or worn, one a point: `model` (any model file), `point` (`"right_hand"`, `"left_hand"`, `"back"`, `"hip_left"`, `"hip_right"` or `"head_top"`), `position` (meters), `rotation` (radians, YXZ) and `scale` |
@@ -5440,6 +5442,7 @@ Colors are `[r, g, b]` or `[r, g, b, a]` from 0 to 1, lengths meters and speeds 
 | `look` | | `coat`, `belly`, `markings` (the pattern, hooves, manes and fins), `pattern` (`"plain"`, `"spots"`, `"stripes"` or `"patches"`) and `eyes` |
 | `parts` | | `ears` (`"short"`; `"none"`, `"long"` or `"pointed"`), `horns` (`"none"`, `"horns"` or `"antlers"`) and `mane` on quadrupeds; `antennae` on insects; `wings` (meters tip to tip; twice its length for a bird) on birds and insects, which fly with them |
 | `behavior` | | See below |
+| `vfx` | `{}` | Effects it plays: a `.vfx.json` recipe by world event about it, such as `creature_attacked`, `creature_fed` or `killed` ([effects from the tools](#effects-from-the-tools)) |
 
 `behavior` says how the fauna system runs it:
 
@@ -5551,6 +5554,7 @@ aircraft's wings, engines and landing gear.
 | `physics` | by kind | See below |
 | `damage` | | `per_impulse` (`0.02`, damage a kilogram-meter a second of impulse), `knockdown` (`400`, the impulse that knocks a ragdoll down) and `min_speed` (`1.5`; slower hurts no one) |
 | `design` | | What `vehicle.check` holds a test drive to, each a `[min, max]` range (0 for no bound): `top_speed`, `acceleration` (seconds from 0 to 100 km/h), `braking_distance` (meters from 100 km/h, or 90% of its top speed when that is lower) and `turning_radius` (at 5 meters a second, 3D) |
+| `vfx` | `{}` | Effects it plays: a `.vfx.json` recipe by world event about it, such as `vehicle_hit` or `wrecked`, and `running` while its throttle is open ([effects from the tools](#effects-from-the-tools)) |
 
 Each of `parts` is a shape or a model file the vehicle is built of, in its space, so an agent
 designs a vehicle of its own as Unreal's modular vehicles are put together:
@@ -6239,7 +6243,7 @@ layers named twice, curve keys out of order and levels of detail out of order.
 
 | Component | Fields (defaults) |
 | --- | --- |
-| `VisualEffect3D` | `recipe` `""`, `parameters` `null` (values over the recipe's), `playing` `true`, `time` `0` (seconds in), `speed_scale` `1`, `lod_bias` `1` (the camera's distance is divided by it), `seed` `0` (added to its emitters' seeds), `free_on_finish` `false` (remove it once a one-shot has finished and its particles have gone) |
+| `VisualEffect3D` | `recipe` `""`, `parameters` `null` (values over the recipe's), `playing` `true`, `time` `0` (seconds in), `speed_scale` `1`, `lod_bias` `1` (the camera's distance is divided by it), `seed` `0` (added to its emitters' seeds), `free_on_finish` `false` (remove it once a one-shot has finished, or a loop has been stopped, and its particles have gone) |
 | `VisualEffect2D` | the same, on a `Transform2D` |
 | `VfxPart` | `effect` `""`, `layer` `""`, `cycle` `0`, `linger` `-1` (seconds left for its particles once its layer ended; below 0 playing) |
 | `CameraShake` | `strength` `0.1` (meters in 3D, pixels in 2D), `frequency` `12` (shakes a second), `radius` `0` (in which it reaches the camera, less with distance; 0 everywhere), `enabled` `true` |
@@ -6317,6 +6321,55 @@ An expression that fails as it runs leaves its value at 0 and is logged once.
 | `inherit_velocity` | `0` | The share of the particle's velocity they take. |
 | `name` | `""` | When set, emits a `particle_event` world event about the emitter, its data the `name`, `on` and the world `position`; at most 8 an emitter a tick. |
 | `kill` | `false` | Ends the particle when it fires. |
+
+### Screen distortion
+
+`ScreenDistortion3D` and `ScreenDistortion2D` bend the picture of the world as a heat haze, a
+shockwave's refracting ring, ripples or a lens does (Godot draws these with a shader reading
+`SCREEN_TEXTURE`; Niagara with a distortion material). A recipe layer can hold one and move its
+`progress` or `strength` along curves. `CanvasRenderer` draws the world, with the canvas layers
+below it, into a texture, then shows it through a grid of triangles (96 cells across) whose
+texture coordinates are moved by each distortion, so every device draws the same pixels with no
+shader of its own; the world's controls and the canvases above it are drawn over it unbent. A
+2D one is placed by its canvas's screen transform and its `radius` is in pixels; a 3D one is
+placed and sized through the current `Camera3D` and its `radius` is in meters (behind the camera
+it bends nothing). `canvas::distortions`, `distortion_offset` and `distortion_mesh`
+(`slash/canvas/distortion.hpp`) give what a frame bends, and `CanvasRenderer::distortions_drawn`
+counts them.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `mode` | `"heat"` | `heat` (smooth noise rising at `speed`, `frequency` cells across the radius), `shockwave` (a ring at `progress` of the radius, `width` of it wide: just outside it pushed out, just inside pulled in), `ripple` (`frequency` rings moving out at `speed` a second) or `lens` (bulges from the middle) |
+| `radius` | `1` (`48` in 2D) | How far it reaches, falling off smoothly to nothing there |
+| `strength` | `6` | The most it moves the picture, in pixels |
+| `progress` | `0.5` | Where a shockwave's ring is, from 0 (the middle) to 1 (the edge) |
+| `width` | `0.25` | How wide a shockwave's ring is, as a share of the radius |
+| `frequency` | `3` | Heat's noise cells, or ripples' rings, across the radius |
+| `speed` | `1` | How fast heat rises and ripples move, a second |
+| `enabled` | `true` | Whether it bends |
+
+### Effects from the tools
+
+The creature, vehicle, character and foliage recipes (`.creature.json`, `.vehicle.json`,
+`.character.json`, `.foliage.json`) take a `vfx` object naming a `.vfx.json` recipe per world
+event, as Niagara components on a Blueprint answer its events:
+
+```json
+"vfx": {"creature_attacked": "fx/dust.vfx.json", "killed": "fx/feathers.vfx.json"}
+```
+
+At the start of each tick the `vfx` system plays what the tick before's events ask (at most 16
+a tick): an event about an entity drawn from such a recipe (a `Creature3D` or `Creature2D`, a
+`Vehicle3D` or `Vehicle2D`, a `Character2D`, or a `MeshInstance3D` drawing a `.character.json`)
+whose kind the recipe names starts a one-shot `<entity>_<event>` (numbered past taken names)
+with a `VisualEffect3D` or `VisualEffect2D` and `free_on_finish`, at the event's `position`
+when its data has one, else at the entity. Foliage events (`foliage_parted`,
+`foliage_harvested`) look the recipe up by their data's `type`. A vehicle's `running` effect is
+not an event: `<vehicle>_running` follows the vehicle while its throttle is open and stops,
+letting its particles finish, when it closes. The foliage system emits `foliage_parted` when a
+body starts to push an instance aside (at most 8 a tick; data `type`, `group`, `instance` and
+`position`). `world::vfx_hooks_of`, `foliage_vfx_hooks` and `play_vfx`
+(`slash/world/vfx.hpp`) do the same from gameplay code.
 
 ## Particles
 

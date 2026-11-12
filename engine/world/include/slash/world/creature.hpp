@@ -13,6 +13,8 @@
 #include "slash/world/character.hpp"
 #include "slash/world/world.hpp"
 
+#include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -89,6 +91,8 @@ struct CreatureRecipe {
     CreatureLook look;
     CreatureParts parts;
     CreatureBehavior behavior;
+    // The effects it plays by the world events about it (slash/world/vfx.hpp's VfxHooks).
+    std::map<std::string, std::string, std::less<>> vfx;
 };
 
 // The JSON Schema of .creature.json files.

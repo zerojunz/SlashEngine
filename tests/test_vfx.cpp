@@ -4,6 +4,7 @@
 
 #include "slash/asset/assets.hpp"
 #include "slash/canvas/canvas.hpp"
+#include "slash/canvas/distortion.hpp"
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
 #include "slash/command/session.hpp"
@@ -21,6 +22,7 @@
 #include <doctest/doctest.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <filesystem>
 #include <map>
@@ -39,6 +41,7 @@ namespace physics2d = slash::physics2d;
 namespace physics3d = slash::physics3d;
 namespace world = slash::world;
 using slash::Vec2;
+using slash::Vec2f;
 using slash::Vec3;
 
 namespace {
@@ -612,4 +615,216 @@ TEST_CASE("vfx commands: play an effect, read its state, check recipes and previ
         "vfx.preview", R"({"recipe": "fx/boom.vfx.json", "times": [0.3], "distance": 50})");
     const json::Array& layers = far.find("samples")->as_array()[0].find("layers")->as_array();
     CHECK(std::ranges::find(layers, json::Value("smoke")) == layers.end());
+}
+
+TEST_CASE("vfx distortion: each mode moves the picture inside its radius and nothing outside") {
+    using canvas::Distortion;
+    using canvas::DistortionMode;
+    const auto one = [](DistortionMode mode) {
+        return std::array<Distortion, 1>{Distortion{.center = {100.0F, 100.0F},
+                                                    .radius = 50.0F,
+                                                    .mode = mode,
+                                                    .strength = 8.0F,
+                                                    .progress = 0.5F,
+                                                    .width = 0.2F,
+                                                    .frequency = 3.0F,
+                                                    .speed = 1.0F,
+                                                    .seed = 7}};
+    };
+    for (const DistortionMode mode : {DistortionMode::Heat, DistortionMode::Shockwave,
+                                      DistortionMode::Ripple, DistortionMode::Lens}) {
+        const auto d = one(mode);
+        const Vec2f outside = canvas::distortion_offset(d, {160.0F, 100.0F}, 0.3);
+        CHECK(outside.x == 0.0F);
+        CHECK(outside.y == 0.0F);
+        // The same point and time give the same bits.
+        const Vec2f a = canvas::distortion_offset(d, {112.0F, 93.0F}, 1.25);
+        const Vec2f b = canvas::distortion_offset(d, {112.0F, 93.0F}, 1.25);
+        CHECK(a.x == b.x);
+        CHECK(a.y == b.y);
+    }
+    // A shockwave's ring at half the radius: just outside it the picture comes from nearer the
+    // middle (pushed out), just inside from farther (pulled in), and nothing far from the ring.
+    const auto shock = one(DistortionMode::Shockwave);
+    CHECK(canvas::distortion_offset(shock, {128.0F, 100.0F}, 0.0).x < -1.0F);
+    CHECK(canvas::distortion_offset(shock, {122.0F, 100.0F}, 0.0).x > 1.0F);
+    CHECK(canvas::distortion_offset(shock, {105.0F, 100.0F}, 0.0).x == 0.0F);
+    CHECK(std::abs(canvas::distortion_offset(shock, {125.0F, 100.0F}, 0.0).x) < 1e-4F);
+    // At most strength pixels anywhere.
+    float most = 0.0F;
+    for (int i = 0; i < 500; ++i) {
+        const float x = 100.0F + (static_cast<float>(i) * 0.1F);
+        most = std::max(most, std::abs(canvas::distortion_offset(shock, {x, 100.0F}, 0.0).x));
+    }
+    CHECK(most <= 8.0F + 1e-3F);
+    CHECK(most > 7.5F);
+    // A lens draws each point from nearer its middle, so it bulges; its middle stays put.
+    const auto lens = one(DistortionMode::Lens);
+    CHECK(canvas::distortion_offset(lens, {120.0F, 100.0F}, 0.0).x < -1.0F);
+    CHECK(canvas::distortion_offset(lens, {100.0F, 120.0F}, 0.0).y < -1.0F);
+    CHECK(canvas::distortion_offset(lens, {100.0F, 100.0F}, 0.0).x == 0.0F);
+    // A ripple moves points along the way out, and changes with time.
+    const auto ripple = one(DistortionMode::Ripple);
+    const Vec2f r0 = canvas::distortion_offset(ripple, {120.0F, 100.0F}, 0.0);
+    const Vec2f r1 = canvas::distortion_offset(ripple, {120.0F, 100.0F}, 0.1);
+    CHECK(r0.y == doctest::Approx(0.0).epsilon(1e-6));
+    CHECK(r0.x != r1.x);
+    // Heat shimmers in both directions and scrolls with time.
+    const auto heat = one(DistortionMode::Heat);
+    const Vec2f h0 = canvas::distortion_offset(heat, {110.0F, 110.0F}, 0.0);
+    const Vec2f h1 = canvas::distortion_offset(heat, {110.0F, 110.0F}, 0.5);
+    CHECK((h0.x != h1.x || h0.y != h1.y));
+    CHECK(std::abs(h0.x) <= 8.0F);
+
+    // The grid: square cells over the view, six corners a cell, texture coordinates of a point
+    // out of reach left as they are.
+    const std::vector<slash::render::Vertex2D> mesh =
+        canvas::distortion_mesh(shock, {320.0F, 160.0F}, 0.0, 32);
+    CHECK(mesh.size() == std::size_t{32} * 16 * 6);
+    CHECK(mesh[0].u == 0.0F);
+    CHECK(mesh[0].v == 0.0F);
+    CHECK(canvas::distortion_mesh({}, {320.0F, 160.0F}, 0.0).empty());
+}
+
+TEST_CASE("vfx distortion: a 2D lens bends the world's picture but not the controls over it") {
+    Scene scene;
+    // A red half and a blue half meeting at x 300, and a green panel at the top left.
+    scene.create("red", R"({"Transform2D": {}, "Polygon2D": {
+        "polygon": [[0, 0], [300, 0], [300, 600], [0, 600]], "color": [1, 0, 0, 1]}})");
+    scene.create("blue", R"({"Transform2D": {}, "Polygon2D": {
+        "polygon": [[300, 0], [1000, 0], [1000, 600], [300, 600]], "color": [0, 0, 1, 1]}})");
+    scene.create("panel", R"({"Control": {"offset_right": 40, "offset_bottom": 40},
+        "ColorRect": {"color": [0, 1, 0, 1]}})");
+    const auto pixel = [](const slash::render::Image& image, int x, int y) {
+        const std::size_t i =
+            ((static_cast<std::size_t>(y) * image.width) + static_cast<std::size_t>(x)) * 4;
+        return std::array<int, 3>{image.pixels[i], image.pixels[i + 1], image.pixels[i + 2]};
+    };
+    const auto plain = canvas::capture(scene.world, scene.assets, {});
+    REQUIRE(plain.ok());
+    CHECK(pixel(plain.value().image, 310, 200)[2] > 200);
+    CHECK(pixel(plain.value().image, 290, 200)[0] > 200);
+
+    // A lens a little left of the seam draws the blue from nearer its middle out over x 310..330.
+    const entt::entity lens = scene.create("lens", R"({"Transform2D": {"position": [290, 200]},
+        "ScreenDistortion2D": {"mode": "lens", "radius": 80, "strength": 30}})");
+    const auto bent = canvas::capture(scene.world, scene.assets, {});
+    REQUIRE(bent.ok());
+    const slash::render::Image& image = bent.value().image;
+    CHECK(pixel(image, 315, 200)[0] > 200);
+    CHECK(pixel(image, 315, 200)[2] < 50);
+    // Far from it, and the panel over it, are as they were.
+    CHECK(pixel(image, 600, 200) == pixel(plain.value().image, 600, 200));
+    CHECK(pixel(image, 20, 20)[1] > 200);
+    CHECK(pixel(image, 20, 20) == pixel(plain.value().image, 20, 20));
+
+    // Turned off, nothing bends.
+    scene.world.ecs().get<world::ScreenDistortion2D>(lens).enabled = false;
+    const auto off = canvas::capture(scene.world, scene.assets, {});
+    REQUIRE(off.ok());
+    CHECK(pixel(off.value().image, 315, 200) == pixel(plain.value().image, 315, 200));
+}
+
+TEST_CASE("vfx distortion: a 3D shockwave is placed and sized through the camera") {
+    Scene scene;
+    scene.create("camera", R"({"Transform3D": {"position": [0, 0, 10]},
+        "Camera3D": {"current": true, "fov": 90}})");
+    scene.create("wave", R"({"Transform3D": {"position": [0, 0, 0]},
+        "ScreenDistortion3D": {"mode": "shockwave", "radius": 5}})");
+    const std::vector<canvas::Distortion> found =
+        canvas::distortions(scene.world, {200.0F, 100.0F}, true);
+    REQUIRE(found.size() == 1);
+    CHECK(found[0].center.x == doctest::Approx(100.0));
+    CHECK(found[0].center.y == doctest::Approx(50.0));
+    // Ten meters off with a field of view of 90 degrees, half the height is ten meters: five
+    // meters is a quarter of the view's 100 pixels.
+    CHECK(found[0].radius == doctest::Approx(25.0).epsilon(0.001));
+    CHECK(found[0].mode == canvas::DistortionMode::Shockwave);
+    // Behind the camera, or with 3D left out, there is none.
+    CHECK(canvas::distortions(scene.world, {200.0F, 100.0F}, false).empty());
+    scene.world.ecs().get<world::Transform3D>(scene.world.find("wave")).position = {0, 0, 20};
+    CHECK(canvas::distortions(scene.world, {200.0F, 100.0F}, true).empty());
+}
+
+TEST_CASE("vfx hooks: creatures, characters and vehicles play their recipes' effects") {
+    Scene scene;
+    scene.files["fx/puff.vfx.json"] = R"({"format": 1, "dimension": "2d", "duration": 0.5,
+        "layers": [{"name": "dust", "components": {"CPUParticles2D": {"amount": 8}}}]})";
+    scene.files["fx/exhaust.vfx.json"] = R"({"format": 1, "dimension": "2d", "loop": true,
+        "duration": 0.5,
+        "layers": [{"name": "smoke", "components": {"CPUParticles2D": {"amount": 4}}}]})";
+    scene.files["deer.creature.json"] = R"({"format": 1, "vfx": {"fled": "fx/puff.vfx.json"}})";
+    scene.files["van.vehicle.json"] = R"({"format": 1, "vfx": {"running": "fx/exhaust.vfx.json"}})";
+    const entt::entity deer = scene.create("deer", R"({"Transform2D": {"position": [40, 30]},
+        "Creature2D": {"recipe": "deer.creature.json", "enabled": false}})");
+    REQUIRE(world::vfx_hooks_of(scene.world, deer).size() == 1);
+
+    // An event with a place plays there; one without plays where the creature is.
+    scene.world.emit("fled", "deer", slash::json::parse(R"({"position": [5, 6]})").value());
+    scene.world.emit("fled", "deer", json::Value());
+    scene.world.emit("grazed", "deer", json::Value());
+    scene.step(2);
+    const auto& ecs = scene.world.ecs();
+    const entt::entity first = scene.world.find("deer_fled");
+    const entt::entity second = scene.world.find("deer_fled_2");
+    REQUIRE((first != entt::null));
+    REQUIRE((second != entt::null));
+    CHECK(ecs.get<const world::VisualEffect2D>(first).recipe == "fx/puff.vfx.json");
+    CHECK(ecs.get<const world::VisualEffect2D>(first).free_on_finish);
+    CHECK(ecs.get<const world::Transform2D>(first).position.x == doctest::Approx(5.0));
+    CHECK(ecs.get<const world::Transform2D>(second).position.x == doctest::Approx(40.0));
+    CHECK_FALSE(scene.has("deer_grazed"));
+    scene.step(120);
+    CHECK_FALSE(scene.has("deer_fled"));
+
+    // A van's exhaust runs while its throttle is open and follows it, then winds down.
+    const entt::entity van = scene.create("van", R"({"Transform2D": {"position": [200, 100]},
+        "Vehicle2D": {"recipe": "van.vehicle.json", "controls": {"throttle": 1}}})");
+    scene.step(3);
+    const entt::entity exhaust = scene.world.find("van_running");
+    REQUIRE((exhaust != entt::null));
+    CHECK(ecs.get<const world::VisualEffect2D>(exhaust).playing);
+    scene.world.ecs().get<world::Transform2D>(van).position.x = 260.0F;
+    scene.step(2);
+    CHECK(ecs.get<const world::Transform2D>(exhaust).position.x == doctest::Approx(260.0));
+    scene.world.ecs().get<world::Vehicle2D>(van).controls.throttle = 0.0F;
+    scene.step(2);
+    REQUIRE(scene.has("van_running"));
+    CHECK_FALSE(ecs.get<const world::VisualEffect2D>(scene.world.find("van_running")).playing);
+    scene.step(90);
+    CHECK_FALSE(scene.has("van_running"));
+}
+
+TEST_CASE("vfx hooks: foliage plays its type's effects where it parts and is harvested") {
+    Scene scene;
+    scene.files["fx/rustle.vfx.json"] = R"({"format": 1, "dimension": "2d", "duration": 0.3,
+        "layers": [{"name": "leaves", "components": {"CPUParticles2D": {"amount": 3}}}]})";
+    scene.files["tuft.foliage.json"] = R"({"format": 1, "space": "2d", "kind": "grass",
+        "texture": "tuft.png", "size": [8, 16], "interaction": {"radius": 20, "bend": 0.5},
+        "vfx": {"foliage_parted": "fx/rustle.vfx.json",
+                "foliage_harvested": "fx/rustle.vfx.json"}})";
+    CHECK(world::foliage_vfx_hooks(scene.world, "tuft.foliage.json").size() == 2);
+    CHECK(world::foliage_vfx_hooks(scene.world, "nothing.json").empty());
+    scene.create("meadow", R"({"Transform2D": {}, "Foliage2D": {"groups": [
+        {"type": "tuft.foliage.json", "instances": [100, 100, 0, 1, 300, 100, 0, 1]}]}})");
+    scene.create("kid", R"({"Transform2D": {"position": [90, 95]}, "CharacterBody2D": {}})");
+    scene.step(3);
+    // Only the tuft beside the kid parts, once, and its rustle plays at its foot.
+    CHECK(scene.count("foliage_parted") == 1);
+    const entt::entity rustle = scene.world.find("meadow_foliage_parted");
+    REQUIRE((rustle != entt::null));
+    CHECK(scene.world.ecs().get<const world::Transform2D>(rustle).position.x ==
+          doctest::Approx(100.0));
+    scene.step(5);
+    CHECK(scene.count("foliage_parted") == 1);
+    CHECK_FALSE(scene.has("meadow_foliage_parted_2"));
+    // Harvesting (gameplay code's event here) plays at the place it names.
+    scene.world.emit(
+        "foliage_harvested", "meadow",
+        slash::json::parse(R"({"type": "tuft.foliage.json", "position": [300, 100]})").value());
+    scene.step(2);
+    const entt::entity cut = scene.world.find("meadow_foliage_harvested");
+    REQUIRE((cut != entt::null));
+    CHECK(scene.world.ecs().get<const world::Transform2D>(cut).position.x ==
+          doctest::Approx(300.0));
 }

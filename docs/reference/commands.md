@@ -6001,7 +6001,9 @@ clusters [virtualized](virtualized-geometry.md) meshes were cut into and drawn, 
 clusters of those cuts the camera [culled](virtualized-geometry.md#culling), `occluded`, the 3D
 meshes [occluders](scene-format.md#occlusion-culling) hid, and with
 [streaming](virtualized-geometry.md#streaming), `pages`, the cluster pages loaded, and
-`pending_pages`, those the cuts asked for that haven't loaded yet, leaving out zeros. When the
+`pending_pages`, those the cuts asked for that haven't loaded yet, and `distortions`, the
+[screen distortions](scene-format.md#screen-distortion) that bent the world's picture, leaving
+out zeros. When the
 project's `rendering.scaling` ([project-format.md](project-format.md#render-scale)) draws the
 world at another size, `upscaler` names what scaled it and `render_size` is the world's size in
 pixels, `[width, height]` (with `fsr2`, `fsr3` or a game's temporal upscaler, the 3D world's). `colors` are
