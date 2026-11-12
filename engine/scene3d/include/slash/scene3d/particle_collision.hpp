@@ -83,6 +83,43 @@ particle_sdf(const render::Gray16& texture, int slices_horizontal, int slices_ve
 particle_height_field(const world::World& world, const world::Tree3D& tree, entt::entity entity,
                       const ModelLoader& models, std::vector<Problem>& problems);
 
+// What a camera sees as depths, which CPU particles' simulations collide with as Niagara's
+// particles collide with the depth buffer: width by height texels across the view, from its top
+// left, each the distance along the camera's -z to the nearest opaque triangle drawn there (as
+// particle_height_field gathers them, on every layer of mask), or infinity.
+struct ParticleDepthView {
+    world::Affine3D eye; // the camera's place, its basis orthonormal
+    world::Affine3D to_eye;
+    bool orthogonal = false;
+    // Half the view's width and height: at a distance of 1 for a perspective camera, in meters
+    // for an orthogonal one.
+    float half_width = 1.0F;
+    float half_height = 1.0F;
+    float near = 0.05F;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::vector<float> depths;
+};
+
+// Draws the depths a Camera3D at global sees at aspect (width over height) into width by height
+// texels.
+[[nodiscard]] ParticleDepthView
+particle_depth_view(const world::World& world, const world::Tree3D& tree,
+                    const world::Camera3D& camera, const world::Affine3D& global, float aspect,
+                    std::uint32_t width, std::uint32_t height, const ModelLoader& models,
+                    std::vector<Problem>& problems);
+
+// Where a particle of radius at position (in the world) touches what a depth view sees: in
+// view and no deeper than thickness behind the surface there, pushed back out toward the camera
+// along the surface's normal, worked out from the depths round it.
+struct ParticleDepthContact {
+    bool collided = false;
+    Vec3 normal;
+    float depth = 0.0F;
+};
+[[nodiscard]] ParticleDepthContact
+particle_depth_contact(const ParticleDepthView& view, Vec3 position, float radius, float thickness);
+
 // Registers the "particle_sdf" asset type: .sdf.png files as render::Gray16. add_asset_types
 // calls it.
 void add_particle_sdf_type(asset::Assets& assets);

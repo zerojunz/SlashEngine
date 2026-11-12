@@ -3,6 +3,7 @@
 #include "slash/core/result.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/particles3d.hpp"
+#include "slash/scene3d/particle_collision.hpp"
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/tree3d.hpp"
@@ -70,6 +71,25 @@ inline constexpr std::size_t kMaxParticleFields3D = 7;
 // reads the models height fields draw. Called again, it reads with the new loaders.
 void add_gpu_particles_system(world::World& world, ImageLoader images = {}, SdfLoader sdfs = {},
                               ModelLoader models = {});
+
+// The GPUParticlesAttractor3Ds and GPUParticlesCollision3Ds visible in a world, placed in it, as
+// the gpu_particles_3d system finds them with its loaders (fields, SDFs and height fields), in
+// the same order: what CPU particles' simulation stages feel and collide with. None without the
+// system.
+struct ParticleSurroundings3D {
+    std::vector<render::ParticleAttractor3D> attractors;
+    std::vector<render::ParticleCollider3D> colliders;
+};
+[[nodiscard]] ParticleSurroundings3D particle_surroundings_3d(world::World& world,
+                                                              const world::Tree3D& tree);
+
+// What the current Camera3D sees as depths (particle_depth_view), width by height texels at
+// their aspect, drawn with the gpu_particles_3d system's model loader; none without a current
+// camera or the system.
+[[nodiscard]] std::optional<ParticleDepthView> camera_depth_view(world::World& world,
+                                                                 const world::Tree3D& tree,
+                                                                 std::uint32_t width,
+                                                                 std::uint32_t height);
 
 // A GPUParticlesAttractorVectorField3D's texels: image cut into slices_horizontal by
 // slices_vertical slices, each the image's size over the slices rounded down, left to right then

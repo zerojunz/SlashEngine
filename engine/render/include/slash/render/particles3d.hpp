@@ -255,6 +255,20 @@ static_assert(sizeof(Particle3D) == 128);
 void process_particles_3d(std::span<Particle3D> particles, const ParticleProcess3D& process,
                           std::span<const ParticleStep3D> steps);
 
+// Where a point touches colliders, as a step's particles collide with them: the way out of them
+// all and how deep it is, less size. CPU particles' simulations collide through it.
+struct ParticleContact3D {
+    bool collided = false;
+    Vec3f normal;
+    float depth = 0.0F;
+};
+[[nodiscard]] ParticleContact3D particle_contact_3d(std::span<const ParticleCollider3D> colliders,
+                                                    Vec3f position, float size);
+
+// What attractors push a particle of mass 1 at a point with, as a step's particles feel them.
+[[nodiscard]] Vec3f particle_attraction_3d(std::span<const ParticleAttractor3D> attractors,
+                                           Vec3f position);
+
 // The order particles draw in, as Godot's GPUParticles3D::DrawOrder.
 enum class ParticleOrder3D : std::uint8_t {
     Index,

@@ -6254,6 +6254,70 @@ that is removed go with it. Every enabled `CameraShake` shakes the current `Came
 ID, taking off what it added the tick before, so the camera's own offset comes back.
 `world::camera_shake_offsets` says what shakes add now.
 
+### Particle simulation
+
+Simulation stages run over CPU particles, after Unreal's Niagara modules (Godot has none): a
+`ParticleSimulation3D` on an entity with a `CPUParticles3D`, or a `ParticleSimulation2D` on one
+with a `CPUParticles2D`, works on its particles each tick after the emitter moved them (the
+`particle_simulation_3d` and `particle_simulation_2d` systems, priority 1105, between the CPU
+particles and the GPU ones). In order: new particles take their attributes; neighbors push
+apart, pull together and line up; curl noise, attractors (3D) and drag change their velocity and
+the speed limits hold it, the change moving them this tick too; they collide; attributes worked
+out each tick are; then events fire. Results are the same on any number of threads and every
+platform (`world::run_stages`, `slash/world/particle_sim.hpp`, built with `-ffp-contract=off`).
+
+```json
+"ParticleSimulation3D": {
+  "collide": "colliders", "bounce": 0.3,
+  "neighbor_radius": 0.5, "separation": 1, "cohesion": 0.4, "alignment": 1,
+  "curl_strength": 2, "max_speed": 3,
+  "attributes": [{"name": "alpha", "value": "1 - age / lifetime", "every_tick": true}],
+  "events": [{"on": "collision", "spawn": "mist", "count": 2, "speed": 1}]
+}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `enabled` | `true` | Runs the stages. |
+| `neighbor_radius` | `0` | How far a particle feels its neighbors; 0 turns flocking off. Neighbors are found by sorting particles along a Morton curve by their cells of this size and looking up a cell and those round it (27, or 9 in 2D) with binary searches, so no grid is kept. |
+| `max_neighbors` | `16` | The most neighbors a particle feels, the nearest first (1 to 256). |
+| `separation` | `0` | How hard neighbors push apart, more the closer they are. |
+| `cohesion` | `0` | How hard a particle is pulled toward its neighbors' middle (per second squared). |
+| `alignment` | `0` | How fast a particle turns to its neighbors' mean velocity (per second). |
+| `curl_strength` | `0` | Acceleration of curl noise, which swirls without gathering or spreading particles. |
+| `curl_scale` | `1` (`64` in 2D) | The size of its swirls, in meters or pixels. |
+| `curl_speed` | `0` | How fast the noise moves. |
+| `attractors` | `0` | 3D only: how much `GPUParticlesAttractor*3D`s push these particles (1 as they push GPU particles). |
+| `drag` | `0` | The share of velocity lost a second. |
+| `min_speed`, `max_speed` | `0` | Speed limits; 0 is none. |
+| `collide` | `"none"` | 3D: `colliders` (the `GPUParticlesCollision*3D`s), `depth` (what the current `Camera3D` sees: a 160x90 image of the meshes' depths in front of it, as Niagara's depth buffer collision) or `both`. 2D: `occluders` (`LightOccluder2D`s and tile occluders with `sdf_collision`, in the world's canvas). |
+| `collision_radius` | `0.05` (`2` in 2D) | How near a particle comes to what it collides with. |
+| `response` | `"bounce"` | `bounce` (by `bounce` and `friction`), `stick` (stops it) or `kill`. |
+| `bounce` | `0.3` | The share of its speed into the surface sent back. |
+| `friction` | `0.2` | The share of its speed along the surface lost. |
+| `depth_thickness` | `0.5` | 3D only: how far behind what the camera sees a particle still counts as touching it. |
+| `attributes` | `[]` | At most 8 named values a particle carries: `name`, `value` (a Godot `Expression`) and `every_tick` (`false` works it out once, when the particle starts). |
+| `events` | `[]` | Rules that answer `collision`, `death` or `location`. |
+
+An attribute's value reads the particle's `age`, `life` (age over lifetime), `lifetime`, `speed`,
+`x`, `y`, `z`, `vx`, `vy`, `vz` (in its emitter's space), `neighbors`, `index`, `collided`,
+`random` (0 to 1, fixed for its life), the simulation's `time` and `delta`, and attributes before
+it; a name it can't read is refused with the JSON Pointer of the value. Three names change the
+particle: `size` scales it, `alpha` multiplies its color's alpha and `kill` above 0.5 ends it.
+An expression that fails as it runs leaves its value at 0 and is logged once.
+
+| Event field | Default | Meaning |
+| --- | --- | --- |
+| `on` | `"death"` | `collision`, `death` or `location`. |
+| `region_position`, `region_size` | `[0, 0, 0]` | For `location`: a box in the world (a rect in 2D, z ignored) the particle is in. |
+| `chance` | `1` | The share of times it fires, drawn from the particle and the tick. |
+| `spawn` | `""` | Another entity's `CPUParticles3D` (or `CPUParticles2D`) to start particles in, where the particle is, even when it isn't emitting (at most 4096 a tick's events keep alive). |
+| `count` | `1` | Particles it starts (at most 256 an event). |
+| `speed` | `0` | Their speed, in random directions. |
+| `inherit_velocity` | `0` | The share of the particle's velocity they take. |
+| `name` | `""` | When set, emits a `particle_event` world event about the emitter, its data the `name`, `on` and the world `position`; at most 8 an emitter a tick. |
+| `kill` | `false` | Ends the particle when it fires. |
+
 ## Particles
 
 Particles follow Godot's `CPUParticles2D`. Each tick, after physics, the `cpu_particles_2d`

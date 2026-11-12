@@ -1,0 +1,12 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"events.subscribe","params":{"kinds":["particle_event"]}}
+{"jsonrpc":"2.0","id":3,"method":"step","params":{"ticks":120}}
+{"jsonrpc":"2.0","id":4,"method":"particles.eval","params":{"id":"fountain"}}
+{"jsonrpc":"2.0","id":5,"method":"particles.eval","params":{"id":"mist"}}
+{"jsonrpc":"2.0","id":6,"method":"particles.eval","params":{"id":"fireflies"}}
+{"jsonrpc":"2.0","id":7,"method":"particles.eval","params":{"id":"sand","list":true,"max_results":4}}
+{"jsonrpc":"2.0","id":8,"method":"particles.eval","params":{"id":"starlings"}}
+{"jsonrpc":"2.0","id":9,"method":"events.read","params":{"subscription":"events_1"}}
+{"jsonrpc":"2.0","id":10,"method":"component.set","params":{"id":"fountain","components":{"ParticleSimulation3D":{"collide":"none"}}}}
+{"jsonrpc":"2.0","id":11,"method":"step","params":{"ticks":60}}
+{"jsonrpc":"2.0","id":12,"method":"particles.eval","params":{"id":"fountain"}}

@@ -1479,6 +1479,109 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                                     "everywhere.",
                              .min = 0})
         .describe("enabled", {.doc = "Whether it shakes."});
+    const auto describe_simulation = [&](ComponentType& type, bool flat) {
+        const char* unit = flat ? "pixels" : "meters";
+        type.describe("enabled", {.doc = "Whether the stages run."})
+            .describe("neighbor_radius",
+                      {.doc = std::string("How far, in ") + unit +
+                              ", a particle feels its neighbors; 0 turns the neighbor stage off.",
+                       .min = 0})
+            .describe("max_neighbors",
+                      {.doc = "The most neighbors each particle feels, nearest first.",
+                       .min = 1,
+                       .max = 256})
+            .describe("separation",
+                      {.doc = "How hard particles push away from neighbors closer than the "
+                              "radius, per second.",
+                       .min = 0})
+            .describe("cohesion", {.doc = "How hard particles pull toward their neighbors' "
+                                          "center, per second; below 0 they spread out."})
+            .describe("alignment",
+                      {.doc = "How fast particles take on their neighbors' average velocity, "
+                              "per second.",
+                       .min = 0})
+            .describe("min_speed", {.doc = "The slowest a moving particle goes.", .min = 0})
+            .describe("max_speed",
+                      {.doc = "The fastest a particle goes; 0 for no limit.", .min = 0})
+            .describe("drag", {.doc = "Of its velocity a particle loses each second.", .min = 0})
+            .describe("curl_strength",
+                      {.doc = "How hard curl noise swirls the particles, a speed per second."})
+            .describe("curl_scale",
+                      {.doc = std::string("How wide the noise's swirls are, in ") + unit + ".",
+                       .min = 0.0001})
+            .describe("curl_speed", {.doc = "How fast the noise moves along, in swirls a second."})
+            .describe(
+                "collide",
+                {.doc = flat ? "What the particles collide with: none, or the "
+                               "LightOccluder2Ds and tile occluders with sdf_collision."
+                             : "What the particles collide with: none, the "
+                               "GPUParticlesCollision3Ds (colliders), what the current "
+                               "Camera3D sees (depth) or both.",
+                 .choices = flat ? std::vector<std::string>{"none", "occluders"}
+                                 : std::vector<std::string>{"none", "colliders", "depth", "both"}})
+            .describe("response", {.doc = "What a particle does when it touches: bounce off, "
+                                          "stick where it is or die.",
+                                   .choices = {"bounce", "stick", "kill"}})
+            .describe("collision_radius",
+                      {.doc = std::string("How near, in ") + unit +
+                              ", a particle comes to a surface before it touches.",
+                       .min = 0})
+            .describe("bounce", {.doc = "Of its speed into a surface a bouncing particle keeps.",
+                                 .min = 0,
+                                 .max = 1})
+            .describe("friction", {.doc = "Of its speed along a surface a touching particle loses.",
+                                   .min = 0,
+                                   .max = 1})
+            .describe("attributes", {.doc = "Values each particle carries, worked out in order."})
+            .describe("attributes[].name",
+                      {.doc = "Its name; size, alpha and kill change the particle."})
+            .describe("attributes[].value",
+                      {.doc = "An Expression over age, life, lifetime, speed, x, y, z, vx, vy, "
+                              "vz, neighbors, collided, index, random, time and the attributes "
+                              "before it."})
+            .describe("attributes[].every_tick",
+                      {.doc = "Whether it is worked out each tick rather than once at the start."})
+            .describe("events", {.doc = "What happens when particles collide, die or arrive."})
+            .describe("events[].on",
+                      {.doc = "What sets it off.", .choices = {"collision", "death", "location"}})
+            .describe("events[].spawn",
+                      {.doc = "The ID of the CPU particles emitter whose particles it starts; "
+                              "empty for none."})
+            .describe("events[].name",
+                      {.doc = "A particle_event world event's name; empty for none."})
+            .describe("events[].region_position",
+                      {.doc = "The low corner of the region a location event fires in, in the "
+                              "world."})
+            .describe("events[].region_size", {.doc = "The region's size."})
+            .describe("events[].count", {.doc = "Particles it starts each time.", .min = 0})
+            .describe("events[].chance", {.doc = "How often it fires, 0 to 1.", .min = 0, .max = 1})
+            .describe("events[].inherit_velocity",
+                      {.doc = "Of the particle's velocity those it starts begin with."})
+            .describe("events[].speed",
+                      {.doc = "How fast those it starts are pushed, each its own way.", .min = 0})
+            .describe("events[].kill", {.doc = "Whether the particle dies."});
+        if (!flat) {
+            type.describe("attractors",
+                          {.doc = "How much GPUParticlesAttractor3Ds push the particles; 0 for "
+                                  "not at all."})
+                .describe("depth_thickness",
+                          {.doc = "How far, in meters, behind what the camera sees a particle "
+                                  "still collides with it.",
+                           .min = 0});
+        }
+    };
+    describe_simulation(
+        registry.add<ParticleSimulation3D>().set_doc(
+            "Simulation stages over the entity's CPUParticles3D, after Niagara's: flocking by "
+            "neighbors found along a Morton curve, curl noise, drag, speed limits, collision with "
+            "GPUParticlesCollision3Ds or what the camera sees, attributes and events."),
+        false);
+    describe_simulation(
+        registry.add<ParticleSimulation2D>().set_doc(
+            "Simulation stages over the entity's CPUParticles2D, after Niagara's: flocking by "
+            "neighbors found along a Morton curve, curl noise, drag, speed limits, collision with "
+            "occluders, attributes and events."),
+        true);
     registry.add<StreamedScene3D>()
         .set_doc("A part of a large world kept in a scene file of its own, loaded as the entity "
                  "\"<id>_scene\" under this one while a StreamingSource3D is within load_radius "

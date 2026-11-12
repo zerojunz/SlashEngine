@@ -1310,7 +1310,7 @@ TEST_CASE("engine.describe lists systems in the order they run") {
         parse(
             R"(["input", "multiplayer", "gui", "xr", "services", "world_streaming", "wind", "controls", "movement", "character_2d", "animation_player",
                     "animation_tree", "ragdoll", "skeleton_modifiers", "path_follow", "ragdoll_2d", "vehicles_2d", "vehicles_3d", "physics2d", "physics3d", "ragdoll_2d_pose", "multiplayer_visibility", "flesh_2d", "flesh_3d", "navigation", "fauna", "npc", "quests", "foliage", "animated_sprite_2d",
-                    "camera_2d", "parallax_2d", "vfx", "cpu_particles_2d", "cpu_particles_3d", "gpu_particles_2d", "gpu_particles_3d", "video", "ai", "audio"])"));
+                    "camera_2d", "parallax_2d", "vfx", "cpu_particles_2d", "cpu_particles_3d", "particle_simulation_2d", "particle_simulation_3d", "gpu_particles_2d", "gpu_particles_3d", "video", "ai", "audio"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
         {"name": "input", "doc": "Applies the input events queued since the last tick.",
          "priority": -1000},
@@ -1411,15 +1411,21 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "doc": "Emits, moves and ages each CPUParticles3D's particles.", "priority": 1100,
          "threaded": true, "stage": 33, "reads": ["Transform3D", "WindSource3D", "PhysicsField3D"],
          "writes": ["CPUParticles3D"]},
+        {"name": "particle_simulation_2d",
+         "doc": "Runs each ParticleSimulation2D's stages over its CPUParticles2D: neighbors, curl noise, collision, attributes and events.",
+         "priority": 1105},
+        {"name": "particle_simulation_3d",
+         "doc": "Runs each ParticleSimulation3D's stages over its CPUParticles3D: neighbors, curl noise, collision, attributes and events.",
+         "priority": 1105},
         {"name": "gpu_particles_2d",
          "doc": "Steps each GPUParticles2D's emission for renderers to run.", "priority": 1110,
-         "threaded": true, "stage": 33,
+         "threaded": true, "stage": 36,
          "reads": ["Transform2D", "LightOccluder2D", "TileMapLayer", "CanvasLayer", "Control",
                    "Camera2D"],
          "writes": ["GPUParticles2D", "assets"]},
         {"name": "gpu_particles_3d",
          "doc": "Steps each GPUParticles3D's emission for renderers to run.", "priority": 1110,
-         "threaded": true, "stage": 34,
+         "threaded": true, "stage": 37,
          "reads": ["GPUParticlesAttractorSphere3D", "GPUParticlesAttractorBox3D",
                    "GPUParticlesAttractorVectorField3D", "GPUParticlesCollisionSphere3D",
                    "GPUParticlesCollisionBox3D", "GPUParticlesCollisionSDF3D",

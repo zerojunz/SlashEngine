@@ -1325,8 +1325,14 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
           parameters, played by `VisualEffect3D` and `VisualEffect2D` at a place, under an entity
           or on a bone, with levels of detail and budgets; `vfx.play`, `vfx.state`, `vfx.check`
           and `vfx.preview`; damage profiles' `vfx` (`examples/vfx-effects`)
-    - [ ] Advanced particle simulation: neighbors, depth and distance field collision, events,
-          attributes, flocking, on every device's compute with a CPU twin and in 2D
+    - [x] Particle simulation stages on the CPU, in 3D and 2D: `ParticleSimulation3D` and
+          `ParticleSimulation2D` over CPU particles, with neighbors found along a Morton curve
+          (flocking), curl noise, attractors, drag and speed limits, collision with particle
+          colliders, the camera's depth and 2D occluders, attributes as Expressions, and
+          collision, death and location events that spawn into other emitters and emit world
+          events (`examples/particle-simulation`)
+    - [ ] The stages on every device's compute for GPU particles, the CPU stages their twin;
+          particles lit, shadowed and sorted
     - [ ] Distortion, and the foliage, character, fauna and vehicle tools' effects
 19. [ ] Fluids and smoke: a real-time simulator with no grids (Godot has none; after Niagara's
         fluids and Unreal's water tools, built on particles instead of Niagara Fluids' grids):
