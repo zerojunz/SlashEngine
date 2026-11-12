@@ -2,6 +2,7 @@
 
 #include "space.hpp"
 
+#include "slash/world/hair.hpp"
 #include "slash/world/wind.hpp"
 
 #include <Jolt/Geometry/ConvexSupport.h>
@@ -209,6 +210,11 @@ void install(world::World& world, const Settings& settings) {
                                       const detail::SoftBody* soft = space->soft_body(entity);
                                       return soft != nullptr ? soft->pose : nullptr;
                                   });
+    // Hair draws where its guides are.
+    world::install_hair(world);
+    world::set_hair_source_3d(world, [space](const world::World& /*world*/, entt::entity entity) {
+        return space->hair_strands(entity);
+    });
     world.add_memory_source("physics3d",
                             [space](const world::World& /*world*/) { return space->memory(); });
     world.add_system(

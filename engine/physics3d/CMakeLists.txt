@@ -9,6 +9,7 @@ add_library(slash_physics3d
     src/physics3d.cpp
     src/shapes.cpp
     src/cloth.cpp
+    src/hair.cpp
     src/soft_body.cpp
     src/space.cpp
     src/vehicle.cpp)

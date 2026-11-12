@@ -4930,6 +4930,72 @@ both.
 - Problems (a missing type file, a type of the other space) are reported at
   `/components/Foliage3D/groups/<n>/type` by `frame.summary` and drawing.
 
+### Hair and fur
+
+Godot has no hair, so this follows Unreal's Groom and its Chaos-driven strand simulation. A
+`.groom.json` file says how strands grow over a surface (how many, how long, how thick, standing
+up or combed down, clumped and curled, their colors and the maps that vary them), how they draw
+(thin strands, cards or fur shells) and how they move. A `HairInstance3D` grows its groom over
+the model its entity's `MeshInstance3D` draws, a `Hair2D` along a line in its own space. A few
+guide strands are simulated; the strands drawn follow the nearest guide.
+[`hair.get`](commands.md#hairget) reads them, `slash-cli schema groom` prints the file's schema,
+and `scene validate` and `scene format` take the files; exports ship them.
+[examples/hair-and-fur](../../examples/hair-and-fur/) grows hair on a head, fur on a creature and
+a mane in 2D.
+
+```json
+{"format": 1, "render": "strands", "guides": 24, "density": 4000, "segments": 6,
+ "length": 0.22, "lift": 0.1, "comb": [0, -1, -0.4], "clumping": 0.5,
+ "curl_radius": 0.004, "curl_turns": 2,
+ "root_color": [0.18, 0.11, 0.06, 1], "tip_color": [0.42, 0.28, 0.15, 1],
+ "simulation": {"stiffness": 0.15, "tip_stiffness": 0.02, "damping": 2}}
+```
+
+Lengths are meters in 3D and pixels in 2D; a 2D file's defaults (in brackets) are in pixels.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `format` | required | `1` |
+| `space` | `"3d"` | `"3d"` or `"2d"` |
+| `render` | `"strands"` | `"strands"` (ribbons facing the camera, narrowing to their tips), `"cards"` (a ribbon `card_width` wide per guide, facing the surface, with `texture`) or `"shells"` (3D: `shell_count` layers of the surface raised along its normals) |
+| `guides` | `32` | Strands simulated, spread over the surface by area (2D: along the line) |
+| `density`, `max_strands` | `2000` (`1`), `4096` | Strands drawn per square meter of surface (2D: per pixel of line), at most `max_strands` |
+| `segments` | `6` | Points along a strand after its root |
+| `length`, `length_variation` | `0.1` (`24`), `0.2` | A strand's length, and the share it may be shorter at random |
+| `length_map`, `density_map`, `color_map` | `""` | Images over the surface's texture coordinates (2D: along the line, their middle row): red scales the length (0 grows none), red keeps a strand by its value, and the color multiplies the strands' |
+| `root_color`, `tip_color` | brown | The strands' color at the root and at the tip |
+| `width`, `tip_width` | `0.002` (`1.5`), `0.0005` (`0.5`) | A strand's width at its root and its tip, no wider than the root |
+| `lift`, `comb` | `1`, `[0, -1, 0]` (`[0, 1, 0]`) | How far strands stand out along the surface's normal (1) rather than turning toward `comb` (0), a direction in the model's (2D: the entity's) space |
+| `clumping` | `0.3` | 0 to 1: how far strands gather toward their guide at the tip |
+| `curl_radius`, `curl_turns` | `0`, `0` | How far strands curl about their way, and how many times along it (2D: in the plane) |
+| `seed` | `0` | Varies where guides and strands grow |
+| `card_width`, `texture` | `0.02` (`6`), `""` | Cards: a ribbon's width and its image, alpha cutting it out |
+| `shell_count`, `shell_tiling` | `16`, `8` | Shells: layers, and how often the fur's pattern repeats over the texture coordinates |
+| `roughness`, `anisotropy`, `specular` | `0.45`, `0.8`, `0.5` | 3D: the hair shading of `StandardMaterial3D`, the highlight stretched across the strands |
+| `simulation` | | `enabled` (`true`), `stiffness` (`0.5`, the pull back toward the groomed shape at the root), `tip_stiffness` (`0.05`, at the tip), `bend_stiffness` (`0.2`), `damping` (`2` per second), `gravity_scale` (`1`), `drag_coefficient` (`1`, how hard the wind carries it), `point_radius` (`0.002` (`1`), how far points keep from colliders), `precision` (`4` small steps a physics step) |
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `Hair2D` | `groom` `""`, `root_line` `[[-8, 0], [8, 0]]` (points in the entity's space; strands stand to the line's left as drawn, so up for a line drawn left to right), `modulate` `[1, 1, 1, 1]`, `simulate` `true`, `collide` `true`, `z_index` `0`, `z_as_relative` `true`, `visible` `true`, `light_mask` `1`, `texture_filter` `"inherit"` |
+| `HairInstance3D` | `groom` `""`, `section` `""` (the material whose surfaces it grows on; `""` all of them), `visible` `true`, `simulate` `true`, `collide` `true`, `cast_shadow` `"on"` |
+
+- Guides grow once per groom, model, section and maps, and grow again when any of them change.
+  Each guide's root is carried by the skin where it grows (the blend of its joints' moves, after
+  the entity's transform); a strand drawn follows its guide from its own root.
+- 3D and 2D physics step the guides in their step, after the bodies have moved, with small steps
+  of position-based dynamics: gravity, the wind of `WindSource3D`s or `WindSource2D`s,
+  [physics fields](#physics-materials-and-fields), a pull toward the groomed shape that weakens
+  from root to tip, bending, follow-the-leader lengths, and the sphere, capsule and box shapes
+  (2D: circle, capsule and rectangle) under the topmost entity of the hair's tree, except a
+  `CharacterBody3D`'s or `CharacterBody2D`'s. Without `simulate`, the hair keeps its groomed
+  shape. Drawing goes between the last two steps.
+- Strands and cards draw with the groom's colors as vertex colors, lit as `StandardMaterial3D`'s
+  anisotropic hair; shells draw a layer each over the skinned section, each layer cutting the
+  fur's pattern out by alpha scissor at its height and leaning as the nearest guide's tip moved.
+- A groom that can't grow (a missing file, a 2D groom on a `HairInstance3D` or the other way,
+  no model, a section the model lacks) is reported at `/components/HairInstance3D/groom` or
+  `section` by `scene validate`, and at `/components/Hair2D/groom` by `frame.summary`.
+
 ### Physics materials and fields
 
 Everything in a world moves in one simulation, as Unreal's Chaos: bodies of every tool share

@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "materials": {
+    "fur": {
+      "albedo_color": [0.5, 0.35, 0.2, 1]
+    }
+  },
+  "parts": [
+    {
+      "material": "fur",
+      "name": "body",
+      "radius": 0.25,
+      "shape": "sphere"
+    }
+  ]
+}

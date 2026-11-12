@@ -20,6 +20,7 @@
 #include "slash/scene3d/terrain.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/video/video.hpp"
+#include "slash/world/hair.hpp"
 #include "slash/world/path.hpp"
 #include "slash/world/wind.hpp"
 
@@ -457,6 +458,22 @@ void add_systems(world::World& world, asset::Assets& assets) {
     scene3d::add_streaming_system(world);
     world::add_wind_system(world);
     procedural::install_foliage(world);
+    // Grooms' length, density and color maps read through assets.
+    world::install_hair(world);
+    world::set_hair_image_reader(
+        world, [&assets](const std::string& path) -> Result<world::HairImage> {
+            auto found = assets.load<render::Image>(path);
+            if (!found) {
+                return found.error();
+            }
+            const std::shared_ptr<const render::Image> image = held(found.value());
+            world::HairImage out;
+            out.pixels = std::shared_ptr<const std::vector<std::uint8_t>>(image, &image->pixels);
+            out.width = image->width;
+            out.height = image->height;
+            out.version = found.value().version();
+            return out;
+        });
     // Vector field attractors' textures read through assets.
     const scene3d::ImageLoader images =
         [&assets](const std::string& path) -> Result<std::shared_ptr<const render::Image>> {

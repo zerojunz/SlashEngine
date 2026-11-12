@@ -38,6 +38,8 @@ struct ClothSection {
     // Each vertex at rest in the model's space, its color, and the joints that carry it (into
     // the list cloth_joints gives) with their weights, at most four adding up to 1.
     std::vector<Vec3> positions;
+    std::vector<Vec3> normals; // at rest, in the model's space, of unit length
+    std::vector<Vec2> uvs;     // texture coordinates
     std::vector<std::array<float, 4>> colors;
     std::vector<std::array<std::pair<std::uint32_t, float>, 4>> weights;
     std::vector<std::uint32_t> indices; // its triangles, into positions
@@ -59,6 +61,11 @@ struct ClothSection {
 // model or the section has no triangles.
 [[nodiscard]] Result<std::shared_ptr<const ClothSection>> cloth_section(const world::World& world,
                                                                         entt::entity entity);
+
+// The same for any entity drawing a model: the surfaces drawn with the material named name ("" for
+// every surface), for hair and other things laid over a model's skin.
+[[nodiscard]] Result<std::shared_ptr<const ClothSection>>
+model_section(const world::World& world, entt::entity entity, const std::string& name);
 
 // Where the model's skin puts each of the section's joints now, in the model's space: the model
 // posed as it draws (its clips, Skeleton3D and modifiers), a skin's joints as their nodes place
