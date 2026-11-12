@@ -63,6 +63,7 @@ add_library(slash_scene3d
     src/particle_collision.cpp
     src/foliage.cpp
     src/gridmap.cpp
+    src/hair.cpp
     src/ik.cpp
     src/lightmap.cpp
     src/lightmap_probes.cpp

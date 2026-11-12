@@ -2597,6 +2597,26 @@ SLASH_COMPONENT(Cloth2D, texture, color, size, offset, columns, rows, max_distan
                 simulation_precision, collision_mask, point_radius, z_index, z_as_relative, visible,
                 light_mask, texture_filter)
 
+// Hair grown along a line in its entity's space, for sprites and Skeleton2D bones: groom names a
+// 2D .groom.json file. Its guide strands are carried by the entity's global transform and
+// stepped by 2D physics; the rest follow them.
+struct Hair2D {
+    std::string groom;                                        // a 2D .groom.json file
+    std::vector<Vec2> root_line{{-8.0F, 0.0F}, {8.0F, 0.0F}}; // where roots grow, in its space
+    Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F};                    // multiplies the strands' colors
+    bool simulate = true;
+    bool collide = true;
+    int z_index = 0;
+    bool z_as_relative = true;
+    bool visible = true;
+    int light_mask = 1;
+    std::string texture_filter = "inherit"; // "inherit", "linear" or "nearest"
+
+    friend bool operator==(const Hair2D&, const Hair2D&) = default;
+};
+SLASH_COMPONENT(Hair2D, groom, root_line, modulate, simulate, collide, z_index, z_as_relative,
+                visible, light_mask, texture_filter)
+
 // The instances painted of one 2D foliage type: type names a .foliage.json file whose space is
 // "2d" and instances holds four numbers each, x, y, rotation (radians) and scale, a negative
 // scale mirroring it, in the Foliage2D's space.
@@ -2701,6 +2721,22 @@ SLASH_COMPONENT(Cloth3D, section, max_distance, max_distance_map, gradient, vert
                 backstop_distance, backstop_radius, stiffness, bend_stiffness,
                 long_range_attachment, total_mass, gravity_scale, damping_coefficient,
                 drag_coefficient, simulation_precision, collision_layer, collision_mask)
+
+// Hair or fur grown over the model its entity's MeshInstance3D draws, as Unreal's Groom
+// component: groom names a .groom.json file saying how its strands grow, draw and move. A few
+// guide strands follow the model's skin and are stepped by 3D physics; the rest are drawn
+// following them.
+struct HairInstance3D {
+    std::string groom;   // a .groom.json file
+    std::string section; // the model's material it grows on; "" every surface
+    bool visible = true;
+    bool simulate = true;           // off keeps the groomed shape on the skin
+    bool collide = true;            // with its body's spheres, capsules and boxes
+    std::string cast_shadow = "on"; // "off", "on", "double_sided" or "shadows_only"
+
+    friend bool operator==(const HairInstance3D&, const HairInstance3D&) = default;
+};
+SLASH_COMPONENT(HairInstance3D, groom, section, visible, simulate, collide, cast_shadow)
 
 // Breaks a body into pieces, as Unreal's geometry collections (Godot has no destruction): the
 // mesh its entity's MeshInstance3D draws is cut into Voronoi cells around seeded points, and

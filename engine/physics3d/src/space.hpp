@@ -4,9 +4,11 @@
 #include "slash/scene3d/cloth.hpp"
 #include "slash/scene3d/collision.hpp"
 #include "slash/scene3d/gridmap.hpp"
+#include "slash/scene3d/hair.hpp"
 #include "slash/scene3d/soft_body.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/hair.hpp"
 #include "slash/world/physical_bones.hpp"
 #include "slash/world/physics_debug.hpp"
 #include "slash/world/physics_material.hpp"
@@ -507,6 +509,15 @@ private:
     Space* space_;
 };
 
+// A HairInstance3D's guide strands as the space steps them (hair.cpp): the groom grown over its
+// model and the strands' points.
+struct Hair3DBody {
+    std::string name;
+    std::shared_ptr<const scene3d::HairGrowth3D> growth;
+    world::Strands strands;
+    world::HairStrands out;
+};
+
 class Space {
 public:
     explicit Space(const Settings& settings);
@@ -674,6 +685,14 @@ private:
     void pre_step_cloths(const world::World& world, const world::Tree3D& tree, float seconds);
     // Notes where each cloth's surfaces are after the step, in its model's space.
     void read_cloths(const world::Tree3D& tree);
+    // Steps every HairInstance3D's guides (hair.cpp), after the bodies moved.
+    void step_hair(world::World& world, float seconds);
+
+public:
+    // Where a HairInstance3D's guides are after the last step and the one before, or nullptr.
+    [[nodiscard]] const world::HairStrands* hair_strands(entt::entity entity) const;
+
+private:
     // Makes the Jolt constraints match the joint components and physical bones (joints.cpp).
     void sync_joints(world::World& world, const world::Tree3D& tree);
     void sync_bone_joints(world::World& world, const world::Tree3D& tree);
@@ -703,6 +722,7 @@ private:
     EntityMap<std::unique_ptr<Body>> bodies_;
     EntityMap<std::unique_ptr<SoftBody>> soft_bodies_;
     EntityMap<std::unique_ptr<SoftBody>> cloths_;
+    EntityMap<std::unique_ptr<Hair3DBody>> hairs_;
     EntityMap<Joint> joints_;
     EntityMap<BoneJoint> bone_joints_;
     // What each physical bone's simulator makes of it, as the last sync found.

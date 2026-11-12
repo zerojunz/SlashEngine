@@ -418,10 +418,11 @@ private:
     struct Submission;
     Result<void> submit(const Submission& submission);
     // What draw is gathering a frame's draws into, and the parts of it gathered apart
-    // (src/renderer.cpp): Cloth2D sheets, Foliage2D groups, and Reflection2D rects with the
-    // passes that fill their targets.
+    // (src/renderer.cpp): Cloth2D sheets, Hair2D strands, Foliage2D groups, and Reflection2D rects
+    // with the passes that fill their targets.
     struct DrawState;
     void gather_cloths(DrawState& state);
+    void gather_hair(DrawState& state);
     void gather_foliage(DrawState& state);
     void gather_reflections(DrawState& state);
     // Each call's texture, made now so the null device checks them too; a call whose texture

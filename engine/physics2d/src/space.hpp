@@ -5,6 +5,7 @@
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/world/cloth2d.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/hair.hpp"
 #include "slash/world/physics_debug.hpp"
 #include "slash/world/physics_material.hpp"
 #include "slash/world/tree2d.hpp"
@@ -301,6 +302,14 @@ struct Cloth2DBody {
     world::ClothPoints2D points;
 };
 
+// A Hair2D's guide strands as the space steps them (hair.cpp), grown from key.
+struct Hair2DBody {
+    std::string name;
+    std::string key;
+    world::Strands strands;
+    world::HairStrands out;
+};
+
 class Space {
 public:
     explicit Space(const Settings& settings);
@@ -329,6 +338,8 @@ public:
     [[nodiscard]] const Body* body(entt::entity entity) const;
     // Where a Cloth2D's points are after the last step and the one before, or nullptr.
     [[nodiscard]] const world::ClothPoints2D* cloth_points(entt::entity entity) const;
+    // Where a Hair2D's guides are after the last step and the one before, or nullptr.
+    [[nodiscard]] const world::HairStrands* hair_strands(entt::entity entity) const;
 
     void queue(const Impulse& impulse) { impulses_.push_back(impulse); }
 
@@ -376,6 +387,8 @@ private:
     void finish_debug(const world::World& world, world::PhysicsDebugStep& step) const;
     // Steps every Cloth2D's sheet (cloth.cpp), after the bodies moved.
     void step_cloths(world::World& world, const world::Tree2D& tree, float seconds);
+    // Steps every Hair2D's guides (hair.cpp), after the cloths.
+    void step_hair_2d(world::World& world, float seconds);
 
     struct CachedMaterial {
         std::uint64_t version = 0;
@@ -394,6 +407,7 @@ private:
     EntityMap<std::unique_ptr<Body>> tiles_; // tile map layers' static bodies
     EntityMap<Joint> joints_;
     EntityMap<std::unique_ptr<Cloth2DBody>> cloths_;
+    EntityMap<std::unique_ptr<Hair2DBody>> hairs_;
     std::vector<Impulse> impulses_;
     // Who touched whom after the last step, by entity ID, for entered and exited events:
     // (entity, other, other is an area).

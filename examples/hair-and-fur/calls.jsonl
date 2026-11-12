@@ -1,0 +1,15 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"hair.get","params":{"entity":"head"}}
+{"jsonrpc":"2.0","id":3,"method":"hair.get","params":{"entity":"creature"}}
+{"jsonrpc":"2.0","id":4,"method":"hair.get","params":{"entity":"doll","points":true}}
+{"jsonrpc":"2.0","id":5,"method":"step","params":{"ticks":60}}
+{"jsonrpc":"2.0","id":6,"method":"hair.get","params":{"entity":"head"}}
+{"jsonrpc":"2.0","id":7,"method":"hair.get","params":{"entity":"doll"}}
+{"jsonrpc":"2.0","id":8,"method":"frame.capture","params":{"points":[[64,45],[100,53],[80,28],[20,80]]}}
+{"jsonrpc":"2.0","id":9,"method":"component.set","params":{"id":"breeze","components":{"WindSource3D":{"enabled":false}}}}
+{"jsonrpc":"2.0","id":10,"method":"component.set","params":{"id":"head","components":{"Transform3D":{"position":[-0.1,0.05,0.0]}}}}
+{"jsonrpc":"2.0","id":11,"method":"step","params":{"ticks":4}}
+{"jsonrpc":"2.0","id":12,"method":"hair.get","params":{"entity":"head"}}
+{"jsonrpc":"2.0","id":13,"method":"step","params":{"ticks":120}}
+{"jsonrpc":"2.0","id":14,"method":"hair.get","params":{"entity":"head"}}
+{"jsonrpc":"2.0","id":15,"method":"hair.get","params":{"entity":"creature"}}

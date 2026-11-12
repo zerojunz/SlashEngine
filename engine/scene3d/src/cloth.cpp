@@ -99,10 +99,19 @@ Result<std::shared_ptr<const ClothSection>> cloth_section(const world::World& wo
     if (cloth == nullptr) {
         return make_error(ErrorCode::InvalidArgument, "has no Cloth3D");
     }
+    if (model_path(world, entity) == nullptr) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "cloth needs a MeshInstance3D drawing a model file");
+    }
+    return model_section(world, entity, cloth->section);
+}
+
+Result<std::shared_ptr<const ClothSection>>
+model_section(const world::World& world, entt::entity entity, const std::string& name) {
     const std::string* path = model_path(world, entity);
     if (path == nullptr) {
         return make_error(ErrorCode::InvalidArgument,
-                          "cloth needs a MeshInstance3D drawing a model file");
+                          "needs a MeshInstance3D drawing a model file");
     }
     auto loaded = model_of(world, *path);
     if (!loaded) {
@@ -111,18 +120,17 @@ Result<std::shared_ptr<const ClothSection>> cloth_section(const world::World& wo
     }
     const Model& model = *loaded.value().model;
     int material = -1;
-    if (!cloth->section.empty()) {
+    if (!name.empty()) {
         std::vector<std::string> names;
         for (std::size_t i = 0; i < model.materials.size(); ++i) {
             names.push_back(model.materials[i].name);
-            if (model.materials[i].name == cloth->section && material < 0) {
+            if (model.materials[i].name == name && material < 0) {
                 material = static_cast<int>(i);
             }
         }
         if (material < 0) {
-            std::string message = "the model has no material \"" + cloth->section + "\"";
-            if (const std::string_view close = closest_match(cloth->section, names);
-                !close.empty()) {
+            std::string message = "the model has no material \"" + name + "\"";
+            if (const std::string_view close = closest_match(name, names); !close.empty()) {
                 message += "; did you mean \"" + std::string(close) + "\"?";
             }
             return make_error(ErrorCode::InvalidArgument, std::move(message));
@@ -131,7 +139,7 @@ Result<std::shared_ptr<const ClothSection>> cloth_section(const world::World& wo
 
     auto section = std::make_shared<ClothSection>();
     section->model = loaded.value().model;
-    section->key = *path + "@" + std::to_string(loaded.value().version) + "#" + cloth->section;
+    section->key = *path + "@" + std::to_string(loaded.value().version) + "#" + name;
     const std::vector<world::Affine3D> rest_globals = node_globals(model, rest_pose(model));
     std::map<std::pair<int, std::size_t>, std::uint32_t> joint_ids;
     const auto joint_id = [&](int skin, std::size_t index,
@@ -209,6 +217,13 @@ Result<std::shared_ptr<const ClothSection>> cloth_section(const world::World& wo
                     at = part_rest.apply(local);
                 }
                 section->positions.push_back(at);
+                // The normal as the vertex's heaviest joint (or its part) turns it at rest.
+                const world::Affine3D& carrier = section->rest[weights[0].first];
+                Vec3 normal = carrier.basis(to_vec(vertex.normal));
+                const real_t size = std::sqrt(dot(normal, normal));
+                normal = size > 0.0F ? normal * (1.0F / size) : Vec3{0.0F, 1.0F, 0.0F};
+                section->normals.push_back(normal);
+                section->uvs.push_back(Vec2{vertex.uv[0], vertex.uv[1]});
                 section->colors.push_back({static_cast<float>(vertex.rgba[0]) / 255.0F,
                                            static_cast<float>(vertex.rgba[1]) / 255.0F,
                                            static_cast<float>(vertex.rgba[2]) / 255.0F,
@@ -224,9 +239,8 @@ Result<std::shared_ptr<const ClothSection>> cloth_section(const world::World& wo
     }
     if (section->indices.size() < 3) {
         return make_error(ErrorCode::InvalidArgument,
-                          cloth->section.empty()
-                              ? std::string("the model has no triangles to make cloth of")
-                              : "the model draws no triangles with \"" + cloth->section + "\"");
+                          name.empty() ? std::string("the model has no triangles")
+                                       : "the model draws no triangles with \"" + name + "\"");
     }
     return std::shared_ptr<const ClothSection>(std::move(section));
 }

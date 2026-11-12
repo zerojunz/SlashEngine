@@ -609,6 +609,18 @@ private:
     // surface on the device, its vertices made again each frame.
     void add_particles(const world::World& world, entt::entity entity, const world::Affine3D& place,
                        const world::Affine3D& camera, std::uint32_t cull_mask, float interpolation);
+    // A HairInstance3D's groom: its strands as ribbons facing the camera, its cards as ribbons
+    // facing the skin, or its fur as layers of shells over the skin, from where physics put its
+    // guides (interpolation of the way from the step before) or, before physics steps them,
+    // where the groom puts them; one mesh each on the device, made again each frame.
+    void add_hair(const world::World& world, const world::Tree3D& tree, entt::entity entity,
+                  std::uint32_t cull_mask, float interpolation);
+    // One of add_hair's meshes, kept under key: made when its vertices are first seen or change
+    // in number, refilled otherwise, and drawn with material.
+    void hair_mesh(const std::string& key, entt::entity entity,
+                   std::span<const render::Vertex3D> vertices,
+                   std::span<const std::uint32_t> indices, const render::Material3D& material,
+                   std::uint32_t layers, render::ShadowCasting casting);
     // A GPUParticles3D: its system on the device runs the steps it hasn't (or is made again from
     // those kept), then each draw pass's mesh is filled with a copy at every particle, drawn
     // between ticks interpolation of the way along, placed by place with local_coords and turned

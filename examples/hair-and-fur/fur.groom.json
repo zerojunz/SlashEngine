@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "guides": 16,
+  "length": 0.04,
+  "render": "shells",
+  "root_color": [0.35, 0.22, 0.1, 1],
+  "seed": 9,
+  "shell_count": 8,
+  "shell_tiling": 6,
+  "simulation": {
+    "stiffness": 0.6,
+    "tip_stiffness": 0.2
+  },
+  "tip_color": [0.75, 0.6, 0.4, 1]
+}

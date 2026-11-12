@@ -56,6 +56,7 @@
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/foliage.hpp"
+#include "slash/world/hair.hpp"
 #include "slash/world/physics_material.hpp"
 #include "slash/world/ragdoll.hpp"
 #include "slash/world/scene.hpp"
@@ -210,6 +211,7 @@ enum class DataFile : std::uint8_t {
     PhysicsMaterial,
     Ragdoll,
     Foliage,
+    Groom,
     MeshLibrary,
     StandardMaterial,
     Lightmap,
@@ -301,6 +303,9 @@ DataFile data_file(std::string_view name) {
     }
     if (world::is_foliage_path(name)) {
         return DataFile::Foliage;
+    }
+    if (world::is_groom_path(name)) {
+        return DataFile::Groom;
     }
     if (name.ends_with(scene3d::kMeshLibrarySuffix)) {
         return DataFile::MeshLibrary;
@@ -464,6 +469,8 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         return errors;
     case DataFile::Foliage:
         return world::validate_foliage(parsed.value());
+    case DataFile::Groom:
+        return world::validate_groom(parsed.value());
     case DataFile::MeshLibrary:
         return scene3d::validate_mesh_library(parsed.value());
     case DataFile::Lightmap:

@@ -15,6 +15,7 @@ add_library(slash_command
     src/physics_debug.cpp
     src/ragdoll.cpp
     src/scatter.cpp
+    src/hair.cpp
     src/playtest.cpp
     src/project_map.cpp
     src/reference.cpp

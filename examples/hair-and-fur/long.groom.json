@@ -1,0 +1,24 @@
+{
+  "clumping": 0.5,
+  "comb": [0, -1, -0.4],
+  "curl_radius": 0.004,
+  "curl_turns": 2,
+  "density": 4000,
+  "format": 1,
+  "guides": 24,
+  "length": 0.22,
+  "length_variation": 0.2,
+  "lift": 0.1,
+  "max_strands": 600,
+  "render": "strands",
+  "root_color": [0.18, 0.11, 0.06, 1],
+  "seed": 3,
+  "segments": 6,
+  "simulation": {
+    "damping": 2,
+    "drag_coefficient": 1,
+    "stiffness": 0.15,
+    "tip_stiffness": 0.02
+  },
+  "tip_color": [0.42, 0.28, 0.15, 1]
+}

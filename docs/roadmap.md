@@ -1225,12 +1225,17 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         and `traits`, `quest.start`, `quest.set`, `quest.state`, `quest.check` (run by
         `test.run`), `dialogue.start`, `dialogue.choose` and `dialogue.state`
         (`examples/npc-stories`)
-13. [ ] Hair and fur: `HairInstance3D` groomed strands (`.groom.json` guides grown over a
+13. [x] Hair and fur: `HairInstance3D` groomed strands (`.groom.json` guides grown over a
         model's surface with length, density, clumping, curl and color maps) drawn as cards,
         strands or fur shells with the existing hair shading, and simulated as Unreal's
         Groom and Chaos hair: guide strands stepped with constraints, colliding with the
         body's capsules, blown by the wind and following the skeleton, for characters and
-        animals
+        animals. Done in 3D and 2D: `.groom.json` grooms, `HairInstance3D` grown over a model's
+        section and carried by its skin, `Hair2D` grown along a root line, guides stepped by 3D
+        and 2D physics with position-based dynamics (shape pull from root to tip, bending,
+        follow-the-leader lengths, wind, fields and the body's spheres, capsules and boxes),
+        drawn as strands, cards, fur shells and 2D ribbons, and `hair.get`
+        (`examples/hair-and-fur`)
 14. [ ] Characters: a character tool that makes the player and NPCs as `.character.json` recipes
         (body proportions, face, hair, clothing and props, materials) built into rigged models,
         each distinct from the others in silhouette and color, following the storyboard's
