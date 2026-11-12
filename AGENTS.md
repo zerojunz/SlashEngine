@@ -2516,6 +2516,23 @@ fall on a plane square to the light). `fluid.place`, `fluid.pour`, `fluid.state`
 and `fluid.preview` (stages in a private `Session`) are in `engine/command/src/fluid.cpp`.
 `examples/fluids` splashes water, lights a campfire and pours 2D water.
 
+Oceans, lakes and rivers are SlashEngine's own, after Unreal's Water plugin: a `.water.json`
+recipe (`slash/world/water.hpp`, `engine/world/src/water.cpp`, built with `-ffp-contract=off`;
+`$cli schema water`) gives Gerstner waves (or a wind that raises them round the
+Pierson-Moskowitz peak), a current or a river's flow, ripples, buoyancy and drag, and the look.
+`world::sample_water` gives the surface over a point (the waves' sideways shift undone in fixed
+steps), its normal, the water's velocity, crest and shore foam and the depth to the ground,
+which `fill_ground` measures once under a grid through the `world::WaterHost` physics3d and
+physics2d set (rays down past what moves); `water_bodies` makes each `Water3D` (a lake's box, an
+ocean round the camera or a river along its `Path3D`) and `Water2D` one. The `water` system
+(priority 959, added by `canvas::install`) keeps the clock (`water_time`) and rings (bodies going
+in and moving through, liquid fluid particles it takes in) and emits `water_entered` and
+`water_exited`. Each space's `apply_water` (`src/water.cpp`) floats rigid bodies at points
+through their shapes and drags them toward the water's velocity, as Unreal's pontoons.
+`scene3d::Renderer::add_water` draws a displaced grid and `CanvasRenderer::gather_water` a 2D
+surface and body. `water.place` and `water.sample` are in `engine/command/src/water.cpp`.
+`examples/water` floats crates on a lake, a river and a 2D pond.
+
 ## Job system
 
 `engine/core`'s `jobs::Pool` (`slash/core/jobs.hpp`) is Godot's `WorkerThreadPool`: tasks, group

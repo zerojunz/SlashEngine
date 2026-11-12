@@ -2967,6 +2967,49 @@ background, so a recipe that draws nothing shows.
 
 Needs: `read`, `filesystem`.
 
+## Water
+
+Oceans, lakes and rivers from `.water.json` recipes ([scene format](scene-format.md#water);
+`slash-cli schema water`).
+
+### water.place
+
+Places a recipe as a new `Water3D` (a 3d recipe) or `Water2D` (a 2d one) and returns its `id`,
+`kind`, `space`, its number of `waves`, the highest `crest` they can stack to and the longest
+wave's `period` in seconds.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `recipe` | string | | A `.water.json` file |
+| `id` | string | the file's name | The new entity's ID |
+| `at` | `[x, y, z]` or `[x, y]` | origin | Where its surface rests, in meters or pixels |
+| `size` | `[x, z]` or `[width, depth]` | `[20, 20]`, `[640, 200]` | A lake's or ocean's area in meters, or 2d water's width and depth in pixels |
+| `path` | string | | A river's `Path3D` entity (a 3d river needs one) |
+| `width` | number | `4` | A river's width in meters |
+| `parent` | string | | An entity to place it under |
+| `overrides` | object | | A JSON Merge Patch over the recipe |
+
+Needs: `edit`.
+
+### water.sample
+
+The water at up to 64 points, now or `ahead` seconds from now: under `points`, each one's
+`water` (null where no water holds it), surface `height`, `normal`, the water's `velocity`,
+`foam` (0 to 1), `depth` to the ground where it was measured, and how far the point is
+`submerged` (negative above the surface). `time` is the water's clock.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `points` | array | | `[x, y, z]` or `[x, z]` meters, or `[x, y]` pixels for 2d water |
+| `water` | string | the first that holds each point | A `Water3D` or `Water2D` entity |
+| `ahead` | number | `0` | Seconds after now |
+
+```json
+{"points": [[0, 0, 0], [4, -1, 2]], "ahead": 0.5}
+```
+
+Needs: `read`.
+
 ## Particles
 
 ### particles.eval

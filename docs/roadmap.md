@@ -1363,8 +1363,11 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
           CPU so every device draws them, clearer where shallow, foam and spray) and 2D surfaces
           by marching squares; lit, self-shadowed smoke splats; `fluid.preview`. Refraction
           (bending what is behind the water) needs the frame behind it and is left for later
-    - [ ] Oceans, lakes and rivers as Gerstner waves with shorelines, foam, wakes and
-          buoyancy, coupled to the particles
+    - [x] Oceans, lakes and rivers as Gerstner waves with shorelines, foam, wakes and
+          buoyancy, coupled to the particles: `.water.json` recipes (waves, or waves raised by
+          a wind), `Water3D`/`Water2D`, depth measured under lakes and rivers, rings from
+          bodies and liquid falling in, rigid bodies floated and carried in 3D and 2D;
+          `water.place` and `water.sample` (`examples/water`)
     - [ ] VFX effects emitting fluids, physics fields and the other tools' bodies as emitters,
           sinks and colliders
 20. [ ] Character anatomy and faces: the character tool's skeleton made whole and a face tool, after

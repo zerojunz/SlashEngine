@@ -35,6 +35,7 @@
 #include "slash/world/hair.hpp"
 #include "slash/world/path.hpp"
 #include "slash/world/serialize.hpp"
+#include "slash/world/water.hpp"
 #include "slash/world/wind.hpp"
 #include "slash/world/world.hpp"
 
@@ -3064,6 +3065,110 @@ void Renderer::add_fluid(const world::World& world, entt::entity entity, std::ui
     hair_mesh(key, entity, vertices, indices, made, fluid.layers, casting, "/components/Fluid3D");
 }
 
+void Renderer::add_water(const world::WaterBody& body, std::uint32_t cull_mask, double time) {
+    if (!body.visible || (body.layers & cull_mask) == 0 || body.recipe == nullptr) {
+        return;
+    }
+    const world::WaterRecipe& recipe = *body.recipe;
+    const Vec3f shift = to_float(Vec3{} - render_origin_);
+    std::vector<render::Vertex3D> vertices;
+    std::vector<std::uint32_t> indices;
+    const auto byte = [](float v) {
+        return static_cast<std::uint8_t>(std::lround(std::clamp(v, 0.0F, 1.0F) * 255.0F));
+    };
+    // Each corner where the waves and ripples move it, colored by its depth and foam.
+    const auto corner = [&](Vec3f rest) {
+        const world::WaterSample at = world::displace_water(body, rest, time);
+        const Vec4 color = world::water_color(recipe, at.depth, at.foam);
+        render::Vertex3D v;
+        v.position = {at.position.x + shift.x, at.position.y + shift.y, at.position.z + shift.z};
+        v.normal = {at.normal.x, at.normal.y, at.normal.z};
+        v.uv = {rest.x * 0.1F, rest.z * 0.1F};
+        v.rgba = {byte(color.x), byte(color.y), byte(color.z), byte(color.w)};
+        vertices.push_back(v);
+    };
+    int columns = 0;
+    int rows = 0;
+    if (recipe.kind == world::WaterRecipe::Kind::River) {
+        // A strip along the river's middle, across its width.
+        const std::size_t count = body.river.size();
+        columns = std::clamp(static_cast<int>(std::ceil(body.width / recipe.spacing)), 1, 32);
+        const float along_step = std::max(recipe.spacing, 0.25F);
+        std::vector<std::size_t> picked;
+        float last = -along_step;
+        for (std::size_t i = 0; i < count; ++i) {
+            if (body.river_along[i] - last >= along_step || i + 1 == count) {
+                picked.push_back(i);
+                last = body.river_along[i];
+            }
+        }
+        rows = static_cast<int>(picked.size()) - 1;
+        for (const std::size_t i : picked) {
+            const Vec3f a = body.river[i == 0 ? 0 : i - 1];
+            const Vec3f b = body.river[std::min(i + 1, count - 1)];
+            const float dx = b.x - a.x;
+            const float dz = b.z - a.z;
+            const float n = std::sqrt((dx * dx) + (dz * dz));
+            // To the river's right, so its triangles wind as a lake's grid does and face up.
+            const Vec3f side = n > 1e-6F ? Vec3f{dz / n, 0.0F, -dx / n} : Vec3f{1.0F, 0.0F, 0.0F};
+            for (int c = 0; c <= columns; ++c) {
+                const float across =
+                    body.width * ((static_cast<float>(c) / static_cast<float>(columns)) - 0.5F);
+                corner(body.river[i] + (side * across));
+            }
+        }
+    } else {
+        // A grid over a lake's area, or round the camera on an ocean, snapped to its cells so
+        // corners stay put as the camera moves.
+        Vec2f center;
+        Vec2f half = body.half;
+        if (!body.bounded) {
+            const Vec3 eye = body.inverse.apply(camera_place_.origin);
+            center = to_float(Vec2{eye.x, eye.z});
+            half = {recipe.view, recipe.view};
+        }
+        const float cell = std::max(recipe.spacing, std::max(half.x, half.y) * 2.0F / 128.0F);
+        if (!body.bounded) {
+            center = {std::round(center.x / cell) * cell, std::round(center.y / cell) * cell};
+        }
+        columns = std::clamp(static_cast<int>(std::ceil(half.x * 2.0F / cell)), 1, 128);
+        rows = std::clamp(static_cast<int>(std::ceil(half.y * 2.0F / cell)), 1, 128);
+        for (int j = 0; j <= rows; ++j) {
+            for (int i = 0; i <= columns; ++i) {
+                const float lx =
+                    center.x - half.x +
+                    (half.x * 2.0F * static_cast<float>(i) / static_cast<float>(columns));
+                const float lz = center.y - half.y +
+                                 (half.y * 2.0F * static_cast<float>(j) / static_cast<float>(rows));
+                corner(to_float(body.place.apply(Vec3{lx, 0.0F, lz})));
+            }
+        }
+    }
+    if (rows < 1 || columns < 1) {
+        return;
+    }
+    const auto stride = static_cast<std::uint32_t>(columns + 1);
+    for (int j = 0; j < rows; ++j) {
+        for (int i = 0; i < columns; ++i) {
+            const std::uint32_t a =
+                (static_cast<std::uint32_t>(j) * stride) + static_cast<std::uint32_t>(i);
+            const std::uint32_t b = a + 1;
+            const std::uint32_t c = a + stride;
+            const std::uint32_t d = c + 1;
+            indices.insert(indices.end(), {a, b, c, b, d, c});
+        }
+    }
+    world::StandardMaterial3D look;
+    look.vertex_color_use_as_albedo = true;
+    look.cull_mode = "disabled";
+    look.transparency = "alpha";
+    look.roughness = recipe.roughness;
+    look.metallic_specular = 0.7F;
+    const render::Material3D made = material(look, textures_, problems_, body.entity);
+    hair_mesh("water:" + std::to_string(entt::to_integral(body.entity)), body.entity, vertices,
+              indices, made, body.layers, render::ShadowCasting::Off, "/components/Water3D");
+}
+
 namespace {
 
 // Defined with the VoxelGIs' code below.
@@ -4327,6 +4432,15 @@ std::optional<Frame3D> Renderer::prepare(
     for (const entt::entity entity : made<world::Fluid3D>(world)) {
         if (tree.visible(entity)) {
             add_fluid(world, entity, lens.cull_mask, frame.scene);
+        }
+    }
+    // Water3Ds draw their surfaces, moved by their waves between ticks.
+    if (!ecs.view<const world::Water3D>().empty()) {
+        const double water_time = world::water_time(world, t);
+        for (const world::WaterBody& body : world::water_bodies(world, false)) {
+            if (tree.visible(body.entity)) {
+                add_water(body, lens.cull_mask, water_time);
+            }
         }
     }
     // GPUParticles3Ds run the steps their device hasn't, then draw their draw passes there.

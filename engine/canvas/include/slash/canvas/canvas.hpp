@@ -428,6 +428,7 @@ private:
     void gather_cloths(DrawState& state);
     void gather_hair(DrawState& state);
     void gather_fluids(DrawState& state);
+    void gather_water(DrawState& state);
     void gather_polygons(DrawState& state);
     void gather_foliage(DrawState& state);
     void gather_reflections(DrawState& state);

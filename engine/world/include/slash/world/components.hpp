@@ -3402,6 +3402,41 @@ struct FluidSink2D {
 };
 SLASH_COMPONENT(FluidSink2D, fluid, size, enabled)
 
+// A lake, ocean or river from a .water.json recipe (slash/world/water.hpp): a surface of
+// Gerstner waves at the entity's Transform3D, at rest on its x-z plane, size wide (x, z; an
+// ocean's size bounds only where its shore is measured, its surface drawing round the camera),
+// or a river width wide along the Path3D entity path names. Bodies float and drift in it.
+struct Water3D {
+    std::string recipe;
+    json::Value overrides; // a merge patch over the recipe
+    Vec2 size{20.0F, 20.0F};
+    std::string path;
+    float width = 4.0F;
+    bool visible = true;
+    std::uint32_t layers = 1;
+
+    friend bool operator==(const Water3D&, const Water3D&) = default;
+};
+SLASH_COMPONENT(Water3D, recipe, overrides, size, path, width, visible, layers)
+
+// Water seen from the side in 2D: width pixels across centered on the entity, its surface at
+// rest at the entity's y and depth pixels deep below it.
+struct Water2D {
+    std::string recipe;
+    json::Value overrides;
+    float width = 640.0F;
+    float depth = 200.0F;
+    bool visible = true;
+    int z_index = 0;
+    bool z_as_relative = true;
+    Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F};
+    int light_mask = 1;
+
+    friend bool operator==(const Water2D&, const Water2D&) = default;
+};
+SLASH_COMPONENT(Water2D, recipe, overrides, width, depth, visible, z_index, z_as_relative, modulate,
+                light_mask)
+
 // A value each particle of a simulation carries, as Niagara's particle attributes: an Expression
 // over the particle (age, life, lifetime, speed, x, y, z, vx, vy, vz, neighbors, collided,
 // index, random, time and the attributes before it), worked out when the particle starts or,

@@ -1,0 +1,14 @@
+{
+  "format": 1,
+  "kind": "ocean",
+  "look": {
+    "deep": [0.02, 0.1, 0.25, 0.95],
+    "view": 60
+  },
+  "name": "Sea",
+  "wind": {
+    "count": 5,
+    "direction": [1, 0.3],
+    "speed": 7
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "format": 1,
+  "name": "Pond",
+  "space": "2d",
+  "waves": [
+    {
+      "amplitude": 2,
+      "steepness": 0.5,
+      "wavelength": 80
+    }
+  ]
+}

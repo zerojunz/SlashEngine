@@ -1,0 +1,22 @@
+{
+  "format": 1,
+  "look": {
+    "deep": [0.03, 0.15, 0.25, 0.92],
+    "shallow": [0.2, 0.6, 0.55, 0.5]
+  },
+  "name": "Lake",
+  "waves": [
+    {
+      "amplitude": 0.06,
+      "direction": [1, 0.2],
+      "steepness": 0.5,
+      "wavelength": 6
+    },
+    {
+      "amplitude": 0.03,
+      "direction": [0.3, 1],
+      "steepness": 0.4,
+      "wavelength": 2.5
+    }
+  ]
+}

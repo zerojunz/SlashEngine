@@ -10,6 +10,7 @@
 #include "slash/world/physics_debug.hpp"
 #include "slash/world/physics_material.hpp"
 #include "slash/world/tree2d.hpp"
+#include "slash/world/water.hpp"
 
 #include <algorithm>
 #include <array>
@@ -398,6 +399,8 @@ private:
     // Pushes, sets the velocity of, holds, removes and puts to sleep rigid bodies in the world's
     // PhysicsField2Ds' reach, before a step (fields.cpp).
     void apply_fields(world::World& world, const world::Tree2D& tree, float seconds);
+    // Floats and drags rigid bodies in the world's Water2Ds, before a step (src/water.cpp).
+    void apply_water(world::World& world, float seconds);
     // Destroys the entities kill fields took, after a step, emitting field_killed.
     void destroy_doomed(world::World& world);
     // While physics.debug records (debug.cpp): the step's contacts, joints and bodies.
@@ -458,5 +461,7 @@ void move_character(b2WorldId space, Body& body, world::Transform2D& transform,
 void break_and_age_2d(world::World& world, Space& space, float seconds);
 // What fluids collide with and push: the space's shapes (src/fluid.cpp).
 [[nodiscard]] world::FluidHost fluid_host_2d(const std::shared_ptr<Space>& space);
+// The ground under 2D water: the first thing below that doesn't move (src/water.cpp).
+[[nodiscard]] world::WaterHost water_host_2d(world::World& world);
 
 } // namespace slash::physics2d::detail

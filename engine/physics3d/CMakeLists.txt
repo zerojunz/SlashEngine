@@ -14,7 +14,8 @@ add_library(slash_physics3d
     src/soft_body.cpp
     src/space.cpp
     src/vehicle.cpp
-    src/vehicle_tool.cpp)
+    src/vehicle_tool.cpp
+    src/water.cpp)
 add_library(slash::physics3d ALIAS slash_physics3d)
 
 target_include_directories(slash_physics3d PUBLIC include)

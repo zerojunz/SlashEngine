@@ -1,0 +1,8 @@
+{
+  "drag": 2,
+  "extends": "waters/lake.water.json",
+  "flow": 2,
+  "format": 1,
+  "kind": "river",
+  "name": "River"
+}
