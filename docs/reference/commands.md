@@ -78,6 +78,7 @@ as `entity.get`, reject it as an unknown param.
 | Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent), [`navigation.bake`](#navigationbake) |
 | NPCs | [`npc.plan`](#npcplan), [`npc.draft`](#npcdraft) |
 | Quests and dialogue | [`quest.start`](#queststart), [`quest.set`](#questset), [`quest.state`](#queststate), [`quest.check`](#questcheck), [`dialogue.start`](#dialoguestart), [`dialogue.choose`](#dialoguechoose), [`dialogue.state`](#dialoguestate) |
+| Visual effects | [`vfx.play`](#vfxplay), [`vfx.state`](#vfxstate), [`vfx.check`](#vfxcheck), [`vfx.preview`](#vfxpreview) |
 | Particles | [`particles.eval`](#particleseval), [`particles.bake_sdf`](#particlesbake_sdf) |
 | Lights | [`light.sample`](#lightsample), [`light.tune`](#lighttune), [`lighting.check`](#lightingcheck) |
 | Global illumination | [`lightmap.bake`](#lightmapbake), [`voxel_gi.bake`](#voxel_gibake) |
@@ -2791,6 +2792,80 @@ Needs: `read`.
 ```
 
 [examples/npc-stories](../../examples/npc-stories/) plays a questline through these commands.
+
+## Visual effects
+
+[`.vfx.json` recipes](scene-format.md#visual-effects) played by `VisualEffect3D` and
+`VisualEffect2D`.
+
+### vfx.play
+
+Plays a recipe as a new `VisualEffect3D` (or `VisualEffect2D` for a `2d` recipe) and returns its
+`id`, `dimension`, `duration`, `loop` and how many `layers` it has. It starts on the next tick.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `recipe` | string | | A `.vfx.json` file |
+| `id` | string | the file's name, numbered past those taken | The new effect's ID |
+| `at` | array of numbers | the origin | `[x, y, z]` meters, or `[x, y]` pixels in 2D; in the parent's space with a `parent` |
+| `parent` | string | | An entity to play it under, which it moves with |
+| `bone` | string | | With a `parent` that draws a 3D model: a bone it follows, as a `BoneAttachment3D` |
+| `parameters` | object | | The recipe's parameters to set; a name it lacks fails with the closest one |
+| `seed` | integer | `0` | Added to its emitters' seeds |
+| `free_on_finish` | boolean | `true` | Remove it once a one-shot has finished and its particles have gone |
+
+Needs: `edit`.
+
+### vfx.state
+
+Each effect (or those `ids` names) by ID: its `recipe`, `time`, whether it is `playing` and
+`finished`, the `detail` it plays at from the current camera, the entity each playing layer is
+(`layers`), how many parts are `lingering` while their particles finish, and an `error` for a
+recipe that can't be read. `shake_3d` and `shake_2d` are what camera shakes add to the current
+cameras now.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `ids` | array of strings | every effect | Effects to report |
+
+Needs: `read`.
+
+### vfx.check
+
+Checks a recipe, or with none every recipe the world's effects name, under `recipes` by path:
+its `errors` (the file's schema, expressions that don't parse, names twice, keys out of order),
+or its `dimension`, `duration`, `layers`, its `cost` at its busiest moment at full detail
+(`particles`, `lights`, `sounds`, `decals`, `layers`), what goes `over_budget` (as
+`"particles: 70 of 60"`), the cost at each level of detail (`lod`) and `warnings`: layers that
+start after the effect ends, need more detail than any level plays at, name components the
+engine lacks (with the closest) or have curves on components they don't have. `effects` lists
+the world's effects whose recipe can't be read or is of the other dimension.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `recipe` | string | every recipe the world names | A `.vfx.json` file |
+| `parameters` | object | the recipe's | Parameters to cost it with |
+
+Needs: `read`.
+
+### vfx.preview
+
+Plays a recipe alone on a stage of its own (a session apart, with a camera at `distance` and a
+light), stepping 60 ticks a second, and returns `samples` at `times`: the `layers` playing,
+`particles` alive (CPU particles counted; GPU emitters by their amount), the `light` energy of
+its lights, the `flash` (the most opaque `ColorRect`), parts `lingering` and the camera `shake`;
+and its `events` with the time of each. With `capture`, it also draws the stage at a time into a
+PNG and returns its `out` and `size`. The world is left as it was.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `recipe` | string | | A `.vfx.json` file |
+| `parameters` | object | | The recipe's parameters to set |
+| `times` | array of numbers | each layer's start (plus 0.05) and the end | Seconds into the effect to sample, up to 600 |
+| `distance` | number | `0` | The camera's distance (meters, 2D pixels), which picks the level of detail |
+| `capture` | object | | `at` seconds, `out` (default `previews/<file>.png`) and `size` (`[320, 240]`) |
+
+Needs: `read` and `filesystem`.
 
 ## Particles
 

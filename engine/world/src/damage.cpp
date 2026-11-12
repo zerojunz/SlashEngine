@@ -64,7 +64,8 @@ constexpr std::string_view kSchema = R"({
             "bus": {"type": "string", "minLength": 1},
             "lifetime": {"type": "number", "exclusiveMinimum": 0, "description": "Seconds before its player goes."}
           }
-        }
+        },
+        "vfx": {"type": "string", "pattern": "^$|\\.vfx\\.json$", "description": "A .vfx.json effect of the body's dimension played there, turned along the way out, its strength parameter how hard it was hit from 0 to 1; empty for none."}
       }
     }
   },
@@ -462,6 +463,9 @@ void read_effects(const json::Value& doc, EffectSet& out) {
             out.sound.bus = bus->as_string();
         }
         out.sound.lifetime = number_or(*sound, "lifetime", out.sound.lifetime);
+    }
+    if (const json::Value* vfx = doc.find("vfx"); vfx != nullptr && vfx->is_string()) {
+        out.vfx = vfx->as_string();
     }
 }
 

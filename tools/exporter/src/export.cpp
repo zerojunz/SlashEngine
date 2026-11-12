@@ -62,6 +62,7 @@
 #include "slash/world/physics_material.hpp"
 #include "slash/world/ragdoll.hpp"
 #include "slash/world/scene.hpp"
+#include "slash/world/vfx.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -214,6 +215,7 @@ enum class DataFile : std::uint8_t {
     Ragdoll,
     Foliage,
     Groom,
+    Vfx,
     Damage,
     Face,
     MeshLibrary,
@@ -310,6 +312,9 @@ DataFile data_file(std::string_view name) {
     }
     if (world::is_groom_path(name)) {
         return DataFile::Groom;
+    }
+    if (world::is_vfx_path(name)) {
+        return DataFile::Vfx;
     }
     if (world::is_damage_path(name)) {
         return DataFile::Damage;
@@ -481,6 +486,8 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         return world::validate_foliage(parsed.value());
     case DataFile::Groom:
         return world::validate_groom(parsed.value());
+    case DataFile::Vfx:
+        return world::validate_vfx(parsed.value());
     case DataFile::Damage:
         errors = world::validate_damage(parsed.value());
         if (errors.empty()) {

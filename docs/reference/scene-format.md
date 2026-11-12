@@ -4864,7 +4864,7 @@ window and two 2D crates.
 | `strength`, `compression` | the material's | Newtons a square meter of a link holds (2D: a newton a pixel of edge, per 64), and how many times more it holds what stands on it |
 | `debris` | `lifetime` `0`, `push` the material's | Seconds loose pieces last (0 keeps them) and meters (pixels) a second they fly from the hit |
 | `deform` | the material's | How damage that doesn't break it changes its shape: `dent` (meters deep a point of blunt, impact or explosive damage pushes in), `dent_radius`, `max_dent`; `hole` (meters across a point of pierce damage shoots through), `max_hole`; `carve` (meters of radius a point of explosive damage blasts out), `max_carve`; `crater_depth` (how deep a crater is for its radius, on an `HTerrain`). 0 does none. 2D outlines take them at 64 pixels a meter |
-| `effects` | the material's | What hits and breaks leave, as Chaos's break events drive Niagara: `hit` and `break`, each with `debris` and `dust` (`amount` of particles, `lifetime` seconds, `speed` meters a second, `spread` degrees, `size` meters, `gravity` scale, `color`), `decal` (`texture`, `size` meters, `lifetime` seconds, 0 keeps it, `modulate`) and `sound` (`stream`, `volume_db`, `pitch_scale`, `bus`, `lifetime`); `hit_scale` is the damage at which a hit throws all its particles (fewer for less). `null` takes out one the material has |
+| `effects` | the material's | What hits and breaks leave, as Chaos's break events drive Niagara: `hit` and `break`, each with `debris` and `dust` (`amount` of particles, `lifetime` seconds, `speed` meters a second, `spread` degrees, `size` meters, `gravity` scale, `color`), `decal` (`texture`, `size` meters, `lifetime` seconds, 0 keeps it, `modulate`) `sound` (`stream`, `volume_db`, `pitch_scale`, `bus`, `lifetime`) and `vfx` (a [`.vfx.json` effect](#visual-effects) of the body's dimension, played there turned along the way out with its `strength` parameter set to how hard it was hit, 0 to 1, and freed once played); `hit_scale` is the damage at which a hit throws all its particles (fewer for less). `null` takes out one the material has |
 
 - Damage of a kind, times its resistance, comes off `health`, and the body's `state` follows the
   states it is below; at no health it breaks where it was hit. `damaged`, `broken` and
@@ -4907,7 +4907,8 @@ window and two 2D crates.
   `<id>_decal`, `<id>_sound`, numbered past those taken): a one-shot `CPUParticles3D` of small
   boxes (dust: fading spheres), a `Decal` facing back along the hit and an
   `AudioStreamPlayer3D`, or in 2D a `CPUParticles2D` (in pixels), a `Sprite2D` and an
-  `AudioStreamPlayer2D`. Each has a `DamageEffect` that removes it when its `lifetime` runs out.
+  `AudioStreamPlayer2D`. Each has a `DamageEffect` that removes it when its `lifetime` runs out. A
+  profile's `vfx` plays as `<id>_vfx`, a `VisualEffect3D` or `VisualEffect2D` that frees itself.
 - Someone or something living (a `Ragdoll3D`, `Creature3D`, `Flesh3D`, `NpcAgent` or a model
   drawing a `.character.json` or `.creature.json` recipe; in 2D a `Ragdoll2D`, `Creature2D`,
   `Character2D` or `NpcAgent`) with a `Destructible3D` or `Destructible2D` never breaks or
@@ -6189,6 +6190,69 @@ stages and lines nothing reaches, objectives and choices that never hold. `scene
 `scene format` take both kinds of file, and exports ship them.
 [examples/npc-stories](../../examples/npc-stories/) has a village with a questline, a
 conversation in two languages and watchmen on their rounds in 2D and 3D.
+
+## Visual effects
+
+A `.vfx.json` file (`slash-cli schema vfx`) is a visual effect, after Unreal's Niagara systems
+(Godot has none: its effects are scenes of particles, lights and sounds a script times). It lays
+layers on one timeline. Each layer is an entity of components, written as a scene writes them:
+particles (`CPUParticles3D`, `GPUParticles3D` and their 2D forms, with trails, mesh particles and
+flipbooks as those components draw them), `Decal`s, lights, sounds, screen flashes (a `Control`
+with a `ColorRect`), `CameraShake`s or anything else a scene holds. A layer appears at its
+`start`, has its fields moved along `curves` while it lasts and goes at its end; an emitter stops
+emitting and goes once its particles' `lifetime` has passed, so they finish what they started.
+Any value may be an expression (`"=8 * intensity"`, Godot's `Expression`) over the recipe's
+`parameters`, which an effect sets, and `detail`; curves also read `t` (seconds into the layer)
+and `life` (`t` over the layer's length). Whole numbers come out as integers, and as in
+Godot two whole numbers divide as integers (`"=size / 2.0"` keeps the fraction).
+
+```json
+{"format": 1, "name": "Explosion", "duration": 2,
+ "parameters": {"size": 1, "color": [1, 0.55, 0.2, 1]},
+ "layers": [
+   {"name": "flash", "duration": 0.4,
+    "components": {"OmniLight3D": {"light_color": "=color", "omni_range": "=8 * size"}},
+    "curves": {"OmniLight3D/light_energy": {"keys": [[0, 12], [0.4, 0]], "ease": "smooth"}}},
+   {"name": "smoke", "start": 0.2, "detail": 0.6,
+    "components": {"CPUParticles3D": {"amount": 24, "lifetime": 1.5}}},
+   {"name": "scorch", "start": 0.1, "world": true,
+    "components": {"Decal": {"size": ["=3 * size", 1, "=3 * size"]}}}],
+ "lod": [{"distance": 25, "detail": 0.5}, {"distance": 60, "detail": 0.25}],
+ "budget": {"particles": 64, "lights": 1}}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `format` | | `1` |
+| `name` | `""` | What it is called |
+| `dimension` | `"3d"` | `3d` (a `VisualEffect3D` plays it) or `2d` (a `VisualEffect2D`) |
+| `duration` | `1` | Seconds it lasts |
+| `loop` | `false` | Whether it starts again at its end, each cycle's emitters seeded apart |
+| `parameters` | `{}` | Parameters by name with their defaults: numbers, booleans, strings or arrays (colors) |
+| `layers[]` | | `name` (letters, digits, `_`), `start` `0`, `duration` `0` (lasts to the end), `offset` (`[x, y, z]` or `[x, y]` in the effect's space), `rotation` (Euler radians, or radians in 2D), `components`, `curves`, `detail` `0` (the least level of detail it plays at), `world` `false` (stays where it appeared: a scorch rather than a flame that follows) |
+| `layers[].curves` | `{}` | By field path (`OmniLight3D/light_energy`, `ColorRect/color/a`): keys of `[seconds into the layer, value]` in order, or `{"keys": [...], "ease": "linear"}` (`linear`, `smooth` or `step`) |
+| `lod[]` | `[]` | Nearest first: from `distance` (meters, 2D pixels) from the current camera on, the effect plays at `detail`: layers needing more drop and emitters' `amount` is scaled by it (never below 1) |
+| `budget` | no limit | What it may cost at its busiest at full detail: `particles` (every emitter's amount), `lights`, `sounds`, `decals` and `layers` playing at once; `vfx.check` reports what goes past |
+
+`scene validate` and `scene format` take it; validation also finds expressions that don't parse,
+layers named twice, curve keys out of order and levels of detail out of order.
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `VisualEffect3D` | `recipe` `""`, `parameters` `null` (values over the recipe's), `playing` `true`, `time` `0` (seconds in), `speed_scale` `1`, `lod_bias` `1` (the camera's distance is divided by it), `seed` `0` (added to its emitters' seeds), `free_on_finish` `false` (remove it once a one-shot has finished and its particles have gone) |
+| `VisualEffect2D` | the same, on a `Transform2D` |
+| `VfxPart` | `effect` `""`, `layer` `""`, `cycle` `0`, `linger` `-1` (seconds left for its particles once its layer ended; below 0 playing) |
+| `CameraShake` | `strength` `0.1` (meters in 3D, pixels in 2D), `frequency` `12` (shakes a second), `radius` `0` (in which it reaches the camera, less with distance; 0 everywhere), `enabled` `true` |
+
+The `vfx` system (priority 1090, before the particle systems) plays each effect: a layer plays as
+the entity `<effect>_<layer>` with a `VfxPart` (numbered past taken names), placed under the
+effect in its `Transform3D` or `Transform2D` children (`world` layers are `top_level`, left
+where they appeared; layers with a `Control` are on the screen). It emits `vfx_started` and
+`vfx_finished`, and `vfx_failed` once for a recipe or layer that can't play. Parts of an effect
+that is removed go with it. Every enabled `CameraShake` shakes the current `Camera3D`'s
+`h_offset` and `v_offset` and the current `Camera2D`'s `offset` with smooth noise hashed from its
+ID, taking off what it added the tick before, so the camera's own offset comes back.
+`world::camera_shake_offsets` says what shakes add now.
 
 ## Particles
 

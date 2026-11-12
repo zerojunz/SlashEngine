@@ -160,6 +160,7 @@ add_executable(slash_tests
     test_face_tools.cpp
     test_fauna.cpp
     test_vehicle.cpp
+    test_vfx.cpp
     test_light_tools.cpp
     test_light_projectors.cpp
     test_reflection_2d.cpp
