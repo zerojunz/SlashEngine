@@ -2474,7 +2474,18 @@ cameras' offsets, taking off what they added (`camera_shake_offsets`). `vfx_cost
 `vfx_over_budget` hold a recipe to its `budget`. Damage profiles' `effects` name a `vfx`
 recipe that `leave_effects` plays where a hit lands. `vfx.play`, `vfx.state`, `vfx.check` and
 `vfx.preview` (a stage in a private `Session`, sampled as numbers and drawn into a PNG) are in
-`engine/command/src/vfx.cpp`. `examples/vfx-effects` blows up a barrel yard and slashes in 2D.
+`engine/command/src/vfx.cpp`. `examples/vfx-effects` blows up a barrel yard and slashes in 2D. Simulation stages run
+over CPU particles, after Niagara's: a `ParticleSimulation3D` or `ParticleSimulation2D` beside a
+`CPUParticles3D` or `CPUParticles2D` (`slash/world/particle_sim.hpp`,
+`engine/world/src/particle_sim.cpp`, built with `-ffp-contract=off`: `NeighborIndex` sorts points
+along a Morton curve, no grid; `curl_noise`; `run_stages` flocks, swirls, limits, collides through
+a `SimInputs::contact` callback, works out attributes as `Expression`s and fires events) is run by
+the `particle_simulation_3d` and `particle_simulation_2d` systems (priority 1105, in
+`engine/scene3d/src/particles.cpp` and `engine/canvas/src/particles.cpp`) over the emitters'
+slots, colliding with `GPUParticlesCollision*3D`s (`scene3d::particle_surroundings_3d`), what the
+current camera sees (`camera_depth_view`, `particle_depth_contact`) or 2D occluders
+(`canvas::particle_collision_shapes`), and spawning events' particles into other emitters as
+extra slots. `examples/particle-simulation` flocks fireflies and settles sand.
 
 ## Job system
 

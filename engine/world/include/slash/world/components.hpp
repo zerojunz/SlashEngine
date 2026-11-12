@@ -3269,6 +3269,98 @@ struct CameraShake {
 };
 SLASH_COMPONENT(CameraShake, strength, frequency, radius, enabled)
 
+// A value each particle of a simulation carries, as Niagara's particle attributes: an Expression
+// over the particle (age, life, lifetime, speed, x, y, z, vx, vy, vz, neighbors, collided,
+// index, random, time and the attributes before it), worked out when the particle starts or,
+// with every_tick, each tick. "size" scales the particle, "alpha" fades it and "kill" above 0.5
+// ends it.
+struct ParticleAttribute {
+    std::string name;
+    std::string value; // an Expression, without the "="
+    bool every_tick = false;
+
+    friend bool operator==(const ParticleAttribute&, const ParticleAttribute&) = default;
+};
+SLASH_REFLECT(ParticleAttribute, name, value, every_tick)
+
+// What a simulation does when something happens to a particle, as Niagara's event handlers: on
+// "collision", "death" or "location" (being in the region, a box in 3D or a rect in 2D, in the
+// world), it starts count particles (each at chance) in the CPU particles emitter named by
+// spawn, where the particle is, with inherit_velocity of its velocity and a push of speed in
+// any direction, ends the particle with kill and, with a name, emits a "particle_event" world
+// event (at most 8 an emitter a tick).
+struct ParticleEventRule {
+    std::string on = "death";
+    std::string spawn;
+    std::string name;
+    Vec3 region_position;
+    Vec3 region_size;
+    int count = 1;
+    float chance = 1.0F;
+    float inherit_velocity = 0.0F;
+    float speed = 0.0F;
+    bool kill = false;
+
+    friend bool operator==(const ParticleEventRule&, const ParticleEventRule&) = default;
+};
+SLASH_REFLECT(ParticleEventRule, on, spawn, name, region_position, region_size, count, chance,
+              inherit_velocity, speed, kill)
+
+// Simulation stages over a CPU particles emitter on the same entity, after Unreal's Niagara
+// (Godot has none): the particles flock by their neighbors (found by sorting them along a
+// Morton curve, no grid), swirl in curl noise, slow by drag, keep between speed limits, collide
+// with the scene, carry attributes and start other particles by events. The same stages run in
+// 2D and 3D.
+struct ParticleSimulation {
+    std::string collide = "none";
+    std::string response = "bounce";
+    std::vector<ParticleAttribute> attributes;
+    std::vector<ParticleEventRule> events;
+    float neighbor_radius = 0.0F; // 0: no neighbor stage
+    float separation = 0.0F;
+    float cohesion = 0.0F;
+    float alignment = 0.0F;
+    float min_speed = 0.0F;
+    float max_speed = 0.0F; // 0: no limit
+    float drag = 0.0F;
+    float curl_strength = 0.0F;
+    float curl_scale = 1.0F;
+    float curl_speed = 0.0F;
+    float collision_radius = 0.05F;
+    float bounce = 0.3F;
+    float friction = 0.2F;
+    float depth_thickness = 0.5F;
+    float attractors = 0.0F; // 3D: how much GPUParticlesAttractor3Ds push the particles
+    int max_neighbors = 16;
+    bool enabled = true;
+
+    friend bool operator==(const ParticleSimulation&, const ParticleSimulation&) = default;
+};
+
+// Simulation stages over the entity's CPUParticles3D, in meters: it collides with
+// GPUParticlesCollision3Ds ("colliders"), with what the current Camera3D sees ("depth") or both.
+struct ParticleSimulation3D : ParticleSimulation {
+    friend bool operator==(const ParticleSimulation3D&, const ParticleSimulation3D&) = default;
+};
+SLASH_COMPONENT(ParticleSimulation3D, enabled, neighbor_radius, max_neighbors, separation, cohesion,
+                alignment, min_speed, max_speed, drag, curl_strength, curl_scale, curl_speed,
+                attractors, collide, response, collision_radius, bounce, friction, depth_thickness,
+                attributes, events)
+
+// Simulation stages over the entity's CPUParticles2D, in pixels: it collides with
+// LightOccluder2Ds and tile occluders with sdf_collision ("occluders").
+struct ParticleSimulation2D : ParticleSimulation {
+    ParticleSimulation2D() {
+        collision_radius = 2.0F;
+        curl_scale = 64.0F;
+    }
+
+    friend bool operator==(const ParticleSimulation2D&, const ParticleSimulation2D&) = default;
+};
+SLASH_COMPONENT(ParticleSimulation2D, enabled, neighbor_radius, max_neighbors, separation, cohesion,
+                alignment, min_speed, max_speed, drag, curl_strength, curl_scale, curl_speed,
+                collide, response, collision_radius, bounce, friction, attributes, events)
+
 // A part of a large world kept in a scene file of its own, loaded while a StreamingSource3D is
 // near it and unloaded when they have all gone, as Unreal's World Partition streams its cells.
 // Godot has none. The scene's root becomes the entity "<id>_scene", placed under this one.

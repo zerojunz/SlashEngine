@@ -686,6 +686,20 @@ public:
         return out;
     }
 
+    // Every shape, in the world canvas's coordinates.
+    [[nodiscard]] std::vector<render::ParticleShape> all() {
+        if (assets_ == nullptr) {
+            return {};
+        }
+        gather();
+        std::vector<render::ParticleShape> out;
+        out.reserve(shapes_.size());
+        for (const Shape& shape : shapes_) {
+            out.push_back(shape.shape);
+        }
+        return out;
+    }
+
 private:
     struct Shape {
         render::ParticleShape shape;
@@ -1315,6 +1329,13 @@ std::vector<render::Particle> simulate(const GPUParticles2D& settings,
         *trails = live_trails(all, order, phase, emitter.trail);
     }
     return live_particles(all, order, phase, emitter.trail);
+}
+
+std::vector<render::ParticleShape> particle_collision_shapes(const world::World& world,
+                                                             const world::Tree2D& tree,
+                                                             asset::Assets* assets) {
+    Colliders colliders(world, tree, assets);
+    return colliders.all();
 }
 
 } // namespace slash::canvas

@@ -145,6 +145,7 @@ add_executable(slash_tests
     test_particle_compute_3d.cpp
     test_particles.cpp
     test_gpu_particles_3d.cpp
+    test_particle_sim.cpp
     test_particles_3d.cpp
     test_path.cpp
     test_path_trace.cpp

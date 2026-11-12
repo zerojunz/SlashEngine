@@ -7,6 +7,7 @@
 #include "slash/render/particles.hpp"
 #include "slash/render/particles3d.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/tree2d.hpp"
 #include "slash/world/world.hpp"
 
 #include <cstdint>
@@ -215,5 +216,13 @@ live_particles(std::span<const render::Particle> particles, render::ParticleOrde
 [[nodiscard]] std::vector<ParticleTrail> live_trails(std::span<const render::Particle> particles,
                                                      render::ParticleOrder order, double phase,
                                                      std::uint32_t trail);
+
+// What GPU particles collide with in a world, as each emitter's steps take it: the outlines of
+// LightOccluder2Ds with sdf_collision and of tile occluders in occlusion layers with it, in
+// visible canvases, in the world canvas's coordinates, in the order they are stored. CPU
+// particles' simulation stages collide with them too.
+[[nodiscard]] std::vector<render::ParticleShape>
+particle_collision_shapes(const world::World& world, const world::Tree2D& tree,
+                          asset::Assets* assets);
 
 } // namespace slash::canvas
