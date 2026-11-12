@@ -1353,6 +1353,18 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         smoke and water surfaces); `.fluid.json` recipes, `fluid.place`, `fluid.state`,
         `fluid.preview` and `fluid.check` (volume kept, particle and step budgets), and the VFX
         tool's effects can emit fluids
+    - [x] The solver in 3D and 2D: `.fluid.json` recipes (liquids and gases, `extends`,
+          budgets), `Fluid3D`/`Fluid2D` with emitters and sinks, position-based liquids, gases
+          that rise, burn, cool and swirl, neighbors along a Morton curve, collision with and
+          pushes on 3D and 2D bodies, wind on gases, the same bits on any number of threads;
+          `fluid.place`, `fluid.pour`, `fluid.state` and `fluid.check`; particles drawn as
+          discs (`examples/fluids`)
+    - [ ] Screen-space liquid surfaces (splatted depth, smoothed, refracted, foam and spray)
+          and lit, self-shadowed smoke splats; `fluid.preview`
+    - [ ] Oceans, lakes and rivers as Gerstner waves with shorelines, foam, wakes and
+          buoyancy, coupled to the particles
+    - [ ] VFX effects emitting fluids, physics fields and the other tools' bodies as emitters,
+          sinks and colliders
 20. [ ] Character anatomy and faces: the character tool's skeleton made whole and a face tool, after
         MetaHuman Creator and Chaos Flesh: Godot's full humanoid profile (fingers, eyes and
         jaw) with twist bones, so hands grip and faces open; an anatomical layer of bones

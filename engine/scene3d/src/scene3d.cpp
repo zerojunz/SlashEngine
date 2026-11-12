@@ -15,6 +15,7 @@
 #include "slash/scene3d/cluster_streaming.hpp"
 #include "slash/scene3d/csg.hpp"
 #include "slash/scene3d/flesh.hpp"
+#include "slash/scene3d/fluid.hpp"
 #include "slash/scene3d/fracture.hpp"
 #include "slash/scene3d/gpu_particles.hpp"
 #include "slash/scene3d/gridmap.hpp"
@@ -2833,14 +2834,17 @@ constexpr std::string_view kHairShells = "made:hair/shells";
 void Renderer::hair_mesh(const std::string& key, entt::entity entity,
                          std::span<const render::Vertex3D> vertices,
                          std::span<const std::uint32_t> indices, const render::Material3D& material,
-                         std::uint32_t layers, render::ShadowCasting casting) {
+                         std::uint32_t layers, render::ShadowCasting casting,
+                         std::string_view where) {
     if (vertices.empty() || indices.empty()) {
         return;
     }
     if (vertices.size() > render::kMaxMeshVertices || indices.size() > render::kMaxMeshIndices) {
-        problems_.push_back({entity, "/components/HairInstance3D/groom",
-                             "the groom makes too many corners to draw; lower its density, "
-                             "max_strands, segments or shell_count"});
+        problems_.push_back({entity, std::string(where),
+                             where.starts_with("/components/HairInstance3D")
+                                 ? "the groom makes too many corners to draw; lower its density, "
+                                   "max_strands, segments or shell_count"
+                                 : "too many corners to draw"});
         return;
     }
     ParticleMesh& kept = particle_meshes_[key];
@@ -2852,15 +2856,14 @@ void Renderer::hair_mesh(const std::string& key, entt::entity entity,
     if (kept.id == render::MeshId::None) {
         auto created = device_->create_mesh(vertices, indices);
         if (!created) {
-            problems_.push_back(
-                {entity, "/components/HairInstance3D/groom", created.error().message});
+            problems_.push_back({entity, std::string(where), created.error().message});
             particle_meshes_.erase(key);
             return;
         }
         kept.id = created.value();
         kept.vertices = vertices.size();
     } else if (auto updated = device_->update_mesh(kept.id, vertices); !updated) {
-        problems_.push_back({entity, "/components/HairInstance3D/groom", updated.error().message});
+        problems_.push_back({entity, std::string(where), updated.error().message});
         return;
     }
     Draw draw;
@@ -2972,6 +2975,56 @@ void Renderer::add_hair(const world::World& world, const world::Tree3D& tree, en
         hair_mesh(prefix + std::to_string(layer), entity, vertices, growth.section->indices, made,
                   layers, casting);
     }
+}
+
+void Renderer::add_fluid(const world::World& world, entt::entity entity, std::uint32_t cull_mask) {
+    const auto& fluid = world.ecs().get<const world::Fluid3D>(entity);
+    if (!fluid.visible || (fluid.layers & cull_mask) == 0) {
+        return;
+    }
+    const world::FluidParticles* particles = world::fluid_particles(world, entity);
+    if (particles == nullptr || particles->size() == 0) {
+        return;
+    }
+    auto loaded = world::load_fluid(world, fluid.recipe, fluid.overrides);
+    if (!loaded) {
+        return; // the fluids system warns
+    }
+    const world::FluidRecipe& recipe = *loaded.value();
+    if (asset::Assets* assets = asset::assets_of(world.ecs());
+        assets != nullptr && !assets->load<render::Image>(kFluidDisc)) {
+        render::Image image = fluid_disc_image();
+        const std::size_t bytes = image.pixels.size();
+        (void)assets->put(kFluidDisc, std::move(image), bytes);
+    }
+    const Vec3f right = to_float(camera_place_.x);
+    const Vec3f up = to_float(camera_place_.y);
+    const auto unit = [](Vec3f v) {
+        const float n = std::sqrt((v.x * v.x) + (v.y * v.y) + (v.z * v.z));
+        return n > 1e-9F ? v * (1.0F / n) : v;
+    };
+    std::vector<render::Vertex3D> vertices;
+    std::vector<std::uint32_t> indices;
+    fluid_quads(recipe, *particles, unit(right), unit(up), to_float(Vec3{} - render_origin_),
+                vertices, indices);
+    world::StandardMaterial3D look;
+    look.vertex_color_use_as_albedo = true;
+    look.albedo_texture = std::string(kFluidDisc);
+    look.cull_mode = "disabled";
+    render::ShadowCasting casting = render::ShadowCasting::Off;
+    if (recipe.gas) {
+        look.transparency = "alpha";
+        look.shading_mode = "unshaded";
+    } else {
+        look.transparency = "alpha_scissor";
+        look.alpha_scissor_threshold = 0.5F;
+        look.roughness = 0.12F;
+        look.metallic_specular = 0.6F;
+        casting = casting_of(fluid.cast_shadow);
+    }
+    const render::Material3D made = material(look, textures_, problems_, entity);
+    hair_mesh("fluid:" + std::to_string(entt::to_integral(entity)), entity, vertices, indices, made,
+              fluid.layers, casting, "/components/Fluid3D");
 }
 
 namespace {
@@ -4231,6 +4284,12 @@ std::optional<Frame3D> Renderer::prepare(
     for (const entt::entity entity : made<world::HairInstance3D>(world)) {
         if (tree.visible(entity)) {
             add_hair(world, tree, entity, lens.cull_mask, t);
+        }
+    }
+    // Fluid3Ds draw their particles.
+    for (const entt::entity entity : made<world::Fluid3D>(world)) {
+        if (tree.visible(entity)) {
+            add_fluid(world, entity, lens.cull_mask);
         }
     }
     // GPUParticles3Ds run the steps their device hasn't, then draw their draw passes there.

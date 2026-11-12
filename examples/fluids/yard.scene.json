@@ -1,0 +1,55 @@
+{
+  "entities": {
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true
+        },
+        "Transform3D": {
+          "position": [1.0, 1.5, 5.0]
+        }
+      }
+    },
+    "crate": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.2, 0.2, 0.2]
+        },
+        "CollisionShape3D": {
+          "size": [0.2, 0.2, 0.2]
+        },
+        "MeshInstance3D": {},
+        "RigidBody3D": {
+          "mass": 4.0
+        },
+        "Transform3D": {
+          "position": [0.35, 0.1, 0.0]
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "BoxMesh": {
+          "size": [10.0, 0.5, 10.0]
+        },
+        "CollisionShape3D": {
+          "size": [10.0, 0.5, 10.0]
+        },
+        "MeshInstance3D": {},
+        "StaticBody3D": {},
+        "Transform3D": {
+          "position": [0.0, -0.25, 0.0]
+        }
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {},
+        "Transform3D": {
+          "rotation": [-0.8, 0.4, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

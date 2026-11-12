@@ -153,6 +153,7 @@ add_executable(slash_tests
     test_physics3d.cpp
     test_physics_debug.cpp
     test_cloth.cpp
+    test_fluid.cpp
     test_foliage.cpp
     test_hair.cpp
     test_character.cpp

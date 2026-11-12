@@ -63,6 +63,7 @@ add_library(slash_scene3d
     src/particle_collision.cpp
     src/foliage.cpp
     src/gridmap.cpp
+    src/fluid.cpp
     src/hair.cpp
     src/bone_constraints.cpp
     src/ik.cpp

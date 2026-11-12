@@ -228,6 +228,8 @@ void install(world::World& world, const Settings& settings) {
     world::set_hair_source_3d(world, [space](const world::World& /*world*/, entt::entity entity) {
         return space->hair_strands(entity);
     });
+    // Fluids pour round and push its bodies.
+    world::set_fluid_host_3d(world, detail::fluid_host(space));
     world.add_memory_source("physics3d",
                             [space](const world::World& /*world*/) { return space->memory(); });
     world.add_system(

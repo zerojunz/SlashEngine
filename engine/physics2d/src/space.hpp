@@ -5,6 +5,7 @@
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/world/cloth2d.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/fluid.hpp"
 #include "slash/world/hair.hpp"
 #include "slash/world/physics_debug.hpp"
 #include "slash/world/physics_material.hpp"
@@ -455,5 +456,7 @@ void move_character(b2WorldId space, Body& body, world::Transform2D& transform,
 // Breaks the Destructible2Ds this step's impacts broke, settles linked groups and counts down
 // loose pieces' lifetimes, after a step (destruction.cpp).
 void break_and_age_2d(world::World& world, Space& space, float seconds);
+// What fluids collide with and push: the space's shapes (src/fluid.cpp).
+[[nodiscard]] world::FluidHost fluid_host_2d(const std::shared_ptr<Space>& space);
 
 } // namespace slash::physics2d::detail

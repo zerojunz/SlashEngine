@@ -8,6 +8,7 @@
 #include "slash/scene3d/soft_body.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/fluid.hpp"
 #include "slash/world/hair.hpp"
 #include "slash/world/physical_bones.hpp"
 #include "slash/world/physics_debug.hpp"
@@ -827,5 +828,7 @@ void move_character(const Space& space, Body& body, world::Affine3D& transform,
 // After a step (destruction.cpp): breaks the Destructible3Ds the step's impacts reached, and
 // takes away pieces whose lifetime ran out.
 void break_and_age(world::World& world, Space& space, float seconds);
+// What fluids collide with and push: the space's bodies (src/fluid.cpp).
+[[nodiscard]] world::FluidHost fluid_host(const std::shared_ptr<Space>& space);
 
 } // namespace slash::physics3d::detail

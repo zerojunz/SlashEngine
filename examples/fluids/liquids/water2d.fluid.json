@@ -1,0 +1,7 @@
+{
+  "format": 1,
+  "max_particles": 1000,
+  "name": "Water",
+  "particle_radius": 2,
+  "space": "2d"
+}
