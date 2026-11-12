@@ -183,7 +183,8 @@ Apart apart(const Look& a, const Look& b) {
 // A character_rules entry, read from the storyboard.
 struct Rules {
     std::string id;
-    const json::Value* entry = nullptr;
+    // A copy: the storyboard it was read from is gone once the rules are loaded.
+    json::Value entry;
     float silhouette = kDefaultSilhouette;
     float color = kDefaultColor;
     std::optional<double> min_height;
@@ -249,7 +250,7 @@ Result<std::vector<Rules>> load_rules(Session& session) {
         }
         Rules rules;
         rules.id = id;
-        rules.entry = &entry;
+        rules.entry = entry;
         const auto number = [&](std::string_view field) -> std::optional<double> {
             const json::Value* value = entry.find(field);
             if (value == nullptr || !value->is_number()) {
@@ -294,7 +295,7 @@ Result<std::vector<Rules>> load_rules(Session& session) {
 std::vector<const Rules*> rules_for(const std::vector<Rules>& all, std::string_view path) {
     std::vector<const Rules*> out;
     for (const Rules& rules : all) {
-        if (covers(*rules.entry, path)) {
+        if (covers(rules.entry, path)) {
             out.push_back(&rules);
         }
     }
@@ -613,8 +614,12 @@ struct Colors {
         if (!palette.empty()) {
             return palette.at(random.pick(palette.size()));
         }
-        return rounded_color(
-            from_hsv(random.unit(), random.between(0.25F, 0.8F), random.between(0.2F, 0.85F)));
+        // One draw a statement, so every compiler draws them in this order (last first, as the
+        // first recipes were made).
+        const float value = random.between(0.2F, 0.85F);
+        const float saturation = random.between(0.25F, 0.8F);
+        const float hue = random.unit();
+        return rounded_color(from_hsv(hue, saturation, value));
     }
     [[nodiscard]] Vec4 nearest(Vec4 color) const {
         Vec4 best = palette.front();
@@ -641,71 +646,94 @@ world::Garment garment(std::string kind, Vec4 color, std::string material = "clo
     return out;
 }
 
+// The garments of an outfit, each drawn in its own statements: C++ leaves the order of a call's
+// arguments to the compiler, so draws made as arguments would come out in another order on
+// another compiler. They are drawn last first, the order the first recipes were made in.
+struct Wardrobe {
+    Random& random;
+    const Colors& colors;
+    std::vector<world::Garment> out;
+
+    // Puts on `kind`: its looseness and length where their ranges are open, then `other` for
+    // its material with chance `other_chance`, then its color.
+    void wear(std::string kind, std::string material = "cloth",
+              std::array<float, 2> length = {1.0F, 1.0F}, std::array<float, 2> loose = {0.0F, 0.0F},
+              float other_chance = 0.0F, const char* other = nullptr) {
+        const float o = loose[0] == loose[1] ? loose[0] : random.between(loose[0], loose[1]);
+        const float l = length[0] == length[1] ? length[0] : random.between(length[0], length[1]);
+        if (other != nullptr && random.chance(other_chance)) {
+            material = other;
+        }
+        const Vec4 color = colors.cloth(random);
+        out.push_back(garment(std::move(kind), color, std::move(material), l, o));
+    }
+};
+
 // One of a few outfits, in the order garments go on.
 std::vector<world::Garment> outfit(Random& random, const Colors& colors) {
-    std::vector<world::Garment> out;
-    const auto cloth = [&] { return colors.cloth(random); };
+    Wardrobe w{.random = random, .colors = colors, .out = {}};
     const std::size_t kind = random.pick(8);
     const float sleeves = random.between(0.2F, 1.0F);
     switch (kind) {
     case 0:
-        out = {garment("shirt", cloth(), "cloth", sleeves), garment("pants", cloth()),
-               garment("shoes", cloth(), "leather")};
+        w.wear("shirt", "cloth", {sleeves, sleeves});
+        w.wear("pants");
+        w.wear("shoes", "leather");
         break;
     case 1:
-        out = {garment("shirt", cloth(), "cloth", sleeves), garment("pants", cloth()),
-               garment("boots", cloth(), "leather", random.between(0.3F, 1.0F)),
-               garment("jacket", cloth(), random.chance(0.5F) ? "leather" : "cloth", 1.0F,
-                       random.between(0.0F, 0.4F))};
+        w.wear("shirt", "cloth", {sleeves, sleeves});
+        w.wear("pants");
+        w.wear("boots", "leather", {0.3F, 1.0F});
+        w.wear("jacket", "cloth", {1.0F, 1.0F}, {0.0F, 0.4F}, 0.5F, "leather");
         break;
     case 2:
-        out = {garment("dress", cloth(), random.chance(0.4F) ? "silk" : "cloth",
-                       random.between(0.4F, 1.0F), random.between(0.1F, 0.6F)),
-               garment("shoes", cloth(), "leather"), garment("belt", cloth(), "leather")};
+        w.wear("dress", "cloth", {0.4F, 1.0F}, {0.1F, 0.6F}, 0.4F, "silk");
+        w.wear("shoes", "leather");
+        w.wear("belt", "leather");
         break;
     case 3:
-        out = {garment("shirt", cloth()), garment("shoes", cloth(), "leather"),
-               garment("robe", cloth(), "cloth", random.between(0.6F, 1.0F),
-                       random.between(0.2F, 0.7F)),
-               garment("belt", cloth(), "leather")};
+        w.wear("shirt");
+        w.wear("shoes", "leather");
+        w.wear("robe", "cloth", {0.6F, 1.0F}, {0.2F, 0.7F});
+        w.wear("belt", "leather");
         if (random.chance(0.5F)) {
-            out.push_back(garment("hood", cloth()));
+            w.wear("hood");
         }
         break;
     case 4:
-        out = {garment("shirt", cloth()), garment("pants", cloth()),
-               garment("boots", cloth(), "metal", random.between(0.5F, 1.0F)),
-               garment("gloves", cloth(), "leather", random.between(0.2F, 1.0F)),
-               garment("armor", cloth(), "metal")};
+        w.wear("shirt");
+        w.wear("pants");
+        w.wear("boots", "metal", {0.5F, 1.0F});
+        w.wear("gloves", "leather", {0.2F, 1.0F});
+        w.wear("armor", "metal");
         if (random.chance(0.5F)) {
-            out.push_back(garment("helmet", cloth(), "metal"));
+            w.wear("helmet", "metal");
         }
         break;
     case 5:
-        out = {garment("shirt", cloth()), garment("pants", cloth()),
-               garment("boots", cloth(), "leather", random.between(0.3F, 1.0F)),
-               garment("coat", cloth(), random.chance(0.3F) ? "fur" : "cloth",
-                       random.between(0.4F, 1.0F), random.between(0.1F, 0.5F)),
-               garment("scarf", cloth(), "cloth", random.between(0.3F, 1.0F))};
+        w.wear("shirt");
+        w.wear("pants");
+        w.wear("boots", "leather", {0.3F, 1.0F});
+        w.wear("coat", "cloth", {0.4F, 1.0F}, {0.1F, 0.5F}, 0.3F, "fur");
+        w.wear("scarf", "cloth", {0.3F, 1.0F});
         if (random.chance(0.5F)) {
-            out.push_back(garment("hat", cloth(), "cloth", random.between(0.0F, 1.0F)));
+            w.wear("hat", "cloth", {0.0F, 1.0F});
         }
         break;
     case 6:
-        out = {garment("shirt", cloth(), "cloth", random.between(0.0F, 0.4F)),
-               garment("shorts", cloth(), "cloth", random.between(0.2F, 1.0F)),
-               garment("shoes", cloth(), "leather"),
-               garment("hat", cloth(), "cloth", random.between(0.0F, 0.6F))};
+        w.wear("shirt", "cloth", {0.0F, 0.4F});
+        w.wear("shorts", "cloth", {0.2F, 1.0F});
+        w.wear("shoes", "leather");
+        w.wear("hat", "cloth", {0.0F, 0.6F});
         break;
     default:
-        out = {garment("shirt", cloth(), "cloth", sleeves),
-               garment("skirt", cloth(), "cloth", random.between(0.3F, 0.9F),
-                       random.between(0.1F, 0.6F)),
-               garment("boots", cloth(), "leather", random.between(0.3F, 1.0F)),
-               garment("cape", cloth(), "cloth", random.between(0.5F, 1.0F))};
+        w.wear("shirt", "cloth", {sleeves, sleeves});
+        w.wear("skirt", "cloth", {0.3F, 0.9F}, {0.1F, 0.6F});
+        w.wear("boots", "leather", {0.3F, 1.0F});
+        w.wear("cape", "cloth", {0.5F, 1.0F});
         break;
     }
-    return out;
+    return std::move(w.out);
 }
 
 world::CharacterRecipe candidate(Random& random, const json::Value& params, const Colors& colors,
