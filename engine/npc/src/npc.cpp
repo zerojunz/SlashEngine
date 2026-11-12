@@ -9,6 +9,7 @@
 #include "slash/core/jobs.hpp"
 #include "slash/core/log.hpp"
 #include "slash/navigation/navigation.hpp"
+#include "slash/npc/fauna.hpp"
 #include "slash/npc/story.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/tree2d.hpp"
@@ -555,6 +556,7 @@ void install(world::World& world, asset::Assets& assets, const Settings& setting
     state->settings = settings;
     world.ecs().ctx().emplace<std::shared_ptr<State>>(state);
     world.add_reset([state](world::World& /*world*/) { state->warned.clear(); });
+    add_fauna(world);
     world.add_system(
         "npc", [state](world::World& w, double tick_seconds) { step(w, *state, tick_seconds); },
         {.doc = "Runs each NpcAgent's action, then has those due to think choose a goal and plan "

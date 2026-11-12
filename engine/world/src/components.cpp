@@ -1013,6 +1013,53 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("pixels_per_meter", {.doc = "How big it is drawn.", .min = 1.0})
         .describe("flip_h", {.doc = "Faces left instead of right."});
 
+    // The fields of a creature's mind, the same in 3D and 2D.
+    const auto describe_mind = [](ComponentType& type) -> ComponentType& {
+        return type
+            .describe("mind", {.doc = "What it is doing, kept by the fauna system: saving, undo "
+                                      "and replays keep it."})
+            .describe("mind.mode",
+                      {.doc = "What it is doing.",
+                       .choices = {"idle", "grazing", "wandering", "eating", "fleeing", "hunting",
+                                   "attacking", "following", "ridden", "caught"}})
+            .describe("mind.target", {.doc = "What it flees, hunts, attacks or follows."})
+            .describe("mind.owner", {.doc = "Who tamed it; null while wild."})
+            .describe("mind.rider", {.doc = "Who rides it; null when no one does."})
+            .describe("mind.fed", {.doc = "Feedings toward taming it.", .min = 0})
+            .describe("mind.hunger", {.doc = "From 0 full to 1 starving.", .min = 0.0, .max = 1.0})
+            .describe("mind.timer", {.doc = "Seconds left in what it is doing (an idle pause, "
+                                            "an attack's cooldown)."})
+            .describe("mind.homed", {.doc = "Whether home has been set, at its first tick."})
+            .describe("mind.home", {.doc = "Where it roams around, in meters."})
+            .describe("mind.goal", {.doc = "Where it is heading, in meters."})
+            .describe("mind.velocity", {.doc = "How fast it moves, in meters a second."})
+            .describe("mind.steer", {.doc = "Its rider's or owner's steering, as a direction "
+                                            "in meters; zero for none."})
+            .describe("mind.gait", {.doc = "How far through its stride it is, in cycles, for "
+                                           "its legs and wings."});
+    };
+
+    describe_mind(
+        registry.add<Creature3D>()
+            .set_doc("An animal in 3D behaving as its .creature.json recipe says: it roams, "
+                     "grazes, herds, flees, hunts, eats from hands, can be tamed and ridden. Its "
+                     "MeshInstance3D draws the recipe as a rigged model, whose animations its "
+                     "AnimationPlayer plays as it moves.")
+            .describe("recipe", {.doc = "Project path of the .creature.json file."})
+            .describe("enabled", {.doc = "Behaves when on; off leaves it standing."}));
+
+    describe_mind(
+        registry.add<Creature2D>()
+            .set_doc("An animal in 2D behaving as its .creature.json recipe says: its side-on "
+                     "cut-out's bones are children named <id>_<bone> with a Polygon2D each, "
+                     "posed as it walks, runs, flies or swims.")
+            .describe("recipe", {.doc = "Project path of the .creature.json file."})
+            .describe("pixels_per_meter", {.doc = "How big it is drawn, and how far a meter of "
+                                                  "its recipe's speeds goes.",
+                                           .min = 1.0})
+            .describe("flip_h", {.doc = "Faces left instead of right; set as it turns."})
+            .describe("enabled", {.doc = "Behaves when on; off leaves it standing."}));
+
     registry.add<Foliage2D>()
         .set_doc("Painted 2D plants and rocks: each group's instances draw their .foliage.json "
                  "type's texture standing on its origin, bend in WindSource2Ds' wind, part for "

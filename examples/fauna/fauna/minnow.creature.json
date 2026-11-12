@@ -1,0 +1,18 @@
+{
+  "behavior": {
+    "herd": true,
+    "herd_radius": 2,
+    "run_speed": 2,
+    "walk_speed": 0.6
+  },
+  "body": {
+    "height": 0.1,
+    "length": 0.3
+  },
+  "format": 1,
+  "kind": "fish",
+  "look": {
+    "pattern": "stripes"
+  },
+  "name": "Minnow"
+}

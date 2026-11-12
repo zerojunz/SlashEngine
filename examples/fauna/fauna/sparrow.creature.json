@@ -1,0 +1,18 @@
+{
+  "behavior": {
+    "altitude": 4,
+    "herd": true,
+    "herd_radius": 3,
+    "temperament": "timid"
+  },
+  "body": {
+    "height": 0.12,
+    "length": 0.16
+  },
+  "format": 1,
+  "kind": "bird",
+  "look": {
+    "coat": [0.5, 0.35, 0.2]
+  },
+  "name": "Sparrow"
+}
