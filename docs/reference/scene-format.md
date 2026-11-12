@@ -5286,6 +5286,7 @@ GDC 2006); Godot has nothing of the kind. An `NpcAgent` names a `.npc.json` brai
   `do`: `{"wait": seconds}`, `{"go_to": "<entity ID>"}` (with an optional `speed`) or
   `{"emit": "<event>"}`. With no `do` it ends at once. Its effects apply when it ends.
 - `search_limit`: the most states a plan may look at (default 2048).
+- `extends`: a shared brain this one builds on (see below), `traits` and `routes`.
 
 ```json
 {"format": 1,
@@ -5325,7 +5326,7 @@ it. `facts` holds only the values that differ from the brain's defaults.
 
 | Component | Fields (defaults) |
 | --- | --- |
-| `NpcAgent` | `brain` `""` (a `.npc.json` file), `facts` `{}`, `goal` `""`, `plan` `[]` (the actions left, the running one first), `action_time` `0`, `think_interval` `0.5`, `think_in` `0` (seconds until it thinks again), `speed` `2`, `arrive_distance` `0.5`, `enabled` `true` |
+| `NpcAgent` | `brain` `""` (a `.npc.json` file), `facts` `{}`, `goal` `""`, `plan` `[]` (the actions left, the running one first), `action_time` `0`, `think_interval` `0.5`, `think_in` `0` (seconds until it thinks again), `speed` `2`, `arrive_distance` `0.5`, `waypoint` `0` (the next point of the route it follows), `story` null (the entity whose `QuestLog` its `story.<name>` facts read; null for the first in the world), `enabled` `true` |
 
 `scene validate` checks a brain file's facts, names and `do`s, and warns about goals no chain of
 actions reaches from the facts' defaults and actions no plan uses. On a scene, it and exports
@@ -5335,6 +5336,156 @@ for that check. [`npc.plan`](commands.md#npcplan) shows what an agent would choo
 [`npc.draft`](commands.md#npcdraft) has a model write or revise a brain from a brief and the
 storyboard, checked the same way.
 [examples/npc-planner](../../examples/npc-planner/) has two farmers and a guard.
+
+### Shared brains and traits
+
+Each NPC can have a behavior of its own over one its kind shares. A brain with `extends` (a
+`.npc.json` file, by its path in the project) starts from that brain, which may extend another,
+up to 16 deep, and changes it:
+
+- `facts`, `traits` and `routes` add to the shared brain's or replace them by name.
+- `goals` and `actions` change the shared brain's of the same `name` field by field (a goal's
+  `priority`, an action's `do`) or come after them; `"remove": true` drops one.
+
+`traits` are facts no action changes, such as a guard's `"brave": 3`, which goals and needs read
+as any fact: an action whose effects name a trait is an error. Validation reads the shared
+brains and checks the brain with what it extends, saying so in each message; a brain that
+extends itself, through others or not, is an error.
+
+```json
+{"format": 1, "extends": "brains/villager.npc.json",
+ "traits": {"brave": 3},
+ "goals": [{"name": "rest", "priority": 5},
+           {"name": "watch", "priority": 3, "when": {"brave": ">=2"}, "want": {"alert": true}}],
+ "facts": {"alert": false},
+ "actions": [{"name": "beg", "remove": true}, {"name": "look", "effects": {"alert": true}}]}
+```
+
+### Daily schedules and routes
+
+The npc clock (project.json's [`npc`](project-format.md): `day_seconds` a day, from
+`start_hour`) counts the world's ticks, so it repeats with them. A brain's facts named `hour`
+(0 to 23) and `day` (from 0) are the clock's: goals read them to keep a schedule, they are never
+stored in an agent's `facts`, and `npc::set_fact` can't change them. A list of conditions on one
+fact must all hold, so `"hour": [">=8", "<20"]` is from 8 to 20 o'clock:
+
+```json
+{"format": 1,
+ "facts": {"hour": 0, "patrolled": false},
+ "routes": {"round": {"points": ["gate", "well"], "closed": true}},
+ "goals": [{"name": "patrol", "when": {"hour": [">=8", "<20"]}, "want": {"patrolled": true}},
+           {"name": "rest", "when": {"hour": ">=20"}, "want": {"patrolled": false}}],
+ "actions": [{"name": "walk_round", "effects": {"patrolled": true},
+              "do": {"follow_route": "round"}},
+             {"name": "go_to_bed", "effects": {"patrolled": false}, "do": {"go_to": "bed"}}]}
+```
+
+`routes` names walks: `points`, each an entity ID or a place (`[x, y]` in a 2D world, `[x, y, z]`
+in 3D), and whether it is `closed`, coming back to its first point at the end. `{"follow_route":
+"<name>"}` (with an optional `speed`) walks them in order from the agent's `waypoint`, along its
+navigation agent's path as `go_to` does, and ends at the last; `waypoint` starts again at 0. A
+`follow_route` naming a route the brain lacks is an error.
+
+### Story facts
+
+A brain's facts named `story.<name>` are the story's: the facts of the `QuestLog` its agent's
+`story` names, else of the first `QuestLog` in the world (usually the player's). NPCs read them
+as any fact and, when an action ends, write back what it changed, moving quests on, so a smith
+who forges once a sword is ordered finishes the player's quest. `npc::set_fact` on a story fact
+sets it in the log.
+
+## Quests
+
+A `.quest.json` file (`slash-cli schema quest`) is a questline over story facts. A `QuestLog`
+component (usually on the player) holds the facts by name and the quests it has; the `quests`
+system (priority 966, after the npc system) moves each active quest on, and
+[`quest.set`](commands.md#questset) and `npc::set_story_fact` move it at once.
+
+- `title` and `summary`, as the journal shows them.
+- `start_when`: conditions under which a quest waiting in a `QuestLog` (one listed with the state
+  `waiting`) starts. [`quest.start`](commands.md#queststart), `npc::start_quest` and a
+  dialogue's `start_quest` start one at once.
+- `external`: facts the game's code sets, which `quest.check` counts as able to take any value.
+- `stages`: the quest starts at the first. Each has an `id`, `journal` text shown once it is
+  reached, `objectives` (an `id`, `text`, conditions `when` it is met, which stay met once they
+  are, and `optional`), `fail_when` (conditions that fail the quest at this stage), `rewards`
+  (effects on facts, as an action's) and `next`: a stage's ID, or branches
+  `{"when": {...}, "stage": "<id>"}` tried in order, the first that holds taken (one without
+  `when` always holds; with none holding the quest waits). Without `next` the quest goes on to
+  the next stage in the file, or succeeds after the last. A stage whose required objectives are
+  met applies its rewards, then goes on.
+- An `end` stage (`"success"` or `"failure"`) finishes the quest when reached and has no
+  objectives, rewards, `fail_when` or `next`.
+
+```json
+{"format": 1, "title": "The lost lamb", "start_when": {"met_mira": true},
+ "external": ["lamb_found", "wolf_seen", "kept_lamb"],
+ "stages": [
+   {"id": "find", "journal": "Mira's lamb ran off into the hills.",
+    "objectives": [{"id": "search", "text": "Find the lamb", "when": {"lamb_found": true}},
+                   {"id": "wolf", "text": "Spot the wolf", "when": {"wolf_seen": true},
+                    "optional": true}],
+    "next": [{"when": {"kept_lamb": true}, "stage": "thief"}, {"stage": "return"}]},
+   {"id": "return", "journal": "I found the lamb.",
+    "objectives": [{"id": "give", "text": "Bring it to Mira", "when": {"lamb_returned": true}}],
+    "rewards": {"coins": "+5"}},
+   {"id": "thanks", "journal": "Mira was overjoyed.", "end": "success"},
+   {"id": "thief", "journal": "I kept the lamb.", "end": "failure"}]}
+```
+
+The system emits, about the log's entity, `quest_started` (`quest`), `quest_stage_changed`
+(`quest`, `stage`, `previous`), `quest_objective_done` (`quest`, `stage`, `objective`) and
+`quest_finished` (`quest`, `result`: `succeeded` or `failed`). Titles, journal text and
+objectives are translated (`l10n::tr`) when [`quest.state`](commands.md#queststate) or
+`npc::quests_of` show them, and `l10n.extract` collects them.
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `QuestLog` | `quests` `{}` (by `.quest.json` path: `state` `"waiting"`, `"active"`, `"succeeded"` or `"failed"`, the `stage` it is at, the stages `reached` and the objectives `done` in it), `facts` `{}` (the story's facts by name; a fact not here is 0), `enabled` `true` |
+
+## Dialogue
+
+A `.dialogue.json` file (`slash-cli schema dialogue`) is a conversation an NPC has with a
+listener, usually the player. `start` is the first line's ID or branches
+`{"when": {...}, "line": "<id>"}`, and `lines` holds every line by ID: who says it (`speaker`,
+else the speaking entity's ID), its `text`, its `effects` and a `start_quest`, then either
+`choices` or `next` (an ID or branches; without it the conversation ends). Each choice has the
+`text` the listener says, conditions `when` it is shown, its `effects`, a `start_quest` and its
+`next`. Conditions and effects name the listener's story facts, or as `self.<name>` the speaking
+NPC's own facts, so what an NPC was told changes its plans.
+
+```json
+{"format": 1,
+ "start": [{"when": {"lamb_found": true}, "line": "found"}, {"line": "hello"}],
+ "lines": {
+   "hello": {"speaker": "Mira", "text": "Have you seen my lamb?",
+             "choices": [{"text": "I'll look for her.", "effects": {"met_mira": true},
+                          "start_quest": "quests/lamb.quest.json", "next": "hope"},
+                         {"text": "Not now.", "next": "bye"}]},
+   "hope": {"speaker": "Mira", "text": "Thank you!", "effects": {"self.hopeful": true}},
+   "found": {"speaker": "Mira", "text": "My lamb!", "effects": {"lamb_returned": true}},
+   "bye": {"speaker": "Mira", "text": "Oh."}}}
+```
+
+A `Conversation` component on the listener keeps where it is. Reaching a line applies its
+effects and starts its quest; choosing applies the choice's. Speakers, lines and choices are
+translated as they are shown ([`dialogue.state`](commands.md#dialoguestate),
+`npc::current_line`). `npc::start_dialogue` and `npc::advance_dialogue` (and
+[`dialogue.start`](commands.md#dialoguestart) and [`dialogue.choose`](commands.md#dialoguechoose))
+run it, emitting `dialogue_line` (`dialogue`, `line`, `speaker`) and `dialogue_ended` (`dialogue`,
+`line`) about the listener. A line with both `choices` and `next`, and a `next` or `start` naming
+a line the file lacks, are errors.
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `Conversation` | `dialogue` `""` (the `.dialogue.json` file; empty when not talking), `line` `""`, `speaker` null, `said` `[]` (the lines said, in order) |
+
+[`quest.check`](commands.md#questcheck), which `test.run` runs, checks the quests and dialogue
+together from every value any file sets each fact to: quests that can't start or be finished,
+stages and lines nothing reaches, objectives and choices that never hold. `scene validate` and
+`scene format` take both kinds of file, and exports ship them.
+[examples/npc-stories](../../examples/npc-stories/) has a village with a questline, a
+conversation in two languages and watchmen on their rounds in 2D and 3D.
 
 ## Particles
 

@@ -9,6 +9,7 @@
 #include "slash/core/text.hpp"
 #include "slash/l10n/locale.hpp"
 #include "slash/l10n/translation.hpp"
+#include "slash/npc/story.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/world/scene.hpp"
 
@@ -489,6 +490,44 @@ Reply l10n_extract(Session& session, const json::Value& params) {
     return Reply::success(std::move(out));
 }
 
+// A .quest.json or .dialogue.json file's text: titles, journal entries, objectives, lines,
+// speakers and choices, which the npc module shows through tr.
+void collect_story(const json::Value& document, const std::string& file, Collector& out) {
+    const auto add = [&](const json::Value* value) { out.add({}, text_of(value), {}, file); };
+    if (file.ends_with(npc::kQuestSuffix)) {
+        add(member(&document, "title"));
+        add(member(&document, "summary"));
+        const json::Value* stages = member(&document, "stages");
+        if (stages == nullptr || !stages->is_array()) {
+            return;
+        }
+        for (const json::Value& stage : stages->as_array()) {
+            add(member(&stage, "journal"));
+            const json::Value* objectives = member(&stage, "objectives");
+            if (objectives != nullptr && objectives->is_array()) {
+                for (const json::Value& objective : objectives->as_array()) {
+                    add(member(&objective, "text"));
+                }
+            }
+        }
+        return;
+    }
+    const json::Value* lines = member(&document, "lines");
+    if (lines == nullptr || !lines->is_object()) {
+        return;
+    }
+    for (const auto& [id, line] : lines->as_object()) {
+        add(member(&line, "speaker"));
+        add(member(&line, "text"));
+        const json::Value* choices = member(&line, "choices");
+        if (choices != nullptr && choices->is_array()) {
+            for (const json::Value& choice : choices->as_array()) {
+                add(member(&choice, "text"));
+            }
+        }
+    }
+}
+
 } // namespace
 
 std::vector<ExtractedMessage> extract_messages(Session& session) {
@@ -500,6 +539,14 @@ std::vector<ExtractedMessage> extract_messages(Session& session) {
     }
     const std::string& open = session.scene_path();
     for (const std::string& file : files.value()) {
+        if (file.ends_with(npc::kQuestSuffix) || file.ends_with(npc::kDialogueSuffix)) {
+            if (const std::optional<std::string> text = read_text(session, file); text) {
+                if (auto parsed = json::parse(*text); parsed) {
+                    collect_story(parsed.value(), file, out);
+                }
+            }
+            continue;
+        }
         if (!file.ends_with(world::kSceneSuffix) && !file.ends_with(world::kPrefabSuffix)) {
             continue;
         }

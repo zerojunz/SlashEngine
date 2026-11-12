@@ -131,6 +131,7 @@ add_executable(slash_tests
     test_websocket.cpp
     test_navigation.cpp
     test_npc.cpp
+    test_npc_stories.cpp
     test_net.cpp
     test_occlusion.cpp
     test_openxr.cpp

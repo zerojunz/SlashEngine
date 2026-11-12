@@ -423,6 +423,18 @@ Reply test_run(Session& session, const json::Value& params) {
         }
     }
 
+    // And the quests and dialogue: every quest finishes and every line is reached.
+    if (paths == nullptr && wanted.empty() && session.commands().find("quest.check") != nullptr) {
+        Reply checked = session.call("quest.check", json::Object{});
+        if (!checked.ok) {
+            failed.push_back(file_failure("quests", "", checked.message));
+        } else if (json::Value* errors = checked.value.find("errors"); errors != nullptr) {
+            for (json::Value& error : errors->as_array()) {
+                failed.push_back(std::move(error));
+            }
+        }
+    }
+
     // And the translations, once the project lists some.
     if (paths == nullptr && wanted.empty() &&
         !l10n::settings(session.world()).translations.empty()) {
@@ -569,7 +581,7 @@ void register_test_commands(Registry& registry) {
                        "and returns only the checks that failed: a step's command failing, its "
                        "reply not holding what it expects, or a warning or error logged. With no "
                        "paths, runs every test file, storyboard.check, style.check, "
-                       "soundtrack.check and l10n.check.",
+                       "soundtrack.check, quest.check and l10n.check.",
         .capabilities = {Capability::Run, Capability::Filesystem},
         .effect = Effect::Read,
         .params =

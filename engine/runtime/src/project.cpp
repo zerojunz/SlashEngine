@@ -817,6 +817,7 @@ json::Value project_schema() {
     properties["physics_3d"] = physics3d::settings_schema();
     properties["navigation_2d"] = navigation::settings_schema(navigation::Map::TwoD);
     properties["navigation_3d"] = navigation::settings_schema(navigation::Map::ThreeD);
+    properties["npc"] = npc::settings_schema();
     json::Value gui;
     gui["type"] = "object";
     gui["additionalProperties"] = false;
@@ -1057,6 +1058,9 @@ Result<Project> parse_project(const json::Value& project) {
     }
     if (const json::Value* icon = project.find("icon"); icon != nullptr) {
         out.icon = icon->as_string();
+    }
+    if (const json::Value* settings = project.find("npc"); settings != nullptr) {
+        out.npc = npc::parse_settings(*settings);
     }
     if (const json::Value* window = project.find("window"); window != nullptr) {
         if (const json::Value* width = window->find("width"); width != nullptr) {

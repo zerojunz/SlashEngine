@@ -1,0 +1,46 @@
+{
+  "actions": [
+    {
+      "do": {
+        "wait": 1
+      },
+      "effects": {
+        "tired": false
+      },
+      "name": "sleep"
+    },
+    {
+      "do": {
+        "wait": 1
+      },
+      "effects": {
+        "fed": true
+      },
+      "name": "eat"
+    }
+  ],
+  "facts": {
+    "fed": true,
+    "tired": false
+  },
+  "format": 1,
+  "goals": [
+    {
+      "name": "eat",
+      "priority": 2,
+      "want": {
+        "fed": true
+      }
+    },
+    {
+      "name": "rest",
+      "priority": 1,
+      "want": {
+        "tired": false
+      },
+      "when": {
+        "tired": true
+      }
+    }
+  ]
+}
