@@ -1918,7 +1918,7 @@ struct RigidBody2D {
     float bounce = 0.0F;
     std::string physics_material_override; // a .physics_material.json file; its values win
     float mass = 1.0F;
-    float inertia = 0.0F; // 0 computes it from the shapes and the mass
+    float inertia = 0.0F;                     // 0 computes it from the shapes and the mass
     std::string center_of_mass_mode = "auto"; // "auto": the shapes'; "custom": center_of_mass
     Vec2 center_of_mass;                      // pixels, in the body's space
     float gravity_scale = 1.0F;
@@ -1940,10 +1940,9 @@ struct RigidBody2D {
 };
 SLASH_COMPONENT(RigidBody2D, collision_layer, collision_mask, friction, bounce,
                 physics_material_override, mass, inertia, center_of_mass_mode, center_of_mass,
-                gravity_scale, linear_velocity,
-                angular_velocity, linear_damp_mode, linear_damp, angular_damp_mode, angular_damp,
-                constant_force, constant_torque, lock_rotation, freeze, freeze_mode, continuous_cd,
-                can_sleep, sleeping, contact_monitor)
+                gravity_scale, linear_velocity, angular_velocity, linear_damp_mode, linear_damp,
+                angular_damp_mode, angular_damp, constant_force, constant_torque, lock_rotation,
+                freeze, freeze_mode, continuous_cd, can_sleep, sleeping, contact_monitor)
 
 // A body that gameplay code moves by setting its velocity, as Godot's CharacterBody2D: each tick
 // the physics step runs move_and_slide, sliding it along what it hits, then writes its
@@ -2159,12 +2158,11 @@ struct RigidBody3D {
 };
 SLASH_COMPONENT(RigidBody3D, collision_layer, collision_mask, friction, bounce,
                 physics_material_override, mass, inertia, center_of_mass_mode, center_of_mass,
-                gravity_scale, linear_velocity,
-                angular_velocity, linear_damp_mode, linear_damp, angular_damp_mode, angular_damp,
-                constant_force, constant_torque, lock_rotation, axis_lock_linear_x,
-                axis_lock_linear_y, axis_lock_linear_z, axis_lock_angular_x, axis_lock_angular_y,
-                axis_lock_angular_z, freeze, freeze_mode, continuous_cd, can_sleep, sleeping,
-                contact_monitor)
+                gravity_scale, linear_velocity, angular_velocity, linear_damp_mode, linear_damp,
+                angular_damp_mode, angular_damp, constant_force, constant_torque, lock_rotation,
+                axis_lock_linear_x, axis_lock_linear_y, axis_lock_linear_z, axis_lock_angular_x,
+                axis_lock_angular_y, axis_lock_angular_z, freeze, freeze_mode, continuous_cd,
+                can_sleep, sleeping, contact_monitor)
 
 // A body that gameplay code moves by setting its velocity, as Godot's CharacterBody3D: each tick
 // the physics step runs move_and_slide, sliding it along what it hits, then writes its

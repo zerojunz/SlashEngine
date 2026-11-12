@@ -77,12 +77,12 @@
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/creature.hpp"
-#include "slash/world/vehicle.hpp"
 #include "slash/world/foliage.hpp"
 #include "slash/world/hair.hpp"
 #include "slash/world/physics_material.hpp"
 #include "slash/world/ragdoll.hpp"
 #include "slash/world/scene.hpp"
+#include "slash/world/vehicle.hpp"
 #include "slash/world/world.hpp"
 #include "slash/xr/openxr.hpp"
 

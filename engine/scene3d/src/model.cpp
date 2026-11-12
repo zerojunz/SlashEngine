@@ -8,7 +8,6 @@
 #include "slash/scene3d/blend.hpp"
 #include "slash/scene3d/character.hpp"
 #include "slash/scene3d/creature.hpp"
-#include "slash/scene3d/vehicle.hpp"
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/material.hpp"
@@ -17,6 +16,7 @@
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/scene3d/splats.hpp"
 #include "slash/scene3d/terrain.hpp"
+#include "slash/scene3d/vehicle.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
 
 #include <algorithm>

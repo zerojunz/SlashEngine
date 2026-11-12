@@ -1076,8 +1076,7 @@ void register_physics_3d_components(ComponentRegistry& registry) {
 
     // The fields of a vehicle, the same in 3D and 2D.
     const auto describe_vehicle = [](ComponentType& type) -> ComponentType& {
-        return type
-            .describe("recipe", {.doc = "Project path of the .vehicle.json file."})
+        return type.describe("recipe", {.doc = "Project path of the .vehicle.json file."})
             .describe("enabled", {.doc = "Drives when on; off leaves its wheels free and its "
                                          "engine off."})
             .describe("overrides", {.doc = "A JSON merge patch over the recipe's physics, damage "
@@ -1088,14 +1087,12 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                                             .min = -1.0,
                                             .max = 1.0})
             .describe("controls.brake", {.doc = "From 0 to 1.", .min = 0.0, .max = 1.0})
-            .describe("controls.handbrake", {.doc = "From 0 to 1, on the handbrake's wheels.",
-                                             .min = 0.0,
-                                             .max = 1.0})
-            .describe("controls.steer", {.doc = "From -1 (right) to 1 (left).", .min = -1.0,
-                                         .max = 1.0})
-            .describe("controls.pitch", {.doc = "Aircraft: from -1 (nose down) to 1 (up).",
-                                         .min = -1.0,
-                                         .max = 1.0})
+            .describe("controls.handbrake",
+                      {.doc = "From 0 to 1, on the handbrake's wheels.", .min = 0.0, .max = 1.0})
+            .describe("controls.steer",
+                      {.doc = "From -1 (right) to 1 (left).", .min = -1.0, .max = 1.0})
+            .describe("controls.pitch",
+                      {.doc = "Aircraft: from -1 (nose down) to 1 (up).", .min = -1.0, .max = 1.0})
             .describe("drive", {.doc = "The drivetrain's state, kept by the vehicles system."})
             .describe("drive.gear", {.doc = "-1 reverse, 0 neutral, 1 and up the gears."})
             .describe("drive.rpm", {.doc = "The engine's revolutions a minute."})
@@ -1105,12 +1102,11 @@ void register_physics_3d_components(ComponentRegistry& registry) {
             .describe("drive.speed", {.doc = "Meters a second forward, negative backward."});
     };
 
-    describe_vehicle(
-        registry.add<Vehicle3D>()
-            .set_doc("A vehicle in 3D built from its .vehicle.json recipe, on a RigidBody3D: "
-                     "its own mass, engine, gears, steering, brakes, suspension and tires, or "
-                     "buoyancy and lift, drive it from its controls. Characters sit in its "
-                     "seats, and it pushes, knocks down and hurts what it hits."));
+    describe_vehicle(registry.add<Vehicle3D>().set_doc(
+        "A vehicle in 3D built from its .vehicle.json recipe, on a RigidBody3D: "
+        "its own mass, engine, gears, steering, brakes, suspension and tires, or "
+        "buoyancy and lift, drive it from its controls. Characters sit in its "
+        "seats, and it pushes, knocks down and hurts what it hits."));
 
     describe_vehicle(
         registry.add<Vehicle2D>()
