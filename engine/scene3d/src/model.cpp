@@ -16,6 +16,7 @@
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/scene3d/splats.hpp"
 #include "slash/scene3d/terrain.hpp"
+#include "slash/scene3d/vehicle.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
 
 #include <algorithm>
@@ -915,7 +916,7 @@ bool is_model_path(std::string_view path) {
     return path.ends_with(".gltf") || path.ends_with(".glb") || path.ends_with(".obj") ||
            path.ends_with(".fbx") || path.ends_with(kBlendSuffix) ||
            path.ends_with(kModelRecipeSuffix) || world::is_character_path(path) ||
-           world::is_creature_path(path);
+           world::is_creature_path(path) || world::is_vehicle_path(path);
 }
 
 namespace {
@@ -1213,6 +1214,8 @@ Result<Model> load_model(std::string_view bytes, std::string_view path, const Mo
         model = load_character_model(bytes, read);
     } else if (world::is_creature_path(file)) {
         model = load_creature_model(bytes, read);
+    } else if (world::is_vehicle_path(file)) {
+        model = load_vehicle_model(bytes, read);
     } else if (file.ends_with(".obj")) {
         model = load_obj(bytes, file, read, nullptr);
     } else if (file.ends_with(".fbx")) {
@@ -1237,6 +1240,9 @@ std::vector<json::ValidationError> check_model(std::string_view bytes, std::stri
     }
     if (world::is_creature_path(path)) {
         return check_creature_model(bytes, read);
+    }
+    if (world::is_vehicle_path(path)) {
+        return check_vehicle_model(bytes, read);
     }
     if (path.ends_with(kModelRecipeSuffix) || asset::file_of(path) != path) {
         return check_recipe(bytes, path, read);
@@ -1477,7 +1483,7 @@ void add_asset_types(asset::Assets& assets) {
         "model",
         {".gltf", ".glb", ".obj", ".fbx", std::string(kBlendSuffix),
          std::string(kModelRecipeSuffix), std::string(world::kCharacterSuffix),
-         std::string(world::kCreatureSuffix)},
+         std::string(world::kCreatureSuffix), std::string(world::kVehicleSuffix)},
         [&assets](std::string_view bytes, std::string_view path) {
             return load_model(bytes, path, [&assets](std::string_view file) {
                 return assets.read(file, "model_file");

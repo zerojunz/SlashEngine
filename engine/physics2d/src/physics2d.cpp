@@ -5,6 +5,7 @@
 
 #include "slash/core/assert.hpp"
 #include "slash/physics2d/ragdoll.hpp"
+#include "slash/physics2d/vehicle_tool.hpp"
 
 #include <algorithm>
 #include <array>
@@ -273,6 +274,7 @@ void install(world::World& world, const Settings& settings) {
         {.doc = "Steps 2D physics: moves rigid and character bodies and reports contacts.",
          .priority = 950});
     add_ragdoll_systems(world);
+    add_vehicle_system(world);
 }
 
 void set_settings(world::World& world, const Settings& settings) {

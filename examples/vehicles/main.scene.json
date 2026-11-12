@@ -1,0 +1,47 @@
+{
+  "entities": {
+    "camera": {
+      "components": {
+        "Camera3D": {"current": true},
+        "Transform3D": {"position": [0.0, 4.0, -12.0], "rotation": [-0.2, 3.14159, 0.0]}
+      }
+    },
+    "driver": {
+      "components": {
+        "CharacterBody3D": {},
+        "CollisionShape3D": {"shape": "capsule", "radius": 0.3, "height": 1.8},
+        "Transform3D": {"position": [3.0, 0.9, 0.0]}
+      }
+    },
+    "walker": {
+      "components": {
+        "CharacterBody3D": {},
+        "CollisionShape3D": {"shape": "capsule", "radius": 0.3, "height": 1.8},
+        "Transform3D": {"position": [0.0, 0.9, 24.0]}
+      }
+    },
+    "ground": {
+      "components": {
+        "BoxMesh": {"size": [120.0, 1.0, 400.0]},
+        "CollisionShape3D": {"shape": "box", "size": [120.0, 1.0, 400.0]},
+        "MeshInstance3D": {},
+        "StaticBody3D": {},
+        "Transform3D": {"position": [0.0, -0.5, 100.0]}
+      }
+    },
+    "road_2d": {
+      "components": {
+        "CollisionShape2D": {"size": [4000.0, 40.0]},
+        "StaticBody2D": {},
+        "Transform2D": {"position": [0.0, 420.0]}
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {},
+        "Transform3D": {"rotation": [-0.8, 0.4, 0.0]}
+      }
+    }
+  },
+  "format": 1
+}

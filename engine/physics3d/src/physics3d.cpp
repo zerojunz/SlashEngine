@@ -2,6 +2,7 @@
 
 #include "space.hpp"
 
+#include "slash/physics3d/vehicle_tool.hpp"
 #include "slash/world/hair.hpp"
 #include "slash/world/wind.hpp"
 
@@ -226,6 +227,7 @@ void install(world::World& world, const Settings& settings) {
         {.doc = "Steps 3D physics: moves rigid and character bodies, reports contacts and "
                 "breaks Destructible3Ds hit hard enough.",
          .priority = 950});
+    add_vehicle_system(world);
 }
 
 void set_settings(world::World& world, const Settings& settings) {

@@ -852,6 +852,103 @@ and `rider` when it has them, `fed`, `hunger`, `position` (meters in 3D, pixels 
 {"creature": "deer_1"}
 ```
 
+## Vehicles
+
+Placing, driving, tuning and test-driving [vehicles](scene-format.md#vehicles).
+[examples/vehicles](../../examples/vehicles/).
+
+### vehicle.place
+
+Makes an entity `id` of a `.vehicle.json` recipe in the open scene. `at` of three numbers places
+it in 3D, on the ground: a `Transform3D` turned by `yaw`, a `MeshInstance3D` drawing its model, a
+`RigidBody3D` of its mass and a `Vehicle3D`. Two numbers place it in 2D, seen from the side: a
+`Transform2D`, a `Vehicle2D` at `pixels_per_meter` (default 50), facing -x with `flip_h`, and a
+`RigidBody2D`. The vehicles systems build its wheels on the next tick. Under `parent` when given.
+Returns the `id`, its `components`, its `kind`, its `seats` by name and how many `wheels` it has.
+A recipe that doesn't validate is `-32602` at `/recipe`, a taken `id` at `/id`. Needs: `read`,
+`edit`.
+
+```json
+{"recipe": "vehicles/hatchback.vehicle.json", "id": "car", "at": [0, 0, 0], "yaw": 1.57}
+```
+
+### vehicle.control
+
+Does what gameplay code does with a vehicle. `drive` sets the controls given and keeps the rest:
+`throttle` (-1 reverse to 1), `brake` and `handbrake` (0 to 1), `steer` (-1 right to 1 left) and
+`pitch` (aircraft, -1 nose down to 1 up); it returns the `controls`. `enter` seats `rider` in
+`seat`, or the first free one (the driver's first), as `enter_vehicle` does, and returns the
+`seat`; `exit` stands them beside it and returns `exited`. A taken or unknown seat is `-32602` at
+`/seat`, a rider already riding at `/rider`. Needs: `read`, `edit`.
+
+```json
+{"vehicle": "car", "action": "drive", "throttle": 1, "steer": 0.3}
+```
+
+### vehicle.tune
+
+Tunes one vehicle while it runs: `physics`, `damage` and `design` are merge patches over its
+recipe's (keys as in the `.vehicle.json` file, `null` removing one), merged into its `overrides`
+after `reset` drops the ones before. The recipe with them must still fit the schema, or it is
+`-32602` at the bad value's path (`/physics/gears/ratios/1`). Returns the `overrides` and its
+tuned `physics`' `mass`, `max_torque`, `thrust`, `max_steer`, `brake_force` and `tire_friction`.
+`undo` puts the overrides back. Needs: `read`, `edit`.
+
+```json
+{"vehicle": "car", "physics": {"engine": {"max_torque": 340}, "tires": {"friction": 12}}}
+```
+
+### vehicle.check
+
+Test-drives a vehicle (with its overrides) or a `recipe` (in `space` `"3d"`, the default, or
+`"2d"`) in a private session on flat ground, or open water for a boat, as Unreal's vehicle
+tests do, and holds it to its recipe's `design`: from a standstill at full throttle to 100 km/h
+(`acceleration`, seconds), full brake to a stop from 100 km/h or nine tenths of its top speed
+(`braking_distance`, meters), full throttle until it stops gaining (`top_speed`, meters a
+second), and in 3D the radius of the circle it turns at 5 meters a second with the wheel full
+over (`turning_radius`). Returns each of `measures` as its `value` (`null` when it never got
+there), `range` and whether it is `ok`, whether it `passed` and the `problems`. The open scene
+is untouched. Needs: `read`.
+
+```json
+{"recipe": "vehicles/hatchback.vehicle.json"}
+```
+
+### vehicle.design
+
+Writes a `.vehicle.json` file (`path`) an agent designed: `recipe` is the file's JSON, with its
+body, [`parts`](scene-format.md#vehicles), seats, wheels, physics and `extends`. It is checked as
+the file would be, then test-driven as `vehicle.check` drives it (in `space` `"3d"`, the
+default, or `"2d"` at `pixels_per_meter`), up to `iterations` times (`4`, at most 8), its physics
+fitted after each drive toward the `targets` until every measure is within a tenth of its
+target: `engine.max_torque` (a boat's or aircraft's `thrust`) for `acceleration`, `drag` (a
+boat's `water.drag`) for `top_speed`, lowering `gears.final_drive` where the top gear's rev limit
+is too slow, `brakes.force` for `braking_distance` and `steering.max_angle` (a boat's
+`water.rudder`) for `turning_radius`. Each target becomes a `design` range 15% either side, so
+`vehicle.check` holds it there later. Returns `measures` (`value`, `target`, `ok`), what it
+`fitted` (by path under `physics`), its `test_drives` and whether it `passed`, with `problems`
+when not. Without `targets` it measures and writes the recipe as given. Undo removes or puts back
+the file. Needs: `read`, `edit`, `filesystem`.
+
+```json
+{"path": "vehicles/van.vehicle.json",
+ "recipe": {"format": 1, "name": "Van", "kind": "car", "body": {"length": 4.8, "height": 2},
+            "parts": [{"name": "roof_rack", "position": [0, 2.1, 0], "size": [1.4, 0.1, 2],
+                       "material": "trim"}]},
+ "targets": {"acceleration": 12, "top_speed": 38}}
+```
+
+### vehicle.state
+
+What `vehicle` is doing, or every vehicle by ID: `id`, `recipe`, `gear`, `rpm`, `speed` (meters a
+second forward), `steer` (the wheels' angle), `controls` (`throttle`, `brake`, `steer`),
+`position` (meters in 3D, pixels in 2D) and its `riders` with their `seat`s, in `vehicles`.
+Needs: `read`.
+
+```json
+{"vehicle": "car"}
+```
+
 ## Animations
 
 ### animation.eval
