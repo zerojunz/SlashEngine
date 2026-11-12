@@ -25,8 +25,8 @@ namespace slash::physics2d {
 void add_vehicle_system(world::World& world);
 
 // A Vehicle2D's recipe with its overrides, as the system drives it.
-[[nodiscard]] Result<std::shared_ptr<const world::VehicleRecipe>> vehicle_recipe(
-    const world::World& world, entt::entity vehicle);
+[[nodiscard]] Result<std::shared_ptr<const world::VehicleRecipe>>
+vehicle_recipe(const world::World& world, entt::entity vehicle);
 
 // Seats someone (a CharacterBody2D, or anything with a Transform2D) in a Vehicle2D: in the seat
 // named, or the first free one (the driver's first). Their body stops colliding while they ride.

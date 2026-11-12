@@ -1299,12 +1299,12 @@ TEST_CASE("engine.describe lists systems in the order they run") {
                      {.doc = "Moves things by their velocity."});
     world.add_system("controls", [](world::World& /*w*/, double /*dt*/) {}, {.priority = -1});
     // Every session applies input, network, XR and service events first, streams the world in,
-    // counts the wind's seconds and plays animations, runs ragdolls, drives vehicles, steps 2D and 3D physics,
-    // checks synchronizers' visibility, steps navigation, runs NPCs, moves the camera and parallax,
-    // runs particles, hands over models' replies and plays sound with built-in systems that run
-    // late. The particle systems are threaded: the CPU ones and GPUParticles2D's run at the same
-    // time, and GPUParticles3D's, which loads vector fields' textures as GPUParticles2D's loads its
-    // own, runs after them.
+    // counts the wind's seconds and plays animations, runs ragdolls, drives vehicles, steps 2D and
+    // 3D physics, checks synchronizers' visibility, steps navigation, runs NPCs, moves the camera
+    // and parallax, runs particles, hands over models' replies and plays sound with built-in
+    // systems that run late. The particle systems are threaded: the CPU ones and GPUParticles2D's
+    // run at the same time, and GPUParticles3D's, which loads vector fields' textures as
+    // GPUParticles2D's loads its own, runs after them.
     CHECK(
         *engine.ok("engine.describe").find("systems") ==
         parse(

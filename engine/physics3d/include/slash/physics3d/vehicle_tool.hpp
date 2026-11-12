@@ -23,8 +23,8 @@ namespace slash::physics3d {
 void add_vehicle_system(world::World& world);
 
 // A Vehicle3D's recipe with its overrides, as the system drives it.
-[[nodiscard]] Result<std::shared_ptr<const world::VehicleRecipe>> vehicle_recipe(
-    const world::World& world, entt::entity vehicle);
+[[nodiscard]] Result<std::shared_ptr<const world::VehicleRecipe>>
+vehicle_recipe(const world::World& world, entt::entity vehicle);
 
 // Seats someone (a CharacterBody3D, or anything with a Transform3D) in a vehicle: in the seat
 // named, or the first free one (the driver's first). Their body stops colliding while they ride.

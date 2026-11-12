@@ -1,11 +1,11 @@
 #include "slash/physics2d/physics2d.hpp"
-#include "slash/physics2d/vehicle_tool.hpp"
 
 #include "polygon.hpp"
 #include "space.hpp"
 
 #include "slash/core/assert.hpp"
 #include "slash/physics2d/ragdoll.hpp"
+#include "slash/physics2d/vehicle_tool.hpp"
 
 #include <algorithm>
 #include <array>
