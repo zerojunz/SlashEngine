@@ -2977,7 +2977,8 @@ void Renderer::add_hair(const world::World& world, const world::Tree3D& tree, en
     }
 }
 
-void Renderer::add_fluid(const world::World& world, entt::entity entity, std::uint32_t cull_mask) {
+void Renderer::add_fluid(const world::World& world, entt::entity entity, std::uint32_t cull_mask,
+                         const render::Scene3D& scene) {
     const auto& fluid = world.ecs().get<const world::Fluid3D>(entity);
     if (!fluid.visible || (fluid.layers & cull_mask) == 0) {
         return;
@@ -3003,10 +3004,47 @@ void Renderer::add_fluid(const world::World& world, entt::entity entity, std::ui
         const float n = std::sqrt((v.x * v.x) + (v.y * v.y) + (v.z * v.z));
         return n > 1e-9F ? v * (1.0F / n) : v;
     };
+    const Vec3f shift = to_float(Vec3{} - render_origin_);
+    const std::string key = "fluid:" + std::to_string(entt::to_integral(entity));
     std::vector<render::Vertex3D> vertices;
     std::vector<std::uint32_t> indices;
-    fluid_quads(recipe, *particles, unit(right), unit(up), to_float(Vec3{} - render_origin_),
-                vertices, indices);
+    if (!recipe.gas && recipe.surface) {
+        // One surface, as the camera sees it, lit; spray flies off it as drops.
+        fluid_surface(recipe, *particles,
+                      FluidEye{.eye = camera_place_, .projection = scene.projection}, shift,
+                      vertices, indices);
+        world::StandardMaterial3D look;
+        look.vertex_color_use_as_albedo = true;
+        look.cull_mode = "disabled";
+        look.transparency = "alpha";
+        look.roughness = 0.06F;
+        look.metallic_specular = 0.8F;
+        const render::Material3D made = material(look, textures_, problems_, entity);
+        hair_mesh(key + ":surface", entity, vertices, indices, made, fluid.layers,
+                  render::ShadowCasting::Off, "/components/Fluid3D");
+        fluid_quads(recipe, *particles, unit(right), unit(up), shift, vertices, indices,
+                    [&](std::size_t i) { return world::fluid_is_spray(recipe, *particles, i); });
+    } else if (recipe.gas) {
+        // Smoke lit by the first directional light through the smoke between, over the
+        // ambient light; fire glows by itself.
+        Vec3f toward;
+        float energy = 0.0F;
+        for (const render::Light3D& light : scene.lights) {
+            if (light.type == render::LightType::Directional && light.energy > 0.0F) {
+                toward = {-light.direction[0], -light.direction[1], -light.direction[2]};
+                energy = std::min(light.energy, 2.0F);
+                break;
+            }
+        }
+        std::vector<float> light = world::fluid_transmittance(recipe, *particles, toward);
+        const float ambient = std::clamp(scene.ambient_energy * 0.5F, 0.25F, 0.8F);
+        for (float& seen : light) {
+            seen = energy > 0.0F ? std::min(ambient + (energy * 0.75F * seen), 1.0F) : 1.0F;
+        }
+        fluid_quads(recipe, *particles, unit(right), unit(up), shift, vertices, indices, {}, light);
+    } else {
+        fluid_quads(recipe, *particles, unit(right), unit(up), shift, vertices, indices);
+    }
     world::StandardMaterial3D look;
     look.vertex_color_use_as_albedo = true;
     look.albedo_texture = std::string(kFluidDisc);
@@ -3023,8 +3061,7 @@ void Renderer::add_fluid(const world::World& world, entt::entity entity, std::ui
         casting = casting_of(fluid.cast_shadow);
     }
     const render::Material3D made = material(look, textures_, problems_, entity);
-    hair_mesh("fluid:" + std::to_string(entt::to_integral(entity)), entity, vertices, indices, made,
-              fluid.layers, casting, "/components/Fluid3D");
+    hair_mesh(key, entity, vertices, indices, made, fluid.layers, casting, "/components/Fluid3D");
 }
 
 namespace {
@@ -4289,7 +4326,7 @@ std::optional<Frame3D> Renderer::prepare(
     // Fluid3Ds draw their particles.
     for (const entt::entity entity : made<world::Fluid3D>(world)) {
         if (tree.visible(entity)) {
-            add_fluid(world, entity, lens.cull_mask);
+            add_fluid(world, entity, lens.cull_mask, frame.scene);
         }
     }
     // GPUParticles3Ds run the steps their device hasn't, then draw their draw passes there.

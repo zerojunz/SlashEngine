@@ -2946,6 +2946,27 @@ space.
 
 Needs: `read`.
 
+### fluid.preview
+
+Runs a recipe alone on the stage `fluid.check` uses (a liquid's tank, a gas's burner) in a
+session apart, with a camera and a sun, and returns under `samples` what `fluid.state` says at
+each of `times`, with its `t`. With `capture`, it also draws the stage into a PNG at a time and
+returns its `path`, `size` and `covered`, the share of the frame the fluid changed from the
+background, so a recipe that draws nothing shows.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `recipe` | string | | A `.fluid.json` file |
+| `overrides` | object | | A merge patch over the recipe, to try a change |
+| `times` | number[] | `[0.5, 1.5]` | Seconds into the stage to sample, up to 60 |
+| `capture` | object | | `at` (seconds), `out` (default `previews/<file>.png`) and `size` (`[width, height]`, default `[320, 240]`) |
+
+```json
+{"recipe": "liquids/water.fluid.json", "times": [1], "capture": {"at": 1}}
+```
+
+Needs: `read`, `filesystem`.
+
 ## Particles
 
 ### particles.eval

@@ -1634,12 +1634,41 @@ void CanvasRenderer::gather_fluids(DrawState& state) {
         const float half = world::fluid_draw_size(recipe) * 0.5F;
         const std::size_t first = vertices.size();
         std::size_t drawn = 0;
+        const auto byte_color = [&](Vec4 color) {
+            return std::array<std::uint8_t, 4>{to_byte(static_cast<float>(color.x * tint.x)),
+                                               to_byte(static_cast<float>(color.y * tint.y)),
+                                               to_byte(static_cast<float>(color.z * tint.z)),
+                                               to_byte(static_cast<float>(color.w * tint.w))};
+        };
+        const bool surface = !recipe.gas && recipe.surface;
+        if (surface) {
+            // The liquid's body as one surface, its triangles over the disc's solid middle.
+            std::vector<scene3d::FluidCorner2D> corners;
+            scene3d::fluid_surface_2d(recipe, *particles, corners);
+            for (const scene3d::FluidCorner2D& corner : corners) {
+                vertices.push_back(render::Vertex2D{.x = corner.position.x,
+                                                    .y = corner.position.y,
+                                                    .u = 0.5F,
+                                                    .v = 0.5F,
+                                                    .rgba = byte_color(corner.color)});
+            }
+            drawn += corners.size() / 3;
+        }
+        // Smoke is lit from above through the smoke over it.
+        std::vector<float> light;
+        if (recipe.gas) {
+            light = world::fluid_transmittance(recipe, *particles, Vec3f{0.0F, -1.0F, 0.0F});
+            for (float& seen : light) {
+                seen = 0.4F + (0.6F * seen);
+            }
+        }
         for (std::size_t i = 0; i < particles->size(); ++i) {
-            const Vec4 color = world::fluid_color(recipe, *particles, i);
-            const std::array<std::uint8_t, 4> rgba{to_byte(static_cast<float>(color.x * tint.x)),
-                                                   to_byte(static_cast<float>(color.y * tint.y)),
-                                                   to_byte(static_cast<float>(color.z * tint.z)),
-                                                   to_byte(static_cast<float>(color.w * tint.w))};
+            if (surface && !world::fluid_is_spray(recipe, *particles, i)) {
+                continue;
+            }
+            const Vec4 color =
+                world::fluid_color(recipe, *particles, i, i < light.size() ? light[i] : 1.0F);
+            const std::array<std::uint8_t, 4> rgba = byte_color(color);
             if (rgba[3] == 0) {
                 continue;
             }

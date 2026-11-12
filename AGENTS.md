@@ -2507,10 +2507,14 @@ and the work split over the job pool by particle, so steps don't depend on the t
 (`world::fluid_particles`); physics3d and physics2d set a `world::FluidHost`
 (`src/fluid.cpp` in each: spheres against Jolt bodies, circles against Box2D shapes by their
 manifolds, impulses back on rigid bodies, the project's gravity). `scene3d::Renderer::add_fluid`
-and `CanvasRenderer::gather_fluids` draw particles as discs (`scene3d::fluid_quads`,
-`world::fluid_color`). `fluid.place`, `fluid.pour`, `fluid.state` and `fluid.check` (a stage in
-a private `Session`) are in `engine/command/src/fluid.cpp`. `examples/fluids` splashes water,
-lights a campfire and pours 2D water.
+and `CanvasRenderer::gather_fluids` draw them: a liquid as the surface the camera sees,
+splatted, smoothed and meshed on the CPU (`scene3d::fluid_surface`; `fluid_surface_2d` traces
+a 2D liquid by marching squares) with its spray (`world::fluid_is_spray`) as discs
+(`scene3d::fluid_quads`), so every device draws it, and a gas as discs lit through the smoke
+between them and the light (`world::fluid_transmittance`, gridless: particles found where they
+fall on a plane square to the light). `fluid.place`, `fluid.pour`, `fluid.state`, `fluid.check`
+and `fluid.preview` (stages in a private `Session`) are in `engine/command/src/fluid.cpp`.
+`examples/fluids` splashes water, lights a campfire and pours 2D water.
 
 ## Job system
 

@@ -1,12 +1,14 @@
-// fluid.place, fluid.pour, fluid.state and fluid.check, over .fluid.json recipes
+// fluid.place, fluid.pour, fluid.state, fluid.check and fluid.preview, over .fluid.json recipes
 // (slash/world/fluid.hpp): put a body of liquid or gas in a scene, pour into it, read what its
 // particles are doing, and check recipes on a stage of their own.
 #include "slash/world/fluid.hpp"
 
 #include "procedural.hpp"
 
+#include "slash/canvas/canvas.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/text.hpp"
+#include "slash/render/image.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 
@@ -348,7 +350,7 @@ json::Value fluid_summary(const world::World& world, entt::entity entity, bool f
         fastest = std::max(fastest, speed);
         density += particles->density[i];
     }
-    const double count = static_cast<double>(n);
+    const auto count = static_cast<double>(n);
     const float scale = 1.0F / static_cast<float>(n);
     out["bounds"] = json::Array{vector_value(low, flat), vector_value(high, flat)};
     out["middle"] = vector_value(middle * scale, flat);
@@ -428,7 +430,7 @@ Reply fluid_state(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
-// ---- fluid.check ----
+// ---- fluid.check and fluid.preview ----
 
 SessionOptions stage_options(const Session& host) {
     SessionOptions options = host.options();
@@ -439,12 +441,10 @@ SessionOptions stage_options(const Session& host) {
     return options;
 }
 
-// Runs a recipe alone for seconds: a liquid filling a tank from a block, a gas pouring from a
-// vent, and says what came of it.
-json::Value stage_run(Session& session, const std::string& path, const world::FluidRecipe& recipe,
-                      double seconds) {
-    Session stage(session.components(), session.commands(), stage_options(session));
-    world::World& world = stage.world();
+// Sets a recipe alone on a stage: a liquid in a tank from a block, a gas pouring from a vent.
+// Returns the fluid's entity.
+entt::entity build_stage(world::World& world, const std::string& path,
+                         const world::FluidRecipe& recipe) {
     auto& ecs = world.ecs();
     const bool flat = recipe.flat;
     const float r = recipe.radius;
@@ -493,6 +493,17 @@ json::Value stage_run(Session& session, const std::string& path, const world::Fl
             ecs.emplace<world::FluidEmitter3D>(vent, std::move(emitter));
         }
     }
+    return tank;
+}
+
+// Runs a recipe alone for seconds on its stage and says what came of it.
+json::Value stage_run(Session& session, const std::string& path, const world::FluidRecipe& recipe,
+                      double seconds) {
+    Session stage(session.components(), session.commands(), stage_options(session));
+    world::World& world = stage.world();
+    const bool flat = recipe.flat;
+    const float r = recipe.radius;
+    const entt::entity tank = build_stage(world, path, recipe);
     const int ticks = static_cast<int>(std::ceil(seconds / kTick));
     std::size_t start = 0;
     std::size_t most_work = 0;
@@ -529,11 +540,16 @@ json::Value stage_run(Session& session, const std::string& path, const world::Fl
 json::Value recipe_check(Session& session, const std::string& path, double seconds, bool stage) {
     json::Value out;
     auto text = session.read_project_file(path);
-    if (!text || !text.value()) {
-        out["error"] = text ? quoted(path) + " doesn't exist" : text.error().message;
+    if (!text) {
+        out["error"] = text.error().message;
         return out;
     }
-    auto doc = json::parse(*text.value());
+    const std::optional<std::string>& body = text.value();
+    if (!body) {
+        out["error"] = quoted(path) + " doesn't exist";
+        return out;
+    }
+    auto doc = json::parse(*body);
     if (!doc) {
         out["error"] = doc.error().message;
         return out;
@@ -641,6 +657,7 @@ Reply fluid_check(Session& session, const json::Value& params) {
             fluids, [&](const std::pair<std::string, bool>& f) { return f.first == fluid; });
         if (found == fluids.end()) {
             std::vector<std::string> names;
+            names.reserve(fluids.size());
             for (const auto& [name, f] : fluids) {
                 names.push_back(name);
             }
@@ -679,6 +696,160 @@ Reply fluid_check(Session& session, const json::Value& params) {
 }
 
 } // namespace
+
+// A camera on a recipe's stage: a liquid's tank from in front and above, a gas's plume from
+// in front; in 2D, the tank or the plume in the middle of the view.
+void stage_camera(world::World& world, const world::FluidRecipe& recipe, Vec2 view) {
+    auto& ecs = world.ecs();
+    const float r = recipe.radius;
+    const entt::entity camera = world.create("stage_camera").value();
+    if (recipe.flat) {
+        world::Transform2D place;
+        // A liquid lies on its tank's floor, 32 radii down; a gas rises from the vent.
+        place.position = recipe.gas ? Vec2{0.0F, -24.0F * r} : Vec2{0.0F, 20.0F * r};
+        ecs.emplace<world::Transform2D>(camera, place);
+        world::Camera2D lens;
+        // The stage's 48 radii across fill most of the view.
+        const float zoom = std::max(static_cast<float>(view.y) / (48.0F * r), 0.01F);
+        lens.zoom = {zoom, zoom};
+        lens.limit_enabled = false;
+        ecs.emplace<world::Camera2D>(camera, lens);
+        return;
+    }
+    world::Transform3D place;
+    if (recipe.gas) {
+        place.position = {0.0F, 30.0F * r, 90.0F * r};
+    } else {
+        place.position = {0.0F, -12.0F * r, 48.0F * r};
+        place.rotation = {-0.45F, 0.0F, 0.0F};
+    }
+    ecs.emplace<world::Transform3D>(camera, place);
+    world::Camera3D lens;
+    lens.current = true;
+    ecs.emplace<world::Camera3D>(camera, lens);
+    const entt::entity sun = world.create("stage_sun").value();
+    world::Transform3D sun_place;
+    sun_place.rotation = {-0.9F, 0.5F, 0.0F};
+    ecs.emplace<world::Transform3D>(sun, sun_place);
+    ecs.emplace<world::DirectionalLight3D>(sun);
+}
+
+Reply fluid_preview(Session& session, const json::Value& params) {
+    const std::string& path = params.find("recipe")->as_string();
+    const json::Value overrides =
+        params.find("overrides") != nullptr ? *params.find("overrides") : json::Value{};
+    auto loaded = recipe_at(session, path, overrides);
+    if (!loaded) {
+        return param_error(code::kInvalidParams, "/recipe", loaded.error().message);
+    }
+    const world::FluidRecipe& recipe = *loaded.value();
+    std::vector<double> times;
+    if (const json::Value* given = params.find("times"); given != nullptr) {
+        for (const json::Value& t : given->as_array()) {
+            times.push_back(t.as_double());
+        }
+    } else {
+        times = {0.5, 1.5};
+    }
+    std::ranges::sort(times);
+    times.erase(std::ranges::unique(times).begin(), times.end());
+    if (times.empty() || times.back() > 60.0) {
+        return param_error(code::kInvalidParams, "/times", "give times from 0 to 60 seconds");
+    }
+    const json::Value* capture = params.find("capture");
+    std::string out;
+    std::string full;
+    double capture_at = 0.0;
+    Vec2 size{320.0F, 240.0F};
+    if (capture != nullptr) {
+        out = capture->find("out") != nullptr ? capture->find("out")->as_string()
+                                              : "previews/" + stem_of(path) + ".png";
+        if (!out.ends_with(".png")) {
+            return param_error(code::kInvalidParams, "/capture/out",
+                               quoted(out) + " must end in .png");
+        }
+        auto resolved = session.resolve_path(out);
+        if (!resolved) {
+            return param_error(code::kInvalidParams, "/capture/out", resolved.error().message);
+        }
+        full = resolved.value();
+        capture_at = capture->find("at")->as_double();
+        if (const json::Value* given = capture->find("size"); given != nullptr) {
+            size = {static_cast<real_t>(given->as_array()[0].as_double()),
+                    static_cast<real_t>(given->as_array()[1].as_double())};
+        }
+    }
+    Session stage(session.components(), session.commands(), stage_options(session));
+    world::World& world = stage.world();
+    const entt::entity tank = build_stage(world, path, recipe);
+    if (!overrides.is_null()) {
+        if (auto* f3 = world.ecs().try_get<world::Fluid3D>(tank); f3 != nullptr) {
+            f3->overrides = overrides;
+        }
+        if (auto* f2 = world.ecs().try_get<world::Fluid2D>(tank); f2 != nullptr) {
+            f2->overrides = overrides;
+        }
+    }
+    stage_camera(world, recipe, size);
+    json::Array samples;
+    std::size_t next = 0;
+    bool captured = capture == nullptr;
+    json::Value result;
+    const int last = static_cast<int>(std::ceil(std::max(times.back(), capture_at) / kTick));
+    for (int tick = 0; tick <= last; ++tick) {
+        world.step(kTick);
+        const double t = static_cast<double>(tick + 1) * kTick;
+        while (next < times.size() && times[next] <= t + 1e-9) {
+            json::Value sample = fluid_summary(world, tank, recipe.flat, path, {}, 0);
+            sample.as_object().erase("recipe");
+            sample["t"] = rounded(times[next]);
+            samples.emplace_back(std::move(sample));
+            ++next;
+        }
+        if (!captured && capture_at <= t + 1e-9) {
+            canvas::CaptureOptions options;
+            options.viewport = size;
+            auto image = canvas::capture(world, stage.assets(), options);
+            if (!image) {
+                return Reply::failure(image.error());
+            }
+            const render::Image& picture = image.value().image;
+            // How much of the frame the fluid covers: pixels that differ from the clear color.
+            std::size_t changed = 0;
+            const std::size_t pixels = picture.pixels.size() / 4;
+            for (std::size_t i = 0; i < pixels; ++i) {
+                const std::size_t at = i * 4;
+                if (picture.pixels[at] != picture.pixels[0] ||
+                    picture.pixels[at + 1] != picture.pixels[1] ||
+                    picture.pixels[at + 2] != picture.pixels[2]) {
+                    ++changed;
+                }
+            }
+            auto png = render::encode_png(picture);
+            if (!png) {
+                return Reply::failure(png.error());
+            }
+            if (auto written = session.write_file(full, png.value()); !written) {
+                return Reply::failure(written.error());
+            }
+            json::Value shot;
+            shot["path"] = out;
+            shot["size"] = json::Array{static_cast<std::int64_t>(picture.width),
+                                       static_cast<std::int64_t>(picture.height)};
+            shot["covered"] =
+                pixels == 0 ? 0.0
+                            : rounded(static_cast<double>(changed) / static_cast<double>(pixels));
+            result["capture"] = std::move(shot);
+            captured = true;
+        }
+        if (next >= times.size() && captured) {
+            break;
+        }
+    }
+    result["recipe"] = path;
+    result["samples"] = std::move(samples);
+    return Reply::success(std::move(result));
+}
 
 void register_fluid_commands(Registry& registry) {
     {
@@ -774,6 +945,37 @@ void register_fluid_commands(Registry& registry) {
             .effect = Effect::Read,
             .params = std::move(schema),
             .handler = fluid_check,
+        });
+    }
+    {
+        json::Value schema;
+        schema["type"] = "object";
+        schema["additionalProperties"] = false;
+        schema["required"] = json::Array{"recipe"};
+        json::Value& p = schema["properties"];
+        p["recipe"] = property("string", "A .fluid.json file.");
+        p["overrides"] = property("object", "A merge patch over the recipe, to try a change.");
+        p["times"] = property("array", "Seconds into the stage to sample; default 0.5 and 1.5.");
+        p["times"]["items"]["type"] = "number";
+        p["times"]["items"]["minimum"] = 0;
+        json::Value& c = p["capture"];
+        c = property("object", "Also draw it into a PNG at a time.");
+        c["additionalProperties"] = false;
+        c["required"] = json::Array{"at"};
+        c["properties"]["at"] = property("number", "Seconds into the stage.");
+        c["properties"]["at"]["minimum"] = 0;
+        c["properties"]["out"] =
+            property("string", "The PNG to write; default previews/<file>.png.");
+        c["properties"]["size"] = point_property("[width, height] pixels; default [320, 240].");
+        registry.add({
+            .name = "fluid.preview",
+            .description = "Runs a .fluid.json recipe alone on its stage (a liquid's tank, a "
+                           "gas's vent) and returns what it does at times; optionally draws a "
+                           "PNG, saying how much of the frame the fluid covers.",
+            .capabilities = {Capability::Read, Capability::Filesystem},
+            .effect = Effect::Read,
+            .params = std::move(schema),
+            .handler = fluid_preview,
         });
     }
 }

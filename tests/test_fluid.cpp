@@ -9,6 +9,9 @@
 #include "slash/core/math.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/physics3d/physics3d.hpp"
+#include "slash/render/device.hpp"
+#include "slash/scene3d/fluid.hpp"
+#include "slash/scene3d/scene3d.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/fluid.hpp"
@@ -31,8 +34,11 @@ namespace canvas = slash::canvas;
 namespace json = slash::json;
 namespace physics2d = slash::physics2d;
 namespace physics3d = slash::physics3d;
+namespace scene3d = slash::scene3d;
 namespace world = slash::world;
+using slash::Vec2f;
 using slash::Vec3f;
+using slash::Vec4;
 
 namespace {
 
@@ -309,4 +315,147 @@ TEST_CASE("fluid: 2D water lands on a 2D body") {
     CHECK(bottom < 192.0F);
     CHECK(bottom > 180.0F);
     CHECK(water.contacts > 0);
+}
+
+TEST_CASE("fluid: smoke shades the smoke behind it from the light") {
+    const auto recipe = world::parse_fluid(parse(kSmoke));
+    REQUIRE(recipe.ok());
+    world::FluidParticles column;
+    // A column of puffs, the light straight above it.
+    for (int k = 0; k < 8; ++k) {
+        column.add({0.0F, static_cast<float>(k) * 0.1F, 0.0F}, {}, 20.0F, 0.8F, 0.0F);
+    }
+    // And one alone to the side.
+    column.add({3.0F, 0.0F, 0.0F}, {}, 20.0F, 0.8F, 0.0F);
+    const std::vector<float> seen =
+        world::fluid_transmittance(recipe.value(), column, Vec3f{0.0F, 1.0F, 0.0F});
+    REQUIRE(seen.size() == 9);
+    CHECK(seen[7] == doctest::Approx(1.0F)); // the top sees the light
+    for (std::size_t k = 1; k < 8; ++k) {
+        CHECK(seen[k - 1] < seen[k]); // the lower, the darker
+    }
+    CHECK(seen[0] < 0.2F);
+    CHECK(seen[8] == doctest::Approx(1.0F)); // nothing over it
+    // Lit from below, the column turns over.
+    const std::vector<float> under =
+        world::fluid_transmittance(recipe.value(), column, Vec3f{0.0F, -1.0F, 0.0F});
+    CHECK(under[0] == doctest::Approx(1.0F));
+    CHECK(under[7] < 0.2F);
+    // A darker puff is the smoke's color times the light; fire glows regardless.
+    const Vec4 lit = world::fluid_color(recipe.value(), column, 7, 1.0F);
+    const Vec4 dim = world::fluid_color(recipe.value(), column, 0, seen[0]);
+    CHECK(dim.x < lit.x);
+    CHECK(dim.w == doctest::Approx(lit.w));
+    // Liquids are lit by the scene as surfaces are, so nothing shades them here.
+    const auto water = world::parse_fluid(parse(kWater));
+    REQUIRE(water.ok());
+    const std::vector<float> wet =
+        world::fluid_transmittance(water.value(), column, Vec3f{0.0F, 1.0F, 0.0F});
+    CHECK(std::ranges::all_of(wet, [](float v) { return v == 1.0F; }));
+}
+
+TEST_CASE("fluid: a liquid draws as one smooth surface facing the camera, spray as drops") {
+    const auto parsed = world::parse_fluid(parse(kWater));
+    REQUIRE(parsed.ok());
+    const world::FluidRecipe& recipe = parsed.value();
+    world::FluidParticles block;
+    for (int x = 0; x < 6; ++x) {
+        for (int y = 0; y < 4; ++y) {
+            for (int z = 0; z < 6; ++z) {
+                block.add({(static_cast<float>(x) * 0.1F) - 0.25F, static_cast<float>(y) * 0.1F,
+                           (static_cast<float>(z) * 0.1F) - 0.25F},
+                          {}, 20.0F, 0.0F, 0.0F);
+            }
+        }
+    }
+    block.density.assign(block.size(), 1.0F);
+    // One drop flying alone, which the surface leaves out.
+    block.add({2.0F, 1.0F, 0.0F}, {3.0F, 0.0F, 0.0F}, 20.0F, 0.0F, 0.0F);
+    block.density.back() = 0.1F;
+    CHECK(world::fluid_is_spray(recipe, block, block.size() - 1));
+    CHECK_FALSE(world::fluid_is_spray(recipe, block, 0));
+
+    world::Camera3D lens;
+    world::Affine3D place;
+    place.origin = {0.0F, 0.2F, 3.0F};
+    const scene3d::CameraView view = scene3d::camera_view(lens, place, 4.0F / 3.0F);
+    std::vector<slash::render::Vertex3D> vertices;
+    std::vector<std::uint32_t> indices;
+    scene3d::fluid_surface(recipe, block,
+                           scene3d::FluidEye{.eye = view.eye, .projection = view.projection}, {},
+                           vertices, indices);
+    REQUIRE_FALSE(vertices.empty());
+    REQUIRE(indices.size() % 3 == 0);
+    CHECK(indices.size() > 300);
+    float nearest = 1e30F;
+    float right_most = -1e30F;
+    for (const slash::render::Vertex3D& v : vertices) {
+        // On the block, at most a sphere's radius or so out from it.
+        CHECK(v.position[2] > -0.35F);
+        CHECK(v.position[2] < 0.42F);
+        nearest = std::min(nearest, 3.0F - v.position[2]);
+        right_most = std::max(right_most, v.position[0]);
+        // Normals face the camera, nearly along +z in the middle.
+        const float facing = (v.normal[2]);
+        CHECK(facing > 0.0F);
+    }
+    CHECK(right_most < 0.5F); // the drop at x 2 isn't in it
+    // Smoothed: the middle's normals point nearly straight at the camera.
+    std::size_t square = 0;
+    for (const slash::render::Vertex3D& v : vertices) {
+        if (std::abs(v.position[0]) < 0.1F && std::abs(v.position[1] - 0.15F) < 0.08F &&
+            v.normal[2] > 0.9F) {
+            ++square;
+        }
+    }
+    CHECK(square > 4);
+    // Every index names a vertex.
+    CHECK(std::ranges::all_of(indices, [&](std::uint32_t k) { return k < vertices.size(); }));
+    // The same particles make the same surface.
+    std::vector<slash::render::Vertex3D> again;
+    std::vector<std::uint32_t> again_indices;
+    scene3d::fluid_surface(recipe, block,
+                           scene3d::FluidEye{.eye = view.eye, .projection = view.projection}, {},
+                           again, again_indices);
+    CHECK(again_indices == indices);
+    // The drop draws as a disc.
+    scene3d::fluid_quads(recipe, block, {1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {}, vertices,
+                         indices,
+                         [&](std::size_t i) { return world::fluid_is_spray(recipe, block, i); });
+    CHECK(vertices.size() == 4);
+}
+
+TEST_CASE("fluid: a 2D liquid's surface covers its particles as one body") {
+    const auto parsed = world::parse_fluid(parse(kWater2D));
+    REQUIRE(parsed.ok());
+    const world::FluidRecipe& recipe = parsed.value();
+    world::FluidParticles pool;
+    const float spacing = recipe.radius * 2.0F;
+    for (int x = 0; x < 20; ++x) {
+        for (int y = 0; y < 6; ++y) {
+            pool.add({static_cast<float>(x) * spacing, static_cast<float>(y) * spacing, 0.0F}, {},
+                     20.0F, 0.0F, 0.0F);
+        }
+    }
+    pool.density.assign(pool.size(), 1.0F);
+    std::vector<scene3d::FluidCorner2D> corners;
+    scene3d::fluid_surface_2d(recipe, pool, corners);
+    REQUIRE(corners.size() % 3 == 0);
+    REQUIRE_FALSE(corners.empty());
+    double area = 0.0;
+    float top = 1e30F;
+    for (std::size_t k = 0; k < corners.size(); k += 3) {
+        const Vec2f a = corners[k].position;
+        const Vec2f b = corners[k + 1].position;
+        const Vec2f c = corners[k + 2].position;
+        area += std::abs(((b.x - a.x) * (c.y - a.y)) - ((c.x - a.x) * (b.y - a.y))) * 0.5;
+        top = std::min({top, a.y, b.y, c.y});
+    }
+    // About the block's own area: 20 by 6 spacings.
+    const double block = 20.0 * 6.0 * spacing * spacing;
+    CHECK(area > block * 0.85);
+    CHECK(area < block * 1.3);
+    // Its top is near the top row's edge.
+    CHECK(top < 0.0F);
+    CHECK(top > -recipe.radius * 2.0F);
 }

@@ -72,6 +72,9 @@ struct FluidRecipe {
     Vec4 foam{1.0F, 1.0F, 1.0F, 1.0F};
     Vec4 smoke{0.35F, 0.35F, 0.38F, 0.6F};
     Vec4 fire{1.0F, 0.55F, 0.15F, 1.0F};
+    bool surface = true;      // liquids: one smoothed surface (spray as discs), or discs
+    float depth = 0.0F;       // liquids: how deep the color is full; 8 radii when 0 is read
+    float self_shadow = 1.0F; // gases: how dark smoke shades the smoke behind it
     // Budget: the most particles and neighbor visits a tick (deterministic work, not time) a
     // fluid may take; fluid.check reports what goes past.
     std::size_t budget_particles = 0;
@@ -158,8 +161,20 @@ void step_fluid(const FluidRecipe& recipe, FluidParticles& particles,
 
 // The color particle i draws with: a liquid's color, whiter as foam the faster it goes; a gas's
 // smoke by its density, glowing toward the fire color above ignition. Alpha 0 draws nothing.
+// light scales the smoke's color (what reaches it, as fluid_transmittance and the scene's
+// lights say); fire glows whatever reaches it.
 [[nodiscard]] Vec4 fluid_color(const FluidRecipe& recipe, const FluidParticles& particles,
-                               std::size_t i);
+                               std::size_t i, float light = 1.0F);
+// Whether liquid particle i is spray: so few neighbors that it flies apart from the body of
+// the liquid, which a surface leaves out and draws as a drop.
+[[nodiscard]] bool fluid_is_spray(const FluidRecipe& recipe, const FluidParticles& particles,
+                                  std::size_t i);
+// How much light each gas particle sees through the smoke between it and the light, which is
+// the way toward (any length): 1 in the open, toward 0 deep in a plume, by the smoke of the
+// particles whose puffs lie across the line to the light (found where they fall on a plane
+// square to it, with no grid) and the recipe's look shadow. All 1 for a liquid.
+[[nodiscard]] std::vector<float> fluid_transmittance(const FluidRecipe& recipe,
+                                                     const FluidParticles& particles, Vec3f toward);
 // How wide a particle draws: a liquid's a little past its spacing, a gas's puffs three times it.
 [[nodiscard]] float fluid_draw_size(const FluidRecipe& recipe);
 

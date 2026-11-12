@@ -17,6 +17,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <numbers>
 #include <optional>
 #include <set>
 #include <span>
@@ -81,7 +82,10 @@ constexpr std::string_view kSchema = R"({
         "color": {"$ref": "#/$defs/color", "description": "A liquid's color. Default [0.2, 0.45, 0.85, 0.85]."},
         "foam": {"$ref": "#/$defs/color", "description": "Foam and spray's color. Default white."},
         "smoke": {"$ref": "#/$defs/color", "description": "Smoke's color at full density. Default [0.35, 0.35, 0.38, 0.6]."},
-        "fire": {"$ref": "#/$defs/color", "description": "Fire's color, as hot as burning. Default [1, 0.55, 0.15, 1]."}
+        "fire": {"$ref": "#/$defs/color", "description": "Fire's color, as hot as burning. Default [1, 0.55, 0.15, 1]."},
+        "surface": {"type": "boolean", "description": "A liquid draws as one smoothed surface, with spray as discs; false draws every particle as a disc. Default true."},
+        "depth": {"type": "number", "exclusiveMinimum": 0, "description": "How deep a liquid is where it shows its color's full alpha, in meters (pixels in 2D); shallower water shows through. Default 8 particle radii."},
+        "shadow": {"type": "number", "minimum": 0, "description": "How dark a gas's smoke shades the smoke behind it from the light. Default 1; 0 lights every puff alike."}
       }
     },
     "budget": {
@@ -184,7 +188,7 @@ struct Kernels {
     float spiky = 0.0F;
 
     Kernels(float support, bool flat) : h(support), h2(support * support) {
-        constexpr float kPi = 3.14159265358979F;
+        constexpr float kPi = std::numbers::pi_v<float>;
         const float h4 = h2 * h2;
         if (flat) {
             poly6 = 4.0F / (kPi * h4 * h4);
@@ -272,7 +276,7 @@ std::optional<FluidContact> keep_in(const FluidStepInputs& inputs, Vec3f& p, flo
     }
     const Affine3D& place = *inputs.bounds;
     const Affine3D to_local = place.inverse();
-    Vec3f local = to_float(to_local.apply(Vec3{p.x, p.y, p.z}));
+    const Vec3f local = to_float(to_local.apply(Vec3{p.x, p.y, p.z}));
     const Vec3f half = inputs.bounds_half;
     Vec3f moved = local;
     Vec3f normal;
@@ -415,8 +419,8 @@ void substep(const FluidRecipe& recipe, FluidParticles& particles, const FluidSt
     const float mass = fluid_particle_mass(recipe);
     std::size_t touching = 0;
     for (std::size_t i = 0; i < n; ++i) {
-        if (contacts[i] && contacts[i]->depth > 0.0F) {
-            const FluidContact& contact = *contacts[i];
+        if (const std::optional<FluidContact>& hit = contacts[i]; hit && hit->depth > 0.0F) {
+            const FluidContact& contact = *hit;
             predicted[i] = predicted[i] + (contact.normal * contact.depth);
             if (flat) {
                 predicted[i].z = 0.0F;
@@ -681,14 +685,14 @@ void run_fluid(World& world, FluidStore& store, entt::entity entity, bool flat, 
                 for (int i = 0; i < nx && particles.size() < limit; ++i) {
                     const std::uint32_t h = seed ^ (particles.next_id * 0x85EBCA6BU);
                     const float jitter = spacing * 0.02F;
-                    Vec3f local{(-fill_size.x * 0.5F) + ((static_cast<float>(i) + 0.5F) * spacing) +
-                                    ((unit(h) - 0.5F) * jitter),
-                                (-fill_size.y * 0.5F) + ((static_cast<float>(j) + 0.5F) * spacing) +
-                                    ((unit(h ^ 1U) - 0.5F) * jitter),
-                                flat ? 0.0F
-                                     : (-fill_size.z * 0.5F) +
-                                           ((static_cast<float>(k) + 0.5F) * spacing) +
-                                           ((unit(h ^ 2U) - 0.5F) * jitter)};
+                    const Vec3f local{
+                        (-fill_size.x * 0.5F) + ((static_cast<float>(i) + 0.5F) * spacing) +
+                            ((unit(h) - 0.5F) * jitter),
+                        (-fill_size.y * 0.5F) + ((static_cast<float>(j) + 0.5F) * spacing) +
+                            ((unit(h ^ 1U) - 0.5F) * jitter),
+                        flat ? 0.0F
+                             : (-fill_size.z * 0.5F) + ((static_cast<float>(k) + 0.5F) * spacing) +
+                                   ((unit(h ^ 2U) - 0.5F) * jitter)};
                     Vec3f at = to_float(place.apply(Vec3{local.x, local.y, local.z}));
                     if (flat) {
                         at.z = 0.0F;
@@ -944,6 +948,14 @@ Result<FluidRecipe> parse_fluid(const json::Value& doc) {
         out.foam = color_of(look->find("foam"), out.foam);
         out.smoke = color_of(look->find("smoke"), out.smoke);
         out.fire = color_of(look->find("fire"), out.fire);
+        if (const json::Value* surface = look->find("surface"); surface != nullptr) {
+            out.surface = surface->as_bool();
+        }
+        out.depth = number(look->find("depth"), 0.0F);
+        out.self_shadow = number(look->find("shadow"), out.self_shadow);
+    }
+    if (out.depth <= 0.0F) {
+        out.depth = 8.0F * out.radius;
     }
     if (const json::Value* budget = doc.find("budget"); budget != nullptr) {
         out.budget_particles = static_cast<std::size_t>(number(budget->find("particles"), 0.0F));
@@ -1112,7 +1124,8 @@ void step_fluid(const FluidRecipe& recipe, FluidParticles& particles,
     }
 }
 
-Vec4 fluid_color(const FluidRecipe& recipe, const FluidParticles& particles, std::size_t i) {
+Vec4 fluid_color(const FluidRecipe& recipe, const FluidParticles& particles, std::size_t i,
+                 float light) {
     const auto mix = [](Vec4 a, Vec4 b, float t) {
         return Vec4{a.x + ((b.x - a.x) * t), a.y + ((b.y - a.y) * t), a.z + ((b.z - a.z) * t),
                     a.w + ((b.w - a.w) * t)};
@@ -1128,11 +1141,67 @@ Vec4 fluid_color(const FluidRecipe& recipe, const FluidParticles& particles, std
     const float density = std::clamp(particles.smoke[i], 0.0F, 1.0F);
     Vec4 smoke = recipe.smoke;
     smoke.w *= density;
+    smoke.x *= light;
+    smoke.y *= light;
+    smoke.z *= light;
     // Glowing from four fifths of ignition up to half again past it.
     const float glow_from = recipe.ignition * 0.8F;
     const float span = std::max(recipe.ignition * 0.7F, 1.0F);
     const float glow = std::clamp((particles.temperature[i] - glow_from) / span, 0.0F, 1.0F);
     return mix(smoke, recipe.fire, glow);
+}
+
+bool fluid_is_spray(const FluidRecipe& recipe, const FluidParticles& particles, std::size_t i) {
+    if (recipe.gas || i >= particles.density.size()) {
+        return false;
+    }
+    // Few neighbors: a drop flying alone, or the thin edge of a splash.
+    return particles.density[i] < 0.35F;
+}
+
+std::vector<float> fluid_transmittance(const FluidRecipe& recipe, const FluidParticles& particles,
+                                       Vec3f toward) {
+    const std::size_t n = particles.size();
+    std::vector<float> out(n, 1.0F);
+    const float l = length(toward);
+    if (!recipe.gas || n == 0 || l < 1e-6F || recipe.self_shadow <= 0.0F) {
+        return out;
+    }
+    const Vec3f to_light = toward * (1.0F / l);
+    // Two axes square to the light: particles are found by where they fall on that plane, so
+    // those between one and the light are its neighbors there, with no grid.
+    Vec3f side = std::abs(to_light.y) < 0.9F ? cross(to_light, Vec3f{0.0F, 1.0F, 0.0F})
+                                             : cross(to_light, Vec3f{1.0F, 0.0F, 0.0F});
+    side = side * (1.0F / length(side));
+    const Vec3f other = cross(to_light, side);
+    std::vector<Vec3f> plane(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        const Vec3f p = particles.position[i];
+        plane[i] = {dot(p, side), recipe.flat ? 0.0F : dot(p, other), 0.0F};
+    }
+    // Each puff draws three spacings wide, so it shades what is within half that across.
+    const float reach = fluid_draw_size(recipe) * 0.5F;
+    NeighborIndex index;
+    index.build(plane, reach, true);
+    const float reach2 = reach * reach;
+    for (std::size_t i = 0; i < n; ++i) {
+        const Vec3f p = particles.position[i];
+        float sum = 0.0F;
+        index.around(plane[i], [&](std::uint32_t j) {
+            if (j == i) {
+                return;
+            }
+            const Vec3f across = plane[i] - plane[j];
+            const float d2 = dot(across, across);
+            if (d2 >= reach2 || dot(particles.position[j] - p, to_light) <= 0.0F) {
+                return;
+            }
+            const float w = 1.0F - (d2 / reach2);
+            sum += std::clamp(particles.smoke[j], 0.0F, 1.0F) * w * w;
+        });
+        out[i] = slash::exp(-recipe.self_shadow * 0.5F * sum);
+    }
+    return out;
 }
 
 float fluid_draw_size(const FluidRecipe& recipe) {

@@ -627,9 +627,12 @@ private:
                    std::span<const std::uint32_t> indices, const render::Material3D& material,
                    std::uint32_t layers, render::ShadowCasting casting,
                    std::string_view where = "/components/HairInstance3D/groom");
-    // A Fluid3D's particles as discs facing the camera, colored by fluid_color: a liquid's
-    // lit, a gas's blended over what is behind; one mesh on the device, made again each frame.
-    void add_fluid(const world::World& world, entt::entity entity, std::uint32_t cull_mask);
+    // A Fluid3D: a liquid as the surface the camera sees (fluid_surface) with its spray as
+    // discs, or every particle as a disc when its look's surface is off; a gas as discs blended
+    // over what is behind, lit by the scene's first directional light through the smoke between
+    // (world::fluid_transmittance). Meshes on the device, made again each frame.
+    void add_fluid(const world::World& world, entt::entity entity, std::uint32_t cull_mask,
+                   const render::Scene3D& scene);
     // A GPUParticles3D: its system on the device runs the steps it hasn't (or is made again from
     // those kept), then each draw pass's mesh is filled with a copy at every particle, drawn
     // between ticks interpolation of the way along, placed by place with local_coords and turned
