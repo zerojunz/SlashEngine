@@ -16,6 +16,9 @@ void register_procedural_commands(Registry& registry);
 // Adds scatter.run, over slash/procedural/scatter.hpp (scatter.cpp).
 void register_scatter_commands(Registry& registry);
 
+// Adds pcg.run, pcg.preview and pcg.check, over slash/procedural/pcg.hpp (pcg.cpp).
+void register_pcg_commands(Registry& registry);
+
 // Adds hair.get, over slash/world/hair.hpp and slash/scene3d/hair.hpp (hair.cpp).
 void register_hair_commands(Registry& registry);
 void register_damage_commands(Registry& registry);

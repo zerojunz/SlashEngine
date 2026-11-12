@@ -1,6 +1,7 @@
 #include "slash/procedural/scatter.hpp"
 
 #include "procedural.hpp"
+#include "scatter_ground.hpp"
 
 #include "slash/canvas/tilemap.hpp"
 #include "slash/command/session.hpp"
@@ -65,6 +66,19 @@ float length(Vec3 v) {
     return std::sqrt((v.x * v.x) + (v.y * v.y) + (v.z * v.z));
 }
 
+// Whether the entity is one of on or under one of them.
+bool under(const std::set<entt::entity>& on, entt::entity entity,
+           const std::function<entt::entity(entt::entity)>& parent) {
+    for (entt::entity at = entity; at != entt::null; at = parent(at)) {
+        if (on.contains(at)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
 // A place in the parent's space, as a Transform3D's fields: the parent's inverse after it.
 world::Transform3D local_3d(const world::Affine3D& to_local, const ScatterPlace& place) {
     world::Transform3D placed;
@@ -90,17 +104,6 @@ world::Transform2D local_2d(const world::Affine2D& to_local, const ScatterPlace&
     placed.rotation = place.rotation.z;
     placed.scale = {place.scale, place.scale};
     return world::parts(to_local * world::affine(placed));
-}
-
-// Whether the entity is one of on or under one of them.
-bool under(const std::set<entt::entity>& on, entt::entity entity,
-           const std::function<entt::entity(entt::entity)>& parent) {
-    for (entt::entity at = entity; at != entt::null; at = parent(at)) {
-        if (on.contains(at)) {
-            return true;
-        }
-    }
-    return false;
 }
 
 // The rectangle of an area as two triangles, at z 0 in 2D and on y 0 in 3D.
@@ -139,7 +142,8 @@ std::vector<ScatterTriangle> ground_3d(const std::vector<navigation::EntityGeome
 
 // A layer's 2D ground: the rectangles of the cells of the TileMapLayers on names whose key or
 // tile is in tiles (any, when it is empty), in world space.
-Result<std::vector<ScatterTriangle>> ground_2d(Session& session, const ScatterLayer& layer,
+Result<std::vector<ScatterTriangle>> ground_2d(Session& session,
+                                               const std::vector<std::string>& tiles,
                                                const std::vector<entt::entity>& on,
                                                const std::string& path) {
     world::World& world = session.world();
@@ -173,9 +177,8 @@ Result<std::vector<ScatterTriangle>> ground_2d(Session& session, const ScatterLa
                 if (tile == map->legend.end()) {
                     continue; // empty, or reported by scene validate
                 }
-                if (!layer.tiles.empty() &&
-                    std::ranges::find(layer.tiles, key) == layer.tiles.end() &&
-                    std::ranges::find(layer.tiles, tile->second) == layer.tiles.end()) {
+                if (!tiles.empty() && std::ranges::find(tiles, key) == tiles.end() &&
+                    std::ranges::find(tiles, tile->second) == tiles.end()) {
                     continue;
                 }
                 const Vec2i cell{map->origin.x + static_cast<int>(column),
@@ -215,6 +218,8 @@ void collect_descendants(const world::World& world, entt::entity entity,
         }
     }
 }
+
+namespace {
 
 Reply scatter_run(Session& session, const json::Value& params) {
     world::World& world = session.world();
@@ -311,7 +316,7 @@ Reply scatter_run(Session& session, const json::Value& params) {
         if (on.empty()) {
             add_area(layer.area.value_or(std::array<float, 4>{}), flat, ground);
         } else if (flat) {
-            auto cells = ground_2d(session, layer, on, layer_path);
+            auto cells = ground_2d(session, layer.tiles, on, layer_path);
             if (!cells) {
                 return param_error(code::kInvalidArgument, "", cells.error().message);
             }
@@ -656,8 +661,7 @@ Reply foliage_paint(Session& session, const json::Value& params) {
         if (on_entities.empty()) {
             add_area(square, true, ground);
         } else {
-            const ScatterLayer layer;
-            auto cells = ground_2d(session, layer, on_entities, "");
+            auto cells = ground_2d(session, {}, on_entities, "");
             if (!cells) {
                 return param_error(code::kInvalidArgument, "/on", cells.error().message);
             }

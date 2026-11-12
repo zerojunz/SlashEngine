@@ -147,7 +147,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, physics_material, ragdoll, foliage, groom, damage, character, face, creature, vehicle, vfx, sdk, plugin)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, pcg, physics_material, ragdoll, foliage, groom, damage, character, face, creature, vehicle, vfx, sdk, plugin)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -157,7 +157,7 @@ Validate after editing a scene or prefab by hand, and format before committing o
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
-`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`, `.scatter.json`, `.physics_material.json`, `.ragdoll.json`, `.foliage.json`, `.groom.json`, `.damage.json`, `.character.json`, `.face.json`, `.creature.json`, `.vehicle.json` and `.vfx.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
+`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`, `.scatter.json`, `.pcg.json`, `.physics_material.json`, `.ragdoll.json`, `.foliage.json`, `.groom.json`, `.damage.json`, `.character.json`, `.face.json`, `.creature.json`, `.vehicle.json` and `.vfx.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -373,6 +373,22 @@ the ground as `navigation::world_geometry` (3D) or tile map cells (2D) and puts 
 `into` as entities extending a prefab or drawing a mesh, or as one `MultiMeshInstance3D`, Godot's
 (`Renderer::add_multimesh` draws its model at each instance), replacing what `into` held.
 `examples/scatter-rules` grows a forest.
+
+Procedural graphs drive every tool: a `.pcg.json` file (`slash/procedural/pcg.hpp`,
+`src/pcg.cpp`; `$cli schema pcg`) is a list of nodes over points, after Unreal's PCG graphs.
+Samplers (`surface` through `procedural::scatter`, `grid`, `points`, `path` along a curve,
+`entities` by ID, component or storyboard place) make points; modifiers keep, thin, move and
+turn them (`filter`, `density`, `prune`, `difference`, `near`, `transform`, `merge`: `pcg_filter`,
+`pcg_prune` and the rest, every random choice hashed from the graph's seed, the node and the
+point's own seed with `pcg_hash`); spawners place things at them. `pcg.run`
+(`engine/command/src/pcg.cpp`, `Effect::Compound`) places `spawn` entities through
+`entity.create`, a `multimesh`, a `foliage` group, a `route` path, and calls any edit command a
+point with `$` names in its params (`$local`, `$yaw`, `$id`, `{"$pick": [...]}`), so creatures,
+characters, vehicles, lights, wind, fields, fluids, water and effects all come from graphs;
+what it made goes under `into` and the next run replaces it. `pcg.preview` returns counts,
+bounds and a top-down PNG, and `pcg.check` holds nodes to the budget and their `expect` (counts,
+density and reachability by `navigation::query_path`). scatter.cpp's ground gathering is shared
+through `src/scatter_ground.hpp`. `examples/procedural-worlds` fills a valley and a 2D island.
 
 Maps come from noise too: `tilemap.generate` (`engine/command/src/builtin.cpp`) samples a noise
 over a rect of cells and gives each the first band its value is under, painting each band's

@@ -62,6 +62,7 @@ as `entity.get`, reject it as an unknown param.
 | Materials | [`material.eval`](#materialeval) |
 | Textures | [`texture.generate`](#texturegenerate) |
 | Scatter | [`scatter.run`](#scatterrun) |
+| Procedural graphs | [`pcg.run`](#pcgrun), [`pcg.preview`](#pcgpreview), [`pcg.check`](#pcgcheck) |
 | Foliage | [`foliage.paint`](#foliagepaint), [`foliage.erase`](#foliageerase), [`foliage.get`](#foliageget), [`foliage.harvest`](#foliageharvest) |
 | Hair | [`hair.get`](#hairget) |
 | Damage | [`damage.apply`](#damageapply), [`damage.state`](#damagestate), [`damage.check`](#damagecheck) |
@@ -186,7 +187,7 @@ one component or one command.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"npc"`, `"quest"`, `"dialogue"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"standard_material"`, `"texture"`, `"scatter"`, `"physics_material"`, `"ragdoll"`, `"foliage"`, `"groom"`, `"character"`, `"face"`, `"creature"`, `"vehicle"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"npc"`, `"quest"`, `"dialogue"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"standard_material"`, `"texture"`, `"scatter"`, `"pcg"`, `"physics_material"`, `"ragdoll"`, `"foliage"`, `"groom"`, `"character"`, `"face"`, `"creature"`, `"vehicle"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -657,6 +658,89 @@ Asking for more than fits:
 
 Errors in inline rules are at their JSON Pointer under `/rules`, a file's at `/path`, and an `on`
 ID that isn't there names the closest one.
+
+## Procedural graphs
+
+### pcg.run
+
+Follows a [procedural graph](scene-format.md#procedural-graphs), a `.pcg.json` list of nodes,
+as Unreal's PCG graphs do: samplers make points (over the ground, on a grid, along a path, at
+entities), modifiers thin, keep and move them, and spawners place things at them under the
+`into` entity, which is made if it is missing: prefabs and components through `entity.create`,
+one `MultiMeshInstance3D`, a `Foliage3D` or `Foliage2D` group, a `Path3D` or `Path2D` route, or
+any edit command called once a point with its params' `$` names filled in, so creatures,
+characters, vehicles, lights, water and effects all come from graphs. Running again replaces
+everything `into` held, and the run is one undo step. Every random choice is hashed from the
+seed, the node and the point, so a graph places the same things everywhere.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | | A `.pcg.json` file |
+| `graph` | object | | A `.pcg.json` document, to try a graph without a file |
+| `into` | string | required | ID of the parent everything goes under; made if missing |
+| `seed` | integer | the graph's | Run with this seed instead |
+
+Give `path` or `graph`, not both. The ground is what [`scatter.run`](#scatterrun) reads, and
+what `into` held before isn't ground. The graph's `budget` is checked before anything is
+placed. Returns each node's point count and how many things each spawner `made`. Needs:
+`edit`. From [examples/procedural-worlds](../../examples/procedural-worlds/):
+
+```json
+{"path": "valley.pcg.json", "into": "life"}
+```
+
+```json
+{"into":"life","made":19,"nodes":[{"name":"ground","points":480},{"name":"meadow","points":365},{"made":1,"name":"grass","points":365},{"name":"rocky","points":20},{"name":"rocks","points":20},{"made":1,"name":"boulders","points":20},{"name":"open","points":294},{"name":"herd","points":28},{"made":9,"name":"deer","points":9},{"name":"posts","points":7},{"made":7,"name":"lamps","points":7},{"made":1,"name":"patrol","points":28}]}
+```
+
+Errors in an inline graph are at their JSON Pointer under `/graph`, a file's at `/path`; a
+command node naming a command that isn't an edit, or isn't there, names the closest one.
+
+### pcg.preview
+
+Runs a graph's nodes without placing anything and returns each node's `op`, point count,
+`bounds` (`[min x, min z, max x, max z]`, or x and y in 2D), its first `sample` points and what
+its spawner would make. With `image`, it also draws every node's points from above into a PNG,
+each node in the color its `legend` entry gives.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path`, `graph`, `seed` | | | As `pcg.run` |
+| `into` | string | | Leave what a run placed under this entity out of the ground |
+| `sample` | integer | 3 | Points listed per node |
+| `image` | string | | A PNG file to write |
+| `size` | integer | 256 | The PNG's width and height, 16 to 2048 |
+
+Needs: `read`, plus `filesystem` to write the image.
+
+```json
+{"path": "valley.pcg.json", "sample": 1, "image": "previews/valley.png", "size": 128}
+```
+
+### pcg.check
+
+Holds a graph to its `budget` and each node's `expect` without placing anything: point counts
+(`min`, `max`), points per square meter or pixel (`density`, over the node's bounds or its
+`area`), and with `reachable`, that a navigation path from `reach_from` ends within
+`reach_tolerance` of every point. Returns `passed`, each node's points and what its spawner
+would make, and `problems`: `over_budget`, `over_entity_budget`, `too_few`, `too_many`,
+`density`, `unreachable` (with the first points missed) and `empty`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path`, `graph`, `seed`, `into` | | | As `pcg.preview` |
+| `reach_from` | string or array | | An entity ID, or `[x, y, z]` (`[x, y]` in 2D), paths are walked from |
+| `reach_tolerance` | number | 0.5 m, 16 px | How near a path must end to a point |
+
+Needs: `read`.
+
+```json
+{"path": "valley.pcg.json", "reach_from": "farm"}
+```
+
+```json
+{"makes":19,"nodes":[{"name":"ground","points":480},{"name":"meadow","points":365},{"makes":1,"name":"grass","points":365},{"name":"rocky","points":20},{"name":"rocks","points":20},{"makes":1,"name":"boulders","points":20},{"name":"open","points":294},{"name":"herd","points":28},{"makes":9,"name":"deer","points":9},{"name":"posts","points":7},{"makes":7,"name":"lamps","points":7},{"makes":1,"name":"patrol","points":28}],"passed":true}
+```
 
 ## Foliage
 

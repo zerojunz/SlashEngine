@@ -175,6 +175,7 @@ add_executable(slash_tests
     test_plugin.cpp
     test_post.cpp
     test_precision.cpp
+    test_pcg.cpp
     test_procedural.cpp
     test_project_map.cpp
     test_ragdoll.cpp
