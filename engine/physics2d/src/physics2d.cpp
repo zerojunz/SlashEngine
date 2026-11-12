@@ -278,6 +278,8 @@ void install(world::World& world, const Settings& settings) {
     });
     // Fluids pour round and push its bodies.
     world::set_fluid_host_2d(world, detail::fluid_host_2d(space));
+    // Water measures its shores against what doesn't move.
+    world::set_water_host_2d(world, detail::water_host_2d(world));
     world.add_memory_source("physics2d",
                             [space](const world::World& /*world*/) { return space->memory(); });
     world.add_system(

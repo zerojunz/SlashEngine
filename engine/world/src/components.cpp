@@ -1577,6 +1577,33 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("fluid", {.doc = "The fluid entity it drains; every fluid when empty."})
         .describe("size", {.doc = "The box's size in pixels."})
         .describe("enabled", {.doc = "Whether it drains."});
+    registry.add<Water3D>()
+        .set_doc("A lake, ocean or river from a .water.json recipe: a surface of Gerstner waves "
+                 "with ripples, wakes and foam that floats and drags bodies, as Unreal's water "
+                 "bodies. It lies at rest on the entity's x-z plane.")
+        .describe("recipe", {.doc = "The .water.json recipe it is made of."})
+        .describe("overrides", {.doc = "A JSON Merge Patch over the recipe's fields."})
+        .describe("size", {.doc = "A lake's area in meters (x, z), centered on the entity; an "
+                                  "ocean's surface goes on past it, the size bounding only where "
+                                  "its shore is measured; zero for none."})
+        .describe("path", {.doc = "A river's Path3D entity, which the river runs along."})
+        .describe("width", {.doc = "A river's width in meters.", .min = 0})
+        .describe("visible", {.doc = "Drawn when on."})
+        .describe("layers", {.doc = "The render layers it draws in, as MeshInstance3D's."});
+    registry.add<Water2D>()
+        .set_doc("Water seen from the side in 2D from a .water.json recipe: its surface waves, "
+                 "ripples and foams, and floats and drags bodies.")
+        .describe("recipe", {.doc = "The .water.json recipe it is made of."})
+        .describe("overrides", {.doc = "A JSON Merge Patch over the recipe's fields."})
+        .describe("width", {.doc = "How wide it is in pixels, centered on the entity.", .min = 0})
+        .describe("depth",
+                  {.doc = "How deep it draws below its surface at rest, in pixels.", .min = 0})
+        .describe("visible", {.doc = "Drawn when on."})
+        .describe("z_index", {.doc = "Drawn after lower values."})
+        .describe("z_as_relative",
+                  {.doc = "z_index adds to its parents'; off makes it the whole of it."})
+        .describe("modulate", {.doc = "Multiplies its colors, as [r, g, b, a]."})
+        .describe("light_mask", {.doc = "Which 2D lights light it, as Sprite2D's."});
     const auto describe_simulation = [&](ComponentType& type, bool flat) {
         const char* unit = flat ? "pixels" : "meters";
         type.describe("enabled", {.doc = "Whether the stages run."})

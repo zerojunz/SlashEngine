@@ -230,6 +230,8 @@ void install(world::World& world, const Settings& settings) {
     });
     // Fluids pour round and push its bodies.
     world::set_fluid_host_3d(world, detail::fluid_host(space));
+    // Water measures its shores against what doesn't move.
+    world::set_water_host_3d(world, detail::water_host(world));
     world.add_memory_source("physics3d",
                             [space](const world::World& /*world*/) { return space->memory(); });
     world.add_system(

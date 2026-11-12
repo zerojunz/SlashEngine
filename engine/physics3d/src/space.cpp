@@ -1815,6 +1815,7 @@ void Space::step(world::World& world, float seconds) {
     pre_step_vehicles(world, tree, seconds);
     pre_step(world, seconds);
     apply_fields(world, tree, seconds);
+    apply_water(world, seconds);
     apply_drives(world, seconds);
     pre_step_soft_bodies(world, tree, seconds);
     pre_step_cloths(world, tree, seconds);

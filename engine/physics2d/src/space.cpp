@@ -1543,6 +1543,7 @@ void Space::step(world::World& world, float seconds) {
 
     apply_areas(world, tree);
     apply_fields(world, tree, seconds);
+    apply_water(world, seconds);
 
     // Constant forces every tick, and impulses queued since the last.
     for (auto& [entity, body] : bodies_) {

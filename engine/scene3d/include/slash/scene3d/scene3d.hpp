@@ -20,6 +20,7 @@
 #include "slash/world/foliage.hpp"
 #include "slash/world/scene.hpp"
 #include "slash/world/tree3d.hpp"
+#include "slash/world/water.hpp"
 
 #include <array>
 #include <cstddef>
@@ -633,6 +634,9 @@ private:
     // (world::fluid_transmittance). Meshes on the device, made again each frame.
     void add_fluid(const world::World& world, entt::entity entity, std::uint32_t cull_mask,
                    const render::Scene3D& scene);
+    // A body of water: its surface as a grid over its area (round the camera on an ocean) or a
+    // strip along its river, each corner moved by its waves and ripples at time.
+    void add_water(const world::WaterBody& body, std::uint32_t cull_mask, double time);
     // A GPUParticles3D: its system on the device runs the steps it hasn't (or is made again from
     // those kept), then each draw pass's mesh is filled with a copy at every particle, drawn
     // between ticks interpolation of the way along, placed by place with local_coords and turned

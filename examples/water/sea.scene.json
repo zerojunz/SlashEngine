@@ -1,0 +1,43 @@
+{
+  "entities": {
+    "buoy": {
+      "components": {
+        "CollisionShape3D": {
+          "height": 1.0,
+          "radius": 0.4,
+          "shape": "cylinder"
+        },
+        "CylinderMesh": {
+          "bottom_radius": 0.4,
+          "height": 1.0,
+          "top_radius": 0.4
+        },
+        "MeshInstance3D": {},
+        "RigidBody3D": {
+          "mass": 150.0
+        },
+        "Transform3D": {}
+      }
+    },
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true
+        },
+        "Transform3D": {
+          "position": [0.0, 4.0, 12.0],
+          "rotation": [-0.25, 0.0, 0.0]
+        }
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {},
+        "Transform3D": {
+          "rotation": [-0.6, 0.8, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

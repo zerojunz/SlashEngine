@@ -6433,6 +6433,65 @@ radii a second, a gas's blended by its smoke and glowing toward the fire color f
 of ignition; a `Fluid2D` draws the same discs in its canvas (`world::fluid_color`,
 `scene3d::fluid_quads`).
 
+## Water
+
+Oceans, lakes and rivers (SlashEngine's own; Godot has none), after Unreal's Water plugin and
+its buoyancy component. A `.water.json` recipe (`slash-cli schema water`;
+`slash/world/water.hpp`) says what a body of water is, and `extends` another as a JSON Merge
+Patch:
+
+```json
+{"format": 1, "name": "Sea", "kind": "ocean",
+ "wind": {"speed": 8, "direction": [1, 0.3], "count": 6},
+ "look": {"shallow": [0.1, 0.6, 0.6, 0.5], "deep": [0.02, 0.1, 0.25, 0.95]}}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `kind` | `"lake"` | `"lake"` (a box of `size`), `"ocean"` (no edge) or `"river"` (along a `Path3D`) |
+| `space` | `"3d"` | `"3d"` (meters, y up) or `"2d"` (pixels, seen from the side, y down) |
+| `waves` | none | Up to 16 Gerstner waves: `direction` (`[x, z]`; 2D waves run along x), `wavelength` (8), `amplitude` (0.2), `steepness` (0.5: how far crests lean toward each other, 1 at most), `speed` (0: deep water's, `sqrt(g / k)`), `phase` |
+| `wind` | none | Waves raised by a wind of `speed` (6 m/s, 300 px/s) along `direction`: `count` (6) waves round the Pierson-Moskowitz peak, a significant height of `0.21 speed² / g`, turned up to `spread` (0.6 radians) either way, with `steepness` (0.6) and phases hashed from `seed` (1) |
+| `density` | `1000`, `0.001` in 2D | Mass a cubic meter (a square pixel in 2D) |
+| `buoyancy` | `1` | Lift as a share of the water displaced |
+| `drag`, `angular_drag` | `1`, `1` | The share of a floating body's speed relative to the water, and of its spin, taken a second, under water |
+| `heave_damping` | `8` | The share of a body's speed up and down taken a second where it is wet, which settles its bobbing as the waves it makes would |
+| `current` | none | The water's own velocity (`[x, z]` m/s, or `[x]` px/s), which carries waves and bodies |
+| `flow` | `1.5` m/s, `60` px/s | A river's speed down its path, slowing to 0 at its banks |
+| `ripples` | | `wavelength` (0.5 m, 30 px), `speed` (0: deep water's), `decay` (1 a second) and `splash` (1: how big rings are) |
+| `look` | | `shallow`, `deep` and `foam` as `[r, g, b, a]`; `clarity` (4 m, 200 px: the depth it turns deep by), `crest_foam` (0.85: how sharp a crest foams), `shore_foam` (0.6 m, 12 px: the depth the shallows foam to), `roughness` (0.04), `spacing` (0.5 m, 8 px: the drawn grid's cells) and `view` (120 m: how far an ocean draws) |
+
+The surface moves as Gerstner waves sum: each point of the rest plane goes round its wave's
+orbit, `steepness` shared among the waves so they never loop. The height over a place is found by
+undoing the waves' sideways shift in five fixed-point steps, and the normal, the water's velocity
+and crest foam (where the surface is squeezed together) come from the same sums. Waves shoal:
+they shrink where the water is shallower than a third of their length. Rings spread from where
+bodies and liquid go in, as bells that travel at their `speed` and die by `decay`, at most 64 a
+body, close ones adding up. A lake's or river's ground is measured once under a grid of up to
+128 by 128 cells by rays down past what moves (rigid and character bodies), so the water knows
+its depth, foams in the shallows and fades toward its shores. Its math builds with
+`-ffp-contract=off` and its clock counts ticks, so waves are the same bits everywhere.
+
+| Component | Fields |
+| --- | --- |
+| `Water3D` | `recipe`, `overrides` (a merge patch), `size` (`[x, z]` meters, a lake's area; default 20 by 20), `path` (a river's `Path3D` entity), `width` (a river's, 4 m), `visible`, `layers` |
+| `Water2D` | `recipe`, `overrides`, `width` (640 px) and `depth` (200 px) from the entity's place, its surface at rest; `visible`, `z_index`, `z_as_relative`, `modulate`, `light_mask` |
+
+The `water` system (priority 959, after physics and fluids; added by `canvas::install`) keeps the
+water's clock and rings. A rigid or character body whose middle goes under the surface emits
+`water_entered` (and `water_exited` when it comes out), with the `water` and its vertical
+`speed`, and rings the water; one moving along the surface leaves a wake of rings. A liquid
+`Fluid3D` or `Fluid2D` falling into it is taken in where it lands, ringing. A recipe that can't
+be read emits `water_failed` once and warns. Rigid bodies float: physics3d and physics2d measure
+each one at points through its shape (4 by 4 by 4 in 3D, 6 by 6 in 2D, those inside its shape),
+lift each by the weight of the water it stands for (Archimedes) and drag it toward the water's
+velocity, so waves rock and currents carry it, as Unreal's pontoons. They feel the waves,
+current and shores but not the rings, which are too small and quick to push them. A `Water3D` draws a grid
+displaced by the waves (an ocean's round the camera, a river's along its path), colored from
+shallow to deep by depth and whitened by foam; a `Water2D` draws its surface, a foam band and
+its body fading down in its canvas. Gameplay code samples it with `world::sample_water` and
+rings it with `world::add_water_ripple`.
+
 ## Particles
 
 Particles follow Godot's `CPUParticles2D`. Each tick, after physics, the `cpu_particles_2d`
