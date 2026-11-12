@@ -327,7 +327,8 @@ Apart apart(const Measures& a, const Measures& b) {
 
 struct Rules {
     std::string id;
-    const json::Value* entry = nullptr;
+    // A copy: the storyboard it was read from is gone once the rules are loaded.
+    json::Value entry;
     real_t shape = kDefaultShape;
     real_t profile = 0.0F;
     std::vector<std::string> styles;
@@ -415,7 +416,7 @@ Result<Storyboard> load_rules(Session& session) {
         }
         Rules rules;
         rules.id = id;
-        rules.entry = &entry;
+        rules.entry = entry;
         if (const json::Value* value = entry.find("shape_difference");
             value != nullptr && value->is_number()) {
             rules.shape = static_cast<real_t>(value->as_double());
@@ -480,7 +481,7 @@ Result<Storyboard> load_rules(Session& session) {
 std::vector<const Rules*> rules_for(const std::vector<Rules>& all, std::string_view path) {
     std::vector<const Rules*> out;
     for (const Rules& rules : all) {
-        if (covers(*rules.entry, path)) {
+        if (covers(rules.entry, path)) {
             out.push_back(&rules);
         }
     }
