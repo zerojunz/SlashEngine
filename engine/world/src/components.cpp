@@ -981,6 +981,38 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                                             "Sprite2D's.",
                                      .choices = {"inherit", "linear", "nearest"}});
 
+    registry.add<Polygon2D>()
+        .set_doc("A filled polygon, as Godot's Polygon2D: its points in its entity's space, "
+                 "filled with a color, colors per point or a texture, or several polygons over "
+                 "the same points, later ones over earlier ones.")
+        .describe("polygon", {.doc = "The points, as [[x, y], ...], wound either way."})
+        .describe("polygons", {.doc = "Index lists into polygon, each a polygon drawn in turn; "
+                                      "empty fills polygon itself."})
+        .describe("color", {.doc = "The fill, as [r, g, b, a]."})
+        .describe("vertex_colors", {.doc = "A color per point, multiplying color; empty for "
+                                           "white."})
+        .describe("offset", {.doc = "Moves every point."})
+        .describe("texture", {.doc = "Project path of an image to fill with; \"\" for none."})
+        .describe("uv", {.doc = "Where each point samples the texture, in its pixels; empty "
+                                "samples at the points."})
+        .describe("modulate", {.doc = "Multiplies everything it draws, as [r, g, b, a]."})
+        .describe("z_index", {.doc = "Drawn after lower values."})
+        .describe("z_as_relative", {.doc = "z_index adds to its parents'; off makes it the "
+                                           "whole of it."})
+        .describe("visible", {.doc = "Drawn when on."})
+        .describe("light_mask", {.doc = "Which 2D lights light it, as Sprite2D's."})
+        .describe("texture_filter", {.doc = "How its texture is sampled, as Sprite2D's.",
+                                     .choices = {"inherit", "linear", "nearest"}});
+
+    registry.add<Character2D>()
+        .set_doc("A 2D character built from a .character.json recipe: its cut-out's bones are "
+                 "children named <id>_<bone>, each with a Transform2D (left to animations and "
+                 "ragdolls once made) and a Polygon2D of its body, face, hair and clothing, "
+                 "remade when the recipe changes.")
+        .describe("recipe", {.doc = "Project path of the .character.json file."})
+        .describe("pixels_per_meter", {.doc = "How big it is drawn.", .min = 1.0})
+        .describe("flip_h", {.doc = "Faces left instead of right."});
+
     registry.add<Foliage2D>()
         .set_doc("Painted 2D plants and rocks: each group's instances draw their .foliage.json "
                  "type's texture standing on its origin, bend in WindSource2Ds' wind, part for "

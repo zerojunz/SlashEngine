@@ -184,7 +184,7 @@ one component or one command.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"npc"`, `"quest"`, `"dialogue"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"standard_material"`, `"texture"`, `"scatter"`, `"physics_material"`, `"ragdoll"`, `"foliage"`, `"groom"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"npc"`, `"quest"`, `"dialogue"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"standard_material"`, `"texture"`, `"scatter"`, `"physics_material"`, `"ragdoll"`, `"foliage"`, `"groom"`, `"character"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -741,6 +741,55 @@ grow is `-32002` at `/entity` with why. Needs: `read`.
 
 ```json
 {"bounds":{"max":[103.884,45.857],"min":[70.0,20.0]},"groom":"mane.groom.json","guides":6,"points":6,"render":"strands","simulated":true,"strands":36,"tip_moved":{"max":3.417,"mean":3.417},"tips":[[103.884,45.857],[99.884,45.857],[95.884,45.857],[91.884,45.857],[87.884,45.857],[83.884,45.857]]}
+```
+
+## Characters
+
+Making, checking and placing [characters](scene-format.md#characters).
+[examples/character-design](../../examples/character-design/).
+
+### character.generate
+
+Writes a new `.character.json` recipe for a `name` (a `role` of `player` or `npc`, default
+`npc`; a `faction`'s ID) that the storyboard's [`character_rules`](scene-format.md#characters)
+covering `out` allow: its colors from their palette, its height within theirs (else the role's),
+its outfit one of a set of templates. It makes `candidates` recipes (default 24, at most 64)
+from `seed` and keeps the one whose outline and colors are least like the project's other
+characters, writing it to `out` (default `characters/<name>.character.json`) with undo. Returns
+`out`, its `height`, its `clothing` and its `nearest` other character with how far apart their
+`silhouette` and `color` are; a `warning` says none was as far apart as the rules ask. The same
+name, seed and project make the same file. Needs: `read`, `edit`, `filesystem`.
+
+```json
+{"name": "Mira Vale", "seed": 1}
+```
+
+### character.check
+
+Checks the project's characters (or `paths`, each against every other): each recipe builds, and
+keeps the `character_rules` that cover it. Two characters are too alike when their front or side
+outlines are less than `silhouette_difference` apart (default 0.05; 1 less their overlap) or
+their main colors less than `color_difference` (default 5; the Oklab difference times 100),
+reported once a pair; heights, prop counts and colors off the rules' palette are errors too.
+Returns how many `characters` it read and `errors` (`file`, `path`, `message`); `measures: true`
+adds `pairs`, how far apart each pair is. `test.run` runs it. Needs: `read`, `filesystem`.
+
+```json
+{"measures": true}
+```
+
+### character.place
+
+Makes an entity `id` of a recipe in the open scene. `at` of three numbers places it in 3D: a
+`Transform3D` turned by `yaw`, a `MeshInstance3D` drawing the rigged model, a `HairInstance3D` on
+its scalp for a groom and a `Cloth3D` on its cloth garment. Two numbers place a 2D cut-out: a
+`Transform2D` and a `Character2D` at `pixels_per_meter` (default 100), facing left with
+`flip_h`, whose bones the `character_2d` system keeps as `<id>_<bone>` children. Under `parent`
+when given. Returns the `id`, its `components` and `height`. A recipe that doesn't validate is
+`-32002` at `/recipe`, a taken `id` at `/id`. Needs: `read`, `edit`.
+
+```json
+{"recipe": "characters/hero.character.json", "id": "hero", "at": [0, 0, 0]}
 ```
 
 ## Animations

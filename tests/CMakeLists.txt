@@ -150,6 +150,7 @@ add_executable(slash_tests
     test_cloth.cpp
     test_foliage.cpp
     test_hair.cpp
+    test_character.cpp
     test_light_tools.cpp
     test_light_projectors.cpp
     test_reflection_2d.cpp

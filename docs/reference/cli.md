@@ -176,7 +176,7 @@ decode), a [`.texture.json`](scene-format.md#procedural-textures) file, a
 [`.physics_material.json`](scene-format.md#physics-materials-and-fields) file, a
 [`.ragdoll.json`](scene-format.md#ragdoll-profiles) profile, a
 [`.foliage.json`](scene-format.md#foliage) type, a [`.groom.json`](scene-format.md#hair-and-fur)
-groom, or a
+groom, a [`.character.json`](scene-format.md#characters) recipe (and that its model builds), or a
 [model](scene-format.md#models) (`.gltf`, `.glb`, `.obj`, `.fbx` or `.blend`), and lists every error, each with its JSON Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) and
 [scenes](scene-format.md#instanced-scenes) a file extends, the tile sets its layers use, the animation libraries and trees its players and trees use, the navigation meshes and polygons its regions place, the brains its NPC agents name, the mesh libraries its grid maps use, the maps its terrains read and the project's window size and theme are read from its
 project: the nearest folder above it with a `project.json`, else the current folder. A `.blend`
@@ -364,6 +364,7 @@ slash-cli schema physics_material
 slash-cli schema ragdoll
 slash-cli schema foliage
 slash-cli schema groom
+slash-cli schema character
 slash-cli schema storyboard
 slash-cli schema project
 slash-cli schema presets

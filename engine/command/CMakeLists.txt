@@ -14,6 +14,7 @@ add_library(slash_command
     src/procedural.cpp
     src/physics_debug.cpp
     src/ragdoll.cpp
+    src/character.cpp
     src/scatter.cpp
     src/hair.cpp
     src/playtest.cpp
@@ -45,6 +46,6 @@ if(TARGET slash_tinyexr)
     target_compile_definitions(slash_command PRIVATE SLASH_HAS_TINYEXR=1)
 endif()
 # Placing is the same everywhere, as the navigation geometry it reads, and so are
-# lighting.check's measures.
-set_source_files_properties(src/place.cpp src/lighting.cpp PROPERTIES
+# lighting.check's measures and generated characters.
+set_source_files_properties(src/place.cpp src/lighting.cpp src/character.cpp PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")

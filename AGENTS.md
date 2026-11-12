@@ -147,7 +147,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, physics_material, ragdoll, foliage, groom, sdk, plugin)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, physics_material, ragdoll, foliage, groom, character, sdk, plugin)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -157,7 +157,7 @@ Validate after editing a scene or prefab by hand, and format before committing o
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
-`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`, `.scatter.json`, `.physics_material.json`, `.ragdoll.json`, `.foliage.json` and `.groom.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
+`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`, `.scatter.json`, `.physics_material.json`, `.ragdoll.json`, `.foliage.json`, `.groom.json` and `.character.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -2019,6 +2019,26 @@ joints' blend. physics3d's `Space::step_hair` and physics2d's `step_hair_2d` (ea
 `world::set_hair_image_reader`, which `canvas::install` sets. `hair.get`
 (`engine/command/src/hair.cpp`) reads them; `examples/hair-and-fur` grows a head, a creature and
 a mane.
+
+Characters are MetaHuman Creator's, as recipes (Godot has none): a `.character.json` file
+(`slash/world/character.hpp`, `engine/world/src/character.cpp`; `$cli schema character`) gives
+a body's measures, a face, hair (and a `.groom.json`), clothing in layers (one garment may hang
+as cloth) and props at points, and `extends` another, merged as JSON Merge Patch.
+`world::load_character` reads it through the world's assets (the `.character.json` suffix is a
+model's, so it reads the text with `Assets::read`). In 3D, `scene3d::build_character`
+(`engine/scene3d/src/character.cpp`) builds it into a skinned `Model` with Godot's humanoid bone
+names, so animations retarget onto it, of primitive meshes placed by `character_measures`, each
+garment's coverage (`garment_coverage`) pushed out by its layer, the groom's `scalp`, a cloth
+garment's free part as the material a `Cloth3D` names and props loaded at attachment nodes;
+`load_model` and `check_model` take recipes, so `MeshInstance3D` draws them. In 2D,
+`character_cutout` makes a side-on cut-out of bones and shapes, which the `character_2d` system
+(priority 880) keeps as `<id>_<bone>` children of each `Character2D` with a `Polygon2D` each,
+drawn by `CanvasRenderer::gather_polygons`. `scene3d::silhouette` and `world::color_difference`
+(Oklab) measure how alike two look; `character.check` (`engine/command/src/character.cpp`, run
+by `test.run`) holds the cast to the storyboard's `character_rules` (outlines and main colors
+apart, heights, palette, props), `character.generate` keeps the most distinct of seeded
+candidates within them, and `character.place` puts one in a 3D or 2D scene.
+`examples/character-design` designs a cast.
 
 Physics materials and fields make one simulation, after Unreal's Chaos. A
 `.physics_material.json` file (`slash/world/physics_material.hpp`: Godot's `PhysicsMaterial`

@@ -1,0 +1,19 @@
+{
+  "entries": {
+    "palette/cast": {
+      "colors": {
+        "black": "#101010",
+        "blue": "#2040a0",
+        "brown": "#5a3a22",
+        "cream": "#f0e8d0",
+        "green": "#2f6b3a",
+        "red": "#a02020",
+        "tan": "#c89870",
+        "umber": "#7a5236"
+      },
+      "name": "Cast",
+      "tolerance": 2
+    }
+  },
+  "format": 1
+}

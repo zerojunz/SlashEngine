@@ -1,0 +1,46 @@
+{
+  "body": {
+    "build": 0.7,
+    "height": 1.82,
+    "shoulders": 1.15,
+    "skin": [0.784, 0.596, 0.439]
+  },
+  "clothing": [
+    {
+      "color": [0.627, 0.125, 0.125],
+      "kind": "shirt"
+    },
+    {
+      "color": [0.353, 0.227, 0.133],
+      "kind": "pants"
+    },
+    {
+      "color": [0.063, 0.063, 0.063],
+      "kind": "boots",
+      "material": "leather"
+    },
+    {
+      "color": [0.125, 0.251, 0.627],
+      "kind": "cape",
+      "cloth": true,
+      "length": 0.8
+    }
+  ],
+  "face": {
+    "beard": "stubble"
+  },
+  "format": 1,
+  "hair": {
+    "color": [0.063, 0.063, 0.063],
+    "style": "short"
+  },
+  "name": "Hero",
+  "props": [
+    {
+      "model": "props/sword.model.json",
+      "point": "right_hand",
+      "rotation": [1.5708, 0.0, 0.0]
+    }
+  ],
+  "role": "player"
+}
