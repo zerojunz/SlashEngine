@@ -1,0 +1,24 @@
+{
+  "behavior": {
+    "hunger_rate": 0.5,
+    "hunts": ["grazer"],
+    "notice": 20,
+    "reach": 1.5,
+    "run_speed": 8,
+    "temperament": "calm"
+  },
+  "body": {
+    "build": 0.6,
+    "height": 0.8,
+    "length": 1.4
+  },
+  "format": 1,
+  "kind": "predator",
+  "look": {
+    "coat": [0.45, 0.45, 0.45]
+  },
+  "name": "Wolf",
+  "parts": {
+    "ears": "pointed"
+  }
+}

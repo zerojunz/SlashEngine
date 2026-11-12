@@ -1,0 +1,30 @@
+{
+  "behavior": {
+    "flee": 6,
+    "herd": true,
+    "herd_radius": 5,
+    "notice": 12,
+    "roam": 15,
+    "run_speed": 6,
+    "temperament": "wary",
+    "walk_speed": 1.2
+  },
+  "body": {
+    "build": 0.4,
+    "height": 1.1,
+    "legs": 1.2,
+    "length": 1.6
+  },
+  "format": 1,
+  "kind": "grazer",
+  "look": {
+    "coat": [0.6, 0.4, 0.22],
+    "markings": [0.95, 0.92, 0.85],
+    "pattern": "spots"
+  },
+  "name": "Deer",
+  "parts": {
+    "ears": "long",
+    "horns": "antlers"
+  }
+}

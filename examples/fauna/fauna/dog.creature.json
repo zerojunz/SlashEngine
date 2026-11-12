@@ -1,0 +1,17 @@
+{
+  "behavior": {
+    "food": ["bone"],
+    "ride": true,
+    "run_speed": 5,
+    "tame": 2,
+    "temperament": "friendly",
+    "walk_speed": 1.5
+  },
+  "body": {
+    "height": 0.6,
+    "length": 0.9
+  },
+  "format": 1,
+  "kind": "pet",
+  "name": "Dog"
+}

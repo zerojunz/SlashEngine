@@ -2,6 +2,8 @@
 // cut-outs share, and the 2D cut-out with the system that keeps it.
 #include "slash/world/character.hpp"
 
+#include "creature_cutout.hpp"
+
 #include "slash/asset/assets.hpp"
 #include "slash/core/log.hpp"
 #include "slash/world/components.hpp"
@@ -1038,6 +1040,7 @@ Result<std::shared_ptr<const CharacterRecipe>> load_character(const World& world
 }
 
 void add_character_system(World& world) {
+    detail::prepare_creature_cutouts(world);
     if (world.ecs().ctx().find<CharacterCacheHolder>() == nullptr) {
         world.ecs().ctx().emplace<CharacterCacheHolder>(std::make_shared<CharacterCache>());
     }
@@ -1066,9 +1069,10 @@ void add_character_system(World& world) {
                 return !w.valid(e.first) || !w.ecs().all_of<Character2D>(e.first);
             });
             std::erase_if(state->warned, [&](const auto& e) { return !w.valid(e.first); });
+            detail::keep_creature_cutouts(w);
         },
-        {.doc = "Keeps each Character2D's cut-out: a child per bone with its Transform2D and a "
-                "Polygon2D of what its recipe draws there.",
+        {.doc = "Keeps each Character2D's and Creature2D's cut-out: a child per bone with its "
+                "Transform2D and a Polygon2D of what its recipe draws there.",
          .priority = 880});
 }
 

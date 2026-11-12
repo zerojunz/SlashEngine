@@ -76,6 +76,7 @@
 #include "slash/world/character.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/creature.hpp"
 #include "slash/world/foliage.hpp"
 #include "slash/world/hair.hpp"
 #include "slash/world/physics_material.hpp"
@@ -1545,6 +1546,11 @@ int cmd_scene_format(const std::string& path, bool check) {
                                       return world::validate_character(doc);
                                   }));
         }
+        if (world::is_creature_path(path)) {
+            return format_checked(text.value(), checked_by([](const json::Value& doc) {
+                                      return world::validate_creature(doc);
+                                  }));
+        }
         if (path.ends_with(slash::scene3d::kModelRecipeSuffix)) {
             return format_checked(text.value(), checked_by([](const json::Value& doc) {
                                       return slash::scene3d::validate_model_recipe(doc);
@@ -1630,14 +1636,15 @@ int cmd_scene(const std::vector<std::string>& args) {
         return usage_error("scene " + action + " needs a file path");
     }
     if (action == "format" && slash::scene3d::is_model_path(path) &&
-        !path.ends_with(slash::scene3d::kModelRecipeSuffix) && !world::is_character_path(path)) {
+        !path.ends_with(slash::scene3d::kModelRecipeSuffix) && !world::is_character_path(path) &&
+        !world::is_creature_path(path)) {
         return usage_error("scene format leaves models as the tools that made them wrote them");
     }
     return action == "validate" ? cmd_scene_validate(path) : cmd_scene_format(path, check);
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 39> kKinds = {"scene",
+    constexpr std::array<std::string_view, 40> kKinds = {"scene",
                                                          "prefab",
                                                          "frames",
                                                          "material",
@@ -1675,7 +1682,8 @@ int cmd_schema(const std::vector<std::string>& args) {
                                                          "ragdoll",
                                                          "foliage",
                                                          "groom",
-                                                         "character"};
+                                                         "character",
+                                                         "creature"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
         return usage_error(
             "schema takes one argument: scene, prefab, frames, material, "
@@ -1683,7 +1691,7 @@ int cmd_schema(const std::vector<std::string>& args) {
             "bus_layout, navmesh, navpoly, npc, quest, dialogue, meshlib, lightmap, "
             "voxel_gi, model, "
             "standard_material, "
-            "texture, scatter, physics_material, ragdoll, foliage, groom, character, "
+            "texture, scatter, physics_material, ragdoll, foliage, groom, character, creature, "
             "replay, test, score, "
             "storyboard, "
             "project, presets, sdk, plugin, providers or bench");
@@ -1747,6 +1755,8 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = world::groom_schema();
     } else if (args[0] == "character") {
         schema = world::character_schema();
+    } else if (args[0] == "creature") {
+        schema = world::creature_schema();
     } else if (args[0] == "replay") {
         schema = command::replay_schema();
     } else if (args[0] == "test") {

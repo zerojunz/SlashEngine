@@ -147,7 +147,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, physics_material, ragdoll, foliage, groom, character, sdk, plugin)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, physics_material, ragdoll, foliage, groom, character, creature, sdk, plugin)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -157,7 +157,7 @@ Validate after editing a scene or prefab by hand, and format before committing o
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
-`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`, `.scatter.json`, `.physics_material.json`, `.ragdoll.json`, `.foliage.json`, `.groom.json` and `.character.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
+`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`, `.scatter.json`, `.physics_material.json`, `.ragdoll.json`, `.foliage.json`, `.groom.json`, `.character.json` and `.creature.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -2039,6 +2039,25 @@ by `test.run`) holds the cast to the storyboard's `character_rules` (outlines an
 apart, heights, palette, props), `character.generate` keeps the most distinct of seeded
 candidates within them, and `character.place` puts one in a 3D or 2D scene.
 `examples/character-design` designs a cast.
+
+Animals are creature recipes, after Unreal's Mutable and its animal AI (Godot has none): a
+`.creature.json` file (`slash/world/creature.hpp`, `engine/world/src/creature.cpp`, built with
+`-ffp-contract=off`; `$cli schema creature`) gives a body plan (quadruped, bird, fish or insect),
+measures, a look, parts and a behavior, and `extends` another. `world::creature_measures`,
+`creature_skeleton`, `creature_animations` and `creature_pose` are what both dimensions share:
+`scene3d::build_creature` (`engine/scene3d/src/creature.cpp`, on the rig helpers
+`src/rig_builder.hpp` shares with characters) builds a skinned `Model` with its animations,
+which `load_model` and `check_model` take as recipes, and `creature_cutout` a side-on cut-out
+that the `character_2d` system keeps as `<id>_<bone>` children of each `Creature2D`. The `fauna`
+system (`engine/npc/src/fauna.cpp`, priority 964, added by `npc::install`) runs each `Creature3D`
+and `Creature2D` from its `CreatureMind`: fleeing what hunts it and people by temperament,
+attacking, hunting when hungry, following its owner, carrying its rider, and roaming, grazing
+and herding by boids with choices hashed from its ID and the tick, moving its transform or
+character body, playing its animations and posing its cut-out, and setting an `NpcAgent`'s
+`threatened`, `hungry` and `tamed` facts. `npc::feed`, `ride`, `steer` and the rest
+(`slash/npc/fauna.hpp`) are gameplay code's; `creature.place`, `creature.populate`,
+`creature.interact` and `creature.state` (`engine/command/src/creature.cpp`) an agent's.
+`examples/fauna` keeps a meadow and a pond.
 
 Physics materials and fields make one simulation, after Unreal's Chaos. A
 `.physics_material.json` file (`slash/world/physics_material.hpp`: Godot's `PhysicsMaterial`
