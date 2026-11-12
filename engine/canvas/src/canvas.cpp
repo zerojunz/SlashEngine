@@ -26,6 +26,7 @@
 #include "slash/world/hair.hpp"
 #include "slash/world/path.hpp"
 #include "slash/world/tree2d.hpp"
+#include "slash/world/vfx.hpp"
 #include "slash/world/wind.hpp"
 
 #include <algorithm>
@@ -493,6 +494,7 @@ void add_systems(world::World& world, asset::Assets& assets) {
     scene3d::add_particles_system(world);
     scene3d::add_streaming_system(world);
     world::add_wind_system(world);
+    world::add_vfx_system(world);
     world::add_character_system(world);
     world::add_flesh_2d_system(world);
     procedural::install_foliage(world);

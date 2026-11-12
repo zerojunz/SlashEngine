@@ -1429,6 +1429,56 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                  "AudioStreamPlayer3D or AudioStreamPlayer2D).")
         .describe("lifetime", {.doc = "Seconds left before it goes; 0 keeps it.", .min = 0})
         .describe("body", {.doc = "The ID of the body it came from."});
+    registry.add<VisualEffect3D>()
+        .set_doc("A visual effect playing a .vfx.json recipe at the entity's Transform3D, after "
+                 "Unreal's Niagara components: each layer plays as an entity \"<id>_<layer>\" "
+                 "under it. Under a model with a BoneAttachment3D it follows a bone or point.")
+        .describe("recipe", {.doc = "The .vfx.json recipe it plays."})
+        .describe("parameters",
+                  {.doc = "Values for the recipe's parameters by name, over its defaults."})
+        .describe("playing", {.doc = "Whether its time moves on."})
+        .describe("time", {.doc = "Seconds into the effect.", .min = 0})
+        .describe("speed_scale", {.doc = "How fast its time moves.", .min = 0})
+        .describe("lod_bias",
+                  {.doc = "The camera's distance is divided by this before picking the level "
+                          "of detail.",
+                   .min = 0})
+        .describe("seed", {.doc = "Added to its particles' seeds."})
+        .describe("free_on_finish", {.doc = "Whether it is destroyed when it has finished."});
+    registry.add<VisualEffect2D>()
+        .set_doc("A visual effect playing a .vfx.json recipe made for 2D at the entity's "
+                 "Transform2D, as VisualEffect3D does in 3D.")
+        .describe("recipe", {.doc = "The .vfx.json recipe it plays, whose dimension is 2d."})
+        .describe("parameters",
+                  {.doc = "Values for the recipe's parameters by name, over its defaults."})
+        .describe("playing", {.doc = "Whether its time moves on."})
+        .describe("time", {.doc = "Seconds into the effect.", .min = 0})
+        .describe("speed_scale", {.doc = "How fast its time moves.", .min = 0})
+        .describe("lod_bias",
+                  {.doc = "The camera's distance is divided by this before picking the level "
+                          "of detail.",
+                   .min = 0})
+        .describe("seed", {.doc = "Added to its particles' seeds."})
+        .describe("free_on_finish", {.doc = "Whether it is destroyed when it has finished."});
+    registry.add<VfxPart>()
+        .set_doc("A layer of a playing visual effect, made and removed by the vfx system.")
+        .describe("effect", {.doc = "The ID of the effect it belongs to."})
+        .describe("layer", {.doc = "The recipe's layer it plays."})
+        .describe("cycle", {.doc = "The cycle of a looping effect it was made in.", .min = 0})
+        .describe("linger",
+                  {.doc = "Seconds left for its particles to finish once its time is over; "
+                          "below 0 while it plays."});
+    registry.add<CameraShake>()
+        .set_doc("Shakes the current Camera3D's h_offset and v_offset and Camera2D's offset "
+                 "while enabled, by smooth noise that repeats everywhere; shakes add up.")
+        .describe(
+            "strength",
+            {.doc = "How far it shakes: meters for a Camera3D, pixels for a Camera2D.", .min = 0})
+        .describe("frequency", {.doc = "Shakes a second.", .min = 0})
+        .describe("radius", {.doc = "The camera's distance at which it fades to nothing; 0 reaches "
+                                    "everywhere.",
+                             .min = 0})
+        .describe("enabled", {.doc = "Whether it shakes."});
     registry.add<StreamedScene3D>()
         .set_doc("A part of a large world kept in a scene file of its own, loaded as the entity "
                  "\"<id>_scene\" under this one while a StreamingSource3D is within load_radius "

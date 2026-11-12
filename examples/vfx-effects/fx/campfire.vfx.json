@@ -1,0 +1,50 @@
+{
+  "budget": {
+    "lights": 1,
+    "particles": 32
+  },
+  "duration": 1,
+  "format": 1,
+  "layers": [
+    {
+      "components": {
+        "CPUParticles3D": {
+          "amount": 16,
+          "color": [1, 0.5, 0.1, 1],
+          "direction": [0, 1, 0],
+          "gravity": [0, 1, 0],
+          "initial_velocity_max": 1.4,
+          "initial_velocity_min": 0.8,
+          "lifetime": 0.6,
+          "spread": 15
+        },
+        "SphereMesh": {
+          "height": 0.16,
+          "radius": 0.08
+        }
+      },
+      "name": "flames"
+    },
+    {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1, 0.6, 0.3, 1],
+          "omni_range": 5
+        }
+      },
+      "curves": {
+        "OmniLight3D/light_energy": [
+          [0, 1.6],
+          [0.25, 2.1],
+          [0.5, 1.4],
+          [0.75, 2],
+          [1, 1.6]
+        ]
+      },
+      "name": "light",
+      "offset": [0, 0.4, 0]
+    }
+  ],
+  "loop": true,
+  "name": "Campfire"
+}

@@ -1005,6 +1005,24 @@ std::vector<std::string> leave_effects(world::World& world, std::string_view bod
             made.emplace_back(world.id_of(sound));
         }
     }
+    if (!set.vfx.empty()) {
+        if (const entt::entity vfx = create_effect(world, body, "vfx"); vfx != entt::null) {
+            // Its y along the way out, as the decal's: a burst of sparks flies off the face hit.
+            world::Affine3D basis;
+            basis.y = out;
+            const Vec3 side =
+                std::abs(out.y) < 0.9F ? Vec3{0.0F, 1.0F, 0.0F} : Vec3{1.0F, 0.0F, 0.0F};
+            basis.x = normalized_or(cross(side, out), {1.0F, 0.0F, 0.0F});
+            basis.z = cross(basis.x, out);
+            ecs.emplace<world::Transform3D>(vfx, placed_at(at, world::euler(basis)));
+            world::VisualEffect3D effect;
+            effect.recipe = set.vfx;
+            effect.parameters["strength"] = static_cast<double>(std::clamp(scale, 0.0F, 1.0F));
+            effect.free_on_finish = true;
+            ecs.emplace<world::VisualEffect3D>(vfx, std::move(effect));
+            made.emplace_back(world.id_of(vfx));
+        }
+    }
     return made;
 }
 

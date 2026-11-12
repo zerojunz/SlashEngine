@@ -1296,6 +1296,18 @@ std::vector<std::string> leave_effects(world::World& world, std::string_view bod
             made.emplace_back(world.id_of(sound));
         }
     }
+    if (!set.vfx.empty()) {
+        if (const entt::entity vfx = create_effect(world, body, "vfx"); vfx != entt::null) {
+            // Its x along the way out.
+            ecs.emplace<Transform2D>(vfx, placed_at(at, slash::atan2(out.y, out.x)));
+            world::VisualEffect2D effect;
+            effect.recipe = set.vfx;
+            effect.parameters["strength"] = static_cast<double>(std::clamp(scale, 0.0F, 1.0F));
+            effect.free_on_finish = true;
+            ecs.emplace<world::VisualEffect2D>(vfx, std::move(effect));
+            made.emplace_back(world.id_of(vfx));
+        }
+    }
     return made;
 }
 

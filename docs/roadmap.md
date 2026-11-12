@@ -1319,6 +1319,15 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         (collision, death, location), carry custom attributes a graph sets, light and cast
         shadows and sort and blend correctly, ported to every device's compute with a CPU twin
         that 2D worlds share
+    - [x] Recipes, timeline and commands: `.vfx.json` files of layers (any components: CPU and
+          GPU particles with their trails, mesh particles and flipbooks, decals, lights, sounds,
+          screen flashes, `CameraShake`s) on one timeline with curves and expressions over
+          parameters, played by `VisualEffect3D` and `VisualEffect2D` at a place, under an entity
+          or on a bone, with levels of detail and budgets; `vfx.play`, `vfx.state`, `vfx.check`
+          and `vfx.preview`; damage profiles' `vfx` (`examples/vfx-effects`)
+    - [ ] Advanced particle simulation: neighbors, depth and distance field collision, events,
+          attributes, flocking, on every device's compute with a CPU twin and in 2D
+    - [ ] Distortion, and the foliage, character, fauna and vehicle tools' effects
 19. [ ] Fluids and smoke: a real-time simulator with no grids (Godot has none; after Niagara's
         fluids and Unreal's water tools, built on particles instead of Niagara Fluids' grids):
         liquids as position-based fluid particles (density, incompressibility, viscosity,

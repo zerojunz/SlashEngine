@@ -3207,6 +3207,68 @@ struct DamageEffect {
 };
 SLASH_COMPONENT(DamageEffect, lifetime, body)
 
+// A visual effect playing a .vfx.json recipe at the entity's Transform3D, after Unreal's Niagara
+// components (Godot has none: its effects are scenes a script times). The "vfx" system makes
+// each layer an entity "<id>_<layer>" under it while the layer plays. Under a model, with a
+// BoneAttachment3D, it follows a bone or an attachment point.
+struct VisualEffect3D {
+    std::string recipe;     // a .vfx.json file
+    json::Value parameters; // values for the recipe's parameters by name, over its defaults
+    bool playing = true;
+    float time = 0.0F; // seconds into the effect, which the system moves on while it plays
+    float speed_scale = 1.0F;
+    float lod_bias = 1.0F;       // the camera's distance is divided by this before picking detail
+    int seed = 0;                // added to its particles' seeds
+    bool free_on_finish = false; // destroyed when it has finished, as a one-shot
+
+    friend bool operator==(const VisualEffect3D&, const VisualEffect3D&) = default;
+};
+SLASH_COMPONENT(VisualEffect3D, recipe, parameters, playing, time, speed_scale, lod_bias, seed,
+                free_on_finish)
+
+// A visual effect playing a .vfx.json recipe made for 2D at the entity's Transform2D: the same
+// as VisualEffect3D, in pixels.
+struct VisualEffect2D {
+    std::string recipe;
+    json::Value parameters;
+    bool playing = true;
+    float time = 0.0F;
+    float speed_scale = 1.0F;
+    float lod_bias = 1.0F;
+    int seed = 0;
+    bool free_on_finish = false;
+
+    friend bool operator==(const VisualEffect2D&, const VisualEffect2D&) = default;
+};
+SLASH_COMPONENT(VisualEffect2D, recipe, parameters, playing, time, speed_scale, lod_bias, seed,
+                free_on_finish)
+
+// A layer of a playing visual effect: which effect and layer it is, the cycle of a looping one,
+// and, once its time is over, how long it lingers for its particles to finish.
+struct VfxPart {
+    std::string effect;
+    std::string layer;
+    int cycle = 0;
+    float linger = -1.0F; // seconds left once over; below 0 while it plays
+
+    friend bool operator==(const VfxPart&, const VfxPart&) = default;
+};
+SLASH_COMPONENT(VfxPart, effect, layer, cycle, linger)
+
+// Shakes the current camera while enabled, as a camera shake in Unreal (Godot leaves it to
+// scripts): by strength (meters at a Camera3D's h_offset and v_offset, pixels at a Camera2D's
+// offset) at frequency, weaker with the camera's distance out to radius (0 reaches everywhere).
+// Shakes add up. Smooth noise of whole numbers moves it, so it repeats everywhere.
+struct CameraShake {
+    float strength = 0.1F;
+    float frequency = 12.0F; // shakes a second
+    float radius = 0.0F;
+    bool enabled = true;
+
+    friend bool operator==(const CameraShake&, const CameraShake&) = default;
+};
+SLASH_COMPONENT(CameraShake, strength, frequency, radius, enabled)
+
 // A part of a large world kept in a scene file of its own, loaded while a StreamingSource3D is
 // near it and unloaded when they have all gone, as Unreal's World Partition streams its cells.
 // Godot has none. The scene's root becomes the entity "<id>_scene", placed under this one.
