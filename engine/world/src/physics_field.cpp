@@ -202,6 +202,41 @@ PhysicsFields3D::PhysicsFields3D(const World& world, const Tree3D& tree) {
     }
 }
 
+namespace {
+
+// Adds what one field does at a place, weakened by weight, to effect.
+void add_effect(FieldEffect& effect, const PhysicsFields3D::Field& field, Vec3 position,
+                real_t weight, std::uint32_t seed, double time) {
+    const float amount = field.magnitude * weight;
+    switch (field.type) {
+    case FieldType::RadialForce:
+    case FieldType::DirectionalForce:
+        effect.force = effect.force + (push_way(field, position) * amount);
+        break;
+    case FieldType::NoiseForce:
+        effect.force = effect.force + (noise_push(field, seed, time) * amount);
+        break;
+    case FieldType::RadialVelocity:
+    case FieldType::DirectionalVelocity:
+        effect.velocity = effect.velocity.value_or(Vec3{}) + (push_way(field, position) * amount);
+        break;
+    case FieldType::Strain:
+        effect.strain = std::max(effect.strain, amount);
+        break;
+    case FieldType::Anchor:
+        effect.anchored = true;
+        break;
+    case FieldType::Kill:
+        effect.killed = true;
+        break;
+    case FieldType::Sleep:
+        effect.sleep_below = std::max(effect.sleep_below.value_or(0.0F), amount);
+        break;
+    }
+}
+
+} // namespace
+
 FieldEffect PhysicsFields3D::at(Vec3 position, std::uint32_t layers, std::uint32_t seed,
                                 double time) const {
     FieldEffect effect;
@@ -210,35 +245,22 @@ FieldEffect PhysicsFields3D::at(Vec3 position, std::uint32_t layers, std::uint32
             continue;
         }
         const real_t weight = reach(field, position);
-        if (weight < 0.0F) {
+        if (weight >= 0.0F) {
+            add_effect(effect, field, position, weight, seed, time);
+        }
+    }
+    return effect;
+}
+
+FieldEffect PhysicsFields3D::particle_effect(Vec3 position, std::uint32_t seed, double time) const {
+    FieldEffect effect;
+    for (const Field& field : fields_) {
+        if (!field.particles) {
             continue;
         }
-        const float amount = field.magnitude * weight;
-        switch (field.type) {
-        case FieldType::RadialForce:
-        case FieldType::DirectionalForce:
-            effect.force = effect.force + (push_way(field, position) * amount);
-            break;
-        case FieldType::NoiseForce:
-            effect.force = effect.force + (noise_push(field, seed, time) * amount);
-            break;
-        case FieldType::RadialVelocity:
-        case FieldType::DirectionalVelocity:
-            effect.velocity =
-                effect.velocity.value_or(Vec3{}) + (push_way(field, position) * amount);
-            break;
-        case FieldType::Strain:
-            effect.strain = std::max(effect.strain, amount);
-            break;
-        case FieldType::Anchor:
-            effect.anchored = true;
-            break;
-        case FieldType::Kill:
-            effect.killed = true;
-            break;
-        case FieldType::Sleep:
-            effect.sleep_below = std::max(effect.sleep_below.value_or(0.0F), amount);
-            break;
+        const real_t weight = reach(field, position);
+        if (weight >= 0.0F) {
+            add_effect(effect, field, position, weight, seed, time);
         }
     }
     return effect;
@@ -305,6 +327,15 @@ FieldEffect PhysicsFields2D::at(Vec2 position, std::uint32_t layers, std::uint32
                                 double time) const {
     FieldEffect effect = fields_.at({position.x, position.y, 0.0F}, layers, seed, time);
     // Noise pushes in the plane only.
+    effect.force.z = 0.0F;
+    if (effect.velocity) {
+        effect.velocity->z = 0.0F;
+    }
+    return effect;
+}
+
+FieldEffect PhysicsFields2D::particle_effect(Vec2 position, std::uint32_t seed, double time) const {
+    FieldEffect effect = fields_.particle_effect({position.x, position.y, 0.0F}, seed, time);
     effect.force.z = 0.0F;
     if (effect.velocity) {
         effect.velocity->z = 0.0F;

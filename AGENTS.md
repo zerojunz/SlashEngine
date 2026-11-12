@@ -2513,7 +2513,14 @@ a 2D liquid by marching squares) with its spray (`world::fluid_is_spray`) as dis
 (`scene3d::fluid_quads`), so every device draws it, and a gas as discs lit through the smoke
 between them and the light (`world::fluid_transmittance`, gridless: particles found where they
 fall on a plane square to the light). `fluid.place`, `fluid.pour`, `fluid.state`, `fluid.check`
-and `fluid.preview` (stages in a private `Session`) are in `engine/command/src/fluid.cpp`.
+and `fluid.preview` (stages in a private `Session`) are in `engine/command/src/fluid.cpp`. The hosts
+also collide particles with soft bodies' and `Cloth3D`s' faces (`collide_soft`, pushing the
+nearest face's points back, `push_soft`) and `Cloth2D`s' outlines (`Cloth2DBody::outline`, which
+the cloth step keeps); `PhysicsField3D`s and `2D`s with `particles` act on each particle through
+`particle_effect` (forces, velocities, anchors, kills); an emitter with no `fluid` pours into the
+fluid on its entity or above it, throwing particles with its motion by `inherit_velocity`
+(`EmitterState`); and a VFX layer's emitters stop at its end while a part with its own fluid
+lingers until the particles are gone (`end_part` in `engine/world/src/vfx.cpp`).
 `examples/fluids` splashes water, lights a campfire and pours 2D water.
 
 Oceans, lakes and rivers are SlashEngine's own, after Unreal's Water plugin: a `.water.json`

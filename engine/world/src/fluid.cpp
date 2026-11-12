@@ -4,6 +4,7 @@
 #include "slash/core/assert.hpp"
 #include "slash/core/log.hpp"
 #include "slash/world/particle_sim.hpp"
+#include "slash/world/physics_field.hpp"
 #include "slash/world/ragdoll.hpp"
 #include "slash/world/tree2d.hpp"
 #include "slash/world/tree3d.hpp"
@@ -113,9 +114,20 @@ struct FluidCache {
 };
 using FluidCacheHolder = std::shared_ptr<FluidCache>;
 
-// Each fluid entity's particles, by entity ID, and what it said once.
+// What an emitter carries from tick to tick for a fluid: the particles it owes and where it
+// was, to pour with its own velocity.
+struct EmitterState {
+    double owed = 0.0;
+    Vec3f origin;
+    bool placed = false;
+    bool seen = false; // poured this tick
+};
+
+// Each fluid entity's particles, by entity ID, its emitters' states by emitter and fluid ID,
+// and what it said once.
 struct FluidStore {
     std::map<std::string, FluidParticles, std::less<>> fluids;
+    std::map<std::string, EmitterState, std::less<>> emitters;
     std::set<std::string, std::less<>> warned;
 };
 using FluidStoreHolder = std::shared_ptr<FluidStore>;
@@ -428,7 +440,7 @@ void substep(const FluidRecipe& recipe, FluidParticles& particles, const FluidSt
             if (contact.body != entt::null && host != nullptr && host->push) {
                 // What pushing the particle out took, given back to the body.
                 host->push(contact.body, contact.normal * (-mass * contact.depth / dt),
-                           predicted[i]);
+                           predicted[i], mass);
             }
         }
         if (auto bound = keep_in(inputs, predicted[i], recipe.radius, flat); bound) {
@@ -702,9 +714,24 @@ void run_fluid(World& world, FluidStore& store, entt::entity entity, bool flat, 
             }
         }
     }
-    // Emitters that pour into it.
+    // Emitters that pour into it: those naming it, and those naming none on it or under it.
+    const auto pours_here = [&](entt::entity emitter_entity, const FluidEmitter& emitter) {
+        if (!emitter.enabled || emitter.rate <= 0.0F) {
+            return false;
+        }
+        if (!emitter.fluid.empty()) {
+            return emitter.fluid == id;
+        }
+        for (entt::entity at = emitter_entity; at != entt::null;
+             at = flat ? tree2->parent(at) : tree3->parent(at)) {
+            if (flat ? ecs.all_of<Fluid2D>(at) : ecs.all_of<Fluid3D>(at)) {
+                return at == entity;
+            }
+        }
+        return false;
+    };
     const auto emit = [&](entt::entity emitter_entity, const FluidEmitter& emitter, Vec3f dir) {
-        if (!emitter.enabled || emitter.fluid != id || emitter.rate <= 0.0F) {
+        if (!pours_here(emitter_entity, emitter)) {
             return;
         }
         Affine3D at;
@@ -719,10 +746,22 @@ void run_fluid(World& world, FluidStore& store, entt::entity entity, bool flat, 
         }
         const Vec3f origin = to_float(at.apply(Vec3{}));
         const Vec3f world_dir = to_float(at.apply(Vec3{dir.x, dir.y, dir.z})) - origin;
-        const double owed = (static_cast<double>(emitter.rate) * tick_seconds) + particles.emitted;
+        const std::string emitter_id(world.id_of(emitter_entity));
+        EmitterState& state = store.emitters[emitter_id + ">" + id];
+        state.seen = true;
+        // The emitter's own velocity, from where it was the tick before, which its particles
+        // carry by inherit_velocity: a moving tap trails its water.
+        Vec3f carried;
+        if (state.placed && tick_seconds > 0.0) {
+            carried = (origin - state.origin) *
+                      (emitter.inherit_velocity / static_cast<float>(tick_seconds));
+        }
+        state.origin = origin;
+        state.placed = true;
+        const double owed = (static_cast<double>(emitter.rate) * tick_seconds) + state.owed;
         const auto whole = static_cast<std::size_t>(std::floor(owed));
-        particles.emitted = owed - static_cast<double>(whole);
-        const std::uint32_t emitter_seed = hash_text(world.id_of(emitter_entity));
+        state.owed = owed - static_cast<double>(whole);
+        const std::uint32_t emitter_seed = hash_text(emitter_id);
         for (std::size_t k = 0; k < whole && particles.size() < limit; ++k) {
             const std::uint32_t h = mix(emitter_seed ^ (particles.next_id * 0x27D4EB2FU));
             const Vec3f way = spread_direction(world_dir, emitter.spread, h, flat);
@@ -745,11 +784,12 @@ void run_fluid(World& world, FluidStore& store, entt::entity entity, bool flat, 
             }
             // Spread along the tick so a stream doesn't come out in clumps.
             const float along = unit(h ^ 0xABCDEFU) * static_cast<float>(tick_seconds);
-            Vec3f p = origin + offset + (way * (emitter.speed * along));
+            const Vec3f velocity = (way * emitter.speed) + carried;
+            Vec3f p = origin + offset + (velocity * along);
             if (flat) {
                 p.z = 0.0F;
             }
-            particles.add(p, way * emitter.speed, emitter.temperature, emitter.smoke, emitter.fuel);
+            particles.add(p, velocity, emitter.temperature, emitter.smoke, emitter.fuel);
         }
     };
     if (flat) {
@@ -763,6 +803,36 @@ void run_fluid(World& world, FluidStore& store, entt::entity entity, bool flat, 
         for (const auto [e, emitter] : ecs.view<const FluidEmitter3D>().each()) {
             if (ecs.all_of<Transform3D>(e)) {
                 emit(e, emitter, vec3f(emitter.direction));
+            }
+        }
+    }
+    // Physics fields with particles on act on it as on CPU particles: their forces push each
+    // particle as a kilogram while it steps, velocity fields set its velocity, anchors hold it
+    // and kill fields take it away, so one field acts on bodies, particles and fluids alike.
+    std::optional<PhysicsFields3D> fields3;
+    std::optional<PhysicsFields2D> fields2;
+    if (flat && !ecs.view<const PhysicsField2D>().empty()) {
+        fields2.emplace(world, *tree2);
+    } else if (!flat && !ecs.view<const PhysicsField3D>().empty()) {
+        fields3.emplace(world, *tree3);
+    }
+    const bool fielded = (fields2 && !fields2->empty()) || (fields3 && !fields3->empty());
+    const double field_time = static_cast<double>(world.tick()) * tick_seconds;
+    const auto field_at = [&](Vec3f p) {
+        if (flat) {
+            return fields2->particle_effect(Vec2{p.x, p.y}, seed, field_time);
+        }
+        return fields3->particle_effect(Vec3{p.x, p.y, p.z}, seed, field_time);
+    };
+    std::vector<std::pair<std::size_t, Vec3f>> anchored;
+    if (fielded) {
+        for (std::size_t i = 0; i < particles.size(); ++i) {
+            const FieldEffect effect = field_at(particles.position[i]);
+            if (effect.velocity) {
+                particles.velocity[i] = vec3f(*effect.velocity);
+            }
+            if (effect.anchored) {
+                anchored.emplace_back(i, particles.position[i]);
             }
         }
     }
@@ -785,25 +855,40 @@ void run_fluid(World& world, FluidStore& store, entt::entity entity, bool flat, 
     if (inputs.host != nullptr && inputs.host->gravity) {
         inputs.gravity = inputs.host->gravity();
     }
-    // A gas drifts with the wind.
+    // A gas drifts with the wind; fields push liquids and gases.
     std::optional<WindField> wind3;
     std::optional<WindField2D> wind2;
+    const double time = wind_time(world);
     if (recipe.gas && recipe.drag > 0.0F) {
-        const double time = wind_time(world);
         if (flat && !ecs.view<const WindSource2D>().empty()) {
             wind2.emplace(world, *tree2);
-            inputs.acceleration = [&, time](Vec3f p) {
-                const Vec2 w = wind2->at(Vec2{p.x, p.y}, time);
-                return Vec3f{to_float(w.x), to_float(w.y), 0.0F} * recipe.drag;
-            };
         } else if (!flat && !ecs.view<const WindSource3D>().empty()) {
             wind3.emplace(world, *tree3);
-            inputs.acceleration = [&, time](Vec3f p) {
-                return vec3f(wind3->at(Vec3{p.x, p.y, p.z}, time)) * recipe.drag;
-            };
         }
     }
+    if (wind2 || wind3 || fielded) {
+        inputs.acceleration = [&, time](Vec3f p) {
+            Vec3f a;
+            if (wind2) {
+                const Vec2 w = wind2->at(Vec2{p.x, p.y}, time);
+                a = Vec3f{to_float(w.x), to_float(w.y), 0.0F} * recipe.drag;
+            } else if (wind3) {
+                a = vec3f(wind3->at(Vec3{p.x, p.y, p.z}, time)) * recipe.drag;
+            }
+            if (fields2) {
+                const Vec2 push = fields2->particle_force(Vec2{p.x, p.y}, seed, field_time);
+                a = a + Vec3f{to_float(push.x), to_float(push.y), 0.0F};
+            } else if (fields3) {
+                a = a + vec3f(fields3->particle_force(Vec3{p.x, p.y, p.z}, seed, field_time));
+            }
+            return a;
+        };
+    }
     step_fluid(recipe, particles, inputs);
+    for (const auto& [i, held] : anchored) {
+        particles.position[i] = held;
+        particles.velocity[i] = {};
+    }
     // Sinks drain it; old particles go.
     std::vector<std::pair<Affine3D, Vec3f>> sinks;
     if (flat) {
@@ -843,6 +928,9 @@ void run_fluid(World& world, FluidStore& store, entt::entity entity, bool flat, 
                 return true;
             }
         }
+        if (fielded && field_at(p).killed) {
+            return true;
+        }
         return !std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z);
     });
 }
@@ -863,6 +951,9 @@ void run(World& world, double tick_seconds) {
     for (const auto [entity, fluid] : ecs.view<const Fluid2D>().each()) {
         fluids2.push_back(entity);
     }
+    for (auto& [key, state] : store.emitters) {
+        state.seen = false;
+    }
     std::set<std::string, std::less<>> live;
     for (const entt::entity entity : fluids3) {
         live.emplace(world.id_of(entity));
@@ -880,6 +971,8 @@ void run(World& world, double tick_seconds) {
     }
     // Fluids that went take their particles with them.
     std::erase_if(store.fluids, [&](const auto& entry) { return !live.contains(entry.first); });
+    // An emitter that stopped pouring starts again from where it is.
+    std::erase_if(store.emitters, [](const auto& entry) { return !entry.second.seen; });
 }
 
 } // namespace

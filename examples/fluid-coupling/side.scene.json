@@ -1,0 +1,50 @@
+{
+  "entities": {
+    "awning": {
+      "components": {
+        "Cloth2D": {
+          "color": [0.8, 0.3, 0.2, 1.0],
+          "columns": 9,
+          "gradient": [1.0, 0.0],
+          "gravity_scale": 0.2,
+          "max_distance": 30.0,
+          "rows": 2,
+          "size": [100.0, 6.0]
+        },
+        "Transform2D": {
+          "position": [70.0, 50.0]
+        }
+      }
+    },
+    "camera": {
+      "components": {
+        "Camera2D": {},
+        "Transform2D": {
+          "position": [80.0, 45.0]
+        }
+      }
+    },
+    "cloud": {
+      "components": {
+        "Fluid2D": {
+          "recipe": "liquids/rain.fluid.json"
+        },
+        "Transform2D": {
+          "children": ["drops"],
+          "position": [100.0, 0.0]
+        }
+      }
+    },
+    "drops": {
+      "components": {
+        "FluidEmitter2D": {
+          "radius": 20.0,
+          "rate": 120.0,
+          "speed": 40.0
+        },
+        "Transform2D": {}
+      }
+    }
+  },
+  "format": 1
+}

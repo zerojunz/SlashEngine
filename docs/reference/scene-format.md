@@ -5711,7 +5711,8 @@ fields. A `PhysicsField2D` does the same in a 2D world, in pixels.
   bodies' points feel forces (each point its share) and velocities. Strain also reaches static
   and animatable `Destructible3D`s.
 - With `particles` on, force fields push `CPUParticles3D` and `CPUParticles2D` particles too,
-  each where it is, as a kilogram: the push adds to `gravity`.
+  each where it is, as a kilogram: the push adds to `gravity`. Fluid particles feel every type
+  that way too: forces, velocities, `anchor` (held where they are) and `kill` (removed).
 - `physics_3d.substeps` and `physics_2d.substeps` in [`project.json`](project-format.md) give
   each tick more collision steps, as Chaos's substeps, for fast or stacked bodies.
 
@@ -6258,6 +6259,10 @@ that is removed go with it. Every enabled `CameraShake` shakes the current `Came
 ID, taking off what it added the tick before, so the camera's own offset comes back.
 `world::camera_shake_offsets` says what shakes add now.
 
+A layer can pour fluids: its `FluidEmitter3D`s and `FluidEmitter2D`s stop when it ends, and a
+part holding its own `Fluid3D` or `Fluid2D` lingers while its particles last (the recipe's
+`lifetime`, or 10 seconds for one that lives for ever), going as soon as they are gone.
+
 ### Particle simulation
 
 Simulation stages run over CPU particles, after Unreal's Niagara modules (Godot has none): a
@@ -6417,7 +6422,7 @@ builds with `-ffp-contract=off`, so a fluid steps the same bits on any number of
 | Component | Fields |
 | --- | --- |
 | `Fluid3D`, `Fluid2D` | `recipe`, `enabled`, `overrides` (a merge patch), `fill_size` (a block filled once at the entity), `fill_velocity`, `bounds_size` (a box at the entity the particles stay in); 3D: `visible`, `layers`, `cast_shadow`; 2D: `visible`, `z_index`, `z_as_relative`, `modulate`, `light_mask` |
-| `FluidEmitter3D`, `FluidEmitter2D` | `fluid` (the fluid entity), `rate` a second, `speed`, `spread` (radians), `radius`, `temperature`, `smoke`, `fuel`, `enabled`, `direction` |
+| `FluidEmitter3D`, `FluidEmitter2D` | `fluid` (the fluid entity; empty for the fluid on its own entity or the nearest one above it), `rate` a second, `speed`, `spread` (radians), `radius`, `temperature`, `smoke`, `fuel`, `enabled`, `inherit_velocity` (`1`: the share of the emitter's own motion its particles take), `direction` |
 | `FluidSink3D`, `FluidSink2D` | `fluid` (empty for every fluid), `size`, `enabled`: removes the particles in its box |
 
 The `fluids` system (priority 958, after physics; added by `canvas::install`) fills, pours into,
@@ -6427,7 +6432,16 @@ undo leave them alone. Gravity is the project's `physics_3d` or `physics_2d` gra
 `drag` drift with `WindSource3D`s and `WindSource2D`s. Particles collide with 3D and 2D physics
 bodies (`world::FluidHost`, which physics3d and physics2d set: each particle a sphere against the
 Jolt bodies its bounds reach, or a circle against the Box2D shapes by their manifolds), and push
-rigid bodies back with the impulse it took to move them out. A `Fluid3D` draws its particles as
+rigid bodies back with the impulse it took to move them out. They also land on soft bodies and
+`Cloth3D`s (their faces as a sheet as thick as their points' radius plus a centimeter) and on
+`Cloth2D`s (the outline of the triangles they draw, torn ones left out), pushing the face's or
+side's points back by their inverse masses. `PhysicsField3D`s and `PhysicsField2D`s with
+`particles` on act on each particle as a kilogram: forces add to gravity, velocities set its
+velocity, `anchor` holds it where it is and `kill` removes it. An emitter on any body (a
+creature's mouth, a vehicle's exhaust, a hose in a character's hand) pours into the fluid it
+names, or the one it is on or under, and throws its particles along with its own motion by
+`inherit_velocity`. A `Fluid3D`/`Fluid2D` with emitters can be a layer of a `.vfx.json` effect
+(see [Visual effects](#visual-effects)). A `Fluid3D` draws its particles as
 discs facing the camera, a liquid's lit and whiter as foam where it runs faster than 40 particle
 radii a second, a gas's blended by its smoke and glowing toward the fire color from four fifths
 of ignition; a `Fluid2D` draws the same discs in its canvas (`world::fluid_color`,

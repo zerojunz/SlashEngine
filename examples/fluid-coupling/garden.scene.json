@@ -1,0 +1,123 @@
+{
+  "entities": {
+    "blower": {
+      "components": {
+        "PhysicsField3D": {
+          "magnitude": 1.5,
+          "shape": "box",
+          "size": [2.0, 1.4, 2.0],
+          "type": "directional_velocity"
+        },
+        "Transform3D": {
+          "position": [2.0, 1.2, 0.0],
+          "rotation": [0.0, -1.5707964, 0.0]
+        }
+      }
+    },
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true
+        },
+        "Transform3D": {
+          "position": [1.5, 1.8, 6.0]
+        }
+      }
+    },
+    "drain": {
+      "components": {
+        "PhysicsField3D": {
+          "shape": "box",
+          "size": [0.6, 3.0, 2.0],
+          "type": "kill"
+        },
+        "Transform3D": {
+          "position": [3.8, 1.0, 0.0]
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "BoxMesh": {
+          "size": [8.0, 0.5, 4.0]
+        },
+        "CollisionShape3D": {
+          "size": [8.0, 0.5, 4.0]
+        },
+        "MeshInstance3D": {},
+        "StaticBody3D": {},
+        "Transform3D": {
+          "position": [0.0, -0.25, 0.0]
+        }
+      }
+    },
+    "hammock": {
+      "components": {
+        "MeshInstance3D": {},
+        "PlaneMesh": {
+          "size": [1.0, 1.0],
+          "subdivide_depth": 3,
+          "subdivide_width": 3
+        },
+        "SoftBody3D": {
+          "pinned_points": [
+            {},
+            {
+              "point": 4
+            },
+            {
+              "point": 20
+            },
+            {
+              "point": 24
+            }
+          ]
+        },
+        "Transform3D": {
+          "position": [0.0, 1.0, 0.0]
+        }
+      }
+    },
+    "nozzle": {
+      "components": {
+        "FluidEmitter3D": {
+          "radius": 0.1,
+          "rate": 80.0,
+          "speed": 0.5
+        },
+        "Transform3D": {}
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {},
+        "Transform3D": {
+          "rotation": [-0.8, 0.4, 0.0]
+        }
+      }
+    },
+    "tap": {
+      "components": {
+        "Fluid3D": {
+          "recipe": "liquids/water.fluid.json"
+        },
+        "Transform3D": {
+          "children": ["nozzle"],
+          "position": [0.0, 1.6, 0.0]
+        }
+      }
+    },
+    "vent": {
+      "components": {
+        "Transform3D": {
+          "position": [2.0, 0.1, 0.0]
+        },
+        "VisualEffect3D": {
+          "free_on_finish": true,
+          "recipe": "effects/steam.vfx.json"
+        }
+      }
+    }
+  },
+  "format": 1
+}

@@ -1547,7 +1547,8 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                    true);
     const auto describe_emitter = [&](ComponentType& type, bool flat) {
         const std::string unit = flat ? "pixels" : "meters";
-        type.describe("fluid", {.doc = "The Fluid3D or Fluid2D entity it pours into."})
+        type.describe("fluid", {.doc = "The Fluid3D or Fluid2D entity it pours into; when empty, "
+                                       "the one on its entity or the nearest above it."})
             .describe("rate", {.doc = "Particles a second.", .min = 0})
             .describe("speed", {.doc = "How fast they leave it, in " + unit + " a second."})
             .describe("spread", {.doc = "The most they turn from direction, in radians.", .min = 0})
@@ -1558,6 +1559,9 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                                       "recipe's ignition.",
                                .min = 0})
             .describe("enabled", {.doc = "Whether it pours."})
+            .describe("inherit_velocity", {.doc = "The share of the entity's own velocity its "
+                                                  "particles carry, so a moving emitter trails "
+                                                  "what it pours."})
             .describe("direction", {.doc = "Which way they leave, in the entity's space."});
     };
     describe_emitter(registry.add<FluidEmitter3D>().set_doc(

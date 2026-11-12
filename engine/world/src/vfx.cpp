@@ -9,6 +9,7 @@
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/creature.hpp"
+#include "slash/world/fluid.hpp"
 #include "slash/world/foliage.hpp"
 #include "slash/world/tree2d.hpp"
 #include "slash/world/tree3d.hpp"
@@ -103,6 +104,9 @@ constexpr std::string_view kSchema = R"({
 
 constexpr std::array<std::string_view, 4> kEmitters = {"CPUParticles3D", "CPUParticles2D",
                                                        "GPUParticles3D", "GPUParticles2D"};
+// The most seconds a part's liquid lingers after its layer ends, its particles still falling
+// and settling.
+constexpr float kFluidLinger = 10.0F;
 constexpr std::array<std::string_view, 5> kLights = {
     "OmniLight3D", "SpotLight3D", "DirectionalLight3D", "PointLight2D", "DirectionalLight2D"};
 constexpr std::array<std::string_view, 3> kSounds = {"AudioStreamPlayer", "AudioStreamPlayer2D",
@@ -348,6 +352,25 @@ void end_part(World& world, entt::entity entity, std::vector<entt::entity>& gone
         json::Value stop = json::Object{};
         stop["emitting"] = false;
         (void)type->assign(world, entity, stop, at);
+    }
+    // Fluid emitters stop pouring; a fluid of the part's own lingers while its particles last
+    // (a gas's lifetime, or kFluidLinger seconds), going sooner once they are gone.
+    if (auto* emitter = ecs.try_get<FluidEmitter3D>(entity); emitter != nullptr) {
+        emitter->enabled = false;
+    }
+    if (auto* emitter = ecs.try_get<FluidEmitter2D>(entity); emitter != nullptr) {
+        emitter->enabled = false;
+    }
+    const auto fluid_linger = [&](const std::string& recipe, const json::Value& overrides) {
+        auto loaded = load_fluid(world, recipe, overrides);
+        const float life = loaded ? loaded.value()->lifetime : 0.0F;
+        linger = std::max(linger, life > 0.0F ? life + 0.05F : kFluidLinger);
+    };
+    if (const auto* fluid = ecs.try_get<const Fluid3D>(entity); fluid != nullptr) {
+        fluid_linger(fluid->recipe, fluid->overrides);
+    }
+    if (const auto* fluid = ecs.try_get<const Fluid2D>(entity); fluid != nullptr) {
+        fluid_linger(fluid->recipe, fluid->overrides);
     }
     if (linger < 0.0F) {
         gone.push_back(entity);
@@ -858,7 +881,14 @@ void run(World& world, double tick_seconds) {
     for (const auto [entity, part] : ecs.view<VfxPart>().each()) {
         if (part.linger >= 0.0F) {
             part.linger -= static_cast<float>(tick_seconds);
-            if (part.linger <= 0.0F) {
+            // A lingering fluid goes with its last particle.
+            const FluidParticles* left =
+                ecs.any_of<Fluid3D, Fluid2D>(entity) ? fluid_particles(world, entity) : nullptr;
+            const bool drained =
+                left != nullptr && left->size() == 0 &&
+                !ecs.any_of<CPUParticles3D, CPUParticles2D, GPUParticles3D, GPUParticles2D>(entity);
+            if (part.linger <= 0.0F || drained) {
+                part.linger = 0.0F;
                 gone.push_back(entity);
             }
             continue;

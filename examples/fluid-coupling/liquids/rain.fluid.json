@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "lifetime": 3,
+  "max_particles": 400,
+  "name": "Rain",
+  "particle_radius": 2,
+  "space": "2d"
+}
