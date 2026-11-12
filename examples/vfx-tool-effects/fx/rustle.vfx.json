@@ -1,0 +1,20 @@
+{
+  "dimension": "2d",
+  "duration": 0.4,
+  "format": 1,
+  "layers": [
+    {
+      "components": {
+        "CPUParticles2D": {
+          "amount": 4,
+          "explosiveness": 1,
+          "lifetime": 0.4
+        }
+      },
+      "duration": 0.2,
+      "name": "leaves",
+      "offset": [0, -8]
+    }
+  ],
+  "name": "Rustle"
+}

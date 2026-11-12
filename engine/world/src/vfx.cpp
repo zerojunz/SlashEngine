@@ -5,10 +5,14 @@
 #include "slash/core/expression.hpp"
 #include "slash/core/log.hpp"
 #include "slash/world/camera2d.hpp"
+#include "slash/world/character.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/creature.hpp"
+#include "slash/world/foliage.hpp"
 #include "slash/world/tree2d.hpp"
 #include "slash/world/tree3d.hpp"
+#include "slash/world/vehicle.hpp"
 
 #include <algorithm>
 #include <array>
@@ -17,6 +21,7 @@
 #include <cstdint>
 #include <limits>
 #include <mutex>
+#include <optional>
 #include <set>
 #include <span>
 #include <unordered_map>
@@ -539,8 +544,10 @@ void run_effect(World& world, Effect effect,
             }
             return;
         }
-        // Finished one-shots that asked to go do once their last particles have.
-        if (effect.free_on_finish && !recipe.loop && effect.time >= recipe.duration) {
+        // Finished one-shots, and loops stopped once started, that asked to go do once their
+        // last particles have.
+        const bool done = recipe.loop ? effect.time > 0.0F : effect.time >= recipe.duration;
+        if (effect.free_on_finish && done) {
             freed.push_back(effect.entity);
         }
         return;
@@ -696,7 +703,154 @@ void shake_cameras(World& world, double tick_seconds) {
     }
 }
 
+// The point an event's data names ([x, y] or [x, y, z]), if it names one.
+std::optional<Vec3> event_position(const json::Value& data) {
+    const json::Value* position = data.is_object() ? data.find("position") : nullptr;
+    if (position == nullptr || !position->is_array()) {
+        return std::nullopt;
+    }
+    const json::Array& items = position->as_array();
+    if (items.size() < 2 || items.size() > 3) {
+        return std::nullopt;
+    }
+    Vec3 out;
+    for (std::size_t i = 0; i < items.size(); ++i) {
+        if (!items[i].is_number()) {
+            return std::nullopt;
+        }
+        const auto v = static_cast<real_t>(items[i].as_double());
+        if (i == 0) {
+            out.x = v;
+        } else if (i == 1) {
+            out.y = v;
+        } else {
+            out.z = v;
+        }
+    }
+    return out;
+}
+
+// Plays what the tools' recipes say the last tick's events play, at most kMaxHooks a tick, and
+// keeps each vehicle's "running" effect going while its throttle is open.
+void play_hooks(World& world) {
+    constexpr std::size_t kMaxHooks = 16;
+    auto& ecs = world.ecs();
+    std::optional<Tree3D> tree3;
+    std::optional<Tree2D> tree2;
+    const auto place_of = [&](entt::entity entity, bool flat) {
+        if (flat) {
+            if (!tree2) {
+                tree2.emplace(world);
+            }
+            const Vec2 at = tree2->global(entity).position;
+            return Vec3{at.x, at.y, 0.0F};
+        }
+        if (!tree3) {
+            tree3.emplace(world);
+        }
+        return tree3->global(entity).origin;
+    };
+    std::size_t played = 0;
+    // A copy: playing makes entities, and events stay the tick's.
+    const std::vector<Event> events(world.events().begin(), world.events().end());
+    for (const Event& event : events) {
+        if (played >= kMaxHooks) {
+            break;
+        }
+        const entt::entity entity = event.id.empty() ? entt::null : world.find(event.id);
+        if (entity == entt::null) {
+            continue;
+        }
+        VfxHooks hooks;
+        bool flat = ecs.all_of<Transform2D>(entity) && !ecs.all_of<Transform3D>(entity);
+        if (event.kind.starts_with("foliage_")) {
+            const json::Value* type = event.data.is_object() ? event.data.find("type") : nullptr;
+            if (type == nullptr || !type->is_string()) {
+                continue;
+            }
+            hooks = foliage_vfx_hooks(world, type->as_string());
+            flat = ecs.all_of<Foliage2D>(entity);
+        } else {
+            hooks = vfx_hooks_of(world, entity);
+        }
+        const auto found = hooks.find(event.kind);
+        if (found == hooks.end() || found->second.empty()) {
+            continue;
+        }
+        if (!ecs.any_of<Transform2D, Transform3D>(entity)) {
+            continue;
+        }
+        const Vec3 at = event_position(event.data).value_or(place_of(entity, flat));
+        if (play_vfx(world, found->second, event.id, event.kind, at, flat) != entt::null) {
+            ++played;
+        }
+    }
+    // Running vehicles: <vehicle>_running follows the vehicle while its throttle is open, then
+    // stops and lets its particles finish.
+    const auto keep_running = [&]<typename Vehicle, typename Effect>(bool flat) {
+        std::vector<std::pair<entt::entity, bool>> vehicles;
+        for (const auto [entity, vehicle] : ecs.view<const Vehicle>().each()) {
+            vehicles.emplace_back(entity,
+                                  vehicle.enabled && std::abs(vehicle.controls.throttle) > 0.01F);
+        }
+        for (const auto& [entity, running] : vehicles) {
+            const VfxHooks hooks = vfx_hooks_of(world, entity);
+            const auto found = hooks.find("running");
+            if (found == hooks.end() || found->second.empty()) {
+                continue;
+            }
+            const std::string id = std::string(world.id_of(entity)) + "_running";
+            entt::entity effect = world.find(id);
+            if (effect != entt::null && !ecs.all_of<Effect>(effect)) {
+                continue;
+            }
+            if (!running) {
+                if (effect != entt::null) {
+                    auto& playing = ecs.get<Effect>(effect);
+                    playing.playing = false;
+                    playing.free_on_finish = true;
+                }
+                continue;
+            }
+            const Vec3 at = place_of(entity, flat);
+            if (effect == entt::null) {
+                auto made = world.create(id);
+                if (!made) {
+                    continue;
+                }
+                effect = made.value();
+                Effect started;
+                started.recipe = found->second;
+                ecs.emplace<Effect>(effect, std::move(started));
+            } else if (auto& playing = ecs.get<Effect>(effect); !playing.playing) {
+                playing.playing = true;
+                playing.free_on_finish = false;
+                playing.time = 0.0F;
+            }
+            // Only its place: the effect's children are its parts.
+            if (flat) {
+                const Transform2D global = tree2->global(entity);
+                auto& placed = ecs.get_or_emplace<Transform2D>(effect);
+                placed.position = global.position;
+                placed.rotation = global.rotation;
+                placed.scale = global.scale;
+            } else {
+                auto& placed = ecs.get_or_emplace<Transform3D>(effect);
+                placed.position = at;
+                placed.rotation = euler(orthonormalized(tree3->global(entity)));
+            }
+        }
+    };
+    if (!ecs.view<const Vehicle3D>().empty()) {
+        keep_running.template operator()<Vehicle3D, VisualEffect3D>(false);
+    }
+    if (!ecs.view<const Vehicle2D>().empty()) {
+        keep_running.template operator()<Vehicle2D, VisualEffect2D>(true);
+    }
+}
+
 void run(World& world, double tick_seconds) {
+    play_hooks(world);
     auto& ecs = world.ecs();
     // Each effect's parts, and parts lingering or left by an effect that went.
     std::unordered_map<std::string, std::vector<Part>> parts_by_effect;
@@ -1248,6 +1402,112 @@ entt::entity vfx_layer_entity(const World& world, entt::entity effect, std::stri
         }
     }
     return entt::null;
+}
+
+json::Value vfx_hooks_schema() {
+    return json::parse(R"({"type": "object",
+        "description": "Effects it plays, by the world event that plays them: each key an event kind about it (such as creature_attacked, vehicle_hit, killed or foliage_harvested; a vehicle's running plays while its throttle is open), each value a .vfx.json file.",
+        "additionalProperties": {"type": "string", "pattern": "\\.vfx\\.json$"}})")
+        .value();
+}
+
+VfxHooks read_vfx_hooks(const json::Value& doc) {
+    VfxHooks out;
+    const json::Value* hooks = doc.is_object() ? doc.find("vfx") : nullptr;
+    if (hooks == nullptr || !hooks->is_object()) {
+        return out;
+    }
+    for (const auto& [kind, recipe] : hooks->as_object()) {
+        if (recipe.is_string()) {
+            out.emplace(kind, recipe.as_string());
+        }
+    }
+    return out;
+}
+
+VfxHooks vfx_hooks_of(const World& world, entt::entity entity) {
+    const auto& ecs = world.ecs();
+    if (!world.valid(entity)) {
+        return {};
+    }
+    const auto hooks = [](const auto& loaded) { return loaded ? loaded.value()->vfx : VfxHooks{}; };
+    if (const auto* c = ecs.try_get<Creature3D>(entity); c != nullptr && !c->recipe.empty()) {
+        return hooks(load_creature(world, c->recipe));
+    }
+    if (const auto* c = ecs.try_get<Creature2D>(entity); c != nullptr && !c->recipe.empty()) {
+        return hooks(load_creature(world, c->recipe));
+    }
+    if (const auto* v = ecs.try_get<Vehicle3D>(entity); v != nullptr && !v->recipe.empty()) {
+        return hooks(load_vehicle(world, v->recipe));
+    }
+    if (const auto* v = ecs.try_get<Vehicle2D>(entity); v != nullptr && !v->recipe.empty()) {
+        return hooks(load_vehicle(world, v->recipe));
+    }
+    if (const auto* c = ecs.try_get<Character2D>(entity); c != nullptr && !c->recipe.empty()) {
+        return hooks(load_character(world, c->recipe));
+    }
+    if (const auto* m = ecs.try_get<MeshInstance3D>(entity);
+        m != nullptr && is_character_path(m->mesh)) {
+        return hooks(load_character(world, m->mesh));
+    }
+    return {};
+}
+
+VfxHooks foliage_vfx_hooks(const World& world, std::string_view path) {
+    if (!is_foliage_path(path)) {
+        return {};
+    }
+    asset::Assets* assets = asset::assets_of(world.ecs());
+    if (assets == nullptr) {
+        return {};
+    }
+    const auto doc = assets->load<json::Value>(path);
+    if (!doc) {
+        return {};
+    }
+    return read_vfx_hooks(*doc.value());
+}
+
+entt::entity play_vfx(World& world, std::string_view recipe, std::string_view near,
+                      std::string_view what, Vec3 position, bool flat) {
+    if (recipe.empty()) {
+        return entt::null;
+    }
+    const std::string base =
+        std::string(near.empty() ? "vfx" : near) + "_" + std::string(what.empty() ? "vfx" : what);
+    entt::entity made = entt::null;
+    for (std::size_t n = 1; n < 10000 && made == entt::null; ++n) {
+        const std::string id = n == 1 ? base : base + "_" + std::to_string(n);
+        if (world.find(id) == entt::null) {
+            auto created = world.create(id);
+            if (!created) {
+                return entt::null;
+            }
+            made = created.value();
+        }
+    }
+    if (made == entt::null) {
+        return entt::null;
+    }
+    auto& ecs = world.ecs();
+    if (flat) {
+        Transform2D placed;
+        placed.position = {position.x, position.y};
+        ecs.emplace<Transform2D>(made, placed);
+        VisualEffect2D effect;
+        effect.recipe = std::string(recipe);
+        effect.free_on_finish = true;
+        ecs.emplace<VisualEffect2D>(made, std::move(effect));
+    } else {
+        Transform3D placed;
+        placed.position = position;
+        ecs.emplace<Transform3D>(made, placed);
+        VisualEffect3D effect;
+        effect.recipe = std::string(recipe);
+        effect.free_on_finish = true;
+        ecs.emplace<VisualEffect3D>(made, std::move(effect));
+    }
+    return made;
 }
 
 CameraShakeOffsets camera_shake_offsets(const World& world) {

@@ -3269,6 +3269,43 @@ struct CameraShake {
 };
 SLASH_COMPONENT(CameraShake, strength, frequency, radius, enabled)
 
+// Bends what the screen shows round a place, as the distortion of Unreal's Niagara effects
+// (Godot draws it with a screen texture shader): the picture under radius moves by up to
+// strength pixels, as heat shimmer ("heat", waves that rise at speed), a ring that spreads
+// ("shockwave", at progress of the radius, width wide), rings that run out ("ripple") or a
+// bulging lens ("lens", or pulled in with a negative strength). The world and the canvases below
+// it bend; the world's controls and the canvases above don't. Smooth noise of whole numbers moves
+// heat, so it repeats everywhere.
+struct ScreenDistortion {
+    std::string mode = "heat"; // "heat", "shockwave", "ripple" or "lens"
+    float radius = 1.0F;       // meters in 3D, pixels of its canvas in 2D
+    float strength = 6.0F;     // the most the picture moves, in screen pixels
+    float progress = 0.5F;     // shockwave: where its ring is, as a share of radius
+    float width = 0.25F;       // shockwave: the ring's width, as a share of radius
+    float frequency = 3.0F;    // heat and ripple: waves across the radius
+    float speed = 1.0F;        // heat and ripple: waves a second
+    bool enabled = true;
+
+    friend bool operator==(const ScreenDistortion&, const ScreenDistortion&) = default;
+};
+SLASH_REFLECT(ScreenDistortion, mode, radius, strength, progress, width, frequency, speed, enabled)
+
+// A ScreenDistortion at the entity's Transform3D, its radius in meters seen by the current
+// Camera3D.
+struct ScreenDistortion3D : ScreenDistortion {
+    friend bool operator==(const ScreenDistortion3D&, const ScreenDistortion3D&) = default;
+};
+SLASH_COMPONENT(ScreenDistortion3D, mode, radius, strength, progress, width, frequency, speed,
+                enabled)
+
+// A ScreenDistortion at the entity's Transform2D, its radius in its canvas's pixels.
+struct ScreenDistortion2D : ScreenDistortion {
+    ScreenDistortion2D() { radius = 48.0F; }
+    friend bool operator==(const ScreenDistortion2D&, const ScreenDistortion2D&) = default;
+};
+SLASH_COMPONENT(ScreenDistortion2D, mode, radius, strength, progress, width, frequency, speed,
+                enabled)
+
 // A value each particle of a simulation carries, as Niagara's particle attributes: an Expression
 // over the particle (age, life, lifetime, speed, x, y, z, vx, vy, vz, neighbors, collided,
 // index, random, time and the attributes before it), worked out when the particle starts or,

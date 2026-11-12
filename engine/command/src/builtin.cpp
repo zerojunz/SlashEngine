@@ -5571,7 +5571,8 @@ Reply frame_capture(Session& session, const json::Value& params) {
           std::pair{"meshes", capture.meshes}, std::pair{"lods", capture.lods},
           std::pair{"clusters", capture.clusters}, std::pair{"culled", capture.culled},
           std::pair{"occluded", capture.occluded}, std::pair{"pages", capture.pages},
-          std::pair{"pending_pages", capture.pending_pages}}) {
+          std::pair{"pending_pages", capture.pending_pages},
+          std::pair{"distortions", capture.distortions}}) {
         if (count > 0) {
             drawn[name] = count;
         }

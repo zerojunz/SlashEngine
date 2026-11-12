@@ -1333,7 +1333,11 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
           events (`examples/particle-simulation`)
     - [ ] The stages on every device's compute for GPU particles, the CPU stages their twin;
           particles lit, shadowed and sorted
-    - [ ] Distortion, and the foliage, character, fauna and vehicle tools' effects
+    - [x] Distortion, and the foliage, character, fauna and vehicle tools' effects:
+          `ScreenDistortion3D` and `ScreenDistortion2D` (heat, shockwaves, ripples and lenses,
+          drawn through a grid of moved texture coordinates so every device matches), and the
+          creature, vehicle, character and foliage recipes' `vfx` playing effects on their
+          events, vehicles' `running` effects and `foliage_parted` (`examples/vfx-tool-effects`)
 19. [ ] Fluids and smoke: a real-time simulator with no grids (Godot has none; after Niagara's
         fluids and Unreal's water tools, built on particles instead of Niagara Fluids' grids):
         liquids as position-based fluid particles (density, incompressibility, viscosity,

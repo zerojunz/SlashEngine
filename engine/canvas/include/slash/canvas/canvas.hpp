@@ -311,6 +311,9 @@ public:
     // the last frame drawn showed one.
     [[nodiscard]] std::uint64_t frames_generated() const noexcept { return frames_generated_; }
     [[nodiscard]] bool generated() const noexcept { return generated_; }
+    // How many ScreenDistortion3D and ScreenDistortion2D components bent the last frame
+    // (distortion.hpp).
+    [[nodiscard]] std::size_t distortions_drawn() const noexcept { return distortions_drawn_; }
     // The paths each pixel of the last frame's path-traced world holds
     // (RenderDevice::path_samples); 0 when it wasn't path traced or the device traces no paths.
     [[nodiscard]] std::uint32_t path_samples() const {
@@ -521,6 +524,10 @@ private:
     std::array<render::TextureId, 2> generation_targets_{render::TextureId::None,
                                                          render::TextureId::None};
     std::array<std::uint32_t, 2> generation_size_{};
+    // What the world draws into when distortions bend it, at the output size.
+    render::TextureId distortion_target_ = render::TextureId::None;
+    std::array<std::uint32_t, 2> distortion_size_{};
+    std::size_t distortions_drawn_ = 0;
     // Each Reflection2D's target, which what its canvas drew before it draws into upside down,
     // at the pixel size its rect covers; those not drawn in a frame are destroyed.
     struct ReflectionTarget {
@@ -629,6 +636,7 @@ struct Capture {
     std::size_t occluded = 0;      // 3D meshes occluders hid from the camera
     std::size_t pages = 0;         // cluster pages loaded, with streaming
     std::size_t pending_pages = 0; // cluster pages asked for and not loaded yet
+    std::size_t distortions = 0;   // ScreenDistortion3D and 2D that bent the world's picture
     // How the settings' render scale scaled the world, if they did.
     CanvasRenderer::Scaled scaled;
     // With path_trace, the samples each pixel's light is the average of.

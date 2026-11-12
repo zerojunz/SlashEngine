@@ -1,0 +1,36 @@
+{
+  "dimension": "2d",
+  "duration": 0.5,
+  "format": 1,
+  "layers": [
+    {
+      "components": {
+        "ScreenDistortion2D": {
+          "mode": "shockwave",
+          "progress": 0,
+          "radius": "=size",
+          "strength": 8,
+          "width": 0.3
+        }
+      },
+      "curves": {
+        "ScreenDistortion2D/progress": [
+          [0, 0],
+          [0.5, 1]
+        ],
+        "ScreenDistortion2D/strength": {
+          "ease": "smooth",
+          "keys": [
+            [0, 8],
+            [0.5, 0]
+          ]
+        }
+      },
+      "name": "wave"
+    }
+  ],
+  "name": "Shockwave",
+  "parameters": {
+    "size": 40
+  }
+}

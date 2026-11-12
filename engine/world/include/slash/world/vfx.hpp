@@ -145,4 +145,24 @@ struct CameraShakeOffsets {
 };
 [[nodiscard]] CameraShakeOffsets camera_shake_offsets(const World& world);
 
+// The effects a tool's recipe plays, by the world event that plays them: a .creature.json,
+// .vehicle.json, .character.json or .foliage.json file's "vfx", each event kind (such as
+// "creature_attacked", "vehicle_hit", "killed" or "foliage_harvested") naming a .vfx.json
+// recipe. A vehicle's "running" plays while its throttle is open.
+using VfxHooks = std::map<std::string, std::string, std::less<>>;
+// The JSON Schema of a recipe's "vfx".
+[[nodiscard]] json::Value vfx_hooks_schema();
+// A recipe's "vfx", or none.
+[[nodiscard]] VfxHooks read_vfx_hooks(const json::Value& doc);
+// The "vfx" of the recipe an entity is made from (its Creature3D or Creature2D, Vehicle3D or
+// Vehicle2D, Character2D, or a MeshInstance3D drawing a .character.json file), or of a
+// .foliage.json file; none when it has none or it doesn't load.
+[[nodiscard]] VfxHooks vfx_hooks_of(const World& world, entt::entity entity);
+[[nodiscard]] VfxHooks foliage_vfx_hooks(const World& world, std::string_view path);
+// Plays a recipe once where something happened: a new entity <near>_<what> (numbered past
+// taken names) with a VisualEffect3D at position, or a VisualEffect2D when flat, that frees
+// itself when it has finished. Null when recipe is "" or no entity could be made.
+entt::entity play_vfx(World& world, std::string_view recipe, std::string_view near,
+                      std::string_view what, Vec3 position, bool flat);
+
 } // namespace slash::world
