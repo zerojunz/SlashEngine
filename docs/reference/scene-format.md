@@ -225,6 +225,8 @@ A reference must name an entity that exists in the same scene.
 | `RigidBody2D` | `collision_layer`, `collision_mask`, `friction`, `bounce`, `physics_material_override` | | | As `StaticBody2D`'s; a material's `density` sets its mass |
 | | `mass` | `float` | `1` | In kilograms, from 0.001 |
 | | `inertia` | `float` | `0` | Resistance to turning; 0 computes it from the shapes and the mass |
+| | `center_of_mass_mode` | `std::string` | `"auto"` | `auto` puts the center of mass where the shapes' is, `custom` at `center_of_mass` (Godot's) |
+| | `center_of_mass` | `Vec2` | `[0, 0]` | In pixels in the body's space, when `custom` |
 | | `gravity_scale` | `float` | `1` | Multiplies gravity; 0 floats |
 | | `linear_velocity` | `Vec2` | `[0, 0]` | In pixels per second; the physics step writes it |
 | | `angular_velocity` | `float` | `0` | In radians per second, clockwise; the physics step writes it |
@@ -4402,7 +4404,7 @@ from `physics_3d` in [`project.json`](project-format.md).
 | `CollisionShape3D` | `shape` `"box"` (or `sphere`, `capsule`, `cylinder`, `convex_polygon`, `concave_polygon`, `world_boundary`), `size` `[1, 1, 1]`, `radius` `0.5`, `height` `2` (a capsule's end to end), `points` `[]` (a convex polygon's hull), `faces` `[]` (a concave polygon's triangles, three points each), `backface_collision` `false`, `plane` `[0, 1, 0, 0]` (a world boundary's normal and distance; below it is solid), `margin` `0.04`, `position` `[0, 0, 0]`, `rotation` `[0, 0, 0]`, `disabled` `false` |
 | `StaticBody3D` | `collision_layer` `1`, `collision_mask` `1`, `friction` `1`, `bounce` `0`, `physics_material_override` `""` (a [physics material](#physics-materials-and-fields) whose values win), `constant_linear_velocity` `[0, 0, 0]`, `constant_angular_velocity` `[0, 0, 0]` |
 | `AnimatableBody3D` | as `StaticBody3D`, and `sync_to_physics` `true` |
-| `RigidBody3D` | `collision_layer`, `collision_mask`, `friction`, `bounce`, `physics_material_override` as `StaticBody3D`; `mass` `1` (a material's `density` replaces it), `inertia` `[0, 0, 0]` (0 computes that axis's), `gravity_scale` `1`, `linear_velocity` and `angular_velocity` `[0, 0, 0]`, `linear_damp_mode` and `angular_damp_mode` `"combine"`, `linear_damp` and `angular_damp` `0`, `constant_force` and `constant_torque` `[0, 0, 0]`, `lock_rotation` `false`, `axis_lock_linear_x/y/z` and `axis_lock_angular_x/y/z` `false`, `freeze` `false`, `freeze_mode` `"static"`, `continuous_cd` `false`, `can_sleep` `true`, `sleeping` `false`, `contact_monitor` `false` |
+| `RigidBody3D` | `collision_layer`, `collision_mask`, `friction`, `bounce`, `physics_material_override` as `StaticBody3D`; `mass` `1` (a material's `density` replaces it), `inertia` `[0, 0, 0]` (0 computes that axis's), `center_of_mass_mode` `"auto"` (`"custom"` puts it at `center_of_mass`, `[0, 0, 0]`, in meters in the body's space, as Godot's), `gravity_scale` `1`, `linear_velocity` and `angular_velocity` `[0, 0, 0]`, `linear_damp_mode` and `angular_damp_mode` `"combine"`, `linear_damp` and `angular_damp` `0`, `constant_force` and `constant_torque` `[0, 0, 0]`, `lock_rotation` `false`, `axis_lock_linear_x/y/z` and `axis_lock_angular_x/y/z` `false`, `freeze` `false`, `freeze_mode` `"static"`, `continuous_cd` `false`, `can_sleep` `true`, `sleeping` `false`, `contact_monitor` `false` |
 | `CharacterBody3D` | `collision_layer`, `collision_mask`; `motion_mode` `"grounded"` (or `floating`), `up_direction` `[0, 1, 0]`, `velocity` `[0, 0, 0]`, `max_slides` `6`, `slide_on_ceiling` `true`, `wall_min_slide_angle` `0.261799`, `floor_stop_on_slope` `true`, `floor_constant_speed` `false`, `floor_block_on_wall` `true`, `floor_max_angle` `0.785398`, `floor_snap_length` `0.1`, `platform_on_leave` `"add_velocity"`, `platform_floor_layers` all, `platform_wall_layers` `0`, `safe_margin` `0.001`; written by each move: `on_floor`, `on_wall`, `on_ceiling`, `floor_normal`, `wall_normal`, `platform_velocity` |
 | `Area3D` | `collision_layer`, `collision_mask`, `monitoring` `true`, `monitorable` `true`, `priority` `0`, `gravity_space_override` `"disabled"`, `gravity_point` `false`, `gravity_point_unit_distance` `0`, `gravity_point_center` `[0, -1, 0]`, `gravity_direction` `[0, -1, 0]`, `gravity` `9.8`, `linear_damp_space_override` and `angular_damp_space_override` `"disabled"`, `linear_damp` and `angular_damp` `0.1`; for [3D sound](#3d-sound): `audio_bus_override` `false`, `audio_bus_name` `"Master"`, `reverb_bus_enabled` `false`, `reverb_bus_name` `"Master"`, `reverb_bus_amount` `0`, `reverb_bus_uniformity` `0`; for soft bodies, as Godot's: `wind_force_magnitude` `0`, `wind_attenuation_factor` `0`, `wind_source_path` `null` (an entity whose -z the wind blows along, from its position) |
 
@@ -5172,6 +5174,138 @@ Colors are `[r, g, b]` or `[r, g, b, a]` from 0 to 1, lengths meters and speeds 
 `"caught"`), `target`, `owner` and `rider` (entities), `fed` (feedings), `hunger`, `timer`,
 `homed` and `home` (where it started, in meters), `goal`, `velocity` and `steer` (meters, y up)
 and `gait` (the animation playing).
+
+### Vehicles
+
+Godot has only `VehicleBody3D`, so this follows Unreal's Chaos Vehicles: a `.vehicle.json` recipe
+says what a car, bike, truck, tracked vehicle, boat or aircraft looks like and how it handles,
+and both dimensions build and drive it from the same recipe. A `MeshInstance3D` whose `mesh` names
+the file draws its model, as any model. The `vehicles_3d` system (priority 945, before the physics
+step) keeps each `Vehicle3D`'s rigid body, Godot's `VehicleBody3D` and its `VehicleWheel3D`s, and
+the `vehicles_2d` system keeps each `Vehicle2D`'s side view as Box2D bodies and joints; both run
+its drivetrain from its `controls`, float boats, fly aircraft, carry riders and hit characters
+and creatures. [`vehicle.place`](commands.md#vehicleplace) puts one in a scene,
+[`vehicle.control`](commands.md#vehiclecontrol) drives it and seats riders,
+[`vehicle.tune`](commands.md#vehicletune) tunes one vehicle's physics while it runs,
+[`vehicle.check`](commands.md#vehiclecheck) test-drives it against its design,
+[`vehicle.design`](commands.md#vehicledesign) writes a recipe an agent designed, fitted to the
+handling it asks for, and [`vehicle.state`](commands.md#vehiclestate) says what it is doing. `slash-cli schema vehicle`
+prints the schema, `scene validate` and `scene format` take the files, and exports ship them.
+[examples/vehicles](../../examples/vehicles/) drives a car, a boat and a tank in 3D and a pickup
+in 2D.
+
+```json
+{"format": 1, "name": "Hatchback", "kind": "car",
+ "body": {"length": 4, "width": 1.8, "height": 1.45, "color": [0.1, 0.3, 0.8]},
+ "physics": {"mass": 1100, "differential": "front",
+             "engine": {"max_torque": 260, "max_rpm": 6500},
+             "gears": {"ratios": [3.4, 2.1, 1.5, 1.1, 0.9]}},
+ "design": {"top_speed": [30, 60], "acceleration": [5, 14]}}
+```
+
+Lengths are meters, facing +z with y up and the ground at 0; speeds are meters a second and
+colors `[r, g, b]` or `[r, g, b, a]` from 0 to 1. What is left out follows `kind`: a car's body
+and four wheels (the front ones steer, the back ones take the handbrake), a bike's two wheels and
+balance, a truck's six wheels and seven gears, a tracked vehicle's ten driven road wheels, which
+it slews on its tracks, a boat's hull, propeller thrust and no wheels, and an
+aircraft's wings, engines and landing gear.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `format` | required | `1` |
+| `extends` | | A `.vehicle.json` file this one changes (its path from the project), as a JSON Merge Patch: objects merge, other values (lists included) replace; at most 8 deep |
+| `name` | `""` | What it is called |
+| `kind` | `"car"` | `"car"`, `"bike"`, `"truck"`, `"tracked"`, `"boat"` or `"aircraft"` |
+| `body` | by kind | `length`, `width`, `height`, `clearance` (from the ground to the bottom of the body), `cabin` (its share of the length, 0 for none), `color`, `trim` (wheels, tracks and frames), `model` (a model file drawn as the body in 3D) and `draw` (`true`; `false` draws only its parts, wheels and tracks, though the body's box still collides) |
+| `parts` | | Up to 64 pieces of its own, below |
+| `seats` | by kind | `name`, `position`, `driver` (one must be) and `door` (a door beside it); a car has a driver's and a passenger's seat with doors |
+| `wheels` | by kind | `position` (its middle at rest), `radius`, `width`, `steer`, `drive` (the differential's by default) and `handbrake` (behind the middle by default); a boat has none |
+| `wings` | aircraft | `span` and `chord`; only aircraft have them |
+| `physics` | by kind | See below |
+| `damage` | | `per_impulse` (`0.02`, damage a kilogram-meter a second of impulse), `knockdown` (`400`, the impulse that knocks a ragdoll down) and `min_speed` (`1.5`; slower hurts no one) |
+| `design` | | What `vehicle.check` holds a test drive to, each a `[min, max]` range (0 for no bound): `top_speed`, `acceleration` (seconds from 0 to 100 km/h), `braking_distance` (meters from 100 km/h, or 90% of its top speed when that is lower) and `turning_radius` (at 5 meters a second, 3D) |
+
+Each of `parts` is a shape or a model file the vehicle is built of, in its space, so an agent
+designs a vehicle of its own as Unreal's modular vehicles are put together:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `name` | required | Letters, digits and `_`; unique, and not one its own pieces take (`body`, `cabin`, `hull`, `frame`, `wing`, `tail`, `track`, `collision`, `wheel_*`) |
+| `shape` | `"box"` | `"box"`, `"cylinder"` (along y), `"sphere"` or `"prism"` (Godot's `PrismMesh`, its ridge up), a meter across before `size` |
+| `model` | | A model file (glTF, OBJ, FBX, a recipe) placed instead; not with `shape`. 3D only |
+| `position`, `size`, `rotation` | `[0, 0, 0]`, `[1, 1, 1]`, `[0, 0, 0]` | Its middle, its size (a model's scale) and its Euler angles in radians, as `Transform3D`'s |
+| `material`, `color` | `"paint"` | The body's `"paint"`, `"trim"` or `"glass"`, or a name of its own with its `color` |
+| `collide` | `false` | Adds its turned box to the vehicle's collision |
+
+In 2D each shape part is a `Polygon2D` piece named by the part: the outline of the shape turned
+and seen from the side, drawn after the body's own pieces.
+
+`physics` is the vehicle's own, which `vehicle.tune` changes per vehicle:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `mass`, `center_of_mass` | `1200`, by its body | Kilograms, and where its weight sits in its space; outside the body is an error |
+| `engine` | | `max_torque` (newton-meters), `max_rpm`, `idle_rpm` (`900`), `torque_curve` (`[share of max_rpm, share of max_torque]` points, rpm going up) and `thrust` (newtons a boat's propeller or an aircraft's engines push) |
+| `gears` | | `ratios` (each lower than the one before), `reverse`, `final_drive`, `shift_up` and `shift_down` (shares of `max_rpm`), `shift_time` (seconds without torque) and `efficiency` |
+| `differential`, `front_share` | `"rear"`, `0.5` | Which wheels drive: `"rear"`, `"front"` or `"all"`, splitting by `front_share` |
+| `steering` | | `max_angle` (`0.6` radians the wheels turn; a tracked vehicle slews at 0.6 times it a second), `speed` (`2` radians a second) and `at_speed` (`0.5`, how much less they turn at 30 meters a second) |
+| `brakes` | | `force` (`4000` newtons each wheel) and `handbrake` (`6000`) |
+| `suspension` | | `stiffness` (`40`), `damping` (`2.5`), `relaxation` (`2.8`), `travel` (`0.2`), `rest` (`0.15`) and `max_force` (`0`: four times its share of the weight), as Godot's `VehicleWheel3D`; in 2D a spring of its share of the weight over the rest's compression |
+| `tires` | | `friction` (`10.5`) and `roll_influence` (`0.1`), as Godot's `wheel_friction_slip` and `wheel_roll_influence` |
+| `drag` | `0.35` | Air drag over its front's area; the project's linear damping doesn't slow vehicles |
+| `balance` | `0` (bikes `1`) | How hard it keeps itself upright |
+| `water` | | Boats: `level` (`0`, where the surface is, meters up; pixels up in 2D), `draft` (`0.5`, how deep the hull sits at rest), `drag` (`2`) and `rudder` (`1.5`, how hard it turns) |
+| `flight` | | Aircraft: `lift` (`1.2`, the wings' lift coefficient) and `control` (`1`, how hard its surfaces turn it) |
+
+- **The drivetrain**, each tick, as Chaos Vehicles' simple transmission: the engine's rpm follows
+  the driven wheels' through the gear and final drive, held between idle and `max_rpm`; the
+  automatic gearbox shifts up past `shift_up` and down below `shift_down`, with no torque for
+  `shift_time`; the torque curve gives the wheels' force; throttle against the way it rolls brakes
+  until it stops, then reverses; and the steered wheels turn toward `steer` at the steering's `speed`, less
+  at speed.
+- **In 3D** the system gives the entity a `RigidBody3D` of the recipe's mass and center of mass
+  that never sleeps, a `MeshInstance3D` drawing it (whose model has a convex collision box, a
+  `seat_<name>` point a seat and a `door_<name>` point a door), a `VehicleBody3D`, and for each
+  wheel a child `<id>_wheel_<n>` with a `VehicleWheel3D` of the recipe's suspension and tires and
+  a child `<id>_wheel_<n>_tire` drawing it, made again when the recipe changes. It sets the wheels'
+  engine force, brakes and steering each tick; a tracked vehicle's wheels don't steer: its
+  tracks slide (its `tires`' `friction` is `0.8`) as a torque slews it toward 0.6 times its
+  steering angle a second. A boat floats at its four corners by how deep each is under the water's `level`, pushed by
+  its propeller and turned by its rudder; an aircraft's engines pull it, its wings lift by its
+  speed squared and `pitch` and `steer` turn it. A bike keeps upright by `balance`. Drag slows them
+  all.
+- **In 2D**, seen from the side, nose toward +x (`flip_h` faces -x), `pixels_per_meter` big:
+  the entity's `RigidBody2D` and a `<id>_collision` box, a `Polygon2D` child `<id>_<piece>` for
+  each piece of its body, and for each wheel on the near side a `RigidBody2D` circle
+  `<id>_wheel_<n>` drawn with a `<id>_wheel_<n>_hub` spoke, held under it by a `GrooveJoint2D`
+  (`<id>_wheel_<n>_groove`) and sprung by a `DampedSpringJoint2D` (`<id>_wheel_<n>_spring`). The
+  driven wheels turn by `constant_torque`, brakes oppose their spin, boats float at the
+  water's `level` (`-level` pixels in y, y down) and aircraft fly as in 3D; land vehicles
+  lean back and forth by `steer`.
+- **Riders**: gameplay code calls `physics3d::enter_vehicle` and `exit_vehicle` (or
+  `physics2d::`'s), as `vehicle.control` does: whoever gets in takes a named seat or the first
+  free one (the driver's first), keeps a `VehicleRider` while riding, and is moved to the seat
+  each tick with its body's collision off, and put back beside the vehicle, its collision as it
+  was, when they get out. `vehicle_entered` and `vehicle_exited` events carry the `vehicle`,
+  `rider` and `seat`.
+- **Hits**: a vehicle running into a character (a `CharacterBody3D` or `CharacterBody2D`), a
+  creature or a ragdoll faster than `min_speed` pushes it by the impulse between them (as an
+  80-kilogram body), knocks its ragdoll down past `knockdown` (as `ragdoll.hit` on the
+  nearest bone), scares a creature into fleeing, and emits `vehicle_hit` with the `vehicle`, `target`,
+  `impulse`, `damage` (`per_impulse` times the impulse), `speed` and `knocked_down`; the same pair
+  hits again after half a second.
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `Vehicle3D` | `recipe` `""`, `enabled` `true`, `overrides` `null`, `controls`, `drive` |
+| `Vehicle2D` | `recipe` `""`, `pixels_per_meter` `50`, `flip_h` `false`, `enabled` `true`, `overrides` `null`, `controls`, `drive` |
+| `VehicleRider` | `vehicle` (an entity), `seat` `""`, `collision_layer` and `collision_mask` `1` (its body's, put back when it gets out) |
+
+`overrides` is a merge patch over the recipe's `physics`, `damage` and `design`, as
+`vehicle.tune` writes it. `controls` is what drives it: `throttle` (-1 reverse to 1), `brake` and
+`handbrake` (0 to 1), `steer` (-1 right to 1 left) and `pitch` (aircraft, -1 down to 1 up).
+`drive` is what the system keeps, saved with the scene: `gear` (-1 reverse, 0 neutral), `rpm`,
+`shift_timer`, `steer` (the wheels' angle) and `speed` (meters a second forward).
 
 ### Physics materials and fields
 

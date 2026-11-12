@@ -155,6 +155,13 @@ void register_physics_components(ComponentRegistry& registry) {
         .describe("inertia", {.doc = "Resistance to turning; 0 computes it from the shapes and "
                                      "the mass.",
                               .min = 0})
+        .describe("center_of_mass_mode",
+                  {.doc = "\"auto\" puts the center of mass where the shapes' is; \"custom\" "
+                          "at center_of_mass.",
+                   .choices = {"auto", "custom"}})
+        .describe("center_of_mass", {.doc = "Where the center of mass is when "
+                                            "center_of_mass_mode is \"custom\", in pixels in the "
+                                            "body's space."})
         .describe("gravity_scale", {.doc = "Multiplies gravity; 0 floats."})
         .describe("linear_velocity", {.doc = "In pixels per second, as [x, y]."})
         .describe("angular_velocity", {.doc = "In radians per second, clockwise."})
@@ -387,6 +394,13 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("inertia", {.doc = "Resistance to turning about x, y and z; an axis left 0 is "
                                      "computed from the shapes and the mass.",
                               .min = 0})
+        .describe("center_of_mass_mode",
+                  {.doc = "\"auto\" puts the center of mass where the shapes' is; \"custom\" "
+                          "at center_of_mass.",
+                   .choices = {"auto", "custom"}})
+        .describe("center_of_mass", {.doc = "Where the center of mass is when "
+                                            "center_of_mass_mode is \"custom\", in meters in the "
+                                            "body's space."})
         .describe("gravity_scale", {.doc = "Multiplies gravity; 0 floats."})
         .describe("linear_velocity", {.doc = "In meters per second, as [x, y, z]."})
         .describe("angular_velocity", {.doc = "In radians per second about each axis."})
@@ -1059,6 +1073,60 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                                            .min = 1.0})
             .describe("flip_h", {.doc = "Faces left instead of right; set as it turns."})
             .describe("enabled", {.doc = "Behaves when on; off leaves it standing."}));
+
+    // The fields of a vehicle, the same in 3D and 2D.
+    const auto describe_vehicle = [](ComponentType& type) -> ComponentType& {
+        return type.describe("recipe", {.doc = "Project path of the .vehicle.json file."})
+            .describe("enabled", {.doc = "Drives when on; off leaves its wheels free and its "
+                                         "engine off."})
+            .describe("overrides", {.doc = "A JSON merge patch over the recipe's physics, damage "
+                                           "and design for this one, as vehicle.tune writes."})
+            .describe("controls", {.doc = "What drives it this tick."})
+            .describe("controls.throttle", {.doc = "From -1 (reverse) to 1; against the way it "
+                                                   "rolls it brakes.",
+                                            .min = -1.0,
+                                            .max = 1.0})
+            .describe("controls.brake", {.doc = "From 0 to 1.", .min = 0.0, .max = 1.0})
+            .describe("controls.handbrake",
+                      {.doc = "From 0 to 1, on the handbrake's wheels.", .min = 0.0, .max = 1.0})
+            .describe("controls.steer",
+                      {.doc = "From -1 (right) to 1 (left).", .min = -1.0, .max = 1.0})
+            .describe("controls.pitch",
+                      {.doc = "Aircraft: from -1 (nose down) to 1 (up).", .min = -1.0, .max = 1.0})
+            .describe("drive", {.doc = "The drivetrain's state, kept by the vehicles system."})
+            .describe("drive.gear", {.doc = "-1 reverse, 0 neutral, 1 and up the gears."})
+            .describe("drive.rpm", {.doc = "The engine's revolutions a minute."})
+            .describe("drive.shift_timer", {.doc = "Seconds left of a gear change, without "
+                                                   "torque."})
+            .describe("drive.steer", {.doc = "The steered wheels' angle, radians, positive left."})
+            .describe("drive.speed", {.doc = "Meters a second forward, negative backward."});
+    };
+
+    describe_vehicle(registry.add<Vehicle3D>().set_doc(
+        "A vehicle in 3D built from its .vehicle.json recipe, on a RigidBody3D: "
+        "its own mass, engine, gears, steering, brakes, suspension and tires, or "
+        "buoyancy and lift, drive it from its controls. Characters sit in its "
+        "seats, and it pushes, knocks down and hurts what it hits."));
+
+    describe_vehicle(
+        registry.add<Vehicle2D>()
+            .set_doc("A vehicle in 2D seen from the side, on a RigidBody2D: its wheels are "
+                     "rigid bodies on suspension joints driven by its recipe's drivetrain, and "
+                     "its body Polygon2Ds drawn pixels_per_meter big.")
+            .describe("pixels_per_meter", {.doc = "How big it is drawn and how far a meter of "
+                                                  "its recipe goes.",
+                                           .min = 1.0})
+            .describe("flip_h", {.doc = "Faces -x instead of +x."}));
+
+    registry.add<VehicleRider>()
+        .set_doc("Someone in a vehicle's seat, carried there by the vehicles systems; their "
+                 "body collides with nothing while they ride.")
+        .describe("vehicle", {.doc = "The Vehicle3D or Vehicle2D they ride."})
+        .describe("seat", {.doc = "The recipe's seat they sit in; its driver's seat drives."})
+        .describe("collision_layer", {.doc = "Their body's collision layer, given back when "
+                                             "they get out."})
+        .describe("collision_mask", {.doc = "Their body's collision mask, given back when they "
+                                            "get out."});
 
     registry.add<Foliage2D>()
         .set_doc("Painted 2D plants and rocks: each group's instances draw their .foliage.json "

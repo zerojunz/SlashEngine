@@ -33,6 +33,14 @@ struct Problems {
 
 using NameSet = std::set<std::string, std::less<>>;
 
+// Puts a model's meshes, materials, images, nodes, parts, skins and collision into another under
+// a node (parent, or -1 for the root), as Godot instances a scene under one: node names kept
+// unless taken (then numbered), a model without nodes given one for each part, the parts placed
+// by place in the model's space, and materials it has already shared. Animations stay with the
+// file. Model recipes' model parts and vehicles' bodies go in this way.
+void add_model(Model& into, const Model& from, int parent, const world::Affine3D& place,
+               std::set<std::string, std::less<>>& taken);
+
 // Godot's importers' _gen_unique_name: name with the characters a node's name (or an animation's,
 // which also can't have ',' or '[') can't have made underscores, numbered from 2 when it is taken.
 std::string unique_name(NameSet& taken, std::string_view name, bool animation = false);

@@ -288,7 +288,9 @@ RigidKey rigid_key_of(const RigidBody2D& rigid, const Settings& settings) {
                 rigid.angular_damp + (combine_angular ? settings.angular_damp : 0.0F),
             .fixed_rotation = rigid.lock_rotation,
             .bullet = rigid.continuous_cd != "disabled",
-            .sleep_enabled = rigid.can_sleep};
+            .sleep_enabled = rigid.can_sleep,
+            .custom_center = rigid.center_of_mass_mode == "custom",
+            .center = rigid.center_of_mass};
 }
 
 // A static or animatable body's constant velocities, as Godot's StaticBody2D's; none for others.
@@ -679,6 +681,7 @@ void Space::sync_body(world::World& world, const world::Tree2D& tree, entt::enti
         def.userData = body.get();
         if (kind == Kind::Rigid) {
             const auto& rigid = registry.get<RigidBody2D>(entity);
+            def.allowFastRotation = is_vehicle_wheel(world, entity);
             def.linearVelocity = to_b2(rigid.linear_velocity);
             def.angularVelocity = rigid.angular_velocity;
             def.isAwake = !rigid.sleeping;
@@ -733,6 +736,16 @@ void Space::sync_body(world::World& world, const world::Tree2D& tree, entt::enti
                 if (key.inertia <= 0.0F) {
                     mass.rotationalInertia =
                         shapes.mass > 0.0F ? shapes.rotationalInertia * weight / shapes.mass : 0.0F;
+                }
+                if (key.custom_center) {
+                    // Box2D's inertia is about the center: move it there by parallel axes.
+                    const b2Vec2 to = to_b2(key.center);
+                    const float dx = to.x - mass.center.x;
+                    const float dy = to.y - mass.center.y;
+                    if (key.inertia <= 0.0F) {
+                        mass.rotationalInertia += weight * ((dx * dx) + (dy * dy));
+                    }
+                    mass.center = to;
                 }
                 b2Body_SetMassData(body.id, mass);
             }

@@ -293,9 +293,16 @@ Session::Session(const world::ComponentRegistry& component_registry,
                   if (auto file = resolve_path(path); !file) {
                       return file.error();
                   }
+                  if (auto given = options_.files.find(path); given != options_.files.end()) {
+                      return given->second;
+                  }
                   return platform::read_file_in(options_.project_root, path);
               },
               .stamp = [this](std::string_view path) -> std::optional<platform::FileStamp> {
+                  // A file given in place of the disk's never changes.
+                  if (auto given = options_.files.find(path); given != options_.files.end()) {
+                      return platform::FileStamp{.modified = 0, .size = given->second.size()};
+                  }
                   auto file = resolve_path(path);
                   return file ? platform::file_stamp(file.value()) : std::nullopt;
               },

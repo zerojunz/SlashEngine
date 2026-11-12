@@ -1373,10 +1373,8 @@ int image_of(Model& model, std::string& path) {
     return index;
 }
 
-// Puts a model's meshes, materials, images, nodes, parts and skins into another under a node,
-// as Godot instances a scene under one: node names kept unless taken (then numbered), a model
-// without nodes given one for each part, the parts placed by place in the model's space, and
-// materials it has already shared. Animations stay with the file.
+} // namespace
+
 void add_model(Model& into, const Model& from, int parent, const world::Affine3D& place,
                NameSet& taken) {
     std::vector<int> images;
@@ -1470,6 +1468,8 @@ void add_model(Model& into, const Model& from, int parent, const world::Affine3D
         into.collision.push_back(std::move(collision));
     }
 }
+
+namespace {
 
 Model build(const Read& read, std::vector<json::ValidationError>* problems,
             const ModelPartLoader& load, std::vector<json::ValidationError>* failures) {

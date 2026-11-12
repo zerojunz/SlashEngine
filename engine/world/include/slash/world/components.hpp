@@ -1918,7 +1918,9 @@ struct RigidBody2D {
     float bounce = 0.0F;
     std::string physics_material_override; // a .physics_material.json file; its values win
     float mass = 1.0F;
-    float inertia = 0.0F; // 0 computes it from the shapes and the mass
+    float inertia = 0.0F;                     // 0 computes it from the shapes and the mass
+    std::string center_of_mass_mode = "auto"; // "auto": the shapes'; "custom": center_of_mass
+    Vec2 center_of_mass;                      // pixels, in the body's space
     float gravity_scale = 1.0F;
     Vec2 linear_velocity;
     float angular_velocity = 0.0F;
@@ -1937,10 +1939,10 @@ struct RigidBody2D {
     bool contact_monitor = false; // emit body_entered and body_exited
 };
 SLASH_COMPONENT(RigidBody2D, collision_layer, collision_mask, friction, bounce,
-                physics_material_override, mass, inertia, gravity_scale, linear_velocity,
-                angular_velocity, linear_damp_mode, linear_damp, angular_damp_mode, angular_damp,
-                constant_force, constant_torque, lock_rotation, freeze, freeze_mode, continuous_cd,
-                can_sleep, sleeping, contact_monitor)
+                physics_material_override, mass, inertia, center_of_mass_mode, center_of_mass,
+                gravity_scale, linear_velocity, angular_velocity, linear_damp_mode, linear_damp,
+                angular_damp_mode, angular_damp, constant_force, constant_torque, lock_rotation,
+                freeze, freeze_mode, continuous_cd, can_sleep, sleeping, contact_monitor)
 
 // A body that gameplay code moves by setting its velocity, as Godot's CharacterBody2D: each tick
 // the physics step runs move_and_slide, sliding it along what it hits, then writes its
@@ -2129,6 +2131,8 @@ struct RigidBody3D {
     std::string physics_material_override; // a .physics_material.json file; its values win
     float mass = 1.0F;
     Vec3 inertia; // about each axis; 0 computes that axis's from the shapes and the mass
+    std::string center_of_mass_mode = "auto"; // "auto": the shapes'; "custom": center_of_mass
+    Vec3 center_of_mass;                      // meters, in the body's space
     float gravity_scale = 1.0F;
     Vec3 linear_velocity;
     Vec3 angular_velocity;
@@ -2153,12 +2157,12 @@ struct RigidBody3D {
     bool contact_monitor = false; // emit body_entered and body_exited
 };
 SLASH_COMPONENT(RigidBody3D, collision_layer, collision_mask, friction, bounce,
-                physics_material_override, mass, inertia, gravity_scale, linear_velocity,
-                angular_velocity, linear_damp_mode, linear_damp, angular_damp_mode, angular_damp,
-                constant_force, constant_torque, lock_rotation, axis_lock_linear_x,
-                axis_lock_linear_y, axis_lock_linear_z, axis_lock_angular_x, axis_lock_angular_y,
-                axis_lock_angular_z, freeze, freeze_mode, continuous_cd, can_sleep, sleeping,
-                contact_monitor)
+                physics_material_override, mass, inertia, center_of_mass_mode, center_of_mass,
+                gravity_scale, linear_velocity, angular_velocity, linear_damp_mode, linear_damp,
+                angular_damp_mode, angular_damp, constant_force, constant_torque, lock_rotation,
+                axis_lock_linear_x, axis_lock_linear_y, axis_lock_linear_z, axis_lock_angular_x,
+                axis_lock_angular_y, axis_lock_angular_z, freeze, freeze_mode, continuous_cd,
+                can_sleep, sleeping, contact_monitor)
 
 // A body that gameplay code moves by setting its velocity, as Godot's CharacterBody3D: each tick
 // the physics step runs move_and_slide, sliding it along what it hits, then writes its
@@ -2702,6 +2706,81 @@ struct Creature2D {
     friend bool operator==(const Creature2D&, const Creature2D&) = default;
 };
 SLASH_COMPONENT(Creature2D, recipe, pixels_per_meter, flip_h, enabled, mind)
+
+// What drives a vehicle this tick, as slash/world/vehicle.hpp's DriveInput: throttle from -1
+// (reverse) to 1, brake and handbrake from 0 to 1, steer from -1 (right) to 1 (left) and, for
+// aircraft, pitch from -1 (nose down) to 1 (up). Its driver, gameplay code or vehicle.control
+// sets it.
+struct VehicleControls {
+    float throttle = 0.0F;
+    float brake = 0.0F;
+    float handbrake = 0.0F;
+    float steer = 0.0F;
+    float pitch = 0.0F;
+
+    friend bool operator==(const VehicleControls&, const VehicleControls&) = default;
+};
+SLASH_REFLECT(VehicleControls, throttle, brake, handbrake, steer, pitch)
+
+// The drivetrain's state, which the vehicles system keeps: the gear (-1 reverse, 0 neutral, 1
+// up), the engine's rpm, seconds left of a shift, the steered wheels' angle (radians) and the
+// speed forward (meters a second).
+struct VehicleDrive {
+    int gear = 1;
+    float rpm = 0.0F;
+    float shift_timer = 0.0F;
+    float steer = 0.0F;
+    float speed = 0.0F;
+
+    friend bool operator==(const VehicleDrive&, const VehicleDrive&) = default;
+};
+SLASH_REFLECT(VehicleDrive, gear, rpm, shift_timer, steer, speed)
+
+// A vehicle in 3D from a .vehicle.json recipe (slash/world/vehicle.hpp), on a RigidBody3D whose
+// MeshInstance3D draws the recipe: the vehicles system gives the body the recipe's mass, center
+// of mass and (rolling kinds) a VehicleBody3D with a wheel child <id>_wheel_<n> per wheel, then
+// drives it from controls each tick, floats boats and flies aircraft. Who sits in it has a
+// VehicleRider naming it; the driver's seat drives.
+struct Vehicle3D {
+    std::string recipe;
+    bool enabled = true;
+    json::Value overrides; // a merge patch over the recipe's physics, damage and design
+    VehicleControls controls;
+    VehicleDrive drive;
+
+    friend bool operator==(const Vehicle3D&, const Vehicle3D&) = default;
+};
+SLASH_COMPONENT(Vehicle3D, recipe, enabled, overrides, controls, drive)
+
+// A vehicle in 2D, seen from the side with its nose toward +x (or -x with flip_h), on a
+// RigidBody2D: the vehicles system gives it a collision box and Polygon2D pieces as children
+// <id>_<piece>, and each wheel a RigidBody2D child <id>_wheel_<n> on a GrooveJoint2D and a
+// DampedSpringJoint2D, pixels_per_meter big, and drives the wheels from controls.
+struct Vehicle2D {
+    std::string recipe;
+    float pixels_per_meter = 50.0F;
+    bool flip_h = false;
+    bool enabled = true;
+    json::Value overrides;
+    VehicleControls controls;
+    VehicleDrive drive;
+
+    friend bool operator==(const Vehicle2D&, const Vehicle2D&) = default;
+};
+SLASH_COMPONENT(Vehicle2D, recipe, pixels_per_meter, flip_h, enabled, overrides, controls, drive)
+
+// Someone sitting in a Vehicle3D's or Vehicle2D's seat, which the vehicles systems carry with
+// it: their collision layer and mask are 0 while they ride, and come back from here when they get
+// out (physics3d::exit_vehicle, physics2d::exit_vehicle or vehicle.control).
+struct VehicleRider {
+    entt::entity vehicle{entt::null};
+    std::string seat;
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+
+    friend bool operator==(const VehicleRider&, const VehicleRider&) = default;
+};
+SLASH_COMPONENT(VehicleRider, vehicle, seat, collision_layer, collision_mask)
 
 // The instances painted of one 2D foliage type: type names a .foliage.json file whose space is
 // "2d" and instances holds four numbers each, x, y, rotation (radians) and scale, a negative

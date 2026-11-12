@@ -248,6 +248,8 @@ struct ShapeKey {
         friend bool operator==(const Model&, const Model&) = default;
     };
     std::vector<Model> models{}; // NOLINT(readability-redundant-member-init)
+    // A rigid body's center of mass in its space, when its center_of_mass_mode is "custom".
+    std::optional<Vec3> center_of_mass{}; // NOLINT(readability-redundant-member-init)
 
     friend bool operator==(const ShapeKey&, const ShapeKey&) = default;
 };

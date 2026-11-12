@@ -1,0 +1,7 @@
+{"format": 1, "name": "Hatchback", "kind": "car",
+ "body": {"length": 4, "width": 1.8, "height": 1.45, "color": [0.1, 0.3, 0.8]},
+ "physics": {"mass": 1100, "differential": "front",
+             "engine": {"max_torque": 260, "max_rpm": 6500},
+             "gears": {"ratios": [3.4, 2.1, 1.5, 1.1, 0.9]}},
+ "design": {"top_speed": [30, 70], "acceleration": [5, 16], "braking_distance": [20, 70],
+            "turning_radius": [4, 12]}}
