@@ -307,6 +307,13 @@ struct Cloth2DBody {
     std::vector<std::array<int, 2>> bends;
     std::vector<std::array<int, 4>> bend_sides; // the edges each bend spans, -1 for none
     world::ClothPoints2D points;
+    // The sides of the triangles it draws that no other drawn triangle shares, as point pairs,
+    // which fluids collide with, and each point's inverse mass (0 where skinned) and radius as
+    // the last step had them.
+    std::vector<std::array<int, 2>> outline;
+    std::vector<std::array<int, 3>> triangles; // the triangles it draws, by their points
+    std::vector<float> inverse_mass;
+    float radius = 0.0F;
 };
 
 // A Hair2D's guide strands as the space steps them (hair.cpp), grown from key.
@@ -345,6 +352,11 @@ public:
     [[nodiscard]] const Body* body(entt::entity entity) const;
     // Where a Cloth2D's points are after the last step and the one before, or nullptr.
     [[nodiscard]] const world::ClothPoints2D* cloth_points(entt::entity entity) const;
+    // The Cloth2D sheets as the last step left them, in storage order; one by entity, or null.
+    [[nodiscard]] const EntityMap<std::unique_ptr<Cloth2DBody>>& cloth_bodies() const {
+        return cloths_;
+    }
+    [[nodiscard]] Cloth2DBody* cloth_body(entt::entity entity);
     // Where a Hair2D's guides are after the last step and the one before, or nullptr.
     [[nodiscard]] const world::HairStrands* hair_strands(entt::entity entity) const;
 

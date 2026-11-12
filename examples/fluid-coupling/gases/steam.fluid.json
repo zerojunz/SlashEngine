@@ -1,0 +1,11 @@
+{
+  "format": 1,
+  "kind": "gas",
+  "lifetime": 1.5,
+  "look": {
+    "smoke": [0.9, 0.9, 0.95, 0.5]
+  },
+  "max_particles": 400,
+  "name": "Steam",
+  "particle_radius": 0.05
+}

@@ -102,7 +102,6 @@ struct FluidParticles {
     std::vector<float> density;     // the last step's density over rest (liquids)
     std::vector<std::uint32_t> id;  // a number each new particle takes, for vortices and order
     std::uint32_t next_id = 0;
-    double emitted = 0.0; // particles owed to emitters, carried between ticks
     bool filled = false;
     std::size_t contacts = 0; // particles touching a collider in the last step
     std::size_t work = 0;     // neighbor visits in the last tick
@@ -124,14 +123,15 @@ struct FluidContact {
 
 // The physics a fluid steps in: collide gives each point's contact (nullopt where it touches
 // nothing) with radius the particles', and push hands a body the impulse the fluid gave it at a
-// point, and gravity gives the project's gravity. physics3d and physics2d set them
+// point by a particle of a mass (so light soft points take no more than the particle had), and
+// gravity gives the project's gravity. physics3d and physics2d set them
 // (set_fluid_host_3d and _2d); without them fluids collide only with their bounds and fall at
 // 9.8 m/s^2 (980 px/s^2 in 2D).
 struct FluidHost {
     std::function<void(std::span<const Vec3f> points, float radius,
                        std::vector<std::optional<FluidContact>>& out)>
         collide;
-    std::function<void(entt::entity body, Vec3f impulse, Vec3f at)> push;
+    std::function<void(entt::entity body, Vec3f impulse, Vec3f at, float mass)> push;
     std::function<Vec3f()> gravity;
 };
 void set_fluid_host_3d(World& world, FluidHost host);

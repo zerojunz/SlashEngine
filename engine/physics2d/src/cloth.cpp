@@ -14,6 +14,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <map>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -250,6 +251,45 @@ void Space::step_cloths(world::World& world, const world::Tree2D& tree, float se
         const auto free_count = static_cast<float>(std::ranges::count(free, true));
         const float inverse_mass =
             cloth.total_mass > 0.0F && free_count > 0.0F ? free_count / cloth.total_mass : 1.0F;
+        // The outline fluids collide with: the drawn triangles' sides that only one of them has.
+        {
+            const std::vector<bool> drawn = world::cloth_triangles_2d(grid);
+            body->triangles.clear();
+            std::map<std::array<int, 2>, int> sides;
+            const auto add_side = [&](int a, int b) { ++sides[{std::min(a, b), std::max(a, b)}]; };
+            std::size_t triangle = 0;
+            for (int r = 0; r + 1 < rows; ++r) {
+                for (int c = 0; c + 1 < columns; ++c) {
+                    const int at = (r * columns) + c;
+                    const int right = at + 1;
+                    const int below = at + columns;
+                    if (drawn[triangle]) {
+                        body->triangles.push_back({at, right, below});
+                        add_side(at, right);
+                        add_side(at, below);
+                        add_side(right, below);
+                    }
+                    if (drawn[triangle + 1]) {
+                        body->triangles.push_back({right, below + 1, below});
+                        add_side(right, below + 1);
+                        add_side(below, below + 1);
+                        add_side(right, below);
+                    }
+                    triangle += 2;
+                }
+            }
+            body->outline.clear();
+            for (const auto& [side, uses] : sides) {
+                if (uses == 1) {
+                    body->outline.push_back(side);
+                }
+            }
+            body->inverse_mass.assign(count, 0.0F);
+            for (std::size_t i = 0; i < count; ++i) {
+                body->inverse_mass[i] = free[i] ? inverse_mass : 0.0F;
+            }
+            body->radius = std::max(cloth.point_radius, 0.0F);
+        }
         const float share = free_count > 0.0F ? 1.0F / free_count : 0.0F;
         const std::uint32_t seed = seed_of(body->name);
         const int steps = std::clamp(cloth.simulation_precision, 1, 100);
@@ -390,6 +430,11 @@ void Space::step_cloths(world::World& world, const world::Tree2D& tree, float se
             }
         }
     }
+}
+
+Cloth2DBody* Space::cloth_body(entt::entity entity) {
+    std::unique_ptr<Cloth2DBody>* found = cloths_.find(entity);
+    return found != nullptr ? found->get() : nullptr;
 }
 
 const world::ClothPoints2D* Space::cloth_points(entt::entity entity) const {

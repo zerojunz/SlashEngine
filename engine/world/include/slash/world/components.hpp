@@ -3344,9 +3344,10 @@ struct Fluid2D {
 SLASH_COMPONENT(Fluid2D, recipe, enabled, overrides, fill_size, fill_velocity, bounds_size, visible,
                 z_index, z_as_relative, modulate, light_mask)
 
-// Pours particles into the fluid entity named by fluid at rate a second, from a disc of radius
-// at the entity, along direction (in its space) at speed, spread up to spread radians; gases
-// start at temperature with smoke and fuel.
+// Pours particles into the fluid entity named by fluid (with none, the Fluid on the entity or
+// the nearest above it) at rate a second, from a disc of radius at the entity, along direction
+// (in its space) at speed plus inherit_velocity of the entity's own velocity, spread up to
+// spread radians; gases start at temperature with smoke and fuel.
 struct FluidEmitter {
     std::string fluid;
     float rate = 200.0F;
@@ -3357,10 +3358,12 @@ struct FluidEmitter {
     float smoke = 0.0F;
     float fuel = 0.0F;
     bool enabled = true;
+    float inherit_velocity = 1.0F;
 
     friend bool operator==(const FluidEmitter&, const FluidEmitter&) = default;
 };
-SLASH_REFLECT(FluidEmitter, fluid, rate, speed, spread, radius, temperature, smoke, fuel, enabled)
+SLASH_REFLECT(FluidEmitter, fluid, rate, speed, spread, radius, temperature, smoke, fuel, enabled,
+              inherit_velocity)
 
 struct FluidEmitter3D : FluidEmitter {
     Vec3 direction{0.0F, -1.0F, 0.0F};
@@ -3368,7 +3371,7 @@ struct FluidEmitter3D : FluidEmitter {
     friend bool operator==(const FluidEmitter3D&, const FluidEmitter3D&) = default;
 };
 SLASH_COMPONENT(FluidEmitter3D, fluid, rate, speed, spread, radius, temperature, smoke, fuel,
-                enabled, direction)
+                enabled, inherit_velocity, direction)
 
 struct FluidEmitter2D : FluidEmitter {
     Vec2 direction{0.0F, 1.0F};
@@ -3380,7 +3383,7 @@ struct FluidEmitter2D : FluidEmitter {
     friend bool operator==(const FluidEmitter2D&, const FluidEmitter2D&) = default;
 };
 SLASH_COMPONENT(FluidEmitter2D, fluid, rate, speed, spread, radius, temperature, smoke, fuel,
-                enabled, direction)
+                enabled, inherit_velocity, direction)
 
 // Drains the fluid entity named by fluid (every fluid when empty) of the particles in a box of
 // size at the entity.

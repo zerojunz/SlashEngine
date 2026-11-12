@@ -5,9 +5,12 @@
 #include "space.hpp"
 
 #include <algorithm>
+#include <array>
 #include <box2d/box2d.h>
 #include <box2d/collision.h>
+#include <cmath>
 #include <cstddef>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <span>
@@ -63,6 +66,133 @@ b2Manifold manifold(b2ShapeId shape, const b2Circle& circle, b2Transform at) {
     }
 }
 
+// How thick a cloth's outline is to the fluid, past its points' radius, in pixels.
+constexpr float kSheetThickness = 1.0F;
+
+real_t dot(Vec2 a, Vec2 b) {
+    return (a.x * b.x) + (a.y * b.y);
+}
+
+real_t length(Vec2 v) {
+    return std::sqrt(dot(v, v));
+}
+
+// The side of a sheet's outline nearest a point, with the weight of its second end and how far
+// it is; nullopt where none is within reach.
+struct NearestSide {
+    std::size_t side = 0;
+    float along = 0.0F;
+    Vec2 point;
+    float distance = 0.0F;
+};
+std::optional<NearestSide> nearest_side(const Cloth2DBody& cloth, Vec2 p, float reach) {
+    std::optional<NearestSide> best;
+    const std::vector<Vec2>& x = cloth.points.current;
+    for (std::size_t s = 0; s < cloth.outline.size(); ++s) {
+        const Vec2 a = x[static_cast<std::size_t>(cloth.outline[s][0])];
+        const Vec2 b = x[static_cast<std::size_t>(cloth.outline[s][1])];
+        if (p.x < std::min(a.x, b.x) - reach || p.x > std::max(a.x, b.x) + reach ||
+            p.y < std::min(a.y, b.y) - reach || p.y > std::max(a.y, b.y) + reach) {
+            continue;
+        }
+        const Vec2 ab = b - a;
+        const real_t span = dot(ab, ab);
+        real_t t = span > 0.0F ? dot(p - a, ab) / span : 0.0F;
+        t = std::clamp<real_t>(t, 0.0F, 1.0F);
+        const Vec2 on = a + (ab * t);
+        const auto distance = static_cast<float>(length(p - on));
+        if (distance < reach && (!best || distance < best->distance)) {
+            best = NearestSide{
+                .side = s, .along = static_cast<float>(t), .point = on, .distance = distance};
+        }
+    }
+    return best;
+}
+
+// Whether a point is inside one of the triangles a sheet draws.
+bool inside_cloth(const Cloth2DBody& cloth, Vec2 p) {
+    const std::vector<Vec2>& x = cloth.points.current;
+    const auto cross = [](Vec2 a, Vec2 b, Vec2 c) {
+        return ((b.x - a.x) * (c.y - a.y)) - ((b.y - a.y) * (c.x - a.x));
+    };
+    return std::ranges::any_of(cloth.triangles, [&](const std::array<int, 3>& corners) {
+        const Vec2 a = x[static_cast<std::size_t>(corners[0])];
+        const Vec2 b = x[static_cast<std::size_t>(corners[1])];
+        const Vec2 c = x[static_cast<std::size_t>(corners[2])];
+        const real_t ab = cross(a, b, p);
+        const real_t bc = cross(b, c, p);
+        const real_t ca = cross(c, a, p);
+        return (ab >= 0.0F && bc >= 0.0F && ca >= 0.0F) || (ab <= 0.0F && bc <= 0.0F && ca <= 0.0F);
+    });
+}
+
+// Particles against each Cloth2D sheet's outline, as thick as its points' radius; a particle
+// that got inside the sheet goes back out through the nearest side.
+void collide_cloths(const Space& space, std::span<const Vec3f> points, float radius,
+                    std::vector<std::optional<world::FluidContact>>& out) {
+    for (const auto& [entity, cloth] : space.cloth_bodies()) {
+        if (cloth->outline.empty() || cloth->points.current.empty()) {
+            continue;
+        }
+        const float reach = radius + cloth->radius + kSheetThickness;
+        for (std::size_t i = 0; i < points.size(); ++i) {
+            const Vec2 p{points[i].x, points[i].y};
+            const bool inside = inside_cloth(*cloth, p);
+            const std::optional<NearestSide> near =
+                nearest_side(*cloth, p, inside ? std::numeric_limits<float>::max() : reach);
+            if (!near) {
+                continue;
+            }
+            const float depth = inside ? reach + near->distance : reach - near->distance;
+            if (out[i] && out[i]->depth >= depth) {
+                continue;
+            }
+            const auto& ends = cloth->outline[near->side];
+            Vec2 normal;
+            if (near->distance > 1e-4F) {
+                normal = (p - near->point) * ((inside ? -1.0F : 1.0F) / near->distance);
+            } else {
+                const Vec2 ab = cloth->points.current[static_cast<std::size_t>(ends[1])] -
+                                cloth->points.current[static_cast<std::size_t>(ends[0])];
+                const real_t span = length(ab);
+                normal = span > 0.0F ? Vec2{-ab.y / span, ab.x / span} : Vec2{0.0F, -1.0F};
+            }
+            const Vec2 velocity =
+                (cloth->velocity[static_cast<std::size_t>(ends[0])] * (1.0F - near->along)) +
+                (cloth->velocity[static_cast<std::size_t>(ends[1])] * near->along);
+            out[i] = world::FluidContact{
+                .normal = {static_cast<float>(normal.x), static_cast<float>(normal.y), 0.0F},
+                .depth = depth,
+                .velocity = {static_cast<float>(velocity.x), static_cast<float>(velocity.y), 0.0F},
+                .body = cloth->entity};
+        }
+    }
+}
+
+// Hands a sheet's points the push a particle of a mass gave it at a place: the nearest side's two
+// ends by how near each is, each as if it and the particle moved together.
+void push_cloth(Cloth2DBody& cloth, Vec2 impulse, Vec2 at, float mass) {
+    if (cloth.inverse_mass.size() != cloth.points.current.size() ||
+        cloth.velocity.size() != cloth.points.current.size()) {
+        return;
+    }
+    const float reach = (2.0F * (cloth.radius + kSheetThickness)) + 1.0F;
+    const std::optional<NearestSide> near = nearest_side(cloth, at, reach);
+    if (!near) {
+        return;
+    }
+    const auto& ends = cloth.outline[near->side];
+    const std::array<float, 2> weights{1.0F - near->along, near->along};
+    for (std::size_t e = 0; e < 2; ++e) {
+        const auto point = static_cast<std::size_t>(ends[e]);
+        if (cloth.inverse_mass[point] <= 0.0F || weights[e] <= 0.0F) {
+            continue;
+        }
+        const float together = (1.0F / cloth.inverse_mass[point]) + std::max(mass, 0.0F);
+        cloth.velocity[point] = cloth.velocity[point] + (impulse * (weights[e] / together));
+    }
+}
+
 bool by_id(b2ShapeId a, b2ShapeId b) {
     if (a.world0 != b.world0) {
         return a.world0 < b.world0;
@@ -77,7 +207,11 @@ void collide(const Space& space, std::span<const Vec3f> points, float radius,
              std::vector<std::optional<world::FluidContact>>& out) {
     out.assign(points.size(), std::nullopt);
     const b2WorldId world = space.id();
-    if (!b2World_IsValid(world) || points.empty()) {
+    if (points.empty()) {
+        return;
+    }
+    if (!b2World_IsValid(world)) { // no bodies yet, but there may be cloth
+        collide_cloths(space, points, radius, out);
         return;
     }
     b2AABB box{.lowerBound = {points[0].x, points[0].y}, .upperBound = {points[0].x, points[0].y}};
@@ -126,6 +260,7 @@ void collide(const Space& space, std::span<const Vec3f> points, float radius,
                 .body = info.entity};
         }
     }
+    collide_cloths(space, points, radius, out);
 }
 
 } // namespace
@@ -141,9 +276,16 @@ world::FluidHost fluid_host_2d(const std::shared_ptr<Space>& space) {
             out.assign(points.size(), std::nullopt);
         }
     };
-    host.push = [weak](entt::entity entity, Vec3f impulse, Vec3f at) {
+    host.push = [weak](entt::entity entity, Vec3f impulse, Vec3f at, float mass) {
         const auto held = weak.lock();
-        const Body* owner = held != nullptr ? std::as_const(*held).body(entity) : nullptr;
+        if (held == nullptr) {
+            return;
+        }
+        if (Cloth2DBody* cloth = held->cloth_body(entity); cloth != nullptr) {
+            push_cloth(*cloth, Vec2{impulse.x, impulse.y}, Vec2{at.x, at.y}, mass);
+            return;
+        }
+        const Body* owner = std::as_const(*held).body(entity);
         if (owner == nullptr || owner->kind != Kind::Rigid || !b2Body_IsValid(owner->id)) {
             return;
         }

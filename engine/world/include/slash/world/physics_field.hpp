@@ -63,6 +63,9 @@ public:
     // The force fields' push on a particle of a kilogram at a place, from fields with particles
     // on, in meters per second squared.
     [[nodiscard]] Vec3 particle_force(Vec3 position, std::uint32_t seed, double time) const;
+    // What the fields with particles on do at a place to a particle there, whatever its layers:
+    // their forces on a kilogram, velocities, anchors and kills, which fluids feel.
+    [[nodiscard]] FieldEffect particle_effect(Vec3 position, std::uint32_t seed, double time) const;
     [[nodiscard]] bool empty() const noexcept { return fields_.empty(); }
 
     struct Field {
@@ -99,6 +102,7 @@ public:
     [[nodiscard]] FieldEffect at(Vec2 position, std::uint32_t layers, std::uint32_t seed,
                                  double time) const;
     [[nodiscard]] Vec2 particle_force(Vec2 position, std::uint32_t seed, double time) const;
+    [[nodiscard]] FieldEffect particle_effect(Vec2 position, std::uint32_t seed, double time) const;
     [[nodiscard]] bool empty() const noexcept { return fields_.empty(); }
 
 private:
