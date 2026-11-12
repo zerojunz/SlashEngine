@@ -1410,7 +1410,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
               - [x] Skin detail maps and skin marks (scars, freckles, moles, rashes, burns,
                     bruises, wounds, tattoos and face paint)
               - [x] `face.generate`, `face.check`, portraits and the storyboard's face rules
-21. [ ] Procedural worlds with every tool: the procedural generation tool (noise, gradients,
+21. [x] Procedural worlds with every tool: the procedural generation tool (noise, gradients,
         scatter rules, `tilemap.generate`, `terrain.generate`) extended to drive everything this
         list adds, as Unreal's PCG graphs do, in 2D and 3D worlds: scatter layers that paint
         foliage types and grooms, populate fauna by habitat, place generated characters with

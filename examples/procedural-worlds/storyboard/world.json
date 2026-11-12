@@ -1,0 +1,13 @@
+{
+  "entries": {
+    "place/camp": {
+      "name": "The camp",
+      "summary": "A fishing camp on the island's south shore, kept clear of palms and rocks."
+    },
+    "place/farm": {
+      "name": "The farm",
+      "summary": "A farmhouse in the valley. Deer keep their distance from it, and grass is mown around it."
+    }
+  },
+  "format": 1
+}

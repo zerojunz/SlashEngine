@@ -586,6 +586,7 @@ ScatterResult scatter(const ScatterLayer& layer, std::size_t index, std::uint32_
         const float tilt_z = -random.range(-layer.tilt_random, layer.tilt_random) * kPi;
         const float tilt_x = -random.range(-layer.tilt_random, layer.tilt_random) * kPi;
         place.scale = layer.scale + random.range(-layer.scale_random, layer.scale_random);
+        place.normal = normal;
         if (flat) {
             place.position = point;
             place.rotation = {0.0F, 0.0F, -heading};

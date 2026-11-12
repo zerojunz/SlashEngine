@@ -1,9 +1,11 @@
 # Procedural generation, as Godot's noise module and texture resources: FastNoiseLite noise,
-# gradients, the .texture.json textures made from them and .scatter.json scatter rules.
+# gradients, the .texture.json textures made from them, .scatter.json scatter rules and
+# .pcg.json procedural graphs.
 add_library(slash_procedural
     src/foliage.cpp
     src/gradient.cpp
     src/noise.cpp
+    src/pcg.cpp
     src/scatter.cpp
     src/texture.cpp)
 add_library(slash::procedural ALIAS slash_procedural)

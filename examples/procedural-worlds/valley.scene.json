@@ -1,0 +1,70 @@
+{
+  "entities": {
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true
+        },
+        "Transform3D": {
+          "position": [0.0, 18.0, 26.0],
+          "rotation": [-0.6, 0.0, 0.0]
+        }
+      }
+    },
+    "farm": {
+      "components": {
+        "BoxMesh": {
+          "size": [6.0, 3.0, 4.0]
+        },
+        "MeshInstance3D": {},
+        "StoryRef": {
+          "ids": ["place/farm"]
+        },
+        "Transform3D": {
+          "position": [8.0, 1.5, 8.0]
+        }
+      }
+    },
+    "road": {
+      "components": {
+        "Path3D": {
+          "points": [
+            {
+              "position": [-18.0, 0.0, -3.0]
+            },
+            {
+              "in": [-6.0, 0.0, 0.0],
+              "out": [6.0, 0.0, 0.0],
+              "position": [0.0, 0.0, -5.0]
+            },
+            {
+              "position": [18.0, 0.0, -3.0]
+            }
+          ]
+        },
+        "Transform3D": {}
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {},
+        "Transform3D": {
+          "rotation": [-0.9, 0.5, 0.0]
+        }
+      }
+    },
+    "valley": {
+      "components": {
+        "MeshInstance3D": {},
+        "NavigationRegion3D": {
+          "navigation_mesh": "valley.navmesh.json"
+        },
+        "PlaneMesh": {
+          "size": [40.0, 40.0]
+        },
+        "Transform3D": {}
+      }
+    }
+  },
+  "format": 1
+}
