@@ -14,6 +14,7 @@
 #include "slash/scene3d/cloth.hpp"
 #include "slash/scene3d/cluster_streaming.hpp"
 #include "slash/scene3d/csg.hpp"
+#include "slash/scene3d/flesh.hpp"
 #include "slash/scene3d/fracture.hpp"
 #include "slash/scene3d/gpu_particles.hpp"
 #include "slash/scene3d/gridmap.hpp"
@@ -1774,11 +1775,14 @@ Result<render::MeshId> Renderer::cloth_mesh(const std::string& key, const ModelS
 
 Result<render::MeshId> Renderer::skinned_mesh(const std::string& key, const ModelSurface& surface,
                                               const std::vector<world::Affine3D>& joints,
-                                              const std::vector<float>& shape_weights) {
+                                              const std::vector<float>& shape_weights,
+                                              const std::shared_ptr<const FleshPose>& flesh,
+                                              std::size_t flesh_surface, float flesh_at) {
     Skinned& skinned = skinned_[key];
     skinned.used = frame_;
     if (skinned.id != render::MeshId::None && skinned.joints == joints &&
-        skinned.shape_weights == shape_weights) {
+        skinned.shape_weights == shape_weights && skinned.flesh == flesh &&
+        (flesh == nullptr || skinned.flesh_at == flesh_at)) {
         return skinned.id;
     }
     // Blend shapes first, then the skin, as Godot's skeleton shader moves them.
@@ -1791,6 +1795,20 @@ Result<render::MeshId> Renderer::skinned_mesh(const std::string& key, const Mode
         skin_vertices(surface, joints, skinned_vertices_);
     } else {
         skinned_vertices_ = surface.vertices;
+    }
+    // Flesh moves the skin over the muscles it follows, after skinning, in the model's space.
+    if (flesh != nullptr && flesh_surface < flesh->surfaces.size()) {
+        const FleshPose::Surface& moved = flesh->surfaces[flesh_surface];
+        const std::size_t count = std::min(moved.now.size(), skinned_vertices_.size());
+        for (std::size_t i = 0; i < count; ++i) {
+            const Vec3 by = i < moved.before.size()
+                                ? moved.before[i] + ((moved.now[i] - moved.before[i]) * flesh_at)
+                                : moved.now[i];
+            auto& position = skinned_vertices_[i].position;
+            position = {position[0] + static_cast<float>(by.x),
+                        position[1] + static_cast<float>(by.y),
+                        position[2] + static_cast<float>(by.z)};
+        }
     }
     if (skinned.id == render::MeshId::None) {
         auto made =
@@ -1806,6 +1824,8 @@ Result<render::MeshId> Renderer::skinned_mesh(const std::string& key, const Mode
     }
     skinned.joints = joints;
     skinned.shape_weights = shape_weights;
+    skinned.flesh = flesh;
+    skinned.flesh_at = flesh_at;
     skinned.box = bounds_of(skinned_vertices_);
     return skinned.id;
 }
@@ -1952,6 +1972,10 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
     if (world.ecs().all_of<world::Cloth3D>(entity)) {
         cloth = soft_body_pose(world, entity);
     }
+    std::shared_ptr<const FleshPose> flesh;
+    if (world.ecs().all_of<world::Flesh3D>(entity)) {
+        flesh = flesh_pose(world, entity);
+    }
     for (std::size_t p = 0; p < model.parts.size(); ++p) {
         const ModelPart& part = model.parts[p];
         const bool posed = !globals.empty() && part.node_index >= 0 &&
@@ -2005,9 +2029,20 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
             if (simulated) {
                 made = cloth_mesh(deformed_key, surface, cloth, moved);
             } else if (deformed) {
+                // Flesh moves a skinned surface's skin over its muscles.
+                std::size_t fleshed = 0;
+                while (
+                    flesh != nullptr && skinned && fleshed < flesh->surfaces.size() &&
+                    (flesh->surfaces[fleshed].part != p || flesh->surfaces[fleshed].surface != i)) {
+                    ++fleshed;
+                }
+                const bool moved_by_flesh =
+                    flesh != nullptr && skinned && fleshed < flesh->surfaces.size();
                 made = skinned_mesh(deformed_key, surface,
                                     skinned ? joints : std::vector<world::Affine3D>{},
-                                    morphed ? surface_weights : std::vector<float>{});
+                                    morphed ? surface_weights : std::vector<float>{},
+                                    moved_by_flesh ? flesh : nullptr, fleshed,
+                                    std::clamp(interpolation, 0.0F, 1.0F));
             } else {
                 made = kept_mesh(prefix + std::to_string(part.mesh) + "/" + std::to_string(i),
                                  surface.vertices, surface.indices, surface.lods);

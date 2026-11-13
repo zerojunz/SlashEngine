@@ -9,6 +9,7 @@
 #include "slash/ui/ui.hpp"
 #include "slash/video/video.hpp"
 #include "slash/world/cloth2d.hpp"
+#include "slash/world/flesh.hpp"
 #include "slash/world/hair.hpp"
 #include "slash/world/wind.hpp"
 
@@ -1616,8 +1617,11 @@ void CanvasRenderer::gather_polygons(DrawState& state) {
                         polygon.modulate.y * from_parents.modulate.y,
                         polygon.modulate.z * from_parents.modulate.z,
                         polygon.modulate.w * from_parents.modulate.w};
+        // Flesh moves a character's parts' points (slash/world/flesh.hpp).
+        const std::vector<Vec2>* moved = world::flesh_offsets_2d(world, entity);
         const auto corner = [&](std::size_t i) {
-            const Vec2 at = place.apply(polygon.polygon[i] + polygon.offset);
+            const Vec2 flesh = moved != nullptr && i < moved->size() ? (*moved)[i] : Vec2{};
+            const Vec2 at = place.apply(polygon.polygon[i] + polygon.offset + flesh);
             const Vec4 color =
                 i < polygon.vertex_colors.size() ? polygon.vertex_colors[i] : polygon.color;
             const Vec2 uv = i < polygon.uv.size() ? polygon.uv[i] : polygon.polygon[i];

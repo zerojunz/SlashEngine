@@ -788,12 +788,28 @@ with `look_at` (an entity's ID), `<id>_look_left` and `<id>_look_right`, a
 `LookAtModifier3D` each turning an eye toward it within limits. Two numbers place a 2D cut-out: a
 `Transform2D` and a `Character2D` at `pixels_per_meter` (default 100), facing left with
 `flip_h` and its eye on `look_at`, whose bones the `character_2d` system keeps as `<id>_<bone>`
-children. Under `parent` when given. Returns the `id`, its `components`, in 3D its `modifiers`,
+children. With `flesh: true`, adds a `Flesh3D` or `Flesh2D`, whose
+[muscles](scene-format.md#characters) bulge and jiggle under the skin. Under `parent` when
+given. Returns the `id`, its `components`, in 3D its `modifiers`,
 and `height`. A recipe that doesn't validate is `-32002` at `/recipe`, a taken `id` at `/id`,
 an unknown `look_at` at `/look_at`. Needs: `read`, `edit`.
 
 ```json
 {"recipe": "characters/hero.character.json", "id": "hero", "at": [0, 0, 0]}
+```
+
+### flesh.get
+
+Reads the muscles of the entity `id`'s `Flesh3D` or `Flesh2D` as they stepped last:
+`dimensions`, how many `points` and `elements` (tetrahedra or triangles) the flesh has, and
+`muscles`, each with its `name`, `kind`, `group`, `activation` (0 to 1), `length` (over its
+rest length) and `bulge` (how much thicker its belly is than at rest, 0 at rest). `muscles`
+picks muscles by name, kind or group; `bones: true` adds the anatomy's `bones`, each with its
+`name`, `kind` and the rig `bone` that moves it. An entity without flesh, or whose flesh hasn't
+stepped yet (it steps the tick after it is placed), is `-32602` at `/id`. Needs: `read`.
+
+```json
+{"id": "hero", "muscles": ["biceps", "core"]}
 ```
 
 ## Creatures

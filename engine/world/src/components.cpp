@@ -1039,6 +1039,45 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("hand_back", {.doc = "The far hand's pose, as hand_front.",
                                 .choices = {"", "open", "relaxed", "grip", "fist", "point"}});
 
+    // The fields of flesh, the same in 3D and 2D.
+    const auto describe_flesh = [](ComponentType& type) -> ComponentType& {
+        return type.describe("enabled", {.doc = "Whether its flesh is simulated."})
+            .describe(
+                "stiffness",
+                {.doc = "How firm its muscles are, 0 soft to 1 firm.", .min = 0.0, .max = 1.0})
+            .describe("damping",
+                      {.doc = "How soon its jiggling stops, 0 to 1.", .min = 0.0, .max = 1.0})
+            .describe("jiggle", {.doc = "How loosely its muscles are held to its bones, 0 to 1.",
+                                 .min = 0.0,
+                                 .max = 1.0})
+            .describe(
+                "activation",
+                {.doc = "Added to every muscle's activation, 0 to 1.", .min = 0.0, .max = 1.0})
+            .describe("automatic",
+                      {.doc = "Muscles activate as its joints bend them shorter, as a body "
+                              "holding a pose does."})
+            .describe("muscles",
+                      {.doc = "Activations, 0 to 1, by a muscle's name (biceps_left), kind "
+                              "(biceps) or group (arm); flesh.get lists them."})
+            .describe("muscles{}", {.doc = "How hard it pulls, 0 to 1.", .min = 0.0, .max = 1.0})
+            .describe(
+                "substeps",
+                {.doc = "Steps a tick: more for stiffer, steadier flesh.", .min = 1, .max = 16});
+    };
+    describe_flesh(registry.add<Flesh3D>().set_doc(
+        "A character's muscles simulated as flesh, after Unreal's Chaos Flesh: on the "
+        ".character.json model its MeshInstance3D draws, muscles keep their volume, so they "
+        "bulge as they shorten or are activated, jiggle as it moves and stay over their bones, "
+        "and its skin follows them. Draw the model's ::muscles or ::skeleton to see them."));
+    describe_flesh(registry.add<Flesh2D>().set_doc(
+                       "A Character2D's muscles simulated as flesh, as Flesh3D's, moving its "
+                       "cut-out's points as they are drawn."))
+        .describe(
+            "view",
+            {.doc =
+                 R"(What it shows: its skin, its muscles and bones over it ("muscles") or its bones ("skeleton"), as an <id>_anatomy child.)",
+             .choices = {"skin", "muscles", "skeleton"}});
+
     // The fields of a creature's mind, the same in 3D and 2D.
     const auto describe_mind = [](ComponentType& type) -> ComponentType& {
         return type

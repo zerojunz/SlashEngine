@@ -1190,10 +1190,19 @@ std::vector<json::ValidationError> check_recipe(std::string_view bytes, std::str
 
 namespace {
 
-// Variants are a recipe's: other model files name nothing after "::".
+// Variants are a recipe's, and a character's forms (::skeleton and ::muscles): other model
+// files name nothing after "::".
 std::optional<std::string> variant_problem(std::string_view path) {
-    if (asset::subresource_of(path).empty() || asset::file_of(path).ends_with(kModelRecipeSuffix)) {
+    const std::string_view variant = asset::subresource_of(path);
+    if (variant.empty() || asset::file_of(path).ends_with(kModelRecipeSuffix)) {
         return std::nullopt;
+    }
+    if (world::is_character_path(asset::file_of(path))) {
+        if (variant == "skeleton" || variant == "muscles") {
+            return std::nullopt;
+        }
+        return "a character's forms after \"::\" are skeleton and muscles, not " +
+               std::string(variant);
     }
     return "only a model recipe (" + std::string(kModelRecipeSuffix) +
            ") has variants to pick "
@@ -1211,7 +1220,7 @@ Result<Model> load_model(std::string_view bytes, std::string_view path, const Mo
     if (file.ends_with(kModelRecipeSuffix)) {
         model = load_recipe(bytes, path, read);
     } else if (world::is_character_path(file)) {
-        model = load_character_model(bytes, read);
+        model = load_character_model(bytes, read, asset::subresource_of(path));
     } else if (world::is_creature_path(file)) {
         model = load_creature_model(bytes, read);
     } else if (world::is_vehicle_path(file)) {
@@ -1235,7 +1244,7 @@ std::vector<json::ValidationError> check_model(std::string_view bytes, std::stri
     if (auto problem = variant_problem(path)) {
         return {{"", *problem}};
     }
-    if (world::is_character_path(path)) {
+    if (world::is_character_path(asset::file_of(path))) {
         return check_character_model(bytes, read);
     }
     if (world::is_creature_path(path)) {

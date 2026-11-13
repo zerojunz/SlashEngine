@@ -2050,6 +2050,23 @@ candidates within them, and `character.place` puts one in a 3D or 2D scene.
 `LookAtModifier3D`s, and a `Character2D`'s `look_at`, `jaw_open` and hands pose its cut-out
 (`pose_character`). `examples/character-design` designs a cast and `examples/character-rig`
 looks, grips and twists.
+Characters have anatomy and flesh, after Chaos Flesh (Godot has none): `slash/world/flesh.hpp`
+(`engine/world/src/flesh.cpp`, `flesh_solver.cpp` and `flesh2d.cpp`, built with
+`-ffp-contract=off`) places a recipe's bones and 28 kinds of muscle on a body's `BodyFrames`
+(`body_frames_3d` from its measures, `body_frames_2d` the cut-out's, turned), sized by its
+body's `muscle` and `fat` (`make_anatomy`), and `build_flesh` makes the muscles rings of points
+joined into tetrahedra (triangles in 2D). `step_flesh` is an XPBD solver both dimensions share:
+end rings pinned to their bones, elements keeping shape and volume, fibers pulling by
+activation, points springing toward the muscle's shape between its moved ends and staying out of
+its bone, and the root's acceleration felt; `bind_skin` and `skin_offsets` move skin by it. The
+`flesh_3d` system (`engine/scene3d/src/flesh.cpp`, priority 957, added by `canvas::install`)
+steps each `Flesh3D` on a character's `MeshInstance3D` from `pose_of` and `apply_modifiers`,
+and `Renderer::skinned_mesh` adds its `FleshPose` after skinning; `flesh_2d` steps each
+`Character2D`'s `Flesh2D` and `gather_polygons` adds `flesh_offsets_2d` to its parts, with a
+`<id>_anatomy` view. A character model's `::skeleton` and `::muscles` forms
+(`engine/scene3d/src/anatomy.cpp`) draw the anatomy on its rig. `character.place`'s `flesh` adds
+them and `flesh.get` (`engine/command/src/character.cpp`) reads the muscles.
+`examples/character-anatomy` flexes an arm in 3D and 2D.
 
 Animals are creature recipes, after Unreal's Mutable and its animal AI (Godot has none): a
 `.creature.json` file (`slash/world/creature.hpp`, `engine/world/src/creature.cpp`, built with

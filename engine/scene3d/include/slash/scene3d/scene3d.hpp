@@ -160,6 +160,7 @@ using TextureSource =
 
 struct LightmapData;
 struct SoftBodyPose; // slash/scene3d/soft_body.hpp
+struct FleshPose;    // slash/scene3d/flesh.hpp
 struct LightmapUnwrap;
 
 // A baked lightmap loaded by its .lightmap.json file's project path (lightmap.hpp), with the
@@ -537,6 +538,9 @@ private:
         std::vector<SurfaceLod> lods;        // its surface's coarser LODs
         // A soft body's mesh: the pose that moved its vertices last.
         std::shared_ptr<const SoftBodyPose> soft;
+        // Flesh's: the pose that moved its skin last, and how far between its ticks.
+        std::shared_ptr<const FleshPose> flesh;
+        float flesh_at = 0.0F;
     };
 
     Result<render::MeshId> mesh_for(const world::World& world, entt::entity entity,
@@ -646,9 +650,13 @@ private:
                                       std::size_t moved);
     // A surface's vertices moved by its blend shapes' weights, then by a skin's joints (none
     // for a surface no skin moves), in its entity's mesh on the device.
+    // Flesh, where it is given, moves the skinned vertices by its surface's offsets, eased from
+    // last tick's to this tick's by flesh_at.
     Result<render::MeshId> skinned_mesh(const std::string& key, const ModelSurface& surface,
                                         const std::vector<world::Affine3D>& joints,
-                                        const std::vector<float>& shape_weights);
+                                        const std::vector<float>& shape_weights,
+                                        const std::shared_ptr<const FleshPose>& flesh = nullptr,
+                                        std::size_t flesh_surface = 0, float flesh_at = 1.0F);
 
     // A mesh's place in a baked lightmap this frame, by its entity and model part.
     struct Lit {

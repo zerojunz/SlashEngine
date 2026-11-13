@@ -1,5 +1,6 @@
 #include "slash/scene3d/character.hpp"
 
+#include "anatomy.hpp"
 #include "rig_builder.hpp"
 
 #include "slash/core/json.hpp"
@@ -983,9 +984,30 @@ void fill_triangle(Silhouette& out, std::array<Vec2, 3> corners) {
     }
 }
 
+// The body's mesh as the model's one part, on a node of its own.
+Model finish(Builder& out, const CharacterRecipe& recipe) {
+    out.body.name = recipe.name.empty() ? std::string("Body") : recipe.name;
+    out.model.parts.push_back({.node = "Body",
+                               .mesh = 0,
+                               .transform = {},
+                               .node_index = static_cast<int>(out.model.nodes.size()),
+                               .skin = 0});
+    ModelNode node;
+    node.name = "Body";
+    node.file_index = static_cast<int>(out.model.nodes.size());
+    out.model.nodes.push_back(std::move(node));
+    out.model.meshes.push_back(std::move(out.body));
+    return std::move(out.model);
+}
+
 } // namespace
 
-Result<Model> build_character(const CharacterRecipe& recipe, const ModelReader& read) {
+Result<Model> build_character(const CharacterRecipe& recipe, const ModelReader& read,
+                              std::string_view form) {
+    if (!form.empty() && form != "skeleton" && form != "muscles") {
+        return make_error(ErrorCode::InvalidArgument,
+                          "a character's forms are skeleton and muscles, not " + std::string(form));
+    }
     const CharacterMeasures m = world::character_measures(recipe);
     const std::vector<Bone> bones = skeleton(m, recipe.face);
     Builder out;
@@ -1035,6 +1057,11 @@ Result<Model> build_character(const CharacterRecipe& recipe, const ModelReader& 
     out.model.skins.push_back(std::move(skin));
     add_clips(out.model, bones);
 
+    if (!form.empty()) {
+        add_anatomy(world::make_anatomy(recipe, world::body_frames_3d(m)), bones, out,
+                    form == "muscles");
+        return finish(out, recipe);
+    }
     const Body body{m, bones, out};
     const int skin_material = out.material("skin", recipe.body.skin, 0.6F, 0.0F);
     body.torso(0.0F, skin_material);
@@ -1062,22 +1089,11 @@ Result<Model> build_character(const CharacterRecipe& recipe, const ModelReader& 
             return added.error();
         }
     }
-
-    out.body.name = recipe.name.empty() ? std::string("Body") : recipe.name;
-    out.model.parts.push_back({.node = "Body",
-                               .mesh = 0,
-                               .transform = {},
-                               .node_index = static_cast<int>(out.model.nodes.size()),
-                               .skin = 0});
-    ModelNode node;
-    node.name = "Body";
-    node.file_index = static_cast<int>(out.model.nodes.size());
-    out.model.nodes.push_back(std::move(node));
-    out.model.meshes.push_back(std::move(out.body));
-    return std::move(out.model);
+    return finish(out, recipe);
 }
 
-Result<Model> load_character_model(std::string_view bytes, const ModelReader& read) {
+Result<Model> load_character_model(std::string_view bytes, const ModelReader& read,
+                                   std::string_view form) {
     auto doc = json::parse(bytes);
     if (!doc) {
         return doc.error();
@@ -1086,7 +1102,7 @@ Result<Model> load_character_model(std::string_view bytes, const ModelReader& re
     if (!recipe) {
         return recipe.error();
     }
-    return build_character(recipe.value(), read);
+    return build_character(recipe.value(), read, form);
 }
 
 std::vector<json::ValidationError> check_character_model(std::string_view bytes,
