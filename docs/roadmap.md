@@ -1320,6 +1320,12 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         style entries and design drafts, so every face fits the game's look; distinct faces
         kept apart by `face.check` against the cast and the storyboard's rules, `face.generate`
         drafting faces from a brief, and side-on 2D faces and portraits for 2D worlds
+        - [x] The full rig: all of Godot's humanoid profile with twist bones, turned as the
+              profile's, smooth skin weights, hands and eyeballs, teeth and tongue, hand and jaw
+              poses, Godot's `LookAtModifier3D` and `CopyTransformModifier3D`, and a 2D jaw, eye
+              and fingers posed by `Character2D`
+        - [ ] The anatomical layer: bones and muscles
+        - [ ] The face tool
 
 Console ports are not on this roadmap and never will be in this repository. As with Godot,
 PlayStation, Xbox and Switch support comes from licensed porting partners as private backends.

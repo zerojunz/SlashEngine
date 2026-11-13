@@ -1378,8 +1378,9 @@ pole entities by ID, which may be anywhere in the world.
 ```
 
 - They run in Godot's order: those on the drawing entity, then those on each of its children in
-  list order; on one entity, `TwoBoneIK3D`, `FABRIK3D`, `CCDIK3D`, `JacobianIK3D`, then
-  `PhysicalBoneSimulator3D`. Each setting in `settings` is one limb or chain, solved in turn.
+  list order; on one entity, `TwoBoneIK3D`, `FABRIK3D`, `CCDIK3D`, `JacobianIK3D`,
+  `CopyTransformModifier3D`, `LookAtModifier3D`, then `PhysicalBoneSimulator3D`. Each setting in
+  `settings` is one limb or chain, solved in turn.
 - `TwoBoneIK3D` bends two bones so the end reaches the target, with the middle joint on the
   pole's side, as Godot's: straight at the target when it is out of reach. It needs a target
   and a pole. `pole_direction` rolls the middle bone so that axis faces the pole.
@@ -1428,10 +1429,46 @@ pole entities by ID, which may be anywhere in the world.
 | `extend_end_bone`, `end_bone_direction`, `end_bone_length` | | `false`, `"from_parent"`, `0` | As a two-bone setting's |
 | `joints` | Map of joints | `{}` | A bone's limits, by name: `rotation_axis` (`"all"`, `"x"`, `"y"`, `"z"` or `"custom"` with `rotation_axis_vector`), `limitation` (`""` or `"cone"`), `limitation_angle` (default a quarter turn), `limitation_rotation_offset`, and `limitation_right_axis` with `limitation_right_axis_vector` |
 
+`LookAtModifier3D` and `CopyTransformModifier3D` are Godot 4.6's too, ported line for line
+(`engine/scene3d/src/bone_constraints.cpp`): one turns a bone to look at an entity, the other
+copies bones' turns onto others, which is how a twist bone takes half its limb's roll.
+
+```json
+"eyes": {"components": {"Transform3D": {},
+  "LookAtModifier3D": {"bone": "LeftEye", "target_node": "camera", "forward_axis": "plus_y",
+                       "primary_rotation_axis": "z", "use_angle_limitation": true,
+                       "primary_limit_angle": 1.2, "secondary_limit_angle": 0.8}}},
+"twists": {"components": {"Transform3D": {},
+  "CopyTransformModifier3D": {"settings": [{"apply_bone": "LeftLowerArmTwist",
+    "reference_bone": "LeftHand", "amount": 0.5, "copy_position": false, "copy_scale": false,
+    "axis_x_enabled": false, "axis_z_enabled": false}]}}}
+```
+
+- `LookAtModifier3D` turns `bone` so its `forward_axis` points at `target_node`, first about
+  its `primary_rotation_axis`, then (with `use_secondary_rotation`) about the axis square to
+  both, from its pose (`relative`) or its rest. The look starts from the bone itself, another
+  bone (`origin_from` `"specific_bone"` with `origin_bone`) or an entity (`"external_node"` with
+  `origin_external_node`), moved by `origin_offset`. With `use_angle_limitation`, each axis
+  turns at most half of `primary_limit_angle` and `secondary_limit_angle` either way
+  (`symmetry_limitation`), or the `_positive_` and `_negative_` limits each side, easing in from
+  each `_damp_threshold`. When the look flips across a limit or starts, it eases over `duration`
+  seconds by `transition_type` and `ease_type` (Godot's tween transitions: `"linear"`, `"sine"`,
+  `"quint"`, `"quart"`, `"quad"`, `"expo"`, `"elastic"`, `"cubic"`, `"circ"`, `"bounce"`,
+  `"back"`, `"spring"`; `"in"`, `"out"`, `"in_out"`, `"out_in"`). The easing is stepped once a
+  tick, as chains are.
+- `CopyTransformModifier3D`'s `settings` each copy `reference_bone`'s pose (or with
+  `reference_type` `"node"`, `reference_node`'s place) onto `apply_bone`, `amount` of the way:
+  its position, rotation and scale (`copy_position`, `copy_rotation`, `copy_scale`), each axis
+  on or off (`axis_x_enabled` ...) and turned the other way (`axis_x_inverted` ...). A rotation
+  with axes left out keeps only its roll about those it copies. `relative` copies the change
+  from the reference's rest onto the bone's rest; `additive` adds it to the bone's pose.
+- Both have `influence` and `active`.
+
 `skeleton.get` reports bones after their modifiers, and `scene validate` reports bones the model
-hasn't (with "did you mean"), bones that aren't one under the other, names of directions and
-axes, settings with no target or pole, and modifiers that turn no model's bones.
-[examples/ik](../../examples/ik/) reaches with an arm.
+hasn't (with "did you mean"), bones that aren't one under the other, names of directions, axes,
+transitions and eases, settings with no target or pole, and modifiers that turn no model's
+bones. [examples/ik](../../examples/ik/) reaches with an arm, and
+[examples/character-rig](../../examples/character-rig/) looks, grips and twists.
 
 A `PhysicalBoneSimulator3D` is a modifier too, run after the IK modifiers on its entity: it puts
 bones where their physics bodies are ([ragdolls](#ragdolls)).
@@ -5046,26 +5083,45 @@ shoulder guards) and `scarf`. Two garments can't cover the same place (a shirt a
 jacket and a coat, pants and a skirt, boots and shoes, a hat and a hood), only one garment may be
 cloth, and only one prop may be at a point; `scene validate` reports each at its pointer.
 
-- **The model** is a skeleton with Godot's humanoid profile's bones (`Hips`, `Spine`, `Chest`,
-  `UpperChest`, `Neck`, `Head`, and `Left`/`Right` `Shoulder`, `UpperArm`, `LowerArm`, `Hand`,
-  `UpperLeg`, `LowerLeg`, `Foot` and `Toes`), so animations retarget onto it, its arms hanging
-  12 degrees out. The body, face and hair are primitive meshes placed and stretched over the
-  recipe's measures, each moved by one bone, facing +z with the feet at 0. Each garment is the
-  body's shape it covers a little further out (more when loose, more for each later layer).
-  Materials are named for what they draw: `skin`, `eyes`, `lips`, `hair`, `scalp` (with a groom),
-  each garment's kind (a cloth garment's free part, its fitted part `<kind>_fitted`), and the
-  props' own. The points are nodes under their bones, which `BoneAttachment3D` follows by name.
+- **The model** is a skeleton of all 56 of Godot's humanoid profile's bones, in its order
+  (`Root`, `Hips`, `Spine`, `Chest`, `UpperChest`, `Neck`, `Head`, `LeftEye`, `RightEye`,
+  `Jaw`, and `Left`/`Right` `Shoulder`, `UpperArm`, `LowerArm`, `Hand`, the thumb's
+  `ThumbMetacarpal`, `ThumbProximal` and `ThumbDistal`, each finger's (`Index`, `Middle`,
+  `Ring`, `Little`) `Proximal`, `Intermediate` and `Distal`, `UpperLeg`, `LowerLeg`, `Foot` and
+  `Toes`), then a twist bone along each limb (`<side>UpperArmTwist`, `LowerArmTwist`,
+  `UpperLegTwist`, `LowerLegTwist`). Each bone is turned as the profile's is, then onto the
+  next bone, so its y runs down the limb as in models Godot's importer retargets, and
+  animations retarget onto it. Its arms hang 12 degrees out, palms in. The body, face and hair
+  are primitive meshes placed and stretched over the recipe's measures, facing +z with the
+  feet at 0: hands with a palm and three phalanges a finger, eyeballs (white, iris and pupil)
+  on the eye bones, upper and lower lips, teeth and a tongue split between the head and jaw.
+  Skin bends smoothly: each limb is weighted to its bone, half to the next at each joint, the
+  trunk blended down the spine, and the upper arm and thigh near their tops and the forearm and
+  shin near their ends to the twist bones. Each garment is the body's shape it covers a little
+  further out (more when loose, more for each later layer). Materials are named for what they
+  draw: `skin`, `eye_white`, `eyes` (the irises), `pupil`, `lips`, `mouth`, `teeth`, `tongue`,
+  `hair`, `scalp` (with a groom), each garment's kind (a cloth garment's free part, its fitted
+  part `<kind>_fitted`), and the props' own. The points are nodes under their bones, unturned
+  at rest, which `BoneAttachment3D` follows by name.
+- **Its animations** are hand poses and the jaw, one key each, to play or blend over others:
+  `relaxed_left`, `fist_left`, `grip_left` and `point_left` (and `_right`), which curl the
+  fingers and thumb toward the palm, and `jaw_open`.
 - **The 2D cut-out** is seen from the side, facing right (`flip_h` faces left): bones `pelvis`,
-  `chest`, `head`, and `upper_arm`, `lower_arm`, `hand`, `upper_leg`, `lower_leg` and `foot`,
-  each `_back` (behind the body, a shade darker) and `_front`. The `character_2d` system
-  (priority 880) keeps each as a child entity `<id>_<bone>` with a `Transform2D` placed where the
-  cut-out puts it and a `Polygon2D` of its shapes, `pixels_per_meter` big, and makes them again
-  when the recipe changes; after that their transforms are animations' and ragdolls' to move.
-  Props draw only in 3D.
+  `chest`, `head` with its `jaw` (chin, lower lip and beard) and `eye` (the iris), and
+  `upper_arm`, `lower_arm`, `hand` with its `fingers`, `index` and `thumb`, `upper_leg`,
+  `lower_leg` and `foot`, each `_back` (behind the body, a shade darker) and `_front`. The
+  `character_2d` system (priority 880) keeps each as a child entity `<id>_<bone>` with a
+  `Transform2D` placed where the cut-out puts it and a `Polygon2D` of its shapes,
+  `pixels_per_meter` big, and makes them again when the recipe changes; after that their
+  transforms are animations' and ragdolls' to move. While a `Character2D`'s `look_at`,
+  `jaw_open`, `hand_front` or `hand_back` is set, the system poses those parts each tick: the
+  iris moves toward the entity looked at, the jaw turns down (0.4 radians open) and the fingers
+  curl back toward the palm (`"open"`, `"relaxed"`, `"grip"`, `"fist"`, or `"point"` with the
+  index straight), turned the way it faces; unset, they go back to rest. Props draw only in 3D.
 
 | Component | Fields (defaults) |
 | --- | --- |
-| `Character2D` | `recipe` `""`, `pixels_per_meter` `100`, `flip_h` `false` |
+| `Character2D` | `recipe` `""`, `pixels_per_meter` `100`, `flip_h` `false`, `look_at` none, `jaw_open` `0`, `hand_front` `""`, `hand_back` `""` |
 | `Polygon2D` | Godot's: `polygon` `[]` (points in its space), `polygons` `[]` (lists of indices into it, each drawn as its own polygon; empty draws `polygon` whole), `color` `[1, 1, 1, 1]`, `vertex_colors` `[]` (a color a point, else `color`), `offset` `[0, 0]`, `texture` `""`, `uv` `[]` (texture pixels a point, else the point itself), `modulate` `[1, 1, 1, 1]`, `z_index` `0`, `z_as_relative` `true`, `visible` `true`, `light_mask` `1`, `texture_filter` `"inherit"` |
 
 The storyboard's `character_rules` entries (in `storyboard/design.json`) cover the recipes in
