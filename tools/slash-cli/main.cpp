@@ -236,7 +236,7 @@ Usage:
       --port <n>                     Port (default: any free port)
       --token <token>                Bearer token clients must send (default: random)
   slash-cli init [dir]               Set a project up for Claude Code, Codex, Cursor, opencode,
-                                     Hermes Agent and OpenClaw
+                                     Antigravity, Hermes Agent and OpenClaw
       --force                        Replace files that already exist
       --mcp-command <cmd>            How agents launch slash-mcp (default "slash-mcp")
   slash-cli import <folder|file>     Convert a Godot 4 project (the folder with project.godot)

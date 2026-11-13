@@ -5,7 +5,7 @@ A video game engine completely built for AI Agents only. Welcome to the future b
 SlashEngine is a lightweight, free and open-source C++20 game engine designed for agents rather
 than manual human input: scenes are plain text, the engine describes itself, and every action is a
 command an agent can call over MCP. It is model agnostic and works with Claude Code, Codex, Cursor,
-opencode, Hermes Agent, OpenClaw or any other MCP client. [docs/](docs/README.md) has a getting-started guide, reference pages and
+opencode, Antigravity, Hermes Agent, OpenClaw or any other MCP client. [docs/](docs/README.md) has a getting-started guide, reference pages and
 the [roadmap](docs/roadmap.md); [docs/design.md](docs/design.md) is the full design.
 
 **Status:** milestones 1 to 4 and 6 are done, and milestone 5 (the 2D feature set) is nearly
@@ -30,7 +30,7 @@ ctest --preset dev
 ```
 
 To let an agent edit a game, run `slash-cli init` in the game's folder. It writes the MCP configs
-for Claude Code, Codex, Cursor and opencode (and Hermes Agent's and OpenClaw's entries), an `AGENTS.md` and an empty main scene. With `slash-mcp` on your
+for Claude Code, Codex, Cursor, opencode and Antigravity (and Hermes Agent's and OpenClaw's entries), an `AGENTS.md` and an empty main scene. With `slash-mcp` on your
 `PATH`, the agent connects on its next start. Claude Code can also add it by hand:
 
 ```bash

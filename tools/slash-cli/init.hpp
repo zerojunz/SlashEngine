@@ -14,11 +14,12 @@ struct InitOptions {
 };
 
 // Sets up a game project for agents: a project.json named after the folder, MCP configs for
-// Claude Code (.mcp.json), Codex (.codex/config.toml), Cursor (.cursor/mcp.json) and opencode
-// (opencode.json), the entries Hermes Agent and OpenClaw take in their user configs
-// (.slash/agents/hermes.yaml and openclaw.json, naming the folder in full), an AGENTS.md
-// with a CLAUDE.md pointing to it, a Claude Code skill, a GitHub Actions workflow that exports
-// every platform, an empty main scene and .gitignore entries for .slash/ and build/. Returns
+// Claude Code (.mcp.json), Codex (.codex/config.toml), Cursor (.cursor/mcp.json), opencode
+// (opencode.json) and Antigravity (.agents/mcp_config.json, naming the folder in full), the
+// entries Hermes Agent and OpenClaw take in their user configs (.slash/agents/hermes.yaml and
+// openclaw.json, also naming it in full), an AGENTS.md with a CLAUDE.md pointing to it, a skill
+// for Claude Code and Antigravity, a GitHub Actions workflow that exports every platform, an
+// empty main scene and .gitignore entries for .slash/, build/ and .agents/mcp_config.json. Returns
 // {"created": [...], "skipped": [...]} plus "updated" when an existing .gitignore gained entries,
 // with paths relative to the directory.
 [[nodiscard]] Result<json::Value> init_project(const InitOptions& options);

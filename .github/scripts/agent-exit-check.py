@@ -35,12 +35,13 @@ PROMPT = (
     "is [1, 0.5, 0.25, 1], then save the scene to scenes/main.scene.json. "
     "Reply with DONE when the scene is saved."
 )
-AGENTS = ["claude", "codex", "cursor", "opencode", "hermes", "openclaw"]
+AGENTS = ["claude", "codex", "cursor", "opencode", "antigravity", "hermes", "openclaw"]
 NAMES = {
     "claude": "Claude Code",
     "codex": "Codex",
     "cursor": "Cursor",
     "opencode": "opencode",
+    "antigravity": "Antigravity",
     "hermes": "Hermes Agent",
     "openclaw": "OpenClaw",
 }
@@ -49,6 +50,7 @@ PROGRAMS = {
     "codex": "codex",
     "cursor": "cursor-agent",
     "opencode": "opencode",
+    "antigravity": "agy",
     "hermes": "hermes",
     "openclaw": "openclaw",
 }
@@ -112,6 +114,11 @@ def command_for(agent, project):
                 "stream-json", PROMPT], {}
     if agent == "opencode":
         return ["opencode", "run", "--format", "json", PROMPT], {}
+    if agent == "antigravity":
+        # Antigravity's CLI reads .agents/mcp_config.json; its only way to allow tools without
+        # asking is to allow them all.
+        return ["agy", "-p", PROMPT, "--output-format", "json",
+                "--dangerously-skip-permissions"], {}
     if agent == "hermes":
         return ["hermes", "--yolo", "chat", "--oneshot", "-q", PROMPT], {}
     if agent == "openclaw":

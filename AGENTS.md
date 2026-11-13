@@ -1,7 +1,7 @@
 # AGENTS.md
 
-Instructions for AI agents (Claude Code, Codex, Cursor and others) working on SlashEngine. Read
-[docs/design.md](docs/design.md) for the full design; this file covers the day-to-day loop.
+Instructions for AI agents (Claude Code, Codex, Cursor, Antigravity and others) working on
+SlashEngine. Read [docs/design.md](docs/design.md) for the full design; this file covers the day-to-day loop.
 [CONTRIBUTING.md](CONTRIBUTING.md) covers what a pull request needs. [docs/](docs/README.md) has the
 reference pages and the [roadmap](docs/roadmap.md).
 
@@ -408,7 +408,7 @@ $cli rpc --project .                                     # JSON-RPC 2.0, one mes
 $cli call world.query '{"with": ["Transform2D"]}' --scene tests/data/basic.scene.json
 $cli call batch '{"commands": [{"command": "entity.create", "params": {"id": "a"}}]}' \
     --scene build/out.scene.json --save
-$cli init path/to/game                                   # MCP configs for Claude Code, Codex, Cursor, opencode, Hermes, OpenClaw
+$cli init path/to/game                                   # MCP configs for Claude Code, Codex, Cursor, opencode, Antigravity, Hermes, OpenClaw
 ```
 
 A session checks each command's capabilities (`--allow read,edit,run,filesystem,build,network`),
