@@ -1317,6 +1317,18 @@ struct CutCells {
     std::vector<int> owner; // each point's piece among cells, or -1
 };
 
+// The union of parts, added one at a time in their order. Manifold's BatchBoolean adds the
+// smallest first through a heap, and which of two the same size comes first differs between
+// standard libraries (MSVC's heap isn't libstdc++'s), so its results differ between platforms.
+manifold::Manifold union_in_order(const std::vector<manifold::Manifold>& parts) {
+    manifold::Manifold sum = parts.front();
+    for (std::size_t i = 1; i < parts.size(); ++i) {
+        sum = sum + parts[i];
+        (void)sum.NumVert(); // worked out now, so the next add is one of two
+    }
+    return sum;
+}
+
 CutCells cut_cells(const manifold::Manifold& region, const world::FractureCut& cut,
                    Materials& materials, const SurfaceMaterial& inside, std::size_t limit,
                    jobs::Pool* pool) {
@@ -1353,6 +1365,9 @@ CutCells cut_cells(const manifold::Manifold& region, const world::FractureCut& c
             const manifold::vec3 normal = away / length;
             cell =
                 cell.TrimByPlane(normal, manifold::la::dot(normal, (points[i] + points[j]) * 0.5));
+            // Each cut is worked out as it is made: left lazy, Manifold would gather them all
+            // into one batch, whose order among equal sizes differs between standard libraries.
+            (void)cell.NumVert();
         }
         return cell;
     };
@@ -1374,8 +1389,7 @@ CutCells cut_cells(const manifold::Manifold& region, const world::FractureCut& c
         for (const std::size_t i : group) {
             parts.push_back(cell_of(i));
         }
-        return parts.size() == 1 ? parts.front()
-                                 : manifold::Manifold::BatchBoolean(parts, manifold::OpType::Add);
+        return union_in_order(parts);
     };
     if (pool != nullptr && limit == std::numeric_limits<std::size_t>::max()) {
         // Every cell is wanted: they are cut at once on the job pool, each group's cell and its
@@ -1526,9 +1540,7 @@ manifold::Manifold deform(manifold::Manifold region, const std::vector<world::Me
         for (const world::MeshCarve& carve : carves) {
             tools.push_back(carve_shape(carve));
         }
-        manifold::Manifold tool =
-            tools.size() == 1 ? tools.front()
-                              : manifold::Manifold::BatchBoolean(tools, manifold::OpType::Add);
+        manifold::Manifold tool = union_in_order(tools);
         tool = tool.AsOriginal();
         materials[static_cast<std::uint32_t>(tool.OriginalID())] = inside;
         region = region - tool;
