@@ -652,7 +652,11 @@ FleshBinding bind_skin(const FleshBody& body, std::span<const SkinPoint> skin, f
                     } else {
                         continue;
                     }
-                    std::sort(best.begin(), best.begin() + static_cast<std::ptrdiff_t>(found));
+                    // Move the new one down to its place (std::sort here trips GCC 13's
+                    // -Warray-bounds at -O2).
+                    for (std::size_t i = found - 1; i > 0 && best.at(i) < best.at(i - 1); --i) {
+                        std::swap(best.at(i), best.at(i - 1));
+                    }
                 }
             }
             real_t sum = 0.0F;
