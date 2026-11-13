@@ -2754,6 +2754,43 @@ struct Character2D {
 SLASH_COMPONENT(Character2D, recipe, pixels_per_meter, flip_h, look_at, jaw_open, hand_front,
                 hand_back)
 
+// A character's muscles simulated as flesh, after Unreal's Chaos Flesh (slash/world/flesh.hpp):
+// on the .character.json model its entity's MeshInstance3D draws, its muscles bulge as they
+// shorten or are activated and jiggle as it moves, and its skin follows them. The same fields
+// as Flesh2D.
+struct Flesh3D {
+    bool enabled = true;
+    float stiffness = 0.5F;               // 0 soft to 1 firm
+    float damping = 0.5F;                 // 0 to 1: how soon jiggling stops
+    float jiggle = 0.5F;                  // 0 held tight to 1 loose
+    float activation = 0.0F;              // added to every muscle's, 0 to 1
+    bool automatic = true;                // muscles activate as their joints bend them shorter
+    std::map<std::string, float> muscles; // activations by a muscle's name, kind or group
+    int substeps = 4;
+
+    friend bool operator==(const Flesh3D&, const Flesh3D&) = default;
+};
+SLASH_COMPONENT(Flesh3D, enabled, stiffness, damping, jiggle, activation, automatic, muscles,
+                substeps)
+
+// A Character2D's muscles simulated as flesh, as Flesh3D's, moving its cut-out's points; view
+// shows its muscles or its skeleton over the body.
+struct Flesh2D {
+    bool enabled = true;
+    float stiffness = 0.5F;
+    float damping = 0.5F;
+    float jiggle = 0.5F;
+    float activation = 0.0F;
+    bool automatic = true;
+    std::map<std::string, float> muscles;
+    int substeps = 4;
+    std::string view = "skin"; // "skin", "muscles" or "skeleton"
+
+    friend bool operator==(const Flesh2D&, const Flesh2D&) = default;
+};
+SLASH_COMPONENT(Flesh2D, enabled, stiffness, damping, jiggle, activation, automatic, muscles,
+                substeps, view)
+
 // What an animal is doing and has learned, which the fauna system keeps (slash/npc/fauna.hpp):
 // its mode ("idle", "grazing", "wandering", "fleeing", "hunting", "attacking", "following",
 // "ridden" or "caught"), what it flees, hunts, attacks or follows, the person it is tamed by and

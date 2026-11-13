@@ -1290,7 +1290,14 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         spawned at a place or attached to bones and sockets, with level-of-detail and budget
         checks; `vfx.play`, `vfx.preview` (frames and numbers an agent reads) and `vfx.check`
         drive and check them, and the damage, foliage, character, fauna and vehicle tools play
-        their effects through it
+        their effects through it; and an advanced real-time particle simulation under it, after
+        Niagara's simulation stages: particles that collide with the scene's depth and its
+        distance fields, attract, repel and flock by their neighbors (found by sorting along a
+        space-filling curve, as the fluids are), follow curl noise, vector fields and the wind
+        and physics fields of the one simulation, spawn and kill one another by events
+        (collision, death, location), carry custom attributes a graph sets, light and cast
+        shadows and sort and blend correctly, ported to every device's compute with a CPU twin
+        that 2D worlds share
 19. [ ] Fluids and smoke: a real-time simulator with no grids (Godot has none; after Niagara's
         fluids and Unreal's water tools, built on particles instead of Niagara Fluids' grids):
         liquids as position-based fluid particles (density, incompressibility, viscosity,
@@ -1324,8 +1331,20 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
               profile's, smooth skin weights, hands and eyeballs, teeth and tongue, hand and jaw
               poses, Godot's `LookAtModifier3D` and `CopyTransformModifier3D`, and a 2D jaw, eye
               and fingers posed by `Character2D`
-        - [ ] The anatomical layer: bones and muscles
+        - [x] The anatomical layer: bones and muscles: 20 kinds of bone and 28 of muscle sized
+              by the body's `muscle` and `fat`, XPBD flesh after Chaos Flesh that bulges and
+              jiggles under the skin in 3D and 2D, `::skeleton` and `::muscles` model forms,
+              `Flesh3D`, `Flesh2D` and `flesh.get`
         - [ ] The face tool
+21. [ ] Procedural worlds with every tool: the procedural generation tool (noise, gradients,
+        scatter rules, `tilemap.generate`, `terrain.generate`) extended to drive everything this
+        list adds, as Unreal's PCG graphs do, in 2D and 3D worlds: scatter layers that paint
+        foliage types and grooms, populate fauna by habitat, place generated characters with
+        their routes, schedules, quests and dialogue, park and route vehicles, set wind and
+        physics fields, light places with the light tools and VFX, and place destructible props,
+        fluids and smoke; `.pcg.json` graphs of those steps over noise, slope, height,
+        distance and storyboard places, seeded so a world repeats, with `pcg.run`,
+        `pcg.preview` and `pcg.check` (budgets, density, reachability by navigation)
 
 Console ports are not on this roadmap and never will be in this repository. As with Godot,
 PlayStation, Xbox and Switch support comes from licensed porting partners as private backends.

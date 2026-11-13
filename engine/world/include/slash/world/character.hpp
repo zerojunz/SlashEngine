@@ -36,6 +36,8 @@ struct CharacterBody {
     float arms = 1.0F;
     float legs = 1.0F;
     Vec4 skin{0.87F, 0.68F, 0.55F, 1.0F};
+    float muscle = 0.5F; // 0 to 1: the size of the muscles (slash/world/flesh.hpp)
+    float fat = 0.3F;    // 0 to 1: how much fat lies over them
 };
 
 struct CharacterFace {
