@@ -77,6 +77,7 @@
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/creature.hpp"
+#include "slash/world/face.hpp"
 #include "slash/world/foliage.hpp"
 #include "slash/world/hair.hpp"
 #include "slash/world/physics_material.hpp"
@@ -1219,6 +1220,7 @@ int cmd_scene_validate(const std::string& path) {
     const bool ragdoll = world::is_ragdoll_path(path);
     const bool foliage = world::is_foliage_path(path);
     const bool groom = world::is_groom_path(path);
+    const bool face = world::is_face_path(path);
     json::Value result;
     auto parsed = json::parse(text.value());
     std::vector<json::ValidationError> errors;
@@ -1281,6 +1283,12 @@ int cmd_scene_validate(const std::string& path) {
         errors = world::validate_foliage(parsed.value());
     } else if (groom) {
         errors = world::validate_groom(parsed.value());
+    } else if (face) {
+        errors = world::validate_face(parsed.value());
+        if (auto made = world::parse_face(parsed.value(), prefab_reader(path));
+            errors.empty() && !made) {
+            errors.push_back({"", made.error().message});
+        }
     } else if (ragdoll) {
         errors = json::validate(parsed.value(), world::ragdoll_schema());
         if (errors.empty()) {
@@ -1324,14 +1332,14 @@ int cmd_scene_validate(const std::string& path) {
     if (parsed && !frames && !material && !process && !animation && !tree && !tileset && !font &&
         !theme && !stream && !buses && !navmesh && !navpoly && !brain && !quest && !dialogue &&
         !meshlib && !standard && !lightmap && !replay && !test && !score && !texture &&
-        !physics_material && !ragdoll && !foliage && !groom) {
+        !physics_material && !ragdoll && !foliage && !groom && !face) {
         check_story_refs(path, parsed.value(), errors);
     }
     result["valid"] = errors.empty();
     if (!errors.empty()) {
         result["errors"] = errors_to_json(errors);
     } else if (font || stream || process || standard || physics_material || ragdoll || foliage ||
-               groom) {
+               groom || face) {
         print(result);
         return kExitOk;
     } else if (brain) {
@@ -1585,6 +1593,11 @@ int cmd_scene_format(const std::string& path, bool check) {
             return format_checked(text.value(),
                                   [](const json::Value& file) { return world::parse_groom(file); });
         }
+        if (world::is_face_path(path)) {
+            return format_checked(text.value(), checked_by([](const json::Value& doc) {
+                                      return world::validate_face(doc);
+                                  }));
+        }
         if (world::is_ragdoll_path(path)) {
             return format_checked(
                 text.value(), [](const json::Value& file) { return world::parse_ragdoll(file); });
@@ -1650,7 +1663,7 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 41> kKinds = {"scene",
+    constexpr std::array<std::string_view, 42> kKinds = {"scene",
                                                          "prefab",
                                                          "frames",
                                                          "material",
@@ -1689,20 +1702,21 @@ int cmd_schema(const std::vector<std::string>& args) {
                                                          "foliage",
                                                          "groom",
                                                          "character",
+                                                         "face",
                                                          "creature",
                                                          "vehicle"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
-        return usage_error(
-            "schema takes one argument: scene, prefab, frames, material, "
-            "process_material, animation, animtree, tileset, font, theme, audio, "
-            "bus_layout, navmesh, navpoly, npc, quest, dialogue, meshlib, lightmap, "
-            "voxel_gi, model, "
-            "standard_material, "
-            "texture, scatter, physics_material, ragdoll, foliage, groom, character, creature, "
-            "vehicle, "
-            "replay, test, score, "
-            "storyboard, "
-            "project, presets, sdk, plugin, providers or bench");
+        return usage_error("schema takes one argument: scene, prefab, frames, material, "
+                           "process_material, animation, animtree, tileset, font, theme, audio, "
+                           "bus_layout, navmesh, navpoly, npc, quest, dialogue, meshlib, lightmap, "
+                           "voxel_gi, model, "
+                           "standard_material, "
+                           "texture, scatter, physics_material, ragdoll, foliage, groom, "
+                           "character, face, creature, "
+                           "vehicle, "
+                           "replay, test, score, "
+                           "storyboard, "
+                           "project, presets, sdk, plugin, providers or bench");
     }
     json::Value schema;
     if (args[0] == "scene") {
@@ -1763,6 +1777,8 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = world::groom_schema();
     } else if (args[0] == "character") {
         schema = world::character_schema();
+    } else if (args[0] == "face") {
+        schema = world::face_schema();
     } else if (args[0] == "creature") {
         schema = world::creature_schema();
     } else if (args[0] == "vehicle") {

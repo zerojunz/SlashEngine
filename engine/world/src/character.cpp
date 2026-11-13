@@ -60,18 +60,7 @@ constexpr std::string_view kSchema = R"({
         "fat": {"$ref": "#/$defs/share", "description": "How much fat lies over the muscles, 0 to 1, softening how the skin follows them. Default 0.3."}
       }
     },
-    "face": {
-      "type": "object", "additionalProperties": false,
-      "properties": {
-        "eyes": {"$ref": "#/$defs/color", "description": "The irises. Default [0.3, 0.22, 0.12]."},
-        "eye_size": {"$ref": "#/$defs/scale", "description": "Default 1."},
-        "eye_spacing": {"$ref": "#/$defs/scale", "description": "Default 1."},
-        "nose": {"$ref": "#/$defs/scale", "description": "The nose's size. Default 1."},
-        "ears": {"$ref": "#/$defs/scale", "description": "The ears' size. Default 1."},
-        "lips": {"$ref": "#/$defs/color", "description": "Default [0.7, 0.42, 0.38]."},
-        "beard": {"enum": ["none", "stubble", "short", "long"], "description": "In the hair's color. Default none."}
-      }
-    },
+    "face": {"type": "object", "description": "Replaced by the face schema (slash/world/face.hpp)."},
     "hair": {
       "type": "object", "additionalProperties": false,
       "properties": {
@@ -295,10 +284,32 @@ struct CutoutState {
 };
 using CutoutStateHolder = std::shared_ptr<CutoutState>;
 
-std::string cutout_key(const CharacterRecipe& recipe, const Character2D& character) {
+// A Character2D's expressions as weights by face_expression_names, and the names it doesn't
+// know.
+std::vector<float> expression_weights(const Character2D& character,
+                                      std::vector<std::string>* unknown = nullptr) {
+    std::vector<float> weights;
+    for (const auto& [name, weight] : character.expressions) {
+        const auto index = face_expression_index(name);
+        if (!index) {
+            if (unknown != nullptr) {
+                unknown->push_back(name);
+            }
+            continue;
+        }
+        if (weights.size() <= *index) {
+            weights.resize(face_expression_names().size(), 0.0F);
+        }
+        weights[*index] = std::clamp(weight, 0.0F, 1.0F);
+    }
+    return weights;
+}
+
+std::string cutout_key(const CharacterRecipe& recipe, const Character2D& character,
+                       std::span<const float> expressions) {
     std::string key =
         std::to_string(character.pixels_per_meter) + (character.flip_h ? "/flip" : "/plain");
-    for (const CutoutBone& bone : character_cutout(recipe)) {
+    for (const CutoutBone& bone : character_cutout(recipe, expressions)) {
         key += "|" + bone.name;
         for (const CutoutShape& shape : bone.shapes) {
             key += ":" + std::to_string(shape.points.size()) + "," + std::to_string(shape.color.x) +
@@ -332,8 +343,21 @@ void run_character(World& world, entt::entity entity, CutoutState& state) {
         }
         return;
     }
-    state.warned.erase(entity);
-    const std::string key = cutout_key(*recipe.value(), character) + "@" + character.recipe;
+    std::vector<std::string> unknown;
+    const std::vector<float> expressions = expression_weights(character, &unknown);
+    if (!unknown.empty()) {
+        std::string& warned = state.warned[entity];
+        const std::string problem = "no expression shape is named \"" + unknown.front() + "\"";
+        if (warned != problem) {
+            warned = problem;
+            log::warn("character expression unknown",
+                      {{"id", std::string(world.id_of(entity))}, {"problem", problem}});
+        }
+    } else {
+        state.warned.erase(entity);
+    }
+    const std::string key =
+        cutout_key(*recipe.value(), character, expressions) + "@" + character.recipe;
     if (const auto built = state.built.find(entity);
         built != state.built.end() && built->second == key) {
         return;
@@ -342,7 +366,7 @@ void run_character(World& world, entt::entity entity, CutoutState& state) {
     if (!ecs.all_of<Transform2D>(entity)) {
         ecs.emplace<Transform2D>(entity);
     }
-    const std::vector<CutoutBone> bones = character_cutout(*recipe.value());
+    const std::vector<CutoutBone> bones = character_cutout(*recipe.value(), expressions);
     const std::string owner(world.id_of(entity));
     const real_t ppm = character.pixels_per_meter;
     const real_t facing = character.flip_h ? -1.0F : 1.0F;
@@ -414,7 +438,11 @@ void pose_character(World& world, entt::entity entity, CutoutState& state, const
     const Character2D character = ecs.get<const Character2D>(entity);
     Posed& posed = state.posed[entity];
     const bool look = character.look_at != entt::null && world.valid(character.look_at);
-    const bool open = character.jaw_open > 0.0F;
+    const auto jaw_shape = character.expressions.find("jawOpen");
+    const float jaw_open = std::min(
+        character.jaw_open + (jaw_shape != character.expressions.end() ? jaw_shape->second : 0.0F),
+        1.0F);
+    const bool open = jaw_open > 0.0F;
     const std::array<const std::string*, 2> hand_poses{&character.hand_back, &character.hand_front};
     if (!look && !open && !posed.eye && !posed.jaw && hand_poses[0]->empty() &&
         hand_poses[1]->empty() && !posed.hands[0] && !posed.hands[1]) {
@@ -462,8 +490,7 @@ void pose_character(World& world, entt::entity entity, CutoutState& state, const
     }
     // The jaw.
     if (const entt::entity jaw = part("jaw"); jaw != entt::null && (open || posed.jaw)) {
-        ecs.get<Transform2D>(jaw).rotation =
-            open ? facing * kJawOpenRadians * std::min(character.jaw_open, 1.0F) : 0.0F;
+        ecs.get<Transform2D>(jaw).rotation = open ? facing * kJawOpenRadians * jaw_open : 0.0F;
         posed.jaw = open;
     }
     // The hands, back then front.
@@ -501,7 +528,11 @@ bool is_character_path(std::string_view path) {
 }
 
 json::Value character_schema() {
-    static const json::Value schema = json::parse(kSchema).value();
+    static const json::Value schema = [] {
+        json::Value made = json::parse(kSchema).value();
+        made["properties"]["face"] = inline_face_schema();
+        return made;
+    }();
     return schema;
 }
 
@@ -606,14 +637,11 @@ Result<CharacterRecipe> parse_character(const json::Value& source, const FileRea
         read(*body, "fat", b.fat);
     }
     if (const json::Value* face = doc.find("face"); face != nullptr) {
-        CharacterFace& f = recipe.face;
-        read(*face, "eyes", f.eyes);
-        read(*face, "eye_size", f.eye_size);
-        read(*face, "eye_spacing", f.eye_spacing);
-        read(*face, "nose", f.nose);
-        read(*face, "ears", f.ears);
-        read(*face, "lips", f.lips);
-        read(*face, "beard", f.beard);
+        auto parsed = parse_face(*face, read_file);
+        if (!parsed) {
+            return make_error(parsed.error().code, "/face: " + parsed.error().message);
+        }
+        recipe.face = std::move(parsed).value();
     }
     if (const json::Value* hair = doc.find("hair"); hair != nullptr) {
         read(*hair, "style", recipe.hair.style);
@@ -691,6 +719,13 @@ CharacterMeasures character_measures(const CharacterRecipe& recipe) {
     return m;
 }
 
+HeadShape character_head(const CharacterMeasures& measures) {
+    const real_t hh = measures.head_height;
+    const real_t hr = measures.head_radius;
+    return {.center = {0.0F, measures.head_base + (hh * 0.5F), 0.0F},
+            .radii = {hr, hh * 0.5F, hr * 1.12F}};
+}
+
 std::vector<Covering> garment_coverage(const Garment& garment) {
     const std::string_view kind = garment.kind;
     const float length = std::clamp(garment.length, 0.0F, 1.0F);
@@ -757,7 +792,8 @@ float garment_offset(const CharacterRecipe& recipe, std::size_t index) {
     return m.scale * (0.006F + (0.03F * garment.loose) + (0.004F * static_cast<float>(index)));
 }
 
-std::vector<CutoutBone> character_cutout(const CharacterRecipe& recipe) {
+std::vector<CutoutBone> character_cutout(const CharacterRecipe& recipe,
+                                         std::span<const float> expressions) {
     const CharacterMeasures m = character_measures(recipe);
     const real_t s = m.scale;
     std::vector<CutoutBone> bones;
@@ -774,13 +810,15 @@ std::vector<CutoutBone> character_cutout(const CharacterRecipe& recipe) {
     const int chest = bone("chest", pelvis, {0.0F, m.waist - m.hip}, 0);
     const int head = bone("head", chest, {0.0F, m.shoulder - m.waist}, 0);
     // The face, in the head's space: the jaw hinged below the ear and the eye's iris, which
-    // turn and move as Character2D's jaw_open and look_at say.
+    // turn and move as Character2D's jaw_open and look_at say. The head's outline is the face
+    // sculpt's profile (slash/world/face.hpp).
     const real_t neck = m.head_base - m.shoulder;
-    const Vec2 face_center{0.01F * s, neck + (m.head_height * 0.5F)};
+    const FaceProfile profile = face_profile(recipe.face, character_head(m), expressions);
+    const Vec2 face_center{0.0F, neck + (m.head_height * 0.5F)};
     const real_t hr = m.head_radius;
     const real_t hh = m.head_height * 0.5F;
     const Vec2 jaw_at{face_center.x - (hr * 0.15F), face_center.y - (hh * 0.1F)};
-    const Vec2 eye_at{face_center.x + (hr * 0.68F), face_center.y + (hh * 0.15F)};
+    const Vec2 eye_at = face_center + profile.eye;
     bone("jaw", head, jaw_at, 0);
     bone("eye", head, eye_at, 0);
     std::array<int, 2> upper_arm{};
@@ -870,46 +908,129 @@ std::vector<CutoutBone> character_cutout(const CharacterRecipe& recipe) {
              quad({-m.neck_radius, -0.01F * s}, {m.neck_radius, -0.01F * s},
                   {m.neck_radius, neck + (0.02F * s)}, {-m.neck_radius, neck + (0.02F * s)}),
              skin);
-    sink.add("head", ellipse_points(face_center, hr, hh, 20), skin);
-    const real_t nose = 0.014F * recipe.face.nose * s;
+    // The skull and face from the lips' seam up and over the crown, back down to the hinge, and
+    // the chin from under it up to the seam on the jaw, so the mouth opens between them.
+    const std::vector<Vec2>& outline = profile.points;
+    std::vector<Vec2> skull;
+    skull.reserve(outline.size() - profile.mouth_index + 1);
+    for (std::size_t i = profile.mouth_index; i < outline.size(); ++i) {
+        skull.push_back(face_center + outline[i]);
+    }
+    skull.push_back(jaw_at);
+    sink.add("head", std::move(skull), skin);
+    // The cheek behind the mouth, under the jaw while it is shut: a fan from the jaw's hinge
+    // down to its widest open, so no gap shows as it turns.
+    {
+        const Vec2 reach = (face_center + profile.points[profile.mouth_index]) - jaw_at;
+        constexpr int kSteps = 6;
+        const auto arc = [&](int k, real_t share) {
+            const Vec2f turn = cos_sin(-0.5F * static_cast<float>(k) / kSteps);
+            return jaw_at + (Vec2{(reach.x * turn.x) - (reach.y * turn.y),
+                                  (reach.x * turn.y) + (reach.y * turn.x)} *
+                             share);
+        };
+        std::vector<Vec2> cheek{jaw_at};
+        std::vector<Vec2> inside;
+        for (int k = 0; k <= kSteps; ++k) {
+            cheek.push_back(arc(k, 0.8F));
+            inside.push_back(arc(k, 0.78F));
+        }
+        for (int k = kSteps; k >= 0; --k) {
+            inside.push_back(arc(k, 0.98F));
+        }
+        sink.add("head", std::move(cheek), skin);
+        // The mouth's dark between the cheek and the lips.
+        sink.add("head", std::move(inside), {0.25F, 0.08F, 0.08F, 1.0F});
+    }
+    const real_t ears = recipe.face.ears * (1.0F + (0.25F * recipe.face.control("ears.size")));
     sink.add("head",
-             {{face_center.x + hr * 0.9F, face_center.y + hh * 0.05F},
-              {face_center.x + hr + nose, face_center.y - hh * 0.2F},
-              {face_center.x + hr * 0.9F, face_center.y - hh * 0.3F}},
-             skin);
-    sink.add("head",
-             ellipse_points({face_center.x - (hr * 0.1F), face_center.y},
-                            0.012F * recipe.face.ears * s, 0.022F * recipe.face.ears * s, 10),
+             ellipse_points(face_center + profile.ear - Vec2{hr * 0.1F, 0.0F}, 0.012F * ears * s,
+                            0.022F * ears * s, 10),
              darker(skin, 0.9F));
-    const real_t eye = 0.008F * recipe.face.eye_size * s;
-    sink.add("head",
-             ellipse_points({face_center.x + (hr * 0.62F), face_center.y + (hh * 0.15F)}, eye,
-                            eye * 1.2F, 10),
+    // The skin's marks on the side the profile shows: those over the head before the eye, those
+    // below the lips' seam on the jaw after the chin.
+    const std::vector<FaceMarkShape> marks = face_marks_2d(recipe.face, character_head(m));
+    for (const FaceMarkShape& mark : marks) {
+        if (!mark.on_jaw) {
+            std::vector<Vec2> points = mark.points;
+            for (Vec2& point : points) {
+                point = point + face_center;
+            }
+            sink.add("head", std::move(points), mark.color);
+        }
+    }
+    const real_t eye = profile.eye_radius;
+    // The eye, its white and iris narrowed as its lids close.
+    const real_t open = std::max<real_t>(profile.eye_open, 0.06F);
+    sink.add("head", ellipse_points(eye_at, eye, eye * 1.2F * open, 10),
              {0.95F, 0.95F, 0.95F, 1.0F});
-    sink.add("eye", ellipse_points({0.0F, 0.0F}, eye * 0.55F, eye * 0.8F, 8), recipe.face.eyes);
-    // The mouth: its inside on the head, which shows as the jaw opens, the upper lip, then the
-    // chin and lower lip on the jaw over it.
+    sink.add(
+        "eye",
+        ellipse_points({0.0F, 0.0F}, eye * 0.55F, eye * 0.8F * std::min<real_t>(open, 1.0F), 8),
+        recipe.face.eyes);
+    if (recipe.face.brows.thickness > 0.0F) {
+        const Vec4 brows = recipe.face.brows.color.w > 0.0F ? recipe.face.brows.color
+                                                            : darker(recipe.hair.color, 0.8F);
+        sink.add("head",
+                 ellipse_points(face_center + profile.brow - Vec2{hr * 0.1F, -hh * 0.01F},
+                                hr * 0.13F, hh * (0.015F + (0.03F * recipe.face.brows.thickness)),
+                                10),
+                 brows);
+    }
+    // The mouth: its inside on the head under the seam, which shows as the jaw opens, the upper
+    // lip, then the chin and lower lip on the jaw over it.
     const auto on_jaw = [&](Vec2 p) { return Vec2{p.x - jaw_at.x, p.y - jaw_at.y}; };
+    const Vec2 seam = face_center + outline[profile.mouth_index];
     sink.add("head",
-             ellipse_points({face_center.x + (hr * 0.72F), face_center.y - (hh * 0.53F)},
-                            hr * 0.24F, hh * 0.1F, 10),
+             ellipse_points(seam - Vec2{hr * 0.22F, hh * 0.08F}, hr * 0.22F, hh * 0.08F, 10),
              {0.25F, 0.08F, 0.08F, 1.0F});
-    sink.add("head",
-             quad({face_center.x + (hr * 0.7F), face_center.y - (hh * 0.5F)},
-                  {face_center.x + (hr * 0.96F), face_center.y - (hh * 0.5F)},
-                  {face_center.x + (hr * 0.96F), face_center.y - (hh * 0.53F)},
-                  {face_center.x + (hr * 0.7F), face_center.y - (hh * 0.53F)}),
+    // A lip: the outline's points from the seam up (or down) by reach, and the same points set
+    // back into the face.
+    const auto lip = [&](int way, real_t reach) {
+        std::vector<Vec2> edge{seam};
+        for (std::size_t i = profile.mouth_index;;) {
+            if (way > 0 ? i + 1 >= profile.front_count : i == 0) {
+                break;
+            }
+            i = way > 0 ? i + 1 : i - 1;
+            const Vec2 p = face_center + outline[i];
+            if (std::abs(p.y - seam.y) > reach) {
+                break;
+            }
+            edge.push_back(p);
+        }
+        if (edge.size() < 2) {
+            edge.push_back(seam + Vec2{0.0F, static_cast<real_t>(way) * reach});
+        }
+        const std::size_t count = edge.size();
+        for (std::size_t i = count; i > 0; --i) {
+            edge.push_back(edge[i - 1] - Vec2{hr * 0.14F, 0.0F});
+        }
+        return edge;
+    };
+    sink.add("head", lip(1, hh * 0.05F * (1.0F + (0.5F * recipe.face.control("lips.upper")))),
              recipe.face.lips);
-    std::vector<Vec2> chin =
-        ellipse_points(on_jaw({face_center.x + (hr * 0.5F), face_center.y - (hh * 0.78F)}),
-                       hr * 0.46F, hh * 0.25F, 14);
+    std::vector<Vec2> chin{on_jaw(jaw_at)};
+    chin.reserve(profile.mouth_index + 2);
+    for (std::size_t i = 0; i <= profile.mouth_index; ++i) {
+        chin.push_back(on_jaw(face_center + outline[i]));
+    }
     sink.add("jaw", std::move(chin), skin);
-    sink.add("jaw",
-             quad(on_jaw({face_center.x + (hr * 0.7F), face_center.y - (hh * 0.53F)}),
-                  on_jaw({face_center.x + (hr * 0.96F), face_center.y - (hh * 0.53F)}),
-                  on_jaw({face_center.x + (hr * 0.96F), face_center.y - (hh * 0.56F)}),
-                  on_jaw({face_center.x + (hr * 0.7F), face_center.y - (hh * 0.56F)})),
-             recipe.face.lips);
+    std::vector<Vec2> lower =
+        lip(-1, hh * 0.06F * (1.0F + (0.5F * recipe.face.control("lips.lower"))));
+    for (Vec2& point : lower) {
+        point = on_jaw(point);
+    }
+    sink.add("jaw", std::move(lower), recipe.face.lips);
+    for (const FaceMarkShape& mark : marks) {
+        if (mark.on_jaw) {
+            std::vector<Vec2> points = mark.points;
+            for (Vec2& point : points) {
+                point = on_jaw(point + face_center);
+            }
+            sink.add("jaw", std::move(points), mark.color);
+        }
+    }
     const Vec4 hair = recipe.hair.color;
     if (recipe.face.beard != "none") {
         const real_t reach = recipe.face.beard == "long" ? hh * 0.9F : hh * 0.25F;

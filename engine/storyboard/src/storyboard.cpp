@@ -57,6 +57,18 @@ json::Value settings_schema() {
                            "project's rendering settings.");
 }
 
+// face_rules' controls: each sculpt control's lowest and highest value.
+json::Value face_controls_schema() {
+    json::Value range;
+    range["type"] = "array";
+    range["items"] = json::Object{{"type", "number"}, {"minimum", -1}, {"maximum", 1}};
+    range["minItems"] = 2;
+    range["maxItems"] = 2;
+    json::Value schema = typed("object", "Sculpt controls by name, each [lowest, highest].");
+    schema["additionalProperties"] = std::move(range);
+    return schema;
+}
+
 std::vector<Kind> make_kinds() {
     return {
         {.name = "palette",
@@ -181,6 +193,38 @@ std::vector<Kind> make_kinds() {
                      .doc = "The palette their skin, hair and clothing colors come from.",
                      .ref_kind = "palette"},
                     {.name = "max_props", .type = Integer, .doc = "Most props one may carry."}}},
+        {.name = "face_rules",
+         .file = "design",
+         .doc = "Rules every face (.face.json files and characters' designed faces) in its "
+                "links, or every one, keeps, which face.check enforces and face.generate "
+                "follows.",
+         .fields = {{.name = "shape_difference",
+                     .type = Number,
+                     .doc =
+                         "How far apart each face's sculpt must be from every other's where they "
+                         "differ most, in percent of the head's size; 0.5 if unset."},
+                    {.name = "profile_difference",
+                     .type = Number,
+                     .doc = "How far apart each face's side profile must be from every other's "
+                            "where they differ most, in percent of the head's depth, for 2D "
+                            "casts; 0 (unchecked) if unset."},
+                    {.name = "styles",
+                     .type = Texts,
+                     .doc = "The sculpt styles faces may have (realistic, stylized, toon, "
+                            "painterly, low_poly); face.generate takes the first."},
+                    {.name = "controls",
+                     .type = Data,
+                     .doc = "Limits on sculpt controls, e.g. {\"nose.length\": [-0.5, 0.5]}.",
+                     .schema = face_controls_schema},
+                    {.name = "marks",
+                     .type = Texts,
+                     .doc = "The kinds of skin mark faces may have; any if unset."},
+                    {.name = "max_marks", .type = Integer, .doc = "Most marks one face may have."},
+                    {.name = "palette",
+                     .type = Ref,
+                     .doc = "The palette faces' eyes, lips, brows and marks take their colors "
+                            "from.",
+                     .ref_kind = "palette"}}},
         {.name = "tuning",
          .file = "design",
          .doc = "A gameplay number and its limits.",

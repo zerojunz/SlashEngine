@@ -1,0 +1,9 @@
+{"jsonrpc":"2.0","id":1,"method":"face.check","params":{"measures":true}}
+{"jsonrpc":"2.0","id":2,"method":"face.generate","params":{"name":"Old Brann","brief":"a stern old soldier with a scar, a hooked nose, a strong jaw and a beard"}}
+{"jsonrpc":"2.0","id":3,"method":"face.generate","params":{"name":"Wren","brief":"a sly young thief with freckles, high cheekbones and a pointed chin"}}
+{"jsonrpc":"2.0","id":4,"method":"face.generate","params":{"name":"Moss","brief":"a kind round baker with a button nose, a smiling mouth and a tattoo"}}
+{"jsonrpc":"2.0","id":5,"method":"face.check","params":{"paths":["faces/old_brann.face.json","faces/wren.face.json","faces/moss.face.json"]}}
+{"jsonrpc":"2.0","id":6,"method":"face.portrait","params":{"face":"characters/ana.character.json","out":"portraits/ana.png","size":[128,128]}}
+{"jsonrpc":"2.0","id":7,"method":"face.portrait","params":{"face":"faces/old_brann.face.json","out":"portraits/brann.png","view":"front","size":[128,128],"expressions":{"browDownLeft":0.6,"browDownRight":0.6,"mouthFrownLeft":0.4,"mouthFrownRight":0.4}}}
+{"jsonrpc":"2.0","id":8,"method":"face.portrait","params":{"face":"characters/ana.character.json","out":"portraits/ana_2d.png","view":"cutout","size":[128,128],"expressions":{"mouthSmileLeft":0.7}}}
+{"jsonrpc":"2.0","id":9,"method":"test.run","params":{}}

@@ -153,6 +153,8 @@ add_executable(slash_tests
     test_hair.cpp
     test_character.cpp
     test_flesh.cpp
+    test_face.cpp
+    test_face_tools.cpp
     test_fauna.cpp
     test_vehicle.cpp
     test_light_tools.cpp

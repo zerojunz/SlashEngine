@@ -2748,11 +2748,12 @@ struct Character2D {
     float jaw_open = 0.0F;
     std::string hand_front;
     std::string hand_back;
+    std::map<std::string, float> expressions; // ARKit's expression shapes by name, 0 to 1
 
     friend bool operator==(const Character2D&, const Character2D&) = default;
 };
 SLASH_COMPONENT(Character2D, recipe, pixels_per_meter, flip_h, look_at, jaw_open, hand_front,
-                hand_back)
+                hand_back, expressions)
 
 // A character's muscles simulated as flesh, after Unreal's Chaos Flesh (slash/world/flesh.hpp):
 // on the .character.json model its entity's MeshInstance3D draws, its muscles bulge as they

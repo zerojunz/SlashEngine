@@ -1,0 +1,39 @@
+{
+  "body": {
+    "height": 1.68,
+    "skin": [0.86, 0.7, 0.6]
+  },
+  "clothing": [
+    {
+      "color": [0.3, 0.35, 0.5],
+      "kind": "shirt"
+    }
+  ],
+  "face": {
+    "asymmetry": 0.3,
+    "blend": [
+      {
+        "face": "faces/round.face.json",
+        "weight": 0.3
+      }
+    ],
+    "carves": [
+      {
+        "angle": 70,
+        "at": "cheek_left",
+        "depth": 0.6,
+        "kind": "crease",
+        "length": 0.12
+      }
+    ],
+    "eyes": [0.25, 0.4, 0.3],
+    "from": "faces/stern.face.json",
+    "seed": 7
+  },
+  "format": 1,
+  "hair": {
+    "color": [0.7, 0.7, 0.68],
+    "style": "bun"
+  },
+  "name": "Ida"
+}

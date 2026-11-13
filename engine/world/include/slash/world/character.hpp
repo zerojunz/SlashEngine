@@ -9,11 +9,13 @@
 #include "slash/core/json_schema.hpp"
 #include "slash/core/math.hpp"
 #include "slash/core/result.hpp"
+#include "slash/world/face.hpp"
 #include "slash/world/world.hpp"
 
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -38,16 +40,6 @@ struct CharacterBody {
     Vec4 skin{0.87F, 0.68F, 0.55F, 1.0F};
     float muscle = 0.5F; // 0 to 1: the size of the muscles (slash/world/flesh.hpp)
     float fat = 0.3F;    // 0 to 1: how much fat lies over them
-};
-
-struct CharacterFace {
-    Vec4 eyes{0.3F, 0.22F, 0.12F, 1.0F};
-    float eye_size = 1.0F;
-    float eye_spacing = 1.0F;
-    float nose = 1.0F;
-    float ears = 1.0F;
-    Vec4 lips{0.7F, 0.42F, 0.38F, 1.0F};
-    std::string beard = "none"; // "none", "stubble", "short" or "long"
 };
 
 struct CharacterHair {
@@ -120,6 +112,9 @@ struct CharacterMeasures {
     float neck_radius = 0.0F;
 };
 [[nodiscard]] CharacterMeasures character_measures(const CharacterRecipe& recipe);
+// Where a character's head is (slash/world/face.hpp sculpts it there): an ellipsoid above the
+// neck, as wide as head_radius and as tall as head_height.
+[[nodiscard]] HeadShape character_head(const CharacterMeasures& measures);
 
 // What a garment covers: a region of the body and, along limbs, skirts and capes, the share of
 // its length from the top (from) to how far down (to).
@@ -167,7 +162,9 @@ struct CutoutBone {
     int z_index = 0;
     std::vector<CutoutShape> shapes;
 };
-[[nodiscard]] std::vector<CutoutBone> character_cutout(const CharacterRecipe& recipe);
+// expressions are weights by face_expression_names (missing ones 0), which move the face.
+[[nodiscard]] std::vector<CutoutBone> character_cutout(const CharacterRecipe& recipe,
+                                                       std::span<const float> expressions = {});
 
 // The recipe a Character2D names, read through the world's assets (kept by version).
 [[nodiscard]] Result<std::shared_ptr<const CharacterRecipe>> load_character(const World& world,
