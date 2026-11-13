@@ -909,7 +909,7 @@ if(SLASH_BUILD_TOOLS)
     set_tests_properties(cli_init_keeps_files PROPERTIES
         FIXTURES_REQUIRED init_project
         PASS_REGULAR_EXPRESSION "\"created\":\\[\\],\"skipped\":\\[\"project\\.json\",\"AGENTS\\.md\".*\"\\.gitignore\"\\]")
-    # An existing .gitignore gains the .slash/ line instead of being replaced.
+    # An existing .gitignore gains the lines it lacks instead of being replaced.
     add_test(NAME cli_init_gitignore_copy
         COMMAND ${CMAKE_COMMAND} -E copy ${scenes}/existing.gitignore ${init_project}/.gitignore)
     set_tests_properties(cli_init_gitignore_copy PROPERTIES
@@ -920,6 +920,11 @@ if(SLASH_BUILD_TOOLS)
     set_tests_properties(cli_init_gitignore_updated PROPERTIES
         FIXTURES_REQUIRED init_gitignore
         PASS_REGULAR_EXPRESSION "\"updated\":\\[\"\\.gitignore\"\\]")
+    add_test(NAME cli_init_gitignore_lines COMMAND ${CMAKE_COMMAND} -E cat ${init_project}/.gitignore)
+    set_tests_properties(cli_init_gitignore_lines PROPERTIES
+        DEPENDS cli_init_gitignore_updated
+        FIXTURES_REQUIRED init_gitignore
+        PASS_REGULAR_EXPRESSION "^build/\n\\.slash/\n\\.agents/mcp_config\\.json\n$")
     add_test(NAME cli_init_workflow
         COMMAND ${CMAKE_COMMAND} -E cat ${init_project}/.github/workflows/export.yml)
     set_tests_properties(cli_init_workflow PROPERTIES
@@ -936,6 +941,18 @@ if(SLASH_BUILD_TOOLS)
     set_tests_properties(cli_init_openclaw PROPERTIES
         FIXTURES_REQUIRED init_project
         PASS_REGULAR_EXPRESSION "^{\"args\":\\[\"--project\",\"[^\"]*init_project\",\"--scene\",\"scenes/main\\.scene\\.json\"\\],\"command\":\"slash-mcp\"}")
+    # Antigravity's workspace config names the project in full, so .gitignore leaves it out, and
+    # its skills folder gets the same skill as Claude Code's.
+    add_test(NAME cli_init_antigravity
+        COMMAND ${CMAKE_COMMAND} -E cat ${init_project}/.agents/mcp_config.json)
+    set_tests_properties(cli_init_antigravity PROPERTIES
+        FIXTURES_REQUIRED init_project
+        PASS_REGULAR_EXPRESSION "\"mcpServers\": {\n    \"slashengine\": {\n      \"args\": \\[\"--project\", \"[^\"]*init_project\", \"--scene\", \"scenes/main\\.scene\\.json\"\\],\n      \"command\": \"slash-mcp\"")
+    add_test(NAME cli_init_antigravity_skill
+        COMMAND ${CMAKE_COMMAND} -E cat ${init_project}/.agents/skills/slashengine/SKILL.md)
+    set_tests_properties(cli_init_antigravity_skill PROPERTIES
+        FIXTURES_REQUIRED init_project
+        PASS_REGULAR_EXPRESSION "^---\nname: slashengine\n")
     add_test(NAME cli_init_hermes
         COMMAND ${CMAKE_COMMAND} -E cat ${init_project}/.slash/agents/hermes.yaml)
     set_tests_properties(cli_init_hermes PROPERTIES

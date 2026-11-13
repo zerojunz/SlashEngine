@@ -65,10 +65,10 @@ work.
 - [x] Localhost HTTP server: REST mirror, OpenAPI 3.1, JSON-RPC and MCP over HTTP
 - [x] Live games: `slash-cli run --serve` runs commands between ticks
 - [x] `slash-cli init` writes MCP configs for Claude Code, Codex and Cursor, and for opencode,
-      Hermes Agent and OpenClaw
+      Antigravity, Hermes Agent and OpenClaw
 - [ ] Exit check: Claude Code, Codex and Cursor each open, edit and save a scene over MCP.
-      `.github/scripts/agent-exit-check.py` runs it for them, opencode, Hermes Agent and
-      OpenClaw ([exit-check](exit-check/README.md)); Claude Code's run is recorded, and the
+      `.github/scripts/agent-exit-check.py` runs it for them, opencode, Antigravity, Hermes
+      Agent and OpenClaw ([exit-check](exit-check/README.md)); Claude Code's run is recorded, and the
       others are recorded where they are signed in.
 
 ### Milestone 4: Export pipeline (Done)
