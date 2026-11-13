@@ -147,7 +147,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, physics_material, ragdoll, foliage, groom, character, creature, vehicle, sdk, plugin)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, physics_material, ragdoll, foliage, groom, character, face, creature, vehicle, sdk, plugin)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -157,7 +157,7 @@ Validate after editing a scene or prefab by hand, and format before committing o
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
-`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`, `.scatter.json`, `.physics_material.json`, `.ragdoll.json`, `.foliage.json`, `.groom.json`, `.character.json`, `.creature.json` and `.vehicle.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
+`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`, `.scatter.json`, `.physics_material.json`, `.ragdoll.json`, `.foliage.json`, `.groom.json`, `.character.json`, `.face.json`, `.creature.json` and `.vehicle.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -2050,6 +2050,36 @@ candidates within them, and `character.place` puts one in a 3D or 2D scene.
 `LookAtModifier3D`s, and a `Character2D`'s `look_at`, `jaw_open` and hands pose its cut-out
 (`pose_character`). `examples/character-design` designs a cast and `examples/character-rig`
 looks, grips and twists.
+Faces are MetaHuman Creator's too: a `.face.json` file or a recipe's inline `face`
+(`slash/world/face.hpp`, `engine/world/src/face.cpp`, built with `-ffp-contract=off`;
+`$cli schema face`) names 46 sculpt controls (`face_controls`, each -1 to 1), carves (dents,
+bumps, creases and ridges) at 27 landmarks, `blend`s of other faces' controls by weight, brows,
+asymmetry by a seed and a style, and `extends` another (a recipe's face comes `from` one), merged
+as JSON Merge Patch. `sculpt_head` shapes a head from it: a grid of rings and segments denser
+over the face, sized by the style, pushed by the controls and carves, its lids wrapped over the
+eyeballs (`face_eyes`, which the rig's eye bones follow) and its lips' seam tucked in at
+`face_mouth` and split (`SculptedHead::seam`: the lower lip's copies move with the jaw), so the
+jaw opens it, each triangle marked skin, lips, brows, mouth or hidden and bearded or not. `scene3d::build_character` draws its parts with their own materials
+(`head_part` in `engine/scene3d/src/character.cpp`) and `character_cutout` draws its side-on
+outline, `face_profile`, as the 2D head. Sculpts carry ARKit's 52 expression shapes
+(`face_expressions`, `face_expression_names`: lids turned about the eye, the jaw about its hinge,
+lips, cheeks and brows moved by soft weights), which `build_character` gives the head, lower
+teeth and tongue as blend shapes (`ModelBuilder::add_shaped`) and which a `Character2D`'s
+`expressions` move its profile by (`face_profile`'s weights). `face_skin_maps` paints the 3D
+head's albedo, normal and roughness maps over the sculpt's uvs with integer noise: the style's
+pores, blotches and shine, the face's `skin` wrinkles, the lips (sampled finer than texels) and
+`marks` (moles, freckles, scars, wounds, burns, bruises, rashes, birthmarks, tattoos and paint,
+placed at landmarks as carves are, `mark_texel`), which `build_character` draws as the `face`
+material; `face_marks_2d` gives the marks the profile shows as polygons for the cut-out.
+`examples/character-faces` sculpts an elder and a toon, has them smile, blink and talk, and
+marks a fighter.
+The face tools (`engine/command/src/face.cpp`) design a cast against the storyboard's
+`face_rules` (shape and profile differences, styles, control ranges, marks): `face.check`
+sculpts each face file and designed recipe face on one head and measures each pair by rays at
+the front and `face_profile`'s rows (`test.run` runs it), `face.generate` reads a brief into
+controls, marks and a style and keeps the first seeded candidate far enough from the cast, and
+`face.portrait` draws one in 3D or as a cut-out in a private `Session`. `examples/face-tools`
+designs a ship's crew.
 Characters have anatomy and flesh, after Chaos Flesh (Godot has none): `slash/world/flesh.hpp`
 (`engine/world/src/flesh.cpp`, `flesh_solver.cpp` and `flesh2d.cpp`, built with
 `-ffp-contract=off`) places a recipe's bones and 28 kinds of muscle on a body's `BodyFrames`

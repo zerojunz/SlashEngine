@@ -1,0 +1,12 @@
+{
+  "brows": {
+    "shape": "angled"
+  },
+  "controls": {
+    "brow.tilt": -0.5,
+    "chin.protrusion": 0.4
+  },
+  "extends": "faces/elder.face.json",
+  "format": 1,
+  "name": "Stern elder"
+}

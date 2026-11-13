@@ -1,0 +1,72 @@
+{
+  "body": {
+    "height": 1.74,
+    "skin": [0.72, 0.52, 0.4]
+  },
+  "clothing": [
+    {
+      "color": [0.45, 0.25, 0.2],
+      "kind": "shirt"
+    }
+  ],
+  "face": {
+    "controls": {
+      "brow.ridge": 0.5,
+      "jaw.angle": 0.6
+    },
+    "marks": [
+      {
+        "age": 0.6,
+        "angle": 80,
+        "at": "eye_left",
+        "kind": "scar",
+        "length": 0.3,
+        "offset": [0.03, 0],
+        "pattern": "stitched"
+      },
+      {
+        "amount": 0.7,
+        "at": "nose_bridge",
+        "kind": "freckles",
+        "offset": [0, -0.05],
+        "seed": 3,
+        "size": 0.22
+      },
+      {
+        "age": 0.4,
+        "at": "cheekbone_right",
+        "kind": "bruise"
+      },
+      {
+        "at": "cheekbone_left",
+        "kind": "tattoo",
+        "offset": [0.02, -0.04],
+        "pattern": "star",
+        "size": 0.07
+      },
+      {
+        "at": "cheek_right",
+        "color": [0.1, 0.3, 0.8, 1],
+        "kind": "paint",
+        "mirror": true,
+        "offset": [0, -0.06],
+        "pattern": "stripes",
+        "size": 0.06
+      },
+      {
+        "at": "mouth_corner_right",
+        "kind": "mole",
+        "offset": [-0.03, 0.03]
+      }
+    ],
+    "skin": {
+      "wrinkles": 0.5
+    }
+  },
+  "format": 1,
+  "hair": {
+    "color": [0.2, 0.15, 0.1],
+    "style": "short"
+  },
+  "name": "Kit"
+}

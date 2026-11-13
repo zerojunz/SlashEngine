@@ -5069,7 +5069,7 @@ from 0.5 to 1.5.
 | `extends` | | A `.character.json` file this one changes, as a JSON Merge Patch: objects merge, other values (`clothing` and `props` included) replace; at most 8 deep |
 | `name`, `role`, `faction` | `""`, `"npc"`, `""` | Who it is, `"player"` or `"npc"`, and a storyboard faction's ID |
 | `body` | | `height` (`1.75` meters to the top of the head, 0.4 to 3), `build` (`0.5`, 0 slight to 1 heavy), `head`, `neck`, `shoulders`, `hips`, `arms`, `legs` (`1`), `skin`, `muscle` (`0.5`, 0 to 1: how big its muscles are) and `fat` (`0.3`, 0 to 1: how thick the fat over them is, which softens how much they show) |
-| `face` | | `eyes` (the irises' color), `eye_size`, `eye_spacing`, `nose`, `ears` (`1`), `lips` and `beard` (`"none"`, `"stubble"`, `"short"` or `"long"`, in the hair's color) |
+| `face` | | A [face](#faces): a `.face.json` file's fields inline, with `from` naming a `.face.json` file they are a merge patch over |
 | `hair` | | `style` (`"short"`; `"none"`, `"long"`, `"ponytail"`, `"bun"` or `"mohawk"`), `color`, `length` (`0.5`, how far long hair and ponytails hang) and `groom` (a [`.groom.json`](#hair-and-fur) file grown over the model's `"scalp"` in place of the style; 3D only) |
 | `clothing` | `[]` | Up to 16 garments from the skin out, each over the ones before: `kind`, `color`, `material` (`"cloth"`, `"leather"`, `"metal"`, `"silk"` or `"fur"`, which set its roughness and metallic), `length` (`1`: sleeves, legs, hems and boots' shafts), `loose` (`0`, how far it stands off the body) and `cloth` (capes, coats, robes, dresses and skirts: simulated as cloth) |
 | `props` | `[]` | Up to 8 models held or worn, one a point: `model` (any model file), `point` (`"right_hand"`, `"left_hand"`, `"back"`, `"hip_left"`, `"hip_right"` or `"head_top"`), `position` (meters), `rotation` (radians, YXZ) and `scale` |
@@ -5091,23 +5091,25 @@ cloth, and only one prop may be at a point; `scene validate` reports each at its
   `Toes`), then a twist bone along each limb (`<side>UpperArmTwist`, `LowerArmTwist`,
   `UpperLegTwist`, `LowerLegTwist`). Each bone is turned as the profile's is, then onto the
   next bone, so its y runs down the limb as in models Godot's importer retargets, and
-  animations retarget onto it. Its arms hang 12 degrees out, palms in. The body, face and hair
-  are primitive meshes placed and stretched over the recipe's measures, facing +z with the
-  feet at 0: hands with a palm and three phalanges a finger, eyeballs (white, iris and pupil)
-  on the eye bones, upper and lower lips, teeth and a tongue split between the head and jaw.
+  animations retarget onto it. Its arms hang 12 degrees out, palms in. The body and hair are
+  primitive meshes placed and stretched over the recipe's measures, facing +z with the feet at
+  0, and the head is its [face](#faces)'s sculpt: hands with a palm and three phalanges a
+  finger, eyeballs (white, iris and pupil) on the eye bones under the sculpt's lids, the lips,
+  teeth and a tongue split between the head and jaw.
   Skin bends smoothly: each limb is weighted to its bone, half to the next at each joint, the
   trunk blended down the spine, and the upper arm and thigh near their tops and the forearm and
   shin near their ends to the twist bones. Each garment is the body's shape it covers a little
   further out (more when loose, more for each later layer). Materials are named for what they
-  draw: `skin`, `eye_white`, `eyes` (the irises), `pupil`, `lips`, `mouth`, `teeth`, `tongue`,
-  `hair`, `scalp` (with a groom), each garment's kind (a cloth garment's free part, its fitted
+  draw: `skin`, `eye_white`, `eyes` (the irises), `pupil`, `lips`, `brows`, `mouth`, `teeth`,
+  `tongue`, `hair` (with the beard), `scalp` (with a groom), each garment's kind (a cloth garment's free part, its fitted
   part `<kind>_fitted`), and the props' own. The points are nodes under their bones, unturned
   at rest, which `BoneAttachment3D` follows by name.
 - **Its animations** are hand poses and the jaw, one key each, to play or blend over others:
   `relaxed_left`, `fist_left`, `grip_left` and `point_left` (and `_right`), which curl the
   fingers and thumb toward the palm, and `jaw_open`.
 - **The 2D cut-out** is seen from the side, facing right (`flip_h` faces left): bones `pelvis`,
-  `chest`, `head` with its `jaw` (chin, lower lip and beard) and `eye` (the iris), and
+  `chest`, `head` (its outline the face sculpt's profile, with an ear, eye, brow and upper lip)
+  with its `jaw` (the chin below the lips' seam, lower lip and beard) and `eye` (the iris), and
   `upper_arm`, `lower_arm`, `hand` with its `fingers`, `index` and `thumb`, `upper_leg`,
   `lower_leg` and `foot`, each `_back` (behind the body, a shade darker) and `_front`. The
   `character_2d` system (priority 880) keeps each as a child entity `<id>_<bone>` with a
@@ -5160,7 +5162,7 @@ cloth, and only one prop may be at a point; `scene validate` reports each at its
 | --- | --- |
 | `Flesh3D` | `enabled` `true`, `stiffness` `0.5` (0 soft to 1 firm), `damping` `0.5`, `jiggle` `0.5` (how far and long flesh swings after the body moves), `activation` `0` (every muscle's), `automatic` `true`, `muscles` `{}` (activations by muscle name, kind or group), `substeps` `4` (1 to 16) |
 | `Flesh2D` | `Flesh3D`'s, and `view` `"skin"` (`"muscles"` or `"skeleton"` drawn over the cut-out) |
-| `Character2D` | `recipe` `""`, `pixels_per_meter` `100`, `flip_h` `false`, `look_at` none, `jaw_open` `0`, `hand_front` `""`, `hand_back` `""` |
+| `Character2D` | `recipe` `""`, `pixels_per_meter` `100`, `flip_h` `false`, `look_at` none, `jaw_open` `0`, `hand_front` `""`, `hand_back` `""`, `expressions` `{}` (ARKit's [expression shapes](#faces) by name, 0 to 1) |
 | `Polygon2D` | Godot's: `polygon` `[]` (points in its space), `polygons` `[]` (lists of indices into it, each drawn as its own polygon; empty draws `polygon` whole), `color` `[1, 1, 1, 1]`, `vertex_colors` `[]` (a color a point, else `color`), `offset` `[0, 0]`, `texture` `""`, `uv` `[]` (texture pixels a point, else the point itself), `modulate` `[1, 1, 1, 1]`, `z_index` `0`, `z_as_relative` `true`, `visible` `true`, `light_mask` `1`, `texture_filter` `"inherit"` |
 
 The storyboard's `character_rules` entries (in `storyboard/design.json`) cover the recipes in
@@ -5171,6 +5173,123 @@ colors must be: each color covering a twentieth of the model or more, its distan
 nearest by its share, the larger way), `min_height`, `max_height`, `palette` (a palette entry
 skin, hair and clothing colors keep to, within its `tolerance`) and `max_props`. Without one,
 outlines 0.05 apart and colors 5 apart tell characters apart.
+
+### Faces
+
+Faces follow Unreal's MetaHuman Creator (Godot has none): a `.face.json` file (`slash-cli schema
+face`), or a character recipe's `face`, sculpts a head from named controls, carves at its
+landmarks and blends of other faces, in a style that fits the game's look, and both dimensions
+draw it: a character's 3D head is the sculpt, and its 2D cut-out's head the sculpt's profile.
+`scene validate` and `scene format` take the files, and exports ship and check them.
+
+```json
+{"format": 1, "name": "Rook", "extends": "faces/base.face.json",
+ "blend": [{"face": "faces/elder.face.json", "weight": 0.3}],
+ "controls": {"nose.length": 0.6, "nose.hook": 0.5, "jaw.angle": 0.8, "cheeks.hollow": 0.4,
+              "brow.ridge": 0.7, "eyes.depth": 0.5, "definition": 0.6},
+ "carves": [{"kind": "crease", "at": "cheek_left", "offset": [0.05, 0.1], "length": 0.2,
+             "angle": 70, "depth": 0.8}],
+ "brows": {"thickness": 0.8, "shape": "angled"}, "beard": "stubble",
+ "eyes": [0.25, 0.4, 0.3], "asymmetry": 0.3, "seed": 11}
+```
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `format` | required | `1` (files only) |
+| `extends` | | A `.face.json` file this one changes, as a JSON Merge Patch (objects merge, `carves` replace); at most 8 deep. A character's inline face says `from` instead |
+| `name` | `""` | What it is called |
+| `blend` | `[]` | Up to 8 `{"face", "weight"}` presets whose controls mix by weight (divided by their sum when over 1) under this face's own, which add to them |
+| `controls` | `{}` | Sculpt controls, each -1 to 1, 0 an average adult's (below) |
+| `carves` | `[]` | Up to 32: `kind` (`"dent"` or `"bump"` round a point, `"crease"` or `"ridge"` along a line), `at` (a landmark, below), `offset` (`[0, 0]`, across toward the face's left and up, in half the head's width and height), `radius` (`0.06`), `depth` (`0.5`, -1 to 1; 1 is 5% of the head's depth), `length` (`0`, a crease's or ridge's), `angle` (`0` degrees from across) and `mirror` (`false`) |
+| `style` | `"realistic"` | `"realistic"` (fine detail, 80 rings of 112 segments), `"stylized"` and `"painterly"` (controls exaggerated, smoother), `"toon"` (eyes half again as big, a small nose, little detail) or `"low_poly"` (14 rings of 20, flat shaded, the eyes set in the skin) |
+| `eyes`, `lips` | | The irises' and lips' colors |
+| `eye_size`, `eye_spacing`, `nose`, `ears` | `1` | Overall sizes, 0.5 to 1.5 |
+| `brows` | | `color` (the hair's, darkened), `thickness` (`0.5`, 0 for none) and `shape` (`"soft"`, `"straight"`, `"arched"` or `"angled"`) |
+| `beard` | `"none"` | `"stubble"`, `"short"` or `"long"`, in the hair's color, grown out from the sculpt's jaw, chin and upper lip |
+| `asymmetry`, `seed` | `0`, `0` | How far the sides differ (0 to 1): eyes, brows, cheeks, the nose and mouth a little off, as `seed` picks |
+| `skin` | | The 3D head's skin detail, each 0 to 1: `pores`, `blotches` (uneven color and flush) and `oil` (a shine on the forehead, nose and chin), each the style's when left out, and `wrinkles` (`0`: the forehead's lines, crow's feet, the folds from the nose and under the eyes); `resolution` is the maps' width (`256`, `512`, `1024` or `2048`; their height is half), the style's when left out |
+| `marks` | `[]` | Up to 64 marks on the skin (below): `kind`, `at` (a landmark, `"cheek_left"`), `offset`, `size` and `length` (in half the head's width, `0` for the kind's own), `angle` (degrees from across), `color` (the kind's own when left out), `amount` (`1`, how strong), `age` (`0` fresh to `1` old), `pattern`, `mirror` (`false`) and `seed` |
+
+The controls: `head.width`, `head.length`, `head.height`, `forehead.height`, `forehead.slope`,
+`brow.height`, `brow.ridge`, `brow.tilt`, `eyes.size`, `eyes.spacing`, `eyes.height`,
+`eyes.depth`, `eyes.tilt`, `eyes.openness`, `eyes.hooded`, `nose.length`, `nose.width`,
+`nose.bridge`, `nose.tip`, `nose.upturn`, `nose.nostrils`, `nose.hook`, `cheeks.bones`,
+`cheeks.fullness`, `cheeks.hollow`, `mouth.width`, `mouth.height`, `mouth.corners`,
+`lips.upper`, `lips.lower`, `lips.protrusion`, `philtrum.depth`, `jaw.width`, `jaw.angle`,
+`chin.length`, `chin.width`, `chin.protrusion`, `chin.cleft`, `ears.size`, `ears.angle`,
+`ears.height`, `face.length`, `face.width`, `temples`, `definition` (angular, defined features;
+-1 softens them all) and `neck.width`; each schema entry says what 1 does. The landmarks:
+`crown`, `forehead`, `glabella`, `brow_left`/`_right`, `eye_left`/`_right`, `temple_left`/`_right`,
+`nose_bridge`, `nose_tip`, `nostril_left`/`_right`, `cheekbone_left`/`_right`,
+`cheek_left`/`_right`, `upper_lip`, `lower_lip`, `mouth_corner_left`/`_right`, `chin`,
+`jaw_left`/`_right`, `ear_left`/`_right` and `back`.
+
+The sculpt (`world::sculpt_head` in `slash/world/face.hpp`) is a grid of rings round the head,
+denser over the face, each vertex moved out or in by soft bumps and grooves at the landmarks
+(the brow ridge, sockets, nose, philtrum, cheekbones, lips, chin, the corners of the jaw and the
+carves) after the skull, jaw and face are stretched as the controls say. The eyelids wrap the
+eyeballs, the eyes' openings tucked behind them, and the lips' seam is tucked into the mouth
+and split in two (the lower lip's corners on it are copies that move with the jaw), so the jaw
+opens it over the teeth. Each triangle is skin, lips, brows or the inside of the mouth, which
+draw with their own materials (or, with skin maps, skin, lips and the mouth's walls with the
+maps), and the beard grows out over the triangles it covers. It is
+built with integer hashes and `slash::exp`, so a face sculpts the same bits everywhere.
+
+The skin is MetaHuman's too: a 3D head draws with skin maps laid over the sculpt's uvs
+(`world::face_skin_maps`), an albedo, a tangent-space normal map and a roughness map, made in
+code with integer noise, so they are the same bytes everywhere. They carry the style's pores,
+blotches and shine (`realistic` most, `stylized` and `painterly` less; `toon` and `low_poly`
+none, and no maps at all unless the face has marks or asks for detail), the `skin`'s wrinkles,
+the lips' color with a smooth outline and fine lines, and the marks. Marks follow the sculpt's
+carves, at a landmark and offset, turned by `angle`:
+
+| `kind` | Draws |
+| --- | --- |
+| `mole` | A dark, slightly raised spot |
+| `freckles` | Scattered small spots over `size`, as dense as `amount` |
+| `scar` | A raised, shiny line (`length`), pink when fresh and pale when old; `"stitched"` adds the stitches |
+| `wound` | An open, wet cut (`length`) with a dark middle and swollen edges, drying to a scab as it ages; `"stitched"` stitches it |
+| `burn` | A mottled patch, raw red when fresh and pale and shiny when old |
+| `bruise` | A soft blotch, purple when fresh, then green and yellow as it ages |
+| `rash` | Small raised red bumps over a flush |
+| `birthmark` | A soft patch with a ragged edge, as `seed` picks |
+| `tattoo` | Ink in a `pattern`: `stripes`, `chevron`, `dots`, `ring`, `star`, `spiral`, `teardrop`, `cross` or `lines` (the default), fading and blurring as it ages |
+| `paint` | Matte face paint in a `pattern`: those, or `band` (the default, across the face), `mask` (round the eyes) or `half` (the face's side) |
+
+A character's 2D cut-out draws the marks on the side its profile shows (the face's left and its
+middle; `mirror` brings a right-side mark round) as polygons over its head, those below the lips
+on its jaw, clipped to the outline (`world::face_marks_2d`).
+
+Every sculpt carries ARKit's 52 expression shapes, as MetaHuman faces do, so face capture
+(Live Link Face, an `XRFaceTracker`) and animations drive any face, whatever its controls: a
+character's 3D model has them as blend shapes (set `MeshInstance3D.blend_shapes`, play blend
+shape tracks, or follow a tracker with `XRFaceModifier3D`), and a `Character2D`'s `expressions`
+pose its profile. They are made from the sculpt, so a hooded eye blinks and a wide mouth smiles
+as itself: `eyeBlinkLeft`/`Right`, `eyeLookDown`/`In`/`Out`/`Up` (the lids follow the gaze),
+`eyeSquint`, `eyeWide`, `jawForward`, `jawLeft`, `jawRight`, `jawOpen` (the chin, lower lip,
+lower teeth and tongue turn about the jaw's hinge), `mouthClose`, `mouthFunnel`, `mouthPucker`,
+`mouthLeft`, `mouthRight`, `mouthSmile`, `mouthFrown`, `mouthDimple`, `mouthStretch`,
+`mouthRollLower`/`Upper`, `mouthShrugLower`/`Upper`, `mouthPress`, `mouthLowerDown`,
+`mouthUpperUp`, `browDown`, `browInnerUp`, `browOuterUp`, `cheekPuff`, `cheekSquint`,
+`noseSneer` and `tongueOut`, each `Left` and `Right` where ARKit has them, `Left` being the
+face's own left. In 2D only the side facing the camera shows, and `jawOpen` turns the jaw bone.
+[examples/character-faces](../../examples/character-faces/) sculpts an elder from a preset it
+extends and blends, with a crease carved in a cheek, and a toon, has them smile, blink and talk
+in 3D and 2D, and marks a fighter with a stitched scar, freckles, a bruise, a tattoo and war
+paint.
+
+The storyboard's `face_rules` entries (in `storyboard/design.json`) keep a cast's faces apart
+and in the game's look, over the faces in their links, or every one with neither links nor refs:
+`shape_difference` (how far apart each face's sculpt must be from every other's where they
+differ most, in percent of the head's size; 0.5 if unset), `profile_difference` (the same of
+their side profiles, in percent of the head's depth, for 2D casts; off if unset), `styles` (the
+sculpt styles faces may have), `controls` (each sculpt control's `[lowest, highest]`), `marks`
+(the kinds of mark allowed), `max_marks` and `palette` (a palette entry the eyes, lips, brows and
+marks keep to). [`face.check`](commands.md#facecheck) holds the project's faces to them,
+[`face.generate`](commands.md#facegenerate) drafts a face from a brief in words within them, and
+[`face.portrait`](commands.md#faceportrait) draws a face's portrait, in 3D or as its 2D cut-out,
+into a PNG for dialogue boxes and menus. [examples/face-tools](../../examples/face-tools/)
+drafts a cast from briefs, catches a face too like another and draws their portraits.
 
 ### Creatures
 

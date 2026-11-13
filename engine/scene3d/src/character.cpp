@@ -181,14 +181,13 @@ std::vector<Bone> skeleton(const CharacterMeasures& m, const world::CharacterFac
     bone("Neck").head = {0.0F, m.shoulder, 0.0F};
     bone("Head").head = {0.0F, base, 0.0F};
     bone("Jaw").head = {0.0F, base + (hh * 0.42F), hr * 0.1F};
-    const real_t eye = hr * 0.16F * face.eye_size;
+    const world::FaceEyes eyes = world::face_eyes(face, world::character_head(m));
     // Arms hang 12 degrees out from straight down.
     const Vec2 out = cos_sin(0.2094395F);
     for (const std::string_view side_name : kSides) {
         const real_t side = side_sign(side_name);
         const std::string name(side_name);
-        bone(name + "Eye").head = {side * hr * 0.38F * face.eye_spacing, base + (hh * 0.56F),
-                                   hr - (eye * 0.5F)};
+        bone(name + "Eye").head = side > 0.0F ? eyes.left : eyes.right;
         const Vec3 down{side * out.y, -out.x, 0.0F};
         const Vec3 upper{side * m.shoulder_half_width, m.shoulder - (m.arm_radius * 0.5F), 0.0F};
         const Vec3 lower = upper + (down * m.upper_arm);
@@ -315,6 +314,7 @@ struct Body {
     const CharacterMeasures& m;
     const std::vector<Bone>& bones;
     Builder& out;
+    real_t mouth_line = 0.0F; // where the lips close (world::face_mouth)
 
     [[nodiscard]] std::size_t bone(std::string_view name) const { return bone_index(bones, name); }
     [[nodiscard]] Vec3 head_of(std::string_view name) const { return bones[bone(name)].head; }
@@ -509,7 +509,7 @@ struct Body {
     }
 
     // Where the mouth closes, and how much of the head below it moves with the jaw.
-    [[nodiscard]] real_t mouth() const { return m.head_base + (m.head_height * 0.27F); }
+    [[nodiscard]] real_t mouth() const { return mouth_line; }
     [[nodiscard]] Weigh jaw_weights() const {
         const std::size_t head = bone("Head");
         const std::size_t jaw = bone("Jaw");
@@ -524,6 +524,45 @@ struct Body {
     }
 };
 
+// The part of a sculpted head whose triangles keep, as a mesh of its own, each corner moved out
+// along its normal by grow.
+template <typename Keep>
+MeshData head_part(const world::SculptedHead& head, Keep keep, real_t grow = 0.0F,
+                   std::vector<std::uint32_t>* from = nullptr) {
+    MeshData out;
+    std::vector<std::uint32_t> remap(head.positions.size(), UINT32_MAX);
+    for (std::size_t t = 0; t < head.areas.size(); ++t) {
+        if (!keep(t)) {
+            continue;
+        }
+        for (std::size_t k = 0; k < 3; ++k) {
+            const std::uint32_t index = head.indices[(t * 3) + k];
+            if (remap[index] == UINT32_MAX) {
+                remap[index] = static_cast<std::uint32_t>(out.vertices.size());
+                if (from != nullptr) {
+                    from->push_back(index);
+                }
+                const Vec3 n = head.normals[index];
+                const Vec3 p = head.positions[index] + (n * grow);
+                Vec3 tangent = cross({0.0F, 1.0F, 0.0F}, n);
+                tangent = length(tangent) > 0.0F ? normalized(tangent) : Vec3{1.0F, 0.0F, 0.0F};
+                render::Vertex3D vertex;
+                vertex.position = {static_cast<float>(p.x), static_cast<float>(p.y),
+                                   static_cast<float>(p.z)};
+                vertex.normal = {static_cast<float>(n.x), static_cast<float>(n.y),
+                                 static_cast<float>(n.z)};
+                vertex.tangent = {static_cast<float>(tangent.x), static_cast<float>(tangent.y),
+                                  static_cast<float>(tangent.z), 1.0F};
+                vertex.uv = {static_cast<float>(head.uvs[index].x),
+                             static_cast<float>(head.uvs[index].y)};
+                out.vertices.push_back(vertex);
+            }
+            out.indices.push_back(remap[index]);
+        }
+    }
+    return out;
+}
+
 void add_face(const CharacterRecipe& recipe, const Body& body, int skin) {
     const CharacterMeasures& m = body.m;
     Builder& out = body.out;
@@ -532,19 +571,114 @@ void add_face(const CharacterRecipe& recipe, const Body& body, int skin) {
     const real_t hr = m.head_radius;
     const real_t hh = m.head_height;
     const real_t base = m.head_base;
-    // The neck and head, its chin moving with the jaw.
+    const world::CharacterFace& face = recipe.face;
+    // The neck, then the sculpted head: its skin and lips, the chin moving with the jaw, the
+    // brows on the head and the inside of the lips' seam, which the jaw opens.
     const Vec3 neck_low{0.0F, m.shoulder - (0.03F * m.scale), 0.0F};
     const Vec3 neck_high{0.0F, base + (0.02F * m.scale), 0.0F};
-    body.limb(neck_low, neck_high, m.neck_radius, 0.0F, 1.0F, skin,
+    const float neck_radius =
+        static_cast<float>(m.neck_radius) * (1.0F + (0.12F * face.control("neck.width")));
+    body.limb(neck_low, neck_high, neck_radius, 0.0F, 1.0F, skin,
               body.along(neck_low, neck_high, "UpperChest", "Neck", "", false, "Head"));
-    out.add(unit_sphere(), placed({hr, hh * 0.5F, hr * 1.12F}, {0.0F, base + (hh * 0.5F), 0.0F}),
-            skin, body.jaw_weights());
-    const world::CharacterFace& face = recipe.face;
+    const world::HeadShape head_shape = world::character_head(m);
+    const world::SculptedHead sculpt = world::sculpt_head(face, head_shape);
+    // ARKit's 52 expressions, as blend shapes of the head's parts (and of the teeth and tongue
+    // the jaw moves), which face capture and MeshInstance3D's blend_shapes drive.
+    const std::vector<std::vector<Vec3>> expressions =
+        world::face_expressions(face, head_shape, sculpt);
+    out.set_blend_shapes(world::face_expression_names());
+    const auto is = [&](world::FaceArea area) {
+        return [&sculpt, area](std::size_t t) { return sculpt.areas[t] == area; };
+    };
+    const Affine3D none;
+    // The lips' corners on the seam move wholly with the head (the upper lip's) or the jaw (the
+    // lower lip's copies), so the jaw parts them.
+    const VertexWeights head_only = one_joint(head);
+    const VertexWeights jaw_only = one_joint(jaw);
+    const auto add_head = [&](const auto& keep, int material, const Weigh& weigh, real_t grow) {
+        std::vector<std::uint32_t> from;
+        const MeshData part = head_part(sculpt, keep, grow, &from);
+        out.add_shaped(
+            part, none, material, WeighEach([&](std::size_t v, Vec3 p) {
+                const std::uint8_t side = sculpt.seam[from[v]];
+                if (side == 0) {
+                    return weigh(p);
+                }
+                return side == 1 ? head_only : jaw_only;
+            }),
+            [&](std::size_t shape, std::size_t v) { return expressions[shape][from[v]]; });
+    };
+    // The face's skin maps (pores, wrinkles, blotches, shine and marks) on a material of its
+    // own, over the sculpt's uvs.
+    int face_skin = skin;
+    if (world::FaceSkinMaps maps = world::face_skin_maps(face, head_shape, recipe.body.skin);
+        maps.width > 0) {
+        const auto image = [&](std::vector<std::uint8_t> pixels) {
+            ModelImage made;
+            made.image = {.width = maps.width, .height = maps.height, .pixels = std::move(pixels)};
+            out.model.images.push_back(std::move(made));
+            return static_cast<int>(out.model.images.size()) - 1;
+        };
+        ModelMaterial made;
+        made.name = "face";
+        made.standard.albedo_color = {1.0F, 1.0F, 1.0F, 1.0F};
+        made.standard.roughness = 1.0F;
+        made.standard.roughness_texture_channel = "red";
+        made.standard.normal_enabled = true;
+        made.albedo_image = image(std::move(maps.albedo));
+        made.normal_image = image(std::move(maps.normal));
+        made.roughness_image = image(std::move(maps.roughness));
+        out.model.materials.push_back(std::move(made));
+        face_skin = static_cast<int>(out.model.materials.size()) - 1;
+    }
+    add_head(
+        [&](std::size_t t) {
+            return sculpt.areas[t] == world::FaceArea::Skin ||
+                   sculpt.areas[t] == world::FaceArea::Hidden ||
+                   (sculpt.areas[t] == world::FaceArea::Brows && face.brows.thickness <= 0.0F);
+        },
+        face_skin, body.jaw_weights(), 0.0F);
+    // The maps color the lips too, with a smoother outline than the sculpt's triangles.
+    const int lips = face_skin != skin ? face_skin : out.material("lips", face.lips, 0.5F, 0.0F);
+    add_head(is(world::FaceArea::Lips), lips, body.jaw_weights(), 0.0F);
+    const int inside = out.material("mouth", {0.25F, 0.08F, 0.08F, 1.0F}, 0.7F, 0.0F);
+    add_head(is(world::FaceArea::Mouth), face_skin != skin ? face_skin : inside, body.jaw_weights(),
+             0.0F);
+    if (face.brows.thickness > 0.0F) {
+        const Vec4 color = face.brows.color.w > 0.0F
+                               ? face.brows.color
+                               : Vec4{recipe.hair.color.x * 0.8F, recipe.hair.color.y * 0.8F,
+                                      recipe.hair.color.z * 0.8F, 1.0F};
+        const int brows = out.material("brows", color, 0.85F, 0.0F);
+        add_head(is(world::FaceArea::Brows), brows, Weigh([head](Vec3) { return one_joint(head); }),
+                 0.0006F * m.scale);
+    }
+    // What moves with the jaw inside the mouth takes the jaw's expressions, and the tongue
+    // tongueOut, out past the lips and down.
+    const std::optional<std::size_t> tongue_out = world::face_expression_index("tongueOut");
+    const auto with_jaw = [&](const MeshData& mesh, const Affine3D& place, int material,
+                              bool tongue) {
+        std::vector<Vec3> corners;
+        corners.reserve(mesh.vertices.size());
+        for (const render::Vertex3D& vertex : mesh.vertices) {
+            corners.push_back(
+                place.apply({vertex.position[0], vertex.position[1], vertex.position[2]}));
+        }
+        out.add_shaped(mesh, place, material, Weigh([jaw](Vec3) { return one_joint(jaw); }),
+                       [&](std::size_t shape, std::size_t v) {
+                           Vec3 moved = world::face_jaw_offset(face, head_shape, shape, corners[v]);
+                           if (tongue && tongue_out && shape == *tongue_out) {
+                               moved =
+                                   moved + Vec3{0.0F, -0.03F * m.head_height, 0.4F * m.head_radius};
+                           }
+                           return moved;
+                       });
+    };
     // Eyes that turn: a white ball, the iris and the pupil on each eye's bone.
     const int white = out.material("eye_white", {0.92F, 0.9F, 0.86F, 1.0F}, 0.15F, 0.0F);
     const int iris = out.material("eyes", face.eyes, 0.2F, 0.0F);
     const int pupil = out.material("pupil", {0.02F, 0.02F, 0.02F, 1.0F}, 0.1F, 0.0F);
-    const real_t eye = hr * 0.16F * face.eye_size;
+    const real_t eye = sculpt.eyes.radius;
     for (const std::string_view side : kSides) {
         const std::size_t ball = body.bone(std::string(side) + "Eye");
         const Vec3 at = body.bones[ball].head;
@@ -555,27 +689,34 @@ void add_face(const CharacterRecipe& recipe, const Body& body, int skin) {
         out.add(unit_sphere(),
                 placed({eye * 0.24F, eye * 0.24F, eye * 0.12F}, at + Vec3{0.0F, 0.0F, eye * 0.98F}),
                 pupil, ball);
-        out.add(unit_sphere(),
-                placed(Vec3{0.15F, 0.32F, 0.22F} * (hr * face.ears),
-                       {side_sign(side) * hr * 0.98F, base + (hh * 0.5F), 0.0F}),
-                skin, head);
     }
-    out.add(
-        unit_sphere(),
-        placed(Vec3{0.13F, 0.2F, 0.16F} * (hr * face.nose), {0.0F, base + (hh * 0.42F), hr * 1.1F}),
-        skin, head);
-    // The lips, the upper on the head and the lower on the jaw, and inside the mouth its dark,
-    // the teeth and the tongue, which show as the jaw opens.
-    const int lips = out.material("lips", face.lips, 0.5F, 0.0F);
+    // The ears, at their landmarks, standing out as ears.angle says.
+    const real_t ears = face.ears * (1.0F + (0.25F * face.control("ears.size")));
+    for (const world::FaceLandmark& mark : sculpt.landmarks) {
+        if (!mark.name.starts_with("ear_")) {
+            continue;
+        }
+        const real_t side = mark.name == "ear_left" ? 1.0F : -1.0F;
+        const Vec2 cs = cos_sin(to_float(side * 0.35F * face.control("ears.angle")));
+        Affine3D turn;
+        turn.x = {cs.x, 0.0F, -cs.y};
+        turn.z = {cs.y, 0.0F, cs.x};
+        const Affine3D place = placed(turn, Vec3{0.15F, 0.32F, 0.22F} * (hr * ears),
+                                      mark.position - Vec3{side * hr * 0.02F, 0.0F, 0.0F});
+        out.add(unit_sphere(), place, skin, head);
+    }
+    // Inside the mouth, behind the seam: its dark, the teeth and the tongue, which show as the
+    // jaw opens. They stay behind where the seam tucks the lips in, so closed lips cover them.
     const real_t line = body.mouth();
+    real_t seam_z = hr * 0.9F;
+    for (const Vec3& p : sculpt.positions) {
+        if (std::abs(p.x) < hr * 0.002F && p.z > 0.0F && std::abs(p.y - line) < hh * 0.01F) {
+            seam_z = std::min(seam_z, p.z);
+        }
+    }
+    const real_t front = seam_z - (hr * 0.01F);
     out.add(unit_sphere(),
-            placed(Vec3{0.32F, 0.045F, 0.1F} * hr, {0.0F, line + (hr * 0.04F), hr * 1.03F}), lips,
-            head);
-    out.add(unit_sphere(),
-            placed(Vec3{0.3F, 0.05F, 0.1F} * hr, {0.0F, line - (hr * 0.045F), hr * 1.02F}), lips,
-            jaw);
-    const int inside = out.material("mouth", {0.25F, 0.08F, 0.08F, 1.0F}, 0.7F, 0.0F);
-    out.add(unit_sphere(), placed({hr * 0.25F, hh * 0.08F, hr * 0.25F}, {0.0F, line, hr * 0.78F}),
+            placed({hr * 0.25F, hh * 0.08F, hr * 0.25F}, {0.0F, line, front - (hr * 0.25F)}),
             inside, [=](Vec3 p) {
                 return blend_joints(
                     head, jaw,
@@ -583,22 +724,29 @@ void add_face(const CharacterRecipe& recipe, const Body& body, int skin) {
             });
     const int teeth = out.material("teeth", {0.92F, 0.9F, 0.82F, 1.0F}, 0.3F, 0.0F);
     out.add(unit_sphere(),
-            placed({hr * 0.22F, hh * 0.03F, hr * 0.12F}, {0.0F, line + (hh * 0.015F), hr * 0.86F}),
+            placed({hr * 0.22F, hh * 0.03F, hr * 0.12F},
+                   {0.0F, line + (hh * 0.015F), front - (hr * 0.12F)}),
             teeth, head);
-    out.add(unit_sphere(),
-            placed({hr * 0.2F, hh * 0.03F, hr * 0.12F}, {0.0F, line - (hh * 0.015F), hr * 0.84F}),
-            teeth, jaw);
+    with_jaw(unit_sphere(),
+             placed({hr * 0.2F, hh * 0.03F, hr * 0.12F},
+                    {0.0F, line - (hh * 0.015F), front - (hr * 0.14F)}),
+             teeth, false);
     const int tongue = out.material("tongue", {0.75F, 0.35F, 0.38F, 1.0F}, 0.5F, 0.0F);
-    out.add(unit_sphere(),
-            placed({hr * 0.15F, hh * 0.025F, hr * 0.25F}, {0.0F, line - (hh * 0.03F), hr * 0.7F}),
-            tongue, jaw);
+    with_jaw(unit_sphere(),
+             placed({hr * 0.15F, hh * 0.025F, hr * 0.25F},
+                    {0.0F, line - (hh * 0.03F), front - (hr * 0.3F)}),
+             tongue, true);
+    // A beard grows over the sculpt's jaw, chin and upper lip, out from the skin by its length.
     if (face.beard != "none") {
         const int hair = out.material("hair", recipe.hair.color, 0.8F, 0.0F);
-        const real_t grow = face.beard == "stubble" ? 0.01F : 0.06F;
-        out.add(unit_sphere(),
-                placed({hr * (1.0F + grow), hh * (0.16F + grow), hr * (1.0F + grow)},
-                       {0.0F, base + (hh * 0.12F), hr * 0.15F}),
-                hair, body.jaw_weights());
+        real_t grow = 0.007F;
+        if (face.beard == "stubble") {
+            grow = 0.001F;
+        } else if (face.beard == "long") {
+            grow = 0.012F;
+        }
+        add_head([&](std::size_t t) { return sculpt.bearded[t] != 0; }, hair, body.jaw_weights(),
+                 grow * m.scale);
         if (face.beard == "long") {
             body.limb({0.0F, base + (hh * 0.1F), hr * 0.9F},
                       {0.0F, m.shoulder - (0.08F * m.scale), m.chest_depth + (0.02F * m.scale)},
@@ -996,6 +1144,7 @@ Model finish(Builder& out, const CharacterRecipe& recipe) {
     node.name = "Body";
     node.file_index = static_cast<int>(out.model.nodes.size());
     out.model.nodes.push_back(std::move(node));
+    out.finish_blend_shapes();
     out.model.meshes.push_back(std::move(out.body));
     return std::move(out.model);
 }
@@ -1062,7 +1211,7 @@ Result<Model> build_character(const CharacterRecipe& recipe, const ModelReader& 
                     form == "muscles");
         return finish(out, recipe);
     }
-    const Body body{m, bones, out};
+    const Body body{m, bones, out, world::face_mouth(recipe.face, world::character_head(m))};
     const int skin_material = out.material("skin", recipe.body.skin, 0.6F, 0.0F);
     body.torso(0.0F, skin_material);
     body.pelvis(0.0F, skin_material);

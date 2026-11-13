@@ -448,6 +448,18 @@ Reply test_run(Session& session, const json::Value& params) {
         }
     }
 
+    // And the faces: each keeps the storyboard's face rules and looks unlike the others.
+    if (paths == nullptr && wanted.empty() && session.commands().find("face.check") != nullptr) {
+        Reply checked = session.call("face.check", json::Object{});
+        if (!checked.ok) {
+            failed.push_back(file_failure("faces", "", checked.message));
+        } else if (json::Value* errors = checked.value.find("errors"); errors != nullptr) {
+            for (json::Value& error : errors->as_array()) {
+                failed.push_back(std::move(error));
+            }
+        }
+    }
+
     // And the translations, once the project lists some.
     if (paths == nullptr && wanted.empty() &&
         !l10n::settings(session.world()).translations.empty()) {
