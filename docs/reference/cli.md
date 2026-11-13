@@ -569,7 +569,8 @@ It prints where it listens, and writes the same to `.slash/server.json`:
 
 ### init
 
-Sets a game folder up for Claude Code, Codex, Cursor, opencode, Hermes Agent and OpenClaw. See
+Sets a game folder up for Claude Code, Codex, Cursor, opencode, Antigravity, Hermes Agent and
+OpenClaw. See
 [concepts.md](../concepts.md#agent-setup-files) for what each file is for.
 
 ```bash
@@ -582,7 +583,7 @@ slash-cli init [dir]
 | `--mcp-command <cmd>` | How agents launch `slash-mcp` (default `slash-mcp`, found on `PATH`) |
 
 ```json
-{"created":["project.json","AGENTS.md","CLAUDE.md",".mcp.json",".cursor/mcp.json",".codex/config.toml","opencode.json",".slash/agents/hermes.yaml",".slash/agents/openclaw.json",".claude/skills/slashengine/SKILL.md",".github/workflows/export.yml","scenes/main.scene.json","src/game.cpp","tests/main.test.json","storyboard/glossary.json","storyboard/work.json",".gitignore"],"skipped":[]}
+{"created":["project.json","AGENTS.md","CLAUDE.md",".mcp.json",".cursor/mcp.json",".codex/config.toml","opencode.json",".agents/mcp_config.json",".slash/agents/hermes.yaml",".slash/agents/openclaw.json",".claude/skills/slashengine/SKILL.md",".agents/skills/slashengine/SKILL.md",".github/workflows/export.yml","scenes/main.scene.json","src/game.cpp","tests/main.test.json","storyboard/glossary.json","storyboard/work.json",".gitignore"],"skipped":[]}
 ```
 
 The `project.json` it writes is named after the folder, points at `scenes/main.scene.json` and
@@ -982,6 +983,16 @@ arguments too):
 
 ```json
 { "$schema": "https://opencode.ai/config.json", "mcp": { "slashengine": { "type": "local", "command": ["slash-mcp", "--project", ".", "--scene", "scenes/main.scene.json"] } } }
+```
+
+Antigravity (`.agents/mcp_config.json` in the workspace, or `~/.gemini/config/mcp_config.json`
+for every project). Its docs don't say which folder it starts a server in, so `init` names the
+project in full and adds the file to `.gitignore`; `init` writes it again in a fresh clone.
+`init` also puts the scene-editing skill in `.agents/skills/slashengine/`, where Antigravity
+looks for a workspace's skills, and Antigravity reads `AGENTS.md`:
+
+```json
+{ "mcpServers": { "slashengine": { "command": "slash-mcp", "args": ["--project", "/path/to/game", "--scene", "scenes/main.scene.json"] } } }
 ```
 
 Hermes Agent and OpenClaw keep MCP servers in the user's own config and start them from
