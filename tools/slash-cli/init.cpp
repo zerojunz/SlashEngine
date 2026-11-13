@@ -33,8 +33,10 @@ game through engine commands instead of editing files by hand.
 ## Connect to the engine
 
 The `slashengine` MCP server is configured for Claude Code (`.mcp.json`), Codex
-(`.codex/config.toml`), Cursor (`.cursor/mcp.json`) and opencode (`opencode.json`), and opens
-`scenes/main.scene.json` at startup. Hermes Agent and OpenClaw keep MCP servers in their user's
+(`.codex/config.toml`), Cursor (`.cursor/mcp.json`), opencode (`opencode.json`) and Antigravity
+(`.agents/mcp_config.json`, which names this folder in full, so git leaves it out and
+`slash-cli init` writes it again in a fresh clone), and opens `scenes/main.scene.json` at
+startup. Hermes Agent and OpenClaw keep MCP servers in their user's
 own config, so `slash-cli init` writes their entries for this folder into `.slash/agents/`: add
 `.slash/agents/hermes.yaml`'s `mcp_servers` entry to `~/.hermes/config.yaml`, or run
 `openclaw mcp set slashengine "$(cat .slash/agents/openclaw.json)"`. Its tools check every change
@@ -421,9 +423,12 @@ jobs:
 )";
 
 // Folders that stay on this machine: engine caches and the running server's token, and exports.
-constexpr std::array<std::string_view, 2> kIgnoredFolders{".slash/", "build/"};
+constexpr std::array<std::string_view, 3> kIgnoredPaths{".slash/", "build/",
+                                                        ".agents/mcp_config.json"};
 constexpr std::string_view kGitignore =
-    "# SlashEngine caches, the running server's token, and exported builds\n.slash/\nbuild/\n";
+    "# SlashEngine caches, the running server's token, and exported builds\n.slash/\nbuild/\n"
+    "# Antigravity's MCP config names this folder in full; slash-cli init writes it\n"
+    ".agents/mcp_config.json\n";
 
 bool has_line(std::string_view text, std::string_view line) {
     std::size_t start = 0;
@@ -500,6 +505,15 @@ std::string openclaw_config(const InitOptions& options) {
     return json::write(server_entry(options, absolute_project(options.directory)),
                        json::Style::Compact) +
            "\n";
+}
+
+// Antigravity's workspace config. Its docs don't say where it starts a server, so the project
+// is named in full, as for the agents that start servers anywhere.
+std::string antigravity_config(const InitOptions& options) {
+    json::Value config;
+    config["mcpServers"]["slashengine"] =
+        server_entry(options, absolute_project(options.directory));
+    return json::write(config) + "\n";
 }
 
 // Hermes Agent's entry, for ~/.hermes/config.yaml. JSON strings are YAML's double-quoted ones.
@@ -613,7 +627,7 @@ std::string empty_scene() {
 
 Result<json::Value> init_project(const InitOptions& options) {
     // Cursor expands ${workspaceFolder}; Claude Code, Codex and opencode start servers in the
-    // project; Hermes Agent and OpenClaw start them anywhere, so theirs name it in full.
+    // project; Antigravity, Hermes Agent and OpenClaw name it in full.
     const std::string name = project_name(options.directory);
     const std::string glossary = storyboard::file_path("glossary");
     const std::string work = storyboard::file_path("work");
@@ -627,9 +641,11 @@ Result<json::Value> init_project(const InitOptions& options) {
         {".cursor/mcp.json", json_config(options, "${workspaceFolder}")},
         {".codex/config.toml", codex_config(options)},
         {"opencode.json", opencode_config(options)},
+        {".agents/mcp_config.json", antigravity_config(options)},
         {".slash/agents/hermes.yaml", hermes_config(options)},
         {".slash/agents/openclaw.json", openclaw_config(options)},
         {".claude/skills/slashengine/SKILL.md", std::string(kSkill)},
+        {".agents/skills/slashengine/SKILL.md", std::string(kSkill)},
         {".github/workflows/export.yml", with_engine_ref(kWorkflow)},
         {kMainScene, empty_scene()},
         {"src/game.cpp", std::string(kGameCode)},
@@ -673,14 +689,14 @@ Result<json::Value> init_project(const InitOptions& options) {
     } else {
         std::string contents = text.value();
         bool changed = false;
-        for (const std::string_view folder : kIgnoredFolders) {
-            if (has_line(contents, folder)) {
+        for (const std::string_view line : kIgnoredPaths) {
+            if (has_line(contents, line)) {
                 continue;
             }
             if (!contents.empty() && contents.back() != '\n') {
                 contents += '\n';
             }
-            contents += std::string(folder) + "\n";
+            contents += std::string(line) + "\n";
             changed = true;
         }
         if (!changed) {

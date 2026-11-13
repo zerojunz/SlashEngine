@@ -257,7 +257,7 @@ Agents get structured JSON logs, a subscribable event stream, frame captures as 
 
 ### 5. Connecting Claude Code, Codex, Cursor and other agents
 
-The agents connect directly, because each one can launch a local MCP server over stdio. Running `slash-cli init` in a game project writes the configs of Claude Code, Codex, Cursor and opencode, the entries Hermes Agent and OpenClaw take in their users' own configs, an `AGENTS.md` (read by Codex and Cursor), a `CLAUDE.md` that points to it, a Claude Code skill for editing scenes, and an empty `scenes/main.scene.json` that the server opens at startup. The server's MCP `instructions` tell the model to use the engine tools rather than hand-edit scene files, and how to use them cheaply.
+The agents connect directly, because each one can launch a local MCP server over stdio. Running `slash-cli init` in a game project writes the configs of Claude Code, Codex, Cursor, opencode and Antigravity, the entries Hermes Agent and OpenClaw take in their users' own configs, an `AGENTS.md` (read by Codex, Cursor and Antigravity), a `CLAUDE.md` that points to it, a skill for editing scenes (for Claude Code and Antigravity), and an empty `scenes/main.scene.json` that the server opens at startup. The server's MCP `instructions` tell the model to use the engine tools rather than hand-edit scene files, and how to use them cheaply.
 
 Claude Code reads `.mcp.json` in the project, or adds the server by hand:
 
@@ -279,7 +279,9 @@ Cursor reads `.cursor/mcp.json`:
 { "mcpServers": { "slashengine": { "command": "slash-mcp", "args": ["--project", "${workspaceFolder}"] } } }
 ```
 
-opencode reads `opencode.json` in the project. Hermes Agent (`~/.hermes/config.yaml`'s
+opencode reads `opencode.json` in the project. Antigravity reads `.agents/mcp_config.json` in
+the workspace and skills from `.agents/skills/`; its docs don't say which folder it starts a
+server in, so `init` names the project in full there and keeps the file out of git. Hermes Agent (`~/.hermes/config.yaml`'s
 `mcp_servers`) and OpenClaw (`openclaw mcp set`) keep servers in the user's own config and start
 them from anywhere, so `init` writes their entries into `.slash/agents/` with the project's folder
 in full, and `AGENTS.md` says how to add them.

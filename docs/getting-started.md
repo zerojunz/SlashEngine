@@ -187,15 +187,15 @@ cannot leave it.
 
 ## 5. Connect an agent
 
-`slash-cli init` sets a game folder up for Claude Code, Codex, Cursor, opencode, Hermes Agent and
-OpenClaw:
+`slash-cli init` sets a game folder up for Claude Code, Codex, Cursor, opencode, Antigravity,
+Hermes Agent and OpenClaw:
 
 ```bash
 $cli init mygame
 ```
 
 ```json
-{"created":["project.json","AGENTS.md","CLAUDE.md",".mcp.json",".cursor/mcp.json",".codex/config.toml","opencode.json",".slash/agents/hermes.yaml",".slash/agents/openclaw.json",".claude/skills/slashengine/SKILL.md",".github/workflows/export.yml","scenes/main.scene.json",".gitignore"],"skipped":[]}
+{"created":["project.json","AGENTS.md","CLAUDE.md",".mcp.json",".cursor/mcp.json",".codex/config.toml","opencode.json",".agents/mcp_config.json",".slash/agents/hermes.yaml",".slash/agents/openclaw.json",".claude/skills/slashengine/SKILL.md",".agents/skills/slashengine/SKILL.md",".github/workflows/export.yml","scenes/main.scene.json",".gitignore"],"skipped":[]}
 ```
 
 `mygame` is now a game project: `project.json` names the game and its main scene. Each config launches `slash-mcp`, the engine's MCP server, with the project's main scene open.
