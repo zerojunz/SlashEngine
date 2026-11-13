@@ -1329,6 +1329,25 @@ manifold::Manifold union_in_order(const std::vector<manifold::Manifold>& parts) 
     return sum;
 }
 
+// What lies on the normal's side of a plane, within a box: Manifold's Halfspace, which
+// TrimByPlane cuts with, turns its cube by angles from std::asin and std::atan2, whose last bits
+// differ between C libraries (MSVC's aren't glibc's). This one's axes come from the normal by
+// arithmetic and square roots alone, so cells are the same everywhere.
+manifold::Manifold half_space(const manifold::Box& box, manifold::vec3 normal, double offset) {
+    normal = manifold::la::normalize(normal);
+    const double size = manifold::la::length(box.Center() - (normal * offset)) +
+                        (0.5 * manifold::la::length(box.Size()));
+    const manifold::vec3 helper =
+        std::abs(normal.x) < 0.9 ? manifold::vec3(1.0, 0.0, 0.0) : manifold::vec3(0.0, 1.0, 0.0);
+    const manifold::vec3 side = manifold::la::normalize(manifold::la::cross(normal, helper));
+    const manifold::vec3 up = manifold::la::cross(normal, side);
+    // A cube from 0 to 2 along x and -1 to 1 across, its x along the normal from the plane.
+    const manifold::mat3x4 place(normal * size, side * size, up * size, normal * offset);
+    return manifold::Manifold::Cube(manifold::vec3(2.0), true)
+        .Translate(manifold::vec3(1.0, 0.0, 0.0))
+        .Transform(place);
+}
+
 CutCells cut_cells(const manifold::Manifold& region, const world::FractureCut& cut,
                    Materials& materials, const SurfaceMaterial& inside, std::size_t limit,
                    jobs::Pool* pool) {
@@ -1363,8 +1382,8 @@ CutCells cut_cells(const manifold::Manifold& region, const world::FractureCut& c
                 continue;
             }
             const manifold::vec3 normal = away / length;
-            cell =
-                cell.TrimByPlane(normal, manifold::la::dot(normal, (points[i] + points[j]) * 0.5));
+            cell = cell ^ half_space(cell.BoundingBox(), normal,
+                                     manifold::la::dot(normal, (points[i] + points[j]) * 0.5));
             // Each cut is worked out as it is made: left lazy, Manifold would gather them all
             // into one batch, whose order among equal sizes differs between standard libraries.
             (void)cell.NumVert();
