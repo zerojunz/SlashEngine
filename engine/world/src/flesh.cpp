@@ -541,11 +541,13 @@ struct BoneMaker {
                 long_bone("humerus", *f, side, 0.3F);
             }
             if (const PartFrame* f = frames.find(P::LowerArm, side); f != nullptr) {
-                AnatomyBone& radius = add("radius", *f, side);
-                AnatomyBone& ulna = add("ulna", *f, side);
+                // Each bone's pieces go on before the next is added: adding one can move the
+                // others, so a reference to one is good only until then.
                 const real_t r = 0.2F * std::min(f->depth, f->width);
+                AnatomyBone& radius = add("radius", *f, side);
                 piece(radius, at(*f, 0.04F, 0.3F, 0.35F), at(*f, 0.96F, 0.3F, 0.5F), r);
                 piece(radius, at(*f, 0.96F, 0.3F, 0.5F), at(*f, 0.96F, 0.3F, 0.5F), r * 1.6F);
+                AnatomyBone& ulna = add("ulna", *f, side);
                 piece(ulna, at(*f, -0.02F, -0.4F, -0.3F), at(*f, 0.96F, -0.2F, -0.45F), r);
                 piece(ulna, at(*f, -0.02F, -0.4F, -0.3F), at(*f, -0.02F, -0.4F, -0.3F), r * 1.6F);
             }
@@ -565,11 +567,11 @@ struct BoneMaker {
                 piece(patella, knee, knee, 0.3F * std::min(f->depth, f->width));
             }
             if (const PartFrame* f = frames.find(P::LowerLeg, side); f != nullptr) {
-                AnatomyBone& tibia = add("tibia", *f, side);
-                AnatomyBone& fibula = add("fibula", *f, side);
                 const real_t r = 0.3F * std::min(f->depth, f->width);
+                AnatomyBone& tibia = add("tibia", *f, side);
                 piece(tibia, at(*f, 0.03F, 0.25F, -0.1F), at(*f, 0.97F, 0.15F, -0.15F), r);
                 piece(tibia, at(*f, 0.03F, 0.25F, -0.1F), at(*f, 0.03F, 0.25F, -0.1F), r * 1.7F);
+                AnatomyBone& fibula = add("fibula", *f, side);
                 piece(fibula, at(*f, 0.08F, -0.2F, 0.6F), at(*f, 1.0F, -0.1F, 0.65F), r * 0.45F);
             }
             if (const PartFrame* f = frames.find(P::Foot, side); f != nullptr) {
