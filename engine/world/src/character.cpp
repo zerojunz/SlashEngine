@@ -8,6 +8,7 @@
 #include "slash/core/log.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/ragdoll.hpp"
+#include "slash/world/tree2d.hpp"
 
 #include <algorithm>
 #include <array>
@@ -277,9 +278,18 @@ struct CharacterCache {
 using CharacterCacheHolder = std::shared_ptr<CharacterCache>;
 
 // What the system last built each Character2D's parts from, so they change only when it does.
+// Which of a character's parts the system posed last tick, which it puts back at rest once
+// their fields are unset: its eye, its jaw and its near and far hands.
+struct Posed {
+    bool eye = false;
+    bool jaw = false;
+    std::array<bool, 2> hands{};
+};
+
 struct CutoutState {
     std::map<entt::entity, std::string> built;
     std::map<entt::entity, std::string> warned;
+    std::map<entt::entity, Posed> posed;
 };
 using CutoutStateHolder = std::shared_ptr<CutoutState>;
 
@@ -375,6 +385,110 @@ void run_character(World& world, entt::entity entity, CutoutState& state) {
             polygon.polygons.push_back(std::move(indices));
         }
         ecs.emplace_or_replace<Polygon2D>(part, std::move(polygon));
+    }
+}
+
+// How far a hand pose curls the fingers, the index and the thumb toward the palm, in radians.
+struct HandCurl {
+    std::string_view name;
+    float fingers;
+    float index;
+    float thumb;
+};
+constexpr std::array<HandCurl, 5> kHandCurls{{
+    {"open", 0.0F, 0.0F, 0.0F},
+    {"relaxed", 0.25F, 0.2F, 0.1F},
+    {"grip", 0.9F, 0.9F, 0.5F},
+    {"fist", 1.5F, 1.5F, 0.8F},
+    {"point", 1.5F, 0.0F, 0.8F},
+}};
+constexpr float kJawOpenRadians = 0.4F;
+
+// Poses a character's eye, jaw and hands as its fields say, each turned the way it faces: the
+// eye's iris moved toward look_at within its white, the jaw turned down and the fingers curled
+// back toward the palm. Parts whose fields were unset since last tick go back to rest.
+void pose_character(World& world, entt::entity entity, CutoutState& state, const Tree2D* tree) {
+    auto& ecs = world.ecs();
+    const Character2D character = ecs.get<const Character2D>(entity);
+    Posed& posed = state.posed[entity];
+    const bool look = character.look_at != entt::null && world.valid(character.look_at);
+    const bool open = character.jaw_open > 0.0F;
+    const std::array<const std::string*, 2> hand_poses{&character.hand_back, &character.hand_front};
+    if (!look && !open && !posed.eye && !posed.jaw && hand_poses[0]->empty() &&
+        hand_poses[1]->empty() && !posed.hands[0] && !posed.hands[1]) {
+        return;
+    }
+    auto recipe = load_character(world, character.recipe);
+    if (!recipe) {
+        return;
+    }
+    const std::vector<CutoutBone> bones = character_cutout(*recipe.value());
+    const std::string owner(world.id_of(entity));
+    const real_t ppm = character.pixels_per_meter;
+    const real_t facing = character.flip_h ? -1.0F : 1.0F;
+    const auto rest_of = [&](std::string_view name) {
+        for (const CutoutBone& bone : bones) {
+            if (bone.name == name) {
+                return Vec2{bone.position.x * ppm * facing, -bone.position.y * ppm};
+            }
+        }
+        return Vec2{};
+    };
+    const auto part = [&](std::string_view name) -> entt::entity {
+        const entt::entity found = world.find(bone_entity_id(owner, name));
+        return found != entt::null && ecs.all_of<Transform2D>(found) ? found
+                                                                     : entt::entity{entt::null};
+    };
+    // The eye.
+    if (const entt::entity eye = part("eye"); eye != entt::null && (look || posed.eye)) {
+        Transform2D& transform = ecs.get<Transform2D>(eye);
+        transform.position = rest_of("eye");
+        if (look && tree != nullptr) {
+            const real_t reach = 0.0035F * recipe.value()->face.eye_size *
+                                 character_measures(*recipe.value()).scale * ppm;
+            const entt::entity head = tree->parent(eye);
+            const Affine2D from_head =
+                head != entt::null ? tree->global_affine(head).inverse() : Affine2D{};
+            const Vec2 target = from_head.apply(tree->global(character.look_at).position);
+            const Vec2 way = target - transform.position;
+            const real_t span = std::sqrt((way.x * way.x) + (way.y * way.y));
+            if (span > 0.0F) {
+                transform.position = transform.position + (way * (std::min(span, reach) / span));
+            }
+        }
+        posed.eye = look;
+    }
+    // The jaw.
+    if (const entt::entity jaw = part("jaw"); jaw != entt::null && (open || posed.jaw)) {
+        ecs.get<Transform2D>(jaw).rotation =
+            open ? facing * kJawOpenRadians * std::min(character.jaw_open, 1.0F) : 0.0F;
+        posed.jaw = open;
+    }
+    // The hands, back then front.
+    for (std::size_t side = 0; side < 2; ++side) {
+        const std::string& name = *hand_poses.at(side);
+        const HandCurl* curl = nullptr;
+        for (const HandCurl& each : kHandCurls) {
+            if (each.name == name) {
+                curl = &each;
+            }
+        }
+        const bool posing = curl != nullptr;
+        if (!posing && !posed.hands.at(side)) {
+            continue;
+        }
+        const std::string tag = side == 0 ? "_back" : "_front";
+        const std::array<std::pair<std::string_view, float>, 3> parts{{
+            {"fingers", posing ? curl->fingers : 0.0F},
+            {"index", posing ? curl->index : 0.0F},
+            {"thumb", posing ? curl->thumb : 0.0F},
+        }};
+        for (const auto& [bone, angle] : parts) {
+            if (const entt::entity finger = part(std::string(bone) + tag); finger != entt::null) {
+                ecs.get<Transform2D>(finger).rotation = facing * angle;
+            }
+        }
+        posed.hands.at(side) = posing;
     }
 }
 
@@ -654,10 +768,24 @@ std::vector<CutoutBone> character_cutout(const CharacterRecipe& recipe) {
     // Seen from the side, facing +x: the far limbs behind the body, the near ones before it.
     const int pelvis = bone("pelvis", -1, {0.0F, m.hip}, 0);
     const int chest = bone("chest", pelvis, {0.0F, m.waist - m.hip}, 0);
-    bone("head", chest, {0.0F, m.shoulder - m.waist}, 0);
+    const int head = bone("head", chest, {0.0F, m.shoulder - m.waist}, 0);
+    // The face, in the head's space: the jaw hinged below the ear and the eye's iris, which
+    // turn and move as Character2D's jaw_open and look_at say.
+    const real_t neck = m.head_base - m.shoulder;
+    const Vec2 face_center{0.01F * s, neck + (m.head_height * 0.5F)};
+    const real_t hr = m.head_radius;
+    const real_t hh = m.head_height * 0.5F;
+    const Vec2 jaw_at{face_center.x - (hr * 0.15F), face_center.y - (hh * 0.1F)};
+    const Vec2 eye_at{face_center.x + (hr * 0.68F), face_center.y + (hh * 0.15F)};
+    bone("jaw", head, jaw_at, 0);
+    bone("eye", head, eye_at, 0);
     std::array<int, 2> upper_arm{};
     std::array<int, 2> lower_arm{};
     std::array<int, 2> hand{};
+    std::array<int, 2> fingers{};
+    std::array<int, 2> index_finger{};
+    std::array<int, 2> thumb{};
+    const real_t fr = m.forearm_radius;
     std::array<int, 2> upper_leg{};
     std::array<int, 2> lower_leg{};
     std::array<int, 2> foot{};
@@ -672,7 +800,21 @@ std::vector<CutoutBone> character_cutout(const CharacterRecipe& recipe) {
             bone("upper_arm" + tag, chest, {0.0F, m.shoulder - m.waist - (0.025F * s)}, z);
         lower_arm[side] = bone("lower_arm" + tag, upper_arm[side], {0.0F, -m.upper_arm}, z);
         hand[side] = bone("hand" + tag, lower_arm[side], {0.0F, -m.lower_arm}, z);
+        // The fingers from the palm's end, the index before the rest, and the thumb.
+        fingers[side] = bone("fingers" + tag, hand[side], {-fr * 0.15F, -m.hand * 0.42F}, z);
+        index_finger[side] = bone("index" + tag, hand[side], {fr * 0.55F, -m.hand * 0.42F}, z);
+        thumb[side] = bone("thumb" + tag, hand[side], {fr * 0.8F, -m.hand * 0.12F}, z);
     }
+    // The thumb leans forward from its base.
+    const auto thumb_points = [&](real_t grow) {
+        std::vector<Vec2> points = capsule_points(m.hand * 0.36F, (fr * 0.3F) + grow);
+        const auto [c, sn] = slash::cos_sin(kPi * 0.2F);
+        for (Vec2& point : points) {
+            point = {(point.x * c) - (point.y * sn), (point.x * sn) + (point.y * c)};
+        }
+        return points;
+    };
+
     ShapeSink sink{bones, {}};
     for (std::size_t i = 0; i < bones.size(); ++i) {
         sink.index[bones[i].name] = static_cast<int>(i);
@@ -682,6 +824,17 @@ std::vector<CutoutBone> character_cutout(const CharacterRecipe& recipe) {
     };
     const Vec4 skin = recipe.body.skin;
     const Vec4 far_skin = darker(skin, 0.82F);
+    // A hand's palm, fingers and thumb, grown by grow for a glove.
+    const auto add_hand = [&](std::size_t side, real_t grow, Vec4 tone) {
+        sink.add(name(hand[side]),
+                 ellipse_points({0.0F, -m.hand * 0.25F}, (fr * 1.1F) + grow,
+                                (m.hand * 0.28F) + grow, 10),
+                 tone);
+        sink.add(name(fingers[side]), capsule_points(m.hand * 0.45F, (fr * 0.55F) + grow), tone);
+        sink.add(name(index_finger[side]), capsule_points(m.hand * 0.48F, (fr * 0.3F) + grow),
+                 tone);
+        sink.add(name(thumb[side]), thumb_points(grow), tone);
+    };
     // The body.
     for (const std::size_t side : {std::size_t{0}, std::size_t{1}}) {
         const Vec4 tone = side == 0 ? far_skin : skin;
@@ -693,10 +846,7 @@ std::vector<CutoutBone> character_cutout(const CharacterRecipe& recipe) {
                  tone);
         sink.add(name(upper_arm[side]), capsule_points(m.upper_arm, m.arm_radius), tone);
         sink.add(name(lower_arm[side]), capsule_points(m.lower_arm, m.forearm_radius), tone);
-        sink.add(
-            name(hand[side]),
-            ellipse_points({0.0F, -m.hand * 0.45F}, m.forearm_radius * 1.1F, m.hand * 0.5F, 10),
-            tone);
+        add_hand(side, 0.0F, tone);
     }
     sink.add("pelvis",
              quad({-m.hip_depth * 1.1F, 0.04F * s}, {m.hip_depth, 0.04F * s},
@@ -712,10 +862,6 @@ std::vector<CutoutBone> character_cutout(const CharacterRecipe& recipe) {
                   {m.chest_depth * 0.6F, torso}, {-m.chest_depth, torso}),
              skin);
     // The head: the neck, the skull and the face, facing +x.
-    const real_t neck = m.head_base - m.shoulder;
-    const Vec2 face_center{0.01F * s, neck + (m.head_height * 0.5F)};
-    const real_t hr = m.head_radius;
-    const real_t hh = m.head_height * 0.5F;
     sink.add("head",
              quad({-m.neck_radius, -0.01F * s}, {m.neck_radius, -0.01F * s},
                   {m.neck_radius, neck + (0.02F * s)}, {-m.neck_radius, neck + (0.02F * s)}),
@@ -736,15 +882,29 @@ std::vector<CutoutBone> character_cutout(const CharacterRecipe& recipe) {
              ellipse_points({face_center.x + (hr * 0.62F), face_center.y + (hh * 0.15F)}, eye,
                             eye * 1.2F, 10),
              {0.95F, 0.95F, 0.95F, 1.0F});
+    sink.add("eye", ellipse_points({0.0F, 0.0F}, eye * 0.55F, eye * 0.8F, 8), recipe.face.eyes);
+    // The mouth: its inside on the head, which shows as the jaw opens, the upper lip, then the
+    // chin and lower lip on the jaw over it.
+    const auto on_jaw = [&](Vec2 p) { return Vec2{p.x - jaw_at.x, p.y - jaw_at.y}; };
     sink.add("head",
-             ellipse_points({face_center.x + (hr * 0.68F), face_center.y + (hh * 0.15F)},
-                            eye * 0.55F, eye * 0.8F, 8),
-             recipe.face.eyes);
+             ellipse_points({face_center.x + (hr * 0.72F), face_center.y - (hh * 0.53F)},
+                            hr * 0.24F, hh * 0.1F, 10),
+             {0.25F, 0.08F, 0.08F, 1.0F});
     sink.add("head",
              quad({face_center.x + (hr * 0.7F), face_center.y - (hh * 0.5F)},
                   {face_center.x + (hr * 0.96F), face_center.y - (hh * 0.5F)},
-                  {face_center.x + (hr * 0.96F), face_center.y - (hh * 0.56F)},
-                  {face_center.x + (hr * 0.7F), face_center.y - (hh * 0.56F)}),
+                  {face_center.x + (hr * 0.96F), face_center.y - (hh * 0.53F)},
+                  {face_center.x + (hr * 0.7F), face_center.y - (hh * 0.53F)}),
+             recipe.face.lips);
+    std::vector<Vec2> chin =
+        ellipse_points(on_jaw({face_center.x + (hr * 0.5F), face_center.y - (hh * 0.78F)}),
+                       hr * 0.46F, hh * 0.25F, 14);
+    sink.add("jaw", std::move(chin), skin);
+    sink.add("jaw",
+             quad(on_jaw({face_center.x + (hr * 0.7F), face_center.y - (hh * 0.53F)}),
+                  on_jaw({face_center.x + (hr * 0.96F), face_center.y - (hh * 0.53F)}),
+                  on_jaw({face_center.x + (hr * 0.96F), face_center.y - (hh * 0.56F)}),
+                  on_jaw({face_center.x + (hr * 0.7F), face_center.y - (hh * 0.56F)})),
              recipe.face.lips);
     const Vec4 hair = recipe.hair.color;
     if (recipe.face.beard != "none") {
@@ -753,11 +913,11 @@ std::vector<CutoutBone> character_cutout(const CharacterRecipe& recipe) {
                               ? Vec4{(hair.x + skin.x) * 0.5F, (hair.y + skin.y) * 0.5F,
                                      (hair.z + skin.z) * 0.5F, 1.0F}
                               : hair;
-        sink.add("head",
-                 {{face_center.x - (hr * 0.2F), face_center.y - (hh * 0.15F)},
-                  {face_center.x + (hr * 0.95F), face_center.y - (hh * 0.4F)},
-                  {face_center.x + (hr * 0.8F), face_center.y - hh - reach},
-                  {face_center.x + (hr * 0.1F), face_center.y - (hh * 0.85F)}},
+        sink.add("jaw",
+                 {on_jaw({face_center.x - (hr * 0.2F), face_center.y - (hh * 0.15F)}),
+                  on_jaw({face_center.x + (hr * 0.95F), face_center.y - (hh * 0.4F)}),
+                  on_jaw({face_center.x + (hr * 0.8F), face_center.y - hh - reach}),
+                  on_jaw({face_center.x + (hr * 0.1F), face_center.y - (hh * 0.85F)})},
                  tone);
     }
     // The hair's shape.
@@ -826,11 +986,7 @@ std::vector<CutoutBone> character_cutout(const CharacterRecipe& recipe) {
                     along(name(lower_arm[side]), m.lower_arm, m.forearm_radius, color);
                     break;
                 case Region::Hands:
-                    sink.add(name(hand[side]),
-                             ellipse_points({0.0F, -m.hand * 0.45F},
-                                            (m.forearm_radius * 1.1F) + out, (m.hand * 0.5F) + out,
-                                            10),
-                             color);
+                    add_hand(side, out, color);
                     break;
                 case Region::UpperLegs:
                     along(name(upper_leg[side]), m.upper_leg, m.thigh_radius, color);
@@ -1053,6 +1209,7 @@ void add_character_system(World& world) {
         if (auto* held = w.ecs().ctx().find<CutoutStateHolder>(); held != nullptr) {
             (*held)->built.clear();
             (*held)->warned.clear();
+            (*held)->posed.clear();
         }
     });
     world.add_system(
@@ -1062,10 +1219,20 @@ void add_character_system(World& world) {
             for (const entt::entity entity : w.ecs().view<const Character2D>()) {
                 characters.push_back(entity);
             }
+            bool looking = false;
             for (const entt::entity entity : characters) {
                 run_character(w, entity, *state);
+                looking = looking || w.ecs().get<const Character2D>(entity).look_at != entt::null;
+            }
+            const std::optional<Tree2D> tree =
+                looking ? std::optional<Tree2D>(std::in_place, w) : std::nullopt;
+            for (const entt::entity entity : characters) {
+                pose_character(w, entity, *state, tree ? &*tree : nullptr);
             }
             std::erase_if(state->built, [&](const auto& e) {
+                return !w.valid(e.first) || !w.ecs().all_of<Character2D>(e.first);
+            });
+            std::erase_if(state->posed, [&](const auto& e) {
                 return !w.valid(e.first) || !w.ecs().all_of<Character2D>(e.first);
             });
             std::erase_if(state->warned, [&](const auto& e) { return !w.valid(e.first); });

@@ -1,0 +1,17 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"character.place","params":{"recipe":"characters/ada.character.json","id":"ada","at":[0,0,0],"look_at":"lantern"}}
+{"jsonrpc":"2.0","id":3,"method":"model.inspect","params":{"id":"ada","brief":true}}
+{"jsonrpc":"2.0","id":4,"method":"skeleton.get","params":{"id":"ada","bones":["LeftEye","RightEye","Jaw"]}}
+{"jsonrpc":"2.0","id":5,"method":"component.set","params":{"id":"ada","components":{"AnimationPlayer":{"library":"characters/ada.character.json","animation":"fist_right"}}}}
+{"jsonrpc":"2.0","id":6,"method":"step","params":{"ticks":1}}
+{"jsonrpc":"2.0","id":7,"method":"skeleton.get","params":{"id":"ada","bones":["RightHand","RightIndexDistal","RightThumbDistal"]}}
+{"jsonrpc":"2.0","id":8,"method":"component.set","params":{"id":"ada","components":{"Skeleton3D":{"bone_rotations":{"RightHand":[0,-0.9,0]}}}}}
+{"jsonrpc":"2.0","id":9,"method":"skeleton.get","params":{"id":"ada","bones":["RightLowerArm","RightLowerArmTwist","RightHand"]}}
+{"jsonrpc":"2.0","id":10,"method":"frame.capture","params":{"points":[[80,30],[80,60]]}}
+{"jsonrpc":"2.0","id":11,"method":"character.place","params":{"recipe":"characters/ada.character.json","id":"ada_2d","at":[60,85],"pixels_per_meter":40,"look_at":"lantern"}}
+{"jsonrpc":"2.0","id":12,"method":"component.set","params":{"id":"ada_2d","components":{"Character2D":{"jaw_open":1,"hand_front":"point","hand_back":"grip"}}}}
+{"jsonrpc":"2.0","id":13,"method":"step","params":{"ticks":1}}
+{"jsonrpc":"2.0","id":14,"method":"entity.get","params":{"id":"ada_2d_jaw","components":["Transform2D"],"omit_defaults":true}}
+{"jsonrpc":"2.0","id":15,"method":"entity.get","params":{"id":"ada_2d_eye","components":["Transform2D"],"omit_defaults":true}}
+{"jsonrpc":"2.0","id":16,"method":"entity.get","params":{"id":"ada_2d_fingers_front","components":["Transform2D"],"omit_defaults":true}}
+{"jsonrpc":"2.0","id":17,"method":"entity.get","params":{"id":"ada_2d_index_front","components":["Transform2D"],"omit_defaults":true}}
