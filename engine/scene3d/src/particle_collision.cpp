@@ -887,7 +887,7 @@ ParticleDepthContact particle_depth_contact(const ParticleDepthView& view, Vec3 
     out.normal = detail::normalized(view.eye.basis(normal));
     // How far it is into the surface along the normal.
     const float into = d + radius - surface;
-    out.depth = std::max(0.0F, into * std::max(normal.z, 0.2F));
+    out.depth = std::max(0.0F, into * std::max(static_cast<float>(normal.z), 0.2F));
     return out;
 }
 

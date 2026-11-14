@@ -532,7 +532,7 @@ TEST_CASE("particle simulations don't depend on the number of threads") {
             "ParticleSimulation2D": {"neighbor_radius": 30, "separation": 1, "cohesion": 1,
                                      "curl_strength": 20}})");
         scene.step(90);
-        std::vector<float> out;
+        std::vector<slash::real_t> out;
         for (const std::string_view id : {"a", "b", "c"}) {
             for (const scene3d::Particle3D& p :
                  scene3d::particles_3d(scene.world, scene.world.find(id))) {
@@ -545,7 +545,7 @@ TEST_CASE("particle simulations don't depend on the number of threads") {
         }
         return out;
     };
-    const std::vector<float> alone = run(0);
+    const std::vector<slash::real_t> alone = run(0);
     CHECK(alone.size() > 100);
     CHECK(alone == run(3));
 }
