@@ -147,7 +147,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, physics_material, ragdoll, foliage, groom, damage, character, face, creature, vehicle, sdk, plugin)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, physics_material, ragdoll, foliage, groom, damage, character, face, creature, vehicle, vfx, sdk, plugin)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -157,7 +157,7 @@ Validate after editing a scene or prefab by hand, and format before committing o
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
-`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`, `.scatter.json`, `.physics_material.json`, `.ragdoll.json`, `.foliage.json`, `.groom.json`, `.damage.json`, `.character.json`, `.face.json`, `.creature.json` and `.vehicle.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
+`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`, `.scatter.json`, `.physics_material.json`, `.ragdoll.json`, `.foliage.json`, `.groom.json`, `.damage.json`, `.character.json`, `.face.json`, `.creature.json`, `.vehicle.json` and `.vfx.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -2459,6 +2459,40 @@ CPU as Godot's height field camera does, which the system draws again when the b
 steps after the camera with `follow_camera_enabled`. Both go to the devices in the step's words
 (`src/particle_layout_3d.cpp`; an SDF's distances as halves, read with filtering in code).
 `examples/particle-sdf-collision-3d` settles snow on a yard and sparks on a statue.
+
+Visual effects are `.vfx.json` recipes, after Unreal's Niagara systems (Godot has none):
+`slash/world/vfx.hpp` (`engine/world/src/vfx.cpp`, built with `-ffp-contract=off`;
+`$cli schema vfx`) lays layers of components (particles, decals, lights, sounds, screen flashes,
+`CameraShake`s, anything a scene holds) on one timeline, with `curves` that move their fields
+and values written as `Expression`s over the recipe's `parameters` (`vfx_value`,
+`vfx_components`, which also thins emitters by detail, and `vfx_curve_value`). The `vfx` system
+(priority 1090, added by `canvas::install`) plays each `VisualEffect3D` and `VisualEffect2D`: a
+layer plays as `<effect>_<layer>` with a `VfxPart`, a child of the effect (`world` layers left
+where they appeared), emitters stop and linger until their particles are gone, levels of detail
+come from the current camera's distance (`vfx_detail`), and `CameraShake`s shake the current
+cameras' offsets, taking off what they added (`camera_shake_offsets`). `vfx_cost` and
+`vfx_over_budget` hold a recipe to its `budget`. Damage profiles' `effects` name a `vfx`
+recipe that `leave_effects` plays where a hit lands. `vfx.play`, `vfx.state`, `vfx.check` and
+`vfx.preview` (a stage in a private `Session`, sampled as numbers and drawn into a PNG) are in
+`engine/command/src/vfx.cpp`. `examples/vfx-effects` blows up a barrel yard and slashes in 2D. Simulation stages run
+over CPU particles, after Niagara's: a `ParticleSimulation3D` or `ParticleSimulation2D` beside a
+`CPUParticles3D` or `CPUParticles2D` (`slash/world/particle_sim.hpp`,
+`engine/world/src/particle_sim.cpp`, built with `-ffp-contract=off`: `NeighborIndex` sorts points
+along a Morton curve, no grid; `curl_noise`; `run_stages` flocks, swirls, limits, collides through
+a `SimInputs::contact` callback, works out attributes as `Expression`s and fires events) is run by
+the `particle_simulation_3d` and `particle_simulation_2d` systems (priority 1105, in
+`engine/scene3d/src/particles.cpp` and `engine/canvas/src/particles.cpp`) over the emitters'
+slots, colliding with `GPUParticlesCollision*3D`s (`scene3d::particle_surroundings_3d`), what the
+current camera sees (`camera_depth_view`, `particle_depth_contact`) or 2D occluders
+(`canvas::particle_collision_shapes`), and spawning events' particles into other emitters as
+extra slots. `examples/particle-simulation` flocks fireflies and settles sand. Screen distortion
+is `ScreenDistortion3D` and `ScreenDistortion2D` (heat, shockwaves, ripples, lenses;
+`slash/canvas/distortion.hpp`, `src/distortion.cpp`): `CanvasRenderer` draws the world into
+`distortion_target_` and shows it through a grid whose texture coordinates `distortion_offset`
+moves, so devices need no shader of their own. The creature, vehicle, character and foliage
+recipes' `vfx` name an effect per world event; `play_hooks` in `engine/world/src/vfx.cpp` plays
+them (`play_vfx`) and keeps vehicles' `running` effects, and the foliage system emits
+`foliage_parted`. `examples/vfx-tool-effects` feeds a dog, runs a van and parts grass.
 
 ## Job system
 

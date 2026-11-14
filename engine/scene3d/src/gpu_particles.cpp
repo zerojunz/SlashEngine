@@ -1046,6 +1046,38 @@ void add_gpu_particles_system(world::World& world, ImageLoader images, SdfLoader
          .writes = {"GPUParticles3D", "Transform3D", "assets"}});
 }
 
+ParticleSurroundings3D particle_surroundings_3d(world::World& world, const world::Tree3D& tree) {
+    ParticleSurroundings3D out;
+    auto* system = world.ecs().ctx().find<std::shared_ptr<GpuParticleSystem3D>>();
+    if (system == nullptr) {
+        return out;
+    }
+    for (const FoundAttractor& attractor : (*system)->attractors(world, tree)) {
+        out.attractors.push_back(for_particles(attractor, nullptr));
+    }
+    for (const FoundCollider& collider : (*system)->colliders(world, tree)) {
+        out.colliders.push_back(collider_for_particles(collider, nullptr));
+    }
+    return out;
+}
+
+std::optional<ParticleDepthView> camera_depth_view(world::World& world, const world::Tree3D& tree,
+                                                   std::uint32_t width, std::uint32_t height) {
+    auto* system = world.ecs().ctx().find<std::shared_ptr<GpuParticleSystem3D>>();
+    if (system == nullptr || width == 0 || height == 0) {
+        return std::nullopt;
+    }
+    const entt::entity entity = world::current_camera(world, tree);
+    if (entity == entt::null) {
+        return std::nullopt;
+    }
+    std::vector<Problem> problems;
+    return particle_depth_view(world, tree, world.ecs().get<const world::Camera3D>(entity),
+                               tree.global(entity),
+                               static_cast<float>(width) / static_cast<float>(height), width,
+                               height, (*system)->models, problems);
+}
+
 std::optional<ParticleSteps3D> particle_steps_3d(const world::World& world, entt::entity entity) {
     const auto* system = world.ecs().ctx().find<std::shared_ptr<GpuParticleSystem3D>>();
     if (system == nullptr || !world.ecs().all_of<GPUParticles3D>(entity)) {

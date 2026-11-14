@@ -105,10 +105,13 @@ struct EffectSet {
     ParticleEffect dust;
     DecalEffect decal;
     SoundEffect sound;
+    // A .vfx.json effect played there, turned along the way out, its "strength" parameter set
+    // to how hard it was hit (0 to 1); "" for none.
+    std::string vfx;
     // Whether it leaves anything.
     [[nodiscard]] bool empty() const {
         return debris.amount <= 0 && dust.amount <= 0 && decal.texture.empty() &&
-               sound.stream.empty();
+               sound.stream.empty() && vfx.empty();
     }
 };
 

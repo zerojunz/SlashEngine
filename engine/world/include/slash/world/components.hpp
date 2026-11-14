@@ -3207,6 +3207,197 @@ struct DamageEffect {
 };
 SLASH_COMPONENT(DamageEffect, lifetime, body)
 
+// A visual effect playing a .vfx.json recipe at the entity's Transform3D, after Unreal's Niagara
+// components (Godot has none: its effects are scenes a script times). The "vfx" system makes
+// each layer an entity "<id>_<layer>" under it while the layer plays. Under a model, with a
+// BoneAttachment3D, it follows a bone or an attachment point.
+struct VisualEffect3D {
+    std::string recipe;     // a .vfx.json file
+    json::Value parameters; // values for the recipe's parameters by name, over its defaults
+    bool playing = true;
+    float time = 0.0F; // seconds into the effect, which the system moves on while it plays
+    float speed_scale = 1.0F;
+    float lod_bias = 1.0F;       // the camera's distance is divided by this before picking detail
+    int seed = 0;                // added to its particles' seeds
+    bool free_on_finish = false; // destroyed when it has finished, as a one-shot
+
+    friend bool operator==(const VisualEffect3D&, const VisualEffect3D&) = default;
+};
+SLASH_COMPONENT(VisualEffect3D, recipe, parameters, playing, time, speed_scale, lod_bias, seed,
+                free_on_finish)
+
+// A visual effect playing a .vfx.json recipe made for 2D at the entity's Transform2D: the same
+// as VisualEffect3D, in pixels.
+struct VisualEffect2D {
+    std::string recipe;
+    json::Value parameters;
+    bool playing = true;
+    float time = 0.0F;
+    float speed_scale = 1.0F;
+    float lod_bias = 1.0F;
+    int seed = 0;
+    bool free_on_finish = false;
+
+    friend bool operator==(const VisualEffect2D&, const VisualEffect2D&) = default;
+};
+SLASH_COMPONENT(VisualEffect2D, recipe, parameters, playing, time, speed_scale, lod_bias, seed,
+                free_on_finish)
+
+// A layer of a playing visual effect: which effect and layer it is, the cycle of a looping one,
+// and, once its time is over, how long it lingers for its particles to finish.
+struct VfxPart {
+    std::string effect;
+    std::string layer;
+    int cycle = 0;
+    float linger = -1.0F; // seconds left once over; below 0 while it plays
+
+    friend bool operator==(const VfxPart&, const VfxPart&) = default;
+};
+SLASH_COMPONENT(VfxPart, effect, layer, cycle, linger)
+
+// Shakes the current camera while enabled, as a camera shake in Unreal (Godot leaves it to
+// scripts): by strength (meters at a Camera3D's h_offset and v_offset, pixels at a Camera2D's
+// offset) at frequency, weaker with the camera's distance out to radius (0 reaches everywhere).
+// Shakes add up. Smooth noise of whole numbers moves it, so it repeats everywhere.
+struct CameraShake {
+    float strength = 0.1F;
+    float frequency = 12.0F; // shakes a second
+    float radius = 0.0F;
+    bool enabled = true;
+
+    friend bool operator==(const CameraShake&, const CameraShake&) = default;
+};
+SLASH_COMPONENT(CameraShake, strength, frequency, radius, enabled)
+
+// Bends what the screen shows round a place, as the distortion of Unreal's Niagara effects
+// (Godot draws it with a screen texture shader): the picture under radius moves by up to
+// strength pixels, as heat shimmer ("heat", waves that rise at speed), a ring that spreads
+// ("shockwave", at progress of the radius, width wide), rings that run out ("ripple") or a
+// bulging lens ("lens", or pulled in with a negative strength). The world and the canvases below
+// it bend; the world's controls and the canvases above don't. Smooth noise of whole numbers moves
+// heat, so it repeats everywhere.
+struct ScreenDistortion {
+    std::string mode = "heat"; // "heat", "shockwave", "ripple" or "lens"
+    float radius = 1.0F;       // meters in 3D, pixels of its canvas in 2D
+    float strength = 6.0F;     // the most the picture moves, in screen pixels
+    float progress = 0.5F;     // shockwave: where its ring is, as a share of radius
+    float width = 0.25F;       // shockwave: the ring's width, as a share of radius
+    float frequency = 3.0F;    // heat and ripple: waves across the radius
+    float speed = 1.0F;        // heat and ripple: waves a second
+    bool enabled = true;
+
+    friend bool operator==(const ScreenDistortion&, const ScreenDistortion&) = default;
+};
+SLASH_REFLECT(ScreenDistortion, mode, radius, strength, progress, width, frequency, speed, enabled)
+
+// A ScreenDistortion at the entity's Transform3D, its radius in meters seen by the current
+// Camera3D.
+struct ScreenDistortion3D : ScreenDistortion {
+    friend bool operator==(const ScreenDistortion3D&, const ScreenDistortion3D&) = default;
+};
+SLASH_COMPONENT(ScreenDistortion3D, mode, radius, strength, progress, width, frequency, speed,
+                enabled)
+
+// A ScreenDistortion at the entity's Transform2D, its radius in its canvas's pixels.
+struct ScreenDistortion2D : ScreenDistortion {
+    ScreenDistortion2D() { radius = 48.0F; }
+    friend bool operator==(const ScreenDistortion2D&, const ScreenDistortion2D&) = default;
+};
+SLASH_COMPONENT(ScreenDistortion2D, mode, radius, strength, progress, width, frequency, speed,
+                enabled)
+
+// A value each particle of a simulation carries, as Niagara's particle attributes: an Expression
+// over the particle (age, life, lifetime, speed, x, y, z, vx, vy, vz, neighbors, collided,
+// index, random, time and the attributes before it), worked out when the particle starts or,
+// with every_tick, each tick. "size" scales the particle, "alpha" fades it and "kill" above 0.5
+// ends it.
+struct ParticleAttribute {
+    std::string name;
+    std::string value; // an Expression, without the "="
+    bool every_tick = false;
+
+    friend bool operator==(const ParticleAttribute&, const ParticleAttribute&) = default;
+};
+SLASH_REFLECT(ParticleAttribute, name, value, every_tick)
+
+// What a simulation does when something happens to a particle, as Niagara's event handlers: on
+// "collision", "death" or "location" (being in the region, a box in 3D or a rect in 2D, in the
+// world), it starts count particles (each at chance) in the CPU particles emitter named by
+// spawn, where the particle is, with inherit_velocity of its velocity and a push of speed in
+// any direction, ends the particle with kill and, with a name, emits a "particle_event" world
+// event (at most 8 an emitter a tick).
+struct ParticleEventRule {
+    std::string on = "death";
+    std::string spawn;
+    std::string name;
+    Vec3 region_position;
+    Vec3 region_size;
+    int count = 1;
+    float chance = 1.0F;
+    float inherit_velocity = 0.0F;
+    float speed = 0.0F;
+    bool kill = false;
+
+    friend bool operator==(const ParticleEventRule&, const ParticleEventRule&) = default;
+};
+SLASH_REFLECT(ParticleEventRule, on, spawn, name, region_position, region_size, count, chance,
+              inherit_velocity, speed, kill)
+
+// Simulation stages over a CPU particles emitter on the same entity, after Unreal's Niagara
+// (Godot has none): the particles flock by their neighbors (found by sorting them along a
+// Morton curve, no grid), swirl in curl noise, slow by drag, keep between speed limits, collide
+// with the scene, carry attributes and start other particles by events. The same stages run in
+// 2D and 3D.
+struct ParticleSimulation {
+    std::string collide = "none";
+    std::string response = "bounce";
+    std::vector<ParticleAttribute> attributes;
+    std::vector<ParticleEventRule> events;
+    float neighbor_radius = 0.0F; // 0: no neighbor stage
+    float separation = 0.0F;
+    float cohesion = 0.0F;
+    float alignment = 0.0F;
+    float min_speed = 0.0F;
+    float max_speed = 0.0F; // 0: no limit
+    float drag = 0.0F;
+    float curl_strength = 0.0F;
+    float curl_scale = 1.0F;
+    float curl_speed = 0.0F;
+    float collision_radius = 0.05F;
+    float bounce = 0.3F;
+    float friction = 0.2F;
+    float depth_thickness = 0.5F;
+    float attractors = 0.0F; // 3D: how much GPUParticlesAttractor3Ds push the particles
+    int max_neighbors = 16;
+    bool enabled = true;
+
+    friend bool operator==(const ParticleSimulation&, const ParticleSimulation&) = default;
+};
+
+// Simulation stages over the entity's CPUParticles3D, in meters: it collides with
+// GPUParticlesCollision3Ds ("colliders"), with what the current Camera3D sees ("depth") or both.
+struct ParticleSimulation3D : ParticleSimulation {
+    friend bool operator==(const ParticleSimulation3D&, const ParticleSimulation3D&) = default;
+};
+SLASH_COMPONENT(ParticleSimulation3D, enabled, neighbor_radius, max_neighbors, separation, cohesion,
+                alignment, min_speed, max_speed, drag, curl_strength, curl_scale, curl_speed,
+                attractors, collide, response, collision_radius, bounce, friction, depth_thickness,
+                attributes, events)
+
+// Simulation stages over the entity's CPUParticles2D, in pixels: it collides with
+// LightOccluder2Ds and tile occluders with sdf_collision ("occluders").
+struct ParticleSimulation2D : ParticleSimulation {
+    ParticleSimulation2D() {
+        collision_radius = 2.0F;
+        curl_scale = 64.0F;
+    }
+
+    friend bool operator==(const ParticleSimulation2D&, const ParticleSimulation2D&) = default;
+};
+SLASH_COMPONENT(ParticleSimulation2D, enabled, neighbor_radius, max_neighbors, separation, cohesion,
+                alignment, min_speed, max_speed, drag, curl_strength, curl_scale, curl_speed,
+                collide, response, collision_radius, bounce, friction, attributes, events)
+
 // A part of a large world kept in a scene file of its own, loaded while a StreamingSource3D is
 // near it and unloaded when they have all gone, as Unreal's World Partition streams its cells.
 // Godot has none. The scene's root becomes the entity "<id>_scene", placed under this one.

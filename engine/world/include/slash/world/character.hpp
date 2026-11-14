@@ -14,6 +14,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <map>
 #include <memory>
 #include <span>
 #include <string>
@@ -78,6 +80,8 @@ struct CharacterRecipe {
     CharacterHair hair;
     std::vector<Garment> clothing;
     std::vector<CharacterProp> props;
+    // The effects it plays by the world events about it (slash/world/vfx.hpp's VfxHooks).
+    std::map<std::string, std::string, std::less<>> vfx;
 };
 
 // The JSON Schema of .character.json files.

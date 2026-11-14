@@ -17,6 +17,8 @@
 #include "slash/world/world.hpp"
 
 #include <array>
+#include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -166,6 +168,8 @@ struct VehicleRecipe {
     VehiclePhysics physics;
     VehicleDamage damage;
     VehicleDesign design;
+    // The effects it plays by the world events about it (slash/world/vfx.hpp's VfxHooks).
+    std::map<std::string, std::string, std::less<>> vfx;
 };
 
 // The JSON Schema of .vehicle.json files.

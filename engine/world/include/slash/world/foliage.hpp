@@ -21,6 +21,8 @@
 #include "slash/core/math.hpp"
 #include "slash/core/result.hpp"
 
+#include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -86,6 +88,8 @@ struct FoliageType {
     bool climbable = false;
     std::string harvest_item; // what harvesting one gives; "" can't be harvested
     int harvest_amount = 1;
+    // The effects it plays by the world events about it (slash/world/vfx.hpp's VfxHooks).
+    std::map<std::string, std::string, std::less<>> vfx;
 
     friend bool operator==(const FoliageType&, const FoliageType&) = default;
 };

@@ -1429,6 +1429,190 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                  "AudioStreamPlayer3D or AudioStreamPlayer2D).")
         .describe("lifetime", {.doc = "Seconds left before it goes; 0 keeps it.", .min = 0})
         .describe("body", {.doc = "The ID of the body it came from."});
+    registry.add<VisualEffect3D>()
+        .set_doc("A visual effect playing a .vfx.json recipe at the entity's Transform3D, after "
+                 "Unreal's Niagara components: each layer plays as an entity \"<id>_<layer>\" "
+                 "under it. Under a model with a BoneAttachment3D it follows a bone or point.")
+        .describe("recipe", {.doc = "The .vfx.json recipe it plays."})
+        .describe("parameters",
+                  {.doc = "Values for the recipe's parameters by name, over its defaults."})
+        .describe("playing", {.doc = "Whether its time moves on."})
+        .describe("time", {.doc = "Seconds into the effect.", .min = 0})
+        .describe("speed_scale", {.doc = "How fast its time moves.", .min = 0})
+        .describe("lod_bias",
+                  {.doc = "The camera's distance is divided by this before picking the level "
+                          "of detail.",
+                   .min = 0})
+        .describe("seed", {.doc = "Added to its particles' seeds."})
+        .describe("free_on_finish", {.doc = "Whether it is destroyed when it has finished."});
+    registry.add<VisualEffect2D>()
+        .set_doc("A visual effect playing a .vfx.json recipe made for 2D at the entity's "
+                 "Transform2D, as VisualEffect3D does in 3D.")
+        .describe("recipe", {.doc = "The .vfx.json recipe it plays, whose dimension is 2d."})
+        .describe("parameters",
+                  {.doc = "Values for the recipe's parameters by name, over its defaults."})
+        .describe("playing", {.doc = "Whether its time moves on."})
+        .describe("time", {.doc = "Seconds into the effect.", .min = 0})
+        .describe("speed_scale", {.doc = "How fast its time moves.", .min = 0})
+        .describe("lod_bias",
+                  {.doc = "The camera's distance is divided by this before picking the level "
+                          "of detail.",
+                   .min = 0})
+        .describe("seed", {.doc = "Added to its particles' seeds."})
+        .describe("free_on_finish", {.doc = "Whether it is destroyed when it has finished."});
+    registry.add<VfxPart>()
+        .set_doc("A layer of a playing visual effect, made and removed by the vfx system.")
+        .describe("effect", {.doc = "The ID of the effect it belongs to."})
+        .describe("layer", {.doc = "The recipe's layer it plays."})
+        .describe("cycle", {.doc = "The cycle of a looping effect it was made in.", .min = 0})
+        .describe("linger",
+                  {.doc = "Seconds left for its particles to finish once its time is over; "
+                          "below 0 while it plays."});
+    registry.add<CameraShake>()
+        .set_doc("Shakes the current Camera3D's h_offset and v_offset and Camera2D's offset "
+                 "while enabled, by smooth noise that repeats everywhere; shakes add up.")
+        .describe(
+            "strength",
+            {.doc = "How far it shakes: meters for a Camera3D, pixels for a Camera2D.", .min = 0})
+        .describe("frequency", {.doc = "Shakes a second.", .min = 0})
+        .describe("radius", {.doc = "The camera's distance at which it fades to nothing; 0 reaches "
+                                    "everywhere.",
+                             .min = 0})
+        .describe("enabled", {.doc = "Whether it shakes."});
+    const auto describe_distortion = [&](ComponentType& type, bool flat) {
+        type.describe("mode", {.doc = "How it bends the picture: heat (shimmer that rises), "
+                                      "shockwave (a ring at progress), ripple (rings that run "
+                                      "out) or lens (a bulge, or a pinch with a negative "
+                                      "strength).",
+                               .choices = {"heat", "shockwave", "ripple", "lens"}})
+            .describe("radius", {.doc = flat ? "How far it reaches, in its canvas's pixels."
+                                             : "How far it reaches, in meters.",
+                                 .min = 0})
+            .describe("strength", {.doc = "The most the picture moves, in screen pixels."})
+            .describe("progress", {.doc = "Shockwave: where its ring is, as a share of radius; "
+                                          "animate it from 0 to 1.",
+                                   .min = 0})
+            .describe("width",
+                      {.doc = "Shockwave: the ring's width, as a share of radius.", .min = 0})
+            .describe("frequency", {.doc = "Heat and ripple: waves across the radius.", .min = 0})
+            .describe("speed", {.doc = "Heat and ripple: waves a second."})
+            .describe("enabled", {.doc = "Whether it bends the picture."});
+    };
+    describe_distortion(
+        registry.add<ScreenDistortion3D>().set_doc(
+            "Bends what the screen shows round the entity's place as the current Camera3D sees "
+            "it: heat shimmer, a shockwave, ripples or a lens, as Niagara's distortion. The "
+            "world and the canvases below it bend, the controls over it don't."),
+        false);
+    describe_distortion(
+        registry.add<ScreenDistortion2D>().set_doc(
+            "Bends what the screen shows round the entity's place in its canvas: heat shimmer, "
+            "a shockwave, ripples or a lens. The world and the canvases below it bend, the "
+            "controls over it don't."),
+        true);
+    const auto describe_simulation = [&](ComponentType& type, bool flat) {
+        const char* unit = flat ? "pixels" : "meters";
+        type.describe("enabled", {.doc = "Whether the stages run."})
+            .describe("neighbor_radius",
+                      {.doc = std::string("How far, in ") + unit +
+                              ", a particle feels its neighbors; 0 turns the neighbor stage off.",
+                       .min = 0})
+            .describe("max_neighbors",
+                      {.doc = "The most neighbors each particle feels, nearest first.",
+                       .min = 1,
+                       .max = 256})
+            .describe("separation",
+                      {.doc = "How hard particles push away from neighbors closer than the "
+                              "radius, per second.",
+                       .min = 0})
+            .describe("cohesion", {.doc = "How hard particles pull toward their neighbors' "
+                                          "center, per second; below 0 they spread out."})
+            .describe("alignment",
+                      {.doc = "How fast particles take on their neighbors' average velocity, "
+                              "per second.",
+                       .min = 0})
+            .describe("min_speed", {.doc = "The slowest a moving particle goes.", .min = 0})
+            .describe("max_speed",
+                      {.doc = "The fastest a particle goes; 0 for no limit.", .min = 0})
+            .describe("drag", {.doc = "Of its velocity a particle loses each second.", .min = 0})
+            .describe("curl_strength",
+                      {.doc = "How hard curl noise swirls the particles, a speed per second."})
+            .describe("curl_scale",
+                      {.doc = std::string("How wide the noise's swirls are, in ") + unit + ".",
+                       .min = 0.0001})
+            .describe("curl_speed", {.doc = "How fast the noise moves along, in swirls a second."})
+            .describe(
+                "collide",
+                {.doc = flat ? "What the particles collide with: none, or the "
+                               "LightOccluder2Ds and tile occluders with sdf_collision."
+                             : "What the particles collide with: none, the "
+                               "GPUParticlesCollision3Ds (colliders), what the current "
+                               "Camera3D sees (depth) or both.",
+                 .choices = flat ? std::vector<std::string>{"none", "occluders"}
+                                 : std::vector<std::string>{"none", "colliders", "depth", "both"}})
+            .describe("response", {.doc = "What a particle does when it touches: bounce off, "
+                                          "stick where it is or die.",
+                                   .choices = {"bounce", "stick", "kill"}})
+            .describe("collision_radius",
+                      {.doc = std::string("How near, in ") + unit +
+                              ", a particle comes to a surface before it touches.",
+                       .min = 0})
+            .describe("bounce", {.doc = "Of its speed into a surface a bouncing particle keeps.",
+                                 .min = 0,
+                                 .max = 1})
+            .describe("friction", {.doc = "Of its speed along a surface a touching particle loses.",
+                                   .min = 0,
+                                   .max = 1})
+            .describe("attributes", {.doc = "Values each particle carries, worked out in order."})
+            .describe("attributes[].name",
+                      {.doc = "Its name; size, alpha and kill change the particle."})
+            .describe("attributes[].value",
+                      {.doc = "An Expression over age, life, lifetime, speed, x, y, z, vx, vy, "
+                              "vz, neighbors, collided, index, random, time and the attributes "
+                              "before it."})
+            .describe("attributes[].every_tick",
+                      {.doc = "Whether it is worked out each tick rather than once at the start."})
+            .describe("events", {.doc = "What happens when particles collide, die or arrive."})
+            .describe("events[].on",
+                      {.doc = "What sets it off.", .choices = {"collision", "death", "location"}})
+            .describe("events[].spawn",
+                      {.doc = "The ID of the CPU particles emitter whose particles it starts; "
+                              "empty for none."})
+            .describe("events[].name",
+                      {.doc = "A particle_event world event's name; empty for none."})
+            .describe("events[].region_position",
+                      {.doc = "The low corner of the region a location event fires in, in the "
+                              "world."})
+            .describe("events[].region_size", {.doc = "The region's size."})
+            .describe("events[].count", {.doc = "Particles it starts each time.", .min = 0})
+            .describe("events[].chance", {.doc = "How often it fires, 0 to 1.", .min = 0, .max = 1})
+            .describe("events[].inherit_velocity",
+                      {.doc = "Of the particle's velocity those it starts begin with."})
+            .describe("events[].speed",
+                      {.doc = "How fast those it starts are pushed, each its own way.", .min = 0})
+            .describe("events[].kill", {.doc = "Whether the particle dies."});
+        if (!flat) {
+            type.describe("attractors",
+                          {.doc = "How much GPUParticlesAttractor3Ds push the particles; 0 for "
+                                  "not at all."})
+                .describe("depth_thickness",
+                          {.doc = "How far, in meters, behind what the camera sees a particle "
+                                  "still collides with it.",
+                           .min = 0});
+        }
+    };
+    describe_simulation(
+        registry.add<ParticleSimulation3D>().set_doc(
+            "Simulation stages over the entity's CPUParticles3D, after Niagara's: flocking by "
+            "neighbors found along a Morton curve, curl noise, drag, speed limits, collision with "
+            "GPUParticlesCollision3Ds or what the camera sees, attributes and events."),
+        false);
+    describe_simulation(
+        registry.add<ParticleSimulation2D>().set_doc(
+            "Simulation stages over the entity's CPUParticles2D, after Niagara's: flocking by "
+            "neighbors found along a Morton curve, curl noise, drag, speed limits, collision with "
+            "occluders, attributes and events."),
+        true);
     registry.add<StreamedScene3D>()
         .set_doc("A part of a large world kept in a scene file of its own, loaded as the entity "
                  "\"<id>_scene\" under this one while a StreamingSource3D is within load_radius "

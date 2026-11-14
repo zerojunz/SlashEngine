@@ -566,9 +566,9 @@ float sample_heights(const ParticleHeightField3D& field, float u, float v) {
 
 // What a step's attractors push a particle at pos with, as particles.glsl's attractor loop (its
 // mass is 1).
-Vec3f attractor_force(const ParticleStep3D& step, Vec3f pos) {
+Vec3f attractor_force(std::span<const ParticleAttractor3D> attractors, Vec3f pos) {
     Vec3f force;
-    for (const ParticleAttractor3D& attractor : step.attractors) {
+    for (const ParticleAttractor3D& attractor : attractors) {
         const Affine place = Affine::of(attractor.transform);
         const Vec3f rel = pos - place.origin;
         const Vec3f local{dot(rel, place.x), dot(rel, place.y), dot(rel, place.z)};
@@ -629,11 +629,11 @@ float collision_size(const Particle3D& particle, const ParticleProcess3D& p,
 
 // particles.glsl's collider loop: each sphere, box, SDF and height field the particle at pos of
 // the given size touches, their ways out added up so it leaves them all.
-Contact collider_contact(const ParticleStep3D& step, Vec3f pos, float size) {
+Contact collider_contact(std::span<const ParticleCollider3D> colliders, Vec3f pos, float size) {
     // Particles just touching a collider count as touching it.
     constexpr float kEpsilon = 0.001F;
     Contact contact;
-    for (const ParticleCollider3D& collider : step.colliders) {
+    for (const ParticleCollider3D& collider : colliders) {
         const Affine place = Affine::of(collider.transform);
         const Vec3f rel = pos - place.origin;
         Vec3f normal;
@@ -802,7 +802,7 @@ void process(Particle3D& particle, const ParticleProcess3D& p, const ParticleSte
         }
     }
     if (p.attractor_interaction && !step.attractors.empty()) {
-        force = force + attractor_force(step, origin);
+        force = force + attractor_force(step.attractors, origin);
     }
     if (p.disable_z) {
         force.z = 0.0F;
@@ -981,7 +981,8 @@ void step_particle(Particle3D& particle, std::uint32_t index, std::uint32_t tota
     }
     Contact contact;
     if (active && p.collision_mode != ParticleCollision::Disabled && !step.colliders.empty()) {
-        contact = collider_contact(step, xyz(particle.origin), collision_size(particle, p, step));
+        contact = collider_contact(step.colliders, xyz(particle.origin),
+                                   collision_size(particle, p, step));
     }
     if (active) {
         process(particle, p, step, number, delta, contact, active);
@@ -1211,5 +1212,15 @@ Result<std::span<const Particle3D>> ParticleStore3D::particles(Particles3DId par
 }
 
 } // namespace detail
+
+ParticleContact3D particle_contact_3d(std::span<const ParticleCollider3D> colliders, Vec3f position,
+                                      float size) {
+    const Contact contact = collider_contact(colliders, position, size);
+    return {.collided = contact.collided, .normal = contact.normal, .depth = contact.depth};
+}
+
+Vec3f particle_attraction_3d(std::span<const ParticleAttractor3D> attractors, Vec3f position) {
+    return attractor_force(attractors, position);
+}
 
 } // namespace slash::render
