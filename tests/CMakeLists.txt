@@ -74,6 +74,9 @@ add_executable(slash_tests
     test_csg.cpp
     test_debug.cpp
     test_decal.cpp
+    test_damage.cpp
+    test_damage_effects.cpp
+    test_deform.cpp
     test_destruction.cpp
     test_streaming.cpp
     test_virtual_geometry.cpp

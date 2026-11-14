@@ -1,0 +1,62 @@
+{
+  "entities": {
+    "crate": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [64.0, 64.0]
+        },
+        "Destructible2D": {
+          "profile": "profiles/crate.damage.json"
+        },
+        "Polygon2D": {
+          "color": [0.6, 0.4, 0.2, 1.0],
+          "polygon": [
+            [-32.0, -32.0],
+            [32.0, -32.0],
+            [32.0, 32.0],
+            [-32.0, 32.0]
+          ]
+        },
+        "StaticBody2D": {},
+        "Transform2D": {
+          "position": [-60.0, 58.0]
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [800.0, 20.0]
+        },
+        "StaticBody2D": {},
+        "Transform2D": {
+          "position": [0.0, 100.0]
+        }
+      }
+    },
+    "old_crate": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [64.0, 64.0]
+        },
+        "Destructible2D": {
+          "profile": "profiles/old_crate.damage.json"
+        },
+        "Polygon2D": {
+          "color": [0.5, 0.35, 0.2, 1.0],
+          "polygon": [
+            [-32.0, -32.0],
+            [32.0, -32.0],
+            [32.0, 32.0],
+            [-32.0, 32.0]
+          ]
+        },
+        "StaticBody2D": {},
+        "Transform2D": {
+          "position": [60.0, 58.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

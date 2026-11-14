@@ -1715,13 +1715,36 @@ Result<render::MeshId> Renderer::soft_mesh(const std::string& key, const Primiti
         vertices[i].normal = {static_cast<float>(normal.x), static_cast<float>(normal.y),
                               static_cast<float>(normal.z)};
     }
+    // A tear takes triangles out: the mesh is made again with the indices left.
+    if (soft.id != render::MeshId::None && soft.torn != pose->torn) {
+        device_->destroy_mesh(soft.id);
+        soft.id = render::MeshId::None;
+    }
     if (soft.id == render::MeshId::None) {
-        auto made = device_->create_mesh(vertices, data.value().indices);
+        std::vector<std::uint32_t> indices;
+        const std::vector<std::uint32_t>& all = data.value().indices;
+        indices.reserve(all.size());
+        auto torn = pose->torn.begin();
+        for (std::size_t i = 0; i + 2 < all.size(); i += 3) {
+            const auto triangle = static_cast<int>(i / 3);
+            while (torn != pose->torn.end() && *torn < triangle) {
+                ++torn;
+            }
+            if (torn == pose->torn.end() || *torn != triangle) {
+                indices.insert(indices.end(), {all[i], all[i + 1], all[i + 2]});
+            }
+        }
+        if (indices.empty()) {
+            skinned_.erase(key);
+            return render::MeshId::None; // torn to nothing: nothing draws
+        }
+        auto made = device_->create_mesh(vertices, indices);
         if (!made) {
             skinned_.erase(key);
             return made.error();
         }
         soft.id = made.value();
+        soft.torn = pose->torn;
     } else if (auto updated = device_->update_mesh(soft.id, vertices); !updated) {
         return updated.error();
     }
@@ -1757,13 +1780,36 @@ Result<render::MeshId> Renderer::cloth_mesh(const std::string& key, const ModelS
         skinned_vertices_[i].normal = {static_cast<float>(normal.x), static_cast<float>(normal.y),
                                        static_cast<float>(normal.z)};
     }
+    // A tear takes triangles out: the mesh is made again with the indices left.
+    if (cloth.id != render::MeshId::None && cloth.torn != where.torn) {
+        device_->destroy_mesh(cloth.id);
+        cloth.id = render::MeshId::None;
+    }
     if (cloth.id == render::MeshId::None) {
-        auto made = device_->create_mesh(skinned_vertices_, surface.indices);
+        std::vector<std::uint32_t> indices;
+        indices.reserve(surface.indices.size());
+        auto torn = where.torn.begin();
+        for (std::size_t i = 0; i + 2 < surface.indices.size(); i += 3) {
+            const auto triangle = static_cast<int>(i / 3);
+            while (torn != where.torn.end() && *torn < triangle) {
+                ++torn;
+            }
+            if (torn == where.torn.end() || *torn != triangle) {
+                indices.insert(indices.end(), {surface.indices[i], surface.indices[i + 1],
+                                               surface.indices[i + 2]});
+            }
+        }
+        if (indices.empty()) {
+            skinned_.erase(key);
+            return render::MeshId::None; // torn to nothing: nothing draws
+        }
+        auto made = device_->create_mesh(skinned_vertices_, indices);
         if (!made) {
             skinned_.erase(key);
             return made.error();
         }
         cloth.id = made.value();
+        cloth.torn = where.torn;
     } else if (auto updated = device_->update_mesh(cloth.id, skinned_vertices_); !updated) {
         return updated.error();
     }
@@ -2051,6 +2097,9 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
                 problems_.push_back({entity, std::string(kMeshField), made.error().message});
                 continue;
             }
+            if (made.value() == render::MeshId::None) {
+                continue; // cloth torn to nothing
+            }
             Draw draw;
             draw.mesh = made.value();
             draw.entity = entity;
@@ -2203,27 +2252,26 @@ void Renderer::face_camera(const world::StandardMaterial3D& standard, const worl
 void Renderer::add_piece(const world::World& world, entt::entity entity,
                          const world::MeshInstance3D& instance, const world::Affine3D& place,
                          render::ShadowCasting casting) {
-    const auto& piece = world.ecs().get<const world::FracturePiece3D>(entity);
-    auto fracture = fracture_of(world, entity, piece.pieces, piece.seed);
-    if (!fracture) {
-        problems_.push_back({entity, "/components/MeshInstance3D", fracture.error().message});
+    auto damaged = damaged_piece_of(world, entity);
+    if (!damaged) {
+        // A piece its cuts don't make is a problem at them; the rest at what it draws.
+        std::string path = "/components/MeshInstance3D";
+        if (const auto* piece = world.ecs().try_get<const world::FracturePiece3D>(entity);
+            piece != nullptr && damaged.error().message.starts_with("its mesh breaks into")) {
+            path = piece->cuts.empty() ? "/components/FracturePiece3D/index"
+                                       : "/components/FracturePiece3D/cuts";
+        }
+        problems_.push_back({entity, std::move(path), damaged.error().message});
         return;
     }
-    const std::vector<FracturePiece>& pieces = fracture.value()->pieces;
-    if (piece.index < 0 || static_cast<std::size_t>(piece.index) >= pieces.size()) {
-        problems_.push_back({entity, "/components/FracturePiece3D/index",
-                             "its mesh breaks into " + std::to_string(pieces.size()) +
-                                 " pieces, so there is no piece " + std::to_string(piece.index)});
-        return;
-    }
-    const CsgMesh& mesh = pieces[static_cast<std::size_t>(piece.index)].mesh;
+    const CsgMesh& mesh = damaged.value()->mesh;
     const std::array<float, 16> transform = place.matrix();
     const std::string prefix = "piece:" + std::to_string(mesh.version) + "/";
     for (std::size_t i = 0; i < mesh.surfaces.size(); ++i) {
         const MeshSurface& surface = mesh.surfaces[i];
         auto made = kept_mesh(prefix + std::to_string(i), surface.vertices, surface.indices);
         if (!made) {
-            problems_.push_back({entity, "/components/FracturePiece3D", made.error().message});
+            problems_.push_back({entity, "/components/MeshInstance3D", made.error().message});
             continue;
         }
         Draw draw;
@@ -4076,7 +4124,7 @@ std::optional<Frame3D> Renderer::prepare(
             }
             casting = render::ShadowCasting::ShadowsOnly;
         }
-        if (ecs.all_of<world::FracturePiece3D>(entity)) {
+        if (draws_damaged(world, entity)) {
             add_piece(world, entity, instance, global(entity), casting);
             continue;
         }
@@ -4107,6 +4155,9 @@ std::optional<Frame3D> Renderer::prepare(
             auto moved = soft_mesh("soft:" + std::string(world.id_of(entity)), *primitive, soft);
             if (!moved) {
                 problems_.push_back({entity, "/components/SoftBody3D", moved.error().message});
+                continue;
+            }
+            if (moved.value() == render::MeshId::None) {
                 continue;
             }
             draw.mesh = moved.value();

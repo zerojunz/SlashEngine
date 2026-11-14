@@ -1569,6 +1569,17 @@ struct TerrainTexture {
 };
 SLASH_REFLECT(TerrainTexture, albedo_bump, normal_roughness, uv_scale, colormap_opacity)
 
+// A crater an explosion left in an HTerrain (slash/world/damage.hpp's carve): a bowl around a
+// place on the map, its rim thrown up around it, over the heightmap's heights.
+struct TerrainCrater {
+    Vec2 center;         // cells along x and z from the map's corner
+    float radius = 4.0F; // cells
+    float depth = 1.0F;  // meters at its middle, before map_scale's y
+
+    friend bool operator==(const TerrainCrater&, const TerrainCrater&) = default;
+};
+SLASH_REFLECT(TerrainCrater, center, radius, depth)
+
 // A heightmap terrain, as the HTerrain plugin for Godot (Godot has no terrain node of its own):
 // resolution x resolution heights, one a cell apart, in the entity's Transform3D space from its
 // origin toward +X and +Z (or around it, centered), scaled by map_scale. The heightmap is a 16-bit
@@ -1595,15 +1606,16 @@ struct HTerrain {
     std::uint32_t collision_mask = 1;
     float friction = 1.0F; // its physics material's
     float bounce = 0.0F;
-    std::uint32_t render_layers = 1; // as MeshInstance3D's layers
-    std::string cast_shadow = "on";  // as MeshInstance3D's
+    std::uint32_t render_layers = 1;    // as MeshInstance3D's layers
+    std::string cast_shadow = "on";     // as MeshInstance3D's
+    std::vector<TerrainCrater> craters; // cut into its heights, oldest first
 
     friend bool operator==(const HTerrain&, const HTerrain&) = default;
 };
 SLASH_COMPONENT(HTerrain, heightmap, resolution, height_range, splatmap, colormap, textures,
                 depth_blending, specular, map_scale, centered, chunk_size, lod_scale,
                 collision_enabled, collision_layer, collision_mask, friction, bounce, render_layers,
-                cast_shadow)
+                cast_shadow, craters)
 
 // Ties an entity to the storyboard entries it stands for, such as the character it plays or the
 // place it is, so a brief for the scene includes them and checks catch a misspelled ID.
@@ -2682,6 +2694,10 @@ struct Cloth2D {
     bool visible = true;
     int light_mask = 1;
     std::string texture_filter = "inherit"; // "inherit", "linear" or "nearest"
+    // How many times its length an edge stretches before it tears; 0 never.
+    float tear_stretch = 0.0F;
+    // The edges torn, by number (world::cloth_grid_2d's order), lowest first.
+    std::vector<int> torn;
 
     friend bool operator==(const Cloth2D&, const Cloth2D&) = default;
 };
@@ -2689,7 +2705,7 @@ SLASH_COMPONENT(Cloth2D, texture, color, size, offset, columns, rows, max_distan
                 max_distance_map, gradient, stiffness, bend_stiffness, long_range_attachment,
                 total_mass, gravity_scale, damping_coefficient, drag_coefficient,
                 simulation_precision, collision_mask, point_radius, z_index, z_as_relative, visible,
-                light_mask, texture_filter)
+                light_mask, texture_filter, tear_stretch, torn)
 
 // Hair grown along a line in its entity's space, for sprites and Skeleton2D bones: groom names a
 // 2D .groom.json file. Its guide strands are carried by the entity's global transform and
@@ -2978,13 +2994,17 @@ struct SoftBody3D {
     float drag_coefficient = 0.0F; // how hard WindSource3Ds' wind pushes its faces
     bool ray_pickable = true;
     std::vector<SoftBodyPin> pinned_points;
+    // How many times its length an edge stretches before the faces along it tear; 0 never.
+    float tear_stretch = 0.0F;
+    // The mesh's triangles torn away, by number in its index order, lowest first.
+    std::vector<int> torn;
 
     friend bool operator==(const SoftBody3D&, const SoftBody3D&) = default;
 };
 SLASH_COMPONENT(SoftBody3D, collision_layer, collision_mask, parent_collision_ignore,
                 simulation_precision, total_mass, linear_stiffness, shrinking_factor,
                 pressure_coefficient, damping_coefficient, drag_coefficient, ray_pickable,
-                pinned_points)
+                pinned_points, tear_stretch, torn)
 
 // Simulates part of the model its entity's MeshInstance3D draws as cloth on its skin, as Unreal's
 // Chaos Cloth (Godot has none): the surfaces drawn with the material named section become a
@@ -3014,13 +3034,18 @@ struct Cloth3D {
     int simulation_precision = 5;
     std::uint32_t collision_layer = 1;
     std::uint32_t collision_mask = 1;
+    // How many times its length an edge stretches before the faces along it tear; 0 never.
+    float tear_stretch = 0.0F;
+    // The section's triangles torn away, by number in its surfaces' index order, lowest first.
+    std::vector<int> torn;
 
     friend bool operator==(const Cloth3D&, const Cloth3D&) = default;
 };
 SLASH_COMPONENT(Cloth3D, section, max_distance, max_distance_map, gradient, vertex_color_channel,
                 backstop_distance, backstop_radius, stiffness, bend_stiffness,
                 long_range_attachment, total_mass, gravity_scale, damping_coefficient,
-                drag_coefficient, simulation_precision, collision_layer, collision_mask)
+                drag_coefficient, simulation_precision, collision_layer, collision_mask,
+                tear_stretch, torn)
 
 // Hair or fur grown over the model its entity's MeshInstance3D draws, as Unreal's Groom
 // component: groom names a .groom.json file saying how its strands grow, draw and move. A few
@@ -3038,19 +3063,88 @@ struct HairInstance3D {
 };
 SLASH_COMPONENT(HairInstance3D, groom, section, visible, simulate, collide, cast_shadow)
 
+// A dent pushed into a Destructible3D's mesh, in the mesh's space: the surface within radius of
+// at goes in along direction, depth at the middle and smoothly less to nothing at the edge.
+struct MeshDent {
+    Vec3 at;
+    Vec3 direction{0.0F, 0.0F, -1.0F};
+    float radius = 0.25F;
+    float depth = 0.0F;
+
+    friend bool operator==(const MeshDent&, const MeshDent&) = default;
+};
+SLASH_REFLECT(MeshDent, at, direction, radius, depth)
+
+// What a hole or blast took out of a Destructible3D's mesh, in the mesh's space: everything
+// within radius of the line from `from` to `to`, a sphere where they are the same.
+struct MeshCarve {
+    Vec3 from;
+    Vec3 to;
+    float radius = 0.1F;
+
+    friend bool operator==(const MeshCarve&, const MeshCarve&) = default;
+};
+SLASH_REFLECT(MeshCarve, from, to, radius)
+
+// One cut of a fracture (slash/world/damage.hpp's fracture_sites): cells grown around points
+// a pattern places in the bounds of what is cut, and which of its pieces is meant (a piece's
+// own cut, or the one a later cut cuts again).
+struct FractureCut {
+    // "voronoi" (points anywhere), "impact" (fine near at, coarse away), "radial" (rings and
+    // spokes around at, as glass), "splinters" (long along the longest axis, as wood), "slices"
+    // (slabs across it) or "clusters" (chunks of small cells, as stone crumbles)
+    std::string pattern = "voronoi";
+    int cells = 8;
+    std::uint32_t seed = 0;
+    Vec3 at;           // where it was hit, in the mesh's space (2D: the body's, in pixels)
+    float fine = 0.0F; // how far from at the fine pieces reach; 0: a quarter of the size
+    int index = 0;     // which of its pieces
+    // What damage did to what it cut before it was cut, in the mesh's space.
+    std::vector<MeshDent> dents;
+    std::vector<MeshCarve> carves;
+
+    friend bool operator==(const FractureCut&, const FractureCut&) = default;
+};
+SLASH_REFLECT(FractureCut, pattern, cells, seed, at, fine, index, dents, carves)
+
+// A piece of a broken body joined to another, as Chaos's connection graph: what it shares with
+// it holds until the load through it is more than its profile's strength times area.
+struct FractureLink {
+    std::string piece; // the other piece's ID
+    float area = 0.0F; // square meters of the face they share (2D: pixels of the edge)
+
+    friend bool operator==(const FractureLink&, const FractureLink&) = default;
+};
+SLASH_REFLECT(FractureLink, piece, area)
+
 // Breaks a body into pieces, as Unreal's geometry collections (Godot has no destruction): the
-// mesh its entity's MeshInstance3D draws is cut into Voronoi cells around seeded points, and
-// when an impact is hard enough, or physics.break says so, the entity is replaced by a rigid
-// body per piece (FracturePiece3D) moving as it moved. Its entity is a StaticBody3D or a
-// RigidBody3D.
+// mesh its entity's MeshInstance3D draws is cut into cells, and when its health runs out (an
+// impact, damage.apply, a strain field) or physics.break says so, the entity is replaced by a
+// rigid body per piece (FracturePiece3D) moving as it moved. With a profile (a .damage.json
+// file, slash/world/damage.hpp) it takes damage as its material does, changes its looks by its
+// damage states, breaks where it was hit by its fracture pattern, breaks again into smaller
+// pieces and, when connected, stands as linked pieces that fall when what holds them goes. Its
+// entity is a StaticBody3D or a RigidBody3D.
 struct Destructible3D {
     int pieces = 8;                // cells the mesh is cut into; empty ones are left out
     std::uint32_t seed = 0;        // picks the cells' points
     float damage_threshold = 0.0F; // kilogram-meters per second of one impact; 0: never by impact
     float mass = 1.0F;             // kilograms the pieces share when the entity isn't a RigidBody3D
     float debris_lifetime = 0.0F;  // seconds the pieces stay; 0 keeps them
+    std::string profile;           // a .damage.json file; "" breaks as the fields above say
+    json::Value overrides;         // a JSON Merge Patch over the profile
+    float health = -1.0F;          // what is left; below 0: the profile's full health
+    int state = 0;                 // the damage state it has reached (0: none)
+    int level = 0;                 // how many times what it is a piece of has broken
+    // What damage did to its mesh before it broke, oldest first; its pieces are cut from the
+    // mesh as they leave it.
+    std::vector<MeshDent> dents;
+    std::vector<MeshCarve> carves;
+
+    friend bool operator==(const Destructible3D&, const Destructible3D&) = default;
 };
-SLASH_COMPONENT(Destructible3D, pieces, seed, damage_threshold, mass, debris_lifetime)
+SLASH_COMPONENT(Destructible3D, pieces, seed, damage_threshold, mass, debris_lifetime, profile,
+                overrides, health, state, level, dents, carves)
 
 // One piece of a broken Destructible3D: the entity's MeshInstance3D draws only this cell of its
 // mesh's fracture, and its CollisionShape3D is the cell's hull.
@@ -3059,8 +3153,59 @@ struct FracturePiece3D {
     std::uint32_t seed = 0;
     int index = 0;         // which cell
     float lifetime = 0.0F; // seconds before it goes; 0 keeps it
+    // The cuts that made it, first to last, each naming the piece the next one cut (the last
+    // names this one); empty: one voronoi cut of pieces cells by seed, piece index.
+    std::vector<FractureCut> cuts;
+    std::string group;               // the body it broke from, whose linked pieces stand together
+    std::vector<FractureLink> links; // the pieces it is joined to, while it stands
+    bool anchored = false;           // held in place, as the ground holds what stands on it
+
+    friend bool operator==(const FracturePiece3D&, const FracturePiece3D&) = default;
 };
-SLASH_COMPONENT(FracturePiece3D, pieces, seed, index, lifetime)
+SLASH_COMPONENT(FracturePiece3D, pieces, seed, index, lifetime, cuts, group, links, anchored)
+
+// Breaks a 2D body into pieces, as Destructible3D does in 3D: its outline (a CollisionPolygon2D,
+// else its CollisionShape2D, else its Sprite2D's rectangle) is cut into cells, and each piece is
+// a RigidBody2D with a CollisionPolygon2D and a Polygon2D drawing that part of its texture
+// (FracturePiece2D). Its entity is a StaticBody2D or a RigidBody2D.
+struct Destructible2D {
+    int pieces = 8;
+    std::uint32_t seed = 0;
+    float damage_threshold = 0.0F; // kilogram-pixels per second of one impact; 0: never by impact
+    float mass = 1.0F;             // kilograms the pieces share when the entity isn't a RigidBody2D
+    float debris_lifetime = 0.0F;
+    std::string profile; // a .damage.json file
+    json::Value overrides;
+    float health = -1.0F;
+    int state = 0;
+    int level = 0;
+
+    friend bool operator==(const Destructible2D&, const Destructible2D&) = default;
+};
+SLASH_COMPONENT(Destructible2D, pieces, seed, damage_threshold, mass, debris_lifetime, profile,
+                overrides, health, state, level)
+
+// One piece of a broken Destructible2D: its CollisionPolygon2D and Polygon2D hold its outline.
+struct FracturePiece2D {
+    float lifetime = 0.0F;
+    std::string group;
+    std::vector<FractureLink> links;
+    bool anchored = false;
+
+    friend bool operator==(const FracturePiece2D&, const FracturePiece2D&) = default;
+};
+SLASH_COMPONENT(FracturePiece2D, lifetime, group, links, anchored)
+
+// Something a hit, a break, a death or a wreck left, made from a .damage.json profile's effects:
+// debris or dust (a one-shot CPUParticles3D or CPUParticles2D), a decal (a Decal or a Sprite2D)
+// or a sound (an AudioStreamPlayer3D or AudioStreamPlayer2D). It goes when its lifetime runs out.
+struct DamageEffect {
+    float lifetime = 0.0F; // seconds left; 0 keeps it
+    std::string body;      // the body it came from
+
+    friend bool operator==(const DamageEffect&, const DamageEffect&) = default;
+};
+SLASH_COMPONENT(DamageEffect, lifetime, body)
 
 // A part of a large world kept in a scene file of its own, loaded while a StreamingSource3D is
 // near it and unloaded when they have all gone, as Unreal's World Partition streams its cells.

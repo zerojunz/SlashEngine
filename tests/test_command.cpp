@@ -3184,7 +3184,8 @@ TEST_CASE("physics.break breaks a Destructible3D into pieces, and undo puts it b
         ["FracturePiece3D"], "where": [{"component": "FracturePiece3D", "field": "index",
         "value": 1}]})")
                .find("entities") == parse(R"([{"id": "crate_2", "components": {
-        "FracturePiece3D": {"pieces": 4, "seed": 3, "index": 1, "lifetime": 0}}}])"));
+        "FracturePiece3D": {"pieces": 4, "seed": 3, "index": 1, "lifetime": 0, "cuts": [],
+        "group": "", "links": [], "anchored": false}}}])"));
     engine.ok("undo");
     CHECK(engine.scene() == before);
 

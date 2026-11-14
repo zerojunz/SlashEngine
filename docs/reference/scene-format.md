@@ -4827,6 +4827,118 @@ breaks a wall with a ball and a crate with `physics.break`.
   `RigidBody3D`, and one whose mesh can't be cut: a flat `PlaneMesh` or `QuadMesh`, or a model
   that doesn't close.
 
+#### Damage profiles
+
+A `.damage.json` file (`slash-cli schema damage`) says how a thing takes damage and breaks, after
+Chaos Destruction: its material, health, what resists which kind of damage, the damage states
+that change its looks, how it breaks and whether its pieces stand linked until the load through
+them is too much. A `Destructible3D` or `Destructible2D` names one in `profile` and can change it
+with `overrides` (a JSON Merge Patch); a file can `extends` another the same way.
+[examples/destruction-profiles](../../examples/destruction-profiles/) breaks a garden wall, a
+window and two 2D crates.
+
+```json
+{
+  "format": 1,
+  "material": "brick",
+  "health": 120,
+  "resist": {"fire": 0},
+  "states": [{"below": 0.6, "tint": [0.8, 0.75, 0.7, 1.0]}, {"below": 0.3, "mesh": "props/wall_cracked.glb"}],
+  "fracture": {"pattern": "clusters", "pieces": 10, "levels": 2, "level_pieces": 3, "fine": 0.6},
+  "connected": true,
+  "anchors": "bottom",
+  "debris": {"lifetime": 0, "push": 1}
+}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `material` | `"stone"` | `wood`, `glass`, `metal`, `stone`, `concrete`, `brick`, `ceramic`, `ice`, `plastic`, `flesh`, `cloth` or `soil` (ground that never breaks but is dug into): the defaults every field it leaves out takes (`damage.check` shows them) |
+| `health` | the material's | What damage takes away before it breaks |
+| `resist` | the material's | What each kind of damage (`blunt`, `pierce`, `cut`, `explosive`, `fire`, `impact`) is multiplied by; a kind not named is 1 |
+| `impact` | the material's | `threshold`: kilogram-meters a second (2D: kilogram-pixels) of a collision past which it does damage, `damage` health for each one past it |
+| `states` | `[]` | Highest `below` (a share of its health) first: under it the body is `tint`ed (its `StandardMaterial3D`'s albedo, 2D its `Polygon2D` or `Sprite2D`'s color), drawn with `material` or drawn as `mesh` (2D: a texture) |
+| `fracture` | the material's | `pattern` (`voronoi`, `impact`, `radial`, `splinters`, `slices`, `clusters`, or `none`, never breaking), `pieces`, `seed`, `levels` (how many times pieces break again; 1: never), `level_pieces`, `fine` (meters, 2D pixels, around the hit where pieces are fine and come loose; 0: a quarter of its size) and `min_size` (under which a piece breaks no more) |
+| `density` | the material's | Kilograms a cubic meter (2D: a square meter of 64 pixels a side) when it is no rigid body |
+| `connected` | the material's | Whether its pieces stand linked, held by `anchors` (`bottom`, `ends` of its longest level axis as a bridge's, `all` or `none`) |
+| `strength`, `compression` | the material's | Newtons a square meter of a link holds (2D: a newton a pixel of edge, per 64), and how many times more it holds what stands on it |
+| `debris` | `lifetime` `0`, `push` the material's | Seconds loose pieces last (0 keeps them) and meters (pixels) a second they fly from the hit |
+| `deform` | the material's | How damage that doesn't break it changes its shape: `dent` (meters deep a point of blunt, impact or explosive damage pushes in), `dent_radius`, `max_dent`; `hole` (meters across a point of pierce damage shoots through), `max_hole`; `carve` (meters of radius a point of explosive damage blasts out), `max_carve`; `crater_depth` (how deep a crater is for its radius, on an `HTerrain`). 0 does none. 2D outlines take them at 64 pixels a meter |
+| `effects` | the material's | What hits and breaks leave, as Chaos's break events drive Niagara: `hit` and `break`, each with `debris` and `dust` (`amount` of particles, `lifetime` seconds, `speed` meters a second, `spread` degrees, `size` meters, `gravity` scale, `color`), `decal` (`texture`, `size` meters, `lifetime` seconds, 0 keeps it, `modulate`) and `sound` (`stream`, `volume_db`, `pitch_scale`, `bus`, `lifetime`); `hit_scale` is the damage at which a hit throws all its particles (fewer for less). `null` takes out one the material has |
+
+- Damage of a kind, times its resistance, comes off `health`, and the body's `state` follows the
+  states it is below; at no health it breaks where it was hit. `damaged`, `broken` and
+  `collapsed` events say so.
+- Each pattern places the cells' sites the same on every machine (`world::fracture_sites`):
+  `impact` gathers two thirds of them within `fine` of the hit, `radial` makes rings and spokes
+  around it in the plane of the body's two longest axes, `splinters` long cells along the
+  longest axis, `slices` even ones across it and `clusters` pieces of several cells each.
+- Pieces are `Destructible3D`s (`Destructible2D`s) of the next `level`, with health by their
+  size halved each level, and break again under their own cut (a `FracturePiece3D`'s `cuts`)
+  until `levels`.
+- A connected profile's pieces stand frozen, linked to those they share faces with (2D: edges)
+  by the area, and anchored as `anchors` says; those within `fine` of the hit, and the one hit
+  at least, come loose.
+  After each break the load through the links is worked out as Chaos's connection graph sends
+  strain to the anchors (`world::settle_stress`: each piece's weight down a tree grown from the
+  anchors, nearest first), the link worst over `strength` times its area (times `compression`
+  for a piece on the one below it) gives way, again until none does, and what no link joins to
+  an anchor falls.
+- A profile's `impact` takes the place of `damage_threshold`: a collision past it does damage,
+  and one that breaks the body is let through to its pieces (in 2D the body that hit bounces).
+- Damage that leaves health changes the shape as `deform` says, after Chaos's field-driven
+  damage: a 3D mesh keeps its `dents` (a patch pushed in along the hit, deepened by later blows
+  nearby) and `carves` (a hole shot through along the hit, or a ball blasted out of it) in its
+  own space, and draws and cuts with them (`scene3d::damaged_piece_of`). A carved or holed
+  static body collides as its triangles, a rigid one as their hull. When it breaks, its damage
+  goes into the cut, so each piece keeps its share of the holes, and a piece's own later damage
+  is applied after its cuts. An `HTerrain` with a `Destructible3D` (a `soil` profile) is dug into
+  where a blast reaches its ground, as a bowl with a rim, kept in its `craters`. A 2D outline is
+  carved, holed (opened to its edge by a slot, so it stays one polygon) and dented with
+  Clipper2; parts cut off fall as debris, and the body draws as a `Polygon2D` of what is left. A
+  `TileMapLayer` with a `Destructible2D` loses the cells a blast reaches.
+- Cuts, shots and blasts tear cloth: `damage.apply` tears a `Cloth2D`'s edges or a
+  `SoftBody3D`'s triangles within its `radius`, and cloth with a `tear_stretch` tears by itself
+  where an edge is pulled past that many times its length. `torn` events say which. A `Cloth3D`
+  tears the same way: its section is made again without the torn triangles, its points kept,
+  and a part torn free of every point the skin holds still falls free.
+- A hit at a point leaves its profile's hit effects, and a break, death or wreck its break
+  effects, as entities of their own named for the body (`<id>_debris`, `<id>_dust`,
+  `<id>_decal`, `<id>_sound`, numbered past those taken): a one-shot `CPUParticles3D` of small
+  boxes (dust: fading spheres), a `Decal` facing back along the hit and an
+  `AudioStreamPlayer3D`, or in 2D a `CPUParticles2D` (in pixels), a `Sprite2D` and an
+  `AudioStreamPlayer2D`. Each has a `DamageEffect` that removes it when its `lifetime` runs out.
+- Someone or something living (a `Ragdoll3D`, `Creature3D`, `Flesh3D`, `NpcAgent` or a model
+  drawing a `.character.json` or `.creature.json` recipe; in 2D a `Ragdoll2D`, `Creature2D`,
+  `Character2D` or `NpcAgent`) with a `Destructible3D` or `Destructible2D` never breaks or
+  deforms: a hit strikes its ragdoll's nearest bone, and at no health its ragdoll goes limp for
+  good, a creature stops (`mode` `dead`) and a `killed` event says so. A `Vehicle3D` or
+  `Vehicle2D` at no health is wrecked: it stops driving and a `wrecked` event says so. An NPC's
+  brain that has `health` and `dead` facts gets its health as a share of full in percent and
+  whether it is dead; a creature hurt by someone (`damage.apply`'s `by`, in the `damaged`
+  event) runs from them, or turns on them if it is aggressive.
+- `physics_3d.break_budget` and `physics_2d.break_budget` in [`project.json`](project-format.md)
+  cap the pieces breaks from impacts cut each tick: the first break of a tick always cuts, and
+  those past the budget break in the ticks after, in the order they came. A 3D body's cells are
+  cut on the job pool, the same pieces on any number of threads.
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `Destructible3D` (with a profile) | `profile` `""`, `overrides` `null`, `health` `-1` (what is left; below 0 the profile's full health), `state` `0`, `level` `0`, `dents` `[]` (`at`, `direction`, `radius`, `depth` in its mesh's space), `carves` `[]` (`from`, `to`, `radius`: a capsule taken out) |
+| `FracturePiece3D` | `cuts` `[]` (the cuts that made it, each naming the piece the next cut and the `dents` and `carves` of what it cut), `group` `""` (the body it broke from), `links` `[]` (`piece` and `area` of each linked piece), `anchored` `false` |
+| `HTerrain` | `craters` `[]`: `center` (cells), `radius` (cells) and `depth` (meters before `map_scale`) of each dug |
+| `Cloth2D` | `tear_stretch` `0` (how many times its length an edge stretches before it tears; 0 never), `torn` `[]` (the edges torn: from each point, row by row, the one right of it, then the one below it) |
+| `SoftBody3D` | `tear_stretch` `0`, `torn` `[]` (its mesh's triangles torn out, by number) |
+| `Cloth3D` | `tear_stretch` `0`, `torn` `[]` (its section's triangles torn out, by number in its surfaces' index order) |
+| `DamageEffect` | `lifetime` `0` (seconds left; 0 keeps it), `body` `""` (the body whose hit or break left it) |
+| `Destructible2D` | as `Destructible3D`'s, of a `StaticBody2D` or `RigidBody2D` whose outline is its `CollisionPolygon2D`, else its `CollisionShape2D`, else its `Sprite2D`'s rectangle |
+| `FracturePiece2D` | `lifetime` `0`, `group` `""`, `links` `[]`, `anchored` `false` |
+
+A broken `Destructible2D` becomes `<id>_1` to `<id>_<n>`: each a `RigidBody2D` with a
+`CollisionPolygon2D` of its cell (cut from the outline with Clipper2) and a `Polygon2D` drawing
+its part of the body's look (its texture coordinates carried over). Without a profile, a
+`Destructible2D` breaks into `pieces` Voronoi cells as a `Destructible3D` does.
+
 ### World streaming
 
 Godot has no world streaming, so this follows Unreal's World Partition: a world too large to keep

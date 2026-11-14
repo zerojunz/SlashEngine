@@ -862,6 +862,13 @@ void register_physics_3d_components(ComponentRegistry& registry) {
     }
 
     registry.add<SoftBody3D>()
+        .describe("tear_stretch", {.doc = "How many times its length an edge stretches before "
+                                          "the faces along it tear away; 0 never. damage.apply's "
+                                          "cut, pierce and explosive damage tear it within "
+                                          "radius.",
+                                   .min = 0})
+        .describe("torn", {.doc = "The mesh's triangles torn away, by number in its index "
+                                  "order; they neither draw nor hold its points together."})
         .set_doc("Makes the primitive mesh its entity draws a soft body, as cloth or a ball: "
                  "its vertices are points gravity and collisions move, held together by springs "
                  "along its edges. The physics step keeps them in world space; the Transform3D "
@@ -950,7 +957,16 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                    .min = 1,
                    .max = 100})
         .describe("collision_layer", layer)
-        .describe("collision_mask", mask);
+        .describe("collision_mask", mask)
+        .describe("tear_stretch", {.doc = "How many times its length an edge stretches before "
+                                          "the faces along it tear away; 0 never. damage.apply's "
+                                          "cut, pierce and explosive damage tear it within "
+                                          "radius.",
+                                   .min = 0})
+        .describe("torn", {.doc = "The section's triangles torn away, by number in its "
+                                  "surfaces' index order; they neither draw nor hold its points "
+                                  "together, and a part torn off every point the skin holds "
+                                  "still falls free."});
 
     registry.add<HairInstance3D>()
         .set_doc("Grows hair or fur over the model its entity's MeshInstance3D draws, as "
@@ -1206,6 +1222,13 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("texture_filter", {.doc = "How textures are sampled, as Sprite2D's.",
                                      .choices = {"inherit", "linear", "nearest"}});
     registry.add<Cloth2D>()
+        .describe("tear_stretch", {.doc = "How many times its length an edge stretches before "
+                                          "it tears; 0 never. damage.apply's cut, pierce and "
+                                          "explosive damage tear it within radius.",
+                                   .min = 0})
+        .describe("torn", {.doc = "The edges torn, by number: across then down from each point "
+                                  "of each row, top row first. Faces on a torn edge don't draw, "
+                                  "and points no edge joins to a held one hang free."})
         .set_doc("A cut-out character's cloth, as Chaos Cloth on a 2D sheet: a grid of points "
                  "hanging down its entity's y from offset, drawn with texture over it. Its "
                  "entity's global transform carries the points, each free to move up to its "
@@ -1271,35 +1294,141 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("texture_filter", {.doc = "How the texture is sampled.",
                                      .choices = {"inherit", "linear", "nearest"}});
 
-    registry.add<Destructible3D>()
-        .set_doc("Breaks its entity into pieces: the mesh its MeshInstance3D draws is cut into "
-                 "Voronoi cells, and an impact at least damage_threshold hard, or physics.break, "
-                 "replaces the entity with a rigid body per piece (FracturePiece3D) moving as it "
-                 "moved. Its entity is a StaticBody3D or a RigidBody3D.")
-        .describe("pieces", {.doc = "Cells the mesh is cut into; cells that miss it are left "
-                                    "out.",
-                             .min = 2,
-                             .max = 256})
-        .describe("seed", {.doc = "Picks the points the cells grow around."})
-        .describe("damage_threshold",
-                  {.doc = "How hard one impact must be to break it, in kilogram-meters per "
-                          "second: the two bodies' reduced mass times how fast they meet along "
-                          "the contact's normal. 0 breaks it only through physics.break.",
-                   .min = 0})
-        .describe("mass", {.doc = "Kilograms the pieces share by volume when the entity isn't a "
-                                  "RigidBody3D, whose mass they share otherwise.",
-                           .min = 0.001})
-        .describe("debris_lifetime",
-                  {.doc = "Seconds the pieces stay before they go; 0 keeps them.", .min = 0});
-    registry.add<FracturePiece3D>()
-        .set_doc("One piece of a broken Destructible3D: its MeshInstance3D draws only this cell "
-                 "of its mesh's fracture, and its CollisionShape3D is the cell's hull.")
-        .describe(
-            "pieces",
-            {.doc = "The Destructible3D's pieces, which made the cells.", .min = 2, .max = 256})
-        .describe("seed", {.doc = "The Destructible3D's seed, which made the cells."})
-        .describe("index", {.doc = "Which cell it is.", .min = 0})
-        .describe("lifetime", {.doc = "Seconds left before it goes; 0 keeps it.", .min = 0});
+    const auto describe_breaking = [](ComponentType& type,
+                                      std::string_view units) -> ComponentType& {
+        return type
+            .describe("pieces", {.doc = "Cells it is cut into when it has no profile; cells that "
+                                        "miss it are left out.",
+                                 .min = 2,
+                                 .max = 256})
+            .describe("seed", {.doc = "Picks the points the cells grow around, with no profile."})
+            .describe("damage_threshold",
+                      {.doc = "How hard one impact must be to break it, with no profile, in " +
+                              std::string(units) +
+                              ": the two bodies' reduced mass times how fast they meet along "
+                              "the contact's normal. 0 breaks it only by hand.",
+                       .min = 0})
+            .describe("mass", {.doc = "Kilograms the pieces share by size when the entity isn't "
+                                      "a rigid body, whose mass they share otherwise; a profile's "
+                                      "density wins over it.",
+                               .min = 0.001})
+            .describe("debris_lifetime", {.doc = "Seconds the pieces stay before they go, with "
+                                                 "no profile; 0 keeps them.",
+                                          .min = 0})
+            .describe("profile", {.doc = "Project path of a .damage.json file saying how it "
+                                         "takes damage and breaks; \"\" breaks as the fields "
+                                         "above say."})
+            .describe("overrides", {.doc = "A JSON Merge Patch over the profile, for this one."})
+            .describe("health", {.doc = "Health left; below 0, the profile's full health. It "
+                                        "breaks at 0."})
+            .describe("state", {.doc = "The profile's damage state it has reached, counted from "
+                                       "1; 0 is undamaged.",
+                                .min = 0})
+            .describe("level", {.doc = "How many times what it is a piece of has broken; pieces "
+                                       "break again while it is under the profile's levels.",
+                                .min = 0});
+    };
+    describe_breaking(
+        registry.add<Destructible3D>().set_doc(
+            "Breaks its entity into pieces, as Unreal's geometry collections: the mesh its "
+            "MeshInstance3D draws is cut into cells, and when its health runs out (an impact, "
+            "damage.apply, a strain field) or physics.break says so, the entity is replaced by a "
+            "rigid body per piece (FracturePiece3D) moving as it moved. A profile (.damage.json) "
+            "says how its material takes damage, how it looks as it does, how it breaks where it "
+            "is hit and whether its pieces stand linked until what holds them goes. Its entity "
+            "is a StaticBody3D or a RigidBody3D."),
+        "kilogram-meters per second")
+        .describe("dents", {.doc = "Dents its profile's deform pushed in, in the mesh's space, "
+                                   "oldest first: the surface within radius of at goes in along "
+                                   "direction, depth at the middle."})
+        .describe("dents[].at", {.doc = "Where it was hit."})
+        .describe("dents[].direction", {.doc = "Which way the surface went in."})
+        .describe("dents[].radius", {.doc = "How far around at the surface moved.", .min = 0})
+        .describe("dents[].depth", {.doc = "How far the middle went in.", .min = 0})
+        .describe("carves", {.doc = "Holes and blasts cut out of its mesh, in the mesh's space, "
+                                    "oldest first: all within radius of the line from `from` "
+                                    "to `to` (a sphere where they meet). Its pieces are cut from "
+                                    "what is left."})
+        .describe("carves[].from", {.doc = "Where the hole starts, or the blast's middle."})
+        .describe("carves[].to", {.doc = "Where the hole ends; `from` for a blast."})
+        .describe("carves[].radius", {.doc = "How wide it is.", .min = 0});
+    const auto describe_cuts = [](ComponentType& type) -> ComponentType& {
+        return type
+            .describe("cuts", {.doc = "The cuts that made it, first to last, each naming the "
+                                      "piece the next cut; empty for one voronoi cut of pieces "
+                                      "cells by seed, piece index."})
+            .describe(
+                "cuts[].pattern",
+                {.doc = "Where the cells' points go: anywhere, fine near the hit, rings "
+                        "and spokes around it, long splinters, slabs or clusters.",
+                 .choices = {"voronoi", "impact", "radial", "splinters", "slices", "clusters"}})
+            .describe("cuts[].cells", {.doc = "Cells cut.", .min = 2, .max = 256})
+            .describe("cuts[].seed", {.doc = "Picks the cells' points."})
+            .describe("cuts[].at", {.doc = "Where it was hit, in the mesh's space."})
+            .describe("cuts[].fine", {.doc = "How far from the hit the fine pieces reach; 0 a "
+                                             "quarter of the size.",
+                                      .min = 0})
+            .describe("cuts[].index", {.doc = "Which of the cut's pieces.", .min = 0})
+            .describe("cuts[].dents", {.doc = "The dents what it cut had, as Destructible3D's."})
+            .describe("cuts[].dents[].at", {.doc = "Where it was hit."})
+            .describe("cuts[].dents[].direction", {.doc = "Which way the surface went in."})
+            .describe("cuts[].dents[].radius", {.doc = "How far around at it moved.", .min = 0})
+            .describe("cuts[].dents[].depth", {.doc = "How far the middle went in.", .min = 0})
+            .describe("cuts[].carves",
+                      {.doc = "The holes and blasts cut out of what it cut, as Destructible3D's."})
+            .describe("cuts[].carves[].from", {.doc = "Where the hole starts, or the blast."})
+            .describe("cuts[].carves[].to", {.doc = "Where the hole ends."})
+            .describe("cuts[].carves[].radius", {.doc = "How wide it is.", .min = 0});
+    };
+    const auto describe_links = [](ComponentType& type, std::string_view area) -> ComponentType& {
+        return type
+            .describe("group", {.doc = "The ID of the body it broke from; its linked pieces "
+                                       "stand together."})
+            .describe("links", {.doc = "The pieces it is joined to while it stands, as Chaos's "
+                                       "connection graph; a link breaks when the weight it holds "
+                                       "is more than the profile's strength times its area."})
+            .describe("links[].piece", {.doc = "The other piece's ID."})
+            .describe("links[].area", {.doc = std::string(area), .min = 0})
+            .describe("anchored", {.doc = "Held in place, as the ground holds what stands on "
+                                          "it; what no link joins to an anchored piece falls."});
+    };
+    describe_links(
+        describe_cuts(
+            registry.add<FracturePiece3D>()
+                .set_doc("One piece of a broken Destructible3D: its MeshInstance3D draws only "
+                         "this cell of its mesh's fracture, and its CollisionShape3D is the "
+                         "cell's hull.")
+                .describe("pieces", {.doc = "The Destructible3D's pieces, which made the cells "
+                                            "when cuts is empty.",
+                                     .min = 2,
+                                     .max = 256})
+                .describe("seed", {.doc = "The Destructible3D's seed, which made the cells when "
+                                          "cuts is empty."})
+                .describe("index", {.doc = "Which cell it is, when cuts is empty.", .min = 0})
+                .describe("lifetime",
+                          {.doc = "Seconds left before it goes; 0 keeps it.", .min = 0})),
+        "Square meters of the face they share.");
+    describe_breaking(
+        registry.add<Destructible2D>().set_doc(
+            "Breaks a 2D body into pieces, as Destructible3D does in 3D: its outline (its "
+            "CollisionPolygon2D, else its CollisionShape2D, else its Sprite2D's rectangle) is "
+            "cut into cells, and each piece is a RigidBody2D with a CollisionPolygon2D and a "
+            "Polygon2D drawing that part of its look (FracturePiece2D). Its entity is a "
+            "StaticBody2D or a RigidBody2D."),
+        "kilogram-pixels per second");
+    describe_links(
+        registry.add<FracturePiece2D>()
+            .set_doc("One piece of a broken Destructible2D: its CollisionPolygon2D and "
+                     "Polygon2D hold its outline, in the body's space.")
+            .describe("lifetime", {.doc = "Seconds left before it goes; 0 keeps it.", .min = 0}),
+        "Pixels of the edge they share.");
+    registry.add<DamageEffect>()
+        .set_doc("Something a hit, a break, a death or a wreck left, made from a .damage.json "
+                 "profile's effects: debris or dust (a one-shot CPUParticles3D or "
+                 "CPUParticles2D), a decal (a Decal or a Sprite2D) or a sound (an "
+                 "AudioStreamPlayer3D or AudioStreamPlayer2D).")
+        .describe("lifetime", {.doc = "Seconds left before it goes; 0 keeps it.", .min = 0})
+        .describe("body", {.doc = "The ID of the body it came from."});
     registry.add<StreamedScene3D>()
         .set_doc("A part of a large world kept in a scene file of its own, loaded as the entity "
                  "\"<id>_scene\" under this one while a StreamingSource3D is within load_radius "
@@ -3646,7 +3775,15 @@ void register_terrain_components(ComponentRegistry& registry) {
         .describe("bounce", {.doc = "Its physics material's bounce.", .min = 0, .max = 1})
         .describe("render_layers", {.doc = "Render layers, as MeshInstance3D's layers."})
         .describe("cast_shadow", {.doc = "Which shadows it casts, as MeshInstance3D's.",
-                                  .choices = {"off", "on", "double_sided", "shadows_only"}});
+                                  .choices = {"off", "on", "double_sided", "shadows_only"}})
+        .describe("craters",
+                  {.doc = "Craters blasts left (damage.apply's explosive damage, with a "
+                          "Destructible3D whose profile carves), cut into its heights oldest "
+                          "first: a bowl with its rim thrown up around it."})
+        .describe("craters[].center", {.doc = "Cells along x and z from the map's corner."})
+        .describe("craters[].radius", {.doc = "Cells across from its middle to its rim.", .min = 0})
+        .describe("craters[].depth",
+                  {.doc = "Meters its middle goes down, before map_scale's y.", .min = 0});
     describe_members(
         *registry.find_mutable("HTerrain"), "textures[]",
         {{"albedo_bump",

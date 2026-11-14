@@ -82,6 +82,7 @@
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/creature.hpp"
+#include "slash/world/damage.hpp"
 #include "slash/world/foliage.hpp"
 #include "slash/world/hair.hpp"
 #include "slash/world/path.hpp"
@@ -547,6 +548,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "groom") {
         return Reply::success(world::groom_schema());
+    }
+    if (kind == "damage") {
+        return Reply::success(world::damage_schema());
     }
     if (kind == "character") {
         return Reply::success(world::character_schema());
@@ -2331,11 +2335,30 @@ Reply physics_break(Session& session, const json::Value& params) {
     const float push = params.find("push") != nullptr
                            ? static_cast<float>(params.find("push")->as_double())
                            : 0.0F;
-    std::optional<Vec3> from;
-    if (const json::Value* at = params.find("from"); at != nullptr) {
-        from = vec3_of(*at);
+    const json::Value* at = params.find("from");
+    Result<std::vector<entt::entity>> broken = std::vector<entt::entity>{};
+    if (world.ecs().all_of<world::Destructible2D>(entity)) {
+        std::optional<Vec2> from;
+        if (at != nullptr) {
+            if (at->as_array().size() != 2) {
+                return param_error(code::kInvalidParams, "/from",
+                                   "a Destructible2D's pieces fly from [x, y] in pixels");
+            }
+            from = Vec2{static_cast<real_t>(at->as_array()[0].as_double()),
+                        static_cast<real_t>(at->as_array()[1].as_double())};
+        }
+        broken = physics2d::break_body_2d(world, entity, push, from);
+    } else {
+        std::optional<Vec3> from;
+        if (at != nullptr) {
+            if (at->as_array().size() != 3) {
+                return param_error(code::kInvalidParams, "/from",
+                                   "a Destructible3D's pieces fly from [x, y, z] in meters");
+            }
+            from = vec3_of(*at);
+        }
+        broken = physics3d::break_body(world, entity, push, from);
     }
-    auto broken = physics3d::break_body(world, entity, push, from);
     if (!broken) {
         return param_error(code::kInvalidParams, "/id", quoted(id) + " " + broken.error().message);
     }
@@ -7155,6 +7178,7 @@ void register_builtin_commands(Registry& registry) {
                                "ragdoll",
                                "foliage",
                                "groom",
+                               "damage",
                                "character",
                                "face",
                                "creature",
@@ -7168,7 +7192,7 @@ void register_builtin_commands(Registry& registry) {
             ".bus_layout.json, .navmesh.json, .navpoly.json, .npc.json, .meshlib.json, "
             ".lightmap.json, "
             ".voxelgi.json, .model.json, .standard_material.json, .texture.json, .scatter.json, "
-            ".physics_material.json, .ragdoll.json, .foliage.json, .groom.json, "
+            ".physics_material.json, .ragdoll.json, .foliage.json, .groom.json, .damage.json, "
             ".character.json, .face.json, .creature.json, .vehicle.json, .replay.json, "
             ".test.json, "
             ".score.json or storyboard "
@@ -7840,18 +7864,18 @@ void register_builtin_commands(Registry& registry) {
                                                 "from, on top of the body's own velocity.");
     break_push["minimum"] = 0;
     break_push["maximum"] = 1000;
-    json::Value break_from = property("array", "[x, y, z] in the world the pieces fly away from. "
-                                               "Default: the body's center.");
+    json::Value break_from = property("array", "[x, y, z] (2D: [x, y]) in the world the pieces "
+                                               "fly away from. Default: the body's center.");
     break_from["items"]["type"] = "number";
-    break_from["minItems"] = 3;
+    break_from["minItems"] = 2;
     break_from["maxItems"] = 3;
     registry.add({
         .name = "physics.break",
-        .description = "Breaks a Destructible3D now: a rigid body per piece of its mesh takes its "
-                       "place. Returns the pieces' IDs.",
+        .description = "Breaks a Destructible3D or Destructible2D now: a rigid body per piece "
+                       "takes its place. Returns the pieces' IDs.",
         .capabilities = {Edit},
         .effect = Effect::Edit,
-        .params = params_schema({{"id", id_property("A Destructible3D.")},
+        .params = params_schema({{"id", id_property("A Destructible3D or Destructible2D.")},
                                  {"push", std::move(break_push)},
                                  {"from", std::move(break_from)}},
                                 {"id"}),
@@ -8871,6 +8895,7 @@ void register_builtin_commands(Registry& registry) {
     register_procedural_commands(registry);
     register_scatter_commands(registry);
     register_hair_commands(registry);
+    register_damage_commands(registry);
     register_lightmap_commands(registry);
     register_model_cleanup_commands(registry);
     register_services_commands(registry);

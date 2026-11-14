@@ -2,6 +2,7 @@
 // modules/jolt_physics/objects/jolt_soft_body_3d.cpp): each function names the one it follows.
 #include "space.hpp"
 
+#include "slash/core/json.hpp"
 #include "slash/core/log.hpp"
 #include "slash/scene3d/primitive.hpp"
 #include "slash/world/serialize.hpp"
@@ -22,6 +23,7 @@
 #include <array>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -118,6 +120,7 @@ std::shared_ptr<const scene3d::SoftBodyPose> pose_of(const SoftBody& soft, const
         }
     }
     auto pose = std::make_shared<scene3d::SoftBodyPose>();
+    pose->torn = soft.torn;
     pose->positions.resize(soft.mesh_to_physics.size());
     pose->normals.resize(soft.mesh_to_physics.size());
     for (std::size_t i = 0; i < soft.mesh_to_physics.size(); ++i) {
@@ -133,7 +136,62 @@ std::shared_ptr<const scene3d::SoftBodyPose> pose_of(const SoftBody& soft, const
     return pose;
 }
 
+// Numbers sorted, each once.
+std::vector<int> sorted(std::vector<int> numbers) {
+    std::ranges::sort(numbers);
+    const auto [first, last] = std::ranges::unique(numbers);
+    numbers.erase(first, last);
+    return numbers;
+}
+
 } // namespace
+
+// Where each mesh vertex's point is and how fast it goes, to put back when a tear makes the body
+// again.
+std::vector<std::optional<KeptPoint>> Space::keep_points(const SoftBody& soft) const {
+    std::vector<std::optional<KeptPoint>> kept(soft.mesh_to_physics.size());
+    const JPH::BodyLockRead lock(system_->GetBodyLockInterfaceNoLock(), soft.id);
+    if (!lock.Succeeded()) {
+        return kept;
+    }
+    const JPH::RVec3 center = lock.GetBody().GetCenterOfMassPosition();
+    const JPH::Array<JPH::SoftBodyVertex>& points = motion_of(lock.GetBody()).GetVertices();
+    for (std::size_t i = 0; i < kept.size(); ++i) {
+        if (const int point = soft.mesh_to_physics[i];
+            point >= 0 && static_cast<std::size_t>(point) < points.size()) {
+            const JPH::SoftBodyVertex& vertex = points[static_cast<std::size_t>(point)];
+            kept[i] = KeptPoint{.place = center + vertex.mPosition,
+                                .before = center + vertex.mPreviousPosition,
+                                .velocity = vertex.mVelocity};
+        }
+    }
+    return kept;
+}
+
+void Space::restore_points(SoftBody& soft, const std::vector<std::optional<KeptPoint>>& kept) {
+    {
+        const JPH::BodyLockWrite lock(system_->GetBodyLockInterfaceNoLock(), soft.id);
+        if (!lock.Succeeded()) {
+            return;
+        }
+        const JPH::RVec3 center = lock.GetBody().GetCenterOfMassPosition();
+        JPH::Array<JPH::SoftBodyVertex>& points = motion_of(lock.GetBody()).GetVertices();
+        for (std::size_t i = 0; i < kept.size() && i < soft.mesh_to_physics.size(); ++i) {
+            const int point = soft.mesh_to_physics[i];
+            const std::optional<KeptPoint>& keep = kept[i];
+            if (!keep.has_value() || point < 0 ||
+                static_cast<std::size_t>(point) >= points.size()) {
+                continue;
+            }
+            JPH::SoftBodyVertex& vertex = points[static_cast<std::size_t>(point)];
+            vertex.mPosition = JPH::Vec3(keep->place - center);
+            vertex.mPreviousPosition = JPH::Vec3(keep->before - center);
+            vertex.mVelocity = keep->velocity;
+        }
+        soft.pose = pose_of(soft, lock.GetBody());
+    }
+    system_->GetBodyInterfaceNoLock().ActivateBody(soft.id);
+}
 
 // Godot's JoltSoftBody3D::_ref_shared_data and _add_to_space: the mesh's vertices welded by
 // position into points, its faces and edge springs, then the body with the component's settings,
@@ -150,7 +208,14 @@ void Space::create_soft_body(SoftBody& soft, const scene3d::MeshData& mesh,
     // Godot's HashMap<Vector3, int>: vertices at equal positions are one point.
     std::map<std::tuple<float, float, float>, int> points;
     int count = 0;
+    soft.torn = component.torn;
+    std::ranges::sort(soft.torn);
+    soft.face_triangles.clear();
     for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
+        const auto triangle = static_cast<int>(i / 3);
+        if (std::ranges::binary_search(soft.torn, triangle)) {
+            continue; // torn out
+        }
         std::array<int, 3> face{};
         for (std::size_t j = 0; j < 3; ++j) {
             const std::uint32_t index = mesh.indices[i + j];
@@ -172,6 +237,20 @@ void Space::create_soft_body(SoftBody& soft, const scene3d::MeshData& mesh,
         shared->mFaces.emplace_back(static_cast<JPH::uint32>(face[2]),
                                     static_cast<JPH::uint32>(face[1]),
                                     static_cast<JPH::uint32>(face[0]));
+        std::array<std::uint32_t, 3> key{static_cast<std::uint32_t>(face[0]),
+                                         static_cast<std::uint32_t>(face[1]),
+                                         static_cast<std::uint32_t>(face[2])};
+        std::ranges::sort(key);
+        soft.face_triangles.try_emplace(key, triangle);
+    }
+    if (shared->mVertices.empty()) {
+        // Torn to nothing: no body, and nothing draws.
+        auto pose = std::make_shared<scene3d::SoftBodyPose>();
+        pose->torn = soft.torn;
+        pose->positions.assign(mesh.vertices.size(), Vec3{});
+        pose->normals.assign(mesh.vertices.size(), Vec3{0.0F, 1.0F, 0.0F});
+        soft.pose = std::move(pose);
+        return;
     }
     // Pinned points order the constraints Optimize makes.
     for (const int point : pinned_points(soft, component)) {
@@ -186,6 +265,7 @@ void Space::create_soft_body(SoftBody& soft, const scene3d::MeshData& mesh,
     attributes.mCompliance = attributes.mShearCompliance = 1.0F / stiffness;
     shared->CreateConstraints(&attributes, 1, JPH::SoftBodySharedSettings::EBendType::None);
     const float multiplier = 1.0F - component.shrinking_factor;
+    soft.rest_scale = multiplier;
     for (JPH::SoftBodySharedSettings::Edge& edge : shared->mEdgeConstraints) {
         edge.mRestLength *= multiplier;
     }
@@ -269,12 +349,17 @@ void Space::sync_soft_bodies(world::World& world, const world::Tree3D& tree) {
         const auto& component = registry.get<SoftBody3D>(entity);
         const world::Affine3D placed = unscale(tree.global(entity)).transform;
         SoftBody* soft = nullptr;
+        std::vector<std::optional<KeptPoint>> kept;
         if (std::unique_ptr<SoftBody>* found = soft_bodies_.find(entity); found != nullptr) {
             soft = found->get();
             // Godot keeps the springs it made for a mesh; a new mesh or springs make it again.
             if (soft->mesh_key != mesh->second ||
                 soft->linear_stiffness != component.linear_stiffness ||
                 soft->shrinking_factor != component.shrinking_factor) {
+                destroy(*soft);
+            } else if (soft->torn != sorted(component.torn) && !soft->id.IsInvalid()) {
+                // A tear makes it again without the torn faces, its points kept where they are.
+                kept = keep_points(*soft);
                 destroy(*soft);
             }
         } else {
@@ -294,6 +379,9 @@ void Space::sync_soft_bodies(world::World& world, const world::Tree3D& tree) {
             soft->placed = placed;
             soft->ignore = component.parent_collision_ignore;
             create_soft_body(*soft, data.value(), component);
+            if (!kept.empty()) {
+                restore_points(*soft, kept);
+            }
             continue;
         }
         soft->ignore = component.parent_collision_ignore;
@@ -504,15 +592,63 @@ void Space::pre_step_soft_bodies(const world::World& world, const world::Tree3D&
     }
 }
 
-void Space::read_soft_bodies() {
+void Space::read_soft_bodies(world::World& world) {
     for (auto& [entity, soft] : soft_bodies_) {
         if (soft->id.IsInvalid()) {
             continue;
         }
         const JPH::BodyLockRead lock(system_->GetBodyLockInterfaceNoLock(), soft->id);
-        if (lock.Succeeded() && lock.GetBody().IsActive()) {
-            soft->pose = pose_of(*soft, lock.GetBody());
+        if (!lock.Succeeded() || !lock.GetBody().IsActive()) {
+            continue;
         }
+        soft->pose = pose_of(*soft, lock.GetBody());
+        auto* component = world.ecs().try_get<SoftBody3D>(entity);
+        if (component == nullptr || component->tear_stretch <= 0.0F || soft->rest_scale <= 1e-6F) {
+            continue;
+        }
+        // Edges stretched past tear_stretch times their length at rest tear, and with them the
+        // faces they bound.
+        const JPH::SoftBodyMotionProperties& motion = motion_of(lock.GetBody());
+        const JPH::Array<JPH::SoftBodyVertex>& points = motion.GetVertices();
+        std::set<std::pair<std::uint32_t, std::uint32_t>> stretched;
+        for (const JPH::SoftBodySharedSettings::Edge& edge :
+             motion.GetSettings()->mEdgeConstraints) {
+            const float rest = edge.mRestLength / soft->rest_scale;
+            const float now =
+                (points[edge.mVertex[1]].mPosition - points[edge.mVertex[0]].mPosition).Length();
+            if (rest > 0.0F && now > rest * component->tear_stretch) {
+                stretched.insert(std::minmax(edge.mVertex[0], edge.mVertex[1]));
+            }
+        }
+        if (stretched.empty()) {
+            continue;
+        }
+        std::vector<int> tore;
+        for (const JPH::SoftBodySharedSettings::Face& face : motion.GetFaces()) {
+            const std::array<std::uint32_t, 3> v{face.mVertex[0], face.mVertex[1], face.mVertex[2]};
+            const bool torn = stretched.contains(std::minmax(v[0], v[1])) ||
+                              stretched.contains(std::minmax(v[1], v[2])) ||
+                              stretched.contains(std::minmax(v[0], v[2]));
+            std::array<std::uint32_t, 3> key = v;
+            std::ranges::sort(key);
+            if (const auto found = soft->face_triangles.find(key);
+                torn && found != soft->face_triangles.end()) {
+                tore.push_back(found->second);
+            }
+        }
+        if (tore.empty()) {
+            continue;
+        }
+        std::ranges::sort(tore);
+        component->torn.insert(component->torn.end(), tore.begin(), tore.end());
+        component->torn = sorted(component->torn);
+        json::Array triangles;
+        for (const int triangle : tore) {
+            triangles.emplace_back(triangle);
+        }
+        json::Value data;
+        data["triangles"] = std::move(triangles);
+        world.emit("torn", soft->name, std::move(data));
     }
 }
 
@@ -567,3 +703,64 @@ ContactListener::OnSoftBodyContactValidate(const JPH::Body& soft, const JPH::Bod
 }
 
 } // namespace slash::physics3d::detail
+
+namespace slash::physics3d {
+
+std::vector<int> tear_soft_body(world::World& world, entt::entity entity, Vec3 center,
+                                float radius) {
+    auto* component =
+        world.valid(entity) ? world.ecs().try_get<world::SoftBody3D>(entity) : nullptr;
+    if (component == nullptr || radius <= 0.0F) {
+        return {};
+    }
+    const auto mesh = detail::mesh_of(world, entity);
+    if (!mesh) {
+        return {};
+    }
+    auto data = scene3d::make_mesh(mesh->first);
+    if (!data) {
+        return {};
+    }
+    const std::vector<render::Vertex3D>& vertices = data.value().vertices;
+    std::vector<Vec3> positions(vertices.size());
+    if (const auto pose = scene3d::soft_body_pose(world, entity);
+        pose != nullptr && pose->positions.size() == vertices.size()) {
+        positions = pose->positions;
+    } else {
+        const world::Affine3D placed = world::Tree3D(world).global(entity);
+        for (std::size_t i = 0; i < vertices.size(); ++i) {
+            const auto& [x, y, z] = vertices[i].position;
+            positions[i] = placed.apply(Vec3{x, y, z});
+        }
+    }
+    const std::vector<int> torn = detail::sorted(component->torn);
+    const std::vector<std::uint32_t>& indices = data.value().indices;
+    const real_t reach = static_cast<real_t>(radius) * radius;
+    std::vector<int> tore;
+    for (std::size_t i = 0; i + 2 < indices.size(); i += 3) {
+        const auto triangle = static_cast<int>(i / 3);
+        const Vec3 middle =
+            (positions[indices[i]] + positions[indices[i + 1]] + positions[indices[i + 2]]) *
+            (1.0F / 3.0F);
+        const Vec3 d = middle - center;
+        if (!std::ranges::binary_search(torn, triangle) && detail::dot(d, d) <= reach) {
+            tore.push_back(triangle);
+        }
+    }
+    if (tore.empty()) {
+        return tore;
+    }
+    std::vector<int> all = torn;
+    all.insert(all.end(), tore.begin(), tore.end());
+    component->torn = detail::sorted(std::move(all));
+    json::Array triangles;
+    for (const int triangle : tore) {
+        triangles.emplace_back(triangle);
+    }
+    json::Value data_out;
+    data_out["triangles"] = std::move(triangles);
+    world.emit("torn", world.id_of(entity), std::move(data_out));
+    return tore;
+}
+
+} // namespace slash::physics3d

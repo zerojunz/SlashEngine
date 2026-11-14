@@ -13,6 +13,7 @@ add_library(slash_world
     src/flesh.cpp
     src/flesh2d.cpp
     src/flesh_solver.cpp
+    src/damage.cpp
     src/face.cpp
     src/legend.cpp
     src/path.cpp
@@ -40,6 +41,7 @@ target_compile_definitions(slash_world PUBLIC ENTT_NOEXCEPTION)
 set_source_files_properties(src/camera2d.cpp src/canvas_layer.cpp src/path.cpp src/tree2d.cpp
     src/tree3d.cpp src/wind.cpp src/physics_field.cpp src/cloth2d.cpp src/hair.cpp src/character.cpp src/creature.cpp
     src/vehicle.cpp src/flesh.cpp src/flesh2d.cpp src/flesh_solver.cpp src/face.cpp
+    src/damage.cpp
     PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 slash_engine_target(slash_world)

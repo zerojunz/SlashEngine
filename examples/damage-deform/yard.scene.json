@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true
+        },
+        "Transform3D": {
+          "position": [0.0, 2.0, 8.0]
+        }
+      }
+    },
+    "door": {
+      "components": {
+        "BoxMesh": {
+          "size": [1.0, 2.0, 0.1]
+        },
+        "CollisionShape3D": {
+          "size": [1.0, 2.0, 0.1]
+        },
+        "Destructible3D": {
+          "profile": "profiles/steel.damage.json"
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.55, 0.57, 0.6, 1.0],
+          "metallic": 0.8
+        },
+        "StaticBody3D": {},
+        "Transform3D": {
+          "position": [0.0, 1.0, 0.0]
+        }
+      }
+    },
+    "flag": {
+      "components": {
+        "MeshInstance3D": {},
+        "PlaneMesh": {
+          "size": [1.0, 1.0],
+          "subdivide_depth": 3,
+          "subdivide_width": 3
+        },
+        "SoftBody3D": {
+          "pinned_points": [
+            {},
+            {
+              "point": 4
+            }
+          ]
+        },
+        "Transform3D": {
+          "position": [-3.0, 2.0, 0.0]
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "Destructible3D": {
+          "profile": "profiles/soil.damage.json"
+        },
+        "HTerrain": {
+          "resolution": 65
+        },
+        "Transform3D": {
+          "position": [-32.0, 0.0, -32.0]
+        }
+      }
+    },
+    "wall": {
+      "components": {
+        "BoxMesh": {
+          "size": [2.0, 2.0, 0.4]
+        },
+        "CollisionShape3D": {
+          "size": [2.0, 2.0, 0.4]
+        },
+        "Destructible3D": {
+          "profile": "profiles/concrete.damage.json"
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.7, 0.7, 0.68, 1.0]
+        },
+        "StaticBody3D": {},
+        "Transform3D": {
+          "position": [3.0, 1.0, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

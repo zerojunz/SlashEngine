@@ -1267,7 +1267,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         push, knock down and hurt characters and creatures by their contact impulses, in 3D
         (`vehicles_3d` on `VehicleBody3D`) and 2D (`vehicles_2d`, sprung wheels on Box2D
         joints) (`examples/vehicles`)
-17. [ ] Damage and destruction design: a tool that authors how each model and piece of the
+17. [x] Damage and destruction design: a tool that authors how each model and piece of the
         environment takes damage, past today's Voronoi fracture: `.damage.json` profiles by
         material (wood splinters, glass shatters, metal dents, stone crumbles, cloth tears)
         with health, damage states that swap meshes and materials, dents and holes cut into
@@ -1283,6 +1283,27 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         and walls are carved where explosions reach, all deterministic so replays repeat;
         authored patterns are optional. `damage.apply` and `damage.check` drive and check it,
         for characters, creatures and vehicles alike
+    - [x] Profiles, patterns, levels and connected pieces: `.damage.json` profiles by material
+          (eleven materials' defaults, resistances by kind, damage states that tint and swap
+          materials and meshes, `extends`), the voronoi, impact, radial, splinters, slices and
+          clusters patterns, pieces fine near the hit that break again by level, linked pieces
+          standing on anchors until `settle_stress` (the connection graph's load) breaks their
+          links, in 3D (`Destructible3D`) and 2D (`Destructible2D`, cut with Clipper2 and drawn
+          as `Polygon2D`s), with `damage.apply`, `damage.state`, `damage.check` and 2D
+          `physics.break` (`examples/destruction-profiles`)
+    - [x] Dents, holes and carving: profiles' `deform` settings; meshes dented, holed and
+          carved by damage that doesn't break them (kept as `dents` and `carves`, carried into
+          the pieces' cuts, carved bodies colliding as what is left), `HTerrain` craters, 2D
+          outlines carved, holed and dented with Clipper2 (parts cut off falling as debris),
+          tile map cells blasted away, and `Cloth2D` and `SoftBody3D` torn by cuts, shots,
+          blasts and stretching (`tear_stretch`, `torn`) (`examples/damage-deform`)
+    - [x] Break effects and every body: profiles' `effects` (debris, dust, decals and sounds
+          each hit and break leaves, as `DamageEffect` entities in 3D and 2D), characters,
+          creatures, NPCs and ragdolls struck and killed and vehicles wrecked, NPC brains'
+          `health` and `dead` facts, creatures running from or turning on whoever hurt them
+          (`damage.apply`'s `by`), a break budget of pieces a tick (`break_budget`, counted so
+          replays repeat) with 3D cells cut on the job pool, and `Cloth3D` tearing
+          (`examples/break-effects`)
 18. [ ] VFX design: a tool that builds special effects as `.vfx.json` recipes, as Unreal's
         Niagara systems: emitters of CPU and GPU particles, ribbons, trails, mesh particles,
         flipbooks, decals, lights, distortion, screen flashes, camera shakes and sounds,

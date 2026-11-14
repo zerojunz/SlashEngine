@@ -12,6 +12,7 @@
 #include "slash/npc/fauna.hpp"
 #include "slash/npc/story.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/damage.hpp"
 #include "slash/world/tree2d.hpp"
 #include "slash/world/tree3d.hpp"
 
@@ -321,6 +322,55 @@ struct Thought {
     Choice choice;
 };
 
+// A body's health as a share of its profile's full health, in percent, rounded; nullopt
+// without a Destructible3D or Destructible2D, or with a profile that can't be read.
+std::optional<int> health_percent(world::World& world, entt::entity entity) {
+    const auto of = [&](const auto& body) -> std::optional<int> {
+        if (body.health < 0.0F) {
+            return 100;
+        }
+        const auto profile = world::load_damage(world, body.profile, body.overrides);
+        if (!profile || profile.value()->health <= 0.0F) {
+            return std::nullopt;
+        }
+        const float share = body.health / profile.value()->health * 100.0F;
+        return static_cast<int>(std::floor(std::clamp(share, 0.0F, 100.0F) + 0.5F));
+    };
+    if (const auto* body = world.ecs().try_get<world::Destructible3D>(entity); body != nullptr) {
+        return of(*body);
+    }
+    if (const auto* body = world.ecs().try_get<world::Destructible2D>(entity); body != nullptr) {
+        return of(*body);
+    }
+    return std::nullopt;
+}
+
+// Puts a body's health into the brain's "health" (percent of full) and "dead" facts, where the
+// brain has them; true when one changed.
+bool feel_health(world::World& world, entt::entity entity, const Brain& brain,
+                 std::vector<int>& facts) {
+    const std::size_t health = brain.fact("health");
+    const std::size_t dead = brain.fact("dead");
+    if (health >= facts.size() && dead >= facts.size()) {
+        return false;
+    }
+    const std::optional<int> percent = health_percent(world, entity);
+    if (!percent) {
+        return false;
+    }
+    bool changed = false;
+    const auto set = [&](std::size_t index, int value) {
+        if (index < facts.size() && facts[index] != value &&
+            std::ranges::find(brain.traits, index) == brain.traits.end()) {
+            facts[index] = value;
+            changed = true;
+        }
+    };
+    set(health, *percent);
+    set(dead, *percent <= 0 ? 1 : 0);
+    return changed;
+}
+
 void step(world::World& world, State& state, double seconds) {
     state.tick_seconds = seconds;
     std::vector<Thought> thoughts;
@@ -342,6 +392,10 @@ void step(world::World& world, State& state, double seconds) {
         }
         state.warned.erase(agent.brain);
         std::vector<int> facts = facts_from(world, entity, *brain, agent);
+        if (feel_health(world, entity, *brain, facts)) {
+            store_facts(*brain, facts, agent);
+            agent.think_in = 0.0F;
+        }
         bool replan = false;
         if (!agent.plan.empty()) {
             const Action* action = action_named(*brain, agent.plan.front());

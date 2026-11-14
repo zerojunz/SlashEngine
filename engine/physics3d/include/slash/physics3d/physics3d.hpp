@@ -3,6 +3,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/math.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/damage.hpp"
 #include "slash/world/world.hpp"
 
 #include <cstddef>
@@ -10,6 +11,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 // 3D physics on Jolt Physics, as Godot 4.4's Jolt module (modules/jolt_physics). The components
@@ -39,6 +41,10 @@ struct Settings {
     // Collision steps each physics tick takes, as Chaos's substeps: more keep fast, small or
     // stacked bodies steadier, at that many times the cost.
     int substeps = 1;
+    // The most pieces breaks from impacts may cut a tick, so a chain of breaks spreads over
+    // ticks rather than stalling one (the first break of a tick always cuts); 0 for no limit.
+    // Counted in pieces, not time, so replays repeat.
+    int break_budget = 0;
 
     friend bool operator==(const Settings&, const Settings&) = default;
 };
@@ -128,6 +134,17 @@ struct SoftBodyPoints {
 [[nodiscard]] std::optional<SoftBodyPoints> soft_body_points(world::World& world,
                                                              entt::entity entity);
 
+// Tears out the triangles of a SoftBody3D's mesh whose middles are within radius meters of
+// center, where physics last put them (else where the mesh rests), as a cut, a shot or a blast
+// does; returns the triangles it tore (by number in the mesh) and emits "torn" with them. The
+// body is made again without them at the next step, its points kept where they are.
+std::vector<int> tear_soft_body(world::World& world, entt::entity entity, Vec3 center,
+                                float radius);
+// The same for a Cloth3D: its section's triangles (by number in its surfaces' index order)
+// within radius meters of center, where physics last put them. A piece torn free of every point
+// the skin holds still falls free.
+std::vector<int> tear_cloth(world::World& world, entt::entity entity, Vec3 center, float radius);
+
 // Whether an entity is a 3D body or area now, as the next step sees it.
 [[nodiscard]] bool has_body(const world::World& world, entt::entity entity);
 
@@ -137,15 +154,73 @@ void apply_impulse(world::World& world, entt::entity entity, Vec3 impulse, Vec3 
 // Turns a rigid body at the next physics step, as Godot's apply_torque_impulse.
 void apply_torque_impulse(world::World& world, entt::entity entity, Vec3 impulse);
 
-// Breaks a Destructible3D into its pieces now, as an impact at least its damage_threshold does
-// after a step: the entity goes, and a rigid body per piece of its mesh's fracture takes its
-// place (FracturePiece3D), each moving as that part of the body moved, sharing its mass by
-// volume, and emitting a "broken" event with the pieces' IDs. push moves each piece away from
-// `from` (world space; the body's center when nullopt) at that many meters per second more.
+// Breaks a Destructible3D into its pieces now, as running out of health does: the entity goes,
+// and a rigid body per piece of its mesh's fracture takes its place (FracturePiece3D), each
+// moving as that part of the body moved, sharing its mass by volume (by its profile's density,
+// when it has one and isn't a rigid body), and emitting a "broken" event with the pieces' IDs.
+// A profile cuts it by its pattern where `from` is (world space), gives each piece health and
+// a Destructible3D of its own while under its levels, and a connected one that stood leaves
+// its pieces standing, frozen and linked, but those near the hit. push moves loose pieces away
+// from `from` (the body's center when nullopt) at that many meters per second more.
 // Fails, changing nothing, for an entity with no Destructible3D or body, or a mesh it can't cut.
 [[nodiscard]] Result<std::vector<entt::entity>> break_body(world::World& world, entt::entity entity,
                                                            float push = 0.0F,
                                                            std::optional<Vec3> from = std::nullopt);
+
+// What damage did to a Destructible3D.
+struct DamageReport {
+    std::string id;
+    float dealt = 0.0F;  // health taken, after its profile's resistance
+    float health = 0.0F; // left
+    int state = 0;       // the damage state it is in
+    bool broke = false;  // whether it broke, into pieces
+    std::vector<std::string> pieces;
+    bool fell = false; // whether a standing piece that breaks no more came loose
+    // What it did to its shape, short of breaking it: "dent", "hole", "carve", "crater" or "".
+    std::string deformed;
+    bool killed = false;              // someone or something living died of it
+    bool wrecked = false;             // a vehicle was wrecked by it
+    bool queued = false;              // it breaks in a later tick, past this one's break budget
+    std::vector<std::string> effects; // what the hit or break left (debris, dust, decal, sound)
+};
+
+// Damages a Destructible3D by amount of a kind ("blunt", "pierce", "cut", "explosive", "fire",
+// "impact"), as its profile resists it, at a point in the world: its damage state changes its
+// looks, and at no health left it breaks where it was hit (break_body), or comes loose when it
+// is a standing piece that breaks no more. Emits "damaged" with what it took (and by, the ID of
+// whoever dealt it, when given). A hit at a point leaves the profile's hit effects, a break its
+// break effects (each an entity with a DamageEffect). On someone or something living (a
+// Ragdoll3D, Creature3D, Flesh3D or NpcAgent, or a character's or creature's recipe) a hit
+// strikes its ragdoll's nearest bone, and no health left kills it instead of breaking it: its
+// ragdoll goes limp for good, a creature stops, and "killed" is emitted. A Vehicle3D is wrecked
+// instead: it drives no more, and "wrecked" is emitted. With no profile, damage at least its
+// damage_threshold breaks it. push is the speed loose pieces fly from the hit at; 0 takes the
+// profile's.
+[[nodiscard]] Result<DamageReport> damage_body(world::World& world, entt::entity entity,
+                                               float amount, std::string_view kind,
+                                               std::optional<Vec3> at, float push = 0.0F,
+                                               std::optional<Vec3> direction = std::nullopt,
+                                               std::string_view by = {});
+// What damage dealt of a kind does to a body's shape short of breaking it, by its profile's
+// deform: explosive damage carves a sphere out of a profile that carves (and digs a crater into
+// an HTerrain, the entity's Destructible3D naming a soil profile), pierce damage holes it through
+// along direction (from at toward its middle when nullopt), and blunt, impact and explosive
+// damage dent a profile that dents, deepening a dent near the last. at is in the world, and the
+// dent or hole starts at the nearest point of its bounds. A carved or holed body's own
+// CollisionShape3D becomes what is left (a static body's triangles, a rigid body's hull).
+// damage_body calls it while health is left. Returns "dent", "hole", "carve", "crater" or "".
+std::string deform_body(world::World& world, entt::entity entity,
+                        const world::DamageProfile& profile, float dealt, std::string_view kind,
+                        std::optional<Vec3> at, std::optional<Vec3> direction = std::nullopt);
+// Damages every Destructible3D within radius of center, as an explosion: each by amount less
+// the share of radius it is away, nearest the center its pieces' middles count from.
+[[nodiscard]] std::vector<DamageReport> damage_area(world::World& world, Vec3 center, float radius,
+                                                    float amount, std::string_view kind,
+                                                    float push = 0.0F, std::string_view by = {});
+// Works out the load through the links of a group of standing pieces now (settle_stress),
+// breaking those that give way and setting loose what no link holds to an anchored piece, and
+// returns those. Physics does it after each step for groups that changed, emitting "collapsed".
+std::vector<std::string> settle_group(world::World& world, std::string_view group);
 
 // The convex hull of points as triangles, three points each, wound clockwise as seen from
 // outside, as Godot's faces are: what a convex_polygon shape bakes into a navigation mesh as.

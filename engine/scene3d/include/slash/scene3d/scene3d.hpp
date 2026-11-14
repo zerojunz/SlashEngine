@@ -538,6 +538,7 @@ private:
         std::vector<SurfaceLod> lods;        // its surface's coarser LODs
         // A soft body's mesh: the pose that moved its vertices last.
         std::shared_ptr<const SoftBodyPose> soft;
+        std::vector<int> torn; // and the triangles its indices leave out
         // Flesh's: the pose that moved its skin last, and how far between its ticks.
         std::shared_ptr<const FleshPose> flesh;
         float flesh_at = 0.0F;
@@ -568,7 +569,7 @@ private:
     render::Material3D surface_material(const SurfaceMaterial& from, entt::entity entity,
                                         const std::string& model_field);
     // A CSG root's result, drawn as Godot draws its root shape's mesh.
-    // A FracturePiece3D's piece of its mesh.
+    // A FracturePiece3D's piece of its mesh, or a damaged Destructible3D's mesh.
     void add_piece(const world::World& world, entt::entity entity,
                    const world::MeshInstance3D& instance, const world::Affine3D& place,
                    render::ShadowCasting casting);
