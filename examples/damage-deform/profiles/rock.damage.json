@@ -1,0 +1,10 @@
+{
+  "deform": {
+    "hole": 0.004,
+    "max_hole": 0.2
+  },
+  "format": 1,
+  "health": 100000,
+  "material": "stone",
+  "name": "cave rock"
+}

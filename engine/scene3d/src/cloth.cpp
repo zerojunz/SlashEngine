@@ -230,11 +230,15 @@ model_section(const world::World& world, entt::entity entity, const std::string&
                                            static_cast<float>(vertex.rgba[3]) / 255.0F});
                 section->weights.push_back(weights);
             }
+            const std::size_t first_triangle = section->indices.size() / 3;
             for (const std::uint32_t index : surface.indices) {
                 section->indices.push_back(static_cast<std::uint32_t>(first) + index);
             }
-            section->pieces.push_back(
-                {.part = p, .surface = i, .first = first, .count = surface.vertices.size()});
+            section->pieces.push_back({.part = p,
+                                       .surface = i,
+                                       .first = first,
+                                       .count = surface.vertices.size(),
+                                       .first_triangle = first_triangle});
         }
     }
     if (section->indices.size() < 3) {

@@ -25,6 +25,7 @@
 #include "slash/world/flesh.hpp"
 #include "slash/world/hair.hpp"
 #include "slash/world/path.hpp"
+#include "slash/world/tree2d.hpp"
 #include "slash/world/wind.hpp"
 
 #include <algorithm>
@@ -445,6 +446,38 @@ void add_systems(world::World& world, asset::Assets& assets) {
                                          }
                                          return tiles->shapes(w, entity);
                                      });
+    // Blasts carve tile map layers that are Destructible2Ds: the cells whose centers they reach.
+    physics2d::set_tile_carver(world, [tiles](world::World& w, entt::entity entity, Vec2 center,
+                                              float radius, bool apply) {
+        auto* layer = w.ecs().try_get<world::TileMapLayer>(entity);
+        if (layer == nullptr || layer->tile_set.empty() || radius <= 0.0F) {
+            return 0;
+        }
+        auto set = tiles->assets->load<TileSet>(layer->tile_set);
+        if (!set) {
+            return 0;
+        }
+        auto cells = decode_cells(*layer, *set.value());
+        if (!cells) {
+            return 0;
+        }
+        const world::Affine2D global = world::affine(world::Tree2D(w).global(entity));
+        const real_t reach = static_cast<real_t>(radius) * radius;
+        int taken = 0;
+        for (auto it = cells.value().begin(); it != cells.value().end();) {
+            const Vec2 d = global.apply(map_to_local(*set.value(), it->first)) - center;
+            if ((d.x * d.x) + (d.y * d.y) <= reach) {
+                it = cells.value().erase(it);
+                ++taken;
+            } else {
+                ++it;
+            }
+        }
+        if (taken > 0 && apply) {
+            encode_cells(cells.value(), *set.value(), *layer);
+        }
+        return taken;
+    });
     auto state = std::make_shared<AnimationState>();
     state->assets = &assets;
     world.add_system(

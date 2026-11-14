@@ -4,6 +4,7 @@
 #include "slash/core/profile.hpp"
 #include "slash/scene3d/csg.hpp"
 #include "slash/scene3d/foliage.hpp"
+#include "slash/world/damage.hpp"
 #include "slash/world/physics_cache.hpp"
 
 #include <Jolt/Core/Factory.h>
@@ -604,13 +605,13 @@ bool Space::note_impact(const JPH::Body& a, const JPH::Body& b,
     if (first == nullptr || second == nullptr) {
         return false;
     }
-    const auto threshold = [&](const Body& body) {
+    const auto breakable = [&](const Body& body) -> const Breakable* {
         const auto found = breakable_.find(body.entity);
-        return found != breakable_.end() ? found->second : 0.0F;
+        return found != breakable_.end() ? &found->second : nullptr;
     };
-    const float threshold_a = threshold(*first);
-    const float threshold_b = threshold(*second);
-    if (threshold_a <= 0.0F && threshold_b <= 0.0F) {
+    const Breakable* breakable_a = breakable(*first);
+    const Breakable* breakable_b = breakable(*second);
+    if (breakable_a == nullptr && breakable_b == nullptr) {
         return false;
     }
     float inverse_mass = 0.0F;
@@ -633,13 +634,13 @@ bool Space::note_impact(const JPH::Body& a, const JPH::Body& b,
     const Vec3 where{point.GetX(), point.GetY(), point.GetZ()};
     bool breaks = false;
     for (const auto& [body, limit] :
-         {std::pair{first, threshold_a}, std::pair{second, threshold_b}}) {
-        if (limit > 0.0F && impulse >= limit) {
+         {std::pair{first, breakable_a}, std::pair{second, breakable_b}}) {
+        if (limit != nullptr && impulse >= limit->threshold) {
             Impact& impact = impacts_[body->entity];
             if (impulse > impact.impulse) {
                 impact = {.impulse = impulse, .point = where};
             }
-            breaks = true;
+            breaks = breaks || limit->broken_by(impulse);
         }
     }
     return breaks;
@@ -1775,11 +1776,32 @@ void Space::step(world::World& world, float seconds) {
     impacts_.clear();
     breakable_.clear();
     for (const auto [entity, destructible] : world.ecs().view<const Destructible3D>().each()) {
-        if (destructible.damage_threshold > 0.0F) {
-            breakable_.emplace(entity, destructible.damage_threshold);
+        if (!destructible.profile.empty()) {
+            auto profile = world::load_damage(world, destructible.profile, destructible.overrides);
+            if (!profile) {
+                continue;
+            }
+            const world::DamageProfile& p = *profile.value();
+            const float per = world::damage_taken(p, p.impact_damage, "impact");
+            if (per > 0.0F) {
+                breakable_.emplace(
+                    entity,
+                    Breakable{.threshold = p.impact_threshold,
+                              .damage = per,
+                              .health = destructible.health < 0.0F ? p.health : destructible.health,
+                              .breaks = p.fracture.pattern != "none"});
+            }
+        } else if (destructible.damage_threshold > 0.0F) {
+            breakable_.emplace(entity, Breakable{.threshold = destructible.damage_threshold,
+                                                 .damage = 1.0F,
+                                                 .health = 0.0F,
+                                                 .breaks = true});
         } else if (const Body* made = body(entity); made != nullptr && made->strength > 0.0F) {
             // Its material's strength, when it sets no threshold of its own.
-            breakable_.emplace(entity, made->strength);
+            breakable_.emplace(entity, Breakable{.threshold = made->strength,
+                                                 .damage = 1.0F,
+                                                 .health = 0.0F,
+                                                 .breaks = true});
         }
     }
     if (system_ == nullptr) {
@@ -1807,8 +1829,8 @@ void Space::step(world::World& world, float seconds) {
                        {"max_contact_constraints", static_cast<int>(kMaxContacts)}});
         }
     }
-    read_soft_bodies();
-    read_cloths(tree);
+    read_soft_bodies(world);
+    read_cloths(world, tree);
     step_vehicles(world, tree, seconds);
     read_back(world, tree);
     move_characters(world, tree, seconds);

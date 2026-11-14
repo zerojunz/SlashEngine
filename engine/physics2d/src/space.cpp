@@ -266,6 +266,7 @@ ShapeKey shape_key_of(const entt::registry& registry, const world::Tree2D& tree,
     key.monitoring = fields.monitoring;
     key.monitorable = fields.monitorable;
     key.overrides = fields.overrides;
+    key.hits = registry.all_of<world::Destructible2D>(entity);
     return key;
 }
 
@@ -509,6 +510,7 @@ void Space::build_shapes(world::World& world, Body& body, const ShapeKey& key) {
         // nothing.
         def.enableSensorEvents = !area || key.monitoring || key.monitorable || key.overrides;
         def.updateBodyMass = false;
+        def.enableHitEvents = key.hits && !area;
         def.filter.categoryBits = key.layer | kShapeBit;
         def.filter.maskBits = ~std::uint64_t{0};
         // Areas ignore one_way_collision, as in Godot.
@@ -1582,6 +1584,7 @@ void Space::step(world::World& world, float seconds) {
     move_characters(world, tree, seconds);
     step_cloths(world, tree, seconds);
     step_hair_2d(world, seconds);
+    collect_hits();
     emit_events(world);
     if (debug_ != nullptr) {
         finish_debug(world, *std::exchange(debug_, nullptr));

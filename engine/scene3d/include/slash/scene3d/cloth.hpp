@@ -33,6 +33,7 @@ struct ClothSection {
         std::size_t surface = 0;
         std::size_t first = 0;
         std::size_t count = 0;
+        std::size_t first_triangle = 0; // where its triangles start among the section's
     };
     std::vector<Piece> pieces;
     // Each vertex at rest in the model's space, its color, and the joints that carry it (into

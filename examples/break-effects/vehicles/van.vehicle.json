@@ -1,0 +1,28 @@
+{
+  "body": {
+    "color": [0.1, 0.3, 0.8],
+    "height": 1.45,
+    "length": 4,
+    "width": 1.8
+  },
+  "design": {
+    "acceleration": [5, 16],
+    "braking_distance": [20, 70],
+    "top_speed": [30, 70],
+    "turning_radius": [4, 12]
+  },
+  "format": 1,
+  "kind": "car",
+  "name": "Van",
+  "physics": {
+    "differential": "front",
+    "engine": {
+      "max_rpm": 6500,
+      "max_torque": 260
+    },
+    "gears": {
+      "ratios": [3.4, 2.1, 1.5, 1.1, 0.9]
+    },
+    "mass": 1100
+  }
+}
