@@ -3043,6 +3043,89 @@ wanted or after 30 tries a place, so rules that leave too little room place fewe
 `scatter.run` says which rules threw tries away. [examples/scatter-rules](../../examples/scatter-rules/)
 grows a forest over a field and a hill.
 
+## Procedural graphs
+
+A `.pcg.json` file is a graph of steps over points, after Unreal's PCG graphs (Godot has none),
+that [`pcg.run`](commands.md#pcgrun) follows to fill a world with what every other tool makes:
+samplers make points, modifiers keep, thin, move and turn them, and spawners place things at
+them: prefabs, meshes, foliage, routes, and any command that places something (creatures,
+characters, vehicles, lights, wind, physics fields, fluids, water, effects, destructible props).
+Every random choice hashes the graph's seed, the node's index and the point's own seed, so a
+graph over the same world makes the same points on every machine. `slash-cli schema pcg` prints
+the schema, and `scene validate` and `scene format` take the files. Graphs are a game's source:
+what they made is saved in its scenes, and exports leave them out.
+
+```json
+{
+  "format": 1,
+  "seed": 7,
+  "budget": {"points": 5000, "entities": 400},
+  "nodes": [
+    {"name": "ground", "op": "surface", "on": ["valley"], "density": 0.4, "slope": [0, 25]},
+    {"name": "meadow", "op": "filter", "from": ["ground"],
+     "noise": {"frequency": 0.05}, "noise_range": [0, 1]},
+    {"name": "grass", "op": "foliage", "from": ["meadow"], "type": "plants/grass.foliage.json"},
+    {"name": "clear", "op": "difference", "from": ["ground"], "story": ["place/farm"],
+     "distance": 12},
+    {"name": "herd", "op": "prune", "from": ["clear"], "spacing": 6},
+    {"name": "deer", "op": "command", "from": ["herd"], "keep": 0.3,
+     "command": "creature.place",
+     "params": {"recipe": "fauna/deer.creature.json", "id": "$id", "at": "$local",
+                "yaw": "$yaw", "parent": "$parent"},
+     "expect": {"min": 3, "reachable": true}}
+  ]
+}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `format` | required | `1` |
+| `description` | | What the graph makes, for whoever reads it |
+| `space` | `"3d"` | `"3d"` makes `Transform3D`s, `"2d"` makes `Transform2D`s |
+| `seed` | `0` | Seed of every random choice |
+| `budget` | | `points`: the most any node may hold; `entities`: the most the spawners may make in all (a `foliage`, `multimesh` or `route` node makes one). `pcg.run` refuses a graph over it and `pcg.check` reports it |
+| `nodes` | required | The steps, in order: a node reads only nodes before it |
+
+Every node has a `name` (up to 32 letters, digits, `_` and `-`, naming the entities it makes),
+an `op`, and, unless it is a sampler, `from`: the earlier nodes whose points it takes, one after
+another. `description` notes what it is for and `expect` what [`pcg.check`](commands.md#pcgcheck)
+holds its points to: `min` and `max` counts, `density` (`[min, max]` points per square unit of
+`expect`'s `area`, else of their bounds) and `reachable` (every point walkable from `pcg.check`'s
+`reach_from` by the navigation map). A point has a place, a turn, a scale, a density (0 to 1),
+the ground's normal under it and a seed of its own. Distances between points are measured across
+the ground: x and z in 3D, x and y in 2D. Each op takes only its own fields:
+
+| Op | Fields | Points |
+| --- | --- | --- |
+| `surface` | `on`, `area`, `tiles`, `count` or `density`, `spacing`, `slope`, `height` | Over the ground, as a [scatter layer](#scatter-rules) picks them: the geometry of `on` and what is under it in 3D, `TileMapLayer` cells in 2D (only those `tiles` name), else the `area` itself |
+| `grid` | `area`, `spacing`, `jitter`, `on`, `tiles` | A grid over `area`, centered in it, each point moved by up to `jitter` (0 to 1) times `spacing` either way; with `on`, dropped onto the highest ground under it (3D) or kept over a cell (2D), and left out where there is none |
+| `points` | `points` | Those listed, `[x, y, z]` (`[x, y]` in 2D) in world space |
+| `path` | `path`, `spacing`, `side` | Every `spacing` along a `Path3D`'s or `Path2D`'s curve, turned to face along it, moved `side` to its right |
+| `entities` | `ids`, `with`, `story` | At these entities, those with all the `with` components, and those whose `StoryRef` names one of the `story` entries (storyboard places such as `"place/harbor"`), turned as they are |
+| `filter` | `slope`, `height`, `noise` and `noise_range`, `density_range`, `keep`, `limit`, `area` | Those on a slope, at a height, where the noise is, with a density in range and within the area; `keep` keeps that share at random; `limit` the first so many |
+| `density` | `noise`, `noise_range`, `multiply` | All, each density set from the noise at it, mapped from `noise_range` (default `[-1, 1]`) to 0..1, or multiplied by it |
+| `prune` | `spacing` | Those `spacing` apart, the densest kept first (ties in order), back in their order |
+| `difference` | `to`, `targets`, `story`, `distance` | Those at least `distance` from every point of the `to` nodes, the `targets` entities and the `story` places |
+| `near` | `to`, `targets`, `story`, `range` | Those whose nearest of the same is within `range` `[min, max]` |
+| `transform` | `offset`, `offset_up`, `rotation_degrees`, `rotate_random`, `tilt_random`, `scale`, `scale_random`, `align_to_normal` | All, moved by `offset` in the world and `offset_up` along each one's up, stood along the ground's normal with `align_to_normal` (3D), turned by `rotation_degrees` (Godot's YXZ; 2D by z) and up to `rotate_random` half turns about up (`tilt_random` about the others), their scale times `scale` plus up to `scale_random` either way |
+| `merge` | | All of them |
+| `spawn` | `prefab`, `components`, `keep` | An entity a point, `<into>_<node>_<n>`, extending `prefab` with `components` over it, its transform the point's |
+| `multimesh` | `mesh`, `keep` | One [`MultiMeshInstance3D`](#multimeshinstance3d) `<into>_<node>` drawing `mesh` at every point (3D) |
+| `foliage` | `type`, `keep` | One `Foliage3D` or `Foliage2D` `<into>_<node>` holding an instance of the [foliage type](#foliage) at every point |
+| `command` | `command`, `params`, `keep` | Calls the command once a point with `params`, which may use the point's `$` names below |
+| `route` | `closed`, `components`, `keep` | One `Path3D` or `Path2D` `<into>_<node>` through the points, from the first to the nearest not yet visited each time, for vehicles, followers or NPC routes |
+
+A spawner's `keep` keeps that share of its points at random first. In `command` params and
+`spawn` and `route` components, a string that is one of these names becomes the point's value:
+`$position` (world), `$local` (in `into`'s space, for a `parent`), `$rotation` (Euler angles, or
+the 2D rotation), `$yaw` (radians about up, or the 2D rotation), `$scale`, `$density`, `$index`
+(from 1), `$seed`, `$id` (`<into>_<node>_<n>`), `$parent` (`into`) and `$node`; and
+`{"$pick": [a, b, c]}` becomes one of them, chosen by the point's seed. Validation finds names
+that aren't IDs or are used twice, `from` and `to` naming no earlier node, samplers given `from`
+and other ops given none, fields the op doesn't take, what an op needs and lacks, ranges out of
+order, 3D-only fields in 2D and noise settings, each at its JSON Pointer.
+[examples/procedural-worlds](../../examples/procedural-worlds/) fills a valley and a 2D island.
+
 ## Made textures and meshes
 
 Gameplay code can make textures and meshes while a game runs, as a Godot script makes an

@@ -108,11 +108,12 @@ struct ScatterTriangle {
 };
 
 // A place picked: where, the Euler angles (radians, Godot's YXZ) or the 2D rotation in
-// rotation.z, and the uniform scale.
+// rotation.z, the uniform scale and the ground's normal there (up in 2D: +z).
 struct ScatterPlace {
     Vec3 position;
     Vec3 rotation;
     float scale = 1.0F;
+    Vec3 normal{0.0F, 1.0F, 0.0F};
 };
 
 // How a layer went: what it placed and, when it placed fewer than asked, why the tries it threw
