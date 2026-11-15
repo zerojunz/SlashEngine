@@ -16,6 +16,12 @@ real commands and real output, and no screenshots.
 | Copy code or command calls that are known to work | [../examples/](../examples/README.md) |
 | Look up a `slash-cli`, `slash-mcp` or `slash-game` flag | [reference/cli.md](reference/cli.md) |
 | Write or check a `.scene.json` file | [reference/scene-format.md](reference/scene-format.md) |
+| See how the world tools fit together: recipes, 2D and 3D, one simulation, procedural graphs | [concepts.md](concepts.md#building-worlds) |
+| Make characters, faces, animals or vehicles from recipes | [Characters](reference/scene-format.md#characters), [Faces](reference/scene-format.md#faces), [Creatures](reference/scene-format.md#creatures), [Vehicle recipes](reference/scene-format.md#vehicle-recipes) |
+| Paint foliage, grow hair, blow wind or break things | [Foliage](reference/scene-format.md#foliage), [Hair and fur](reference/scene-format.md#hair-and-fur), [Wind](reference/scene-format.md#wind), [Destruction](reference/scene-format.md#destruction) |
+| Build effects, fluids, smoke and water | [Visual effects](reference/scene-format.md#visual-effects), [Fluids](reference/scene-format.md#fluids), [Water](reference/scene-format.md#water) |
+| Fill a world from rules | [Procedural graphs](reference/scene-format.md#procedural-graphs), [Scatter rules](reference/scene-format.md#scatter-rules) |
+| Give NPCs plans, quests and dialogue | [NPCs](reference/scene-format.md#npcs), [Quests](reference/scene-format.md#quests), [Dialogue](reference/scene-format.md#dialogue) |
 | Record a game's characters, story, rules or decisions | [reference/storyboard-format.md](reference/storyboard-format.md) |
 | Set up a game's `project.json` | [reference/project-format.md](reference/project-format.md) |
 | Add a closed vendor SDK (ads, a store, Steamworks) to a game | [reference/sdk-format.md](reference/sdk-format.md) |
@@ -26,7 +32,7 @@ real commands and real output, and no screenshots.
 | Try SDFGI, Godot's fully dynamic global illumination, a research feature | [reference/sdfgi.md](reference/sdfgi.md) |
 | Light scenes of many shadowed lights with ReSTIR, a research feature | [reference/restir.md](reference/restir.md) |
 | Draw scenery captured from photos as Gaussian splats, a research feature | [reference/gaussian-splats.md](reference/gaussian-splats.md) |
-| Read what digital humans would need, a research note | [reference/digital-humans.md](reference/digital-humans.md) |
+| Read what digital humans needed and the order they came in, a research note | [reference/digital-humans.md](reference/digital-humans.md) |
 | Call a language model from a game, a tool or a test | [reference/providers.md](reference/providers.md) |
 | Have Autopilot's agent play a game to find bugs, verify a claim or reach a goal | [reference/autopilot.md](reference/autopilot.md) |
 | Bring a game over from Godot | [reference/godot-import.md](reference/godot-import.md) |

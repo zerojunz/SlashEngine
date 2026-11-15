@@ -8,14 +8,20 @@ command an agent can call over MCP. It is model agnostic and works with Claude C
 opencode, Antigravity, Hermes Agent, OpenClaw or any other MCP client. [docs/](docs/README.md) has a getting-started guide, reference pages and
 the [roadmap](docs/roadmap.md); [docs/design.md](docs/design.md) is the full design.
 
-**Status:** milestones 1 to 4 and 6 are done, and milestone 5 (the 2D feature set) is nearly
-done; see the [roadmap](docs/roadmap.md). The engine runs an EnTT world on a fixed-timestep loop,
-headless or in an SDL3 window, and loads and saves JSON scenes validated against a schema it
-generates from its own components. Agents drive it through a command API with undo, served over
-MCP (`slash-mcp`), JSON-RPC, a localhost REST API with an OpenAPI document, and the command line,
-including while the game runs. `slash-cli export` builds and signs a game for macOS, Windows,
-Linux, the web, Android or iOS in one command, using presets in `export_presets.json`. One Mac
-builds every platform, with toolchains `slash-cli` downloads.
+**Status:** milestones 1 to 8 are done, and so is every feature planned for the launch release,
+including the [agent-built worlds](docs/roadmap.md#agent-built-worlds-and-smart-npcs) tool set;
+the published release is what remains (see the [roadmap](docs/roadmap.md)). The engine covers
+Godot's 2D and 3D feature sets (Forward+ and Compatibility renderers, ray tracing, physics on
+Box2D and Jolt, navigation, animation, UI, audio, video, localization, accessibility, networking
+and XR) and tools for agents to build whole worlds: procedural graphs, foliage, wind, characters
+with faces and anatomy, animals, vehicles, NPCs with plans and stories, destruction, visual
+effects, fluids and water, each in 2D and 3D. Scenes are JSON validated against a schema the
+engine generates from its own components. Agents drive it through a command API with undo,
+served over MCP (`slash-mcp`), JSON-RPC, a localhost REST API with an OpenAPI document, and the
+command line, including while the game runs. Games import from Godot, Unity and Unreal Engine
+5, and `slash-cli export` builds and signs a game for macOS, Windows, Linux, the web, Android or
+iOS in one command, using presets in `export_presets.json`. One Mac builds every platform, with
+toolchains `slash-cli` downloads, and the tools themselves run on macOS, Linux and Windows.
 
 ## Quick start
 
@@ -30,7 +36,7 @@ ctest --preset dev
 ```
 
 To let an agent edit a game, run `slash-cli init` in the game's folder. It writes the MCP configs
-for Claude Code, Codex, Cursor, opencode and Antigravity (and Hermes Agent's and OpenClaw's entries), an `AGENTS.md` and an empty main scene. With `slash-mcp` on your
+for Claude Code, Codex, Cursor, opencode and Antigravity (and Hermes Agent's and OpenClaw's entries), an `AGENTS.md`, an empty main scene, a `src/` folder for the game's C++, a first headless test and a storyboard. With `slash-mcp` on your
 `PATH`, the agent connects on its next start. Claude Code can also add it by hand:
 
 ```bash
@@ -47,7 +53,7 @@ claude mcp add slashengine-live -- slash-mcp --live --project .
 To build a game for players, export it from its folder. `--test` runs the result headless:
 
 ```bash
-slash-cli export macos --test        # or windows, linux, web
+slash-cli export macos --test        # or windows, linux, web, android, ios
 ```
 
 To contribute, read [CONTRIBUTING.md](CONTRIBUTING.md). Agents working on the engine itself should
