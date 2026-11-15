@@ -1,0 +1,10 @@
+{
+  "format": 1,
+  "iterations": 3,
+  "look": {
+    "color": [0.15, 0.4, 0.85, 0.9]
+  },
+  "max_particles": 150,
+  "name": "Water",
+  "particle_radius": 0.05
+}

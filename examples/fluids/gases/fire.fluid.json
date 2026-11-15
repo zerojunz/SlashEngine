@@ -1,0 +1,22 @@
+{
+  "format": 1,
+  "gas": {
+    "buoyancy": 1.5,
+    "burn_rate": 1.2,
+    "cooling": 0.8,
+    "heat": 500,
+    "ignition": 250,
+    "smoke_yield": 1.2,
+    "vortex_share": 0.15,
+    "vortex_strength": 0.6
+  },
+  "kind": "gas",
+  "lifetime": 3,
+  "look": {
+    "fire": [1, 0.5, 0.1, 1],
+    "smoke": [0.3, 0.3, 0.32, 0.55]
+  },
+  "max_particles": 1500,
+  "name": "Campfire",
+  "particle_radius": 0.05
+}

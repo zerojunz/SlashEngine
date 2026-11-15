@@ -5711,7 +5711,8 @@ fields. A `PhysicsField2D` does the same in a 2D world, in pixels.
   bodies' points feel forces (each point its share) and velocities. Strain also reaches static
   and animatable `Destructible3D`s.
 - With `particles` on, force fields push `CPUParticles3D` and `CPUParticles2D` particles too,
-  each where it is, as a kilogram: the push adds to `gravity`.
+  each where it is, as a kilogram: the push adds to `gravity`. Fluid particles feel every type
+  that way too: forces, velocities, `anchor` (held where they are) and `kill` (removed).
 - `physics_3d.substeps` and `physics_2d.substeps` in [`project.json`](project-format.md) give
   each tick more collision steps, as Chaos's substeps, for fast or stacked bodies.
 
@@ -6258,6 +6259,10 @@ that is removed go with it. Every enabled `CameraShake` shakes the current `Came
 ID, taking off what it added the tick before, so the camera's own offset comes back.
 `world::camera_shake_offsets` says what shakes add now.
 
+A layer can pour fluids: its `FluidEmitter3D`s and `FluidEmitter2D`s stop when it ends, and a
+part holding its own `Fluid3D` or `Fluid2D` lingers while its particles last (the recipe's
+`lifetime`, or 10 seconds for one that lives for ever), going as soon as they are gone.
+
 ### Particle simulation
 
 Simulation stages run over CPU particles, after Unreal's Niagara modules (Godot has none): a
@@ -6370,6 +6375,136 @@ letting its particles finish, when it closes. The foliage system emits `foliage_
 body starts to push an instance aside (at most 8 a tick; data `type`, `group`, `instance` and
 `position`). `world::vfx_hooks_of`, `foliage_vfx_hooks` and `play_vfx`
 (`slash/world/vfx.hpp`) do the same from gameplay code.
+
+## Fluids
+
+Liquids and gases simulated as particles with no grid (SlashEngine's own; Godot has none),
+after Niagara Fluids. A `.fluid.json` recipe (`slash-cli schema fluid`; `slash/world/fluid.hpp`)
+says what a fluid is, and `extends` another as a JSON Merge Patch:
+
+```json
+{"format": 1, "name": "Water", "particle_radius": 0.05, "iterations": 3, "viscosity": 0.02,
+ "max_particles": 2000, "look": {"color": [0.15, 0.4, 0.85, 0.9]},
+ "budget": {"particles": 2000, "work": 200000}}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `kind` | `"liquid"` | `"liquid"` or `"gas"` (smoke, steam, fire) |
+| `space` | `"3d"` | `"3d"` (meters) or `"2d"` (pixels, seen from the side, y down) |
+| `particle_radius` | `0.05`, `4` in 2D | Particles sit twice this apart at rest |
+| `rest_density` | `1000`, `1.2` for a gas | Mass a cubic meter (a square meter in 2D) |
+| `iterations`, `substeps` | `3`, `1` (`2` for 2D liquids) | Density solver passes a step, steps a tick |
+| `relaxation` | `0.2` | How soft the density constraint is |
+| `viscosity` | `0.02` | The share of neighbors' relative velocity taken (XSPH) |
+| `surface_tension` | `0.2`, `0` for a gas | How hard particles pull together |
+| `vorticity` | `0.05` | Vorticity confinement |
+| `gravity_scale` | `1`, `0` for a gas | How much gravity pulls |
+| `drag` | `0`, `2` for a gas | Velocity lost a second; a gas's pull toward the wind |
+| `lifetime` | `0`, `4` for a gas | Seconds a particle lives; 0 for ever |
+| `max_particles` | `4096` | The most it holds (up to 65536) |
+| `bounce`, `friction` | `0`, `0.1` | What surfaces send back and take along them |
+| `gas` | | `buoyancy` (1.5: lift as a share of gravity, times the gas's rise over its absolute temperature, as Boussinesq's), `ambient_temperature` (20), `cooling` (0.6), `diffusion` (0.3), `dissipation` (0.15), `ignition` (250), `burn_rate` (1.5), `heat` (600), `smoke_yield` (1), `vortex_share` (0.1), `vortex_strength` (0.5), `spread` (0.05) |
+| `look` | | `color`, `foam`, `smoke` and `fire`, as `[r, g, b, a]`; `surface` (`true`: a liquid draws as one smoothed surface with its spray as drops; `false`, a disc a particle), `depth` (8 particle radii: how deep a liquid shows its color's full alpha) and `shadow` (`1`: how dark smoke shades the smoke behind it from the light) |
+| `budget` | | `particles` and `work` (neighbor visits a tick), which `fluid.check` holds it to |
+
+A liquid is position-based fluids (Macklin and Müller): each substep moves particles by gravity
+and the acceleration given, then a density constraint pushes apart those packed past rest
+density, then they collide, take XSPH viscosity, pull together by cohesion and keep their
+swirls by vorticity confinement. A gas carries `temperature`, `smoke` and `fuel`: hotter than
+ambient it rises, it cools toward ambient and shares heat and smoke with its neighbors, fuel
+above `ignition` burns into heat and smoke, smoke thins away, a `vortex_share` of particles (by a
+hash of their number) swirl their neighbors, and crowded particles push apart by `spread`.
+Neighbors are found by sorting particles along a Morton curve (`world::NeighborIndex`), at most
+48 each in the curve's order; the work is split over the job pool by particle and the module
+builds with `-ffp-contract=off`, so a fluid steps the same bits on any number of threads.
+
+| Component | Fields |
+| --- | --- |
+| `Fluid3D`, `Fluid2D` | `recipe`, `enabled`, `overrides` (a merge patch), `fill_size` (a block filled once at the entity), `fill_velocity`, `bounds_size` (a box at the entity the particles stay in); 3D: `visible`, `layers`, `cast_shadow`; 2D: `visible`, `z_index`, `z_as_relative`, `modulate`, `light_mask` |
+| `FluidEmitter3D`, `FluidEmitter2D` | `fluid` (the fluid entity; empty for the fluid on its own entity or the nearest one above it), `rate` a second, `speed`, `spread` (radians), `radius`, `temperature`, `smoke`, `fuel`, `enabled`, `inherit_velocity` (`1`: the share of the emitter's own motion its particles take), `direction` |
+| `FluidSink3D`, `FluidSink2D` | `fluid` (empty for every fluid), `size`, `enabled`: removes the particles in its box |
+
+The `fluids` system (priority 958, after physics; added by `canvas::install`) fills, pours into,
+steps and drains each fluid, and drops particles that go non-finite or outlive `lifetime`.
+Particles live beside the components by entity ID (`world::fluid_particles`), so saving and
+undo leave them alone. Gravity is the project's `physics_3d` or `physics_2d` gravity; gases with
+`drag` drift with `WindSource3D`s and `WindSource2D`s. Particles collide with 3D and 2D physics
+bodies (`world::FluidHost`, which physics3d and physics2d set: each particle a sphere against the
+Jolt bodies its bounds reach, or a circle against the Box2D shapes by their manifolds), and push
+rigid bodies back with the impulse it took to move them out. They also land on soft bodies and
+`Cloth3D`s (their faces as a sheet as thick as their points' radius plus a centimeter) and on
+`Cloth2D`s (the outline of the triangles they draw, torn ones left out), pushing the face's or
+side's points back by their inverse masses. `PhysicsField3D`s and `PhysicsField2D`s with
+`particles` on act on each particle as a kilogram: forces add to gravity, velocities set its
+velocity, `anchor` holds it where it is and `kill` removes it. An emitter on any body (a
+creature's mouth, a vehicle's exhaust, a hose in a character's hand) pours into the fluid it
+names, or the one it is on or under, and throws its particles along with its own motion by
+`inherit_velocity`. A `Fluid3D`/`Fluid2D` with emitters can be a layer of a `.vfx.json` effect
+(see [Visual effects](#visual-effects)). A `Fluid3D` draws its particles as
+discs facing the camera, a liquid's lit and whiter as foam where it runs faster than 40 particle
+radii a second, a gas's blended by its smoke and glowing toward the fire color from four fifths
+of ignition; a `Fluid2D` draws the same discs in its canvas (`world::fluid_color`,
+`scene3d::fluid_quads`).
+
+## Water
+
+Oceans, lakes and rivers (SlashEngine's own; Godot has none), after Unreal's Water plugin and
+its buoyancy component. A `.water.json` recipe (`slash-cli schema water`;
+`slash/world/water.hpp`) says what a body of water is, and `extends` another as a JSON Merge
+Patch:
+
+```json
+{"format": 1, "name": "Sea", "kind": "ocean",
+ "wind": {"speed": 8, "direction": [1, 0.3], "count": 6},
+ "look": {"shallow": [0.1, 0.6, 0.6, 0.5], "deep": [0.02, 0.1, 0.25, 0.95]}}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `kind` | `"lake"` | `"lake"` (a box of `size`), `"ocean"` (no edge) or `"river"` (along a `Path3D`) |
+| `space` | `"3d"` | `"3d"` (meters, y up) or `"2d"` (pixels, seen from the side, y down) |
+| `waves` | none | Up to 16 Gerstner waves: `direction` (`[x, z]`; 2D waves run along x), `wavelength` (8), `amplitude` (0.2), `steepness` (0.5: how far crests lean toward each other, 1 at most), `speed` (0: deep water's, `sqrt(g / k)`), `phase` |
+| `wind` | none | Waves raised by a wind of `speed` (6 m/s, 300 px/s) along `direction`: `count` (6) waves round the Pierson-Moskowitz peak, a significant height of `0.21 speed² / g`, turned up to `spread` (0.6 radians) either way, with `steepness` (0.6) and phases hashed from `seed` (1) |
+| `density` | `1000`, `0.001` in 2D | Mass a cubic meter (a square pixel in 2D) |
+| `buoyancy` | `1` | Lift as a share of the water displaced |
+| `drag`, `angular_drag` | `1`, `1` | The share of a floating body's speed relative to the water, and of its spin, taken a second, under water |
+| `heave_damping` | `8` | The share of a body's speed up and down taken a second where it is wet, which settles its bobbing as the waves it makes would |
+| `current` | none | The water's own velocity (`[x, z]` m/s, or `[x]` px/s), which carries waves and bodies |
+| `flow` | `1.5` m/s, `60` px/s | A river's speed down its path, slowing to 0 at its banks |
+| `ripples` | | `wavelength` (0.5 m, 30 px), `speed` (0: deep water's), `decay` (1 a second) and `splash` (1: how big rings are) |
+| `look` | | `shallow`, `deep` and `foam` as `[r, g, b, a]`; `clarity` (4 m, 200 px: the depth it turns deep by), `crest_foam` (0.85: how sharp a crest foams), `shore_foam` (0.6 m, 12 px: the depth the shallows foam to), `roughness` (0.04), `spacing` (0.5 m, 8 px: the drawn grid's cells) and `view` (120 m: how far an ocean draws) |
+
+The surface moves as Gerstner waves sum: each point of the rest plane goes round its wave's
+orbit, `steepness` shared among the waves so they never loop. The height over a place is found by
+undoing the waves' sideways shift in five fixed-point steps, and the normal, the water's velocity
+and crest foam (where the surface is squeezed together) come from the same sums. Waves shoal:
+they shrink where the water is shallower than a third of their length. Rings spread from where
+bodies and liquid go in, as bells that travel at their `speed` and die by `decay`, at most 64 a
+body, close ones adding up. A lake's or river's ground is measured once under a grid of up to
+128 by 128 cells by rays down past what moves (rigid and character bodies), so the water knows
+its depth, foams in the shallows and fades toward its shores. Its math builds with
+`-ffp-contract=off` and its clock counts ticks, so waves are the same bits everywhere.
+
+| Component | Fields |
+| --- | --- |
+| `Water3D` | `recipe`, `overrides` (a merge patch), `size` (`[x, z]` meters, a lake's area; default 20 by 20), `path` (a river's `Path3D` entity), `width` (a river's, 4 m), `visible`, `layers` |
+| `Water2D` | `recipe`, `overrides`, `width` (640 px) and `depth` (200 px) from the entity's place, its surface at rest; `visible`, `z_index`, `z_as_relative`, `modulate`, `light_mask` |
+
+The `water` system (priority 959, after physics and fluids; added by `canvas::install`) keeps the
+water's clock and rings. A rigid or character body whose middle goes under the surface emits
+`water_entered` (and `water_exited` when it comes out), with the `water` and its vertical
+`speed`, and rings the water; one moving along the surface leaves a wake of rings. A liquid
+`Fluid3D` or `Fluid2D` falling into it is taken in where it lands, ringing. A recipe that can't
+be read emits `water_failed` once and warns. Rigid bodies float: physics3d and physics2d measure
+each one at points through its shape (4 by 4 by 4 in 3D, 6 by 6 in 2D, those inside its shape),
+lift each by the weight of the water it stands for (Archimedes) and drag it toward the water's
+velocity, so waves rock and currents carry it, as Unreal's pontoons. They feel the waves,
+current and shores but not the rings, which are too small and quick to push them. A `Water3D` draws a grid
+displaced by the waves (an ocean's round the camera, a river's along its path), colored from
+shallow to deep by depth and whitened by foam; a `Water2D` draws its surface, a foam band and
+its body fading down in its canvas. Gameplay code samples it with `world::sample_water` and
+rings it with `world::add_water_ripple`.
 
 ## Particles
 

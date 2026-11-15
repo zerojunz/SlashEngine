@@ -5,10 +5,12 @@
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/world/cloth2d.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/fluid.hpp"
 #include "slash/world/hair.hpp"
 #include "slash/world/physics_debug.hpp"
 #include "slash/world/physics_material.hpp"
 #include "slash/world/tree2d.hpp"
+#include "slash/world/water.hpp"
 
 #include <algorithm>
 #include <array>
@@ -305,6 +307,13 @@ struct Cloth2DBody {
     std::vector<std::array<int, 2>> bends;
     std::vector<std::array<int, 4>> bend_sides; // the edges each bend spans, -1 for none
     world::ClothPoints2D points;
+    // The sides of the triangles it draws that no other drawn triangle shares, as point pairs,
+    // which fluids collide with, and each point's inverse mass (0 where skinned) and radius as
+    // the last step had them.
+    std::vector<std::array<int, 2>> outline;
+    std::vector<std::array<int, 3>> triangles; // the triangles it draws, by their points
+    std::vector<float> inverse_mass;
+    float radius = 0.0F;
 };
 
 // A Hair2D's guide strands as the space steps them (hair.cpp), grown from key.
@@ -343,6 +352,11 @@ public:
     [[nodiscard]] const Body* body(entt::entity entity) const;
     // Where a Cloth2D's points are after the last step and the one before, or nullptr.
     [[nodiscard]] const world::ClothPoints2D* cloth_points(entt::entity entity) const;
+    // The Cloth2D sheets as the last step left them, in storage order; one by entity, or null.
+    [[nodiscard]] const EntityMap<std::unique_ptr<Cloth2DBody>>& cloth_bodies() const {
+        return cloths_;
+    }
+    [[nodiscard]] Cloth2DBody* cloth_body(entt::entity entity);
     // Where a Hair2D's guides are after the last step and the one before, or nullptr.
     [[nodiscard]] const world::HairStrands* hair_strands(entt::entity entity) const;
 
@@ -397,6 +411,8 @@ private:
     // Pushes, sets the velocity of, holds, removes and puts to sleep rigid bodies in the world's
     // PhysicsField2Ds' reach, before a step (fields.cpp).
     void apply_fields(world::World& world, const world::Tree2D& tree, float seconds);
+    // Floats and drags rigid bodies in the world's Water2Ds, before a step (src/water.cpp).
+    void apply_water(world::World& world, float seconds);
     // Destroys the entities kill fields took, after a step, emitting field_killed.
     void destroy_doomed(world::World& world);
     // While physics.debug records (debug.cpp): the step's contacts, joints and bodies.
@@ -455,5 +471,9 @@ void move_character(b2WorldId space, Body& body, world::Transform2D& transform,
 // Breaks the Destructible2Ds this step's impacts broke, settles linked groups and counts down
 // loose pieces' lifetimes, after a step (destruction.cpp).
 void break_and_age_2d(world::World& world, Space& space, float seconds);
+// What fluids collide with and push: the space's shapes (src/fluid.cpp).
+[[nodiscard]] world::FluidHost fluid_host_2d(const std::shared_ptr<Space>& space);
+// The ground under 2D water: the first thing below that doesn't move (src/water.cpp).
+[[nodiscard]] world::WaterHost water_host_2d(world::World& world);
 
 } // namespace slash::physics2d::detail

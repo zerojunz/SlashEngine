@@ -6,12 +6,15 @@
 #include "slash/core/log.hpp"
 #include "slash/core/profile.hpp"
 #include "slash/procedural/foliage.hpp"
+#include "slash/scene3d/fluid.hpp"
 #include "slash/scene3d/material.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/video/video.hpp"
 #include "slash/world/cloth2d.hpp"
 #include "slash/world/flesh.hpp"
+#include "slash/world/fluid.hpp"
 #include "slash/world/hair.hpp"
+#include "slash/world/water.hpp"
 #include "slash/world/wind.hpp"
 
 #include <algorithm>
@@ -1583,6 +1586,248 @@ void CanvasRenderer::gather_hair(DrawState& state) {
     }
 }
 
+// Fluid2D: a disc at each particle, colored as the recipe says (scene3d::fluid_quads' 2D
+// twin), a liquid lit by 2D lights and a gas not.
+void CanvasRenderer::gather_fluids(DrawState& state) {
+    const world::World& world = state.world;
+    const CanvasOptions& options = state.options;
+    const world::Tree2D& tree = state.tree;
+    const world::Canvases& canvases = state.canvases;
+    const std::vector<world::Canvas>& canvas_list = canvases.all();
+    const auto& ecs = world.ecs();
+    std::vector<Item>& items = state.items;
+    std::vector<render::Vertex2D>& vertices = state.vertices;
+    for (const auto [entity, fluid] : ecs.view<const world::Fluid2D>().each()) {
+        const Inherited from_parents = inherited(world, tree, entity);
+        const std::size_t canvas = canvases.of(entity);
+        if (!fluid.visible || !from_parents.visible || !canvas_list[canvas].visible) {
+            continue;
+        }
+        const world::FluidParticles* particles = world::fluid_particles(world, entity);
+        if (particles == nullptr || particles->size() == 0) {
+            continue;
+        }
+        auto loaded = world::load_fluid(world, fluid.recipe, fluid.overrides);
+        if (!loaded) {
+            state.problem(entity, "/components/Fluid2D/recipe", loaded.error().message);
+            continue;
+        }
+        const world::FluidRecipe& recipe = *loaded.value();
+        if (!assets_->load<render::Image>(scene3d::kFluidDisc)) {
+            render::Image image = scene3d::fluid_disc_image();
+            const std::size_t bytes = image.pixels.size();
+            (void)assets_->put(scene3d::kFluidDisc, std::move(image), bytes);
+        }
+        auto texture = this->texture(std::string(scene3d::kFluidDisc),
+                                     resolve_filter("linear", options.texture_filter));
+        if (!texture) {
+            state.problem(entity, "/components/Fluid2D", texture.error().message);
+            continue;
+        }
+        const int z = z_index(fluid.z_index, fluid.z_as_relative, from_parents);
+        render::Material material;
+        material.shading =
+            state.shading_for(recipe.gas ? render::LightMode::Unshaded : render::LightMode::Normal,
+                              fluid.light_mask, z, canvas);
+        const Vec4 tint{
+            fluid.modulate.x * from_parents.modulate.x, fluid.modulate.y * from_parents.modulate.y,
+            fluid.modulate.z * from_parents.modulate.z, fluid.modulate.w * from_parents.modulate.w};
+        const float half = world::fluid_draw_size(recipe) * 0.5F;
+        const std::size_t first = vertices.size();
+        std::size_t drawn = 0;
+        const auto byte_color = [&](Vec4 color) {
+            return std::array<std::uint8_t, 4>{to_byte(static_cast<float>(color.x * tint.x)),
+                                               to_byte(static_cast<float>(color.y * tint.y)),
+                                               to_byte(static_cast<float>(color.z * tint.z)),
+                                               to_byte(static_cast<float>(color.w * tint.w))};
+        };
+        const bool surface = !recipe.gas && recipe.surface;
+        if (surface) {
+            // The liquid's body as one surface, its triangles over the disc's solid middle.
+            std::vector<scene3d::FluidCorner2D> corners;
+            scene3d::fluid_surface_2d(recipe, *particles, corners);
+            for (const scene3d::FluidCorner2D& corner : corners) {
+                vertices.push_back(render::Vertex2D{.x = corner.position.x,
+                                                    .y = corner.position.y,
+                                                    .u = 0.5F,
+                                                    .v = 0.5F,
+                                                    .rgba = byte_color(corner.color)});
+            }
+            drawn += corners.size() / 3;
+        }
+        // Smoke is lit from above through the smoke over it.
+        std::vector<float> light;
+        if (recipe.gas) {
+            light = world::fluid_transmittance(recipe, *particles, Vec3f{0.0F, -1.0F, 0.0F});
+            for (float& seen : light) {
+                seen = 0.4F + (0.6F * seen);
+            }
+        }
+        for (std::size_t i = 0; i < particles->size(); ++i) {
+            if (surface && !world::fluid_is_spray(recipe, *particles, i)) {
+                continue;
+            }
+            const Vec4 color =
+                world::fluid_color(recipe, *particles, i, i < light.size() ? light[i] : 1.0F);
+            const std::array<std::uint8_t, 4> rgba = byte_color(color);
+            if (rgba[3] == 0) {
+                continue;
+            }
+            const Vec3f p = particles->position[i];
+            const auto corner = [&](float cx, float cy) {
+                return render::Vertex2D{.x = p.x + (cx * half),
+                                        .y = p.y + (cy * half),
+                                        .u = (cx + 1.0F) * 0.5F,
+                                        .v = (cy + 1.0F) * 0.5F,
+                                        .rgba = rgba};
+            };
+            const render::Vertex2D a = corner(-1.0F, -1.0F);
+            const render::Vertex2D b = corner(1.0F, -1.0F);
+            const render::Vertex2D c = corner(1.0F, 1.0F);
+            const render::Vertex2D d = corner(-1.0F, 1.0F);
+            vertices.insert(vertices.end(), {a, b, c, a, c, d});
+            ++drawn;
+        }
+        if (drawn == 0) {
+            continue;
+        }
+        state.repeat(entity, first);
+        items.push_back({.canvas = canvas,
+                         .z_index = z,
+                         .order = tree.draw_key(entity),
+                         .part = 0,
+                         .texture = texture.value()->id,
+                         .first = first,
+                         .count = vertices.size() - first,
+                         .material = std::move(material),
+                         .entity = entity,
+                         .kind = FrameItem::Kind::Sprite,
+                         .image = &texture.value()->pixels(),
+                         .path = texture.value()->path,
+                         .drawn = drawn,
+                         .particles = render::ParticlesId::None,
+                         .look = {}});
+    }
+}
+
+// Water2D: its body seen from the side, the surface moved by its waves and ripples with foam
+// along it, deeper water darker below.
+void CanvasRenderer::gather_water(DrawState& state) {
+    const world::World& world = state.world;
+    const CanvasOptions& options = state.options;
+    const world::Tree2D& tree = state.tree;
+    const world::Canvases& canvases = state.canvases;
+    const std::vector<world::Canvas>& canvas_list = canvases.all();
+    std::vector<Item>& items = state.items;
+    std::vector<render::Vertex2D>& vertices = state.vertices;
+    if (world.ecs().view<const world::Water2D>().empty()) {
+        return;
+    }
+    const double time =
+        world::water_time(world, static_cast<float>(std::clamp(options.interpolation, 0.0, 1.0)));
+    for (const world::WaterBody& body : world::water_bodies(world, true)) {
+        const entt::entity entity = body.entity;
+        const Inherited from_parents = inherited(world, tree, entity);
+        const std::size_t canvas = canvases.of(entity);
+        if (!body.visible || !from_parents.visible || !canvas_list[canvas].visible ||
+            body.half.x <= 0.0F || body.half.y <= 0.0F) {
+            continue;
+        }
+        const world::WaterRecipe& recipe = *body.recipe;
+        if (!assets_->load<render::Image>(scene3d::kFluidDisc)) {
+            render::Image image = scene3d::fluid_disc_image();
+            const std::size_t bytes = image.pixels.size();
+            (void)assets_->put(scene3d::kFluidDisc, std::move(image), bytes);
+        }
+        auto texture = this->texture(std::string(scene3d::kFluidDisc),
+                                     resolve_filter("linear", options.texture_filter));
+        if (!texture) {
+            state.problem(entity, "/components/Water2D", texture.error().message);
+            continue;
+        }
+        const int z = z_index(body.z_index, body.z_as_relative, from_parents);
+        render::Material material;
+        material.shading = state.shading_for(render::LightMode::Normal, body.light_mask, z, canvas);
+        const Vec4 tint{
+            body.modulate.x * from_parents.modulate.x, body.modulate.y * from_parents.modulate.y,
+            body.modulate.z * from_parents.modulate.z, body.modulate.w * from_parents.modulate.w};
+        const auto byte_color = [&](Vec4 color) {
+            return std::array<std::uint8_t, 4>{to_byte(static_cast<float>(color.x * tint.x)),
+                                               to_byte(static_cast<float>(color.y * tint.y)),
+                                               to_byte(static_cast<float>(color.z * tint.z)),
+                                               to_byte(static_cast<float>(color.w * tint.w))};
+        };
+        const float left = to_float(body.place.origin.x) - body.half.x;
+        const float rest = to_float(body.place.origin.y);
+        const float bottom = rest + body.half.y;
+        const int columns =
+            std::clamp(static_cast<int>(std::ceil(body.half.x * 2.0F / recipe.spacing)), 1, 512);
+        // Rows down from the surface: the surface, a band of foam's edge, then the body.
+        constexpr std::array<float, 6> kRows{0.0F, 0.0F, 0.15F, 0.35F, 0.65F, 1.0F};
+        const float band = std::min(recipe.shore_foam * 0.5F + 2.0F, body.half.y * 0.25F);
+        std::vector<std::array<render::Vertex2D, kRows.size()>> strips;
+        strips.reserve(static_cast<std::size_t>(columns) + 1);
+        for (int i = 0; i <= columns; ++i) {
+            const float x =
+                left + (body.half.x * 2.0F * static_cast<float>(i) / static_cast<float>(columns));
+            const world::WaterSample top = world::displace_water(body, {x, rest, 0.0F}, time);
+            const float surface = std::min(top.position.y, bottom);
+            const float floor =
+                std::isfinite(top.depth) ? std::min(rest + top.depth, bottom) : bottom;
+            std::array<render::Vertex2D, kRows.size()> strip{};
+            for (std::size_t r = 0; r < kRows.size(); ++r) {
+                float y = surface;
+                Vec4 color;
+                if (r == 0) {
+                    color = world::water_color(recipe, std::max(top.depth, recipe.shore_foam),
+                                               std::max(top.foam, 0.35F));
+                } else if (r == 1) {
+                    y = std::min(surface + band, floor);
+                    color = world::water_color(recipe, std::max(band, recipe.shore_foam),
+                                               top.foam * 0.5F);
+                } else {
+                    const float below = std::max(floor - surface - band, 0.0F);
+                    y = std::min(surface + band + (below * kRows.at(r)), floor);
+                    color =
+                        world::water_color(recipe, std::max(y - surface, recipe.shore_foam), 0.0F);
+                }
+                strip.at(r) = render::Vertex2D{
+                    .x = top.position.x, .y = y, .u = 0.5F, .v = 0.5F, .rgba = byte_color(color)};
+            }
+            strips.push_back(strip);
+        }
+        const std::size_t first = vertices.size();
+        for (std::size_t i = 0; i + 1 < strips.size(); ++i) {
+            for (std::size_t r = 0; r + 1 < kRows.size(); ++r) {
+                const render::Vertex2D& a = strips[i].at(r);
+                const render::Vertex2D& b = strips[i + 1].at(r);
+                const render::Vertex2D& c = strips[i + 1].at(r + 1);
+                const render::Vertex2D& d = strips[i].at(r + 1);
+                vertices.insert(vertices.end(), {a, b, c, a, c, d});
+            }
+        }
+        if (vertices.size() == first) {
+            continue;
+        }
+        state.repeat(entity, first);
+        items.push_back({.canvas = canvas,
+                         .z_index = z,
+                         .order = tree.draw_key(entity),
+                         .part = 0,
+                         .texture = texture.value()->id,
+                         .first = first,
+                         .count = vertices.size() - first,
+                         .material = std::move(material),
+                         .entity = entity,
+                         .kind = FrameItem::Kind::Sprite,
+                         .image = &texture.value()->pixels(),
+                         .path = texture.value()->path,
+                         .drawn = (vertices.size() - first) / 3,
+                         .particles = render::ParticlesId::None,
+                         .look = {}});
+    }
+}
+
 // Polygon2D: its polygon, or each of its polygons, cut into triangles as Godot's Polygon2D
 // draws them, colored by vertex_colors (or color) and textured by uv in the texture's pixels.
 void CanvasRenderer::gather_polygons(DrawState& state) {
@@ -2400,6 +2645,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
 
     gather_cloths(state);
     gather_hair(state);
+    gather_fluids(state);
+    gather_water(state);
     gather_polygons(state);
 
     gather_foliage(state);

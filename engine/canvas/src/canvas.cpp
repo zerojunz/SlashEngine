@@ -23,10 +23,12 @@
 #include "slash/video/video.hpp"
 #include "slash/world/character.hpp"
 #include "slash/world/flesh.hpp"
+#include "slash/world/fluid.hpp"
 #include "slash/world/hair.hpp"
 #include "slash/world/path.hpp"
 #include "slash/world/tree2d.hpp"
 #include "slash/world/vfx.hpp"
+#include "slash/world/water.hpp"
 #include "slash/world/wind.hpp"
 
 #include <algorithm>
@@ -498,6 +500,10 @@ void add_systems(world::World& world, asset::Assets& assets) {
     world::add_character_system(world);
     world::add_flesh_2d_system(world);
     procedural::install_foliage(world);
+    // Fluids and smoke, which physics3d and physics2d let collide with their bodies.
+    world::install_fluids(world);
+    // Lakes, oceans and rivers, which float physics3d's and physics2d's bodies.
+    world::install_water(world);
     // Grooms' length, density and color maps read through assets.
     world::install_hair(world);
     world::set_hair_image_reader(
