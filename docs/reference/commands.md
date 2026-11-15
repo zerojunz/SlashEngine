@@ -2363,32 +2363,37 @@ skeleton gets cones on every bone long enough. Given `id`, it also sets the enti
 `profile` to the file. An `id` with no model but a `Transform2D` tree gets a 2D profile of the
 tree instead (each entity under it with children, a `Sprite2D` or a `Polygon2D` is a bone: a
 capsule to its one child bone, a rectangle round several, at a tip a capsule out to its polygon's
-farthest point or else a circle; hinges between them, balance on the topmost), and a `Ragdoll2D`. `undo` puts the file back.
+farthest point or else a circle; hinges between them, balance on the topmost), and a `Ragdoll2D`.
+A character's ragdoll (a `.character.json` model, or a `Character2D`'s cut-out) is fitted to its
+anatomy's bones instead, as `fit` says: each body holds the skull, ribs, pelvis and long bones
+its bone carries (and those of bones under it with no body), a capsule keeping its axis and
+taking the radius that holds them, and weighs what the skin's would. `undo` puts the file back.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `id` | string | | An entity whose `MeshInstance3D` draws the model, or the root of a 2D tree |
 | `model` | string | the entity's | A skinned model file, in place of `id` |
 | `out` | string | the model's path as `.ragdoll.json`; 2D `ragdolls/<id>.ragdoll.json` | The file to write |
+| `fit` | string | `"auto"` | What the bodies fit: `"anatomy"` (a character's bones), `"skin"`, or `"auto"` (anatomy for a character, else skin) |
 | `mass` | number | `70` | Kilograms the bodies weigh together |
 | `stiffness`, `damping` | number | `400`, `40` | The muscles' |
 | `pin`, `pin_damping` | number | `200`, `28` | How hard muscles pull bodies to the pose's place |
 | `min_length` | number | 4% of the height | Shorter bones get no body (not humanoids): a share of the skeleton's height, 2D pixels |
 | `dry_run` | boolean | `false` | Return what would change and change nothing |
 
-Needs: `edit`, `filesystem`. It returns the file, the bones and, in 3D, whether it found a
-humanoid. The kid in [examples/ragdoll-profiles](../../examples/ragdoll-profiles/):
+Needs: `edit`, `filesystem`. It returns the file, the bones, what they were fitted to (`fit`)
+and, in 3D, whether it found a humanoid. The kid in [examples/ragdoll-profiles](../../examples/ragdoll-profiles/):
 
 ```json
 {"id": "kid"}
 ```
 
 ```json
-{"bones":["arm","chest","foot","hand","head","pelvis","shin","thigh"],"out":"ragdolls/kid.ragdoll.json"}
+{"bones":["arm","chest","foot","hand","head","pelvis","shin","thigh"],"fit":"skin","out":"ragdolls/kid.ragdoll.json"}
 ```
 
-A model with no skin, a tree with nothing long enough and an `out` that isn't a `.ragdoll.json`
-path are errors.
+A model with no skin, a tree with nothing long enough, `"fit": "anatomy"` on what is no
+character and an `out` that isn't a `.ragdoll.json` path are errors.
 
 ### ragdoll.hit
 

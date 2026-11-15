@@ -1338,7 +1338,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
           drawn through a grid of moved texture coordinates so every device matches), and the
           creature, vehicle, character and foliage recipes' `vfx` playing effects on their
           events, vehicles' `running` effects and `foliage_parted` (`examples/vfx-tool-effects`)
-19. [ ] Fluids and smoke: a real-time simulator with no grids (Godot has none; after Niagara's
+19. [x] Fluids and smoke: a real-time simulator with no grids (Godot has none; after Niagara's
         fluids and Unreal's water tools, built on particles instead of Niagara Fluids' grids):
         liquids as position-based fluid particles (density, incompressibility, viscosity,
         surface tension, vorticity) that pour, splash, fill containers and push and float the
@@ -1373,7 +1373,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
           every field type on fluid particles, emitters on any body throwing particles with
           their motion, and soft bodies, `Cloth3D`s and `Cloth2D`s as colliders pushed back by
           the fluid
-20. [ ] Character anatomy and faces: the character tool's skeleton made whole and a face tool, after
+20. [x] Character anatomy and faces: the character tool's skeleton made whole and a face tool, after
         MetaHuman Creator and Chaos Flesh: Godot's full humanoid profile (fingers, eyes and
         jaw) with twist bones, so hands grip and faces open; an anatomical layer of bones
         (skull, ribs, pelvis, limbs) and muscles sized from the body's measures, the bones
@@ -1397,8 +1397,8 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
               by the body's `muscle` and `fat`, XPBD flesh after Chaos Flesh that bulges and
               jiggles under the skin in 3D and 2D, `::skeleton` and `::muscles` model forms,
               `Flesh3D`, `Flesh2D` and `flesh.get`
-        - [ ] The anatomy's bones as the ragdoll's and hit reactions' bodies (`ragdoll.generate`
-              fitting them, not the skin's capsules)
+        - [x] The anatomy's bones as the ragdoll's and hit reactions' bodies (`ragdoll.generate`
+              fitting them, not the skin's capsules, in 3D and on 2D cut-outs, its `fit`)
         - [x] The face tool
               - [x] `.face.json` recipes: 46 sculpt controls, carves at 27 landmarks, blends of
                     presets, `extends` and a recipe's `from`, brows, asymmetry and styles; the

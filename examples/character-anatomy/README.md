@@ -21,3 +21,7 @@ into tetrahedra that an XPBD solver steps each tick, ends pinned to their bones.
 - In 2D, `character.place` makes a side-on cut-out with a `Flesh2D`; flexing its `arm` group
   with its muscles drawn over it (`view`), `flesh.get` lists its bones and its flexed biceps, and
   `frame.capture` sees the red of the muscles.
+- `ragdoll.generate` fits each of his ragdolls, in 3D and on the cut-out, to his anatomy's bones
+  rather than his skin (`"fit": "anatomy"`): each body holds the skull, ribs, pelvis or long
+  bone under it and weighs what the flesh round it would, and `ragdoll.hit` strikes the cut-out's
+  arm.

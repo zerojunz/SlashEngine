@@ -3,6 +3,7 @@
 #include "slash/asset/assets.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
+#include "slash/world/character.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
 #include "slash/world/tree2d.hpp"
@@ -11,6 +12,7 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <map>
 #include <memory>
 #include <numbers>
 #include <set>
@@ -55,6 +57,128 @@ float length(Vec2 v) {
 // Rounded to a thousandth, so generated profiles read well.
 double rounded(double value) {
     return std::round(value * 1000.0) / 1000.0;
+}
+
+// How far a point is from the segment a to b.
+float segment_distance(Vec2 p, Vec2 a, Vec2 b) {
+    const Vec2 ab = b - a;
+    const auto ab2 = static_cast<float>((ab.x * ab.x) + (ab.y * ab.y));
+    float t =
+        ab2 > 0.0F ? static_cast<float>(((p.x - a.x) * ab.x) + ((p.y - a.y) * ab.y)) / ab2 : 0.0F;
+    t = std::clamp(t, 0.0F, 1.0F);
+    return length(p - (a + (ab * static_cast<real_t>(t))));
+}
+
+// An anatomy bone's capsule in a ragdoll bone's space, in pixels.
+struct CarriedPiece {
+    Vec2 a;
+    Vec2 b;
+    float radius = 0.0F;
+};
+
+// Fits a generated bone's shape to the anatomy's bones it carries: a capsule keeps its axis and
+// takes the radius that holds them, a rectangle and a circle their bounds, none past the skin's.
+void fit_to_pieces(json::Value& bone, const std::vector<CarriedPiece>& pieces) {
+    const std::string shape = bone["shape"].as_string();
+    Vec2 low{std::numeric_limits<real_t>::max(), std::numeric_limits<real_t>::max()};
+    Vec2 high{std::numeric_limits<real_t>::lowest(), std::numeric_limits<real_t>::lowest()};
+    for (const CarriedPiece& piece : pieces) {
+        for (const Vec2 p : {piece.a, piece.b}) {
+            const auto r = static_cast<real_t>(piece.radius);
+            low = {std::min<real_t>(low.x, p.x - r), std::min<real_t>(low.y, p.y - r)};
+            high = {std::max<real_t>(high.x, p.x + r), std::max<real_t>(high.y, p.y + r)};
+        }
+    }
+    if (shape == "capsule") {
+        const auto& offset = bone["offset"].as_array();
+        const Vec2 end{static_cast<real_t>(2.0 * offset[0].as_double()),
+                       static_cast<real_t>(2.0 * offset[1].as_double())};
+        float radius = 0.0F;
+        for (const CarriedPiece& piece : pieces) {
+            radius = std::max({radius, segment_distance(piece.a, {}, end) + piece.radius,
+                               segment_distance(piece.b, {}, end) + piece.radius});
+        }
+        const auto skin = static_cast<float>(bone["radius"].as_double());
+        bone["radius"] = rounded(std::clamp(radius, 1.0F, std::max(skin, 1.0F)));
+    } else if (shape == "rectangle") {
+        const auto& skin = bone["size"].as_array();
+        bone["size"] = json::Array{
+            rounded(std::min(static_cast<double>(high.x - low.x), skin[0].as_double())),
+            rounded(std::min(static_cast<double>(high.y - low.y), skin[1].as_double()))};
+        bone["offset"] = json::Array{rounded(static_cast<double>(low.x + high.x) / 2.0),
+                                     rounded(static_cast<double>(low.y + high.y) / 2.0)};
+    } else if (shape == "circle") {
+        const Vec2 center = (low + high) * static_cast<real_t>(0.5F);
+        float radius = 1.0F;
+        for (const CarriedPiece& piece : pieces) {
+            radius = std::max({radius, length(piece.a - center) + piece.radius,
+                               length(piece.b - center) + piece.radius});
+        }
+        bone["radius"] = rounded(std::min(radius, static_cast<float>(bone["radius"].as_double())));
+        bone["offset"] = json::Array{rounded(static_cast<double>(center.x)),
+                                     rounded(static_cast<double>(center.y))};
+    }
+}
+
+// The anatomy's bones each ragdoll bone of a Character2D's cut-out carries, in that bone's space
+// at rest (a cut-out's parts are only moved, never turned, at rest): each anatomy bone goes to
+// the part its cut-out bone draws, or the nearest part above it that is a bone.
+std::map<entt::entity, std::vector<CarriedPiece>>
+carried_pieces(const world::World& world, entt::entity entity, const world::Anatomy& anatomy,
+               const world::Tree2D& tree, const std::set<entt::entity>& chosen) {
+    std::map<entt::entity, std::vector<CarriedPiece>> out;
+    const auto* character = world.ecs().try_get<const world::Character2D>(entity);
+    if (character == nullptr) {
+        return out;
+    }
+    auto recipe = world::load_character(world, character->recipe);
+    if (!recipe) {
+        return out;
+    }
+    const std::vector<world::CutoutBone> cutout = world::character_cutout(*recipe.value());
+    const std::string owner(world.id_of(entity));
+    // Each cut-out bone's entity (named as the character_2d system names it) and its rest.
+    std::map<std::string, entt::entity> parts;
+    std::map<entt::entity, Vec2> rests;
+    std::vector<Vec2> at;
+    for (const world::CutoutBone& bone : cutout) {
+        const Vec2 rest =
+            (bone.parent < 0 ? Vec2{} : at[static_cast<std::size_t>(bone.parent)]) + bone.position;
+        at.push_back(rest);
+        std::string id = owner + "_" + bone.name;
+        if (id.size() > 64) {
+            id.resize(64);
+        }
+        if (const entt::entity part = world.find(id); part != entt::null) {
+            parts[bone.name] = part;
+            rests[part] = rest;
+        }
+    }
+    const real_t ppm = character->pixels_per_meter;
+    const real_t facing = character->flip_h ? -1.0F : 1.0F;
+    for (const world::AnatomyBone& bone : anatomy.bones) {
+        const auto found = parts.find(bone.bone);
+        if (found == parts.end()) {
+            continue;
+        }
+        entt::entity part = found->second;
+        while (part != entt::null && part != entity && !chosen.contains(part)) {
+            part = tree.parent(part);
+        }
+        const auto rest = rests.find(part);
+        if (part == entt::null || part == entity || rest == rests.end()) {
+            continue;
+        }
+        const auto local = [&](Vec3 p) {
+            return Vec2{(p.x - rest->second.x) * ppm * facing, -(p.y - rest->second.y) * ppm};
+        };
+        for (const world::AnatomyPiece& piece : bone.pieces) {
+            out[part].push_back({.a = local(piece.a),
+                                 .b = local(piece.b),
+                                 .radius = static_cast<float>(piece.radius * ppm)});
+        }
+    }
+    return out;
 }
 
 // The rotation of a matrix's x axis, clockwise from +x as Transform2D's.
@@ -739,10 +863,17 @@ Result<json::Value> generate_ragdoll(const world::World& world, entt::entity ent
     const float min_length =
         options.min_length > 0.0F ? options.min_length : 0.04F * std::max(bottom - top, 1.0F);
 
-    // The bones: entities with children, a sprite or a polygon (a cut-out's part).
+    // The bones: entities with children, a sprite or a polygon (a cut-out's part), but not the
+    // view a Flesh2D draws its anatomy in.
+    const entt::entity flesh_view = ecs.all_of<world::Flesh2D>(entity)
+                                        ? world.find(std::string(world.id_of(entity)) + "_anatomy")
+                                        : entt::entity{entt::null};
     std::vector<entt::entity> chosen;
     std::set<entt::entity> chosen_set;
     for (const entt::entity part : order) {
+        if (part == flesh_view) {
+            continue;
+        }
         const auto& transform = ecs.get<const Transform2D>(part);
         const auto* polygon = ecs.try_get<const Polygon2D>(part);
         if (!transform.children.empty() || ecs.all_of<Sprite2D>(part) ||
@@ -751,6 +882,10 @@ Result<json::Value> generate_ragdoll(const world::World& world, entt::entity ent
             chosen_set.insert(part);
         }
     }
+    const std::map<entt::entity, std::vector<CarriedPiece>> carried =
+        options.anatomy != nullptr
+            ? carried_pieces(world, entity, *options.anatomy, tree, chosen_set)
+            : std::map<entt::entity, std::vector<CarriedPiece>>{};
     struct Made {
         std::string name;
         json::Value bone;
@@ -848,6 +983,9 @@ Result<json::Value> generate_ragdoll(const world::World& world, entt::entity ent
             bone["shape"] = "circle";
             bone["radius"] = rounded(radius);
             area = kPi * radius * radius;
+        }
+        if (const auto pieces = carried.find(part); pieces != carried.end()) {
+            fit_to_pieces(bone, pieces->second);
         }
         lengths.emplace(part, span);
         made.push_back({.name = bone_name(world, entity, part),

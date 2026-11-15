@@ -528,3 +528,95 @@ TEST_CASE("flesh: a Character2D's flesh moves its parts and shows its anatomy") 
     project.ok("step", R"({"ticks": 1})");
     CHECK(world::flesh_offsets_2d(world, arm) == nullptr);
 }
+
+namespace {
+
+// A written ragdoll profile's bones.
+json::Value profile_bones(const std::string& root, const json::Value& made) {
+    auto text = slash::platform::read_file(root + "/" + made.find("out")->as_string());
+    REQUIRE(text.ok());
+    return *parse(text.value()).find("bones");
+}
+
+// How many of the bones fitted to the anatomy are thinner or thicker than the same bones fitted to
+// the skin, and whether every bone weighs the same both ways.
+struct Fitted {
+    int thinner = 0;
+    int thicker = 0;
+    int compared = 0;
+    bool same_masses = true;
+};
+Fitted compare_fits(const json::Value& anatomy, const json::Value& skin) {
+    Fitted out;
+    for (const auto& [name, bone] : anatomy.as_object()) {
+        const json::Value* other = skin.find(name);
+        REQUIRE_MESSAGE(other != nullptr, name);
+        out.same_masses = out.same_masses && bone.find("mass")->as_double() ==
+                                                 doctest::Approx(other->find("mass")->as_double());
+        if (bone.find("shape")->as_string() == "capsule" &&
+            other->find("shape")->as_string() == "capsule") {
+            ++out.compared;
+            const double radius = bone.find("radius")->as_double();
+            const double outer = other->find("radius")->as_double();
+            out.thinner += radius < outer ? 1 : 0;
+            out.thicker += radius > outer + 1.0e-9 ? 1 : 0;
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("flesh: ragdoll.generate fits a character's ragdoll to its anatomy's bones") {
+    Project project("flesh_ragdoll_project");
+    project.ok("character.place",
+               R"({"recipe": "characters/athlete.character.json", "id": "athlete",
+                   "at": [0, 0, 0]})");
+    const json::Value bones = project.ok("ragdoll.generate", R"({"id": "athlete"})");
+    CHECK(bones.find("fit")->as_string() == "anatomy");
+    CHECK(bones.find("humanoid")->as_bool());
+    const json::Value skin =
+        project.ok("ragdoll.generate",
+                   R"({"id": "athlete", "fit": "skin", "out": "characters/skin.ragdoll.json"})");
+    CHECK(skin.find("fit")->as_string() == "skin");
+    const Fitted fitted =
+        compare_fits(profile_bones(project.root, bones), profile_bones(project.root, skin));
+    // The limbs' long bones are thinner than the flesh round them, nothing reaches out past the
+    // skin, and the masses stay the skin's.
+    CHECK(fitted.compared >= 8);
+    CHECK(fitted.thinner >= 4);
+    CHECK(fitted.thicker == 0);
+    CHECK(fitted.same_masses);
+    project.ok("step", R"({"ticks": 2})");
+
+    // In 2D, a Character2D's cut-out.
+    project.ok("character.place",
+               R"({"recipe": "characters/baker.character.json", "id": "baker", "at": [200, 300]})");
+    project.ok("step", R"({"ticks": 1})");
+    const json::Value flat = project.ok("ragdoll.generate", R"({"id": "baker"})");
+    CHECK(flat.find("fit")->as_string() == "anatomy");
+    const json::Value flat_skin =
+        project.ok("ragdoll.generate",
+                   R"({"id": "baker", "fit": "skin", "out": "ragdolls/skin.ragdoll.json"})");
+    const Fitted cut =
+        compare_fits(profile_bones(project.root, flat), profile_bones(project.root, flat_skin));
+    CHECK(cut.compared >= 4);
+    CHECK(cut.thinner >= 4);
+    CHECK(cut.thicker == 0);
+    CHECK(cut.same_masses);
+    project.ok("step", R"({"ticks": 2})");
+    CHECK(project.session->world().ecs().all_of<world::Ragdoll2D>(
+        project.session->world().find("baker")));
+
+    // Anatomy asked of what is no character.
+    project.ok("entity.create",
+               R"({"id": "tree_top", "components": {"Transform2D": {"position": [0, -40]},
+                   "Polygon2D": {"polygon": [[0, 0], [10, 0], [0, -30]]}}})");
+    project.ok("entity.create", R"({"id": "tree", "components": {"Transform2D": {"children":
+        ["tree_top"]}}})");
+    const command::Reply refused =
+        project.call("ragdoll.generate", R"({"id": "tree", "fit": "anatomy"})");
+    CHECK_FALSE(refused.ok);
+    CHECK(refused.message.find("/fit") != std::string::npos);
+    CHECK(project.call("ragdoll.generate", R"({"id": "tree"})").ok);
+}
