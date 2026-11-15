@@ -1,0 +1,54 @@
+{
+  "entities": {
+    "field": {
+      "components": {
+        "Polygon2D": {
+          "color": [0.3, 0.6, 0.2, 1.0],
+          "polygon": [
+            [0.0, 60.0],
+            [160.0, 60.0],
+            [160.0, 90.0],
+            [0.0, 90.0]
+          ]
+        },
+        "Transform2D": {}
+      }
+    },
+    "kid": {
+      "components": {
+        "CharacterBody2D": {},
+        "Transform2D": {
+          "position": [30.0, 65.0]
+        }
+      }
+    },
+    "meadow": {
+      "components": {
+        "Foliage2D": {
+          "groups": [
+            {
+              "instances": [40.0, 70.0, 0.0, 1.0, 120.0, 70.0, 0.0, 1.0],
+              "type": "flora/tuft.foliage.json"
+            }
+          ]
+        },
+        "Transform2D": {}
+      }
+    },
+    "sky": {
+      "components": {
+        "Polygon2D": {
+          "color": [0.4, 0.6, 0.9, 1.0],
+          "polygon": [
+            [0.0, 0.0],
+            [160.0, 0.0],
+            [160.0, 60.0],
+            [0.0, 60.0]
+          ]
+        },
+        "Transform2D": {}
+      }
+    }
+  },
+  "format": 1
+}

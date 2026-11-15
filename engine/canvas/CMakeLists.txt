@@ -2,6 +2,7 @@ add_library(slash_canvas
     src/canvas.cpp
     src/capture.cpp
     src/debug_draw.cpp
+    src/distortion.cpp
     src/gpu_particles.cpp
     src/light.cpp
     src/material.cpp

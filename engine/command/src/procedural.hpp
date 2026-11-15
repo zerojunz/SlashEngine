@@ -20,6 +20,9 @@ void register_scatter_commands(Registry& registry);
 void register_hair_commands(Registry& registry);
 void register_damage_commands(Registry& registry);
 
+// Adds vfx.play, vfx.state, vfx.check and vfx.preview, over slash/world/vfx.hpp (vfx.cpp).
+void register_vfx_commands(Registry& registry);
+
 // The noise a command samples: a .texture.json NoiseTexture2D's (its noise, normalize and
 // invert), or inline FastNoiseLite settings, normalized.
 struct NoiseSource {

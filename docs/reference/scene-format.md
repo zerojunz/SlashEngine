@@ -4864,7 +4864,7 @@ window and two 2D crates.
 | `strength`, `compression` | the material's | Newtons a square meter of a link holds (2D: a newton a pixel of edge, per 64), and how many times more it holds what stands on it |
 | `debris` | `lifetime` `0`, `push` the material's | Seconds loose pieces last (0 keeps them) and meters (pixels) a second they fly from the hit |
 | `deform` | the material's | How damage that doesn't break it changes its shape: `dent` (meters deep a point of blunt, impact or explosive damage pushes in), `dent_radius`, `max_dent`; `hole` (meters across a point of pierce damage shoots through), `max_hole`; `carve` (meters of radius a point of explosive damage blasts out), `max_carve`; `crater_depth` (how deep a crater is for its radius, on an `HTerrain`). 0 does none. 2D outlines take them at 64 pixels a meter |
-| `effects` | the material's | What hits and breaks leave, as Chaos's break events drive Niagara: `hit` and `break`, each with `debris` and `dust` (`amount` of particles, `lifetime` seconds, `speed` meters a second, `spread` degrees, `size` meters, `gravity` scale, `color`), `decal` (`texture`, `size` meters, `lifetime` seconds, 0 keeps it, `modulate`) and `sound` (`stream`, `volume_db`, `pitch_scale`, `bus`, `lifetime`); `hit_scale` is the damage at which a hit throws all its particles (fewer for less). `null` takes out one the material has |
+| `effects` | the material's | What hits and breaks leave, as Chaos's break events drive Niagara: `hit` and `break`, each with `debris` and `dust` (`amount` of particles, `lifetime` seconds, `speed` meters a second, `spread` degrees, `size` meters, `gravity` scale, `color`), `decal` (`texture`, `size` meters, `lifetime` seconds, 0 keeps it, `modulate`) `sound` (`stream`, `volume_db`, `pitch_scale`, `bus`, `lifetime`) and `vfx` (a [`.vfx.json` effect](#visual-effects) of the body's dimension, played there turned along the way out with its `strength` parameter set to how hard it was hit, 0 to 1, and freed once played); `hit_scale` is the damage at which a hit throws all its particles (fewer for less). `null` takes out one the material has |
 
 - Damage of a kind, times its resistance, comes off `health`, and the body's `state` follows the
   states it is below; at no health it breaks where it was hit. `damaged`, `broken` and
@@ -4907,7 +4907,8 @@ window and two 2D crates.
   `<id>_decal`, `<id>_sound`, numbered past those taken): a one-shot `CPUParticles3D` of small
   boxes (dust: fading spheres), a `Decal` facing back along the hit and an
   `AudioStreamPlayer3D`, or in 2D a `CPUParticles2D` (in pixels), a `Sprite2D` and an
-  `AudioStreamPlayer2D`. Each has a `DamageEffect` that removes it when its `lifetime` runs out.
+  `AudioStreamPlayer2D`. Each has a `DamageEffect` that removes it when its `lifetime` runs out. A
+  profile's `vfx` plays as `<id>_vfx`, a `VisualEffect3D` or `VisualEffect2D` that frees itself.
 - Someone or something living (a `Ragdoll3D`, `Creature3D`, `Flesh3D`, `NpcAgent` or a model
   drawing a `.character.json` or `.creature.json` recipe; in 2D a `Ragdoll2D`, `Creature2D`,
   `Character2D` or `NpcAgent`) with a `Destructible3D` or `Destructible2D` never breaks or
@@ -5059,6 +5060,7 @@ both.
 | `collision` | none | `shape` (3D `capsule`, `sphere`, `cylinder`, `box`; 2D `circle`, `rectangle`, `capsule`; `none`), `radius` (`0.25`), `height` (`2`), `size`, `offset` (default: standing on the ground), in the instance's space, scaled with it |
 | `climbable` | `false` | Characters may climb it; `foliage.get` says so |
 | `harvest` | none | `item` and `amount` (`1`): what [`foliage.harvest`](commands.md#foliageharvest) gives |
+| `vfx` | `{}` | Effects its instances play: a `.vfx.json` recipe for `foliage_parted` and `foliage_harvested` ([effects from the tools](#effects-from-the-tools)) |
 
 | Component | Fields (defaults) |
 | --- | --- |
@@ -5182,6 +5184,7 @@ from 0.5 to 1.5.
 | `name`, `role`, `faction` | `""`, `"npc"`, `""` | Who it is, `"player"` or `"npc"`, and a storyboard faction's ID |
 | `body` | | `height` (`1.75` meters to the top of the head, 0.4 to 3), `build` (`0.5`, 0 slight to 1 heavy), `head`, `neck`, `shoulders`, `hips`, `arms`, `legs` (`1`), `skin`, `muscle` (`0.5`, 0 to 1: how big its muscles are) and `fat` (`0.3`, 0 to 1: how thick the fat over them is, which softens how much they show) |
 | `face` | | A [face](#faces): a `.face.json` file's fields inline, with `from` naming a `.face.json` file they are a merge patch over |
+| `vfx` | `{}` | Effects it plays: a `.vfx.json` recipe by world event about it ([effects from the tools](#effects-from-the-tools)) |
 | `hair` | | `style` (`"short"`; `"none"`, `"long"`, `"ponytail"`, `"bun"` or `"mohawk"`), `color`, `length` (`0.5`, how far long hair and ponytails hang) and `groom` (a [`.groom.json`](#hair-and-fur) file grown over the model's `"scalp"` in place of the style; 3D only) |
 | `clothing` | `[]` | Up to 16 garments from the skin out, each over the ones before: `kind`, `color`, `material` (`"cloth"`, `"leather"`, `"metal"`, `"silk"` or `"fur"`, which set its roughness and metallic), `length` (`1`: sleeves, legs, hems and boots' shafts), `loose` (`0`, how far it stands off the body) and `cloth` (capes, coats, robes, dresses and skirts: simulated as cloth) |
 | `props` | `[]` | Up to 8 models held or worn, one a point: `model` (any model file), `point` (`"right_hand"`, `"left_hand"`, `"back"`, `"hip_left"`, `"hip_right"` or `"head_top"`), `position` (meters), `rotation` (radians, YXZ) and `scale` |
@@ -5439,6 +5442,7 @@ Colors are `[r, g, b]` or `[r, g, b, a]` from 0 to 1, lengths meters and speeds 
 | `look` | | `coat`, `belly`, `markings` (the pattern, hooves, manes and fins), `pattern` (`"plain"`, `"spots"`, `"stripes"` or `"patches"`) and `eyes` |
 | `parts` | | `ears` (`"short"`; `"none"`, `"long"` or `"pointed"`), `horns` (`"none"`, `"horns"` or `"antlers"`) and `mane` on quadrupeds; `antennae` on insects; `wings` (meters tip to tip; twice its length for a bird) on birds and insects, which fly with them |
 | `behavior` | | See below |
+| `vfx` | `{}` | Effects it plays: a `.vfx.json` recipe by world event about it, such as `creature_attacked`, `creature_fed` or `killed` ([effects from the tools](#effects-from-the-tools)) |
 
 `behavior` says how the fauna system runs it:
 
@@ -5550,6 +5554,7 @@ aircraft's wings, engines and landing gear.
 | `physics` | by kind | See below |
 | `damage` | | `per_impulse` (`0.02`, damage a kilogram-meter a second of impulse), `knockdown` (`400`, the impulse that knocks a ragdoll down) and `min_speed` (`1.5`; slower hurts no one) |
 | `design` | | What `vehicle.check` holds a test drive to, each a `[min, max]` range (0 for no bound): `top_speed`, `acceleration` (seconds from 0 to 100 km/h), `braking_distance` (meters from 100 km/h, or 90% of its top speed when that is lower) and `turning_radius` (at 5 meters a second, 3D) |
+| `vfx` | `{}` | Effects it plays: a `.vfx.json` recipe by world event about it, such as `vehicle_hit` or `wrecked`, and `running` while its throttle is open ([effects from the tools](#effects-from-the-tools)) |
 
 Each of `parts` is a shape or a model file the vehicle is built of, in its space, so an agent
 designs a vehicle of its own as Unreal's modular vehicles are put together:
@@ -6189,6 +6194,182 @@ stages and lines nothing reaches, objectives and choices that never hold. `scene
 `scene format` take both kinds of file, and exports ship them.
 [examples/npc-stories](../../examples/npc-stories/) has a village with a questline, a
 conversation in two languages and watchmen on their rounds in 2D and 3D.
+
+## Visual effects
+
+A `.vfx.json` file (`slash-cli schema vfx`) is a visual effect, after Unreal's Niagara systems
+(Godot has none: its effects are scenes of particles, lights and sounds a script times). It lays
+layers on one timeline. Each layer is an entity of components, written as a scene writes them:
+particles (`CPUParticles3D`, `GPUParticles3D` and their 2D forms, with trails, mesh particles and
+flipbooks as those components draw them), `Decal`s, lights, sounds, screen flashes (a `Control`
+with a `ColorRect`), `CameraShake`s or anything else a scene holds. A layer appears at its
+`start`, has its fields moved along `curves` while it lasts and goes at its end; an emitter stops
+emitting and goes once its particles' `lifetime` has passed, so they finish what they started.
+Any value may be an expression (`"=8 * intensity"`, Godot's `Expression`) over the recipe's
+`parameters`, which an effect sets, and `detail`; curves also read `t` (seconds into the layer)
+and `life` (`t` over the layer's length). Whole numbers come out as integers, and as in
+Godot two whole numbers divide as integers (`"=size / 2.0"` keeps the fraction).
+
+```json
+{"format": 1, "name": "Explosion", "duration": 2,
+ "parameters": {"size": 1, "color": [1, 0.55, 0.2, 1]},
+ "layers": [
+   {"name": "flash", "duration": 0.4,
+    "components": {"OmniLight3D": {"light_color": "=color", "omni_range": "=8 * size"}},
+    "curves": {"OmniLight3D/light_energy": {"keys": [[0, 12], [0.4, 0]], "ease": "smooth"}}},
+   {"name": "smoke", "start": 0.2, "detail": 0.6,
+    "components": {"CPUParticles3D": {"amount": 24, "lifetime": 1.5}}},
+   {"name": "scorch", "start": 0.1, "world": true,
+    "components": {"Decal": {"size": ["=3 * size", 1, "=3 * size"]}}}],
+ "lod": [{"distance": 25, "detail": 0.5}, {"distance": 60, "detail": 0.25}],
+ "budget": {"particles": 64, "lights": 1}}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `format` | | `1` |
+| `name` | `""` | What it is called |
+| `dimension` | `"3d"` | `3d` (a `VisualEffect3D` plays it) or `2d` (a `VisualEffect2D`) |
+| `duration` | `1` | Seconds it lasts |
+| `loop` | `false` | Whether it starts again at its end, each cycle's emitters seeded apart |
+| `parameters` | `{}` | Parameters by name with their defaults: numbers, booleans, strings or arrays (colors) |
+| `layers[]` | | `name` (letters, digits, `_`), `start` `0`, `duration` `0` (lasts to the end), `offset` (`[x, y, z]` or `[x, y]` in the effect's space), `rotation` (Euler radians, or radians in 2D), `components`, `curves`, `detail` `0` (the least level of detail it plays at), `world` `false` (stays where it appeared: a scorch rather than a flame that follows) |
+| `layers[].curves` | `{}` | By field path (`OmniLight3D/light_energy`, `ColorRect/color/a`): keys of `[seconds into the layer, value]` in order, or `{"keys": [...], "ease": "linear"}` (`linear`, `smooth` or `step`) |
+| `lod[]` | `[]` | Nearest first: from `distance` (meters, 2D pixels) from the current camera on, the effect plays at `detail`: layers needing more drop and emitters' `amount` is scaled by it (never below 1) |
+| `budget` | no limit | What it may cost at its busiest at full detail: `particles` (every emitter's amount), `lights`, `sounds`, `decals` and `layers` playing at once; `vfx.check` reports what goes past |
+
+`scene validate` and `scene format` take it; validation also finds expressions that don't parse,
+layers named twice, curve keys out of order and levels of detail out of order.
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `VisualEffect3D` | `recipe` `""`, `parameters` `null` (values over the recipe's), `playing` `true`, `time` `0` (seconds in), `speed_scale` `1`, `lod_bias` `1` (the camera's distance is divided by it), `seed` `0` (added to its emitters' seeds), `free_on_finish` `false` (remove it once a one-shot has finished, or a loop has been stopped, and its particles have gone) |
+| `VisualEffect2D` | the same, on a `Transform2D` |
+| `VfxPart` | `effect` `""`, `layer` `""`, `cycle` `0`, `linger` `-1` (seconds left for its particles once its layer ended; below 0 playing) |
+| `CameraShake` | `strength` `0.1` (meters in 3D, pixels in 2D), `frequency` `12` (shakes a second), `radius` `0` (in which it reaches the camera, less with distance; 0 everywhere), `enabled` `true` |
+
+The `vfx` system (priority 1090, before the particle systems) plays each effect: a layer plays as
+the entity `<effect>_<layer>` with a `VfxPart` (numbered past taken names), placed under the
+effect in its `Transform3D` or `Transform2D` children (`world` layers are `top_level`, left
+where they appeared; layers with a `Control` are on the screen). It emits `vfx_started` and
+`vfx_finished`, and `vfx_failed` once for a recipe or layer that can't play. Parts of an effect
+that is removed go with it. Every enabled `CameraShake` shakes the current `Camera3D`'s
+`h_offset` and `v_offset` and the current `Camera2D`'s `offset` with smooth noise hashed from its
+ID, taking off what it added the tick before, so the camera's own offset comes back.
+`world::camera_shake_offsets` says what shakes add now.
+
+### Particle simulation
+
+Simulation stages run over CPU particles, after Unreal's Niagara modules (Godot has none): a
+`ParticleSimulation3D` on an entity with a `CPUParticles3D`, or a `ParticleSimulation2D` on one
+with a `CPUParticles2D`, works on its particles each tick after the emitter moved them (the
+`particle_simulation_3d` and `particle_simulation_2d` systems, priority 1105, between the CPU
+particles and the GPU ones). In order: new particles take their attributes; neighbors push
+apart, pull together and line up; curl noise, attractors (3D) and drag change their velocity and
+the speed limits hold it, the change moving them this tick too; they collide; attributes worked
+out each tick are; then events fire. Results are the same on any number of threads and every
+platform (`world::run_stages`, `slash/world/particle_sim.hpp`, built with `-ffp-contract=off`).
+
+```json
+"ParticleSimulation3D": {
+  "collide": "colliders", "bounce": 0.3,
+  "neighbor_radius": 0.5, "separation": 1, "cohesion": 0.4, "alignment": 1,
+  "curl_strength": 2, "max_speed": 3,
+  "attributes": [{"name": "alpha", "value": "1 - age / lifetime", "every_tick": true}],
+  "events": [{"on": "collision", "spawn": "mist", "count": 2, "speed": 1}]
+}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `enabled` | `true` | Runs the stages. |
+| `neighbor_radius` | `0` | How far a particle feels its neighbors; 0 turns flocking off. Neighbors are found by sorting particles along a Morton curve by their cells of this size and looking up a cell and those round it (27, or 9 in 2D) with binary searches, so no grid is kept. |
+| `max_neighbors` | `16` | The most neighbors a particle feels, the nearest first (1 to 256). |
+| `separation` | `0` | How hard neighbors push apart, more the closer they are. |
+| `cohesion` | `0` | How hard a particle is pulled toward its neighbors' middle (per second squared). |
+| `alignment` | `0` | How fast a particle turns to its neighbors' mean velocity (per second). |
+| `curl_strength` | `0` | Acceleration of curl noise, which swirls without gathering or spreading particles. |
+| `curl_scale` | `1` (`64` in 2D) | The size of its swirls, in meters or pixels. |
+| `curl_speed` | `0` | How fast the noise moves. |
+| `attractors` | `0` | 3D only: how much `GPUParticlesAttractor*3D`s push these particles (1 as they push GPU particles). |
+| `drag` | `0` | The share of velocity lost a second. |
+| `min_speed`, `max_speed` | `0` | Speed limits; 0 is none. |
+| `collide` | `"none"` | 3D: `colliders` (the `GPUParticlesCollision*3D`s), `depth` (what the current `Camera3D` sees: a 160x90 image of the meshes' depths in front of it, as Niagara's depth buffer collision) or `both`. 2D: `occluders` (`LightOccluder2D`s and tile occluders with `sdf_collision`, in the world's canvas). |
+| `collision_radius` | `0.05` (`2` in 2D) | How near a particle comes to what it collides with. |
+| `response` | `"bounce"` | `bounce` (by `bounce` and `friction`), `stick` (stops it) or `kill`. |
+| `bounce` | `0.3` | The share of its speed into the surface sent back. |
+| `friction` | `0.2` | The share of its speed along the surface lost. |
+| `depth_thickness` | `0.5` | 3D only: how far behind what the camera sees a particle still counts as touching it. |
+| `attributes` | `[]` | At most 8 named values a particle carries: `name`, `value` (a Godot `Expression`) and `every_tick` (`false` works it out once, when the particle starts). |
+| `events` | `[]` | Rules that answer `collision`, `death` or `location`. |
+
+An attribute's value reads the particle's `age`, `life` (age over lifetime), `lifetime`, `speed`,
+`x`, `y`, `z`, `vx`, `vy`, `vz` (in its emitter's space), `neighbors`, `index`, `collided`,
+`random` (0 to 1, fixed for its life), the simulation's `time` and `delta`, and attributes before
+it; a name it can't read is refused with the JSON Pointer of the value. Three names change the
+particle: `size` scales it, `alpha` multiplies its color's alpha and `kill` above 0.5 ends it.
+An expression that fails as it runs leaves its value at 0 and is logged once.
+
+| Event field | Default | Meaning |
+| --- | --- | --- |
+| `on` | `"death"` | `collision`, `death` or `location`. |
+| `region_position`, `region_size` | `[0, 0, 0]` | For `location`: a box in the world (a rect in 2D, z ignored) the particle is in. |
+| `chance` | `1` | The share of times it fires, drawn from the particle and the tick. |
+| `spawn` | `""` | Another entity's `CPUParticles3D` (or `CPUParticles2D`) to start particles in, where the particle is, even when it isn't emitting (at most 4096 a tick's events keep alive). |
+| `count` | `1` | Particles it starts (at most 256 an event). |
+| `speed` | `0` | Their speed, in random directions. |
+| `inherit_velocity` | `0` | The share of the particle's velocity they take. |
+| `name` | `""` | When set, emits a `particle_event` world event about the emitter, its data the `name`, `on` and the world `position`; at most 8 an emitter a tick. |
+| `kill` | `false` | Ends the particle when it fires. |
+
+### Screen distortion
+
+`ScreenDistortion3D` and `ScreenDistortion2D` bend the picture of the world as a heat haze, a
+shockwave's refracting ring, ripples or a lens does (Godot draws these with a shader reading
+`SCREEN_TEXTURE`; Niagara with a distortion material). A recipe layer can hold one and move its
+`progress` or `strength` along curves. `CanvasRenderer` draws the world, with the canvas layers
+below it, into a texture, then shows it through a grid of triangles (96 cells across) whose
+texture coordinates are moved by each distortion, so every device draws the same pixels with no
+shader of its own; the world's controls and the canvases above it are drawn over it unbent. A
+2D one is placed by its canvas's screen transform and its `radius` is in pixels; a 3D one is
+placed and sized through the current `Camera3D` and its `radius` is in meters (behind the camera
+it bends nothing). `canvas::distortions`, `distortion_offset` and `distortion_mesh`
+(`slash/canvas/distortion.hpp`) give what a frame bends, and `CanvasRenderer::distortions_drawn`
+counts them.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `mode` | `"heat"` | `heat` (smooth noise rising at `speed`, `frequency` cells across the radius), `shockwave` (a ring at `progress` of the radius, `width` of it wide: just outside it pushed out, just inside pulled in), `ripple` (`frequency` rings moving out at `speed` a second) or `lens` (bulges from the middle) |
+| `radius` | `1` (`48` in 2D) | How far it reaches, falling off smoothly to nothing there |
+| `strength` | `6` | The most it moves the picture, in pixels |
+| `progress` | `0.5` | Where a shockwave's ring is, from 0 (the middle) to 1 (the edge) |
+| `width` | `0.25` | How wide a shockwave's ring is, as a share of the radius |
+| `frequency` | `3` | Heat's noise cells, or ripples' rings, across the radius |
+| `speed` | `1` | How fast heat rises and ripples move, a second |
+| `enabled` | `true` | Whether it bends |
+
+### Effects from the tools
+
+The creature, vehicle, character and foliage recipes (`.creature.json`, `.vehicle.json`,
+`.character.json`, `.foliage.json`) take a `vfx` object naming a `.vfx.json` recipe per world
+event, as Niagara components on a Blueprint answer its events:
+
+```json
+"vfx": {"creature_attacked": "fx/dust.vfx.json", "killed": "fx/feathers.vfx.json"}
+```
+
+At the start of each tick the `vfx` system plays what the tick before's events ask (at most 16
+a tick): an event about an entity drawn from such a recipe (a `Creature3D` or `Creature2D`, a
+`Vehicle3D` or `Vehicle2D`, a `Character2D`, or a `MeshInstance3D` drawing a `.character.json`)
+whose kind the recipe names starts a one-shot `<entity>_<event>` (numbered past taken names)
+with a `VisualEffect3D` or `VisualEffect2D` and `free_on_finish`, at the event's `position`
+when its data has one, else at the entity. Foliage events (`foliage_parted`,
+`foliage_harvested`) look the recipe up by their data's `type`. A vehicle's `running` effect is
+not an event: `<vehicle>_running` follows the vehicle while its throttle is open and stops,
+letting its particles finish, when it closes. The foliage system emits `foliage_parted` when a
+body starts to push an instance aside (at most 8 a tick; data `type`, `group`, `instance` and
+`position`). `world::vfx_hooks_of`, `foliage_vfx_hooks` and `play_vfx`
+(`slash/world/vfx.hpp`) do the same from gameplay code.
 
 ## Particles
 

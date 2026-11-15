@@ -1,0 +1,23 @@
+{
+  "deform": {
+    "carve": 0,
+    "dent": 0,
+    "hole": 0
+  },
+  "effects": {
+    "hit": {
+      "debris": {
+        "amount": 0
+      },
+      "dust": {
+        "amount": 0
+      },
+      "vfx": "fx/sparks.vfx.json"
+    },
+    "hit_scale": 40
+  },
+  "format": 1,
+  "health": 400,
+  "material": "metal",
+  "name": "Steel barrel"
+}

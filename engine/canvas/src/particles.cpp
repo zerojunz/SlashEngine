@@ -1,7 +1,10 @@
 #include "slash/canvas/particles.hpp"
 
+#include "slash/canvas/gpu_particles.hpp"
 #include "slash/core/jobs.hpp"
 #include "slash/core/json.hpp"
+#include "slash/core/log.hpp"
+#include "slash/world/particle_sim.hpp"
 #include "slash/world/physics_field.hpp"
 #include "slash/world/tree2d.hpp"
 #include "slash/world/wind.hpp"
@@ -263,6 +266,13 @@ struct Slot {
     bool alive = false;
     std::array<float, kValueCount> random{};
     Vec4 tint{1.0F, 1.0F, 1.0F, 1.0F}; // its pick of color_initial_ramp times its point's color
+    // What a ParticleSimulation2D keeps: its attributes, and where it was, whether it was alive
+    // and how old at the last tick's stages, which tell starts and deaths.
+    std::array<float, world::kMaxParticleAttributes> attributes{};
+    Vec2 last_position;
+    Vec2 last_velocity;
+    float last_age = 0.0F;
+    bool was_alive = false;
 };
 
 // One CPUParticles2D's particles and where its cycle is.
@@ -274,7 +284,13 @@ struct Emitter {
     bool was_emitting = false;
     bool done = false;    // a one_shot's cycle ended; it emits again once restarted
     bool running = false; // a one_shot emitted and hasn't reported finished
+    // Particles simulations' events started, beyond the emission cycle, and how many have been.
+    std::vector<Slot> extra;
+    std::uint32_t spawned = 0;
 };
+
+// The most particles events start in an emitter at once, beyond its amount.
+constexpr std::size_t kMaxExtra = 4096;
 
 // The second each slot emits at in a cycle, as Godot spreads them: evenly over the cycle,
 // moved later at random by up to a slot's share times randomness, and squeezed toward the
@@ -323,6 +339,15 @@ public:
         if (delta <= 0.0) {
             return false;
         }
+        // Started particles that died a tick ago go; the rest move on as the slots' do.
+        std::erase_if(e.extra, [](const Slot& slot) { return !slot.alive; });
+        for (Slot& slot : e.extra) {
+            slot.particle.previous = slot.particle.position;
+            advance(slot, static_cast<float>(delta));
+            if (slot.particle.age >= slot.particle.lifetime) {
+                slot.alive = false;
+            }
+        }
         const double lifetime = settings_.lifetime;
         const double before = e.time;
         double now = before + delta;
@@ -369,6 +394,25 @@ public:
             return true;
         }
         return false;
+    }
+
+    // Starts a particle at position with velocity, both in the particles' space, beyond the
+    // emission cycle, as a simulation's event does; with the emission's random values for a slot
+    // of its own.
+    void spawn(Emitter& e, Vec2 position, Vec2 velocity) const {
+        if (e.extra.size() >= kMaxExtra) {
+            return;
+        }
+        Slot slot;
+        const auto index = static_cast<std::uint32_t>(settings_.amount) + (e.spawned % 65536U);
+        emit(slot, index, 0x80000000U | e.spawned);
+        ++e.spawned;
+        slot.particle.position = position;
+        slot.particle.previous = position;
+        slot.particle.velocity = velocity;
+        // Its look as at its start, as the slots' are once moved.
+        advance(slot, 0.0F);
+        e.extra.push_back(slot);
     }
 
 private:
@@ -509,7 +553,8 @@ private:
 };
 
 bool alive(const Emitter& emitter) {
-    return std::ranges::any_of(emitter.slots, [](const Slot& slot) { return slot.alive; });
+    return std::ranges::any_of(emitter.slots, [](const Slot& slot) { return slot.alive; }) ||
+           std::ranges::any_of(emitter.extra, [](const Slot& slot) { return slot.alive; });
 }
 
 // Ticks of tick_seconds that cover seconds.
@@ -538,6 +583,11 @@ bool run(Emitter& emitter, const CPUParticles2D& component, const world::Transfo
 std::vector<Particle> live(const Emitter& emitter, std::string_view draw_order) {
     std::vector<Particle> out;
     for (const Slot& slot : emitter.slots) {
+        if (slot.alive) {
+            out.push_back(slot.particle);
+        }
+    }
+    for (const Slot& slot : emitter.extra) {
         if (slot.alive) {
             out.push_back(slot.particle);
         }
@@ -623,16 +673,263 @@ struct ParticleSystem {
         std::erase_if(emitters, [&](const auto& entry) { return !seen.contains(entry.first); });
     }
 
+    // Errors already logged, so each is logged once.
+    std::set<std::string, std::less<>> warned;
+
+    // Runs every ParticleSimulation2D's stages over its CPUParticles2D, after the emitters
+    // moved; then starts the particles their events start and emits their world events.
+    void simulate(world::World& world, double tick_seconds) {
+        auto& ecs = world.ecs();
+        if (tick_seconds <= 0.0) {
+            return;
+        }
+        const world::Tree2D tree(world);
+        struct Run {
+            entt::entity entity;
+            const CPUParticles2D* component;
+            Emitter* emitter;
+            world::ParticleStages stages;
+            world::Transform2D transform;
+            world::Affine2D place;
+            std::uint32_t seed = 0;
+            std::vector<world::SimEvent> events;
+            std::string failed;
+        };
+        std::vector<Run> runs;
+        bool occluders = false;
+        for (const entt::entity entity :
+             ecs.view<const world::ParticleSimulation2D, const CPUParticles2D>()) {
+            const auto& simulation = ecs.get<const world::ParticleSimulation2D>(entity);
+            if (!simulation.enabled) {
+                continue;
+            }
+            const auto found = emitters.find(key_of(world, entity));
+            if (found == emitters.end()) {
+                continue;
+            }
+            auto stages = world::compile_stages(simulation);
+            if (!stages) {
+                const std::string message =
+                    std::string(world.id_of(entity)) + " " + stages.error().message;
+                if (warned.insert(message).second) {
+                    log::warn("a particle simulation can't run",
+                              {{"entity", std::string(world.id_of(entity))},
+                               {"error", stages.error().message}});
+                }
+                continue;
+            }
+            const auto& component = ecs.get<const CPUParticles2D>(entity);
+            occluders = occluders || simulation.collide == "occluders";
+            runs.push_back({.entity = entity,
+                            .component = &component,
+                            .emitter = &found->second,
+                            .stages = std::move(stages).value(),
+                            .transform = tree.global(entity),
+                            .place = tree.global_affine(entity),
+                            .seed = particle_seed(world.id_of(entity), component.seed),
+                            .events = {},
+                            .failed = {}});
+        }
+        if (runs.empty()) {
+            return;
+        }
+        std::vector<render::ParticleShape> shapes;
+        if (occluders) {
+            shapes = particle_collision_shapes(world, tree, asset::assets_of(ecs));
+        }
+        const double time = static_cast<double>(world.tick()) * tick_seconds;
+        world.pool().parallel_for(runs.size(), [&](std::size_t r) {
+            Run& run = runs[r];
+            const world::ParticleSimulation& s = run.stages.settings;
+            const bool local = run.component->local_coords;
+            const world::Affine2D back = run.place.inverse();
+            const auto to_world = [&](Vec3f p) {
+                const Vec2 at{p.x, p.y};
+                return local ? to_float(run.place.apply(at)) : to_float(at);
+            };
+            world::SimInputs inputs;
+            inputs.delta =
+                static_cast<float>(tick_seconds) * std::max(run.component->speed_scale, 0.0F);
+            inputs.time = time;
+            inputs.seed = run.seed;
+            inputs.flat = true;
+            if (s.collide == "occluders" && !shapes.empty()) {
+                inputs.contact = [&](Vec3f p, float radius) {
+                    const Vec2f at = to_world(p);
+                    const render::ParticleContact c = render::particle_contact(at, radius, shapes);
+                    world::SimContact out;
+                    if (c.collided) {
+                        Vec2 normal{c.normal.x, c.normal.y};
+                        if (local) {
+                            normal = normalized(back.apply(normal) - back.apply({}));
+                        }
+                        out = {.collided = true,
+                               .normal = {static_cast<float>(normal.x),
+                                          static_cast<float>(normal.y), 0.0F},
+                               .depth = c.depth};
+                    }
+                    return out;
+                };
+            }
+            inputs.to_world = [&](Vec3f p) {
+                const Vec2f at = to_world(p);
+                return Vec3f{at.x, at.y, 0.0F};
+            };
+            stage(run.stages, *run.emitter, inputs, run.events, run.failed);
+        });
+        for (Run& run : runs) {
+            if (!run.failed.empty()) {
+                const std::string message = std::string(world.id_of(run.entity)) + " " + run.failed;
+                if (warned.insert(message).second) {
+                    log::warn(
+                        "a particle simulation's attribute failed",
+                        {{"entity", std::string(world.id_of(run.entity))}, {"error", run.failed}});
+                }
+            }
+            answer(world, tree, run.entity, *run.component, run.place, run.seed, run.stages,
+                   run.events);
+        }
+    }
+
+    // One emitter's stages: its live particles in, the changes back, and its deaths.
+    static void stage(const world::ParticleStages& stages, Emitter& e,
+                      const world::SimInputs& inputs, std::vector<world::SimEvent>& events,
+                      std::string& failed) {
+        const auto dead_at = [&](Vec2 position, Vec2 velocity, std::uint32_t index) {
+            world::SimParticle dead;
+            dead.position = {static_cast<float>(position.x), static_cast<float>(position.y), 0.0F};
+            dead.velocity = {static_cast<float>(velocity.x), static_cast<float>(velocity.y), 0.0F};
+            dead.index = index;
+            dead.alive = false;
+            world::add_death_events(stages, dead, inputs, events);
+        };
+        std::vector<world::SimParticle> particles;
+        std::vector<Slot*> live;
+        for (std::vector<Slot>* list : {&e.slots, &e.extra}) {
+            for (Slot& slot : *list) {
+                const Particle& p = slot.particle;
+                if (!slot.alive) {
+                    if (slot.was_alive) {
+                        // Died in its emitter's step: its end is where it was.
+                        dead_at(p.position, p.velocity, p.index);
+                        slot.was_alive = false;
+                    }
+                    continue;
+                }
+                world::SimParticle sim;
+                sim.position = {static_cast<float>(p.position.x), static_cast<float>(p.position.y),
+                                0.0F};
+                sim.velocity = {static_cast<float>(p.velocity.x), static_cast<float>(p.velocity.y),
+                                0.0F};
+                sim.age = p.age;
+                sim.lifetime = p.lifetime;
+                sim.random = world::sim_random(inputs.seed, p.index, 0x5A17U);
+                sim.index = p.index;
+                sim.born = !slot.was_alive || p.age < slot.last_age;
+                if (sim.born && slot.was_alive) {
+                    // Its slot started again in the same step its last particle died in.
+                    dead_at(slot.last_position, slot.last_velocity, p.index);
+                }
+                sim.attributes = slot.attributes;
+                particles.push_back(sim);
+                live.push_back(&slot);
+            }
+        }
+        world::run_stages(stages, particles, inputs, events, failed);
+        for (std::size_t i = 0; i < live.size(); ++i) {
+            Slot& slot = *live[i];
+            const world::SimParticle& sim = particles[i];
+            Particle& p = slot.particle;
+            p.position = {sim.position.x, sim.position.y};
+            p.velocity = {sim.velocity.x, sim.velocity.y};
+            slot.attributes = sim.attributes;
+            slot.last_age = p.age;
+            slot.last_position = p.position;
+            slot.last_velocity = p.velocity;
+            p.scale *=
+                std::max(world::attribute_or(stages, sim, stages.size_attribute, 1.0F), 0.0F);
+            p.color.w *= std::clamp(world::attribute_or(stages, sim, stages.alpha_attribute, 1.0F),
+                                    0.0F, 1.0F);
+            if (!sim.alive) {
+                slot.alive = false;
+                world::add_death_events(stages, sim, inputs, events);
+            }
+            slot.was_alive = slot.alive;
+        }
+    }
+
+    // What an emitter's events do: start particles in the emitters they name and emit world
+    // events, at most kMaxWorldEvents an emitter a tick.
+    void answer(world::World& world, const world::Tree2D& tree, entt::entity entity,
+                const CPUParticles2D& component, const world::Affine2D& place, std::uint32_t seed,
+                const world::ParticleStages& stages, const std::vector<world::SimEvent>& events) {
+        constexpr std::size_t kMaxWorldEvents = 8;
+        std::size_t emitted = 0;
+        for (const world::SimEvent& event : events) {
+            const world::ParticleEventRule& rule = stages.settings.events[event.rule];
+            Vec2 position{event.position.x, event.position.y};
+            Vec2 velocity{event.velocity.x, event.velocity.y};
+            if (component.local_coords) {
+                position = place.apply(position);
+                velocity = place.apply(velocity) - place.apply({});
+            }
+            if (!rule.name.empty() && emitted < kMaxWorldEvents) {
+                ++emitted;
+                json::Object data;
+                data["name"] = rule.name;
+                data["on"] = rule.on;
+                data["position"] = json::Array{position.x, position.y};
+                world.emit("particle_event", world.id_of(entity), json::Value(std::move(data)));
+            }
+            if (rule.spawn.empty() || rule.count <= 0) {
+                continue;
+            }
+            const entt::entity target = world.find(rule.spawn);
+            auto* settings =
+                target != entt::null ? world.ecs().try_get<CPUParticles2D>(target) : nullptr;
+            if (settings == nullptr) {
+                const std::string message =
+                    std::string(world.id_of(entity)) + " spawn " + rule.spawn;
+                if (warned.insert(message).second) {
+                    log::warn(
+                        "a particle event's spawn names no CPUParticles2D",
+                        {{"entity", std::string(world.id_of(entity))}, {"spawn", rule.spawn}});
+                }
+                continue;
+            }
+            Emitter& into = emitters[key_of(world, target)];
+            const Settings target_settings(*settings);
+            const world::Transform2D transform = tree.global(target);
+            const Simulation simulation(target_settings, transform,
+                                        particle_seed(rule.spawn, settings->seed), {}, nullptr,
+                                        0.0);
+            const world::Affine2D back = tree.global_affine(target).inverse();
+            for (int i = 0; i < std::min(rule.count, 256); ++i) {
+                const float u =
+                    world::sim_random(seed ^ 0xE7E57U, event.particle, into.spawned * 2U);
+                const Vec3f push = world::sim_direction(u, 0.0F, true) * rule.speed;
+                Vec2 start = position;
+                Vec2 moving = (velocity * rule.inherit_velocity) + Vec2{push.x, push.y};
+                if (settings->local_coords) {
+                    start = back.apply(start);
+                    moving = back.apply(moving) - back.apply({});
+                }
+                simulation.spawn(into, start, moving);
+            }
+        }
+    }
+
     [[nodiscard]] world::MemoryPart memory() const {
         world::MemoryPart part{"cpu_particles_2d", 0, {}, {}};
         std::uint64_t slots = 0;
         std::uint64_t live = 0;
         for (const auto& [key, emitter] : emitters) {
             part.bytes += world::kMapNodeBytes<decltype(emitters)> + json::heap_bytes(key) +
-                          (emitter.slots.capacity() * sizeof(Slot));
-            slots += emitter.slots.size();
+                          ((emitter.slots.capacity() + emitter.extra.capacity()) * sizeof(Slot));
+            slots += emitter.slots.size() + emitter.extra.size();
             live += static_cast<std::uint64_t>(
-                std::ranges::count_if(emitter.slots, [](const Slot& slot) { return slot.alive; }));
+                std::ranges::count_if(emitter.slots, [](const Slot& slot) { return slot.alive; }) +
+                std::ranges::count_if(emitter.extra, [](const Slot& slot) { return slot.alive; }));
         }
         part.counts = {{"emitters", emitters.size()}, {"particles", live}, {"slots", slots}};
         return part;
@@ -672,6 +969,12 @@ void add_particles_system(world::World& world) {
          .threaded = true,
          .reads = {"Transform2D", "WindSource2D", "PhysicsField2D"},
          .writes = {"CPUParticles2D"}});
+    world.add_system(
+        "particle_simulation_2d",
+        [system](world::World& w, double tick_seconds) { system->simulate(w, tick_seconds); },
+        {.doc = "Runs each ParticleSimulation2D's stages over its CPUParticles2D: neighbors, curl "
+                "noise, collision, attributes and events.",
+         .priority = 1105});
 }
 
 std::vector<Particle> particles(const world::World& world, entt::entity entity) {

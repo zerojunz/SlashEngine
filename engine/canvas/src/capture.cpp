@@ -115,6 +115,7 @@ Result<Capture> capture(world::World& world, asset::Assets& assets, const Captur
                    .occluded = renderer.meshes_occluded(),
                    .pages = renderer.cluster_pages(),
                    .pending_pages = renderer.cluster_pages_pending(),
+                   .distortions = renderer.distortions_drawn(),
                    .scaled = renderer.scaled(),
                    .path_samples =
                        options.path_trace ? capturer.device->path_samples(capturer.target) : 0};
