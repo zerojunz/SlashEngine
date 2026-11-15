@@ -5588,7 +5588,7 @@ Colors are `[r, g, b]` or `[r, g, b, a]` from 0 to 1, lengths meters and speeds 
 `homed` and `home` (where it started, in meters), `goal`, `velocity` and `steer` (meters, y up)
 and `gait` (the animation playing).
 
-### Vehicles
+### Vehicle recipes
 
 Godot has only `VehicleBody3D`, so this follows Unreal's Chaos Vehicles: a `.vehicle.json` recipe
 says what a car, bike, truck, tracked vehicle, boat or aircraft looks like and how it handles,
@@ -7489,8 +7489,8 @@ to controls as Godot's viewport does, and buttons answer them as Godot's `BaseBu
   action (with the closest name, among the project's actions too), a `button_group` without
   `toggle_mode`, a `Label` on a button entity (put it in a child), two buttons on one entity and
   a `focus_*` field that names no control.
-- Not yet: tooltips, drag and drop, cursor shapes, theme sounds, `allow_unpress` groups and a
-  click mask for `TextureButton`. Hiding a button while it is held lets go of it without
+- Not yet: cursor shapes, theme sounds, `allow_unpress` groups and a click mask for
+  `TextureButton`. Tooltips and drag and drop have [a section of their own](#tooltips-and-drag-and-drop). Hiding a button while it is held lets go of it without
   pressing it.
 
 ### Check boxes
@@ -7737,8 +7737,8 @@ clicks and input methods work on every platform. From
   selected), the caret `caret_width` wide and the clear button or right icon. Text that doesn't
   fit scrolls to keep the caret in view. Its minimum size is its style box's margins round
   `minimum_character_width` "W"s of its font, its icon and a line's height.
-- Not yet: the context menu, middle-click paste of the primary selection, drag and drop of text
-  and `structured_text_bidi_override`. `editing_toggled` is emitted only when editing really
+- Not yet: the context menu, middle-click paste of the primary selection and
+  `structured_text_bidi_override`. `editing_toggled` is emitted only when editing really
   starts or stops.
 
 ### Text fields of several lines
@@ -7790,8 +7790,8 @@ input events as Godot's `TextEdit::gui_input` does. From
   the `VScrollBar` and `HScrollBar` theme types' styles, the grabber lit under the pointer and
   while dragged. Its minimum size is its style box's margins, plus its text with
   `scroll_fit_content_height` or `scroll_fit_content_width`.
-- Not yet: several carets, the context menu, the minimap, drag and drop of text, middle-click
-  paste and smooth scrolling.
+- Not yet: several carets, the context menu, the minimap, middle-click paste and smooth
+  scrolling.
 
 ### Searching and highlighting code
 

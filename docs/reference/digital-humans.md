@@ -1,10 +1,12 @@
 # Digital humans (research note)
 
-A research note with no commitment to ship ([roadmap](../roadmap.md#research)). Digital humans in
-the style of Unreal's MetaHuman are out of scope for releases. This page records what such
-characters need, what SlashEngine already has, and what would come first if the work starts.
-No MetaHuman code, assets or file formats are used or read: MetaHuman is closed and its assets
-are licensed for Unreal only.
+A research note ([roadmap](../roadmap.md#research)) on what characters in the style of Unreal's
+MetaHuman need. Every part it lists is now done, and the character, face, anatomy and hair tools
+([roadmap](../roadmap.md#agent-built-worlds-and-smart-npcs), items 13, 14 and 20) build such
+characters from recipes; see [Characters](scene-format.md#characters),
+[Faces](scene-format.md#faces) and [Hair and fur](scene-format.md#hair-and-fur). The page stays
+as the record of why the parts came in the order they did. No MetaHuman code, assets or file
+formats are used or read: MetaHuman is closed and its assets are licensed for Unreal only.
 
 ## What a realistic human needs
 
@@ -52,10 +54,12 @@ follow Godot's design:
    [`animation.import_face_capture`](commands.md#animationimport_face_capture), which reads a
    Live Link Face recording into an animation, so a recorded performance drives a face.
 
-Strand hair simulation, a face rig editor and a library of scanned heads would come only after
-these, and would need permissively licensed sources.
+After these, the [hair and fur](scene-format.md#hair-and-fur) tool added strand hair and its
+simulation, the [character](scene-format.md#characters) tool full rigs with fingers, eyes, jaw
+and twist bones, and the [face](scene-format.md#faces) tool sculpted heads with ARKit's 52
+expression shapes, skin maps and marks, all made in code with no scanned heads.
 
 ## Recommendation
 
-If this work starts, start with blend shapes. They follow Godot directly, every later step needs
-them, and games that never show a human still use them.
+The note recommended starting with blend shapes, as they follow Godot directly, every later step
+needs them, and games that never show a human still use them. That is the order the work took.
