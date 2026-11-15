@@ -5,6 +5,7 @@
 #include "slash/core/math.hpp"
 #include "slash/core/result.hpp"
 #include "slash/world/component_registry.hpp"
+#include "slash/world/flesh.hpp"
 #include "slash/world/ragdoll.hpp"
 #include "slash/world/world.hpp"
 
@@ -59,12 +60,19 @@ struct RagdollOptions {
     float pin_damping = 28.0F;
     // Bones shorter than this, in pixels, get no body of their own; 0 for 4% of the tree's height.
     float min_length = 0.0F;
+    // A Character2D's anatomy on its cut-out (world::make_anatomy on world::body_frames_2d), in
+    // its cut-out's meters: when given and the entity has a Character2D, each body is fitted to
+    // the anatomy's bones its bone carries (its own and those of bones under it with no body)
+    // instead of to the cut-out's shapes, and keeps their area for its mass. Bones that carry
+    // none are fitted as before.
+    const world::Anatomy* anatomy = nullptr;
 };
 
 // A ragdoll profile for the Transform2D tree under an entity, as Unreal's physics asset tool
 // makes one for a skeleton: each entity under it with children or a Sprite2D is a bone, a
 // capsule from it to its one child bone, or a rectangle round its children for one with several,
 // with masses by area, hinges between them, balance on the topmost and its get-up facing +x.
+// With an anatomy, the bodies are its bones.
 [[nodiscard]] Result<json::Value> generate_ragdoll(const world::World& world, entt::entity entity,
                                                    const RagdollOptions& options = {});
 
