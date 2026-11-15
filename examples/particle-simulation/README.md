@@ -11,12 +11,15 @@ them. In [main.scene.json](main.scene.json):
 - fireflies flock (separation, cohesion and alignment within `neighbor_radius`), swirl in curl
   noise, keep between `min_speed` and `max_speed`, are sized by a `size` attribute worked out
   once from their `random`, and emit `lantern` events as they pass a box;
+- bees swarm the same way on the GPU: a `ParticleSimulation3D` beside a `GPUParticles3D` runs its
+  neighbor, curl noise and speed stages on the device's compute after each step;
 - in 2D, sand pours onto a dune (a `LightOccluder2D`, `collide: "occluders"`) and shrinks as it
   ages, and starlings flock in the plane.
 
 [calls.jsonl](calls.jsonl) steps two seconds, checks each emitter with `particles.eval` (the
 fountain's drops stay above the floor at y 0, the sand above the dune's slope), reads the
-`particle_event`s, then turns the fountain's collision off and shows its drops falling through.
+`particle_event`s, then turns the fountain's collision off and shows its drops falling through. Last it runs the
+bees for three seconds with their stages and again without, when they drift farther apart.
 [results.jsonl](results.jsonl) holds the replies.
 
 - Neighbors are found by sorting particles along a Morton curve by their cells and looking up

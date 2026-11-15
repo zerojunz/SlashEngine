@@ -3510,6 +3510,8 @@ struct ParticleSimulation {
 
 // Simulation stages over the entity's CPUParticles3D, in meters: it collides with
 // GPUParticlesCollision3Ds ("colliders"), with what the current Camera3D sees ("depth") or both.
+// Beside a GPUParticles3D, its neighbor, curl noise, drag and speed stages run on the device after
+// each step (scene3d::gpu_stages); attributes, events and collide are the CPU stages' alone.
 struct ParticleSimulation3D : ParticleSimulation {
     friend bool operator==(const ParticleSimulation3D&, const ParticleSimulation3D&) = default;
 };

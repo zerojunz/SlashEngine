@@ -45,6 +45,7 @@
 #include "particles_process_3d_shaders.hpp"
 #include "particles_process_shaders.hpp"
 #include "particles_sort_3d_shaders.hpp"
+#include "particles_stages_3d_shaders.hpp"
 #include "path_trace.hpp"
 #include "post_shaders.hpp"
 #include "post_shading.hpp"
@@ -273,9 +274,9 @@ constexpr std::uint32_t kFsr2Threads = 8;
 enum class ShaderKind : std::uint8_t { Sprite, Material };
 // The compute shaders: running particle steps, turning particles into quads, and numbering what a
 // sub-emitter takes; then running 3D particle steps, sorting a 3D system by view depth and
-// placing a draw pass's mesh at its particles.
-enum class ComputeKind : std::uint8_t { Process, Draw, Emit, Process3D, Sort3D, Mesh3D };
-constexpr std::size_t kComputeKinds = 6;
+// placing a draw pass's mesh at its particles, and running a step's simulation stages.
+enum class ComputeKind : std::uint8_t { Process, Draw, Emit, Process3D, Sort3D, Mesh3D, Stages3D };
+constexpr std::size_t kComputeKinds = 7;
 
 struct ShaderCode {
     std::span<const unsigned char> vertex_spirv;
@@ -1321,7 +1322,7 @@ public:
             return;
         }
         // Jobs waiting for the frame may still use it, so it goes once they are sent.
-        for (SDL_GPUBuffer* buffer : {it->second.buffer, it->second.keys}) {
+        for (SDL_GPUBuffer* buffer : {it->second.buffer, it->second.keys, it->second.snapshot}) {
             if (buffer == nullptr) {
                 continue;
             }
@@ -1346,14 +1347,36 @@ public:
         if (steps.empty()) {
             return {};
         }
-        ParticleJob job{.kind = ComputeKind::Process3D,
-                        .particles = it->second.buffer,
-                        .amount = it->second.amount};
+        ParticleSystem3D& system = it->second;
+        ParticleJob job{
+            .kind = ComputeKind::Process3D, .particles = system.buffer, .amount = system.amount};
         job.material = material_words_3d(process);
-        job.steps = static_cast<std::uint32_t>(particle_words_.size());
-        job.step_count = static_cast<std::uint32_t>(steps.size());
-        pack_particle_steps_3d(steps, particle_words_);
-        return queue_particle_job(job);
+        if (!steps_have_stages(steps)) {
+            job.steps = static_cast<std::uint32_t>(particle_words_.size());
+            job.step_count = static_cast<std::uint32_t>(steps.size());
+            pack_particle_steps_3d(steps, particle_words_);
+            return queue_particle_job(job);
+        }
+        // With stages, each step is a pass of its own, its stages' passes after it.
+        if (auto made = stage_buffers(system); !made) {
+            return made;
+        }
+        for (auto pipeline : {ComputeKind::Sort3D, ComputeKind::Stages3D}) {
+            if (auto made = compute_pipeline(pipeline); !made) {
+                return made.error();
+            }
+        }
+        const bool flat = process.disable_z;
+        for (const ParticleStep3D& step : steps) {
+            job.steps = static_cast<std::uint32_t>(particle_words_.size());
+            job.step_count = 1;
+            pack_particle_steps_3d(std::span(&step, 1), particle_words_);
+            particle_jobs_.push_back(job);
+            if (step.stages.active() && step.delta > 0.0F) {
+                queue_stage_jobs(system, stages_uniforms_3d(step, system.amount, flat));
+            }
+        }
+        return in_frame_ ? Result<void>{} : flush_particle_jobs();
     }
 
     Result<void> fill_particle_mesh(Particles3DId particles, MeshId mesh,
@@ -2778,6 +2801,8 @@ private:
         SDL_GPUBuffer* buffer = nullptr; // its particles
         // Its slots' keys sorted by view depth, made when a pass is first drawn in that order.
         SDL_GPUBuffer* keys = nullptr;
+        // Its particles' places and velocities while stages run, made with their first step.
+        SDL_GPUBuffer* snapshot = nullptr;
         std::uint32_t amount = 0;
     };
 
@@ -2803,6 +2828,8 @@ private:
         DrawUniforms look{};   // for a draw; its first vertex is in the particle quads
         SortUniforms3D sort{}; // a sort's step, writing the keys in target
         MeshUniforms3D mesh{}; // a mesh, written to target from the keys in source
+        // A step's stages, over the particles with the snapshot in source and keys in target.
+        StagesUniforms3D stages{};
     };
 
     static std::size_t shader_index(ShaderKind kind, SDL_GPUShaderStage stage) {
@@ -2969,6 +2996,13 @@ private:
             spirv = shaders::kParticlesMesh3DComputeSpirv;
             pieces = shaders::kParticlesMesh3DComputeMsl;
             hlsl = shaders::kParticlesMesh3DHlsl;
+            break;
+        case ComputeKind::Stages3D:
+            // The particles, their snapshot and their keys.
+            info.num_readwrite_storage_buffers = 3;
+            spirv = shaders::kParticlesStages3DComputeSpirv;
+            pieces = shaders::kParticlesStages3DComputeMsl;
+            hlsl = shaders::kParticlesStages3DHlsl;
             break;
         }
         auto made = create_compute_pipeline(info, spirv, pieces, hlsl, "particle");
@@ -3225,6 +3259,9 @@ private:
                 outputs[0].buffer = job.target;
                 outputs[0].cycle = true;
                 break;
+            case ComputeKind::Stages3D:
+                dispatch_stages_3d(commands, job);
+                continue;
             }
             if (job.kind == ComputeKind::Process3D || job.kind == ComputeKind::Sort3D ||
                 job.kind == ComputeKind::Mesh3D) {
@@ -3293,6 +3330,70 @@ private:
             grid = mesh_groups(job.mesh.counts[0] * job.mesh.counts[1]);
         }
         SDL_DispatchGPUCompute(pass, grid[0], grid[1], 1);
+        SDL_EndGPUComputePass(pass);
+    }
+
+    // The buffers a system's stages keep its particles and keys in, made when first needed.
+    Result<void> stage_buffers(ParticleSystem3D& system) {
+        const std::array<std::pair<SDL_GPUBuffer**, std::uint32_t>, 2> wanted{
+            std::pair{&system.keys, sort_size(system.amount) * 2U *
+                                        static_cast<std::uint32_t>(sizeof(std::uint32_t))},
+            std::pair{&system.snapshot,
+                      system.amount * 8U * static_cast<std::uint32_t>(sizeof(float))}};
+        for (const auto& [buffer, size] : wanted) {
+            if (*buffer != nullptr) {
+                continue;
+            }
+            SDL_GPUBufferCreateInfo info{};
+            info.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ |
+                         SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
+            info.size = size;
+            *buffer = SDL_CreateGPUBuffer(device_, &info);
+            if (*buffer == nullptr) {
+                return sdl_error("making room for " + std::to_string(system.amount) +
+                                 " particles' stages failed");
+            }
+        }
+        return {};
+    }
+
+    // A step's stages: the particles kept and keyed, the keys sorted, then the stages run.
+    void queue_stage_jobs(const ParticleSystem3D& system, StagesUniforms3D stages) {
+        const ParticleJob base{.kind = ComputeKind::Stages3D,
+                               .particles = system.buffer,
+                               .amount = system.amount,
+                               .source = system.snapshot,
+                               .target = system.keys};
+        ParticleJob keep = base;
+        keep.stages = stages;
+        particle_jobs_.push_back(keep);
+        SortUniforms3D sort{.amount = system.amount, .size = stages.size, .stage = 1};
+        for (const auto& [j, k] : bitonic_steps(sort.size)) {
+            sort.j = j;
+            sort.k = k;
+            particle_jobs_.push_back({.kind = ComputeKind::Sort3D,
+                                      .particles = system.buffer,
+                                      .target = system.keys,
+                                      .sort = sort});
+        }
+        ParticleJob run = base;
+        run.stages = stages;
+        run.stages.stage = 1;
+        particle_jobs_.push_back(run);
+    }
+
+    // Records a step's stage pass: the particles, their snapshot and their keys written.
+    void dispatch_stages_3d(SDL_GPUCommandBuffer* commands, const ParticleJob& job) {
+        std::array<SDL_GPUStorageBufferReadWriteBinding, 3> outputs{};
+        outputs[0].buffer = job.particles;
+        outputs[1].buffer = job.source;
+        outputs[2].buffer = job.target;
+        SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(commands, nullptr, 0, outputs.data(), 3);
+        SDL_BindGPUComputePipeline(pass, compute_pipelines_.at(static_cast<std::size_t>(job.kind)));
+        SDL_PushGPUComputeUniformData(commands, 0, &job.stages,
+                                      static_cast<std::uint32_t>(sizeof(job.stages)));
+        const std::uint32_t threads = job.stages.stage == 0 ? job.stages.size : job.amount;
+        SDL_DispatchGPUCompute(pass, (threads + kParticleThreads - 1) / kParticleThreads, 1, 1);
         SDL_EndGPUComputePass(pass);
     }
 

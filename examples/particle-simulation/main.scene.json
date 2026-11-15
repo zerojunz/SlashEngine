@@ -1,5 +1,31 @@
 {
   "entities": {
+    "bees": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.04, 0.04, 0.04]
+        },
+        "GPUParticles3D": {
+          "amount": 48,
+          "explosiveness": 1.0,
+          "lifetime": 8.0,
+          "process_material": "bees.process_material.json"
+        },
+        "ParticleSimulation3D": {
+          "alignment": 1.0,
+          "cohesion": 3.0,
+          "curl_scale": 1.5,
+          "curl_speed": 0.3,
+          "curl_strength": 0.3,
+          "max_speed": 0.5,
+          "neighbor_radius": 1.0,
+          "separation": 0.3
+        },
+        "Transform3D": {
+          "position": [-3.0, 2.0, 0.0]
+        }
+      }
+    },
     "camera": {
       "components": {
         "Camera3D": {
