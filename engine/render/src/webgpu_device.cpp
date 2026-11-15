@@ -44,6 +44,7 @@
 #include "particles_process_3d_shaders.hpp"
 #include "particles_process_shaders.hpp"
 #include "particles_sort_3d_shaders.hpp"
+#include "particles_stages_3d_shaders.hpp"
 #include "post_shaders.hpp"
 #include "post_shading.hpp"
 #include "radiance_shaders.hpp"
@@ -324,9 +325,9 @@ constexpr std::uint32_t kCopyRowAlignment = 256;
 // Threads in a group of the particle shaders, as their [numthreads].
 constexpr std::uint32_t kParticleThreads = 64;
 // The largest of the compute shaders' uniforms, which their binding reads.
-constexpr std::uint64_t kComputeUniformBytes =
-    std::max({sizeof(ProcessUniforms), sizeof(EmitUniforms), sizeof(DrawUniforms),
-              sizeof(ProcessUniforms3D), sizeof(SortUniforms3D), sizeof(MeshUniforms3D)});
+constexpr std::uint64_t kComputeUniformBytes = std::max(
+    {sizeof(ProcessUniforms), sizeof(EmitUniforms), sizeof(DrawUniforms), sizeof(ProcessUniforms3D),
+     sizeof(SortUniforms3D), sizeof(MeshUniforms3D), sizeof(StagesUniforms3D)});
 // The most bytes any binding of the uniform buffer reads.
 constexpr std::uint64_t kLargestUniforms =
     std::max<std::uint64_t>({sizeof(Mat4),
@@ -365,8 +366,8 @@ constexpr std::uint32_t kMeshSamplerBinding = 16;
 enum class ShaderKind : std::uint8_t { Sprite, Material };
 // The compute shaders: running particle steps, turning particles into quads, and numbering what a
 // sub-emitter takes.
-enum class ComputeKind : std::uint8_t { Process, Draw, Emit, Process3D, Sort3D, Mesh3D };
-constexpr std::size_t kComputeKinds = 6;
+enum class ComputeKind : std::uint8_t { Process, Draw, Emit, Process3D, Sort3D, Mesh3D, Stages3D };
+constexpr std::size_t kComputeKinds = 7;
 
 WGPUStringView text_view(std::string_view text) {
     return {.data = text.data(), .length = text.size()};
@@ -723,6 +724,7 @@ public:
                                            draw_outputs_layout_,
                                            emit_outputs_layout_,
                                            mesh_3d_inputs_layout_,
+                                           stages_outputs_layout_,
                                            compute_uniforms_layout_,
                                            mesh_vertex_layout_,
                                            mesh_textures_layout_,
@@ -1236,7 +1238,7 @@ public:
             return;
         }
         // Jobs waiting for the frame may still use it, so it goes once they are sent.
-        for (WGPUBuffer buffer : {it->second.buffer, it->second.keys}) {
+        for (WGPUBuffer buffer : {it->second.buffer, it->second.keys, it->second.snapshot}) {
             if (buffer == nullptr) {
                 continue;
             }
@@ -1261,14 +1263,42 @@ public:
         if (steps.empty()) {
             return {};
         }
-        ParticleJob job{.kind = ComputeKind::Process3D,
-                        .particles = it->second.buffer,
-                        .amount = it->second.amount};
+        ParticleSystem3D& system = it->second;
+        ParticleJob job{
+            .kind = ComputeKind::Process3D, .particles = system.buffer, .amount = system.amount};
         job.material = material_words_3d(process);
-        job.steps = static_cast<std::uint32_t>(particle_words_.size());
-        job.step_count = static_cast<std::uint32_t>(steps.size());
-        pack_particle_steps_3d(steps, particle_words_);
-        return queue_particle_job(job);
+        if (!steps_have_stages(steps)) {
+            job.steps = static_cast<std::uint32_t>(particle_words_.size());
+            job.step_count = static_cast<std::uint32_t>(steps.size());
+            pack_particle_steps_3d(steps, particle_words_);
+            return queue_particle_job(job);
+        }
+        // With stages, each step is a pass of its own, its stages' passes after it.
+        for (const ComputeKind kind : {ComputeKind::Sort3D, ComputeKind::Stages3D}) {
+            if (auto pipeline = compute_pipeline(kind); !pipeline) {
+                return pipeline.error();
+            }
+        }
+        if (system.keys == nullptr) {
+            system.keys =
+                create_buffer(WGPUBufferUsage_Storage,
+                              std::uint64_t{sort_size(system.amount)} * 2 * sizeof(std::uint32_t));
+        }
+        if (system.snapshot == nullptr) {
+            system.snapshot = create_buffer(WGPUBufferUsage_Storage,
+                                            std::uint64_t{system.amount} * 8 * sizeof(float));
+        }
+        const bool flat = process.disable_z;
+        for (const ParticleStep3D& step : steps) {
+            job.steps = static_cast<std::uint32_t>(particle_words_.size());
+            job.step_count = 1;
+            pack_particle_steps_3d(std::span(&step, 1), particle_words_);
+            particle_jobs_.push_back(job);
+            if (step.stages.active() && step.delta > 0.0F) {
+                queue_stage_jobs(system, stages_uniforms_3d(step, system.amount, flat));
+            }
+        }
+        return in_frame_ ? Result<void>{} : flush_particle_jobs();
     }
 
     Result<void> fill_particle_mesh(Particles3DId particles, MeshId mesh,
@@ -2561,6 +2591,8 @@ private:
         WGPUBuffer buffer = nullptr; // its particles
         // Its slots' keys sorted by view depth, made when a pass is first drawn in that order.
         WGPUBuffer keys = nullptr;
+        // Its particles' places and velocities while stages run, made with their first step.
+        WGPUBuffer snapshot = nullptr;
         std::uint32_t amount = 0;
     };
 
@@ -2586,7 +2618,34 @@ private:
         DrawUniforms look{};   // for a draw; its first vertex is in the particle quads
         SortUniforms3D sort{}; // a sort's step, writing the keys in target
         MeshUniforms3D mesh{}; // a mesh, written to target from the keys in source
+        // A step's stages, over the particles with the snapshot in source and keys in target.
+        StagesUniforms3D stages{};
     };
+
+    // A step's stages: the particles kept and keyed, the keys sorted, then the stages run.
+    void queue_stage_jobs(const ParticleSystem3D& system, StagesUniforms3D stages) {
+        const ParticleJob base{.kind = ComputeKind::Stages3D,
+                               .particles = system.buffer,
+                               .amount = system.amount,
+                               .source = system.snapshot,
+                               .target = system.keys};
+        ParticleJob keep = base;
+        keep.stages = stages;
+        particle_jobs_.push_back(keep);
+        SortUniforms3D sort{.amount = system.amount, .size = stages.size, .stage = 1};
+        for (const auto& [j, k] : bitonic_steps(sort.size)) {
+            sort.j = j;
+            sort.k = k;
+            particle_jobs_.push_back({.kind = ComputeKind::Sort3D,
+                                      .particles = system.buffer,
+                                      .target = system.keys,
+                                      .sort = sort});
+        }
+        ParticleJob run = base;
+        run.stages = stages;
+        run.stages.stage = 1;
+        particle_jobs_.push_back(run);
+    }
 
     static std::size_t sampler_index(Filter filter, bool repeat) {
         return (static_cast<std::size_t>(filter) * 2) + (repeat ? 1 : 0);
@@ -2830,6 +2889,10 @@ private:
         const std::array mesh_3d_inputs{storage_entry(0, true), storage_entry(1, true),
                                         storage_entry(2, true)};
         mesh_3d_inputs_layout_ = layout(mesh_3d_inputs);
+        // The stages' particles, their snapshot and their keys.
+        const std::array stages_outputs{storage_entry(0, false), storage_entry(1, false),
+                                        storage_entry(2, false)};
+        stages_outputs_layout_ = layout(stages_outputs);
         const std::array compute{uniform_entry(0, WGPUShaderStage_Compute, kComputeUniformBytes)};
         compute_uniforms_layout_ = layout(compute);
         const std::array mesh_vertex{
@@ -3094,6 +3157,8 @@ private:
             pipeline_layout({empty_layout_, emit_outputs_layout_, compute_uniforms_layout_});
         pipeline_layouts_.at(kMesh3DLayout) = pipeline_layout(
             {mesh_3d_inputs_layout_, draw_outputs_layout_, compute_uniforms_layout_});
+        pipeline_layouts_.at(kStages3DLayout) =
+            pipeline_layout({empty_layout_, stages_outputs_layout_, compute_uniforms_layout_});
         pipeline_layouts_.at(kMeshLayout) = pipeline_layout(
             {empty_layout_, mesh_vertex_layout_, mesh_textures_layout_, mesh_fragment_layout_});
         pipeline_layouts_.at(kMeshClusteredLayout) =
@@ -3220,6 +3285,11 @@ private:
             info.compute.module =
                 module(kMesh3DModule, joined(shaders::kParticlesMesh3DComputeWgsl));
             break;
+        case ComputeKind::Stages3D:
+            info.layout = pipeline_layouts_.at(kStages3DLayout);
+            info.compute.module =
+                module(kStages3DModule, joined(shaders::kParticlesStages3DComputeWgsl));
+            break;
         }
         info.compute.entryPoint = text_view("cs_main");
         slot = wgpuDeviceCreateComputePipeline(device_, &info);
@@ -3327,6 +3397,9 @@ private:
                 break;
             case ComputeKind::Mesh3D:
                 at.push_back(uniforms_.add(job.mesh));
+                break;
+            case ComputeKind::Stages3D:
+                at.push_back(uniforms_.add(job.stages));
                 break;
             }
         }
@@ -3563,6 +3636,14 @@ private:
                     mesh_groups(job.mesh.counts[0] * job.mesh.counts[1]);
                 groups = grid[0];
                 rows = grid[1];
+                break;
+            }
+            case ComputeKind::Stages3D: {
+                const std::array out{buffer_entry(0, job.particles), buffer_entry(1, job.source),
+                                     buffer_entry(2, job.target)};
+                outputs = bind_group(stages_outputs_layout_, out);
+                const std::uint32_t threads = job.stages.stage == 0 ? job.stages.size : job.amount;
+                groups = (threads + kParticleThreads - 1) / kParticleThreads;
                 break;
             }
             }
@@ -7083,6 +7164,7 @@ private:
     static constexpr std::size_t kSubsurfaceVertexModule = kGenerationDrawFragmentModule + 1;
     static constexpr std::size_t kSubsurfaceFragmentModule = kSubsurfaceVertexModule + 1;
     static constexpr std::size_t kMeshSubsurfaceFragmentModule = kSubsurfaceFragmentModule + 1;
+    static constexpr std::size_t kStages3DModule = kMeshSubsurfaceFragmentModule + 1;
     static constexpr std::size_t kSpriteLayout = 0;
     static constexpr std::size_t kMaterialLayout = 1;
     static constexpr std::size_t kProcessLayout = 2;
@@ -7111,6 +7193,7 @@ private:
     static constexpr std::size_t kGenerationLayout = kShadowGameLayout + 1;
     static constexpr std::size_t kGenerationDrawLayout = kGenerationLayout + 1;
     static constexpr std::size_t kSubsurfaceLayout = kGenerationDrawLayout + 1;
+    static constexpr std::size_t kStages3DLayout = kSubsurfaceLayout + 1;
 
     WGPUInstance instance_;
     WGPUDevice device_;
@@ -7123,7 +7206,7 @@ private:
     bool can_wait_ = false; // Asyncify lets read_texture wait for the GPU
     // Which formats the GPU samples, by TextureFormat.
     std::array<bool, 4> sampled_{true, false, false, true};
-    std::array<WGPUShaderModule, kMeshSubsurfaceFragmentModule + 1> modules_{};
+    std::array<WGPUShaderModule, kStages3DModule + 1> modules_{};
     std::vector<Pipeline> pipelines_;
     std::unordered_map<ShaderId, GameShader> game_shaders_;
     std::uint32_t next_shader_ = 1;
@@ -7139,6 +7222,7 @@ private:
     WGPUBindGroupLayout draw_outputs_layout_ = nullptr;
     WGPUBindGroupLayout emit_outputs_layout_ = nullptr;
     WGPUBindGroupLayout mesh_3d_inputs_layout_ = nullptr;
+    WGPUBindGroupLayout stages_outputs_layout_ = nullptr;
     WGPUBindGroupLayout compute_uniforms_layout_ = nullptr;
     WGPUBindGroupLayout mesh_vertex_layout_ = nullptr;
     WGPUBindGroupLayout mesh_textures_layout_ = nullptr;
@@ -7185,7 +7269,7 @@ private:
     WGPUBindGroupLayout generation_storage_layout_ = nullptr;
     WGPUBindGroupLayout generation_uniforms_layout_ = nullptr;
     WGPUBindGroupLayout generation_draw_uniforms_layout_ = nullptr;
-    std::array<WGPUPipelineLayout, kSubsurfaceLayout + 1> pipeline_layouts_{};
+    std::array<WGPUPipelineLayout, kStages3DLayout + 1> pipeline_layouts_{};
     std::array<WGPUSampler, 4> samplers_{}; // by sampler_index
     GpuTexture white_;
     std::unordered_map<TextureId, Texture> textures_;

@@ -102,6 +102,40 @@ struct SortUniforms3D {
 // amount rounded up to a power of two.
 [[nodiscard]] std::uint32_t sort_size(std::uint32_t amount);
 
+// particles_stages_3d.hlsl's uniforms, from a step's stages: stage 0 keeps the particles and
+// makes their keys, stage 1 runs the stages after particles_sort_3d.hlsl's bitonic steps sorted
+// the keys. size is amount rounded up to a power of two.
+struct StagesUniforms3D {
+    std::uint32_t amount = 0;
+    std::uint32_t size = 0;
+    std::uint32_t stage = 0;
+    std::uint32_t max_neighbors = 0;
+    std::uint32_t seed = 0;
+    std::uint32_t flat = 0;
+    std::uint32_t pad0 = 0;
+    std::uint32_t pad1 = 0;
+    float neighbor_radius = 0.0F;
+    float separation = 0.0F;
+    float cohesion = 0.0F;
+    float alignment = 0.0F;
+    float curl_strength = 0.0F;
+    float curl_scale = 0.0F;
+    float curl_time = 0.0F; // the step's time times curl_speed
+    float drag = 0.0F;
+    float min_speed = 0.0F;
+    float max_speed = 0.0F;
+    float delta = 0.0F;
+    float pad2 = 0.0F;
+};
+static_assert(sizeof(StagesUniforms3D) == 80);
+
+// A step's stages as particles_stages_3d.hlsl takes them, for stage 0.
+[[nodiscard]] StagesUniforms3D stages_uniforms_3d(const ParticleStep3D& step, std::uint32_t amount,
+                                                  bool flat);
+
+// Whether any step runs stages a device must run between steps.
+[[nodiscard]] bool steps_have_stages(std::span<const ParticleStep3D> steps);
+
 // particles_mesh_3d.hlsl's uniforms, from a ParticleMeshDraw3D. The shader runs a thread a vertex
 // it writes, in rows of counts[3] threads (mesh_groups), since one row of groups stops at 65535.
 struct MeshUniforms3D {

@@ -2503,7 +2503,13 @@ the `particle_simulation_3d` and `particle_simulation_2d` systems (priority 1105
 slots, colliding with `GPUParticlesCollision*3D`s (`scene3d::particle_surroundings_3d`), what the
 current camera sees (`camera_depth_view`, `particle_depth_contact`) or 2D occluders
 (`canvas::particle_collision_shapes`), and spawning events' particles into other emitters as
-extra slots. `examples/particle-simulation` flocks fireflies and settles sand. Screen distortion
+extra slots. Beside a `GPUParticles3D`, a `ParticleSimulation3D`'s neighbor, curl, drag and
+speed stages run on the device after each step (`scene3d::gpu_stages` fills each step's
+`render::ParticleStages3D`): `shaders/particles_stages_3d.hlsl` keeps the particles and writes
+Morton keys, `particles_sort_3d.hlsl` sorts them and a second pass flocks with binary searches,
+and `render::run_particle_stages_3d` is its CPU twin, which `tests/test_particle_compute_3d.cpp`
+holds every device to; a change to one goes in both. `examples/particle-simulation` flocks
+fireflies and bees and settles sand. Screen distortion
 is `ScreenDistortion3D` and `ScreenDistortion2D` (heat, shockwaves, ripples, lenses;
 `slash/canvas/distortion.hpp`, `src/distortion.cpp`): `CanvasRenderer` draws the world into
 `distortion_target_` and shows it through a grid whose texture coordinates `distortion_offset`

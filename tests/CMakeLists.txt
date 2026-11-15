@@ -378,7 +378,7 @@ endforeach()
 foreach(shader IN ITEMS sprite material mesh mesh_clustered mesh_normal mesh_motion mesh_plain
         shadow shadow_plain post
         forward_post ssao ssr ssr_trace sky radiance taa particles_process particles_emit
-        particles_draw particles_process_3d particles_sort_3d particles_mesh_3d fsr2_luma fsr2_dilate fsr2_reconstruct fsr2_depth_clip fsr2_lock
+        particles_draw particles_process_3d particles_sort_3d particles_mesh_3d particles_stages_3d fsr2_luma fsr2_dilate fsr2_reconstruct fsr2_depth_clip fsr2_lock
         fsr2_accumulate fsr2_rcas fsr3_prepare fsr3_reconstruct fsr3_pyramid fsr3_reduce
         fsr3_shading_change fsr3_reactivity fsr3_lock fsr3_instability fsr3_accumulate
         frame_generation frame_generation_draw)

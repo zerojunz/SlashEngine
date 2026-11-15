@@ -160,6 +160,7 @@ void set_emitting(Emitter& e, const GPUParticles3D& settings, bool emitting, boo
 struct Touching {
     std::vector<render::ParticleAttractor3D> attractors;
     std::vector<render::ParticleCollider3D> colliders;
+    render::ParticleStages3D stages;
 };
 
 class Stepper {
@@ -204,6 +205,7 @@ public:
         step.clear = e.clear;
         step.attractors = touching_.attractors;
         step.colliders = touching_.colliders;
+        step.stages = touching_.stages;
         step.collision_size = std::max(s_.collision_base_size, 0.0F);
         e.clear = false;
         e.keep(step);
@@ -822,6 +824,9 @@ struct GpuParticleSystem3D {
             // bit with its layers, as Godot's scene cull pairs them; at most 32, and 7 fields.
             paired.attractors.clear();
             paired.colliders.clear();
+            const auto* simulation = ecs.try_get<world::ParticleSimulation3D>(entity);
+            paired.stages =
+                simulation != nullptr ? gpu_stages(*simulation) : render::ParticleStages3D{};
             const Box3 box = placed(transform, component.visibility_aabb_position,
                                     component.visibility_aabb_size);
             const Affine3D to_particles = transform.inverse();
@@ -1138,11 +1143,32 @@ std::vector<render::Particle3D> gpu_particles_3d(const world::World& world, entt
                              kept->steps.back().system_phase);
 }
 
-std::vector<render::Particle3D> simulate_gpu(const GPUParticles3D& settings,
-                                             const Affine3D& transform,
-                                             const render::ParticleProcess3D& process,
-                                             std::string_view id, double seconds,
-                                             double tick_seconds) {
+render::ParticleStages3D gpu_stages(const world::ParticleSimulation& simulation) {
+    if (!simulation.enabled) {
+        return {};
+    }
+    render::ParticleStages3D stages;
+    stages.neighbor_radius = std::max(simulation.neighbor_radius, 0.0F);
+    stages.max_neighbors = static_cast<std::uint32_t>(
+        std::clamp(simulation.max_neighbors, 1, static_cast<int>(render::kMaxParticleNeighbors3D)));
+    stages.separation = simulation.separation;
+    stages.cohesion = simulation.cohesion;
+    stages.alignment = simulation.alignment;
+    stages.curl_strength = simulation.curl_strength;
+    stages.curl_scale = simulation.curl_scale;
+    stages.curl_speed = simulation.curl_speed;
+    stages.drag = std::max(simulation.drag, 0.0F);
+    stages.min_speed = std::max(simulation.min_speed, 0.0F);
+    stages.max_speed = std::max(simulation.max_speed, 0.0F);
+    return stages;
+}
+
+std::vector<render::Particle3D>
+simulate_gpu(const GPUParticles3D& settings, const Affine3D& transform,
+             const render::ParticleProcess3D& process, std::string_view id, double seconds,
+             double tick_seconds, const render::ParticleStages3D& stages) {
+    Touching touching;
+    touching.stages = stages;
     GPUParticles3D copy = settings;
     Emitter e;
     const double step = tick_seconds > 0.0 ? tick_seconds : 1.0 / 60.0;
@@ -1150,7 +1176,7 @@ std::vector<render::Particle3D> simulate_gpu(const GPUParticles3D& settings,
     std::vector<render::Particle3D> particles(amount_of(settings));
     for (std::int64_t i = 0; i < ticks; ++i) {
         const std::uint64_t before = e.first + e.kept().size();
-        tick(e, copy, transform, id, step);
+        tick(e, copy, transform, id, step, touching);
         // Runs the steps this tick made as they come, so none drop before they run.
         const std::uint64_t after = e.first + e.kept().size();
         if (e.amount != particles.size()) {
