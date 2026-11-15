@@ -1,0 +1,15 @@
+{
+  "entities": {
+    "camp": {
+      "components": {
+        "StoryRef": {
+          "ids": ["place/camp"]
+        },
+        "Transform2D": {
+          "position": [160.0, 90.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

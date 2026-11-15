@@ -1,0 +1,117 @@
+{
+  "budget": {
+    "entities": 120,
+    "points": 2000
+  },
+  "description": "A valley's grass, rocks, a herd of deer, road lamps and the herd's patrol.",
+  "format": 1,
+  "nodes": [
+    {
+      "density": 0.3,
+      "name": "ground",
+      "on": ["valley"],
+      "op": "surface",
+      "slope": [0, 25],
+      "spacing": 0.5
+    },
+    {
+      "from": ["ground"],
+      "name": "meadow",
+      "noise": {
+        "frequency": 0.08,
+        "seed": 3
+      },
+      "noise_range": [-0.2, 1],
+      "op": "filter"
+    },
+    {
+      "from": ["meadow"],
+      "name": "grass",
+      "op": "foliage",
+      "type": "plants/grass.foliage.json"
+    },
+    {
+      "from": ["ground"],
+      "name": "rocky",
+      "noise": {
+        "frequency": 0.08,
+        "seed": 3
+      },
+      "noise_range": [-1, -0.45],
+      "op": "filter"
+    },
+    {
+      "align_to_normal": true,
+      "from": ["rocky"],
+      "name": "rocks",
+      "op": "transform",
+      "rotate_random": 1,
+      "scale_random": 0.3
+    },
+    {
+      "from": ["rocks"],
+      "mesh": "props/boulder.model.json",
+      "name": "boulders",
+      "op": "multimesh"
+    },
+    {
+      "distance": 10,
+      "from": ["meadow"],
+      "name": "open",
+      "op": "difference",
+      "story": ["place/farm"]
+    },
+    {
+      "from": ["open"],
+      "name": "herd",
+      "op": "prune",
+      "spacing": 6
+    },
+    {
+      "command": "creature.place",
+      "expect": {
+        "max": 12,
+        "min": 2,
+        "reachable": true
+      },
+      "from": ["herd"],
+      "keep": 0.35,
+      "name": "deer",
+      "op": "command",
+      "params": {
+        "at": "$local",
+        "id": "$id",
+        "parent": "$parent",
+        "recipe": "fauna/deer.creature.json",
+        "yaw": "$yaw"
+      }
+    },
+    {
+      "name": "posts",
+      "op": "path",
+      "path": "road",
+      "side": 2,
+      "spacing": 6
+    },
+    {
+      "components": {
+        "OmniLight3D": {
+          "light_energy": {
+            "$pick": [1.5, 2, 2.5]
+          }
+        }
+      },
+      "from": ["posts"],
+      "name": "lamps",
+      "op": "spawn",
+      "prefab": "props/lamp.prefab.json"
+    },
+    {
+      "closed": true,
+      "from": ["herd"],
+      "name": "patrol",
+      "op": "route"
+    }
+  ],
+  "seed": 7
+}

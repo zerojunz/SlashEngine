@@ -54,6 +54,7 @@
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/plugin/plugins.hpp"
+#include "slash/procedural/pcg.hpp"
 #include "slash/procedural/scatter.hpp"
 #include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
@@ -539,6 +540,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "scatter") {
         return Reply::success(procedural::scatter_schema());
+    }
+    if (kind == "pcg") {
+        return Reply::success(procedural::pcg_schema());
     }
     if (kind == "physics_material") {
         return Reply::success(world::physics_material_schema());
@@ -7187,6 +7191,7 @@ void register_builtin_commands(Registry& registry) {
                                "standard_material",
                                "texture",
                                "scatter",
+                               "pcg",
                                "physics_material",
                                "ragdoll",
                                "foliage",
@@ -7208,7 +7213,8 @@ void register_builtin_commands(Registry& registry) {
             ".bus_layout.json, .navmesh.json, .navpoly.json, .npc.json, .meshlib.json, "
             ".lightmap.json, "
             ".voxelgi.json, .model.json, .standard_material.json, .texture.json, .scatter.json, "
-            ".physics_material.json, .ragdoll.json, .foliage.json, .groom.json, .damage.json, "
+            ".pcg.json, .physics_material.json, .ragdoll.json, .foliage.json, .groom.json, "
+            ".damage.json, "
             ".character.json, .face.json, .creature.json, .vehicle.json, .vfx.json, .fluid.json, "
             ".water.json, "
             ".replay.json, "
@@ -8912,6 +8918,7 @@ void register_builtin_commands(Registry& registry) {
     register_terrain_commands(registry);
     register_procedural_commands(registry);
     register_scatter_commands(registry);
+    register_pcg_commands(registry);
     register_hair_commands(registry);
     register_damage_commands(registry);
     register_vfx_commands(registry);

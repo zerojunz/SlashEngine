@@ -1,0 +1,11 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"valley.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"pcg.check","params":{"path":"valley.pcg.json","reach_from":"farm"}}
+{"jsonrpc":"2.0","id":3,"method":"pcg.preview","params":{"path":"valley.pcg.json","sample":1,"image":"previews/valley.png","size":128}}
+{"jsonrpc":"2.0","id":4,"method":"pcg.run","params":{"path":"valley.pcg.json","into":"life"}}
+{"jsonrpc":"2.0","id":5,"method":"foliage.get","params":{"entity":"life_grass"}}
+{"jsonrpc":"2.0","id":6,"method":"creature.state","params":{"creature":"life_deer_1"}}
+{"jsonrpc":"2.0","id":7,"method":"pcg.run","params":{"path":"valley.pcg.json","into":"life","seed":8}}
+{"jsonrpc":"2.0","id":8,"method":"undo","params":{}}
+{"jsonrpc":"2.0","id":9,"method":"scene.open","params":{"path":"island.scene.json"}}
+{"jsonrpc":"2.0","id":10,"method":"pcg.run","params":{"path":"island.pcg.json","into":"island"}}
+{"jsonrpc":"2.0","id":11,"method":"pcg.run","params":{"into":"bad","graph":{"format":1,"nodes":[{"name":"g","op":"grid","area":[0,0,10,10],"spacing":1,"keep":0.5}]}}}

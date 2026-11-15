@@ -1,0 +1,74 @@
+{
+  "description": "Grass round a camp and deer away from it.",
+  "format": 1,
+  "nodes": [
+    {
+      "area": [0, 0, 320, 180],
+      "jitter": 0.4,
+      "name": "cells",
+      "op": "grid",
+      "spacing": 12
+    },
+    {
+      "from": ["cells"],
+      "name": "lush",
+      "noise": {
+        "frequency": 0.02
+      },
+      "op": "density"
+    },
+    {
+      "from": ["lush"],
+      "name": "camp_ring",
+      "op": "near",
+      "range": [20, 110],
+      "story": ["place/camp"]
+    },
+    {
+      "density_range": [0.4, 1],
+      "from": ["camp_ring"],
+      "name": "thick",
+      "op": "filter"
+    },
+    {
+      "from": ["thick"],
+      "name": "tufts",
+      "op": "foliage",
+      "type": "plants/tuft.foliage.json"
+    },
+    {
+      "distance": 90,
+      "from": ["lush"],
+      "name": "wild",
+      "op": "difference",
+      "story": ["place/camp"]
+    },
+    {
+      "from": ["wild"],
+      "name": "grazing",
+      "op": "prune",
+      "spacing": 60
+    },
+    {
+      "from": ["grazing"],
+      "limit": 3,
+      "name": "few",
+      "op": "filter"
+    },
+    {
+      "command": "creature.place",
+      "from": ["few"],
+      "name": "deer",
+      "op": "command",
+      "params": {
+        "at": "$local",
+        "id": "$id",
+        "parent": "$parent",
+        "pixels_per_meter": 20,
+        "recipe": "fauna/deer.creature.json"
+      }
+    }
+  ],
+  "seed": 2,
+  "space": "2d"
+}

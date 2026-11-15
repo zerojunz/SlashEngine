@@ -51,6 +51,7 @@
 #include "slash/platform/platform.hpp"
 #include "slash/platform/process.hpp"
 #include "slash/platform/run.hpp"
+#include "slash/procedural/pcg.hpp"
 #include "slash/procedural/scatter.hpp"
 #include "slash/procedural/texture.hpp"
 #include "slash/render/device.hpp"
@@ -1220,6 +1221,7 @@ int cmd_scene_validate(const std::string& path) {
     const bool score = path.ends_with(slash::soundtrack::kScoreSuffix);
     const bool texture = path.ends_with(slash::procedural::kTextureSuffix);
     const bool scatter = path.ends_with(slash::procedural::kScatterSuffix);
+    const bool pcg = path.ends_with(slash::procedural::kPcgSuffix);
     const bool physics_material = world::is_physics_material_path(path);
     const bool ragdoll = world::is_ragdoll_path(path);
     const bool foliage = world::is_foliage_path(path);
@@ -1285,6 +1287,8 @@ int cmd_scene_validate(const std::string& path) {
         errors = slash::procedural::validate_texture(parsed.value());
     } else if (scatter) {
         errors = slash::procedural::validate_scatter(parsed.value());
+    } else if (pcg) {
+        errors = slash::procedural::validate_pcg(parsed.value());
     } else if (physics_material) {
         errors = json::validate(parsed.value(), world::physics_material_schema());
     } else if (foliage) {
@@ -1388,6 +1392,10 @@ int cmd_scene_validate(const std::string& path) {
         // Its layers.
         result["layers"] = static_cast<std::int64_t>(
             slash::procedural::parse_scatter(parsed.value()).value().layers.size());
+    } else if (pcg) {
+        // Its nodes.
+        result["nodes"] = static_cast<std::int64_t>(
+            slash::procedural::parse_pcg(parsed.value()).value().nodes.size());
     } else if (texture) {
         // Its size.
         const auto image =
@@ -1607,6 +1615,9 @@ int cmd_scene_format(const std::string& path, bool check) {
         if (path.ends_with(slash::procedural::kScatterSuffix)) {
             return format_checked(text.value(), slash::procedural::parse_scatter);
         }
+        if (path.ends_with(slash::procedural::kPcgSuffix)) {
+            return format_checked(text.value(), slash::procedural::parse_pcg);
+        }
         if (world::is_physics_material_path(path)) {
             return format_checked(text.value(), world::parse_physics_material);
         }
@@ -1708,7 +1719,7 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 46> kKinds = {"scene",
+    constexpr std::array<std::string_view, 47> kKinds = {"scene",
                                                          "prefab",
                                                          "frames",
                                                          "material",
@@ -1742,6 +1753,7 @@ int cmd_schema(const std::vector<std::string>& args) {
                                                          "standard_material",
                                                          "texture",
                                                          "scatter",
+                                                         "pcg",
                                                          "physics_material",
                                                          "ragdoll",
                                                          "foliage",
@@ -1755,17 +1767,18 @@ int cmd_schema(const std::vector<std::string>& args) {
                                                          "fluid",
                                                          "water"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
-        return usage_error("schema takes one argument: scene, prefab, frames, material, "
-                           "process_material, animation, animtree, tileset, font, theme, audio, "
-                           "bus_layout, navmesh, navpoly, npc, quest, dialogue, meshlib, lightmap, "
-                           "voxel_gi, model, "
-                           "standard_material, "
-                           "texture, scatter, physics_material, ragdoll, foliage, groom, damage, "
-                           "character, face, creature, "
-                           "vehicle, vfx, fluid, water, "
-                           "replay, test, score, "
-                           "storyboard, "
-                           "project, presets, sdk, plugin, providers or bench");
+        return usage_error(
+            "schema takes one argument: scene, prefab, frames, material, "
+            "process_material, animation, animtree, tileset, font, theme, audio, "
+            "bus_layout, navmesh, navpoly, npc, quest, dialogue, meshlib, lightmap, "
+            "voxel_gi, model, "
+            "standard_material, "
+            "texture, scatter, pcg, physics_material, ragdoll, foliage, groom, damage, "
+            "character, face, creature, "
+            "vehicle, vfx, fluid, water, "
+            "replay, test, score, "
+            "storyboard, "
+            "project, presets, sdk, plugin, providers or bench");
     }
     json::Value schema;
     if (args[0] == "scene") {
@@ -1816,6 +1829,8 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = slash::procedural::texture_schema();
     } else if (args[0] == "scatter") {
         schema = slash::procedural::scatter_schema();
+    } else if (args[0] == "pcg") {
+        schema = slash::procedural::pcg_schema();
     } else if (args[0] == "physics_material") {
         schema = world::physics_material_schema();
     } else if (args[0] == "ragdoll") {
