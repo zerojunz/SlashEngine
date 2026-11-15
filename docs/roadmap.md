@@ -1304,7 +1304,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
           (`damage.apply`'s `by`), a break budget of pieces a tick (`break_budget`, counted so
           replays repeat) with 3D cells cut on the job pool, and `Cloth3D` tearing
           (`examples/break-effects`)
-18. [ ] VFX design: a tool that builds special effects as `.vfx.json` recipes, as Unreal's
+18. [x] VFX design: a tool that builds special effects as `.vfx.json` recipes, as Unreal's
         Niagara systems: emitters of CPU and GPU particles, ribbons, trails, mesh particles,
         flipbooks, decals, lights, distortion, screen flashes, camera shakes and sounds,
         timed and layered on one timeline with parameters (size, color, intensity) a game sets,
@@ -1331,8 +1331,12 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
           colliders, the camera's depth and 2D occluders, attributes as Expressions, and
           collision, death and location events that spawn into other emitters and emit world
           events (`examples/particle-simulation`)
-    - [ ] The stages on every device's compute for GPU particles, the CPU stages their twin;
-          particles lit, shadowed and sorted
+    - [x] The stages on every device's compute for GPU particles: a `ParticleSimulation3D`
+          beside a `GPUParticles3D` flocks, swirls, drags and limits its particles after each
+          step, with keys sorted by the bitonic sort the draw passes use and neighbors found by
+          binary search, and `run_particle_stages_3d` the CPU twin the software and OpenGL
+          devices run; particles were already lit, shadowed and sorted by view depth
+          (`examples/particle-simulation`)
     - [x] Distortion, and the foliage, character, fauna and vehicle tools' effects:
           `ScreenDistortion3D` and `ScreenDistortion2D` (heat, shockwaves, ripples and lenses,
           drawn through a grid of moved texture coordinates so every device matches), and the

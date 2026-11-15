@@ -741,6 +741,117 @@ TEST_CASE("every device collides 3D particles with SDFs and height fields as the
     }
 }
 
+// A box of particles all let go at once, for stages to flock and swirl.
+ParticleProcess3D flock_process(bool flat) {
+    ParticleProcess3D process;
+    process.emission_shape = EmissionShape::Box;
+    process.emission_box_extents = {1.0F, 1.0F, flat ? 0.0F : 1.0F};
+    process.direction = {1.0F, 0.0F, 0.0F};
+    process.spread = 180.0F;
+    process.gravity = {0.0F, 0.0F, 0.0F};
+    process.disable_z = flat;
+    set_range(process, ParticleParam::InitialVelocity, 0.5F, 1.0F);
+    return process;
+}
+
+TEST_CASE("every device runs simulation stages over 3D particles as the CPU twin does") {
+    constexpr std::uint32_t kAmount = 64;
+    std::vector<ParticleStep3D> steps = run_steps(25, 0.02F, 4.0F, 1.0F);
+    render::ParticleStages3D flock;
+    flock.neighbor_radius = 0.6F;
+    flock.max_neighbors = 8;
+    flock.separation = 2.0F;
+    flock.cohesion = 1.0F;
+    flock.alignment = 2.0F;
+    flock.curl_strength = 1.5F;
+    flock.curl_scale = 0.8F;
+    flock.curl_speed = 0.5F;
+    flock.drag = 0.3F;
+    flock.max_speed = 1.2F;
+    render::ParticleStages3D drifting;
+    drifting.curl_strength = 2.0F;
+    drifting.min_speed = 0.9F;
+    drifting.neighbor_radius = 0.4F;
+    drifting.separation = 1.0F;
+
+    struct Case {
+        ParticleProcess3D process;
+        render::ParticleStages3D stages;
+    };
+    const std::vector<Case> cases{{flock_process(false), flock}, {flock_process(true), drifting}};
+    // On the CPU first: the stages change what the steps alone do, and particles find neighbors.
+    for (const Case& c : cases) {
+        std::vector<Particle3D> plain(kAmount);
+        render::process_particles_3d(plain, c.process, steps);
+        std::vector<ParticleStep3D> staged = steps;
+        for (ParticleStep3D& step : staged) {
+            step.stages = c.stages;
+        }
+        std::vector<Particle3D> twin(kAmount);
+        render::process_particles_3d(twin, c.process, staged);
+        int changed = 0;
+        int counted = 0;
+        for (std::uint32_t i = 0; i < kAmount; ++i) {
+            REQUIRE(twin[i].active());
+            changed += close(twin[i], plain[i]) ? 0 : 1;
+            counted += twin[i].userdata.x > 0.0F ? 1 : 0;
+            CHECK(twin[i].userdata.x <= static_cast<float>(c.stages.max_neighbors));
+            if (c.process.disable_z) {
+                CHECK(twin[i].velocity.z == 0.0F);
+            }
+            const float speed = std::sqrt((twin[i].velocity.x * twin[i].velocity.x) +
+                                          (twin[i].velocity.y * twin[i].velocity.y) +
+                                          (twin[i].velocity.z * twin[i].velocity.z));
+            if (c.stages.max_speed > 0.0F) {
+                CHECK(speed <= c.stages.max_speed * 1.001F);
+            }
+            if (c.stages.min_speed > 0.0F) {
+                CHECK(speed >= c.stages.min_speed * 0.999F);
+            }
+        }
+        CHECK(changed > static_cast<int>(kAmount / 2));
+        CHECK(counted > static_cast<int>(kAmount / 2));
+    }
+
+    std::vector<std::unique_ptr<RenderDevice>> devices = slash::test::hardware_devices();
+    devices.push_back(render::create_software_device());
+    for (auto& device : devices) {
+        CAPTURE(render::backend_name(device->backend()));
+        int which = 0;
+        for (const Case& c : cases) {
+            const int index = which++;
+            CAPTURE(index);
+            std::vector<ParticleStep3D> staged = steps;
+            for (ParticleStep3D& step : staged) {
+                step.stages = c.stages;
+            }
+            std::vector<Particle3D> twin(kAmount);
+            render::process_particles_3d(twin, c.process, staged);
+            auto system = device->create_particles_3d(kAmount);
+            REQUIRE_MESSAGE(system.ok(), error_of(system));
+            // In two calls, as a game's ticks would be.
+            auto ran = device->process_particles_3d(system.value(), c.process,
+                                                    std::span(staged).first(10));
+            REQUIRE_MESSAGE(ran.ok(), error_of(ran));
+            ran = device->process_particles_3d(system.value(), c.process,
+                                               std::span(staged).subspan(10));
+            REQUIRE_MESSAGE(ran.ok(), error_of(ran));
+            auto read = device->read_particles_3d(system.value());
+            REQUIRE_MESSAGE(read.ok(), error_of(read));
+            REQUIRE(read.value().size() == kAmount);
+            int counts_apart = 0;
+            for (std::uint32_t i = 0; i < kAmount; ++i) {
+                CHECK_MESSAGE(close(read.value()[i], twin[i]), "particle ", i, ": device ",
+                              describe(read.value()[i]), ", twin ", describe(twin[i]));
+                counts_apart += read.value()[i].userdata.x == twin[i].userdata.x ? 0 : 1;
+            }
+            // A neighbor right at the radius may fall either side of it in other float units.
+            CHECK(counts_apart <= 2);
+            device->destroy_particles_3d(system.value());
+        }
+    }
+}
+
 TEST_CASE("every device places 3D particles' meshes as the software device does") {
     const auto software = render::create_software_device();
     const Image expected = draw_particles(*software, 128);
@@ -848,6 +959,21 @@ TEST_CASE("every device refuses the same 3D particle mistakes") {
         bad = steps;
         bad[2].collision_size = -0.5F;
         CHECK_FALSE(device->process_particles_3d(system.value(), {}, bad).ok());
+        // Stages with a radius below 0, too many neighbors or none, or a number that isn't one.
+        bad = steps;
+        bad[1].stages.neighbor_radius = -1.0F;
+        CHECK_FALSE(device->process_particles_3d(system.value(), {}, bad).ok());
+        bad = steps;
+        bad[1].stages.max_neighbors = render::kMaxParticleNeighbors3D + 1;
+        CHECK_FALSE(device->process_particles_3d(system.value(), {}, bad).ok());
+        bad[1].stages.max_neighbors = 0;
+        CHECK_FALSE(device->process_particles_3d(system.value(), {}, bad).ok());
+        bad = steps;
+        bad[1].stages.cohesion = std::nanf("");
+        CHECK_FALSE(device->process_particles_3d(system.value(), {}, bad).ok());
+        bad = steps;
+        bad[1].stages.drag = 0.5F;
+        CHECK(device->process_particles_3d(system.value(), {}, bad).ok());
         CHECK_FALSE(device->process_particles_3d(render::Particles3DId{999}, {}, steps).ok());
         CHECK(device->process_particles_3d(system.value(), {}, steps).ok());
 

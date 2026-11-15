@@ -1703,7 +1703,9 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         registry.add<ParticleSimulation3D>().set_doc(
             "Simulation stages over the entity's CPUParticles3D, after Niagara's: flocking by "
             "neighbors found along a Morton curve, curl noise, drag, speed limits, collision with "
-            "GPUParticlesCollision3Ds or what the camera sees, attributes and events."),
+            "GPUParticlesCollision3Ds or what the camera sees, attributes and events. Beside a "
+            "GPUParticles3D, its flocking, curl noise, drag and speed limits run on the device "
+            "after each step."),
         false);
     describe_simulation(
         registry.add<ParticleSimulation2D>().set_doc(

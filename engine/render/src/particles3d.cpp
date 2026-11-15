@@ -7,11 +7,13 @@
 #include "slash/render/device.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <numeric>
 #include <optional>
+#include <utility>
 #include <vector>
 
 // Godot's particles shader (servers/rendering/renderer_rd/shaders/particles.glsl), the code
@@ -993,6 +995,86 @@ void step_particle(Particle3D& particle, std::uint32_t index, std::uint32_t tota
     }
 }
 
+// The simulation stages' noise, as world's particle_sim.cpp makes it: a whole-number hash,
+// lattice values from -1 to 1 and quintic smoothing, so its slope is smooth too.
+std::uint32_t stage_hash(std::uint32_t x) {
+    x ^= x >> 16U;
+    x *= 0x7FEB352DU;
+    x ^= x >> 15U;
+    x *= 0x846CA68BU;
+    x ^= x >> 16U;
+    return x;
+}
+
+float stage_lattice(std::int32_t x, std::int32_t y, std::int32_t z, std::uint32_t seed) {
+    std::uint32_t h = stage_hash(seed ^ 0x9E3779B9U);
+    h = stage_hash(h ^ static_cast<std::uint32_t>(x));
+    h = stage_hash(h ^ static_cast<std::uint32_t>(y));
+    h = stage_hash(h ^ static_cast<std::uint32_t>(z));
+    return (static_cast<float>(h >> 8U) * (2.0F / 16777216.0F)) - 1.0F;
+}
+
+float stage_fade(float t) {
+    return t * t * t * ((t * ((t * 6.0F) - 15.0F)) + 10.0F);
+}
+
+float stage_fade_slope(float t) {
+    return 30.0F * t * t * ((t * (t - 2.0F)) + 1.0F);
+}
+
+// Smooth value noise's slope along each axis at p.
+Vec3f stage_noise_slope(Vec3f p, std::uint32_t seed, bool flat) {
+    const float fx = std::floor(p.x);
+    const float fy = std::floor(p.y);
+    const float fz = flat ? 0.0F : std::floor(p.z);
+    const auto x0 = static_cast<std::int32_t>(fx);
+    const auto y0 = static_cast<std::int32_t>(fy);
+    const auto z0 = static_cast<std::int32_t>(fz);
+    const float tx = p.x - fx;
+    const float ty = p.y - fy;
+    const float tz = flat ? 0.0F : p.z - fz;
+    const float u = stage_fade(tx);
+    const float v = stage_fade(ty);
+    const float w = stage_fade(tz);
+    const float du = stage_fade_slope(tx);
+    const float dv = stage_fade_slope(ty);
+    const float dw = flat ? 0.0F : stage_fade_slope(tz);
+    const float a = stage_lattice(x0, y0, z0, seed);
+    const float b = stage_lattice(x0 + 1, y0, z0, seed);
+    const float c = stage_lattice(x0, y0 + 1, z0, seed);
+    const float d = stage_lattice(x0 + 1, y0 + 1, z0, seed);
+    float e = 0.0F;
+    float f = 0.0F;
+    float g = 0.0F;
+    float h = 0.0F;
+    if (!flat) {
+        e = stage_lattice(x0, y0, z0 + 1, seed);
+        f = stage_lattice(x0 + 1, y0, z0 + 1, seed);
+        g = stage_lattice(x0, y0 + 1, z0 + 1, seed);
+        h = stage_lattice(x0 + 1, y0 + 1, z0 + 1, seed);
+    }
+    const float k1 = b - a;
+    const float k2 = c - a;
+    const float k3 = e - a;
+    const float k4 = a - b - c + d;
+    const float k5 = a - c - e + g;
+    const float k6 = a - b - e + f;
+    const float k7 = -a + b + c - d + e - f - g + h;
+    return {du * (k1 + (k4 * v) + (k6 * w) + (k7 * v * w)),
+            dv * (k2 + (k5 * w) + (k4 * u) + (k7 * w * u)),
+            dw * (k3 + (k6 * u) + (k5 * v) + (k7 * u * v))};
+}
+
+// The cell a coordinate is in, for cells inverse across; far places share the last cells.
+std::int32_t stage_cell(float at, float inverse) {
+    return static_cast<std::int32_t>(std::floor(std::clamp(at * inverse, -1.0e9F, 1.0e9F)));
+}
+
+// Whether neighbor (d, i) is nearer than (e, j): by distance, ties by index.
+bool stage_nearer(float d, std::uint32_t i, float e, std::uint32_t j) {
+    return d < e || (d == e && i < j);
+}
+
 } // namespace
 
 void process_particles_3d(std::span<Particle3D> particles, const ParticleProcess3D& process,
@@ -1002,6 +1084,169 @@ void process_particles_3d(std::span<Particle3D> particles, const ParticleProcess
         for (std::uint32_t i = 0; i < total; ++i) {
             step_particle(particles[i], i, total, process, step);
         }
+        if (step.stages.active()) {
+            run_particle_stages_3d(particles, step, process.disable_z);
+        }
+    }
+}
+
+std::uint32_t particle_cell_code_3d(std::int32_t x, std::int32_t y, std::int32_t z) {
+    const auto spread = [](std::int32_t coordinate) {
+        std::uint32_t v = static_cast<std::uint32_t>(coordinate) & 0x3FFU;
+        v = (v | (v << 16U)) & 0x030000FFU;
+        v = (v | (v << 8U)) & 0x0300F00FU;
+        v = (v | (v << 4U)) & 0x030C30C3U;
+        v = (v | (v << 2U)) & 0x09249249U;
+        return v;
+    };
+    return spread(x) | (spread(y) << 1U) | (spread(z) << 2U);
+}
+
+Vec3f particle_curl_3d(Vec3f p, float time, std::uint32_t seed, bool flat) {
+    const Vec3f at{p.x + (0.37F * time), p.y + (0.71F * time), p.z + (0.53F * time)};
+    if (flat) {
+        const Vec3f n = stage_noise_slope({at.x, at.y, 0.0F}, seed, true);
+        return {n.y, -n.x, 0.0F};
+    }
+    const Vec3f a = stage_noise_slope(at, seed, false);
+    const Vec3f b = stage_noise_slope({at.x + 31.416F, at.y, at.z}, seed + 1U, false);
+    const Vec3f c = stage_noise_slope({at.x, at.y + 47.853F, at.z}, seed + 2U, false);
+    return {c.y - b.z, a.z - c.x, b.x - a.y};
+}
+
+// particles_stages_3d.hlsl's passes in turn: each particle's place, velocity and cell key, the
+// keys sorted as its bitonic sort leaves them (by cell, then index; particles not live last),
+// then each live particle's stages from what the others were before any moved.
+void run_particle_stages_3d(std::span<Particle3D> particles, const ParticleStep3D& step,
+                            bool flat) {
+    const ParticleStages3D& s = step.stages;
+    const float dt = step.delta;
+    if (!s.active() || !(dt > 0.0F)) {
+        return;
+    }
+    const auto total = static_cast<std::uint32_t>(particles.size());
+    const float radius = s.neighbor_radius;
+    const float inverse = radius > 0.0F ? 1.0F / radius : 0.0F;
+    const auto flattened = [flat](Vec3f v) { return flat ? Vec3f{v.x, v.y, 0.0F} : v; };
+    std::vector<Vec3f> place(total);
+    std::vector<Vec3f> speed(total);
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> keys(total);
+    for (std::uint32_t i = 0; i < total; ++i) {
+        place[i] = flattened(xyz(particles[i].origin));
+        speed[i] = particles[i].velocity;
+        std::uint32_t code = 0xFFFFFFFFU;
+        if (particles[i].active()) {
+            code = particle_cell_code_3d(stage_cell(place[i].x, inverse),
+                                         stage_cell(place[i].y, inverse),
+                                         flat ? 0 : stage_cell(place[i].z, inverse));
+        }
+        keys[i] = {code, i};
+    }
+    std::ranges::sort(keys);
+    const std::uint32_t limit = std::clamp(s.max_neighbors, 1U, kMaxParticleNeighbors3D);
+    const std::int32_t z_reach = flat ? 0 : 1;
+    for (std::uint32_t i = 0; i < total; ++i) {
+        Particle3D& particle = particles[i];
+        if (!particle.active()) {
+            continue;
+        }
+        const Vec3f p = place[i];
+        const Vec3f before = speed[i];
+        Vec3f v = before;
+        std::uint32_t count = 0;
+        if (radius > 0.0F) {
+            std::array<float, kMaxParticleNeighbors3D> near_d{};
+            std::array<std::uint32_t, kMaxParticleNeighbors3D> near_i{};
+            const std::int32_t cx = stage_cell(p.x, inverse);
+            const std::int32_t cy = stage_cell(p.y, inverse);
+            const std::int32_t cz = flat ? 0 : stage_cell(p.z, inverse);
+            for (std::int32_t dz = -z_reach; dz <= z_reach; ++dz) {
+                for (std::int32_t dy = -1; dy <= 1; ++dy) {
+                    for (std::int32_t dx = -1; dx <= 1; ++dx) {
+                        const std::uint32_t code = particle_cell_code_3d(cx + dx, cy + dy, cz + dz);
+                        // The first key of the cell, by a binary search.
+                        std::uint32_t low = 0;
+                        std::uint32_t high = total;
+                        while (low < high) {
+                            const std::uint32_t middle = low + ((high - low) / 2U);
+                            if (keys[middle].first < code) {
+                                low = middle + 1U;
+                            } else {
+                                high = middle;
+                            }
+                        }
+                        for (std::uint32_t k = low; k < total && keys[k].first == code; ++k) {
+                            const std::uint32_t other = keys[k].second;
+                            if (other == i) {
+                                continue;
+                            }
+                            const float d = length(p - place[other]);
+                            if (!(d < radius)) {
+                                continue;
+                            }
+                            // Into the list of the nearest, kept in order.
+                            std::uint32_t at = count;
+                            if (count < limit) {
+                                ++count;
+                            } else if (stage_nearer(d, other, near_d[limit - 1],
+                                                    near_i[limit - 1])) {
+                                at = limit - 1;
+                            } else {
+                                continue;
+                            }
+                            while (at > 0 &&
+                                   stage_nearer(d, other, near_d[at - 1], near_i[at - 1])) {
+                                near_d[at] = near_d[at - 1];
+                                near_i[at] = near_i[at - 1];
+                                --at;
+                            }
+                            near_d[at] = d;
+                            near_i[at] = other;
+                        }
+                    }
+                }
+            }
+            if (count > 0) {
+                Vec3f push;
+                Vec3f center;
+                Vec3f heading;
+                for (std::uint32_t n = 0; n < count; ++n) {
+                    const std::uint32_t other = near_i[n];
+                    const float d = near_d[n];
+                    if (d > 1e-6F) {
+                        push = push + ((p - place[other]) * ((1.0F - (d / radius)) / d));
+                    }
+                    center = center + place[other];
+                    heading = heading + speed[other];
+                }
+                const float share = 1.0F / static_cast<float>(count);
+                center = center * share;
+                heading = heading * share;
+                Vec3f dv = push * (s.separation * radius);
+                dv = dv + ((center - p) * s.cohesion);
+                dv = dv + ((heading - before) * (std::min(s.alignment * dt, 1.0F) * (1.0F / dt)));
+                v = v + flattened(dv * dt);
+            }
+        }
+        if (s.curl_strength != 0.0F) {
+            const float scale = std::max(s.curl_scale, 0.0001F);
+            const Vec3f swirl =
+                particle_curl_3d(p * (1.0F / scale), step.time * s.curl_speed, step.seed, flat);
+            v = v + (swirl * (s.curl_strength * dt));
+        }
+        if (s.drag > 0.0F) {
+            v = v * std::max(0.0F, 1.0F - (s.drag * dt));
+        }
+        const float moving = length(v);
+        if (s.max_speed > 0.0F && moving > s.max_speed) {
+            v = v * (s.max_speed / moving);
+        } else if (s.min_speed > 0.0F && moving > 1e-6F && moving < s.min_speed) {
+            v = v * (s.min_speed / moving);
+        }
+        v = flattened(v);
+        particle.origin = with_w(xyz(particle.origin) + ((v - before) * dt));
+        particle.velocity = v;
+        particle.userdata.x = static_cast<float>(count);
     }
 }
 

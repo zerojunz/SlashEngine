@@ -1,4 +1,4 @@
-{"id":1,"jsonrpc":"2.0","result":{"entities":8,"path":"main.scene.json"}}
+{"id":1,"jsonrpc":"2.0","result":{"entities":9,"path":"main.scene.json"}}
 {"id":2,"jsonrpc":"2.0","result":{"subscription":"events_1"}}
 {"id":3,"jsonrpc":"2.0","result":{"tick":120,"ticks":120}}
 {"id":4,"jsonrpc":"2.0","result":{"alive":48,"bounds":[-3.3633,0.05,-1.1416,2.5974,1.2198,2.4562]}}
@@ -10,3 +10,7 @@
 {"id":10,"jsonrpc":"2.0","result":{"changed":{"ParticleSimulation3D":{"collide":"none"}},"id":"fountain"}}
 {"id":11,"jsonrpc":"2.0","result":{"tick":180,"ticks":60}}
 {"id":12,"jsonrpc":"2.0","result":{"alive":48,"bounds":[-3.2565,-8.7083,-1.8512,2.7496,9.9793,3.4883]}}
+{"id":13,"jsonrpc":"2.0","result":{"alive":48,"bounds":[-2.8248,0.5803,-0.8705,1.3733,2.2176,1.5544]}}
+{"id":14,"jsonrpc":"2.0","result":{"alive":48,"bounds":[-2.8248,0.5803,-0.8705,1.3733,2.2176,1.5544]}}
+{"id":15,"jsonrpc":"2.0","result":{"changed":{"ParticleSimulation3D":{"enabled":false}},"id":"bees"}}
+{"id":16,"jsonrpc":"2.0","result":{"alive":48,"bounds":[-4.2847,0.5996,-1.4097,2.718,3.096,2.8439]}}
