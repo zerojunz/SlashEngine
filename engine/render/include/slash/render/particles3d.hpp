@@ -199,6 +199,39 @@ inline constexpr std::size_t kMaxParticleAttractors3D = 32;
 // The most texels a vector field holds.
 inline constexpr std::size_t kMaxParticleFieldTexels3D = std::size_t{1} << 18U;
 
+// The most neighbors a particle feels in simulation stages on a device.
+inline constexpr std::uint32_t kMaxParticleNeighbors3D = 32;
+
+// Simulation stages a step runs on its particles after moving them, after Unreal's Niagara
+// simulation stages (Godot has none), as world::run_stages runs them over CPU particles: each
+// live particle feels the nearest max_neighbors live ones within neighbor_radius (found by
+// sorting the particles along a Morton curve of cells of that size and looking up the cells
+// round each with binary searches, no grid kept), which push it apart (separation), pull it
+// toward their middle (cohesion) and turn it toward their mean velocity (alignment); then curl
+// noise swirls it, drag slows it and the speed limits hold it, the change in its velocity moving
+// it this step too. Neighbors are measured in the particles' space, flat ones (the process's
+// disable_z) in the xy plane. A particle's userdata.x is how many neighbors it felt.
+struct ParticleStages3D {
+    float neighbor_radius = 0.0F; // 0: no neighbors
+    std::uint32_t max_neighbors = 16;
+    float separation = 0.0F;
+    float cohesion = 0.0F;  // per second squared
+    float alignment = 0.0F; // per second
+    float curl_strength = 0.0F;
+    float curl_scale = 1.0F;
+    float curl_speed = 0.0F; // the noise moves by the step's time times this
+    float drag = 0.0F;       // the share of velocity lost a second
+    float min_speed = 0.0F;  // 0: no limit
+    float max_speed = 0.0F;  // 0: no limit
+
+    // Whether the stages change anything.
+    [[nodiscard]] bool active() const {
+        return neighbor_radius > 0.0F || curl_strength != 0.0F || drag > 0.0F || min_speed > 0.0F ||
+               max_speed > 0.0F;
+    }
+    bool operator==(const ParticleStages3D&) const = default;
+};
+
 // One step of a 3D system, as ParticleStep is of a 2D one: each restarts the particles whose turn
 // comes between prev_system_phase and system_phase and moves every live particle on by delta.
 struct ParticleStep3D {
@@ -227,6 +260,8 @@ struct ParticleStep3D {
     // collision_base_size).
     std::vector<ParticleCollider3D> colliders;
     float collision_size = 0.01F;
+    // The simulation stages run after the step (a ParticleSimulation3D beside the emitter).
+    ParticleStages3D stages;
 
     bool operator==(const ParticleStep3D&) const = default;
 };
@@ -245,15 +280,29 @@ struct Particle3D {
     std::uint32_t flags = 0;
     Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};
     Vec4 custom;
-    Vec4 userdata; // spare
+    Vec4 userdata; // x: how many neighbors its stages felt last; the rest spare
 
     [[nodiscard]] bool active() const { return (flags & kParticleActive) != 0; }
 };
 static_assert(sizeof(Particle3D) == 128);
 
-// Runs steps on a 3D system of particles.size() particles, as the GPU does.
+// Runs steps on a 3D system of particles.size() particles, as the GPU does, each step's stages
+// after it.
 void process_particles_3d(std::span<Particle3D> particles, const ParticleProcess3D& process,
                           std::span<const ParticleStep3D> steps);
+
+// Runs a step's simulation stages on particles it moved, as particles_stages_3d.hlsl does; flat
+// keeps them in the xy plane. process_particles_3d calls it after each step whose stages are
+// active.
+void run_particle_stages_3d(std::span<Particle3D> particles, const ParticleStep3D& step, bool flat);
+
+// The Morton code of a particle's cell for simulation stages: each coordinate's low 10 bits
+// interleaved, x lowest, so cells wrap every 1024 (neighbors are measured, so a wrapped cell
+// only adds particles to look at).
+[[nodiscard]] std::uint32_t particle_cell_code_3d(std::int32_t x, std::int32_t y, std::int32_t z);
+
+// Curl noise at p, as the stages swirl particles: world::curl_noise's math.
+[[nodiscard]] Vec3f particle_curl_3d(Vec3f p, float time, std::uint32_t seed, bool flat);
 
 // Where a point touches colliders, as a step's particles collide with them: the way out of them
 // all and how deep it is, less size. CPU particles' simulations collide through it.

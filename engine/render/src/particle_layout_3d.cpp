@@ -328,4 +328,31 @@ MeshUniforms3D mesh_uniforms_3d(const ParticleMeshDraw3D& draw, std::uint32_t am
     return out;
 }
 
+StagesUniforms3D stages_uniforms_3d(const ParticleStep3D& step, std::uint32_t amount, bool flat) {
+    const ParticleStages3D& s = step.stages;
+    return StagesUniforms3D{.amount = amount,
+                            .size = sort_size(amount),
+                            .stage = 0,
+                            .max_neighbors = s.max_neighbors,
+                            .seed = step.seed,
+                            .flat = flat ? 1U : 0U,
+                            .neighbor_radius = s.neighbor_radius,
+                            .separation = s.separation,
+                            .cohesion = s.cohesion,
+                            .alignment = s.alignment,
+                            .curl_strength = s.curl_strength,
+                            .curl_scale = s.curl_scale,
+                            .curl_time = step.time * s.curl_speed,
+                            .drag = s.drag,
+                            .min_speed = s.min_speed,
+                            .max_speed = s.max_speed,
+                            .delta = step.delta};
+}
+
+bool steps_have_stages(std::span<const ParticleStep3D> steps) {
+    return std::ranges::any_of(steps, [](const ParticleStep3D& step) {
+        return step.stages.active() && step.delta > 0.0F;
+    });
+}
+
 } // namespace slash::render::detail

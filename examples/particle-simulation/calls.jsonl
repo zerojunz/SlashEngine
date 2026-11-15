@@ -10,3 +10,7 @@
 {"jsonrpc":"2.0","id":10,"method":"component.set","params":{"id":"fountain","components":{"ParticleSimulation3D":{"collide":"none"}}}}
 {"jsonrpc":"2.0","id":11,"method":"step","params":{"ticks":60}}
 {"jsonrpc":"2.0","id":12,"method":"particles.eval","params":{"id":"fountain"}}
+{"jsonrpc":"2.0","id":13,"method":"particles.eval","params":{"id":"bees"}}
+{"jsonrpc":"2.0","id":14,"method":"particles.eval","params":{"id":"bees","time":3}}
+{"jsonrpc":"2.0","id":15,"method":"component.set","params":{"id":"bees","components":{"ParticleSimulation3D":{"enabled":false}}}}
+{"jsonrpc":"2.0","id":16,"method":"particles.eval","params":{"id":"bees","time":3}}

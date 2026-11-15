@@ -6410,6 +6410,20 @@ An expression that fails as it runs leaves its value at 0 and is logged once.
 | `name` | `""` | When set, emits a `particle_event` world event about the emitter, its data the `name`, `on` and the world `position`; at most 8 an emitter a tick. |
 | `kill` | `false` | Ends the particle when it fires. |
 
+A `ParticleSimulation3D` beside a `GPUParticles3D` runs on the device instead, after each step
+of its particles (`scene3d::gpu_stages`, `render::ParticleStages3D` on each `ParticleStep3D`):
+its neighbor stage (at most 32 neighbors), curl noise, drag and speed limits, in the plane when
+the process material's `disable_z` is set. Each step, a pass keeps every particle's place and
+velocity and writes its key (the Morton code of its cell, then its index), the bitonic sort the
+draw passes use sorts the keys, and a pass a particle finds its neighbors with binary searches
+over them and changes its velocity, so no particle sees another's new values and the order
+threads run in changes nothing. The particle's `userdata.x` holds how many neighbors it felt.
+`shaders/particles_stages_3d.hlsl` is the compute shader on Vulkan, Metal, Direct3D 12 and
+WebGPU, and `render::run_particle_stages_3d` (`engine/render/src/particles3d.cpp`) its CPU twin,
+which the software and OpenGL devices and `particles.eval` run. Attractors are the GPU
+particles' own; `attributes`, `events` and `collide` are the CPU stages' alone and do nothing
+here.
+
 ### Screen distortion
 
 `ScreenDistortion3D` and `ScreenDistortion2D` bend the picture of the world as a heat haze, a

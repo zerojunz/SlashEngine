@@ -205,7 +205,7 @@ set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
     particles_process:ParticlesProcess:compute
     particles_emit:ParticlesEmit:compute particles_draw:ParticlesDraw:compute
     particles_process_3d:ParticlesProcess3D:compute3d particles_sort_3d:ParticlesSort3D:compute3d
-    particles_mesh_3d:ParticlesMesh3D:compute3d
+    particles_mesh_3d:ParticlesMesh3D:compute3d particles_stages_3d:ParticlesStages3D:compute3d
     volumetric_fog:VolumetricFog:fog_compute volumetric_fog_sky:VolumetricFogSky:fog_sky
     frame_generation:FrameGeneration:compute_alone
     frame_generation_draw:FrameGenerationDraw:fog_sky)

@@ -130,14 +130,18 @@ live_particles_3d(std::span<const render::Particle3D> particles, render::Particl
 gpu_particles_3d(const world::World& world, entt::entity entity,
                  const render::ParticleProcess3D& process);
 
+// The simulation stages a GPUParticles3D's steps run from a ParticleSimulation3D beside it, after
+// Niagara's: its neighbor, curl noise, drag and speed stages (none if it is disabled). Attributes,
+// events and collide are the CPU stages' alone.
+[[nodiscard]] render::ParticleStages3D gpu_stages(const world::ParticleSimulation& simulation);
+
 // Runs a GPUParticles3D's settings from the start for seconds, in ticks of tick_seconds, from a
 // transform that stays put, apart from any world, and returns the live particles in draw order:
-// what the system would have after that long.
-[[nodiscard]] std::vector<render::Particle3D> simulate_gpu(const world::GPUParticles3D& settings,
-                                                           const world::Affine3D& transform,
-                                                           const render::ParticleProcess3D& process,
-                                                           std::string_view id, double seconds,
-                                                           double tick_seconds);
+// what the system would have after that long, with stages run after each step.
+[[nodiscard]] std::vector<render::Particle3D>
+simulate_gpu(const world::GPUParticles3D& settings, const world::Affine3D& transform,
+             const render::ParticleProcess3D& process, std::string_view id, double seconds,
+             double tick_seconds, const render::ParticleStages3D& stages = {});
 
 // A transform as 3D particle steps take one.
 [[nodiscard]] render::ParticleTransform particle_transform(const world::Affine3D& affine);

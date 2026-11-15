@@ -2481,6 +2481,12 @@ std::vector<scene3d::Particle3D> eval_particles(std::span<const render::Particle
     return out;
 }
 
+// The simulation stages a GPUParticles3D's steps run, from a ParticleSimulation3D beside it.
+render::ParticleStages3D gpu_stages_of(const world::World& world, entt::entity entity) {
+    const auto* simulation = world.ecs().try_get<world::ParticleSimulation3D>(entity);
+    return simulation != nullptr ? scene3d::gpu_stages(*simulation) : render::ParticleStages3D{};
+}
+
 // particles.eval for a CPUParticles3D or GPUParticles3D: its live particles in the world, in
 // meters.
 Reply particles_eval_3d(Session& session, entt::entity entity, const json::Value& params) {
@@ -2511,11 +2517,11 @@ Reply particles_eval_3d(Session& session, entt::entity entity, const json::Value
             process = loaded.value()->space;
         }
         const float lifetime = std::max(gpu.lifetime, 0.001F);
-        particles =
-            eval_particles(time != nullptr ? scene3d::simulate_gpu(gpu, transform, process, id,
-                                                                   time->as_double(), tick_seconds)
-                                           : scene3d::gpu_particles_3d(world, entity, process),
-                           lifetime);
+        particles = eval_particles(
+            time != nullptr ? scene3d::simulate_gpu(gpu, transform, process, id, time->as_double(),
+                                                    tick_seconds, gpu_stages_of(world, entity))
+                            : scene3d::gpu_particles_3d(world, entity, process),
+            lifetime);
     }
     if (local_coords) {
         for (scene3d::Particle3D& particle : particles) {

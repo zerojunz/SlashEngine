@@ -435,6 +435,27 @@ Result<void> check_particle_process_3d(const ParticleProcess3D& process,
             return make_error(ErrorCode::InvalidArgument,
                               "a particle step's collision size is 0 or more");
         }
+        const ParticleStages3D& stages = step.stages;
+        for (const float value : {stages.separation, stages.cohesion, stages.alignment,
+                                  stages.curl_strength, stages.curl_scale, stages.curl_speed}) {
+            if (!finite(value)) {
+                return make_error(ErrorCode::InvalidArgument,
+                                  "a particle step's stages are numbers");
+            }
+        }
+        for (const float value :
+             {stages.neighbor_radius, stages.drag, stages.min_speed, stages.max_speed}) {
+            if (!(value >= 0.0F) || !finite(value)) {
+                return make_error(ErrorCode::InvalidArgument,
+                                  "a particle step's neighbor radius, drag and speed limits are "
+                                  "0 or more");
+            }
+        }
+        if (stages.max_neighbors < 1 || stages.max_neighbors > kMaxParticleNeighbors3D) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a particle step's stages feel 1 to " +
+                                  std::to_string(kMaxParticleNeighbors3D) + " neighbors");
+        }
         std::size_t height_fields = 0;
         for (const ParticleCollider3D& collider : step.colliders) {
             if (collider.shape == ColliderShape3D::Sdf) {
