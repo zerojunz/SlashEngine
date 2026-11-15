@@ -1,0 +1,639 @@
+// Fluids and smoke as particles with no grid (slash/world/fluid.hpp): recipes, the
+// position-based liquid solver, gases that rise, burn and cool, emitters and sinks, collision
+// with 3D and 2D bodies, soft bodies and cloth, physics fields, emitters on any body and effects
+// that pour, and steps that repeat on any number of threads.
+
+#include "slash/asset/assets.hpp"
+#include "slash/canvas/canvas.hpp"
+#include "slash/core/jobs.hpp"
+#include "slash/core/json.hpp"
+#include "slash/core/math.hpp"
+#include "slash/physics2d/physics2d.hpp"
+#include "slash/physics3d/physics3d.hpp"
+#include "slash/render/device.hpp"
+#include "slash/scene3d/fluid.hpp"
+#include "slash/scene3d/scene3d.hpp"
+#include "slash/world/cloth2d.hpp"
+#include "slash/world/component_registry.hpp"
+#include "slash/world/components.hpp"
+#include "slash/world/fluid.hpp"
+#include "slash/world/vfx.hpp"
+#include "slash/world/world.hpp"
+
+#include <doctest/doctest.h>
+
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <map>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+namespace asset = slash::asset;
+namespace canvas = slash::canvas;
+namespace json = slash::json;
+namespace physics2d = slash::physics2d;
+namespace physics3d = slash::physics3d;
+namespace scene3d = slash::scene3d;
+namespace world = slash::world;
+using slash::Vec2f;
+using slash::Vec3f;
+using slash::Vec4;
+
+namespace {
+
+json::Value parse(std::string_view text) {
+    auto parsed = json::parse(text);
+    REQUIRE(parsed.ok());
+    return std::move(parsed).value();
+}
+
+constexpr std::string_view kWater = R"({"format": 1, "name": "Water", "particle_radius": 0.05,
+    "iterations": 4, "max_particles": 2000})";
+
+constexpr std::string_view kSmoke = R"({"format": 1, "name": "Smoke", "kind": "gas",
+    "particle_radius": 0.05, "lifetime": 0,
+    "gas": {"buoyancy": 2, "cooling": 0.4, "ignition": 200, "burn_rate": 2, "heat": 400}})";
+
+constexpr std::string_view kWater2D = R"({"format": 1, "name": "Water", "space": "2d",
+    "particle_radius": 4, "max_particles": 2000})";
+
+// A world with files in memory and every canvas system, with physics or not.
+struct Scene {
+    std::map<std::string, std::string, std::less<>> files;
+    asset::Assets assets{asset::FileSource{
+        .read = [this](std::string_view path) -> slash::Result<std::string> {
+            const auto it = files.find(path);
+            if (it == files.end()) {
+                return slash::make_error(slash::ErrorCode::NotFound, "no such file");
+            }
+            return it->second;
+        },
+        .stamp = [this](std::string_view path) -> std::optional<asset::FileStamp> {
+            const auto it = files.find(path);
+            if (it == files.end()) {
+                return std::nullopt;
+            }
+            return asset::FileStamp{.modified = 1, .size = it->second.size()};
+        }}};
+    world::ComponentRegistry components;
+    world::World world{components};
+    std::vector<world::Event> events;
+
+    explicit Scene(bool physics = false) {
+        world::register_builtin_components(components);
+        files["water.fluid.json"] = std::string(kWater);
+        files["smoke.fluid.json"] = std::string(kSmoke);
+        files["water2d.fluid.json"] = std::string(kWater2D);
+        canvas::install(world, assets);
+        if (physics) {
+            physics3d::install(world);
+            physics2d::install(world);
+        }
+        world.set_event_listener([this](const world::Event& event) { events.push_back(event); });
+    }
+
+    entt::entity create(std::string_view id, std::string_view components_json) {
+        const entt::entity entity = world.create(id).value();
+        const json::Value values = parse(components_json);
+        for (const auto& [name, fields] : values.as_object()) {
+            std::string path;
+            const auto assigned = components.find(name)->assign(world, entity, fields, path);
+            REQUIRE_MESSAGE(assigned.ok(), (assigned.ok() ? "" : assigned.error().message));
+        }
+        return entity;
+    }
+
+    void step(int ticks) {
+        for (int i = 0; i < ticks; ++i) {
+            world.step(1.0 / 60.0);
+        }
+    }
+
+    [[nodiscard]] const world::FluidParticles& particles(std::string_view id) const {
+        const world::FluidParticles* found = world::fluid_particles(world, world.find(id));
+        REQUIRE(found != nullptr);
+        return *found;
+    }
+};
+
+float lowest(const world::FluidParticles& particles, int axis) {
+    float low = 1e30F;
+    for (const Vec3f& p : particles.position) {
+        low = std::min(low, axis == 0 ? p.x : (axis == 1 ? p.y : p.z));
+    }
+    return low;
+}
+
+float mean(const std::vector<float>& values) {
+    float sum = 0.0F;
+    for (const float v : values) {
+        sum += v;
+    }
+    return values.empty() ? 0.0F : sum / static_cast<float>(values.size());
+}
+
+} // namespace
+
+TEST_CASE("fluid: recipes take their kind's defaults, and validation finds bad fields") {
+    const auto water = world::parse_fluid(parse(kWater));
+    REQUIRE(water.ok());
+    CHECK_FALSE(water.value().gas);
+    CHECK_FALSE(water.value().flat);
+    CHECK(water.value().rest_density == doctest::Approx(1000.0F));
+    CHECK(water.value().gravity_scale == doctest::Approx(1.0F));
+    CHECK(water.value().iterations == 4);
+
+    const auto smoke = world::parse_fluid(parse(kSmoke));
+    REQUIRE(smoke.ok());
+    CHECK(smoke.value().gas);
+    CHECK(smoke.value().gravity_scale == doctest::Approx(0.0F));
+    CHECK(smoke.value().ignition == doctest::Approx(200.0F));
+
+    const auto flat = world::parse_fluid(parse(kWater2D));
+    REQUIRE(flat.ok());
+    CHECK(flat.value().flat);
+    CHECK(flat.value().substeps == 2);
+
+    const auto errors = world::validate_fluid(
+        parse(R"({"format": 1, "kind": "plasma", "iterations": 40, "gas": {"heat": -1}})"));
+    std::vector<std::string> paths;
+    for (const auto& error : errors) {
+        paths.push_back(error.path);
+    }
+    CHECK(std::ranges::find(paths, "/kind") != paths.end());
+    CHECK(std::ranges::find(paths, "/iterations") != paths.end());
+    CHECK(std::ranges::find(paths, "/gas/heat") != paths.end());
+    CHECK(world::is_fluid_path("liquids/water.fluid.json"));
+    CHECK_FALSE(world::is_fluid_path("water.json"));
+}
+
+TEST_CASE("fluid: a recipe extends another and takes overrides over both") {
+    Scene scene;
+    scene.files["muddy.fluid.json"] =
+        R"({"format": 1, "extends": "water.fluid.json", "viscosity": 0.2})";
+    const auto muddy = world::load_fluid(scene.world, "muddy.fluid.json",
+                                         parse(R"({"look": {"color": [0.4, 0.3, 0.2, 1]}})"));
+    REQUIRE(muddy.ok());
+    CHECK(muddy.value()->viscosity == doctest::Approx(0.2F));
+    CHECK(muddy.value()->iterations == 4); // from water
+    CHECK(muddy.value()->color.x == doctest::Approx(0.4F));
+    CHECK_FALSE(world::load_fluid(scene.world, "missing.fluid.json").ok());
+}
+
+TEST_CASE("fluid: water in a tank settles at rest density, keeping every particle in it") {
+    Scene scene;
+    scene.create("tank", R"({"Transform3D": {"position": [0, 1, 0]},
+        "Fluid3D": {"recipe": "water.fluid.json", "fill_size": [0.6, 0.4, 0.6],
+                    "bounds_size": [0.8, 2, 0.8]}})");
+    scene.step(1);
+    const std::size_t count = scene.particles("tank").size();
+    CHECK(count == 6 * 4 * 6);
+    scene.step(180);
+    const auto& water = scene.particles("tank");
+    CHECK(water.size() == count);
+    // Fallen to the tank's floor, which is a meter below its middle.
+    CHECK(lowest(water, 1) == doctest::Approx(0.05F).epsilon(0.02));
+    for (const Vec3f& p : water.position) {
+        CHECK(std::abs(p.x) <= 0.4F);
+        CHECK(std::abs(p.z) <= 0.4F);
+        CHECK(p.y >= 0.0F);
+    }
+    // Settled: slow, and not squashed far past rest density.
+    float fastest = 0.0F;
+    for (const Vec3f& v : water.velocity) {
+        fastest = std::max(fastest, std::sqrt((v.x * v.x) + (v.y * v.y) + (v.z * v.z)));
+    }
+    CHECK(fastest < 0.5F);
+    CHECK(mean(water.density) < 1.3F);
+    CHECK(water.contacts > 0);
+    CHECK(water.work > 0);
+}
+
+TEST_CASE("fluid: steps come out the same on any number of threads") {
+    const auto run = [](int threads) {
+        slash::jobs::Pool pool(threads);
+        Scene scene;
+        scene.world.set_pool(pool);
+        scene.create("tank", R"({"Transform3D": {},
+            "Fluid3D": {"recipe": "water.fluid.json", "fill_size": [0.5, 0.5, 0.5],
+                        "bounds_size": [0.8, 2, 0.8]}})");
+        scene.step(30);
+        return scene.particles("tank").position;
+    };
+    const auto one = run(0);
+    const auto many = run(4);
+    REQUIRE(one.size() == many.size());
+    CHECK(std::memcmp(one.data(), many.data(), one.size() * sizeof(Vec3f)) == 0);
+}
+
+TEST_CASE("fluid: hot smoke rises and cools; fuel above ignition burns into heat and smoke") {
+    Scene scene;
+    scene.create("puff", R"({"Transform3D": {}, "Fluid3D": {"recipe": "smoke.fluid.json"}})");
+    scene.create("vent", R"({"Transform3D": {}, "FluidEmitter3D": {"fluid": "puff", "rate": 300,
+        "direction": [0, 1, 0], "speed": 0.5, "temperature": 300, "fuel": 0.5}})");
+    scene.step(30);
+    const auto& smoke = scene.particles("puff");
+    REQUIRE(smoke.size() > 100);
+    float top = -1e30F;
+    for (const Vec3f& p : smoke.position) {
+        top = std::max(top, p.y);
+    }
+    CHECK(top > 1.0F); // risen far past what half a meter a second pours
+    CHECK(mean(smoke.smoke) > 0.05F);
+    // The oldest have burned their fuel and cooled below where they started burning hotter.
+    const std::size_t oldest = 0;
+    CHECK(smoke.fuel[oldest] < 0.5F);
+    CHECK(smoke.temperature[oldest] < smoke.temperature[smoke.size() - 1] + 400.0F);
+}
+
+TEST_CASE("fluid: emitters pour until the recipe's limit and sinks drain") {
+    Scene scene;
+    scene.files["small.fluid.json"] =
+        R"({"format": 1, "extends": "water.fluid.json", "max_particles": 150})";
+    scene.create("pool", R"({"Transform3D": {},
+        "Fluid3D": {"recipe": "small.fluid.json", "bounds_size": [2, 2, 2]}})");
+    scene.create("tap", R"({"Transform3D": {"position": [0, 0.8, 0]},
+        "FluidEmitter3D": {"fluid": "pool", "rate": 600, "speed": 1}})");
+    scene.step(30);
+    CHECK(scene.particles("pool").size() == 150);
+    scene.world.ecs().get<world::FluidEmitter3D>(scene.world.find("tap")).enabled = false;
+    scene.create("drain", R"({"Transform3D": {"position": [0, -1, 0]},
+        "FluidSink3D": {"size": [2, 0.4, 2]}})");
+    scene.step(120);
+    CHECK(scene.particles("pool").size() < 30);
+}
+
+TEST_CASE("fluid: 2D water falls down the screen, stays at z 0 and fills its box") {
+    Scene scene;
+    scene.create("tank", R"({"Transform2D": {"position": [100, 100]},
+        "Fluid2D": {"recipe": "water2d.fluid.json", "fill_size": [80, 40],
+                    "bounds_size": [120, 200]}})");
+    scene.step(120);
+    const auto& water = scene.particles("tank");
+    CHECK(water.size() == 10 * 5);
+    float bottom = -1e30F;
+    for (const Vec3f& p : water.position) {
+        CHECK(p.z == 0.0F);
+        bottom = std::max(bottom, p.y);
+    }
+    // The box's bottom is 100 px below its middle, at y 200.
+    CHECK(bottom == doctest::Approx(196.0F).epsilon(0.01));
+}
+
+TEST_CASE("fluid: water lands on 3D bodies and pushes a box in it") {
+    Scene scene(true);
+    scene.create("floor", R"({"Transform3D": {"position": [0, -0.25, 0]},
+        "StaticBody3D": {}, "CollisionShape3D": {"size": [4, 0.5, 4]}})");
+    scene.create("crate", R"({"Transform3D": {"position": [0.3, 0.1, 0]},
+        "RigidBody3D": {"mass": 0.2}, "CollisionShape3D": {"size": [0.2, 0.2, 0.2]}})");
+    scene.create("splash", R"({"Transform3D": {"position": [0, 0.6, 0]},
+        "Fluid3D": {"recipe": "water.fluid.json", "fill_size": [0.4, 0.4, 0.4]}})");
+    scene.step(90);
+    const auto& water = scene.particles("splash");
+    REQUIRE(water.size() == 4 * 4 * 4);
+    // Nothing fell through the floor.
+    CHECK(lowest(water, 1) > -0.01F);
+    CHECK(water.contacts > 0);
+    // The crate was pushed away from the splash.
+    const auto& crate = scene.world.ecs().get<world::Transform3D>(scene.world.find("crate"));
+    CHECK(crate.position.x > 0.32F);
+}
+
+TEST_CASE("fluid: 2D water lands on a 2D body") {
+    Scene scene(true);
+    scene.create("ground", R"({"Transform2D": {"position": [0, 200]}, "StaticBody2D": {},
+        "CollisionShape2D": {"size": [2000, 20]}})");
+    scene.create("splash", R"({"Transform2D": {"position": [0, 100]},
+        "Fluid2D": {"recipe": "water2d.fluid.json", "fill_size": [64, 64]}})");
+    scene.step(120);
+    const auto& water = scene.particles("splash");
+    float bottom = -1e30F;
+    for (const Vec3f& p : water.position) {
+        bottom = std::max(bottom, p.y);
+    }
+    CHECK(bottom < 192.0F);
+    CHECK(bottom > 180.0F);
+    CHECK(water.contacts > 0);
+}
+
+TEST_CASE("fluid: smoke shades the smoke behind it from the light") {
+    const auto recipe = world::parse_fluid(parse(kSmoke));
+    REQUIRE(recipe.ok());
+    world::FluidParticles column;
+    // A column of puffs, the light straight above it.
+    for (int k = 0; k < 8; ++k) {
+        column.add({0.0F, static_cast<float>(k) * 0.1F, 0.0F}, {}, 20.0F, 0.8F, 0.0F);
+    }
+    // And one alone to the side.
+    column.add({3.0F, 0.0F, 0.0F}, {}, 20.0F, 0.8F, 0.0F);
+    const std::vector<float> seen =
+        world::fluid_transmittance(recipe.value(), column, Vec3f{0.0F, 1.0F, 0.0F});
+    REQUIRE(seen.size() == 9);
+    CHECK(seen[7] == doctest::Approx(1.0F)); // the top sees the light
+    for (std::size_t k = 1; k < 8; ++k) {
+        CHECK(seen[k - 1] < seen[k]); // the lower, the darker
+    }
+    CHECK(seen[0] < 0.2F);
+    CHECK(seen[8] == doctest::Approx(1.0F)); // nothing over it
+    // Lit from below, the column turns over.
+    const std::vector<float> under =
+        world::fluid_transmittance(recipe.value(), column, Vec3f{0.0F, -1.0F, 0.0F});
+    CHECK(under[0] == doctest::Approx(1.0F));
+    CHECK(under[7] < 0.2F);
+    // A darker puff is the smoke's color times the light; fire glows regardless.
+    const Vec4 lit = world::fluid_color(recipe.value(), column, 7, 1.0F);
+    const Vec4 dim = world::fluid_color(recipe.value(), column, 0, seen[0]);
+    CHECK(dim.x < lit.x);
+    CHECK(dim.w == doctest::Approx(lit.w));
+    // Liquids are lit by the scene as surfaces are, so nothing shades them here.
+    const auto water = world::parse_fluid(parse(kWater));
+    REQUIRE(water.ok());
+    const std::vector<float> wet =
+        world::fluid_transmittance(water.value(), column, Vec3f{0.0F, 1.0F, 0.0F});
+    CHECK(std::ranges::all_of(wet, [](float v) { return v == 1.0F; }));
+}
+
+TEST_CASE("fluid: a liquid draws as one smooth surface facing the camera, spray as drops") {
+    const auto parsed = world::parse_fluid(parse(kWater));
+    REQUIRE(parsed.ok());
+    const world::FluidRecipe& recipe = parsed.value();
+    world::FluidParticles block;
+    for (int x = 0; x < 6; ++x) {
+        for (int y = 0; y < 4; ++y) {
+            for (int z = 0; z < 6; ++z) {
+                block.add({(static_cast<float>(x) * 0.1F) - 0.25F, static_cast<float>(y) * 0.1F,
+                           (static_cast<float>(z) * 0.1F) - 0.25F},
+                          {}, 20.0F, 0.0F, 0.0F);
+            }
+        }
+    }
+    block.density.assign(block.size(), 1.0F);
+    // One drop flying alone, which the surface leaves out.
+    block.add({2.0F, 1.0F, 0.0F}, {3.0F, 0.0F, 0.0F}, 20.0F, 0.0F, 0.0F);
+    block.density.back() = 0.1F;
+    CHECK(world::fluid_is_spray(recipe, block, block.size() - 1));
+    CHECK_FALSE(world::fluid_is_spray(recipe, block, 0));
+
+    world::Camera3D lens;
+    world::Affine3D place;
+    place.origin = {0.0F, 0.2F, 3.0F};
+    const scene3d::CameraView view = scene3d::camera_view(lens, place, 4.0F / 3.0F);
+    std::vector<slash::render::Vertex3D> vertices;
+    std::vector<std::uint32_t> indices;
+    scene3d::fluid_surface(recipe, block,
+                           scene3d::FluidEye{.eye = view.eye, .projection = view.projection}, {},
+                           vertices, indices);
+    REQUIRE_FALSE(vertices.empty());
+    REQUIRE(indices.size() % 3 == 0);
+    CHECK(indices.size() > 300);
+    float nearest = 1e30F;
+    float right_most = -1e30F;
+    for (const slash::render::Vertex3D& v : vertices) {
+        // On the block, at most a sphere's radius or so out from it.
+        CHECK(v.position[2] > -0.35F);
+        CHECK(v.position[2] < 0.42F);
+        nearest = std::min(nearest, 3.0F - v.position[2]);
+        right_most = std::max(right_most, v.position[0]);
+        // Normals face the camera, nearly along +z in the middle.
+        const float facing = (v.normal[2]);
+        CHECK(facing > 0.0F);
+    }
+    CHECK(right_most < 0.5F); // the drop at x 2 isn't in it
+    // Smoothed: the middle's normals point nearly straight at the camera.
+    std::size_t square = 0;
+    for (const slash::render::Vertex3D& v : vertices) {
+        if (std::abs(v.position[0]) < 0.1F && std::abs(v.position[1] - 0.15F) < 0.08F &&
+            v.normal[2] > 0.9F) {
+            ++square;
+        }
+    }
+    CHECK(square > 4);
+    // Every index names a vertex.
+    CHECK(std::ranges::all_of(indices, [&](std::uint32_t k) { return k < vertices.size(); }));
+    // The same particles make the same surface.
+    std::vector<slash::render::Vertex3D> again;
+    std::vector<std::uint32_t> again_indices;
+    scene3d::fluid_surface(recipe, block,
+                           scene3d::FluidEye{.eye = view.eye, .projection = view.projection}, {},
+                           again, again_indices);
+    CHECK(again_indices == indices);
+    // The drop draws as a disc.
+    scene3d::fluid_quads(recipe, block, {1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {}, vertices,
+                         indices,
+                         [&](std::size_t i) { return world::fluid_is_spray(recipe, block, i); });
+    CHECK(vertices.size() == 4);
+}
+
+TEST_CASE("fluid: a 2D liquid's surface covers its particles as one body") {
+    const auto parsed = world::parse_fluid(parse(kWater2D));
+    REQUIRE(parsed.ok());
+    const world::FluidRecipe& recipe = parsed.value();
+    world::FluidParticles pool;
+    const float spacing = recipe.radius * 2.0F;
+    for (int x = 0; x < 20; ++x) {
+        for (int y = 0; y < 6; ++y) {
+            pool.add({static_cast<float>(x) * spacing, static_cast<float>(y) * spacing, 0.0F}, {},
+                     20.0F, 0.0F, 0.0F);
+        }
+    }
+    pool.density.assign(pool.size(), 1.0F);
+    std::vector<scene3d::FluidCorner2D> corners;
+    scene3d::fluid_surface_2d(recipe, pool, corners);
+    REQUIRE(corners.size() % 3 == 0);
+    REQUIRE_FALSE(corners.empty());
+    double area = 0.0;
+    float top = 1e30F;
+    for (std::size_t k = 0; k < corners.size(); k += 3) {
+        const Vec2f a = corners[k].position;
+        const Vec2f b = corners[k + 1].position;
+        const Vec2f c = corners[k + 2].position;
+        area += std::abs(((b.x - a.x) * (c.y - a.y)) - ((c.x - a.x) * (b.y - a.y))) * 0.5;
+        top = std::min({top, a.y, b.y, c.y});
+    }
+    // About the block's own area: 20 by 6 spacings.
+    const double block = 20.0 * 6.0 * spacing * spacing;
+    CHECK(area > block * 0.85);
+    CHECK(area < block * 1.3);
+    // Its top is near the top row's edge.
+    CHECK(top < 0.0F);
+    CHECK(top > -recipe.radius * 2.0F);
+}
+
+TEST_CASE("fluid: an emitter with no fluid named pours into the fluid it is on or under") {
+    Scene scene;
+    scene.create("tap", R"({"Transform3D": {"position": [0, 0.8, 0]},
+        "FluidEmitter3D": {"rate": 120, "speed": 1}})");
+    scene.create("pool", R"({"Transform3D": {"children": ["tap"]},
+        "Fluid3D": {"recipe": "water.fluid.json", "bounds_size": [2, 2, 2]}})");
+    scene.create("self", R"({"Transform3D": {"position": [5, 0, 0]},
+        "Fluid3D": {"recipe": "water.fluid.json", "bounds_size": [2, 2, 2]},
+        "FluidEmitter3D": {"rate": 120, "speed": 1}})");
+    scene.step(30);
+    CHECK(scene.particles("pool").size() == 60);
+    CHECK(scene.particles("self").size() == 60);
+
+    scene.create("hose", R"({"Transform2D": {"position": [0, -100]},
+        "FluidEmitter2D": {"rate": 60, "speed": 50}})");
+    scene.create("sea", R"({"Transform2D": {"children": ["hose"]},
+        "Fluid2D": {"recipe": "water2d.fluid.json", "bounds_size": [400, 400]}})");
+    scene.step(30);
+    CHECK(scene.particles("sea").size() == 30);
+}
+
+TEST_CASE("fluid: a moving emitter throws its particles along by inherit_velocity") {
+    const auto run = [](float inherit) {
+        Scene scene;
+        scene.create("air", R"({"Transform3D": {}, "Fluid3D": {"recipe": "smoke.fluid.json"}})");
+        const entt::entity nozzle = scene.create("nozzle", R"({"Transform3D": {},
+            "FluidEmitter3D": {"fluid": "air", "rate": 120, "speed": 0.5,
+                               "direction": [0, 1, 0]}})");
+        scene.world.ecs().get<world::FluidEmitter3D>(nozzle).inherit_velocity = inherit;
+        for (int tick = 0; tick < 20; ++tick) {
+            // Three meters a second along x.
+            scene.world.ecs().get<world::Transform3D>(nozzle).position.x += 0.05F;
+            scene.step(1);
+        }
+        const auto& smoke = scene.particles("air");
+        REQUIRE(smoke.size() > 20);
+        std::vector<float> along;
+        for (const Vec3f& v : smoke.velocity) {
+            along.push_back(v.x);
+        }
+        return mean(along);
+    };
+    CHECK(std::abs(run(0.0F)) < 0.3F);
+    CHECK(run(1.0F) > 1.5F);
+}
+
+TEST_CASE("fluid: physics fields push, set, hold and kill fluid particles") {
+    Scene scene;
+    const std::string_view smoke = R"({"Transform3D": {"position": [%X, 0, 0]},
+        "Fluid3D": {"recipe": "smoke.fluid.json", "fill_size": [0.3, 0.3, 0.3]}})";
+    const auto place = [&](std::string_view id, float x) {
+        std::string text(smoke);
+        text.replace(text.find("%X"), 2, std::to_string(x));
+        scene.create(id, text);
+    };
+    place("still", 0.0F);
+    place("blown", 10.0F);
+    place("held", 20.0F);
+    place("gone", 30.0F);
+    place("deaf", 40.0F);
+    // Fields as big as each puff, so each acts on one.
+    scene.create("wind",
+                 R"({"Transform3D": {"position": [10, 0, 0], "rotation": [0, -1.5707964, 0]},
+        "PhysicsField3D": {"type": "directional_velocity", "magnitude": 4, "radius": 2}})");
+    scene.create("hold", R"({"Transform3D": {"position": [20, 0, 0]},
+        "PhysicsField3D": {"type": "anchor", "radius": 2}})");
+    scene.create("kill", R"({"Transform3D": {"position": [30, 0, 0]},
+        "PhysicsField3D": {"type": "kill", "radius": 2}})");
+    scene.create("off", R"({"Transform3D": {"position": [40, 0, 0]},
+        "PhysicsField3D": {"type": "kill", "radius": 2, "particles": false}})");
+    scene.step(1);
+    const std::vector<Vec3f> start = scene.particles("held").position;
+    scene.step(20);
+    // Turned a quarter about y, the field's -z is +x: the puff moves that way at 4 m/s.
+    std::vector<float> along;
+    for (const Vec3f& v : scene.particles("blown").velocity) {
+        along.push_back(v.x);
+    }
+    CHECK(mean(along) == doctest::Approx(4.0F).epsilon(0.05));
+    CHECK(scene.particles("held").position == start);
+    CHECK(scene.particles("gone").size() == 0);
+    CHECK(scene.particles("deaf").size() == scene.particles("still").size());
+}
+
+TEST_CASE("fluid: water lands on a soft body's sheet and weighs it down") {
+    const auto run = [](bool water) {
+        Scene scene(true);
+        const entt::entity sheet = scene.create("hammock", R"({"Transform3D": {},
+            "MeshInstance3D": {},
+            "PlaneMesh": {"size": [1, 1], "subdivide_width": 3, "subdivide_depth": 3},
+            "SoftBody3D": {"pinned_points": [{"point": 0}, {"point": 4}, {"point": 20},
+                                             {"point": 24}]}})");
+        if (water) {
+            scene.create("splash", R"({"Transform3D": {"position": [0, 0.4, 0]},
+                "Fluid3D": {"recipe": "water.fluid.json", "fill_size": [0.3, 0.3, 0.3]}})");
+        }
+        scene.step(90);
+        const auto points = physics3d::soft_body_points(scene.world, sheet);
+        REQUIRE(points.has_value());
+        float sag = 0.0F;
+        for (const auto& p : points->points) {
+            sag = std::min(sag, static_cast<float>(p.y));
+        }
+        if (water) {
+            const auto& drops = scene.particles("splash");
+            CHECK(drops.contacts > 0);
+            // Held by the sheet, not fallen through it.
+            CHECK(lowest(drops, 1) > sag - 0.15F);
+        }
+        return sag;
+    };
+    CHECK(run(true) < run(false) - 0.02F);
+}
+
+TEST_CASE("fluid: 2D water rests on a held cloth and bends a loose one") {
+    {
+        Scene scene(true);
+        scene.create("ledge", R"({"Transform2D": {"position": [0, 100]},
+            "Cloth2D": {"size": [1000, 8], "columns": 21, "rows": 2, "max_distance": 0}})");
+        scene.create("splash", R"({"Transform2D": {"position": [0, 40]},
+            "Fluid2D": {"recipe": "water2d.fluid.json", "fill_size": [48, 48]}})");
+        scene.step(120);
+        const auto& water = scene.particles("splash");
+        // Over the ledge (a splash may throw a drop past its ends), nothing went through.
+        float bottom = -1e30F;
+        for (const Vec3f& p : water.position) {
+            if (std::abs(p.x) < 490.0F) {
+                bottom = std::max(bottom, p.y);
+            }
+        }
+        CHECK(bottom < 100.0F);
+        CHECK(bottom > 85.0F);
+        CHECK(water.contacts > 0);
+    }
+    const auto tip = [](bool water) {
+        Scene scene(true);
+        const entt::entity flap = scene.create("flap", R"({"Transform2D": {"position": [0, 100]},
+            "Cloth2D": {"size": [160, 8], "columns": 9, "rows": 2, "max_distance": 60,
+                        "gradient": [1, 0], "gravity_scale": 0}})");
+        if (water) {
+            scene.create("splash", R"({"Transform2D": {"position": [60, 60]},
+                "Fluid2D": {"recipe": "water2d.fluid.json", "fill_size": [32, 32]}})");
+        }
+        scene.step(60);
+        const world::ClothPoints2D* points = world::cloth_points_2d(scene.world, flap);
+        REQUIRE(points != nullptr);
+        return static_cast<float>(points->current[8].y);
+    };
+    CHECK(tip(true) > tip(false) + 1.0F);
+}
+
+TEST_CASE("fluid: an effect's fluid layer pours, then stays until its particles are gone") {
+    Scene scene;
+    scene.files["mist.fluid.json"] =
+        R"({"format": 1, "extends": "smoke.fluid.json", "lifetime": 0.5})";
+    scene.files["spout.vfx.json"] = R"({"format": 1, "duration": 0.25,
+        "layers": [{"name": "mist", "duration": 0.25,
+                    "components": {"Fluid3D": {"recipe": "mist.fluid.json"},
+                                   "FluidEmitter3D": {"rate": 120, "speed": 1}}}]})";
+    const entt::entity spout = scene.create("spout", R"({"Transform3D": {},
+        "VisualEffect3D": {"recipe": "spout.vfx.json", "free_on_finish": true}})");
+    scene.step(10);
+    const entt::entity mist = world::vfx_layer_entity(scene.world, spout, "mist");
+    REQUIRE((mist != entt::null));
+    CHECK(scene.particles("spout_mist").size() > 0);
+    scene.step(15); // past the layer: it stops pouring, its mist lingers
+    REQUIRE((scene.world.find("spout_mist") != entt::null));
+    CHECK_FALSE(scene.world.ecs().get<const world::FluidEmitter3D>(mist).enabled);
+    const std::size_t left = scene.particles("spout_mist").size();
+    CHECK(left > 0);
+    scene.step(40); // past the mist's life
+    CHECK((scene.world.find("spout_mist") == entt::null));
+    CHECK((scene.world.find("spout") == entt::null));
+}

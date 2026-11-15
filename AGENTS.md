@@ -2494,6 +2494,52 @@ recipes' `vfx` name an effect per world event; `play_hooks` in `engine/world/src
 them (`play_vfx`) and keeps vehicles' `running` effects, and the foliage system emits
 `foliage_parted`. `examples/vfx-tool-effects` feeds a dog, runs a van and parts grass.
 
+Fluids and smoke are SlashEngine's own, after Niagara Fluids but with no grid (Godot has none):
+a `.fluid.json` recipe (`slash/world/fluid.hpp`, `engine/world/src/fluid.cpp`, built with
+`-ffp-contract=off`; `$cli schema fluid`) is a liquid or a gas in 3D or 2D, and a `Fluid3D` or
+`Fluid2D` steps one with `FluidEmitter3D`/`2D`s pouring in and `FluidSink3D`/`2D`s draining it.
+`world::step_fluid` is the solver both dimensions share (2D at z 0): liquids as position-based
+fluids (a density constraint, XSPH viscosity, cohesion, vorticity confinement), gases as
+particles carrying temperature, smoke and fuel that rise, cool, burn, diffuse and swirl round
+vortex particles, neighbors along a Morton curve (`NeighborIndex`, the particle simulation's)
+and the work split over the job pool by particle, so steps don't depend on the thread count. The
+`fluids` system (priority 958, added by `canvas::install`) keeps particles by entity ID
+(`world::fluid_particles`); physics3d and physics2d set a `world::FluidHost`
+(`src/fluid.cpp` in each: spheres against Jolt bodies, circles against Box2D shapes by their
+manifolds, impulses back on rigid bodies, the project's gravity). `scene3d::Renderer::add_fluid`
+and `CanvasRenderer::gather_fluids` draw them: a liquid as the surface the camera sees,
+splatted, smoothed and meshed on the CPU (`scene3d::fluid_surface`; `fluid_surface_2d` traces
+a 2D liquid by marching squares) with its spray (`world::fluid_is_spray`) as discs
+(`scene3d::fluid_quads`), so every device draws it, and a gas as discs lit through the smoke
+between them and the light (`world::fluid_transmittance`, gridless: particles found where they
+fall on a plane square to the light). `fluid.place`, `fluid.pour`, `fluid.state`, `fluid.check`
+and `fluid.preview` (stages in a private `Session`) are in `engine/command/src/fluid.cpp`. The hosts
+also collide particles with soft bodies' and `Cloth3D`s' faces (`collide_soft`, pushing the
+nearest face's points back, `push_soft`) and `Cloth2D`s' outlines (`Cloth2DBody::outline`, which
+the cloth step keeps); `PhysicsField3D`s and `2D`s with `particles` act on each particle through
+`particle_effect` (forces, velocities, anchors, kills); an emitter with no `fluid` pours into the
+fluid on its entity or above it, throwing particles with its motion by `inherit_velocity`
+(`EmitterState`); and a VFX layer's emitters stop at its end while a part with its own fluid
+lingers until the particles are gone (`end_part` in `engine/world/src/vfx.cpp`).
+`examples/fluids` splashes water, lights a campfire and pours 2D water.
+
+Oceans, lakes and rivers are SlashEngine's own, after Unreal's Water plugin: a `.water.json`
+recipe (`slash/world/water.hpp`, `engine/world/src/water.cpp`, built with `-ffp-contract=off`;
+`$cli schema water`) gives Gerstner waves (or a wind that raises them round the
+Pierson-Moskowitz peak), a current or a river's flow, ripples, buoyancy and drag, and the look.
+`world::sample_water` gives the surface over a point (the waves' sideways shift undone in fixed
+steps), its normal, the water's velocity, crest and shore foam and the depth to the ground,
+which `fill_ground` measures once under a grid through the `world::WaterHost` physics3d and
+physics2d set (rays down past what moves); `water_bodies` makes each `Water3D` (a lake's box, an
+ocean round the camera or a river along its `Path3D`) and `Water2D` one. The `water` system
+(priority 959, added by `canvas::install`) keeps the clock (`water_time`) and rings (bodies going
+in and moving through, liquid fluid particles it takes in) and emits `water_entered` and
+`water_exited`. Each space's `apply_water` (`src/water.cpp`) floats rigid bodies at points
+through their shapes and drags them toward the water's velocity, as Unreal's pontoons.
+`scene3d::Renderer::add_water` draws a displaced grid and `CanvasRenderer::gather_water` a 2D
+surface and body. `water.place` and `water.sample` are in `engine/command/src/water.cpp`.
+`examples/water` floats crates on a lake, a river and a 2D pond.
+
 ## Job system
 
 `engine/core`'s `jobs::Pool` (`slash/core/jobs.hpp`) is Godot's `WorkerThreadPool`: tasks, group

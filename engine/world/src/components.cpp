@@ -1510,6 +1510,104 @@ void register_physics_3d_components(ComponentRegistry& registry) {
             "a shockwave, ripples or a lens. The world and the canvases below it bend, the "
             "controls over it don't."),
         true);
+    const auto describe_fluid = [&](ComponentType& type, bool flat) {
+        const std::string unit = flat ? "pixels" : "meters";
+        type.describe("recipe", {.doc = "The .fluid.json recipe it is made of."})
+            .describe("enabled", {.doc = "Whether it steps; a fluid turned off keeps its "
+                                         "particles where they are."})
+            .describe("overrides", {.doc = "A JSON Merge Patch over the recipe's fields."})
+            .describe("fill_size", {.doc = "A box centered on the entity, in " + unit +
+                                           ", filled with particles once; zero for none."})
+            .describe("fill_velocity", {.doc = "The velocity the filled particles start with."})
+            .describe("bounds_size", {.doc = "A box centered on the entity, in " + unit +
+                                             ", the particles stay in; zero for none."});
+    };
+    describe_fluid(
+        registry.add<Fluid3D>()
+            .set_doc("A body of liquid or gas from a .fluid.json recipe, stepped as "
+                     "particles with no grid: it pours, splashes, fills containers "
+                     "and pushes and floats bodies, or rises, cools, burns and swirls.")
+            .describe("visible", {.doc = "Drawn when on."})
+            .describe("layers", {.doc = "The render layers it draws in, as "
+                                        "MeshInstance3D's."})
+            .describe("cast_shadow", {.doc = "As MeshInstance3D's; a gas casts none.",
+                                      .choices = {"off", "on", "double_sided", "shadows_only"}}),
+        false);
+    describe_fluid(registry.add<Fluid2D>()
+                       .set_doc("A body of liquid or gas from a 2D .fluid.json recipe, seen from "
+                                "the side in pixels with y down.")
+                       .describe("visible", {.doc = "Drawn when on."})
+                       .describe("z_index", {.doc = "Drawn after lower values."})
+                       .describe("z_as_relative", {.doc = "z_index adds to its parents'; off "
+                                                          "makes it the whole of it."})
+                       .describe("modulate", {.doc = "Multiplies its particles' colors, as "
+                                                     "[r, g, b, a]."})
+                       .describe("light_mask", {.doc = "Which 2D lights light it, as "
+                                                       "Sprite2D's."}),
+                   true);
+    const auto describe_emitter = [&](ComponentType& type, bool flat) {
+        const std::string unit = flat ? "pixels" : "meters";
+        type.describe("fluid", {.doc = "The Fluid3D or Fluid2D entity it pours into; when empty, "
+                                       "the one on its entity or the nearest above it."})
+            .describe("rate", {.doc = "Particles a second.", .min = 0})
+            .describe("speed", {.doc = "How fast they leave it, in " + unit + " a second."})
+            .describe("spread", {.doc = "The most they turn from direction, in radians.", .min = 0})
+            .describe("radius", {.doc = "The disc they leave from, in " + unit + ".", .min = 0})
+            .describe("temperature", {.doc = "Gases: the degrees they start at."})
+            .describe("smoke", {.doc = "Gases: the smoke density they start with.", .min = 0})
+            .describe("fuel", {.doc = "Gases: the fuel they carry, which burns above the "
+                                      "recipe's ignition.",
+                               .min = 0})
+            .describe("enabled", {.doc = "Whether it pours."})
+            .describe("inherit_velocity", {.doc = "The share of the entity's own velocity its "
+                                                  "particles carry, so a moving emitter trails "
+                                                  "what it pours."})
+            .describe("direction", {.doc = "Which way they leave, in the entity's space."});
+    };
+    describe_emitter(registry.add<FluidEmitter3D>().set_doc(
+                         "Pours particles into a fluid from a disc at the entity: a tap, a "
+                         "fountain's nozzle, a chimney or a burner."),
+                     false);
+    describe_emitter(registry.add<FluidEmitter2D>().set_doc(
+                         "Pours particles into a 2D fluid from the entity's place."),
+                     true);
+    registry.add<FluidSink3D>()
+        .set_doc("Drains a fluid of the particles in a box at the entity: a drain or an outlet.")
+        .describe("fluid", {.doc = "The fluid entity it drains; every fluid when empty."})
+        .describe("size", {.doc = "The box's size in meters."})
+        .describe("enabled", {.doc = "Whether it drains."});
+    registry.add<FluidSink2D>()
+        .set_doc("Drains a 2D fluid of the particles in a box at the entity.")
+        .describe("fluid", {.doc = "The fluid entity it drains; every fluid when empty."})
+        .describe("size", {.doc = "The box's size in pixels."})
+        .describe("enabled", {.doc = "Whether it drains."});
+    registry.add<Water3D>()
+        .set_doc("A lake, ocean or river from a .water.json recipe: a surface of Gerstner waves "
+                 "with ripples, wakes and foam that floats and drags bodies, as Unreal's water "
+                 "bodies. It lies at rest on the entity's x-z plane.")
+        .describe("recipe", {.doc = "The .water.json recipe it is made of."})
+        .describe("overrides", {.doc = "A JSON Merge Patch over the recipe's fields."})
+        .describe("size", {.doc = "A lake's area in meters (x, z), centered on the entity; an "
+                                  "ocean's surface goes on past it, the size bounding only where "
+                                  "its shore is measured; zero for none."})
+        .describe("path", {.doc = "A river's Path3D entity, which the river runs along."})
+        .describe("width", {.doc = "A river's width in meters.", .min = 0})
+        .describe("visible", {.doc = "Drawn when on."})
+        .describe("layers", {.doc = "The render layers it draws in, as MeshInstance3D's."});
+    registry.add<Water2D>()
+        .set_doc("Water seen from the side in 2D from a .water.json recipe: its surface waves, "
+                 "ripples and foams, and floats and drags bodies.")
+        .describe("recipe", {.doc = "The .water.json recipe it is made of."})
+        .describe("overrides", {.doc = "A JSON Merge Patch over the recipe's fields."})
+        .describe("width", {.doc = "How wide it is in pixels, centered on the entity.", .min = 0})
+        .describe("depth",
+                  {.doc = "How deep it draws below its surface at rest, in pixels.", .min = 0})
+        .describe("visible", {.doc = "Drawn when on."})
+        .describe("z_index", {.doc = "Drawn after lower values."})
+        .describe("z_as_relative",
+                  {.doc = "z_index adds to its parents'; off makes it the whole of it."})
+        .describe("modulate", {.doc = "Multiplies its colors, as [r, g, b, a]."})
+        .describe("light_mask", {.doc = "Which 2D lights light it, as Sprite2D's."});
     const auto describe_simulation = [&](ComponentType& type, bool flat) {
         const char* unit = flat ? "pixels" : "meters";
         type.describe("enabled", {.doc = "Whether the stages run."})

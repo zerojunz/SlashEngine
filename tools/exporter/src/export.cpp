@@ -57,12 +57,14 @@
 #include "slash/world/components.hpp"
 #include "slash/world/damage.hpp"
 #include "slash/world/face.hpp"
+#include "slash/world/fluid.hpp"
 #include "slash/world/foliage.hpp"
 #include "slash/world/hair.hpp"
 #include "slash/world/physics_material.hpp"
 #include "slash/world/ragdoll.hpp"
 #include "slash/world/scene.hpp"
 #include "slash/world/vfx.hpp"
+#include "slash/world/water.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -216,6 +218,8 @@ enum class DataFile : std::uint8_t {
     Foliage,
     Groom,
     Vfx,
+    Fluid,
+    Water,
     Damage,
     Face,
     MeshLibrary,
@@ -315,6 +319,12 @@ DataFile data_file(std::string_view name) {
     }
     if (world::is_vfx_path(name)) {
         return DataFile::Vfx;
+    }
+    if (world::is_fluid_path(name)) {
+        return DataFile::Fluid;
+    }
+    if (world::is_water_path(name)) {
+        return DataFile::Water;
     }
     if (world::is_damage_path(name)) {
         return DataFile::Damage;
@@ -488,6 +498,10 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         return world::validate_groom(parsed.value());
     case DataFile::Vfx:
         return world::validate_vfx(parsed.value());
+    case DataFile::Fluid:
+        return world::validate_fluid(parsed.value());
+    case DataFile::Water:
+        return world::validate_water(parsed.value());
     case DataFile::Damage:
         errors = world::validate_damage(parsed.value());
         if (errors.empty()) {

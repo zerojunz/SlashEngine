@@ -15,6 +15,7 @@
 #include "slash/scene3d/cluster_streaming.hpp"
 #include "slash/scene3d/csg.hpp"
 #include "slash/scene3d/flesh.hpp"
+#include "slash/scene3d/fluid.hpp"
 #include "slash/scene3d/fracture.hpp"
 #include "slash/scene3d/gpu_particles.hpp"
 #include "slash/scene3d/gridmap.hpp"
@@ -34,6 +35,7 @@
 #include "slash/world/hair.hpp"
 #include "slash/world/path.hpp"
 #include "slash/world/serialize.hpp"
+#include "slash/world/water.hpp"
 #include "slash/world/wind.hpp"
 #include "slash/world/world.hpp"
 
@@ -2833,14 +2835,17 @@ constexpr std::string_view kHairShells = "made:hair/shells";
 void Renderer::hair_mesh(const std::string& key, entt::entity entity,
                          std::span<const render::Vertex3D> vertices,
                          std::span<const std::uint32_t> indices, const render::Material3D& material,
-                         std::uint32_t layers, render::ShadowCasting casting) {
+                         std::uint32_t layers, render::ShadowCasting casting,
+                         std::string_view where) {
     if (vertices.empty() || indices.empty()) {
         return;
     }
     if (vertices.size() > render::kMaxMeshVertices || indices.size() > render::kMaxMeshIndices) {
-        problems_.push_back({entity, "/components/HairInstance3D/groom",
-                             "the groom makes too many corners to draw; lower its density, "
-                             "max_strands, segments or shell_count"});
+        problems_.push_back({entity, std::string(where),
+                             where.starts_with("/components/HairInstance3D")
+                                 ? "the groom makes too many corners to draw; lower its density, "
+                                   "max_strands, segments or shell_count"
+                                 : "too many corners to draw"});
         return;
     }
     ParticleMesh& kept = particle_meshes_[key];
@@ -2852,15 +2857,14 @@ void Renderer::hair_mesh(const std::string& key, entt::entity entity,
     if (kept.id == render::MeshId::None) {
         auto created = device_->create_mesh(vertices, indices);
         if (!created) {
-            problems_.push_back(
-                {entity, "/components/HairInstance3D/groom", created.error().message});
+            problems_.push_back({entity, std::string(where), created.error().message});
             particle_meshes_.erase(key);
             return;
         }
         kept.id = created.value();
         kept.vertices = vertices.size();
     } else if (auto updated = device_->update_mesh(kept.id, vertices); !updated) {
-        problems_.push_back({entity, "/components/HairInstance3D/groom", updated.error().message});
+        problems_.push_back({entity, std::string(where), updated.error().message});
         return;
     }
     Draw draw;
@@ -2972,6 +2976,197 @@ void Renderer::add_hair(const world::World& world, const world::Tree3D& tree, en
         hair_mesh(prefix + std::to_string(layer), entity, vertices, growth.section->indices, made,
                   layers, casting);
     }
+}
+
+void Renderer::add_fluid(const world::World& world, entt::entity entity, std::uint32_t cull_mask,
+                         const render::Scene3D& scene) {
+    const auto& fluid = world.ecs().get<const world::Fluid3D>(entity);
+    if (!fluid.visible || (fluid.layers & cull_mask) == 0) {
+        return;
+    }
+    const world::FluidParticles* particles = world::fluid_particles(world, entity);
+    if (particles == nullptr || particles->size() == 0) {
+        return;
+    }
+    auto loaded = world::load_fluid(world, fluid.recipe, fluid.overrides);
+    if (!loaded) {
+        return; // the fluids system warns
+    }
+    const world::FluidRecipe& recipe = *loaded.value();
+    if (asset::Assets* assets = asset::assets_of(world.ecs());
+        assets != nullptr && !assets->load<render::Image>(kFluidDisc)) {
+        render::Image image = fluid_disc_image();
+        const std::size_t bytes = image.pixels.size();
+        (void)assets->put(kFluidDisc, std::move(image), bytes);
+    }
+    const Vec3f right = to_float(camera_place_.x);
+    const Vec3f up = to_float(camera_place_.y);
+    const auto unit = [](Vec3f v) {
+        const float n = std::sqrt((v.x * v.x) + (v.y * v.y) + (v.z * v.z));
+        return n > 1e-9F ? v * (1.0F / n) : v;
+    };
+    const Vec3f shift = to_float(Vec3{} - render_origin_);
+    const std::string key = "fluid:" + std::to_string(entt::to_integral(entity));
+    std::vector<render::Vertex3D> vertices;
+    std::vector<std::uint32_t> indices;
+    if (!recipe.gas && recipe.surface) {
+        // One surface, as the camera sees it, lit; spray flies off it as drops.
+        fluid_surface(recipe, *particles,
+                      FluidEye{.eye = camera_place_, .projection = scene.projection}, shift,
+                      vertices, indices);
+        world::StandardMaterial3D look;
+        look.vertex_color_use_as_albedo = true;
+        look.cull_mode = "disabled";
+        look.transparency = "alpha";
+        look.roughness = 0.06F;
+        look.metallic_specular = 0.8F;
+        const render::Material3D made = material(look, textures_, problems_, entity);
+        hair_mesh(key + ":surface", entity, vertices, indices, made, fluid.layers,
+                  render::ShadowCasting::Off, "/components/Fluid3D");
+        fluid_quads(recipe, *particles, unit(right), unit(up), shift, vertices, indices,
+                    [&](std::size_t i) { return world::fluid_is_spray(recipe, *particles, i); });
+    } else if (recipe.gas) {
+        // Smoke lit by the first directional light through the smoke between, over the
+        // ambient light; fire glows by itself.
+        Vec3f toward;
+        float energy = 0.0F;
+        for (const render::Light3D& light : scene.lights) {
+            if (light.type == render::LightType::Directional && light.energy > 0.0F) {
+                toward = {-light.direction[0], -light.direction[1], -light.direction[2]};
+                energy = std::min(light.energy, 2.0F);
+                break;
+            }
+        }
+        std::vector<float> light = world::fluid_transmittance(recipe, *particles, toward);
+        const float ambient = std::clamp(scene.ambient_energy * 0.5F, 0.25F, 0.8F);
+        for (float& seen : light) {
+            seen = energy > 0.0F ? std::min(ambient + (energy * 0.75F * seen), 1.0F) : 1.0F;
+        }
+        fluid_quads(recipe, *particles, unit(right), unit(up), shift, vertices, indices, {}, light);
+    } else {
+        fluid_quads(recipe, *particles, unit(right), unit(up), shift, vertices, indices);
+    }
+    world::StandardMaterial3D look;
+    look.vertex_color_use_as_albedo = true;
+    look.albedo_texture = std::string(kFluidDisc);
+    look.cull_mode = "disabled";
+    render::ShadowCasting casting = render::ShadowCasting::Off;
+    if (recipe.gas) {
+        look.transparency = "alpha";
+        look.shading_mode = "unshaded";
+    } else {
+        look.transparency = "alpha_scissor";
+        look.alpha_scissor_threshold = 0.5F;
+        look.roughness = 0.12F;
+        look.metallic_specular = 0.6F;
+        casting = casting_of(fluid.cast_shadow);
+    }
+    const render::Material3D made = material(look, textures_, problems_, entity);
+    hair_mesh(key, entity, vertices, indices, made, fluid.layers, casting, "/components/Fluid3D");
+}
+
+void Renderer::add_water(const world::WaterBody& body, std::uint32_t cull_mask, double time) {
+    if (!body.visible || (body.layers & cull_mask) == 0 || body.recipe == nullptr) {
+        return;
+    }
+    const world::WaterRecipe& recipe = *body.recipe;
+    const Vec3f shift = to_float(Vec3{} - render_origin_);
+    std::vector<render::Vertex3D> vertices;
+    std::vector<std::uint32_t> indices;
+    const auto byte = [](float v) {
+        return static_cast<std::uint8_t>(std::lround(std::clamp(v, 0.0F, 1.0F) * 255.0F));
+    };
+    // Each corner where the waves and ripples move it, colored by its depth and foam.
+    const auto corner = [&](Vec3f rest) {
+        const world::WaterSample at = world::displace_water(body, rest, time);
+        const Vec4 color = world::water_color(recipe, at.depth, at.foam);
+        render::Vertex3D v;
+        v.position = {at.position.x + shift.x, at.position.y + shift.y, at.position.z + shift.z};
+        v.normal = {at.normal.x, at.normal.y, at.normal.z};
+        v.uv = {rest.x * 0.1F, rest.z * 0.1F};
+        v.rgba = {byte(color.x), byte(color.y), byte(color.z), byte(color.w)};
+        vertices.push_back(v);
+    };
+    int columns = 0;
+    int rows = 0;
+    if (recipe.kind == world::WaterRecipe::Kind::River) {
+        // A strip along the river's middle, across its width.
+        const std::size_t count = body.river.size();
+        columns = std::clamp(static_cast<int>(std::ceil(body.width / recipe.spacing)), 1, 32);
+        const float along_step = std::max(recipe.spacing, 0.25F);
+        std::vector<std::size_t> picked;
+        float last = -along_step;
+        for (std::size_t i = 0; i < count; ++i) {
+            if (body.river_along[i] - last >= along_step || i + 1 == count) {
+                picked.push_back(i);
+                last = body.river_along[i];
+            }
+        }
+        rows = static_cast<int>(picked.size()) - 1;
+        for (const std::size_t i : picked) {
+            const Vec3f a = body.river[i == 0 ? 0 : i - 1];
+            const Vec3f b = body.river[std::min(i + 1, count - 1)];
+            const float dx = b.x - a.x;
+            const float dz = b.z - a.z;
+            const float n = std::sqrt((dx * dx) + (dz * dz));
+            // To the river's right, so its triangles wind as a lake's grid does and face up.
+            const Vec3f side = n > 1e-6F ? Vec3f{dz / n, 0.0F, -dx / n} : Vec3f{1.0F, 0.0F, 0.0F};
+            for (int c = 0; c <= columns; ++c) {
+                const float across =
+                    body.width * ((static_cast<float>(c) / static_cast<float>(columns)) - 0.5F);
+                corner(body.river[i] + (side * across));
+            }
+        }
+    } else {
+        // A grid over a lake's area, or round the camera on an ocean, snapped to its cells so
+        // corners stay put as the camera moves.
+        Vec2f center;
+        Vec2f half = body.half;
+        if (!body.bounded) {
+            const Vec3 eye = body.inverse.apply(camera_place_.origin);
+            center = to_float(Vec2{eye.x, eye.z});
+            half = {recipe.view, recipe.view};
+        }
+        const float cell = std::max(recipe.spacing, std::max(half.x, half.y) * 2.0F / 128.0F);
+        if (!body.bounded) {
+            center = {std::round(center.x / cell) * cell, std::round(center.y / cell) * cell};
+        }
+        columns = std::clamp(static_cast<int>(std::ceil(half.x * 2.0F / cell)), 1, 128);
+        rows = std::clamp(static_cast<int>(std::ceil(half.y * 2.0F / cell)), 1, 128);
+        for (int j = 0; j <= rows; ++j) {
+            for (int i = 0; i <= columns; ++i) {
+                const float lx =
+                    center.x - half.x +
+                    (half.x * 2.0F * static_cast<float>(i) / static_cast<float>(columns));
+                const float lz = center.y - half.y +
+                                 (half.y * 2.0F * static_cast<float>(j) / static_cast<float>(rows));
+                corner(to_float(body.place.apply(Vec3{lx, 0.0F, lz})));
+            }
+        }
+    }
+    if (rows < 1 || columns < 1) {
+        return;
+    }
+    const auto stride = static_cast<std::uint32_t>(columns + 1);
+    for (int j = 0; j < rows; ++j) {
+        for (int i = 0; i < columns; ++i) {
+            const std::uint32_t a =
+                (static_cast<std::uint32_t>(j) * stride) + static_cast<std::uint32_t>(i);
+            const std::uint32_t b = a + 1;
+            const std::uint32_t c = a + stride;
+            const std::uint32_t d = c + 1;
+            indices.insert(indices.end(), {a, b, c, b, d, c});
+        }
+    }
+    world::StandardMaterial3D look;
+    look.vertex_color_use_as_albedo = true;
+    look.cull_mode = "disabled";
+    look.transparency = "alpha";
+    look.roughness = recipe.roughness;
+    look.metallic_specular = 0.7F;
+    const render::Material3D made = material(look, textures_, problems_, body.entity);
+    hair_mesh("water:" + std::to_string(entt::to_integral(body.entity)), body.entity, vertices,
+              indices, made, body.layers, render::ShadowCasting::Off, "/components/Water3D");
 }
 
 namespace {
@@ -4231,6 +4426,21 @@ std::optional<Frame3D> Renderer::prepare(
     for (const entt::entity entity : made<world::HairInstance3D>(world)) {
         if (tree.visible(entity)) {
             add_hair(world, tree, entity, lens.cull_mask, t);
+        }
+    }
+    // Fluid3Ds draw their particles.
+    for (const entt::entity entity : made<world::Fluid3D>(world)) {
+        if (tree.visible(entity)) {
+            add_fluid(world, entity, lens.cull_mask, frame.scene);
+        }
+    }
+    // Water3Ds draw their surfaces, moved by their waves between ticks.
+    if (!ecs.view<const world::Water3D>().empty()) {
+        const double water_time = world::water_time(world, t);
+        for (const world::WaterBody& body : world::water_bodies(world, false)) {
+            if (tree.visible(body.entity)) {
+                add_water(body, lens.cull_mask, water_time);
+            }
         }
     }
     // GPUParticles3Ds run the steps their device hasn't, then draw their draw passes there.

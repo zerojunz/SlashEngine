@@ -8,11 +8,13 @@
 #include "slash/scene3d/soft_body.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/fluid.hpp"
 #include "slash/world/hair.hpp"
 #include "slash/world/physical_bones.hpp"
 #include "slash/world/physics_debug.hpp"
 #include "slash/world/physics_material.hpp"
 #include "slash/world/tree3d.hpp"
+#include "slash/world/water.hpp"
 #include "slash/world/wind.hpp"
 
 // Jolt's headers, which Jolt.h must come before.
@@ -676,6 +678,8 @@ private:
     // What PhysicsField3Ds do this step to rigid bodies, physical bones and soft bodies: forces,
     // velocities, strain that breaks, anchors, sleep, and bodies to remove after it.
     void apply_fields(const world::World& world, const world::Tree3D& tree, float seconds);
+    // Floats and drags rigid bodies in the world's Water3Ds, before a step (src/water.cpp).
+    void apply_water(world::World& world, float seconds);
     // What PhysicalBone3D drives do this step: simulating bones turned (and, in the world,
     // moved) toward where the animated pose puts them (drives.cpp).
     void apply_drives(const world::World& world, float seconds);
@@ -827,5 +831,9 @@ void move_character(const Space& space, Body& body, world::Affine3D& transform,
 // After a step (destruction.cpp): breaks the Destructible3Ds the step's impacts reached, and
 // takes away pieces whose lifetime ran out.
 void break_and_age(world::World& world, Space& space, float seconds);
+// What fluids collide with and push: the space's bodies (src/fluid.cpp).
+[[nodiscard]] world::FluidHost fluid_host(const std::shared_ptr<Space>& space);
+// The ground under water: the first thing below that doesn't move (src/water.cpp).
+[[nodiscard]] world::WaterHost water_host(world::World& world);
 
 } // namespace slash::physics3d::detail

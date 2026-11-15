@@ -1,0 +1,43 @@
+{
+  "entities": {
+    "bank": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [160.0, 10.0]
+        },
+        "StaticBody2D": {},
+        "Transform2D": {
+          "position": [80.0, 95.0]
+        }
+      }
+    },
+    "duck": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [16.0, 10.0]
+        },
+        "RigidBody2D": {
+          "mass": 0.05
+        },
+        "Transform2D": {
+          "position": [40.0, 30.0]
+        }
+      }
+    },
+    "pebble": {
+      "components": {
+        "CollisionShape2D": {
+          "radius": 4.0,
+          "shape": "circle"
+        },
+        "RigidBody2D": {
+          "mass": 0.5
+        },
+        "Transform2D": {
+          "position": [110.0, 20.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

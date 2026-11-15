@@ -2867,6 +2867,149 @@ PNG and returns its `out` and `size`. The world is left as it was.
 
 Needs: `read` and `filesystem`.
 
+## Fluids
+
+Liquids and gases as particles with no grid, from `.fluid.json` recipes
+([scene format](scene-format.md#fluids); `slash-cli schema fluid`).
+
+### fluid.place
+
+Places a recipe as a new `Fluid3D` (a 3d recipe) or `Fluid2D` (a 2d one) and returns its `id`,
+`kind`, `space`, the `particles` its block starts with and their `volume` (cubic meters, or
+square pixels in 2D).
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `recipe` | string | | A `.fluid.json` file |
+| `id` | string | the file's name | The new entity's ID |
+| `at` | `[x, y, z]` or `[x, y]` | origin | Where, in meters or pixels |
+| `fill` | `[x, y, z]` or `[x, y]` | none | A block of it at rest, filled once on its first tick |
+| `bounds` | `[x, y, z]` or `[x, y]` | none | A box round it the particles stay in |
+| `velocity` | `[x, y, z]` or `[x, y]` | none | The block's starting velocity |
+| `parent` | string | | An entity to place it under |
+| `overrides` | object | | A JSON Merge Patch over the recipe |
+
+Needs: `edit`.
+
+### fluid.pour
+
+Adds a `FluidEmitter3D` or `FluidEmitter2D` pouring into a fluid (a tap, a hose, a vent or a
+burner) and returns its `id`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `fluid` | string | | The fluid entity |
+| `id` | string | `<fluid>_pour` | The emitter's ID |
+| `at` | point | origin | Where it pours from |
+| `direction` | point | down | The way it pours |
+| `rate` | number | `200` | Particles a second |
+| `speed` | number | `2` m/s, `120` px/s | The speed they leave at |
+| `spread` | number | `0.1` | The most they turn from `direction`, in radians |
+| `radius` | number | `0.05` m, `4` px | The mouth's radius |
+| `temperature`, `smoke`, `fuel` | number | `20`, `0`, `0` | Gases: what each particle starts with |
+
+Needs: `edit`.
+
+### fluid.state
+
+Each fluid (or those `ids` names) by ID: its `recipe`, `kind`, `particles`, `volume`, the
+`bounds` and `middle` of its particles, their mean `speed` and the `fastest`, a liquid's mean
+`density` over rest (1 at rest), or a gas's mean `temperature`, `hottest`, mean `smoke` and the
+`fuel` left, the particles touching something (`contacts`) and the neighbor visits of the last
+tick (`work`, the same on every machine). `points` adds that many particles' places, evenly
+through them.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `ids` | array of strings | every fluid | Fluids to report |
+| `points` | integer | `0` | Particles' places to return, up to 256 |
+
+Needs: `read`.
+
+### fluid.check
+
+Checks a recipe, or with none every recipe the world's fluids name, under `recipes` by path: its
+schema `errors`, or its `kind` and `space` and, on a `stage` of its own (a session apart), what a
+run of `seconds` made of it: a liquid falling as a block into a tank 24 particles wide, keeping
+(`kept`, the share of its particles left) and `settled` (slower than 20 particle radii a second
+at the end); a gas pouring from a burner. The stage reports what `fluid.state` does, with
+`most_particles` and `most_work`, and `over_budget` names what passed the recipe's `budget`.
+`problems` lists the world's fluids whose recipe can't be read, is of the other space or is over
+its budget, and emitters and sinks that name no fluid (with the closest) or one of the other
+space.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `recipe` | string | every recipe the world names | A `.fluid.json` file |
+| `stage` | boolean | `true` | Run each recipe alone |
+| `seconds` | number | `2` | How long the stage runs, 0.1 to 30 |
+
+Needs: `read`.
+
+### fluid.preview
+
+Runs a recipe alone on the stage `fluid.check` uses (a liquid's tank, a gas's burner) in a
+session apart, with a camera and a sun, and returns under `samples` what `fluid.state` says at
+each of `times`, with its `t`. With `capture`, it also draws the stage into a PNG at a time and
+returns its `path`, `size` and `covered`, the share of the frame the fluid changed from the
+background, so a recipe that draws nothing shows.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `recipe` | string | | A `.fluid.json` file |
+| `overrides` | object | | A merge patch over the recipe, to try a change |
+| `times` | number[] | `[0.5, 1.5]` | Seconds into the stage to sample, up to 60 |
+| `capture` | object | | `at` (seconds), `out` (default `previews/<file>.png`) and `size` (`[width, height]`, default `[320, 240]`) |
+
+```json
+{"recipe": "liquids/water.fluid.json", "times": [1], "capture": {"at": 1}}
+```
+
+Needs: `read`, `filesystem`.
+
+## Water
+
+Oceans, lakes and rivers from `.water.json` recipes ([scene format](scene-format.md#water);
+`slash-cli schema water`).
+
+### water.place
+
+Places a recipe as a new `Water3D` (a 3d recipe) or `Water2D` (a 2d one) and returns its `id`,
+`kind`, `space`, its number of `waves`, the highest `crest` they can stack to and the longest
+wave's `period` in seconds.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `recipe` | string | | A `.water.json` file |
+| `id` | string | the file's name | The new entity's ID |
+| `at` | `[x, y, z]` or `[x, y]` | origin | Where its surface rests, in meters or pixels |
+| `size` | `[x, z]` or `[width, depth]` | `[20, 20]`, `[640, 200]` | A lake's or ocean's area in meters, or 2d water's width and depth in pixels |
+| `path` | string | | A river's `Path3D` entity (a 3d river needs one) |
+| `width` | number | `4` | A river's width in meters |
+| `parent` | string | | An entity to place it under |
+| `overrides` | object | | A JSON Merge Patch over the recipe |
+
+Needs: `edit`.
+
+### water.sample
+
+The water at up to 64 points, now or `ahead` seconds from now: under `points`, each one's
+`water` (null where no water holds it), surface `height`, `normal`, the water's `velocity`,
+`foam` (0 to 1), `depth` to the ground where it was measured, and how far the point is
+`submerged` (negative above the surface). `time` is the water's clock.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `points` | array | | `[x, y, z]` or `[x, z]` meters, or `[x, y]` pixels for 2d water |
+| `water` | string | the first that holds each point | A `Water3D` or `Water2D` entity |
+| `ahead` | number | `0` | Seconds after now |
+
+```json
+{"points": [[0, 0, 0], [4, -1, 2]], "ahead": 0.5}
+```
+
+Needs: `read`.
+
 ## Particles
 
 ### particles.eval
