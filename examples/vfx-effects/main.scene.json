@@ -1,0 +1,79 @@
+{
+  "entities": {
+    "barrel": {
+      "components": {
+        "CollisionShape3D": {
+          "height": 1.2,
+          "radius": 0.4,
+          "shape": "cylinder"
+        },
+        "CylinderMesh": {
+          "bottom_radius": 0.4,
+          "height": 1.2,
+          "top_radius": 0.4
+        },
+        "Destructible3D": {
+          "profile": "profiles/barrel.damage.json"
+        },
+        "MeshInstance3D": {},
+        "StaticBody3D": {},
+        "Transform3D": {
+          "position": [4.0, 0.6, 0.0]
+        }
+      }
+    },
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true
+        },
+        "Transform3D": {
+          "position": [0.0, 2.0, 12.0]
+        }
+      }
+    },
+    "campfire": {
+      "components": {
+        "Transform3D": {
+          "position": [-4.0, 0.0, 0.0]
+        },
+        "VisualEffect3D": {
+          "recipe": "fx/campfire.vfx.json"
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "MeshInstance3D": {},
+        "PlaneMesh": {
+          "size": [40.0, 40.0]
+        },
+        "Transform3D": {}
+      }
+    },
+    "knight": {
+      "components": {
+        "Transform2D": {
+          "position": [60.0, 45.0]
+        }
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {},
+        "Transform3D": {
+          "rotation": [-0.8, 0.5, 0.0]
+        }
+      }
+    },
+    "view_2d": {
+      "components": {
+        "Camera2D": {},
+        "Transform2D": {
+          "position": [80.0, 45.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

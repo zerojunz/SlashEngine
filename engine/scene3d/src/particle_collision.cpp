@@ -15,6 +15,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <span>
 #include <string>
 #include <utility>
@@ -707,6 +708,186 @@ render::ParticleHeightField3D particle_height_field(const world::World& world,
             }
         }
     }
+    return out;
+}
+
+ParticleDepthView particle_depth_view(const world::World& world, const world::Tree3D& tree,
+                                      const world::Camera3D& camera, const Affine3D& global,
+                                      float aspect, std::uint32_t width, std::uint32_t height,
+                                      const ModelLoader& models, std::vector<Problem>& problems) {
+    ParticleDepthView out;
+    out.eye = world::orthonormalized(global);
+    out.eye.origin = out.eye.origin + (out.eye.y * camera.v_offset) + (out.eye.x * camera.h_offset);
+    out.to_eye = out.eye.inverse();
+    out.orthogonal = camera.projection == "orthogonal";
+    out.near = std::max(camera.near, 0.0001F);
+    out.width = std::max<std::uint32_t>(width, 1);
+    out.height = std::max<std::uint32_t>(height, 1);
+    aspect = aspect > 0.0F ? aspect : 1.0F;
+    const bool keep_width = camera.keep_aspect == "width";
+    if (out.orthogonal) {
+        const float span = camera.size * 0.5F;
+        out.half_height = keep_width ? span / aspect : span;
+        out.half_width = keep_width ? span : span * aspect;
+    } else {
+        const Vec2 half = cos_sin(camera.fov * 0.5F * 0.0174532925199F);
+        const float tangent = half.x != 0.0F ? half.y / half.x : 1.0F;
+        out.half_height = keep_width ? tangent / aspect : tangent;
+        out.half_width = keep_width ? tangent : tangent * aspect;
+    }
+    out.depths.assign(std::size_t{out.width} * out.height, std::numeric_limits<float>::infinity());
+    const Gather gather{.mask = camera.cull_mask,
+                        .scope = entt::null,
+                        .built_by_layer = false,
+                        .opaque_only = true,
+                        .terrains = true};
+    std::vector<Triangle> triangles;
+    gather_triangles(world, tree, out.to_eye, gather, models, triangles, problems);
+    const auto w = static_cast<float>(out.width);
+    const auto h = static_cast<float>(out.height);
+    for (const Triangle& t : triangles) {
+        // Texel space, x across and y down, and the distance in front of the camera; triangles
+        // reaching behind the near plane are left out.
+        std::array<Vec3, 3> p;
+        bool behind = false;
+        for (std::size_t i = 0; i < 3; ++i) {
+            const float d = -t.at(i).z;
+            if (d < out.near) {
+                behind = true;
+                break;
+            }
+            const float sx = out.orthogonal ? t.at(i).x : t.at(i).x / d;
+            const float sy = out.orthogonal ? t.at(i).y : t.at(i).y / d;
+            p.at(i) = {((sx / out.half_width) + 1.0F) * 0.5F * w,
+                       (1.0F - ((sy / out.half_height) + 1.0F) * 0.5F) * h, d};
+        }
+        if (behind) {
+            continue;
+        }
+        const float area =
+            ((p[1].x - p[0].x) * (p[2].y - p[0].y)) - ((p[2].x - p[0].x) * (p[1].y - p[0].y));
+        if (area == 0.0F || !std::isfinite(area)) {
+            continue;
+        }
+        const int x0 =
+            std::max(static_cast<int>(std::ceil(std::min({p[0].x, p[1].x, p[2].x}) - 0.5F)), 0);
+        const int x1 =
+            std::min(static_cast<int>(std::floor(std::max({p[0].x, p[1].x, p[2].x}) - 0.5F)),
+                     static_cast<int>(out.width) - 1);
+        const int y0 =
+            std::max(static_cast<int>(std::ceil(std::min({p[0].y, p[1].y, p[2].y}) - 0.5F)), 0);
+        const int y1 =
+            std::min(static_cast<int>(std::floor(std::max({p[0].y, p[1].y, p[2].y}) - 0.5F)),
+                     static_cast<int>(out.height) - 1);
+        for (int y = y0; y <= y1; ++y) {
+            for (int x = x0; x <= x1; ++x) {
+                const float cx = static_cast<float>(x) + 0.5F;
+                const float cy = static_cast<float>(y) + 0.5F;
+                const auto edge = [&](const Vec3& a, const Vec3& b) {
+                    return ((b.x - a.x) * (cy - a.y)) - ((cx - a.x) * (b.y - a.y));
+                };
+                float w0 = edge(p[1], p[2]);
+                float w1 = edge(p[2], p[0]);
+                float w2 = edge(p[0], p[1]);
+                if (area < 0.0F) {
+                    w0 = -w0;
+                    w1 = -w1;
+                    w2 = -w2;
+                }
+                if (w0 < 0.0F || w1 < 0.0F || w2 < 0.0F) {
+                    continue;
+                }
+                const float sum = std::abs(area);
+                // Perspective-correct: the reciprocal of the distance blends across the screen.
+                float d = 0.0F;
+                if (out.orthogonal) {
+                    d = ((w0 * p[0].z) + (w1 * p[1].z) + (w2 * p[2].z)) / sum;
+                } else {
+                    d = sum / ((w0 / p[0].z) + (w1 / p[1].z) + (w2 / p[2].z));
+                }
+                if (!std::isfinite(d)) {
+                    continue;
+                }
+                float& texel = out.depths[(static_cast<std::size_t>(y) * out.width) +
+                                          static_cast<std::size_t>(x)];
+                texel = std::min(texel, d);
+            }
+        }
+    }
+    return out;
+}
+
+ParticleDepthContact particle_depth_contact(const ParticleDepthView& view, Vec3 position,
+                                            float radius, float thickness) {
+    ParticleDepthContact out;
+    if (view.depths.empty()) {
+        return out;
+    }
+    const Vec3 local = view.to_eye.apply(position);
+    const float d = -local.z;
+    if (d < view.near) {
+        return out;
+    }
+    const auto w = static_cast<float>(view.width);
+    const auto h = static_cast<float>(view.height);
+    const float sx = view.orthogonal ? local.x : local.x / d;
+    const float sy = view.orthogonal ? local.y : local.y / d;
+    const float fx = ((sx / view.half_width) + 1.0F) * 0.5F * w;
+    const float fy = (1.0F - ((sy / view.half_height) + 1.0F) * 0.5F) * h;
+    if (fx < 0.0F || fy < 0.0F || fx >= w || fy >= h || !std::isfinite(fx) || !std::isfinite(fy)) {
+        return out;
+    }
+    const auto x = static_cast<std::int64_t>(fx);
+    const auto y = static_cast<std::int64_t>(fy);
+    const auto at = [&](std::int64_t tx, std::int64_t ty) {
+        tx = std::clamp<std::int64_t>(tx, 0, view.width - 1);
+        ty = std::clamp<std::int64_t>(ty, 0, view.height - 1);
+        return view
+            .depths[(static_cast<std::size_t>(ty) * view.width) + static_cast<std::size_t>(tx)];
+    };
+    const float surface = at(x, y);
+    if (!std::isfinite(surface) || d + radius < surface || d > surface + thickness) {
+        return out;
+    }
+    // The surface's points round the texel, back in the camera's space.
+    const auto point = [&](std::int64_t tx, std::int64_t ty) {
+        const float depth = at(tx, ty);
+        const float px = (((static_cast<float>(tx) + 0.5F) / w) * 2.0F) - 1.0F;
+        const float py = 1.0F - (((static_cast<float>(ty) + 0.5F) / h) * 2.0F);
+        const float scale = view.orthogonal ? 1.0F : depth;
+        return Vec3{px * view.half_width * scale, py * view.half_height * scale, -depth};
+    };
+    const auto usable = [&](std::int64_t tx, std::int64_t ty) {
+        return std::isfinite(at(tx, ty)) && std::abs(at(tx, ty) - surface) < thickness;
+    };
+    const Vec3 center = point(x, y);
+    // The way along the surface to the next texel, or from the one before.
+    const auto along = [&](std::int64_t dx, std::int64_t dy) {
+        if (usable(x + dx, y + dy)) {
+            return point(x + dx, y + dy) - center;
+        }
+        if (usable(x - dx, y - dy)) {
+            return center - point(x - dx, y - dy);
+        }
+        return Vec3{};
+    };
+    const Vec3 across = along(1, 0);
+    const Vec3 down = along(0, 1);
+    Vec3 normal = detail::normalized(Vec3{(down.y * across.z) - (down.z * across.y),
+                                          (down.z * across.x) - (down.x * across.z),
+                                          (down.x * across.y) - (down.y * across.x)});
+    if (normal == Vec3{}) {
+        normal = {0.0F, 0.0F, 1.0F};
+    }
+    if (normal.z < 0.0F) {
+        // Toward the camera.
+        normal = normal * -1.0F;
+    }
+    out.collided = true;
+    out.normal = detail::normalized(view.eye.basis(normal));
+    // How far it is into the surface along the normal.
+    const float into = d + radius - surface;
+    out.depth = std::max(0.0F, into * std::max(static_cast<float>(normal.z), 0.2F));
     return out;
 }
 

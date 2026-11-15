@@ -9,6 +9,7 @@
 #include "slash/world/components.hpp"
 #include "slash/world/ragdoll.hpp"
 #include "slash/world/tree2d.hpp"
+#include "slash/world/vfx.hpp"
 
 #include <algorithm>
 #include <array>
@@ -531,6 +532,7 @@ json::Value character_schema() {
     static const json::Value schema = [] {
         json::Value made = json::parse(kSchema).value();
         made["properties"]["face"] = inline_face_schema();
+        made["properties"]["vfx"] = vfx_hooks_schema();
         return made;
     }();
     return schema;
@@ -673,6 +675,7 @@ Result<CharacterRecipe> parse_character(const json::Value& source, const FileRea
             recipe.props.push_back(std::move(prop));
         }
     }
+    recipe.vfx = read_vfx_hooks(doc);
     return recipe;
 }
 

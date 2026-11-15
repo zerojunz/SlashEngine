@@ -1,0 +1,14 @@
+{
+  "format": 1,
+  "interaction": {
+    "bend": 0.5,
+    "radius": 20
+  },
+  "kind": "grass",
+  "size": [8, 16],
+  "space": "2d",
+  "texture": "flora/tuft.texture.json",
+  "vfx": {
+    "foliage_parted": "fx/rustle.vfx.json"
+  }
+}

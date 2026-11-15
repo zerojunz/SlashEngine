@@ -1,0 +1,38 @@
+{
+  "duration": 0.8,
+  "format": 1,
+  "layers": [
+    {
+      "components": {
+        "ScreenDistortion3D": {
+          "frequency": 2,
+          "mode": "ripple",
+          "radius": 1.5,
+          "speed": 2,
+          "strength": 4
+        }
+      },
+      "curves": {
+        "ScreenDistortion3D/strength": [
+          [0, 4],
+          [0.8, 0]
+        ]
+      },
+      "name": "ripple",
+      "offset": [0, 0.5, 0]
+    },
+    {
+      "components": {
+        "CPUParticles3D": {
+          "amount": 12,
+          "explosiveness": 1,
+          "lifetime": 0.6
+        }
+      },
+      "duration": 0.3,
+      "name": "sparkles",
+      "offset": [0, 0.8, 0]
+    }
+  ],
+  "name": "Joy"
+}

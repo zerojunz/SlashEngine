@@ -1,0 +1,116 @@
+{
+  "budget": {
+    "decals": 1,
+    "lights": 1,
+    "particles": 64
+  },
+  "duration": 2,
+  "format": 1,
+  "layers": [
+    {
+      "components": {
+        "OmniLight3D": {
+          "light_color": "=color",
+          "omni_range": "=8 * size"
+        }
+      },
+      "curves": {
+        "OmniLight3D/light_energy": {
+          "ease": "smooth",
+          "keys": [
+            [0, 12],
+            [0.4, 0]
+          ]
+        }
+      },
+      "duration": 0.4,
+      "name": "flash",
+      "offset": [0, 0.5, 0]
+    },
+    {
+      "components": {
+        "CPUParticles3D": {
+          "amount": "=48 * size",
+          "color": "=color",
+          "direction": [0, 1, 0],
+          "explosiveness": 1,
+          "gravity": [0, 0, 0],
+          "initial_velocity_max": 5,
+          "initial_velocity_min": 2,
+          "lifetime": 0.5,
+          "one_shot": true,
+          "spread": 180
+        },
+        "SphereMesh": {
+          "height": 0.2,
+          "radius": 0.1
+        }
+      },
+      "duration": 0.3,
+      "name": "fireball"
+    },
+    {
+      "components": {
+        "CPUParticles3D": {
+          "amount": 24,
+          "color": [0.2, 0.2, 0.2, 0.6],
+          "direction": [0, 1, 0],
+          "gravity": [0, 0.5, 0],
+          "initial_velocity_max": 1,
+          "initial_velocity_min": 0.5,
+          "lifetime": 1.5
+        },
+        "SphereMesh": {
+          "height": 0.6,
+          "radius": 0.3
+        }
+      },
+      "detail": 0.6,
+      "name": "smoke",
+      "start": 0.2
+    },
+    {
+      "components": {
+        "Decal": {
+          "modulate": [0.1, 0.08, 0.06, 1],
+          "size": ["=3 * size", 1, "=3 * size"]
+        }
+      },
+      "name": "scorch",
+      "start": 0.1,
+      "world": true
+    },
+    {
+      "components": {
+        "CameraShake": {
+          "frequency": 18,
+          "radius": 40,
+          "strength": "=0.15 * size"
+        }
+      },
+      "curves": {
+        "CameraShake/strength": [
+          [0, "=0.15 * size"],
+          [0.5, 0]
+        ]
+      },
+      "duration": 0.5,
+      "name": "shake"
+    }
+  ],
+  "lod": [
+    {
+      "detail": 0.5,
+      "distance": 25
+    },
+    {
+      "detail": 0.25,
+      "distance": 60
+    }
+  ],
+  "name": "Explosion",
+  "parameters": {
+    "color": [1, 0.55, 0.2, 1],
+    "size": 1
+  }
+}

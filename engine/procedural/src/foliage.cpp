@@ -153,6 +153,22 @@ void run_foliage(world::World& world, FoliageState& state, double tick_seconds) 
     const auto tick = static_cast<float>(tick_seconds);
     entt::registry& ecs = world.ecs();
     std::map<Key, Spring> next;
+    // An instance a body starts to push over: "foliage_parted", at most kMaxParted a tick.
+    constexpr std::size_t kMaxParted = 8;
+    std::size_t parted_count = 0;
+    const auto parted = [&](entt::entity entity, const std::string& type, std::size_t group,
+                            std::size_t instance, Vec3 at, bool flat) {
+        if (parted_count >= kMaxParted) {
+            return;
+        }
+        ++parted_count;
+        json::Object data;
+        data["type"] = type;
+        data["group"] = static_cast<std::int64_t>(group);
+        data["instance"] = static_cast<std::int64_t>(instance);
+        data["position"] = flat ? json::Array{at.x, at.y} : json::Array{at.x, at.y, at.z};
+        world.emit("foliage_parted", world.id_of(entity), json::Value(std::move(data)));
+    };
     // Each Foliage3D's instances near a mover, in world x and z.
     if (!ecs.view<world::Foliage3D>().empty()) {
         const world::Tree3D tree(world);
@@ -190,6 +206,10 @@ void run_foliage(world::World& world, FoliageState& state, double tick_seconds) 
                     }
                     if (!target && had == state.springs.end()) {
                         continue;
+                    }
+                    if (target && had == state.springs.end()) {
+                        parted(entity, foliage.groups[g].type, g, i,
+                               place.apply(foliage_place(foliage.groups[g], i).position), false);
                     }
                     Spring spring = had != state.springs.end() ? had->second : Spring{};
                     step_spring(spring, target.value_or(Vec2{}), *type, tick);
@@ -240,6 +260,10 @@ void run_foliage(world::World& world, FoliageState& state, double tick_seconds) 
                     }
                     if (!target && had == state.springs.end()) {
                         continue;
+                    }
+                    if (target && had == state.springs.end()) {
+                        const Vec2 at = place.apply(foliage_place(foliage.groups[g], i).position);
+                        parted(entity, foliage.groups[g].type, g, i, Vec3{at.x, at.y, 0.0F}, true);
                     }
                     Spring spring = had != state.springs.end() ? had->second : Spring{};
                     step_spring(spring, target.value_or(Vec2{}), *type, tick);

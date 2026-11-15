@@ -145,6 +145,7 @@ add_executable(slash_tests
     test_particle_compute_3d.cpp
     test_particles.cpp
     test_gpu_particles_3d.cpp
+    test_particle_sim.cpp
     test_particles_3d.cpp
     test_path.cpp
     test_path_trace.cpp
@@ -160,6 +161,7 @@ add_executable(slash_tests
     test_face_tools.cpp
     test_fauna.cpp
     test_vehicle.cpp
+    test_vfx.cpp
     test_light_tools.cpp
     test_light_projectors.cpp
     test_reflection_2d.cpp

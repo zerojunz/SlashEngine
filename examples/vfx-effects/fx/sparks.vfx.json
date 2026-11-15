@@ -1,0 +1,30 @@
+{
+  "duration": 0.3,
+  "format": 1,
+  "layers": [
+    {
+      "components": {
+        "CPUParticles3D": {
+          "amount": "=round(4 + 20 * strength)",
+          "color": [1, 0.9, 0.5, 1],
+          "direction": [0, 1, 0],
+          "explosiveness": 1,
+          "initial_velocity_max": 6,
+          "initial_velocity_min": 3,
+          "lifetime": 0.25,
+          "one_shot": true,
+          "spread": 60
+        },
+        "SphereMesh": {
+          "height": 0.04,
+          "radius": 0.02
+        }
+      },
+      "name": "burst"
+    }
+  ],
+  "name": "Sparks",
+  "parameters": {
+    "strength": 1
+  }
+}
