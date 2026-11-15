@@ -23,6 +23,10 @@ published macOS release remain; both need the owner. The release needs only a ve
 with the packages, signing and notarizing the macOS tools once the repository has his Developer
 ID as Actions secrets ([CONTRIBUTING.md](../CONTRIBUTING.md#releases)).
 
+The [agent-built worlds](#agent-built-worlds-and-smart-npcs) tool set is done too: all 21
+items, from planning NPCs to procedural graphs that drive every tool, in 2D and 3D, ship in the
+launch release.
+
 The engine builds and is tested on macOS, Linux and Windows. It covers the 2D and 3D feature
 sets, networking, XR, localization, video, accessibility, procedural generation and platform
 services, and every engine action is a command over MCP, JSON-RPC, REST and the command line.
@@ -53,7 +57,7 @@ work.
 - [x] Built-in `Transform2D` and `Transform3D` components
 - [x] JSON scenes: load, save, canonical format, JSON Schema generated from components
 - [x] `slash-cli scene validate`, `scene format` and `schema scene`
-- [x] Prefabs with `"extends"` and overrides (done in [milestone 5](#milestone-5-2d-feature-set-in-progress))
+- [x] Prefabs with `"extends"` and overrides (done in [milestone 5](#milestone-5-2d-feature-set-done))
 
 ### Milestone 3: Commands (Done)
 
@@ -1114,22 +1118,20 @@ launch rows and the after-launch features above.
   probes with spherical harmonics history), behind `WorldEnvironment.sdfgi_enabled` on the
   software device ([sdfgi.md](reference/sdfgi.md)), its cascades scrolling and its probes
   occluded by walls; the GPU passes remain
-- Digital humans in the style of MetaHuman; out of scope for releases. Research note:
-  [digital-humans.md](reference/digital-humans.md). Blend shapes done (glTF morph targets,
-  `MeshInstance3D.blend_shapes` and their animation tracks) and hair and eye shading (Godot's rim,
-  clearcoat and anisotropy) done, and subsurface scattering and transmittance (Godot's Forward+
-  screen-space blur) done, and face capture done (Godot's `XRFaceTracker` and `XRFaceModifier3D`,
-  and Live Link Face recordings imported as animations by `animation.import_face_capture`),
-  and alpha hash done (Godot's `"alpha_hash"` transparency, with a hash every device makes alike)
+- Digital humans in the style of MetaHuman. Research note:
+  [digital-humans.md](reference/digital-humans.md). Its parts are done (blend shapes, hair and eye
+  shading, subsurface scattering and transmittance, face capture and alpha hash), and the
+  character, face, anatomy and hair tools ([items 13, 14 and 20](#agent-built-worlds-and-smart-npcs))
+  went on to build such characters from recipes
 
 ## Agent-built worlds and smart NPCs
 
 Ways for agents to build detailed 3D worlds and many smarter NPCs at a fraction of Unreal's
-cost, from the research proposal of 2026-11-07, in order. Items 7 on (wind, style memory and the world tools)
-ship in the launch release, which waits for them. Each works in 2D worlds as well as 3D ones,
+cost, from the research proposal of 2026-11-07, in order. All 21 are done and ship in the launch
+release. Each works in 2D worlds as well as 3D ones,
 on physics2d and the canvas where 3D uses physics3d and meshes: `WindSource2D` wind for canvas
 shaders and 2D particles, the simulation's fields, materials and ragdolls on Box2D, foliage
-scattered on tile maps and polygons, 2D lights and reflections, sprite and `Skeleton2D` hair,
+scattered on tile maps and polygons, 2D lights and reflections, 2D strands and ribbons of hair,
 characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2D effects:
 
 1. [x] Planning NPCs: goal-oriented action planning as F.E.A.R.'s, with `.npc.json` brains of

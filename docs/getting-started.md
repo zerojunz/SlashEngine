@@ -195,10 +195,13 @@ $cli init mygame
 ```
 
 ```json
-{"created":["project.json","AGENTS.md","CLAUDE.md",".mcp.json",".cursor/mcp.json",".codex/config.toml","opencode.json",".agents/mcp_config.json",".slash/agents/hermes.yaml",".slash/agents/openclaw.json",".claude/skills/slashengine/SKILL.md",".agents/skills/slashengine/SKILL.md",".github/workflows/export.yml","scenes/main.scene.json",".gitignore"],"skipped":[]}
+{"created":["project.json","AGENTS.md","CLAUDE.md",".mcp.json",".cursor/mcp.json",".codex/config.toml","opencode.json",".agents/mcp_config.json",".slash/agents/hermes.yaml",".slash/agents/openclaw.json",".claude/skills/slashengine/SKILL.md",".agents/skills/slashengine/SKILL.md",".github/workflows/export.yml","scenes/main.scene.json","src/game.cpp","tests/main.test.json","storyboard/glossary.json","storyboard/work.json",".gitignore"],"skipped":[]}
 ```
 
-`mygame` is now a game project: `project.json` names the game and its main scene. Each config launches `slash-mcp`, the engine's MCP server, with the project's main scene open.
+`mygame` is now a game project: `project.json` names the game and its main scene, `src/game.cpp`
+is where its own C++ goes, `tests/main.test.json` is its first headless test and `storyboard/`
+holds its glossary and open work. Each config launches `slash-mcp`, the engine's MCP server, with
+the project's main scene open.
 Put `slash-mcp` on your `PATH` (or pass `--mcp-command` with its full path to `init`), then start
 the agent in `mygame/`; it finds the server on its next start. To add the server to Claude Code by
 hand instead:
@@ -207,8 +210,10 @@ hand instead:
 claude mcp add slashengine -- slash-mcp --project .
 ```
 
-The agent now sees every command as a tool. Tool names use `_` where commands use `.`
-(`entity_create` for `entity.create`), because some clients reject dots.
+The agent starts with the core commands as tools and `tools_load`, which adds the rest by group
+as a task needs them, so each turn sends fewer tool definitions (`slash-mcp --tools all` lists
+every command at once; see [protocols.md](reference/protocols.md#mcp)). Tool names use `_` where
+commands use `.` (`entity_create` for `entity.create`), because some clients reject dots.
 
 ## 6. Change a game while it runs
 
@@ -261,4 +266,5 @@ see [reference/cli.md](reference/cli.md#export).
 - [concepts.md](concepts.md) explains the world, commands, sessions and servers.
 - [reference/commands.md](reference/commands.md) lists every command with examples.
 - [reference/protocols.md](reference/protocols.md) covers REST, JSON-RPC and MCP in detail.
-- [roadmap.md](roadmap.md) shows what comes next.
+- [examples/](../examples/README.md) has a small working example of every feature.
+- [roadmap.md](roadmap.md) shows what is done and what comes next.

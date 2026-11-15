@@ -25,7 +25,7 @@ engine follows Godot's approach.
 ## The layers
 
 ```text
-  Agents (MCP)   slash-cli   REST and JSON-RPC clients   Game code (later)
+  Agents (MCP)   slash-cli   REST and JSON-RPC clients   Game code (C++)  
         |            |                  |                      |
         v            v                  v                      v
   +----------------------------------------------------------------+
@@ -47,26 +47,45 @@ The code follows the same split, one CMake library per module under `engine/`:
 
 | Module | Holds |
 | --- | --- |
-| `core` | `Result<T>`, JSON logging, JSON parsing and schemas, reflection, math, the fixed-step clock, the job system and profiler zones |
-| `platform` | The SDL3 window, the run loop and file access |
-| `render` | The render device: SDL3's GPU API (Vulkan, Metal, Direct3D 12), OpenGL ES 3.0 (WebGL 2 on the web), the software device that draws on the CPU, or the null device for headless runs |
+| `core` | `Result<T>`, JSON logging, JSON parsing and schemas, reflection, math, expressions, the fixed-step clock, the job system and profiler zones |
+| `platform` | The SDL3 window, the run loop, file access and child processes |
+| `procedural` | Godot's noise and procedural textures, scatter rules, `.pcg.json` procedural graphs and foliage painting |
+| `render` | The render device: SDL3's GPU API (Vulkan, Metal, Direct3D 12), OpenGL 3.3 and OpenGL ES 3.0 (WebGL 2 on the web), WebGPU, the software device that draws on the CPU, or the null device for headless runs |
 | `asset` | Asset handles, loaders and hot reload |
-| `world` | The EnTT world, components, the component registry, scenes and prefabs |
+| `world` | The EnTT world, components, the component registry, scenes and prefabs, 2D and 3D trees, and what 2D and 3D share: wind, physics materials and fields, damage, ragdoll, hair, character, face, creature, vehicle, effect, fluid and water recipes |
 | `input` | Input, as Godot's: key, mouse, touch and gamepad events from SDL, rebindable actions and the state gameplay code reads |
-| `canvas` | 2D drawing, as Godot's canvas: sprites, `.frames.json` animations, `.material.json` materials, `.tileset.json` tile sets and tile map layers, CPU particles and GPU particles' `.process_material.json` files, and the renderer that draws them |
-| `animation` | Keyframe animation, as Godot's AnimationPlayer: `.anim.json` files and the system that plays them |
-| `physics2d` | 2D physics on Box2D, as Godot's: bodies, areas, shapes, joints and queries |
-| `text` | Fonts and text layout: FreeType, HarfBuzz, distance field fonts and glyph atlases |
-| `ui` | UI, as Godot's Control nodes: layout of controls and labels, and their draw calls |
-| `storyboard` | Storyboard files: kinds, checks, versions, queries and edits |
+| `l10n` | Translation files, locales, plural rules and lookups, as Godot's TranslationServer |
+| `audio` | Sound files and streams, the mixer, buses and effects, players and interactive music |
+| `video` | AV1 video in IVF, WebM and Matroska files, decoded with dav1d |
+| `services` | Ads, analytics, purchases, achievements and leaderboards behind one API |
+| `canvas` | 2D drawing, as Godot's canvas: sprites, `.frames.json` animations, `.material.json` materials, `.tileset.json` tile sets and tile map layers, 2D lights, CPU and GPU particles, and the renderer that draws them |
+| `text` | Fonts and text layout: FreeType, HarfBuzz, bidirectional text, distance field fonts and glyph atlases |
+| `ui` | UI, as Godot's Control nodes: layout, containers, themes, buttons, menus, text fields and their draw calls |
+| `accessibility` | Screen readers through AccessKit, and the web's and phones' own |
+| `animation` | Keyframe animation and animation trees, as Godot's AnimationPlayer and AnimationTree |
+| `scene3d` | 3D nodes, as Godot's: meshes, models, CSG, grid maps, terrain, materials, cameras, lights, skeletons and IK, and characters, creatures and vehicles built into models |
+| `physics2d` | 2D physics on Box2D, as Godot's: bodies, areas, shapes, joints, queries, and vehicles, ragdolls, cloth, hair and destruction |
+| `physics3d` | 3D physics on Jolt, as Godot's Jolt module: bodies, areas, characters, joints, queries, and vehicles, soft bodies, cloth, hair and destruction |
+| `navigation` | Navigation meshes, maps, paths, agents and avoidance, as Godot's navigation servers |
+| `npc` | NPC brains that plan, quests, dialogue and animals |
+| `net` | Multiplayer over ENet and WebSocket, with replication and RPCs |
+| `xr` | The XR server, trackers and XR nodes, and OpenXR |
+| `library` | The asset library: generated and added assets, their generators and feedback |
+| `storyboard` | Storyboard files: kinds, checks, versions, queries, edits and style memory |
+| `soundtrack` | Scores, MIDI files, rendered stems and cue sheets |
+| `ai` | Language model providers behind one interface, and the `ai.*` commands |
 | `command` | Commands, sessions with undo, JSON-RPC and MCP |
 | `server` | The localhost HTTP server over a session |
+| `debug` | The debug overlay over a running game |
+| `autopilot` | Playtests by Autopilot's agent or the engine's own |
 | `gameplay` | Loading a game's own C++ code into a world, and swapping it when it is rebuilt |
+| `plugin` | Plugins over a stable C interface, as Godot's GDExtension |
 | `runtime` | Project files and the game executable every export is built from |
 
 The tools in `tools/` are thin front ends over these: `slash-cli` (run, validate, call, serve,
-init, build, export), `slash-mcp` (MCP over stdio) and `slash-game` (runs a project as its export
-would).
+init, build, import, export), `slash-mcp` (MCP over stdio) and `slash-game` (runs a project as its
+export would), with the libraries they share: `exporter`, `importer` (Godot, Unity and Unreal
+Engine projects) and `shader_compiler`.
 
 ## World, entities and components
 
@@ -564,6 +583,35 @@ the displays and their refresh rates, and `perf.stats` shows whether frames arri
 runs ignore both and run one tick per frame, as fast as they can. The [frame-pacing
 example](../examples/frame-pacing/) uses all three commands.
 
+## Building worlds
+
+Past Godot's nodes, the engine has tools for agents to fill a world at a fraction of the work
+by hand. Each follows one pattern, so learning one teaches the rest:
+
+- **A recipe file says what a thing is.** A `.character.json` body, face, hair and clothes, a
+  `.creature.json` animal, a `.vehicle.json` car, boat or aircraft with its own physics, a
+  `.foliage.json` plant, a `.groom.json` head of hair, a `.damage.json` material's way of
+  breaking, a `.vfx.json` effect, a `.fluid.json` liquid or smoke and a `.water.json` lake or
+  river. Recipes `extends` others and are checked by `scene validate` like any file.
+- **The same recipe works in 2D and 3D.** In 3D it builds a model and simulates on Jolt; in 2D it
+  becomes a side-on cut-out or sprite that simulates on Box2D.
+- **Commands place, check and preview.** `character.place`, `creature.place`, `vehicle.place`,
+  `fluid.place`, `water.place` and `vfx.play` put one in a scene; `character.check`,
+  `vehicle.check`, `damage.check`, `vfx.check` and `fluid.check` hold it to the storyboard's
+  rules or its own design and say what is off as numbers; previews draw it in a private session.
+- **One simulation.** Wind, physics fields and physics materials act on every kind of body, so a
+  gust bends grass, flaps a cape and pushes a boat, and a blast breaks a wall, knocks a ragdoll
+  down and scatters smoke. Results are the same on every machine, so replays and tests hold.
+- **Procedural graphs drive them all.** A `.pcg.json` graph samples points over ground, paths or
+  areas, thins and moves them, and places any of the above at them, seeded so the world repeats
+  and checked against budgets and navigation.
+- **NPCs that plan.** `.npc.json` brains choose goals and plan actions; quests, dialogue and
+  daily routes give them stories, and animals graze, herd, flee and hunt.
+
+The [roadmap](roadmap.md#agent-built-worlds-and-smart-npcs) lists each tool, and
+[scene-format.md](reference/scene-format.md) and [commands.md](reference/commands.md) describe
+their files and commands.
+
 ## Commands
 
 A **command** is a named action such as `entity.create`, `world.query` or `scene.save`. Each one
@@ -743,9 +791,11 @@ while the server runs) to every client that connects.
 ## Model agnostic
 
 Nothing in SlashEngine depends on one AI vendor. Agents connect through open protocols (MCP,
-JSON-RPC, HTTP), and any model that can call tools can drive the engine. A later milestone adds an
-`ai::Provider` interface for in-game features that call a model, with adapters for
-OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
+JSON-RPC, HTTP), and any model that can call tools can drive the engine. Features that call a
+model themselves (in-game dialogue, translation drafts, storyboard and asset reviews, NPC brains,
+the playtest agent) go through the `ai::Provider` interface, with adapters for OpenAI-compatible
+servers (including local ones), OpenAI's Responses API, Anthropic and Gemini; see
+[providers.md](reference/providers.md) and the
 [design](design.md#model-agnostic-provider-interface).
 
 ## Glossary
