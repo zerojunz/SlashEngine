@@ -15,6 +15,7 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <map>
 #include <memory>
 #include <numbers>
 #include <optional>
@@ -705,6 +706,21 @@ Result<json::Value> generate_ragdoll(const Model& model, const RagdollOptions& o
     const auto chosen_has = [&](int node) {
         return std::ranges::find(chosen, node) != chosen.end();
     };
+    // The anatomy's bones each chosen bone carries: those its own bone moves, and those of bones
+    // under it whose nearest chosen bone it is.
+    std::map<int, std::vector<world::AnatomyPiece>> carried;
+    if (options.anatomy != nullptr) {
+        for (const world::AnatomyBone& each : options.anatomy->bones) {
+            int node = find_node(model, each.bone);
+            while (node >= 0 && !chosen_has(node)) {
+                node = model.nodes[static_cast<std::size_t>(node)].parent;
+            }
+            if (node >= 0) {
+                std::vector<world::AnatomyPiece>& into = carried[node];
+                into.insert(into.end(), each.pieces.begin(), each.pieces.end());
+            }
+        }
+    }
 
     // The skeleton's height, for sizes of last resort and what counts as too short.
     float low = std::numeric_limits<float>::max();
@@ -786,18 +802,60 @@ Result<json::Value> generate_ragdoll(const Model& model, const RagdollOptions& o
         if (!sphere) {
             radius = std::min(radius, 0.45F * span);
         }
+        if (sphere && below.empty()) {
+            center = start;
+        }
+        // The skin's volume weighs the body; with an anatomy, its bones shape it.
+        const float volume = sphere ? 4.0F / 3.0F * kPi * radius * radius * radius
+                                    : (kPi * radius * radius * span) +
+                                          (4.0F / 3.0F * kPi * radius * radius * radius);
+        if (const auto bones_in = carried.find(node);
+            bones_in != carried.end() && !bones_in->second.empty()) {
+            const std::vector<world::AnatomyPiece>& pieces = bones_in->second;
+            const float skin = radius;
+            if (sphere) {
+                // Round the middle of the bones' bounds.
+                Vec3 lo{std::numeric_limits<real_t>::max(), std::numeric_limits<real_t>::max(),
+                        std::numeric_limits<real_t>::max()};
+                Vec3 hi = lo * static_cast<real_t>(-1.0F);
+                for (const world::AnatomyPiece& piece : pieces) {
+                    for (const Vec3 p : {piece.a, piece.b}) {
+                        lo = {std::min(lo.x, p.x - piece.radius),
+                              std::min(lo.y, p.y - piece.radius),
+                              std::min(lo.z, p.z - piece.radius)};
+                        hi = {std::max(hi.x, p.x + piece.radius),
+                              std::max(hi.y, p.y + piece.radius),
+                              std::max(hi.z, p.z + piece.radius)};
+                    }
+                }
+                center = (lo + hi) * static_cast<real_t>(0.5F);
+                radius = 0.0F;
+                for (const world::AnatomyPiece& piece : pieces) {
+                    for (const Vec3 p : {piece.a, piece.b}) {
+                        radius =
+                            std::max(radius, static_cast<float>(length(p - center) + piece.radius));
+                    }
+                }
+            } else {
+                // Round the axis from the joint to the next, as wide as the bones reach.
+                radius = 0.0F;
+                for (const world::AnatomyPiece& piece : pieces) {
+                    for (const Vec3 p : {piece.a, piece.b}) {
+                        radius = std::max(radius, segment_distance(p, start, end) +
+                                                      static_cast<float>(piece.radius));
+                    }
+                }
+            }
+            // Bones never reach out past the skin.
+            radius = std::max(std::min(radius, skin), 0.01F * height);
+        }
 
         json::Value bone;
         const world::Affine3D to_bone = global.inverse();
-        float volume = 0.0F;
         if (sphere) {
-            if (below.empty()) {
-                center = start;
-            }
             bone["shape"] = "sphere";
             bone["radius"] = rounded(radius);
             bone["offset"] = vec(to_bone.apply(center));
-            volume = 4.0F / 3.0F * kPi * radius * radius * radius;
         } else {
             const Vec3 middle = (start + end) * static_cast<real_t>(0.5F);
             const world::Affine3D along = basis_along(end - start, turn.x);
@@ -809,8 +867,6 @@ Result<json::Value> generate_ragdoll(const Model& model, const RagdollOptions& o
             bone["offset"] = vec(to_bone.apply(middle));
             bone["rotation"] = vec(world::euler(
                 world::Affine3D{.x = local.x, .y = local.y, .z = local.z, .origin = {}}));
-            volume =
-                (kPi * radius * radius * span) + (4.0F / 3.0F * kPi * radius * radius * radius);
         }
         const auto kind = kinds.find(node);
         const Limits limits =

@@ -18,3 +18,6 @@
 {"jsonrpc":"2.0","id":18,"method":"step","params":{"ticks":30}}
 {"jsonrpc":"2.0","id":19,"method":"flesh.get","params":{"id":"bram_2d","muscles":["biceps_front"],"bones":true}}
 {"jsonrpc":"2.0","id":20,"method":"frame.capture","params":{"points":[[80,40],[80,60]]}}
+{"jsonrpc":"2.0","id":21,"method":"ragdoll.generate","params":{"id":"bram"}}
+{"jsonrpc":"2.0","id":22,"method":"ragdoll.generate","params":{"id":"bram_2d"}}
+{"jsonrpc":"2.0","id":23,"method":"ragdoll.hit","params":{"id":"bram_2d","bone":"bram_2d_upper_arm_front","impulse":[0,-400]}}

@@ -4,6 +4,7 @@
 #include "slash/core/result.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/skeleton.hpp"
+#include "slash/world/flesh.hpp"
 #include "slash/world/ragdoll.hpp"
 #include "slash/world/world.hpp"
 
@@ -56,6 +57,11 @@ struct RagdollOptions {
     float pin_damping = 28.0F;
     // Bones shorter than this share of the skeleton's height get no body of their own; 0 for 4%.
     float min_length = 0.0F;
+    // A character's anatomy (world::make_anatomy on its 3D frames), in the model's space: when
+    // given, each body is fitted to the anatomy's bones its bone carries (its own and those of
+    // bones under it with no body) instead of to the skin, and keeps the skin's volume for its
+    // mass. Bones that carry none are fitted to the skin as before.
+    const world::Anatomy* anatomy = nullptr;
 };
 
 // A ragdoll profile for a model's skeleton, as Unreal's physics asset tool makes one: a capsule
@@ -63,7 +69,7 @@ struct RagdollOptions {
 // the vertices the bone moves most, with masses by volume. A humanoid (auto_map_bones finds hips)
 // gets bodies on its main bones only, hinges at elbows and knees and cones elsewhere with limits
 // for each kind of joint, balance on its hips and its get_up animations left to name; another
-// skeleton gets cones on every bone long enough.
+// skeleton gets cones on every bone long enough. With an anatomy, the bodies are its bones.
 [[nodiscard]] Result<json::Value> generate_ragdoll(const Model& model,
                                                    const RagdollOptions& options = {});
 

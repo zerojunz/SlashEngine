@@ -1897,7 +1897,9 @@ simulating bodies toward it as implicit springs, a local drive pushing its paren
 cut-out's `Transform2D` tree with `RigidBody2D`s, `CollisionShape2D`s and `PinJoint2D`s, telling
 the animation's pose from where physics left each bone. `ragdoll.generate`, `ragdoll.hit` and
 `ragdoll.tune` (`engine/command/src/ragdoll.cpp`) make, hit and tune them; `generate_ragdoll`
-fits a profile to a skeleton's skin or a 2D tree. `examples/ragdoll-profiles` knocks a kid down.
+fits a profile to a skeleton's skin or a 2D tree, or, given a character's `world::Anatomy`
+(`RagdollOptions::anatomy`; `ragdoll.generate`'s `fit`), to the anatomy's bones each body's bone
+carries, keeping the skin's mass. `examples/ragdoll-profiles` knocks a kid down.
 
 Bone attachments follow Godot's `BoneAttachment3D` (`engine/scene3d/src/bone_attachment.cpp`):
 at the end of each `skeleton_modifiers` run, `place_attachments` poses each followed model
