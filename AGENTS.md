@@ -147,17 +147,21 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, pcg, physics_material, ragdoll, foliage, groom, damage, character, face, creature, vehicle, vfx, sdk, plugin)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, animtree, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, quest, dialogue, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, pcg, physics_material, ragdoll, foliage, groom, damage, character, face, creature, vehicle, vfx, fluid, water, storyboard, project, presets, sdk, plugin, providers, bench)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
 ```
 
 Validate after editing a scene or prefab by hand, and format before committing one. Both
-commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
-`.process_material.json`, `.tileset.json`,
-`.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
-`.score.json`, `.navmesh.json`, `.navpoly.json`, `.npc.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`, `.scatter.json`, `.pcg.json`, `.physics_material.json`, `.ragdoll.json`, `.foliage.json`, `.groom.json`, `.damage.json`, `.character.json`, `.face.json`, `.creature.json`, `.vehicle.json` and `.vfx.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
+commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`, `.animtree.json`,
+`.process_material.json`, `.tileset.json`, `.font.json`, `.theme.json`, `.audio.json`,
+`.bus_layout.json`, `.replay.json`, `.test.json`, `.score.json`, `.navmesh.json`,
+`.navpoly.json`, `.npc.json`, `.quest.json`, `.dialogue.json`, `.meshlib.json`,
+`.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`,
+`.scatter.json`, `.pcg.json`, `.physics_material.json`, `.ragdoll.json`, `.foliage.json`,
+`.groom.json`, `.damage.json`, `.character.json`, `.face.json`, `.creature.json`,
+`.vehicle.json`, `.vfx.json`, `.fluid.json` and `.water.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -3218,9 +3222,9 @@ CI rejects unformatted code and any clang-tidy finding.
   `kPascalCase` constants.
 - Headers live in `engine/<module>/include/slash/<module>/`, sources in `engine/<module>/src/`.
   Modules: `core` (Result, logging, JSON, reflection, math, the job system), `platform` (SDL3 window, run loop,
-  files and folder listings, child processes), `procedural` (FastNoiseLite noise, gradients and `.texture.json` procedural textures), `render` (the render device over SDL3's GPU API and OpenGL 3.3 / OpenGL ES 3.0 / WebGL 2,
+  files and folder listings, child processes), `procedural` (FastNoiseLite noise, gradients, `.texture.json` procedural textures, `.scatter.json` rules, `.pcg.json` graphs and foliage painting), `render` (the render device over SDL3's GPU API and OpenGL 3.3 / OpenGL ES 3.0 / WebGL 2,
   the software and null devices, HLSL shaders, material programs, 2D light shading, particles and 3D meshes), `asset` (asset handles, loaders, hot reload),
-  `world` (EnTT world, components, scenes and prefabs, 2D and 3D trees), `input` (input events, action maps,
+  `world` (EnTT world, components, scenes and prefabs, 2D and 3D trees, and what both dimensions share: wind, physics materials and fields, damage profiles, ragdoll profiles, hair, character, face, flesh, creature and vehicle recipes, visual effects, particle simulation, fluids and water), `input` (input events, action maps,
   the input state and reading SDL's events), `l10n` (translation files, locales, plural rules,
   lookups and pseudo-localization), `audio` (sound files and streams, the mixer, buses
   and effects, players, videos' sound and SDL's audio output), `video` (AV1 video files in IVF, WebM and Matroska, decoding with dav1d,
@@ -3228,12 +3232,11 @@ CI rejects unformatted code and any clang-tidy finding.
   plays `VideoStreamPlayer`s), `services` (ads, analytics, in-app
   purchases, achievements and leaderboards, their backends and the test backend), `canvas` (sprites, `.frames.json`
   animations, `.material.json` materials, `.tileset.json` tile maps, 2D lights and shadows, CPU
-  particles, GPU particles' steps and drawing them), `text` (fonts, shaping, line breaking, carets and selections, and glyph atlases), `ui`
+  particles, GPU particles' steps and drawing them, 2D reflections and screen distortion), `text` (fonts, shaping, line breaking, carets and selections, and glyph atlases), `ui`
   (controls, containers and themes: layout, draw calls, buttons, focus and text fields),
   `accessibility` (screen readers through AccessKit's adapters), `animation` (`.anim.json` keyframe
   animations, `.animtree.json` animation trees and the systems that play them),
-  `scene3d` (3D nodes: primitive meshes, glTF, OBJ, FBX and Blender models, CSG shapes, grid maps, materials, cameras, lights and environments,
-  and drawing them), `physics2d` (2D bodies, areas, joints, queries and vehicles on Box2D), `physics3d` (3D bodies, areas, character movement, queries and vehicles on Jolt), `navigation` (navigation meshes, maps, paths and agents), `npc` (NPC brains, goal-oriented action planning and the system that runs agents' plans), `net` (multiplayer peers, the ENet transport, a world's multiplayer and RPCs), `xr` (the XR server, interfaces, trackers, XR nodes, the test headset and OpenXR), `library` (the asset library, its
+  `scene3d` (3D nodes: primitive meshes, glTF, OBJ, FBX and Blender models, model recipes, CSG shapes, grid maps, terrains, materials, cameras, lights and environments, skeletons, IK and ragdolls, characters, creatures and vehicles built as models, fracture, and drawing them), `physics2d` (2D bodies, areas, joints, queries, vehicles, ragdolls, cloth, hair, destruction and the fluids' and water's 2D host on Box2D), `physics3d` (3D bodies, areas, character movement, queries, vehicles, soft bodies and cloth, hair, destruction and the fluids' and water's 3D host on Jolt), `navigation` (navigation meshes, maps, paths and agents), `npc` (NPC brains, goal-oriented action planning, the system that runs agents' plans, quests, dialogue and fauna), `net` (multiplayer peers, the ENet transport, a world's multiplayer and RPCs), `xr` (the XR server, interfaces, trackers, XR nodes, the test headset and OpenXR), `library` (the asset library, its
   generators and commands), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `soundtrack` (`.score.json` scores, MIDI files, rendering stems, drafting cue sheets and arranging them),
   `command` (commands, sessions with undo, JSON-RPC and MCP),

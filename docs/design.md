@@ -17,7 +17,7 @@ SlashEngine is a small C++20 game engine whose primary user is an AI agent: ever
 **Non-goals (for the first release)**
 
 - A visual editor. Humans use their text editor, a debug overlay, and their agent.
-- Matching UE5's flagship systems (Nanite, Lumen, MetaHuman) in the first releases. They are research items on the parity table.
+- Matching UE5's flagship rendering systems (Nanite, Lumen) in the first releases. They are research items on the parity table. (MetaHuman-style characters started as research too, and the character, face and hair tools now build them from recipes.)
 - A custom scripting language. Gameplay is C++ plus a hot-reload layer, so agents can still edit it live.
 - Bundling or hosting a model. The engine calls models; it never ships weights.
 
@@ -118,11 +118,11 @@ SlashEngine covers nearly every Godot 4 feature area at launch and adds UE5 feat
 | Analytics, ads and in-app purchases | Plugins (Google Play Billing, StoreKit) | Online Subsystem, in-app purchase APIs | One cross-platform API and command set, like Unity's Analytics, Ads and IAP; StoreKit, Play Billing and a developer-chosen analytics endpoint in the repo, ad networks as adapters outside it | Launch |
 | Closed vendor SDKs | Android and iOS plugins, GDExtension | Plugins, ThirdParty modules, UPL | SDK packages: an `sdk.json` per SDK naming its binaries for each platform, fetched, checked and linked by exports, with JNI and Objective-C bridges and engine interfaces for the glue code | Launch |
 | One-command export | Export templates per platform | Packaging per platform | slash-cli export to macOS, Windows, Linux, iOS, Android and web | Launch |
-| Procedural generation | Noise textures | PCG framework | FastNoiseLite noise and noise and gradient textures, scatter rules agents write, and procedural content imported from Blender, Houdini and terrain tools | Launch |
-| Large worlds | Double-precision builds | World Partition, large world coordinates | Double-precision transforms, world streaming | After launch |
-| Cinematics | AnimationPlayer, cameras | Sequencer | Timeline tracks for cameras and events | After launch |
-| Cloth and soft bodies | SoftBody3D | Chaos Cloth | Jolt soft bodies | After launch |
-| Destruction | None built in | Chaos Destruction | Fracture and debris on Jolt | After launch |
+| Procedural generation | Noise textures | PCG framework | FastNoiseLite noise and noise and gradient textures, scatter rules agents write, `.pcg.json` graphs that drive every world tool, and procedural content imported from Blender, Houdini and terrain tools | Launch |
+| Large worlds | Double-precision builds | World Partition, large world coordinates | Double-precision transforms, world streaming | After launch (done before launch) |
+| Cinematics | AnimationPlayer, cameras | Sequencer | Timeline tracks for cameras and events | After launch (done before launch) |
+| Cloth and soft bodies | SoftBody3D | Chaos Cloth | Jolt soft bodies | After launch (done before launch) |
+| Destruction | None built in | Chaos Destruction | Fracture and debris on Jolt | After launch (done before launch) |
 | Wind | Area3D wind (soft bodies) | Wind Directional Source | One world wind field of sources and areas, read by vegetation shaders, soft bodies, cloth and particles | Launch |
 | Foliage | MultiMesh, plugins | Foliage tool, grass | Painted and scattered grass, flowers, shrubs, bushes, trees, moss and rocks kept per cell, instanced batches, impostors, wind bending and characters' interactions | Launch |
 | Light tools | Light temperature, projectors, physical units | IES profiles, light functions, Lumen tuning | Temperature, projectors, IES profiles, light functions and `light.tune` toward `lighting.check` targets | Launch |
@@ -132,14 +132,14 @@ SlashEngine covers nearly every Godot 4 feature area at launch and adds UE5 feat
 | Fauna | None built in | Plugins, Mass AI | Distinct animals from creature recipes, with brains for flocking, grazing, fleeing and hunting, placed in habitats, reacting to characters | Launch |
 | Vehicle design | VehicleBody3D, VehicleWheel3D | Chaos Vehicles | Cars, bikes, tracked vehicles, boats and aircraft from vehicle recipes, each with its own tuned physics (engine, gears, suspension, tires, buoyancy, lift), seats characters drive from and contacts that push and hurt characters and creatures | Launch |
 | Damage design | None built in | Chaos Destruction, Geometry Collections | Real-time damage (fracture at the impact as it happens, re-fracture, stress through connected pieces, dents, tears, carving), plus damage profiles by material, damage states and optional authored fracture patterns, connected and anchored pieces, terrain craters, with debris, decals and sounds | Launch |
-| VFX design | GPUParticles3D, particle shaders | Niagara | Effect recipes layering particles, ribbons, flipbooks, decals, lights, distortion, camera shakes and sounds on one timeline, with parameters, attachment and budgets | Launch |
+| VFX design | GPUParticles3D, particle shaders | Niagara | Effect recipes layering particles, ribbons, flipbooks, decals, lights, distortion, camera shakes and sounds on one timeline, with parameters, attachment and budgets; particle simulation stages (neighbors, curl noise, collision, attributes and events) on CPU particles and, for the neighbor, curl, drag and speed stages, on every GPU device | Launch |
 | Fluids and smoke | None | Niagara Fluids (grids), Water | Gridless liquids and gases: position-based fluid particles, gas particles with temperature and vortices, screen-space liquid surfaces, Gerstner oceans with foam and buoyancy, in 2D and 3D | Launch |
 | Character anatomy and faces | Humanoid skeleton profile | MetaHuman Creator, Chaos Flesh | A full humanoid rig with fingers, eyes, jaw and twist bones; anatomical bones and muscles; `.face.json` faces sculpted by region controls and presets, skin detail, ARKit shapes, styled from the storyboard, in 2D and 3D | Launch |
 | One simulation | Jolt module (rigid, soft bodies, ragdolls, vehicles) | Chaos Physics, Chaos Fields, Chaos Cloth, Chaos Cache, Chaos Visual Debugger | Every tool's assets simulate in one Jolt space: shared physics materials and assets, individual ragdoll profiles per character and creature (active ragdolls blending with animation, hit reactions, getting up), fields acting on every kind of body, character cloth, substepping, recorded caches and a debugger record agents read | Launch |
 | Style memory | None built in | None built in | Storyboard style references marked from scenes, assets, frames, materials and lighting, with measured fingerprints; style.check reports drift in numbers and words, prompts and checks every generator and tool, test.run fails drift | Launch |
-| Virtualized geometry | None built in | Nanite | Meshlet rendering research | Research |
-| Fully dynamic GI at UE quality | SDFGI (partial) | Lumen | Research after probe GI ships | Research |
-| Digital humans | None built in | MetaHuman | Research; out of scope for releases | Research |
+| Virtualized geometry | None built in | Nanite | Research spike: cluster hierarchies cut per camera on the CPU, culled and streamed in pages | Research |
+| Fully dynamic GI at UE quality | SDFGI (partial) | Lumen | Research spike: Godot's SDFGI on the CPU, on the software device | Research |
+| Digital humans | None built in | MetaHuman | Built by the character, face, anatomy and hair tools above; the research note records the parts they needed | Launch |
 
 The Godot and UE5 columns come from their public feature lists, not a line-by-line audit; treat them as a starting checklist.
 
@@ -461,29 +461,50 @@ SlashEngine/
   CMakeLists.txt, CMakePresets.json
   AGENTS.md          # how an agent builds, tests and drives the engine
   engine/
-    core/            # memory, Result, logging, math, jobs, reflection
-    platform/        # SDL3 wrapper: window, input, audio, files
+    core/            # Result, logging, JSON, math, jobs, reflection, expressions
+    platform/        # SDL3 wrapper: window, run loop, files, child processes
+    procedural/      # noise, gradients, procedural textures, scatter rules, PCG graphs
     asset/           # asset handles, loaders and hot reload of asset files
-    render/          # RenderDevice, SDL GPU + null backends, images, 3D passes
-    world/           # ECS, scenes, prefabs, serialization
+    render/          # RenderDevice: SDL GPU, OpenGL, WebGPU, software and null devices
+    world/           # ECS, scenes, prefabs, trees, and the recipes both dimensions share
     input/           # input events, rebindable action maps, the input state, SDL events
+    l10n/            # translation files, locales and lookups
+    audio/           # sound files and streams, the mixer, buses, effects, players
+    video/           # AV1 video in IVF, WebM and Matroska
+    services/        # ads, analytics, purchases, achievements and leaderboards
     canvas/          # 2D drawing like Godot's canvas: sprites, materials, tilemaps, lights, particles
-    scene3d/         # 3D nodes like Godot's: primitive meshes, materials, cameras, lights
+    text/            # fonts, shaping, line breaking and glyph atlases
+    ui/              # controls, containers, themes, buttons, focus and text fields
+    accessibility/   # screen readers through AccessKit
+    animation/       # keyframe animations, animation trees, the systems that play them
+    scene3d/         # 3D nodes like Godot's: meshes, models, CSG, terrain, lights, characters
+    physics2d/       # Box2D: bodies, joints, vehicles, ragdolls, cloth, destruction
+    physics3d/       # Jolt: bodies, joints, vehicles, soft bodies, cloth, destruction
+    navigation/      # navigation meshes, maps, paths, agents and avoidance
+    npc/             # NPC planning, quests, dialogue and fauna
+    net/             # multiplayer peers, ENet and WebSocket, replication and RPCs
+    xr/              # the XR server, trackers, XR nodes and OpenXR
     command/         # Command registry, undo, JSON-RPC and MCP
     server/          # localhost HTTP: REST mirror, OpenAPI, JSON-RPC and MCP
+    debug/           # the debug overlay over a running game
+    autopilot/       # Autopilot playtests and the built-in playtest agent
     runtime/         # project.json, the game loop and every game's main()
     gameplay/        # loads and swaps the game's C++ code, keeps world state
+    plugin/          # plugins over the stable C interface
     ai/              # optional: Provider interface and adapters
     library/         # optional: asset library, generators and feedback
-    storyboard/      # storyboard files, briefs, checks and the project map
+    storyboard/      # storyboard files, briefs, checks and style memory
+    soundtrack/      # scores, MIDI, rendered stems and cue arrangement
   tools/
     exporter/        # export presets, building, signing and the export.run command
+    importer/        # Godot, Unity and Unreal Engine projects into SlashEngine ones
+    shader_compiler/ # games' HLSL shaders for every backend
     slash-mcp/       # MCP over stdio, or forwarded to a running game
     slash-cli/       # run, export, format, validate scenes headless
     slash-game/      # runs a project the way its exports do
   export/            # CMake project that builds one game for one platform
-  samples/pong/      # smallest complete game, built by an agent end to end
   examples/          # one small working example per feature, built and run in CI
+  bench/             # agent tasks whose calls and tokens CI holds to a baseline
   tests/
 ```
 
@@ -497,9 +518,12 @@ SlashEngine/
 6. **Hot reload, AI and profiling.** Hot-reloadable C++ game module with `build.check`, SDK packages for closed vendor SDKs, `api.search`, `playtest.run` with tuning sweeps, Autopilot playtests and a built-in playtest agent, `ai::Provider` with three adapters and `ReplayProvider`, the asset library and generator for images and audio, storyboard review by a model and the project map, soundtracks, the job system, Tracy, `perf.stats` and the per-system memory report.
 7. **3D feature set.** Forward+ PBR renderer, shadows, post-processing, GI, ray tracing, path-traced lightmaps and reference stills, upscalers, sky, decals, LODs, Jolt physics, skeletal animation and blending, navigation, terrain, CSG, glTF and FBX import, and 3D in the asset library: parametric models, game-ready cleanup, automatic review, rigging and scene assembly. Exit: an agent builds a small 3D sample end to end.
 8. **Systems and platform services.** Networking, XR, localization, video, accessibility, procedural generation, and analytics, ads and in-app purchases behind one API with a headless test backend.
+
+Before launch, the agent-built worlds tool set (roadmap: [Agent-built worlds and smart NPCs](roadmap.md#agent-built-worlds-and-smart-npcs)): planning NPCs with stories, wind, style memory, one simulation with ragdoll profiles, foliage, light tools, hair, characters with faces and anatomy, fauna, vehicles, damage, visual effects, fluids and water, and procedural graphs that drive them all, each in 2D and 3D.
+
 9. **Launch.** Every Launch row of the parity table done, the Mac engine and tools released, exports for all six platforms, reference docs generated from `engine.describe`.
 
-After launch: Windows and Linux hosts for the engine and tools, then the After launch rows.
+After launch: Windows and Linux hosts for the engine and tools (done: CI builds, tests and packages the tools on both), then the After launch rows (done as well).
 
 **Open questions**
 

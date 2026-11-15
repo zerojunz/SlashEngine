@@ -170,32 +170,24 @@ Usage:
                                      role or provider from providers.json (no Autopilot
                                      install or account needed)
       --autopilot-turns <n>          The agent's turns at most (default 60)
-  slash-cli scene validate <file>    Check a scene, .prefab.json, .frames.json,
-                                     .material.json, .process_material.json, .anim.json,
-                                     .animtree.json, .tileset.json, .font.json, .theme.json,
-                                     .audio.json, .bus_layout.json, .navmesh.json,
-                                     .navpoly.json, .npc.json, .meshlib.json, .standard_material.json,
-                                     .lightmap.json, .voxelgi.json, .texture.json, .replay.json,
-                                     .test.json or .score.json
-                                     file; lists every error
-  slash-cli scene format <file>      Rewrite one of those files in canonical form
+  slash-cli scene validate <file>    Check a scene, prefab, model or any file `schema` names
+                                     by its suffix (.frames.json, .tileset.json, .npc.json,
+                                     .pcg.json, .vfx.json and the rest); lists every error
+  slash-cli scene format <file>      Rewrite one of those files in canonical form (not a
+                                     .gltf, .glb, .obj, .fbx or .blend model)
       --check                        Only report whether it is canonical; change nothing
-  slash-cli schema <name>            Print a JSON Schema: scene, prefab, frames (.frames.json),
-                                     material (.material.json), process_material
-                                     (.process_material.json), animation (.anim.json),
-                                     animtree (.animtree.json), tileset (.tileset.json), font (.font.json), theme
-                                     (.theme.json), audio (.audio.json), bus_layout
-                                     (.bus_layout.json), navmesh (.navmesh.json), navpoly
-                                     (.navpoly.json), npc (.npc.json), meshlib (.meshlib.json),
-                                     standard_material
-                                     (.standard_material.json), lightmap
-                                     (.lightmap.json), voxel_gi (.voxelgi.json), texture
-                                     (.texture.json), replay
-                                     (.replay.json), test (.test.json), score
-                                     (.score.json), storyboard, project
-                                     (project.json), presets (export_presets.json), sdk
-                                     (sdk.json), plugin (.plugin.json), providers
-                                     (providers.json) or bench (a benchmark task's task.json)
+  slash-cli schema <name>            Print a JSON Schema: scene, prefab, frames, material,
+                                     process_material, animation (.anim.json), animtree,
+                                     tileset, font, theme, audio, bus_layout, navmesh, navpoly,
+                                     npc, quest, dialogue, meshlib, lightmap, voxel_gi
+                                     (.voxelgi.json), model, standard_material, texture,
+                                     scatter, pcg, physics_material, ragdoll, foliage, groom,
+                                     damage, character, face, creature, vehicle, vfx, fluid,
+                                     water, replay, test, score (each its .<name>.json file),
+                                     storyboard, project (project.json), presets
+                                     (export_presets.json), sdk (sdk.json), plugin
+                                     (.plugin.json), providers (providers.json) or bench (a
+                                     benchmark task's task.json)
   slash-cli project validate [dir]   Check project.json, export_presets.json, providers.json,
                                      plugin files, the project's theme, bus layout,
                                      translations, storyboard and SDK packages; lists

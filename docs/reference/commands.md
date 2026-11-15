@@ -1030,7 +1030,7 @@ and `rider` when it has them, `fed`, `hunger`, `position` (meters in 3D, pixels 
 
 ## Vehicles
 
-Placing, driving, tuning and test-driving [vehicles](scene-format.md#vehicles).
+Placing, driving, tuning and test-driving [vehicles](scene-format.md#vehicle-recipes).
 [examples/vehicles](../../examples/vehicles/).
 
 ### vehicle.place
@@ -1093,7 +1093,7 @@ is untouched. Needs: `read`.
 ### vehicle.design
 
 Writes a `.vehicle.json` file (`path`) an agent designed: `recipe` is the file's JSON, with its
-body, [`parts`](scene-format.md#vehicles), seats, wheels, physics and `extends`. It is checked as
+body, [`parts`](scene-format.md#vehicle-recipes), seats, wheels, physics and `extends`. It is checked as
 the file would be, then test-driven as `vehicle.check` drives it (in `space` `"3d"`, the
 default, or `"2d"` at `pixels_per_meter`), up to `iterations` times (`4`, at most 8), its physics
 fitted after each drive toward the `targets` until every measure is within a tenth of its
@@ -4701,7 +4701,7 @@ images or a frame of another size is an error at its `/frames/<i>`. Nothing is w
 Translations, as Godot's TranslationServer: `project.json`'s
 [`internationalization`](project-format.md#internationalization) lists CSV and gettext `.po` and
 `.mo` files, and controls show their text in the game's locale as their
-`Control.auto_translate_mode` says (see [scene-format.md](scene-format.md#control)). Games start
+`Control.auto_translate_mode` says (see [scene-format.md](scene-format.md#translated-text)). Games start
 in the player's locale; sessions start in the project's `test` locale, else its fallback, so they
 repeat on every machine. The examples here are from
 [examples/localization](../../examples/localization/), a title menu in French, Arabic and Polish.
