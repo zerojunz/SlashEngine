@@ -6,7 +6,9 @@
 #include "slash/physics2d/ragdoll.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/ragdoll.hpp"
+#include "slash/world/character.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/flesh.hpp"
 #include "slash/world/ragdoll.hpp"
 
 #include <algorithm>
@@ -136,11 +138,42 @@ Options options_of(const json::Value& params) {
     return options;
 }
 
+// What ragdoll.generate fits its bodies to: "auto" (the default), "anatomy" or "skin".
+std::string fit_of(const json::Value& params) {
+    const json::Value* fit = params.find("fit");
+    return fit != nullptr ? fit->as_string() : "auto";
+}
+
+Reply no_anatomy(std::string_view why) {
+    return param_error(code::kInvalidParams, "/fit",
+                       "anatomy needs a character: " + std::string(why) +
+                           R"(; give "skin" or "auto")");
+}
+
 // A 2D profile from the Transform2D tree under an entity, set as its Ragdoll2D's.
 Reply ragdoll_generate_2d(Session& session, const json::Value& params, entt::entity entity) {
     world::World& world = session.world();
-    auto made =
-        physics2d::generate_ragdoll(world, entity, options_of<physics2d::RagdollOptions>(params));
+    auto options = options_of<physics2d::RagdollOptions>(params);
+    const std::string fit = fit_of(params);
+    world::Anatomy anatomy;
+    if (fit != "skin") {
+        const auto* character = world.ecs().try_get<const world::Character2D>(entity);
+        if (character == nullptr) {
+            if (fit == "anatomy") {
+                return no_anatomy(quoted(world.id_of(entity)) + " has no Character2D");
+            }
+        } else if (auto recipe = world::load_character(world, character->recipe); !recipe) {
+            if (fit == "anatomy") {
+                return no_anatomy(quoted(character->recipe) +
+                                  " can't be read: " + recipe.error().message);
+            }
+        } else {
+            anatomy = world::make_anatomy(
+                *recipe.value(), world::body_frames_2d(world::character_measures(*recipe.value())));
+            options.anatomy = &anatomy;
+        }
+    }
+    auto made = physics2d::generate_ragdoll(world, entity, options);
     if (!made) {
         return param_error(code::kInvalidParams, "/id", made.error().message);
     }
@@ -157,6 +190,7 @@ Reply ragdoll_generate_2d(Session& session, const json::Value& params, entt::ent
     if (ragdoll.profile != out) {
         ragdoll.profile = out;
     }
+    result["fit"] = options.anatomy != nullptr ? "anatomy" : "skin";
     return Reply::success(std::move(result));
 }
 
@@ -193,8 +227,26 @@ Reply ragdoll_generate(Session& session, const json::Value& params) {
         return param_error(code::kInvalidParams, params.find("model") != nullptr ? "/model" : "/id",
                            quoted(model_path) + " can't be loaded: " + loaded.error().message);
     }
-    auto made =
-        scene3d::generate_ragdoll(*loaded.value(), options_of<scene3d::RagdollOptions>(params));
+    auto options = options_of<scene3d::RagdollOptions>(params);
+    const std::string fit = fit_of(params);
+    world::Anatomy anatomy;
+    if (fit != "skin") {
+        const std::string_view file = asset::file_of(model_path);
+        if (!world::is_character_path(file)) {
+            if (fit == "anatomy") {
+                return no_anatomy(quoted(model_path) + " is no .character.json recipe");
+            }
+        } else if (auto recipe = world::load_character(world, file); !recipe) {
+            if (fit == "anatomy") {
+                return no_anatomy(quoted(model_path) + " can't be read: " + recipe.error().message);
+            }
+        } else {
+            anatomy = world::make_anatomy(
+                *recipe.value(), world::body_frames_3d(world::character_measures(*recipe.value())));
+            options.anatomy = &anatomy;
+        }
+    }
+    auto made = scene3d::generate_ragdoll(*loaded.value(), options);
     if (!made) {
         return param_error(code::kInvalidParams, params.find("model") != nullptr ? "/model" : "/id",
                            made.error().message);
@@ -212,6 +264,7 @@ Reply ragdoll_generate(Session& session, const json::Value& params) {
         return written;
     }
     result["humanoid"] = file.find("balance") != nullptr;
+    result["fit"] = options.anatomy != nullptr ? "anatomy" : "skin";
     if (entity != entt::null) {
         auto& ragdoll = world.ecs().get_or_emplace<world::Ragdoll3D>(entity);
         if (ragdoll.profile != out) {
@@ -355,6 +408,10 @@ void register_ragdoll_commands(Registry& registry) {
     json::Value out = property("string", "The .ragdoll.json file to write. Default: the model's "
                                          "path as .ragdoll.json; 2D: ragdolls/<id>.ragdoll.json.");
     out["minLength"] = 1;
+    json::Value fit = property("string", "What bodies fit: \"anatomy\" (a character's bones), "
+                                         "\"skin\" or \"auto\" (anatomy for a .character.json "
+                                         "model or Character2D, else skin). Default auto.");
+    fit["enum"] = json::Array{"auto", "anatomy", "skin"};
     registry.add({
         .name = "ragdoll.generate",
         .description = "Writes a ragdoll profile fitted to a model's skeleton, as Unreal's physics "
@@ -370,6 +427,7 @@ void register_ragdoll_commands(Registry& registry) {
                                    "of a 2D character's Transform2D tree.")},
                 {"model", std::move(model)},
                 {"out", std::move(out)},
+                {"fit", std::move(fit)},
                 {"mass", positive("Kilograms the bodies weigh together. Default 70.")},
                 {"stiffness", positive("The muscles' stiffness. Default 400.")},
                 {"damping", positive("The muscles' damping. Default 40.")},

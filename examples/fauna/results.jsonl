@@ -24,6 +24,6 @@
 {"id":24,"jsonrpc":"2.0","result":{"tick":360,"ticks":30}}
 {"id":25,"jsonrpc":"2.0","result":{"count":26,"entities":["doe_body","doe_head","doe_leg_back_far","doe_leg_back_near","doe_leg_front_far","doe_leg_front_near","doe_neck","doe_tail","minnow_1_body","minnow_1_head","minnow_1_tail","minnow_2_body","minnow_2_head","minnow_2_tail","minnow_3_body","minnow_3_head","minnow_3_tail","minnow_4_body","minnow_4_head","minnow_4_tail","minnow_5_body","minnow_5_head","minnow_5_tail","minnow_6_body","minnow_6_head","minnow_6_tail"],"truncated":false}}
 {"id":26,"jsonrpc":"2.0","result":{"creatures":[{"hunger":0.01,"id":"doe","mode":"idle","position":[30.0,85.0],"recipe":"fauna/doe.creature.json","speed":0.0}]}}
-{"id":27,"jsonrpc":"2.0","result":{"bones":["body","head","leg_back_far","leg_back_near","leg_front_far","leg_front_near","neck","tail"],"humanoid":false,"out":"fauna/deer.ragdoll.json"}}
-{"id":28,"jsonrpc":"2.0","result":{"bones":["doe_body","doe_head","doe_leg_back_far","doe_leg_back_near","doe_leg_front_far","doe_leg_front_near","doe_neck","doe_tail"],"out":"fauna/doe.ragdoll.json"}}
+{"id":27,"jsonrpc":"2.0","result":{"bones":["body","head","leg_back_far","leg_back_near","leg_front_far","leg_front_near","neck","tail"],"fit":"skin","humanoid":false,"out":"fauna/deer.ragdoll.json"}}
+{"id":28,"jsonrpc":"2.0","result":{"bones":["doe_body","doe_head","doe_leg_back_far","doe_leg_back_near","doe_leg_front_far","doe_leg_front_near","doe_neck","doe_tail"],"fit":"skin","out":"fauna/doe.ragdoll.json"}}
 {"error":{"code":-32602,"data":{"path":"/recipe"},"message":"/recipe: \"fauna/unicorn.creature.json\": no such file; did you mean \"fauna/deer.creature.json\"?"},"id":29,"jsonrpc":"2.0"}
