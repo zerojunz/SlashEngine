@@ -35,7 +35,9 @@
 # buffers, which GLSL ES 3.00 has none of, so there is no GLSL ES, and its MSL comes from SPIR-V
 # compiled with SLASH_MSL defined, as a compute shader's, since Metal numbers storage buffers
 # after the uniforms; its WGSL comes from SPIR-V compiled with SLASH_WGSL defined, so the
-# shader can put them in a bind group of their own.
+# shader can put them in a bind group of their own. With VERTEX_ONLY, only vs_main is compiled,
+# for a variant of another shader's vertex stage that draws with its fragment stages; with
+# STORAGE_BUFFERS too, it is the vertex stage that reads them.
 #
 # WGSL keeps SDL's bind groups, which the HLSL's register spaces name: a vertex stage's uniforms in
 # group 1, a fragment stage's textures in group 2 with their samplers SAMPLER_SHIFT (8 by default)
@@ -203,6 +205,8 @@ if(COMPUTE)
         "inline constexpr const char* k${NAME}ComputeWgsl[] = {\n${wgsl_literals}};\n\n")
 elseif(FRAGMENT_ONLY)
     set(stages frag)
+elseif(VERTEX_ONLY)
+    set(stages vert)
 else()
     set(stages vert frag)
 endif()

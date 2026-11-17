@@ -33,6 +33,8 @@
 #include "mesh_clustered_shaders.hpp"
 #include "mesh_cull.hpp"
 #include "mesh_cull_shaders.hpp"
+#include "mesh_instanced_shaders.hpp"
+#include "mesh_motion_instanced_shaders.hpp"
 #include "mesh_motion_shaders.hpp"
 #include "mesh_normal_shaders.hpp"
 #include "mesh_shaders.hpp"
@@ -713,8 +715,12 @@ public:
             }
         }
         destroy_buffer(skin_poses_buffer_);
-        destroy_buffer(cull_records_);
-        destroy_buffer(cull_args_);
+        for (StorageBuffer* storage : {&cull_records_, &cull_outputs_, &mesh_instances_}) {
+            destroy_buffer(storage->buffer);
+        }
+        if (mesh_instances_group_ != nullptr) {
+            wgpuBindGroupRelease(mesh_instances_group_);
+        }
         if (sdfgi_gather_pipeline_ != nullptr) {
             wgpuRenderPipelineRelease(sdfgi_gather_pipeline_);
         }
@@ -784,6 +790,7 @@ public:
                                            shadow_game_vertex_layout_,
                                            shadow_game_fragment_layout_,
                                            mesh_clusters_layout_,
+                                           mesh_instances_layout_,
                                            shadow_vertex_layout_,
                                            shadow_fragment_layout_,
                                            post_textures_layout_,
@@ -2315,16 +2322,14 @@ public:
         if (capture && capture->face + 1 == kCubeFaces) {
             probe_offsets = add_probe_uniforms();
         }
-        const std::optional<std::uint32_t> cull_at = prepare_cull();
         upload_frame();
 
         WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, nullptr);
         // Particles run and write their quads ahead of the render pass that draws them.
         encode_particle_jobs(encoder, job_uniforms);
         // The camera's passes draw what mesh_cull.hlsl leaves in view, by indirect draws.
-        culled_ = cull_at.has_value();
-        if (cull_at) {
-            encode_cull(encoder, *cull_at);
+        if (!mesh_draws_.empty()) {
+            encode_cull(encoder, mesh_uniforms);
         }
         // The sky and meshes draw first, in a pass of their own, and the 2D draws go over them.
         if (!mesh_draws_.empty()) {
@@ -2786,6 +2791,12 @@ private:
         // shadow pass (a draw count a pass), for those whose shader draws its shadows.
         std::vector<std::uint32_t> games;
         std::vector<std::uint32_t> shadow_games;
+        // The draws in the camera's order (mesh_draw_order), its runs of instances of one draw,
+        // each run's InstanceBase and mesh_cull.hlsl's two passes' uniforms.
+        std::vector<std::size_t> order;
+        std::vector<CullRun> runs;
+        std::vector<std::uint32_t> bases;
+        std::array<std::uint32_t, 2> cull{};
     };
 
     // A shadow atlas: a depth texture the shadow passes draw into and the mesh pass samples.
@@ -3229,14 +3240,21 @@ private:
             mesh_fragment[0], mesh_fragment[1], mesh_fragment[2],
             uniform_entry(3, WGPUShaderStage_Fragment, sizeof(SpatialUniforms))};
         mesh_game_fragment_layout_ = layout(mesh_game_fragment);
+        // mesh_instanced.hlsl's draws' Instances and mesh_cull.hlsl's outputs, which it finds a
+        // run's draws in view in.
+        const std::array mesh_instances{storage_entry(6, true, WGPUShaderStage_Vertex),
+                                        storage_entry(7, true, WGPUShaderStage_Vertex)};
+        mesh_instances_layout_ = layout(mesh_instances);
         // Forward+'s clusters: the lights, then each tile's words, the reflection probes, the
-        // decals and the decals' atlas.
+        // decals, the decals' atlas and the fog, with the instances.
         const std::array mesh_clusters{storage_entry(0, true, WGPUShaderStage_Fragment),
                                        storage_entry(1, true, WGPUShaderStage_Fragment),
                                        storage_entry(2, true, WGPUShaderStage_Fragment),
                                        storage_entry(3, true, WGPUShaderStage_Fragment),
                                        storage_entry(4, true, WGPUShaderStage_Fragment),
-                                       storage_entry(5, true, WGPUShaderStage_Fragment)};
+                                       storage_entry(5, true, WGPUShaderStage_Fragment),
+                                       mesh_instances[0],
+                                       mesh_instances[1]};
         mesh_clusters_layout_ = layout(mesh_clusters);
         const std::array shadow_vertex{
             uniform_entry(0, WGPUShaderStage_Vertex, sizeof(MeshShadowPassUniforms)),
@@ -3511,14 +3529,15 @@ private:
             {mesh_3d_inputs_layout_, draw_outputs_layout_, compute_uniforms_layout_});
         pipeline_layouts_.at(kStages3DLayout) =
             pipeline_layout({empty_layout_, stages_outputs_layout_, compute_uniforms_layout_});
-        pipeline_layouts_.at(kMeshLayout) = pipeline_layout(
-            {empty_layout_, mesh_vertex_layout_, mesh_textures_layout_, mesh_fragment_layout_});
+        pipeline_layouts_.at(kMeshLayout) =
+            pipeline_layout({mesh_instances_layout_, mesh_vertex_layout_, mesh_textures_layout_,
+                             mesh_fragment_layout_});
         pipeline_layouts_.at(kMeshClusteredLayout) =
             pipeline_layout({mesh_clusters_layout_, mesh_vertex_layout_, mesh_textures_layout_,
                              mesh_fragment_layout_});
         pipeline_layouts_.at(kMeshGameLayout) =
-            pipeline_layout({empty_layout_, mesh_game_vertex_layout_, mesh_textures_layout_,
-                             mesh_game_fragment_layout_});
+            pipeline_layout({mesh_instances_layout_, mesh_game_vertex_layout_,
+                             mesh_textures_layout_, mesh_game_fragment_layout_});
         pipeline_layouts_.at(kMeshClusteredGameLayout) =
             pipeline_layout({mesh_clusters_layout_, mesh_game_vertex_layout_, mesh_textures_layout_,
                              mesh_game_fragment_layout_});
@@ -4821,7 +4840,10 @@ private:
         info.layout = pipeline_layouts_.at(
             clustered ? (game ? kMeshClusteredGameLayout : kMeshClusteredLayout)
                       : (game ? kMeshGameLayout : kMeshLayout));
-        info.vertex.module = module(kMeshVertexModule, joined(shaders::kMeshVertexWgsl));
+        // The mesh shader's draws are instances of runs; a spatial shader's draw one at a time.
+        info.vertex.module =
+            game ? module(kMeshVertexModule, joined(shaders::kMeshVertexWgsl))
+                 : module(kMeshInstancedVertexModule, joined(shaders::kMeshInstancedVertexWgsl));
         if (game && game_shaders_.at(material.shader).vertex != nullptr) {
             info.vertex.module = game_shaders_.at(material.shader).vertex;
         }
@@ -4926,11 +4948,12 @@ private:
         FogFrames* fog = scene.method == RenderMethod::ForwardPlus && uses_volumetric_fog(scene)
                              ? find_fog_frames(frame_.target)
                              : nullptr;
+        const bool instances_grew = prepare_cull(at, view_projection);
         if (scene.method == RenderMethod::ForwardPlus) {
             if (no_fog_ == nullptr) {
                 no_fog_ = create_buffer(WGPUBufferUsage_Storage, sizeof(Float4));
             }
-            upload_clusters(fog != nullptr ? fog->fog : no_fog_);
+            upload_clusters(fog != nullptr ? fog->fog : no_fog_, instances_grew);
             set_cluster_uniforms(*lights, clusters_, &decal_atlas_.atlas(), scene.decals.filter);
         }
         if (fog != nullptr) {
@@ -5025,7 +5048,7 @@ private:
     // Builds the frame's Forward+ clusters and copies them, the frame's reflection probes and
     // decals and, when it changes, the decals' atlas to the GPU, bound as a group made again when a
     // buffer grows.
-    void upload_clusters(WGPUBuffer fog) {
+    void upload_clusters(WGPUBuffer fog, bool instances_grew) {
         decal_atlas_.update(*frame_.scene);
         const DecalAtlas& atlas = decal_atlas_.atlas();
         clusters_ = build_clusters(*frame_.scene, scene_width_, scene_height_, &atlas);
@@ -5053,22 +5076,24 @@ private:
             decal_atlas_uploaded_ = atlas.generation;
         }
         if (cluster_group_ != nullptr && !lights_grew && !cells_grew && !probes_grew &&
-            !decals_grew && !atlas_grew && cluster_fog_ == fog) {
+            !decals_grew && !atlas_grew && !instances_grew && cluster_fog_ == fog) {
             return;
         }
         if (cluster_group_ != nullptr) {
             wgpuBindGroupRelease(cluster_group_);
         }
-        std::array<WGPUBindGroupEntry, 6> entries{};
-        const std::array<const StorageBuffer*, 5> buffers{&cluster_lights_, &cluster_cells_,
-                                                          &probe_buffer_, &decal_buffer_,
-                                                          &decal_atlas_buffer_};
+        std::array<WGPUBindGroupEntry, 8> entries{};
+        const std::array<const StorageBuffer*, 7> buffers{
+            &cluster_lights_,     &cluster_cells_, &probe_buffer_,  &decal_buffer_,
+            &decal_atlas_buffer_, nullptr,         &mesh_instances_};
         for (std::uint32_t binding = 0; binding < buffers.size(); ++binding) {
-            const StorageBuffer& storage = *buffers.at(binding);
-            entries.at(binding) = buffer_entry(binding, storage.buffer, storage.capacity);
+            if (const StorageBuffer* storage = buffers.at(binding); storage != nullptr) {
+                entries.at(binding) = buffer_entry(binding, storage->buffer, storage->capacity);
+            }
         }
-        // The volumetric fog, or a float4 in its place.
+        // The volumetric fog, or a float4 in its place, and what mesh_cull.hlsl writes.
         entries[5] = buffer_entry(5, fog);
+        entries[7] = buffer_entry(7, cull_outputs_.buffer, cull_outputs_.capacity);
         cluster_group_ = bind_group(mesh_clusters_layout_, entries);
         cluster_fog_ = fog;
     }
@@ -5298,7 +5323,8 @@ private:
         depth.depthCompare = WGPUCompareFunction_GreaterEqual;
         WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
         info.layout = pipeline_layouts_.at(kMeshClusteredLayout);
-        info.vertex.module = module(kMeshVertexModule, joined(shaders::kMeshVertexWgsl));
+        info.vertex.module =
+            module(kMeshInstancedVertexModule, joined(shaders::kMeshInstancedVertexWgsl));
         info.vertex.entryPoint = text_view("vs_main");
         info.vertex.bufferCount = 1;
         info.vertex.buffers = &buffer;
@@ -5331,10 +5357,15 @@ private:
             !prepass && !ssr && uses_ssr(*frame_.scene) ? at.unreflected : at.scene;
         // The motion vectors' prepass reads where the vertices were from a second buffer.
         const bool motion = prepass && uses_motion_vectors(*frame_.scene);
+        // Group 0 holds the draws' Instances and what mesh_cull.hlsl wrote; a clustered pass's
+        // group (bound by the caller) holds them with the clusters.
+        if (prepass || frame_.scene->method != RenderMethod::ForwardPlus) {
+            wgpuRenderPassEncoderSetBindGroup(pass, 0, mesh_instances_group_, 0, nullptr);
+        }
         WGPURenderPipeline bound = nullptr;
-        for (const std::size_t i :
-             mesh_draw_order(std::span<const MeshDraw>(mesh_draws_), *frame_.scene,
-                             [&](std::size_t draw) { return mesh_batches_[draw].bounds; })) {
+        for (std::size_t r = 0; r < at.runs.size(); ++r) {
+            // A run's draws share everything but their Instances, so its first speaks for it.
+            const std::size_t i = at.order[at.runs[r].first];
             const MeshBatch& batch = mesh_batches_[i];
             WGPURenderPipeline pipeline = batch.pipeline;
             if (prepass) {
@@ -5352,10 +5383,11 @@ private:
                 wgpuRenderPassEncoderSetPipeline(pass, pipeline);
                 bound = pipeline;
             }
-            // A spatial shader's draws read its uniforms in the vertex stage too.
+            // A spatial shader's draws read their own Instance, and its uniforms in the vertex
+            // stage too; the rest read their run's draws in view from where InstanceBase says.
             const bool game = mesh_draws_[i].material.shader != ShaderId::None;
-            const std::array<std::uint32_t, 3> vertex_offsets{at.camera, at.draws[i].first,
-                                                              at.games[i]};
+            const std::array<std::uint32_t, 3> vertex_offsets{
+                at.camera, game ? at.draws[i].first : at.bases[r], at.games[i]};
             wgpuRenderPassEncoderSetBindGroup(pass, 1,
                                               game ? mesh_game_vertex_group_ : mesh_vertex_group_,
                                               game ? 3 : 2, vertex_offsets.data());
@@ -5391,55 +5423,104 @@ private:
             }
             wgpuRenderPassEncoderSetIndexBuffer(pass, batch.indices, WGPUIndexFormat_Uint32, 0,
                                                 WGPU_WHOLE_SIZE);
-            if (culled_) {
-                wgpuRenderPassEncoderDrawIndexedIndirect(
-                    pass, cull_args_, i * kCullArgsWords * sizeof(std::uint32_t));
-            } else {
-                wgpuRenderPassEncoderDrawIndexed(pass, batch.range.count, 1, batch.range.first, 0,
-                                                 0);
-            }
+            wgpuRenderPassEncoderDrawIndexedIndirect(pass, cull_outputs_.buffer,
+                                                     r * kCullArgsWords * sizeof(std::uint32_t));
         }
     }
 
-    // Writes the frame's mesh draws' records for culling and adds its uniforms, returning
-    // their offset; nothing with no meshes.
-    std::optional<std::uint32_t> prepare_cull() {
-        if (!frame_.scene || mesh_draws_.empty()) {
-            return std::nullopt;
+    // Grows storage to size bytes made for usage if they don't fit; says if it grew.
+    bool reserve_storage(StorageBuffer& storage, std::uint64_t size, WGPUBufferUsage usage) {
+        if (size <= storage.capacity) {
+            return false;
         }
-        const Mat4 view_projection = multiply(frame_.scene->projection, frame_.scene->camera);
+        destroy_buffer(storage.buffer);
+        storage.capacity =
+            std::max({size, std::min(storage.capacity * 2, std::uint64_t{kMaxStorageBytes}),
+                      kMinVertexBytes});
+        storage.buffer = create_buffer(usage, storage.capacity);
+        return true;
+    }
+
+    // Whether draw b goes in draw a's run: one mesh with one material, drawn by the same
+    // pipelines with the same textures and surface uniforms, and neither with a game's shader.
+    [[nodiscard]] bool same_run(std::size_t a, std::size_t b,
+                                std::span<const MeshSurfaceUniforms> surfaces) const {
+        const MeshDraw& first = mesh_draws_[a];
+        const MeshDraw& second = mesh_draws_[b];
+        const MeshBatch& x = mesh_batches_[a];
+        const MeshBatch& y = mesh_batches_[b];
+        return first.material.shader == ShaderId::None &&
+               second.material.shader == ShaderId::None &&
+               (first.shadows == ShadowCasting::ShadowsOnly) ==
+                   (second.shadows == ShadowCasting::ShadowsOnly) &&
+               x.vertices == y.vertices && x.indices == y.indices &&
+               x.range.first == y.range.first && x.range.count == y.range.count &&
+               x.previous_vertices == y.previous_vertices && x.pipeline == y.pipeline &&
+               x.normal_pipeline == y.normal_pipeline &&
+               x.subsurface_pipeline == y.subsurface_pipeline && x.bindings == y.bindings &&
+               std::ranges::equal(std::as_bytes(surfaces.subspan(a, 1)),
+                                  std::as_bytes(surfaces.subspan(b, 1)));
+    }
+
+    // Puts the frame's mesh draws in the camera's order and splits them into runs, writes their
+    // records, runs and order for culling and their Instances, and adds each run's InstanceBase
+    // and the culling passes' uniforms to at; says if the buffers the mesh passes read grew.
+    bool prepare_cull(MeshUniforms& at, const Mat4& view_projection) {
+        at.order = mesh_draw_order(std::span<const MeshDraw>(mesh_draws_), *frame_.scene,
+                                   [&](std::size_t draw) { return mesh_batches_[draw].bounds; });
+        std::vector<MeshSurfaceUniforms> surfaces;
+        surfaces.reserve(mesh_draws_.size());
+        for (const MeshDraw& draw : mesh_draws_) {
+            surfaces.push_back(mesh_surface_uniforms(draw.material, draw.layers));
+        }
+        at.runs = cull_runs(std::span<const std::size_t>(at.order),
+                            [&](std::size_t a, std::size_t b) { return same_run(a, b, surfaces); });
         std::vector<std::uint32_t> records;
-        records.reserve(mesh_draws_.size() * kCullRecordWords);
+        records.reserve((mesh_draws_.size() * (kCullRecordWords + 1)) + (at.runs.size() * 2));
+        std::vector<MeshInstanceUniforms> instances;
+        instances.reserve(mesh_draws_.size());
         for (std::size_t i = 0; i < mesh_draws_.size(); ++i) {
             const MeshDraw& draw = mesh_draws_[i];
             const MeshBatch& batch = mesh_batches_[i];
             // A spatial shader's vertex() can move its corners anywhere.
             push_cull_record(records, view_projection, draw.transform, batch.bounds, batch.range,
                              draw.material.shader != ShaderId::None);
+            push_instance(instances, draw.transform, draw.material, draw.previous);
         }
-        const std::size_t record_bytes = records.size() * sizeof(std::uint32_t);
-        if (record_bytes > cull_records_capacity_) {
-            destroy_buffer(cull_records_);
-            cull_records_capacity_ =
-                std::max<std::uint64_t>(record_bytes, cull_records_capacity_ * 2);
-            cull_records_ = create_buffer(WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst,
-                                          cull_records_capacity_);
+        push_cull_runs(records, at.runs, at.order);
+        const auto draws = static_cast<std::uint32_t>(mesh_draws_.size());
+        const auto runs = static_cast<std::uint32_t>(at.runs.size());
+        upload_storage(cull_records_, std::as_bytes(std::span(records)));
+        bool grew = upload_storage(mesh_instances_, std::as_bytes(std::span(instances)));
+        const std::uint64_t outputs =
+            std::uint64_t{cull_output_words(draws, runs, draws)} * sizeof(std::uint32_t);
+        grew = reserve_storage(cull_outputs_, outputs,
+                               WGPUBufferUsage_Storage | WGPUBufferUsage_Indirect) ||
+               grew;
+        if (grew || mesh_instances_group_ == nullptr) {
+            if (mesh_instances_group_ != nullptr) {
+                wgpuBindGroupRelease(mesh_instances_group_);
+            }
+            const std::array entries{
+                buffer_entry(6, mesh_instances_.buffer, mesh_instances_.capacity),
+                buffer_entry(7, cull_outputs_.buffer, cull_outputs_.capacity)};
+            mesh_instances_group_ = bind_group(mesh_instances_layout_, entries);
         }
-        wgpuQueueWriteBuffer(queue_, cull_records_, 0, records.data(), record_bytes);
-        const std::uint64_t args_bytes =
-            mesh_draws_.size() * kCullArgsWords * sizeof(std::uint32_t);
-        if (args_bytes > cull_args_capacity_) {
-            destroy_buffer(cull_args_);
-            cull_args_capacity_ = std::max(args_bytes, cull_args_capacity_ * 2);
-            cull_args_ = create_buffer(WGPUBufferUsage_Storage | WGPUBufferUsage_Indirect,
-                                       cull_args_capacity_);
+        const std::uint32_t list = cull_list_at(draws, runs);
+        at.bases.reserve(at.runs.size());
+        for (const CullRun& run : at.runs) {
+            at.bases.push_back(
+                uniforms_.add(InstanceBaseUniforms{.base = {list + run.first, 0, 0, 0}}));
         }
-        return uniforms_.add(
-            CullUniforms{.counts = {static_cast<std::uint32_t>(mesh_draws_.size()), 0, 0, 0}});
+        for (std::uint32_t step = 0; step < at.cull.size(); ++step) {
+            at.cull.at(step) = uniforms_.add(CullUniforms{.counts = {draws, runs, draws, step}});
+        }
+        return grew;
     }
 
-    // Records mesh_cull.hlsl's dispatch over the frame's mesh draws, its uniforms at at.
-    void encode_cull(WGPUCommandEncoder encoder, std::uint32_t at) {
+    // Records mesh_cull.hlsl's two passes over the frame's mesh draws, as at gives them: one
+    // testing each draw, then one listing each run's draws in view and writing its arguments.
+    void encode_cull(WGPUCommandEncoder encoder, const MeshUniforms& at) {
         if (cull_pipeline_ == nullptr) {
             WGPUComputePipelineDescriptor info = WGPU_COMPUTE_PIPELINE_DESCRIPTOR_INIT;
             info.layout = pipeline_layouts_.at(kCullLayout);
@@ -5447,19 +5528,26 @@ private:
             info.compute.entryPoint = text_view("cs_main");
             cull_pipeline_ = wgpuDeviceCreateComputePipeline(device_, &info);
         }
-        const std::array input_entries{buffer_entry(0, cull_records_)};
+        const std::array input_entries{
+            buffer_entry(0, cull_records_.buffer, cull_records_.capacity)};
         WGPUBindGroup inputs = bind_group(cull_inputs_layout_, input_entries);
-        const std::array output_entries{buffer_entry(0, cull_args_)};
+        const std::array output_entries{
+            buffer_entry(0, cull_outputs_.buffer, cull_outputs_.capacity)};
         WGPUBindGroup output = bind_group(skin_output_layout_, output_entries);
-        WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
-        wgpuComputePassEncoderSetPipeline(compute, cull_pipeline_);
-        wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
-        wgpuComputePassEncoderSetBindGroup(compute, 1, output, 0, nullptr);
-        wgpuComputePassEncoderSetBindGroup(compute, 2, cull_uniforms_group_, 1, &at);
-        wgpuComputePassEncoderDispatchWorkgroups(
-            compute, cull_groups(static_cast<std::uint32_t>(mesh_draws_.size())), 1, 1);
-        wgpuComputePassEncoderEnd(compute);
-        wgpuComputePassEncoderRelease(compute);
+        const std::array<std::uint32_t, 2> threads{static_cast<std::uint32_t>(mesh_draws_.size()),
+                                                   static_cast<std::uint32_t>(at.runs.size())};
+        // A pass each, so the second reads every flag the first wrote.
+        for (std::size_t step = 0; step < at.cull.size(); ++step) {
+            WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+            wgpuComputePassEncoderSetPipeline(compute, cull_pipeline_);
+            wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
+            wgpuComputePassEncoderSetBindGroup(compute, 1, output, 0, nullptr);
+            wgpuComputePassEncoderSetBindGroup(compute, 2, cull_uniforms_group_, 1,
+                                               &at.cull.at(step));
+            wgpuComputePassEncoderDispatchWorkgroups(compute, cull_groups(threads.at(step)), 1, 1);
+            wgpuComputePassEncoderEnd(compute);
+            wgpuComputePassEncoderRelease(compute);
+        }
         wgpuBindGroupRelease(inputs);
         wgpuBindGroupRelease(output);
     }
@@ -5495,7 +5583,10 @@ private:
         depth.depthCompare = WGPUCompareFunction_Greater;
         WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
         info.layout = pipeline_layouts_.at(game == ShaderId::None ? kMeshLayout : kMeshGameLayout);
-        info.vertex.module = module(kMeshVertexModule, joined(shaders::kMeshVertexWgsl));
+        info.vertex.module =
+            game == ShaderId::None
+                ? module(kMeshInstancedVertexModule, joined(shaders::kMeshInstancedVertexWgsl))
+                : module(kMeshVertexModule, joined(shaders::kMeshVertexWgsl));
         if (game != ShaderId::None && game_shaders_.at(game).vertex != nullptr) {
             info.vertex.module = game_shaders_.at(game).vertex;
         }
@@ -5579,7 +5670,10 @@ private:
         WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
         info.layout = pipeline_layouts_.at(game == ShaderId::None ? kMeshLayout : kMeshGameLayout);
         info.vertex.module =
-            module(kMeshMotionVertexModule, joined(shaders::kMeshMotionVertexWgsl));
+            game == ShaderId::None
+                ? module(kMeshMotionInstancedVertexModule,
+                         joined(shaders::kMeshMotionInstancedVertexWgsl))
+                : module(kMeshMotionVertexModule, joined(shaders::kMeshMotionVertexWgsl));
         if (game != ShaderId::None && game_shaders_.at(game).motion_vertex != nullptr) {
             info.vertex.module = game_shaders_.at(game).motion_vertex;
         }
@@ -7994,6 +8088,8 @@ private:
     static constexpr std::size_t kSdfgiGatherFragmentModule = kSdfgiGatherVertexModule + 1;
     static constexpr std::size_t kSkinModule = kSdfgiGatherFragmentModule + 1;
     static constexpr std::size_t kCullModule = kSkinModule + 1;
+    static constexpr std::size_t kMeshInstancedVertexModule = kCullModule + 1;
+    static constexpr std::size_t kMeshMotionInstancedVertexModule = kMeshInstancedVertexModule + 1;
     static constexpr std::size_t kSpriteLayout = 0;
     static constexpr std::size_t kMaterialLayout = 1;
     static constexpr std::size_t kProcessLayout = 2;
@@ -8040,7 +8136,7 @@ private:
     bool can_wait_ = false; // Asyncify lets read_texture wait for the GPU
     // Which formats the GPU samples, by TextureFormat.
     std::array<bool, 4> sampled_{true, false, false, true};
-    std::array<WGPUShaderModule, kCullModule + 1> modules_{};
+    std::array<WGPUShaderModule, kMeshMotionInstancedVertexModule + 1> modules_{};
     std::vector<Pipeline> pipelines_;
     std::unordered_map<ShaderId, GameShader> game_shaders_;
     std::uint32_t next_shader_ = 1;
@@ -8068,6 +8164,7 @@ private:
     WGPUBindGroupLayout shadow_game_vertex_layout_ = nullptr;
     WGPUBindGroupLayout shadow_game_fragment_layout_ = nullptr;
     WGPUBindGroupLayout mesh_clusters_layout_ = nullptr;
+    WGPUBindGroupLayout mesh_instances_layout_ = nullptr;
     WGPUBindGroupLayout shadow_vertex_layout_ = nullptr;
     WGPUBindGroupLayout shadow_fragment_layout_ = nullptr;
     WGPUBindGroupLayout post_textures_layout_ = nullptr;
@@ -8325,15 +8422,15 @@ private:
     WGPUBuffer skin_poses_buffer_ = nullptr;
     std::uint64_t skin_poses_capacity_ = 0;
     WGPUComputePipeline skin_pipeline_ = nullptr;
-    // Culling the camera's mesh draws (prepare_cull, encode_cull): the pipeline, the draws'
-    // records, the indirect arguments mesh_cull.hlsl writes for them, and whether this frame's
-    // camera passes draw by them.
+    // Culling the camera's mesh draws and drawing runs of them as instances (prepare_cull,
+    // encode_cull): the pipeline, the draws' records, runs and order, what mesh_cull.hlsl writes
+    // (the runs' indirect arguments, the draws' flags and the runs' draws in view), each draw's
+    // Instance, and the group binding the last two for the mesh passes that aren't clustered.
     WGPUComputePipeline cull_pipeline_ = nullptr;
-    WGPUBuffer cull_records_ = nullptr;
-    std::uint64_t cull_records_capacity_ = 0;
-    WGPUBuffer cull_args_ = nullptr;
-    std::uint64_t cull_args_capacity_ = 0;
-    bool culled_ = false;
+    StorageBuffer cull_records_;
+    StorageBuffer cull_outputs_;
+    StorageBuffer mesh_instances_;
+    WGPUBindGroup mesh_instances_group_ = nullptr;
     // The most a storage binding and a buffer may hold, as the device was made with.
     std::uint64_t max_storage_binding_ = 128U << 20U;
     std::uint64_t max_buffer_ = 256U << 20U;

@@ -1865,8 +1865,10 @@ Compatibility draws neither, nor do probe captures, path-traced frames or
 [spatial shaders](#spatial-shaders); `subsurf_scatter_texture` and
 `subsurf_scatter_transmittance_texture` aren't read yet.
 
-Opaque and alpha scissor meshes draw nearest first, then alpha meshes farthest first, as Godot
-sorts them. A texture that can't load is left out, with a warning and a problem in
+Opaque and alpha scissor meshes draw by depth (in 16 slices out to the camera's far plane), then
+by mesh, then nearest first, then alpha meshes farthest first, as Godot sorts them. Copies of one
+mesh with one material next to each other in that order draw as instances of one draw, each
+culled on its own where the device culls. A texture that can't load is left out, with a warning and a problem in
 `frame.summary`.
 
 ### Camera3D

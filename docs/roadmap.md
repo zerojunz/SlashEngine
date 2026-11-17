@@ -1123,8 +1123,11 @@ launch rows and the after-launch features above.
 - GPU-driven rendering, after Unity 7's Graphics Kernel (2026-11-17, queued after the SDFGI
   port): skinning on the GPU (done: skin.hlsl on Vulkan, Metal and WebGPU, its CPU twin
   elsewhere), culling in compute with indirect draws (done: mesh_cull.hlsl on Vulkan, Metal,
-  Direct3D 12 and WebGPU, its CPU twin on the software device), LOD picks in compute and
-  instanced multi-draws, and
+  Direct3D 12 and WebGPU, its CPU twin on the software device), instanced multi-draws (done:
+  runs of one mesh and material drawn as instances of one indirect draw, culled per instance),
+  LOD picks in compute (left for when the scene stays on the GPU between frames: while the CPU
+  hands every draw over each frame, its pick is a few multiplies, and the order already keeps a
+  LOD's copies in one run), and
   a frame graph over every device's passes (what each reads and writes, passes nothing uses
   left out, transient textures sharing memory, independent compute work merged so it shares
   barriers)

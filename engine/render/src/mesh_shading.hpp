@@ -420,9 +420,14 @@ struct ShadowPlan {
 // projection and rect.
 [[nodiscard]] SpatialUniforms shadow_spatial_uniforms(const ShadowPass& pass, const MeshDraw& draw);
 
-// The order to draw a frame's meshes in, as Godot's: opaque and alpha scissor ones nearest
-// first, then alpha ones farthest first, each by how far its box's center is in front of the
-// camera; draws as far keep the order they were made in. bounds(i) gives draw i's mesh's box.
+// Godot's depth layers: opaque draws are sorted by which sixteenth of the way to the far plane
+// they are in before their mesh.
+inline constexpr int kMeshDepthLayers = 16;
+
+// The order to draw a frame's meshes in, as Godot's: opaque and alpha scissor ones by depth layer,
+// then by mesh and LOD, then nearest first, then alpha ones farthest first, each by how far its
+// box's center is in front of the camera; draws as far keep the order they were made in.
+// bounds(i) gives draw i's mesh's box.
 template <typename BoundsOf>
 [[nodiscard]] std::vector<std::size_t>
 mesh_draw_order(std::span<const MeshDraw> draws, const Scene3D& scene, const BoundsOf& bounds);
@@ -739,6 +744,19 @@ std::vector<std::size_t> mesh_draw_order(std::span<const MeshDraw> draws, const 
         order[i] = i;
         depth[i] = mesh_draw_depth(draws[i], bounds(i), scene);
     }
+    // Opaque draws go by Godot's depth layer, a sixteenth of the way to the far plane, then by
+    // mesh and LOD, so a layer's draws of one mesh are next to each other and draw as
+    // instances, then nearest first.
+    const float far =
+        scene.projection[10] != 0.0F ? scene.projection[14] / scene.projection[10] : 0.0F;
+    const auto layer = [&](std::size_t i) {
+        if (!(far > 0.0F) || !std::isfinite(far)) {
+            return 0;
+        }
+        return std::clamp(
+            static_cast<int>(std::floor(depth[i] * static_cast<float>(kMeshDepthLayers) / far)), 0,
+            kMeshDepthLayers - 1);
+    };
     const auto blended = [&](std::size_t i) {
         return draws[i].material.transparency == Transparency::Alpha;
     };
@@ -746,7 +764,21 @@ std::vector<std::size_t> mesh_draw_order(std::span<const MeshDraw> draws, const 
         if (blended(a) != blended(b)) {
             return !blended(a);
         }
-        return blended(a) ? depth[a] > depth[b] : depth[a] < depth[b];
+        if (blended(a)) {
+            return depth[a] > depth[b];
+        }
+        const int layer_a = layer(a);
+        const int layer_b = layer(b);
+        if (layer_a != layer_b) {
+            return layer_a < layer_b;
+        }
+        if (draws[a].mesh != draws[b].mesh) {
+            return draws[a].mesh < draws[b].mesh;
+        }
+        if (draws[a].lod != draws[b].lod) {
+            return draws[a].lod < draws[b].lod;
+        }
+        return depth[a] < depth[b];
     });
     return order;
 }
