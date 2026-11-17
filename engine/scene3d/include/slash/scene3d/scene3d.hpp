@@ -543,6 +543,17 @@ private:
         // Flesh's: the pose that moved its skin last, and how far between its ticks.
         std::shared_ptr<const FleshPose> flesh;
         float flesh_at = 0.0F;
+        // Skinned on the device (RenderDevice::gpu_skinning): its skin, or on_cpu where the
+        // device couldn't take it, and what bounds its moved vertices, as Godot bounds a skin
+        // by its bones' boxes: each joint's box of the rest vertices it weighs (empty, min
+        // above max, where it weighs none), the box of those no joint weighs, and each blend
+        // shape's largest offset along each axis.
+        render::SkinId skin = render::SkinId::None;
+        bool on_cpu = false;
+        std::vector<Bounds> joint_boxes;
+        Bounds unweighed;
+        bool has_unweighed = false;
+        std::vector<Vec3> reach;
     };
 
     Result<render::MeshId> mesh_for(const world::World& world, entt::entity entity,
@@ -669,6 +680,14 @@ private:
                                         const std::vector<float>& shape_weights,
                                         const std::shared_ptr<const FleshPose>& flesh = nullptr,
                                         std::size_t flesh_surface = 0, float flesh_at = 1.0F);
+    // Measures what bounds a surface's vertices as its skin moves them (Skinned's boxes).
+    static void measure_skin(Skinned& skinned, const ModelSurface& surface);
+    // Moves a skinned surface on the device: its mesh made from the rest vertices once, then
+    // skin_mesh with the joints and shape weights.
+    Result<render::MeshId> skin_on_device(const std::string& key, Skinned& skinned,
+                                          const ModelSurface& surface,
+                                          const std::vector<world::Affine3D>& joints,
+                                          const std::vector<float>& shape_weights);
 
     // A mesh's place in a baked lightmap this frame, by its entity and model part.
     struct Lit {

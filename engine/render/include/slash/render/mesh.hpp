@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -59,6 +60,41 @@ struct Vertex3D {
 // The most corners and indices a mesh may have.
 inline constexpr std::uint32_t kMaxMeshVertices = 1U << 24U;
 inline constexpr std::uint32_t kMaxMeshIndices = 1U << 26U;
+
+// A skin on the device (RenderDevice::create_skin). NOLINTNEXTLINE(performance-enum-size)
+enum class SkinId : std::uint32_t { None = 0 };
+
+// A vertex's joints and how much each moves it, as a glTF skin's JOINTS and WEIGHTS: up to
+// eight, a weight of 0 taking no part.
+struct SkinWeights {
+    std::array<std::uint16_t, 8> joints{};
+    std::array<float, 8> weights{};
+};
+
+// A blend shape's offsets from the rest vertices, as Godot's: one per vertex, or none where it
+// moves no normals or tangents.
+struct SkinShape {
+    std::vector<std::array<float, 3>> positions;
+    std::vector<std::array<float, 3>> normals;
+    std::vector<std::array<float, 3>> tangents;
+};
+
+// What a skin moves: rest vertices, their weights (none for a mesh with blend shapes only) and
+// blend shapes, as Godot's skeleton shader takes a surface.
+struct SkinDesc {
+    std::span<const Vertex3D> vertices{};   // NOLINT(readability-redundant-member-init)
+    std::span<const SkinWeights> weights{}; // NOLINT(readability-redundant-member-init)
+    std::span<const SkinShape> shapes{};    // NOLINT(readability-redundant-member-init)
+};
+
+// A joint's transform this frame, from the mesh's rest space to where it is drawn: its basis'
+// columns, then its origin, as world::Affine3D.
+struct SkinJoint {
+    std::array<float, 3> x{1.0F, 0.0F, 0.0F};
+    std::array<float, 3> y{0.0F, 1.0F, 0.0F};
+    std::array<float, 3> z{0.0F, 0.0F, 1.0F};
+    std::array<float, 3> origin{};
+};
 // Reads project.json's rendering object's mesh_lod.lod_change.threshold_pixels, as Godot's
 // rendering/mesh_lod/lod_change/threshold_pixels: how many pixels a coarser LOD of a mesh may be
 // off by where it is drawn; 0 draws every mesh in full. What is missing or not a number at or

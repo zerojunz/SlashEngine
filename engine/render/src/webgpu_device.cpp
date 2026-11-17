@@ -57,6 +57,8 @@
 #include "sdfgi_voxelize_shaders.hpp"
 #include "shader_code.hpp"
 #include "shadow_shaders.hpp"
+#include "skin_gpu.hpp"
+#include "skin_shaders.hpp"
 #include "sky_shaders.hpp"
 #include "sky_shading.hpp"
 #include "sprite_shaders.hpp"
@@ -697,11 +699,18 @@ public:
         while (!sdfgi_frames_.empty()) {
             forget_sdfgi_frames(sdfgi_frames_.back().first);
         }
-        for (WGPUComputePipeline pipeline : {sdfgi_pipeline_, sdfgi_voxelize_pipeline_}) {
+        for (WGPUComputePipeline pipeline :
+             {sdfgi_pipeline_, sdfgi_voxelize_pipeline_, skin_pipeline_}) {
             if (pipeline != nullptr) {
                 wgpuComputePipelineRelease(pipeline);
             }
         }
+        for (auto& [id, skin] : skins_) {
+            for (WGPUBuffer buffer : skin.buffers) {
+                destroy_buffer(buffer);
+            }
+        }
+        destroy_buffer(skin_poses_buffer_);
         if (sdfgi_gather_pipeline_ != nullptr) {
             wgpuRenderPipelineRelease(sdfgi_gather_pipeline_);
         }
@@ -812,7 +821,10 @@ public:
                                            sdfgi_voxelize_uniforms_layout_,
                                            sdfgi_gather_buffers_layout_,
                                            sdfgi_gather_textures_layout_,
-                                           sdfgi_gather_uniforms_layout_}) {
+                                           sdfgi_gather_uniforms_layout_,
+                                           skin_inputs_layout_,
+                                           skin_output_layout_,
+                                           skin_uniforms_layout_}) {
             if (layout != nullptr) {
                 wgpuBindGroupLayoutRelease(layout);
             }
@@ -1513,6 +1525,7 @@ public:
         if (auto checked = check_mesh_update(vertices, it->second.vertex_count); !checked) {
             return checked;
         }
+        std::erase_if(skin_jobs_, [&](const SkinJob& job) { return job.mesh == mesh; });
         // The first update since a frame with TAA drew the mesh keeps the vertices it drew, for
         // the motion of the next one's: the buffers swap, and the new vertices go in the other.
         Mesh& found = it->second;
@@ -1544,6 +1557,7 @@ public:
         if (it == meshes_.end()) {
             return;
         }
+        std::erase_if(skin_jobs_, [&](const SkinJob& job) { return job.mesh == mesh; });
         for (WGPUBuffer buffer : {it->second.vertices, it->second.indices, it->second.previous}) {
             if (buffer == nullptr) {
                 continue;
@@ -1556,6 +1570,162 @@ public:
             }
         }
         meshes_.erase(it);
+    }
+
+    bool gpu_skinning() const override { return true; }
+
+    Result<SkinId> create_skin(const SkinDesc& desc) override {
+        auto words = skin_words(desc);
+        if (!words) {
+            return words.error();
+        }
+        WebSkin skin{.words = std::move(words).value()};
+        const std::array<const std::vector<std::uint32_t>*, 3> sources{
+            &skin.words.rest, &skin.words.weights, &skin.words.shapes};
+        for (std::size_t k = 0; k < sources.size(); ++k) {
+            // A skin without weights or shapes still binds a buffer of a word.
+            const std::vector<std::uint32_t>& from = *sources.at(k);
+            const std::size_t bytes = from.size() * sizeof(std::uint32_t);
+            skin.buffers.at(k) =
+                create_buffer(WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst, bytes);
+            if (bytes > 0) {
+                wgpuQueueWriteBuffer(queue_, skin.buffers.at(k), 0, from.data(), bytes);
+            }
+        }
+        // The words stay for the poses' uniforms, but not the vertices they were uploaded from.
+        skin.words.rest = {};
+        skin.words.weights = {};
+        skin.words.shapes = {};
+        skin.has_weights = !desc.weights.empty();
+        const auto id = static_cast<SkinId>(next_skin_++);
+        skins_.emplace(id, std::move(skin));
+        return id;
+    }
+
+    Result<void> skin_mesh(MeshId mesh, SkinId skin, std::span<const SkinJoint> joints,
+                           std::span<const float> shape_weights, std::array<float, 3> low,
+                           std::array<float, 3> high) override {
+        if (in_frame_) {
+            return frame_in_progress("skin_mesh");
+        }
+        const auto found_skin = skins_.find(skin);
+        if (found_skin == skins_.end()) {
+            return make_error(ErrorCode::NotFound, "no such skin");
+        }
+        const auto it = meshes_.find(mesh);
+        if (it == meshes_.end()) {
+            return unknown_mesh(mesh);
+        }
+        Mesh& found = it->second;
+        const WebSkin& kept = found_skin->second;
+        if (found.vertex_count != kept.words.vertex_count) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a skin of " + std::to_string(kept.words.vertex_count) +
+                                  " vertices can't move a mesh of " +
+                                  std::to_string(found.vertex_count));
+        }
+        // The vertices are written where update_mesh writes them, the ones drawn before kept
+        // for TAA as update_mesh keeps them. Every mesh's vertices can be written as storage.
+        ++found.version;
+        if (!found.moved) {
+            if (found.previous == nullptr) {
+                found.previous =
+                    create_buffer(kMeshVertexUsage, found.vertex_count * sizeof(Vertex3D));
+            }
+            std::swap(found.vertices, found.previous);
+            std::swap(found.storage, found.previous_storage);
+            found.moved = true;
+        }
+        found.bounds = {.low = low, .high = high};
+        std::erase_if(skin_jobs_, [&](const SkinJob& job) { return job.mesh == mesh; });
+        SkinJob job{.mesh = mesh,
+                    .skin = skin,
+                    .uniforms = skin_pose(kept.words, joints, shape_weights, skin_poses_)};
+        // The words' weights went with their upload, so the skin says whether it has them.
+        job.uniforms.at[2] = kept.has_weights ? 1U : 0U;
+        skin_jobs_.push_back(job);
+        return {};
+    }
+
+    void destroy_skin(SkinId skin) override {
+        const auto it = skins_.find(skin);
+        if (it == skins_.end()) {
+            return;
+        }
+        std::erase_if(skin_jobs_, [&](const SkinJob& job) { return job.skin == skin; });
+        for (WGPUBuffer buffer : it->second.buffers) {
+            // A frame being built may still read it, so it goes once the frame is sent.
+            if (in_frame_) {
+                pending_buffers_.push_back(buffer);
+            } else {
+                destroy_buffer(buffer);
+            }
+        }
+        skins_.erase(it);
+    }
+
+    // Runs the skin_mesh calls since the last frame, a dispatch each, in a command buffer of
+    // their own sent before the frame's.
+    void flush_skins() {
+        if (skin_jobs_.empty()) {
+            return;
+        }
+        const std::vector<SkinJob> jobs = std::exchange(skin_jobs_, {});
+        const std::vector<std::uint32_t> poses = std::exchange(skin_poses_, {});
+        if (skin_pipeline_ == nullptr) {
+            WGPUComputePipelineDescriptor info = WGPU_COMPUTE_PIPELINE_DESCRIPTOR_INIT;
+            info.layout = pipeline_layouts_.at(kSkinLayout);
+            info.compute.module = module(kSkinModule, joined(shaders::kSkinComputeWgsl));
+            info.compute.entryPoint = text_view("cs_main");
+            skin_pipeline_ = wgpuDeviceCreateComputePipeline(device_, &info);
+        }
+        const std::size_t bytes = poses.size() * sizeof(std::uint32_t);
+        if (bytes > skin_poses_capacity_) {
+            destroy_buffer(skin_poses_buffer_);
+            skin_poses_capacity_ = std::max<std::uint64_t>(bytes, skin_poses_capacity_ * 2);
+            skin_poses_buffer_ = create_buffer(WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst,
+                                               skin_poses_capacity_);
+        }
+        wgpuQueueWriteBuffer(queue_, skin_poses_buffer_, 0, poses.data(), bytes);
+        uniforms_.clear();
+        std::vector<std::uint32_t> at;
+        at.reserve(jobs.size());
+        for (const SkinJob& job : jobs) {
+            at.push_back(uniforms_.add(job.uniforms));
+        }
+        upload_uniforms();
+        WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, nullptr);
+        std::vector<WGPUBindGroup> made;
+        for (std::size_t j = 0; j < jobs.size(); ++j) {
+            const SkinJob& job = jobs[j];
+            const auto mesh = meshes_.find(job.mesh);
+            const auto skin = skins_.find(job.skin);
+            if (mesh == meshes_.end() || skin == skins_.end()) {
+                continue;
+            }
+            const std::array<WGPUBuffer, 3>& buffers = skin->second.buffers;
+            const std::array input_entries{buffer_entry(0, buffers[0]), buffer_entry(1, buffers[1]),
+                                           buffer_entry(2, buffers[2]),
+                                           buffer_entry(3, skin_poses_buffer_)};
+            WGPUBindGroup inputs = bind_group(skin_inputs_layout_, input_entries);
+            const std::array output_entries{buffer_entry(0, mesh->second.vertices)};
+            WGPUBindGroup output = bind_group(skin_output_layout_, output_entries);
+            made.push_back(inputs);
+            made.push_back(output);
+            WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+            wgpuComputePassEncoderSetPipeline(compute, skin_pipeline_);
+            wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
+            wgpuComputePassEncoderSetBindGroup(compute, 1, output, 0, nullptr);
+            wgpuComputePassEncoderSetBindGroup(compute, 2, skin_uniforms_group_, 1, &at[j]);
+            const std::array<std::uint32_t, 2> groups = skin_groups(job.uniforms.counts[0]);
+            wgpuComputePassEncoderDispatchWorkgroups(compute, groups[0], groups[1], 1);
+            wgpuComputePassEncoderEnd(compute);
+            wgpuComputePassEncoderRelease(compute);
+        }
+        submit(encoder);
+        for (WGPUBindGroup group : made) {
+            wgpuBindGroupRelease(group);
+        }
     }
 
     // A texture draws can sample: one made, and not a reflection atlas.
@@ -1571,6 +1741,7 @@ public:
         if (auto errors = reported_errors(); !errors) {
             return errors.error();
         }
+        flush_skins();
         if (frame.scene) {
             if (auto checked = check_scene(*frame.scene); !checked) {
                 return checked.error();
@@ -2450,6 +2621,21 @@ private:
         std::vector<std::uint32_t> filters;
     };
 
+    // A skin (create_skin): its rest vertices', weights' and blend shapes' buffers, and the
+    // counts and shapes' turns its poses need.
+    struct WebSkin {
+        SkinWords words;
+        std::array<WGPUBuffer, 3> buffers{};
+        bool has_weights = false;
+    };
+
+    // A skin_mesh waiting for the next frame: the mesh it writes and the dispatch's uniforms.
+    struct SkinJob {
+        MeshId mesh = MeshId::None;
+        SkinId skin = SkinId::None;
+        SkinUniforms uniforms;
+    };
+
     // A mesh's buffers; one without indices is given them in order. Once update_mesh moves its
     // vertices, previous holds them as the last frame with TAA that drew the mesh saw them,
     // until another such frame draws it.
@@ -3273,6 +3459,16 @@ private:
         const std::array sdfgi_gather_entries{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(SdfgiGatherUniforms))};
         sdfgi_gather_uniforms_layout_ = layout(sdfgi_gather_entries);
+        // Skinning: the rest vertices, weights, shapes and poses; the mesh's vertices; the
+        // counts.
+        const std::array skin_inputs{storage_entry(0, true), storage_entry(1, true),
+                                     storage_entry(2, true), storage_entry(3, true)};
+        skin_inputs_layout_ = layout(skin_inputs);
+        const std::array skin_output{storage_entry(0, false)};
+        skin_output_layout_ = layout(skin_output);
+        const std::array skin_entries{
+            uniform_entry(0, WGPUShaderStage_Compute, sizeof(SkinUniforms))};
+        skin_uniforms_layout_ = layout(skin_entries);
 
         const auto pipeline_layout = [&](std::initializer_list<WGPUBindGroupLayout> groups) {
             const std::vector<WGPUBindGroupLayout> list(groups);
@@ -3364,6 +3560,8 @@ private:
         pipeline_layouts_.at(kSdfgiGatherLayout) =
             pipeline_layout({sdfgi_gather_buffers_layout_, empty_layout_,
                              sdfgi_gather_textures_layout_, sdfgi_gather_uniforms_layout_});
+        pipeline_layouts_.at(kSkinLayout) =
+            pipeline_layout({skin_inputs_layout_, skin_output_layout_, skin_uniforms_layout_});
     }
 
     WGPUShaderModule create_module(std::string_view wgsl) {
@@ -3692,6 +3890,8 @@ private:
         const std::array sdfgi_gather{
             buffer_entry(0, uniform_buffer_, sizeof(SdfgiGatherUniforms))};
         sdfgi_gather_uniforms_group_ = bind_group(sdfgi_gather_uniforms_layout_, sdfgi_gather);
+        const std::array skin{buffer_entry(0, uniform_buffer_, sizeof(SkinUniforms))};
+        skin_uniforms_group_ = bind_group(skin_uniforms_layout_, skin);
     }
 
     void release_uniform_groups() {
@@ -3724,7 +3924,8 @@ private:
                                      &generation_draw_uniforms_group_,
                                      &sdfgi_uniforms_group_,
                                      &sdfgi_voxelize_uniforms_group_,
-                                     &sdfgi_gather_uniforms_group_}) {
+                                     &sdfgi_gather_uniforms_group_,
+                                     &skin_uniforms_group_}) {
             if (*group != nullptr) {
                 wgpuBindGroupRelease(*group);
                 *group = nullptr;
@@ -7698,6 +7899,7 @@ private:
     static constexpr std::size_t kSdfgiVoxelizeModule = kSdfgiModule + 1;
     static constexpr std::size_t kSdfgiGatherVertexModule = kSdfgiVoxelizeModule + 1;
     static constexpr std::size_t kSdfgiGatherFragmentModule = kSdfgiGatherVertexModule + 1;
+    static constexpr std::size_t kSkinModule = kSdfgiGatherFragmentModule + 1;
     static constexpr std::size_t kSpriteLayout = 0;
     static constexpr std::size_t kMaterialLayout = 1;
     static constexpr std::size_t kProcessLayout = 2;
@@ -7730,6 +7932,7 @@ private:
     static constexpr std::size_t kSdfgiLayout = kStages3DLayout + 1;
     static constexpr std::size_t kSdfgiVoxelizeLayout = kSdfgiLayout + 1;
     static constexpr std::size_t kSdfgiGatherLayout = kSdfgiVoxelizeLayout + 1;
+    static constexpr std::size_t kSkinLayout = kSdfgiGatherLayout + 1;
 
     WGPUInstance instance_;
     WGPUDevice device_;
@@ -7742,7 +7945,7 @@ private:
     bool can_wait_ = false; // Asyncify lets read_texture wait for the GPU
     // Which formats the GPU samples, by TextureFormat.
     std::array<bool, 4> sampled_{true, false, false, true};
-    std::array<WGPUShaderModule, kSdfgiGatherFragmentModule + 1> modules_{};
+    std::array<WGPUShaderModule, kSkinModule + 1> modules_{};
     std::vector<Pipeline> pipelines_;
     std::unordered_map<ShaderId, GameShader> game_shaders_;
     std::uint32_t next_shader_ = 1;
@@ -7814,7 +8017,10 @@ private:
     WGPUBindGroupLayout sdfgi_gather_buffers_layout_ = nullptr;
     WGPUBindGroupLayout sdfgi_gather_textures_layout_ = nullptr;
     WGPUBindGroupLayout sdfgi_gather_uniforms_layout_ = nullptr;
-    std::array<WGPUPipelineLayout, kSdfgiGatherLayout + 1> pipeline_layouts_{};
+    WGPUBindGroupLayout skin_inputs_layout_ = nullptr;
+    WGPUBindGroupLayout skin_output_layout_ = nullptr;
+    WGPUBindGroupLayout skin_uniforms_layout_ = nullptr;
+    std::array<WGPUPipelineLayout, kSkinLayout + 1> pipeline_layouts_{};
     std::array<WGPUSampler, 4> samplers_{}; // by sampler_index
     GpuTexture white_;
     std::unordered_map<TextureId, Texture> textures_;
@@ -7858,6 +8064,7 @@ private:
     WGPUBindGroup sdfgi_uniforms_group_ = nullptr;
     WGPUBindGroup sdfgi_voxelize_uniforms_group_ = nullptr;
     WGPUBindGroup sdfgi_gather_uniforms_group_ = nullptr;
+    WGPUBindGroup skin_uniforms_group_ = nullptr;
     std::unordered_map<ParticlesId, ParticleSystem> particle_systems_;
     std::uint32_t next_particles_ = 1;
     std::vector<WGPUBuffer> pending_buffers_;
@@ -8011,6 +8218,15 @@ private:
     StorageBuffer sdfgi_items_;
     std::optional<SdfgiWork> sdfgi_work_;
     bool sdfgi_failure_logged_ = false;
+    // Skins, the skin_mesh calls waiting for the next frame, their joints and shape weights,
+    // the buffer those go in and the skinning pipeline.
+    std::unordered_map<SkinId, WebSkin> skins_;
+    std::uint32_t next_skin_ = 1;
+    std::vector<SkinJob> skin_jobs_;
+    std::vector<std::uint32_t> skin_poses_;
+    WGPUBuffer skin_poses_buffer_ = nullptr;
+    std::uint64_t skin_poses_capacity_ = 0;
+    WGPUComputePipeline skin_pipeline_ = nullptr;
     // The most a storage binding and a buffer may hold, as the device was made with.
     std::uint64_t max_storage_binding_ = 128U << 20U;
     std::uint64_t max_buffer_ = 256U << 20U;

@@ -1320,6 +1320,7 @@ Renderer::~Renderer() {
     }
     for (const auto& [key, skinned] : skinned_) {
         device_->destroy_mesh(skinned.id);
+        device_->destroy_skin(skinned.skin);
     }
     for (const auto& [key, kept] : particle_meshes_) {
         device_->destroy_mesh(kept.id);
@@ -1821,6 +1822,53 @@ Result<render::MeshId> Renderer::cloth_mesh(const std::string& key, const ModelS
     return cloth.id;
 }
 
+namespace {
+
+// The weight at or below which a blend shape is left out, as blend_shapes.cpp's kNoWeight.
+constexpr float kNoShapeWeight = 0.0001F;
+
+// A skin on the device of a surface's rest vertices, weights and blend shapes.
+Result<render::SkinId> make_skin(render::RenderDevice& device, const ModelSurface& surface) {
+    std::vector<render::SkinWeights> weights(surface.weights.size());
+    for (std::size_t i = 0; i < weights.size(); ++i) {
+        weights[i] = {.joints = surface.weights[i].joints, .weights = surface.weights[i].weights};
+    }
+    std::vector<render::SkinShape> shapes(surface.blend_shapes.size());
+    for (std::size_t k = 0; k < shapes.size(); ++k) {
+        const SurfaceBlendShape& shape = surface.blend_shapes[k];
+        shapes[k] = {
+            .positions = shape.positions, .normals = shape.normals, .tangents = shape.tangents};
+    }
+    return device.create_skin({.vertices = surface.vertices, .weights = weights, .shapes = shapes});
+}
+
+// A box with nothing in it, which any box added to it replaces.
+Bounds empty_box() {
+    constexpr real_t kFar = std::numeric_limits<float>::max();
+    return {.min = {kFar, kFar, kFar}, .max = {-kFar, -kFar, -kFar}};
+}
+
+void add_point(Bounds& box, Vec3 p) {
+    box.min = {std::min(box.min.x, p.x), std::min(box.min.y, p.y), std::min(box.min.z, p.z)};
+    box.max = {std::max(box.max.x, p.x), std::max(box.max.y, p.y), std::max(box.max.z, p.z)};
+}
+
+// Adds a box, grown by grow on each side and placed by joint (or as it is), to out.
+void add_box(Bounds& out, const Bounds& box, Vec3 grow, const world::Affine3D* joint) {
+    if (box.min.x > box.max.x) {
+        return;
+    }
+    const Bounds grown{.min = box.min - grow, .max = box.max + grow};
+    for (int corner = 0; corner < 8; ++corner) {
+        const Vec3 p{(corner & 1) != 0 ? grown.max.x : grown.min.x,
+                     (corner & 2) != 0 ? grown.max.y : grown.min.y,
+                     (corner & 4) != 0 ? grown.max.z : grown.min.z};
+        add_point(out, joint != nullptr ? joint->apply(p) : p);
+    }
+}
+
+} // namespace
+
 Result<render::MeshId> Renderer::skinned_mesh(const std::string& key, const ModelSurface& surface,
                                               const std::vector<world::Affine3D>& joints,
                                               const std::vector<float>& shape_weights,
@@ -1832,6 +1880,26 @@ Result<render::MeshId> Renderer::skinned_mesh(const std::string& key, const Mode
         skinned.shape_weights == shape_weights && skinned.flesh == flesh &&
         (flesh == nullptr || skinned.flesh_at == flesh_at)) {
         return skinned.id;
+    }
+    // A device that skins moves the vertices itself, as Godot's skeleton compute shader does,
+    // unless flesh moves them after. A skin it can't take moves on the CPU.
+    if (device_->gpu_skinning() && flesh == nullptr && !skinned.on_cpu) {
+        if (skinned.skin == render::SkinId::None) {
+            auto made = make_skin(*device_, surface);
+            if (made) {
+                skinned.skin = made.value();
+                measure_skin(skinned, surface);
+            } else {
+                skinned.on_cpu = true;
+            }
+        }
+        if (skinned.skin != render::SkinId::None) {
+            return skin_on_device(key, skinned, surface, joints, shape_weights);
+        }
+    }
+    if (skinned.skin != render::SkinId::None) {
+        device_->destroy_skin(skinned.skin);
+        skinned.skin = render::SkinId::None;
     }
     // Blend shapes first, then the skin, as Godot's skeleton shader moves them.
     if (any_blend(shape_weights)) {
@@ -1875,6 +1943,115 @@ Result<render::MeshId> Renderer::skinned_mesh(const std::string& key, const Mode
     skinned.flesh = flesh;
     skinned.flesh_at = flesh_at;
     skinned.box = bounds_of(skinned_vertices_);
+    return skinned.id;
+}
+
+void Renderer::measure_skin(Skinned& skinned, const ModelSurface& surface) {
+    skinned.joint_boxes.clear();
+    skinned.unweighed = empty_box();
+    skinned.has_unweighed = false;
+    for (std::size_t i = 0; i < surface.vertices.size(); ++i) {
+        const auto& at = surface.vertices[i].position;
+        const Vec3 p{at[0], at[1], at[2]};
+        bool weighed = false;
+        if (i < surface.weights.size()) {
+            const VertexWeights& w = surface.weights[i];
+            for (std::size_t k = 0; k < w.weights.size(); ++k) {
+                if (w.weights.at(k) == 0.0F) {
+                    continue;
+                }
+                const std::size_t joint = w.joints.at(k);
+                if (joint >= skinned.joint_boxes.size()) {
+                    skinned.joint_boxes.resize(joint + 1, empty_box());
+                }
+                add_point(skinned.joint_boxes[joint], p);
+                weighed = true;
+            }
+        }
+        if (!weighed) {
+            add_point(skinned.unweighed, p);
+            skinned.has_unweighed = true;
+        }
+    }
+    skinned.reach.assign(surface.blend_shapes.size(), {});
+    for (std::size_t k = 0; k < surface.blend_shapes.size(); ++k) {
+        Vec3& reach = skinned.reach[k];
+        for (const auto& offset : surface.blend_shapes[k].positions) {
+            reach = {std::max<real_t>(reach.x, std::abs(offset[0])),
+                     std::max<real_t>(reach.y, std::abs(offset[1])),
+                     std::max<real_t>(reach.z, std::abs(offset[2]))};
+        }
+    }
+}
+
+Result<render::MeshId> Renderer::skin_on_device(const std::string& key, Skinned& skinned,
+                                                const ModelSurface& surface,
+                                                const std::vector<world::Affine3D>& joints,
+                                                const std::vector<float>& shape_weights) {
+    if (skinned.id == render::MeshId::None) {
+        auto made =
+            device_->create_mesh(surface.vertices, surface.indices, lod_spans(surface.lods));
+        if (!made) {
+            device_->destroy_skin(skinned.skin);
+            skinned_.erase(key);
+            return made.error();
+        }
+        skinned.id = made.value();
+        skinned.lods = surface.lods;
+    }
+    std::vector<render::SkinJoint> moved(joints.size());
+    for (std::size_t j = 0; j < joints.size(); ++j) {
+        const world::Affine3D& joint = joints[j];
+        const auto words = [](Vec3 v) {
+            return std::array<float, 3>{static_cast<float>(v.x), static_cast<float>(v.y),
+                                        static_cast<float>(v.z)};
+        };
+        moved[j] = {.x = words(joint.x),
+                    .y = words(joint.y),
+                    .z = words(joint.z),
+                    .origin = words(joint.origin)};
+    }
+    // The vertices' bounds: each joint's box placed by the joint, after the blend shapes at
+    // their weights move the rest vertices at most their reach.
+    std::vector<float> weights(shape_weights);
+    Vec3 grow;
+    for (std::size_t k = 0; k < weights.size(); ++k) {
+        if (std::abs(weights[k]) <= kNoShapeWeight) {
+            weights[k] = 0.0F;
+        } else if (k < skinned.reach.size()) {
+            grow = grow + (skinned.reach[k] * std::abs(weights[k]));
+        }
+    }
+    Bounds box = empty_box();
+    if (joints.empty() || surface.weights.empty()) {
+        add_box(box, bounds_of(surface.vertices), grow, nullptr);
+    } else {
+        for (std::size_t j = 0; j < skinned.joint_boxes.size(); ++j) {
+            // A joint the pose lacks moves nothing.
+            add_box(box, skinned.joint_boxes[j], grow, j < joints.size() ? &joints[j] : nullptr);
+        }
+        if (skinned.has_unweighed) {
+            add_box(box, skinned.unweighed, grow, nullptr);
+        }
+    }
+    if (box.min.x > box.max.x) {
+        box = {};
+    }
+    const auto low =
+        std::array<float, 3>{static_cast<float>(box.min.x), static_cast<float>(box.min.y),
+                             static_cast<float>(box.min.z)};
+    const auto high =
+        std::array<float, 3>{static_cast<float>(box.max.x), static_cast<float>(box.max.y),
+                             static_cast<float>(box.max.z)};
+    if (auto skinned_now = device_->skin_mesh(skinned.id, skinned.skin, moved, weights, low, high);
+        !skinned_now) {
+        return skinned_now.error();
+    }
+    skinned.joints = joints;
+    skinned.shape_weights = shape_weights;
+    skinned.flesh = nullptr;
+    skinned.flesh_at = 0.0F;
+    skinned.box = box;
     return skinned.id;
 }
 
@@ -4132,6 +4309,7 @@ std::optional<Frame3D> Renderer::prepare(
         cached_.clear();
         for (const auto& [key, skinned] : skinned_) {
             device_->destroy_mesh(skinned.id);
+            device_->destroy_skin(skinned.skin);
         }
         skinned_.clear();
         destroy_cuts(false);
@@ -4532,6 +4710,7 @@ std::optional<Frame3D> Renderer::prepare(
     for (auto it = skinned_.begin(); it != skinned_.end();) {
         if (it->second.used != frame_) {
             device_->destroy_mesh(it->second.id);
+            device_->destroy_skin(it->second.skin);
             it = skinned_.erase(it);
         } else {
             ++it;
