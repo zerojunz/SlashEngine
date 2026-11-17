@@ -1122,7 +1122,9 @@ launch rows and the after-launch features above.
   WebGPU
 - GPU-driven rendering, after Unity 7's Graphics Kernel (2026-11-17, queued after the SDFGI
   port): skinning on the GPU (done: skin.hlsl on Vulkan, Metal and WebGPU, its CPU twin
-  elsewhere), culling and LOD picks in compute with indirect multi-draws, and
+  elsewhere), culling in compute with indirect draws (done: mesh_cull.hlsl on Vulkan, Metal,
+  Direct3D 12 and WebGPU, its CPU twin on the software device), LOD picks in compute and
+  instanced multi-draws, and
   a frame graph over every device's passes (what each reads and writes, passes nothing uses
   left out, transient textures sharing memory, independent compute work merged so it shares
   barriers)

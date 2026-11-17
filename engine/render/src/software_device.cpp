@@ -12,6 +12,7 @@
 #include "frame_generation.hpp"
 #include "fsr2.hpp"
 #include "fsr3.hpp"
+#include "mesh_cull.hpp"
 #include "mesh_shading.hpp"
 #include "path_trace.hpp"
 #include "post_shading.hpp"
@@ -1908,9 +1909,20 @@ private:
             maps.probes = probes;
             maps.probe_cubes = &textures_.at(scene.reflections.atlas).cubes;
         }
-        const std::vector<std::size_t> order = detail::mesh_draw_order(
-            std::span<const detail::MeshDraw>(mesh_draws_), scene,
-            [&](std::size_t i) { return find_mesh(mesh_draws_[i].mesh).bounds; });
+        // The camera's passes leave out the draws the GPU devices' mesh_cull.hlsl culls, by its
+        // CPU twin.
+        const Mat4 seen_from = multiply(scene.projection, scene.camera);
+        std::vector<std::size_t> order;
+        for (const std::size_t i : detail::mesh_draw_order(
+                 std::span<const detail::MeshDraw>(mesh_draws_), scene,
+                 [&](std::size_t at) { return find_mesh(mesh_draws_[at].mesh).bounds; })) {
+            const detail::MeshDraw& draw = mesh_draws_[i];
+            const detail::Bounds& bounds = find_mesh(draw.mesh).bounds;
+            if (draw.material.shader != ShaderId::None ||
+                detail::box_in_view(multiply(seen_from, draw.transform), bounds.low, bounds.high)) {
+                order.push_back(i);
+            }
+        }
         std::vector<ClipVertex> corners;
         // Draws the meshes in order over buffer, the opaque pass's alone for the prepass and
         // the blended pass's alone after the subsurface scattering, with shade(shader, fragment,

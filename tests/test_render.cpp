@@ -17,6 +17,7 @@
 #include "../engine/render/src/hlsl_compiler.hpp"
 #include "../engine/render/src/material_shaders.hpp"
 #include "../engine/render/src/mesh_clustered_shaders.hpp"
+#include "../engine/render/src/mesh_cull_shaders.hpp"
 #include "../engine/render/src/mesh_shaders.hpp"
 #include "../engine/render/src/particles_draw_shaders.hpp"
 #include "../engine/render/src/particles_emit_shaders.hpp"
@@ -801,7 +802,8 @@ TEST_CASE("every shader compiles with Windows' HLSL compiler") {
           std::pair{"particles_mesh_3d", shaders::kParticlesMesh3DHlsl},
           std::pair{"sdfgi", shaders::kSdfgiHlsl},
           std::pair{"sdfgi_voxelize", shaders::kSdfgiVoxelizeHlsl},
-          std::pair{"frame_generation", shaders::kFrameGenerationHlsl}}) {
+          std::pair{"frame_generation", shaders::kFrameGenerationHlsl},
+          std::pair{"mesh_cull", shaders::kMeshCullHlsl}}) {
         const auto compiled = slash::render::detail::compile_hlsl(hlsl, "cs_main", "cs_5_1");
         CHECK_MESSAGE(compiled.ok(), name, ": ",
                       (compiled.ok() ? std::string() : compiled.error().message));
