@@ -703,12 +703,11 @@ void integrate(uint p) {
     uint sh_count = kProbeCount * kShSize;
     [unroll] for (uint s2 = 0u; s2 < 16u; ++s2) {
         uint at = (p * kShSize) + s2;
-        int4 value;
-        [unroll] for (uint ch = 0u; ch < 4u; ++ch) {
-            float v = (ch < 3u ? sh[s2][ch] : 1.0) * 4.0 / float(ray_count);
-            float scaled = v * float(1u << kHistoryBits);
-            value[ch] = clamp(int(scaled), -32768, 32767);
-        }
+        // Whole vectors: Windows' compiler reads both sides of a select, so sh[s2][3] fails.
+        float4 v = float4(sh[s2], 1.0) * 4.0 / float(ray_count);
+        float4 scaled = v * float(1u << kHistoryBits);
+        int4 value = clamp(int4(scaled), int4(-32768, -32768, -32768, -32768),
+                           int4(32767, 32767, 32767, 32767));
         uint h = history + ((history_index * sh_count) + at) * 2u;
         uint w0 = history_words[h];
         uint w1 = history_words[h + 1u];
