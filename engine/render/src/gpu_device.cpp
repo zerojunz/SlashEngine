@@ -57,6 +57,8 @@
 #include "sdfgi_voxelize_shaders.hpp"
 #include "shader_code.hpp"
 #include "shadow_shaders.hpp"
+#include "skin_gpu.hpp"
+#include "skin_shaders.hpp"
 #include "sky_shaders.hpp"
 #include "sky_shading.hpp"
 #include "sprite_shaders.hpp"
@@ -766,7 +768,15 @@ public:
         while (!sdfgi_frames_.empty()) {
             forget_sdfgi_frames(sdfgi_frames_.back().first);
         }
-        for (SDL_GPUComputePipeline* pipeline : {sdfgi_pipeline_, sdfgi_voxelize_pipeline_}) {
+        for (auto& [id, skin] : skins_) {
+            release_skin(skin.buffers);
+        }
+        if (skin_poses_buffer_.buffer != nullptr) {
+            SDL_ReleaseGPUBuffer(device_, skin_poses_buffer_.buffer);
+            SDL_ReleaseGPUTransferBuffer(device_, skin_poses_buffer_.transfer);
+        }
+        for (SDL_GPUComputePipeline* pipeline :
+             {sdfgi_pipeline_, sdfgi_voxelize_pipeline_, skin_pipeline_}) {
             if (pipeline != nullptr) {
                 SDL_ReleaseGPUComputePipeline(device_, pipeline);
             }
@@ -1617,6 +1627,7 @@ public:
         if (auto checked = check_mesh_update(vertices, it->second.vertex_count); !checked) {
             return checked;
         }
+        std::erase_if(skin_jobs_, [&](const SkinJob& job) { return job.mesh == mesh; });
         const auto bytes = static_cast<std::uint32_t>(vertices.size_bytes());
         // The first update since a frame with TAA drew the mesh keeps the vertices it drew, for
         // the motion of the next one's: the buffers swap, and the new vertices go in the other.
@@ -1675,6 +1686,7 @@ public:
         if (it == meshes_.end()) {
             return;
         }
+        std::erase_if(skin_jobs_, [&](const SkinJob& job) { return job.mesh == mesh; });
         if (in_frame_) {
             // The frame's draws still read its buffers when it is sent.
             pending_buffers_.push_back(it->second.vertices);
@@ -1688,7 +1700,230 @@ public:
         meshes_.erase(it);
     }
 
+    // On Direct3D 12 the meshes are skinned on the CPU, as fill_particle_mesh places particles'
+    // there: SDL's device is lost writing vertex buffers in compute on WARP.
+    bool gpu_skinning() const override { return backend_ != Backend::D3D12; }
+
+    Result<SkinId> create_skin(const SkinDesc& desc) override {
+        if (!gpu_skinning()) {
+            return RenderDevice::create_skin(desc);
+        }
+        auto words = skin_words(desc);
+        if (!words) {
+            return words.error();
+        }
+        GpuSkin skin{.words = std::move(words).value()};
+        const std::array<const std::vector<std::uint32_t>*, 3> sources{
+            &skin.words.rest, &skin.words.weights, &skin.words.shapes};
+        for (std::size_t k = 0; k < sources.size(); ++k) {
+            // A skin without weights or shapes still binds a buffer of a word.
+            static const std::vector<std::uint32_t> kOne{0};
+            const std::vector<std::uint32_t>& from = sources.at(k)->empty() ? kOne : *sources.at(k);
+            auto made = make_skin_buffer(from);
+            if (!made) {
+                release_skin(skin.buffers);
+                return made.error();
+            }
+            skin.buffers.at(k) = made.value();
+        }
+        // The words stay for the poses' uniforms, but not the vertices they were uploaded from.
+        skin.words.rest = {};
+        skin.words.weights = {};
+        skin.words.shapes = {};
+        skin.has_weights = !desc.weights.empty();
+        const auto id = static_cast<SkinId>(next_skin_++);
+        skins_.emplace(id, std::move(skin));
+        return id;
+    }
+
+    Result<void> skin_mesh(MeshId mesh, SkinId skin, std::span<const SkinJoint> joints,
+                           std::span<const float> shape_weights, std::array<float, 3> low,
+                           std::array<float, 3> high) override {
+        if (!gpu_skinning()) {
+            return RenderDevice::skin_mesh(mesh, skin, joints, shape_weights, low, high);
+        }
+        if (in_frame_) {
+            return frame_in_progress("skin_mesh");
+        }
+        const auto found_skin = skins_.find(skin);
+        if (found_skin == skins_.end()) {
+            return make_error(ErrorCode::NotFound, "no such skin");
+        }
+        const auto it = meshes_.find(mesh);
+        if (it == meshes_.end()) {
+            return unknown_mesh(mesh);
+        }
+        Mesh& found = it->second;
+        const GpuSkin& kept = found_skin->second;
+        if (found.vertex_count != kept.words.vertex_count) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a skin of " + std::to_string(kept.words.vertex_count) +
+                                  " vertices can't move a mesh of " +
+                                  std::to_string(found.vertex_count));
+        }
+        // The vertices are written where update_mesh writes them, into a buffer the shader can
+        // write, the ones drawn before kept for TAA as update_mesh keeps them.
+        found.version = ++mesh_versions_;
+        const auto bytes = static_cast<std::uint32_t>(found.vertex_count * sizeof(Vertex3D));
+        if (!found.moved) {
+            if (found.previous == nullptr) {
+                found.previous = make_mesh_vertices(bytes);
+                found.previous_storage = true;
+                if (found.previous == nullptr) {
+                    return sdl_error("making room for a mesh's vertices failed");
+                }
+            }
+            std::swap(found.vertices, found.previous);
+            std::swap(found.storage, found.previous_storage);
+            found.moved = true;
+        }
+        if (!found.storage) {
+            SDL_GPUBuffer* writable = make_mesh_vertices(bytes);
+            if (writable == nullptr) {
+                return sdl_error("making room for a mesh's vertices failed");
+            }
+            // SDL releases the old buffer once the frames that read it are done.
+            SDL_ReleaseGPUBuffer(device_, found.vertices);
+            found.vertices = writable;
+            found.storage = true;
+        }
+        found.bounds = {.low = low, .high = high};
+        std::erase_if(skin_jobs_, [&](const SkinJob& job) { return job.mesh == mesh; });
+        SkinJob job{.mesh = mesh,
+                    .skin = skin,
+                    .uniforms = skin_pose(kept.words, joints, shape_weights, skin_poses_)};
+        // The words' weights went with their upload, so the skin says whether it has them.
+        job.uniforms.at[2] = kept.has_weights ? 1U : 0U;
+        skin_jobs_.push_back(job);
+        return {};
+    }
+
+    void destroy_skin(SkinId skin) override {
+        const auto it = skins_.find(skin);
+        if (it == skins_.end()) {
+            return;
+        }
+        std::erase_if(skin_jobs_, [&](const SkinJob& job) { return job.skin == skin; });
+        release_skin(it->second.buffers);
+        skins_.erase(it);
+    }
+
+    // A storage buffer holding words, uploaded once.
+    Result<SDL_GPUBuffer*> make_skin_buffer(std::span<const std::uint32_t> words) {
+        const auto bytes = static_cast<std::uint32_t>(words.size_bytes());
+        SDL_GPUBufferCreateInfo info{};
+        info.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ;
+        info.size = bytes;
+        SDL_GPUBuffer* buffer = SDL_CreateGPUBuffer(device_, &info);
+        const TransferBuffer transfer(device_, SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, bytes);
+        void* mapped = buffer == nullptr || transfer.get() == nullptr
+                           ? nullptr
+                           : SDL_MapGPUTransferBuffer(device_, transfer.get(), false);
+        if (mapped == nullptr) {
+            if (buffer != nullptr) {
+                SDL_ReleaseGPUBuffer(device_, buffer);
+            }
+            return sdl_error("making room for a skin failed");
+        }
+        std::memcpy(mapped, words.data(), bytes);
+        SDL_UnmapGPUTransferBuffer(device_, transfer.get());
+        SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(device_);
+        if (commands == nullptr) {
+            SDL_ReleaseGPUBuffer(device_, buffer);
+            return sdl_error("uploading a skin failed");
+        }
+        SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+        const SDL_GPUTransferBufferLocation source{.transfer_buffer = transfer.get(), .offset = 0};
+        const SDL_GPUBufferRegion destination{.buffer = buffer, .offset = 0, .size = bytes};
+        SDL_UploadToGPUBuffer(copy, &source, &destination, false);
+        SDL_EndGPUCopyPass(copy);
+        if (!SDL_SubmitGPUCommandBuffer(commands)) {
+            SDL_ReleaseGPUBuffer(device_, buffer);
+            return sdl_error("uploading a skin failed");
+        }
+        return buffer;
+    }
+
+    void release_skin(std::array<SDL_GPUBuffer*, 3>& buffers) {
+        for (SDL_GPUBuffer*& buffer : buffers) {
+            if (buffer != nullptr) {
+                SDL_ReleaseGPUBuffer(device_, buffer);
+                buffer = nullptr;
+            }
+        }
+    }
+
+    // Runs the skin_mesh calls since the last frame, a dispatch each, in a command buffer of
+    // their own sent before the frame's.
+    Result<void> flush_skins() {
+        if (skin_jobs_.empty()) {
+            return {};
+        }
+        const std::vector<SkinJob> jobs = std::exchange(skin_jobs_, {});
+        std::vector<std::uint32_t> poses = std::exchange(skin_poses_, {});
+        if (skin_pipeline_ == nullptr) {
+            // The rest vertices, weights, shapes and poses; the mesh's vertices; the counts.
+            SDL_GPUComputePipelineCreateInfo info{};
+            info.entrypoint = "cs_main";
+            info.num_readonly_storage_buffers = 4;
+            info.num_readwrite_storage_buffers = 1;
+            info.num_uniform_buffers = 1;
+            info.threadcount_x = kSkinThreads;
+            info.threadcount_y = 1;
+            info.threadcount_z = 1;
+            auto made =
+                create_compute_pipeline(info, shaders::kSkinComputeSpirv, shaders::kSkinComputeMsl,
+                                        shaders::kSkinHlsl, "skinning");
+            if (!made) {
+                return made.error();
+            }
+            skin_pipeline_ = made.value();
+        }
+        SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(device_);
+        if (commands == nullptr) {
+            return sdl_error("skinning meshes failed");
+        }
+        SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+        Result<void> uploaded =
+            upload_storage(copy, skin_poses_buffer_, std::as_bytes(std::span(poses)));
+        SDL_EndGPUCopyPass(copy);
+        if (uploaded) {
+            for (const SkinJob& job : jobs) {
+                const auto mesh = meshes_.find(job.mesh);
+                const auto skin = skins_.find(job.skin);
+                if (mesh == meshes_.end() || skin == skins_.end()) {
+                    continue;
+                }
+                // Cycling gives the vertices new memory if a frame sent before still reads them.
+                SDL_GPUStorageBufferReadWriteBinding output{};
+                output.buffer = mesh->second.vertices;
+                output.cycle = true;
+                SDL_GPUComputePass* pass =
+                    SDL_BeginGPUComputePass(commands, nullptr, 0, &output, 1);
+                SDL_BindGPUComputePipeline(pass, skin_pipeline_);
+                const std::array<SDL_GPUBuffer*, 4> inputs{
+                    skin->second.buffers[0], skin->second.buffers[1], skin->second.buffers[2],
+                    skin_poses_buffer_.buffer};
+                SDL_BindGPUComputeStorageBuffers(pass, 0, inputs.data(), 4);
+                SDL_PushGPUComputeUniformData(commands, 0, &job.uniforms,
+                                              static_cast<std::uint32_t>(sizeof(job.uniforms)));
+                const std::array<std::uint32_t, 2> groups = skin_groups(job.uniforms.counts[0]);
+                SDL_DispatchGPUCompute(pass, groups[0], groups[1], 1);
+                SDL_EndGPUComputePass(pass);
+            }
+        }
+        if (!SDL_SubmitGPUCommandBuffer(commands)) {
+            return sdl_error("skinning meshes failed");
+        }
+        return uploaded;
+    }
+
     Result<bool> begin_frame(const Frame& frame) override {
+        if (!in_frame_) {
+            if (auto skinned = flush_skins(); !skinned) {
+                return skinned.error();
+            }
+        }
         if (!in_frame_ && rays_ != nullptr && frame.scene && frame.scene->path_trace &&
             !frame.scene->capture) {
             // A path-traced frame on a device that traces rays: its paths stand for its meshes
@@ -2654,6 +2889,21 @@ private:
         bool previous_storage = false;
         // Changes whenever its vertices do, so rays build its structure again.
         std::uint64_t version = 0;
+    };
+
+    // A skin (create_skin): its rest vertices', weights' and blend shapes' buffers, and the
+    // counts and shapes' turns its poses need.
+    struct GpuSkin {
+        SkinWords words;
+        std::array<SDL_GPUBuffer*, 3> buffers{};
+        bool has_weights = false;
+    };
+
+    // A skin_mesh waiting for the next frame: the mesh it writes and the dispatch's uniforms.
+    struct SkinJob {
+        MeshId mesh = MeshId::None;
+        SkinId skin = SkinId::None;
+        SkinUniforms uniforms;
     };
 
     // What a mesh draw binds, found when it is made: its mesh may be destroyed before end_frame.
@@ -8524,6 +8774,14 @@ private:
     std::array<SDL_GPUShader*, 2> sdfgi_gather_shaders_{};
     SDL_GPUGraphicsPipeline* sdfgi_gather_pipeline_ = nullptr;
     bool sdfgi_failure_logged_ = false;
+    // Skins, the skin_mesh calls waiting for the next frame, their joints and shape weights,
+    // the buffer those go in and the skinning pipeline.
+    std::unordered_map<SkinId, GpuSkin> skins_;
+    std::uint32_t next_skin_ = 1;
+    std::vector<SkinJob> skin_jobs_;
+    std::vector<std::uint32_t> skin_poses_;
+    StorageBuffer skin_poses_buffer_;
+    SDL_GPUComputePipeline* skin_pipeline_ = nullptr;
     std::array<SDL_GPUShader*, 2> fog_sky_shaders_{};
     std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> fog_sky_pipelines_;
     SDL_GPUBuffer* no_fog_ = nullptr;

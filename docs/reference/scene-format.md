@@ -1296,6 +1296,13 @@ file's skin deformers and animation stacks are read as [FBX models](#fbx-models)
 model. [examples/skinned-meshes](../../examples/skinned-meshes/) waves a skinned arm, from a
 glTF file and from the same arm as an FBX file.
 
+Skinned and blend-shaped meshes move on the GPU where the device can, as Godot's skeleton
+compute shader moves them: the GPU device on Vulkan and Metal, and WebGPU in a browser, keep each
+surface's rest vertices, weights and blend shapes on the GPU and move them in a compute pass
+before the frame draws, sending only the joints and shape weights each frame. Direct3D 12, the
+OpenGL devices, the software device and meshes with `Flesh3D` skin on the CPU instead. Both give
+the same vertices, so the choice changes no pixels.
+
 #### Blend shapes
 
 A glTF model's morph targets are its meshes' blend shapes, as Godot's importer makes them: each

@@ -1683,9 +1683,15 @@ with `ufbx_bake_anim` as Godot's FBX importer bakes them (`src/fbx.cpp`).
 tracks with its deterministic slerp), then by the entity's `Skeleton3D`; poses are worked out
 from components every time, never kept. The animation module tells scene3d what an entity's
 `AnimationPlayer` plays through `scene3d::set_clip_source`: a library can be a model file, and a
-`.anim.json` animation can come `from` a model's and add its own tracks. The renderer skins on
-the CPU as Godot's skeleton shader does (`skin_vertices`) into a mesh per entity that
-`RenderDevice::update_mesh` refills, and blends poses between ticks. `skeleton.get` lists and
+`.anim.json` animation can come `from` a model's and add its own tracks. The renderer skins
+each surface into a mesh per entity and blends poses between ticks: where
+`RenderDevice::gpu_skinning()` says so (the GPU device on Vulkan and Metal, and the WebGPU
+device), as Godot's skeleton compute shader does, `create_skin` keeps the rest vertices, weights
+and blend shapes on the device and `skin_mesh` moves them each frame with `shaders/skin.hlsl`
+(`src/skin_gpu.hpp` lays out its words; `Renderer::skin_on_device` bounds the mesh by each
+joint's box of the vertices it weighs), and elsewhere, or under flesh, on the CPU
+(`blend_vertices`, then `skin_vertices`) into `RenderDevice::update_mesh`; the two are twins and
+`tests/test_gpu_skinning.cpp` holds them to each other's pixels. `skeleton.get` lists and
 poses bones; `examples/skinned-meshes` waves an arm. glTF morph targets are Godot's blend shapes
 (`slash/scene3d/blend_shapes.hpp`): each surface keeps its shapes' offsets
 (`ModelSurface::blend_shapes`, carried through merging corners by `Triangles::origins` and
