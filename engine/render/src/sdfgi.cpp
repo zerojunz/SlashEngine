@@ -674,7 +674,6 @@ void voxelize(SdfgiCascade& cascade, std::uint32_t size, float y_mult, const Pat
         }
     });
     cascade.light.assign(grid.cells(), 0U);
-    cascade.all_lights_dirty = true;
 }
 
 // --- Light (update_light, sdfgi_direct_light.glsl's MODE_PROCESS_DYNAMIC) -----------------------
@@ -802,18 +801,16 @@ Float3 probe_texel(const std::vector<std::uint32_t>& image,
     return sample2(image, kProbeImageWidth, kProbeImageHeight, x, y);
 }
 
-void light_cells(SdfgiState& state, std::size_t index, const std::vector<SdfgiLight>& lights,
-                 jobs::Pool* pool) {
+void light_cells(SdfgiState& state, std::size_t index, const SdfgiCascadePlan& plan,
+                 const std::vector<SdfgiLight>& lights, jobs::Pool* pool) {
     SdfgiCascade& cascade = state.cascades[index];
     const std::uint32_t size = state.settings.cascade_size;
     const Cascades cs(state, size);
     const float feedback_amount = state.settings.bounce_feedback;
     // A partial update lights every increment-th cell by its index, the same cells on a GPU,
     // where solid cells come in no order.
-    const std::uint32_t increment =
-        cascade.all_lights_dirty ? 1U : std::max(1U, state.settings.frames_to_update_light);
-    const std::uint32_t process_offset = state.frame % increment;
-    cascade.all_lights_dirty = false;
+    const std::uint32_t increment = plan.light_increment;
+    const std::uint32_t process_offset = plan.light_offset;
     const Float3 offset = cs.offsets[index];
     const float cell_size = cascade.cell_size;
     const float probe_scale = static_cast<float>(kSdfgiProbeAxis - 1) / static_cast<float>(size);
@@ -1030,25 +1027,38 @@ std::size_t probe_index(const std::array<std::int32_t, 3>& p) {
            static_cast<std::size_t>(p[0]);
 }
 
-void integrate(SdfgiState& state, const Scene3D& scene, const PathScene& paths,
+// A probe's offset along its rays' spiral, from its place in the world in probes.
+float probe_offset(const std::array<std::int32_t, 3>& world_offset,
+                   const std::array<std::int32_t, 3>& probe) {
+    const std::array<std::uint32_t, 3> h3 =
+        hash3({static_cast<std::uint32_t>(world_offset[0] + probe[0]),
+               static_cast<std::uint32_t>(world_offset[1] + probe[1]),
+               static_cast<std::uint32_t>(world_offset[2] + probe[2])});
+    return hashf3({static_cast<float>(h3[0] & 0xFFFFFU), static_cast<float>(h3[1] & 0xFFFFFU),
+                   static_cast<float>(h3[2] & 0xFFFFFU)});
+}
+
+std::array<std::int32_t, 3> probe_world_offset(const SdfgiCascade& cascade, std::uint32_t size) {
+    const auto divisor = static_cast<std::int32_t>(probe_cells(size));
+    return {cascade.position[0] / divisor, cascade.position[1] / divisor,
+            cascade.position[2] / divisor};
+}
+
+void integrate(SdfgiState& state, const SdfgiFramePlan& plan, const PathScene& paths,
                const PathTextures& textures, jobs::Pool* pool) {
     const Sdfgi3D& settings = state.settings;
     const std::uint32_t size = settings.cascade_size;
     const float y_mult = sdfgi_y_mult(settings);
     const Cascades cs(state, size);
-    const std::uint32_t history_size = std::max(1U, settings.frames_to_converge);
-    const std::uint32_t history_index = state.render_pass % history_size;
+    const std::uint32_t history_size = plan.history_size;
+    const std::uint32_t history_index = plan.history_index;
     const std::uint32_t ray_count = std::max(1U, settings.ray_count);
     const std::uint32_t ray_total = history_size * ray_count;
     const std::size_t sh_count = std::size_t{kProbes} * kSdfgiShSize;
-    (void)scene;
     for (std::size_t c = 0; c < state.cascades.size(); ++c) {
         SdfgiCascade& cascade = state.cascades[c];
         const float probe_cell_size = static_cast<float>(probe_cells(size)) * cascade.cell_size;
-        const auto divisor = static_cast<std::int32_t>(probe_cells(size));
-        const std::array<std::int32_t, 3> world_offset{cascade.position[0] / divisor,
-                                                       cascade.position[1] / divisor,
-                                                       cascade.position[2] / divisor};
+        const std::array<std::int32_t, 3> world_offset = probe_world_offset(cascade, size);
         for_each(kProbes, pool, [&](std::size_t p) {
             const std::array<std::int32_t, 3> probe{
                 static_cast<std::int32_t>(p % kSdfgiProbeAxis),
@@ -1058,13 +1068,7 @@ void integrate(SdfgiState& state, const Scene3D& scene, const PathScene& paths,
                 cs.offsets[c], scale({static_cast<float>(probe[0]), static_cast<float>(probe[1]),
                                       static_cast<float>(probe[2])},
                                      probe_cell_size));
-            const std::array<std::uint32_t, 3> h3 =
-                hash3({static_cast<std::uint32_t>(world_offset[0] + probe[0]),
-                       static_cast<std::uint32_t>(world_offset[1] + probe[1]),
-                       static_cast<std::uint32_t>(world_offset[2] + probe[2])});
-            const float offset =
-                hashf3({static_cast<float>(h3[0] & 0xFFFFFU), static_cast<float>(h3[1] & 0xFFFFFU),
-                        static_cast<float>(h3[2] & 0xFFFFFU)});
+            const float offset = probe_offset(world_offset, probe);
             std::array<Float3, kSdfgiShSize> sh{};
             for (std::uint32_t i = 0; i < ray_count; ++i) {
                 Float3 ray_dir =
@@ -1216,7 +1220,6 @@ void integrate(SdfgiState& state, const Scene3D& scene, const PathScene& paths,
             }
         });
     }
-    ++state.render_pass;
 }
 
 // Makes a cascade's probe data again: cleared, as Godot's create clears its textures.
@@ -1609,18 +1612,21 @@ std::uint64_t geometry_key(const PathScene& paths) {
 
 } // namespace
 
-void update_sdfgi(SdfgiState& state, const Scene3D& scene, const Float3& camera,
-                  const PathScene& paths, const PathTextures& textures, jobs::Pool* pool) {
+SdfgiFramePlan plan_sdfgi_frame(SdfgiState& state, const Scene3D& scene, const Float3& camera,
+                                std::uint64_t geometry) {
     Sdfgi3D settings = scene.sdfgi;
     settings.cascades = std::clamp<std::uint32_t>(settings.cascades, 1, kMaxSdfgiCascades);
     settings.cascade_size = std::max<std::uint32_t>(
         kSdfgiProbeDivisor, settings.cascade_size / kSdfgiProbeDivisor * kSdfgiProbeDivisor);
-    const std::uint32_t size = settings.cascade_size;
-    const float y_mult = sdfgi_y_mult(settings);
-    const std::uint32_t history_size = std::max(1U, settings.frames_to_converge);
+    SdfgiFramePlan plan;
+    plan.size = settings.cascade_size;
+    plan.y_mult = sdfgi_y_mult(settings);
+    plan.history_size = std::max(1U, settings.frames_to_converge);
+    plan.cascades.resize(settings.cascades);
+    const std::uint32_t size = plan.size;
     const auto drag_margin = static_cast<std::int32_t>(probe_cells(size) / 2);
     Float3 world = camera;
-    world[1] *= y_mult;
+    world[1] *= plan.y_mult;
     // A change to what the cascades are made of starts them over (Godot makes its SDFGI again).
     const bool remake = state.cascades.size() != settings.cascades ||
                         state.settings.min_cell_size != settings.min_cell_size ||
@@ -1629,13 +1635,11 @@ void update_sdfgi(SdfgiState& state, const Scene3D& scene, const Float3& camera,
                         state.settings.frames_to_converge != settings.frames_to_converge ||
                         state.settings.use_occlusion != settings.use_occlusion;
     state.settings = settings;
-    std::vector<bool> dirty(settings.cascades, false);
-    // How far each cascade that moved moved, in cells, when it can scroll.
-    std::vector<std::optional<std::array<std::int32_t, 3>>> scrolls(settings.cascades);
     if (remake) {
         state.cascades.assign(settings.cascades, {});
         float cell_size = settings.min_cell_size;
-        for (SdfgiCascade& cascade : state.cascades) {
+        for (std::size_t c = 0; c < state.cascades.size(); ++c) {
+            SdfgiCascade& cascade = state.cascades[c];
             cascade.cell_size = cell_size;
             const float probe_size = cell_size * static_cast<float>(probe_cells(size));
             for (std::size_t a = 0; a < 3; ++a) {
@@ -1643,15 +1647,16 @@ void update_sdfgi(SdfgiState& state, const Scene3D& scene, const Float3& camera,
                     static_cast<std::int32_t>(std::floor((world.at(a) / probe_size) + 0.5F)) *
                     static_cast<std::int32_t>(probe_cells(size));
             }
-            clear_probes(cascade, history_size);
+            plan.cascades[c].voxelize = true;
+            plan.cascades[c].probes = SdfgiCascadePlan::Probes::Clear;
             cell_size *= 2.0F;
         }
-        dirty.assign(settings.cascades, true);
         state.render_pass = 0;
     } else {
         // Godot's SDFGI::update: each cascade follows the camera by whole steps.
         for (std::size_t c = 0; c < state.cascades.size(); ++c) {
             SdfgiCascade& cascade = state.cascades[c];
+            SdfgiCascadePlan& p = plan.cascades[c];
             std::array<std::int32_t, 3> moved{};
             for (std::size_t a = 0; a < 3; ++a) {
                 const auto pos =
@@ -1667,44 +1672,83 @@ void update_sdfgi(SdfgiState& state, const Scene3D& scene, const Float3& camera,
                 }
             }
             if (moved != std::array<std::int32_t, 3>{}) {
-                dirty[c] = true;
+                p.voxelize = true;
                 const auto step = static_cast<std::int32_t>(probe_cells(size));
                 bool far = false;
                 for (std::size_t a = 0; a < 3; ++a) {
                     far = far || std::abs(moved.at(a)) >= static_cast<std::int32_t>(size);
                 }
                 if (far) {
-                    clear_probes(cascade, history_size);
+                    p.probes = SdfgiCascadePlan::Probes::Clear;
                 } else {
-                    scroll_probes(cascade, {moved[0] / step, moved[1] / step, moved[2] / step},
-                                  history_size);
-                    scrolls[c] = moved;
+                    p.probes = SdfgiCascadePlan::Probes::Scroll;
+                    p.probe_shift = {moved[0] / step, moved[1] / step, moved[2] / step};
+                    p.scrolled = moved;
                 }
             }
         }
     }
-    const std::uint64_t geometry = geometry_key(paths);
     if (geometry != state.geometry) {
-        dirty.assign(settings.cascades, true);
-        scrolls.assign(settings.cascades, std::nullopt);
+        for (SdfgiCascadePlan& p : plan.cascades) {
+            p.voxelize = true;
+            p.scrolled.reset();
+        }
         state.geometry = geometry;
     }
+    // A partial update lights every increment-th cell by its index, the same cells on a GPU,
+    // where solid cells come in no order; a cascade made again lights all of them at once.
     for (std::size_t c = 0; c < state.cascades.size(); ++c) {
-        if (dirty[c]) {
-            voxelize(state.cascades[c], size, y_mult, paths, textures, pool, scrolls[c]);
-            if (settings.use_occlusion) {
-                make_sdfgi_occlusion(state.cascades[c], size, pool);
+        SdfgiCascadePlan& p = plan.cascades[c];
+        const bool all = p.voxelize || state.cascades[c].all_lights_dirty;
+        p.light_increment = all ? 1U : std::max(1U, settings.frames_to_update_light);
+        p.light_offset = state.frame % p.light_increment;
+        state.cascades[c].all_lights_dirty = false;
+    }
+    plan.history_index = state.render_pass % plan.history_size;
+    ++state.render_pass;
+    ++state.frame;
+    return plan;
+}
+
+std::vector<float> sdfgi_probe_offsets(const SdfgiCascade& cascade, std::uint32_t size) {
+    const std::array<std::int32_t, 3> world_offset = probe_world_offset(cascade, size);
+    std::vector<float> out(kProbes);
+    for (std::size_t p = 0; p < kProbes; ++p) {
+        out[p] = probe_offset(
+            world_offset,
+            {static_cast<std::int32_t>(p % kSdfgiProbeAxis),
+             static_cast<std::int32_t>((p / kSdfgiProbeAxis) % kSdfgiProbeAxis),
+             static_cast<std::int32_t>(p / (std::size_t{kSdfgiProbeAxis} * kSdfgiProbeAxis))});
+    }
+    return out;
+}
+
+void update_sdfgi(SdfgiState& state, const Scene3D& scene, const Float3& camera,
+                  const PathScene& paths, const PathTextures& textures, jobs::Pool* pool) {
+    const SdfgiFramePlan plan = plan_sdfgi_frame(state, scene, camera, geometry_key(paths));
+    const std::uint32_t size = plan.size;
+    for (std::size_t c = 0; c < state.cascades.size(); ++c) {
+        SdfgiCascade& cascade = state.cascades[c];
+        const SdfgiCascadePlan& p = plan.cascades[c];
+        if (p.probes == SdfgiCascadePlan::Probes::Clear) {
+            clear_probes(cascade, plan.history_size);
+        } else if (p.probes == SdfgiCascadePlan::Probes::Scroll) {
+            scroll_probes(cascade, p.probe_shift, plan.history_size);
+        }
+        if (p.voxelize) {
+            voxelize(cascade, size, plan.y_mult, paths, textures, pool, p.scrolled);
+            if (state.settings.use_occlusion) {
+                make_sdfgi_occlusion(cascade, size, pool);
             } else {
-                state.cascades[c].occlusion.clear();
+                cascade.occlusion.clear();
             }
         }
     }
-    const std::vector<SdfgiLight> lights = sdfgi_lights(scene, y_mult);
+    const std::vector<SdfgiLight> lights = sdfgi_lights(scene, plan.y_mult);
     for (std::size_t c = 0; c < state.cascades.size(); ++c) {
-        light_cells(state, c, lights, pool);
+        light_cells(state, c, plan.cascades[c], lights, pool);
     }
-    integrate(state, scene, paths, textures, pool);
-    ++state.frame;
+    integrate(state, plan, paths, textures, pool);
 }
 
 namespace {
