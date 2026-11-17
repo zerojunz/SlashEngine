@@ -31,6 +31,8 @@
 #include "mesh_clustered_shaders.hpp"
 #include "mesh_cull.hpp"
 #include "mesh_cull_shaders.hpp"
+#include "mesh_instanced_shaders.hpp"
+#include "mesh_motion_instanced_shaders.hpp"
 #include "mesh_motion_shaders.hpp"
 #include "mesh_normal_shaders.hpp"
 #include "mesh_shaders.hpp"
@@ -744,9 +746,10 @@ public:
         while (!taa_histories_.empty()) {
             forget_taa_history(taa_histories_.back().first);
         }
-        if (motion_shaders_[0] != nullptr) {
-            SDL_ReleaseGPUShader(device_, motion_shaders_[0]);
-            SDL_ReleaseGPUShader(device_, motion_shaders_[1]);
+        for (SDL_GPUShader* shader : motion_shaders_) {
+            if (shader != nullptr) {
+                SDL_ReleaseGPUShader(device_, shader);
+            }
         }
         for (SDL_GPUGraphicsPipeline* pipeline : motion_pipelines_) {
             if (pipeline != nullptr) {
@@ -777,12 +780,11 @@ public:
             SDL_ReleaseGPUBuffer(device_, skin_poses_buffer_.buffer);
             SDL_ReleaseGPUTransferBuffer(device_, skin_poses_buffer_.transfer);
         }
-        if (cull_records_.buffer != nullptr) {
-            SDL_ReleaseGPUBuffer(device_, cull_records_.buffer);
-            SDL_ReleaseGPUTransferBuffer(device_, cull_records_.transfer);
-        }
-        if (cull_args_ != nullptr) {
-            SDL_ReleaseGPUBuffer(device_, cull_args_);
+        for (StorageBuffer* storage : {&cull_records_, &cull_outputs_, &mesh_instances_}) {
+            if (storage->buffer != nullptr) {
+                SDL_ReleaseGPUBuffer(device_, storage->buffer);
+                SDL_ReleaseGPUTransferBuffer(device_, storage->transfer);
+            }
         }
         for (SDL_GPUComputePipeline* pipeline :
              {sdfgi_pipeline_, sdfgi_voxelize_pipeline_, skin_pipeline_, cull_pipeline_}) {
@@ -3759,26 +3761,46 @@ private:
         if (mesh_shaders_[0] != nullptr) {
             return {};
         }
-        const std::string vertex_msl = joined(shaders::kMeshVertexMsl);
         const std::string fragment_msl = joined(shaders::kMeshFragmentMsl);
         const std::string hlsl = joined(shaders::kMeshHlsl);
-        const ShaderCode code{.vertex_spirv = shaders::kMeshVertexSpirv,
+        const ShaderCode code{.vertex_spirv = {},
                               .fragment_spirv = shaders::kMeshFragmentSpirv,
-                              .vertex_msl = vertex_msl,
+                              .vertex_msl = {},
                               .fragment_msl = fragment_msl,
                               .hlsl = hlsl};
-        auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 2);
-        if (!vertex) {
-            return vertex.error();
-        }
         auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code,
                                         static_cast<std::uint32_t>(kMeshTextures) + 3, 3);
         if (!fragment) {
-            SDL_ReleaseGPUShader(device_, vertex.value());
             return fragment.error();
+        }
+        auto vertex = make_instanced_vertex(shaders::kMeshInstancedVertexSpirv,
+                                            joined(shaders::kMeshInstancedVertexMsl),
+                                            joined(shaders::kMeshInstancedHlsl));
+        if (!vertex) {
+            SDL_ReleaseGPUShader(device_, fragment.value());
+            return vertex.error();
         }
         mesh_shaders_ = {vertex.value(), fragment.value()};
         return {};
+    }
+
+    // A vertex stage of mesh_instanced.hlsl's: the camera and the run's InstanceBase, and the
+    // draws' Instances and the runs' lists as storage buffers.
+    Result<SDL_GPUShader*> make_instanced_vertex(std::span<const unsigned char> spirv,
+                                                 const std::string& msl, const std::string& hlsl) {
+        const ShaderCode code{.vertex_spirv = spirv,
+                              .fragment_spirv = {},
+                              .vertex_msl = msl,
+                              .fragment_msl = {},
+                              .hlsl = hlsl};
+        return make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 2, 2);
+    }
+
+    // Whether a material's draws run its game's own vertex(), which reads its Instance as a
+    // uniform buffer, rather than mesh_instanced.hlsl's vertex stage.
+    [[nodiscard]] bool game_vertex(const Material3D& material) const {
+        return material.shader != ShaderId::None &&
+               game_shaders_.at(material.shader).vertex != nullptr;
     }
 
     // Forward+'s fragment stage, which reads the clusters' storage buffers, unless it is made
@@ -4030,23 +4052,24 @@ private:
             return made;
         }
         if (motion_shaders_[0] == nullptr) {
-            const std::string vertex_msl = joined(shaders::kMeshMotionVertexMsl);
             const std::string fragment_msl = joined(shaders::kMeshMotionFragmentMsl);
             const std::string hlsl = joined(shaders::kMeshMotionHlsl);
-            const ShaderCode code{.vertex_spirv = shaders::kMeshMotionVertexSpirv,
+            const ShaderCode code{.vertex_spirv = {},
                                   .fragment_spirv = shaders::kMeshMotionFragmentSpirv,
-                                  .vertex_msl = vertex_msl,
+                                  .vertex_msl = {},
                                   .fragment_msl = fragment_msl,
                                   .hlsl = hlsl};
-            auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 2);
-            if (!vertex) {
-                return vertex.error();
-            }
             auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code,
                                             static_cast<std::uint32_t>(kMeshTextures) + 3, 3);
             if (!fragment) {
-                SDL_ReleaseGPUShader(device_, vertex.value());
                 return fragment.error();
+            }
+            auto vertex = make_instanced_vertex(shaders::kMeshMotionInstancedVertexSpirv,
+                                                joined(shaders::kMeshMotionInstancedVertexMsl),
+                                                joined(shaders::kMeshMotionInstancedHlsl));
+            if (!vertex) {
+                SDL_ReleaseGPUShader(device_, fragment.value());
+                return vertex.error();
             }
             motion_shaders_ = {vertex.value(), fragment.value()};
         }
@@ -4373,13 +4396,30 @@ private:
         }
     }
 
-    // Culls the frame's mesh draws against the camera's view in compute, writing each draw's
-    // indirect arguments at its index into cull_args_; false where the device can't, when the
-    // camera's passes draw directly.
-    Result<bool> cull_meshes(SDL_GPUCommandBuffer* commands, const Mat4& view_projection) {
-        if (mesh_draws_.empty()) {
-            return false;
+    // Culls the frame's mesh draws against the camera's view in compute, and lists each run's
+    // draws in view and writes its indirect arguments into cull_outputs_, with each draw's
+    // Instance in mesh_instances_, for the camera's passes to draw a run by one indirect draw.
+    // Where the device can't cull, the CPU twin lists every draw.
+    Result<void> cull_meshes(SDL_GPUCommandBuffer* commands, const Mat4& view_projection,
+                             std::span<const std::size_t> order, std::span<const CullRun> runs) {
+        const auto draws = static_cast<std::uint32_t>(mesh_draws_.size());
+        const auto run_count = static_cast<std::uint32_t>(runs.size());
+        std::vector<std::uint32_t> records;
+        records.reserve((mesh_draws_.size() * kCullRecordWords) + (runs.size() * 2) + order.size());
+        std::vector<MeshInstanceUniforms> instances;
+        instances.reserve(mesh_draws_.size());
+        for (std::size_t i = 0; i < mesh_draws_.size(); ++i) {
+            const MeshDraw& draw = mesh_draws_[i];
+            const MeshBatch& batch = mesh_batches_[i];
+            // A spatial shader's vertex() can move its corners anywhere.
+            push_cull_record(records, view_projection, draw.transform, batch.bounds, batch.range,
+                             draw.material.shader != ShaderId::None);
+            push_instance(instances, draw.transform, draw.material, draw.previous);
         }
+        push_cull_runs(records, runs, order);
+        constexpr SDL_GPUBufferUsageFlags kOutputs = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE |
+                                                     SDL_GPU_BUFFERUSAGE_INDIRECT |
+                                                     SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ;
         if (cull_pipeline_ == nullptr) {
             SDL_GPUComputePipelineCreateInfo info{};
             info.entrypoint = "cs_main";
@@ -4392,58 +4432,76 @@ private:
             auto made = create_compute_pipeline(info, shaders::kMeshCullComputeSpirv,
                                                 shaders::kMeshCullComputeMsl,
                                                 shaders::kMeshCullHlsl, "culling meshes");
-            if (!made) {
-                return made.error();
+            if (made) {
+                cull_pipeline_ = made.value();
+            } else {
+                log::warn("culling meshes failed; drawing them all",
+                          {{"error", made.error().message}});
             }
-            cull_pipeline_ = made.value();
-        }
-        std::vector<std::uint32_t> records;
-        records.reserve(mesh_draws_.size() * kCullRecordWords);
-        for (std::size_t i = 0; i < mesh_draws_.size(); ++i) {
-            const MeshDraw& draw = mesh_draws_[i];
-            const MeshBatch& batch = mesh_batches_[i];
-            // A spatial shader's vertex() can move its corners anywhere.
-            push_cull_record(records, view_projection, draw.transform, batch.bounds, batch.range,
-                             draw.material.shader != ShaderId::None);
-        }
-        const auto args_bytes =
-            static_cast<std::uint32_t>(mesh_draws_.size() * kCullArgsWords * sizeof(std::uint32_t));
-        if (args_bytes > cull_args_capacity_) {
-            if (cull_args_ != nullptr) {
-                SDL_ReleaseGPUBuffer(device_, cull_args_);
-                cull_args_ = nullptr;
-                cull_args_capacity_ = 0;
-            }
-            SDL_GPUBufferCreateInfo buffer{};
-            buffer.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE | SDL_GPU_BUFFERUSAGE_INDIRECT;
-            buffer.size = std::max(args_bytes, cull_args_capacity_ * 2);
-            cull_args_ = SDL_CreateGPUBuffer(device_, &buffer);
-            if (cull_args_ == nullptr) {
-                return sdl_error("making room for culling meshes failed");
-            }
-            cull_args_capacity_ = buffer.size;
         }
         SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
-        const Result<void> uploaded =
-            upload_storage(copy, cull_records_, std::as_bytes(std::span(records)));
-        SDL_EndGPUCopyPass(copy);
-        if (!uploaded) {
-            return uploaded.error();
+        Result<void> uploaded =
+            upload_storage(copy, mesh_instances_, std::as_bytes(std::span(instances)),
+                           SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ);
+        if (uploaded && cull_pipeline_ != nullptr) {
+            uploaded = upload_storage(copy, cull_records_, std::as_bytes(std::span(records)));
+        } else if (uploaded) {
+            const std::vector<std::uint32_t> all =
+                detail::cull_meshes(records, draws, run_count, true);
+            uploaded = upload_storage(copy, cull_outputs_, std::as_bytes(std::span(all)), kOutputs);
         }
-        // Cycling gives the arguments new memory if a frame sent before still draws with them.
-        SDL_GPUStorageBufferReadWriteBinding output{};
-        output.buffer = cull_args_;
-        output.cycle = true;
-        SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(commands, nullptr, 0, &output, 1);
-        SDL_BindGPUComputePipeline(pass, cull_pipeline_);
-        SDL_BindGPUComputeStorageBuffers(pass, 0, &cull_records_.buffer, 1);
-        const CullUniforms uniforms{
-            .counts = {static_cast<std::uint32_t>(mesh_draws_.size()), 0, 0, 0}};
-        SDL_PushGPUComputeUniformData(commands, 0, &uniforms,
-                                      static_cast<std::uint32_t>(sizeof(uniforms)));
-        SDL_DispatchGPUCompute(pass, cull_groups(uniforms.counts[0]), 1, 1);
-        SDL_EndGPUComputePass(pass);
-        return true;
+        SDL_EndGPUCopyPass(copy);
+        if (!uploaded || cull_pipeline_ == nullptr) {
+            return uploaded;
+        }
+        const std::uint32_t output_words =
+            cull_output_words(draws, run_count, static_cast<std::uint32_t>(order.size()));
+        if (auto room = reserve_storage(cull_outputs_, output_words * 4, kOutputs); !room) {
+            return room;
+        }
+        // The draws' flags, then the runs' lists, each pass of its own so the second reads all
+        // of the first's. Cycling gives the outputs new memory if a frame sent before still
+        // draws with them.
+        for (std::uint32_t step = 0; step < 2; ++step) {
+            SDL_GPUStorageBufferReadWriteBinding output{};
+            output.buffer = cull_outputs_.buffer;
+            output.cycle = step == 0;
+            SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(commands, nullptr, 0, &output, 1);
+            SDL_BindGPUComputePipeline(pass, cull_pipeline_);
+            SDL_BindGPUComputeStorageBuffers(pass, 0, &cull_records_.buffer, 1);
+            const CullUniforms uniforms{.counts = {draws, run_count, 0, step}};
+            SDL_PushGPUComputeUniformData(commands, 0, &uniforms,
+                                          static_cast<std::uint32_t>(sizeof(uniforms)));
+            SDL_DispatchGPUCompute(pass, cull_groups(step == 0 ? draws : run_count), 1, 1);
+            SDL_EndGPUComputePass(pass);
+        }
+        return {};
+    }
+
+    // Whether the camera's passes may draw two draws, a after b in the camera's order, as
+    // instances of one draw: one mesh and LOD with one material and its textures, and no game
+    // shader, whose uniforms are its own.
+    [[nodiscard]] bool same_run(std::size_t a, std::size_t b,
+                                std::span<const MeshSurfaceUniforms> surfaces) const {
+        const MeshDraw& x = mesh_draws_[a];
+        const MeshDraw& y = mesh_draws_[b];
+        const MeshBatch& p = mesh_batches_[a];
+        const MeshBatch& q = mesh_batches_[b];
+        const auto same_sampler = [](const SDL_GPUTextureSamplerBinding& u,
+                                     const SDL_GPUTextureSamplerBinding& v) {
+            return u.texture == v.texture && u.sampler == v.sampler;
+        };
+        return x.material.shader == ShaderId::None && y.material.shader == ShaderId::None &&
+               (x.shadows == ShadowCasting::ShadowsOnly) ==
+                   (y.shadows == ShadowCasting::ShadowsOnly) &&
+               p.vertices == q.vertices && p.indices == q.indices &&
+               p.previous_vertices == q.previous_vertices && p.range.first == q.range.first &&
+               p.range.count == q.range.count && p.pipeline == q.pipeline &&
+               p.normal_pipeline == q.normal_pipeline &&
+               p.subsurface_pipeline == q.subsurface_pipeline &&
+               std::ranges::equal(p.samplers, q.samplers, same_sampler) &&
+               std::ranges::equal(std::as_bytes(surfaces.subspan(a, 1)),
+                                  std::as_bytes(surfaces.subspan(b, 1)));
     }
 
     // The frame's meshes: first into the shadow atlases, then in the order mesh_draw_order gives,
@@ -4531,16 +4589,24 @@ private:
             order = mesh_draw_order(std::span<const MeshDraw>(mesh_draws_), scene,
                                     [&](std::size_t at) { return mesh_batches_[at].bounds; });
         }
-        // The camera's passes draw what mesh_cull.hlsl leaves in view, by indirect draws.
-        bool culled = false;
-        if (plan != nullptr) {
-            auto made = cull_meshes(commands, view_projection);
-            if (!made) {
-                log::warn("culling meshes failed; drawing them all",
-                          {{"error", made.error().message}});
+        // The camera's passes draw each run of draws as instances of one indirect draw, of
+        // those mesh_cull.hlsl leaves in view.
+        std::vector<MeshSurfaceUniforms> surfaces;
+        std::vector<CullRun> runs;
+        if (plan != nullptr && !order.empty()) {
+            surfaces.reserve(mesh_draws_.size());
+            for (const MeshDraw& draw : mesh_draws_) {
+                surfaces.push_back(mesh_surface_uniforms(draw.material, draw.layers));
             }
-            culled = made && made.value();
+            runs = cull_runs(
+                order, [&](std::size_t a, std::size_t b) { return same_run(a, b, surfaces); });
+            if (auto made = cull_meshes(commands, view_projection, order, runs); !made) {
+                log::error("drawing the frame's meshes failed", {{"error", made.error().message}});
+                runs.clear();
+            }
         }
+        const auto list_at = cull_list_at(static_cast<std::uint32_t>(mesh_draws_.size()),
+                                          static_cast<std::uint32_t>(runs.size()));
         // Volumetric fog, which frames without meshes go without: its passes, before the meshes
         // and the sky read it.
         FogFrames* fog = clustered && plan != nullptr && uses_volumetric_fog(scene)
@@ -4565,7 +4631,9 @@ private:
             const std::size_t bound_samplers =
                 clustered && !prepass ? kMeshTextures + 5 : kMeshTextures + 3;
             SDL_GPUGraphicsPipeline* bound = nullptr;
-            for (const std::size_t i : order) {
+            for (std::size_t r = 0; r < runs.size(); ++r) {
+                // A run's draws share all but their Instances, so its first speaks for it.
+                const std::size_t i = order[runs[r].first];
                 const MeshDraw& draw = mesh_draws_[i];
                 const MeshBatch& batch = mesh_batches_[i];
                 SDL_GPUGraphicsPipeline* pipeline = batch.pipeline;
@@ -4583,21 +4651,29 @@ private:
                     SDL_BindGPUGraphicsPipeline(pass, pipeline);
                     bound = pipeline;
                 }
-                const MeshInstanceUniforms instance =
-                    mesh_instance_uniforms(draw.transform, draw.material, draw.previous);
-                SDL_PushGPUVertexUniformData(commands, 1, &instance,
-                                             static_cast<std::uint32_t>(sizeof(instance)));
-                const MeshSurfaceUniforms surface =
-                    mesh_surface_uniforms(draw.material, draw.layers);
-                SDL_PushGPUFragmentUniformData(commands, 0, &surface,
-                                               static_cast<std::uint32_t>(sizeof(surface)));
+                if (game_vertex(draw.material) && draws != Draws::Subsurface) {
+                    // A game's vertex() reads its one draw's Instance as uniforms.
+                    const MeshInstanceUniforms instance =
+                        mesh_instance_uniforms(draw.transform, draw.material, draw.previous);
+                    SDL_PushGPUVertexUniformData(commands, 1, &instance,
+                                                 static_cast<std::uint32_t>(sizeof(instance)));
+                } else {
+                    const InstanceBaseUniforms base{.base = {list_at + runs[r].first, 0, 0, 0}};
+                    SDL_PushGPUVertexUniformData(commands, 1, &base,
+                                                 static_cast<std::uint32_t>(sizeof(base)));
+                    const std::array instances{mesh_instances_.buffer, cull_outputs_.buffer};
+                    SDL_BindGPUVertexStorageBuffers(pass, 0, instances.data(),
+                                                    static_cast<std::uint32_t>(instances.size()));
+                }
+                SDL_PushGPUFragmentUniformData(commands, 0, &surfaces[i],
+                                               static_cast<std::uint32_t>(sizeof(surfaces[i])));
                 if (draw.material.shader != ShaderId::None) {
                     const SpatialUniforms game =
                         spatial_uniforms(scene, draw.transform, draw.material, scene_width_,
                                          scene_height_, draw.previous);
                     SDL_PushGPUFragmentUniformData(commands, 3, &game,
                                                    static_cast<std::uint32_t>(sizeof(game)));
-                    if (game_shaders_.at(draw.material.shader).vertex != nullptr) {
+                    if (game_vertex(draw.material)) {
                         SDL_PushGPUVertexUniformData(commands, 2, &game,
                                                      static_cast<std::uint32_t>(sizeof(game)));
                         SDL_BindGPUVertexSamplers(pass, 0, batch.samplers.data(),
@@ -4614,14 +4690,9 @@ private:
                 std::copy(batch.samplers.begin(), batch.samplers.end(), samplers.begin());
                 SDL_BindGPUFragmentSamplers(pass, 0, samplers.data(),
                                             static_cast<std::uint32_t>(bound_samplers));
-                if (culled) {
-                    SDL_DrawGPUIndexedPrimitivesIndirect(
-                        pass, cull_args_,
-                        static_cast<std::uint32_t>(i * kCullArgsWords * sizeof(std::uint32_t)), 1);
-                } else {
-                    SDL_DrawGPUIndexedPrimitives(pass, batch.range.count, 1, batch.range.first, 0,
-                                                 0);
-                }
+                SDL_DrawGPUIndexedPrimitivesIndirect(
+                    pass, cull_outputs_.buffer,
+                    static_cast<std::uint32_t>(r * kCullArgsWords * sizeof(std::uint32_t)), 1);
             }
         };
         if (ssao || ssr || motion || traced || sdfgi) {
@@ -8512,32 +8583,43 @@ private:
         return uploaded;
     }
 
+    // Makes room for size bytes in storage, made for usage (volumetric fog's passes read the
+    // lights and clusters too), doubling as it grows.
+    Result<void> reserve_storage(StorageBuffer& storage, std::uint32_t size,
+                                 SDL_GPUBufferUsageFlags usage) {
+        if (size <= storage.capacity) {
+            return {};
+        }
+        const std::uint32_t capacity =
+            std::max({size, std::min(storage.capacity * 2, kMaxStorageBytes), kMinVertexBytes});
+        if (storage.buffer != nullptr) {
+            SDL_ReleaseGPUBuffer(device_, storage.buffer);
+            SDL_ReleaseGPUTransferBuffer(device_, storage.transfer);
+            storage = {};
+        }
+        SDL_GPUBufferCreateInfo buffer{};
+        buffer.usage = usage;
+        buffer.size = capacity;
+        storage.buffer = SDL_CreateGPUBuffer(device_, &buffer);
+        SDL_GPUTransferBufferCreateInfo transfer{};
+        transfer.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+        transfer.size = capacity;
+        storage.transfer = SDL_CreateGPUTransferBuffer(device_, &transfer);
+        if (storage.buffer == nullptr || storage.transfer == nullptr) {
+            return sdl_error("making room for the frame's light clusters failed");
+        }
+        storage.capacity = capacity;
+        return {};
+    }
+
     // Copies bytes into a storage buffer, growing it first if they don't fit.
-    Result<void> upload_storage(SDL_GPUCopyPass* copy, StorageBuffer& storage,
-                                std::span<const std::byte> bytes) {
+    Result<void>
+    upload_storage(SDL_GPUCopyPass* copy, StorageBuffer& storage, std::span<const std::byte> bytes,
+                   SDL_GPUBufferUsageFlags usage = SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ |
+                                                   SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ) {
         const auto size = static_cast<std::uint32_t>(bytes.size());
-        if (size > storage.capacity) {
-            const std::uint32_t capacity =
-                std::max({size, std::min(storage.capacity * 2, kMaxStorageBytes), kMinVertexBytes});
-            if (storage.buffer != nullptr) {
-                SDL_ReleaseGPUBuffer(device_, storage.buffer);
-                SDL_ReleaseGPUTransferBuffer(device_, storage.transfer);
-                storage = {};
-            }
-            SDL_GPUBufferCreateInfo buffer{};
-            // Volumetric fog's passes read the lights and clusters too.
-            buffer.usage = SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ |
-                           SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ;
-            buffer.size = capacity;
-            storage.buffer = SDL_CreateGPUBuffer(device_, &buffer);
-            SDL_GPUTransferBufferCreateInfo transfer{};
-            transfer.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-            transfer.size = capacity;
-            storage.transfer = SDL_CreateGPUTransferBuffer(device_, &transfer);
-            if (storage.buffer == nullptr || storage.transfer == nullptr) {
-                return sdl_error("making room for the frame's light clusters failed");
-            }
-            storage.capacity = capacity;
+        if (auto room = reserve_storage(storage, size, usage); !room) {
+            return room;
         }
         void* mapped = SDL_MapGPUTransferBuffer(device_, storage.transfer, true);
         if (mapped == nullptr) {
@@ -8646,8 +8728,9 @@ private:
     SDL_GPUBuffer* no_target_ = nullptr;
     std::unordered_map<MeshId, Mesh> meshes_;
     std::uint32_t next_mesh_ = 1;
-    std::array<SDL_GPUShader*, 2> mesh_shaders_{}; // vertex, then fragment
-    SDL_GPUShader* clustered_shader_ = nullptr;    // Forward+'s fragment stage
+    // mesh_instanced.hlsl's vertex stage, which draws runs of draws, then mesh.hlsl's fragment.
+    std::array<SDL_GPUShader*, 2> mesh_shaders_{};
+    SDL_GPUShader* clustered_shader_ = nullptr; // Forward+'s fragment stage
     std::vector<MeshPipeline> mesh_pipelines_;
     // Forward+'s clusters for the frame, made as it is sent, and the buffers they go in.
     LightClusters clusters_;
@@ -8813,7 +8896,7 @@ private:
     SDL_GPUGraphicsPipeline* ssr_trace_pipeline_ = nullptr;
     SsrTargets ssr_targets_;
     std::vector<std::pair<TextureId, SsrHistory>> ssr_histories_;
-    std::array<SDL_GPUShader*, 2> motion_shaders_{};             // TAA's prepass's stages
+    std::array<SDL_GPUShader*, 2> motion_shaders_{}; // TAA's prepass's stages, instanced
     std::array<SDL_GPUGraphicsPipeline*, 3> motion_pipelines_{}; // by CullMode
     std::array<SDL_GPUShader*, 2> taa_shaders_{};                // vertex, then fragment
     std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> taa_pipelines_;
@@ -8880,12 +8963,13 @@ private:
     std::vector<SkinJob> skin_jobs_;
     std::vector<std::uint32_t> skin_poses_;
     StorageBuffer skin_poses_buffer_;
-    // Culling the camera's mesh draws (cull_meshes): their records, and the indirect arguments
-    // mesh_cull.hlsl writes for them.
+    // Culling the camera's mesh draws and drawing their runs (cull_meshes): their records, runs
+    // and order, what mesh_cull.hlsl writes for them (the runs' indirect arguments and lists),
+    // and each draw's Instance, which mesh_instanced.hlsl reads.
     SDL_GPUComputePipeline* cull_pipeline_ = nullptr;
     StorageBuffer cull_records_;
-    SDL_GPUBuffer* cull_args_ = nullptr;
-    std::uint32_t cull_args_capacity_ = 0;
+    StorageBuffer cull_outputs_;
+    StorageBuffer mesh_instances_;
     SDL_GPUComputePipeline* skin_pipeline_ = nullptr;
     std::array<SDL_GPUShader*, 2> fog_sky_shaders_{};
     std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> fog_sky_pipelines_;

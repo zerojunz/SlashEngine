@@ -1,6 +1,6 @@
-// Culling mesh draws on the GPU (shaders/mesh_cull.hlsl): its CPU twin, cull_draws, which the
-// software device skips draws by, and every device drawing the same pixels with the draws it
-// leaves in view.
+// Culling mesh draws on the GPU and drawing runs of them as instances (shaders/mesh_cull.hlsl and
+// mesh_instanced.hlsl): its CPU twin, cull_meshes, box_in_view, which the software device skips
+// draws by, and every device drawing the same pixels with the draws it leaves in view.
 
 #include "../engine/render/src/mesh_cull.hpp"
 #include "devices.hpp"
@@ -69,8 +69,10 @@ std::vector<Vertex3D> square() {
 
 const std::vector<std::uint32_t> kSquareIndices{0, 2, 1, 1, 2, 3};
 
-// The squares at places, drawn by the tests' camera into a 48 pixel target.
-Image draw(RenderDevice& device, MeshId mesh, std::span<const Float3> places) {
+// The squares at places, drawn by the tests' camera into a 48 pixel target, each its own color or,
+// with one_material, all one.
+Image draw(RenderDevice& device, MeshId mesh, std::span<const Float3> places,
+           bool one_material = false) {
     auto target = device.create_texture({.width = 48, .height = 48, .render_target = true});
     REQUIRE(target.ok());
     render::Scene3D scene;
@@ -90,7 +92,9 @@ Image draw(RenderDevice& device, MeshId mesh, std::span<const Float3> places) {
                               .roughness = 0.6F,
                               .cull = render::CullMode::Disabled})
                   .ok());
-        hue += 0.15F;
+        if (!one_material) {
+            hue += 0.15F;
+        }
     }
     REQUIRE(device.end_frame().ok());
     auto image = device.read_texture(target.value());
@@ -193,18 +197,89 @@ TEST_CASE(
     CHECK(records.at(24 + 19) == word(-1.0F));
 }
 
-TEST_CASE("culled draws keep their indices with no instances") {
+TEST_CASE("culling lists each run's draws in view and gives it as many instances") {
     std::vector<std::uint32_t> records;
     const render::detail::Bounds unit{.low = {-0.5F, -0.5F, -0.5F}, .high = {0.5F, 0.5F, 0.5F}};
+    // Draws 0, 2 and 3 are one mesh (indices from 6), 1 another; 2 is out of view and 3 kept.
     render::detail::push_cull_record(records, view_projection(), translation(0, 0, 0), unit,
                                      {.first = 6, .count = 30}, false);
     render::detail::push_cull_record(records, view_projection(), translation(9, 0, 0), unit,
                                      {.first = 36, .count = 12}, false);
     render::detail::push_cull_record(records, view_projection(), translation(9, 0, 0), unit,
-                                     {.first = 48, .count = 3}, true);
-    const std::vector<std::uint32_t> args = render::detail::cull_draws(records);
-    CHECK(args == std::vector<std::uint32_t>{30, 1, 6, 0, 0, 12, 0, 36, 0, 0, 3, 1, 48, 0, 0});
-    CHECK(render::detail::cull_draws({}).empty());
+                                     {.first = 6, .count = 30}, false);
+    render::detail::push_cull_record(records, view_projection(), translation(0, 9, 0), unit,
+                                     {.first = 6, .count = 30}, true);
+    // The camera's order: 3, 2, 0 as one run, then 1.
+    const std::vector<std::size_t> order{3, 2, 0, 1};
+    const std::vector<render::detail::CullRun> runs = render::detail::cull_runs(
+        std::span<const std::size_t>(order),
+        [](std::size_t a, std::size_t b) { return (a == 1) == (b == 1); });
+    REQUIRE(runs.size() == 2);
+    CHECK(runs[0].first == 0);
+    CHECK(runs[0].count == 3);
+    CHECK(runs[1].first == 3);
+    CHECK(runs[1].count == 1);
+    render::detail::push_cull_runs(records, runs, order);
+    const std::vector<std::uint32_t> out = render::detail::cull_meshes(records, 4, 2);
+    REQUIRE(out.size() == render::detail::cull_output_words(4, 2, 4));
+    // The runs' arguments: run 0 draws its two draws in view, run 1 none.
+    CHECK(std::vector<std::uint32_t>(out.begin(), out.begin() + 10) ==
+          std::vector<std::uint32_t>{30, 2, 6, 0, 0, 12, 0, 36, 0, 0});
+    // The flags, then run 0's draws in view in the camera's order.
+    CHECK(std::vector<std::uint32_t>(out.begin() + 10, out.begin() + 14) ==
+          std::vector<std::uint32_t>{1, 0, 0, 1});
+    CHECK(out.at(render::detail::cull_list_at(4, 2)) == 3);
+    CHECK(out.at(render::detail::cull_list_at(4, 2) + 1) == 0);
+    // Kept, every draw shows.
+    const std::vector<std::uint32_t> kept = render::detail::cull_meshes(records, 4, 2, true);
+    CHECK(kept.at(1) == 3);
+    CHECK(kept.at(6) == 1);
+    CHECK(kept.at(render::detail::cull_list_at(4, 2) + 1) == 2);
+    CHECK(render::detail::cull_runs(std::span<const std::size_t>(), [](auto, auto) {
+              return true;
+          }).empty());
+}
+
+TEST_CASE("an Instance is fourteen float4s, as mesh_instanced.hlsl reads them") {
+    std::vector<render::detail::MeshInstanceUniforms> instances;
+    render::detail::push_instance(instances, translation(1, 2, 3), {}, translation(4, 5, 6));
+    REQUIRE(instances.size() == 1);
+    const auto* floats = reinterpret_cast<const float*>(instances.data());
+    // The model's last column, then the previous model's (the last four float4s).
+    CHECK(floats[12] == 1.0F);
+    CHECK(floats[14] == 3.0F);
+    CHECK(floats[(10 * 4) + 12] == 4.0F);
+    CHECK(floats[(10 * 4) + 14] == 6.0F);
+}
+
+TEST_CASE("opaque draws go by depth layer, then mesh, so a layer's draws of a mesh are runs") {
+    render::Scene3D scene;
+    scene.camera = render::look_at({0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, -1.0F}, {0.0F, 1.0F, 0.0F});
+    scene.projection = render::perspective(60.0F, 1.0F, 0.1F, 160.0F);
+    // A tenth of the way out is one layer: two meshes alternating at 1 to 4 units, then mesh 1
+    // again at 50 units, and a blended draw.
+    std::vector<render::detail::MeshDraw> draws;
+    const auto add = [&](std::uint32_t mesh, float z, bool blended = false) {
+        render::detail::MeshDraw draw;
+        draw.mesh = static_cast<MeshId>(mesh);
+        draw.transform = translation(0.0F, 0.0F, -z);
+        if (blended) {
+            draw.material.transparency = render::Transparency::Alpha;
+        }
+        draws.push_back(draw);
+    };
+    add(2, 1.0F);
+    add(1, 2.0F);
+    add(2, 3.0F);
+    add(1, 4.0F);
+    add(1, 50.0F);
+    add(1, 0.5F, true);
+    add(2, 5.0F, true);
+    const render::detail::Bounds point{};
+    const std::vector<std::size_t> order =
+        render::detail::mesh_draw_order(std::span<const render::detail::MeshDraw>(draws), scene,
+                                        [&](std::size_t) { return point; });
+    CHECK(order == std::vector<std::size_t>{1, 3, 0, 2, 4, 6, 5});
 }
 
 TEST_CASE("a culling dispatch runs a thread a draw, 64 to a group") {
@@ -281,5 +356,33 @@ TEST_CASE("devices that cull on the GPU leave out a mesh whose box is out of vie
     }
     if (!culled_any) {
         MESSAGE("no device here culls on the GPU, so GPU culling isn't checked");
+    }
+}
+
+TEST_CASE("every device draws a run of one mesh's instances as the software device does") {
+    // A grid of squares of one material, partly out of view: in the camera's order, a run of
+    // instances a depth layer, culled one by one.
+    const std::vector<Vertex3D> vertices = square();
+    std::vector<Float3> places;
+    for (int row = 0; row < 12; ++row) {
+        for (int column = 0; column < 12; ++column) {
+            places.push_back({(static_cast<float>(column) * 0.6F) - 3.3F,
+                              (static_cast<float>(row) * 0.6F) - 3.3F,
+                              -static_cast<float>((row + column) % 3)});
+        }
+    }
+    std::optional<Image> expected;
+    for (auto& device : slash::test::drawing_devices()) {
+        CAPTURE(render::backend_name(device->backend()));
+        auto mesh = device->create_mesh(vertices, kSquareIndices);
+        REQUIRE(mesh.ok());
+        const Image image = draw(*device, mesh.value(), places, true);
+        if (!expected) {
+            expected = image;
+            CHECK(lit(image) > 1000);
+        } else {
+            CHECK(differing(image, *expected) <= 24);
+        }
+        device->destroy_mesh(mesh.value());
     }
 }

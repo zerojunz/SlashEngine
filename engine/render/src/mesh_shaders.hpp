@@ -7669,6 +7669,37 @@ cbuffer Camera : register(b0, space1) {
     float4 jitter;                     // TAA's jitter in clip space, in xy
 };
 
+#ifdef INSTANCED
+// mesh_instanced.hlsl's: the draws of a run, one mesh with one material, as instances. Each
+// draw's Instance is 14 float4s in instance_data, a matrix's columns in turn (as
+// src/mesh_cull.hpp's push_instance writes them), and instance_draws holds which draws of the
+// run mesh_cull.hlsl left in view, from instance_base.x. Storage buffers come after the vertex
+// stage's uniforms in Metal, and in WebGPU in group 0 after the clusters'.
+cbuffer InstanceBase : register(b1, space1) {
+    uint4 instance_base;
+};
+#if defined(SLASH_MSL)
+StructuredBuffer<float4> instance_data : register(t2, space0);
+StructuredBuffer<uint> instance_draws : register(t3, space0);
+#elif defined(SLASH_WGSL)
+StructuredBuffer<float4> instance_data : register(t6, space0);
+StructuredBuffer<uint> instance_draws : register(t7, space0);
+#else
+StructuredBuffer<float4> instance_data : register(t0, space0);
+StructuredBuffer<uint> instance_draws : register(t1, space0);
+#endif
+static float4x4 model;
+static float4x4 normal_model;
+static float4 uv1;
+static float4 lightmap_uv;
+static float4x4 previous_model;
+
+// A matrix from the four columns at at, as a float4x4's constructor takes rows.
+float4x4 instance_matrix(uint at) {
+    return transpose(float4x4(instance_data[at], instance_data[at + 1u], instance_data[at + 2u],
+                              instance_data[at + 3u]));
+}
+#else
 cbuffer Instance : register(b1, space1) {
     float4x4 model;          // the mesh's space to the world
     float4x4 normal_model;   // the inverse transpose of model's upper 3x3, in its upper 3x3
@@ -7676,6 +7707,7 @@ cbuffer Instance : register(b1, space1) {
     float4 lightmap_uv;      // the lightmap's rect: uv2's xy offset and zw scale
     float4x4 previous_model; // model in the frame before
 };
+#endif
 
 struct VertexInput {
     float3 position : TEXCOORD0;
@@ -7709,7 +7741,17 @@ struct VertexOutput {
     float4 position : SV_Position;
 };
 
+#ifdef INSTANCED
+VertexOutput vs_main(VertexInput input, uint instance : SV_InstanceID) {
+    uint at = instance_draws[instance_base.x + instance] * 14u;
+    model = instance_matrix(at);
+    normal_model = instance_matrix(at + 4u);
+    uv1 = instance_data[at + 8u];
+    lightmap_uv = instance_data[at + 9u];
+    previous_model = instance_matrix(at + 10u);
+#else
 VertexOutput vs_main(VertexInput input) {
+#endif
     VertexOutput output;
 #ifdef GAME_VERTEX
     // A game's spatial shader moves the corner with its vertex(), as Godot's ShaderMaterial:
@@ -7842,7 +7884,8 @@ float alpha_hash_threshold(float3 pos, float3 dx, float3 dy, float hash_scale) {
     float high = lerp_factor > 0.0 ? low + 1.0 : low;
     float a_low = alpha_hash_value(floor(exp2(low) * pos));
     float a_high = alpha_hash_value(floor(exp2(high) * pos));
-    float a_interp = (1.0 - lerp_factor) * a_low + lerp_factor * a_high;
+)hlsl",
+R"hlsl(    float a_interp = (1.0 - lerp_factor) * a_low + lerp_factor * a_high;
     float min_lerp = min(lerp_factor, 1.0 - lerp_factor);
     float threshold;
     if (a_interp < 1.0 - min_lerp) {
@@ -7877,8 +7920,7 @@ cbuffer Surface : register(b0, space3) {
     uint4 options;
     float4 terrain_uv;      // each ground layer's tiling: the maps' resolution over its uv_scale
     float4 terrain_opacity; // how much the color map tints each ground layer
-)hlsl",
-R"hlsl(    // The lightmap's exposure, then 1 for the bicubic filter; then the rim and its tint.
+    // The lightmap's exposure, then 1 for the bicubic filter; then the rim and its tint.
     float4 lightmap;
     float4 capture[9]; // the light probes' spherical harmonics, RGB
     // How many of voxel_gis it traces; then the clearcoat, its roughness and the anisotropy.
@@ -8070,7 +8112,8 @@ float3 tonemap_reinhard(float3 color, float white) {
 float3 tonemap_filmic(float3 color, float white) {
     // An exposure bias of 2, baked into the constants, for brightness like the others'.
     const float A = 0.22 * 2.0 * 2.0;
-    const float B = 0.30 * 2.0;
+)hlsl",
+R"hlsl(    const float B = 0.30 * 2.0;
     const float C = 0.10;
     const float D = 0.20;
     const float E = 0.01;
@@ -8110,8 +8153,7 @@ float3 tonemap_aces(float3 color, float white) {
 float3 agx_contrast_approx(float3 x) {
     float3 x2 = x * x;
     float3 x4 = x2 * x2;
-)hlsl",
-R"hlsl(    return 0.021 * x + 4.0111 * x2 - 25.682 * x2 * x + 70.359 * x4 - 74.778 * x4 * x +
+    return 0.021 * x + 4.0111 * x2 - 25.682 * x2 * x + 70.359 * x4 - 74.778 * x4 * x +
            27.069 * x4 * x2;
 }
 
@@ -8346,7 +8388,8 @@ void light_compute(float3 n, float3 l, float3 v, float3 light_color, float atten
     float c_n_dot_h = clamp(dot(n, h), 0.0, 1.0);
     float c_l_dot_h = clamp(dot(l, h), 0.0, 1.0);
     if (layers.clearcoat > 0.0) {
-        // The clearcoat ignores the normal map, as Godot's takes the vertex normal.
+)hlsl",
+R"hlsl(        // The clearcoat ignores the normal map, as Godot's takes the vertex normal.
         float cc_n_dot_h = clamp(dot(layers.geometry, h), 0.0, 1.0);
         float dr = d_ggx(cc_n_dot_h, lerp(0.001, 0.1, layers.clearcoat_roughness));
         float gr = 0.25 / (c_l_dot_h * c_l_dot_h + 1e-4);
@@ -8379,8 +8422,7 @@ void light_compute(float3 n, float3 l, float3 v, float3 light_color, float atten
             g = v_ggx(c_n_dot_l, c_n_dot_v, alpha_ggx);
         }
         float c_l_dot_h5 = schlick_fresnel(c_l_dot_h);
-)hlsl",
-R"hlsl(        float f90 = clamp(50.0 * f0.g, 0.0, 1.0);
+        float f90 = clamp(50.0 * f0.g, 0.0, 1.0);
         float3 f = f0 + (f90 - f0) * c_l_dot_h5;
         float3 specular_brdf_nl = c_n_dot_l * d * f * g;
         specular_light += specular_brdf_nl * light_color * attenuation * specular_amount;
@@ -8608,7 +8650,8 @@ float shadow_thickness(bool directional, uint slot, float3 world, float3 normal,
         } else if (a.y >= a.z) {
             face = local.y < 0.0 ? 2u : 3u;
         } else {
-            face = local.z > 0.0 ? 4u : 5u;
+)hlsl",
+R"hlsl(            face = local.z > 0.0 ? 4u : 5u;
         }
     }
     float4x4 m = positional_shadows[slot].faces[face];
@@ -8652,8 +8695,7 @@ float3 frame_direction(VertexOutput input, float3 v) {
 }
 
 #ifdef CLUSTERED
-)hlsl",
-R"hlsl(// The bits of a word of a tile's light bits for lights from first up to end: light word * 32 +
+// The bits of a word of a tile's light bits for lights from first up to end: light word * 32 +
 // bit for each bit.
 uint range_mask(uint word, uint first, uint end) {
     int low = clamp((int)first - (int)(word * 32u), 0, 32);
@@ -8876,7 +8918,8 @@ void add_light(Light light, float3 world, float3 normal, float3 geometry, float3
 void surface_steps(float3 world, float3 geometry, out float3 dx, out float3 dy) {
     float3 helper = abs(geometry.y) < 0.999 ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0);
     float3 t1 = normalize(cross(helper, geometry));
-    float3 t2 = cross(geometry, t1);
+)hlsl",
+R"hlsl(    float3 t2 = cross(geometry, t1);
     float4 p = float4(world, 1.0);
     float x = dot(clip_rows[0], p);
     float y = dot(clip_rows[1], p);
@@ -8916,8 +8959,7 @@ void apply_decal(Decal decal, float3 world, float3 geometry, float3 dx, float3 d
                  inout float metallic, inout float3 emitted) {
     float4 p = float4(world, 1.0);
     float3 local = float3(dot(decal.rows[0], p), dot(decal.rows[1], p), dot(decal.rows[2], p));
-)hlsl",
-R"hlsl(    if (local.x < 0.0 || local.y < -1.0 || local.z < 0.0 || local.x > 1.0 || local.y > 1.0 ||
+    if (local.x < 0.0 || local.y < -1.0 || local.z < 0.0 || local.x > 1.0 || local.y > 1.0 ||
         local.z > 1.0) {
         return; // outside its box
     }
@@ -9127,7 +9169,8 @@ float4 voxel_cone_trace(uint index, float3 cell_size, float max_distance, float3
     [loop] while (dist < max_distance && color.a < 1.0) {
         float diameter = max(1.0, 2.0 * tan_half_angle * dist);
         float3 uvw = (pos + direction * dist) * cell_size;
-        float half_diameter = diameter * 0.5;
+)hlsl",
+R"hlsl(        float half_diameter = diameter * 0.5;
         if (any(abs(uvw - 0.5) > 0.5 + half_diameter * cell_size)) {
             break;
         }
@@ -9169,8 +9212,7 @@ static const float3 kHighQualityCones[6] = {
     float3(0.267617, 0.823639, 0.5), float3(-0.700629, 0.509037, 0.5),
     float3(-0.700629, -0.509037, 0.5), float3(0.267617, -0.823639, 0.5)};
 static const float kHighQualityWeights[6] = {0.25, 0.15, 0.15, 0.15, 0.15, 0.15};
-)hlsl",
-R"hlsl(static const float3 kCones[4] = {float3(0.707107, 0.0, 0.707107), float3(0.0, 0.707107, 0.707107),
+static const float3 kCones[4] = {float3(0.707107, 0.0, 0.707107), float3(0.0, 0.707107, 0.707107),
                                  float3(-0.707107, 0.0, 0.707107),
                                  float3(0.0, -0.707107, 0.707107)};
 
@@ -9386,7 +9428,8 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
     // The directional lights, then the omni and spot lights of the pixel's cluster: its tile's
     // lights within its slice's range, nearest first, as Godot's scene_forward_clustered.glsl
     // walks them. One loop calls add_light once, so the shader holds one copy of it, which
-    // keeps it small enough for Direct3D 12's WARP.
+)hlsl",
+R"hlsl(    // keeps it small enough for Direct3D 12's WARP.
     uint2 tile = (uint2)input.position.xy / kClusterSize;
     uint words = (uint)cluster.y;
     uint cell = (tile.y * (uint)cluster.x + tile.x) * cluster_stride();
@@ -9427,8 +9470,7 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
 #endif
 
     // Light from the sky's radiance, as Godot's scene.glsl takes it: reflections by roughness
-)hlsl",
-R"hlsl(    // and ambient light by the normal, then specular occlusion and Lazarov's environment BRDF.
+    // and ambient light by the normal, then specular occlusion and Lazarov's environment BRDF.
     float3 ambient_light = lightmapped ? lightmap_light(input.uv2)
                            : captured  ? capture_light(normal)
                                        : ambient.rgb;
@@ -9614,7 +9656,8 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
         if ((flags & kAlphaHash) != 0u) {
             // The flags are the draw's, so every pixel of a quad takes this branch together.
             threshold = alpha_hash_threshold(input.object, ddx(input.object), ddy(input.object),
-                                             threshold);
+)hlsl",
+R"hlsl(                                             threshold);
         }
 #endif
         if (alpha < threshold) {
@@ -9649,8 +9692,7 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
                             : float4(0.5, 0.5, 1.0, 1.0);
             float share = weights[i] / sum;
             blended += srgb_to_linear(albedo_bump[i].rgb) *
-)hlsl",
-R"hlsl(                       lerp((float3)1.0, texel.rgb, terrain_opacity[i]) * share;
+                       lerp((float3)1.0, texel.rgb, terrain_opacity[i]) * share;
             rough += nr.a * share;
             ground += unpack_ground_normal(nr) * share;
         }

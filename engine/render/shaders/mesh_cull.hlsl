@@ -1,27 +1,34 @@
-// Culls a frame's mesh draws, as Unity's GPU-driven pipeline does before its indirect draws: a
-// thread a draw tests the draw's box against the camera's view and writes its indexed indirect
-// arguments, with no instances where every corner of the box is past one edge of the view.
-// mesh_cull.cpp's box_in_view and cull_draws are its CPU twin; keep them in step.
+// Culls a frame's mesh draws, as Unity's GPU-driven pipeline does before its indirect draws, and
+// draws runs of them (one mesh with one material, in the camera's order) as instances of one
+// indexed indirect draw, as Godot's Forward+ draws repeated elements. Its first pass (counts.w 0)
+// tests a draw a thread: whether any corner of its box is in the camera's view. Its second
+// (counts.w 1) lists a run a thread the run's draws in view, in order, for mesh_instanced.hlsl
+// to read, and writes the run's arguments: its indices, as many instances as draws in view.
+// mesh_cull.cpp's box_in_view and cull_runs are its CPU twin; keep them in step.
 
 #ifdef SLASH_MSL
 #define UNIFORMS register(b0)
 #define RECORDS register(t1)
-#define ARGS register(u2)
+#define OUT register(u2)
 #else
 #define UNIFORMS register(b0, space2)
 #define RECORDS register(t0, space0)
-#define ARGS register(u0, space1)
+#define OUT register(u0, space1)
 #endif
 
 cbuffer Params : UNIFORMS {
-    uint4 counts; // the draws
+    uint4 counts; // the draws, the runs, the run's draws in all, and the pass
 };
 
-// A draw's box placed in clip space (16 words, column-major), its low and high corners, and its
-// indices' first and count; 24 words. A box turned inside out is never culled.
+// Each draw's record: its box placed in clip space (16 words, column-major), its low and high
+// corners, and its indices' first and count; 24 words. A box turned inside out is never culled.
+// Then each run's first place in the order and its draws, 2 words, then the order: a draw's
+// index at each place.
 StructuredBuffer<uint> records : RECORDS;
-// A draw's indices, instances, first index, vertex offset and first instance; 5 words.
-RWStructuredBuffer<uint> args : ARGS;
+// Each run's indices, instances, first index, vertex offset and first instance (5 words), then
+// a word a draw that is 1 where it is in view, then the run's draws in view from each run's first
+// place.
+RWStructuredBuffer<uint> outputs : OUT;
 
 static const uint kRecordWords = 24u;
 static const uint kArgsWords = 5u;
@@ -32,11 +39,8 @@ float word(uint at) {
     return asfloat(records[at]);
 }
 
-[numthreads(64, 1, 1)] void cs_main(uint3 id : SV_DispatchThreadID) {
-    uint draw = id.x;
-    if (draw >= counts.x) {
-        return;
-    }
+// Whether a draw's box may show: false only where every corner is past one edge of the view.
+bool in_view(uint draw) {
     uint at = draw * kRecordWords;
     float3 low = float3(word(at + 16u), word(at + 17u), word(at + 18u));
     float3 high = float3(word(at + 19u), word(at + 20u), word(at + 21u));
@@ -66,11 +70,43 @@ float word(uint at) {
         near_edge = near_edge && c.z > c.w + margin;
         far_edge = far_edge && c.z < -margin;
     }
-    shown = shown || !(left || right || down || up || near_edge || far_edge);
-    uint out_at = draw * kArgsWords;
-    args[out_at] = records[at + 23u];
-    args[out_at + 1u] = shown ? 1u : 0u;
-    args[out_at + 2u] = records[at + 22u];
-    args[out_at + 3u] = 0u;
-    args[out_at + 4u] = 0u;
+    return shown || !(left || right || down || up || near_edge || far_edge);
+}
+
+[numthreads(64, 1, 1)] void cs_main(uint3 id : SV_DispatchThreadID) {
+    uint draws = counts.x;
+    uint runs = counts.y;
+    uint flags = runs * kArgsWords;
+    if (counts.w == 0u) {
+        if (id.x < draws) {
+            outputs[flags + id.x] = in_view(id.x) ? 1u : 0u;
+        }
+        return;
+    }
+    uint run = id.x;
+    if (run >= runs) {
+        return;
+    }
+    uint runs_at = draws * kRecordWords;
+    uint order_at = runs_at + runs * 2u;
+    uint list = flags + draws;
+    uint first = records[runs_at + run * 2u];
+    uint count = records[runs_at + run * 2u + 1u];
+    uint shown = 0u;
+    // No break or early return in the loop: Tint's SPIR-V reader can't take them.
+    for (uint i = 0u; i < count; ++i) {
+        uint draw = records[order_at + first + i];
+        uint flag = outputs[flags + draw];
+        if (flag != 0u) {
+            outputs[list + first + shown] = draw;
+        }
+        shown += flag;
+    }
+    uint lead = records[order_at + first] * kRecordWords;
+    uint out_at = run * kArgsWords;
+    outputs[out_at] = records[lead + 23u];
+    outputs[out_at + 1u] = shown;
+    outputs[out_at + 2u] = records[lead + 22u];
+    outputs[out_at + 3u] = 0u;
+    outputs[out_at + 4u] = 0u;
 }

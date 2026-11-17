@@ -13214,6 +13214,37 @@ cbuffer Camera : register(b0, space1) {
     float4 jitter;                     // TAA's jitter in clip space, in xy
 };
 
+#ifdef INSTANCED
+// mesh_instanced.hlsl's: the draws of a run, one mesh with one material, as instances. Each
+// draw's Instance is 14 float4s in instance_data, a matrix's columns in turn (as
+// src/mesh_cull.hpp's push_instance writes them), and instance_draws holds which draws of the
+// run mesh_cull.hlsl left in view, from instance_base.x. Storage buffers come after the vertex
+// stage's uniforms in Metal, and in WebGPU in group 0 after the clusters'.
+cbuffer InstanceBase : register(b1, space1) {
+    uint4 instance_base;
+};
+#if defined(SLASH_MSL)
+StructuredBuffer<float4> instance_data : register(t2, space0);
+StructuredBuffer<uint> instance_draws : register(t3, space0);
+#elif defined(SLASH_WGSL)
+StructuredBuffer<float4> instance_data : register(t6, space0);
+StructuredBuffer<uint> instance_draws : register(t7, space0);
+#else
+StructuredBuffer<float4> instance_data : register(t0, space0);
+StructuredBuffer<uint> instance_draws : register(t1, space0);
+#endif
+static float4x4 model;
+static float4x4 normal_model;
+static float4 uv1;
+static float4 lightmap_uv;
+static float4x4 previous_model;
+
+// A matrix from the four columns at at, as a float4x4's constructor takes rows.
+float4x4 instance_matrix(uint at) {
+    return transpose(float4x4(instance_data[at], instance_data[at + 1u], instance_data[at + 2u],
+                              instance_data[at + 3u]));
+}
+#else
 cbuffer Instance : register(b1, space1) {
     float4x4 model;          // the mesh's space to the world
     float4x4 normal_model;   // the inverse transpose of model's upper 3x3, in its upper 3x3
@@ -13221,6 +13252,7 @@ cbuffer Instance : register(b1, space1) {
     float4 lightmap_uv;      // the lightmap's rect: uv2's xy offset and zw scale
     float4x4 previous_model; // model in the frame before
 };
+#endif
 
 struct VertexInput {
     float3 position : TEXCOORD0;
@@ -13254,7 +13286,17 @@ struct VertexOutput {
     float4 position : SV_Position;
 };
 
+#ifdef INSTANCED
+VertexOutput vs_main(VertexInput input, uint instance : SV_InstanceID) {
+    uint at = instance_draws[instance_base.x + instance] * 14u;
+    model = instance_matrix(at);
+    normal_model = instance_matrix(at + 4u);
+    uv1 = instance_data[at + 8u];
+    lightmap_uv = instance_data[at + 9u];
+    previous_model = instance_matrix(at + 10u);
+#else
 VertexOutput vs_main(VertexInput input) {
+#endif
     VertexOutput output;
 #ifdef GAME_VERTEX
     // A game's spatial shader moves the corner with its vertex(), as Godot's ShaderMaterial:
@@ -13379,7 +13421,8 @@ float alpha_hash_value(float3 cell) {
 // Godot's compute_alpha_hash_threshold: the alpha a pixel at pos on the mesh must reach, its
 // neighbors across and down being dx and dy further on, from noise on cells about a pixel wide
 // at two scales, blended so the dither holds still as the mesh moves.
-float alpha_hash_threshold(float3 pos, float3 dx, float3 dy, float hash_scale) {
+)hlsl",
+R"hlsl(float alpha_hash_threshold(float3 pos, float3 dx, float3 dy, float hash_scale) {
     float delta_max = max(length(dx), length(dy));
     float level = clamp(log2(1.0 / (hash_scale * delta_max)), -64.0, 64.0);
     float low = floor(level);
@@ -13415,8 +13458,7 @@ cbuffer Surface : register(b0, space3) {
     float4 albedo;            // sRGB, and alpha
     float4 emission;          // sRGB, and its energy
     float4 surface;           // metallic, roughness, specular and the normal map's scale
-)hlsl",
-R"hlsl(    float4 metallic_channel;  // which of metallic_texture's channels is metallic
+    float4 metallic_channel;  // which of metallic_texture's channels is metallic
     float4 roughness_channel; // and roughness_texture's roughness
     // x: the flags above, y: the alpha scissor threshold's bits, z: the draw's layers, w: the
     // terrain flags.
@@ -13605,7 +13647,8 @@ static const uint kTonemapReinhard = 1u;
 static const uint kTonemapFilmic = 2u;
 static const uint kTonemapAces = 3u;
 
-// Reinhard's extended formula, equation 4 in https://doi.org/cjbgrt.
+)hlsl",
+R"hlsl(// Reinhard's extended formula, equation 4 in https://doi.org/cjbgrt.
 float3 tonemap_reinhard(float3 color, float white) {
     float white_squared = white * white;
     float3 white_squared_color = white_squared * color;
@@ -13644,8 +13687,7 @@ float3 tonemap_aces(float3 color, float white) {
                                          float3(-0.10208, 1.10813, -0.00605),
                                          float3(-0.00327, -0.07276, 1.07602));
     color = mul(rgb_to_rrt, color);
-)hlsl",
-R"hlsl(    float3 mapped = (color * (color + A) - B) / (color * (C * color + D) + E);
+    float3 mapped = (color * (color + A) - B) / (color * (C * color + D) + E);
     mapped = mul(odt_to_rgb, mapped);
     white *= bias;
     float mapped_white = (white * (white + A) - B) / (white * (C * white + D) + E);
@@ -13880,7 +13922,8 @@ void light_compute(float3 n, float3 l, float3 v, float3 light_color, float atten
             through = exp(dd) * layers.transmittance_color.rgb;
         }
         diffuse_light += through * layers.transmittance_color.a * light_color *
-                         clamp(layers.transmittance_boost - n_dot_l, 0.0, 1.0) * (1.0 / kPi);
+)hlsl",
+R"hlsl(                         clamp(layers.transmittance_boost - n_dot_l, 0.0, 1.0) * (1.0 / kPi);
     }
     if (layers.rim > 0.0) {
         float rim_light = pow(max(1e-4, 1.0 - c_n_dot_v), max(0.0, (1.0 - roughness) * 16.0));
@@ -13916,8 +13959,7 @@ void light_compute(float3 n, float3 l, float3 v, float3 light_color, float atten
             float ay = alpha_ggx * aspect;
             float3 t = layers.tangent;
             float3 b = layers.binormal;
-)hlsl",
-R"hlsl(            d = d_ggx_anisotropic(c_n_dot_h, ax, ay, dot(t, h), dot(b, h));
+            d = d_ggx_anisotropic(c_n_dot_h, ax, ay, dot(t, h), dot(b, h));
             g = v_ggx_anisotropic(ax, ay, dot(t, v), dot(t, l), dot(b, v), dot(b, l), c_n_dot_v,
                                   c_n_dot_l);
         } else {
@@ -14142,7 +14184,8 @@ float shadow_thickness(bool directional, uint slot, float3 world, float3 normal,
     if (!(positional_shadows[slot].params.y > 0.001)) {
         return fallback;
     }
-    // The light's transmittance bias is in the last row of its matrix, which places nothing.
+)hlsl",
+R"hlsl(    // The light's transmittance bias is in the last row of its matrix, which places nothing.
     float3 p = world - normal * positional_shadows[slot].light[3].x;
     uint face = 0u;
     if (positional_shadows[slot].params.w > 1.5) {
@@ -14190,8 +14233,7 @@ float3 unpack_ground_normal(float4 texel) {
     return n;
 }
 
-)hlsl",
-R"hlsl(// A direction in the mesh's space, in the world through the pixel's tangent frame: a terrain's
+// A direction in the mesh's space, in the world through the pixel's tangent frame: a terrain's
 // vertices have the normal +Y and the tangent +X, so its binormal is -Z.
 float3 frame_direction(VertexOutput input, float3 v) {
     return normalize(input.tangent * v.x + input.normal * v.y - input.binormal * v.z);
@@ -14413,7 +14455,8 @@ void add_light(Light light, float3 world, float3 normal, float3 geometry, float3
 #endif
 }
 
-#ifdef CLUSTERED
+)hlsl",
+R"hlsl(#ifdef CLUSTERED
 
 // How far a point moves across a pixel to the right (dx) and down (dy), along the plane through it
 // facing geometry, from the camera's rows: what Godot takes from dFdx and dFdy of the vertex, worked
@@ -14456,8 +14499,7 @@ bool has_rect(float4 rect) {
 }
 
 // One decal's textures over the surface, as the body of Godot's decal loop.
-)hlsl",
-R"hlsl(void apply_decal(Decal decal, float3 world, float3 geometry, float3 dx, float3 dy,
+void apply_decal(Decal decal, float3 world, float3 geometry, float3 dx, float3 dy,
                  inout float3 base, inout float3 normal, inout float ao, inout float roughness,
                  inout float metallic, inout float3 emitted) {
     float4 p = float4(world, 1.0);
@@ -14664,7 +14706,8 @@ float4 voxel_gi_sample(uint index, float3 uvw, float lod) {
 }
 
 // voxel_cone_trace: a cone from pos (in cells) along direction, its diameter growing by
-// 2 tan_half_angle a cell, stepping half its diameter, until it is opaque or leaves the texture.
+)hlsl",
+R"hlsl(// 2 tan_half_angle a cell, stepping half its diameter, until it is opaque or leaves the texture.
 float4 voxel_cone_trace(uint index, float3 cell_size, float max_distance, float3 pos,
                         float3 direction, float tan_half_angle, float bias) {
     float dist = bias;
@@ -14709,8 +14752,7 @@ float4 voxel_cone_trace_45_degrees(uint index, float3 cell_size, float max_dista
 
 // gi.glsl's cone directions about +z: six narrower ones with their weights for high quality, else
 // four of 45 degrees, a quarter each.
-)hlsl",
-R"hlsl(static const float3 kHighQualityCones[6] = {
+static const float3 kHighQualityCones[6] = {
     float3(0.0, 0.0, 1.0),           float3(0.866025, 0.0, 0.5),
     float3(0.267617, 0.823639, 0.5), float3(-0.700629, 0.509037, 0.5),
     float3(-0.700629, -0.509037, 0.5), float3(0.267617, -0.823639, 0.5)};
@@ -14921,7 +14963,8 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
     game_albedo = base;
 #endif
     float3 view = normalize(camera.xyz - input.world);
-    float3 f0 = lerp((float3)(0.16 * specular * specular), base, metallic);
+)hlsl",
+R"hlsl(    float3 f0 = lerp((float3)(0.16 * specular * specular), base, metallic);
     Layers layers = material_layers(input, base, geometry);
 
     float3 diffuse_light = (float3)0.0;
@@ -14962,8 +15005,7 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
             light = clustered_lights[word * 32u + bit];
         }
         add_light(light, input.world, normal, geometry, view, f0, roughness, metallic, layers,
-)hlsl",
-R"hlsl(                  rays, diffuse_light, specular_light);
+                  rays, diffuse_light, specular_light);
     }
 #else
     for (uint i = 0u; i < count; ++i) {
@@ -15150,7 +15192,8 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
     if ((flags & kVertexColorAlbedo) != 0u) {
         color *= input.color;
     }
-    // Opaque materials leave alpha alone, as Godot's StandardMaterial3D only sets ALPHA when
+)hlsl",
+R"hlsl(    // Opaque materials leave alpha alone, as Godot's StandardMaterial3D only sets ALPHA when
     // it is transparent. A terrain's color map cuts its holes here.
     float alpha = (flags & kHasAlpha) != 0u ? color.a : 1.0;
     if ((flags & kAlphaScissor) != 0u) {
@@ -15188,8 +15231,7 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
         float3 blended = (float3)0.0;
         float rough = 0.0;
         [unroll] for (uint i = 0u; i < 4u; ++i) {
-)hlsl",
-R"hlsl(            // A layer without a normal_roughness texture is flat, with roughness 1.
+            // A layer without a normal_roughness texture is flat, with roughness 1.
             float4 nr = (terrain_flags & (kTerrainNormals << i)) != 0u
                             ? normal_roughness[i]
                             : float4(0.5, 0.5, 1.0, 1.0);

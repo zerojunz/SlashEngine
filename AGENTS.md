@@ -1044,8 +1044,8 @@ projection from `render::perspective` or `orthogonal`, the ambient light and up 
 Godot's directional, omni and spot lights) sees and lights them, and `draw_mesh` draws one with a
 transform and a `Material3D`, Godot's `StandardMaterial3D`. Space is Godot's (Y up, a camera looks
 down its -Z, front faces wind clockwise on the target) and depth is reversed. Meshes draw in a
-pass of their own over a depth buffer, before the frame's 2D draws: opaque ones nearest first,
-`Alpha` ones after them farthest first (`mesh_draw_order`). `shaders/mesh.hlsl` lights them with
+pass of their own over a depth buffer, before the frame's 2D draws: opaque ones by depth layer,
+mesh and then nearest first, `Alpha` ones after them farthest first (`mesh_draw_order`). `shaders/mesh.hlsl` lights them with
 Godot's formulas, and `src/mesh_shading.hpp` fills its uniforms for every device and holds the
 CPU twins of its two stages (`mesh_vertex`, `shade_mesh`), which the software device draws with;
 `tests/test_mesh.cpp` holds every device to the software device's pixels, so a change to the 3D
@@ -1638,15 +1638,23 @@ every device draws from one index buffer (`mesh_index_buffer`, `IndexRange`).
 `rendering.mesh_lod.lod_change.threshold_pixels`; shadow maps draw the camera's LODs and
 reflection probes pick their own. `examples/mesh-lods` draws boulders near and far.
 
-The camera's mesh draws are culled by the view on the GPU, as Unity's GPU-driven pipeline does:
-each device writes a record a draw (`push_cull_record` in `src/mesh_cull.hpp`: the view
-projection times its transform, its box and its indices), `shaders/mesh_cull.hlsl` tests each in a
-thread and writes its indexed indirect arguments with no instances where every corner is past one
-edge by more than `kCullMargin`, and the camera's passes draw by them (GPU device and WebGPU;
-`cull_meshes`, `prepare_cull` and `encode_cull`). `box_in_view` and `cull_draws` are its CPU twin,
+The camera's mesh draws are culled by the view on the GPU and drawn as instances, as Unity's
+GPU-driven pipeline and Godot's Forward+ do: draws next to each other in the camera's order that
+share a mesh, a material and their pipelines form a run (`cull_runs` in `src/mesh_cull.hpp`),
+each device writes a record a draw (`push_cull_record`: the view projection times its transform,
+its box and its indices), the runs and the order (`push_cull_runs`) and each draw's Instance
+(`push_instance`), then `shaders/mesh_cull.hlsl` tests each draw in a thread (counts.w 0) and
+lists each run's draws in view in a thread of its own (counts.w 1), writing the run's indexed
+indirect arguments with as many instances as draws in view, which the camera's passes draw with
+`shaders/mesh_instanced.hlsl` and `mesh_motion_instanced.hlsl` (`mesh.hlsl` with `INSTANCED`:
+`InstanceBase` says where its run's list starts) on the GPU device and WebGPU (`cull_meshes`,
+`prepare_cull` and `encode_cull`). `box_in_view` and `detail::cull_meshes` are its CPU twin,
 which the software device skips draws by; OpenGL draws everything, and shadow passes draw every
 caster. A draw with a game shader is never culled (an inside-out box), since `vertex()` moves its
-corners. `tests/test_mesh_cull.cpp` holds every device to the software device.
+corners, and draws alone with its own stages. Opaque draws go in Godot's order
+(`mesh_draw_order`: by depth in `kMeshDepthLayers` slices of the far plane, then mesh, then LOD,
+then nearest first), so a mesh's copies sit next to each other.
+`tests/test_mesh_cull.cpp` holds every device to the software device.
 
 Occlusion culling is Godot 4.6's raycast culler (`slash/scene3d/occlusion.hpp`,
 `src/occlusion.cpp`, after `raycast_occlusion_cull.cpp`). `OccluderInstance3D`'s quad, box,

@@ -65,26 +65,60 @@ bool box_in_view(const Mat4& clip, const Float3& low, const Float3& high) {
     return std::ranges::none_of(past, [](bool edge) { return edge; });
 }
 
-std::vector<std::uint32_t> cull_draws(std::span<const std::uint32_t> records) {
-    const std::size_t count = records.size() / kCullRecordWords;
-    std::vector<std::uint32_t> args;
-    args.reserve(count * kCullArgsWords);
-    for (std::size_t i = 0; i < count; ++i) {
+void push_cull_runs(std::vector<std::uint32_t>& words, std::span<const CullRun> runs,
+                    std::span<const std::size_t> order) {
+    for (const CullRun& run : runs) {
+        words.push_back(run.first);
+        words.push_back(run.count);
+    }
+    for (const std::size_t draw : order) {
+        words.push_back(static_cast<std::uint32_t>(draw));
+    }
+}
+
+std::vector<std::uint32_t> cull_meshes(std::span<const std::uint32_t> words, std::uint32_t draws,
+                                       std::uint32_t runs, bool keep) {
+    const std::size_t runs_at = static_cast<std::size_t>(draws) * kCullRecordWords;
+    const std::size_t order_at = runs_at + (static_cast<std::size_t>(runs) * 2);
+    const auto places = static_cast<std::uint32_t>(words.size() - order_at);
+    std::vector<std::uint32_t> out(cull_output_words(draws, runs, places), 0);
+    const std::uint32_t flags = cull_flags_at(runs);
+    for (std::uint32_t i = 0; i < draws; ++i) {
         const std::span<const std::uint32_t> record =
-            records.subspan(i * kCullRecordWords, kCullRecordWords);
+            words.subspan(static_cast<std::size_t>(i) * kCullRecordWords, kCullRecordWords);
         Mat4 clip{};
         for (std::size_t k = 0; k < 16; ++k) {
             clip.at(k) = float_of(record[k]);
         }
         const Float3 low{float_of(record[16]), float_of(record[17]), float_of(record[18])};
         const Float3 high{float_of(record[19]), float_of(record[20]), float_of(record[21])};
-        args.push_back(record[23]);
-        args.push_back(box_in_view(clip, low, high) ? 1U : 0U);
-        args.push_back(record[22]);
-        args.push_back(0);
-        args.push_back(0);
+        out.at(flags + i) = keep || box_in_view(clip, low, high) ? 1U : 0U;
     }
-    return args;
+    const std::uint32_t list = cull_list_at(draws, runs);
+    for (std::uint32_t run = 0; run < runs; ++run) {
+        const std::uint32_t first = words[runs_at + (static_cast<std::size_t>(run) * 2)];
+        const std::uint32_t count = words[runs_at + (static_cast<std::size_t>(run) * 2) + 1];
+        std::uint32_t shown = 0;
+        for (std::uint32_t i = 0; i < count; ++i) {
+            const std::uint32_t draw = words[order_at + first + i];
+            if (out.at(flags + draw) != 0) {
+                out.at(list + first + shown) = draw;
+                ++shown;
+            }
+        }
+        const std::size_t lead =
+            static_cast<std::size_t>(words[order_at + first]) * kCullRecordWords;
+        const std::size_t at = static_cast<std::size_t>(run) * kCullArgsWords;
+        out.at(at) = words[lead + 23];
+        out.at(at + 1) = shown;
+        out.at(at + 2) = words[lead + 22];
+    }
+    return out;
+}
+
+void push_instance(std::vector<MeshInstanceUniforms>& instances, const Mat4& transform,
+                   const Material3D& material, const Mat4& previous) {
+    instances.push_back(mesh_instance_uniforms(transform, material, previous));
 }
 
 std::uint32_t cull_groups(std::uint32_t count) {

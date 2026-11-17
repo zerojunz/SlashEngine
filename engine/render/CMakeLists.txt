@@ -194,10 +194,14 @@ set(slash_shader_headers "")
 # fragment stage reads the cascades as storage buffers and which the OpenGL devices don't draw;
 # its voxelization is a compute shader of its own. mesh_plain and shadow_plain
 # (3d_plain and depth_plain) are the mesh and shadow shaders without alpha hash, GLSL ES only.
+# mesh_instanced and mesh_motion_instanced (instanced) are the mesh and motion shaders' vertex
+# stages that read the draws of a run as instances from storage buffers, with no GLSL ES.
 set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
     mesh_clustered:MeshClustered:clustered mesh_normal:MeshNormal:normal
     mesh_motion:MeshMotion:motion mesh_subsurface:MeshSubsurface:clustered shadow:Shadow:depth
     mesh_plain:MeshPlain:3d_plain shadow_plain:ShadowPlain:depth_plain
+    mesh_instanced:MeshInstanced:instanced
+    mesh_motion_instanced:MeshMotionInstanced:instanced
     post:Post:post sky:Sky:post forward_post:ForwardPost:post16 ssao:Ssao:ssao ssr:Ssr:ssao
     ssr_trace:SsrTrace:ssr_trace radiance:Radiance:post taa:Taa:post subsurface:Subsurface:post
     fsr2_luma:Fsr2Luma:fsr2 fsr2_dilate:Fsr2Dilate:fsr2
@@ -230,6 +234,7 @@ foreach(entry IN LISTS slash_shaders)
     set(pieces OFF)
     set(sampler_shift 8)
     set(fragment_only OFF)
+    set(vertex_only OFF)
     set(storage_buffers OFF)
     set(no_glsl OFF)
     set(glsl_only OFF)
@@ -307,6 +312,12 @@ foreach(entry IN LISTS slash_shaders)
                 set(fragment_only ON)
             elseif(kind STREQUAL "motion")
                 set(interface ${interface},v_motion_clip,v_previous_clip)
+            elseif(kind STREQUAL "instanced")
+                set(vertex_only ON)
+                set(storage_buffers ON)
+                if(shader MATCHES "motion")
+                    set(interface ${interface},v_motion_clip,v_previous_clip)
+                endif()
             endif()
         endif()
     endif()
@@ -318,7 +329,8 @@ foreach(entry IN LISTS slash_shaders)
             -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/shaders/${shader}.hlsl -DOUTPUT=${header}
             -DNAME=${name} -DCOMPUTE=${compute} -DINTERFACE=${interface}
             -DFIXUP_CLIPSPACE=${fixup} -DPIECES=${pieces} -DSAMPLER_SHIFT=${sampler_shift}
-            -DFRAGMENT_ONLY=${fragment_only} -DSTORAGE_BUFFERS=${storage_buffers}
+            -DFRAGMENT_ONLY=${fragment_only} -DVERTEX_ONLY=${vertex_only}
+            -DSTORAGE_BUFFERS=${storage_buffers}
             -DNO_GLSL=${no_glsl} -DGLSL_ONLY=${glsl_only}
             -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/shaders
             -DGLSLANG=${SLASH_GLSLANG} -DSPIRV_CROSS=${SLASH_SPIRV_CROSS} -DTINT=${SLASH_TINT}
