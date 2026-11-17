@@ -142,14 +142,31 @@ auto sample3(const Grid& grid, const Float3& p, const Read& read) {
 // The distance field's value at a point in cells: Godot's texture(...).r * 255.0.
 float sdf_at(const Grid& grid, const SdfgiCascade& cascade, const Float3& p) {
     return sample3<std::array<float, 1>>(grid, p, [&](std::size_t i) {
-        return std::array<float, 1>{static_cast<float>(cascade.sdf[i])};
+        return std::array<float, 1>{static_cast<float>(sdfgi_sdf(cascade, i))};
     })[0];
+}
+
+// A cell's light (decoded) and its shares over the six aniso directions (0 to 1, in steps of
+// 1/255), as the light pass stored them.
+Float3 cell_light(const SdfgiCascade& cascade, std::size_t cell) {
+    return sdfgi_rgbe_decode(cascade.light[cell]);
+}
+std::array<float, 6> cell_aniso(const SdfgiCascade& cascade, std::size_t cell) {
+    const std::uint32_t low = cascade.field[cell * 2];
+    const std::uint32_t high = cascade.field[(cell * 2) + 1];
+    std::array<float, 6> out{};
+    for (std::size_t k = 0; k < 6; ++k) {
+        const std::uint32_t word = k < 4 ? low : high;
+        const auto shift = static_cast<std::uint32_t>((k % 4) * 8);
+        out.at(k) = static_cast<float>((word >> shift) & 0xFFU) / 255.0F;
+    }
+    return out;
 }
 
 // A 2D image (x fastest) sampled linearly at a point in texels (centers at half texels),
 // clamped to its edges.
-Float3 sample2(const std::vector<Float3>& image, std::uint32_t width, std::uint32_t height, float x,
-               float y) {
+Float3 sample2(const std::vector<std::uint32_t>& image, std::uint32_t width, std::uint32_t height,
+               float x, float y) {
     const float tx = std::clamp(x - 0.5F, 0.0F, static_cast<float>(width - 1));
     const float ty = std::clamp(y - 0.5F, 0.0F, static_cast<float>(height - 1));
     const auto x0 = static_cast<std::uint32_t>(std::floor(tx));
@@ -159,7 +176,7 @@ Float3 sample2(const std::vector<Float3>& image, std::uint32_t width, std::uint3
     const float fx = tx - static_cast<float>(x0);
     const float fy = ty - static_cast<float>(y0);
     const auto texel = [&](std::uint32_t px, std::uint32_t py) {
-        return image[(std::size_t{py} * width) + px];
+        return sdfgi_rgbe_decode(image[(std::size_t{py} * width) + px]);
     };
     return lerp(lerp(texel(x0, y0), texel(x1, y0), fx), lerp(texel(x0, y1), texel(x1, y1), fx), fy);
 }
@@ -234,9 +251,10 @@ Float3 vogel_hemisphere(std::uint32_t index, std::uint32_t count, float offset) 
     return {yl.y * cs.x, yl.y * cs.y, yl.x * ((index & 1U) != 0U ? 1.0F : -1.0F)};
 }
 
-// The quantization Godot's textures put light through: 8 bits for the aniso shares.
-float unorm8(float v) {
-    return std::round(std::clamp(v, 0.0F, 1.0F) * 255.0F) / 255.0F;
+// The quantization Godot's textures put light through: 8 bits for the aniso shares, rounded
+// as a GPU's floor(v * 255 + 0.5).
+std::uint32_t sdfgi_share(float v) {
+    return static_cast<std::uint32_t>(std::floor((std::clamp(v, 0.0F, 1.0F) * 255.0F) + 0.5F));
 }
 
 std::uint32_t probe_cells(std::uint32_t size) {
@@ -341,73 +359,106 @@ std::array<float, 2> nearest_on_triangle(const Float3& p, const Float3& a, const
     return {vb * denom, vc * denom};
 }
 
-// Godot's 5-bit albedo channels (the R16 texture _render_sdfgi writes).
-float albedo5(float v) {
-    return std::round(std::clamp(v, 0.0F, 1.0F) * 31.0F) / 31.0F;
+// What the triangles touching a cell sum to while a cascade is voxelized, in fixed point so the
+// sums are the same in any order (the GPU adds them with atomics): albedo in 255ths, emission in
+// 256ths (up to 256 a triangle), how many triangles and the sides they face.
+struct CellSum {
+    std::array<std::uint32_t, 3> albedo{};
+    std::array<std::uint32_t, 3> emission{};
+    std::uint32_t count = 0;
+    std::uint32_t facing = 0;
+};
+constexpr float kEmissionUnit = 256.0F;
+constexpr float kMostEmission = 255.99F;
+
+std::uint32_t fixed_albedo(float v) {
+    return static_cast<std::uint32_t>(std::floor((std::clamp(v, 0.0F, 1.0F) * 255.0F) + 0.5F));
+}
+std::uint32_t fixed_emission(float v) {
+    return static_cast<std::uint32_t>(
+        std::floor((std::clamp(v, 0.0F, kMostEmission) * kEmissionUnit) + 0.5F));
 }
 
-// One 1D pass of Felzenszwalb and Huttenlocher's squared distance transform over n values.
-void distance_pass(std::span<double> f, std::vector<double>& out, std::vector<int>& v,
-                   std::vector<double>& z) {
-    const auto n = static_cast<int>(f.size());
-    constexpr double kInf = std::numeric_limits<double>::infinity();
-    int k = -1;
-    for (int q = 0; q < n; ++q) {
-        if (f[static_cast<std::size_t>(q)] == kInf) {
+// A solid cell's word and emission from its sums: the albedo's average as Godot's 5 bits a
+// channel (the R16 texture _render_sdfgi writes), rounded exactly, and the emission's to 256ths.
+std::array<std::uint32_t, 2> solid_cell(const CellSum& sum) {
+    std::uint32_t word = kSdfgiSolid | (sum.facing << kSdfgiFacingShift);
+    Float3 emission{};
+    for (std::size_t c = 0; c < 3; ++c) {
+        const std::uint32_t a5 =
+            ((62U * sum.albedo.at(c)) + (255U * sum.count)) / (510U * sum.count);
+        word |= std::min(a5, 31U) << (5U * c);
+        const std::uint32_t e = (sum.emission.at(c) + (sum.count / 2U)) / sum.count;
+        emission.at(c) = static_cast<float>(e) / kEmissionUnit;
+    }
+    return {word, sdfgi_rgbe_encode(emission)};
+}
+
+// Squared distances at least this far count as far as any: the field stops at 255 cells.
+constexpr std::int32_t kFar = 65536;
+
+// One 1D pass of Felzenszwalb and Huttenlocher's squared distance transform over n values, in
+// whole numbers (the parabolas' crossings as fractions), so the GPU's makes the same: values of
+// kFar or more count as no solid cell, and so do results.
+void distance_pass(std::span<std::int32_t> f, std::vector<std::int32_t>& out,
+                   std::vector<std::int32_t>& v, std::vector<std::int32_t>& z_num,
+                   std::vector<std::int32_t>& z_den) {
+    const auto n = static_cast<std::int32_t>(f.size());
+    const auto at = [](std::int32_t i) { return static_cast<std::size_t>(i); };
+    std::int32_t k = -1;
+    for (std::int32_t q = 0; q < n; ++q) {
+        if (f[at(q)] >= kFar) {
             continue;
         }
+        std::int32_t num = 0;
+        std::int32_t den = 1;
         while (k >= 0) {
-            const int p = v[static_cast<std::size_t>(k)];
-            const double s = ((f[static_cast<std::size_t>(q)] + (double(q) * q)) -
-                              (f[static_cast<std::size_t>(p)] + (double(p) * p))) /
-                             (2.0 * (q - p));
-            if (s <= z[static_cast<std::size_t>(k)]) {
+            const std::int32_t p = v[at(k)];
+            num = (f[at(q)] + (q * q)) - (f[at(p)] + (p * p));
+            den = 2 * (q - p);
+            // The crossing with the last parabola is at or before the one before it: drop it.
+            if (k > 0 && num * z_den[at(k)] <= z_num[at(k)] * den) {
                 --k;
                 continue;
             }
             break;
         }
         ++k;
-        v[static_cast<std::size_t>(k)] = q;
-        z[static_cast<std::size_t>(k)] =
-            k == 0 ? -kInf
-                   : ((f[static_cast<std::size_t>(q)] + (double(q) * q)) -
-                      (f[static_cast<std::size_t>(v[static_cast<std::size_t>(k - 1)])] +
-                       (double(v[static_cast<std::size_t>(k - 1)]) *
-                        v[static_cast<std::size_t>(k - 1)]))) /
-                         (2.0 * (q - v[static_cast<std::size_t>(k - 1)]));
+        v[at(k)] = q;
+        z_num[at(k)] = num;
+        z_den[at(k)] = den;
     }
     if (k < 0) {
-        std::fill(out.begin(), out.begin() + n, kInf);
+        std::fill(out.begin(), out.begin() + n, kFar);
         return;
     }
-    int j = 0;
-    for (int q = 0; q < n; ++q) {
-        while (j < k && z[static_cast<std::size_t>(j) + 1] < q) {
+    std::int32_t j = 0;
+    for (std::int32_t q = 0; q < n; ++q) {
+        while (j < k && z_num[at(j + 1)] < q * z_den[at(j + 1)]) {
             ++j;
         }
-        const int p = v[static_cast<std::size_t>(j)];
-        out[static_cast<std::size_t>(q)] =
-            (double(q - p) * (q - p)) + f[static_cast<std::size_t>(p)];
+        const std::int32_t p = v[at(j)];
+        out[at(q)] = std::min(kFar, ((q - p) * (q - p)) + f[at(p)]);
     }
 }
 
-// The squared distance from each cell to the nearest solid one: Godot's jump flood
-// (sdfgi_preprocess.glsl's MODE_JUMPFLOOD passes) finds it nearly, this exactly.
-std::vector<double> squared_distances(const Grid& grid, const std::vector<std::uint8_t>& solid,
-                                      jobs::Pool* pool) {
-    constexpr double kInf = std::numeric_limits<double>::infinity();
+// The squared distance from each cell to the nearest solid one (kFar where none is that near):
+// Godot's jump flood (sdfgi_preprocess.glsl's MODE_JUMPFLOOD passes) finds it nearly, this
+// exactly, a line at a time along x, then y, then z.
+std::vector<std::int32_t> squared_distances(const Grid& grid, const SdfgiCascade& cascade,
+                                            jobs::Pool* pool) {
     const std::uint32_t n = grid.size;
-    std::vector<double> d(grid.cells());
+    std::vector<std::int32_t> d(grid.cells());
     for (std::size_t i = 0; i < d.size(); ++i) {
-        d[i] = solid[i] != 0 ? 0.0 : kInf;
+        d[i] = sdfgi_solid(cascade, i) ? 0 : kFar;
     }
     for (std::size_t axis = 0; axis < 3; ++axis) {
         for_each(std::size_t{n} * n, pool, [&](std::size_t line) {
-            std::vector<double> f(n);
-            std::vector<double> out(n);
-            std::vector<int> v(n);
-            std::vector<double> z(n + 1);
+            std::vector<std::int32_t> f(n);
+            std::vector<std::int32_t> out(n);
+            std::vector<std::int32_t> v(n);
+            std::vector<std::int32_t> z_num(n);
+            std::vector<std::int32_t> z_den(n);
             const auto a = static_cast<std::uint32_t>(line % n);
             const auto b = static_cast<std::uint32_t>(line / n);
             const auto at = [&](std::uint32_t t) {
@@ -419,7 +470,7 @@ std::vector<double> squared_distances(const Grid& grid, const std::vector<std::u
             for (std::uint32_t t = 0; t < n; ++t) {
                 f[t] = d[at(t)];
             }
-            distance_pass(f, out, v, z);
+            distance_pass(f, out, v, z_num, z_den);
             for (std::uint32_t t = 0; t < n; ++t) {
                 d[at(t)] = out[t];
             }
@@ -428,12 +479,27 @@ std::vector<double> squared_distances(const Grid& grid, const std::vector<std::u
     return d;
 }
 
+// The distance field's byte for a squared distance: 1 + its square root, rounded (never a tie,
+// as no whole number's root ends in a half), up to 255.
+std::uint32_t sdf_byte(std::int32_t d2) {
+    auto root = static_cast<std::int32_t>(std::sqrt(static_cast<float>(d2)));
+    while (root * root > d2) {
+        --root;
+    }
+    while ((root + 1) * (root + 1) <= d2) {
+        ++root;
+    }
+    // Rounds up past a half: d2 > root^2 + root.
+    const std::int32_t rounded = d2 > (root * root) + root ? root + 1 : root;
+    return static_cast<std::uint32_t>(std::min(255, 1 + rounded));
+}
+
 // Makes a cascade's cells and distance field again from the frame's triangles, as render_region
 // renders the cascade's geometry into albedo, emission and facing textures and the preprocess
 // passes make its distance field and solid cell list from them. Godot rasterizes the geometry
 // from three sides and keeps what was drawn last in a cell; this averages what each triangle
 // touching a cell has at the point nearest the cell's center, sampled as a ray meeting it would.
-// With scrolled, the cascade moved by that many cells since its sums were made: the cells it
+// With scrolled, the cascade moved by that many cells since its cells were made: the cells it
 // still holds keep theirs, moved, and only those that came in are made, as Godot's scroll renders
 // only the region that came in.
 void voxelize(SdfgiCascade& cascade, std::uint32_t size, float y_mult, const PathScene& paths,
@@ -441,8 +507,8 @@ void voxelize(SdfgiCascade& cascade, std::uint32_t size, float y_mult, const Pat
               const std::optional<std::array<std::int32_t, 3>>& scrolled = std::nullopt) {
     const Grid grid{size};
     const auto whole = static_cast<std::int64_t>(size);
-    // Whether the cell at (x, y, z) was in the cascade before it moved, and so keeps its sum.
-    const bool scrolling = scrolled.has_value() && cascade.sums.size() == grid.cells();
+    // Whether the cell at (x, y, z) was in the cascade before it moved, and so keeps its own.
+    const bool scrolling = scrolled.has_value() && cascade.cells.size() == grid.cells() * 2;
     const auto kept = [&](std::int64_t x, std::int64_t y, std::int64_t z) {
         if (!scrolling) {
             return false;
@@ -484,20 +550,7 @@ void voxelize(SdfgiCascade& cascade, std::uint32_t size, float y_mult, const Pat
             slices[static_cast<std::size_t>(z)].push_back(static_cast<std::uint32_t>(t));
         }
     }
-    std::vector<SdfgiCellSum> sums(grid.cells());
-    if (scrolling) {
-        for_each(size, pool, [&](std::size_t z) {
-            const auto iz = static_cast<std::int64_t>(z);
-            for (std::int64_t y = 0; y < whole; ++y) {
-                for (std::int64_t x = 0; x < whole; ++x) {
-                    if (kept(x, y, iz)) {
-                        sums[grid.index(x, y, iz)] = cascade.sums[grid.index(
-                            x + (*scrolled)[0], y + (*scrolled)[1], iz + (*scrolled)[2])];
-                    }
-                }
-            }
-        });
-    }
+    std::vector<CellSum> sums(grid.cells());
     for_each(size, pool, [&](std::size_t z) {
         for (const std::uint32_t t : slices[z]) {
             const Placed& p = placed[t];
@@ -545,54 +598,57 @@ void voxelize(SdfgiCascade& cascade, std::uint32_t size, float y_mult, const Pat
                     if (!surface) {
                         continue;
                     }
-                    SdfgiCellSum& sum = sums[grid.index(x, y, static_cast<std::int64_t>(z))];
-                    sum.albedo = add(sum.albedo, surface->unshaded ? Float3{} : surface->base);
-                    sum.emission =
-                        add(sum.emission, surface->unshaded ? surface->base : surface->emitted);
+                    CellSum& sum = sums[grid.index(x, y, static_cast<std::int64_t>(z))];
+                    const Float3 albedo = surface->unshaded ? Float3{} : surface->base;
+                    const Float3 emission = surface->unshaded ? surface->base : surface->emitted;
+                    for (std::size_t c = 0; c < 3; ++c) {
+                        sum.albedo.at(c) += fixed_albedo(albedo.at(c));
+                        sum.emission.at(c) += fixed_emission(emission.at(c));
+                    }
                     ++sum.count;
                     sum.facing |= facing;
                 }
             }
         }
     });
-    std::vector<std::uint8_t> solid(grid.cells(), 0);
-    for (std::size_t i = 0; i < sums.size(); ++i) {
-        solid[i] = sums[i].count > 0 ? 1 : 0;
-    }
-    // The distance field (MODE_STORE): 0 in a solid cell, else 1 + the distance, as 8 bits.
-    const std::vector<double> d2 = squared_distances(grid, solid, pool);
-    cascade.sdf.assign(grid.cells(), 0);
-    for_each(grid.cells(), pool, [&](std::size_t i) {
-        if (solid[i] != 0) {
-            cascade.sdf[i] = 0;
-            return;
+    // The cells: those it still holds moved, the solid ones that came in from their sums.
+    std::vector<std::uint32_t> cells(grid.cells() * 2, 0U);
+    for_each(size, pool, [&](std::size_t z) {
+        const auto iz = static_cast<std::int64_t>(z);
+        for (std::int64_t y = 0; y < whole; ++y) {
+            for (std::int64_t x = 0; x < whole; ++x) {
+                const std::size_t at = grid.index(x, y, iz);
+                if (kept(x, y, iz)) {
+                    const std::size_t from =
+                        grid.index(x + (*scrolled)[0], y + (*scrolled)[1], iz + (*scrolled)[2]);
+                    if (sdfgi_solid(cascade, from)) {
+                        cells[at * 2] = cascade.cells[from * 2];
+                        cells[(at * 2) + 1] = cascade.cells[(from * 2) + 1];
+                    }
+                } else if (sums[at].count > 0) {
+                    const std::array<std::uint32_t, 2> cell = solid_cell(sums[at]);
+                    cells[at * 2] = cell[0];
+                    cells[(at * 2) + 1] = cell[1];
+                }
+            }
         }
-        const double d = 1.0 + std::sqrt(d2[i]);
-        cascade.sdf[i] = static_cast<std::uint8_t>(std::min(255.0, std::round(d)));
     });
-    // The solid cells, in order.
-    cascade.cells.clear();
-    std::vector<std::uint32_t> cell_of(grid.cells(), std::numeric_limits<std::uint32_t>::max());
-    for (std::size_t i = 0; i < sums.size(); ++i) {
-        if (sums[i].count == 0) {
-            continue;
+    cascade.cells = std::move(cells);
+    // The distance field (MODE_STORE): 0 in a solid cell, else 1 + the distance, as 8 bits; the
+    // light and its shares start over.
+    const std::vector<std::int32_t> d2 = squared_distances(grid, cascade, pool);
+    cascade.field.assign(grid.cells() * 2, 0U);
+    for_each(grid.cells(), pool, [&](std::size_t i) {
+        if (!sdfgi_solid(cascade, i)) {
+            cascade.field[(i * 2) + 1] = sdf_byte(d2[i]) << 16U;
         }
-        const float inv = 1.0F / static_cast<float>(sums[i].count);
-        const Float3 albedo = scale(sums[i].albedo, inv);
-        cell_of[i] = static_cast<std::uint32_t>(cascade.cells.size());
-        cascade.cells.push_back(
-            {.index = static_cast<std::uint32_t>(i),
-             .albedo = {albedo5(albedo[0]), albedo5(albedo[1]), albedo5(albedo[2])},
-             .emission = scale(sums[i].emission, inv),
-             .facing = sums[i].facing,
-             .neighbors = 0});
-    }
+    });
     // The empty cells next to solid ones take the light of the nearest (the jump flood's
     // positions pointing at a solid cell, which MODE_STORE turns into neighbor bits): the
     // first nearest in MODE_STORE's order.
-    for (std::size_t i = 0; i < grid.cells(); ++i) {
-        if (solid[i] != 0 || d2[i] > 3.0) {
-            continue;
+    for_each(grid.cells(), pool, [&](std::size_t i) {
+        if (sdfgi_solid(cascade, i) || d2[i] > 3) {
+            return;
         }
         const auto x = static_cast<std::int64_t>(i % size);
         const auto y = static_cast<std::int64_t>((i / size) % size);
@@ -604,7 +660,7 @@ void voxelize(SdfgiCascade& cascade, std::uint32_t size, float y_mult, const Pat
             const std::int64_t nx = x + o[0];
             const std::int64_t ny = y + o[1];
             const std::int64_t nz = z + o[2];
-            if (!grid.inside(nx, ny, nz) || solid[grid.index(nx, ny, nz)] == 0) {
+            if (!grid.inside(nx, ny, nz) || !sdfgi_solid(cascade, grid.index(nx, ny, nz))) {
                 continue;
             }
             const int l = (o[0] * o[0]) + (o[1] * o[1]) + (o[2] * o[2]);
@@ -613,22 +669,11 @@ void voxelize(SdfgiCascade& cascade, std::uint32_t size, float y_mult, const Pat
                 best = static_cast<int>(n);
             }
         }
-        if (best < 0) {
-            continue;
+        if (best >= 0) {
+            cascade.cells[i * 2] = static_cast<std::uint32_t>(best) + 1U;
         }
-        const std::array<int, 3>& o = kNeighbors.at(static_cast<std::size_t>(best));
-        const std::uint32_t c = cell_of[grid.index(x + o[0], y + o[1], z + o[2])];
-        // The solid cell's bit for the way back to this one.
-        for (std::size_t n = 0; n < kNeighbors.size(); ++n) {
-            const std::array<int, 3>& back = kNeighbors.at(n);
-            if (back[0] == -o[0] && back[1] == -o[1] && back[2] == -o[2]) {
-                cascade.cells[c].neighbors |= 1U << n;
-            }
-        }
-    }
-    cascade.sums = std::move(sums);
-    cascade.light.assign(grid.cells(), Float3{});
-    cascade.aniso.assign(grid.cells(), std::array<float, 6>{});
+    });
+    cascade.light.assign(grid.cells(), 0U);
     cascade.all_lights_dirty = true;
 }
 
@@ -744,7 +789,7 @@ March march(const Cascades& cs, std::size_t first, Float3 ray_pos, const Float3&
 
 // The probes' irradiance at a point of a cascade's cells along a direction, as the bounce
 // feedback reads lightprobe_texture: probe_base the probe below it, offset which of the 8 around.
-Float3 probe_texel(const SdfgiCascade& cascade, const std::vector<Float3>& image,
+Float3 probe_texel(const std::vector<std::uint32_t>& image,
                    const std::array<std::int32_t, 3>& probe, const Float3& n) {
     const std::array<float, 2> oct = octahedron_encode(n);
     const float x =
@@ -754,7 +799,6 @@ Float3 probe_texel(const SdfgiCascade& cascade, const std::vector<Float3>& image
         (oct[0] * static_cast<float>(kSdfgiOctSize));
     const float y = static_cast<float>((probe[1] * static_cast<std::int32_t>(kOctBorder)) + 1) +
                     (oct[1] * static_cast<float>(kSdfgiOctSize));
-    (void)cascade;
     return sample2(image, kProbeImageWidth, kProbeImageHeight, x, y);
 }
 
@@ -764,6 +808,8 @@ void light_cells(SdfgiState& state, std::size_t index, const std::vector<SdfgiLi
     const std::uint32_t size = state.settings.cascade_size;
     const Cascades cs(state, size);
     const float feedback_amount = state.settings.bounce_feedback;
+    // A partial update lights every increment-th cell by its index, the same cells on a GPU,
+    // where solid cells come in no order.
     const std::uint32_t increment =
         cascade.all_lights_dirty ? 1U : std::max(1U, state.settings.frames_to_update_light);
     const std::uint32_t process_offset = state.frame % increment;
@@ -771,182 +817,212 @@ void light_cells(SdfgiState& state, std::size_t index, const std::vector<SdfgiLi
     const Float3 offset = cs.offsets[index];
     const float cell_size = cascade.cell_size;
     const float probe_scale = static_cast<float>(kSdfgiProbeAxis - 1) / static_cast<float>(size);
-    struct Lit {
-        Float3 total{};
-        std::array<float, 6> aniso{};
+    const auto lit = [&](std::size_t c) {
+        return sdfgi_solid(cascade, c) && (c % increment) == process_offset;
     };
-    std::vector<Lit> lit(cascade.cells.size());
-    for_each(cascade.cells.size(), pool, [&](std::size_t c) {
-        if ((c % increment) != process_offset) {
-            return;
-        }
-        const SdfgiCell& cell = cascade.cells[c];
-        const std::array<std::int64_t, 3> cpos{
-            static_cast<std::int64_t>(cell.index % size),
-            static_cast<std::int64_t>((cell.index / size) % size),
-            static_cast<std::int64_t>(cell.index / (std::size_t{size} * size))};
-        const Float3 cell_center{static_cast<float>(cpos[0]) + 0.5F,
-                                 static_cast<float>(cpos[1]) + 0.5F,
-                                 static_cast<float>(cpos[2]) + 0.5F};
-        const Float3 position = add(scale(cell_center, cell_size), offset);
-        std::array<Float3, 6> accum{};
-        // Bounce feedback: the probes' light around the cell, toward each side it faces.
-        if (feedback_amount > 0.001F) {
-            const Float3 feedback = feedback_amount < 1.0F ? scale(cell.albedo, feedback_amount)
-                                                           : lerp(cell.albedo, {1.0F, 1.0F, 1.0F},
-                                                                  feedback_amount - 1.0F);
-            const Float3 pos = scale(cell_center, probe_scale);
-            const std::array<std::int32_t, 3> base{static_cast<std::int32_t>(pos[0]),
-                                                   static_cast<std::int32_t>(pos[1]),
-                                                   static_cast<std::int32_t>(pos[2])};
-            std::array<float, 6> weights{};
-            for (std::uint32_t j = 0; j < 8; ++j) {
-                const std::array<std::int32_t, 3> probe{
-                    base[0] + static_cast<std::int32_t>(j & 1U),
-                    base[1] + static_cast<std::int32_t>((j >> 1U) & 1U),
-                    base[2] + static_cast<std::int32_t>((j >> 2U) & 1U)};
-                const Float3 probe_to_pos =
-                    sub(pos, {static_cast<float>(probe[0]), static_cast<float>(probe[1]),
-                              static_cast<float>(probe[2])});
-                const Float3 probe_dir = normalize(scale(probe_to_pos, -1.0F));
-                const Float3 trilinear{1.0F - std::abs(probe_to_pos[0]),
-                                       1.0F - std::abs(probe_to_pos[1]),
-                                       1.0F - std::abs(probe_to_pos[2])};
-                for (std::size_t k = 0; k < 6; ++k) {
-                    if ((cell.facing & (1U << k)) == 0) {
-                        continue;
-                    }
-                    float weight = trilinear[0] * trilinear[1] * trilinear[2] *
-                                   std::max(0.0F, dot(kAnisoDir.at(k), probe_dir));
-                    if (weight > 0.0F && !cascade.occlusion.empty()) {
-                        // How much the probe sees of the cell next to this one on that side
-                        // (a texel's center, clamped to the cascade as Godot's sampler is).
-                        std::array<std::int64_t, 3> next{};
-                        for (std::size_t a = 0; a < 3; ++a) {
-                            next.at(a) = std::clamp<std::int64_t>(
-                                cpos.at(a) + static_cast<std::int64_t>(kAnisoDir.at(k).at(a)), 0,
-                                static_cast<std::int64_t>(size) - 1);
+    // The shares of aniso 4 and 5, put in the field's second words once the marches through the
+    // distance fields beside them are done.
+    std::vector<std::uint16_t> upper(cs.grid.cells(), 0U);
+    for_each(size, pool, [&](std::size_t z) {
+        for (std::size_t yx = 0; yx < std::size_t{size} * size; ++yx) {
+            const std::size_t c = (z * size * size) + yx;
+            if (!lit(c)) {
+                continue;
+            }
+            const std::uint32_t word = cascade.cells[c * 2];
+            const Float3 albedo = sdfgi_albedo(word);
+            const Float3 emission = sdfgi_rgbe_decode(cascade.cells[(c * 2) + 1]);
+            const std::uint32_t facing = sdfgi_facing(word);
+            const std::array<std::int64_t, 3> cpos{static_cast<std::int64_t>(yx % size),
+                                                   static_cast<std::int64_t>(yx / size),
+                                                   static_cast<std::int64_t>(z)};
+            const Float3 cell_center{static_cast<float>(cpos[0]) + 0.5F,
+                                     static_cast<float>(cpos[1]) + 0.5F,
+                                     static_cast<float>(cpos[2]) + 0.5F};
+            const Float3 position = add(scale(cell_center, cell_size), offset);
+            std::array<Float3, 6> accum{};
+            // Bounce feedback: the probes' light around the cell, toward each side it faces.
+            if (feedback_amount > 0.001F) {
+                const Float3 feedback = feedback_amount < 1.0F ? scale(albedo, feedback_amount)
+                                                               : lerp(albedo, {1.0F, 1.0F, 1.0F},
+                                                                      feedback_amount - 1.0F);
+                const Float3 pos = scale(cell_center, probe_scale);
+                const std::array<std::int32_t, 3> base{static_cast<std::int32_t>(pos[0]),
+                                                       static_cast<std::int32_t>(pos[1]),
+                                                       static_cast<std::int32_t>(pos[2])};
+                std::array<float, 6> weights{};
+                for (std::uint32_t j = 0; j < 8; ++j) {
+                    const std::array<std::int32_t, 3> probe{
+                        base[0] + static_cast<std::int32_t>(j & 1U),
+                        base[1] + static_cast<std::int32_t>((j >> 1U) & 1U),
+                        base[2] + static_cast<std::int32_t>((j >> 2U) & 1U)};
+                    const Float3 probe_to_pos =
+                        sub(pos, {static_cast<float>(probe[0]), static_cast<float>(probe[1]),
+                                  static_cast<float>(probe[2])});
+                    const Float3 probe_dir = normalize(scale(probe_to_pos, -1.0F));
+                    const Float3 trilinear{1.0F - std::abs(probe_to_pos[0]),
+                                           1.0F - std::abs(probe_to_pos[1]),
+                                           1.0F - std::abs(probe_to_pos[2])};
+                    for (std::size_t k = 0; k < 6; ++k) {
+                        if ((facing & (1U << k)) == 0) {
+                            continue;
                         }
-                        weight *= sdfgi_occlusion(cascade, cs.grid.index(next[0], next[1], next[2]),
-                                                  probe_parity(cascade, size, probe));
-                    }
-                    if (weight > 0.0F) {
-                        accum.at(k) = add(
-                            accum.at(k),
-                            scale(probe_texel(cascade, cascade.irradiance, probe, kAnisoDir.at(k)),
-                                  weight));
-                        weights.at(k) += weight;
+                        float weight = trilinear[0] * trilinear[1] * trilinear[2] *
+                                       std::max(0.0F, dot(kAnisoDir.at(k), probe_dir));
+                        if (weight > 0.0F && !cascade.occlusion.empty()) {
+                            // How much the probe sees of the cell next to this one on that side
+                            // (a texel's center, clamped to the cascade as Godot's sampler is).
+                            std::array<std::int64_t, 3> next{};
+                            for (std::size_t a = 0; a < 3; ++a) {
+                                next.at(a) = std::clamp<std::int64_t>(
+                                    cpos.at(a) + static_cast<std::int64_t>(kAnisoDir.at(k).at(a)),
+                                    0, static_cast<std::int64_t>(size) - 1);
+                            }
+                            weight *=
+                                sdfgi_occlusion(cascade, cs.grid.index(next[0], next[1], next[2]),
+                                                probe_parity(cascade, size, probe));
+                        }
+                        if (weight > 0.0F) {
+                            accum.at(k) =
+                                add(accum.at(k),
+                                    scale(probe_texel(cascade.irradiance, probe, kAnisoDir.at(k)),
+                                          weight));
+                            weights.at(k) += weight;
+                        }
                     }
                 }
-            }
-            for (std::size_t k = 0; k < 6; ++k) {
-                if (weights.at(k) > 0.0F) {
-                    accum.at(k) = mul(scale(accum.at(k), 1.0F / weights.at(k)), feedback);
-                }
-            }
-        }
-        // What the cell gives off (Godot's static light, made by MODE_PROCESS_STATIC from
-        // emission), shared evenly over the sides it faces.
-        {
-            std::uint32_t sides = 0;
-            for (std::size_t k = 0; k < 6; ++k) {
-                sides += (cell.facing >> k) & 1U;
-            }
-            if (sides > 0) {
-                const Float3 share = scale(cell.emission, 1.0F / static_cast<float>(sides));
                 for (std::size_t k = 0; k < 6; ++k) {
-                    if ((cell.facing & (1U << k)) != 0) {
-                        accum.at(k) = add(accum.at(k), share);
+                    if (weights.at(k) > 0.0F) {
+                        accum.at(k) = mul(scale(accum.at(k), 1.0F / weights.at(k)), feedback);
                     }
                 }
             }
-        }
-        // Each light, traced through the distance fields.
-        for (const SdfgiLight& light : lights) {
-            float attenuation = 1.0F;
-            Float3 direction{};
-            float light_distance = 1e20F;
-            if (light.type == LightType::Directional) {
-                direction = scale(light.direction, -1.0F);
-            } else {
-                const Float3 rel = sub(light.position, position);
-                direction = normalize(rel);
-                light_distance = length(rel);
-                attenuation =
-                    omni_attenuation(light_distance, 1.0F / light.radius, light.attenuation);
-                if (light.type == LightType::Spot) {
-                    const float cos_angle = dot(scale(direction, -1.0F), light.direction);
-                    if (cos_angle < light.cos_spot_angle) {
-                        continue;
+            // What the cell gives off (Godot's static light, made by MODE_PROCESS_STATIC from
+            // emission), shared evenly over the sides it faces.
+            {
+                std::uint32_t sides = 0;
+                for (std::size_t k = 0; k < 6; ++k) {
+                    sides += (facing >> k) & 1U;
+                }
+                if (sides > 0) {
+                    const Float3 share = scale(emission, 1.0F / static_cast<float>(sides));
+                    for (std::size_t k = 0; k < 6; ++k) {
+                        if ((facing & (1U << k)) != 0) {
+                            accum.at(k) = add(accum.at(k), share);
+                        }
                     }
-                    const float scos = std::max(cos_angle, light.cos_spot_angle);
-                    const float rim =
-                        std::max(0.0001F, (1.0F - scos) / (1.0F - light.cos_spot_angle));
-                    attenuation *= 1.0F - std::pow(rim, light.inv_spot_attenuation);
                 }
             }
-            if (attenuation < 0.001F) {
-                continue;
-            }
-            Float3 ray_pos = position;
-            for (std::size_t a = 0; a < 3; ++a) {
-                float sign = 0.0F;
-                if (direction.at(a) > 0.0F) {
-                    sign = 1.0F;
-                } else if (direction.at(a) < 0.0F) {
-                    sign = -1.0F;
+            // Each light, traced through the distance fields.
+            for (const SdfgiLight& light : lights) {
+                float attenuation = 1.0F;
+                Float3 direction{};
+                float light_distance = 1e20F;
+                if (light.type == LightType::Directional) {
+                    direction = scale(light.direction, -1.0F);
+                } else {
+                    const Float3 rel = sub(light.position, position);
+                    direction = normalize(rel);
+                    light_distance = length(rel);
+                    attenuation =
+                        omni_attenuation(light_distance, 1.0F / light.radius, light.attenuation);
+                    if (light.type == LightType::Spot) {
+                        const float cos_angle = dot(scale(direction, -1.0F), light.direction);
+                        if (cos_angle < light.cos_spot_angle) {
+                            continue;
+                        }
+                        const float scos = std::max(cos_angle, light.cos_spot_angle);
+                        const float rim =
+                            std::max(0.0001F, (1.0F - scos) / (1.0F - light.cos_spot_angle));
+                        attenuation *= 1.0F - std::pow(rim, light.inv_spot_attenuation);
+                    }
                 }
-                ray_pos.at(a) += sign * cell_size * 0.48F;
+                if (attenuation < 0.001F) {
+                    continue;
+                }
+                Float3 ray_pos = position;
+                for (std::size_t a = 0; a < 3; ++a) {
+                    float sign = 0.0F;
+                    if (direction.at(a) > 0.0F) {
+                        sign = 1.0F;
+                    } else if (direction.at(a) < 0.0F) {
+                        sign = -1.0F;
+                    }
+                    ray_pos.at(a) += sign * cell_size * 0.48F;
+                }
+                ray_pos = add(ray_pos, scale(direction, 0.4F * cell_size));
+                if (march(cs, index, ray_pos, direction, light_distance, 0.001F).hit) {
+                    continue;
+                }
+                const Float3 l = scale(mul(albedo, light.color), attenuation);
+                for (std::size_t k = 0; k < 6; ++k) {
+                    if ((facing & (1U << k)) != 0) {
+                        accum.at(k) = add(
+                            accum.at(k), scale(l, std::max(0.0F, dot(kAnisoDir.at(k), direction))));
+                    }
+                }
             }
-            ray_pos = add(ray_pos, scale(direction, 0.4F * cell_size));
-            if (march(cs, index, ray_pos, direction, light_distance, 0.001F).hit) {
-                continue;
-            }
-            const Float3 l = scale(mul(cell.albedo, light.color), attenuation);
+            Float3 total{};
+            std::array<std::uint32_t, 6> shares{};
+            float luma_total = 0.0F;
             for (std::size_t k = 0; k < 6; ++k) {
-                if ((cell.facing & (1U << k)) != 0) {
-                    accum.at(k) =
-                        add(accum.at(k), scale(l, std::max(0.0F, dot(kAnisoDir.at(k), direction))));
-                }
+                total = add(total, accum.at(k));
             }
-        }
-        Float3 total{};
-        std::array<float, 6> lumas{};
-        for (std::size_t k = 0; k < 6; ++k) {
-            total = add(total, accum.at(k));
-            lumas.at(k) = max3(accum.at(k));
-        }
-        const float luma_total = max3(total);
-        Lit& out = lit[c];
-        out.total = sdfgi_rgbe_decode(sdfgi_rgbe_encode(total));
-        for (std::size_t k = 0; k < 6; ++k) {
-            out.aniso.at(k) = luma_total > 0.0F ? unorm8(lumas.at(k) / luma_total) : 0.0F;
+            luma_total = max3(total);
+            for (std::size_t k = 0; k < 6; ++k) {
+                shares.at(k) = luma_total > 0.0F ? sdfgi_share(max3(accum.at(k)) / luma_total) : 0U;
+            }
+            cascade.light[c] = sdfgi_rgbe_encode(total);
+            cascade.field[c * 2] =
+                shares[0] | (shares[1] << 8U) | (shares[2] << 16U) | (shares[3] << 24U);
+            upper[c] = static_cast<std::uint16_t>(shares[4] | (shares[5] << 8U));
         }
     });
-    // Stored, with the empty neighbors that take each cell's light.
-    for (std::size_t c = 0; c < cascade.cells.size(); ++c) {
-        if ((c % increment) != process_offset) {
-            continue;
+    for_each(size, pool, [&](std::size_t z) {
+        for (std::size_t c = z * size * size; c < (z + 1) * size * size; ++c) {
+            if (lit(c)) {
+                cascade.field[(c * 2) + 1] = (cascade.field[(c * 2) + 1] & 0xFFFF0000U) | upper[c];
+            }
         }
-        const SdfgiCell& cell = cascade.cells[c];
-        cascade.light[cell.index] = lit[c].total;
-        cascade.aniso[cell.index] = lit[c].aniso;
-        const auto x = static_cast<std::int64_t>(cell.index % size);
-        const auto y = static_cast<std::int64_t>((cell.index / size) % size);
-        const auto z = static_cast<std::int64_t>(cell.index / (std::size_t{size} * size));
-        for (std::size_t n = 0; n < kNeighbors.size(); ++n) {
-            if ((cell.neighbors & (1U << n)) == 0) {
+    });
+    // The empty cells next to solid ones take the light of the one they name.
+    for_each(size, pool, [&](std::size_t z) {
+        for (std::size_t yx = 0; yx < std::size_t{size} * size; ++yx) {
+            const std::size_t c = (z * size * size) + yx;
+            const std::uint32_t word = cascade.cells[c * 2];
+            if ((word & kSdfgiSolid) != 0 || word == 0) {
                 continue;
             }
-            const std::array<int, 3>& o = kNeighbors.at(n);
-            const std::size_t at = cs.grid.index(x + o[0], y + o[1], z + o[2]);
-            cascade.light[at] = lit[c].total;
-            cascade.aniso[at] = lit[c].aniso;
+            const std::array<int, 3>& o = kNeighbors.at(word - 1);
+            const std::size_t from = cs.grid.index(static_cast<std::int64_t>(yx % size) + o[0],
+                                                   static_cast<std::int64_t>(yx / size) + o[1],
+                                                   static_cast<std::int64_t>(z) + o[2]);
+            if (!lit(from)) {
+                continue;
+            }
+            cascade.light[c] = cascade.light[from];
+            cascade.field[c * 2] = cascade.field[from * 2];
+            cascade.field[(c * 2) + 1] = (cascade.field[(c * 2) + 1] & 0xFFFF0000U) |
+                                         (cascade.field[(from * 2) + 1] & 0xFFFFU);
         }
-    }
+    });
 }
 
 // --- Probes (update_probes and store_probes, sdfgi_integrate.glsl) ------------------------------
+
+// A history entry's channels as two words of two 16-bit halves, the low half first.
+std::uint32_t pack_history(std::int32_t low, std::int32_t high) {
+    return (static_cast<std::uint32_t>(low) & 0xFFFFU) | (static_cast<std::uint32_t>(high) << 16U);
+}
+std::array<std::int32_t, 4> unpack_history(const std::vector<std::uint32_t>& history,
+                                           std::size_t at) {
+    const auto half = [](std::uint32_t word, bool high) {
+        const auto bits = static_cast<std::uint16_t>(high ? word >> 16U : word & 0xFFFFU);
+        return static_cast<std::int32_t>(static_cast<std::int16_t>(bits));
+    };
+    return {half(history[at], false), half(history[at], true), half(history[at + 1], false),
+            half(history[at + 1], true)};
+}
 
 std::size_t probe_index(const std::array<std::int32_t, 3>& p) {
     const auto axis = std::size_t{kSdfgiProbeAxis};
@@ -1015,9 +1091,9 @@ void integrate(SdfgiState& state, const Scene3D& scene, const PathScene& paths,
                     };
                     const Float3 n = normalize({gradient(0), gradient(1), gradient(2)});
                     const Float3 hit_light = sample3<Float3>(
-                        cs.grid, met.at, [&](std::size_t at) { return hit.light[at]; });
+                        cs.grid, met.at, [&](std::size_t at) { return cell_light(hit, at); });
                     const std::array<float, 6> aniso = sample3<std::array<float, 6>>(
-                        cs.grid, met.at, [&](std::size_t at) { return hit.aniso[at]; });
+                        cs.grid, met.at, [&](std::size_t at) { return cell_aniso(hit, at); });
                     float share = 0.0F;
                     for (std::size_t k = 0; k < 3; ++k) {
                         share += std::max(0.0F, n.at(k) * aniso.at(k));
@@ -1043,13 +1119,13 @@ void integrate(SdfgiState& state, const Scene3D& scene, const PathScene& paths,
                     const float scaled = v * static_cast<float>(1 << kSdfgiHistoryBits);
                     value.at(ch) = std::clamp(static_cast<std::int32_t>(scaled), -32768, 32767);
                 }
-                std::array<std::int32_t, 4>& prev =
-                    cascade.history[(std::size_t{history_index} * sh_count) + at];
-                std::array<std::int32_t, 4>& average = cascade.average[at];
+                const std::size_t h = ((std::size_t{history_index} * sh_count) + at) * 2;
+                const std::array<std::int32_t, 4> prev = unpack_history(cascade.history, h);
                 for (std::size_t ch = 0; ch < 4; ++ch) {
-                    average.at(ch) += value.at(ch) - prev.at(ch);
+                    cascade.average[(at * 4) + ch] += value.at(ch) - prev.at(ch);
                 }
-                prev = value;
+                cascade.history[h] = pack_history(value[0], value[1]);
+                cascade.history[h + 1] = pack_history(value[2], value[3]);
             }
         });
         // Store (MODE_STORE): each probe's octahedral irradiance and radiance, with borders.
@@ -1066,8 +1142,8 @@ void integrate(SdfgiState& state, const Scene3D& scene, const PathScene& paths,
             constexpr std::array<float, kSdfgiShSize> l_mult{
                 1.0F,  2.0F / 3.0F, 2.0F / 3.0F, 2.0F / 3.0F, 0.25F, 0.25F, 0.25F, 0.25F,
                 0.25F, 0.0F,        0.0F,        0.0F,        0.0F,  0.0F,  0.0F,  0.0F};
-            const auto put = [&](std::int32_t x, std::int32_t y, const Float3& irr,
-                                 const Float3& rad) {
+            const auto put = [&](std::int32_t x, std::int32_t y, std::uint32_t irr,
+                                 std::uint32_t rad) {
                 const std::size_t at =
                     (static_cast<std::size_t>(y) * kProbeImageWidth) + static_cast<std::size_t>(x);
                 cascade.irradiance[at] = irr;
@@ -1083,8 +1159,8 @@ void integrate(SdfgiState& state, const Scene3D& scene, const PathScene& paths,
                     Float3 irradiance{};
                     Float3 radiance{};
                     for (std::size_t s = 0; s < kSdfgiShSize; ++s) {
-                        const std::array<std::int32_t, 4>& average =
-                            cascade.average[(p * kSdfgiShSize) + s];
+                        const std::int32_t* average =
+                            &cascade.average[((p * kSdfgiShSize) + s) * 4];
                         const float k = 1.0F / static_cast<float>(history_size) /
                                         static_cast<float>(1 << kSdfgiHistoryBits);
                         const Float3 m = scale({static_cast<float>(average[0]) * k,
@@ -1094,8 +1170,8 @@ void integrate(SdfgiState& state, const Scene3D& scene, const PathScene& paths,
                         irradiance = add(irradiance, scale(m, l_mult.at(s)));
                         radiance = add(radiance, m);
                     }
-                    irradiance = sdfgi_rgbe_decode(sdfgi_rgbe_encode(irradiance));
-                    radiance = sdfgi_rgbe_decode(sdfgi_rgbe_encode(radiance));
+                    const std::uint32_t irradiance_texel = sdfgi_rgbe_encode(irradiance);
+                    const std::uint32_t radiance_texel = sdfgi_rgbe_encode(radiance);
                     // The texel, and the border texels Godot copies it to.
                     std::array<std::array<std::int32_t, 2>, 4> to{};
                     std::size_t count = 1;
@@ -1134,7 +1210,7 @@ void integrate(SdfgiState& state, const Scene3D& scene, const PathScene& paths,
                         count = 2;
                     }
                     for (std::size_t i = 0; i < count; ++i) {
-                        put(ox + to.at(i)[0], oy + to.at(i)[1], irradiance, radiance);
+                        put(ox + to.at(i)[0], oy + to.at(i)[1], irradiance_texel, radiance_texel);
                     }
                 }
             }
@@ -1146,10 +1222,10 @@ void integrate(SdfgiState& state, const Scene3D& scene, const PathScene& paths,
 // Makes a cascade's probe data again: cleared, as Godot's create clears its textures.
 void clear_probes(SdfgiCascade& cascade, std::uint32_t history_size) {
     const std::size_t sh_count = std::size_t{kProbes} * kSdfgiShSize;
-    cascade.history.assign(sh_count * history_size, {});
-    cascade.average.assign(sh_count, {});
-    cascade.irradiance.assign(std::size_t{kProbeImageWidth} * kProbeImageHeight, Float3{});
-    cascade.radiance.assign(std::size_t{kProbeImageWidth} * kProbeImageHeight, Float3{});
+    cascade.history.assign(sh_count * history_size * 2, 0U);
+    cascade.average.assign(sh_count * 4, 0);
+    cascade.irradiance.assign(std::size_t{kProbeImageWidth} * kProbeImageHeight, 0U);
+    cascade.radiance.assign(std::size_t{kProbeImageWidth} * kProbeImageHeight, 0U);
 }
 
 // Moves a cascade's probes' history and averages by a whole number of probes, as
@@ -1158,8 +1234,8 @@ void clear_probes(SdfgiCascade& cascade, std::uint32_t history_size) {
 void scroll_probes(SdfgiCascade& cascade, const std::array<std::int32_t, 3>& probes,
                    std::uint32_t history_size) {
     const std::size_t sh_count = std::size_t{kProbes} * kSdfgiShSize;
-    std::vector<std::array<std::int32_t, 4>> history(cascade.history.size());
-    std::vector<std::array<std::int32_t, 4>> average(cascade.average.size());
+    std::vector<std::uint32_t> history(cascade.history.size(), 0U);
+    std::vector<std::int32_t> average(cascade.average.size(), 0);
     constexpr auto kA = static_cast<std::int32_t>(kSdfgiProbeAxis);
     for (std::int32_t z = 0; z < kA; ++z) {
         for (std::int32_t y = 0; y < kA; ++y) {
@@ -1172,10 +1248,16 @@ void scroll_probes(SdfgiCascade& cascade, const std::array<std::int32_t, 3>& pro
                 const std::size_t to = probe_index({x, y, z});
                 const std::size_t src = probe_index(from);
                 for (std::size_t s = 0; s < kSdfgiShSize; ++s) {
-                    average[(to * kSdfgiShSize) + s] = cascade.average[(src * kSdfgiShSize) + s];
+                    for (std::size_t ch = 0; ch < 4; ++ch) {
+                        average[(((to * kSdfgiShSize) + s) * 4) + ch] =
+                            cascade.average[(((src * kSdfgiShSize) + s) * 4) + ch];
+                    }
                     for (std::size_t h = 0; h < history_size; ++h) {
-                        history[(h * sh_count) + (to * kSdfgiShSize) + s] =
-                            cascade.history[(h * sh_count) + (src * kSdfgiShSize) + s];
+                        for (std::size_t w = 0; w < 2; ++w) {
+                            history[(((h * sh_count) + (to * kSdfgiShSize) + s) * 2) + w] =
+                                cascade
+                                    .history[(((h * sh_count) + (src * kSdfgiShSize) + s) * 2) + w];
+                        }
                     }
                 }
             }
@@ -1197,7 +1279,7 @@ void make_sdfgi_occlusion(SdfgiCascade& cascade, std::uint32_t size, jobs::Pool*
     const std::int64_t span = occ * 2;
     const auto whole = static_cast<std::int64_t>(size);
     cascade.occlusion.assign(grid.cells(), 0U);
-    if (occ == 0 || cascade.sums.size() != grid.cells()) {
+    if (occ == 0 || cascade.cells.size() != grid.cells() * 2) {
         return;
     }
     // Which sides each cell's geometry faces (0 for an empty cell or one outside the cascade).
@@ -1205,11 +1287,14 @@ void make_sdfgi_occlusion(SdfgiCascade& cascade, std::uint32_t size, jobs::Pool*
         if (!grid.inside(x, y, z)) {
             return 0U;
         }
-        const SdfgiCellSum& sum = cascade.sums[grid.index(x, y, z)];
-        return sum.count > 0 ? sum.facing : 0U;
+        return sdfgi_facing(cascade.cells[grid.index(x, y, z) * 2]);
     };
-    // Godot's dst_occlusion images are R8: every store rounds to 8 bits.
-    std::vector<float> values(grid.cells(), 0.0F);
+    // Godot's dst_occlusion images are R8: every value is 8 bits, kept here as a whole number
+    // from 0 to 255 so averages round the same everywhere (half up, as (2s + n) / 2n).
+    std::vector<std::uint32_t> values(grid.cells(), 0U);
+    const auto average = [](std::uint32_t sum, std::uint32_t count) {
+        return count > 0 ? ((2 * sum) + count) / (2 * count) : 0U;
+    };
     const std::array<std::int64_t, 3> probe_global{
         cascade.position[0] / occ, cascade.position[1] / occ, cascade.position[2] / occ};
     for (std::uint32_t index = 0; index < 8; ++index) {
@@ -1236,7 +1321,7 @@ void make_sdfgi_occlusion(SdfgiCascade& cascade, std::uint32_t size, jobs::Pool*
                 return x >= 0 && y >= 0 && z >= 0 && x < whole && y < whole && z < whole;
             };
             // Local cell to the cascade's value and facing.
-            const auto value = [&](const std::array<std::int64_t, 3>& l) -> float& {
+            const auto value = [&](const std::array<std::int64_t, 3>& l) -> std::uint32_t& {
                 return values[grid.index(base[0] + l[0], base[1] + l[1], base[2] + l[2])];
             };
             const auto local_facing = [&](const std::array<std::int64_t, 3>& l) {
@@ -1266,11 +1351,11 @@ void make_sdfgi_occlusion(SdfgiCascade& cascade, std::uint32_t size, jobs::Pool*
                             if (!local_in_grid(l)) {
                                 continue;
                             }
-                            float o = 0.0F;
+                            std::uint32_t o = 0;
                             if (local_facing(l) != 0) {
-                                o = 0.0F;
+                                o = 0;
                             } else if (step == 0) {
-                                o = 1.0F;
+                                o = 255;
                             } else {
                                 const std::array<std::int64_t, 3> read_dir{-sign[0], -sign[1],
                                                                            -sign[2]};
@@ -1282,7 +1367,8 @@ void make_sdfgi_occlusion(SdfgiCascade& cascade, std::uint32_t size, jobs::Pool*
                                     major = az < ax ? std::array<std::int64_t, 3>{1, 0, 0}
                                                     : std::array<std::int64_t, 3>{0, 0, 1};
                                 }
-                                float avg = 0.0F;
+                                std::uint32_t sum = 0;
+                                std::uint32_t avg = 0;
                                 for (std::size_t a = 0; a < 3; ++a) {
                                     std::array<std::int64_t, 3> read = l;
                                     read.at(a) += read_dir.at(a);
@@ -1293,19 +1379,17 @@ void make_sdfgi_occlusion(SdfgiCascade& cascade, std::uint32_t size, jobs::Pool*
                                     }
                                     if (local_facing(read) == 0) {
                                         if (local_in_grid(read)) {
-                                            o += value(read);
-                                            avg += 1.0F;
+                                            sum += value(read);
+                                            ++avg;
                                         }
                                     } else if (proc_abs.at(a) != 0) {
                                         // Don't occlude from cells in the opposite octant.
-                                        avg += 1.0F;
+                                        ++avg;
                                     }
                                 }
-                                if (avg > 0.0F) {
-                                    o /= avg;
-                                }
+                                o = average(sum, avg);
                             }
-                            value(l) = unorm8(o);
+                            value(l) = o;
                         }
                     }
                 }
@@ -1347,15 +1431,15 @@ void make_sdfgi_occlusion(SdfgiCascade& cascade, std::uint32_t size, jobs::Pool*
                     const std::uint32_t neg_bit = (f >> (a + 3)) & 1U;
                     valid.at(a) = (read_dir.at(a) > 0 ? pos_bit : neg_bit) != 0;
                 }
-                float o = 0.0F;
-                float avg = 0.0F;
+                std::uint32_t sum = 0;
+                std::uint32_t avg = 0;
                 const auto take = [&](bool x, bool y, bool z) {
                     const std::array<std::int64_t, 3> read{l[0] + (x ? read_dir[0] : 0),
                                                            l[1] + (y ? read_dir[1] : 0),
                                                            l[2] + (z ? read_dir[2] : 0)};
                     if (local_facing(read) == 0 && local_in_grid(read)) {
-                        o += value(read);
-                        avg += 1.0F;
+                        sum += value(read);
+                        ++avg;
                     }
                 };
                 // Sides, then edges, then the corner, as Godot reads them.
@@ -1380,10 +1464,7 @@ void make_sdfgi_occlusion(SdfgiCascade& cascade, std::uint32_t size, jobs::Pool*
                 if (valid[0] && valid[1] && valid[2]) {
                     take(true, true, true);
                 }
-                if (avg > 0.0F) {
-                    o /= avg;
-                }
-                value(l) = unorm8(o);
+                value(l) = average(sum, avg);
             });
             // Empty cells next to solid ones see the probe as much as those face it.
             each_cell([&](const std::array<std::int64_t, 3>& l) {
@@ -1391,16 +1472,16 @@ void make_sdfgi_occlusion(SdfgiCascade& cascade, std::uint32_t size, jobs::Pool*
                     return;
                 }
                 const std::array<std::int64_t, 3> p = proc_pos(l);
-                float visible = 0.0F;
-                float total = 0.0F;
+                std::uint32_t visible = 0;
+                std::uint32_t total = 0;
                 const auto test = [&](std::size_t a, std::int64_t dir, std::uint32_t mask) {
                     std::array<std::int64_t, 3> read = l;
                     read.at(a) += dir;
                     const std::uint32_t m = local_facing(read);
                     if (m != 0 && local_in_grid(read)) {
-                        total += 1.0F;
+                        ++total;
                         if ((m & mask) != 0) {
-                            visible += 1.0F;
+                            ++visible;
                         }
                     }
                 };
@@ -1418,16 +1499,14 @@ void make_sdfgi_occlusion(SdfgiCascade& cascade, std::uint32_t size, jobs::Pool*
                         test(a, -dir, dir < 0 ? 8U << a : 1U << a);
                     }
                 }
-                if (total > 0.0F) {
-                    value(l) = unorm8(value(l) * (visible / total));
+                if (total > 0) {
+                    value(l) = ((2 * value(l) * visible) + total) / (2 * total);
                 }
             });
         });
         // MODE_STORE: 4 bits a probe parity.
         for (std::size_t c = 0; c < grid.cells(); ++c) {
-            const auto nibble =
-                static_cast<std::uint32_t>(std::clamp(values[c] * 15.0F, 0.0F, 15.0F));
-            cascade.occlusion[c] |= nibble << (index * 4U);
+            cascade.occlusion[c] |= (values[c] / 17U) << (index * 4U);
         }
     }
 }
@@ -1486,6 +1565,16 @@ Float3 sdfgi_rgbe_decode(std::uint32_t rgbe) {
     return {static_cast<float>(rgbe & 0x1FFU) * unit,
             static_cast<float>((rgbe >> 9U) & 0x1FFU) * unit,
             static_cast<float>((rgbe >> 18U) & 0x1FFU) * unit};
+}
+
+std::uint32_t sdfgi_sdf(const SdfgiCascade& cascade, std::size_t cell) {
+    return (cascade.field[(cell * 2) + 1] >> 16U) & 0xFFU;
+}
+
+Float3 sdfgi_albedo(std::uint32_t cell_word) {
+    return {static_cast<float>(cell_word & 31U) / 31.0F,
+            static_cast<float>((cell_word >> 5U) & 31U) / 31.0F,
+            static_cast<float>((cell_word >> 10U) & 31U) / 31.0F};
 }
 
 namespace {
@@ -1665,16 +1754,15 @@ void probe_light(const SdfgiState& state, std::size_t cascade, Float3 cascade_po
                 })[0];
             weight *= std::max(occlusion, 0.01F);
         }
-        const Float3 d = probe_texel(c, c.irradiance, probe, normal);
+        const Float3 d = probe_texel(c.irradiance, probe, normal);
         diffuse_accum = add(diffuse_accum, scale(d, weight));
         weight_accum += weight;
         Float3 s{};
         if (roughness < 0.99F) {
-            s = probe_texel(c, c.radiance, probe, reflection);
+            s = probe_texel(c.radiance, probe, reflection);
         }
         if (roughness > 0.2F) {
-            s = lerp(s, probe_texel(c, c.irradiance, probe, reflection),
-                     (roughness - 0.2F) * 1.25F);
+            s = lerp(s, probe_texel(c.irradiance, probe, reflection), (roughness - 0.2F) * 1.25F);
         }
         specular_accum = add(specular_accum, scale(s, weight));
     }
@@ -1797,8 +1885,9 @@ GiLight sdfgi_process(const SdfgiState& state, const Cascades& cs, const Float3&
                     fdistance = sdf_at(cs.grid, state.cascades[k], p) - 1.1F;
                     std::array<float, 4> light{};
                     if (fdistance < softness) {
-                        const Float3 l = sample3<Float3>(
-                            cs.grid, p, [&](std::size_t t) { return state.cascades[k].light[t]; });
+                        const Float3 l = sample3<Float3>(cs.grid, p, [&](std::size_t t) {
+                            return cell_light(state.cascades[k], t);
+                        });
                         light[3] = std::clamp(1.0F - (fdistance / softness), 0.0F, 1.0F);
                         for (std::size_t ch = 0; ch < 3; ++ch) {
                             light.at(ch) = l.at(ch) * 0.5F * light[3];
