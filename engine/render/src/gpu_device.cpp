@@ -29,6 +29,8 @@
 #include "hlsl_compiler.hpp"
 #include "material_shaders.hpp"
 #include "mesh_clustered_shaders.hpp"
+#include "mesh_cull.hpp"
+#include "mesh_cull_shaders.hpp"
 #include "mesh_motion_shaders.hpp"
 #include "mesh_normal_shaders.hpp"
 #include "mesh_shaders.hpp"
@@ -775,8 +777,15 @@ public:
             SDL_ReleaseGPUBuffer(device_, skin_poses_buffer_.buffer);
             SDL_ReleaseGPUTransferBuffer(device_, skin_poses_buffer_.transfer);
         }
+        if (cull_records_.buffer != nullptr) {
+            SDL_ReleaseGPUBuffer(device_, cull_records_.buffer);
+            SDL_ReleaseGPUTransferBuffer(device_, cull_records_.transfer);
+        }
+        if (cull_args_ != nullptr) {
+            SDL_ReleaseGPUBuffer(device_, cull_args_);
+        }
         for (SDL_GPUComputePipeline* pipeline :
-             {sdfgi_pipeline_, sdfgi_voxelize_pipeline_, skin_pipeline_}) {
+             {sdfgi_pipeline_, sdfgi_voxelize_pipeline_, skin_pipeline_, cull_pipeline_}) {
             if (pipeline != nullptr) {
                 SDL_ReleaseGPUComputePipeline(device_, pipeline);
             }
@@ -4364,6 +4373,79 @@ private:
         }
     }
 
+    // Culls the frame's mesh draws against the camera's view in compute, writing each draw's
+    // indirect arguments at its index into cull_args_; false where the device can't, when the
+    // camera's passes draw directly.
+    Result<bool> cull_meshes(SDL_GPUCommandBuffer* commands, const Mat4& view_projection) {
+        if (mesh_draws_.empty()) {
+            return false;
+        }
+        if (cull_pipeline_ == nullptr) {
+            SDL_GPUComputePipelineCreateInfo info{};
+            info.entrypoint = "cs_main";
+            info.num_readonly_storage_buffers = 1;
+            info.num_readwrite_storage_buffers = 1;
+            info.num_uniform_buffers = 1;
+            info.threadcount_x = kCullThreads;
+            info.threadcount_y = 1;
+            info.threadcount_z = 1;
+            auto made = create_compute_pipeline(info, shaders::kMeshCullComputeSpirv,
+                                                shaders::kMeshCullComputeMsl,
+                                                shaders::kMeshCullHlsl, "culling meshes");
+            if (!made) {
+                return made.error();
+            }
+            cull_pipeline_ = made.value();
+        }
+        std::vector<std::uint32_t> records;
+        records.reserve(mesh_draws_.size() * kCullRecordWords);
+        for (std::size_t i = 0; i < mesh_draws_.size(); ++i) {
+            const MeshDraw& draw = mesh_draws_[i];
+            const MeshBatch& batch = mesh_batches_[i];
+            // A spatial shader's vertex() can move its corners anywhere.
+            push_cull_record(records, view_projection, draw.transform, batch.bounds, batch.range,
+                             draw.material.shader != ShaderId::None);
+        }
+        const auto args_bytes =
+            static_cast<std::uint32_t>(mesh_draws_.size() * kCullArgsWords * sizeof(std::uint32_t));
+        if (args_bytes > cull_args_capacity_) {
+            if (cull_args_ != nullptr) {
+                SDL_ReleaseGPUBuffer(device_, cull_args_);
+                cull_args_ = nullptr;
+                cull_args_capacity_ = 0;
+            }
+            SDL_GPUBufferCreateInfo buffer{};
+            buffer.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE | SDL_GPU_BUFFERUSAGE_INDIRECT;
+            buffer.size = std::max(args_bytes, cull_args_capacity_ * 2);
+            cull_args_ = SDL_CreateGPUBuffer(device_, &buffer);
+            if (cull_args_ == nullptr) {
+                return sdl_error("making room for culling meshes failed");
+            }
+            cull_args_capacity_ = buffer.size;
+        }
+        SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+        const Result<void> uploaded =
+            upload_storage(copy, cull_records_, std::as_bytes(std::span(records)));
+        SDL_EndGPUCopyPass(copy);
+        if (!uploaded) {
+            return uploaded.error();
+        }
+        // Cycling gives the arguments new memory if a frame sent before still draws with them.
+        SDL_GPUStorageBufferReadWriteBinding output{};
+        output.buffer = cull_args_;
+        output.cycle = true;
+        SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(commands, nullptr, 0, &output, 1);
+        SDL_BindGPUComputePipeline(pass, cull_pipeline_);
+        SDL_BindGPUComputeStorageBuffers(pass, 0, &cull_records_.buffer, 1);
+        const CullUniforms uniforms{
+            .counts = {static_cast<std::uint32_t>(mesh_draws_.size()), 0, 0, 0}};
+        SDL_PushGPUComputeUniformData(commands, 0, &uniforms,
+                                      static_cast<std::uint32_t>(sizeof(uniforms)));
+        SDL_DispatchGPUCompute(pass, cull_groups(uniforms.counts[0]), 1, 1);
+        SDL_EndGPUComputePass(pass);
+        return true;
+    }
+
     // The frame's meshes: first into the shadow atlases, then in the order mesh_draw_order gives,
     // in a pass that clears the target and a depth buffer to the far plane.
     // The scene's sky, then its meshes with their shadows planned by plan (null with no meshes).
@@ -4449,6 +4531,16 @@ private:
             order = mesh_draw_order(std::span<const MeshDraw>(mesh_draws_), scene,
                                     [&](std::size_t at) { return mesh_batches_[at].bounds; });
         }
+        // The camera's passes draw what mesh_cull.hlsl leaves in view, by indirect draws.
+        bool culled = false;
+        if (plan != nullptr) {
+            auto made = cull_meshes(commands, view_projection);
+            if (!made) {
+                log::warn("culling meshes failed; drawing them all",
+                          {{"error", made.error().message}});
+            }
+            culled = made && made.value();
+        }
         // Volumetric fog, which frames without meshes go without: its passes, before the meshes
         // and the sky read it.
         FogFrames* fog = clustered && plan != nullptr && uses_volumetric_fog(scene)
@@ -4522,7 +4614,14 @@ private:
                 std::copy(batch.samplers.begin(), batch.samplers.end(), samplers.begin());
                 SDL_BindGPUFragmentSamplers(pass, 0, samplers.data(),
                                             static_cast<std::uint32_t>(bound_samplers));
-                SDL_DrawGPUIndexedPrimitives(pass, batch.range.count, 1, batch.range.first, 0, 0);
+                if (culled) {
+                    SDL_DrawGPUIndexedPrimitivesIndirect(
+                        pass, cull_args_,
+                        static_cast<std::uint32_t>(i * kCullArgsWords * sizeof(std::uint32_t)), 1);
+                } else {
+                    SDL_DrawGPUIndexedPrimitives(pass, batch.range.count, 1, batch.range.first, 0,
+                                                 0);
+                }
             }
         };
         if (ssao || ssr || motion || traced || sdfgi) {
@@ -8781,6 +8880,12 @@ private:
     std::vector<SkinJob> skin_jobs_;
     std::vector<std::uint32_t> skin_poses_;
     StorageBuffer skin_poses_buffer_;
+    // Culling the camera's mesh draws (cull_meshes): their records, and the indirect arguments
+    // mesh_cull.hlsl writes for them.
+    SDL_GPUComputePipeline* cull_pipeline_ = nullptr;
+    StorageBuffer cull_records_;
+    SDL_GPUBuffer* cull_args_ = nullptr;
+    std::uint32_t cull_args_capacity_ = 0;
     SDL_GPUComputePipeline* skin_pipeline_ = nullptr;
     std::array<SDL_GPUShader*, 2> fog_sky_shaders_{};
     std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> fog_sky_pipelines_;

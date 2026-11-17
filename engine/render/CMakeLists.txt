@@ -70,6 +70,7 @@ add_library(slash_render
     src/resize.cpp
     src/sdfgi.cpp
     src/sdfgi_gpu.cpp
+    src/mesh_cull.cpp
     src/skin_gpu.cpp
     src/shader.cpp
     src/shader_vm.cpp
@@ -215,7 +216,8 @@ set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
     frame_generation:FrameGeneration:compute_alone
     frame_generation_draw:FrameGenerationDraw:fog_sky
     sdfgi:Sdfgi:sdfgi_compute sdfgi_voxelize:SdfgiVoxelize:compute_alone
-    sdfgi_gather:SdfgiGather:sdfgi_draw skin:Skin:compute_alone)
+    sdfgi_gather:SdfgiGather:sdfgi_draw skin:Skin:compute_alone
+    mesh_cull:MeshCull:compute_alone)
 foreach(entry IN LISTS slash_shaders)
     string(REPLACE ":" ";" parts ${entry})
     list(GET parts 0 shader)

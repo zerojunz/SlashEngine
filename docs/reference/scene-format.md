@@ -2597,6 +2597,15 @@ without them, as Godot's. A mesh takes a decal when its `layers` share a bit wit
 
 ### Occlusion culling
 
+Before any of this, every mesh outside the camera's view is left out, as Godot's renderer culls
+by frustum. On the GPU device (Vulkan, Metal, Direct3D 12) and WebGPU the frustum test runs on
+the GPU, a thread a draw, which writes each draw's indirect arguments (no instances when its box is
+wholly past one edge of the view), so the CPU sends every draw and the GPU skips those out of
+view; the software device runs the same test on the CPU, and OpenGL draws them all. A mesh's box
+counts as in view up to 1/64 of the view past an edge, so TAA's and FSR 2's jitter never cut off
+what shows. Meshes drawn with a spatial shader that has a `vertex()` are never culled, since it
+can move their corners anywhere, and shadow maps and reflection probes draw every mesh.
+
 An `OccluderInstance3D` hides the meshes behind it from the camera, as Godot 4.6's: while
 project.json's [`rendering.occlusion_culling.use_occlusion_culling`](project-format.md#occlusion-culling)
 is on, each frame the renderer casts a ray through each texel of a small depth buffer into every

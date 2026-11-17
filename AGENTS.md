@@ -1638,6 +1638,16 @@ every device draws from one index buffer (`mesh_index_buffer`, `IndexRange`).
 `rendering.mesh_lod.lod_change.threshold_pixels`; shadow maps draw the camera's LODs and
 reflection probes pick their own. `examples/mesh-lods` draws boulders near and far.
 
+The camera's mesh draws are culled by the view on the GPU, as Unity's GPU-driven pipeline does:
+each device writes a record a draw (`push_cull_record` in `src/mesh_cull.hpp`: the view
+projection times its transform, its box and its indices), `shaders/mesh_cull.hlsl` tests each in a
+thread and writes its indexed indirect arguments with no instances where every corner is past one
+edge by more than `kCullMargin`, and the camera's passes draw by them (GPU device and WebGPU;
+`cull_meshes`, `prepare_cull` and `encode_cull`). `box_in_view` and `cull_draws` are its CPU twin,
+which the software device skips draws by; OpenGL draws everything, and shadow passes draw every
+caster. A draw with a game shader is never culled (an inside-out box), since `vertex()` moves its
+corners. `tests/test_mesh_cull.cpp` holds every device to the software device.
+
 Occlusion culling is Godot 4.6's raycast culler (`slash/scene3d/occlusion.hpp`,
 `src/occlusion.cpp`, after `raycast_occlusion_cull.cpp`). `OccluderInstance3D`'s quad, box,
 sphere, polygon and array shapes (`occluder_mesh`, as Godot's `Occluder3D`s make them) go into an

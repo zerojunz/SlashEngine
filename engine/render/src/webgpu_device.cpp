@@ -31,6 +31,8 @@
 #include "fsr3_shading_change_shaders.hpp"
 #include "material_shaders.hpp"
 #include "mesh_clustered_shaders.hpp"
+#include "mesh_cull.hpp"
+#include "mesh_cull_shaders.hpp"
 #include "mesh_motion_shaders.hpp"
 #include "mesh_normal_shaders.hpp"
 #include "mesh_shaders.hpp"
@@ -700,7 +702,7 @@ public:
             forget_sdfgi_frames(sdfgi_frames_.back().first);
         }
         for (WGPUComputePipeline pipeline :
-             {sdfgi_pipeline_, sdfgi_voxelize_pipeline_, skin_pipeline_}) {
+             {sdfgi_pipeline_, sdfgi_voxelize_pipeline_, skin_pipeline_, cull_pipeline_}) {
             if (pipeline != nullptr) {
                 wgpuComputePipelineRelease(pipeline);
             }
@@ -711,6 +713,8 @@ public:
             }
         }
         destroy_buffer(skin_poses_buffer_);
+        destroy_buffer(cull_records_);
+        destroy_buffer(cull_args_);
         if (sdfgi_gather_pipeline_ != nullptr) {
             wgpuRenderPipelineRelease(sdfgi_gather_pipeline_);
         }
@@ -824,7 +828,9 @@ public:
                                            sdfgi_gather_uniforms_layout_,
                                            skin_inputs_layout_,
                                            skin_output_layout_,
-                                           skin_uniforms_layout_}) {
+                                           skin_uniforms_layout_,
+                                           cull_inputs_layout_,
+                                           cull_uniforms_layout_}) {
             if (layout != nullptr) {
                 wgpuBindGroupLayoutRelease(layout);
             }
@@ -2309,11 +2315,17 @@ public:
         if (capture && capture->face + 1 == kCubeFaces) {
             probe_offsets = add_probe_uniforms();
         }
+        const std::optional<std::uint32_t> cull_at = prepare_cull();
         upload_frame();
 
         WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, nullptr);
         // Particles run and write their quads ahead of the render pass that draws them.
         encode_particle_jobs(encoder, job_uniforms);
+        // The camera's passes draw what mesh_cull.hlsl leaves in view, by indirect draws.
+        culled_ = cull_at.has_value();
+        if (cull_at) {
+            encode_cull(encoder, *cull_at);
+        }
         // The sky and meshes draw first, in a pass of their own, and the 2D draws go over them.
         if (!mesh_draws_.empty()) {
             encode_shadows(encoder, mesh_uniforms);
@@ -3469,6 +3481,13 @@ private:
         const std::array skin_entries{
             uniform_entry(0, WGPUShaderStage_Compute, sizeof(SkinUniforms))};
         skin_uniforms_layout_ = layout(skin_entries);
+        // Culling meshes: the draws' records; their indirect arguments (skinning's output
+        // layout); the count.
+        const std::array cull_inputs{storage_entry(0, true)};
+        cull_inputs_layout_ = layout(cull_inputs);
+        const std::array cull_entries{
+            uniform_entry(0, WGPUShaderStage_Compute, sizeof(CullUniforms))};
+        cull_uniforms_layout_ = layout(cull_entries);
 
         const auto pipeline_layout = [&](std::initializer_list<WGPUBindGroupLayout> groups) {
             const std::vector<WGPUBindGroupLayout> list(groups);
@@ -3562,6 +3581,8 @@ private:
                              sdfgi_gather_textures_layout_, sdfgi_gather_uniforms_layout_});
         pipeline_layouts_.at(kSkinLayout) =
             pipeline_layout({skin_inputs_layout_, skin_output_layout_, skin_uniforms_layout_});
+        pipeline_layouts_.at(kCullLayout) =
+            pipeline_layout({cull_inputs_layout_, skin_output_layout_, cull_uniforms_layout_});
     }
 
     WGPUShaderModule create_module(std::string_view wgsl) {
@@ -3892,6 +3913,8 @@ private:
         sdfgi_gather_uniforms_group_ = bind_group(sdfgi_gather_uniforms_layout_, sdfgi_gather);
         const std::array skin{buffer_entry(0, uniform_buffer_, sizeof(SkinUniforms))};
         skin_uniforms_group_ = bind_group(skin_uniforms_layout_, skin);
+        const std::array cull{buffer_entry(0, uniform_buffer_, sizeof(CullUniforms))};
+        cull_uniforms_group_ = bind_group(cull_uniforms_layout_, cull);
     }
 
     void release_uniform_groups() {
@@ -3925,7 +3948,8 @@ private:
                                      &sdfgi_uniforms_group_,
                                      &sdfgi_voxelize_uniforms_group_,
                                      &sdfgi_gather_uniforms_group_,
-                                     &skin_uniforms_group_}) {
+                                     &skin_uniforms_group_,
+                                     &cull_uniforms_group_}) {
             if (*group != nullptr) {
                 wgpuBindGroupRelease(*group);
                 *group = nullptr;
@@ -5367,8 +5391,77 @@ private:
             }
             wgpuRenderPassEncoderSetIndexBuffer(pass, batch.indices, WGPUIndexFormat_Uint32, 0,
                                                 WGPU_WHOLE_SIZE);
-            wgpuRenderPassEncoderDrawIndexed(pass, batch.range.count, 1, batch.range.first, 0, 0);
+            if (culled_) {
+                wgpuRenderPassEncoderDrawIndexedIndirect(
+                    pass, cull_args_, i * kCullArgsWords * sizeof(std::uint32_t));
+            } else {
+                wgpuRenderPassEncoderDrawIndexed(pass, batch.range.count, 1, batch.range.first, 0,
+                                                 0);
+            }
         }
+    }
+
+    // Writes the frame's mesh draws' records for culling and adds its uniforms, returning
+    // their offset; nothing with no meshes.
+    std::optional<std::uint32_t> prepare_cull() {
+        if (!frame_.scene || mesh_draws_.empty()) {
+            return std::nullopt;
+        }
+        const Mat4 view_projection = multiply(frame_.scene->projection, frame_.scene->camera);
+        std::vector<std::uint32_t> records;
+        records.reserve(mesh_draws_.size() * kCullRecordWords);
+        for (std::size_t i = 0; i < mesh_draws_.size(); ++i) {
+            const MeshDraw& draw = mesh_draws_[i];
+            const MeshBatch& batch = mesh_batches_[i];
+            // A spatial shader's vertex() can move its corners anywhere.
+            push_cull_record(records, view_projection, draw.transform, batch.bounds, batch.range,
+                             draw.material.shader != ShaderId::None);
+        }
+        const std::size_t record_bytes = records.size() * sizeof(std::uint32_t);
+        if (record_bytes > cull_records_capacity_) {
+            destroy_buffer(cull_records_);
+            cull_records_capacity_ =
+                std::max<std::uint64_t>(record_bytes, cull_records_capacity_ * 2);
+            cull_records_ = create_buffer(WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst,
+                                          cull_records_capacity_);
+        }
+        wgpuQueueWriteBuffer(queue_, cull_records_, 0, records.data(), record_bytes);
+        const std::uint64_t args_bytes =
+            mesh_draws_.size() * kCullArgsWords * sizeof(std::uint32_t);
+        if (args_bytes > cull_args_capacity_) {
+            destroy_buffer(cull_args_);
+            cull_args_capacity_ = std::max(args_bytes, cull_args_capacity_ * 2);
+            cull_args_ = create_buffer(WGPUBufferUsage_Storage | WGPUBufferUsage_Indirect,
+                                       cull_args_capacity_);
+        }
+        return uniforms_.add(
+            CullUniforms{.counts = {static_cast<std::uint32_t>(mesh_draws_.size()), 0, 0, 0}});
+    }
+
+    // Records mesh_cull.hlsl's dispatch over the frame's mesh draws, its uniforms at at.
+    void encode_cull(WGPUCommandEncoder encoder, std::uint32_t at) {
+        if (cull_pipeline_ == nullptr) {
+            WGPUComputePipelineDescriptor info = WGPU_COMPUTE_PIPELINE_DESCRIPTOR_INIT;
+            info.layout = pipeline_layouts_.at(kCullLayout);
+            info.compute.module = module(kCullModule, joined(shaders::kMeshCullComputeWgsl));
+            info.compute.entryPoint = text_view("cs_main");
+            cull_pipeline_ = wgpuDeviceCreateComputePipeline(device_, &info);
+        }
+        const std::array input_entries{buffer_entry(0, cull_records_)};
+        WGPUBindGroup inputs = bind_group(cull_inputs_layout_, input_entries);
+        const std::array output_entries{buffer_entry(0, cull_args_)};
+        WGPUBindGroup output = bind_group(skin_output_layout_, output_entries);
+        WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+        wgpuComputePassEncoderSetPipeline(compute, cull_pipeline_);
+        wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
+        wgpuComputePassEncoderSetBindGroup(compute, 1, output, 0, nullptr);
+        wgpuComputePassEncoderSetBindGroup(compute, 2, cull_uniforms_group_, 1, &at);
+        wgpuComputePassEncoderDispatchWorkgroups(
+            compute, cull_groups(static_cast<std::uint32_t>(mesh_draws_.size())), 1, 1);
+        wgpuComputePassEncoderEnd(compute);
+        wgpuComputePassEncoderRelease(compute);
+        wgpuBindGroupRelease(inputs);
+        wgpuBindGroupRelease(output);
     }
 
     // The pipeline drawing opaque meshes that cull as cull says into the normal-roughness
@@ -7900,6 +7993,7 @@ private:
     static constexpr std::size_t kSdfgiGatherVertexModule = kSdfgiVoxelizeModule + 1;
     static constexpr std::size_t kSdfgiGatherFragmentModule = kSdfgiGatherVertexModule + 1;
     static constexpr std::size_t kSkinModule = kSdfgiGatherFragmentModule + 1;
+    static constexpr std::size_t kCullModule = kSkinModule + 1;
     static constexpr std::size_t kSpriteLayout = 0;
     static constexpr std::size_t kMaterialLayout = 1;
     static constexpr std::size_t kProcessLayout = 2;
@@ -7933,6 +8027,7 @@ private:
     static constexpr std::size_t kSdfgiVoxelizeLayout = kSdfgiLayout + 1;
     static constexpr std::size_t kSdfgiGatherLayout = kSdfgiVoxelizeLayout + 1;
     static constexpr std::size_t kSkinLayout = kSdfgiGatherLayout + 1;
+    static constexpr std::size_t kCullLayout = kSkinLayout + 1;
 
     WGPUInstance instance_;
     WGPUDevice device_;
@@ -7945,7 +8040,7 @@ private:
     bool can_wait_ = false; // Asyncify lets read_texture wait for the GPU
     // Which formats the GPU samples, by TextureFormat.
     std::array<bool, 4> sampled_{true, false, false, true};
-    std::array<WGPUShaderModule, kSkinModule + 1> modules_{};
+    std::array<WGPUShaderModule, kCullModule + 1> modules_{};
     std::vector<Pipeline> pipelines_;
     std::unordered_map<ShaderId, GameShader> game_shaders_;
     std::uint32_t next_shader_ = 1;
@@ -8020,7 +8115,9 @@ private:
     WGPUBindGroupLayout skin_inputs_layout_ = nullptr;
     WGPUBindGroupLayout skin_output_layout_ = nullptr;
     WGPUBindGroupLayout skin_uniforms_layout_ = nullptr;
-    std::array<WGPUPipelineLayout, kSkinLayout + 1> pipeline_layouts_{};
+    WGPUBindGroupLayout cull_inputs_layout_ = nullptr;
+    WGPUBindGroupLayout cull_uniforms_layout_ = nullptr;
+    std::array<WGPUPipelineLayout, kCullLayout + 1> pipeline_layouts_{};
     std::array<WGPUSampler, 4> samplers_{}; // by sampler_index
     GpuTexture white_;
     std::unordered_map<TextureId, Texture> textures_;
@@ -8065,6 +8162,7 @@ private:
     WGPUBindGroup sdfgi_voxelize_uniforms_group_ = nullptr;
     WGPUBindGroup sdfgi_gather_uniforms_group_ = nullptr;
     WGPUBindGroup skin_uniforms_group_ = nullptr;
+    WGPUBindGroup cull_uniforms_group_ = nullptr;
     std::unordered_map<ParticlesId, ParticleSystem> particle_systems_;
     std::uint32_t next_particles_ = 1;
     std::vector<WGPUBuffer> pending_buffers_;
@@ -8227,6 +8325,15 @@ private:
     WGPUBuffer skin_poses_buffer_ = nullptr;
     std::uint64_t skin_poses_capacity_ = 0;
     WGPUComputePipeline skin_pipeline_ = nullptr;
+    // Culling the camera's mesh draws (prepare_cull, encode_cull): the pipeline, the draws'
+    // records, the indirect arguments mesh_cull.hlsl writes for them, and whether this frame's
+    // camera passes draw by them.
+    WGPUComputePipeline cull_pipeline_ = nullptr;
+    WGPUBuffer cull_records_ = nullptr;
+    std::uint64_t cull_records_capacity_ = 0;
+    WGPUBuffer cull_args_ = nullptr;
+    std::uint64_t cull_args_capacity_ = 0;
+    bool culled_ = false;
     // The most a storage binding and a buffer may hold, as the device was made with.
     std::uint64_t max_storage_binding_ = 128U << 20U;
     std::uint64_t max_buffer_ = 256U << 20U;
