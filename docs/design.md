@@ -138,7 +138,7 @@ SlashEngine covers nearly every Godot 4 feature area at launch and adds UE5 feat
 | One simulation | Jolt module (rigid, soft bodies, ragdolls, vehicles) | Chaos Physics, Chaos Fields, Chaos Cloth, Chaos Cache, Chaos Visual Debugger | Every tool's assets simulate in one Jolt space: shared physics materials and assets, individual ragdoll profiles per character and creature (active ragdolls blending with animation, hit reactions, getting up), fields acting on every kind of body, character cloth, substepping, recorded caches and a debugger record agents read | Launch |
 | Style memory | None built in | None built in | Storyboard style references marked from scenes, assets, frames, materials and lighting, with measured fingerprints; style.check reports drift in numbers and words, prompts and checks every generator and tool, test.run fails drift | Launch |
 | Virtualized geometry | None built in | Nanite | Research spike: cluster hierarchies cut per camera on the CPU, culled and streamed in pages | Research |
-| Fully dynamic GI at UE quality | SDFGI (partial) | Lumen | Research spike: Godot's SDFGI on the CPU, on the software device | Research |
+| Fully dynamic GI at UE quality | SDFGI (partial) | Lumen | Research spike: Godot's SDFGI on the CPU and in compute on Vulkan, Metal and Direct3D 12 | Research |
 | Digital humans | None built in | MetaHuman | Built by the character, face, anatomy and hair tools above; the research note records the parts they needed | Launch |
 
 The Godot and UE5 columns come from their public feature lists, not a line-by-line audit; treat them as a starting checklist.

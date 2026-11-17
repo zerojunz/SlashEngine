@@ -1118,7 +1118,8 @@ launch rows and the after-launch features above.
   probes with spherical harmonics history), behind `WorldEnvironment.sdfgi_enabled` on the
   software device ([sdfgi.md](reference/sdfgi.md)), its cascades scrolling and its probes
   occluded by walls, its cells, field, light and probes kept as GPU-ready words with every sum
-  and rounding in whole numbers; the GPU passes are next
+  and rounding in whole numbers, and run in compute shaders on Vulkan, Metal and Direct3D 12;
+  the WebGPU device is next
 - GPU-driven rendering, after Unity 7's Graphics Kernel (2026-11-17, queued after the SDFGI
   port): skinning on the GPU, culling and LOD picks in compute with indirect multi-draws, and
   a frame graph over every device's passes (what each reads and writes, passes nothing uses
@@ -1496,7 +1497,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Cloth and soft bodies | Jolt soft bodies | After launch | Done: Godot's `SoftBody3D` on Jolt, with pins, attachments and pressure |
 | Destruction | Fracture and debris on Jolt | After launch | Done: Voronoi fracture of `Destructible3D` bodies, impact breaking, debris lifetimes and `physics.break` |
 | Virtualized geometry | Meshlet rendering research | Research | Research: cluster hierarchies cut per camera on the CPU (`MeshInstance3D.virtualized`) |
-| Fully dynamic GI at UE quality | Research after probe GI ships | Research | Research: Godot's SDFGI on the CPU (`WorldEnvironment.sdfgi_enabled`, software device) |
+| Fully dynamic GI at UE quality | Research after probe GI ships | Research | Research: Godot's SDFGI on the CPU and the GPU device (`WorldEnvironment.sdfgi_enabled`) |
 | Digital humans | Research; out of scope for releases | Research | Research |
 
 ## Agent efficiency

@@ -125,6 +125,21 @@ struct SdfgiFramePlan {
 [[nodiscard]] SdfgiFramePlan plan_sdfgi_frame(SdfgiState& state, const Scene3D& scene,
                                               const Float3& camera, std::uint64_t geometry);
 
+// A light as the cells' light pass takes it (sdfgi_direct_light.glsl's lights): its color
+// times its energy and indirect energy, in the cells' world.
+struct SdfgiLight {
+    LightType type = LightType::Directional;
+    Float3 color{};
+    Float3 direction{}; // the way it shines (y scaled for directional lights)
+    Float3 position{};  // y scaled
+    float attenuation = 1.0F;
+    float radius = 1.0F;
+    float cos_spot_angle = 0.0F;
+    float inv_spot_attenuation = 1.0F;
+};
+// The scene's lights with indirect energy, in the cells' world with y times y_mult.
+[[nodiscard]] std::vector<SdfgiLight> sdfgi_lights(const Scene3D& scene, float y_mult);
+
 // Each of a cascade's probes' offset along its rays' spiral (sdfgi_integrate.glsl's
 // hashf3 of the probe's place in the world), as integrate works it out: kSdfgiProbeAxis^3 of them,
 // x fastest. Devices without doubles can't make Godot's sine bits, so the CPU hands them over.

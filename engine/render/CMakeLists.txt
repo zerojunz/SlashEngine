@@ -69,6 +69,7 @@ add_library(slash_render
     src/splats.cpp
     src/resize.cpp
     src/sdfgi.cpp
+    src/sdfgi_gpu.cpp
     src/shader.cpp
     src/shader_vm.cpp
     src/shadow.cpp

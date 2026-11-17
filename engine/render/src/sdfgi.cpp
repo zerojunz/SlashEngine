@@ -678,16 +678,7 @@ void voxelize(SdfgiCascade& cascade, std::uint32_t size, float y_mult, const Pat
 
 // --- Light (update_light, sdfgi_direct_light.glsl's MODE_PROCESS_DYNAMIC) -----------------------
 
-struct SdfgiLight {
-    LightType type = LightType::Directional;
-    Float3 color{};
-    Float3 direction{}; // the way it shines (y scaled for directional lights)
-    Float3 position{};  // y scaled
-    float attenuation = 1.0F;
-    float radius = 1.0F;
-    float cos_spot_angle = 0.0F;
-    float inv_spot_attenuation = 1.0F;
-};
+} // namespace
 
 std::vector<SdfgiLight> sdfgi_lights(const Scene3D& scene, float y_mult) {
     std::vector<SdfgiLight> out;
@@ -715,6 +706,8 @@ std::vector<SdfgiLight> sdfgi_lights(const Scene3D& scene, float y_mult) {
     }
     return out;
 }
+
+namespace {
 
 float omni_attenuation(float distance, float inv_range, float decay) {
     float nd = distance * inv_range;
