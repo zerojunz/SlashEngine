@@ -378,19 +378,21 @@ void occlusion_region(uint r) {
                 int3 p = proc_pos(l, occ);
                 uint visible = 0u;
                 uint total = 0u;
-                [unroll] for (uint which = 0u; which < 2u; ++which) {
-                    [unroll] for (uint a4 = 0u; a4 < 3u; ++a4) {
-                        int dir = p[a4] > 0 ? 1 : -1;
-                        bool tested = which == 0u ? abs(p[a4]) < occ : abs(p[a4]) == 1;
-                        if (!tested) {
-                            continue;
-                        }
+                // One unrolled loop with no continue and no indexing by a counter, so fxc
+                // can unroll it inside the loops above.
+                [unroll] for (uint k6 = 0u; k6 < 6u; ++k6) {
+                    uint which = k6 / 3u;
+                    uint a4 = k6 % 3u;
+                    int pa = a4 == 0u ? p.x : (a4 == 1u ? p.y : p.z);
+                    int dir = pa > 0 ? 1 : -1;
+                    bool tested = which == 0u ? abs(pa) < occ : abs(pa) == 1;
+                    if (tested) {
                         // Away from the probe: a cell facing back toward it; near its plane,
                         // the other way too.
                         int way = which == 0u ? dir : -dir;
                         uint mask = (which == 0u ? dir > 0 : dir < 0) ? (8u << a4) : (1u << a4);
-                        int3 read = l;
-                        read[a4] += way;
+                        int3 read = l + int3(a4 == 0u ? way : 0, a4 == 1u ? way : 0,
+                                             a4 == 2u ? way : 0);
                         uint m = facing_at(c, base + read);
                         if (m != 0u && inside_grid(base + read)) {
                             ++total;
