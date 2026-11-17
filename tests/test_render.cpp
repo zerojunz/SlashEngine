@@ -12,6 +12,8 @@
 
 #if defined(_WIN32)
 // The renderer's own headers, for its HLSL and Windows' compiler.
+#include "../engine/render/src/frame_generation_draw_shaders.hpp"
+#include "../engine/render/src/frame_generation_shaders.hpp"
 #include "../engine/render/src/hlsl_compiler.hpp"
 #include "../engine/render/src/material_shaders.hpp"
 #include "../engine/render/src/mesh_clustered_shaders.hpp"
@@ -23,6 +25,9 @@
 #include "../engine/render/src/particles_process_shaders.hpp"
 #include "../engine/render/src/particles_sort_3d_shaders.hpp"
 #include "../engine/render/src/post_shaders.hpp"
+#include "../engine/render/src/sdfgi_gather_shaders.hpp"
+#include "../engine/render/src/sdfgi_shaders.hpp"
+#include "../engine/render/src/sdfgi_voxelize_shaders.hpp"
 #include "../engine/render/src/shader_code.hpp"
 #include "../engine/render/src/shadow_shaders.hpp"
 #include "../engine/render/src/sky_shaders.hpp"
@@ -793,10 +798,23 @@ TEST_CASE("every shader compiles with Windows' HLSL compiler") {
           std::pair{"particles_draw", shaders::kParticlesDrawHlsl},
           std::pair{"particles_process_3d", shaders::kParticlesProcess3DHlsl},
           std::pair{"particles_sort_3d", shaders::kParticlesSort3DHlsl},
-          std::pair{"particles_mesh_3d", shaders::kParticlesMesh3DHlsl}}) {
+          std::pair{"particles_mesh_3d", shaders::kParticlesMesh3DHlsl},
+          std::pair{"sdfgi", shaders::kSdfgiHlsl},
+          std::pair{"sdfgi_voxelize", shaders::kSdfgiVoxelizeHlsl},
+          std::pair{"frame_generation", shaders::kFrameGenerationHlsl}}) {
         const auto compiled = slash::render::detail::compile_hlsl(hlsl, "cs_main", "cs_5_1");
         CHECK_MESSAGE(compiled.ok(), name, ": ",
                       (compiled.ok() ? std::string() : compiled.error().message));
+    }
+    for (const auto& [name, hlsl] :
+         {std::pair{"sdfgi_gather", shaders::kSdfgiGatherHlsl},
+          std::pair{"frame_generation_draw", shaders::kFrameGenerationDrawHlsl}}) {
+        for (const auto& [entry, target] :
+             {std::pair{"vs_main", "vs_5_1"}, {"fs_main", "ps_5_1"}}) {
+            const auto compiled = slash::render::detail::compile_hlsl(hlsl, entry, target);
+            CHECK_MESSAGE(compiled.ok(), name, " ", entry, ": ",
+                          (compiled.ok() ? std::string() : compiled.error().message));
+        }
     }
 #else
     MESSAGE("HLSL compiles only on Windows");
