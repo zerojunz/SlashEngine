@@ -28,51 +28,57 @@ inline constexpr std::uint32_t kSdfgiShSize = 16;
 inline constexpr std::uint32_t kSdfgiOctSize = 6;
 inline constexpr int kSdfgiHistoryBits = 10;
 
-// A solid cell, as sdfgi_preprocess.glsl's ProcessVoxel holds it: its index in the cascade, its
-// albedo (5 bits a channel, as Godot's), the light it gives off, which sides geometry faces (bit k
-// for aniso direction k: +x, +y, +z, -x, -y, -z), and which of its 26 neighbors are empty cells
-// that take its light, so light filters between cells.
-struct SdfgiCell {
-    std::uint32_t index = 0;
-    Float3 albedo{};
-    Float3 emission{};
-    std::uint32_t facing = 0;
-    std::uint32_t neighbors = 0;
-};
-
-// A cascade: its place (its center in cells, Godot's cascade.position) and cell size, its cells'
-// distance field (Godot's R8 texels: 0 in a solid cell, else 1 more than the distance to the
-// nearest one, rounded, up to 255), its cells' light (RGB9E5, decoded) and how it splits over the
-// six directions (Godot's aniso0 and aniso1, 8 bits each), its solid cells, and its probes'
-// history, averages and octahedral irradiance and radiance (Godot's lightprobe texture, RGB9E5,
-// (6 + 2) * 17 * 17 texels by (6 + 2) * 17, x fastest).
-// What the triangles touching a cell sum to, kept so a cascade that moves makes only the cells
-// that came in (Godot's scroll): albedo and emission sums, how many triangles, the sides they face.
-struct SdfgiCellSum {
-    Float3 albedo{};
-    Float3 emission{};
-    std::uint32_t count = 0;
-    std::uint32_t facing = 0;
-};
+// A cascade: its place (its center in cells, Godot's cascade.position) and cell size, and its
+// cells and probes as words, laid out as the GPU devices' buffers hold them (x fastest, then y,
+// then z), so the compute shaders that port these passes (shaders/sdfgi.hlsl) read and write the
+// same numbers:
+//
+// - cells: two words a cell. The first is the cell word: a solid cell has kSdfgiSolid set, its
+//   albedo as Godot's 5 bits a channel (red in bits 0 to 4, green 5 to 9, blue 10 to 14) and the
+//   sides geometry faces from bit 15 (bit 15 + k for aniso direction k: +x, +y, +z, -x, -y, -z);
+//   an empty cell holds 1 + which of its 26 neighbors it takes its light from, or 0, so light
+//   filters between cells (numbered as MODE_STORE numbers them: offsets -1 to 1 in x, then y,
+//   then z, z fastest, the cell itself left out). The second is a solid cell's emission (RGB9E5).
+// - field: two words a cell. The first holds the light's shares over aniso directions 0 to 3 as
+//   bytes (Godot's aniso0), the second those of 4 and 5 (aniso1) in its low bytes and the distance
+//   field in bits 16 to 23 (Godot's R8 texels: 0 in a solid cell, else 1 more than the distance
+//   to the nearest one, rounded, up to 255).
+// - light: a word a cell, its light as RGB9E5.
+// - occlusion: with use_occlusion, a word a cell: how much of the cell each of the eight nearest
+//   probes sees, by the probe's world parity (bit 0 x, 1 y, 2 z), 4 bits each (nibble i at bit
+//   4 * i), as Godot's occlusion texture holds them.
+// - history: the probes' spherical harmonics over the last frames_to_converge frames, as Godot's
+//   RGBA16I history texture: [layer][probe * 16 + i], two words each, red and green then blue and
+//   alpha, as 16-bit integers (low half first); average their sum, four words each.
+// - irradiance and radiance: the probes' octahedral maps (Godot's lightprobe texture, RGB9E5),
+//   (6 + 2) * 17 * 17 texels by (6 + 2) * 17, x fastest.
+inline constexpr std::uint32_t kSdfgiSolid = 1U << 31U;
+inline constexpr std::uint32_t kSdfgiFacingShift = 15;
 
 struct SdfgiCascade {
     std::array<std::int32_t, 3> position{};
     float cell_size = 0.0F;
-    std::vector<SdfgiCellSum> sums;
-    std::vector<std::uint8_t> sdf;
-    std::vector<Float3> light;
-    std::vector<std::array<float, 6>> aniso;
-    std::vector<SdfgiCell> cells;
-    std::vector<std::array<std::int32_t, 4>> history; // [layer][probe * 16 + i], layer fastest last
-    std::vector<std::array<std::int32_t, 4>> average; // [probe * 16 + i]
-    std::vector<Float3> irradiance;
-    std::vector<Float3> radiance;
-    // With use_occlusion, how much of each cell each of the eight nearest probes sees, by the
-    // probe's world parity (bit 0 x, 1 y, 2 z), 4 bits each (nibble i at bit 4 * i), as Godot's
-    // occlusion texture holds them.
+    std::vector<std::uint32_t> cells;
+    std::vector<std::uint32_t> field;
+    std::vector<std::uint32_t> light;
     std::vector<std::uint32_t> occlusion;
+    std::vector<std::uint32_t> history;
+    std::vector<std::int32_t> average;
+    std::vector<std::uint32_t> irradiance;
+    std::vector<std::uint32_t> radiance;
     bool all_lights_dirty = true;
 };
+
+// A cell's distance field byte, cell word and whether it is solid.
+[[nodiscard]] std::uint32_t sdfgi_sdf(const SdfgiCascade& cascade, std::size_t cell);
+[[nodiscard]] inline bool sdfgi_solid(const SdfgiCascade& cascade, std::size_t cell) {
+    return (cascade.cells[cell * 2] & kSdfgiSolid) != 0;
+}
+// A solid cell's albedo (0 to 1 a channel, in steps of 1/31) and the sides it faces.
+[[nodiscard]] Float3 sdfgi_albedo(std::uint32_t cell_word);
+[[nodiscard]] inline std::uint32_t sdfgi_facing(std::uint32_t cell_word) {
+    return (cell_word & kSdfgiSolid) != 0 ? (cell_word >> kSdfgiFacingShift) & 0x3FU : 0U;
+}
 
 // A target's SDFGI, kept between frames.
 struct SdfgiState {
