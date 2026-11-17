@@ -206,8 +206,10 @@ TEST_CASE("SDFGI's cascades follow the camera, each twice as coarse as the one b
     CHECK(state.cascades[0].cell_size == doctest::Approx(0.25F));
     CHECK(state.cascades[1].cell_size == doctest::Approx(0.5F));
     // With nothing in them, no cell is solid and every distance is as far as it goes.
-    CHECK(state.cascades[0].cells.empty());
-    CHECK(state.cascades[0].sdf.at(0) == 255);
+    const render::detail::SdfgiCascade& first = state.cascades[0];
+    CHECK(std::none_of(first.cells.begin(), first.cells.end(),
+                       [](std::uint32_t w) { return (w & render::detail::kSdfgiSolid) != 0; }));
+    CHECK(render::detail::sdfgi_sdf(first, 0) == 255);
     // A step of less than the drag margin leaves a cascade where it is; past it, the cascade
     // moves by whole probes (4 cells each here).
     const std::array<std::int32_t, 3> start = state.cascades[0].position;
@@ -291,14 +293,14 @@ TEST_CASE("SDFGI's cascades scroll: a moved cascade keeps its cells and makes th
         CAPTURE(c);
         const render::detail::SdfgiCascade& a = moving.cascades[c];
         const render::detail::SdfgiCascade& b = fresh.cascades[c];
-        CHECK(a.sdf == b.sdf);
-        REQUIRE(a.cells.size() == b.cells.size());
-        for (std::size_t i = 0; i < a.cells.size(); ++i) {
-            CHECK(a.cells[i].index == b.cells[i].index);
-            CHECK(a.cells[i].facing == b.cells[i].facing);
-            CHECK(a.cells[i].neighbors == b.cells[i].neighbors);
-            for (std::size_t k = 0; k < 3; ++k) {
-                CHECK(a.cells[i].albedo.at(k) == doctest::Approx(b.cells[i].albedo.at(k)));
+        // The cells (albedo, facing, emission and the neighbor empty cells take light from)
+        // and the distance field come out the same, to the bit.
+        CHECK(a.cells == b.cells);
+        REQUIRE(a.field.size() == b.field.size());
+        for (std::size_t i = 0; i < a.field.size() / 2; ++i) {
+            if (render::detail::sdfgi_sdf(a, i) != render::detail::sdfgi_sdf(b, i)) {
+                FAIL_CHECK("cell " << i << "'s distance differs");
+                break;
             }
         }
     }
@@ -331,17 +333,18 @@ TEST_CASE("SDFGI's probe occlusion floods out from each probe and stops at walls
     // at cell 34, facing both ways.
     constexpr std::uint32_t kSize = 64;
     render::detail::SdfgiCascade cascade;
-    cascade.sums.resize(std::size_t{kSize} * kSize * kSize);
+    cascade.cells.resize(std::size_t{kSize} * kSize * kSize * 2);
     const auto index = [](std::size_t x, std::size_t y, std::size_t z) {
         return (((z * kSize) + y) * kSize) + x;
     };
     for (std::size_t z = 0; z < kSize; ++z) {
         for (std::size_t y = 0; y < kSize; ++y) {
-            cascade.sums[index(34, y, z)] = {.count = 1, .facing = 1U | 8U};
+            cascade.cells[index(34, y, z) * 2] =
+                render::detail::kSdfgiSolid | ((1U | 8U) << render::detail::kSdfgiFacingShift);
         }
     }
     render::detail::make_sdfgi_occlusion(cascade, kSize, nullptr);
-    REQUIRE(cascade.occlusion.size() == cascade.sums.size());
+    REQUIRE(cascade.occlusion.size() == cascade.cells.size() / 2);
     // Probe 8 (between cells 31 and 32 on each axis) is of parity 0; probe 9 (between 35 and
     // 36 in x) of parity 1.
     const auto seen = [&](std::size_t x, std::uint32_t parity) {
@@ -363,7 +366,7 @@ TEST_CASE("SDFGI's probe occlusion floods out from each probe and stops at walls
     CHECK(shared.occlusion == cascade.occlusion);
     // With no wall, every probe sees every cell within its spacing.
     render::detail::SdfgiCascade open;
-    open.sums.resize(cascade.sums.size());
+    open.cells.resize(cascade.cells.size());
     render::detail::make_sdfgi_occlusion(open, kSize, nullptr);
     CHECK(std::all_of(open.occlusion.begin(), open.occlusion.end(),
                       [](std::uint32_t packed) { return packed == 0xFFFFFFFFU; }));
