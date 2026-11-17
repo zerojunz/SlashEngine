@@ -45,10 +45,16 @@
 #include "particles_process_shaders.hpp"
 #include "particles_sort_3d_shaders.hpp"
 #include "particles_stages_3d_shaders.hpp"
+#include "path_trace.hpp"
 #include "post_shaders.hpp"
 #include "post_shading.hpp"
 #include "radiance_shaders.hpp"
+#include "ray_shadows.hpp"
 #include "reflection.hpp"
+#include "sdfgi_gather_shaders.hpp"
+#include "sdfgi_gpu.hpp"
+#include "sdfgi_shaders.hpp"
+#include "sdfgi_voxelize_shaders.hpp"
 #include "shader_code.hpp"
 #include "shadow_shaders.hpp"
 #include "sky_shaders.hpp"
@@ -138,6 +144,17 @@ constexpr WGPUTextureFormat kNormalFormat = WGPUTextureFormat_RGBA8Unorm;
 constexpr WGPUTextureFormat kVelocityFormat = WGPUTextureFormat_RG16Float;
 // The largest shadow atlas: WebGPU's default maxTextureDimension2D.
 constexpr std::uint32_t kMaxShadowAtlas = 8192;
+// A mesh's vertices: drawn, written, and read as storage by SDFGI's voxelization and written as
+// storage by GPU particles' meshes.
+constexpr WGPUBufferUsage kMeshVertexUsage =
+    WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst | WGPUBufferUsage_Storage;
+// The layers of the screen array: SSAO's and SSR's, and with SDFGI the gather's in 5 and 6, as
+// mesh.hlsl reads them (2 to 4 are the GPU device's rays, which WebGPU doesn't trace).
+constexpr std::uint32_t kScreenLayers = 2;
+constexpr std::uint32_t kSdfgiScreenLayers = 7;
+// The most workgroups a dispatch runs along a side: WebGPU's default
+// maxComputeWorkgroupsPerDimension.
+constexpr std::uint32_t kMaxWorkgroups = 65535;
 
 // FSR 2's passes, other than the reconstruct pass, and the formats each draws into, as Godot's FSR
 // 2 effect makes its textures.
@@ -528,7 +545,14 @@ public:
 
     WebGpuDevice(WGPUInstance instance, WGPUDevice device, SDL_Window* window)
         : instance_(instance), device_(device), queue_(wgpuDeviceGetQueue(device)),
-          window_(window) {}
+          window_(window) {
+        // web/webgpu.js asks for the adapter's largest buffers, which SDFGI's cascades take.
+        WGPULimits limits = WGPU_LIMITS_INIT;
+        if (wgpuDeviceGetLimits(device_, &limits) == WGPUStatus_Success) {
+            max_storage_binding_ = limits.maxStorageBufferBindingSize;
+            max_buffer_ = limits.maxBufferSize;
+        }
+    }
 
     WebGpuDevice(const WebGpuDevice&) = delete;
     WebGpuDevice& operator=(const WebGpuDevice&) = delete;
@@ -670,6 +694,17 @@ public:
         for (const auto& [format, pipeline] : generation_draw_pipelines_) {
             wgpuRenderPipelineRelease(pipeline);
         }
+        while (!sdfgi_frames_.empty()) {
+            forget_sdfgi_frames(sdfgi_frames_.back().first);
+        }
+        for (WGPUComputePipeline pipeline : {sdfgi_pipeline_, sdfgi_voxelize_pipeline_}) {
+            if (pipeline != nullptr) {
+                wgpuComputePipelineRelease(pipeline);
+            }
+        }
+        if (sdfgi_gather_pipeline_ != nullptr) {
+            wgpuRenderPipelineRelease(sdfgi_gather_pipeline_);
+        }
         release_pending();
         for (const GpuTexture& atlas :
              {shadow_atlases_[0].gpu, shadow_atlases_[1].gpu, no_shadows_}) {
@@ -706,7 +741,8 @@ public:
         for (WGPUBuffer buffer :
              {no_source_, no_target_, particle_data_, vertex_buffer_, uniform_buffer_,
               cluster_lights_.buffer, cluster_cells_.buffer, probe_buffer_.buffer,
-              decal_buffer_.buffer, decal_atlas_buffer_.buffer, fog_items_.buffer, no_fog_}) {
+              decal_buffer_.buffer, decal_atlas_buffer_.buffer, fog_items_.buffer, no_fog_,
+              sdfgi_items_.buffer}) {
             destroy_buffer(buffer);
         }
         release_uniform_groups();
@@ -767,7 +803,16 @@ public:
                                            generation_textures_layout_,
                                            generation_storage_layout_,
                                            generation_uniforms_layout_,
-                                           generation_draw_uniforms_layout_}) {
+                                           generation_draw_uniforms_layout_,
+                                           sdfgi_inputs_layout_,
+                                           sdfgi_buffers_layout_,
+                                           sdfgi_uniforms_layout_,
+                                           sdfgi_voxelize_inputs_layout_,
+                                           sdfgi_sums_layout_,
+                                           sdfgi_voxelize_uniforms_layout_,
+                                           sdfgi_gather_buffers_layout_,
+                                           sdfgi_gather_textures_layout_,
+                                           sdfgi_gather_uniforms_layout_}) {
             if (layout != nullptr) {
                 wgpuBindGroupLayoutRelease(layout);
             }
@@ -949,6 +994,7 @@ public:
         forget_fsr2_frames(texture);
         forget_fog_frames(texture);
         forget_generation_frames(texture);
+        forget_sdfgi_frames(texture);
     }
 
     Result<ShaderId> create_shader(const CompiledShader& shader) override {
@@ -1343,8 +1389,8 @@ public:
         // The vertices are written where update_mesh writes them, into a buffer the shader can
         // write, the ones drawn before kept for TAA as update_mesh keeps them.
         const std::uint64_t bytes = found.vertex_count * sizeof(Vertex3D);
-        const WGPUBufferUsage usage =
-            WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst | WGPUBufferUsage_Storage;
+        const WGPUBufferUsage usage = kMeshVertexUsage;
+        ++found.version;
         if (!found.moved) {
             if (found.previous == nullptr) {
                 found.previous = create_buffer(usage, bytes);
@@ -1436,10 +1482,10 @@ public:
             mesh_index_buffer(vertices.size(), indices, lods, ranges);
         indices = all;
         // Queue writes run ahead of the command buffers sent after them, so the next frame
-        // draws the mesh.
-        const Mesh mesh{.vertices = create_buffer(WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst,
-                                                  vertices.size_bytes()),
-                        .indices = create_buffer(WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst,
+        // draws the mesh. SDFGI's voxelization reads both as storage.
+        const Mesh mesh{.vertices = create_buffer(kMeshVertexUsage, vertices.size_bytes()),
+                        .indices = create_buffer(WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst |
+                                                     WGPUBufferUsage_Storage,
                                                  indices.size_bytes()),
                         .ranges = std::move(ranges),
                         .vertex_count = vertices.size(),
@@ -1447,7 +1493,8 @@ public:
                         .previous = nullptr,
                         .moved = false,
                         .storage = false,
-                        .previous_storage = false};
+                        .previous_storage = false,
+                        .version = 0};
         wgpuQueueWriteBuffer(queue_, mesh.vertices, 0, vertices.data(), vertices.size_bytes());
         wgpuQueueWriteBuffer(queue_, mesh.indices, 0, indices.data(), indices.size_bytes());
         const auto id = static_cast<MeshId>(next_mesh_++);
@@ -1469,10 +1516,10 @@ public:
         // The first update since a frame with TAA drew the mesh keeps the vertices it drew, for
         // the motion of the next one's: the buffers swap, and the new vertices go in the other.
         Mesh& found = it->second;
+        ++found.version;
         if (!found.moved) {
             if (found.previous == nullptr) {
-                found.previous = create_buffer(WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst,
-                                               vertices.size_bytes());
+                found.previous = create_buffer(kMeshVertexUsage, vertices.size_bytes());
             }
             std::swap(found.vertices, found.previous);
             std::swap(found.storage, found.previous_storage);
@@ -1605,6 +1652,9 @@ public:
         if (!frame.scene || !uses_volumetric_fog(*frame.scene)) {
             forget_fog_frames(frame.target);
         }
+        if (!frame.scene || !uses_sdfgi(*frame.scene)) {
+            forget_sdfgi_frames(frame.target);
+        }
         if (frame.target == TextureId::None) {
             int pixels_wide = 0;
             int pixels_high = 0;
@@ -1647,7 +1697,8 @@ public:
             // The sky and meshes draw at FSR 2's render size, and the post passes at the frame's.
             prepare_forward(width, height, frame.scene->post.glow, frame.scene->post.auto_exposure,
                             uses_dof(frame.scene->post));
-            if (uses_prepass(*frame.scene)) {
+            const bool sdfgi = uses_sdfgi(*frame.scene);
+            if (uses_prepass(*frame.scene) || sdfgi) {
                 prepare_prepass(scene_width_, scene_height_);
             }
             if (uses_ssao(*frame.scene)) {
@@ -1656,8 +1707,12 @@ public:
             if (uses_ssr(*frame.scene)) {
                 prepare_ssr(frame.target, scene_width_, scene_height_, frame.scene->ssr.settings);
             }
-            if (uses_ssao(*frame.scene) || uses_ssr(*frame.scene)) {
-                prepare_screen(scene_width_, scene_height_);
+            if (uses_ssao(*frame.scene) || uses_ssr(*frame.scene) || sdfgi) {
+                prepare_screen(scene_width_, scene_height_,
+                               sdfgi ? kSdfgiScreenLayers : kScreenLayers);
+            }
+            if (sdfgi) {
+                prepare_sdfgi(frame.target);
             }
             if (uses_taa(*frame.scene)) {
                 prepare_taa(frame.target, width, height);
@@ -1832,10 +1887,12 @@ public:
                                           frame_.scene->method == RenderMethod::ForwardPlus),
             .normal_pipeline = nullptr,
             .bindings = {},
-            .previous_vertices = it->second.moved ? it->second.previous : it->second.vertices};
-        // SSAO's, SSR's, TAA's and FSR 2's prepass draws the opaque meshes' normals, and with TAA
-        // or FSR 2 their motion vectors.
-        if (uses_prepass(*frame_.scene) && material.transparency != Transparency::Alpha) {
+            .previous_vertices = it->second.moved ? it->second.previous : it->second.vertices,
+            .version = it->second.version};
+        // SSAO's, SSR's, SDFGI's, TAA's and FSR 2's prepass draws the opaque meshes' normals, and
+        // with TAA or FSR 2 their motion vectors.
+        if ((uses_prepass(*frame_.scene) || uses_sdfgi(*frame_.scene)) &&
+            material.transparency != Transparency::Alpha) {
             batch.normal_pipeline = uses_motion_vectors(*frame_.scene)
                                         ? motion_pipeline_for(material.cull, material.shader)
                                         : normal_pipeline_for(material.cull, material.shader);
@@ -2106,7 +2163,7 @@ public:
         } else if (generation != nullptr) {
             velocity = generation->velocity.view;
         }
-        if (ssao || ssr || velocity != nullptr) {
+        if (ssao || ssr || velocity != nullptr || sdfgi_work_.has_value()) {
             // FSR 2 works the sky's motion vectors out from the depth, as Godot's.
             encode_prepass(encoder, mesh_uniforms, velocity, taa == nullptr && fsr2 != nullptr);
         } else if (fsr2 != nullptr) {
@@ -2117,6 +2174,9 @@ public:
             encode_generation(encoder, *generation, generation_plan, generation_uniforms_at,
                               prepass_.depth.view, velocity);
             generation->prepared_now = true;
+        }
+        if (sdfgi_work_) {
+            encode_sdfgi(encoder, *sdfgi_work_);
         }
         if (ssao) {
             encode_ssao(encoder, *ssao, ssao_uniforms_at);
@@ -2366,11 +2426,13 @@ private:
         std::vector<WGPUTextureView> levels;
         std::vector<WGPUTextureView> faces;
     };
-    // The array the mesh pass reads SSAO and SSR from: its view, and each layer's to draw into.
+    // The array the mesh pass reads SSAO, SSR and SDFGI from: its view, and each layer's to draw
+    // into (count of them).
     struct ScreenArray {
         WGPUTexture texture = nullptr;
         WGPUTextureView view = nullptr;
-        std::array<WGPUTextureView, 2> layers{};
+        std::array<WGPUTextureView, kSdfgiScreenLayers> layers{};
+        std::uint32_t count = 0;
         std::uint32_t width = 0;
         std::uint32_t height = 0;
     };
@@ -2404,6 +2466,8 @@ private:
         // fill_particle_mesh makes them.
         bool storage = false;
         bool previous_storage = false;
+        // Counts the times its vertices moved, which keys SDFGI's cells.
+        std::uint64_t version = 0;
     };
 
     // What a mesh draw binds, found when it is made: its mesh may be destroyed before end_frame.
@@ -2420,6 +2484,7 @@ private:
         WGPURenderPipeline subsurface_pipeline = nullptr;
         // Where its vertices were in the frame before, which TAA's prepass reads.
         WGPUBuffer previous_vertices = nullptr;
+        std::uint64_t version = 0; // its mesh's when drawn
     };
 
     // Which pass a mesh pipeline draws: the meshes' own, or the prepass's normals, with or
@@ -2455,6 +2520,31 @@ private:
         std::uint64_t bytes = 0;
         std::size_t last = 0;
         std::array<std::uint32_t, 3> size{};
+    };
+
+    // A target's SDFGI: the cascades' places and settings (state, whose cells and probes live in
+    // buffers here rather than its vectors), and the buffers sdfgi.hlsl's passes keep between
+    // frames, as layout lays them out, by SdfgiBuffer.
+    struct SdfgiFrames {
+        SdfgiState state;
+        SdfgiLayout layout;
+        std::array<WGPUBuffer, 5> buffers{};
+    };
+    // A frame's SDFGI work, planned with its uniforms: the target's, its steps with where each
+    // dispatch's uniforms are, each voxelize step's draws (the draw, its uniforms, its groups),
+    // and where the gather's uniforms are.
+    struct SdfgiVoxelizeDraw {
+        std::size_t draw = 0;
+        std::uint32_t uniforms = 0;
+        std::array<std::uint32_t, 2> groups{};
+    };
+    struct SdfgiWork {
+        SdfgiFrames* frames = nullptr;
+        std::vector<SdfgiStep> steps;
+        std::vector<std::uint32_t> uniforms;                   // by step: a dispatch's
+        std::vector<std::vector<SdfgiVoxelizeDraw>> voxelized; // by step: a voxelize step's
+        std::uint32_t gather = 0;
+        bool radiance = false; // the radiance cube the probes' rays take where they leave
     };
 
     // Where the frame's mesh uniforms are: the camera's, the scene's (and with SSR, the scene's
@@ -3136,6 +3226,53 @@ private:
         const std::array generation_draw_entries{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(std::array<std::uint32_t, 4>))};
         generation_draw_uniforms_layout_ = layout(generation_draw_entries);
+        // SDFGI's passes: the radiance and the items; the cells, fields, probes, scratch and
+        // history; the step.
+        std::array sdfgi_inputs{cube_entry(0), storage_entry(1, true),
+                                sampler_entry(kSamplerBinding)};
+        for (WGPUBindGroupLayoutEntry& entry : sdfgi_inputs) {
+            entry.visibility = WGPUShaderStage_Compute;
+        }
+        sdfgi_inputs_layout_ = layout(sdfgi_inputs);
+        const std::array sdfgi_buffers{storage_entry(0, false), storage_entry(1, false),
+                                       storage_entry(2, false), storage_entry(3, false),
+                                       storage_entry(4, false)};
+        sdfgi_buffers_layout_ = layout(sdfgi_buffers);
+        const std::array sdfgi_entries{
+            uniform_entry(0, WGPUShaderStage_Compute, sizeof(SdfgiUniforms))};
+        sdfgi_uniforms_layout_ = layout(sdfgi_entries);
+        // Its voxelization: the albedo and emission textures, the draw's vertices and indices
+        // and their samplers; the sums; the draw.
+        std::array sdfgi_voxelize_inputs{texture_entry(0),
+                                         texture_entry(1),
+                                         storage_entry(2, true),
+                                         storage_entry(3, true),
+                                         sampler_entry(kSamplerBinding),
+                                         sampler_entry(kSamplerBinding + 1)};
+        for (WGPUBindGroupLayoutEntry& entry : sdfgi_voxelize_inputs) {
+            entry.visibility = WGPUShaderStage_Compute;
+        }
+        sdfgi_voxelize_inputs_layout_ = layout(sdfgi_voxelize_inputs);
+        const std::array sdfgi_sums{storage_entry(0, false)};
+        sdfgi_sums_layout_ = layout(sdfgi_sums);
+        const std::array sdfgi_voxelize_entries{
+            uniform_entry(0, WGPUShaderStage_Compute, sizeof(SdfgiVoxelizeUniforms))};
+        sdfgi_voxelize_uniforms_layout_ = layout(sdfgi_voxelize_entries);
+        // Its gather: the cells, fields, probes and items; the prepass's depth and normals,
+        // loaded; the gather.
+        const std::array sdfgi_gather_buffers{storage_entry(0, true, WGPUShaderStage_Fragment),
+                                              storage_entry(1, true, WGPUShaderStage_Fragment),
+                                              storage_entry(2, true, WGPUShaderStage_Fragment),
+                                              storage_entry(3, true, WGPUShaderStage_Fragment)};
+        sdfgi_gather_buffers_layout_ = layout(sdfgi_gather_buffers);
+        std::array sdfgi_gather_textures{texture_entry(0), texture_entry(1)};
+        for (WGPUBindGroupLayoutEntry& entry : sdfgi_gather_textures) {
+            entry.texture.sampleType = WGPUTextureSampleType_UnfilterableFloat;
+        }
+        sdfgi_gather_textures_layout_ = layout(sdfgi_gather_textures);
+        const std::array sdfgi_gather_entries{
+            uniform_entry(0, WGPUShaderStage_Fragment, sizeof(SdfgiGatherUniforms))};
+        sdfgi_gather_uniforms_layout_ = layout(sdfgi_gather_entries);
 
         const auto pipeline_layout = [&](std::initializer_list<WGPUBindGroupLayout> groups) {
             const std::vector<WGPUBindGroupLayout> list(groups);
@@ -3220,6 +3357,13 @@ private:
         pipeline_layouts_.at(kGenerationDrawLayout) =
             pipeline_layout({fog_sky_storage_layout_, empty_layout_, empty_layout_,
                              generation_draw_uniforms_layout_});
+        pipeline_layouts_.at(kSdfgiLayout) =
+            pipeline_layout({sdfgi_inputs_layout_, sdfgi_buffers_layout_, sdfgi_uniforms_layout_});
+        pipeline_layouts_.at(kSdfgiVoxelizeLayout) = pipeline_layout(
+            {sdfgi_voxelize_inputs_layout_, sdfgi_sums_layout_, sdfgi_voxelize_uniforms_layout_});
+        pipeline_layouts_.at(kSdfgiGatherLayout) =
+            pipeline_layout({sdfgi_gather_buffers_layout_, empty_layout_,
+                             sdfgi_gather_textures_layout_, sdfgi_gather_uniforms_layout_});
     }
 
     WGPUShaderModule create_module(std::string_view wgsl) {
@@ -3539,6 +3683,15 @@ private:
             buffer_entry(0, uniform_buffer_, sizeof(std::array<std::uint32_t, 4>))};
         generation_draw_uniforms_group_ =
             bind_group(generation_draw_uniforms_layout_, generation_draw);
+        const std::array sdfgi{buffer_entry(0, uniform_buffer_, sizeof(SdfgiUniforms))};
+        sdfgi_uniforms_group_ = bind_group(sdfgi_uniforms_layout_, sdfgi);
+        const std::array sdfgi_voxelize{
+            buffer_entry(0, uniform_buffer_, sizeof(SdfgiVoxelizeUniforms))};
+        sdfgi_voxelize_uniforms_group_ =
+            bind_group(sdfgi_voxelize_uniforms_layout_, sdfgi_voxelize);
+        const std::array sdfgi_gather{
+            buffer_entry(0, uniform_buffer_, sizeof(SdfgiGatherUniforms))};
+        sdfgi_gather_uniforms_group_ = bind_group(sdfgi_gather_uniforms_layout_, sdfgi_gather);
     }
 
     void release_uniform_groups() {
@@ -3568,7 +3721,10 @@ private:
                                      &fog_uniforms_group_,
                                      &fog_sky_uniforms_group_,
                                      &generation_uniforms_group_,
-                                     &generation_draw_uniforms_group_}) {
+                                     &generation_draw_uniforms_group_,
+                                     &sdfgi_uniforms_group_,
+                                     &sdfgi_voxelize_uniforms_group_,
+                                     &sdfgi_gather_uniforms_group_}) {
             if (*group != nullptr) {
                 wgpuBindGroupRelease(*group);
                 *group = nullptr;
@@ -3963,26 +4119,28 @@ private:
         // WebGPU clears new textures, so these are never read uninitialized.
         no_radiance_ = make_cube(1, 1);
         no_probes_ = make_cube(1, 1, kHdrFormat, 1);
-        no_screen_ = make_screen(1, 1);
+        no_screen_ = make_screen(1, 1, kScreenLayers);
     }
 
-    // The 2-layer array the mesh pass reads SSAO (layer 0) and SSR (layer 1) from, which their
-    // last passes draw into, at width x height.
-    ScreenArray make_screen(std::uint32_t width, std::uint32_t height) {
+    // The array of count layers the mesh pass reads SSAO (layer 0), SSR (layer 1) and SDFGI's
+    // ambient light and reflections (5 and 6) from, which their last passes draw into, at width x
+    // height.
+    ScreenArray make_screen(std::uint32_t width, std::uint32_t height, std::uint32_t count) {
         WGPUTextureDescriptor info = WGPU_TEXTURE_DESCRIPTOR_INIT;
         info.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
-        info.size = {.width = width, .height = height, .depthOrArrayLayers = 2};
+        info.size = {.width = width, .height = height, .depthOrArrayLayers = count};
         info.format = kHdrFormat;
         ScreenArray screen{.texture = wgpuDeviceCreateTexture(device_, &info),
                            .view = nullptr,
                            .layers = {},
+                           .count = count,
                            .width = width,
                            .height = height};
         WGPUTextureViewDescriptor descriptor = WGPU_TEXTURE_VIEW_DESCRIPTOR_INIT;
         descriptor.dimension = WGPUTextureViewDimension_2DArray;
-        descriptor.arrayLayerCount = 2;
+        descriptor.arrayLayerCount = count;
         screen.view = wgpuTextureCreateView(screen.texture, &descriptor);
-        for (std::uint32_t layer = 0; layer < 2; ++layer) {
+        for (std::uint32_t layer = 0; layer < count; ++layer) {
             descriptor.dimension = WGPUTextureViewDimension_2D;
             descriptor.baseArrayLayer = layer;
             descriptor.arrayLayerCount = 1;
@@ -3998,21 +4156,24 @@ private:
         forget_texture_groups(screen.view);
         wgpuTextureViewRelease(screen.view);
         for (WGPUTextureView layer : screen.layers) {
-            wgpuTextureViewRelease(layer);
+            if (layer != nullptr) {
+                wgpuTextureViewRelease(layer);
+            }
         }
         wgpuTextureDestroy(screen.texture);
         wgpuTextureRelease(screen.texture);
         screen = {};
     }
 
-    // The frame's screen array, at its size, made at begin_frame (before anything is recorded)
-    // in a frame with SSAO or SSR.
-    void prepare_screen(std::uint32_t width, std::uint32_t height) {
-        if (screen_.texture != nullptr && screen_.width == width && screen_.height == height) {
+    // The frame's screen array of count layers, at its size, made at begin_frame (before
+    // anything is recorded) in a frame with SSAO, SSR or SDFGI.
+    void prepare_screen(std::uint32_t width, std::uint32_t height, std::uint32_t count) {
+        if (screen_.texture != nullptr && screen_.width == width && screen_.height == height &&
+            screen_.count == count) {
             return;
         }
         destroy_screen(screen_);
-        screen_ = make_screen(width, height);
+        screen_ = make_screen(width, height, count);
     }
 
     // A capture's frame: the world alone, linear, drawn into a face of the raw cube, whose
@@ -4508,6 +4669,7 @@ private:
     // frame with it. The matrices go in turned, as transposed says.
     MeshUniforms add_mesh_uniforms(const Fsr2Frames* fsr2, const std::array<float, 2>& jitter) {
         MeshUniforms at;
+        sdfgi_work_.reset();
         if (mesh_draws_.empty()) {
             return at;
         }
@@ -4530,6 +4692,8 @@ private:
                                          generation->primed ? generation->view_projection
                                                             : view_projection);
         }
+        // SDFGI's gather puts pixels back in the world through the camera the prepass draws with.
+        const Mat4 drawn_view_projection = camera.view_projection;
         camera.view_projection = transposed(camera.view_projection);
         camera.previous_view_projection = transposed(camera.previous_view_projection);
         at.camera = uniforms_.add(camera);
@@ -4559,6 +4723,10 @@ private:
             }
             at.fog_sky = uniforms_.add(fog_sky_uniforms(*lights));
             at.fog_frames = fog;
+        }
+        if (scene.method == RenderMethod::ForwardPlus && uses_sdfgi(scene) &&
+            plan_sdfgi(scene, *lights, drawn_view_projection)) {
+            lights->voxel_gi[2] = 1.0F;
         }
         at.scene = uniforms_.add(*lights);
         if (uses_ssr(scene)) {
@@ -4976,8 +5144,9 @@ private:
             bindings.at(kMeshTextures + 2) = {radiance_used(*frame_.scene) ? radiance_.filtered.view
                                                                            : no_radiance_.view,
                                               radiance_sampler_};
-            bindings.at(kMeshTextures + 3) = {(ssao || ssr) && !prepass ? screen_.view
-                                                                        : no_screen_.view,
+            bindings.at(kMeshTextures + 3) = {(ssao || ssr || sdfgi_work_.has_value()) && !prepass
+                                                  ? screen_.view
+                                                  : no_screen_.view,
                                               samplers_.at(sampler_index(Filter::Nearest, false))};
             const Reflections3D& reflections = frame_.scene->reflections;
             bindings.at(kMeshTextures + 4) = {!reflections.probes.empty() && !prepass
@@ -5830,6 +5999,365 @@ private:
         }
         wgpuBindGroupRelease(inputs);
         wgpuBindGroupRelease(outputs);
+    }
+
+    // A target's SDFGI frames, made at begin_frame in a frame that draws SDFGI; their buffers
+    // are made when the frame plans its work.
+    void prepare_sdfgi(TextureId target) {
+        if (find_sdfgi_frames(target) == nullptr) {
+            sdfgi_frames_.emplace_back(target, SdfgiFrames{});
+        }
+    }
+
+    SdfgiFrames* find_sdfgi_frames(TextureId target) {
+        for (auto& [id, frames] : sdfgi_frames_) {
+            if (id == target) {
+                return &frames;
+            }
+        }
+        return nullptr;
+    }
+
+    void release_sdfgi_buffers(SdfgiFrames& frames) {
+        for (WGPUBuffer& buffer : frames.buffers) {
+            if (buffer != nullptr) {
+                pending_buffers_.push_back(std::exchange(buffer, nullptr));
+            }
+        }
+        frames.layout = {};
+    }
+
+    void forget_sdfgi_frames(TextureId target) {
+        const auto it = std::ranges::find_if(
+            sdfgi_frames_, [&](const auto& entry) { return entry.first == target; });
+        if (it == sdfgi_frames_.end()) {
+            return;
+        }
+        release_sdfgi_buffers(it->second);
+        sdfgi_frames_.erase(it);
+    }
+
+    // frames' buffers for layout's cascades, none where one would hold more than the device
+    // binds. Their words start cleared, and the frame that makes them makes every cascade again.
+    Result<void> make_sdfgi_buffers(SdfgiFrames& frames, const SdfgiLayout& layout) {
+        release_sdfgi_buffers(frames);
+        const std::array<std::uint64_t, 5> words{std::uint64_t{layout.cells} * layout.cascades,
+                                                 std::uint64_t{layout.fields} * layout.cascades,
+                                                 std::uint64_t{layout.probes} * layout.cascades,
+                                                 std::uint64_t{layout.history} * layout.cascades,
+                                                 std::uint64_t{layout.scratch}};
+        const std::uint64_t limit = std::min(max_storage_binding_, max_buffer_);
+        for (const std::uint64_t count : words) {
+            if (count * sizeof(std::uint32_t) > limit) {
+                return make_error(ErrorCode::InvalidArgument,
+                                  "SDFGI's " + std::to_string(layout.cascades) + " cascades of " +
+                                      std::to_string(layout.size) +
+                                      " cells a side need buffers of " +
+                                      std::to_string(count * sizeof(std::uint32_t)) +
+                                      " bytes, over the " + std::to_string(limit) +
+                                      " this browser's WebGPU binds; use fewer or smaller "
+                                      "cascades");
+            }
+        }
+        for (std::size_t i = 0; i < words.size(); ++i) {
+            frames.buffers.at(i) = create_buffer(
+                WGPUBufferUsage_Storage | WGPUBufferUsage_CopySrc | WGPUBufferUsage_CopyDst,
+                std::max<std::uint64_t>(words.at(i) * sizeof(std::uint32_t), 4));
+        }
+        frames.layout = layout;
+        return {};
+    }
+
+    // SDFGI's passes' pipelines, made the first time they are needed.
+    WGPUComputePipeline sdfgi_pipeline() {
+        if (sdfgi_pipeline_ == nullptr) {
+            WGPUComputePipelineDescriptor info = WGPU_COMPUTE_PIPELINE_DESCRIPTOR_INIT;
+            info.layout = pipeline_layouts_.at(kSdfgiLayout);
+            info.compute.module = module(kSdfgiModule, joined(shaders::kSdfgiComputeWgsl));
+            info.compute.entryPoint = text_view("cs_main");
+            sdfgi_pipeline_ = wgpuDeviceCreateComputePipeline(device_, &info);
+        }
+        return sdfgi_pipeline_;
+    }
+
+    WGPUComputePipeline sdfgi_voxelize_pipeline() {
+        if (sdfgi_voxelize_pipeline_ == nullptr) {
+            WGPUComputePipelineDescriptor info = WGPU_COMPUTE_PIPELINE_DESCRIPTOR_INIT;
+            info.layout = pipeline_layouts_.at(kSdfgiVoxelizeLayout);
+            info.compute.module =
+                module(kSdfgiVoxelizeModule, joined(shaders::kSdfgiVoxelizeComputeWgsl));
+            info.compute.entryPoint = text_view("cs_main");
+            sdfgi_voxelize_pipeline_ = wgpuDeviceCreateComputePipeline(device_, &info);
+        }
+        return sdfgi_voxelize_pipeline_;
+    }
+
+    WGPURenderPipeline sdfgi_gather_pipeline() {
+        if (sdfgi_gather_pipeline_ == nullptr) {
+            std::array<WGPUColorTargetState, 2> colors{};
+            for (WGPUColorTargetState& color : colors) {
+                color = WGPU_COLOR_TARGET_STATE_INIT;
+                color.format = kHdrFormat;
+            }
+            WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
+            fragment.module = module(kSdfgiGatherFragmentModule, shaders::kSdfgiGatherFragmentWgsl);
+            fragment.entryPoint = text_view("fs_main");
+            fragment.targetCount = colors.size();
+            fragment.targets = colors.data();
+            WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
+            info.layout = pipeline_layouts_.at(kSdfgiGatherLayout);
+            info.vertex.module = module(kSdfgiGatherVertexModule, shaders::kSdfgiGatherVertexWgsl);
+            info.vertex.entryPoint = text_view("vs_main");
+            info.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+            info.primitive.cullMode = WGPUCullMode_None;
+            info.fragment = &fragment;
+            sdfgi_gather_pipeline_ = wgpuDeviceCreateRenderPipeline(device_, &info);
+        }
+        return sdfgi_gather_pipeline_;
+    }
+
+    // Plans the frame's SDFGI work as update_sdfgi does it, with its uniforms: the cascades moved
+    // with the camera, the draws voxelized into those that need it, their distance fields, light
+    // and probes, then the gather from the jittered view_projection the prepass draws with.
+    // False, with the frame drawn without it, where it couldn't.
+    bool plan_sdfgi(const Scene3D& scene, const MeshSceneUniforms& lights,
+                    const Mat4& view_projection) {
+        SdfgiFrames* frames = find_sdfgi_frames(frame_.target);
+        if (frames == nullptr) {
+            return false;
+        }
+        // What the cells are made of: the frame's draws, keyed as the GPU device keys them.
+        std::vector<MeshSurfaceUniforms> surfaces;
+        std::vector<MeshInstanceUniforms> instances;
+        surfaces.reserve(mesh_draws_.size());
+        instances.reserve(mesh_draws_.size());
+        std::uint64_t key = 0xCBF29CE484222325ULL;
+        const auto hash = [&key](const auto& value) {
+            std::array<unsigned char, sizeof(value)> bytes{};
+            std::memcpy(bytes.data(), &value, sizeof(value));
+            for (const unsigned char byte : bytes) {
+                key ^= byte;
+                key *= 0x100000001B3ULL;
+            }
+        };
+        for (std::size_t i = 0; i < mesh_draws_.size(); ++i) {
+            const MeshDraw& draw = mesh_draws_[i];
+            const MeshBatch& batch = mesh_batches_[i];
+            surfaces.push_back(traced_surface(mesh_surface_uniforms(draw.material, draw.layers)));
+            instances.push_back(mesh_instance_uniforms(draw.transform, draw.material));
+            hash(draw.mesh);
+            hash(batch.version);
+            hash(batch.range.first);
+            hash(batch.range.count);
+            hash(draw.transform);
+            hash(draw.shadows);
+            hash(surfaces.back());
+            hash(instances.back().uv1);
+            for (std::size_t slot = 0; slot < 5; ++slot) {
+                hash(reinterpret_cast<std::uintptr_t>(batch.bindings.at(slot).first));
+                hash(reinterpret_cast<std::uintptr_t>(batch.bindings.at(slot).second));
+            }
+        }
+        const Float3 eye{lights.camera[0], lights.camera[1], lights.camera[2]};
+        const SdfgiFramePlan plan = plan_sdfgi_frame(frames->state, scene, eye, key);
+        const SdfgiLayout layout = sdfgi_layout(static_cast<std::uint32_t>(plan.cascades.size()),
+                                                plan.size, plan.history_size);
+        if (layout != frames->layout) {
+            // A new layout comes with cascades made again (plan_sdfgi_frame), which clear and
+            // write everything they read.
+            if (auto made = make_sdfgi_buffers(*frames, layout); !made) {
+                if (!sdfgi_failure_logged_) {
+                    log::warn("SDFGI couldn't start; the frame draws without it",
+                              {{"error", made.error().message}});
+                    sdfgi_failure_logged_ = true;
+                }
+                frames->state = {};
+                return false;
+            }
+        }
+        // The lights and the environment the probes' rays take where they leave the cascades,
+        // the sky's from the radiance cube the meshes sample.
+        const std::vector<SdfgiLight> sdfgi_lit = sdfgi_lights(scene, plan.y_mult);
+        const PathScene path = build_path_scene(scene, {}, 1, 1, {});
+        SdfgiWork work;
+        work.frames = frames;
+        work.radiance = radiance_used(scene);
+        const SdfgiEnvironment environment{.ambient = path.ambient,
+                                           .sky = path.environment_sky && work.radiance,
+                                           .to_sky = path.to_sky,
+                                           .sky_energy = lights.sky[2],
+                                           .sky_share = path.sky_share};
+        const std::vector<std::uint32_t> items =
+            sdfgi_items(frames->state, layout, std::span<const SdfgiLight>(sdfgi_lit));
+        upload_storage(sdfgi_items_, std::as_bytes(std::span(items)));
+        work.steps = sdfgi_steps(frames->state, plan, layout,
+                                 static_cast<std::uint32_t>(sdfgi_lit.size()), environment);
+        work.uniforms.assign(work.steps.size(), 0);
+        work.voxelized.resize(work.steps.size());
+        for (std::size_t s = 0; s < work.steps.size(); ++s) {
+            const SdfgiStep& step = work.steps[s];
+            if (step.kind == SdfgiStep::Kind::Dispatch) {
+                work.uniforms[s] = uniforms_.add(step.uniforms);
+                continue;
+            }
+            if (step.kind != SdfgiStep::Kind::Voxelize) {
+                continue;
+            }
+            for (std::size_t i = 0; i < mesh_draws_.size(); ++i) {
+                const MeshDraw& draw = mesh_draws_[i];
+                const IndexRange& range = mesh_batches_[i].range;
+                const std::uint64_t threads = std::uint64_t{range.count / 3} * layout.size;
+                if (draw.shadows == ShadowCasting::ShadowsOnly || threads == 0 ||
+                    threads > std::numeric_limits<std::uint32_t>::max()) {
+                    continue;
+                }
+                const std::array<std::uint32_t, 2> groups =
+                    sdfgi_groups(static_cast<std::uint32_t>(threads));
+                if (groups[1] > kMaxWorkgroups) {
+                    continue;
+                }
+                const SdfgiVoxelizeUniforms uniforms = sdfgi_voxelize_uniforms(
+                    step, draw.transform, instances[i].normal_model, surfaces[i], instances[i].uv1,
+                    range.first, range.count);
+                work.voxelized[s].push_back(
+                    {.draw = i, .uniforms = uniforms_.add(uniforms), .groups = groups});
+            }
+        }
+        work.gather = uniforms_.add(sdfgi_gather_uniforms(
+            frames->state, eye,
+            ray_shadow_frame(scene, view_projection, scene_width_, scene_height_)));
+        sdfgi_work_ = std::move(work);
+        return true;
+    }
+
+    // Records the frame's SDFGI work after the prepass: each dispatch in a compute pass of its
+    // own, so each sees what the one before wrote; the draws voxelized in one pass, as atomic
+    // adds sum in any order; the new cells copied in; then each pixel's ambient light and
+    // reflections gathered into the screen array's layers 5 and 6, as run_sdfgi.
+    void encode_sdfgi(WGPUCommandEncoder encoder, const SdfgiWork& work) {
+        const std::array<WGPUBuffer, 5>& buffers = work.frames->buffers;
+        const auto at = [&](SdfgiBuffer buffer) {
+            return buffers.at(static_cast<std::size_t>(buffer));
+        };
+        const SdfgiLayout& layout = work.frames->layout;
+        std::array<WGPUBindGroupEntry, 3> input_entries{};
+        input_entries[0] = WGPU_BIND_GROUP_ENTRY_INIT;
+        input_entries[0].binding = 0;
+        input_entries[0].textureView = work.radiance ? radiance_.filtered.view : no_radiance_.view;
+        input_entries[1] = buffer_entry(1, sdfgi_items_.buffer, sdfgi_items_.capacity);
+        input_entries[2] = WGPU_BIND_GROUP_ENTRY_INIT;
+        input_entries[2].binding = kSamplerBinding;
+        input_entries[2].sampler = radiance_sampler_;
+        WGPUBindGroup inputs = bind_group(sdfgi_inputs_layout_, input_entries);
+        // The shader's order: cells, fields, probes, scratch, history.
+        const std::array outputs_entries{
+            buffer_entry(0, at(SdfgiBuffer::Cells)), buffer_entry(1, at(SdfgiBuffer::Fields)),
+            buffer_entry(2, at(SdfgiBuffer::Probes)), buffer_entry(3, at(SdfgiBuffer::Scratch)),
+            buffer_entry(4, at(SdfgiBuffer::History))};
+        WGPUBindGroup outputs = bind_group(sdfgi_buffers_layout_, outputs_entries);
+        const std::array sums_entries{buffer_entry(0, at(SdfgiBuffer::Scratch))};
+        WGPUBindGroup sums = bind_group(sdfgi_sums_layout_, sums_entries);
+        std::vector<WGPUBindGroup> made;
+        const std::uint64_t n = layout.cell_count();
+        for (std::size_t s = 0; s < work.steps.size(); ++s) {
+            const SdfgiStep& step = work.steps[s];
+            switch (step.kind) {
+            case SdfgiStep::Kind::Dispatch: {
+                WGPUComputePassEncoder compute =
+                    wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+                wgpuComputePassEncoderSetPipeline(compute, sdfgi_pipeline());
+                wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
+                wgpuComputePassEncoderSetBindGroup(compute, 1, outputs, 0, nullptr);
+                wgpuComputePassEncoderSetBindGroup(compute, 2, sdfgi_uniforms_group_, 1,
+                                                   &work.uniforms[s]);
+                const std::array<std::uint32_t, 2> groups = sdfgi_groups(step.uniforms.step[3]);
+                wgpuComputePassEncoderDispatchWorkgroups(compute, groups[0], groups[1], 1);
+                wgpuComputePassEncoderEnd(compute);
+                wgpuComputePassEncoderRelease(compute);
+                break;
+            }
+            case SdfgiStep::Kind::Voxelize: {
+                WGPUComputePassEncoder compute =
+                    wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+                wgpuComputePassEncoderSetPipeline(compute, sdfgi_voxelize_pipeline());
+                wgpuComputePassEncoderSetBindGroup(compute, 1, sums, 0, nullptr);
+                for (const SdfgiVoxelizeDraw& voxelized : work.voxelized[s]) {
+                    const MeshBatch& batch = mesh_batches_[voxelized.draw];
+                    // The albedo and emission textures, white where a draw has none.
+                    std::array<WGPUBindGroupEntry, 6> entries{};
+                    for (std::uint32_t slot = 0; slot < 2; ++slot) {
+                        const auto& [view, sampler] = batch.bindings.at(slot == 0 ? 0 : 3);
+                        entries.at(slot) = WGPU_BIND_GROUP_ENTRY_INIT;
+                        entries.at(slot).binding = slot;
+                        entries.at(slot).textureView = view;
+                        entries.at(4 + slot) = WGPU_BIND_GROUP_ENTRY_INIT;
+                        entries.at(4 + slot).binding = kSamplerBinding + slot;
+                        entries.at(4 + slot).sampler = sampler;
+                    }
+                    entries[2] = buffer_entry(2, batch.vertices);
+                    entries[3] = buffer_entry(3, batch.indices);
+                    WGPUBindGroup draw_inputs = bind_group(sdfgi_voxelize_inputs_layout_, entries);
+                    made.push_back(draw_inputs);
+                    wgpuComputePassEncoderSetBindGroup(compute, 0, draw_inputs, 0, nullptr);
+                    wgpuComputePassEncoderSetBindGroup(compute, 2, sdfgi_voxelize_uniforms_group_,
+                                                       1, &voxelized.uniforms);
+                    wgpuComputePassEncoderDispatchWorkgroups(compute, voxelized.groups[0],
+                                                             voxelized.groups[1], 1);
+                }
+                wgpuComputePassEncoderEnd(compute);
+                wgpuComputePassEncoderRelease(compute);
+                break;
+            }
+            case SdfgiStep::Kind::CopyCells: {
+                // The new cells, which the resolve wrote over the cascade's field, into its cells.
+                constexpr std::uint64_t kWord = sizeof(std::uint32_t);
+                wgpuCommandEncoderCopyBufferToBuffer(
+                    encoder, at(SdfgiBuffer::Fields),
+                    std::uint64_t{step.cascade} * layout.fields * kWord, at(SdfgiBuffer::Cells),
+                    std::uint64_t{step.cascade} * layout.cells * kWord, n * 2 * kWord);
+                break;
+            }
+            }
+        }
+        // The gather: each pixel the prepass drew takes the cascades' light.
+        const std::array read_entries{buffer_entry(0, at(SdfgiBuffer::Cells)),
+                                      buffer_entry(1, at(SdfgiBuffer::Fields)),
+                                      buffer_entry(2, at(SdfgiBuffer::Probes)),
+                                      buffer_entry(3, sdfgi_items_.buffer, sdfgi_items_.capacity)};
+        WGPUBindGroup read = bind_group(sdfgi_gather_buffers_layout_, read_entries);
+        std::array<WGPUBindGroupEntry, 2> prepass{};
+        for (std::uint32_t slot = 0; slot < 2; ++slot) {
+            prepass.at(slot) = WGPU_BIND_GROUP_ENTRY_INIT;
+            prepass.at(slot).binding = slot;
+        }
+        prepass[0].textureView = prepass_.depth.view;
+        prepass[1].textureView = prepass_.normals.view;
+        WGPUBindGroup textures = bind_group(sdfgi_gather_textures_layout_, prepass);
+        std::array<WGPURenderPassColorAttachment, 2> colors{};
+        for (std::size_t i = 0; i < colors.size(); ++i) {
+            colors.at(i) = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+            colors.at(i).view = screen_.layers.at(5 + i);
+            colors.at(i).loadOp = WGPULoadOp_Clear;
+            colors.at(i).storeOp = WGPUStoreOp_Store;
+            colors.at(i).clearValue = {.r = 0.0, .g = 0.0, .b = 0.0, .a = 0.0};
+        }
+        WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
+        descriptor.colorAttachmentCount = colors.size();
+        descriptor.colorAttachments = colors.data();
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
+        wgpuRenderPassEncoderSetPipeline(pass, sdfgi_gather_pipeline());
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, read, 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(pass, 2, textures, 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(pass, 3, sdfgi_gather_uniforms_group_, 1, &work.gather);
+        wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+        for (WGPUBindGroup group : made) {
+            wgpuBindGroupRelease(group);
+        }
+        for (WGPUBindGroup group : {inputs, outputs, sums, read, textures}) {
+            wgpuBindGroupRelease(group);
+        }
     }
 
     // Counts a frame drawn into the frame's target for frame generation, when the target keeps
@@ -7072,6 +7600,7 @@ private:
     }
 
     void finish_frame() {
+        sdfgi_work_.reset();
         // A frame with TAA or FSR 2 saw its meshes' vertices as they are now.
         if (frame_.scene && uses_motion_vectors(*frame_.scene)) {
             for (const MeshDraw& draw : mesh_draws_) {
@@ -7165,6 +7694,10 @@ private:
     static constexpr std::size_t kSubsurfaceFragmentModule = kSubsurfaceVertexModule + 1;
     static constexpr std::size_t kMeshSubsurfaceFragmentModule = kSubsurfaceFragmentModule + 1;
     static constexpr std::size_t kStages3DModule = kMeshSubsurfaceFragmentModule + 1;
+    static constexpr std::size_t kSdfgiModule = kStages3DModule + 1;
+    static constexpr std::size_t kSdfgiVoxelizeModule = kSdfgiModule + 1;
+    static constexpr std::size_t kSdfgiGatherVertexModule = kSdfgiVoxelizeModule + 1;
+    static constexpr std::size_t kSdfgiGatherFragmentModule = kSdfgiGatherVertexModule + 1;
     static constexpr std::size_t kSpriteLayout = 0;
     static constexpr std::size_t kMaterialLayout = 1;
     static constexpr std::size_t kProcessLayout = 2;
@@ -7194,6 +7727,9 @@ private:
     static constexpr std::size_t kGenerationDrawLayout = kGenerationLayout + 1;
     static constexpr std::size_t kSubsurfaceLayout = kGenerationDrawLayout + 1;
     static constexpr std::size_t kStages3DLayout = kSubsurfaceLayout + 1;
+    static constexpr std::size_t kSdfgiLayout = kStages3DLayout + 1;
+    static constexpr std::size_t kSdfgiVoxelizeLayout = kSdfgiLayout + 1;
+    static constexpr std::size_t kSdfgiGatherLayout = kSdfgiVoxelizeLayout + 1;
 
     WGPUInstance instance_;
     WGPUDevice device_;
@@ -7206,7 +7742,7 @@ private:
     bool can_wait_ = false; // Asyncify lets read_texture wait for the GPU
     // Which formats the GPU samples, by TextureFormat.
     std::array<bool, 4> sampled_{true, false, false, true};
-    std::array<WGPUShaderModule, kStages3DModule + 1> modules_{};
+    std::array<WGPUShaderModule, kSdfgiGatherFragmentModule + 1> modules_{};
     std::vector<Pipeline> pipelines_;
     std::unordered_map<ShaderId, GameShader> game_shaders_;
     std::uint32_t next_shader_ = 1;
@@ -7269,7 +7805,16 @@ private:
     WGPUBindGroupLayout generation_storage_layout_ = nullptr;
     WGPUBindGroupLayout generation_uniforms_layout_ = nullptr;
     WGPUBindGroupLayout generation_draw_uniforms_layout_ = nullptr;
-    std::array<WGPUPipelineLayout, kStages3DLayout + 1> pipeline_layouts_{};
+    WGPUBindGroupLayout sdfgi_inputs_layout_ = nullptr;
+    WGPUBindGroupLayout sdfgi_buffers_layout_ = nullptr;
+    WGPUBindGroupLayout sdfgi_uniforms_layout_ = nullptr;
+    WGPUBindGroupLayout sdfgi_voxelize_inputs_layout_ = nullptr;
+    WGPUBindGroupLayout sdfgi_sums_layout_ = nullptr;
+    WGPUBindGroupLayout sdfgi_voxelize_uniforms_layout_ = nullptr;
+    WGPUBindGroupLayout sdfgi_gather_buffers_layout_ = nullptr;
+    WGPUBindGroupLayout sdfgi_gather_textures_layout_ = nullptr;
+    WGPUBindGroupLayout sdfgi_gather_uniforms_layout_ = nullptr;
+    std::array<WGPUPipelineLayout, kSdfgiGatherLayout + 1> pipeline_layouts_{};
     std::array<WGPUSampler, 4> samplers_{}; // by sampler_index
     GpuTexture white_;
     std::unordered_map<TextureId, Texture> textures_;
@@ -7310,6 +7855,9 @@ private:
     WGPUBindGroup fog_sky_uniforms_group_ = nullptr;
     WGPUBindGroup generation_uniforms_group_ = nullptr;
     WGPUBindGroup generation_draw_uniforms_group_ = nullptr;
+    WGPUBindGroup sdfgi_uniforms_group_ = nullptr;
+    WGPUBindGroup sdfgi_voxelize_uniforms_group_ = nullptr;
+    WGPUBindGroup sdfgi_gather_uniforms_group_ = nullptr;
     std::unordered_map<ParticlesId, ParticleSystem> particle_systems_;
     std::uint32_t next_particles_ = 1;
     std::vector<WGPUBuffer> pending_buffers_;
@@ -7455,6 +8003,17 @@ private:
     std::vector<std::pair<TextureId, GenerationFrames>> generation_frames_;
     WGPUComputePipeline generation_pipeline_ = nullptr;
     std::vector<std::pair<WGPUTextureFormat, WGPURenderPipeline>> generation_draw_pipelines_;
+    // SDFGI's buffers by target, its passes' pipelines, the frame's items and its planned work.
+    std::vector<std::pair<TextureId, SdfgiFrames>> sdfgi_frames_;
+    WGPUComputePipeline sdfgi_pipeline_ = nullptr;
+    WGPUComputePipeline sdfgi_voxelize_pipeline_ = nullptr;
+    WGPURenderPipeline sdfgi_gather_pipeline_ = nullptr;
+    StorageBuffer sdfgi_items_;
+    std::optional<SdfgiWork> sdfgi_work_;
+    bool sdfgi_failure_logged_ = false;
+    // The most a storage binding and a buffer may hold, as the device was made with.
+    std::uint64_t max_storage_binding_ = 128U << 20U;
+    std::uint64_t max_buffer_ = 256U << 20U;
     WGPUBuffer no_fog_ = nullptr;
     Fsr2Textures fsr2_textures_;
     std::vector<std::pair<TextureId, Fsr2Frames>> fsr2_frames_;
