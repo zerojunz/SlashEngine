@@ -142,12 +142,15 @@ void distance_line(uint row) {
             int den = 1;
             // No break: Tint's SPIR-V reader can't take loops that leave early with values.
             bool popping = true;
+            // Loads are never under a condition of their own: lavapipe reads a buffer's
+            // descriptor from a lane no thread runs when none takes such a branch.
             [loop] while (k >= 0 && popping) {
                 int p = asint(scratch[v_at + uint(k)]);
                 num = (fq + (q * q)) - (asint(scratch[f_at + uint(p)]) + (p * p));
                 den = 2 * (q - p);
-                if (k > 0 && num * asint(scratch[den_at + uint(k)]) <=
-                                 asint(scratch[num_at + uint(k)]) * den) {
+                int k_num = asint(scratch[num_at + uint(k)]);
+                int k_den = asint(scratch[den_at + uint(k)]);
+                if (k > 0 && num * k_den <= k_num * den) {
                     --k;
                 } else {
                     popping = false;
@@ -167,9 +170,14 @@ void distance_line(uint row) {
     }
     int j = 0;
     [loop] for (int q2 = 0; q2 < int(n); ++q2) {
-        [loop] while (j < k && asint(scratch[num_at + uint(j + 1)]) <
-                                   q2 * asint(scratch[den_at + uint(j + 1)])) {
-            ++j;
+        bool advancing = j < k;
+        [loop] while (advancing) {
+            int next = min(j + 1, k);
+            int next_num = asint(scratch[num_at + uint(next)]);
+            int next_den = asint(scratch[den_at + uint(next)]);
+            advancing = j < k && next_num < q2 * next_den;
+            j += advancing ? 1 : 0;
+            advancing = advancing && j < k;
         }
         int p2 = asint(scratch[v_at + uint(j)]);
         scratch[line_cell(row, uint(q2))] =

@@ -51,6 +51,10 @@
 #include "post_shading.hpp"
 #include "radiance_shaders.hpp"
 #include "reflection.hpp"
+#include "sdfgi_gather_shaders.hpp"
+#include "sdfgi_gpu.hpp"
+#include "sdfgi_shaders.hpp"
+#include "sdfgi_voxelize_shaders.hpp"
 #include "shader_code.hpp"
 #include "shadow_shaders.hpp"
 #include "sky_shaders.hpp"
@@ -242,6 +246,15 @@ struct FogFrames {
     SDL_GPUBuffer* fog = nullptr;
     std::size_t last = 0;
     std::array<std::uint32_t, 3> size{};
+};
+
+// A target's SDFGI: the cascades' places and settings (state, whose cells and probes live in
+// buffers here rather than its vectors), and the buffers sdfgi.hlsl's passes keep between frames,
+// as layout lays them out, by SdfgiBuffer.
+struct SdfgiFrames {
+    SdfgiState state;
+    SdfgiLayout layout;
+    std::array<SDL_GPUBuffer*, 5> buffers{};
 };
 
 constexpr SDL_GPUTextureFormat gpu_format(TextureFormat format) {
@@ -642,8 +655,9 @@ public:
             SDL_ReleaseGPUBuffer(device_, particle_data_);
             SDL_ReleaseGPUTransferBuffer(device_, particle_transfer_);
         }
-        for (const StorageBuffer& storage : {cluster_lights_, cluster_cells_, probe_buffer_,
-                                             decal_buffer_, decal_atlas_buffer_, fog_items_}) {
+        for (const StorageBuffer& storage :
+             {cluster_lights_, cluster_cells_, probe_buffer_, decal_buffer_, decal_atlas_buffer_,
+              fog_items_, sdfgi_items_}) {
             if (storage.buffer != nullptr) {
                 SDL_ReleaseGPUBuffer(device_, storage.buffer);
                 SDL_ReleaseGPUTransferBuffer(device_, storage.transfer);
@@ -748,6 +762,22 @@ public:
         }
         while (!fog_frames_.empty()) {
             forget_fog_frames(fog_frames_.back().first);
+        }
+        while (!sdfgi_frames_.empty()) {
+            forget_sdfgi_frames(sdfgi_frames_.back().first);
+        }
+        for (SDL_GPUComputePipeline* pipeline : {sdfgi_pipeline_, sdfgi_voxelize_pipeline_}) {
+            if (pipeline != nullptr) {
+                SDL_ReleaseGPUComputePipeline(device_, pipeline);
+            }
+        }
+        for (SDL_GPUShader* shader : sdfgi_gather_shaders_) {
+            if (shader != nullptr) {
+                SDL_ReleaseGPUShader(device_, shader);
+            }
+        }
+        if (sdfgi_gather_pipeline_ != nullptr) {
+            SDL_ReleaseGPUGraphicsPipeline(device_, sdfgi_gather_pipeline_);
         }
         while (!generation_frames_.empty()) {
             forget_generation_frames(generation_frames_.back().first);
@@ -1010,6 +1040,7 @@ public:
         forget_taa_history(texture);
         forget_fsr2_frames(texture);
         forget_fog_frames(texture);
+        forget_sdfgi_frames(texture);
         forget_generation_frames(texture);
     }
 
@@ -1531,10 +1562,11 @@ public:
         const auto vertex_bytes = static_cast<std::uint32_t>(vertices.size_bytes());
         const auto index_bytes = static_cast<std::uint32_t>(indices.size_bytes());
         SDL_GPUBufferCreateInfo info{};
-        info.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
+        // SDFGI's voxelization reads them too.
+        info.usage = SDL_GPU_BUFFERUSAGE_VERTEX | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ;
         info.size = vertex_bytes;
         mesh.vertices = SDL_CreateGPUBuffer(device_, &info);
-        info.usage = SDL_GPU_BUFFERUSAGE_INDEX;
+        info.usage = SDL_GPU_BUFFERUSAGE_INDEX | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ;
         info.size = index_bytes;
         mesh.indices = SDL_CreateGPUBuffer(device_, &info);
         const TransferBuffer transfer(device_, SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
@@ -1593,7 +1625,7 @@ public:
         if (!found.moved) {
             if (found.previous == nullptr) {
                 SDL_GPUBufferCreateInfo info{};
-                info.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
+                info.usage = SDL_GPU_BUFFERUSAGE_VERTEX | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ;
                 info.size = bytes;
                 found.previous = SDL_CreateGPUBuffer(device_, &info);
                 if (found.previous == nullptr) {
@@ -1789,7 +1821,8 @@ public:
                 }
             }
             traced_ = traces_rays(*frame.scene);
-            if (uses_prepass(*frame.scene) || traced_ || path_traced_) {
+            const bool sdfgi = uses_sdfgi(*frame.scene) && !path_traced_;
+            if (uses_prepass(*frame.scene) || traced_ || path_traced_ || sdfgi) {
                 if (auto ready = prepare_prepass(scene_width, scene_height); !ready) {
                     SDL_CancelGPUCommandBuffer(commands);
                     return ready.error();
@@ -1850,8 +1883,15 @@ public:
                     return ready.error();
                 }
             }
-            if (uses_ssao(*frame.scene) || uses_ssr(*frame.scene) || traced_) {
-                if (auto ready = prepare_screen(scene_width, scene_height); !ready) {
+            if (sdfgi) {
+                if (auto ready = prepare_sdfgi(frame.target); !ready) {
+                    SDL_CancelGPUCommandBuffer(commands);
+                    return ready.error();
+                }
+            }
+            if (uses_ssao(*frame.scene) || uses_ssr(*frame.scene) || traced_ || sdfgi) {
+                // SDFGI's light goes in layers 5 and 6.
+                if (auto ready = prepare_screen(scene_width, scene_height, sdfgi ? 7 : 0); !ready) {
                     SDL_CancelGPUCommandBuffer(commands);
                     return ready.error();
                 }
@@ -1899,6 +1939,9 @@ public:
         }
         if (!frame.scene || !uses_volumetric_fog(*frame.scene)) {
             forget_fog_frames(frame.target);
+        }
+        if (!frame.scene || !uses_sdfgi(*frame.scene) || path_traced_) {
+            forget_sdfgi_frames(frame.target);
         }
         start_frame(frame, commands, target, width, height);
         frame_format_ = format;
@@ -2128,9 +2171,9 @@ public:
         batch.previous_vertices = it->second.moved ? it->second.previous : it->second.vertices;
         batch.vertex_count = static_cast<std::uint32_t>(it->second.vertex_count);
         batch.version = it->second.version;
-        // SSAO's, SSR's, ray-traced shadows', TAA's and FSR 2's prepass draws the opaque meshes'
-        // normals, and with TAA or FSR 2 their motion vectors.
-        if ((uses_prepass(*frame_.scene) || traced_) &&
+        // SSAO's, SSR's, SDFGI's, ray-traced shadows', TAA's and FSR 2's prepass draws the opaque
+        // meshes' normals, and with TAA or FSR 2 their motion vectors.
+        if ((uses_prepass(*frame_.scene) || traced_ || uses_sdfgi(*frame_.scene)) &&
             material.transparency != Transparency::Alpha) {
             auto normal = uses_motion_vectors(*frame_.scene)
                               ? motion_pipeline_for(material.cull, material.shader)
@@ -3099,10 +3142,12 @@ private:
         return {};
     }
 
-    // A mesh's vertex buffer of bytes that compute shaders can write too.
+    // A mesh's vertex buffer of bytes that compute shaders can write too (and read, as SDFGI's
+    // voxelization reads every mesh's).
     SDL_GPUBuffer* make_mesh_vertices(std::uint32_t bytes) {
         SDL_GPUBufferCreateInfo info{};
-        info.usage = SDL_GPU_BUFFERUSAGE_VERTEX | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
+        info.usage = SDL_GPU_BUFFERUSAGE_VERTEX | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ |
+                     SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
         info.size = bytes;
         return SDL_CreateGPUBuffer(device_, &info);
     }
@@ -4126,6 +4171,9 @@ private:
         // Rays trace the reflections in SSR's place where the project asks.
         const bool traced_reflections = traced && ray_reflection(scene).has_value();
         const bool ssr = plan != nullptr && uses_ssr(scene) && !traced_reflections;
+        // SDFGI, which frames without meshes go without, as their prepass.
+        const bool sdfgi = plan != nullptr && uses_sdfgi(scene) && !path_traced_ &&
+                           find_sdfgi_frames(frame_.target) != nullptr;
         // What every draw samples besides its material's textures: the shadow atlases, the
         // radiance and, in Forward+, the SSAO and the SSR.
         std::array<SDL_GPUTextureSamplerBinding, kMeshTextures + 5> samplers{};
@@ -4141,9 +4189,9 @@ private:
             samplers.at(kMeshTextures + 2) = {.texture = radiance_used(scene) ? radiance_.filtered
                                                                               : no_radiance_,
                                               .sampler = radiance_sampler_};
-            samplers.at(kMeshTextures +
-                        3) = {.texture = ssao || ssr || traced ? screen_.texture : no_screen_,
-                              .sampler = samplers_.at(sampler_index(Filter::Nearest, false))};
+            samplers.at(kMeshTextures + 3) = {
+                .texture = ssao || ssr || traced || sdfgi ? screen_.texture : no_screen_,
+                .sampler = samplers_.at(sampler_index(Filter::Nearest, false))};
             samplers.at(kMeshTextures + 4) = {
                 .texture = lights->reflections[0] > 0.0F ? textures_.at(scene.reflections.atlas).gpu
                                                          : no_probes_,
@@ -4227,11 +4275,11 @@ private:
                 SDL_DrawGPUIndexedPrimitives(pass, batch.range.count, 1, batch.range.first, 0, 0);
             }
         };
-        if (ssao || ssr || motion || traced) {
+        if (ssao || ssr || motion || traced || sdfgi) {
             // The prepass draws the opaque meshes' normals and depth, from which SSAO's passes
-            // make the occlusion the meshes are then lit with, SSR's their reflections and the
-            // rays their shadows, and with TAA their motion vectors, into the history's next
-            // texture, or with FSR 2 into its own.
+            // make the occlusion the meshes are then lit with, SSR's their reflections, SDFGI's
+            // their ambient light and the rays their shadows, and with TAA their motion vectors,
+            // into the history's next texture, or with FSR 2 into its own.
             std::array<SDL_GPUColorTargetInfo, 2> targets{};
             SDL_GPUColorTargetInfo& normals = targets[0];
             normals.texture = prepass_.normals;
@@ -4296,6 +4344,9 @@ private:
                         lights->ssao[3] = 0.0F;
                     }
                 }
+            }
+            if (sdfgi && draw_sdfgi(commands, scene, *lights, camera.view_projection)) {
+                lights->voxel_gi[2] = 1.0F;
             }
         } else if (fsr2 != nullptr) {
             // A frame with no meshes is all sky.
@@ -4910,22 +4961,26 @@ private:
         return texture;
     }
 
-    // The screen array the mesh pass reads the frame's SSAO and SSR from, at width x height.
-    Result<void> prepare_screen(std::uint32_t width, std::uint32_t height) {
-        if (screen_.texture != nullptr && screen_.width == width && screen_.height == height) {
+    // The screen array the mesh pass reads the frame's SSAO and SSR from, at width x height,
+    // with at least layers layers.
+    Result<void> prepare_screen(std::uint32_t width, std::uint32_t height,
+                                std::uint32_t layers = 0) {
+        // Layers 2 and 3 hold the ray-traced shadows on a device with rays, and 4 the traced
+        // ambient light; 5 and 6 SDFGI's ambient light and reflections.
+        layers = std::max(layers, rays_ != nullptr ? 5U : 2U);
+        if (screen_.texture != nullptr && screen_.width == width && screen_.height == height &&
+            screen_.layers >= layers) {
             return {};
         }
         if (screen_.texture != nullptr) {
             pending_release_.push_back(std::exchange(screen_.texture, nullptr));
         }
-        // Layers 2 and 3 hold the ray-traced shadows on a device with rays, and 4 the traced
-        // ambient light.
         auto texture = pass_texture(width, height, kHdrFormat, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, 1,
-                                    "SSAO", rays_ != nullptr ? 5 : 2);
+                                    "SSAO", layers);
         if (!texture) {
             return texture.error();
         }
-        screen_ = {.texture = texture.value(), .width = width, .height = height};
+        screen_ = {.texture = texture.value(), .width = width, .height = height, .layers = layers};
         return {};
     }
 
@@ -6555,6 +6610,349 @@ private:
         fog_frames_.erase(it);
     }
 
+    // SDFGI's pipelines, and target's SDFGI, made with no buffers, which its first frame makes
+    // once it knows the cascades' layout.
+    Result<void> prepare_sdfgi(TextureId target) {
+        if (sdfgi_pipeline_ == nullptr) {
+            // The radiance; the items; the cells, fields, probes, scratch and history; the step.
+            SDL_GPUComputePipelineCreateInfo info{};
+            info.entrypoint = "cs_main";
+            info.num_samplers = 1;
+            info.num_readonly_storage_buffers = 1;
+            info.num_readwrite_storage_buffers = 5;
+            info.num_uniform_buffers = 1;
+            info.threadcount_x = kSdfgiThreads;
+            info.threadcount_y = 1;
+            info.threadcount_z = 1;
+            auto made =
+                create_compute_pipeline(info, shaders::kSdfgiComputeSpirv,
+                                        shaders::kSdfgiComputeMsl, shaders::kSdfgiHlsl, "SDFGI");
+            if (!made) {
+                return made.error();
+            }
+            sdfgi_pipeline_ = made.value();
+        }
+        if (sdfgi_voxelize_pipeline_ == nullptr) {
+            // The albedo and emission textures; the draw's vertices and indices; the sums; the
+            // draw.
+            SDL_GPUComputePipelineCreateInfo info{};
+            info.entrypoint = "cs_main";
+            info.num_samplers = 2;
+            info.num_readonly_storage_buffers = 2;
+            info.num_readwrite_storage_buffers = 1;
+            info.num_uniform_buffers = 1;
+            info.threadcount_x = kSdfgiThreads;
+            info.threadcount_y = 1;
+            info.threadcount_z = 1;
+            auto made = create_compute_pipeline(
+                info, shaders::kSdfgiVoxelizeComputeSpirv, shaders::kSdfgiVoxelizeComputeMsl,
+                shaders::kSdfgiVoxelizeHlsl, "SDFGI's voxelization");
+            if (!made) {
+                return made.error();
+            }
+            sdfgi_voxelize_pipeline_ = made.value();
+        }
+        if (sdfgi_gather_shaders_[0] == nullptr) {
+            const ShaderCode code{.vertex_spirv = shaders::kSdfgiGatherVertexSpirv,
+                                  .fragment_spirv = shaders::kSdfgiGatherFragmentSpirv,
+                                  .vertex_msl = shaders::kSdfgiGatherVertexMsl,
+                                  .fragment_msl = shaders::kSdfgiGatherFragmentMsl,
+                                  .hlsl = shaders::kSdfgiGatherHlsl};
+            auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 0);
+            if (!vertex) {
+                return vertex.error();
+            }
+            // The prepass's depth and normals; the cells, fields, probes and items; the gather.
+            auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code, 2, 1, 4);
+            if (!fragment) {
+                SDL_ReleaseGPUShader(device_, vertex.value());
+                return fragment.error();
+            }
+            sdfgi_gather_shaders_ = {vertex.value(), fragment.value()};
+        }
+        if (sdfgi_gather_pipeline_ == nullptr) {
+            // Ambient light into the screen array's layer 5, reflections into 6.
+            std::array<SDL_GPUColorTargetDescription, 2> colors{};
+            colors[0].format = kHdrFormat;
+            colors[1].format = kHdrFormat;
+            SDL_GPUGraphicsPipelineCreateInfo info{};
+            info.vertex_shader = sdfgi_gather_shaders_[0];
+            info.fragment_shader = sdfgi_gather_shaders_[1];
+            info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+            info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+            info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+            info.target_info.color_target_descriptions = colors.data();
+            info.target_info.num_color_targets = 2;
+            sdfgi_gather_pipeline_ = SDL_CreateGPUGraphicsPipeline(device_, &info);
+            if (sdfgi_gather_pipeline_ == nullptr) {
+                return sdl_error("creating SDFGI's gather pipeline failed");
+            }
+        }
+        if (find_sdfgi_frames(target) == nullptr) {
+            sdfgi_frames_.emplace_back(target, SdfgiFrames{});
+        }
+        return {};
+    }
+
+    // target's SDFGI, or null when it has none.
+    SdfgiFrames* find_sdfgi_frames(TextureId target) {
+        for (auto& [id, frames] : sdfgi_frames_) {
+            if (id == target) {
+                return &frames;
+            }
+        }
+        return nullptr;
+    }
+
+    void release_sdfgi_buffers(SdfgiFrames& frames) {
+        for (SDL_GPUBuffer*& buffer : frames.buffers) {
+            if (buffer != nullptr) {
+                pending_buffers_.push_back(std::exchange(buffer, nullptr));
+            }
+        }
+        frames.layout = {};
+    }
+
+    void forget_sdfgi_frames(TextureId target) {
+        const auto it = std::ranges::find_if(
+            sdfgi_frames_, [&](const auto& entry) { return entry.first == target; });
+        if (it == sdfgi_frames_.end()) {
+            return;
+        }
+        release_sdfgi_buffers(it->second);
+        sdfgi_frames_.erase(it);
+    }
+
+    // frames' buffers for layout's cascades. Their words start undefined: the frame that makes
+    // them makes every cascade again, clearing what it reads.
+    Result<void> make_sdfgi_buffers(SdfgiFrames& frames, const SdfgiLayout& layout) {
+        release_sdfgi_buffers(frames);
+        const std::array<std::uint64_t, 5> words{std::uint64_t{layout.cells} * layout.cascades,
+                                                 std::uint64_t{layout.fields} * layout.cascades,
+                                                 std::uint64_t{layout.probes} * layout.cascades,
+                                                 std::uint64_t{layout.history} * layout.cascades,
+                                                 std::uint64_t{layout.scratch}};
+        for (std::size_t i = 0; i < words.size(); ++i) {
+            const std::uint64_t bytes = words.at(i) * sizeof(std::uint32_t);
+            if (bytes > std::numeric_limits<std::uint32_t>::max()) {
+                release_sdfgi_buffers(frames);
+                return Error{
+                    ErrorCode::InvalidArgument,
+                    "SDFGI's " + std::to_string(layout.cascades) + " cascades of " +
+                        std::to_string(layout.size) +
+                        " cells a side need buffers over 4 GiB; use fewer or smaller cascades"};
+            }
+            SDL_GPUBufferCreateInfo info{};
+            info.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ |
+                         SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE |
+                         SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ;
+            info.size = static_cast<std::uint32_t>(std::max<std::uint64_t>(bytes, 4));
+            frames.buffers.at(i) = SDL_CreateGPUBuffer(device_, &info);
+            if (frames.buffers.at(i) == nullptr) {
+                release_sdfgi_buffers(frames);
+                return sdl_error("creating SDFGI's buffers failed");
+            }
+        }
+        frames.layout = layout;
+        return {};
+    }
+
+    // After the prepass: SDFGI's cascades brought up to date as update_sdfgi does it (moved with
+    // the camera, the draws voxelized into those that need it, their distance fields, light and
+    // probes), then each pixel's ambient light and reflections gathered into the screen array's
+    // layers 5 and 6, as run_sdfgi. False, with the frame drawn without it, where it couldn't.
+    bool draw_sdfgi(SDL_GPUCommandBuffer* commands, const Scene3D& scene,
+                    const MeshSceneUniforms& lights, const Mat4& view_projection) {
+        SdfgiFrames* frames = find_sdfgi_frames(frame_.target);
+        if (frames == nullptr || sdfgi_pipeline_ == nullptr) {
+            return false;
+        }
+        // What the cells are made of: the frame's draws, keyed as path tracing keys them.
+        const std::vector<RayDraw> draws = ray_draws(true);
+        std::uint64_t key = 0xCBF29CE484222325ULL;
+        const auto hash = [&key](const auto& value) {
+            std::array<unsigned char, sizeof(value)> bytes{};
+            std::memcpy(bytes.data(), &value, sizeof(value));
+            for (const unsigned char byte : bytes) {
+                key ^= byte;
+                key *= 0x100000001B3ULL;
+            }
+        };
+        for (const RayDraw& draw : draws) {
+            hash(draw.mesh);
+            hash(draw.version);
+            hash(draw.first_index);
+            hash(draw.index_count);
+            hash(draw.transform);
+            hash(draw.shadows);
+            hash(draw.surface);
+            hash(draw.uv1);
+            for (const RayTexture& texture : draw.textures) {
+                hash(reinterpret_cast<std::uintptr_t>(texture.texture));
+                hash(texture.nearest);
+                hash(texture.repeat);
+            }
+        }
+        const Float3 eye{lights.camera[0], lights.camera[1], lights.camera[2]};
+        const SdfgiFramePlan plan = plan_sdfgi_frame(frames->state, scene, eye, key);
+        const SdfgiLayout layout = sdfgi_layout(static_cast<std::uint32_t>(plan.cascades.size()),
+                                                plan.size, plan.history_size);
+        if (layout != frames->layout) {
+            // A new layout comes with cascades made again (plan_sdfgi_frame), which clear and
+            // write everything they read.
+            if (auto made = make_sdfgi_buffers(*frames, layout); !made) {
+                if (!sdfgi_failure_logged_) {
+                    log::warn("SDFGI couldn't start; the frame draws without it",
+                              {{"error", made.error().message}});
+                    sdfgi_failure_logged_ = true;
+                }
+                frames->state = {};
+                return false;
+            }
+        }
+        // The lights and the environment the probes' rays take where they leave the cascades,
+        // the sky's from the radiance cube the meshes sample.
+        const std::vector<SdfgiLight> sdfgi_lit = sdfgi_lights(scene, plan.y_mult);
+        const PathScene path = build_path_scene(scene, {}, 1, 1, {});
+        const SdfgiEnvironment environment{.ambient = path.ambient,
+                                           .sky = path.environment_sky && radiance_used(scene),
+                                           .to_sky = path.to_sky,
+                                           .sky_energy = lights.sky[2],
+                                           .sky_share = path.sky_share};
+        const std::vector<std::uint32_t> items =
+            sdfgi_items(frames->state, layout, std::span<const SdfgiLight>(sdfgi_lit));
+        SDL_GPUCopyPass* upload = SDL_BeginGPUCopyPass(commands);
+        auto uploaded = upload_storage(upload, sdfgi_items_, std::as_bytes(std::span(items)));
+        SDL_EndGPUCopyPass(upload);
+        if (!uploaded) {
+            if (!sdfgi_failure_logged_) {
+                log::warn("uploading SDFGI's items failed; the frame draws without it",
+                          {{"error", uploaded.error().message}});
+                sdfgi_failure_logged_ = true;
+            }
+            frames->state = {};
+            return false;
+        }
+        const std::array<SDL_GPUBuffer*, 5>& buffers = frames->buffers;
+        const auto at = [&](SdfgiBuffer buffer) {
+            return buffers.at(static_cast<std::size_t>(buffer));
+        };
+        const SDL_GPUTextureSamplerBinding radiance{
+            .texture = radiance_used(scene) ? radiance_.filtered : no_radiance_,
+            .sampler = radiance_sampler_};
+        const auto written = [](SDL_GPUBuffer* buffer) {
+            return SDL_GPUStorageBufferReadWriteBinding{
+                .buffer = buffer, .cycle = false, .padding1 = 0, .padding2 = 0, .padding3 = 0};
+        };
+        // The shader's order: cells, fields, probes, scratch, history.
+        const std::array<SDL_GPUStorageBufferReadWriteBinding, 5> outputs{
+            written(at(SdfgiBuffer::Cells)), written(at(SdfgiBuffer::Fields)),
+            written(at(SdfgiBuffer::Probes)), written(at(SdfgiBuffer::Scratch)),
+            written(at(SdfgiBuffer::History))};
+        const std::uint32_t n = layout.cell_count();
+        for (const SdfgiStep& step :
+             sdfgi_steps(frames->state, plan, layout, static_cast<std::uint32_t>(sdfgi_lit.size()),
+                         environment)) {
+            switch (step.kind) {
+            case SdfgiStep::Kind::Dispatch: {
+                // A pass a dispatch, so each sees what the one before wrote.
+                SDL_GPUComputePass* compute =
+                    SDL_BeginGPUComputePass(commands, nullptr, 0, outputs.data(),
+                                            static_cast<std::uint32_t>(outputs.size()));
+                SDL_BindGPUComputePipeline(compute, sdfgi_pipeline_);
+                SDL_BindGPUComputeSamplers(compute, 0, &radiance, 1);
+                SDL_BindGPUComputeStorageBuffers(compute, 0, &sdfgi_items_.buffer, 1);
+                SDL_PushGPUComputeUniformData(commands, 0, &step.uniforms,
+                                              static_cast<std::uint32_t>(sizeof(step.uniforms)));
+                const std::array<std::uint32_t, 2> groups = sdfgi_groups(step.uniforms.step[3]);
+                SDL_DispatchGPUCompute(compute, groups[0], groups[1], 1);
+                SDL_EndGPUComputePass(compute);
+                break;
+            }
+            case SdfgiStep::Kind::Voxelize: {
+                // Every draw's triangles summed into the scratch: atomic adds, so the draws share
+                // one pass in any order.
+                const SDL_GPUStorageBufferReadWriteBinding sums = written(at(SdfgiBuffer::Scratch));
+                SDL_GPUComputePass* compute =
+                    SDL_BeginGPUComputePass(commands, nullptr, 0, &sums, 1);
+                SDL_BindGPUComputePipeline(compute, sdfgi_voxelize_pipeline_);
+                for (const RayDraw& draw : draws) {
+                    const std::uint64_t threads = std::uint64_t{draw.index_count / 3} * layout.size;
+                    if (draw.shadows == ShadowCasting::ShadowsOnly || threads == 0 ||
+                        threads > std::numeric_limits<std::uint32_t>::max()) {
+                        continue;
+                    }
+                    const SdfgiVoxelizeUniforms uniforms = sdfgi_voxelize_uniforms(
+                        step, draw.transform, draw.normal_model, draw.surface, draw.uv1,
+                        draw.first_index, draw.index_count);
+                    // The albedo and emission textures, white where a draw has none.
+                    const auto texture = [&](std::size_t slot) {
+                        const RayTexture& made = draw.textures.at(slot);
+                        return SDL_GPUTextureSamplerBinding{
+                            .texture = made.texture != nullptr ? made.texture : white_,
+                            .sampler = samplers_.at(sampler_index(
+                                made.nearest ? Filter::Nearest : Filter::Linear, made.repeat))};
+                    };
+                    const std::array<SDL_GPUTextureSamplerBinding, 2> textures{texture(0),
+                                                                               texture(3)};
+                    SDL_BindGPUComputeSamplers(compute, 0, textures.data(), 2);
+                    const std::array<SDL_GPUBuffer*, 2> mesh{draw.vertices, draw.indices};
+                    SDL_BindGPUComputeStorageBuffers(compute, 0, mesh.data(), 2);
+                    SDL_PushGPUComputeUniformData(commands, 0, &uniforms,
+                                                  static_cast<std::uint32_t>(sizeof(uniforms)));
+                    const std::array<std::uint32_t, 2> groups =
+                        sdfgi_groups(static_cast<std::uint32_t>(threads));
+                    SDL_DispatchGPUCompute(compute, groups[0], groups[1], 1);
+                }
+                SDL_EndGPUComputePass(compute);
+                break;
+            }
+            case SdfgiStep::Kind::CopyCells: {
+                // The new cells, which the resolve wrote over the cascade's field, into its cells.
+                SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+                const SDL_GPUBufferLocation from{.buffer = at(SdfgiBuffer::Fields),
+                                                 .offset = step.cascade * layout.fields *
+                                                           std::uint32_t{sizeof(std::uint32_t)}};
+                const SDL_GPUBufferLocation to{.buffer = at(SdfgiBuffer::Cells),
+                                               .offset = step.cascade * layout.cells *
+                                                         std::uint32_t{sizeof(std::uint32_t)}};
+                SDL_CopyGPUBufferToBuffer(copy, &from, &to,
+                                          n * 2 * std::uint32_t{sizeof(std::uint32_t)}, false);
+                SDL_EndGPUCopyPass(copy);
+                break;
+            }
+            }
+        }
+        // The gather: each pixel the prepass drew takes the cascades' light.
+        const SdfgiGatherUniforms gather = sdfgi_gather_uniforms(
+            frames->state, eye,
+            ray_shadow_frame(scene, view_projection, scene_width_, scene_height_));
+        std::array<SDL_GPUColorTargetInfo, 2> targets{};
+        for (std::uint32_t i = 0; i < 2; ++i) {
+            SDL_GPUColorTargetInfo& color = targets.at(i);
+            color.texture = screen_.texture;
+            color.layer_or_depth_plane = 5 + i;
+            color.clear_color = {0.0F, 0.0F, 0.0F, 0.0F};
+            color.load_op = SDL_GPU_LOADOP_CLEAR;
+            color.store_op = SDL_GPU_STOREOP_STORE;
+        }
+        SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(commands, targets.data(), 2, nullptr);
+        SDL_BindGPUGraphicsPipeline(pass, sdfgi_gather_pipeline_);
+        SDL_GPUSampler* nearest = samplers_.at(sampler_index(Filter::Nearest, false));
+        const std::array<SDL_GPUTextureSamplerBinding, 2> prepass{
+            SDL_GPUTextureSamplerBinding{.texture = prepass_.depth, .sampler = nearest},
+            SDL_GPUTextureSamplerBinding{.texture = prepass_.normals, .sampler = nearest}};
+        SDL_BindGPUFragmentSamplers(pass, 0, prepass.data(), 2);
+        const std::array<SDL_GPUBuffer*, 4> read{at(SdfgiBuffer::Cells), at(SdfgiBuffer::Fields),
+                                                 at(SdfgiBuffer::Probes), sdfgi_items_.buffer};
+        SDL_BindGPUFragmentStorageBuffers(pass, 0, read.data(), 4);
+        SDL_PushGPUFragmentUniformData(commands, 0, &gather,
+                                       static_cast<std::uint32_t>(sizeof(gather)));
+        SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
+        SDL_EndGPURenderPass(pass);
+        return true;
+    }
+
     // Volumetric fog's passes for a frame whose meshes take lights and plan's shadows: the
     // density, written over the frame before's, which it reprojects; the blur across, then down,
     // into the other density buffer; the gathering into the fog.
@@ -7905,7 +8303,8 @@ private:
     // Forward+'s clusters for the frame, made as it is sent, and the buffers they go in.
     LightClusters clusters_;
     StorageBuffer cluster_lights_;
-    StorageBuffer fog_items_; // volumetric fog's volumes and VoxelGIs (fog_items)
+    StorageBuffer fog_items_;   // volumetric fog's volumes and VoxelGIs (fog_items)
+    StorageBuffer sdfgi_items_; // SDFGI's cascades, lights and probes' ray offsets (sdfgi_items)
     StorageBuffer cluster_cells_;
     StorageBuffer probe_buffer_; // the frame's reflection probes
     // The decals' atlas, packed when their textures change, and uploaded then; and the frame's
@@ -7920,6 +8319,7 @@ private:
         SDL_GPUTexture* texture = nullptr;
         std::uint32_t width = 0;
         std::uint32_t height = 0;
+        std::uint32_t layers = 0;
     };
     Screen screen_;
     SDL_GPUTexture* no_screen_ = nullptr;
@@ -8109,6 +8509,7 @@ private:
     // Volumetric fog: each target's frames, the passes' pipeline, the sky's shaders and pipelines,
     // and the buffer the meshes bind in its place without it.
     std::vector<std::pair<TextureId, FogFrames>> fog_frames_;
+    std::vector<std::pair<TextureId, SdfgiFrames>> sdfgi_frames_;
     // Frame generation's pipeline, its draw pass's shaders and pipelines by format, and each
     // target's frames.
     SDL_GPUComputePipeline* generation_pipeline_ = nullptr;
@@ -8117,6 +8518,12 @@ private:
         generation_draw_pipelines_;
     std::vector<std::pair<TextureId, GenerationFrames>> generation_frames_;
     SDL_GPUComputePipeline* fog_pipeline_ = nullptr;
+    // SDFGI's passes, its voxelization and the gather's stages (vertex, fragment) and pipeline.
+    SDL_GPUComputePipeline* sdfgi_pipeline_ = nullptr;
+    SDL_GPUComputePipeline* sdfgi_voxelize_pipeline_ = nullptr;
+    std::array<SDL_GPUShader*, 2> sdfgi_gather_shaders_{};
+    SDL_GPUGraphicsPipeline* sdfgi_gather_pipeline_ = nullptr;
+    bool sdfgi_failure_logged_ = false;
     std::array<SDL_GPUShader*, 2> fog_sky_shaders_{};
     std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> fog_sky_pipelines_;
     SDL_GPUBuffer* no_fog_ = nullptr;

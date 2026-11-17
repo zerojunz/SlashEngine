@@ -1273,7 +1273,7 @@ cbuffer Scene : register(b1, space3) {
     // the exposure their light is multiplied by.
     float4 reflections;
     // 1 when meshes trace their VoxelGIs (Forward+, and not a reflection probe's capture), then 1
-    // for high quality.
+    // for high quality, then 1 when screen_texture's layers 5 and 6 hold SDFGI's light.
     float4 scene_voxel_gi;
     // Forward+'s decals: how many, the filter, the atlas's width and height in texels.
     float4 decal_info;
@@ -2817,6 +2817,16 @@ R"hlsl(                  rays, diffuse_light, specular_light);
         reflected += srgb_to_linear(texel) * horizon * horizon * fc * sky.z;
     }
 #ifdef CLUSTERED
+    if (scene_voxel_gi.z != 0.0 && !lightmapped && !captured &&
+        ((options.x & kHasAlpha) == 0u || (options.x & kAlphaScissor) != 0u)) {
+        // Forward+'s SDFGI, as Godot's GI buffers light a pixel: its ambient light and
+        // reflections, which the gather drew into the screen array's layers 5 and 6, go over the
+        // sky's by how much of them its cascades hold, and VoxelGIs go over it.
+        float4 sdfgi_ambient = screen_texture.Load(int4((int2)input.position.xy, 5, 0));
+        float4 sdfgi_reflection = screen_texture.Load(int4((int2)input.position.xy, 6, 0));
+        ambient_light = lerp(ambient_light, sdfgi_ambient.rgb, sdfgi_ambient.a);
+        reflected = lerp(reflected, sdfgi_reflection.rgb, sdfgi_reflection.a);
+    }
     if (scene_voxel_gi.x != 0.0 && voxel_gi.x > 0.0 && !lightmapped && !captured) {
         // Forward+'s VoxelGIs, as Godot's GI buffers light a pixel: their ambient light and
         // reflections go over the sky's by how much of their cones met something.
@@ -2975,7 +2985,8 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
         float3 blended = (float3)0.0;
         float rough = 0.0;
         [unroll] for (uint i = 0u; i < 4u; ++i) {
-            // A layer without a normal_roughness texture is flat, with roughness 1.
+)hlsl",
+R"hlsl(            // A layer without a normal_roughness texture is flat, with roughness 1.
             float4 nr = (terrain_flags & (kTerrainNormals << i)) != 0u
                             ? normal_roughness[i]
                             : float4(0.5, 0.5, 1.0, 1.0);
@@ -2990,8 +3001,7 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
         roughness = surface.y * rough;
         shape = normalize(roughness_texel.xyz * 2.0 - 1.0);
     } else {
-)hlsl",
-R"hlsl(        base = srgb_to_linear(color.rgb);
+        base = srgb_to_linear(color.rgb);
         metallic = surface.x * dot(metallic_texel, metallic_channel);
         roughness = surface.y * dot(roughness_texel, roughness_channel);
     }

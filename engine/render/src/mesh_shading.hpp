@@ -151,7 +151,8 @@ struct MeshSceneUniforms {
     // Forward+'s reflection probes: how many, the level the roughest surfaces read, the exposure.
     Float4 reflections{};
     // 1 when meshes trace their VoxelGIs (Forward+, and not a reflection probe's capture), then 1
-    // for high quality.
+    // for high quality, then 1 on GPU devices when the screen texture's layers 5 and 6 hold
+    // SDFGI's ambient light and reflections (the software device hands them over in MeshMaps).
     Float4 voxel_gi{};
     // Forward+'s decals (set_cluster_uniforms): how many, the filter (DecalFilter), the atlas's
     // width and height in texels.
