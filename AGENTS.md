@@ -1242,12 +1242,12 @@ whole numbers, so a compute shader can make the same bits) (and, with
 through it and has the probes trace their rays into spherical harmonics history, then
 `run_sdfgi` (`gi.glsl`'s `sdfgi_process`) gives each pixel its ambient light and reflections as
 `MeshMaps::sdfgi`, which `shade_mesh` puts under VoxelGIs' light. The GPU device (Vulkan, Metal,
-Direct3D 12) runs the same frame in compute (`src/sdfgi_gpu.hpp`: the buffers' layout, the items
+Direct3D 12) and the WebGPU device run the same frame in compute (`src/sdfgi_gpu.hpp`: the buffers' layout, the items
 buffer and `sdfgi_steps`, the dispatches in update_sdfgi's order): `shaders/sdfgi_voxelize.hlsl`
 sums each draw's triangles into the cells with atomic adds, `shaders/sdfgi.hlsl` runs the other
 steps as passes, and `sdfgi_gather.hlsl` writes the screen texture's layers 5 and 6, which
 `mesh.hlsl` reads when `scene_voxel_gi.z` is set; a change to the CPU twin goes in the shaders
-too. WebGPU and OpenGL draw without it.
+too. OpenGL draws without it.
 project.json's `rendering.global_illumination.sdfgi` (`render::SdfgiSettings`) sets every frame's
 probe rays and how fast it follows changes.
 `examples/sdfgi-3d` lights a room with it.

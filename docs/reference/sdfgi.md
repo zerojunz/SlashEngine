@@ -4,8 +4,8 @@ A research feature with no commitment to ship ([roadmap](../roadmap.md#research)
 Godot 4.6's SDFGI, Godot's own fully dynamic GI, to the CPU and to compute shaders, following
 RendererRD's `GI::SDFGI` (`servers/rendering/renderer_rd/environment/gi.cpp`) and its shaders
 (`sdfgi_preprocess.glsl`, `sdfgi_direct_light.glsl`, `sdfgi_integrate.glsl` and `gi.glsl`'s
-`sdfgi_process`), all MIT. The software device and the GPU device (Vulkan, Metal and
-Direct3D 12) draw it; the WebGPU device is next, and the OpenGL devices never will, as Godot's
+`sdfgi_process`), all MIT. The software device, the GPU device (Vulkan, Metal and
+Direct3D 12) and the WebGPU device draw it; the OpenGL devices never will, as Godot's
 Compatibility renderer has none. Read here what it does now, and what it does not do yet.
 
 ## What it does
@@ -130,8 +130,10 @@ any number of threads.
 
 This is a spike to measure the idea. It still does these things the simple way:
 
-- **Not on WebGPU yet.** The WebGPU device draws without it for now; its 128 MiB storage
-  binding limit needs cascades split over several buffers.
+- **Large cascades on WebGPU.** Each of SDFGI's buffers must fit one storage binding of the
+  browser's WebGPU. `web/webgpu.js` asks for the adapter's largest, and even the default
+  128 MiB holds four cascades of 128 cells; past it the frame draws without SDFGI and logs why
+  once, where splitting cascades over several buffers would draw it.
 - **Only cascades over unchanged triangles scroll.** A moved cascade keeps the cells it still
   holds and makes only the slab that came in, as Godot's scroll does, but any change to the
   frame's triangles (and so a camera turn that culls others) makes every cascade again, where

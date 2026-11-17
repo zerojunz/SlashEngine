@@ -18,6 +18,7 @@ if(EMSCRIPTEN)
         test_ray_tracing.cpp
         test_reflection.cpp
         test_render.cpp
+        test_sdfgi.cpp
         test_shadow.cpp
         test_sky.cpp
         test_ssao.cpp
