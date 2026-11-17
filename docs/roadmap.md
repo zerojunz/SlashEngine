@@ -1117,7 +1117,17 @@ launch rows and the after-launch features above.
   SDFGI ported to the CPU (cascades of distance fields that follow the camera, lit cells and
   probes with spherical harmonics history), behind `WorldEnvironment.sdfgi_enabled` on the
   software device ([sdfgi.md](reference/sdfgi.md)), its cascades scrolling and its probes
-  occluded by walls; the GPU passes remain
+  occluded by walls, its cells, field, light and probes kept as GPU-ready words with every sum
+  and rounding in whole numbers; the GPU passes are next
+- GPU-driven rendering, after Unity 7's Graphics Kernel (2026-11-17, queued after the SDFGI
+  port): skinning on the GPU, culling and LOD picks in compute with indirect multi-draws, and
+  a frame graph over every device's passes (what each reads and writes, passes nothing uses
+  left out, transient textures sharing memory, independent compute work merged so it shares
+  barriers)
+- Scriptable pipelines on that frame graph, as Godot 4.3's `Compositor` and `CompositorEffect`
+  (and Unity's SRP): a `.pipeline.json` file an agent edits that turns built-in passes on and
+  off, reorders them and adds its own compute and fragment passes in the game's HLSL at named
+  points, with C++ callbacks for what JSON can't say; no scripting language
 - Digital humans in the style of MetaHuman. Research note:
   [digital-humans.md](reference/digital-humans.md). Its parts are done (blend shapes, hair and eye
   shading, subsurface scattering and transmittance, face capture and alpha hash), and the
