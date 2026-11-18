@@ -404,3 +404,26 @@ TEST_CASE("GPUs draw SSAO as the software device does") {
         CHECK(difference(image, expected) <= 40);
     }
 }
+
+TEST_CASE("the GPU device runs SSAO as a frame graph whose textures the pool keeps") {
+    auto gpu = slash::test::gpu_device();
+    if (gpu == nullptr) {
+        return;
+    }
+    CAPTURE(render::backend_name(gpu->backend()));
+    for (const SsaoQuality quality : kQualities) {
+        CAPTURE(static_cast<int>(quality));
+        const Corner corner{.ssao = with_quality(quality)};
+        const detail::SsaoPlan plan = detail::ssao_plan(corner.ssao.settings, 64, 64);
+        draw_corner(*gpu, corner);
+        // SSAO's passes, the last into the screen array, then the tonemap pass.
+        const render::Stats stats = gpu->stats();
+        CHECK(stats.graph_passes == plan.steps.size() + 1);
+        CHECK(stats.graph_culled == 0);
+        CHECK(stats.transient_bytes > 0);
+        CHECK(stats.transient_allocated_bytes <= stats.transient_bytes);
+        // A second frame takes the same textures from the pool.
+        draw_corner(*gpu, corner);
+        CHECK(gpu->stats().transient_allocated_bytes == stats.transient_allocated_bytes);
+    }
+}

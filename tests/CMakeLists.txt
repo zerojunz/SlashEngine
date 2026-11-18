@@ -11,6 +11,8 @@ if(EMSCRIPTEN)
         test_fsr2.cpp
         test_fsr3.cpp
         test_gpu_particles.cpp
+        test_gpu_skinning.cpp
+        test_mesh_cull.cpp
         test_light.cpp
         test_particle_compute_3d.cpp
         test_mesh.cpp
@@ -72,6 +74,7 @@ add_executable(slash_tests
     test_canvas.cpp
     test_clusters.cpp
     test_command.cpp
+    test_compositor.cpp
     test_csg.cpp
     test_debug.cpp
     test_decal.cpp
@@ -146,6 +149,9 @@ add_executable(slash_tests
     test_particle_compute_3d.cpp
     test_particles.cpp
     test_gpu_particles_3d.cpp
+    test_gpu_skinning.cpp
+    test_frame_graph.cpp
+    test_mesh_cull.cpp
     test_particle_sim.cpp
     test_particles_3d.cpp
     test_path.cpp
@@ -382,7 +388,8 @@ foreach(shader IN ITEMS sprite material mesh mesh_clustered mesh_normal mesh_mot
         particles_draw particles_process_3d particles_sort_3d particles_mesh_3d particles_stages_3d fsr2_luma fsr2_dilate fsr2_reconstruct fsr2_depth_clip fsr2_lock
         fsr2_accumulate fsr2_rcas fsr3_prepare fsr3_reconstruct fsr3_pyramid fsr3_reduce
         fsr3_shading_change fsr3_reactivity fsr3_lock fsr3_instability fsr3_accumulate
-        frame_generation frame_generation_draw sdfgi sdfgi_voxelize sdfgi_gather)
+        frame_generation frame_generation_draw sdfgi sdfgi_voxelize sdfgi_gather skin mesh_cull
+        mesh_instanced mesh_motion_instanced)
     add_test(NAME shaders_up_to_date_${shader}
         COMMAND ${CMAKE_COMMAND} -DSOURCE=${PROJECT_SOURCE_DIR}/engine/render/shaders/${shader}.hlsl
             -DOUTPUT=${PROJECT_SOURCE_DIR}/engine/render/src/${shader}_shaders.hpp -DCHECK=ON

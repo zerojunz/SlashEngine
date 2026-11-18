@@ -28,6 +28,37 @@ cbuffer Camera : register(b0, space1) {
     float4 jitter;                     // TAA's jitter in clip space, in xy
 };
 
+#ifdef INSTANCED
+// mesh_instanced.hlsl's: the draws of a run, one mesh with one material, as instances. Each
+// draw's Instance is 14 float4s in instance_data, a matrix's columns in turn (as
+// src/mesh_cull.hpp's push_instance writes them), and instance_draws holds which draws of the
+// run mesh_cull.hlsl left in view, from instance_base.x. Storage buffers come after the vertex
+// stage's uniforms in Metal, and in WebGPU in group 0 after the clusters'.
+cbuffer InstanceBase : register(b1, space1) {
+    uint4 instance_base;
+};
+#if defined(SLASH_MSL)
+StructuredBuffer<float4> instance_data : register(t2, space0);
+StructuredBuffer<uint> instance_draws : register(t3, space0);
+#elif defined(SLASH_WGSL)
+StructuredBuffer<float4> instance_data : register(t6, space0);
+StructuredBuffer<uint> instance_draws : register(t7, space0);
+#else
+StructuredBuffer<float4> instance_data : register(t0, space0);
+StructuredBuffer<uint> instance_draws : register(t1, space0);
+#endif
+static float4x4 model;
+static float4x4 normal_model;
+static float4 uv1;
+static float4 lightmap_uv;
+static float4x4 previous_model;
+
+// A matrix from the four columns at at, as a float4x4's constructor takes rows.
+float4x4 instance_matrix(uint at) {
+    return transpose(float4x4(instance_data[at], instance_data[at + 1u], instance_data[at + 2u],
+                              instance_data[at + 3u]));
+}
+#else
 cbuffer Instance : register(b1, space1) {
     float4x4 model;          // the mesh's space to the world
     float4x4 normal_model;   // the inverse transpose of model's upper 3x3, in its upper 3x3
@@ -35,6 +66,7 @@ cbuffer Instance : register(b1, space1) {
     float4 lightmap_uv;      // the lightmap's rect: uv2's xy offset and zw scale
     float4x4 previous_model; // model in the frame before
 };
+#endif
 
 struct VertexInput {
     float3 position : TEXCOORD0;
@@ -68,7 +100,17 @@ struct VertexOutput {
     float4 position : SV_Position;
 };
 
+#ifdef INSTANCED
+VertexOutput vs_main(VertexInput input, uint instance : SV_InstanceID) {
+    uint at = instance_draws[instance_base.x + instance] * 14u;
+    model = instance_matrix(at);
+    normal_model = instance_matrix(at + 4u);
+    uv1 = instance_data[at + 8u];
+    lightmap_uv = instance_data[at + 9u];
+    previous_model = instance_matrix(at + 10u);
+#else
 VertexOutput vs_main(VertexInput input) {
+#endif
     VertexOutput output;
 #ifdef GAME_VERTEX
     // A game's spatial shader moves the corner with its vertex(), as Godot's ShaderMaterial:

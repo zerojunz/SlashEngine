@@ -1,0 +1,17 @@
+{
+  "effects": [
+    {
+      "effect_callback_type": "post_opaque",
+      "material": "fx/outline.material.json",
+      "name": "outline",
+      "needs_normal_roughness": true
+    },
+    {
+      "material": "fx/grade.material.json",
+      "name": "grade"
+    }
+  ],
+  "passes": {
+    "glow": false
+  }
+}

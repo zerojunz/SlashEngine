@@ -40,10 +40,12 @@ target_compile_options(slash_image_codecs PRIVATE
 
 add_library(slash_render
     src/clusters.cpp
+    src/compositor.cpp
     src/d3d12_rays.cpp
     src/decal.cpp
     src/device.cpp
     src/forward_post.cpp
+    src/frame_graph.cpp
     src/frame_generation.cpp
     src/fsr2.cpp
     src/fsr3.cpp
@@ -70,6 +72,8 @@ add_library(slash_render
     src/resize.cpp
     src/sdfgi.cpp
     src/sdfgi_gpu.cpp
+    src/mesh_cull.cpp
+    src/skin_gpu.cpp
     src/shader.cpp
     src/shader_vm.cpp
     src/shadow.cpp
@@ -151,7 +155,7 @@ endif()
 # The software device draws the same pixels, and particles and their graphs move the same, on
 # every platform: no fused multiply-adds, which arm64 compilers would otherwise emit and x86-64
 # ones not.
-set_source_files_properties(src/clusters.cpp src/decal.cpp src/device.cpp src/forward_post.cpp
+set_source_files_properties(src/clusters.cpp src/compositor.cpp src/decal.cpp src/device.cpp src/forward_post.cpp
     src/frame_generation.cpp src/fsr2.cpp src/fsr3.cpp src/ies.cpp src/material.cpp src/mesh.cpp
     src/particle_layout_3d.cpp
     src/particles.cpp src/particles3d.cpp
@@ -192,10 +196,14 @@ set(slash_shader_headers "")
 # fragment stage reads the cascades as storage buffers and which the OpenGL devices don't draw;
 # its voxelization is a compute shader of its own. mesh_plain and shadow_plain
 # (3d_plain and depth_plain) are the mesh and shadow shaders without alpha hash, GLSL ES only.
+# mesh_instanced and mesh_motion_instanced (instanced) are the mesh and motion shaders' vertex
+# stages that read the draws of a run as instances from storage buffers, with no GLSL ES.
 set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
     mesh_clustered:MeshClustered:clustered mesh_normal:MeshNormal:normal
     mesh_motion:MeshMotion:motion mesh_subsurface:MeshSubsurface:clustered shadow:Shadow:depth
     mesh_plain:MeshPlain:3d_plain shadow_plain:ShadowPlain:depth_plain
+    mesh_instanced:MeshInstanced:instanced
+    mesh_motion_instanced:MeshMotionInstanced:instanced
     post:Post:post sky:Sky:post forward_post:ForwardPost:post16 ssao:Ssao:ssao ssr:Ssr:ssao
     ssr_trace:SsrTrace:ssr_trace radiance:Radiance:post taa:Taa:post subsurface:Subsurface:post
     fsr2_luma:Fsr2Luma:fsr2 fsr2_dilate:Fsr2Dilate:fsr2
@@ -214,7 +222,8 @@ set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
     frame_generation:FrameGeneration:compute_alone
     frame_generation_draw:FrameGenerationDraw:fog_sky
     sdfgi:Sdfgi:sdfgi_compute sdfgi_voxelize:SdfgiVoxelize:compute_alone
-    sdfgi_gather:SdfgiGather:sdfgi_draw)
+    sdfgi_gather:SdfgiGather:sdfgi_draw skin:Skin:compute_alone
+    mesh_cull:MeshCull:compute_alone)
 foreach(entry IN LISTS slash_shaders)
     string(REPLACE ":" ";" parts ${entry})
     list(GET parts 0 shader)
@@ -227,6 +236,7 @@ foreach(entry IN LISTS slash_shaders)
     set(pieces OFF)
     set(sampler_shift 8)
     set(fragment_only OFF)
+    set(vertex_only OFF)
     set(storage_buffers OFF)
     set(no_glsl OFF)
     set(glsl_only OFF)
@@ -304,6 +314,12 @@ foreach(entry IN LISTS slash_shaders)
                 set(fragment_only ON)
             elseif(kind STREQUAL "motion")
                 set(interface ${interface},v_motion_clip,v_previous_clip)
+            elseif(kind STREQUAL "instanced")
+                set(vertex_only ON)
+                set(storage_buffers ON)
+                if(shader MATCHES "motion")
+                    set(interface ${interface},v_motion_clip,v_previous_clip)
+                endif()
             endif()
         endif()
     endif()
@@ -315,7 +331,8 @@ foreach(entry IN LISTS slash_shaders)
             -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/shaders/${shader}.hlsl -DOUTPUT=${header}
             -DNAME=${name} -DCOMPUTE=${compute} -DINTERFACE=${interface}
             -DFIXUP_CLIPSPACE=${fixup} -DPIECES=${pieces} -DSAMPLER_SHIFT=${sampler_shift}
-            -DFRAGMENT_ONLY=${fragment_only} -DSTORAGE_BUFFERS=${storage_buffers}
+            -DFRAGMENT_ONLY=${fragment_only} -DVERTEX_ONLY=${vertex_only}
+            -DSTORAGE_BUFFERS=${storage_buffers}
             -DNO_GLSL=${no_glsl} -DGLSL_ONLY=${glsl_only}
             -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/shaders
             -DGLSLANG=${SLASH_GLSLANG} -DSPIRV_CROSS=${SLASH_SPIRV_CROSS} -DTINT=${SLASH_TINT}

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "compositor.hpp"
 #include "post_shading.hpp"
 #include "ssao.hpp"
 #include "taa.hpp"
@@ -9,6 +10,7 @@
 #include <array>
 #include <cstdint>
 #include <span>
+#include <string_view>
 #include <vector>
 
 // What every device shares to work out a Forward+ frame's screen-space reflections, as Godot 4.6's
@@ -30,10 +32,11 @@ namespace slash::render::detail {
     return scene.method == RenderMethod::ForwardPlus && scene.ssr.enabled;
 }
 
-// Whether a scene's frame draws Forward+'s normal-roughness prepass, which SSAO and SSR read, and
-// with TAA or FSR 2 its motion vectors.
+// Whether a scene's frame draws Forward+'s normal-roughness prepass, which SSAO, SSR and the
+// compositor effects that ask read, and with TAA or FSR 2 its motion vectors.
 [[nodiscard]] inline bool uses_prepass(const Scene3D& scene) {
-    return uses_ssao(scene) || uses_ssr(scene) || uses_motion_vectors(scene);
+    return uses_ssao(scene) || uses_ssr(scene) || uses_motion_vectors(scene) ||
+           effects_need_normals(scene);
 }
 
 // ssr.hlsl's passes.
@@ -55,6 +58,8 @@ enum class SsrPass : std::uint8_t {
     LastFrame,         // the frame's color, kept for the next frame's reflections, as
                        // copy_internal_texture_to_last_frame
 };
+// A pass's name, for frame graphs' reports.
+[[nodiscard]] std::string_view ssr_pass_name(SsrPass pass);
 
 // The textures SSR draws, by index: Hi-Z's levels, the reflections' levels, the filter's rows at
 // each level (from level 1), the normals and roughness at half size, the mip levels and the result.

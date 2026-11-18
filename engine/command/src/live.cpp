@@ -241,9 +241,20 @@ Reply perf_stats(const LiveGame& game, const Session& session, const json::Value
     out["ticks"] = game.loop->stats().ticks;
     out["tick_hz"] = round2(game.loop->tick_hz());
     out["renderer"] = render::backend_name(game.renderer->backend());
+    const render::Stats device = game.renderer->stats();
+    if (device.graph_passes + device.graph_culled > 0) {
+        // The last frame's graph of passes: what ran, what was left out, the device passes they
+        // made, and its transient textures' bytes, alone and as shared.
+        json::Value graph;
+        graph["passes"] = device.graph_passes;
+        graph["culled"] = device.graph_culled;
+        graph["groups"] = device.graph_groups;
+        graph["transient_bytes"] = static_cast<std::int64_t>(device.transient_bytes);
+        graph["allocated_bytes"] = static_cast<std::int64_t>(device.transient_allocated_bytes);
+        out["frame_graph"] = std::move(graph);
+    }
     if (json::Value* memory = out.find("memory"); memory != nullptr) {
         // The renderer's textures: sprites', glyph atlases' and render targets'.
-        const render::Stats device = game.renderer->stats();
         (*memory)["gpu"]["bytes"] = static_cast<std::int64_t>(device.texture_bytes);
         (*memory)["gpu"]["textures"] = static_cast<std::int64_t>(device.textures);
     }

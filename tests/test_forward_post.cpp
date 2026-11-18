@@ -851,3 +851,29 @@ TEST_CASE("GPUs draw depth of field as the software device does") {
         }
     }
 }
+
+TEST_CASE("the GPU device runs Forward+'s post passes as a frame graph, sharing their textures") {
+    auto gpu = slash::test::gpu_device();
+    if (gpu == nullptr) {
+        MESSAGE("no GPU device");
+        return;
+    }
+    // Tonemapping alone is one pass and no transient texture.
+    draw(*gpu, {}, kBright);
+    render::Stats stats = gpu->stats();
+    CHECK(stats.graph_passes == 1);
+    CHECK(stats.graph_culled == 0);
+    CHECK(stats.transient_bytes == 0);
+    // With depth of field and glow, glow's first level takes the allocation of a half-size
+    // depth of field texture done with before it.
+    const PostProcess post{
+        .glow = true, .dof_far = true, .dof_far_distance = 3.0F, .dof_far_transition = 1.0F};
+    const auto steps = render::detail::dof_plan(post, 32, 32).size();
+    const auto levels = render::detail::forward_glow_plan(post, 32, 32).count;
+    draw(*gpu, post, kBright);
+    stats = gpu->stats();
+    CHECK(stats.graph_passes == steps + levels + 1);
+    CHECK(stats.graph_groups == stats.graph_passes);
+    CHECK(stats.transient_bytes > 0);
+    CHECK(stats.transient_allocated_bytes < stats.transient_bytes);
+}

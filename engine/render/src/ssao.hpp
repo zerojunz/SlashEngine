@@ -7,6 +7,7 @@
 #include <array>
 #include <cstdint>
 #include <span>
+#include <string_view>
 #include <vector>
 
 // What every device shares to work out a Forward+ frame's screen-space ambient occlusion, as
@@ -46,6 +47,8 @@ enum class SsaoPass : std::uint8_t {
     InterleaveSmart,    // MODE_SMART
     InterleaveHalf,     // MODE_HALF
 };
+// A pass's name, for frame graphs' reports.
+[[nodiscard]] std::string_view ssao_pass_name(SsaoPass pass);
 
 // The textures SSAO draws, by index: the linear depth's four slices at up to four levels (slice
 // * 4 + level), the occlusion's four slices and the four it blurs back and forth with, the

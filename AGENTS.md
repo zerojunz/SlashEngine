@@ -147,7 +147,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, animtree, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, quest, dialogue, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, pcg, physics_material, ragdoll, foliage, groom, damage, character, face, creature, vehicle, vfx, fluid, water, storyboard, project, presets, sdk, plugin, providers, bench)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, animtree, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, quest, dialogue, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, pcg, physics_material, ragdoll, foliage, groom, damage, character, face, creature, vehicle, vfx, fluid, water, pipeline, storyboard, project, presets, sdk, plugin, providers, bench)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -161,7 +161,7 @@ commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`, `.
 `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`,
 `.scatter.json`, `.pcg.json`, `.physics_material.json`, `.ragdoll.json`, `.foliage.json`,
 `.groom.json`, `.damage.json`, `.character.json`, `.face.json`, `.creature.json`,
-`.vehicle.json`, `.vfx.json`, `.fluid.json` and `.water.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
+`.vehicle.json`, `.vfx.json`, `.fluid.json`, `.water.json` and `.pipeline.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -1044,8 +1044,8 @@ projection from `render::perspective` or `orthogonal`, the ambient light and up 
 Godot's directional, omni and spot lights) sees and lights them, and `draw_mesh` draws one with a
 transform and a `Material3D`, Godot's `StandardMaterial3D`. Space is Godot's (Y up, a camera looks
 down its -Z, front faces wind clockwise on the target) and depth is reversed. Meshes draw in a
-pass of their own over a depth buffer, before the frame's 2D draws: opaque ones nearest first,
-`Alpha` ones after them farthest first (`mesh_draw_order`). `shaders/mesh.hlsl` lights them with
+pass of their own over a depth buffer, before the frame's 2D draws: opaque ones by depth layer,
+mesh and then nearest first, `Alpha` ones after them farthest first (`mesh_draw_order`). `shaders/mesh.hlsl` lights them with
 Godot's formulas, and `src/mesh_shading.hpp` fills its uniforms for every device and holds the
 CPU twins of its two stages (`mesh_vertex`, `shade_mesh`), which the software device draws with;
 `tests/test_mesh.cpp` holds every device to the software device's pixels, so a change to the 3D
@@ -1515,6 +1515,36 @@ shared by the shaders. `src/post_shading.hpp` holds the uniforms, the checks and
 (`tonemap`, `run_post_pass`) the software device draws with; `tests/test_post.cpp` holds every
 device to its pixels. `examples/post-processing-3d` is a lantern glowing at night.
 
+The GPU and WebGPU devices record their screen-space passes as a frame graph, as Unity's render
+graph and Godot's `RenderingDevice` graph do (`src/frame_graph.hpp`): each pass names the
+resources it reads and writes, `FrameGraph::compile` leaves out those whose results nothing kept
+reads, gives each transient texture (`transient`, by its `GraphShape`) an allocation from a
+`TransientPool` that textures whose uses don't overlap share, and puts compute passes next to
+each other that touch nothing another writes in one device pass; `import` names what lives
+outside the frame (the world, the target, histories). Compatibility's post passes, Forward+'s
+(depth of field, luminance, glow and the tonemap), SSAO, SSR and subsurface scattering run that
+way (`run_graph` in each device), the pool keeping its textures from frame to frame, and
+`render::Stats` and `perf.stats`' `frame_graph` report what the last frame's graph did.
+`tests/test_frame_graph.cpp` checks the graph, and each feature's test the pool it shares.
+
+Pipeline files are Godot 4.3's `Compositor` and `CompositorEffect`: a `.pipeline.json` file
+(`$cli schema pipeline`; `slash/scene3d/pipeline.hpp`, `src/pipeline.cpp`) that the current
+`Camera3D`'s `compositor`, else the first `WorldEnvironment`'s, names turns the frame's passes off
+over the environment's and the project's (`passes`, `apply_pipeline_passes`, after
+`CanvasRenderer`'s `apply_settings`) and lists effects. An effect is a material with
+`"shader_type": "compositor"`, whose `fragment()` reads `SCREEN_TEXTURE` through
+`screen_texture()`, `depth_texture()` and `normal_roughness_texture()` and writes `COLOR`
+(`ShaderType::Compositor`, `compile_compositor` in `tools/shader_compiler`), drawn over the
+world at one of Godot's `EffectCallbackType` points (`render::EffectCallback`, `Scene3D::effects`,
+`slash/render/compositor.hpp`), in the file's order within a point; `code` names a C++ callback
+the game registers with `scene3d::add_compositor_code`, run before each frame's effect to change
+it, as Godot's `_render_callback`. `Renderer::add_effects` loads the file and the materials
+through the `ShaderMaterialSource`; each device draws the effects as screen passes in Forward+
+(`src/compositor.cpp` holds the uniforms and the CPU twin, `run_compositor`, which
+`ShaderVm` runs on the software device), and none in Compatibility or on OpenGL, as Godot's
+Compatibility renderer has no compositor. `tests/test_compositor.cpp` holds every device to the
+software device; `examples/compositor-effects` outlines and grades a yard.
+
 Skies and fog are the Compatibility renderer's too. `Scene3D::sky` (`render::Sky3D`: a color,
 procedural, physical or panorama sky, from a `"sky"` background and the sky material on the
 `WorldEnvironment`'s entity) draws before the meshes, as one triangle over the target with no
@@ -1638,6 +1668,24 @@ every device draws from one index buffer (`mesh_index_buffer`, `IndexRange`).
 `rendering.mesh_lod.lod_change.threshold_pixels`; shadow maps draw the camera's LODs and
 reflection probes pick their own. `examples/mesh-lods` draws boulders near and far.
 
+The camera's mesh draws are culled by the view on the GPU and drawn as instances, as Unity's
+GPU-driven pipeline and Godot's Forward+ do: draws next to each other in the camera's order that
+share a mesh, a material and their pipelines form a run (`cull_runs` in `src/mesh_cull.hpp`),
+each device writes a record a draw (`push_cull_record`: the view projection times its transform,
+its box and its indices), the runs and the order (`push_cull_runs`) and each draw's Instance
+(`push_instance`), then `shaders/mesh_cull.hlsl` tests each draw in a thread (counts.w 0) and
+lists each run's draws in view in a thread of its own (counts.w 1), writing the run's indexed
+indirect arguments with as many instances as draws in view, which the camera's passes draw with
+`shaders/mesh_instanced.hlsl` and `mesh_motion_instanced.hlsl` (`mesh.hlsl` with `INSTANCED`:
+`InstanceBase` says where its run's list starts) on the GPU device and WebGPU (`cull_meshes`,
+`prepare_cull` and `encode_cull`). `box_in_view` and `detail::cull_meshes` are its CPU twin,
+which the software device skips draws by; OpenGL draws everything, and shadow passes draw every
+caster. A draw with a game shader is never culled (an inside-out box), since `vertex()` moves its
+corners, and draws alone with its own stages. Opaque draws go in Godot's order
+(`mesh_draw_order`: by depth in `kMeshDepthLayers` slices of the far plane, then mesh, then LOD,
+then nearest first), so a mesh's copies sit next to each other.
+`tests/test_mesh_cull.cpp` holds every device to the software device.
+
 Occlusion culling is Godot 4.6's raycast culler (`slash/scene3d/occlusion.hpp`,
 `src/occlusion.cpp`, after `raycast_occlusion_cull.cpp`). `OccluderInstance3D`'s quad, box,
 sphere, polygon and array shapes (`occluder_mesh`, as Godot's `Occluder3D`s make them) go into an
@@ -1683,9 +1731,15 @@ with `ufbx_bake_anim` as Godot's FBX importer bakes them (`src/fbx.cpp`).
 tracks with its deterministic slerp), then by the entity's `Skeleton3D`; poses are worked out
 from components every time, never kept. The animation module tells scene3d what an entity's
 `AnimationPlayer` plays through `scene3d::set_clip_source`: a library can be a model file, and a
-`.anim.json` animation can come `from` a model's and add its own tracks. The renderer skins on
-the CPU as Godot's skeleton shader does (`skin_vertices`) into a mesh per entity that
-`RenderDevice::update_mesh` refills, and blends poses between ticks. `skeleton.get` lists and
+`.anim.json` animation can come `from` a model's and add its own tracks. The renderer skins
+each surface into a mesh per entity and blends poses between ticks: where
+`RenderDevice::gpu_skinning()` says so (the GPU device on Vulkan and Metal, and the WebGPU
+device), as Godot's skeleton compute shader does, `create_skin` keeps the rest vertices, weights
+and blend shapes on the device and `skin_mesh` moves them each frame with `shaders/skin.hlsl`
+(`src/skin_gpu.hpp` lays out its words; `Renderer::skin_on_device` bounds the mesh by each
+joint's box of the vertices it weighs), and elsewhere, or under flesh, on the CPU
+(`blend_vertices`, then `skin_vertices`) into `RenderDevice::update_mesh`; the two are twins and
+`tests/test_gpu_skinning.cpp` holds them to each other's pixels. `skeleton.get` lists and
 poses bones; `examples/skinned-meshes` waves an arm. glTF morph targets are Godot's blend shapes
 (`slash/scene3d/blend_shapes.hpp`): each surface keeps its shapes' offsets
 (`ModelSurface::blend_shapes`, carried through merging corners by `Triangles::origins` and

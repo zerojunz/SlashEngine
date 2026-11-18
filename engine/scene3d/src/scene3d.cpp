@@ -871,8 +871,10 @@ std::string override_problem(const world::World& world, const std::string& path)
     auto doc = json::parse(text.value());
     const json::Value* type = doc ? doc.value().find("shader_type") : nullptr;
     if (type == nullptr || !type->is_string() || type->as_string() != "spatial") {
-        return "\"" + path +
-               R"(" is a canvas material; a mesh takes one with "shader_type": "spatial")";
+        const bool compositor =
+            type != nullptr && type->is_string() && type->as_string() == "compositor";
+        return "\"" + path + "\" is a " + (compositor ? "compositor" : "canvas") +
+               R"( material; a mesh takes one with "shader_type": "spatial")";
     }
     return {};
 }
@@ -1280,6 +1282,13 @@ std::optional<render::Material3D> Renderer::override_material(const world::World
     if (found.standard) {
         return material(*found.standard, textures_, problems_, entity);
     }
+    if (found.type != render::ShaderType::Spatial) {
+        problems_.push_back({entity, field,
+                             "\"" + instance.material_override +
+                                 "\" is a compositor material; a mesh takes one with "
+                                 "\"shader_type\": \"spatial\""});
+        return std::nullopt;
+    }
     render::Material3D out;
     out.shader = found.shader;
     out.shader_constants = found.constants;
@@ -1308,6 +1317,126 @@ std::optional<render::Material3D> Renderer::override_material(const world::World
     return out;
 }
 
+void Renderer::add_effects(const world::World& world, entt::entity camera,
+                           render::RenderMethod method, Frame3D& frame) {
+    const PipelineChoice choice = pipeline_of(world, camera);
+    if (choice.path.empty()) {
+        pipelines_.clear();
+        return;
+    }
+    const auto problem = [&](std::string message) {
+        problems_.push_back({choice.entity, choice.at, std::move(message)});
+    };
+    if (!is_pipeline_path(choice.path)) {
+        problem("\"" + choice.path + "\" isn't a .pipeline.json file");
+        return;
+    }
+    // The file, through the world's assets (so it reloads) else its file reader.
+    std::shared_ptr<const PipelineFile> file;
+    if (asset::Assets* assets = asset::assets_of(world.ecs()); assets != nullptr) {
+        auto doc = assets->load<json::Value>(choice.path);
+        if (!doc) {
+            problem(doc.error().message);
+            return;
+        }
+        KeptPipeline& kept = pipelines_[choice.path];
+        if (kept.file == nullptr || kept.version != doc.value().version()) {
+            auto parsed = parse_pipeline(*doc.value());
+            if (!parsed) {
+                pipelines_.erase(choice.path);
+                problem("\"" + choice.path + "\": " + parsed.error().message);
+                return;
+            }
+            kept = {.version = doc.value().version(),
+                    .file = std::make_shared<const PipelineFile>(std::move(parsed).value())};
+        }
+        file = kept.file;
+    } else {
+        const world::FileReader& reader = world.file_reader();
+        if (!reader) {
+            problem("pipeline files can't load here");
+            return;
+        }
+        auto bytes = reader(choice.path);
+        if (!bytes) {
+            problem(bytes.error().message);
+            return;
+        }
+        auto doc = json::parse(bytes.value());
+        if (!doc) {
+            problem("\"" + choice.path + "\": " + doc.error().message);
+            return;
+        }
+        auto parsed = parse_pipeline(doc.value());
+        if (!parsed) {
+            problem("\"" + choice.path + "\": " + parsed.error().message);
+            return;
+        }
+        file = std::make_shared<const PipelineFile>(std::move(parsed).value());
+    }
+    frame.pipeline_passes = file->passes;
+    if (method != render::RenderMethod::ForwardPlus) {
+        return;
+    }
+    for (const PipelineEffect& written : file->effects) {
+        PipelineEffect effect = written;
+        const std::string named = "effects/" + written.name + ": ";
+        if (!written.code.empty()) {
+            const CompositorCode code = compositor_code(written.code);
+            if (!code) {
+                problem(named + "no compositor code is named \"" + written.code +
+                        "\"; the game's code registers it with scene3d::add_compositor_code");
+                continue;
+            }
+            code(world, effect);
+        }
+        if (!effect.enabled) {
+            continue;
+        }
+        if (frame.scene.effects.size() >= render::kMaxCompositorEffects) {
+            problem(named + "a frame draws up to " + std::to_string(render::kMaxCompositorEffects) +
+                    " compositor effects");
+            break;
+        }
+        if (!override_materials_) {
+            problem("compositor materials can't load here");
+            return;
+        }
+        auto loaded = override_materials_(effect.material, effect.material_params, capture_time_);
+        if (!loaded) {
+            problem(named + loaded.error().message);
+            continue;
+        }
+        const OverrideMaterial& found = loaded.value();
+        if (found.standard || found.type != render::ShaderType::Compositor) {
+            problem(named + "\"" + effect.material +
+                    "\" isn't a compositor material; an effect takes one with "
+                    "\"shader_type\": \"compositor\"");
+            continue;
+        }
+        render::CompositorEffect3D out;
+        out.shader = found.shader;
+        out.callback = effect.callback;
+        out.constants = found.constants;
+        out.normal_roughness = effect.needs_normal_roughness;
+        for (std::size_t slot = 0; slot < render::kCompositorTextures; ++slot) {
+            const OverrideMaterial::Texture& texture = found.textures.at(slot);
+            if (texture.path.empty()) {
+                continue;
+            }
+            const render::Filter filter =
+                texture.filter == "nearest" ? render::Filter::Nearest : render::Filter::Linear;
+            auto made = textures_(texture.path, filter);
+            if (!made) {
+                problem(named + "\"" + effect.material + "\"'s texture: " + made.error().message);
+                continue;
+            }
+            out.textures.at(slot) = made.value().id;
+        }
+        frame.scene.effects.push_back(out);
+    }
+}
+
 Renderer::Renderer(render::RenderDevice& device, TextureSource textures, ModelSource models,
                    LightmapSource lightmaps, VoxelGISource voxel_gis, ImageSource images)
     : device_(&device), textures_(std::move(textures)), models_(std::move(models)),
@@ -1320,6 +1449,7 @@ Renderer::~Renderer() {
     }
     for (const auto& [key, skinned] : skinned_) {
         device_->destroy_mesh(skinned.id);
+        device_->destroy_skin(skinned.skin);
     }
     for (const auto& [key, kept] : particle_meshes_) {
         device_->destroy_mesh(kept.id);
@@ -1821,6 +1951,53 @@ Result<render::MeshId> Renderer::cloth_mesh(const std::string& key, const ModelS
     return cloth.id;
 }
 
+namespace {
+
+// The weight at or below which a blend shape is left out, as blend_shapes.cpp's kNoWeight.
+constexpr float kNoShapeWeight = 0.0001F;
+
+// A skin on the device of a surface's rest vertices, weights and blend shapes.
+Result<render::SkinId> make_skin(render::RenderDevice& device, const ModelSurface& surface) {
+    std::vector<render::SkinWeights> weights(surface.weights.size());
+    for (std::size_t i = 0; i < weights.size(); ++i) {
+        weights[i] = {.joints = surface.weights[i].joints, .weights = surface.weights[i].weights};
+    }
+    std::vector<render::SkinShape> shapes(surface.blend_shapes.size());
+    for (std::size_t k = 0; k < shapes.size(); ++k) {
+        const SurfaceBlendShape& shape = surface.blend_shapes[k];
+        shapes[k] = {
+            .positions = shape.positions, .normals = shape.normals, .tangents = shape.tangents};
+    }
+    return device.create_skin({.vertices = surface.vertices, .weights = weights, .shapes = shapes});
+}
+
+// A box with nothing in it, which any box added to it replaces.
+Bounds empty_box() {
+    constexpr real_t kFar = std::numeric_limits<float>::max();
+    return {.min = {kFar, kFar, kFar}, .max = {-kFar, -kFar, -kFar}};
+}
+
+void add_point(Bounds& box, Vec3 p) {
+    box.min = {std::min(box.min.x, p.x), std::min(box.min.y, p.y), std::min(box.min.z, p.z)};
+    box.max = {std::max(box.max.x, p.x), std::max(box.max.y, p.y), std::max(box.max.z, p.z)};
+}
+
+// Adds a box, grown by grow on each side and placed by joint (or as it is), to out.
+void add_box(Bounds& out, const Bounds& box, Vec3 grow, const world::Affine3D* joint) {
+    if (box.min.x > box.max.x) {
+        return;
+    }
+    const Bounds grown{.min = box.min - grow, .max = box.max + grow};
+    for (int corner = 0; corner < 8; ++corner) {
+        const Vec3 p{(corner & 1) != 0 ? grown.max.x : grown.min.x,
+                     (corner & 2) != 0 ? grown.max.y : grown.min.y,
+                     (corner & 4) != 0 ? grown.max.z : grown.min.z};
+        add_point(out, joint != nullptr ? joint->apply(p) : p);
+    }
+}
+
+} // namespace
+
 Result<render::MeshId> Renderer::skinned_mesh(const std::string& key, const ModelSurface& surface,
                                               const std::vector<world::Affine3D>& joints,
                                               const std::vector<float>& shape_weights,
@@ -1832,6 +2009,26 @@ Result<render::MeshId> Renderer::skinned_mesh(const std::string& key, const Mode
         skinned.shape_weights == shape_weights && skinned.flesh == flesh &&
         (flesh == nullptr || skinned.flesh_at == flesh_at)) {
         return skinned.id;
+    }
+    // A device that skins moves the vertices itself, as Godot's skeleton compute shader does,
+    // unless flesh moves them after. A skin it can't take moves on the CPU.
+    if (device_->gpu_skinning() && flesh == nullptr && !skinned.on_cpu) {
+        if (skinned.skin == render::SkinId::None) {
+            auto made = make_skin(*device_, surface);
+            if (made) {
+                skinned.skin = made.value();
+                measure_skin(skinned, surface);
+            } else {
+                skinned.on_cpu = true;
+            }
+        }
+        if (skinned.skin != render::SkinId::None) {
+            return skin_on_device(key, skinned, surface, joints, shape_weights);
+        }
+    }
+    if (skinned.skin != render::SkinId::None) {
+        device_->destroy_skin(skinned.skin);
+        skinned.skin = render::SkinId::None;
     }
     // Blend shapes first, then the skin, as Godot's skeleton shader moves them.
     if (any_blend(shape_weights)) {
@@ -1875,6 +2072,115 @@ Result<render::MeshId> Renderer::skinned_mesh(const std::string& key, const Mode
     skinned.flesh = flesh;
     skinned.flesh_at = flesh_at;
     skinned.box = bounds_of(skinned_vertices_);
+    return skinned.id;
+}
+
+void Renderer::measure_skin(Skinned& skinned, const ModelSurface& surface) {
+    skinned.joint_boxes.clear();
+    skinned.unweighed = empty_box();
+    skinned.has_unweighed = false;
+    for (std::size_t i = 0; i < surface.vertices.size(); ++i) {
+        const auto& at = surface.vertices[i].position;
+        const Vec3 p{at[0], at[1], at[2]};
+        bool weighed = false;
+        if (i < surface.weights.size()) {
+            const VertexWeights& w = surface.weights[i];
+            for (std::size_t k = 0; k < w.weights.size(); ++k) {
+                if (w.weights.at(k) == 0.0F) {
+                    continue;
+                }
+                const std::size_t joint = w.joints.at(k);
+                if (joint >= skinned.joint_boxes.size()) {
+                    skinned.joint_boxes.resize(joint + 1, empty_box());
+                }
+                add_point(skinned.joint_boxes[joint], p);
+                weighed = true;
+            }
+        }
+        if (!weighed) {
+            add_point(skinned.unweighed, p);
+            skinned.has_unweighed = true;
+        }
+    }
+    skinned.reach.assign(surface.blend_shapes.size(), {});
+    for (std::size_t k = 0; k < surface.blend_shapes.size(); ++k) {
+        Vec3& reach = skinned.reach[k];
+        for (const auto& offset : surface.blend_shapes[k].positions) {
+            reach = {std::max<real_t>(reach.x, std::abs(offset[0])),
+                     std::max<real_t>(reach.y, std::abs(offset[1])),
+                     std::max<real_t>(reach.z, std::abs(offset[2]))};
+        }
+    }
+}
+
+Result<render::MeshId> Renderer::skin_on_device(const std::string& key, Skinned& skinned,
+                                                const ModelSurface& surface,
+                                                const std::vector<world::Affine3D>& joints,
+                                                const std::vector<float>& shape_weights) {
+    if (skinned.id == render::MeshId::None) {
+        auto made =
+            device_->create_mesh(surface.vertices, surface.indices, lod_spans(surface.lods));
+        if (!made) {
+            device_->destroy_skin(skinned.skin);
+            skinned_.erase(key);
+            return made.error();
+        }
+        skinned.id = made.value();
+        skinned.lods = surface.lods;
+    }
+    std::vector<render::SkinJoint> moved(joints.size());
+    for (std::size_t j = 0; j < joints.size(); ++j) {
+        const world::Affine3D& joint = joints[j];
+        const auto words = [](Vec3 v) {
+            return std::array<float, 3>{static_cast<float>(v.x), static_cast<float>(v.y),
+                                        static_cast<float>(v.z)};
+        };
+        moved[j] = {.x = words(joint.x),
+                    .y = words(joint.y),
+                    .z = words(joint.z),
+                    .origin = words(joint.origin)};
+    }
+    // The vertices' bounds: each joint's box placed by the joint, after the blend shapes at
+    // their weights move the rest vertices at most their reach.
+    std::vector<float> weights(shape_weights);
+    Vec3 grow;
+    for (std::size_t k = 0; k < weights.size(); ++k) {
+        if (std::abs(weights[k]) <= kNoShapeWeight) {
+            weights[k] = 0.0F;
+        } else if (k < skinned.reach.size()) {
+            grow = grow + (skinned.reach[k] * std::abs(weights[k]));
+        }
+    }
+    Bounds box = empty_box();
+    if (joints.empty() || surface.weights.empty()) {
+        add_box(box, bounds_of(surface.vertices), grow, nullptr);
+    } else {
+        for (std::size_t j = 0; j < skinned.joint_boxes.size(); ++j) {
+            // A joint the pose lacks moves nothing.
+            add_box(box, skinned.joint_boxes[j], grow, j < joints.size() ? &joints[j] : nullptr);
+        }
+        if (skinned.has_unweighed) {
+            add_box(box, skinned.unweighed, grow, nullptr);
+        }
+    }
+    if (box.min.x > box.max.x) {
+        box = {};
+    }
+    const auto low =
+        std::array<float, 3>{static_cast<float>(box.min.x), static_cast<float>(box.min.y),
+                             static_cast<float>(box.min.z)};
+    const auto high =
+        std::array<float, 3>{static_cast<float>(box.max.x), static_cast<float>(box.max.y),
+                             static_cast<float>(box.max.z)};
+    if (auto skinned_now = device_->skin_mesh(skinned.id, skinned.skin, moved, weights, low, high);
+        !skinned_now) {
+        return skinned_now.error();
+    }
+    skinned.joints = joints;
+    skinned.shape_weights = shape_weights;
+    skinned.flesh = nullptr;
+    skinned.flesh_at = 0.0F;
+    skinned.box = box;
     return skinned.id;
 }
 
@@ -4132,6 +4438,7 @@ std::optional<Frame3D> Renderer::prepare(
         cached_.clear();
         for (const auto& [key, skinned] : skinned_) {
             device_->destroy_mesh(skinned.id);
+            device_->destroy_skin(skinned.skin);
         }
         skinned_.clear();
         destroy_cuts(false);
@@ -4302,6 +4609,7 @@ std::optional<Frame3D> Renderer::prepare(
     if (method == render::RenderMethod::ForwardPlus) {
         add_splats(world, tree, global, lens.cull_mask, frame.scene.splats);
     }
+    add_effects(world, camera, method, frame);
     if (method == render::RenderMethod::ForwardPlus && frame.scene.volumetric_fog.enabled) {
         add_fog_volumes(world, tree, global, lens.cull_mask, frame.scene.volumetric_fog.volumes);
     }
@@ -4532,6 +4840,7 @@ std::optional<Frame3D> Renderer::prepare(
     for (auto it = skinned_.begin(); it != skinned_.end();) {
         if (it->second.used != frame_) {
             device_->destroy_mesh(it->second.id);
+            device_->destroy_skin(it->second.skin);
             it = skinned_.erase(it);
         } else {
             ++it;

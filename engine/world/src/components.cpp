@@ -4396,7 +4396,11 @@ void register_3d_components(ComponentRegistry& registry) {
                   {.doc = "Follows how fast it moves for 3D sounds' doppler while it is the "
                           "listener: \"idle_step\" and \"physics_step\" both measure it each "
                           "tick.",
-                   .choices = {"disabled", "idle_step", "physics_step"}});
+                   .choices = {"disabled", "idle_step", "physics_step"}})
+        .describe("compositor",
+                  {.doc = "Project path of a .pipeline.json file, as Godot's Camera3D.compositor: "
+                          "its passes and effects in place of the WorldEnvironment's while the "
+                          "camera is current. \"\" for the environment's."});
     registry.add<XROrigin3D>()
         .set_doc("Where the player's play space is in the world, as Godot's XROrigin3D: XR "
                  "nodes under it follow their trackers in its space. The current one is the "
@@ -5031,7 +5035,12 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("adjustment_color_correction",
                   {.doc = "Project path of a lookup texture colors pass through: 1 pixel tall "
                           "(each channel read at its value along it), or as wide as its height "
-                          "squared (a 3D LUT of height slices side by side); \"\" for none."});
+                          "squared (a 3D LUT of height slices side by side); \"\" for none."})
+        .describe("compositor",
+                  {.doc = "Project path of a .pipeline.json file, as Godot's Compositor: the "
+                          "Forward+ passes it turns off and the compositor effects it draws over "
+                          "the world. A current Camera3D's compositor takes its place. \"\" for "
+                          "none."});
 
     registry.add<CameraAttributesPractical>()
         .set_doc("How the 3D world is exposed and focused, as Godot's CameraAttributesPractical: "

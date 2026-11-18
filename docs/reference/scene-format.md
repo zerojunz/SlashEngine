@@ -1296,6 +1296,13 @@ file's skin deformers and animation stacks are read as [FBX models](#fbx-models)
 model. [examples/skinned-meshes](../../examples/skinned-meshes/) waves a skinned arm, from a
 glTF file and from the same arm as an FBX file.
 
+Skinned and blend-shaped meshes move on the GPU where the device can, as Godot's skeleton
+compute shader moves them: the GPU device on Vulkan and Metal, and WebGPU in a browser, keep each
+surface's rest vertices, weights and blend shapes on the GPU and move them in a compute pass
+before the frame draws, sending only the joints and shape weights each frame. Direct3D 12, the
+OpenGL devices, the software device and meshes with `Flesh3D` skin on the CPU instead. Both give
+the same vertices, so the choice changes no pixels.
+
 #### Blend shapes
 
 A glTF model's morph targets are its meshes' blend shapes, as Godot's importer makes them: each
@@ -1858,8 +1865,10 @@ Compatibility draws neither, nor do probe captures, path-traced frames or
 [spatial shaders](#spatial-shaders); `subsurf_scatter_texture` and
 `subsurf_scatter_transmittance_texture` aren't read yet.
 
-Opaque and alpha scissor meshes draw nearest first, then alpha meshes farthest first, as Godot
-sorts them. A texture that can't load is left out, with a warning and a problem in
+Opaque and alpha scissor meshes draw by depth (in 16 slices out to the camera's far plane), then
+by mesh, then nearest first, then alpha meshes farthest first, as Godot sorts them. Copies of one
+mesh with one material next to each other in that order draw as instances of one draw, each
+culled on its own where the device culls. A texture that can't load is left out, with a warning and a problem in
 `frame.summary`.
 
 ### Camera3D
@@ -1875,6 +1884,7 @@ sorts them. A texture that can't load is left out, with a warning and a problem 
 | `current` | `false` | The world is seen through this camera |
 | `cull_mask` | `1048575` | The render layers it sees (layers 1 to 20) |
 | `doppler_tracking` | `"disabled"` | `idle_step` or `physics_step`: measure how fast it moves, for [3D sound](#3d-sound) heard through it |
+| `compositor` | `""` | A [`.pipeline.json` file](#compositor-shaders-and-pipeline-files) used in place of the `WorldEnvironment`'s while this camera is current |
 
 The camera's scale is ignored, as Godot's is. Depth is reversed, so far scenes keep their
 precision.
@@ -2049,6 +2059,7 @@ there is no ambient light and colors stay as they are.
 | `adjustment_enabled` | `false` | Brightness, contrast, saturation and color correction apply |
 | `adjustment_brightness`, `adjustment_contrast`, `adjustment_saturation` | `1`, `1`, `1` | Multiply colors; contrast 0 is flat gray, saturation 0 gray |
 | `adjustment_color_correction` | `""` | A lookup texture colors pass through: 1 pixel tall, or as wide as its height squared |
+| `compositor` | `""` | A [`.pipeline.json` file](#compositor-shaders-and-pipeline-files): the passes it turns off and the compositor effects it draws |
 | `ssr_enabled` | `false` | `forward_plus`: [screen-space reflections](#screen-space-reflections) reflect what is on the screen in shiny surfaces |
 | `ssr_max_steps` | `64` | How many steps a reflected ray takes at most, from 1 to 512 |
 | `ssr_fade_in` | `0.15` | How reflections fade in where they leave the surface, as an easing curve |
@@ -2589,6 +2600,15 @@ without them, as Godot's. A mesh takes a decal when its `layers` share a bit wit
 | `sorting_offset` | `0` | Meters taken off its distance when ordering decals, so it draws over closer ones |
 
 ### Occlusion culling
+
+Before any of this, every mesh outside the camera's view is left out, as Godot's renderer culls
+by frustum. On the GPU device (Vulkan, Metal, Direct3D 12) and WebGPU the frustum test runs on
+the GPU, a thread a draw, which writes each draw's indirect arguments (no instances when its box is
+wholly past one edge of the view), so the CPU sends every draw and the GPU skips those out of
+view; the software device runs the same test on the CPU, and OpenGL draws them all. A mesh's box
+counts as in view up to 1/64 of the view past an edge, so TAA's and FSR 2's jitter never cut off
+what shows. Meshes drawn with a spatial shader that has a `vertex()` are never culled, since it
+can move their corners anywhere, and shadow maps and reflection probes draw every mesh.
 
 An `OccluderInstance3D` hides the meshes behind it from the camera, as Godot 4.6's: while
 project.json's [`rendering.occlusion_culling.use_occlusion_culling`](project-format.md#occlusion-culling)
@@ -3519,6 +3539,74 @@ own built-ins are refused in `fragment()` and `vertex()`, as Godot's.
 - `light()` runs in the Compatibility and Forward+ color stages, for every light, the clustered
   ones included; the prepasses and shadow passes don't light anything, so they leave it out. On
   the CPU, `frame.capture` runs it once a pixel and light, where `ddx` and `ddy` give 0.
+
+#### Compositor shaders and pipeline files
+
+A material with `"shader_type": "compositor"` is a screen pass, as Godot 4.3's
+`CompositorEffect`: its `fragment()` runs once a pixel over the 3D world drawn so far and writes
+the world's new color. A `.pipeline.json` file (`$cli schema pipeline`), Godot's `Compositor`,
+lists such effects and the passes it turns off; a `WorldEnvironment`'s `compositor` names one,
+and a current `Camera3D`'s `compositor` takes its place, as in Godot.
+[examples/compositor-effects](../../examples/compositor-effects/) inks outlines and grades a
+scene.
+
+```json
+{
+  "effects": [
+    {"effect_callback_type": "post_opaque", "material": "fx/outline.material.json",
+     "name": "outline", "needs_normal_roughness": true},
+    {"material": "fx/grade.material.json", "material_params": {"vignette": 2.5},
+     "name": "grade", "code": "pulse"}
+  ],
+  "passes": {"glow": false, "ssao": false}
+}
+```
+
+```hlsl
+// shaders/grade.hlsl, with params tint (a color) and vignette (a float).
+void fragment() {
+    float2 from_center = SCREEN_UV - 0.5;
+    COLOR.rgb *= tint.rgb * saturate(1.0 - vignette * dot(from_center, from_center));
+}
+```
+
+An effect's fields:
+
+| Field | Default | Value |
+| --- | --- | --- |
+| `name` | | Unique in the file |
+| `material` | | A `.material.json` file with `"shader_type": "compositor"` |
+| `material_params` | `{}` | Its params' values over the material's |
+| `effect_callback_type` | `"post_transparent"` | Where it draws, as Godot's: `pre_opaque` over the sky before the opaque meshes; `post_opaque`, `post_sky` and `pre_transparent`, in that order, after the opaque meshes and subsurface scattering; `post_transparent` after the blended meshes, before TAA, FSR and post-processing |
+| `needs_normal_roughness` | `false` | Draws the prepass, so `normal_roughness_texture` reads the meshes' normals and roughness |
+| `enabled` | `true` | Whether it draws |
+| `code` | `""` | A C++ callback the game's code registers with `scene3d::add_compositor_code(name, fn)` (`slash/scene3d/pipeline.hpp`) in its `SLASH_GAME_MODULE` function, as Godot's `_render_callback`: run each frame before the effect draws, with the world and the effect to change (its params, `enabled` and the rest) |
+
+`passes` turns off what the environment and project.json would draw, by name: `ssao`, `ssr`,
+`glow`, `adjustments`, `subsurface`, `volumetric_fog`, `sdfgi`, `dof`, `auto_exposure`, `taa`,
+`decals` and `fog`. `true`, or leaving one out, leaves it to them.
+
+In a compositor shader's `fragment()`:
+
+| Built-in | Type | Value |
+| --- | --- | --- |
+| `COLOR` | float4 | In and out: the world's color at the pixel, linear and not yet tonemapped |
+| `FRAGCOORD` | float4 | The pixel's center, in pixels from the top left |
+| `SCREEN_UV` | float2 | From 0 to 1 across the frame |
+| `SCREEN_PIXEL_SIZE` | float2 | One over the frame's width and height |
+| `TIME` | float | Seconds of game time |
+| `PROJECTION_MATRIX`, `INV_PROJECTION_MATRIX`, `VIEW_MATRIX`, `INV_VIEW_MATRIX` | float4x4 | The camera's, as in spatial shaders |
+| `screen_texture(uv)` | float4 | Godot's `SCREEN_TEXTURE` (`hint_screen_texture`): the world as drawn so far, filtered linearly |
+| `depth_texture(uv)` | float | Godot's `DEPTH_TEXTURE`: the nearest pixel's reversed depth, 1 near and 0 at the far plane (0 before the meshes draw) |
+| `normal_roughness_texture(uv)` | float4 | Godot's `NORMAL_ROUGHNESS_TEXTURE`, decoded: the view-space normal and the roughness, or `(0, 0, 1, 1)` without `needs_normal_roughness` |
+
+- Effects draw only in Forward+, as Godot's Compatibility renderer has none: the OpenGL devices
+  draw none, nor do reflection probes' captures or path-traced frames. A frame draws up to 16.
+- Each device copies the world into a texture of its own before an effect, so an effect reads
+  what came before it, effects at one point in the file's order.
+- A compositor material takes up to 4 texture params; its params are globals as in canvas
+  shaders. Validating, formatting and exporting take `.pipeline.json` files, and a scene's
+  problems name the `compositor` field whose file, effect or material can't draw.
 
 ## Animations
 
