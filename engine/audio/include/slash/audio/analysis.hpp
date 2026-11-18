@@ -94,9 +94,18 @@ struct Analysis {
     std::optional<Loop> loop;
 };
 
+// The tempos analyze looks between, and the one it leans toward when a beat could be counted
+// at half or twice the speed.
+struct TempoRange {
+    double slowest_bpm = 50.0;
+    double fastest_bpm = 240.0;
+    double likely_bpm = 120.0;
+};
+
 // Measures frames at mix_rate frames per second; loop, if given, is where the sound loops.
 [[nodiscard]] Analysis analyze(std::span<const Frame> frames, int mix_rate,
-                               std::optional<LoopPoints> loop = std::nullopt);
+                               std::optional<LoopPoints> loop = std::nullopt,
+                               const TempoRange& tempo = {});
 
 // Where a sound loops as its .audio.json file plays it (from the end, or after beat_count beats,
 // back to loop_offset; a .wav file's forward loop), its whole length with no settings, or
