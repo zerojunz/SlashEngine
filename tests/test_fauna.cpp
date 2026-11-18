@@ -563,3 +563,171 @@ TEST_CASE("fauna: runs repeat, and creature commands report their errors by path
                     R"({"creature": "deer", "action": "steer", "direction": [1, 0]})")
               .message == "/direction: a 3D creature steers by [x, y, z]");
 }
+
+TEST_CASE("fauna: motion blocks tune a recipe's animations and add new ones") {
+    const world::CreatureRecipe plain = recipe_of(kDeer);
+    std::string tuned_text(kDeer);
+    tuned_text.pop_back();
+    tuned_text += R"(, "motion": {
+        "walk": {"length": 2.0, "speed": 2.0},
+        "idle": {"bones": {"tail": {"yaw": 0.3}}, "add": [
+            {"bone": "head", "axis": "pitch", "angle": 0.2}]},
+        "run": {"amplitude": 0},
+        "trot": {"from": "walk", "length": 1.5, "bones": {"leg_front_near": {"scale": 2}}}}})";
+    const world::CreatureRecipe tuned = recipe_of(tuned_text);
+    // Lengths: walk's own over its speed, and the new trot after the built-in ones.
+    CHECK(world::creature_length(tuned, "walk") == doctest::Approx(1.0));
+    CHECK(world::creature_length(tuned, "trot") == doctest::Approx(1.5));
+    CHECK(world::creature_length(plain, "trot") == 0.0);
+    CHECK(world::creature_animations(tuned).back().name == "trot");
+    const auto angle = [](const std::vector<world::CreatureTurn>& turns, std::string_view bone,
+                          int axis) {
+        float sum = 0.0F;
+        for (const world::CreatureTurn& turn : turns) {
+            if (turn.bone == bone) {
+                sum += (axis == 0   ? turn.axis.x
+                        : axis == 1 ? turn.axis.y
+                                    : turn.axis.z) *
+                       turn.angle;
+            }
+        }
+        return sum;
+    };
+    // A hold all through, and a wave at its peak a quarter of the way through.
+    const double idle = world::creature_length(tuned, "idle");
+    const auto plain_idle = world::creature_pose(plain, "idle", idle * 0.25);
+    const auto tuned_idle = world::creature_pose(tuned, "idle", idle * 0.25);
+    CHECK(angle(tuned_idle, "tail", 1) - angle(plain_idle, "tail", 1) == doctest::Approx(0.3));
+    CHECK(angle(tuned_idle, "head", 0) - angle(plain_idle, "head", 0) ==
+          doctest::Approx(0.2).epsilon(0.01));
+    // No amplitude stands still; trot swings its front near leg twice as far as walk.
+    for (const world::CreatureTurn& turn : world::creature_pose(tuned, "run", 0.1)) {
+        CHECK(turn.angle == doctest::Approx(0.0));
+    }
+    const double walk = world::creature_length(plain, "walk");
+    CHECK(angle(world::creature_pose(tuned, "trot", 0.375), "leg_front_near", 0) ==
+          doctest::Approx(
+              2.0 * angle(world::creature_pose(plain, "walk", walk * 0.25), "leg_front_near", 0)));
+    // Problems at their pointers, with the names meant.
+    std::string bad(kDeer);
+    bad.pop_back();
+    bad += R"(, "motion": {"idle": {"bones": {"tial": {"scale": 2}}}, "wlak": {"speed": 2}}})";
+    auto parsed = world::parse_creature(parse(bad), nullptr);
+    REQUIRE_FALSE(parsed.ok());
+    CHECK(parsed.error().message.find("did you mean") != std::string::npos);
+    std::vector<json::ValidationError> problems;
+    CHECK_FALSE(world::parse_creature_motion(plain, parse(R"({"idle": {"bones": {"tial": {}}},
+        "wlak": {"speed": 2}})"),
+                                             &problems)
+                    .ok());
+    std::vector<std::string> paths;
+    for (const json::ValidationError& problem : problems) {
+        paths.push_back(problem.path);
+    }
+    CHECK(has(paths, "/idle/bones/tial"));
+    CHECK(has(paths, "/wlak"));
+}
+
+TEST_CASE("fauna: a creature's own motion retimes its model's animations and adds none") {
+    Project project("fauna_motion_project", kFiles);
+    project.ok("creature.place", R"({"recipe": "fauna/deer.creature.json", "id": "plain",
+        "at": [0, 0, 0]})");
+    project.ok("creature.place", R"({"recipe": "fauna/deer.creature.json", "id": "quick",
+        "at": [3, 0, 0], "motion": {"walk": {"speed": 2, "amplitude": 0.5}}})");
+    // Both paused a fifth of a second into walk.
+    for (const char* id : {"plain", "quick"}) {
+        project.ok("component.set", R"({"id": ")" + std::string(id) + R"(", "components": {
+            "Creature3D": {"enabled": false},
+            "AnimationPlayer": {"animation": "walk", "playing": false, "time": 0.2}}})");
+    }
+    const auto pose = [&](std::string_view id) {
+        return project.ok("skeleton.get",
+                          R"({"id": ")" + std::string(id) + R"(", "bones": ["leg_front_near"]})");
+    };
+    const json::Value plain = pose("plain");
+    const json::Value quick = pose("quick");
+    CHECK(field(field(plain, "clips").as_array().front(), "time").as_double() ==
+          doctest::Approx(0.2));
+    CHECK(field(field(quick, "clips").as_array().front(), "time").as_double() ==
+          doctest::Approx(0.1));
+    CHECK(field(field(plain, "bones").as_array().front(), "rotation") !=
+          field(field(quick, "bones").as_array().front(), "rotation"));
+    CHECK(project
+              .call("creature.place", R"({"recipe": "fauna/deer.creature.json", "id": "trot",
+        "at": [6, 0, 0], "motion": {"trot": {"from": "walk"}}})")
+              .message.starts_with("/motion: /motion/trot: an instance's motion can't add"));
+}
+
+TEST_CASE("fauna: animation.preview measures turns and gait, and animation.tune plants feet") {
+    Project project("fauna_tune_project", kFiles);
+    const json::Value walk =
+        project.ok("animation.preview", R"({"recipe": "fauna/deer.creature.json",
+        "animation": "walk", "bones": ["leg_front_near", "tail"]})");
+    const json::Value& gait = field(walk, "gait");
+    CHECK(field(gait, "stride").as_double() > 0.05);
+    CHECK(field(gait, "move_speed").as_double() == doctest::Approx(1.2));
+    CHECK(field(field(walk, "bones"), "leg_front_near").find("pitch") != nullptr);
+    CHECK(field(walk, "bones").as_object().size() <= 2);
+    // A change tried, not made.
+    const json::Value slow = project.ok("animation.preview", R"({"recipe":
+        "fauna/deer.creature.json", "animation": "walk", "motion": {"walk": {"speed": 0.5}}})");
+    CHECK(field(slow, "length").as_double() ==
+          doctest::Approx(2.0 * field(walk, "length").as_double()).epsilon(0.002));
+    // Planted by cadence in the recipe, which undo puts back.
+    const std::string path = project.root + "/fauna/deer.creature.json";
+    const json::Value by_length = project.ok("animation.tune", R"({"recipe":
+        "fauna/deer.creature.json", "animation": "walk", "slide": "length"})");
+    CHECK(field(by_length, "into").as_string() == "recipe");
+    CHECK(std::abs(field(field(field(by_length, "after"), "gait"), "slide").as_double()) < 0.01);
+    auto written = slash::platform::read_file(path);
+    REQUIRE(written.ok());
+    CHECK(written.value().find("\"motion\"") != std::string::npos);
+    project.ok("undo");
+    written = slash::platform::read_file(path);
+    REQUIRE(written.ok());
+    CHECK(written.value() == kDeer);
+    // Planted by swing on one deer only, and a tail's swing set.
+    project.ok("creature.place",
+               R"({"recipe": "fauna/deer.creature.json", "id": "doe", "at": [0, 0, 0]})");
+    const json::Value by_swing = project.ok("animation.tune", R"({"creature": "doe",
+        "animation": "walk", "slide": "swing", "ranges": {"tail": 0.4}})");
+    CHECK(field(by_swing, "into").as_string() == "instance");
+    CHECK(field(field(field(by_swing, "change"), "bones"), "leg_back_far").find("scale") !=
+          nullptr);
+    const json::Value after = project.ok("animation.preview", R"({"creature": "doe",
+        "animation": "walk", "bones": ["tail"]})");
+    CHECK(std::abs(field(field(after, "gait"), "slide").as_double()) < 0.02);
+    double most = 0.0;
+    for (const auto& [axis, range] : field(field(after, "bones"), "tail").as_object()) {
+        most = std::max(most, range.as_array()[1].as_double() - range.as_array()[0].as_double());
+    }
+    CHECK(most == doctest::Approx(0.4).epsilon(0.02));
+    // A filmstrip of the 3D model and of a 2D cut-out.
+    const json::Value strip = project.ok("animation.preview", R"({"creature": "doe",
+        "animation": "walk", "filmstrip": {"out": "previews/doe.png", "frames": 3,
+        "size": [64, 48]}})");
+    CHECK(field(field(strip, "filmstrip"), "size") == parse("[192, 48]"));
+    CHECK(slash::platform::read_file(project.root + "/previews/doe.png").ok());
+    const json::Value flat = project.ok("animation.preview", R"({"recipe":
+        "fauna/dog.creature.json", "animation": "run", "filmstrip": {"out": "previews/dog.png",
+        "frames": 2, "size": [48, 48], "two_d": true}})");
+    CHECK(field(field(flat, "filmstrip"), "frames").as_int() == 2);
+    // Errors by path, with the names meant.
+    CHECK(
+        project.call("animation.preview", R"({"creature": "doe", "animation": "wlak"})").message ==
+        "/animation: \"wlak\" is not one of its animations; did you mean "
+        "\"walk\"?");
+    CHECK(project
+              .call("animation.tune",
+                    R"({"creature": "doe", "animation": "walk", "ranges": {"tial": 0.2}})")
+              .message.starts_with("/ranges/tial: \"tial\" is not one of its bones; did you "
+                                   "mean \"tail\"?"));
+    CHECK(project
+              .call("animation.tune", R"({"recipe": "fauna/deer.creature.json",
+        "animation": "walk", "into": "instance"})")
+              .message.starts_with("/into:"));
+    CHECK(project
+              .call("animation.tune", R"({"recipe": "fauna/minnow.creature.json",
+        "animation": "swim", "slide": "length"})")
+              .message == "/slide: it has no legs to plant");
+}

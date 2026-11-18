@@ -3,11 +3,15 @@
 #include "rig_builder.hpp"
 
 #include "slash/core/json.hpp"
+#include "slash/scene3d/skeleton.hpp"
+#include "slash/world/components.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -476,6 +480,53 @@ std::vector<json::ValidationError> check_creature_model(std::string_view bytes,
         return {{"/extends", resolved.error().message}};
     }
     return world::validate_creature(resolved.value());
+}
+
+void tune_creature_clips(const world::World& world, entt::entity entity,
+                         std::vector<ClipSample>& clips) {
+    const auto* creature = world.ecs().try_get<const world::Creature3D>(entity);
+    if (creature == nullptr || creature->motion.is_null() || clips.empty()) {
+        return;
+    }
+    auto library = world::load_creature(world, creature->recipe);
+    auto tuned = world::load_creature(world, creature->recipe, creature->motion);
+    if (!library || !tuned) {
+        return; // the fauna system warns about it
+    }
+    // Models built for tuned recipes, the newest last: a recipe that changes, or a patch, makes
+    // a new one, and the oldest goes past kMaxTunedModels.
+    constexpr std::size_t kMaxTunedModels = 32;
+    static std::mutex mutex;
+    static std::vector<
+        std::pair<std::shared_ptr<const world::CreatureRecipe>, std::shared_ptr<const Model>>>
+        built;
+    std::shared_ptr<const Model> model;
+    {
+        const std::scoped_lock lock(mutex);
+        for (const auto& [recipe, made] : built) {
+            if (recipe == tuned.value()) {
+                model = made;
+            }
+        }
+        if (model == nullptr) {
+            model = std::make_shared<const Model>(build_creature(*tuned.value()));
+            if (built.size() >= kMaxTunedModels) {
+                built.erase(built.begin());
+            }
+            built.emplace_back(tuned.value(), model);
+        }
+    }
+    for (ClipSample& clip : clips) {
+        if (clip.model != creature->recipe || clip.source != nullptr) {
+            continue;
+        }
+        const double from = world::creature_length(*library.value(), clip.animation);
+        const double to = world::creature_length(*tuned.value(), clip.animation);
+        if (from > 0.0 && to > 0.0) {
+            clip.time = clip.time * to / from;
+        }
+        clip.source = model;
+    }
 }
 
 } // namespace slash::scene3d

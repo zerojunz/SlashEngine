@@ -10,11 +10,14 @@
 #include "slash/core/result.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/world/creature.hpp"
+#include "slash/world/world.hpp"
 
 #include <string_view>
 #include <vector>
 
 namespace slash::scene3d {
+
+struct ClipSample;
 
 // The model a recipe makes, facing +z with y up and the feet at 0, in meters. Materials are named
 // for what they draw: "coat", "belly", "markings", "eyes", "horn", "beak" and "wings" (an
@@ -25,5 +28,12 @@ namespace slash::scene3d {
 [[nodiscard]] Result<Model> load_creature_model(std::string_view bytes, const ModelReader& read);
 [[nodiscard]] std::vector<json::ValidationError> check_creature_model(std::string_view bytes,
                                                                       const ModelReader& read);
+
+// Plays a Creature3D's own motion (a patch over its recipe's) in its clips of the recipe: each
+// takes its animations from a model built with that motion, at the same point of its cycle as
+// the library's time is through the library's (clips calls it). Clips of other models, and
+// creatures with no motion of their own, stay as they are.
+void tune_creature_clips(const world::World& world, entt::entity entity,
+                         std::vector<ClipSample>& clips);
 
 } // namespace slash::scene3d

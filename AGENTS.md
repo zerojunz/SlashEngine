@@ -2247,6 +2247,18 @@ character body, playing its animations and posing its cut-out, and setting an `N
 (`slash/npc/fauna.hpp`) are gameplay code's; `creature.place`, `creature.populate`,
 `creature.interact` and `creature.state` (`engine/command/src/creature.cpp`) an agent's.
 `examples/fauna` keeps a meadow and a pond.
+A recipe's `motion` block tunes its animations by name (`world::AnimationMotion`: length,
+speed, loop, amplitude, each bone's `scale`, `shift` and `hold`, added `waves`, and new animations
+`from` a built-in one), which `creature_pose` and `creature_animations` play, so the model, the
+cut-out and the `fauna` system follow it; a `Creature3D`'s or `Creature2D`'s own `motion` is a
+merge patch over it (`load_creature`'s overload, `with_motion`), which `tune_creature_clips`
+plays on the recipe's model by retiming its clips, so it can't add an animation.
+`animation.preview` (`engine/command/src/creature.cpp`) measures one as numbers (each bone's
+range by axis and, from the feet's places by forward kinematics, the `gait`: stride, how fast a
+planted foot sweeps back and the `slide` against the body's speed) and draws a `filmstrip` in a
+private `Session`; `animation.tune` sets a motion, scales bones to `ranges` and plants the feet
+by `slide` (`length` or `swing`), writing the instance's motion or the recipe file.
+`examples/animation-tuning` plants a deer's feet and tunes a stag and a 2D fox.
 
 Vehicles are recipes, after Unreal's Chaos Vehicles (Godot has only `VehicleBody3D`): a
 `.vehicle.json` file (`slash/world/vehicle.hpp`, `engine/world/src/vehicle.cpp`, built with

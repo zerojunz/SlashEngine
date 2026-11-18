@@ -1,0 +1,21 @@
+{
+  "behavior": {
+    "run_speed": 6,
+    "temperament": "wary",
+    "walk_speed": 1.4
+  },
+  "body": {
+    "height": 0.45,
+    "length": 0.8,
+    "tail": 1.4
+  },
+  "format": 1,
+  "kind": "predator",
+  "look": {
+    "coat": [0.85, 0.42, 0.15]
+  },
+  "name": "Fox",
+  "parts": {
+    "ears": "pointed"
+  }
+}

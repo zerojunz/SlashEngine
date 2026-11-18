@@ -5614,6 +5614,7 @@ Colors are `[r, g, b]` or `[r, g, b, a]` from 0 to 1, lengths meters and speeds 
 | `parts` | | `ears` (`"short"`; `"none"`, `"long"` or `"pointed"`), `horns` (`"none"`, `"horns"` or `"antlers"`) and `mane` on quadrupeds; `antennae` on insects; `wings` (meters tip to tip; twice its length for a bird) on birds and insects, which fly with them |
 | `behavior` | | See below |
 | `vfx` | `{}` | Effects it plays: a `.vfx.json` recipe by world event about it, such as `creature_attacked`, `creature_fed` or `killed` ([effects from the tools](#effects-from-the-tools)) |
+| `motion` | `{}` | Its animations tuned, by name; see below |
 
 `behavior` says how the fauna system runs it:
 
@@ -5665,10 +5666,41 @@ Colors are `[r, g, b]` or `[r, g, b, a]` from 0 to 1, lengths meters and speeds 
 - Gameplay code calls `npc::feed`, `ride`, `dismount`, `steer`, `release` and `scare`
   (`slash/npc/fauna.hpp`).
 
+`motion` changes its animations, which both forms play, by animation name: the built-in ones, or
+a new name with `from` (the built-in one it plays as before its own changes), at most 32.
+[`animation.preview`](commands.md#animationpreview) measures an animation as numbers and draws a
+filmstrip, and [`animation.tune`](commands.md#animationtune) changes it toward goals, such as
+feet that stay planted while it walks. [examples/animation-tuning](../../examples/animation-tuning/)
+tunes a deer's walk and a fox's run.
+
+```json
+"motion": {
+  "walk": {"speed": 1.2, "bones": {"tail": {"scale": 0.5}, "head": {"shift": 0.1}}},
+  "stalk": {"from": "walk", "length": 2.4, "amplitude": 0.6, "bones": {"neck": {"pitch": 0.45}},
+            "add": [{"bone": "tail", "axis": "yaw", "angle": 0.25, "cycles": 2}]}
+}
+```
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `from` | | For a new animation: the built-in one it plays as |
+| `length` | the built-in's | Seconds a cycle takes (0.05 to 10); walk and run play one stride at their speeds |
+| `speed` | `1` | Plays it this many times as fast (its length over this) |
+| `loop` | the built-in's | Whether it loops (`attack` plays once) |
+| `amplitude` | `1` | Scales every bone's turns (0 to 4) |
+| `bones` | `{}` | By bone (the model's names above): `scale` (`1`, times its turns, 0 to 4), `shift` (`0`, cycles later it moves, -1 to 1), and `pitch`, `yaw` and `roll` (radians held all through: about x, a neck down or a leg forward; y, a tail toward its near side; z, a wing up) |
+| `add` | `[]` | Waves added to bones' turns after the rest, each `bone`, `axis` (`"pitch"`, `"yaw"` or `"roll"`), `angle` and `offset` (radians), `cycles` (`1`; 0 holds `offset`) and `shift` (`0`): `angle * sin(2 pi (cycles * t + shift)) + offset`, `t` from 0 to 1 through the cycle |
+
+A recipe's motion is part of its model, so a new animation plays in 3D as any of the model's. A
+creature's own `motion` is a JSON Merge Patch over its recipe's (`null` removes a key): it retimes
+and reshapes the model's animations for that creature alone (the fauna system plays its
+`AnimationPlayer` at the tuned cadence) and poses its cut-out, but adds no animations; add those
+to the recipe.
+
 | Component | Fields (defaults) |
 | --- | --- |
-| `Creature3D` | `recipe` `""`, `enabled` `true`, `mind` |
-| `Creature2D` | `recipe` `""`, `pixels_per_meter` `100`, `flip_h` `false`, `enabled` `true`, `mind` |
+| `Creature3D` | `recipe` `""`, `enabled` `true`, `motion` `null`, `mind` |
+| `Creature2D` | `recipe` `""`, `pixels_per_meter` `100`, `flip_h` `false`, `enabled` `true`, `motion` `null`, `mind` |
 
 `mind` is what the fauna system keeps, saved with the scene: `mode` (`"idle"`, `"grazing"`,
 `"wandering"`, `"eating"`, `"fleeing"`, `"hunting"`, `"attacking"`, `"following"`, `"ridden"` or

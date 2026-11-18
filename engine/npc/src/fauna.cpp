@@ -393,10 +393,12 @@ void step_creature(Tick& tick, FaunaState& state, const Thing& self) {
     // Following its owner, or coming to people when friendly.
     if (!decided && mind.mode != "eating") {
         entt::entity lead = entt::null;
+        Vec3 lead_place{};
         real_t distance = 0.0F;
         if (tame) {
             if (const auto place = place_of(mind.owner)) {
                 lead = mind.owner;
+                lead_place = *place;
                 distance = length(*place - at);
             }
         } else if (b.temperament == "friendly") {
@@ -404,6 +406,7 @@ void step_creature(Tick& tick, FaunaState& state, const Thing& self) {
                                              [](const Thing& /*other*/) { return true; });
             if (person != nullptr) {
                 lead = person->entity;
+                lead_place = person->place;
                 distance = d;
             }
         }
@@ -412,8 +415,7 @@ void step_creature(Tick& tick, FaunaState& state, const Thing& self) {
             if (distance > start || (mind.mode == "following" && distance > kNear)) {
                 mind.mode = "following";
                 mind.target = lead;
-                want =
-                    toward(*place_of(lead), distance > kFollow * 3.0F ? b.run_speed : b.walk_speed);
+                want = toward(lead_place, distance > kFollow * 3.0F ? b.run_speed : b.walk_speed);
             } else {
                 mind.mode = "idle";
                 mind.target = lead;
@@ -562,15 +564,27 @@ void step_creature(Tick& tick, FaunaState& state, const Thing& self) {
             transform.rotation.y =
                 slash::atan2(static_cast<float>(velocity.x), static_cast<float>(velocity.z));
         }
-        const std::string& path = ecs.get<const world::Creature3D>(self.entity).recipe;
+        const auto& creature = ecs.get<const world::Creature3D>(self.entity);
         if (auto* player = ecs.try_get<world::AnimationPlayer>(self.entity);
-            player != nullptr && player->library == path) {
+            player != nullptr && player->library == creature.recipe) {
             if (player->animation != animation) {
                 player->animation = animation;
                 player->time = 0.0;
             }
             player->playing = true;
-            player->speed_scale = rate;
+            // The player keeps the library's lengths; a tuned one's cycle plays at its own pace
+            // (scene3d's clips sample its animations through that cycle).
+            float pace = 1.0F;
+            if (!creature.motion.is_null()) {
+                if (auto library = world::load_creature(world, creature.recipe)) {
+                    const double from = world::creature_length(*library.value(), animation);
+                    const double to = world::creature_length(recipe, animation);
+                    if (from > 0.0 && to > 0.0) {
+                        pace = static_cast<float>(from / to);
+                    }
+                }
+            }
+            player->speed_scale = rate * pace;
         }
     } else {
         auto& transform = ecs.get<world::Transform2D>(self.entity);
@@ -641,7 +655,7 @@ void step(world::World& world, FaunaState& state, double dt) {
     for (const entt::entity entity :
          in_order(ecs.view<const world::Creature3D, const world::Transform3D>())) {
         const auto& creature = ecs.get<const world::Creature3D>(entity);
-        auto recipe = world::load_creature(world, creature.recipe);
+        auto recipe = world::load_creature(world, creature.recipe, creature.motion);
         if (!recipe) {
             warn(entity, recipe.error().message);
             continue;
@@ -656,7 +670,7 @@ void step(world::World& world, FaunaState& state, double dt) {
     for (const entt::entity entity :
          in_order(ecs.view<const world::Creature2D, const world::Transform2D>())) {
         const auto& creature = ecs.get<const world::Creature2D>(entity);
-        auto recipe = world::load_creature(world, creature.recipe);
+        auto recipe = world::load_creature(world, creature.recipe, creature.motion);
         if (!recipe) {
             warn(entity, recipe.error().message);
             continue;
@@ -739,16 +753,21 @@ Result<std::shared_ptr<const CreatureRecipe>> recipe_of(world::World& world,
         return make_error(ErrorCode::NotFound, "no such creature");
     }
     if (const auto* c3 = world.ecs().try_get<const world::Creature3D>(creature); c3 != nullptr) {
-        return world::load_creature(world, c3->recipe);
+        return world::load_creature(world, c3->recipe, c3->motion);
     }
     if (const auto* c2 = world.ecs().try_get<const world::Creature2D>(creature); c2 != nullptr) {
-        return world::load_creature(world, c2->recipe);
+        return world::load_creature(world, c2->recipe, c2->motion);
     }
     return make_error(ErrorCode::InvalidArgument, "\"" + std::string(world.id_of(creature)) +
                                                       "\" has no Creature3D or Creature2D");
 }
 
 } // namespace
+
+void pose_creature_cutout(world::World& world, entt::entity creature, const CreatureRecipe& recipe,
+                          std::string_view animation, double time) {
+    pose_cutout(world, creature, recipe, animation, time);
+}
 
 void add_fauna(world::World& world) {
     if (world.ecs().ctx().find<FaunaStateHolder>() != nullptr) {
