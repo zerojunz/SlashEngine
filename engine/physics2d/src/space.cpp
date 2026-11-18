@@ -407,9 +407,21 @@ void Space::reset() {
 void Space::set_settings(const Settings& settings) {
     const bool gravity_changed = settings.gravity != settings_.gravity ||
                                  settings.gravity_vector != settings_.gravity_vector;
+    const bool sleep_changed =
+        settings.sleep_velocity_threshold != settings_.sleep_velocity_threshold;
     settings_ = settings;
     if (b2World_IsValid(world_)) {
         b2World_SetGravity(world_, to_b2(settings.gravity_vector * settings.gravity));
+        apply_world_settings();
+        if (sleep_changed) {
+            for (const auto* bodies : {&bodies_, &tiles_}) {
+                for (const auto& [entity, body] : *bodies) {
+                    if (b2Body_IsValid(body->id)) {
+                        b2Body_SetSleepThreshold(body->id, settings_.sleep_velocity_threshold);
+                    }
+                }
+            }
+        }
     }
     if (gravity_changed) {
         for (auto& [entity, body] : bodies_) {
@@ -432,11 +444,31 @@ const Body* Space::body(entt::entity entity) const {
     return found != nullptr ? found->get() : nullptr;
 }
 
+void Space::apply_world_settings() {
+    b2World_SetContactTuning(world_, settings_.contact_hertz, settings_.contact_damping_ratio,
+                             settings_.max_contact_push_speed);
+    b2World_SetMaximumLinearSpeed(world_, settings_.max_linear_speed);
+    b2World_SetRestitutionThreshold(world_, settings_.bounce_velocity_threshold);
+    b2World_SetHitEventThreshold(world_, settings_.hit_event_threshold);
+    b2World_EnableSleeping(world_, settings_.allow_sleep);
+    b2World_EnableContinuous(world_, settings_.enable_continuous);
+    b2World_EnableWarmStarting(world_, settings_.enable_warm_starting);
+    b2World_EnableSpeculative(world_, settings_.enable_speculative);
+}
+
 void Space::create_world(jobs::Pool& pool) {
     b2WorldDef def = b2DefaultWorldDef();
     def.gravity = to_b2(settings_.gravity_vector * settings_.gravity);
     def.frictionCallback = combine_friction;
     def.restitutionCallback = combine_bounce;
+    def.contactHertz = settings_.contact_hertz;
+    def.contactDampingRatio = settings_.contact_damping_ratio;
+    def.maxContactPushSpeed = settings_.max_contact_push_speed;
+    def.maximumLinearSpeed = settings_.max_linear_speed;
+    def.restitutionThreshold = settings_.bounce_velocity_threshold;
+    def.hitEventThreshold = settings_.hit_event_threshold;
+    def.enableSleep = settings_.allow_sleep;
+    def.enableContinuous = settings_.enable_continuous;
     // On the job system's threads and the one stepping the world, which Box2D steps the same
     // with any number of them.
     if (pool.thread_count() > 0) {
@@ -452,6 +484,7 @@ void Space::create_world(jobs::Pool& pool) {
     }
     b2World_SetCustomFilterCallback(world_, should_collide, nullptr);
     b2World_SetPreSolveCallback(world_, pre_solve, nullptr);
+    apply_world_settings();
     const b2BodyDef ground = b2DefaultBodyDef();
     ground_ = b2CreateBody(world_, &ground);
 }
@@ -677,6 +710,7 @@ void Space::sync_body(world::World& world, const world::Tree2D& tree, entt::enti
         body->name = world.id_of(entity);
         body->kind = kind;
         b2BodyDef def = b2DefaultBodyDef();
+        def.sleepThreshold = settings_.sleep_velocity_threshold;
         def.type = type_of(kind, carries(constant_linear, constant_angular));
         def.position = to_b2(transform.position);
         def.rotation = b2MakeRot(transform.rotation);
@@ -1092,6 +1126,7 @@ void Space::sync_tiles(world::World& world, const world::Tree2D& tree) {
             body->name = world.id_of(entity);
             body->kind = Kind::Static;
             b2BodyDef def = b2DefaultBodyDef();
+            def.sleepThreshold = settings_.sleep_velocity_threshold;
             def.type = b2_staticBody;
             def.position = to_b2(transform.position);
             def.rotation = b2MakeRot(transform.rotation);

@@ -335,6 +335,8 @@ public:
     Space& operator=(Space&&) = delete;
 
     void set_settings(const Settings& settings);
+    // Puts the settings Box2D's world can change while it runs into it.
+    void apply_world_settings();
     // Forgets the Box2D world, its bodies and contacts; the next sync builds them again from the
     // components, as in a new world.
     void reset();
