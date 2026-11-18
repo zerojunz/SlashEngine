@@ -19,7 +19,6 @@
 #include "reflection.hpp"
 #include "restir.hpp"
 #include "sdfgi.hpp"
-#include "sdfgi_gpu.hpp"
 #include "sky_shading.hpp"
 #include "splats.hpp"
 #include "ssao.hpp"
@@ -413,54 +412,6 @@ public:
     }
 
     [[nodiscard]] bool ray_tracing() const override { return true; }
-    // TEMPORARY (SDFGI diagnostic): the state's words laid out as the GPU's buffers.
-    std::vector<std::vector<std::uint32_t>> sdfgi_words(TextureId target) override {
-        const detail::SdfgiState* state = nullptr;
-        for (const auto& [id, kept] : sdfgi_states_) {
-            if (id == target) {
-                state = &kept;
-            }
-        }
-        if (state == nullptr || state->cascades.empty()) {
-            return {};
-        }
-        const auto cascades = static_cast<std::uint32_t>(state->cascades.size());
-        const auto n = static_cast<std::uint32_t>(state->cascades[0].cells.size() / 2);
-        std::uint32_t size = 1;
-        while (size * size * size < n) {
-            ++size;
-        }
-        const std::uint32_t sh = detail::kSdfgiProbeCount * detail::kSdfgiShSize;
-        const auto history_size =
-            static_cast<std::uint32_t>(state->cascades[0].history.size() / (sh * 2));
-        const detail::SdfgiLayout layout = detail::sdfgi_layout(cascades, size, history_size);
-        std::vector<std::vector<std::uint32_t>> out(5);
-        out[0].assign(std::size_t{layout.cells} * cascades, 0U);
-        out[1].assign(std::size_t{layout.fields} * cascades, 0U);
-        out[2].assign(std::size_t{layout.probes} * cascades, 0U);
-        out[4].assign(std::size_t{layout.history} * cascades, 0U);
-        const auto put = [](std::vector<std::uint32_t>& to, std::size_t at, const auto& from) {
-            for (std::size_t i = 0; i < from.size() && at + i < to.size(); ++i) {
-                to[at + i] = static_cast<std::uint32_t>(from[i]);
-            }
-        };
-        for (std::uint32_t c = 0; c < cascades; ++c) {
-            const detail::SdfgiCascade& cascade = state->cascades[c];
-            put(out[0], std::size_t{c} * layout.cells, cascade.cells);
-            put(out[0], (std::size_t{c} * layout.cells) + (std::size_t{n} * 2), cascade.occlusion);
-            put(out[1], std::size_t{c} * layout.fields, cascade.field);
-            put(out[1], (std::size_t{c} * layout.fields) + (std::size_t{n} * 2), cascade.light);
-            put(out[2], std::size_t{c} * layout.probes, cascade.average);
-            put(out[2], (std::size_t{c} * layout.probes) + (std::size_t{sh} * 4),
-                cascade.irradiance);
-            put(out[2],
-                (std::size_t{c} * layout.probes) + (std::size_t{sh} * 4) +
-                    detail::kSdfgiProbeImageTexels,
-                cascade.radiance);
-            put(out[4], std::size_t{c} * layout.history, cascade.history);
-        }
-        return out;
-    }
     [[nodiscard]] bool generates_frames() const override { return true; }
     [[nodiscard]] std::uint32_t path_samples(TextureId target) const override {
         for (const auto& [id, state] : path_states_) {
