@@ -2433,15 +2433,25 @@ public:
             return {};
         }
         const SdfgiLayout& layout = frames->layout;
+        // Out in the software device's order (cells, fields, probes, scratch, history); the
+        // buffers hold history before scratch.
         const std::array<std::uint32_t, 5> words{
             layout.cells * layout.cascades, layout.fields * layout.cascades,
             layout.probes * layout.cascades, layout.scratch, layout.history * layout.cascades};
+        const std::array<std::size_t, 5> buffer_of{0, 1, 2, 4, 3};
         std::vector<std::vector<std::uint32_t>> out(5);
         for (std::size_t b = 0; b < 5; ++b) {
             out[b].resize(words.at(b));
-            if (!download(frames->buffers.at(b), std::as_writable_bytes(std::span(out[b])),
-                          "SDFGI's words")
-                     .ok()) {
+            if (out[b].empty()) {
+                continue;
+            }
+            const auto read = download(frames->buffers.at(buffer_of.at(b)),
+                                       std::as_writable_bytes(std::span(out[b])), "SDFGI's words");
+            if (!read.ok()) {
+                log::warn("SDFGI diagnostic: reading words failed",
+                          {{"buffer", static_cast<std::int64_t>(b)},
+                           {"words", static_cast<std::int64_t>(words.at(b))},
+                           {"error", read.error().message}});
                 return {};
             }
         }
