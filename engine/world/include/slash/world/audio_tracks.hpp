@@ -23,9 +23,11 @@ struct AudioTrackPlay {
 struct AudioTrackSound {
     // Starts a stream (a sound or a .audio.json file) on the entity's AudioStreamPlayer,
     // AudioStreamPlayer2D or AudioStreamPlayer3D, from from_seconds into it, when audio next
-    // mixes. Fails if the entity has no player or the stream doesn't load.
+    // mixes, on a polyphonic stream that plays up to polyphony of them at once (the mixer's
+    // audio_max_polyphony, 1 to 128). Fails if the entity has no player or the stream doesn't
+    // load.
     std::function<Result<AudioTrackPlay>(World& world, entt::entity player, std::string_view stream,
-                                         double from_seconds)>
+                                         double from_seconds, int polyphony)>
         play;
     // Stops one, fading it out over the next mix.
     std::function<void(World& world, std::int64_t id)> stop;

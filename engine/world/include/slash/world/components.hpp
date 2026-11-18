@@ -1691,8 +1691,12 @@ struct AnimationPlayer {
     // The entities tracks' targets stand for, by target name, as Godot's node paths from the
     // root node; null leaves a target's tracks unplayed.
     std::map<std::string, entt::entity> targets;
+    // How many streams its audio tracks play at once on each audio player, as Godot's
+    // AnimationMixer.audio_max_polyphony (1 to 128).
+    int audio_max_polyphony = 32;
 };
-SLASH_COMPONENT(AnimationPlayer, library, animation, playing, speed_scale, time, backwards, targets)
+SLASH_COMPONENT(AnimationPlayer, library, animation, playing, speed_scale, time, backwards, targets,
+                audio_max_polyphony)
 
 // An animation an AnimationTree played on its last tick: how far in it was and how much it
 // counted, as the most any of its tracks did, and the model nodes that counted otherwise, as
@@ -1723,6 +1727,7 @@ struct AnimationTree {
     // A model node whose motion is reported in root_motion_* rather than posed.
     std::string root_motion_track;
     bool root_motion_local = false; // report root motion position in the node's own frame
+    int audio_max_polyphony = 32;   // as AnimationPlayer's
     // Parameters set by the game, by their names in the tree, as "speed/blend_amount"; the tree
     // sets requests back to their defaults once it has acted on them.
     json::Object parameters;
@@ -1740,8 +1745,8 @@ struct AnimationTree {
     Vec3 root_motion_scale_accumulator{1.0F, 1.0F, 1.0F};
 };
 SLASH_COMPONENT(AnimationTree, tree_root, libraries, targets, active, deterministic,
-                root_motion_track, root_motion_local, parameters, state, playing, invalid,
-                root_motion_position, root_motion_rotation, root_motion_scale,
+                root_motion_track, root_motion_local, audio_max_polyphony, parameters, state,
+                playing, invalid, root_motion_position, root_motion_rotation, root_motion_scale,
                 root_motion_position_accumulator, root_motion_rotation_accumulator,
                 root_motion_scale_accumulator)
 

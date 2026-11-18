@@ -2203,6 +2203,25 @@ private:
                 project["gui"]["theme"] = path;
             }
         }
+        // gui/timers/*, which time tooltips, typing and shortcut flashes.
+        if (const Value* delay = number("gui", "timers/tooltip_delay_sec")) {
+            project["gui"]["tooltip_delay_sec"] = std::max(delay->number(), 0.0);
+        }
+        if (const Value* idle = number("gui", "timers/text_edit_idle_detect_sec")) {
+            project["gui"]["text_edit_idle_detect_sec"] = std::max(idle->number(), 0.0);
+        }
+        if (const Value* search = number("gui", "timers/incremental_search_max_interval_msec")) {
+            project["gui"]["incremental_search_max_interval_msec"] =
+                std::max<std::int64_t>(static_cast<std::int64_t>(search->number()), 0);
+        }
+        if (const Value* flash = number("gui", "timers/button_shortcut_feedback_highlight_time")) {
+            project["gui"]["button_shortcut_feedback_highlight_time"] =
+                std::max(flash->number(), 0.0);
+        }
+        if (const Value* undo = number("gui", "common/text_edit_undo_stack_max_size")) {
+            project["gui"]["text_edit_undo_stack_max_size"] =
+                std::max<std::int64_t>(static_cast<std::int64_t>(undo->number()), 1);
+        }
         if (setting("gui", "theme/custom_font") != nullptr) {
             problems_.add("setting gui/theme/custom_font", "project.godot",
                           "set default_font in the project's theme instead");
@@ -2229,6 +2248,13 @@ private:
         }
         if (const Value* strength = number("audio", "general/3d_panning_strength")) {
             project["audio"]["panning_strength_3d"] = strength->number();
+        }
+        if (const Value* threshold = number("audio", "buses/channel_disable_threshold_db")) {
+            project["audio"]["channel_disable_threshold_db"] =
+                std::clamp(threshold->number(), -80.0, 0.0);
+        }
+        if (const Value* time = number("audio", "buses/channel_disable_time")) {
+            project["audio"]["channel_disable_time"] = std::clamp(time->number(), 0.0, 5.0);
         }
         if (const Value* input = setting("audio", "driver/enable_input");
             input != nullptr && input->kind == Value::Kind::Bool && input->boolean) {
@@ -5827,6 +5853,12 @@ private:
                 }
                 return true;
             }
+            if (name == "audio_max_polyphony") {
+                if (value.kind == Value::Kind::Int) {
+                    player["audio_max_polyphony"] = std::clamp<std::int64_t>(value.integer, 1, 128);
+                }
+                return true;
+            }
             if (name == "playback_default_blend_time") {
                 if (value.number() != 0.0) {
                     problems_.add("AnimationPlayer.playback_default_blend_time", node.declared,
@@ -5846,7 +5878,6 @@ private:
                 std::string_view{"callback_mode_method"},
                 std::string_view{"callback_mode_discrete"},
                 std::string_view{"movie_quit_on_finish"},
-                std::string_view{"audio_max_polyphony"},
             };
             if (contains(kTaken, std::string_view(name)) ||
                 name.starts_with("playback_auto_capture")) {
@@ -10502,6 +10533,8 @@ private:
             } else if (property.name == "root_motion_local" && value.kind == Value::Kind::Bool &&
                        value.boolean) {
                 tree["root_motion_local"] = true;
+            } else if (property.name == "audio_max_polyphony" && value.kind == Value::Kind::Int) {
+                tree["audio_max_polyphony"] = std::clamp<std::int64_t>(value.integer, 1, 128);
             } else if (property.name == "root_motion_track") {
                 const std::string path = path_text(value);
                 if (path.empty()) {

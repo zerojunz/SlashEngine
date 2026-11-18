@@ -419,8 +419,7 @@ struct Server::Impl final : MixContext {
                                 linear_to_db(peak.right + kPeakOffset)};
                 if (!channel.used) {
                     // See if any sound is left, since nothing was mixed in.
-                    if (std::max(peak.right, peak.left) >
-                        db_to_linear(kChannelDisableThresholdDb)) {
+                    if (std::max(peak.right, peak.left) > channel_disable_threshold) {
                         channel.last_mix_with_audio = mix_frames;
                     } else if (mix_frames - channel.last_mix_with_audio > channel_disable_frames) {
                         channel.active = false;
@@ -493,6 +492,7 @@ struct Server::Impl final : MixContext {
     int to_mix = 0;
     std::uint64_t mix_frames = 0;
     std::uint64_t channel_disable_frames;
+    float channel_disable_threshold = db_to_linear(kChannelDisableThresholdDb);
     PlaybackId next_id = 1;
 };
 
@@ -619,6 +619,12 @@ Server::PlaybackId Server::start(std::unique_ptr<Playback> playback, std::string
     node.pitch_scale = pitch_scale;
     impl_->playbacks.push_back(std::move(node));
     return impl_->playbacks.back().id;
+}
+
+void Server::set_channel_disable(float threshold_db, double seconds) {
+    impl_->channel_disable_threshold = db_to_linear(threshold_db);
+    impl_->channel_disable_frames =
+        static_cast<std::uint64_t>(std::max(seconds, 0.0) * impl_->mix_rate());
 }
 
 void Server::stop(PlaybackId id) {

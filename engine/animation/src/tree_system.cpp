@@ -561,6 +561,7 @@ struct TreePlayer::State {
         tick.backward = std::signbit(info.delta);
         tick.blend = weight;
         tick.seeked = info.seeked;
+        tick.polyphony = tree.audio_max_polyphony;
         if (info.seeked) {
             tick.key = find_key(track, animation.length, info.time, true, true);
         } else {

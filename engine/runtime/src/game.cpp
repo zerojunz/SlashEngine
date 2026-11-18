@@ -299,14 +299,21 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
                                   .frame_generation = project_.frame_generation,
                                   .ggx_samples = project_.ggx_samples,
                                   .probe_update_speed = project_.probe_update_speed});
-    ui::set_settings(world_, {.viewport = {static_cast<float>(project_.window_width),
-                                           static_cast<float>(project_.window_height)},
-                              .theme = project_.gui_theme,
-                              .allow_system_fallback = project_.allow_system_fallback,
-                              .tooltip_delay_sec = project_.tooltip_delay_sec,
-                              .tooltip_position_offset = project_.tooltip_position_offset,
-                              .drag_threshold = project_.drag_threshold,
-                              .accessibility_support = project_.accessibility_support});
+    ui::set_settings(
+        world_,
+        {.viewport = {static_cast<float>(project_.window_width),
+                      static_cast<float>(project_.window_height)},
+         .theme = project_.gui_theme,
+         .allow_system_fallback = project_.allow_system_fallback,
+         .tooltip_delay_sec = project_.tooltip_delay_sec,
+         .tooltip_position_offset = project_.tooltip_position_offset,
+         .drag_threshold = project_.drag_threshold,
+         .text_edit_idle_detect_sec = project_.text_edit_idle_detect_sec,
+         .text_edit_undo_stack_max_size = project_.text_edit_undo_stack_max_size,
+         .incremental_search_max_interval_msec = project_.incremental_search_max_interval_msec,
+         .button_shortcut_feedback_highlight_time =
+             project_.button_shortcut_feedback_highlight_time,
+         .accessibility_support = project_.accessibility_support});
     animation::install(world_, assets_);
     physics2d::install(world_, project_.physics_2d);
     physics3d::install(world_, project_.physics_3d);
