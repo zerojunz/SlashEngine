@@ -631,6 +631,7 @@ on its top.
 | `display/display_server/driver.linuxbsd` | `window.linux_display_driver` when it is `wayland` |
 | `physics/common/physics_ticks_per_second` | `tick_hz` |
 | `physics/2d/default_gravity`, `default_gravity_vector`, `default_linear_damp`, `default_angular_damp` | `physics_2d` |
+| `physics/2d/sleep_threshold_linear` | `physics_2d.sleep_velocity_threshold` |
 | `physics/3d/default_gravity`, `default_gravity_vector`, `default_linear_damp`, `default_angular_damp` | `physics_3d` |
 | `physics/jolt_physics_3d/simulation/areas_detect_static_bodies` | `physics_3d.areas_detect_static_bodies` |
 | `physics/jolt_physics_3d/simulation/*`, `collisions/*` and `limits/*` | `physics_3d.<the same name>`, angles in radians as `project.godot` keeps them |

@@ -36,6 +36,48 @@ json::Value number_property(std::string_view description, double fallback) {
     return property;
 }
 
+// Box2D's world settings, by project.json's names: numbers with their range and switches.
+struct NumberSetting {
+    const char* name;
+    float Settings::*field;
+    double minimum;
+    double maximum;
+    const char* description;
+};
+struct SwitchSetting {
+    const char* name;
+    bool Settings::*field;
+    const char* description;
+};
+
+constexpr NumberSetting kNumberSettings[] = {
+    {"contact_hertz", &Settings::contact_hertz, 0.0, 1000.0,
+     "How stiff contacts are, in cycles a second: higher pushes overlaps apart faster but can "
+     "jitter."},
+    {"contact_damping_ratio", &Settings::contact_damping_ratio, 0.0, 1000.0,
+     "How little contacts bounce while pushing bodies apart; lower is faster and livelier."},
+    {"max_contact_push_speed", &Settings::max_contact_push_speed, 0.0, 1.0e7,
+     "The fastest contacts push overlapping bodies apart, in pixels per second."},
+    {"max_linear_speed", &Settings::max_linear_speed, 1.0, 1.0e9,
+     "The fastest bodies may move, in pixels per second."},
+    {"bounce_velocity_threshold", &Settings::bounce_velocity_threshold, 0.0, 1.0e7,
+     "The speed, in pixels per second, below which colliding bodies don't bounce."},
+    {"hit_event_threshold", &Settings::hit_event_threshold, 0.0, 1.0e7,
+     "The speed, in pixels per second, a hit needs to count for breaking and damage."},
+    {"sleep_velocity_threshold", &Settings::sleep_velocity_threshold, 0.0, 1.0e7,
+     "How slowly, in pixels per second, a body must move for half a second to sleep."},
+};
+
+constexpr SwitchSetting kSwitchSettings[] = {
+    {"allow_sleep", &Settings::allow_sleep, "Whether resting bodies sleep."},
+    {"enable_continuous", &Settings::enable_continuous,
+     "Whether fast bodies are swept against static ones so they don't tunnel."},
+    {"enable_warm_starting", &Settings::enable_warm_starting,
+     "Whether the solver starts from the last step's impulses, which steadies stacks."},
+    {"enable_speculative", &Settings::enable_speculative,
+     "Whether contacts are made a little before bodies touch, so fast ones don't pass through."},
+};
+
 // Box2D's own checks fail as SLASH_ASSERT does: logged, then the program stops.
 int on_box2d_assert(const char* condition, const char* file, int line) {
     slash::detail::assert_failed(condition, "Box2D check failed", file, line);
@@ -233,6 +275,19 @@ json::Value settings_schema() {
         "The most pieces breaks from impacts may cut a tick, so a chain of breaks spreads over "
         "ticks (the first break of a tick always cuts); 0 for no limit.";
     properties["break_budget"] = std::move(budget);
+    for (const NumberSetting& setting : kNumberSettings) {
+        json::Value property = number_property(setting.description, defaults.*setting.field);
+        property["minimum"] = setting.minimum;
+        property["maximum"] = setting.maximum;
+        properties[setting.name] = std::move(property);
+    }
+    for (const SwitchSetting& setting : kSwitchSettings) {
+        json::Value property;
+        property["type"] = "boolean";
+        property["default"] = defaults.*setting.field;
+        property["description"] = setting.description;
+        properties[setting.name] = std::move(property);
+    }
     return schema;
 }
 
@@ -256,6 +311,14 @@ Settings parse_settings(const json::Value& settings) {
     }
     if (const json::Value* budget = settings.find("break_budget"); budget != nullptr) {
         out.break_budget = static_cast<int>(budget->as_int());
+    }
+    for (const NumberSetting& setting : kNumberSettings) {
+        number(setting.name, out.*setting.field);
+    }
+    for (const SwitchSetting& setting : kSwitchSettings) {
+        if (const json::Value* value = settings.find(setting.name); value != nullptr) {
+            out.*setting.field = value->as_bool();
+        }
     }
     return out;
 }
