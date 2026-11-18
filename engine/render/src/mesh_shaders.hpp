@@ -7931,7 +7931,7 @@ cbuffer Scene : register(b1, space3) {
     // the exposure their light is multiplied by.
     float4 reflections;
     // 1 when meshes trace their VoxelGIs (Forward+, and not a reflection probe's capture), then 1
-    // for high quality.
+    // for high quality, then 1 when screen_texture's layers 5 and 6 hold SDFGI's light.
     float4 scene_voxel_gi;
     // Forward+'s decals: how many, the filter, the atlas's width and height in texels.
     float4 decal_info;
@@ -8110,12 +8110,12 @@ float3 tonemap_aces(float3 color, float white) {
 float3 agx_contrast_approx(float3 x) {
     float3 x2 = x * x;
     float3 x4 = x2 * x2;
-    return 0.021 * x + 4.0111 * x2 - 25.682 * x2 * x + 70.359 * x4 - 74.778 * x4 * x +
+)hlsl",
+R"hlsl(    return 0.021 * x + 4.0111 * x2 - 25.682 * x2 * x + 70.359 * x4 - 74.778 * x4 * x +
            27.069 * x4 * x2;
 }
 
-)hlsl",
-R"hlsl(// Godot's simplification of EaryChow's AgX, as Blender uses it
+// Godot's simplification of EaryChow's AgX, as Blender uses it
 // (https://github.com/EaryChow/AgX_LUT_Gen/blob/main/AgXBasesRGB.py).
 float3 tonemap_agx(float3 color) {
     // Linear sRGB to linear Rec. 2020 with AgX's inset, and back with its outset; the rows are
@@ -8379,10 +8379,10 @@ void light_compute(float3 n, float3 l, float3 v, float3 light_color, float atten
             g = v_ggx(c_n_dot_l, c_n_dot_v, alpha_ggx);
         }
         float c_l_dot_h5 = schlick_fresnel(c_l_dot_h);
-        float f90 = clamp(50.0 * f0.g, 0.0, 1.0);
-        float3 f = f0 + (f90 - f0) * c_l_dot_h5;
 )hlsl",
-R"hlsl(        float3 specular_brdf_nl = c_n_dot_l * d * f * g;
+R"hlsl(        float f90 = clamp(50.0 * f0.g, 0.0, 1.0);
+        float3 f = f0 + (f90 - f0) * c_l_dot_h5;
+        float3 specular_brdf_nl = c_n_dot_l * d * f * g;
         specular_light += specular_brdf_nl * light_color * attenuation * specular_amount;
     }
 }
@@ -8652,11 +8652,11 @@ float3 frame_direction(VertexOutput input, float3 v) {
 }
 
 #ifdef CLUSTERED
-// The bits of a word of a tile's light bits for lights from first up to end: light word * 32 +
+)hlsl",
+R"hlsl(// The bits of a word of a tile's light bits for lights from first up to end: light word * 32 +
 // bit for each bit.
 uint range_mask(uint word, uint first, uint end) {
-)hlsl",
-R"hlsl(    int low = clamp((int)first - (int)(word * 32u), 0, 32);
+    int low = clamp((int)first - (int)(word * 32u), 0, 32);
     int high = clamp((int)end - (int)(word * 32u), 0, 32);
     uint below_high = high >= 32 ? 0xFFFFFFFFu : (1u << (uint)high) - 1u;
     uint below_low = low >= 32 ? 0xFFFFFFFFu : (1u << (uint)low) - 1u;
@@ -8916,12 +8916,12 @@ void apply_decal(Decal decal, float3 world, float3 geometry, float3 dx, float3 d
                  inout float metallic, inout float3 emitted) {
     float4 p = float4(world, 1.0);
     float3 local = float3(dot(decal.rows[0], p), dot(decal.rows[1], p), dot(decal.rows[2], p));
-    if (local.x < 0.0 || local.y < -1.0 || local.z < 0.0 || local.x > 1.0 || local.y > 1.0 ||
+)hlsl",
+R"hlsl(    if (local.x < 0.0 || local.y < -1.0 || local.z < 0.0 || local.x > 1.0 || local.y > 1.0 ||
         local.z > 1.0) {
         return; // outside its box
     }
-)hlsl",
-R"hlsl(    float fade = decal_fade(1.0 - abs(local.y), local.y > 0.0 ? decal.params.z : decal.params.w);
+    float fade = decal_fade(1.0 - abs(local.y), local.y > 0.0 ? decal.params.z : decal.params.w);
     if (decal.normal.w > 0.0) {
         fade *= smoothstep(decal.normal.w, 1.0, dot(geometry, decal.normal.xyz) * 0.5 + 0.5);
     }
@@ -9169,10 +9169,10 @@ static const float3 kHighQualityCones[6] = {
     float3(0.267617, 0.823639, 0.5), float3(-0.700629, 0.509037, 0.5),
     float3(-0.700629, -0.509037, 0.5), float3(0.267617, -0.823639, 0.5)};
 static const float kHighQualityWeights[6] = {0.25, 0.15, 0.15, 0.15, 0.15, 0.15};
-static const float3 kCones[4] = {float3(0.707107, 0.0, 0.707107), float3(0.0, 0.707107, 0.707107),
-                                 float3(-0.707107, 0.0, 0.707107),
 )hlsl",
-R"hlsl(                                 float3(0.0, -0.707107, 0.707107)};
+R"hlsl(static const float3 kCones[4] = {float3(0.707107, 0.0, 0.707107), float3(0.0, 0.707107, 0.707107),
+                                 float3(-0.707107, 0.0, 0.707107),
+                                 float3(0.0, -0.707107, 0.707107)};
 
 // voxel_gi_compute: one VoxelGI's cones from a point, weighed by how far inside its box it is. A
 // cone about +z turns to about the normal by tangent, bitangent and normal.
@@ -9427,10 +9427,10 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
 #endif
 
     // Light from the sky's radiance, as Godot's scene.glsl takes it: reflections by roughness
-    // and ambient light by the normal, then specular occlusion and Lazarov's environment BRDF.
-    float3 ambient_light = lightmapped ? lightmap_light(input.uv2)
 )hlsl",
-R"hlsl(                           : captured  ? capture_light(normal)
+R"hlsl(    // and ambient light by the normal, then specular occlusion and Lazarov's environment BRDF.
+    float3 ambient_light = lightmapped ? lightmap_light(input.uv2)
+                           : captured  ? capture_light(normal)
                                        : ambient.rgb;
     float3 reflected = (float3)0.0;
     if (sky.y != 0.0) {
@@ -9475,6 +9475,16 @@ R"hlsl(                           : captured  ? capture_light(normal)
         reflected += srgb_to_linear(texel) * horizon * horizon * fc * sky.z;
     }
 #ifdef CLUSTERED
+    if (scene_voxel_gi.z != 0.0 && !lightmapped && !captured &&
+        ((options.x & kHasAlpha) == 0u || (options.x & kAlphaScissor) != 0u)) {
+        // Forward+'s SDFGI, as Godot's GI buffers light a pixel: its ambient light and
+        // reflections, which the gather drew into the screen array's layers 5 and 6, go over the
+        // sky's by how much of them its cascades hold, and VoxelGIs go over it.
+        float4 sdfgi_ambient = screen_texture.Load(int4((int2)input.position.xy, 5, 0));
+        float4 sdfgi_reflection = screen_texture.Load(int4((int2)input.position.xy, 6, 0));
+        ambient_light = lerp(ambient_light, sdfgi_ambient.rgb, sdfgi_ambient.a);
+        reflected = lerp(reflected, sdfgi_reflection.rgb, sdfgi_reflection.a);
+    }
     if (scene_voxel_gi.x != 0.0 && voxel_gi.x > 0.0 && !lightmapped && !captured) {
         // Forward+'s VoxelGIs, as Godot's GI buffers light a pixel: their ambient light and
         // reflections go over the sky's by how much of their cones met something.
@@ -9639,7 +9649,8 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
                             : float4(0.5, 0.5, 1.0, 1.0);
             float share = weights[i] / sum;
             blended += srgb_to_linear(albedo_bump[i].rgb) *
-                       lerp((float3)1.0, texel.rgb, terrain_opacity[i]) * share;
+)hlsl",
+R"hlsl(                       lerp((float3)1.0, texel.rgb, terrain_opacity[i]) * share;
             rough += nr.a * share;
             ground += unpack_ground_normal(nr) * share;
         }
@@ -9659,8 +9670,7 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
         normal = -normal;
     }
     if ((flags & kNormalMap) != 0u) {
-)hlsl",
-R"hlsl(        // With the interpolated, unnormalized tangent frame, per MikkTSpace, as Godot does.
+        // With the interpolated, unnormalized tangent frame, per MikkTSpace, as Godot does.
         float3 mapped = mapped_texel.rgb;
         mapped.xy = mapped.xy * 2.0 - 1.0;
         mapped.z = sqrt(max(0.0, 1.0 - dot(mapped.xy, mapped.xy)));

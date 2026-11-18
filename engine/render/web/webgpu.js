@@ -21,7 +21,12 @@ Module["preRun"] = [].concat(Module["preRun"] || [], () => {
       const features = ["texture-compression-bc", "texture-compression-astc"].filter((name) =>
         adapter.features.has(name)
       );
-      return adapter.requestDevice({ requiredFeatures: features });
+      // The largest buffers the adapter binds, which SDFGI's cascades can need.
+      const limits = {
+        maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
+        maxBufferSize: adapter.limits.maxBufferSize,
+      };
+      return adapter.requestDevice({ requiredFeatures: features, requiredLimits: limits });
     })
     .then((device) => {
       if (!device) {

@@ -289,7 +289,7 @@ cbuffer Scene : register(b1, space3) {
     // the exposure their light is multiplied by.
     float4 reflections;
     // 1 when meshes trace their VoxelGIs (Forward+, and not a reflection probe's capture), then 1
-    // for high quality.
+    // for high quality, then 1 when screen_texture's layers 5 and 6 hold SDFGI's light.
     float4 scene_voxel_gi;
     // Forward+'s decals: how many, the filter, the atlas's width and height in texels.
     float4 decal_info;
@@ -1717,6 +1717,16 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
         reflected += srgb_to_linear(texel) * horizon * horizon * fc * sky.z;
     }
 #ifdef CLUSTERED
+    if (scene_voxel_gi.z != 0.0 && !lightmapped && !captured &&
+        ((options.x & kHasAlpha) == 0u || (options.x & kAlphaScissor) != 0u)) {
+        // Forward+'s SDFGI, as Godot's GI buffers light a pixel: its ambient light and
+        // reflections, which the gather drew into the screen array's layers 5 and 6, go over the
+        // sky's by how much of them its cascades hold, and VoxelGIs go over it.
+        float4 sdfgi_ambient = screen_texture.Load(int4((int2)input.position.xy, 5, 0));
+        float4 sdfgi_reflection = screen_texture.Load(int4((int2)input.position.xy, 6, 0));
+        ambient_light = lerp(ambient_light, sdfgi_ambient.rgb, sdfgi_ambient.a);
+        reflected = lerp(reflected, sdfgi_reflection.rgb, sdfgi_reflection.a);
+    }
     if (scene_voxel_gi.x != 0.0 && voxel_gi.x > 0.0 && !lightmapped && !captured) {
         // Forward+'s VoxelGIs, as Godot's GI buffers light a pixel: their ambient light and
         // reflections go over the sky's by how much of their cones met something.

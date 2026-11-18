@@ -165,8 +165,12 @@ jobs:
           save: ${{ github.event_name == 'push' }}
           evict-old-files: job
 
+      # Without debug info: the runner has died linking the examples with it, and Tracy's
+      # zones carry their own names and source places.
       - name: Configure
-        run: cmake --preset tracy -DSLASH_WARNINGS_AS_ERRORS=ON ${{ env.CCACHE_CMAKE_ARGS }}
+        run: >-
+          cmake --preset tracy -DSLASH_WARNINGS_AS_ERRORS=ON -DSLASH_DEBUG_INFO=OFF
+          ${{ env.CCACHE_CMAKE_ARGS }}
 
       - name: Build two examples
         run: cmake --build --preset tracy --target example-job-system example-profiling
