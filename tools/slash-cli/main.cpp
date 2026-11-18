@@ -63,6 +63,7 @@
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/material.hpp"
+#include "slash/scene3d/pipeline.hpp"
 #include "slash/scene3d/recipe.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
@@ -183,7 +184,8 @@ Usage:
                                      (.voxelgi.json), model, standard_material, texture,
                                      scatter, pcg, physics_material, ragdoll, foliage, groom,
                                      damage, character, face, creature, vehicle, vfx, fluid,
-                                     water, replay, test, score (each its .<name>.json file),
+                                     water, pipeline, replay, test, score (each its
+                                     .<name>.json file),
                                      storyboard, project (project.json), presets
                                      (export_presets.json), sdk (sdk.json), plugin
                                      (.plugin.json), providers (providers.json) or bench (a
@@ -1223,6 +1225,7 @@ int cmd_scene_validate(const std::string& path) {
     const bool vfx = world::is_vfx_path(path);
     const bool fluid = world::is_fluid_path(path);
     const bool water = world::is_water_path(path);
+    const bool pipeline = slash::scene3d::is_pipeline_path(path);
     json::Value result;
     auto parsed = json::parse(text.value());
     std::vector<json::ValidationError> errors;
@@ -1289,6 +1292,8 @@ int cmd_scene_validate(const std::string& path) {
         errors = world::validate_groom(parsed.value());
     } else if (vfx) {
         errors = world::validate_vfx(parsed.value());
+    } else if (pipeline) {
+        errors = slash::scene3d::validate_pipeline(parsed.value());
     } else if (fluid) {
         errors = world::validate_fluid(parsed.value());
     } else if (water) {
@@ -1353,14 +1358,14 @@ int cmd_scene_validate(const std::string& path) {
         !theme && !stream && !buses && !navmesh && !navpoly && !brain && !quest && !dialogue &&
         !meshlib && !standard && !lightmap && !replay && !test && !score && !texture &&
         !physics_material && !ragdoll && !foliage && !groom && !damage && !face && !vfx && !fluid &&
-        !water) {
+        !water && !pipeline) {
         check_story_refs(path, parsed.value(), errors);
     }
     result["valid"] = errors.empty();
     if (!errors.empty()) {
         result["errors"] = errors_to_json(errors);
     } else if (font || stream || process || standard || physics_material || ragdoll || foliage ||
-               groom || damage || face || vfx || fluid || water) {
+               groom || damage || face || vfx || fluid || water || pipeline) {
         print(result);
         return kExitOk;
     } else if (brain) {
@@ -1636,6 +1641,11 @@ int cmd_scene_format(const std::string& path, bool check) {
                                       return world::validate_vfx(doc);
                                   }));
         }
+        if (slash::scene3d::is_pipeline_path(path)) {
+            return format_checked(text.value(), checked_by([](const json::Value& doc) {
+                                      return slash::scene3d::validate_pipeline(doc);
+                                  }));
+        }
         if (world::is_fluid_path(path)) {
             return format_checked(text.value(), checked_by([](const json::Value& doc) {
                                       return world::validate_fluid(doc);
@@ -1711,7 +1721,7 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 47> kKinds = {"scene",
+    constexpr std::array<std::string_view, 48> kKinds = {"scene",
                                                          "prefab",
                                                          "frames",
                                                          "material",
@@ -1757,7 +1767,8 @@ int cmd_schema(const std::vector<std::string>& args) {
                                                          "vehicle",
                                                          "vfx",
                                                          "fluid",
-                                                         "water"};
+                                                         "water",
+                                                         "pipeline"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
         return usage_error(
             "schema takes one argument: scene, prefab, frames, material, "
@@ -1767,7 +1778,7 @@ int cmd_schema(const std::vector<std::string>& args) {
             "standard_material, "
             "texture, scatter, pcg, physics_material, ragdoll, foliage, groom, damage, "
             "character, face, creature, "
-            "vehicle, vfx, fluid, water, "
+            "vehicle, vfx, fluid, water, pipeline, "
             "replay, test, score, "
             "storyboard, "
             "project, presets, sdk, plugin, providers or bench");
@@ -1843,6 +1854,8 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = world::vehicle_schema();
     } else if (args[0] == "vfx") {
         schema = world::vfx_schema();
+    } else if (args[0] == "pipeline") {
+        schema = slash::scene3d::pipeline_schema();
     } else if (args[0] == "fluid") {
         schema = world::fluid_schema();
     } else if (args[0] == "water") {

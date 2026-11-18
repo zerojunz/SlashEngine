@@ -45,6 +45,7 @@
 #include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/material.hpp"
 #include "slash/scene3d/particle_collision.hpp"
+#include "slash/scene3d/pipeline.hpp"
 #include "slash/scene3d/recipe.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/scene3d/splats.hpp"
@@ -218,6 +219,7 @@ enum class DataFile : std::uint8_t {
     Foliage,
     Groom,
     Vfx,
+    Pipeline,
     Fluid,
     Water,
     Damage,
@@ -319,6 +321,9 @@ DataFile data_file(std::string_view name) {
     }
     if (world::is_vfx_path(name)) {
         return DataFile::Vfx;
+    }
+    if (scene3d::is_pipeline_path(name)) {
+        return DataFile::Pipeline;
     }
     if (world::is_fluid_path(name)) {
         return DataFile::Fluid;
@@ -498,6 +503,8 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         return world::validate_groom(parsed.value());
     case DataFile::Vfx:
         return world::validate_vfx(parsed.value());
+    case DataFile::Pipeline:
+        return scene3d::validate_pipeline(parsed.value());
     case DataFile::Fluid:
         return world::validate_fluid(parsed.value());
     case DataFile::Water:

@@ -6,6 +6,7 @@
 // the same pixels as on a GPU.
 
 #include "checks.hpp"
+#include "compositor.hpp"
 #include "cpu_particles.hpp"
 #include "decal.hpp"
 #include "forward_post.hpp"
@@ -596,6 +597,17 @@ public:
                 !checked) {
                 return checked.error();
             }
+            if (auto checked = detail::check_effects(
+                    *frame.scene,
+                    [&](ShaderId id) {
+                        const auto found = shaders_.find(id);
+                        return found != shaders_.end() &&
+                               found->second->type == ShaderType::Compositor;
+                    },
+                    [&](TextureId id) { return usable(id); });
+                !checked) {
+                return checked.error();
+            }
         }
         if (capture) {
             if (frame.target != TextureId::None) {
@@ -820,12 +832,22 @@ public:
             if (!mesh_draws_.empty() || !scene.splats.clouds.empty()) {
                 depth = draw_meshes(scene, {.bytes = nullptr, .hdr = &world},
                                     fsr2_state != nullptr ? &fsr2_camera : nullptr);
-            } else if (detail::uses_taa(scene)) {
-                // TAA blends frames that draw meshes; one without starts it again.
-                for (auto& [id, history] : taa_histories_) {
-                    if (id == frame_.target) {
-                        history.primed = false;
+            } else {
+                if (detail::uses_taa(scene)) {
+                    // TAA blends frames that draw meshes; one without starts it again.
+                    for (auto& [id, history] : taa_histories_) {
+                        if (id == frame_.target) {
+                            history.primed = false;
+                        }
                     }
+                }
+                // The effects over the sky alone, at every point in turn.
+                const std::vector<float> cleared(std::size_t{size[0]} * size[1], 0.0F);
+                for (const EffectCallback point :
+                     {EffectCallback::PreOpaque, EffectCallback::PostOpaque,
+                      EffectCallback::PostSky, EffectCallback::PreTransparent,
+                      EffectCallback::PostTransparent}) {
+                    run_effects(scene, {.bytes = nullptr, .hdr = &world}, point, cleared, {});
                 }
             }
             depth.resize(std::size_t{size[0]} * size[1], 0.0F);
@@ -1780,6 +1802,62 @@ private:
         return &radiance_;
     }
 
+    // Draws the scene's compositor effects at a point over the target's world: each reads the
+    // world as it is (copied), the depth buffer and, when it asks, the prepass's normals and
+    // roughness (as the GPU stores them, RGBA8 over 255), and writes the world's new color as
+    // half floats, as the GPU devices' RGBA16F world.
+    void run_effects(const Scene3D& scene, const WorldTarget& target, EffectCallback point,
+                     std::span<const float> depth, std::span<const float> normals) {
+        const std::vector<const CompositorEffect3D*> effects = detail::effects_at(scene, point);
+        if (effects.empty() || target.hdr == nullptr) {
+            return;
+        }
+        const std::size_t pixels = std::size_t{target.width()} * target.height();
+        std::vector<std::array<float, 4>> screen(pixels);
+        std::vector<std::array<float, 4>> out(pixels);
+        std::vector<std::array<float, 4>> normal_roughness;
+        if (normals.size() >= pixels * 4) {
+            normal_roughness.resize(pixels);
+            for (std::size_t at = 0; at < pixels; ++at) {
+                for (std::size_t c = 0; c < 4; ++c) {
+                    normal_roughness[at].at(c) = normals[(at * 4) + c];
+                }
+            }
+        }
+        for (const CompositorEffect3D* effect : effects) {
+            SoftwareShader* shader = find_shader(effect->shader);
+            if (shader == nullptr) {
+                continue;
+            }
+            for (std::size_t at = 0; at < pixels; ++at) {
+                screen[at] = target.load(at);
+            }
+            const bool read_normals = effect->normal_roughness && !normal_roughness.empty();
+            const CompositorUniforms uniforms = detail::compositor_uniforms(
+                scene, *effect, target.width(), target.height(), read_normals);
+            std::array<Bound, kCompositorTextures> params;
+            for (std::size_t slot = 0; slot < params.size(); ++slot) {
+                params.at(slot) = bound(effect->textures.at(slot), false);
+            }
+            detail::run_compositor(
+                shader->fragment, uniforms,
+                {.width = target.width(),
+                 .height = target.height(),
+                 .color = screen,
+                 .depth = depth,
+                 .normal_roughness = read_normals
+                                         ? std::span<const std::array<float, 4>>(normal_roughness)
+                                         : std::span<const std::array<float, 4>>()},
+                [&](std::uint32_t slot, float u, float v) {
+                    return params.at(std::min<std::size_t>(slot, params.size() - 1)).sample(u, v);
+                },
+                out);
+            for (std::size_t at = 0; at < pixels; ++at) {
+                target.store(at, out[at]);
+            }
+        }
+    }
+
     // Draws the frame's meshes over target and returns the depth buffer: a float a pixel, rows
     // top to bottom. With SSAO, SSR, TAA or FSR 2, Forward+'s prepass draws the opaque meshes'
     // depth and normals first, from which the SSAO passes make the occlusion the meshes are
@@ -2002,20 +2080,38 @@ private:
                 }
             }
         };
-        // The color pass over buffer: with subsurface scattering or Gaussian splats, the opaque
-        // meshes, then those that scatter light under their surface again where they are seen,
-        // into a texture of half floats, which is blurred across and down and added to the
-        // world, then the splats blended over what is in front of them, then the blended meshes.
+        // The color pass over buffer: with subsurface scattering, Gaussian splats or compositor
+        // effects, the opaque meshes, then those that scatter light under their surface again
+        // where they are seen, into a texture of half floats, which is blurred across and down
+        // and added to the world, then the splats blended over what is in front of them, then
+        // the blended meshes, each effect drawn over the world at its point (without them when
+        // with_effects is false, for SSR's first frame).
         const bool splats = target.hdr != nullptr && !scene.splats.clouds.empty();
-        const auto draw_color = [&](std::span<float> buffer) {
+        const bool effects = target.hdr != nullptr && detail::uses_effects(scene);
+        // The prepass's normals and roughness, which effects that ask read.
+        detail::SsaoImage normals{
+            .width = target.width(), .height = target.height(), .channels = 4, .values = {}};
+        const auto effects_at = [&](EffectCallback point, std::span<const float> buffer) {
+            run_effects(scene, target, point, buffer, normals.values);
+        };
+        const auto draw_color = [&](std::span<float> buffer, bool with_effects) {
             const bool subsurface = target.hdr != nullptr && detail::uses_subsurface(scene);
-            if (!subsurface && !splats) {
+            const bool effect = with_effects && effects;
+            if (!subsurface && !splats && !effect) {
                 draw_all(buffer, false, shade_color);
                 return;
+            }
+            if (effect) {
+                effects_at(EffectCallback::PreOpaque, buffer);
             }
             draw_some(buffer, true, false, shade_color);
             if (subsurface) {
                 scatter_under_surfaces(buffer);
+            }
+            if (effect) {
+                effects_at(EffectCallback::PostOpaque, buffer);
+                effects_at(EffectCallback::PostSky, buffer);
+                effects_at(EffectCallback::PreTransparent, buffer);
             }
             if (splats) {
                 const std::vector<float> blend =
@@ -2034,6 +2130,9 @@ private:
                 }
             }
             draw_some(buffer, false, true, shade_color);
+            if (effect) {
+                effects_at(EffectCallback::PostTransparent, buffer);
+            }
         };
         std::vector<float> prepass_depth;
         std::vector<float> velocity;
@@ -2053,16 +2152,14 @@ private:
         const std::optional<detail::ManyLights> many =
             clustered && !scene.capture && !clusters.lights.empty() ? detail::many_lights(scene)
                                                                     : std::nullopt;
-        if (lights->ssao[0] != 0.0F || ssr || motion || !traced.empty() || gi || sdfgi || many) {
+        if (lights->ssao[0] != 0.0F || ssr || motion || !traced.empty() || gi || sdfgi || many ||
+            detail::effects_need_normals(scene)) {
             prepass_depth.assign(pixels, 0.0F);
             if (motion) {
                 // FSR 2 works the sky's motion vectors out from the depth, as Godot's.
                 velocity.assign(pixels * 2, fsr2 != nullptr ? detail::kInvalidMotion : 0.0F);
             }
-            detail::SsaoImage normals{.width = target.width(),
-                                      .height = target.height(),
-                                      .channels = 4,
-                                      .values = std::vector<float>(pixels * 4, 0.0F)};
+            normals.values.assign(pixels * 4, 0.0F);
             draw_all(prepass_depth, true,
                      [&](const MeshShader& shader, const MeshFragment& fragment, std::size_t at) {
                          const detail::MeshPixel pixel =
@@ -2173,7 +2270,7 @@ private:
                     const detail::HdrImage sky = *target.hdr;
                     lights->ssao[3] = 0.0F;
                     std::vector<float> primed(pixels, 0.0F);
-                    draw_color(primed);
+                    draw_color(primed, false);
                     keep_last_frame(scene, *target.hdr, *history, seen);
                     *target.hdr = sky;
                     lights->ssao[3] = 1.0F;
@@ -2192,7 +2289,7 @@ private:
                 maps.ao_width = target.width();
             }
         }
-        draw_color(depth);
+        draw_color(depth, true);
         if (generation != nullptr) {
             const Image& shown = find(frame_.target)->image;
             generation->prepared = detail::prepare_frame_generation(

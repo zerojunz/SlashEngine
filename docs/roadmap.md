@@ -1135,7 +1135,10 @@ launch rows and the after-launch features above.
 - Scriptable pipelines on that frame graph, as Godot 4.3's `Compositor` and `CompositorEffect`
   (and Unity's SRP): a `.pipeline.json` file an agent edits that turns built-in passes on and
   off, reorders them and adds its own compute and fragment passes in the game's HLSL at named
-  points, with C++ callbacks for what JSON can't say; no scripting language
+  points, with C++ callbacks for what JSON can't say; no scripting language (done: passes
+  turned off over the environment's, fragment passes in the game's HLSL at Godot's five
+  `effect_callback_type` points reading the screen, depth and the prepass's normals, and C++
+  callbacks by name; built-in passes keep Godot's order, and compute effects wait for a use)
 - Digital humans in the style of MetaHuman. Research note:
   [digital-humans.md](reference/digital-humans.md). Its parts are done (blend shapes, hair and eye
   shading, subsurface scattering and transmittance, face capture and alpha hash), and the

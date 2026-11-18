@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "params": {
+    "tint": {
+      "type": "color",
+      "value": [1.0, 0.92, 0.8]
+    },
+    "vignette": {
+      "type": "float",
+      "value": 1.2
+    }
+  },
+  "shader": "shaders/grade.hlsl",
+  "shader_type": "compositor"
+}

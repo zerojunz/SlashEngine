@@ -1,6 +1,7 @@
 #include "slash/render/device.hpp"
 
 #include "checks.hpp"
+#include "compositor.hpp"
 #include "gl_device.hpp"
 #include "gpu_device.hpp"
 #include "mesh_shading.hpp"
@@ -194,7 +195,9 @@ Result<void> check_compiled_shader(const CompiledShader& shader, Backend backend
             break;
         case Backend::OpenGl:
         case Backend::OpenGlEs:
-            present = !shader.glsl_vertex.empty() && !shader.glsl_fragment.empty();
+            // The OpenGL devices draw no compositor effects, as Godot's Compatibility renderer.
+            present = shader.type == ShaderType::Compositor ||
+                      (!shader.glsl_vertex.empty() && !shader.glsl_fragment.empty());
             break;
         case Backend::WebGpu:
             present = !shader.wgsl_vertex.empty() && !shader.wgsl_fragment.empty();
@@ -892,6 +895,16 @@ public:
                                                                         ? 0U
                                                                         : found->second.desc.cubes;
                                                          });
+                !checked) {
+                return checked.error();
+            }
+            if (auto checked = detail::check_effects(
+                    *frame.scene,
+                    [&](ShaderId id) {
+                        const auto found = shaders_.find(id);
+                        return found != shaders_.end() && found->second == ShaderType::Compositor;
+                    },
+                    [&](TextureId id) { return textures_.contains(id); });
                 !checked) {
                 return checked.error();
             }

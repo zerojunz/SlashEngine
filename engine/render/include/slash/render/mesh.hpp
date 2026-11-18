@@ -2,6 +2,7 @@
 
 #include "slash/core/json.hpp"
 #include "slash/core/result.hpp"
+#include "slash/render/compositor.hpp"
 #include "slash/render/splats.hpp"
 
 #include <array>
@@ -1114,6 +1115,9 @@ struct Scene3D {
     std::optional<PathTrace3D> path_trace{}; // NOLINT(readability-redundant-member-init)
     // Ray-traced shadows, in Forward+ (RayTracing3D).
     RayTracing3D ray_tracing;
+    // Compositor effects drawn over the world at their points of a Forward+ frame, in order
+    // within a point (compositor.hpp), up to kMaxCompositorEffects.
+    std::vector<CompositorEffect3D> effects;
 
     // Godot's default Camera3D: 75 degrees across a square target, from 0.05 to 4000.
     static std::array<float, 16> perspective_default();

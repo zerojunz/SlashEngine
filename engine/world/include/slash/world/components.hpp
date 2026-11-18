@@ -615,11 +615,14 @@ struct Camera3D {
     // Whether 3D sounds' doppler follows its speed while it is the listener: "disabled",
     // "idle_step" or "physics_step".
     std::string doppler_tracking = "disabled";
+    // A .pipeline.json file's project path, as Godot's Camera3D.compositor: its passes and effects
+    // in place of the WorldEnvironment's while it is current. "" for the environment's.
+    std::string compositor;
 
     friend bool operator==(const Camera3D&, const Camera3D&) = default;
 };
 SLASH_COMPONENT(Camera3D, projection, keep_aspect, fov, size, near, far, h_offset, v_offset,
-                current, cull_mask, doppler_tracking)
+                current, cull_mask, doppler_tracking, compositor)
 
 // Where the player's play space is in the world, as Godot's XROrigin3D: XR nodes under it are
 // placed by their trackers' poses in its space. The current one is the first with current set,
@@ -1204,6 +1207,9 @@ struct WorldEnvironment {
     float adjustment_contrast = 1.0F;
     float adjustment_saturation = 1.0F;
     std::string adjustment_color_correction; // project path of a lookup texture; "" for none
+    // A .pipeline.json file's project path, as Godot's WorldEnvironment.compositor: the passes it
+    // turns off and the effects it draws. "" for none.
+    std::string compositor;
 
     friend bool operator==(const WorldEnvironment&, const WorldEnvironment&) = default;
 };
@@ -1226,7 +1232,7 @@ SLASH_COMPONENT(
     volumetric_fog_temporal_reprojection_amount, sdfgi_enabled, sdfgi_use_occlusion,
     sdfgi_read_sky_light, sdfgi_bounce_feedback, sdfgi_cascades, sdfgi_min_cell_size, sdfgi_y_scale,
     sdfgi_energy, sdfgi_normal_bias, sdfgi_probe_bias, adjustment_enabled, adjustment_brightness,
-    adjustment_contrast, adjustment_saturation, adjustment_color_correction)
+    adjustment_contrast, adjustment_saturation, adjustment_color_correction, compositor)
 
 // How the 3D world is exposed and focused, as Godot's CameraAttributesPractical: on a Camera3D's
 // entity for that camera, or on the WorldEnvironment's entity for cameras without their own.

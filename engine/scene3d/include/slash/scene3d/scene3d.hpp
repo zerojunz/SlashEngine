@@ -11,6 +11,7 @@
 #include "slash/scene3d/gpu_particles.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/occlusion.hpp"
+#include "slash/scene3d/pipeline.hpp"
 #include "slash/scene3d/primitive.hpp"
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/scene3d/surface.hpp"
@@ -220,11 +221,13 @@ using ModelSource = std::function<Result<SourceModel>(const std::string& path)>;
 check_meshes(const world::ComponentRegistry& components, const json::Value& scene,
              const world::FileReader& reader);
 
-// The material a MeshInstance3D's material_override names, as ShaderMaterialSource reads it: a
-// StandardMaterial3D's file, or a spatial material, Godot's ShaderMaterial, its shader made on the
-// device and its params' values and the time filled in.
+// The material a MeshInstance3D's material_override or a compositor effect names, as
+// ShaderMaterialSource reads it: a StandardMaterial3D's file, or a spatial or compositor material,
+// Godot's ShaderMaterial, its shader made on the device and its params' values and the time
+// filled in.
 struct OverrideMaterial {
     std::optional<world::StandardMaterial3D> standard; // a .standard_material.json file's
+    render::ShaderType type = render::ShaderType::Spatial;
     render::ShaderId shader = render::ShaderId::None;
     std::array<std::array<float, 4>, 32> constants{};
     // Its texture params' project paths by slot, "" for white, and how each is sampled:
@@ -261,6 +264,9 @@ struct Frame3D {
     entt::entity camera = entt::null;
     render::Scene3D scene;
     render::Color clear; // the WorldEnvironment's background, or the clear color
+    // The passes the frame's pipeline file turns off, for apply_pipeline_passes once the
+    // project's settings are in the scene.
+    std::map<std::string, bool> pipeline_passes;
 };
 
 // Draws a world's meshes through a render device, keeping their meshes on the device between
@@ -739,6 +745,11 @@ private:
     void add_decals(const world::World& world, const world::Tree3D& tree,
                     const std::function<world::Affine3D(entt::entity)>& global,
                     std::uint32_t cull_mask, float exposure, render::Decals3D& out);
+    // The frame's pipeline file (pipeline_of): the passes it turns off, and in Forward+ its
+    // enabled effects after their code ran, their compositor materials read through the override
+    // material source. Those that can't draw are left out, with a problem.
+    void add_effects(const world::World& world, entt::entity camera, render::RenderMethod method,
+                     Frame3D& frame);
     // The GaussianSplat3Ds the camera's cull_mask sees, in the order they were made, their files
     // loaded through the splat source; those that can't load are left out, with a problem.
     void add_splats(const world::World& world, const world::Tree3D& tree,
@@ -829,6 +840,12 @@ private:
     std::unordered_map<entt::entity, GpuParticles3D> gpu_particles_;
     ParticleProcessSource processes_;
     ShaderMaterialSource override_materials_;
+    // Pipeline files read through the world's assets, by project path, kept by version.
+    struct KeptPipeline {
+        std::uint64_t version = 0;
+        std::shared_ptr<const PipelineFile> file;
+    };
+    std::map<std::string, KeptPipeline, std::less<>> pipelines_;
     SplatSource splats_;
     IesSource ies_;
     // Lights' projector textures with their IES profiles baked in, by what made them, kept while
