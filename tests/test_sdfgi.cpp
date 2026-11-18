@@ -15,7 +15,6 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -493,98 +492,135 @@ TEST_CASE("GPUs draw SDFGI as the software device does") {
     CHECK(channel(draw_frames(*gpu, lit_cube(), 6), kShaded[0], kShaded[1], 1) > 0);
 }
 
-// TEMPORARY: what differs between the software device and a GPU, printed for each variant, to
-// find which stage the Direct3D 12 device draws the wall's light differently in.
-TEST_CASE("SDFGI diagnostic: where a GPU and the software device part") {
+namespace {
+
+// TEMPORARY (SDFGI diagnostic): the SDFGI words a device holds after frames of the wall.
+std::vector<std::vector<std::uint32_t>>
+sdfgi_words_after(RenderDevice& device, const render::Scene3D& scene, std::uint32_t frames) {
+    auto target = device.create_texture({.width = 32, .height = 32, .render_target = true});
+    REQUIRE(target.ok());
+    auto box = device.create_mesh(cube(), {});
+    REQUIRE(box.ok());
+    auto floor = device.create_mesh(quad({0, 0, 0}, {1, 0, 0}, {0, 0, -1}, {0, 1, 0}, 8.0F), {});
+    REQUIRE(floor.ok());
+    for (std::uint32_t frame = 0; frame < frames; ++frame) {
+        REQUIRE(device.begin_frame({.target = target.value(), .clear = {}, .scene = scene}).ok());
+        REQUIRE(
+            device.draw_mesh(floor.value(), moved(0, 0, 0), {.albedo = {0.8F, 0.8F, 0.8F, 1.0F}})
+                .ok());
+        REQUIRE(device
+                    .draw_mesh(box.value(), placed({0.5F, 3.0F, 6.0F}, {1.25F, 1.5F, 0.0F}),
+                               {.albedo = {0.9F, 0.2F, 0.2F, 1.0F}})
+                    .ok());
+        REQUIRE(device.end_frame().ok());
+    }
+    std::vector<std::vector<std::uint32_t>> words = device.sdfgi_words(target.value());
+    device.destroy_mesh(box.value());
+    device.destroy_mesh(floor.value());
+    device.destroy_texture(target.value());
+    return words;
+}
+
+float rgbe_max(std::uint32_t w) {
+    const float unit = std::ldexp(1.0F, static_cast<int>((w >> 27U) & 0x1FU) - 24);
+    return static_cast<float>(std::max({w & 0x1FFU, (w >> 9U) & 0x1FFU, (w >> 18U) & 0x1FFU})) *
+           unit;
+}
+
+// What differs in one section of words: how many, the first, and sums of each side's values
+// read by how.
+template <typename Read>
+std::string compare_section(std::string_view name, const std::vector<std::uint32_t>& gpu,
+                            const std::vector<std::uint32_t>& cpu, std::size_t at,
+                            std::size_t count, const Read& read) {
+    std::size_t differing = 0;
+    std::size_t first = count;
+    double gpu_sum = 0.0;
+    double cpu_sum = 0.0;
+    double worst = 0.0;
+    for (std::size_t i = 0; i < count; ++i) {
+        const std::uint32_t g = at + i < gpu.size() ? gpu[at + i] : 0U;
+        const std::uint32_t c = at + i < cpu.size() ? cpu[at + i] : 0U;
+        const double gv = read(g);
+        const double cv = read(c);
+        gpu_sum += gv;
+        cpu_sum += cv;
+        if (g != c) {
+            ++differing;
+            first = std::min(first, i);
+            worst = std::max(worst, std::abs(gv - cv));
+        }
+    }
+    std::string first_text = "-";
+    if (first < count) {
+        const std::uint32_t g = at + first < gpu.size() ? gpu[at + first] : 0U;
+        const std::uint32_t c = at + first < cpu.size() ? cpu[at + first] : 0U;
+        first_text =
+            std::to_string(first) + " gpu " + std::to_string(g) + " cpu " + std::to_string(c);
+    }
+    return std::string(name) + ": differing " + std::to_string(differing) + "/" +
+           std::to_string(count) + " first " + first_text + " worst " + std::to_string(worst) +
+           " sums gpu " + std::to_string(gpu_sum) + " cpu " + std::to_string(cpu_sum) + "\n";
+}
+
+} // namespace
+
+TEST_CASE("SDFGI diagnostic: the words where a GPU and the software device part") {
     auto gpu = slash::test::gpu_device();
     if (gpu == nullptr) {
+        MESSAGE("no GPU backend; skipped");
         return;
     }
     const auto software = render::create_software_device();
-    const auto draw = [](RenderDevice& device, const render::Scene3D& scene, std::uint32_t frames,
-                         const Mat4& at) {
-        auto target = device.create_texture({.width = 32, .height = 32, .render_target = true});
-        REQUIRE(target.ok());
-        auto box = device.create_mesh(cube(), {});
-        REQUIRE(box.ok());
-        auto floor =
-            device.create_mesh(quad({0, 0, 0}, {1, 0, 0}, {0, 0, -1}, {0, 1, 0}, 8.0F), {});
-        REQUIRE(floor.ok());
-        for (std::uint32_t frame = 0; frame < frames; ++frame) {
-            REQUIRE(
-                device.begin_frame({.target = target.value(), .clear = {}, .scene = scene}).ok());
-            REQUIRE(
-                device
-                    .draw_mesh(floor.value(), moved(0, 0, 0), {.albedo = {0.8F, 0.8F, 0.8F, 1.0F}})
-                    .ok());
-            REQUIRE(device.draw_mesh(box.value(), at, {.albedo = {0.9F, 0.2F, 0.2F, 1.0F}}).ok());
-            REQUIRE(device.end_frame().ok());
-        }
-        auto image = device.read_texture(target.value());
-        REQUIRE(image.ok());
-        device.destroy_mesh(box.value());
-        device.destroy_mesh(floor.value());
-        device.destroy_texture(target.value());
-        return image.value();
+    const std::uint32_t sh = render::detail::kSdfgiProbeCount * render::detail::kSdfgiShSize;
+    const auto plain = [](std::uint32_t w) { return static_cast<double>(w); };
+    const auto signed_value = [](std::uint32_t w) {
+        return static_cast<double>(static_cast<std::int32_t>(w));
     };
-    const Mat4 wall = placed({0.5F, 3.0F, 6.0F}, {1.25F, 1.5F, 0.0F});
-    struct Variant {
-        const char* name;
+    const auto light = [](std::uint32_t w) { return static_cast<double>(rgbe_max(w)); };
+    const auto solid = [](std::uint32_t w) { return (w & 0x80000000U) != 0U ? 1.0 : 0.0; };
+    const auto sdf = [](std::uint32_t w) { return static_cast<double>((w >> 16U) & 0xFFU); };
+    const auto history = [](std::uint32_t w) {
+        return static_cast<double>(static_cast<std::int16_t>(w & 0xFFFFU)) +
+               static_cast<double>(static_cast<std::int16_t>(w >> 16U));
+    };
+    struct Case {
+        std::string name;
         render::Scene3D scene;
         std::uint32_t frames;
-        Mat4 at;
     };
-    std::vector<Variant> variants;
-    variants.push_back({"wall 6", lit_cube(), 6, wall});
-    variants.push_back({"wall no sdfgi", lit_cube(false), 1, wall});
-    variants.push_back({"wall 1", lit_cube(), 1, wall});
-    variants.push_back({"wall 2", lit_cube(), 2, wall});
-    {
-        render::Scene3D scene = lit_cube();
-        scene.sdfgi.energy = 0.0F;
-        variants.push_back({"wall energy 0", scene, 6, wall});
-    }
-    {
-        render::Scene3D scene = lit_cube();
-        scene.sdfgi.bounce_feedback = 0.0F;
-        variants.push_back({"wall no feedback", scene, 6, wall});
-    }
-    {
-        render::Scene3D scene = lit_cube();
-        scene.lights.at(0).shadow = false;
-        variants.push_back({"wall no shadow", scene, 6, wall});
-    }
-    variants.push_back(
-        {"wall off grid", lit_cube(), 6, placed({0.5F, 3.0F, 6.0F}, {1.32F, 1.5F, 0.07F})});
-    variants.push_back({"cube at wall", lit_cube(), 6, moved(1.25F, 0.5F, 0.0F)});
-    variants.push_back({"big cube", lit_cube(), 6, placed({3.0F, 3.0F, 3.0F}, {2.5F, 1.5F, 0.0F})});
-    variants.push_back({"cube 6", lit_cube(), 6, moved(0, 0.5F, 0)});
-    for (const Variant& v : variants) {
-        const Image expected = draw(*software, v.scene, v.frames, v.at);
-        const Image drawn = draw(*gpu, v.scene, v.frames, v.at);
-        std::array<double, 3> signed_sum{};
-        std::array<double, 3> software_sum{};
-        for (std::size_t i = 0; i < drawn.pixels.size(); ++i) {
-            if (i % 4 < 3) {
-                signed_sum.at(i % 4) += int{drawn.pixels[i]} - int{expected.pixels[i]};
-                software_sum.at(i % 4) += expected.pixels[i];
-            }
+    render::Scene3D no_feedback = lit_cube();
+    no_feedback.sdfgi.bounce_feedback = 0.0F;
+    const std::vector<Case> cases{{"wall 1", lit_cube(), 1},
+                                  {"wall 2", lit_cube(), 2},
+                                  {"wall no feedback 2", no_feedback, 2}};
+    for (const Case& c : cases) {
+        const auto g = sdfgi_words_after(*gpu, c.scene, c.frames);
+        const auto s = sdfgi_words_after(*software, c.scene, c.frames);
+        if (g.size() != 5 || s.size() != 5) {
+            MESSAGE(c.name << ": no words, gpu " << g.size() << " software " << s.size());
+            continue;
         }
-        std::string rows;
-        for (std::uint32_t y = 0; y < 32; y += 4) {
-            for (std::uint32_t x = 0; x < 32; x += 2) {
-                const int d = channel(drawn, x, y, 0) - channel(expected, x, y, 0);
-                rows += d > 3 ? '+' : (d < -3 ? '-' : '.');
-            }
-            rows += '\n';
+        const std::uint32_t cascades = c.scene.sdfgi.cascades;
+        const std::size_t n = s[0].size() / 3 / cascades;
+        std::string report = c.name + "\n";
+        for (std::uint32_t k = 0; k < cascades; ++k) {
+            const std::size_t cells = (n * 3) * k;
+            const std::size_t probes = s[2].size() / cascades * k;
+            const std::size_t hist = s[4].size() / cascades;
+            report += "cascade " + std::to_string(k) + "\n";
+            report += compare_section("  cells solid", g[0], s[0], cells, n * 2, solid);
+            report += compare_section("  cells words", g[0], s[0], cells, n * 2, plain);
+            report += compare_section("  occlusion", g[0], s[0], cells + (n * 2), n, plain);
+            report += compare_section("  field sdf", g[1], s[1], cells, n * 2, sdf);
+            report += compare_section("  field words", g[1], s[1], cells, n * 2, plain);
+            report += compare_section("  light", g[1], s[1], cells + (n * 2), n, light);
+            report += compare_section("  averages", g[2], s[2], probes, std::size_t{sh} * 4,
+                                      signed_value);
+            report += compare_section("  irradiance", g[2], s[2], probes + (std::size_t{sh} * 4),
+                                      render::detail::kSdfgiProbeImageTexels, light);
+            report += compare_section("  history", g[4], s[4], hist * k, hist, history);
         }
-        std::ostringstream text;
-        text << v.name << ": differing " << differing(drawn, expected, 3) << ", worst "
-             << difference(drawn, expected) << ", mean gpu-software rgb " << signed_sum[0] / 1024.0
-             << " " << signed_sum[1] / 1024.0 << " " << signed_sum[2] / 1024.0
-             << ", software mean rgb " << software_sum[0] / 1024.0 << " "
-             << software_sum[1] / 1024.0 << " " << software_sum[2] / 1024.0 << "\n"
-             << rows;
-        MESSAGE(text.str());
+        MESSAGE(report);
     }
 }
