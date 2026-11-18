@@ -44,6 +44,7 @@ add_library(slash_render
     src/decal.cpp
     src/device.cpp
     src/forward_post.cpp
+    src/frame_graph.cpp
     src/frame_generation.cpp
     src/fsr2.cpp
     src/fsr3.cpp
