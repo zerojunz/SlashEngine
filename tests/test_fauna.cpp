@@ -426,6 +426,32 @@ TEST_CASE("fauna: a hungry predator hunts and catches its prey") {
     CHECK(project.state("wolf")["hunger"].as_double() == 0.0);
 }
 
+TEST_CASE("fauna: a recipe's behavior sets when it hunts and how long it eats") {
+    std::string wolf(kWolf);
+    const std::string_view rate = R"("hunger_rate": 0)";
+    wolf.replace(wolf.find(rate), rate.size(), R"("hunger_rate": 0, "hunt_hunger": 0.95)");
+    std::map<std::string, std::string_view> files = kFiles;
+    files["fauna/wolf.creature.json"] = wolf;
+    Project project("fauna_hunt_hunger_project", files);
+    project.ok("creature.place",
+               R"({"recipe": "fauna/deer.creature.json", "id": "deer", "at": [6, 0, 0]})");
+    project.ok("creature.place",
+               R"({"recipe": "fauna/wolf.creature.json", "id": "wolf", "at": [-6, 0, 0]})");
+    project.ok("component.set",
+               R"({"id": "wolf", "components": {"Creature3D": {"mind": {"hunger": 0.9}}}})");
+    project.ok("step", R"({"ticks": 20})");
+    CHECK(project.state("wolf")["mode"].as_string() != "hunting");
+    project.ok("component.set",
+               R"({"id": "wolf", "components": {"Creature3D": {"mind": {"hunger": 0.97}}}})");
+    project.ok("step", R"({"ticks": 20})");
+    CHECK(project.state("wolf")["mode"].as_string() == "hunting");
+
+    const auto errors =
+        world::validate_creature(parse(R"({"format": 1, "behavior": {"hunt_hunger": 2}})"));
+    REQUIRE_FALSE(errors.empty());
+    CHECK(errors.front().path == "/behavior/hunt_hunger");
+}
+
 TEST_CASE("fauna: fed enough, a friendly dog is tamed, follows and can be ridden") {
     Project project("fauna_dog_project", kFiles);
     project.ok("entity.create", R"({"id": "kid", "components": {

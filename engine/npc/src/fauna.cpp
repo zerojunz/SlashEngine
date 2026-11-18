@@ -29,11 +29,6 @@ using world::CreatureRecipe;
 Result<std::shared_ptr<const CreatureRecipe>> recipe_of(world::World& world, entt::entity creature);
 
 constexpr real_t kMoving = 0.05F; // meters a second below which it stands
-constexpr real_t kNear = 1.5F;    // how near a friendly or tame creature comes, in meters
-constexpr real_t kFollow = 3.0F;  // how far its owner goes before it follows
-constexpr float kScared = 3.0F;   // seconds scare makes it flee
-constexpr float kEating = 2.0F;   // seconds it eats what it is fed or caught
-constexpr real_t kHungry = 0.5F;  // the hunger past which hunters hunt
 
 real_t dot(Vec3 a, Vec3 b) {
     return (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
@@ -364,7 +359,7 @@ void step_creature(Tick& tick, FaunaState& state, const Thing& self) {
         }
     }
     // Hunting, once hungry.
-    if (!decided && !b.hunts.empty() && (mind.hunger > kHungry || mind.mode == "hunting")) {
+    if (!decided && !b.hunts.empty() && (mind.hunger > b.hunt_hunger || mind.mode == "hunting")) {
         const auto [prey, distance] =
             nearest(self, at, tick.creatures, b.notice, [&](const Thing& other) {
                 return hunts(recipe, *other.recipe) && mind_of(world, other).mode != "caught";
@@ -381,7 +376,7 @@ void step_creature(Tick& tick, FaunaState& state, const Thing& self) {
                 caught.rider = entt::null;
                 mind.hunger = 0.0F;
                 mind.mode = "eating";
-                mind.timer = kEating;
+                mind.timer = b.eat_time;
                 emit(world, "creature_caught", self.entity, "prey", prey->entity);
             }
             decided = true;
@@ -411,11 +406,11 @@ void step_creature(Tick& tick, FaunaState& state, const Thing& self) {
             }
         }
         if (lead != entt::null) {
-            const real_t start = tame ? kFollow : kNear;
-            if (distance > start || (mind.mode == "following" && distance > kNear)) {
+            const real_t start = tame ? b.follow : b.near;
+            if (distance > start || (mind.mode == "following" && distance > b.near)) {
                 mind.mode = "following";
                 mind.target = lead;
-                want = toward(lead_place, distance > kFollow * 3.0F ? b.run_speed : b.walk_speed);
+                want = toward(lead_place, distance > b.follow * 3.0F ? b.run_speed : b.walk_speed);
             } else {
                 mind.mode = "idle";
                 mind.target = lead;
@@ -620,7 +615,8 @@ void step_creature(Tick& tick, FaunaState& state, const Thing& self) {
     // An agent's brain hears what it feels.
     if (ecs.all_of<world::NpcAgent>(self.entity)) {
         const CreatureMind& now = mind_of(world, self);
-        const std::array<int, 3> facts{now.mode == "fleeing" ? 1 : 0, now.hunger > kHungry ? 1 : 0,
+        const std::array<int, 3> facts{now.mode == "fleeing" ? 1 : 0,
+                                       now.hunger > recipe.behavior.hunt_hunger ? 1 : 0,
                                        now.owner != entt::null ? 1 : 0};
         const auto known = state.facts.find(self.entity);
         constexpr std::array<std::string_view, 3> kFacts{"threatened", "hungry", "tamed"};
@@ -824,7 +820,7 @@ Result<Feeding> feed(world::World& world, entt::entity creature, entt::entity pe
     }
     mind.hunger = 0.0F;
     mind.mode = "eating";
-    mind.timer = kEating;
+    mind.timer = b.eat_time;
     mind.velocity = {};
     ++mind.fed;
     json::Value data;
@@ -909,7 +905,8 @@ Result<void> release(world::World& world, entt::entity creature) {
 }
 
 Result<void> scare(world::World& world, entt::entity creature, entt::entity from) {
-    if (auto recipe = recipe_of(world, creature); !recipe) {
+    auto recipe = recipe_of(world, creature);
+    if (!recipe) {
         return recipe.error();
     }
     if (!world.valid(from)) {
@@ -926,7 +923,7 @@ Result<void> scare(world::World& world, entt::entity creature, entt::entity from
     }
     mind.mode = "fleeing";
     mind.target = from;
-    mind.timer = kScared;
+    mind.timer = recipe.value()->behavior.scare_time;
     emit(world, "creature_fled", creature, "from", from);
     return {};
 }

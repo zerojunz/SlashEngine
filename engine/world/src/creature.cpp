@@ -96,7 +96,12 @@ constexpr std::string_view kSchema = R"({
         "reach": {"type": "number", "exclusiveMinimum": 0, "maximum": 50, "description": "How near it must be to attack or catch. Default 1.2."},
         "attack_cooldown": {"type": "number", "minimum": 0, "maximum": 60, "description": "Seconds between attacks. Default 1."},
         "hunger_rate": {"type": "number", "minimum": 0, "maximum": 1, "description": "Hunger it gains a second, from 0 full to 1; a hunter hunts past 0.5. Default 0.02."},
-        "altitude": {"type": "number", "minimum": 0, "maximum": 1000, "description": "How high above the ground creature.place and creature.populate put birds and insects that fly, how deep fish. Default 0: 6 for birds, 1 for insects, 1.5 for fish."}
+        "altitude": {"type": "number", "minimum": 0, "maximum": 1000, "description": "How high above the ground creature.place and creature.populate put birds and insects that fly, how deep fish. Default 0: 6 for birds, 1 for insects, 1.5 for fish."},
+        "hunt_hunger": {"type": "number", "minimum": 0, "maximum": 1, "description": "The hunger past which a hunter hunts and an NpcAgent's hungry fact is 1. Default 0.5."},
+        "near": {"type": "number", "minimum": 0, "maximum": 100, "description": "How near a friendly or tame one comes to the person it follows, in meters. Default 1.5."},
+        "follow": {"type": "number", "minimum": 0, "maximum": 100, "description": "How far its owner goes before a tame one follows; three times as far, it runs. Default 3."},
+        "scare_time": {"type": "number", "minimum": 0, "maximum": 600, "description": "Seconds a scare makes it flee. Default 3."},
+        "eat_time": {"type": "number", "minimum": 0, "maximum": 600, "description": "Seconds it eats what it is fed or catches. Default 2."}
       }
     }
   }
@@ -644,6 +649,11 @@ Result<CreatureRecipe> parse_creature(const json::Value& source, const FileReade
         read(*behavior, "attack_cooldown", b.attack_cooldown);
         read(*behavior, "hunger_rate", b.hunger_rate);
         read(*behavior, "altitude", b.altitude);
+        read(*behavior, "hunt_hunger", b.hunt_hunger);
+        read(*behavior, "near", b.near);
+        read(*behavior, "follow", b.follow);
+        read(*behavior, "scare_time", b.scare_time);
+        read(*behavior, "eat_time", b.eat_time);
     }
     if (out.behavior.run_speed < out.behavior.walk_speed) {
         out.behavior.run_speed = out.behavior.walk_speed;
