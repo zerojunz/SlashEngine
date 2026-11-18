@@ -672,7 +672,6 @@ public:
         release_post_targets();
         release_forward_targets();
         release_prepass();
-        release_ssao_targets();
         release_ssr_targets();
         while (!ssr_histories_.empty()) {
             forget_ssr_history(ssr_histories_.back().first);
@@ -1886,9 +1885,6 @@ public:
             const bool sdfgi = uses_sdfgi(*frame.scene);
             if (uses_prepass(*frame.scene) || sdfgi) {
                 prepare_prepass(scene_width_, scene_height_);
-            }
-            if (uses_ssao(*frame.scene)) {
-                prepare_ssao(scene_width_, scene_height_, frame.scene->ssao.settings);
             }
             if (uses_ssr(*frame.scene)) {
                 prepare_ssr(frame.target, scene_width_, scene_height_, frame.scene->ssr.settings);
@@ -5785,36 +5781,6 @@ private:
         prepass_.height = 0;
     }
 
-    // The textures a frame of width x height with settings draws SSAO with: those ssao_plan
-    // sizes. Made again when either changes.
-    void prepare_ssao(std::uint32_t width, std::uint32_t height, const SsaoSettings& settings) {
-        if (ssao_targets_.width == width && ssao_targets_.height == height &&
-            ssao_targets_.settings == settings) {
-            return;
-        }
-        release_ssao_targets();
-        const SsaoPlan plan = ssao_plan(settings, width, height);
-        // The last pass draws into the screen array instead.
-        for (std::uint32_t i = 0; i < kSsaoTextures; ++i) {
-            const PostSize size = plan.sizes.at(i);
-            if (size.width != 0 && i != kSsaoFinal) {
-                ssao_targets_.textures.at(i) =
-                    pass_texture(size.width, size.height, ssao_gpu_format(ssao_format(i)));
-            }
-        }
-        ssao_targets_.width = width;
-        ssao_targets_.height = height;
-        ssao_targets_.settings = settings;
-    }
-
-    void release_ssao_targets() {
-        for (GpuTexture& texture : ssao_targets_.textures) {
-            release_pass_texture(texture);
-        }
-        ssao_targets_.width = 0;
-        ssao_targets_.height = 0;
-    }
-
     // The prepass, which draws the opaque meshes' normals and depth, which SSAO, SSR and TAA
     // read, and their motion vectors into velocity, unless it is null, over kInvalidMotion where
     // invalid_motion says so (FSR 2's).
@@ -5847,49 +5813,105 @@ private:
         wgpuRenderPassEncoderRelease(pass);
     }
 
+    // An SSAO texture's bytes a texel.
+    static std::uint64_t ssao_texel_bytes(SsaoFormat format) {
+        switch (format) {
+        case SsaoFormat::R16F:
+            return 2;
+        case SsaoFormat::RG8:
+            return 2;
+        case SsaoFormat::R8:
+            return 1;
+        case SsaoFormat::R32F:
+            break;
+        }
+        return 4;
+    }
+
     // ssao.hlsl's passes from the prepass to the occlusion at the frame's size, in the order plan
-    // gives, their uniforms at uniforms.
+    // gives, their uniforms at uniforms: a frame graph whose textures come from the pool the post
+    // passes share, the last pass drawing into the screen array's first layer.
     void encode_ssao(WGPUCommandEncoder encoder, const SsaoPlan& plan,
                      std::span<const std::uint32_t> uniforms) {
+        using detail::GraphPassKind;
+        using detail::GraphResource;
+        detail::FrameGraph graph;
+        constexpr GraphResource kNone = std::numeric_limits<GraphResource>::max();
+        std::array<GraphResource, kSsaoTextures> made{};
+        made.fill(kNone);
+        for (std::uint32_t i = 0; i < kSsaoTextures; ++i) {
+            const PostSize size = plan.sizes.at(i);
+            if (size.width != 0 && i != kSsaoFinal) {
+                const SsaoFormat format = ssao_format(i);
+                made.at(i) = graph.transient(
+                    "ssao " + std::to_string(i),
+                    color_shape(ssao_gpu_format(format), size, ssao_texel_bytes(format)));
+            }
+        }
+        made.at(kSsaoFinal) = graph.import("screen");
+        std::vector<WGPUTextureView> bound(graph.resource_count(), nullptr);
+        bound.at(made.at(kSsaoFinal)) = screen_.layers[0];
+        // A texture no pass drew (very low's skipped slices, which its interleave binds but
+        // doesn't read) is left out of the graph and bound as white.
+        const auto view_of = [this, &bound](GraphResource resource) {
+            WGPUTextureView view = bound.at(resource);
+            return view != nullptr ? view : white_.view;
+        };
+        std::array<bool, kSsaoTextures> written{};
         for (std::size_t i = 0; i < plan.steps.size(); ++i) {
             const SsaoStep& step = plan.steps[i];
-            std::array<WGPUBindGroupEntry, kSsaoSlots> entries{};
-            for (std::uint32_t slot = 0; slot < kSsaoSlots; ++slot) {
-                const std::uint32_t index = step.slots.at(slot);
-                WGPUTextureView view = white_.view;
-                if (index == kSsaoDepthBuffer) {
-                    view = prepass_.depth.view;
-                } else if (index == kSsaoNormals) {
-                    view = prepass_.normals.view;
-                } else if (index < kSsaoTextures &&
-                           ssao_targets_.textures.at(index).view != nullptr) {
-                    view = ssao_targets_.textures.at(index).view;
+            std::vector<GraphResource> reads;
+            for (const std::uint32_t index : step.slots) {
+                if (index < kSsaoTextures && written.at(index) &&
+                    std::ranges::find(reads, made.at(index)) == reads.end()) {
+                    reads.push_back(made.at(index));
                 }
-                entries.at(slot) = WGPU_BIND_GROUP_ENTRY_INIT;
-                entries.at(slot).binding = slot;
-                entries.at(slot).textureView = view;
             }
-            WGPUBindGroup textures = bind_group(ssao_textures_layout_, entries);
-            // The last pass draws into the screen array's first layer, which the mesh pass reads.
-            const bool last = step.target == kSsaoFinal;
-            WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
-            color.view = last ? screen_.layers[0] : ssao_targets_.textures.at(step.target).view;
-            color.loadOp = WGPULoadOp_Clear;
-            color.storeOp = WGPUStoreOp_Store;
-            WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
-            descriptor.colorAttachmentCount = 1;
-            descriptor.colorAttachments = &color;
-            WGPURenderPassEncoder draw = wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
-            wgpuRenderPassEncoderSetPipeline(
-                draw,
-                ssao_pipeline_for(last ? kHdrFormat : ssao_gpu_format(ssao_format(step.target))));
-            wgpuRenderPassEncoderSetBindGroup(draw, 2, textures, 0, nullptr);
-            wgpuRenderPassEncoderSetBindGroup(draw, 3, ssao_uniforms_group_, 1, &uniforms[i]);
-            wgpuRenderPassEncoderDraw(draw, 3, 1, 0, 0);
-            wgpuRenderPassEncoderEnd(draw);
-            wgpuRenderPassEncoderRelease(draw);
-            wgpuBindGroupRelease(textures);
+            written.at(step.target) = true;
+            graph.add_pass(
+                {.name = "ssao " + std::string(ssao_pass_name(step.pass)),
+                 .kind = GraphPassKind::Render,
+                 .reads = std::move(reads),
+                 .writes = {made.at(step.target)}},
+                [&, step, offset = uniforms[i]](const detail::GraphContext&) {
+                    std::array<WGPUBindGroupEntry, kSsaoSlots> entries{};
+                    for (std::uint32_t slot = 0; slot < kSsaoSlots; ++slot) {
+                        const std::uint32_t index = step.slots.at(slot);
+                        WGPUTextureView view = white_.view;
+                        if (index == kSsaoDepthBuffer) {
+                            view = prepass_.depth.view;
+                        } else if (index == kSsaoNormals) {
+                            view = prepass_.normals.view;
+                        } else if (index < kSsaoTextures && made.at(index) != kNone) {
+                            view = view_of(made.at(index));
+                        }
+                        entries.at(slot) = WGPU_BIND_GROUP_ENTRY_INIT;
+                        entries.at(slot).binding = slot;
+                        entries.at(slot).textureView = view;
+                    }
+                    WGPUBindGroup textures = bind_group(ssao_textures_layout_, entries);
+                    const bool last = step.target == kSsaoFinal;
+                    WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+                    color.view = view_of(made.at(step.target));
+                    color.loadOp = WGPULoadOp_Clear;
+                    color.storeOp = WGPUStoreOp_Store;
+                    WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
+                    descriptor.colorAttachmentCount = 1;
+                    descriptor.colorAttachments = &color;
+                    WGPURenderPassEncoder draw =
+                        wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
+                    wgpuRenderPassEncoderSetPipeline(
+                        draw, ssao_pipeline_for(last ? kHdrFormat
+                                                     : ssao_gpu_format(ssao_format(step.target))));
+                    wgpuRenderPassEncoderSetBindGroup(draw, 2, textures, 0, nullptr);
+                    wgpuRenderPassEncoderSetBindGroup(draw, 3, ssao_uniforms_group_, 1, &offset);
+                    wgpuRenderPassEncoderDraw(draw, 3, 1, 0, 0);
+                    wgpuRenderPassEncoderEnd(draw);
+                    wgpuRenderPassEncoderRelease(draw);
+                    wgpuBindGroupRelease(textures);
+                });
         }
+        run_graph(graph, bound, "SSAO");
     }
 
     // SSR's uniforms as the GPU reads them: the matrices turned, as transposed says.
@@ -7607,6 +7629,50 @@ private:
     // texture over the frame's target. The world, the frame, the depth buffer and auto exposure's
     // textures are imported; depth of field's and glow's are transient, so those whose uses
     // don't overlap share one. Their uniforms are added to the frame's.
+    // Compiles graph, gives its transient resources textures from the pool (their views in
+    // bound, by resource, where its imported ones' already are), runs it and adds it to the
+    // frame's report. False, logged, where it couldn't run.
+    bool run_graph(const detail::FrameGraph& graph, std::vector<WGPUTextureView>& bound,
+                   std::string_view what) {
+        Result<detail::CompiledGraph> compiled = graph.compile();
+        if (!compiled) {
+            log::error("compiling a frame graph failed",
+                       {{"graph", std::string(what)}, {"error", compiled.error().message}});
+            return false;
+        }
+        Result<std::vector<GpuTexture>> handles = transient_pool_.acquire(
+            compiled.value(),
+            [this](const detail::GraphShape& shape) -> Result<GpuTexture> {
+                WGPUTextureDescriptor info = WGPU_TEXTURE_DESCRIPTOR_INIT;
+                info.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_RenderAttachment;
+                info.size = {.width = static_cast<std::uint32_t>((shape.key >> 24U) & 0xFFFFFFU),
+                             .height = static_cast<std::uint32_t>(shape.key & 0xFFFFFFU),
+                             .depthOrArrayLayers = 1};
+                info.format = static_cast<WGPUTextureFormat>(shape.key >> 48U);
+                WGPUTexture texture = wgpuDeviceCreateTexture(device_, &info);
+                return GpuTexture{.texture = texture,
+                                  .view = wgpuTextureCreateView(texture, nullptr),
+                                  .filter = Filter::Linear};
+            },
+            [this](const GpuTexture& texture) { pending_textures_.push_back(texture); });
+        if (!handles) {
+            log::error("making a frame graph's textures failed",
+                       {{"graph", std::string(what)}, {"error", handles.error().message}});
+            return false;
+        }
+        const std::vector<std::uint32_t>& slots = compiled.value().slots;
+        bound.resize(graph.resource_count(), nullptr);
+        for (detail::GraphResource resource = 0; resource < bound.size(); ++resource) {
+            if (graph.is_transient(resource) && slots.at(resource) < handles.value().size()) {
+                bound.at(resource) = handles.value().at(slots.at(resource)).view;
+            }
+        }
+        graph.execute(compiled.value());
+        graph_report_.add(graph.report(compiled.value()));
+        graph_report_.allocated_bytes = transient_pool_.frame_bytes();
+        return true;
+    }
+
     std::vector<PostDraw> forward_draws_for(const Scene3D& scene) {
         using detail::GraphPassKind;
         using detail::GraphResource;
@@ -7795,40 +7861,9 @@ private:
                                    post.glow, lut, view_of(brightness));
                            });
         }
-        Result<detail::CompiledGraph> compiled = graph.compile();
-        if (!compiled) {
-            log::error("compiling Forward+'s post passes failed",
-                       {{"error", compiled.error().message}});
+        if (!run_graph(graph, bound, "Forward+'s post passes")) {
             return draws;
         }
-        Result<std::vector<GpuTexture>> handles = transient_pool_.acquire(
-            compiled.value(),
-            [this](const detail::GraphShape& shape) -> Result<GpuTexture> {
-                WGPUTextureDescriptor info = WGPU_TEXTURE_DESCRIPTOR_INIT;
-                info.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_RenderAttachment;
-                info.size = {.width = static_cast<std::uint32_t>((shape.key >> 24U) & 0xFFFFFFU),
-                             .height = static_cast<std::uint32_t>(shape.key & 0xFFFFFFU),
-                             .depthOrArrayLayers = 1};
-                info.format = static_cast<WGPUTextureFormat>(shape.key >> 48U);
-                WGPUTexture texture = wgpuDeviceCreateTexture(device_, &info);
-                return GpuTexture{.texture = texture,
-                                  .view = wgpuTextureCreateView(texture, nullptr),
-                                  .filter = Filter::Linear};
-            },
-            [this](const GpuTexture& texture) { pending_textures_.push_back(texture); });
-        if (!handles) {
-            log::error("making Forward+'s post textures failed",
-                       {{"error", handles.error().message}});
-            return draws;
-        }
-        const std::vector<std::uint32_t>& slots = compiled.value().slots;
-        for (GraphResource resource = 0; resource < bound.size(); ++resource) {
-            if (graph.is_transient(resource) && slots.at(resource) < handles.value().size()) {
-                bound.at(resource) = handles.value().at(slots.at(resource)).view;
-            }
-        }
-        graph.execute(compiled.value());
-        graph_report_ = graph.report(compiled.value());
         if (luminance) {
             std::swap(forward_targets_.brightness, forward_targets_.luminance.back());
             forward_targets_.measured = true;
@@ -8121,6 +8156,8 @@ private:
         in_frame_ = true;
         frame_ = frame;
         graph_report_ = {};
+        transient_pool_.next_frame(
+            [this](const GpuTexture& texture) { pending_textures_.push_back(texture); });
         frame_view_ = view;
         frame_width_ = width;
         frame_height_ = height;
@@ -8477,16 +8514,8 @@ private:
         std::uint32_t width = 0;
         std::uint32_t height = 0;
     };
-    // SSAO's textures for the frame's size and settings: those ssao_plan sizes (none for those it
-    // doesn't draw).
-    struct SsaoTargets {
-        std::array<GpuTexture, kSsaoTextures> textures{};
-        std::uint32_t width = 0;
-        std::uint32_t height = 0;
-        SsaoSettings settings;
-    };
-    // SSR's: those ssr_plan sizes, and Hi-Z's and the reflections' levels copied into a texture
-    // with mipmaps each.
+    // SSR's textures for the frame's size and settings: those ssr_plan sizes, and Hi-Z's and the
+    // reflections' levels copied into a texture with mipmaps each.
     struct SsrTargets {
         std::array<GpuTexture, kSsrTextures> textures{};
         GpuTexture hiz_mips;
@@ -8498,7 +8527,6 @@ private:
     std::array<WGPURenderPipeline, 3> normal_pipelines_{}; // by CullMode
     PrepassTargets prepass_;
     std::vector<std::pair<WGPUTextureFormat, WGPURenderPipeline>> ssao_pipelines_;
-    SsaoTargets ssao_targets_;
     std::vector<std::pair<WGPUTextureFormat, WGPURenderPipeline>> ssr_pipelines_;
     WGPURenderPipeline ssr_trace_pipeline_ = nullptr;
     SsrTargets ssr_targets_;
