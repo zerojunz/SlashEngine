@@ -981,8 +981,10 @@ it in 3D: a `Transform3D` turned by `yaw`, a `MeshInstance3D` drawing the rigged
 Two numbers place a 2D cut-out: a `Transform2D` and a `Creature2D` at `pixels_per_meter` (default
 100), facing left with `flip_h`, whose bones the `character_2d` system keeps as `<id>_<bone>`
 children. Under `parent` when given. Returns the `id`, its `components` and whether it `flies`
-and `swims`. A recipe that doesn't validate is `-32002` at `/recipe`, a taken `id` at `/id`.
-Needs: `read`, `edit`.
+and `swims`. `motion` is a merge patch over the recipe's `motion` block for this one alone
+(kept in its `Creature3D` or `Creature2D`): it retunes the recipe's animations but can't add one.
+A recipe that doesn't validate is `-32002` at `/recipe`, a bad `motion` at `/motion`, a taken `id`
+at `/id`. Needs: `read`, `edit`.
 
 ```json
 {"recipe": "fauna/dog.creature.json", "id": "rex", "at": [-6, 0, 6]}
@@ -1028,6 +1030,43 @@ and `rider` when it has them, `fed`, `hunger`, `position` (meters in 3D, pixels 
 {"creature": "deer_1"}
 ```
 
+### animation.preview
+
+Measures one of a creature's animations through a cycle, as numbers an agent reads in place of
+watching it. Name a `creature` (its recipe with its own motion) or a `recipe`, and the
+`animation`; `motion` is a merge patch over its motion block to try without making it, and
+`samples` (default 16, 4 to 64) the moments measured. Returns its `length` (seconds), `loop`,
+`bones` (each bone's least and most turn about `pitch`, `yaw` and `roll` in radians, for the
+axes that move; `bones` in the params keeps only those named) and, for those with legs, `gait`:
+`stride` (meters each foot sweeps fore and aft), `foot_speed` (how fast a foot sweeps back while
+it is planted, the half of the cycle it moves back), `move_speed` (how fast the body moves while
+it plays: `walk_speed` for walk and what plays as it, `run_speed` for run, else 0, or the param)
+and `slide` (`move_speed - foot_speed`: 0 is planted, positive feet skating forward). A
+`filmstrip` draws `frames` (default 6) through the cycle side by side, each `size` (default
+`[160, 120]`), on a stage of its own (the 3D model from its near side, or with `two_d` the 2D
+cut-out, a `Creature2D`'s by default) and writes a PNG to `out` (default
+`previews/<animation>.png`). Needs: `read`, `filesystem`.
+
+```json
+{"creature": "old_stag", "animation": "walk", "bones": ["tail"],
+ "filmstrip": {"out": "previews/old_stag_walk.png", "frames": 6, "size": [96, 72]}}
+```
+
+### animation.tune
+
+Changes one of a creature's animations toward goals, trying each change as it would play, and
+writes it `into` the creature's own `motion` (`"instance"`, the default when a `creature` is
+named) or its `.creature.json` file's (`"recipe"`, with undo). `set` is a merge patch over the
+animation's motion entry made first (so a new animation's `from` comes in here); `ranges` sets
+bones' swings (radians from least to most turn of a bone's most-moving axis) by scaling them;
+`slide` plants the feet, by `"length"` (the animation's `speed`, its cadence) or `"swing"` (the
+legs' `scale`), against `move_speed` (as `animation.preview`'s). Returns `into`, the `change`
+made to the animation's entry and the animation measured `before` and `after` as
+`animation.preview` returns it. Needs: `read`, `edit`, `filesystem`.
+
+```json
+{"recipe": "creatures/deer.creature.json", "animation": "walk", "slide": "length"}
+```
 ## Vehicles
 
 Placing, driving, tuning and test-driving [vehicles](scene-format.md#vehicle-recipes).

@@ -22,11 +22,21 @@
 
 #include <string_view>
 
+namespace slash::world {
+struct CreatureRecipe;
+} // namespace slash::world
+
 namespace slash::npc {
 
 // Adds the fauna system (priority 964, after navigation and before the npc system); install calls
 // it.
 void add_fauna(world::World& world);
+
+// Turns a Creature2D's cut-out bones (its <id>_<bone> children) as the recipe's animation poses
+// them time seconds in, as the fauna system does each tick: what animation.preview draws.
+void pose_creature_cutout(world::World& world, entt::entity creature,
+                          const world::CreatureRecipe& recipe, std::string_view animation,
+                          double time);
 
 // The creature's mind, from its Creature3D or Creature2D; null for neither.
 [[nodiscard]] world::CreatureMind* creature_mind(world::World& world, entt::entity creature);

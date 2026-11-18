@@ -1446,6 +1446,15 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         fluids and smoke; `.pcg.json` graphs of those steps over noise, slope, height,
         distance and storyboard places, seeded so a world repeats, with `pcg.run`,
         `pcg.preview` and `pcg.check` (budgets, density, reachability by navigation)
+22. [ ] Animations agents fine-tune (2026-11-17): character, creature and vegetation
+        animations an agent changes to its own liking, in 2D and 3D, and from `.pcg.json`
+        graphs. Creatures done: a recipe's `motion` block (each animation's length, speed, loop,
+        amplitude, bones' scale, shift and held angles, added waves, new animations `from` a
+        built-in one), a `Creature3D`'s or `Creature2D`'s own `motion` over it,
+        `animation.preview` (bones' turns and the gait as numbers, and a filmstrip) and
+        `animation.tune` (feet planted by cadence or swing, bones' swings, written to the
+        creature or its recipe). Left: `.anim.json` layers and `animation.edit` for characters'
+        and any model's animations, and foliage's sway
 
 Console ports are not on this roadmap and never will be in this repository. As with Godot,
 PlayStation, Xbox and Switch support comes from licensed porting partners as private backends.
