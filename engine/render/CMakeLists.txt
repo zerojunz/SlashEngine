@@ -69,6 +69,7 @@ add_library(slash_render
     src/splats.cpp
     src/resize.cpp
     src/sdfgi.cpp
+    src/sdfgi_gpu.cpp
     src/shader.cpp
     src/shader_vm.cpp
     src/shadow.cpp
@@ -186,7 +187,10 @@ set(slash_shader_headers "")
 # over the shadow atlases and the sky's radiance, which takes tonemap.hlsl's colors, and fog_sky
 # the pass that draws the sky through the fog, whose fragment stage reads it as a storage buffer.
 # Frame generation's passes are one compute shader that includes nothing (compute_alone), and
-# its draw pass reads the generated frame as fog_sky reads the fog. mesh_plain and shadow_plain
+# its draw pass reads the generated frame as fog_sky reads the fog. SDFGI's passes over its
+# cascades (sdfgi_compute) include sdfgi_common.hlsl, as its gather pass (sdfgi_draw) does, whose
+# fragment stage reads the cascades as storage buffers and which the OpenGL devices don't draw;
+# its voxelization is a compute shader of its own. mesh_plain and shadow_plain
 # (3d_plain and depth_plain) are the mesh and shadow shaders without alpha hash, GLSL ES only.
 set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
     mesh_clustered:MeshClustered:clustered mesh_normal:MeshNormal:normal
@@ -208,7 +212,9 @@ set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
     particles_mesh_3d:ParticlesMesh3D:compute3d particles_stages_3d:ParticlesStages3D:compute3d
     volumetric_fog:VolumetricFog:fog_compute volumetric_fog_sky:VolumetricFogSky:fog_sky
     frame_generation:FrameGeneration:compute_alone
-    frame_generation_draw:FrameGenerationDraw:fog_sky)
+    frame_generation_draw:FrameGenerationDraw:fog_sky
+    sdfgi:Sdfgi:sdfgi_compute sdfgi_voxelize:SdfgiVoxelize:compute_alone
+    sdfgi_gather:SdfgiGather:sdfgi_draw)
 foreach(entry IN LISTS slash_shaders)
     string(REPLACE ":" ";" parts ${entry})
     list(GET parts 0 shader)
@@ -238,6 +244,14 @@ foreach(entry IN LISTS slash_shaders)
         elseif(kind STREQUAL "compute_alone")
             set(compute ON)
             set(include ${shader})
+        elseif(kind STREQUAL "sdfgi_compute")
+            set(compute ON)
+            set(include sdfgi_common)
+        elseif(kind STREQUAL "sdfgi_draw")
+            set(include sdfgi_common)
+            set(interface v_uv)
+            set(storage_buffers ON)
+            set(no_glsl ON)
         elseif(kind STREQUAL "fog_sky")
             set(include tonemap)
             set(interface v_uv)

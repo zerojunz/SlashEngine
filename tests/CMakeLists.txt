@@ -18,6 +18,7 @@ if(EMSCRIPTEN)
         test_ray_tracing.cpp
         test_reflection.cpp
         test_render.cpp
+        test_sdfgi.cpp
         test_shadow.cpp
         test_sky.cpp
         test_ssao.cpp
@@ -381,7 +382,7 @@ foreach(shader IN ITEMS sprite material mesh mesh_clustered mesh_normal mesh_mot
         particles_draw particles_process_3d particles_sort_3d particles_mesh_3d particles_stages_3d fsr2_luma fsr2_dilate fsr2_reconstruct fsr2_depth_clip fsr2_lock
         fsr2_accumulate fsr2_rcas fsr3_prepare fsr3_reconstruct fsr3_pyramid fsr3_reduce
         fsr3_shading_change fsr3_reactivity fsr3_lock fsr3_instability fsr3_accumulate
-        frame_generation frame_generation_draw)
+        frame_generation frame_generation_draw sdfgi sdfgi_voxelize sdfgi_gather)
     add_test(NAME shaders_up_to_date_${shader}
         COMMAND ${CMAKE_COMMAND} -DSOURCE=${PROJECT_SOURCE_DIR}/engine/render/shaders/${shader}.hlsl
             -DOUTPUT=${PROJECT_SOURCE_DIR}/engine/render/src/${shader}_shaders.hpp -DCHECK=ON

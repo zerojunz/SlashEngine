@@ -2206,7 +2206,7 @@ cbuffer Scene : register(b1, space3) {
     // the exposure their light is multiplied by.
     float4 reflections;
     // 1 when meshes trace their VoxelGIs (Forward+, and not a reflection probe's capture), then 1
-    // for high quality.
+    // for high quality, then 1 when screen_texture's layers 5 and 6 hold SDFGI's light.
     float4 scene_voxel_gi;
     // Forward+'s decals: how many, the filter, the atlas's width and height in texels.
     float4 decal_info;
@@ -2377,9 +2377,9 @@ float3 tonemap_aces(float3 color, float white) {
     float3 mapped = (color * (color + A) - B) / (color * (C * color + D) + E);
     mapped = mul(odt_to_rgb, mapped);
     white *= bias;
-    float mapped_white = (white * (white + A) - B) / (white * (C * white + D) + E);
 )hlsl",
-R"hlsl(    return mapped / mapped_white;
+R"hlsl(    float mapped_white = (white * (white + A) - B) / (white * (C * white + D) + E);
+    return mapped / mapped_white;
 }
 
 // A polynomial for EaryChow's AgX sigmoid, for x from 0 to 1.
@@ -2647,11 +2647,11 @@ void light_compute(float3 n, float3 l, float3 v, float3 light_color, float atten
             float3 t = layers.tangent;
             float3 b = layers.binormal;
             d = d_ggx_anisotropic(c_n_dot_h, ax, ay, dot(t, h), dot(b, h));
-            g = v_ggx_anisotropic(ax, ay, dot(t, v), dot(t, l), dot(b, v), dot(b, l), c_n_dot_v,
+)hlsl",
+R"hlsl(            g = v_ggx_anisotropic(ax, ay, dot(t, v), dot(t, l), dot(b, v), dot(b, l), c_n_dot_v,
                                   c_n_dot_l);
         } else {
-)hlsl",
-R"hlsl(            d = d_ggx(c_n_dot_h, alpha_ggx);
+            d = d_ggx(c_n_dot_h, alpha_ggx);
             g = v_ggx(c_n_dot_l, c_n_dot_v, alpha_ggx);
         }
         float c_l_dot_h5 = schlick_fresnel(c_l_dot_h);
@@ -2920,11 +2920,11 @@ float3 unpack_ground_normal(float4 texel) {
     return n;
 }
 
-// A direction in the mesh's space, in the world through the pixel's tangent frame: a terrain's
+)hlsl",
+R"hlsl(// A direction in the mesh's space, in the world through the pixel's tangent frame: a terrain's
 // vertices have the normal +Y and the tangent +X, so its binormal is -Z.
 float3 frame_direction(VertexOutput input, float3 v) {
-)hlsl",
-R"hlsl(    return normalize(input.tangent * v.x + input.normal * v.y - input.binormal * v.z);
+    return normalize(input.tangent * v.x + input.normal * v.y - input.binormal * v.z);
 }
 
 #ifdef CLUSTERED
@@ -3186,12 +3186,12 @@ bool has_rect(float4 rect) {
 }
 
 // One decal's textures over the surface, as the body of Godot's decal loop.
-void apply_decal(Decal decal, float3 world, float3 geometry, float3 dx, float3 dy,
+)hlsl",
+R"hlsl(void apply_decal(Decal decal, float3 world, float3 geometry, float3 dx, float3 dy,
                  inout float3 base, inout float3 normal, inout float ao, inout float roughness,
                  inout float metallic, inout float3 emitted) {
     float4 p = float4(world, 1.0);
-)hlsl",
-R"hlsl(    float3 local = float3(dot(decal.rows[0], p), dot(decal.rows[1], p), dot(decal.rows[2], p));
+    float3 local = float3(dot(decal.rows[0], p), dot(decal.rows[1], p), dot(decal.rows[2], p));
     if (local.x < 0.0 || local.y < -1.0 || local.z < 0.0 || local.x > 1.0 || local.y > 1.0 ||
         local.z > 1.0) {
         return; // outside its box
@@ -3439,12 +3439,12 @@ float4 voxel_cone_trace_45_degrees(uint index, float3 cell_size, float max_dista
 
 // gi.glsl's cone directions about +z: six narrower ones with their weights for high quality, else
 // four of 45 degrees, a quarter each.
-static const float3 kHighQualityCones[6] = {
+)hlsl",
+R"hlsl(static const float3 kHighQualityCones[6] = {
     float3(0.0, 0.0, 1.0),           float3(0.866025, 0.0, 0.5),
     float3(0.267617, 0.823639, 0.5), float3(-0.700629, 0.509037, 0.5),
     float3(-0.700629, -0.509037, 0.5), float3(0.267617, -0.823639, 0.5)};
-)hlsl",
-R"hlsl(static const float kHighQualityWeights[6] = {0.25, 0.15, 0.15, 0.15, 0.15, 0.15};
+static const float kHighQualityWeights[6] = {0.25, 0.15, 0.15, 0.15, 0.15, 0.15};
 static const float3 kCones[4] = {float3(0.707107, 0.0, 0.707107), float3(0.0, 0.707107, 0.707107),
                                  float3(-0.707107, 0.0, 0.707107),
                                  float3(0.0, -0.707107, 0.707107)};
@@ -3692,7 +3692,8 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
             light = clustered_lights[word * 32u + bit];
         }
         add_light(light, input.world, normal, geometry, view, f0, roughness, metallic, layers,
-                  rays, diffuse_light, specular_light);
+)hlsl",
+R"hlsl(                  rays, diffuse_light, specular_light);
     }
 #else
     for (uint i = 0u; i < count; ++i) {
@@ -3701,8 +3702,7 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
     }
 #endif
 
-)hlsl",
-R"hlsl(    // Light from the sky's radiance, as Godot's scene.glsl takes it: reflections by roughness
+    // Light from the sky's radiance, as Godot's scene.glsl takes it: reflections by roughness
     // and ambient light by the normal, then specular occlusion and Lazarov's environment BRDF.
     float3 ambient_light = lightmapped ? lightmap_light(input.uv2)
                            : captured  ? capture_light(normal)
@@ -3750,6 +3750,16 @@ R"hlsl(    // Light from the sky's radiance, as Godot's scene.glsl takes it: ref
         reflected += srgb_to_linear(texel) * horizon * horizon * fc * sky.z;
     }
 #ifdef CLUSTERED
+    if (scene_voxel_gi.z != 0.0 && !lightmapped && !captured &&
+        ((options.x & kHasAlpha) == 0u || (options.x & kAlphaScissor) != 0u)) {
+        // Forward+'s SDFGI, as Godot's GI buffers light a pixel: its ambient light and
+        // reflections, which the gather drew into the screen array's layers 5 and 6, go over the
+        // sky's by how much of them its cascades hold, and VoxelGIs go over it.
+        float4 sdfgi_ambient = screen_texture.Load(int4((int2)input.position.xy, 5, 0));
+        float4 sdfgi_reflection = screen_texture.Load(int4((int2)input.position.xy, 6, 0));
+        ambient_light = lerp(ambient_light, sdfgi_ambient.rgb, sdfgi_ambient.a);
+        reflected = lerp(reflected, sdfgi_reflection.rgb, sdfgi_reflection.a);
+    }
     if (scene_voxel_gi.x != 0.0 && voxel_gi.x > 0.0 && !lightmapped && !captured) {
         // Forward+'s VoxelGIs, as Godot's GI buffers light a pixel: their ambient light and
         // reflections go over the sky's by how much of their cones met something.
@@ -3908,7 +3918,8 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
         float3 blended = (float3)0.0;
         float rough = 0.0;
         [unroll] for (uint i = 0u; i < 4u; ++i) {
-            // A layer without a normal_roughness texture is flat, with roughness 1.
+)hlsl",
+R"hlsl(            // A layer without a normal_roughness texture is flat, with roughness 1.
             float4 nr = (terrain_flags & (kTerrainNormals << i)) != 0u
                             ? normal_roughness[i]
                             : float4(0.5, 0.5, 1.0, 1.0);
@@ -3928,8 +3939,7 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
         roughness = surface.y * dot(roughness_texel, roughness_channel);
     }
     float3 normal = terrain ? frame_direction(input, normalize(float3(shape.x + ground.x, shape.y,
-)hlsl",
-R"hlsl(                                                                      shape.z + ground.z)))
+                                                                      shape.z + ground.z)))
                             : input.normal;
     if ((flags & kSideCheck) != 0u && !front) {
         normal = -normal;

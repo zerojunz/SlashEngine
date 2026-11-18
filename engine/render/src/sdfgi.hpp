@@ -14,6 +14,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -93,6 +94,57 @@ struct SdfgiState {
 [[nodiscard]] float sdfgi_y_mult(const Sdfgi3D& settings);
 // Where a cascade's cell 0 starts, in that world.
 [[nodiscard]] Float3 sdfgi_offset(const SdfgiCascade& cascade, std::uint32_t size);
+
+// What a frame's update does to a cascade, which the CPU twin and the GPU devices both follow.
+struct SdfgiCascadePlan {
+    // Whether its cells are made again; with scrolled, it moved by that many cells and keeps the
+    // cells it still holds, moved, as Godot's scroll renders only the region that came in.
+    bool voxelize = false;
+    std::optional<std::array<std::int32_t, 3>> scrolled;
+    // What happens to its probes: kept, cleared, or moved by probe_shift whole probes.
+    enum class Probes : std::uint8_t { Keep, Clear, Scroll };
+    Probes probes = Probes::Keep;
+    std::array<std::int32_t, 3> probe_shift{};
+    // Its solid cells lit this frame: those whose index is light_offset modulo light_increment.
+    std::uint32_t light_increment = 1;
+    std::uint32_t light_offset = 0;
+};
+struct SdfgiFramePlan {
+    std::vector<SdfgiCascadePlan> cascades;
+    std::uint32_t size = 0;
+    float y_mult = 1.0F;
+    std::uint32_t history_size = 1;
+    // Which of the history's frames the probes' rays write this frame.
+    std::uint32_t history_index = 0;
+};
+
+// Godot's sdfgi_update for a frame seen from camera (in the world): settles the settings, makes
+// the cascades again when they changed, moves each cascade with the camera by whole steps, marks
+// them all to be voxelized when geometry (a key of what they are made of) changed, and counts the
+// frame. The cascades' places and cell sizes change here; their cells and probes don't.
+[[nodiscard]] SdfgiFramePlan plan_sdfgi_frame(SdfgiState& state, const Scene3D& scene,
+                                              const Float3& camera, std::uint64_t geometry);
+
+// A light as the cells' light pass takes it (sdfgi_direct_light.glsl's lights): its color
+// times its energy and indirect energy, in the cells' world.
+struct SdfgiLight {
+    LightType type = LightType::Directional;
+    Float3 color{};
+    Float3 direction{}; // the way it shines (y scaled for directional lights)
+    Float3 position{};  // y scaled
+    float attenuation = 1.0F;
+    float radius = 1.0F;
+    float cos_spot_angle = 0.0F;
+    float inv_spot_attenuation = 1.0F;
+};
+// The scene's lights with indirect energy, in the cells' world with y times y_mult.
+[[nodiscard]] std::vector<SdfgiLight> sdfgi_lights(const Scene3D& scene, float y_mult);
+
+// Each of a cascade's probes' offset along its rays' spiral (sdfgi_integrate.glsl's
+// hashf3 of the probe's place in the world), as integrate works it out: kSdfgiProbeAxis^3 of them,
+// x fastest. Devices without doubles can't make Godot's sine bits, so the CPU hands them over.
+[[nodiscard]] std::vector<float> sdfgi_probe_offsets(const SdfgiCascade& cascade,
+                                                     std::uint32_t size);
 
 // Brings a target's SDFGI up to date for a frame seen from camera (in the world), as Godot's
 // sdfgi_update, render_region, update_light, update_probes and store_probes run in a frame: the

@@ -1,4 +1,6 @@
 #include "../engine/render/src/sdfgi.hpp"
+#include "../engine/render/src/sdfgi_gpu.hpp"
+#include "devices.hpp"
 
 #include "slash/core/jobs.hpp"
 #include "slash/core/json.hpp"
@@ -177,6 +179,24 @@ long greens(const Image& image) {
         sum += image.pixels[i];
     }
     return sum;
+}
+
+// The largest difference between a and b's channels.
+int difference(const Image& a, const Image& b) {
+    int worst = 0;
+    for (std::size_t i = 0; i < a.pixels.size(); ++i) {
+        worst = std::max(worst, std::abs(int{a.pixels[i]} - int{b.pixels[i]}));
+    }
+    return worst;
+}
+
+// How many of the channels of a and b differ by more than by.
+std::size_t differing(const Image& a, const Image& b, int by) {
+    std::size_t count = 0;
+    for (std::size_t i = 0; i < a.pixels.size(); ++i) {
+        count += std::abs(int{a.pixels[i]} - int{b.pixels[i]}) > by ? 1U : 0U;
+    }
+    return count;
 }
 
 } // namespace
@@ -396,4 +416,78 @@ TEST_CASE("SDFGI with occlusion keeps a wall's bounce from leaking behind it") {
     slash::jobs::Pool pool(4);
     auto shared = render::create_software_device(&pool);
     CHECK(draw_frames(*shared, occluded, 6, Stand::Wall).pixels == with.pixels);
+}
+
+TEST_CASE("SDFGI's GPU buffers hold each cascade's words, and its steps follow update_sdfgi") {
+    namespace detail = render::detail;
+    const detail::SdfgiLayout layout = detail::sdfgi_layout(2, 64, 4);
+    const std::uint32_t cells = 64U * 64U * 64U;
+    CHECK(layout.cell_count() == cells);
+    CHECK(layout.cells == 3 * cells);
+    CHECK(layout.fields == 3 * cells);
+    CHECK(layout.scratch >= 8 * cells);
+    // Groups run across first, then down, so no dispatch's x passes 65535.
+    CHECK(detail::sdfgi_groups(64) == std::array<std::uint32_t, 2>{1, 1});
+    CHECK(detail::sdfgi_groups(65) == std::array<std::uint32_t, 2>{2, 1});
+    CHECK(detail::sdfgi_groups(cells) ==
+          std::array<std::uint32_t, 2>{detail::kSdfgiGroupsAcross, cells / 65536});
+    // A fresh state's first frame voxelizes every cascade and clears its probes.
+    detail::SdfgiState state;
+    const render::Scene3D scene = lit_cube();
+    const detail::SdfgiFramePlan plan = detail::plan_sdfgi_frame(state, scene, {0, 0, 0}, 1);
+    REQUIRE(state.cascades.size() == 2);
+    const auto steps = detail::sdfgi_steps(state, plan, layout, 1, {});
+    const auto count = [&](detail::SdfgiStep::Kind kind) {
+        return std::count_if(steps.begin(), steps.end(),
+                             [&](const detail::SdfgiStep& step) { return step.kind == kind; });
+    };
+    CHECK(count(detail::SdfgiStep::Kind::Voxelize) == 2);
+    CHECK(count(detail::SdfgiStep::Kind::CopyCells) == 2);
+    // Each cascade's cells come before any light, and every probe is stored last.
+    const auto pass = [](const detail::SdfgiStep& step) {
+        return step.kind == detail::SdfgiStep::Kind::Dispatch
+                   ? static_cast<detail::SdfgiPass>(step.uniforms.step[0])
+                   : detail::SdfgiPass::Clear;
+    };
+    const auto first_light = std::find_if(steps.begin(), steps.end(), [&](const auto& step) {
+        return pass(step) == detail::SdfgiPass::Light;
+    });
+    REQUIRE(first_light != steps.end());
+    CHECK(std::none_of(first_light, steps.end(), [](const detail::SdfgiStep& step) {
+        return step.kind == detail::SdfgiStep::Kind::Voxelize;
+    }));
+    CHECK(pass(steps.back()) == detail::SdfgiPass::ProbeStore);
+}
+
+TEST_CASE("GPUs draw SDFGI as the software device does") {
+    auto gpu = slash::test::gpu_device();
+    if (gpu == nullptr) {
+        MESSAGE("no GPU backend; skipped");
+        return;
+    }
+    const auto software = render::create_software_device();
+    render::Scene3D occluded = lit_cube();
+    occluded.sdfgi.use_occlusion = true;
+    render::Scene3D behind = occluded;
+    behind.camera = render::look_at({4.5F, 4.0F, 0.0F}, {2.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F});
+    struct Case {
+        render::Scene3D scene;
+        std::uint32_t frames;
+        Stand stand;
+    };
+    const std::vector<Case> cases{
+        {lit_cube(), 1, Stand::Cube}, {lit_cube(), 6, Stand::Cube}, {lit_cube(), 6, Stand::Wall},
+        {occluded, 6, Stand::Wall},   {behind, 6, Stand::Wall},
+    };
+    for (std::size_t i = 0; i < cases.size(); ++i) {
+        CAPTURE(i);
+        const Image expected =
+            draw_frames(*software, cases[i].scene, cases[i].frames, cases[i].stand);
+        const Image drawn = draw_frames(*gpu, cases[i].scene, cases[i].frames, cases[i].stand);
+        // Floats round differently on each GPU, and shadow edges move a texel now and then.
+        CHECK(differing(drawn, expected, 3) <= drawn.pixels.size() / 50);
+        CHECK(difference(drawn, expected) <= 24);
+    }
+    // The GPU's own light reaches the cube's shadow.
+    CHECK(channel(draw_frames(*gpu, lit_cube(), 6), kShaded[0], kShaded[1], 1) > 0);
 }

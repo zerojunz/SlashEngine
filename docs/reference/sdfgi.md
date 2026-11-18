@@ -1,11 +1,12 @@
 # SDFGI: fully dynamic global illumination (research)
 
 A research feature with no commitment to ship ([roadmap](../roadmap.md#research)). It ports
-Godot 4.6's SDFGI, Godot's own fully dynamic GI, to the CPU, following RendererRD's
-`GI::SDFGI` (`servers/rendering/renderer_rd/environment/gi.cpp`) and its shaders
+Godot 4.6's SDFGI, Godot's own fully dynamic GI, to the CPU and to compute shaders, following
+RendererRD's `GI::SDFGI` (`servers/rendering/renderer_rd/environment/gi.cpp`) and its shaders
 (`sdfgi_preprocess.glsl`, `sdfgi_direct_light.glsl`, `sdfgi_integrate.glsl` and `gi.glsl`'s
-`sdfgi_process`), all MIT. Only the software device draws it for now. Read here what it does now,
-and what it does not do yet.
+`sdfgi_process`), all MIT. The software device, the GPU device (Vulkan, Metal and
+Direct3D 12) and the WebGPU device draw it; the OpenGL devices never will, as Godot's
+Compatibility renderer has none. Read here what it does now, and what it does not do yet.
 
 ## What it does
 
@@ -69,10 +70,32 @@ the neighbor it takes light from; its emission) and two for the field (the six s
 distance), one for the light and one for the occlusion, and the probes' history as pairs of
 16-bit halves.
 
+## On the GPU
+
+The GPU device runs the same frame as compute shaders over storage buffers, word for word the
+layout above, so it makes the same cells, fields, light and probes as the CPU twin
+(`src/sdfgi_gpu.hpp` says what they take and in what order):
+
+- `shaders/sdfgi_voxelize.hlsl` sums each draw's triangles into the cells, a thread for each of a
+  triangle's z slices, with atomic adds of the same fixed point sums, sampling the albedo and
+  emission textures as `path_surface_at` does;
+- `shaders/sdfgi.hlsl` runs every other step as a pass of one dispatch: clears, the resolve into
+  cells, the distance transform's passes, the occlusion flood, the light, the probes' rays,
+  their history and their maps, and a moved cascade's scroll;
+- `shaders/sdfgi_gather.hlsl` is `sdfgi_process`, drawn after the prepass into two layers of the
+  screen texture (ambient light and reflections), which `mesh.hlsl` puts under VoxelGIs' light
+  as `shade_mesh` does.
+
+Each render target keeps its own buffers and `SdfgiState` (the cascades' places and what
+changed), made again when the settings change; buffers past 4 GiB are refused with a warning
+and the frame drawn without it. Rays that leave the cascades take the sky from the radiance cube
+where the CPU reads the sky directly, so the two differ there by its filtering; elsewhere they
+round alike to within a few levels, which `tests/test_sdfgi.cpp` holds them to.
+
 ## Using it
 
 A `WorldEnvironment`'s `sdfgi_*` fields turn it on ([scene-format.md](scene-format.md#worldenvironment)),
-with Godot's names and defaults. A frame in `forward_plus` drawn by the software device (as
+with Godot's names and defaults. A frame in `forward_plus` drawn by the software or GPU device (as
 `frame.capture` draws it) then lights its opaque meshes with it:
 
 ```json
@@ -107,8 +130,10 @@ any number of threads.
 
 This is a spike to measure the idea. It still does these things the simple way:
 
-- **Only the software device draws it.** The other devices draw without it. A port to compute
-  shaders, as Godot runs it, is the next step if the spike holds up.
+- **Large cascades on WebGPU.** Each of SDFGI's buffers must fit one storage binding of the
+  browser's WebGPU. `web/webgpu.js` asks for the adapter's largest, and even the default
+  128 MiB holds four cascades of 128 cells; past it the frame draws without SDFGI and logs why
+  once, where splitting cascades over several buffers would draw it.
 - **Only cascades over unchanged triangles scroll.** A moved cascade keeps the cells it still
   holds and makes only the slab that came in, as Godot's scroll does, but any change to the
   frame's triangles (and so a camera turn that culls others) makes every cascade again, where
