@@ -46,6 +46,60 @@ struct Settings {
     // Counted in pieces, not time, so replays repeat.
     int break_budget = 0;
 
+    // Godot's physics/jolt_physics_3d/simulation settings, by their names there.
+    int velocity_steps = 10; // solver iterations for velocities each step
+    int position_steps = 2;  // solver iterations for positions each step
+    // How much of the penetration the position steps take out each step (0 to 1).
+    float baumgarte_stabilization_factor = 0.2F;
+    // How close bodies come, in meters, before contacts are made for them, so fast ones don't
+    // jitter or tunnel.
+    float speculative_contact_distance = 0.02F;
+    // How far bodies may sink into each other, in meters, before they are pushed apart.
+    float penetration_slop = 0.02F;
+    // How far a body with continuous collision detection must move in a step, as a fraction of
+    // its inner radius, before it is cast rather than moved.
+    float continuous_cd_movement_threshold = 0.75F;
+    // How far, as a fraction of its inner radius, a cast body may still sink into what it hits.
+    float continuous_cd_max_penetration = 0.25F;
+    // Whether contacts are reused while two bodies barely move against each other.
+    bool body_pair_contact_cache_enabled = true;
+    // How far, in meters, and how far turned, in radians, two bodies may move apart before
+    // their cached contacts are found again.
+    float body_pair_contact_cache_distance_threshold = 0.001F;
+    float body_pair_contact_cache_angle_threshold = 0.034906585F; // 2 degrees
+    // The speed, in meters per second, below which colliding bodies don't bounce.
+    float bounce_velocity_threshold = 1.0F;
+    // Whether resting bodies sleep, after sleep_time_threshold seconds with every point moving
+    // slower than sleep_velocity_threshold meters per second.
+    bool allow_sleep = true;
+    float sleep_velocity_threshold = 0.03F;
+    float sleep_time_threshold = 0.5F;
+    // Whether bodies skip contacts with the inner edges of meshes and compound shapes, so they
+    // slide over seams smoothly.
+    bool use_enhanced_internal_edge_removal = true;
+    // The radius, in meters, of a soft body's or cloth's points when they collide.
+    float soft_body_point_radius = 0.01F;
+    // Godot's motion_queries settings: the passes and the share of each overlap a character's
+    // move takes to push out of what it overlaps, and whether it skips inner edges.
+    int recovery_iterations = 4;
+    float recovery_amount = 0.4F;
+    bool motion_use_enhanced_internal_edge_removal = true;
+    // Godot's collisions settings: the share of a convex shape's smallest extent its margin may
+    // take, and the angle in radians between faces under which a mesh's edge counts as smooth.
+    float collision_margin_fraction = 0.08F;
+    float active_edge_threshold = 0.87266463F; // 50 degrees
+    // Godot's limits settings: a world boundary shape's size in meters, the fastest bodies may
+    // move (meters and radians per second), how many bodies, body pairs and contact
+    // constraints a space holds, and Jolt's scratch memory for a step in megabytes (more comes
+    // from the heap).
+    float world_boundary_shape_size = 2000.0F;
+    float max_linear_velocity = 500.0F;
+    float max_angular_velocity = 47.1238898F; // 2700 degrees
+    int max_bodies = 10240;
+    int max_body_pairs = 65536;
+    int max_contact_constraints = 20480;
+    int temporary_memory_buffer_size = 4;
+
     friend bool operator==(const Settings&, const Settings&) = default;
 };
 

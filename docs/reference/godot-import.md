@@ -631,6 +631,8 @@ on its top.
 | `physics/2d/default_gravity`, `default_gravity_vector`, `default_linear_damp`, `default_angular_damp` | `physics_2d` |
 | `physics/3d/default_gravity`, `default_gravity_vector`, `default_linear_damp`, `default_angular_damp` | `physics_3d` |
 | `physics/jolt_physics_3d/simulation/areas_detect_static_bodies` | `physics_3d.areas_detect_static_bodies` |
+| `physics/jolt_physics_3d/simulation/*`, `collisions/*` and `limits/*` | `physics_3d.<the same name>`, angles in radians as `project.godot` keeps them |
+| `physics/jolt_physics_3d/motion_queries/recovery_iterations`, `recovery_amount`, `use_enhanced_internal_edge_removal` | `physics_3d.recovery_iterations`, `recovery_amount`, `motion_use_enhanced_internal_edge_removal` |
 | `rendering/environment/defaults/default_clear_color` | `rendering.clear_color` |
 | `rendering/textures/canvas_textures/default_texture_filter` | `rendering.texture_filter` |
 | `rendering/renderer/rendering_method` | `rendering.rendering_method` `gl_compatibility` and `rendering.driver` `opengl` when it is `gl_compatibility`, or `opengl_es` when `rendering/gl_compatibility/driver` is `opengl3_es`; Forward+ and Mobile draw as `forward_plus` |
