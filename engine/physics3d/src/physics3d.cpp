@@ -45,6 +45,97 @@ json::Value number_property(std::string_view description, double fallback) {
     return property;
 }
 
+// Godot's physics/jolt_physics_3d settings, by their names there: numbers with their range,
+// whole numbers and switches.
+struct NumberSetting {
+    const char* name;
+    float Settings::*field;
+    double minimum;
+    double maximum;
+    const char* description;
+};
+struct WholeSetting {
+    const char* name;
+    int Settings::*field;
+    int minimum;
+    int maximum;
+    const char* description;
+};
+struct SwitchSetting {
+    const char* name;
+    bool Settings::*field;
+    const char* description;
+};
+
+constexpr NumberSetting kNumberSettings[] = {
+    {"baumgarte_stabilization_factor", &Settings::baumgarte_stabilization_factor, 0.0, 1.0,
+     "How much of the penetration the position steps take out each step."},
+    {"speculative_contact_distance", &Settings::speculative_contact_distance, 0.0, 10.0,
+     "How close bodies come, in meters, before contacts are made for them."},
+    {"penetration_slop", &Settings::penetration_slop, 0.0, 10.0,
+     "How far bodies may sink into each other, in meters, before they are pushed apart."},
+    {"continuous_cd_movement_threshold", &Settings::continuous_cd_movement_threshold, 0.0, 1.0,
+     "How far a body with continuous collision detection must move in a step, as a fraction "
+     "of its inner radius, before it is cast."},
+    {"continuous_cd_max_penetration", &Settings::continuous_cd_max_penetration, 0.0, 1.0,
+     "How far, as a fraction of its inner radius, a cast body may still sink into what it "
+     "hits."},
+    {"body_pair_contact_cache_distance_threshold",
+     &Settings::body_pair_contact_cache_distance_threshold, 0.0, 10.0,
+     "How far, in meters, two bodies may move apart before cached contacts are found again."},
+    {"body_pair_contact_cache_angle_threshold", &Settings::body_pair_contact_cache_angle_threshold,
+     0.0, 3.14159265,
+     "How far, in radians, two bodies may turn apart before cached contacts are found again."},
+    {"bounce_velocity_threshold", &Settings::bounce_velocity_threshold, 0.0, 1000.0,
+     "The speed, in meters per second, below which colliding bodies don't bounce."},
+    {"sleep_velocity_threshold", &Settings::sleep_velocity_threshold, 0.0, 1000.0,
+     "How slowly, in meters per second, every point of a body must move for it to rest."},
+    {"sleep_time_threshold", &Settings::sleep_time_threshold, 0.0, 3600.0,
+     "How long, in seconds, a body must rest before it sleeps."},
+    {"soft_body_point_radius", &Settings::soft_body_point_radius, 0.0, 10.0,
+     "The radius, in meters, of soft bodies' and cloths' points when they collide."},
+    {"recovery_amount", &Settings::recovery_amount, 0.0, 1.0,
+     "The share of each overlap a character's move pushes out of in each recovery pass."},
+    {"collision_margin_fraction", &Settings::collision_margin_fraction, 0.0, 1.0,
+     "The share of a convex shape's smallest extent its margin may take."},
+    {"active_edge_threshold", &Settings::active_edge_threshold, 0.0, 3.14159265,
+     "The angle, in radians, between faces under which a mesh's edge counts as smooth."},
+    {"world_boundary_shape_size", &Settings::world_boundary_shape_size, 1.0, 1.0e7,
+     "A world boundary shape's size, in meters."},
+    {"max_linear_velocity", &Settings::max_linear_velocity, 0.0, 1.0e7,
+     "The fastest bodies may move, in meters per second."},
+    {"max_angular_velocity", &Settings::max_angular_velocity, 0.0, 1.0e7,
+     "The fastest bodies may turn, in radians per second."},
+};
+
+constexpr WholeSetting kWholeSettings[] = {
+    {"velocity_steps", &Settings::velocity_steps, 2, 100,
+     "Solver iterations for velocities each step."},
+    {"position_steps", &Settings::position_steps, 1, 100,
+     "Solver iterations for positions each step."},
+    {"recovery_iterations", &Settings::recovery_iterations, 1, 100,
+     "Passes a character's move makes to push out of what it overlaps."},
+    {"max_bodies", &Settings::max_bodies, 1, 8388608, "How many bodies a space holds."},
+    {"max_body_pairs", &Settings::max_body_pairs, 8, 8388608,
+     "How many pairs of touching bodies a space holds."},
+    {"max_contact_constraints", &Settings::max_contact_constraints, 8, 8388608,
+     "How many contact constraints a space holds."},
+    {"temporary_memory_buffer_size", &Settings::temporary_memory_buffer_size, 1, 2048,
+     "Scratch memory for a step, in megabytes; more comes from the heap."},
+};
+
+constexpr SwitchSetting kSwitchSettings[] = {
+    {"body_pair_contact_cache_enabled", &Settings::body_pair_contact_cache_enabled,
+     "Whether contacts are reused while two bodies barely move against each other."},
+    {"allow_sleep", &Settings::allow_sleep, "Whether resting bodies sleep."},
+    {"use_enhanced_internal_edge_removal", &Settings::use_enhanced_internal_edge_removal,
+     "Whether bodies skip contacts with the inner edges of meshes and compound shapes."},
+    {"motion_use_enhanced_internal_edge_removal",
+     &Settings::motion_use_enhanced_internal_edge_removal,
+     "Whether a character's moves skip contacts with the inner edges of meshes and compound "
+     "shapes (Godot's motion_queries/use_enhanced_internal_edge_removal)."},
+};
+
 // What a query sees, as Godot's JoltQueryFilter3D: bodies, areas or both, on the mask's layers,
 // less the excluded entities.
 class QueryFilters final : public JPH::BroadPhaseLayerFilter,
@@ -173,6 +264,28 @@ json::Value settings_schema() {
         "The most pieces breaks from impacts may cut a tick, so a chain of breaks spreads over "
         "ticks (the first break of a tick always cuts); 0 for no limit.";
     properties["break_budget"] = std::move(budget);
+    for (const NumberSetting& setting : kNumberSettings) {
+        json::Value property = number_property(setting.description, defaults.*setting.field);
+        property["minimum"] = setting.minimum;
+        property["maximum"] = setting.maximum;
+        properties[setting.name] = std::move(property);
+    }
+    for (const WholeSetting& setting : kWholeSettings) {
+        json::Value property;
+        property["type"] = "integer";
+        property["minimum"] = setting.minimum;
+        property["maximum"] = setting.maximum;
+        property["default"] = defaults.*setting.field;
+        property["description"] = setting.description;
+        properties[setting.name] = std::move(property);
+    }
+    for (const SwitchSetting& setting : kSwitchSettings) {
+        json::Value property;
+        property["type"] = "boolean";
+        property["default"] = defaults.*setting.field;
+        property["description"] = setting.description;
+        properties[setting.name] = std::move(property);
+    }
     return schema;
 }
 
@@ -201,6 +314,19 @@ Settings parse_settings(const json::Value& settings) {
     }
     if (const json::Value* budget = settings.find("break_budget"); budget != nullptr) {
         out.break_budget = static_cast<int>(budget->as_int());
+    }
+    for (const NumberSetting& setting : kNumberSettings) {
+        number(setting.name, out.*setting.field);
+    }
+    for (const WholeSetting& setting : kWholeSettings) {
+        if (const json::Value* value = settings.find(setting.name); value != nullptr) {
+            out.*setting.field = static_cast<int>(value->as_int());
+        }
+    }
+    for (const SwitchSetting& setting : kSwitchSettings) {
+        if (const json::Value* value = settings.find(setting.name); value != nullptr) {
+            out.*setting.field = value->as_bool();
+        }
     }
     return out;
 }
@@ -290,7 +416,7 @@ std::vector<entt::entity> overlap_shape(world::World& world, const world::Collis
     if (space == nullptr) {
         return {};
     }
-    const detail::BuiltShape built = detail::build_shape(shape);
+    const detail::BuiltShape built = detail::build_shape(shape, space->settings());
     if (built.shape == nullptr) {
         return {};
     }

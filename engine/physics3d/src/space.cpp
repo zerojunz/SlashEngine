@@ -1,6 +1,7 @@
 #include "space.hpp"
 
 #include "slash/core/log.hpp"
+#include "slash/core/math.hpp"
 #include "slash/core/profile.hpp"
 #include "slash/scene3d/csg.hpp"
 #include "slash/scene3d/foliage.hpp"
@@ -21,6 +22,7 @@
 #include <Jolt/RegisterTypes.h>
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -44,15 +46,6 @@ using world::RigidBody3D;
 using world::StaticBody3D;
 using world::Transform3D;
 
-// Godot's physics/jolt_physics_3d limits: bodies, body pairs and contact constraints.
-constexpr JPH::uint kMaxBodies = 10240;
-constexpr JPH::uint kMaxPairs = 65536;
-constexpr JPH::uint kMaxContacts = 20480;
-// Godot's max_linear_velocity and max_angular_velocity (2700 degrees per second).
-constexpr float kMaxLinearVelocity = 500.0F;
-constexpr float kMaxAngularVelocity = 47.1238898F;
-// Jolt's scratch memory for a step; more comes from the heap.
-constexpr JPH::uint kTempBytes = 4U * 1024U * 1024U;
 // Godot optimizes the broad phase before a query once this many bodies were added since.
 constexpr int kOptimizeAfter = 128;
 
@@ -788,11 +781,91 @@ void Space::reset() {
     added_ = 0;
 }
 
+namespace {
+
+// Jolt's simulation settings from Godot's physics/jolt_physics_3d/simulation ones.
+JPH::PhysicsSettings physics_settings(const Settings& settings) {
+    JPH::PhysicsSettings physics;
+    physics.mBaumgarte = settings.baumgarte_stabilization_factor;
+    physics.mSpeculativeContactDistance = settings.speculative_contact_distance;
+    physics.mPenetrationSlop = settings.penetration_slop;
+    physics.mLinearCastThreshold = settings.continuous_cd_movement_threshold;
+    physics.mLinearCastMaxPenetration = settings.continuous_cd_max_penetration;
+    physics.mBodyPairCacheMaxDeltaPositionSq = settings.body_pair_contact_cache_distance_threshold *
+                                               settings.body_pair_contact_cache_distance_threshold;
+    // Jolt takes the cosine of half the angle, as Godot hands it over.
+    physics.mBodyPairCacheCosMaxDeltaRotationDiv2 =
+        slash::cos_sin(settings.body_pair_contact_cache_angle_threshold / 2.0F).x;
+    physics.mNumVelocitySteps = static_cast<JPH::uint>(std::max(settings.velocity_steps, 2));
+    physics.mNumPositionSteps = static_cast<JPH::uint>(std::max(settings.position_steps, 1));
+    physics.mMinVelocityForRestitution = settings.bounce_velocity_threshold;
+    physics.mTimeBeforeSleep = settings.sleep_time_threshold;
+    physics.mPointVelocitySleepThreshold = settings.sleep_velocity_threshold;
+    physics.mUseBodyPairContactCache = settings.body_pair_contact_cache_enabled;
+    physics.mAllowSleeping = settings.allow_sleep;
+    return physics;
+}
+
+// A velocity no faster than max, as Jolt clamps one, so a body made with what its component
+// keeps stays within the space's limits.
+JPH::Vec3 capped(JPH::Vec3 velocity, float max) {
+    const float length_squared = velocity.LengthSq();
+    return length_squared > max * max ? velocity * (max / std::sqrt(length_squared)) : velocity;
+}
+
+// Whether two settings solve steps alike.
+bool same_solver(const Settings& a, const Settings& b) {
+    return a.velocity_steps == b.velocity_steps && a.position_steps == b.position_steps &&
+           a.baumgarte_stabilization_factor == b.baumgarte_stabilization_factor &&
+           a.speculative_contact_distance == b.speculative_contact_distance &&
+           a.penetration_slop == b.penetration_slop &&
+           a.continuous_cd_movement_threshold == b.continuous_cd_movement_threshold &&
+           a.continuous_cd_max_penetration == b.continuous_cd_max_penetration &&
+           a.body_pair_contact_cache_enabled == b.body_pair_contact_cache_enabled &&
+           a.body_pair_contact_cache_distance_threshold ==
+               b.body_pair_contact_cache_distance_threshold &&
+           a.body_pair_contact_cache_angle_threshold == b.body_pair_contact_cache_angle_threshold &&
+           a.bounce_velocity_threshold == b.bounce_velocity_threshold &&
+           a.allow_sleep == b.allow_sleep &&
+           a.sleep_velocity_threshold == b.sleep_velocity_threshold &&
+           a.sleep_time_threshold == b.sleep_time_threshold;
+}
+
+// Whether two settings make the same bodies and shapes: what changes only how a step solves
+// can be set on a running system, the rest makes the space again.
+bool same_bodies(const Settings& a, const Settings& b) {
+    return a.max_bodies == b.max_bodies && a.max_body_pairs == b.max_body_pairs &&
+           a.max_contact_constraints == b.max_contact_constraints &&
+           a.temporary_memory_buffer_size == b.temporary_memory_buffer_size &&
+           a.max_linear_velocity == b.max_linear_velocity &&
+           a.max_angular_velocity == b.max_angular_velocity &&
+           a.use_enhanced_internal_edge_removal == b.use_enhanced_internal_edge_removal &&
+           a.soft_body_point_radius == b.soft_body_point_radius &&
+           a.collision_margin_fraction == b.collision_margin_fraction &&
+           a.active_edge_threshold == b.active_edge_threshold &&
+           a.world_boundary_shape_size == b.world_boundary_shape_size;
+}
+
+} // namespace
+
 void Space::set_settings(const Settings& settings) {
     const bool gravity_changed = settings.gravity != settings_.gravity ||
                                  settings.gravity_vector != settings_.gravity_vector;
+    const bool remake = !same_bodies(settings, settings_);
+    const bool solver_changed = !remake && !same_solver(settings, settings_);
     settings_ = settings;
-    if (gravity_changed && system_ != nullptr) {
+    if (system_ == nullptr) {
+        return;
+    }
+    if (remake) {
+        // Bodies, shapes and limits are made again from the components at the next step.
+        reset();
+        return;
+    }
+    if (solver_changed) {
+        system_->SetPhysicsSettings(physics_settings(settings_));
+    }
+    if (gravity_changed) {
         system_->SetGravity(to_jolt(settings_.gravity_vector * settings_.gravity));
         JPH::BodyInterface& interface = system_->GetBodyInterfaceNoLock();
         for (const auto* bodies : {&soft_bodies_, &cloths_}) {
@@ -822,27 +895,17 @@ Body* Space::body(entt::entity entity) {
 }
 
 void Space::create_system() {
-    temp_ = std::make_unique<JPH::TempAllocatorImplWithMallocFallback>(kTempBytes);
+    const auto megabytes =
+        static_cast<JPH::uint>(std::max(settings_.temporary_memory_buffer_size, 1));
+    temp_ = std::make_unique<JPH::TempAllocatorImplWithMallocFallback>(megabytes * 1024U * 1024U);
     jobs_ = std::make_unique<JPH::JobSystemSingleThreaded>(JPH::cMaxPhysicsJobs);
     system_ = std::make_unique<JPH::PhysicsSystem>();
-    system_->Init(kMaxBodies, 0, kMaxPairs, kMaxContacts, layers_, layers_, layers_);
-    // Godot's physics/jolt_physics_3d simulation settings.
-    JPH::PhysicsSettings physics;
-    physics.mBaumgarte = 0.2F;
-    physics.mSpeculativeContactDistance = 0.02F;
-    physics.mPenetrationSlop = 0.02F;
-    physics.mLinearCastThreshold = 0.75F;
-    physics.mLinearCastMaxPenetration = 0.25F;
-    physics.mBodyPairCacheMaxDeltaPositionSq = 0.001F * 0.001F;
-    physics.mBodyPairCacheCosMaxDeltaRotationDiv2 = 0.99984770F; // cos(2 degrees / 2)
-    physics.mNumVelocitySteps = 10;
-    physics.mNumPositionSteps = 2;
-    physics.mMinVelocityForRestitution = 1.0F;
-    physics.mTimeBeforeSleep = 0.5F;
-    physics.mPointVelocitySleepThreshold = 0.03F;
-    physics.mUseBodyPairContactCache = true;
-    physics.mAllowSleeping = true;
-    system_->SetPhysicsSettings(physics);
+    // Godot's physics/jolt_physics_3d limits and simulation settings.
+    system_->Init(static_cast<JPH::uint>(std::max(settings_.max_bodies, 1)), 0,
+                  static_cast<JPH::uint>(std::max(settings_.max_body_pairs, 8)),
+                  static_cast<JPH::uint>(std::max(settings_.max_contact_constraints, 8)), layers_,
+                  layers_, layers_);
+    system_->SetPhysicsSettings(physics_settings(settings_));
     // Gravity and damping are the space's own, from the areas each body is in; Jolt's gravity
     // is the default gravity, which only soft bodies feel, as Godot's JoltSpace3D sets it.
     system_->SetGravity(to_jolt(settings_.gravity_vector * settings_.gravity));
@@ -897,7 +960,7 @@ void Space::build_shape(const world::World& world, Body& body, const ShapeKey& k
             warn_shape(world, part.entity, "a world boundary only works on a static body");
             continue;
         }
-        const BuiltShape made = detail::build_shape(part.shape);
+        const BuiltShape made = detail::build_shape(part.shape, settings_);
         if (!made.error.empty()) {
             warn_shape(world, part.entity, made.error);
             continue;
@@ -919,7 +982,7 @@ void Space::build_shape(const world::World& world, Body& body, const ShapeKey& k
         world::CollisionShape3D faces;
         faces.shape = "concave_polygon";
         faces.faces = *key.csg;
-        const BuiltShape made = detail::build_shape(faces);
+        const BuiltShape made = detail::build_shape(faces, settings_);
         if (!made.error.empty()) {
             warn_shape(world, body.entity, made.error);
         } else if (made.shape != nullptr) {
@@ -941,7 +1004,7 @@ void Space::build_shape(const world::World& world, Body& body, const ShapeKey& k
             if (found != shapes.end()) {
                 unscaled = found->second;
             } else {
-                const BuiltShape made = detail::build_shape(part.shape);
+                const BuiltShape made = detail::build_shape(part.shape, settings_);
                 if (!made.error.empty()) {
                     warn_shape(world, body.entity, made.error);
                 }
@@ -965,7 +1028,7 @@ void Space::build_shape(const world::World& world, Body& body, const ShapeKey& k
     // the entities drawing them are.
     for (const ShapeKey::Model& model : key.models) {
         for (const world::CollisionShape3D& part : *model.shapes) {
-            const BuiltShape made = detail::build_shape(part);
+            const BuiltShape made = detail::build_shape(part, settings_);
             if (!made.error.empty()) {
                 warn_shape(world, body.entity, made.error);
             }
@@ -983,8 +1046,8 @@ void Space::build_shape(const world::World& world, Body& body, const ShapeKey& k
     }
     // An HTerrain's heights, as a height field.
     if (key.terrain != nullptr) {
-        const BuiltShape made =
-            detail::build_terrain_shape(*key.terrain, key.terrain_scale, key.terrain_centered);
+        const BuiltShape made = detail::build_terrain_shape(*key.terrain, key.terrain_scale,
+                                                            key.terrain_centered, settings_);
         if (!made.error.empty()) {
             warn_shape(world, body.entity, made.error);
         } else if (made.shape != nullptr) {
@@ -1049,9 +1112,9 @@ void Space::create_body(Body& body, const world::Affine3D& global, const world::
     settings.mAngularDamping = 0.0F;
     // So is gravity: Jolt's applies to soft bodies only, as Godot's.
     settings.mGravityFactor = 0.0F;
-    settings.mMaxLinearVelocity = kMaxLinearVelocity;
-    settings.mMaxAngularVelocity = kMaxAngularVelocity;
-    settings.mEnhancedInternalEdgeRemoval = true;
+    settings.mMaxLinearVelocity = settings_.max_linear_velocity;
+    settings.mMaxAngularVelocity = settings_.max_angular_velocity;
+    settings.mEnhancedInternalEdgeRemoval = settings_.use_enhanced_internal_edge_removal;
     bool awake = false;
     if (body.kind == Kind::Area) {
         settings.mIsSensor = true;
@@ -1070,15 +1133,19 @@ void Space::create_body(Body& body, const world::Affine3D& global, const world::
                                                          : JPH::EMotionQuality::Discrete;
             settings.mAllowSleeping = body.rigid_key.can_sleep;
             settings.mUseManifoldReduction = !rigid.contact_monitor;
-            settings.mLinearVelocity = to_jolt(rigid.linear_velocity);
-            settings.mAngularVelocity = to_jolt(rigid.angular_velocity);
+            settings.mLinearVelocity =
+                capped(to_jolt(rigid.linear_velocity), settings_.max_linear_velocity);
+            settings.mAngularVelocity =
+                capped(to_jolt(rigid.angular_velocity), settings_.max_angular_velocity);
             awake = motion == JPH::EMotionType::Dynamic && !rigid.sleeping;
         } else if (body.kind == Kind::Bone) {
             const auto& bone = registry.get<PhysicalBone3D>(body.entity);
             mass = mass_of(body, bone.mass);
             settings.mAllowSleeping = body.rigid_key.can_sleep;
-            settings.mLinearVelocity = to_jolt(bone.linear_velocity);
-            settings.mAngularVelocity = to_jolt(bone.angular_velocity);
+            settings.mLinearVelocity =
+                capped(to_jolt(bone.linear_velocity), settings_.max_linear_velocity);
+            settings.mAngularVelocity =
+                capped(to_jolt(bone.angular_velocity), settings_.max_angular_velocity);
             awake = motion == JPH::EMotionType::Dynamic;
         }
         settings.mMassPropertiesOverride = mass_properties(*body.shape, mass, inertia);
@@ -1826,8 +1893,8 @@ void Space::step(world::World& world, float seconds) {
         if (errors != JPH::EPhysicsUpdateError::None && !warned_full_) {
             warned_full_ = true;
             log::warn("3D physics ran out of room for contacts; some were ignored",
-                      {{"max_body_pairs", static_cast<int>(kMaxPairs)},
-                       {"max_contact_constraints", static_cast<int>(kMaxContacts)}});
+                      {{"max_body_pairs", settings_.max_body_pairs},
+                       {"max_contact_constraints", settings_.max_contact_constraints}});
         }
     }
     read_soft_bodies(world);

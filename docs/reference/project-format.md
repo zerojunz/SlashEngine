@@ -67,6 +67,22 @@ checks it.
 | `physics_3d.areas_detect_static_bodies` | No | `false` | Whether `Area3D` reports static bodies, as Godot's `physics/jolt_physics_3d/simulation/areas_detect_static_bodies` |
 | `physics_3d.substeps` | No | `1` | Collision steps each physics tick, 1 to 16, as Chaos's substeps: more keep fast, small or stacked bodies steadier, at that many times the cost |
 | `physics_3d.break_budget` | No | `0` | The most pieces breaks from impacts cut each tick, as Chaos's break budget (the first always cuts; the rest wait for later ticks); 0 for no limit |
+| `physics_3d.velocity_steps`, `position_steps` | No | `10`, `2` | Solver iterations for velocities (2 to 100) and positions (1 to 100) each step, as Godot's `physics/jolt_physics_3d/simulation/` settings of those names, as every `physics_3d` row below |
+| `physics_3d.baumgarte_stabilization_factor` | No | `0.2` | How much of the penetration the position steps take out each step, 0 to 1 |
+| `physics_3d.speculative_contact_distance`, `penetration_slop` | No | `0.02`, `0.02` | How close bodies come, in meters, before contacts are made for them, and how far they may sink into each other before they are pushed apart |
+| `physics_3d.continuous_cd_movement_threshold`, `continuous_cd_max_penetration` | No | `0.75`, `0.25` | How far a body with `continuous_cd` must move in a step, as a fraction of its inner radius, before it is cast, and how far a cast body may still sink into what it hits |
+| `physics_3d.body_pair_contact_cache_enabled` | No | `true` | Whether contacts are reused while two bodies barely move against each other, until they move `body_pair_contact_cache_distance_threshold` meters (`0.001`) or turn `body_pair_contact_cache_angle_threshold` radians (`0.0349`, 2 degrees) apart |
+| `physics_3d.bounce_velocity_threshold` | No | `1` | The speed, in meters per second, below which colliding bodies don't bounce |
+| `physics_3d.allow_sleep` | No | `true` | Whether resting bodies sleep, after `sleep_time_threshold` seconds (`0.5`) with every point slower than `sleep_velocity_threshold` meters per second (`0.03`) |
+| `physics_3d.use_enhanced_internal_edge_removal` | No | `true` | Whether bodies skip contacts with the inner edges of meshes and compound shapes, so they slide over seams |
+| `physics_3d.soft_body_point_radius` | No | `0.01` | The radius, in meters, of soft bodies' and cloths' points when they collide |
+| `physics_3d.recovery_iterations`, `recovery_amount` | No | `4`, `0.4` | Godot's `motion_queries` settings: the passes a character's move makes to push out of what it overlaps, and the share of each overlap a pass takes |
+| `physics_3d.motion_use_enhanced_internal_edge_removal` | No | `true` | Whether a character's moves skip contacts with inner edges, as Godot's `motion_queries/use_enhanced_internal_edge_removal` |
+| `physics_3d.collision_margin_fraction`, `active_edge_threshold` | No | `0.08`, `0.8727` | Godot's `collisions` settings: the share of a convex shape's smallest extent its margin may take, and the angle in radians (50 degrees) between faces under which a mesh's edge counts as smooth |
+| `physics_3d.world_boundary_shape_size` | No | `2000` | Godot's `limits` settings, as the rows after it: how far a world boundary shape reaches, in meters |
+| `physics_3d.max_linear_velocity`, `max_angular_velocity` | No | `500`, `47.12` | The fastest bodies may move, in meters per second, and turn, in radians per second (2700 degrees) |
+| `physics_3d.max_bodies`, `max_body_pairs`, `max_contact_constraints` | No | `10240`, `65536`, `20480` | How many bodies, pairs of touching bodies and contact constraints a space holds; a step past the last two warns and drops contacts |
+| `physics_3d.temporary_memory_buffer_size` | No | `4` | Jolt's scratch memory for a step, in megabytes (Godot's is 32); more comes from the heap |
 | `navigation_2d.cell_size` | No | `1` | The 2D map's cell size in pixels, as Godot's `navigation/2d/default_cell_size`: edge ends are rounded to it, so make navigation polygons for it |
 | `navigation_2d.merge_rasterizer_cell_scale` | No | `1` | Edge ends closer than `cell_size` times this (at most 0.1) are the same point, as Godot's |
 | `navigation_2d.use_edge_connections` | No | `true` | Whether regions' edges that come within `edge_connection_margin` join |

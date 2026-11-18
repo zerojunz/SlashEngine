@@ -235,6 +235,64 @@ TEST_CASE("physics settings set gravity and damping") {
     CHECK(parsed.areas_detect_static_bodies);
 }
 
+TEST_CASE("physics_3d takes every one of Godot's Jolt settings") {
+    const json::Value every = json::parse(R"({
+        "velocity_steps": 20, "position_steps": 4, "baumgarte_stabilization_factor": 0.3,
+        "speculative_contact_distance": 0.05, "penetration_slop": 0.01,
+        "continuous_cd_movement_threshold": 0.5, "continuous_cd_max_penetration": 0.1,
+        "body_pair_contact_cache_enabled": false,
+        "body_pair_contact_cache_distance_threshold": 0.002,
+        "body_pair_contact_cache_angle_threshold": 0.05, "bounce_velocity_threshold": 0.5,
+        "allow_sleep": false, "sleep_velocity_threshold": 0.05, "sleep_time_threshold": 1,
+        "use_enhanced_internal_edge_removal": false, "soft_body_point_radius": 0.02,
+        "recovery_iterations": 8, "recovery_amount": 0.6,
+        "motion_use_enhanced_internal_edge_removal": false, "collision_margin_fraction": 0.1,
+        "active_edge_threshold": 0.5, "world_boundary_shape_size": 4000,
+        "max_linear_velocity": 100, "max_angular_velocity": 20, "max_bodies": 2000,
+        "max_body_pairs": 4000, "max_contact_constraints": 3000,
+        "temporary_memory_buffer_size": 8})")
+                                  .value();
+    CHECK(json::validate(every, physics3d::settings_schema()).empty());
+    CHECK_FALSE(json::validate(json::parse(R"({"velocity_steps": 1})").value(),
+                               physics3d::settings_schema())
+                    .empty());
+    const physics3d::Settings parsed = physics3d::parse_settings(every);
+    CHECK(parsed.velocity_steps == 20);
+    CHECK(parsed.baumgarte_stabilization_factor == 0.3F);
+    CHECK_FALSE(parsed.allow_sleep);
+    CHECK_FALSE(parsed.motion_use_enhanced_internal_edge_removal);
+    CHECK(parsed.active_edge_threshold == 0.5F);
+    CHECK(parsed.max_contact_constraints == 3000);
+    CHECK(parsed.temporary_memory_buffer_size == 8);
+
+    // A crate falls no faster than max_linear_velocity, and a change on a running world makes
+    // the bodies again with the new limit.
+    physics3d::Settings slow;
+    slow.max_linear_velocity = 2.0F;
+    Physics physics(slow);
+    physics.crate("crate", {0.0F, 100.0F, 0.0F});
+    physics.step(60);
+    CHECK(physics.get<world::RigidBody3D>("crate").linear_velocity.y ==
+          doctest::Approx(-2.0F).epsilon(0.001));
+    slow.max_linear_velocity = 1.0F;
+    physics3d::set_settings(physics.world, slow);
+    physics.step(30);
+    CHECK(physics.get<world::RigidBody3D>("crate").linear_velocity.y ==
+          doctest::Approx(-1.0F).epsilon(0.001));
+    CHECK(physics.position("crate").y < 99.0F);
+
+    // A crate resting on the floor sleeps, unless allow_sleep is off.
+    for (const bool sleep : {true, false}) {
+        physics3d::Settings settings;
+        settings.allow_sleep = sleep;
+        Physics resting(settings);
+        resting.floor();
+        resting.crate("crate", {0.0F, 0.5F, 0.0F});
+        resting.step(120);
+        CHECK(resting.get<world::RigidBody3D>("crate").sleeping == sleep);
+    }
+}
+
 TEST_CASE("bodies collide when either one's mask has the other's layer") {
     Physics physics;
     physics.floor();

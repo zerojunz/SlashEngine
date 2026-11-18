@@ -2106,10 +2106,54 @@ private:
         if (const Value* damp = number("physics", "3d/default_angular_damp")) {
             project["physics_3d"]["angular_damp"] = damp->number();
         }
-        if (const Value* detect =
-                setting("physics", "jolt_physics_3d/simulation/areas_detect_static_bodies");
-            detect != nullptr && detect->kind == Value::Kind::Bool) {
-            project["physics_3d"]["areas_detect_static_bodies"] = detect->boolean;
+        // Godot's physics/jolt_physics_3d settings keep their names; angles are radians in
+        // project.godot, as in project.json.
+        static constexpr std::pair<std::string_view, std::string_view> kJoltSettings[] = {
+            {"simulation/areas_detect_static_bodies", "areas_detect_static_bodies"},
+            {"simulation/velocity_steps", "velocity_steps"},
+            {"simulation/position_steps", "position_steps"},
+            {"simulation/use_enhanced_internal_edge_removal", "use_enhanced_internal_edge_removal"},
+            {"simulation/speculative_contact_distance", "speculative_contact_distance"},
+            {"simulation/penetration_slop", "penetration_slop"},
+            {"simulation/allow_sleep", "allow_sleep"},
+            {"simulation/sleep_velocity_threshold", "sleep_velocity_threshold"},
+            {"simulation/sleep_time_threshold", "sleep_time_threshold"},
+            {"simulation/continuous_cd_movement_threshold", "continuous_cd_movement_threshold"},
+            {"simulation/continuous_cd_max_penetration", "continuous_cd_max_penetration"},
+            {"simulation/body_pair_contact_cache_enabled", "body_pair_contact_cache_enabled"},
+            {"simulation/body_pair_contact_cache_distance_threshold",
+             "body_pair_contact_cache_distance_threshold"},
+            {"simulation/body_pair_contact_cache_angle_threshold",
+             "body_pair_contact_cache_angle_threshold"},
+            {"simulation/soft_body_point_radius", "soft_body_point_radius"},
+            {"simulation/bounce_velocity_threshold", "bounce_velocity_threshold"},
+            {"simulation/baumgarte_stabilization_factor", "baumgarte_stabilization_factor"},
+            {"motion_queries/use_enhanced_internal_edge_removal",
+             "motion_use_enhanced_internal_edge_removal"},
+            {"motion_queries/recovery_iterations", "recovery_iterations"},
+            {"motion_queries/recovery_amount", "recovery_amount"},
+            {"collisions/collision_margin_fraction", "collision_margin_fraction"},
+            {"collisions/active_edge_threshold", "active_edge_threshold"},
+            {"limits/world_boundary_shape_size", "world_boundary_shape_size"},
+            {"limits/max_linear_velocity", "max_linear_velocity"},
+            {"limits/max_angular_velocity", "max_angular_velocity"},
+            {"limits/max_bodies", "max_bodies"},
+            {"limits/max_body_pairs", "max_body_pairs"},
+            {"limits/max_contact_constraints", "max_contact_constraints"},
+            {"limits/temporary_memory_buffer_size", "temporary_memory_buffer_size"},
+        };
+        for (const auto& [key, field] : kJoltSettings) {
+            const Value* value = setting("physics", "jolt_physics_3d/" + std::string(key));
+            if (value == nullptr) {
+                continue;
+            }
+            if (value->kind == Value::Kind::Bool) {
+                project["physics_3d"][std::string(field)] = value->boolean;
+            } else if (value->kind == Value::Kind::Int) {
+                project["physics_3d"][std::string(field)] = value->integer;
+            } else if (value->is_number()) {
+                project["physics_3d"][std::string(field)] = value->number();
+            }
         }
         if (const Value* stretch = setting("display", "window/stretch/mode");
             stretch != nullptr && stretch->is_string() && stretch->text != "disabled") {
