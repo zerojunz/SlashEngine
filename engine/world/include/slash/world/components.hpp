@@ -617,7 +617,7 @@ struct Camera3D {
     std::string doppler_tracking = "disabled";
     // A .pipeline.json file's project path, as Godot's Camera3D.compositor: its passes and effects
     // in place of the WorldEnvironment's while it is current. "" for the environment's.
-    std::string compositor;
+    std::string compositor{}; // NOLINT(readability-redundant-member-init)
 
     friend bool operator==(const Camera3D&, const Camera3D&) = default;
 };
@@ -1209,7 +1209,7 @@ struct WorldEnvironment {
     std::string adjustment_color_correction; // project path of a lookup texture; "" for none
     // A .pipeline.json file's project path, as Godot's WorldEnvironment.compositor: the passes it
     // turns off and the effects it draws. "" for none.
-    std::string compositor;
+    std::string compositor{}; // NOLINT(readability-redundant-member-init)
 
     friend bool operator==(const WorldEnvironment&, const WorldEnvironment&) = default;
 };
