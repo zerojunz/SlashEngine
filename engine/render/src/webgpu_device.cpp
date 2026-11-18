@@ -1711,6 +1711,9 @@ public:
         upload_uniforms();
         WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, nullptr);
         std::vector<WGPUBindGroup> made;
+        // One compute pass for every job: WebGPU orders the dispatches of a pass as passes.
+        WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+        wgpuComputePassEncoderSetPipeline(compute, skin_pipeline_);
         for (std::size_t j = 0; j < jobs.size(); ++j) {
             const SkinJob& job = jobs[j];
             const auto mesh = meshes_.find(job.mesh);
@@ -1727,16 +1730,14 @@ public:
             WGPUBindGroup output = bind_group(skin_output_layout_, output_entries);
             made.push_back(inputs);
             made.push_back(output);
-            WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
-            wgpuComputePassEncoderSetPipeline(compute, skin_pipeline_);
             wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
             wgpuComputePassEncoderSetBindGroup(compute, 1, output, 0, nullptr);
             wgpuComputePassEncoderSetBindGroup(compute, 2, skin_uniforms_group_, 1, &at[j]);
             const std::array<std::uint32_t, 2> groups = skin_groups(job.uniforms.counts[0]);
             wgpuComputePassEncoderDispatchWorkgroups(compute, groups[0], groups[1], 1);
-            wgpuComputePassEncoderEnd(compute);
-            wgpuComputePassEncoderRelease(compute);
         }
+        wgpuComputePassEncoderEnd(compute);
+        wgpuComputePassEncoderRelease(compute);
         submit(encoder);
         for (WGPUBindGroup group : made) {
             wgpuBindGroupRelease(group);
@@ -3979,8 +3980,19 @@ private:
         }
     }
 
-    // Records the queued jobs as compute passes, in order, each with its uniforms at uniforms.
+    // Records the queued jobs as dispatches, in order, each with its uniforms at uniforms. They
+    // share compute passes, since WebGPU makes each dispatch's writes visible to the next; a job
+    // that binds nothing at group 0 takes a pass of its own, so no other job's group is left
+    // there.
     void encode_particle_jobs(WGPUCommandEncoder encoder, std::span<const std::uint32_t> uniforms) {
+        WGPUComputePassEncoder pass = nullptr;
+        const auto end_pass = [&pass] {
+            if (pass != nullptr) {
+                wgpuComputePassEncoderEnd(pass);
+                wgpuComputePassEncoderRelease(pass);
+                pass = nullptr;
+            }
+        };
         for (std::size_t i = 0; i < particle_jobs_.size(); ++i) {
             const ParticleJob& job = particle_jobs_[i];
             std::uint32_t groups = (job.amount + kParticleThreads - 1) / kParticleThreads;
@@ -4050,7 +4062,12 @@ private:
                 break;
             }
             }
-            WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+            if (inputs == nullptr) {
+                end_pass();
+            }
+            if (pass == nullptr) {
+                pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+            }
             wgpuComputePassEncoderSetPipeline(
                 pass, compute_pipelines_.at(static_cast<std::size_t>(job.kind)));
             if (inputs != nullptr) {
@@ -4060,13 +4077,14 @@ private:
             const std::uint32_t offset = uniforms[i];
             wgpuComputePassEncoderSetBindGroup(pass, 2, compute_uniforms_group_, 1, &offset);
             wgpuComputePassEncoderDispatchWorkgroups(pass, groups, rows, 1);
-            wgpuComputePassEncoderEnd(pass);
-            wgpuComputePassEncoderRelease(pass);
-            if (inputs != nullptr) {
+            if (inputs == nullptr) {
+                end_pass();
+            } else {
                 wgpuBindGroupRelease(inputs);
             }
             wgpuBindGroupRelease(outputs);
         }
+        end_pass();
     }
 
     void clear_particle_jobs() {
@@ -5539,18 +5557,19 @@ private:
         WGPUBindGroup output = bind_group(skin_output_layout_, output_entries);
         const std::array<std::uint32_t, 2> threads{static_cast<std::uint32_t>(mesh_draws_.size()),
                                                    static_cast<std::uint32_t>(at.runs.size())};
-        // A pass each, so the second reads every flag the first wrote.
+        // One pass: WebGPU makes each dispatch's writes visible to the next, so the second step
+        // reads every flag the first wrote.
+        WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+        wgpuComputePassEncoderSetPipeline(compute, cull_pipeline_);
+        wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
+        wgpuComputePassEncoderSetBindGroup(compute, 1, output, 0, nullptr);
         for (std::size_t step = 0; step < at.cull.size(); ++step) {
-            WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
-            wgpuComputePassEncoderSetPipeline(compute, cull_pipeline_);
-            wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
-            wgpuComputePassEncoderSetBindGroup(compute, 1, output, 0, nullptr);
             wgpuComputePassEncoderSetBindGroup(compute, 2, cull_uniforms_group_, 1,
                                                &at.cull.at(step));
             wgpuComputePassEncoderDispatchWorkgroups(compute, cull_groups(threads.at(step)), 1, 1);
-            wgpuComputePassEncoderEnd(compute);
-            wgpuComputePassEncoderRelease(compute);
         }
+        wgpuComputePassEncoderEnd(compute);
+        wgpuComputePassEncoderRelease(compute);
         wgpuBindGroupRelease(inputs);
         wgpuBindGroupRelease(output);
     }
@@ -6376,18 +6395,19 @@ private:
         WGPUBindGroup inputs = bind_group(generation_textures_layout_, textures);
         const std::array buffers{buffer_entry(0, frames.words), buffer_entry(1, frames.atoms)};
         WGPUBindGroup outputs = bind_group(generation_storage_layout_, buffers);
+        // One pass for the plan: each dispatch sees what the ones before it wrote.
+        WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+        wgpuComputePassEncoderSetPipeline(compute, generation_pipeline());
+        wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
+        wgpuComputePassEncoderSetBindGroup(compute, 1, outputs, 0, nullptr);
         for (std::size_t i = 0; i < plan.size(); ++i) {
             const FrameGenerationDispatch& dispatch = plan[i];
-            WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
-            wgpuComputePassEncoderSetPipeline(compute, generation_pipeline());
-            wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
-            wgpuComputePassEncoderSetBindGroup(compute, 1, outputs, 0, nullptr);
             wgpuComputePassEncoderSetBindGroup(compute, 2, generation_uniforms_group_, 1, &at[i]);
             wgpuComputePassEncoderDispatchWorkgroups(compute, dispatch.groups[0],
                                                      dispatch.groups[1], dispatch.groups[2]);
-            wgpuComputePassEncoderEnd(compute);
-            wgpuComputePassEncoderRelease(compute);
         }
+        wgpuComputePassEncoderEnd(compute);
+        wgpuComputePassEncoderRelease(compute);
         wgpuBindGroupRelease(inputs);
         wgpuBindGroupRelease(outputs);
     }
@@ -6650,12 +6670,26 @@ private:
         WGPUBindGroup sums = bind_group(sdfgi_sums_layout_, sums_entries);
         std::vector<WGPUBindGroup> made;
         const std::uint64_t n = layout.cell_count();
+        // Steps between buffer copies share a compute pass, each dispatch seeing what the ones
+        // before it wrote.
+        WGPUComputePassEncoder compute = nullptr;
+        const auto open_pass = [&compute, encoder] {
+            if (compute == nullptr) {
+                compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+            }
+        };
+        const auto end_pass = [&compute] {
+            if (compute != nullptr) {
+                wgpuComputePassEncoderEnd(compute);
+                wgpuComputePassEncoderRelease(compute);
+                compute = nullptr;
+            }
+        };
         for (std::size_t s = 0; s < work.steps.size(); ++s) {
             const SdfgiStep& step = work.steps[s];
             switch (step.kind) {
             case SdfgiStep::Kind::Dispatch: {
-                WGPUComputePassEncoder compute =
-                    wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+                open_pass();
                 wgpuComputePassEncoderSetPipeline(compute, sdfgi_pipeline());
                 wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
                 wgpuComputePassEncoderSetBindGroup(compute, 1, outputs, 0, nullptr);
@@ -6663,13 +6697,10 @@ private:
                                                    &work.uniforms[s]);
                 const std::array<std::uint32_t, 2> groups = sdfgi_groups(step.uniforms.step[3]);
                 wgpuComputePassEncoderDispatchWorkgroups(compute, groups[0], groups[1], 1);
-                wgpuComputePassEncoderEnd(compute);
-                wgpuComputePassEncoderRelease(compute);
                 break;
             }
             case SdfgiStep::Kind::Voxelize: {
-                WGPUComputePassEncoder compute =
-                    wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+                open_pass();
                 wgpuComputePassEncoderSetPipeline(compute, sdfgi_voxelize_pipeline());
                 wgpuComputePassEncoderSetBindGroup(compute, 1, sums, 0, nullptr);
                 for (const SdfgiVoxelizeDraw& voxelized : work.voxelized[s]) {
@@ -6695,12 +6726,11 @@ private:
                     wgpuComputePassEncoderDispatchWorkgroups(compute, voxelized.groups[0],
                                                              voxelized.groups[1], 1);
                 }
-                wgpuComputePassEncoderEnd(compute);
-                wgpuComputePassEncoderRelease(compute);
                 break;
             }
             case SdfgiStep::Kind::CopyCells: {
                 // The new cells, which the resolve wrote over the cascade's field, into its cells.
+                end_pass();
                 constexpr std::uint64_t kWord = sizeof(std::uint32_t);
                 wgpuCommandEncoderCopyBufferToBuffer(
                     encoder, at(SdfgiBuffer::Fields),
@@ -6710,6 +6740,7 @@ private:
             }
             }
         }
+        end_pass();
         // The gather: each pixel the prepass drew takes the cascades' light.
         const std::array read_entries{buffer_entry(0, at(SdfgiBuffer::Cells)),
                                       buffer_entry(1, at(SdfgiBuffer::Fields)),
@@ -7135,19 +7166,19 @@ private:
         dilated[1].textureView = frames.dilated_motion.at(next).view;
         WGPUBindGroup inputs = bind_group(fsr2_compute_textures_layout_, dilated);
         WGPUBindGroup outputs = bind_group(fsr2_compute_storage_layout_, reconstructed);
+        WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+        wgpuComputePassEncoderSetPipeline(compute, fsr2_reconstruct_pipeline());
+        wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
+        wgpuComputePassEncoderSetBindGroup(compute, 1, outputs, 0, nullptr);
         for (std::size_t step = 0; step < 2; ++step) {
-            WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
-            wgpuComputePassEncoderSetPipeline(compute, fsr2_reconstruct_pipeline());
-            wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
-            wgpuComputePassEncoderSetBindGroup(compute, 1, outputs, 0, nullptr);
             wgpuComputePassEncoderSetBindGroup(compute, 2, fsr2_compute_uniforms_group_, 1,
                                                &uniforms.at(1 + step));
             wgpuComputePassEncoderDispatchWorkgroups(
                 compute, (scene_width_ + kFsr2Threads - 1) / kFsr2Threads,
                 (scene_height_ + kFsr2Threads - 1) / kFsr2Threads, 1);
-            wgpuComputePassEncoderEnd(compute);
-            wgpuComputePassEncoderRelease(compute);
         }
+        wgpuComputePassEncoderEnd(compute);
+        wgpuComputePassEncoderRelease(compute);
         wgpuBindGroupRelease(inputs);
         wgpuBindGroupRelease(outputs);
         pass(Fsr2Pass::DepthClip, {t.prepared.view, t.reactive.view},
@@ -7288,19 +7319,19 @@ private:
         dilated[1].textureView = t.dilated_motion.view;
         WGPUBindGroup inputs = bind_group(fsr2_compute_textures_layout_, dilated);
         WGPUBindGroup outputs = bind_group(fsr2_compute_storage_layout_, reconstructed);
+        WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+        wgpuComputePassEncoderSetPipeline(compute, fsr3_reconstruct_pipeline());
+        wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
+        wgpuComputePassEncoderSetBindGroup(compute, 1, outputs, 0, nullptr);
         for (std::size_t step = 0; step < 2; ++step) {
-            WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
-            wgpuComputePassEncoderSetPipeline(compute, fsr3_reconstruct_pipeline());
-            wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
-            wgpuComputePassEncoderSetBindGroup(compute, 1, outputs, 0, nullptr);
             wgpuComputePassEncoderSetBindGroup(compute, 2, fsr3_compute_uniforms_group_, 1,
                                                &uniforms.at(1 + step));
             wgpuComputePassEncoderDispatchWorkgroups(
                 compute, (scene_width_ + kFsr2Threads - 1) / kFsr2Threads,
                 (scene_height_ + kFsr2Threads - 1) / kFsr2Threads, 1);
-            wgpuComputePassEncoderEnd(compute);
-            wgpuComputePassEncoderRelease(compute);
         }
+        wgpuComputePassEncoderEnd(compute);
+        wgpuComputePassEncoderRelease(compute);
         wgpuBindGroupRelease(inputs);
         wgpuBindGroupRelease(outputs);
         pass(Fsr3Pass::Pyramid, {t.farthest_half.view, t.levels[0].view},
