@@ -1075,6 +1075,118 @@ void add_lightmap_types(asset::Assets& assets) {
         });
 }
 
+namespace {
+
+// Godot's LightmapGI quality's index among low, medium, high and ultra; medium for anything else.
+std::size_t quality_index(std::string_view quality) {
+    if (quality == "low") {
+        return 0;
+    }
+    if (quality == "high") {
+        return 2;
+    }
+    if (quality == "ultra") {
+        return 3;
+    }
+    return 1;
+}
+
+constexpr std::array<const char*, 4> kQualityNames{"low", "medium", "high", "ultra"};
+constexpr std::uint32_t kMaxBakeRays = 65536;
+
+} // namespace
+
+LightmappingSettings lightmapping_settings(const json::Value& rendering) {
+    LightmappingSettings out;
+    const json::Value* found = rendering.is_object() ? rendering.find("lightmapping") : nullptr;
+    if (found == nullptr || !found->is_object()) {
+        return out;
+    }
+    const auto group = [&](std::string_view name) -> const json::Value* {
+        const json::Value* value = found->find(name);
+        return value != nullptr && value->is_object() ? value : nullptr;
+    };
+    // Sets field to the group's whole number name when it is from low to high.
+    const auto whole = [](const json::Value* in, const std::string& name, std::uint32_t low,
+                          std::uint32_t high, std::uint32_t& field) {
+        const json::Value* value = in != nullptr ? in->find(name) : nullptr;
+        if (value != nullptr && value->is_number() && value->as_double() >= low &&
+            value->as_double() <= high) {
+            field = static_cast<std::uint32_t>(value->as_double());
+        }
+    };
+    const json::Value* quality = group("bake_quality");
+    for (std::size_t i = 0; i < kQualityNames.size(); ++i) {
+        const std::string name = kQualityNames.at(i);
+        whole(quality, name + "_quality_ray_count", 1, kMaxBakeRays, out.ray_count.at(i));
+        whole(quality, name + "_quality_probe_ray_count", 16, 8192, out.probe_ray_count.at(i));
+    }
+    const json::Value* performance = group("bake_performance");
+    whole(performance, "max_rays_per_pass", 1, kMaxBakeRays, out.max_rays_per_pass);
+    whole(performance, "max_rays_per_probe_pass", 1, 8192, out.max_rays_per_probe_pass);
+    whole(performance, "region_size", 1, 16384, out.region_size);
+    if (const json::Value* capture = group("probe_capture"); capture != nullptr) {
+        if (const json::Value* speed = capture->find("update_speed");
+            speed != nullptr && speed->is_number() && speed->as_double() >= 0.0) {
+            out.probe_update_speed = speed->as_double();
+        }
+    }
+    return out;
+}
+
+json::Value lightmapping_schema() {
+    const LightmappingSettings defaults;
+    const auto whole = [](std::uint32_t value, std::uint32_t low, std::uint32_t high,
+                          std::string description) {
+        json::Value field;
+        field["type"] = "integer";
+        field["minimum"] = static_cast<std::int64_t>(low);
+        field["maximum"] = static_cast<std::int64_t>(high);
+        field["default"] = static_cast<std::int64_t>(value);
+        field["description"] = std::move(description);
+        return field;
+    };
+    const auto object = [](std::string description) {
+        json::Value out;
+        out["type"] = "object";
+        out["additionalProperties"] = false;
+        out["description"] = std::move(description);
+        return out;
+    };
+    json::Value quality = object("The rays each LightmapGI quality traces.");
+    for (std::size_t i = 0; i < kQualityNames.size(); ++i) {
+        const std::string name = kQualityNames.at(i);
+        quality["properties"][name + "_quality_ray_count"] =
+            whole(defaults.ray_count.at(i), 1, kMaxBakeRays,
+                  "Rays a texel traces for bounced light at " + name + " quality.");
+        quality["properties"][name + "_quality_probe_ray_count"] =
+            whole(defaults.probe_ray_count.at(i), 16, 8192,
+                  "Rays a light probe traces at " + name + " quality.");
+    }
+    json::Value performance = object("How bakes split their work.");
+    performance["properties"]["max_rays_per_pass"] =
+        whole(defaults.max_rays_per_pass, 1, kMaxBakeRays,
+              "Rays a bounce pass traces; each pass is seeded afresh, so this changes the noise.");
+    performance["properties"]["max_rays_per_probe_pass"] =
+        whole(defaults.max_rays_per_probe_pass, 1, 8192,
+              "Rays a probe pass traces, each pass seeded afresh.");
+    performance["properties"]["region_size"] =
+        whole(defaults.region_size, 1, 16384,
+              "A GPU dispatch lights at most this squared texels, so none runs long.");
+    json::Value capture = object("How moving meshes take light from light probes.");
+    json::Value speed;
+    speed["type"] = "number";
+    speed["minimum"] = 0;
+    speed["default"] = defaults.probe_update_speed;
+    speed["description"] = "How fast a moving mesh's probe light follows it, a share a second.";
+    capture["properties"]["update_speed"] = std::move(speed);
+    json::Value out = object("Baked lightmaps, as Godot's rendering/lightmapping settings.");
+    out["properties"]["bake_quality"] = std::move(quality);
+    out["properties"]["bake_performance"] = std::move(performance);
+    out["properties"]["probe_capture"] = std::move(capture);
+    return out;
+}
+
 Result<LightmapBake> bake_lightmap(const world::World& world, entt::entity entity,
                                    const LightmapSources& sources) {
     if (!world.valid(entity) || !world.ecs().all_of<world::LightmapGI>(entity)) {
@@ -1082,15 +1194,12 @@ Result<LightmapBake> bake_lightmap(const world::World& world, entt::entity entit
     }
     const auto& gi = world.ecs().get<const world::LightmapGI>(entity);
     LightmapSettings settings;
-    if (gi.quality == "low") {
-        settings.rays = 32;
-    } else if (gi.quality == "high") {
-        settings.rays = 512;
-    } else if (gi.quality == "ultra") {
-        settings.rays = 2048;
-    } else {
-        settings.rays = 128;
-    }
+    const LightmappingSettings& project = sources.lightmapping;
+    const std::size_t quality = quality_index(gi.quality);
+    settings.rays = project.ray_count.at(quality);
+    settings.rays_per_pass = project.max_rays_per_pass;
+    settings.rays_per_probe_pass = project.max_rays_per_probe_pass;
+    settings.region_size = project.region_size;
     settings.bounces = static_cast<std::uint32_t>(std::max(gi.bounces, 0));
     settings.bounce_indirect_energy = gi.bounce_indirect_energy;
     settings.use_texture_for_bounces = gi.use_texture_for_bounces;
@@ -1154,15 +1263,7 @@ Result<LightmapBake> bake_lightmap(const world::World& world, entt::entity entit
             {static_cast<float>(at.x), static_cast<float>(at.y), static_cast<float>(at.z)});
     }
     // rendering/lightmapping/bake_quality/*_quality_probe_ray_count.
-    if (gi.quality == "low") {
-        request.rays = 64;
-    } else if (gi.quality == "high") {
-        request.rays = 512;
-    } else if (gi.quality == "ultra") {
-        request.rays = 2048;
-    } else {
-        request.rays = 256;
-    }
+    request.rays = project.probe_ray_count.at(quality);
 
     auto baked = bake_lightmap(meshes, lights, environment, settings, &world.pool(), request);
     if (!baked) {

@@ -390,6 +390,45 @@ TEST_CASE("a radiance is the sky drawn into a cube, blurred more each level") {
     CHECK(up[2] > 0.3F);
 }
 
+TEST_CASE("the sky's ggx_samples set how many samples each radiance level blurs with") {
+    // Godot's 32: 8, 16 and 32 samples for the first levels, four times as many for the roughest.
+    const auto samples = [](std::uint32_t level, std::uint32_t ggx) {
+        return detail::radiance_uniforms(256, 7, level, ggx).params[3];
+    };
+    CHECK(samples(1, 32) <= 8.0F);
+    CHECK(samples(4, 32) > 32.0F);
+    CHECK(samples(4, 32) <= 128.0F);
+    CHECK(samples(4, 4) <= 16.0F);
+    CHECK(samples(4, 1) <= 4.0F);
+    CHECK(samples(1, 1) >= 1.0F);
+    // Out of range is held to 1 to 32.
+    CHECK(samples(4, 1000) == samples(4, 32));
+    CHECK(samples(4, 0) == samples(4, 1));
+
+    // A coarser blur shows in the roughest level, and the radiance is drawn again for it.
+    Scene3D scene;
+    scene.sky.panorama.panorama = render::TextureId{1};
+    scene.radiance = {.kind = SkyKind::Panorama, .size = 32, .reflections = true};
+    const auto texel = [](const std::array<float, 2>& coords) {
+        return coords[0] < 0.5F ? detail::Float4{1.0F, 0.0F, 0.0F, 1.0F}
+                                : detail::Float4{0.0F, 0.0F, 1.0F, 1.0F};
+    };
+    const detail::CubeImage fine = detail::make_radiance(scene, texel);
+    const detail::RadianceKey fine_key = detail::radiance_key(scene);
+    scene.radiance.ggx_samples = 2;
+    const detail::CubeImage coarse = detail::make_radiance(scene, texel);
+    CHECK_FALSE(detail::radiance_key(scene) == fine_key);
+    CHECK(coarse.levels[0] == fine.levels[0]);
+    CHECK(coarse.levels[3] != fine.levels[3]);
+
+    CHECK(render::sky_ggx_samples(
+              slash::json::parse(R"({"reflections": {"sky_reflections": {"ggx_samples": 8}}})")
+                  .value()) == 8);
+    CHECK(render::sky_ggx_samples(
+              slash::json::parse(R"({"reflections": {"sky_reflections": {"ggx_samples": 64}}})")
+                  .value()) == 32);
+}
+
 TEST_CASE("every device lights meshes with the sky's radiance") {
     const render::Material3D lit{.albedo = {0.8F, 0.6F, 0.4F, 1.0F}, .roughness = 1.0F};
     for (auto& device : slash::test::drawing_devices()) {
@@ -543,6 +582,9 @@ TEST_CASE("devices check sky and fog settings") {
         scene.radiance.size = 16;
         CHECK(refused(scene).find("not 16") != std::string::npos);
         scene.radiance.size = 64;
+        scene.radiance.ggx_samples = 33;
+        CHECK(refused(scene).find("ggx_samples are from 1 to 32") != std::string::npos);
+        scene.radiance.ggx_samples = 32;
         scene.sky.physical.night_sky = render::TextureId{78};
         CHECK(refused(scene).find("78") != std::string::npos);
         device->destroy_texture(target.value());

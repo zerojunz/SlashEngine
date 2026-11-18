@@ -5,7 +5,7 @@ Godot's `project.godot`: it names the game and says which scene starts it. `slas
 writes one, `slash-cli schema project` prints its JSON Schema, and `slash-cli project validate`
 checks it.
 
-Status: current · Updated: 2026-11-20
+Status: current · Updated: 2026-11-22
 
 ```json
 {
@@ -49,6 +49,10 @@ Status: current · Updated: 2026-11-20
 | `rendering.environment.volumetric_fog` | No | 64 x 64 x 64, filtered | The froxels of 3D [volumetric fog](scene-format.md#volumetric-fog): see [Volumetric fog](#volumetric-fog) |
 | `rendering.ray_tracing` | No | off | 3D shadows, ambient occlusion, reflections and global illumination traced by rays: see [Ray tracing](#ray-tracing) |
 | `rendering.reflections.reflection_atlas` | No | 256 texels, 64 probes | The size of 3D [reflection probes'](scene-format.md#reflection-probes) cubes and how many a frame draws: see [Reflection probes](#reflection-probes) |
+| `rendering.reflections.sky_reflections.ggx_samples` | No | `32` | How many GGX samples each level of the sky's [radiance](scene-format.md#sky-light) cube blurs with, from 1 to 32, as Godot's `rendering/reflections/sky_reflections/ggx_samples`; levels take a quarter, a half, all and four times it, as Godot's. Fewer filter faster and look grainier |
+| `rendering.lightmapping.bake_quality` | No | 32, 128, 512, 2048 rays; probes 64, 256, 512, 2048 | The rays a [LightmapGI](scene-format.md#baked-lightmaps) bake traces at each `quality`: `low_quality_ray_count` (to `ultra_`) per texel for bounces and `low_quality_probe_ray_count` (to `ultra_`) per light probe, as Godot's `rendering/lightmapping/bake_quality/*` |
+| `rendering.lightmapping.bake_performance` | No | 32, 64, 512 | How bakes split their work, as Godot's `bake_performance/*`: `max_rays_per_pass` and `max_rays_per_probe_pass` (rays a pass traces, each pass seeded afresh, so they change the noise) and `region_size` (a GPU bake's dispatch lights at most this many texels squared) |
+| `rendering.lightmapping.probe_capture.update_speed` | No | `15` | How fast a moving mesh's light from [light probes](scene-format.md#baked-lightmaps) follows it, a share a second, as Godot's `rendering/lightmapping/probe_capture/update_speed` |
 | `rendering.global_illumination.voxel_gi.quality` | No | `low` | How many cones meshes trace through [VoxelGIs](scene-format.md#voxelgi): see [VoxelGI](#voxelgi) |
 | `rendering.global_illumination.sdfgi` | No | see [SDFGI](sdfgi.md) | SDFGI's `probe_ray_count` (8), `frames_to_converge` (30) and `frames_to_update_lights` (4), as Godot's project settings |
 | `rendering.occlusion_culling` | No | off | Leave out 3D meshes that [occluders](scene-format.md#occlusion-culling) hide: see [Occlusion culling](#occlusion-culling) |

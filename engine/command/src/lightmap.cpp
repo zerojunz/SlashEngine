@@ -58,6 +58,25 @@ Reply unknown_entity(const world::World& world, std::string_view id, std::string
     return param_error(code::kNotFound, path, message);
 }
 
+// The project's rendering.lightmapping: the rays each quality traces and how bakes split them.
+scene3d::LightmappingSettings project_lightmapping(Session& session) {
+    auto text = session.read_project_file("project.json");
+    if (!text) {
+        return {};
+    }
+    const auto& contents = text.value();
+    if (!contents) {
+        return {};
+    }
+    auto project = json::parse(*contents);
+    if (!project || !project.value().is_object()) {
+        return {};
+    }
+    const json::Value* rendering = project.value().find("rendering");
+    return rendering != nullptr ? scene3d::lightmapping_settings(*rendering)
+                                : scene3d::LightmappingSettings{};
+}
+
 // The images and models a bake reads, through the session's assets.
 scene3d::LightmapSources sources(asset::Assets& assets) {
     return {
@@ -153,6 +172,7 @@ Reply lightmap_bake(Session& session, const json::Value& params) {
     }
 
     scene3d::LightmapSources from = sources(session.assets());
+    from.lightmapping = project_lightmapping(session);
     const json::Value* device = params.find("device");
     const bool on_gpu = device != nullptr && device->as_string() == "gpu";
     std::unique_ptr<render::RenderDevice> gpu;

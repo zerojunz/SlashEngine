@@ -61,11 +61,8 @@ namespace {
 
 constexpr float kPi = std::numbers::pi_v<float>; // as lm_compute.glsl's PI
 
-// Godot's project settings for baking: rendering/lightmapping/bake_performance/
-// max_rays_per_pass and max_transparency_rays.
-constexpr std::uint32_t kMaxRaysPerPass = 32;
-// rendering/lightmapping/bake_performance/max_rays_per_probe_pass.
-constexpr std::uint32_t kMaxRaysPerProbePass = 64;
+// Godot's rendering/lightmapping/bake_performance/max_transparency_rays (lm_compute.glsl's, which
+// the GPU's bake shares).
 constexpr std::uint32_t kTransparencyRays = 8;
 // Godot's AA_SAMPLES: texel samples a light's shadow is traced from.
 constexpr std::uint32_t kAaSamples = 16;
@@ -1582,6 +1579,9 @@ private:
         trace.supersampling = settings_.supersampling;
         trace.exposure = settings_.exposure;
         trace.world_size = world_size_;
+        trace.rays_per_pass = settings_.rays_per_pass;
+        trace.rays_per_probe_pass = settings_.rays_per_probe_pass;
+        trace.region_texels = settings_.region_size * settings_.region_size;
         trace.probe_points = probes_->points;
         trace.probe_rays = probes_->rays;
         const world::Affine3D space = world::orthonormalized(probes_->space);
@@ -1756,9 +1756,10 @@ private:
         return light;
     }
 
-    // MODE_BOUNCE_LIGHT, in passes of kMaxRaysPerPass rays as Godot's, each seeded afresh.
+    // MODE_BOUNCE_LIGHT, in passes of rays_per_pass rays as Godot's, each seeded afresh.
     void bounce_light() {
         const std::uint32_t ray_count = settings_.rays;
+        const std::uint32_t per_pass = std::max(settings_.rays_per_pass, 1U);
         each_texel([&](int slice, int x, int y) {
             const Vec3 normal = normal_.fetch(slice, x, y);
             if (length(normal) < 0.5F) {
@@ -1768,8 +1769,8 @@ private:
             const int neighbor_offset = x < albedo_.width - 1 ? 1 : -1;
             const float texel_size = length(position - position_at(slice, x + neighbor_offset, y));
             Rgba& accum = accum_(slice, x, y);
-            for (std::uint32_t from = 0; from < ray_count; from += kMaxRaysPerPass) {
-                const std::uint32_t to = std::min(from + kMaxRaysPerPass, ray_count);
+            for (std::uint32_t from = 0; from < ray_count; from += per_pass) {
+                const std::uint32_t to = std::min(from + per_pass, ray_count);
                 std::uint32_t noise =
                     random_seed(from, static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y));
                 Vec3 light_accum;
@@ -1787,7 +1788,7 @@ private:
     }
 
     // MODE_LIGHT_PROBES: each probe's light as spherical harmonics, from rays in every direction,
-    // in passes of kMaxRaysPerProbePass seeded afresh as Godot's. The rays leave in the probes'
+    // in passes of rays_per_probe_pass seeded afresh as Godot's. The rays leave in the probes'
     // space, turned into the world's, so the harmonics are kept in the probes' space.
     std::vector<LightmapSh> light_probes() {
         const std::vector<std::array<float, 3>>& points = probes_->points;
@@ -1796,12 +1797,13 @@ private:
             return out;
         }
         const std::uint32_t ray_count = std::clamp(probes_->rays, 16U, 8192U);
+        const std::uint32_t per_pass = std::max(settings_.rays_per_probe_pass, 1U);
         const world::Affine3D space = world::orthonormalized(probes_->space);
         for_each(pool_, points.size(), [&](std::size_t probe) {
             const Vec3 position{points[probe][0], points[probe][1], points[probe][2]};
             std::array<Vec3, 9> accum{};
-            for (std::uint32_t from = 0; from < ray_count; from += kMaxRaysPerProbePass) {
-                const std::uint32_t to = std::min(from + kMaxRaysPerProbePass, ray_count);
+            for (std::uint32_t from = 0; from < ray_count; from += per_pass) {
+                const std::uint32_t to = std::min(from + per_pass, ray_count);
                 std::uint32_t noise =
                     random_seed(from, static_cast<std::uint32_t>(probe), 49502741U);
                 for (std::uint32_t i = from; i < to; ++i) {

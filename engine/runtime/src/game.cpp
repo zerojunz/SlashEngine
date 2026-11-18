@@ -296,7 +296,9 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
                                   .cluster_streaming = project_.cluster_streaming,
                                   .occlusion_culling = project_.occlusion_culling,
                                   .ray_tracing = project_.ray_tracing,
-                                  .frame_generation = project_.frame_generation});
+                                  .frame_generation = project_.frame_generation,
+                                  .ggx_samples = project_.ggx_samples,
+                                  .probe_update_speed = project_.probe_update_speed});
     ui::set_settings(world_, {.viewport = {static_cast<float>(project_.window_width),
                                            static_cast<float>(project_.window_height)},
                               .theme = project_.gui_theme,

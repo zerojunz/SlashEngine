@@ -74,6 +74,12 @@ struct LightmapTrace {
     float supersampling = 1.0F;
     float exposure = 1.0F;
     float world_size = 1.0F;
+    // How the work is split, as Godot's rendering/lightmapping/bake_performance: the rays a
+    // bounce pass traces (each pass seeded afresh, so this changes the noise), the texels a
+    // dispatch lights at most (region_size squared) and the rays a probe pass traces.
+    std::uint32_t rays_per_pass = 32;
+    std::uint32_t region_texels = 512U * 512U;
+    std::uint32_t rays_per_probe_pass = 64;
     // Light probes: points in the world, the rays each sends (16 to 8192), and the probes' space
     // as three columns, which turns their rays into the world's.
     std::span<const std::array<float, 3>> probe_points;
