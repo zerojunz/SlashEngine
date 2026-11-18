@@ -5,12 +5,14 @@
 #include "webgpu_device.hpp"
 
 #include "checks.hpp"
+#include "compositor.hpp"
 #include "decal.hpp"
 #include "forward_post.hpp"
 #include "forward_post_shaders.hpp"
 #include "frame_generation.hpp"
 #include "frame_generation_draw_shaders.hpp"
 #include "frame_generation_shaders.hpp"
+#include "frame_graph.hpp"
 #include "fsr2.hpp"
 #include "fsr2_accumulate_shaders.hpp"
 #include "fsr2_depth_clip_shaders.hpp"
@@ -31,6 +33,10 @@
 #include "fsr3_shading_change_shaders.hpp"
 #include "material_shaders.hpp"
 #include "mesh_clustered_shaders.hpp"
+#include "mesh_cull.hpp"
+#include "mesh_cull_shaders.hpp"
+#include "mesh_instanced_shaders.hpp"
+#include "mesh_motion_instanced_shaders.hpp"
 #include "mesh_motion_shaders.hpp"
 #include "mesh_normal_shaders.hpp"
 #include "mesh_shaders.hpp"
@@ -57,6 +63,8 @@
 #include "sdfgi_voxelize_shaders.hpp"
 #include "shader_code.hpp"
 #include "shadow_shaders.hpp"
+#include "skin_gpu.hpp"
+#include "skin_shaders.hpp"
 #include "sky_shaders.hpp"
 #include "sky_shading.hpp"
 #include "sprite_shaders.hpp"
@@ -88,6 +96,7 @@
 #include <emscripten/em_js.h>
 #include <functional>
 #include <initializer_list>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -346,28 +355,28 @@ constexpr std::uint64_t kComputeUniformBytes = std::max(
     {sizeof(ProcessUniforms), sizeof(EmitUniforms), sizeof(DrawUniforms), sizeof(ProcessUniforms3D),
      sizeof(SortUniforms3D), sizeof(MeshUniforms3D), sizeof(StagesUniforms3D)});
 // The most bytes any binding of the uniform buffer reads.
-constexpr std::uint64_t kLargestUniforms =
-    std::max<std::uint64_t>({sizeof(Mat4),
-                             sizeof(VertexProgramUniforms),
-                             sizeof(ProgramUniforms),
-                             sizeof(LightsUniforms),
-                             kComputeUniformBytes,
-                             sizeof(MeshInstanceUniforms),
-                             sizeof(MeshSurfaceUniforms),
-                             sizeof(MeshSceneUniforms),
-                             sizeof(MeshShadowUniforms),
-                             sizeof(MeshShadowPassUniforms),
-                             sizeof(PostUniforms),
-                             sizeof(SkyUniforms),
-                             sizeof(RadianceUniforms),
-                             sizeof(SsaoUniforms),
-                             sizeof(SsrUniforms),
-                             sizeof(MeshCameraUniforms),
-                             sizeof(TaaUniforms),
-                             sizeof(Fsr2Uniforms),
-                             sizeof(Fsr3Uniforms),
-                             sizeof(SpatialUniforms),
-                             sizeof(FrameGenerationUniforms)});
+constexpr std::uint64_t kLargestUniforms = std::max<std::uint64_t>({sizeof(Mat4),
+                                                                    sizeof(VertexProgramUniforms),
+                                                                    sizeof(ProgramUniforms),
+                                                                    sizeof(LightsUniforms),
+                                                                    kComputeUniformBytes,
+                                                                    sizeof(MeshInstanceUniforms),
+                                                                    sizeof(MeshSurfaceUniforms),
+                                                                    sizeof(MeshSceneUniforms),
+                                                                    sizeof(MeshShadowUniforms),
+                                                                    sizeof(MeshShadowPassUniforms),
+                                                                    sizeof(PostUniforms),
+                                                                    sizeof(SkyUniforms),
+                                                                    sizeof(RadianceUniforms),
+                                                                    sizeof(SsaoUniforms),
+                                                                    sizeof(SsrUniforms),
+                                                                    sizeof(MeshCameraUniforms),
+                                                                    sizeof(TaaUniforms),
+                                                                    sizeof(Fsr2Uniforms),
+                                                                    sizeof(Fsr3Uniforms),
+                                                                    sizeof(SpatialUniforms),
+                                                                    sizeof(FrameGenerationUniforms),
+                                                                    sizeof(CompositorUniforms)});
 // The bind groups are SDL's GPU API's, which the HLSL's registers name and the WGSL keeps
 // (cmake/compile_shaders.cmake): a vertex stage's uniforms in group 1, a fragment stage's
 // textures in group 2 (samplers kSamplerBinding after their textures) and its uniforms in group
@@ -634,8 +643,6 @@ public:
                 wgpuRenderPipelineRelease(pipeline);
             }
         }
-        release_pass_texture(subsurface_.light);
-        release_pass_texture(subsurface_.across);
         for (WGPURenderPipeline pipeline : fsr2_pipelines_) {
             if (pipeline != nullptr) {
                 wgpuRenderPipelineRelease(pipeline);
@@ -664,7 +671,6 @@ public:
         release_post_targets();
         release_forward_targets();
         release_prepass();
-        release_ssao_targets();
         release_ssr_targets();
         while (!ssr_histories_.empty()) {
             forget_ssr_history(ssr_histories_.back().first);
@@ -697,10 +703,23 @@ public:
         while (!sdfgi_frames_.empty()) {
             forget_sdfgi_frames(sdfgi_frames_.back().first);
         }
-        for (WGPUComputePipeline pipeline : {sdfgi_pipeline_, sdfgi_voxelize_pipeline_}) {
+        for (WGPUComputePipeline pipeline :
+             {sdfgi_pipeline_, sdfgi_voxelize_pipeline_, skin_pipeline_, cull_pipeline_}) {
             if (pipeline != nullptr) {
                 wgpuComputePipelineRelease(pipeline);
             }
+        }
+        for (auto& [id, skin] : skins_) {
+            for (WGPUBuffer buffer : skin.buffers) {
+                destroy_buffer(buffer);
+            }
+        }
+        destroy_buffer(skin_poses_buffer_);
+        for (StorageBuffer* storage : {&cull_records_, &cull_outputs_, &mesh_instances_}) {
+            destroy_buffer(storage->buffer);
+        }
+        if (mesh_instances_group_ != nullptr) {
+            wgpuBindGroupRelease(mesh_instances_group_);
         }
         if (sdfgi_gather_pipeline_ != nullptr) {
             wgpuRenderPipelineRelease(sdfgi_gather_pipeline_);
@@ -719,6 +738,9 @@ public:
             }
         }
         for (const GameShadowPipeline& made : game_shadow_pipelines_) {
+            wgpuRenderPipelineRelease(made.pipeline);
+        }
+        for (const EffectPipeline& made : effect_pipelines_) {
             wgpuRenderPipelineRelease(made.pipeline);
         }
         for (WGPUComputePipeline pipeline : compute_pipelines_) {
@@ -771,6 +793,7 @@ public:
                                            shadow_game_vertex_layout_,
                                            shadow_game_fragment_layout_,
                                            mesh_clusters_layout_,
+                                           mesh_instances_layout_,
                                            shadow_vertex_layout_,
                                            shadow_fragment_layout_,
                                            post_textures_layout_,
@@ -812,7 +835,14 @@ public:
                                            sdfgi_voxelize_uniforms_layout_,
                                            sdfgi_gather_buffers_layout_,
                                            sdfgi_gather_textures_layout_,
-                                           sdfgi_gather_uniforms_layout_}) {
+                                           sdfgi_gather_uniforms_layout_,
+                                           skin_inputs_layout_,
+                                           skin_output_layout_,
+                                           skin_uniforms_layout_,
+                                           cull_inputs_layout_,
+                                           cull_uniforms_layout_,
+                                           compositor_textures_layout_,
+                                           compositor_uniforms_layout_}) {
             if (layout != nullptr) {
                 wgpuBindGroupLayoutRelease(layout);
             }
@@ -1002,7 +1032,8 @@ public:
             return checked.error();
         }
         const bool spatial = shader.type == ShaderType::Spatial;
-        GameShader made{.vertex = create_module(shader.wgsl_vertex),
+        GameShader made{.type = shader.type,
+                        .vertex = create_module(shader.wgsl_vertex),
                         .fragment = create_module(shader.wgsl_fragment)};
         if (spatial) {
             made = {.type = ShaderType::Spatial,
@@ -1060,6 +1091,13 @@ public:
         });
         std::erase_if(game_shadow_pipelines_, [&](const GameShadowPipeline& made) {
             if (made.game != shader) {
+                return false;
+            }
+            release(made.pipeline);
+            return true;
+        });
+        std::erase_if(effect_pipelines_, [&](const EffectPipeline& made) {
+            if (made.shader != shader) {
                 return false;
             }
             release(made.pipeline);
@@ -1513,6 +1551,7 @@ public:
         if (auto checked = check_mesh_update(vertices, it->second.vertex_count); !checked) {
             return checked;
         }
+        std::erase_if(skin_jobs_, [&](const SkinJob& job) { return job.mesh == mesh; });
         // The first update since a frame with TAA drew the mesh keeps the vertices it drew, for
         // the motion of the next one's: the buffers swap, and the new vertices go in the other.
         Mesh& found = it->second;
@@ -1544,6 +1583,7 @@ public:
         if (it == meshes_.end()) {
             return;
         }
+        std::erase_if(skin_jobs_, [&](const SkinJob& job) { return job.mesh == mesh; });
         for (WGPUBuffer buffer : {it->second.vertices, it->second.indices, it->second.previous}) {
             if (buffer == nullptr) {
                 continue;
@@ -1556,6 +1596,163 @@ public:
             }
         }
         meshes_.erase(it);
+    }
+
+    bool gpu_skinning() const override { return true; }
+
+    Result<SkinId> create_skin(const SkinDesc& desc) override {
+        auto words = skin_words(desc);
+        if (!words) {
+            return words.error();
+        }
+        WebSkin skin{.words = std::move(words).value()};
+        const std::array<const std::vector<std::uint32_t>*, 3> sources{
+            &skin.words.rest, &skin.words.weights, &skin.words.shapes};
+        for (std::size_t k = 0; k < sources.size(); ++k) {
+            // A skin without weights or shapes still binds a buffer of a word.
+            const std::vector<std::uint32_t>& from = *sources.at(k);
+            const std::size_t bytes = from.size() * sizeof(std::uint32_t);
+            skin.buffers.at(k) =
+                create_buffer(WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst, bytes);
+            if (bytes > 0) {
+                wgpuQueueWriteBuffer(queue_, skin.buffers.at(k), 0, from.data(), bytes);
+            }
+        }
+        // The words stay for the poses' uniforms, but not the vertices they were uploaded from.
+        skin.words.rest = {};
+        skin.words.weights = {};
+        skin.words.shapes = {};
+        skin.has_weights = !desc.weights.empty();
+        const auto id = static_cast<SkinId>(next_skin_++);
+        skins_.emplace(id, std::move(skin));
+        return id;
+    }
+
+    Result<void> skin_mesh(MeshId mesh, SkinId skin, std::span<const SkinJoint> joints,
+                           std::span<const float> shape_weights, std::array<float, 3> low,
+                           std::array<float, 3> high) override {
+        if (in_frame_) {
+            return frame_in_progress("skin_mesh");
+        }
+        const auto found_skin = skins_.find(skin);
+        if (found_skin == skins_.end()) {
+            return make_error(ErrorCode::NotFound, "no such skin");
+        }
+        const auto it = meshes_.find(mesh);
+        if (it == meshes_.end()) {
+            return unknown_mesh(mesh);
+        }
+        Mesh& found = it->second;
+        const WebSkin& kept = found_skin->second;
+        if (found.vertex_count != kept.words.vertex_count) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a skin of " + std::to_string(kept.words.vertex_count) +
+                                  " vertices can't move a mesh of " +
+                                  std::to_string(found.vertex_count));
+        }
+        // The vertices are written where update_mesh writes them, the ones drawn before kept
+        // for TAA as update_mesh keeps them. Every mesh's vertices can be written as storage.
+        ++found.version;
+        if (!found.moved) {
+            if (found.previous == nullptr) {
+                found.previous =
+                    create_buffer(kMeshVertexUsage, found.vertex_count * sizeof(Vertex3D));
+            }
+            std::swap(found.vertices, found.previous);
+            std::swap(found.storage, found.previous_storage);
+            found.moved = true;
+        }
+        found.bounds = {.low = low, .high = high};
+        std::erase_if(skin_jobs_, [&](const SkinJob& job) { return job.mesh == mesh; });
+        SkinJob job{.mesh = mesh,
+                    .skin = skin,
+                    .uniforms = skin_pose(kept.words, joints, shape_weights, skin_poses_)};
+        // The words' weights went with their upload, so the skin says whether it has them.
+        job.uniforms.at[2] = kept.has_weights ? 1U : 0U;
+        skin_jobs_.push_back(job);
+        return {};
+    }
+
+    void destroy_skin(SkinId skin) override {
+        const auto it = skins_.find(skin);
+        if (it == skins_.end()) {
+            return;
+        }
+        std::erase_if(skin_jobs_, [&](const SkinJob& job) { return job.skin == skin; });
+        for (WGPUBuffer buffer : it->second.buffers) {
+            // A frame being built may still read it, so it goes once the frame is sent.
+            if (in_frame_) {
+                pending_buffers_.push_back(buffer);
+            } else {
+                destroy_buffer(buffer);
+            }
+        }
+        skins_.erase(it);
+    }
+
+    // Runs the skin_mesh calls since the last frame, a dispatch each, in a command buffer of
+    // their own sent before the frame's.
+    void flush_skins() {
+        if (skin_jobs_.empty()) {
+            return;
+        }
+        const std::vector<SkinJob> jobs = std::exchange(skin_jobs_, {});
+        const std::vector<std::uint32_t> poses = std::exchange(skin_poses_, {});
+        if (skin_pipeline_ == nullptr) {
+            WGPUComputePipelineDescriptor info = WGPU_COMPUTE_PIPELINE_DESCRIPTOR_INIT;
+            info.layout = pipeline_layouts_.at(kSkinLayout);
+            info.compute.module = module(kSkinModule, joined(shaders::kSkinComputeWgsl));
+            info.compute.entryPoint = text_view("cs_main");
+            skin_pipeline_ = wgpuDeviceCreateComputePipeline(device_, &info);
+        }
+        const std::size_t bytes = poses.size() * sizeof(std::uint32_t);
+        if (bytes > skin_poses_capacity_) {
+            destroy_buffer(skin_poses_buffer_);
+            skin_poses_capacity_ = std::max<std::uint64_t>(bytes, skin_poses_capacity_ * 2);
+            skin_poses_buffer_ = create_buffer(WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst,
+                                               skin_poses_capacity_);
+        }
+        wgpuQueueWriteBuffer(queue_, skin_poses_buffer_, 0, poses.data(), bytes);
+        uniforms_.clear();
+        std::vector<std::uint32_t> at;
+        at.reserve(jobs.size());
+        for (const SkinJob& job : jobs) {
+            at.push_back(uniforms_.add(job.uniforms));
+        }
+        upload_uniforms();
+        WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, nullptr);
+        std::vector<WGPUBindGroup> made;
+        // One compute pass for every job: WebGPU orders the dispatches of a pass as passes.
+        WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+        wgpuComputePassEncoderSetPipeline(compute, skin_pipeline_);
+        for (std::size_t j = 0; j < jobs.size(); ++j) {
+            const SkinJob& job = jobs[j];
+            const auto mesh = meshes_.find(job.mesh);
+            const auto skin = skins_.find(job.skin);
+            if (mesh == meshes_.end() || skin == skins_.end()) {
+                continue;
+            }
+            const std::array<WGPUBuffer, 3>& buffers = skin->second.buffers;
+            const std::array input_entries{buffer_entry(0, buffers[0]), buffer_entry(1, buffers[1]),
+                                           buffer_entry(2, buffers[2]),
+                                           buffer_entry(3, skin_poses_buffer_)};
+            WGPUBindGroup inputs = bind_group(skin_inputs_layout_, input_entries);
+            const std::array output_entries{buffer_entry(0, mesh->second.vertices)};
+            WGPUBindGroup output = bind_group(skin_output_layout_, output_entries);
+            made.push_back(inputs);
+            made.push_back(output);
+            wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
+            wgpuComputePassEncoderSetBindGroup(compute, 1, output, 0, nullptr);
+            wgpuComputePassEncoderSetBindGroup(compute, 2, skin_uniforms_group_, 1, &at[j]);
+            const std::array<std::uint32_t, 2> groups = skin_groups(job.uniforms.counts[0]);
+            wgpuComputePassEncoderDispatchWorkgroups(compute, groups[0], groups[1], 1);
+        }
+        wgpuComputePassEncoderEnd(compute);
+        wgpuComputePassEncoderRelease(compute);
+        submit(encoder);
+        for (WGPUBindGroup group : made) {
+            wgpuBindGroupRelease(group);
+        }
     }
 
     // A texture draws can sample: one made, and not a reflection atlas.
@@ -1571,6 +1768,7 @@ public:
         if (auto errors = reported_errors(); !errors) {
             return errors.error();
         }
+        flush_skins();
         if (frame.scene) {
             if (auto checked = check_scene(*frame.scene); !checked) {
                 return checked.error();
@@ -1585,6 +1783,17 @@ public:
                 return checked.error();
             }
             if (auto checked = check_sky(*frame.scene, [&](TextureId id) { return usable(id); });
+                !checked) {
+                return checked.error();
+            }
+            if (auto checked = detail::check_effects(
+                    *frame.scene,
+                    [&](ShaderId id) {
+                        const auto found = game_shaders_.find(id);
+                        return found != game_shaders_.end() &&
+                               found->second.type == ShaderType::Compositor;
+                    },
+                    [&](TextureId id) { return usable(id); });
                 !checked) {
                 return checked.error();
             }
@@ -1695,14 +1904,10 @@ public:
         frame_format_ = format;
         if (frame.scene && frame.scene->method == RenderMethod::ForwardPlus) {
             // The sky and meshes draw at FSR 2's render size, and the post passes at the frame's.
-            prepare_forward(width, height, frame.scene->post.glow, frame.scene->post.auto_exposure,
-                            uses_dof(frame.scene->post));
+            prepare_forward(width, height, frame.scene->post.auto_exposure);
             const bool sdfgi = uses_sdfgi(*frame.scene);
             if (uses_prepass(*frame.scene) || sdfgi) {
                 prepare_prepass(scene_width_, scene_height_);
-            }
-            if (uses_ssao(*frame.scene)) {
-                prepare_ssao(scene_width_, scene_height_, frame.scene->ssao.settings);
             }
             if (uses_ssr(*frame.scene)) {
                 prepare_ssr(frame.target, scene_width_, scene_height_, frame.scene->ssr.settings);
@@ -2056,7 +2261,7 @@ public:
             taa != nullptr ? uniforms_.add(taa_uniforms(frame_width_, frame_height_)) : 0;
         // Subsurface scattering's blur across and down, in a frame with meshes that scatter.
         std::optional<std::array<std::uint32_t, 2>> subsurface_at;
-        if (forward && subsurface_.light.texture != nullptr && uses_subsurface(*frame_.scene) &&
+        if (forward && uses_subsurface(*frame_.scene) &&
             std::ranges::any_of(mesh_batches_, [](const MeshBatch& batch) {
                 return batch.subsurface_pipeline != nullptr;
             })) {
@@ -2065,6 +2270,26 @@ public:
                     subsurface_uniforms(*frame_.scene, scene_width_, scene_height_, false)),
                 uniforms_.add(
                     subsurface_uniforms(*frame_.scene, scene_width_, scene_height_, true))};
+        }
+        // The compositor effects' uniforms, each reading the prepass's normals where it asks and
+        // the frame drew them.
+        const bool effects = forward && detail::uses_effects(*frame_.scene);
+        const bool effect_normals = effects && !mesh_draws_.empty() &&
+                                    detail::effects_need_normals(*frame_.scene) &&
+                                    prepass_.normals.texture != nullptr;
+        effect_uniforms_at_.clear();
+        if (effects) {
+            make_depth_target(scene_width_, scene_height_);
+            for (const CompositorEffect3D& effect : frame_.scene->effects) {
+                CompositorUniforms uniforms =
+                    detail::compositor_uniforms(*frame_.scene, effect, scene_width_, scene_height_,
+                                                effect_normals && effect.normal_roughness);
+                for (Mat4* matrix : {&uniforms.projection, &uniforms.inv_projection, &uniforms.view,
+                                     &uniforms.inv_view}) {
+                    *matrix = transposed(*matrix);
+                }
+                effect_uniforms_at_.push_back(uniforms_.add(uniforms));
+            }
         }
         // TAA blends frames that draw meshes; one without starts it again.
         if (mesh_draws_.empty() && frame_.scene && uses_taa(*frame_.scene)) {
@@ -2143,6 +2368,10 @@ public:
         WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, nullptr);
         // Particles run and write their quads ahead of the render pass that draws them.
         encode_particle_jobs(encoder, job_uniforms);
+        // The camera's passes draw what mesh_cull.hlsl leaves in view, by indirect draws.
+        if (!mesh_draws_.empty()) {
+            encode_cull(encoder, mesh_uniforms);
+        }
         // The sky and meshes draw first, in a pass of their own, and the 2D draws go over them.
         if (!mesh_draws_.empty()) {
             encode_shadows(encoder, mesh_uniforms);
@@ -2163,7 +2392,7 @@ public:
         } else if (generation != nullptr) {
             velocity = generation->velocity.view;
         }
-        if (ssao || ssr || velocity != nullptr || sdfgi_work_.has_value()) {
+        if (ssao || ssr || velocity != nullptr || sdfgi_work_.has_value() || effect_normals) {
             // FSR 2 works the sky's motion vectors out from the depth, as Godot's.
             encode_prepass(encoder, mesh_uniforms, velocity, taa == nullptr && fsr2 != nullptr);
         } else if (fsr2 != nullptr) {
@@ -2183,15 +2412,15 @@ public:
         }
         if (ssr && !history->primed) {
             encode_meshes(encoder, mesh_uniforms, sky_uniforms_at, ssao.has_value(), false,
-                          subsurface_at);
-            encode_ssr_step(encoder, ssr_last_frame_step(), last_frame_at, *history);
+                          subsurface_at, false);
+            encode_ssr_step(encoder, ssr_last_frame_step(), last_frame_at, *history, {});
         }
         if (ssr) {
             encode_ssr(encoder, *ssr, ssr_uniforms_at, *history);
         }
-        if (!mesh_draws_.empty() || sky || dof || capture || fsr2 != nullptr) {
+        if (!mesh_draws_.empty() || sky || dof || capture || fsr2 != nullptr || effects) {
             encode_meshes(encoder, mesh_uniforms, sky_uniforms_at, ssao.has_value(),
-                          ssr.has_value(), subsurface_at);
+                          ssr.has_value(), subsurface_at, effects);
         }
         if (taa != nullptr) {
             encode_taa(encoder, *taa, taa_uniforms_at,
@@ -2210,7 +2439,7 @@ public:
             return {};
         }
         if (ssr) {
-            encode_ssr_step(encoder, ssr_last_frame_step(), last_frame_at, *history);
+            encode_ssr_step(encoder, ssr_last_frame_step(), last_frame_at, *history, {});
             history->camera = seen;
             history->primed = true;
         }
@@ -2323,6 +2552,12 @@ public:
             stored.format = texture.stored;
             stats.texture_bytes += texture_bytes(stored);
         }
+        for (const detail::FrameGraphReport::Pass& pass : graph_report_.passes) {
+            ++(pass.culled ? stats.graph_culled : stats.graph_passes);
+        }
+        stats.graph_groups = graph_report_.groups;
+        stats.transient_bytes = graph_report_.transient_bytes;
+        stats.transient_allocated_bytes = graph_report_.allocated_bytes;
         return stats;
     }
 
@@ -2382,27 +2617,23 @@ private:
         std::vector<WGPUTextureView> textures;
         std::uint32_t uniforms = 0;
     };
-    // What a Forward+ frame draws with: the world's texture of half floats, glow's levels, made
-    // with the first frame that glows, and auto exposure's luminance textures and measured
-    // brightness, made with the first frame that uses it: whether it holds one yet, and the version
-    // it was measured for.
+    // What a Forward+ frame draws with: the world's texture of half floats, and auto exposure's
+    // luminance textures and measured brightness, made with the first frame that uses it: whether
+    // it holds one yet, and the version it was measured for. Glow's and depth of field's textures
+    // are the frame graph's.
     struct ForwardTargets {
         GpuTexture world;
-        std::array<GpuTexture, kMaxGlowLevels> glow{};
         std::vector<GpuTexture> luminance;
         GpuTexture brightness;
         bool measured = false;
         std::uint64_t version = 0;
-        // Depth of field's textures, as DofTexture after World, made with the first frame that
-        // uses it.
-        std::array<GpuTexture, 5> dof{};
         std::uint32_t width = 0;
         std::uint32_t height = 0;
     };
-    // What a frame that post-processes draws with: the meshes' texture and glow's.
+    // What a frame that post-processes draws its meshes into; glow's textures are the frame
+    // graph's (post_draws_for).
     struct PostTargets {
         GpuTexture world;
-        std::array<GpuTexture, kGlowLevels> glow{};
         std::uint32_t width = 0;
         std::uint32_t height = 0;
     };
@@ -2448,6 +2679,21 @@ private:
         std::array<std::uint32_t, kCubeFaces> faces{};
         std::vector<std::uint32_t> mipmaps;
         std::vector<std::uint32_t> filters;
+    };
+
+    // A skin (create_skin): its rest vertices', weights' and blend shapes' buffers, and the
+    // counts and shapes' turns its poses need.
+    struct WebSkin {
+        SkinWords words;
+        std::array<WGPUBuffer, 3> buffers{};
+        bool has_weights = false;
+    };
+
+    // A skin_mesh waiting for the next frame: the mesh it writes and the dispatch's uniforms.
+    struct SkinJob {
+        MeshId mesh = MeshId::None;
+        SkinId skin = SkinId::None;
+        SkinUniforms uniforms;
     };
 
     // A mesh's buffers; one without indices is given them in order. Once update_mesh moves its
@@ -2588,6 +2834,12 @@ private:
         // shadow pass (a draw count a pass), for those whose shader draws its shadows.
         std::vector<std::uint32_t> games;
         std::vector<std::uint32_t> shadow_games;
+        // The draws in the camera's order (mesh_draw_order), its runs of instances of one draw,
+        // each run's InstanceBase and mesh_cull.hlsl's two passes' uniforms.
+        std::vector<std::size_t> order;
+        std::vector<CullRun> runs;
+        std::vector<std::uint32_t> bases;
+        std::array<std::uint32_t, 2> cull{};
     };
 
     // A shadow atlas: a depth texture the shadow passes draw into and the mesh pass samples.
@@ -3031,14 +3283,21 @@ private:
             mesh_fragment[0], mesh_fragment[1], mesh_fragment[2],
             uniform_entry(3, WGPUShaderStage_Fragment, sizeof(SpatialUniforms))};
         mesh_game_fragment_layout_ = layout(mesh_game_fragment);
+        // mesh_instanced.hlsl's draws' Instances and mesh_cull.hlsl's outputs, which it finds a
+        // run's draws in view in.
+        const std::array mesh_instances{storage_entry(6, true, WGPUShaderStage_Vertex),
+                                        storage_entry(7, true, WGPUShaderStage_Vertex)};
+        mesh_instances_layout_ = layout(mesh_instances);
         // Forward+'s clusters: the lights, then each tile's words, the reflection probes, the
-        // decals and the decals' atlas.
+        // decals, the decals' atlas and the fog, with the instances.
         const std::array mesh_clusters{storage_entry(0, true, WGPUShaderStage_Fragment),
                                        storage_entry(1, true, WGPUShaderStage_Fragment),
                                        storage_entry(2, true, WGPUShaderStage_Fragment),
                                        storage_entry(3, true, WGPUShaderStage_Fragment),
                                        storage_entry(4, true, WGPUShaderStage_Fragment),
-                                       storage_entry(5, true, WGPUShaderStage_Fragment)};
+                                       storage_entry(5, true, WGPUShaderStage_Fragment),
+                                       mesh_instances[0],
+                                       mesh_instances[1]};
         mesh_clusters_layout_ = layout(mesh_clusters);
         const std::array shadow_vertex{
             uniform_entry(0, WGPUShaderStage_Vertex, sizeof(MeshShadowPassUniforms)),
@@ -3127,6 +3386,26 @@ private:
         const std::array subsurface_entries{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(SubsurfaceUniforms))};
         subsurface_uniforms_layout_ = layout(subsurface_entries);
+        // A compositor effect loads the screen, the depth and the prepass's normals, and samples
+        // its texture params with their samplers.
+        std::array<WGPUBindGroupLayoutEntry,
+                   cpu_compositor::kFirstParamBinding + (2 * kCompositorTextures)>
+            compositor_textures{};
+        for (std::uint32_t slot = 0; slot < cpu_compositor::kFirstParamBinding; ++slot) {
+            compositor_textures.at(slot) = texture_entry(slot);
+            compositor_textures.at(slot).texture.sampleType =
+                WGPUTextureSampleType_UnfilterableFloat;
+        }
+        for (std::uint32_t param = 0; param < kCompositorTextures; ++param) {
+            const std::uint32_t slot = cpu_compositor::kFirstParamBinding + param;
+            compositor_textures.at(slot) = texture_entry(slot);
+            compositor_textures.at(kCompositorTextures + slot) =
+                sampler_entry(kSamplerBinding + slot);
+        }
+        compositor_textures_layout_ = layout(compositor_textures);
+        const std::array compositor_entries{
+            uniform_entry(0, WGPUShaderStage_Fragment, sizeof(CompositorUniforms))};
+        compositor_uniforms_layout_ = layout(compositor_entries);
         const std::array filter{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(RadianceUniforms))};
         filter_uniforms_layout_ = layout(filter);
@@ -3273,6 +3552,23 @@ private:
         const std::array sdfgi_gather_entries{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(SdfgiGatherUniforms))};
         sdfgi_gather_uniforms_layout_ = layout(sdfgi_gather_entries);
+        // Skinning: the rest vertices, weights, shapes and poses; the mesh's vertices; the
+        // counts.
+        const std::array skin_inputs{storage_entry(0, true), storage_entry(1, true),
+                                     storage_entry(2, true), storage_entry(3, true)};
+        skin_inputs_layout_ = layout(skin_inputs);
+        const std::array skin_output{storage_entry(0, false)};
+        skin_output_layout_ = layout(skin_output);
+        const std::array skin_entries{
+            uniform_entry(0, WGPUShaderStage_Compute, sizeof(SkinUniforms))};
+        skin_uniforms_layout_ = layout(skin_entries);
+        // Culling meshes: the draws' records; their indirect arguments (skinning's output
+        // layout); the count.
+        const std::array cull_inputs{storage_entry(0, true)};
+        cull_inputs_layout_ = layout(cull_inputs);
+        const std::array cull_entries{
+            uniform_entry(0, WGPUShaderStage_Compute, sizeof(CullUniforms))};
+        cull_uniforms_layout_ = layout(cull_entries);
 
         const auto pipeline_layout = [&](std::initializer_list<WGPUBindGroupLayout> groups) {
             const std::vector<WGPUBindGroupLayout> list(groups);
@@ -3296,14 +3592,15 @@ private:
             {mesh_3d_inputs_layout_, draw_outputs_layout_, compute_uniforms_layout_});
         pipeline_layouts_.at(kStages3DLayout) =
             pipeline_layout({empty_layout_, stages_outputs_layout_, compute_uniforms_layout_});
-        pipeline_layouts_.at(kMeshLayout) = pipeline_layout(
-            {empty_layout_, mesh_vertex_layout_, mesh_textures_layout_, mesh_fragment_layout_});
+        pipeline_layouts_.at(kMeshLayout) =
+            pipeline_layout({mesh_instances_layout_, mesh_vertex_layout_, mesh_textures_layout_,
+                             mesh_fragment_layout_});
         pipeline_layouts_.at(kMeshClusteredLayout) =
             pipeline_layout({mesh_clusters_layout_, mesh_vertex_layout_, mesh_textures_layout_,
                              mesh_fragment_layout_});
         pipeline_layouts_.at(kMeshGameLayout) =
-            pipeline_layout({empty_layout_, mesh_game_vertex_layout_, mesh_textures_layout_,
-                             mesh_game_fragment_layout_});
+            pipeline_layout({mesh_instances_layout_, mesh_game_vertex_layout_,
+                             mesh_textures_layout_, mesh_game_fragment_layout_});
         pipeline_layouts_.at(kMeshClusteredGameLayout) =
             pipeline_layout({mesh_clusters_layout_, mesh_game_vertex_layout_, mesh_textures_layout_,
                              mesh_game_fragment_layout_});
@@ -3364,6 +3661,13 @@ private:
         pipeline_layouts_.at(kSdfgiGatherLayout) =
             pipeline_layout({sdfgi_gather_buffers_layout_, empty_layout_,
                              sdfgi_gather_textures_layout_, sdfgi_gather_uniforms_layout_});
+        pipeline_layouts_.at(kSkinLayout) =
+            pipeline_layout({skin_inputs_layout_, skin_output_layout_, skin_uniforms_layout_});
+        pipeline_layouts_.at(kCullLayout) =
+            pipeline_layout({cull_inputs_layout_, skin_output_layout_, cull_uniforms_layout_});
+        pipeline_layouts_.at(kCompositorLayout) =
+            pipeline_layout({empty_layout_, empty_layout_, compositor_textures_layout_,
+                             compositor_uniforms_layout_});
     }
 
     WGPUShaderModule create_module(std::string_view wgsl) {
@@ -3692,6 +3996,12 @@ private:
         const std::array sdfgi_gather{
             buffer_entry(0, uniform_buffer_, sizeof(SdfgiGatherUniforms))};
         sdfgi_gather_uniforms_group_ = bind_group(sdfgi_gather_uniforms_layout_, sdfgi_gather);
+        const std::array skin{buffer_entry(0, uniform_buffer_, sizeof(SkinUniforms))};
+        skin_uniforms_group_ = bind_group(skin_uniforms_layout_, skin);
+        const std::array cull{buffer_entry(0, uniform_buffer_, sizeof(CullUniforms))};
+        cull_uniforms_group_ = bind_group(cull_uniforms_layout_, cull);
+        const std::array compositor{buffer_entry(0, uniform_buffer_, sizeof(CompositorUniforms))};
+        compositor_uniforms_group_ = bind_group(compositor_uniforms_layout_, compositor);
     }
 
     void release_uniform_groups() {
@@ -3724,7 +4034,10 @@ private:
                                      &generation_draw_uniforms_group_,
                                      &sdfgi_uniforms_group_,
                                      &sdfgi_voxelize_uniforms_group_,
-                                     &sdfgi_gather_uniforms_group_}) {
+                                     &sdfgi_gather_uniforms_group_,
+                                     &skin_uniforms_group_,
+                                     &cull_uniforms_group_,
+                                     &compositor_uniforms_group_}) {
             if (*group != nullptr) {
                 wgpuBindGroupRelease(*group);
                 *group = nullptr;
@@ -3732,8 +4045,19 @@ private:
         }
     }
 
-    // Records the queued jobs as compute passes, in order, each with its uniforms at uniforms.
+    // Records the queued jobs as dispatches, in order, each with its uniforms at uniforms. They
+    // share compute passes, since WebGPU makes each dispatch's writes visible to the next; a job
+    // that binds nothing at group 0 takes a pass of its own, so no other job's group is left
+    // there.
     void encode_particle_jobs(WGPUCommandEncoder encoder, std::span<const std::uint32_t> uniforms) {
+        WGPUComputePassEncoder pass = nullptr;
+        const auto end_pass = [&pass] {
+            if (pass != nullptr) {
+                wgpuComputePassEncoderEnd(pass);
+                wgpuComputePassEncoderRelease(pass);
+                pass = nullptr;
+            }
+        };
         for (std::size_t i = 0; i < particle_jobs_.size(); ++i) {
             const ParticleJob& job = particle_jobs_[i];
             std::uint32_t groups = (job.amount + kParticleThreads - 1) / kParticleThreads;
@@ -3803,7 +4127,12 @@ private:
                 break;
             }
             }
-            WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+            if (inputs == nullptr) {
+                end_pass();
+            }
+            if (pass == nullptr) {
+                pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+            }
             wgpuComputePassEncoderSetPipeline(
                 pass, compute_pipelines_.at(static_cast<std::size_t>(job.kind)));
             if (inputs != nullptr) {
@@ -3813,13 +4142,14 @@ private:
             const std::uint32_t offset = uniforms[i];
             wgpuComputePassEncoderSetBindGroup(pass, 2, compute_uniforms_group_, 1, &offset);
             wgpuComputePassEncoderDispatchWorkgroups(pass, groups, rows, 1);
-            wgpuComputePassEncoderEnd(pass);
-            wgpuComputePassEncoderRelease(pass);
-            if (inputs != nullptr) {
+            if (inputs == nullptr) {
+                end_pass();
+            } else {
                 wgpuBindGroupRelease(inputs);
             }
             wgpuBindGroupRelease(outputs);
         }
+        end_pass();
     }
 
     void clear_particle_jobs() {
@@ -4596,7 +4926,10 @@ private:
         info.layout = pipeline_layouts_.at(
             clustered ? (game ? kMeshClusteredGameLayout : kMeshClusteredLayout)
                       : (game ? kMeshGameLayout : kMeshLayout));
-        info.vertex.module = module(kMeshVertexModule, joined(shaders::kMeshVertexWgsl));
+        // The mesh shader's draws are instances of runs; a spatial shader's draw one at a time.
+        info.vertex.module =
+            game ? module(kMeshVertexModule, joined(shaders::kMeshVertexWgsl))
+                 : module(kMeshInstancedVertexModule, joined(shaders::kMeshInstancedVertexWgsl));
         if (game && game_shaders_.at(material.shader).vertex != nullptr) {
             info.vertex.module = game_shaders_.at(material.shader).vertex;
         }
@@ -4701,11 +5034,12 @@ private:
         FogFrames* fog = scene.method == RenderMethod::ForwardPlus && uses_volumetric_fog(scene)
                              ? find_fog_frames(frame_.target)
                              : nullptr;
+        const bool instances_grew = prepare_cull(at, view_projection);
         if (scene.method == RenderMethod::ForwardPlus) {
             if (no_fog_ == nullptr) {
                 no_fog_ = create_buffer(WGPUBufferUsage_Storage, sizeof(Float4));
             }
-            upload_clusters(fog != nullptr ? fog->fog : no_fog_);
+            upload_clusters(fog != nullptr ? fog->fog : no_fog_, instances_grew);
             set_cluster_uniforms(*lights, clusters_, &decal_atlas_.atlas(), scene.decals.filter);
         }
         if (fog != nullptr) {
@@ -4800,7 +5134,7 @@ private:
     // Builds the frame's Forward+ clusters and copies them, the frame's reflection probes and
     // decals and, when it changes, the decals' atlas to the GPU, bound as a group made again when a
     // buffer grows.
-    void upload_clusters(WGPUBuffer fog) {
+    void upload_clusters(WGPUBuffer fog, bool instances_grew) {
         decal_atlas_.update(*frame_.scene);
         const DecalAtlas& atlas = decal_atlas_.atlas();
         clusters_ = build_clusters(*frame_.scene, scene_width_, scene_height_, &atlas);
@@ -4828,22 +5162,24 @@ private:
             decal_atlas_uploaded_ = atlas.generation;
         }
         if (cluster_group_ != nullptr && !lights_grew && !cells_grew && !probes_grew &&
-            !decals_grew && !atlas_grew && cluster_fog_ == fog) {
+            !decals_grew && !atlas_grew && !instances_grew && cluster_fog_ == fog) {
             return;
         }
         if (cluster_group_ != nullptr) {
             wgpuBindGroupRelease(cluster_group_);
         }
-        std::array<WGPUBindGroupEntry, 6> entries{};
-        const std::array<const StorageBuffer*, 5> buffers{&cluster_lights_, &cluster_cells_,
-                                                          &probe_buffer_, &decal_buffer_,
-                                                          &decal_atlas_buffer_};
+        std::array<WGPUBindGroupEntry, 8> entries{};
+        const std::array<const StorageBuffer*, 7> buffers{
+            &cluster_lights_,     &cluster_cells_, &probe_buffer_,  &decal_buffer_,
+            &decal_atlas_buffer_, nullptr,         &mesh_instances_};
         for (std::uint32_t binding = 0; binding < buffers.size(); ++binding) {
-            const StorageBuffer& storage = *buffers.at(binding);
-            entries.at(binding) = buffer_entry(binding, storage.buffer, storage.capacity);
+            if (const StorageBuffer* storage = buffers.at(binding); storage != nullptr) {
+                entries.at(binding) = buffer_entry(binding, storage->buffer, storage->capacity);
+            }
         }
-        // The volumetric fog, or a float4 in its place.
+        // The volumetric fog, or a float4 in its place, and what mesh_cull.hlsl writes.
         entries[5] = buffer_entry(5, fog);
+        entries[7] = buffer_entry(7, cull_outputs_.buffer, cull_outputs_.capacity);
         cluster_group_ = bind_group(mesh_clusters_layout_, entries);
         cluster_fog_ = fog;
     }
@@ -4870,9 +5206,20 @@ private:
     // With subsurface (the blur's uniforms across and down), the opaque meshes draw first, then
     // those that scatter light under their surface again into the subsurface pass's texture,
     // whose blur adds to the world, then the blended meshes.
+    // With effects, the frame's compositor effects run at their points: pre_opaque after the sky,
+    // post_opaque, post_sky and pre_transparent after the opaque meshes and subsurface
+    // scattering, and post_transparent after the blended meshes.
     void encode_meshes(WGPUCommandEncoder encoder, const MeshUniforms& at,
                        std::optional<std::uint32_t> sky, bool ssao, bool ssr,
-                       const std::optional<std::array<std::uint32_t, 2>>& subsurface) {
+                       const std::optional<std::array<std::uint32_t, 2>>& subsurface,
+                       bool effects) {
+        const auto runs = [&](EffectCallback point) {
+            return effects && !detail::effects_at(*frame_.scene, point).empty();
+        };
+        const bool pre_opaque = runs(EffectCallback::PreOpaque);
+        const bool between = runs(EffectCallback::PostOpaque) || runs(EffectCallback::PostSky) ||
+                             runs(EffectCallback::PreTransparent);
+        const bool post_transparent = runs(EffectCallback::PostTransparent);
         WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
         // A scene that post-processes draws its meshes into a texture the post passes read.
         color.view = world_view(*frame_.scene);
@@ -4887,8 +5234,13 @@ private:
                                      (uses_dof(frame_.scene->post) || uses_fsr2(*frame_.scene))
                                  ? WGPUStoreOp_Store
                                  : WGPUStoreOp_Discard;
+        // Effects read it too.
+        if (post_transparent) {
+            depth.depthStoreOp = WGPUStoreOp_Store;
+        }
         const WGPUStoreOp depth_store = depth.depthStoreOp;
-        if (subsurface) {
+        const bool split = subsurface.has_value() || between;
+        if (split || pre_opaque) {
             depth.depthStoreOp = WGPUStoreOp_Store;
         }
         depth.depthClearValue = 0.0F;
@@ -4925,33 +5277,55 @@ private:
                 wgpuBindGroupRelease(storage);
             }
         }
+        if (pre_opaque) {
+            wgpuRenderPassEncoderEnd(pass);
+            wgpuRenderPassEncoderRelease(pass);
+            encode_effects(encoder, EffectCallback::PreOpaque);
+            color.loadOp = WGPULoadOp_Load;
+            depth.depthLoadOp = WGPULoadOp_Load;
+            depth.depthStoreOp = split ? WGPUStoreOp_Store : depth_store;
+            pass = wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
+        }
         const bool clustered =
             !mesh_draws_.empty() && frame_.scene->method == RenderMethod::ForwardPlus;
         if (clustered) {
             wgpuRenderPassEncoderSetBindGroup(pass, 0, cluster_group_, 0, nullptr);
         }
-        encode_mesh_draws(pass, at, subsurface ? MeshDraws::Opaque : MeshDraws::All, ssao, ssr);
+        encode_mesh_draws(pass, at, split ? MeshDraws::Opaque : MeshDraws::All, ssao, ssr);
         wgpuRenderPassEncoderEnd(pass);
         wgpuRenderPassEncoderRelease(pass);
-        if (!subsurface) {
+        if (!split) {
+            if (post_transparent) {
+                encode_effects(encoder, EffectCallback::PostTransparent);
+            }
             return;
         }
-        WGPURenderPassColorAttachment light = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
-        light.view = subsurface_.light.view;
-        light.loadOp = WGPULoadOp_Clear;
-        light.storeOp = WGPUStoreOp_Store;
-        light.clearValue = {0.0, 0.0, 0.0, 0.0};
         depth.depthLoadOp = WGPULoadOp_Load;
         depth.depthStoreOp = WGPUStoreOp_Store;
-        descriptor.colorAttachments = &light;
-        pass = wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
-        if (clustered) {
-            wgpuRenderPassEncoderSetBindGroup(pass, 0, cluster_group_, 0, nullptr);
+        if (subsurface) {
+            encode_subsurface(encoder, *subsurface, [&](WGPUTextureView view) {
+                WGPURenderPassColorAttachment light = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+                light.view = view;
+                light.loadOp = WGPULoadOp_Clear;
+                light.storeOp = WGPUStoreOp_Store;
+                light.clearValue = {0.0, 0.0, 0.0, 0.0};
+                WGPURenderPassDescriptor lit = descriptor;
+                lit.colorAttachments = &light;
+                WGPURenderPassEncoder draw = wgpuCommandEncoderBeginRenderPass(encoder, &lit);
+                if (clustered) {
+                    wgpuRenderPassEncoderSetBindGroup(draw, 0, cluster_group_, 0, nullptr);
+                }
+                encode_mesh_draws(draw, at, MeshDraws::Subsurface, ssao, ssr);
+                wgpuRenderPassEncoderEnd(draw);
+                wgpuRenderPassEncoderRelease(draw);
+            });
         }
-        encode_mesh_draws(pass, at, MeshDraws::Subsurface, ssao, ssr);
-        wgpuRenderPassEncoderEnd(pass);
-        wgpuRenderPassEncoderRelease(pass);
-        encode_subsurface(encoder, *subsurface);
+        for (const EffectCallback point : {EffectCallback::PostOpaque, EffectCallback::PostSky,
+                                           EffectCallback::PreTransparent}) {
+            if (runs(point)) {
+                encode_effects(encoder, point);
+            }
+        }
         color.loadOp = WGPULoadOp_Load;
         depth.depthStoreOp = depth_store;
         descriptor.colorAttachments = &color;
@@ -4962,39 +5336,203 @@ private:
         encode_mesh_draws(pass, at, MeshDraws::Blended, ssao, ssr);
         wgpuRenderPassEncoderEnd(pass);
         wgpuRenderPassEncoderRelease(pass);
+        if (post_transparent) {
+            encode_effects(encoder, EffectCallback::PostTransparent);
+        }
     }
 
-    // Subsurface scattering's blur, its uniforms at at: across into its second texture, then
-    // down, adding the change to the world.
-    void encode_subsurface(WGPUCommandEncoder encoder, const std::array<std::uint32_t, 2>& at) {
-        for (const bool second : {false, true}) {
-            const std::array<WGPUTextureView, 3> views{second ? subsurface_.across.view
-                                                              : subsurface_.light.view,
-                                                       depth_.view, subsurface_.light.view};
-            std::array<WGPUBindGroupEntry, 3> entries{};
-            for (std::uint32_t slot = 0; slot < entries.size(); ++slot) {
-                entries.at(slot) = WGPU_BIND_GROUP_ENTRY_INIT;
-                entries.at(slot).binding = slot;
-                entries.at(slot).textureView = views.at(slot);
+    // The frame's compositor effects at a point, as a frame graph: each copies the world into a
+    // texture of the pool's (the screen it reads), then draws its shader over the world with the
+    // depth, the prepass's normals (or white, which its options say not to read) and its texture
+    // params beside it.
+    void encode_effects(WGPUCommandEncoder encoder, EffectCallback point) {
+        using detail::GraphPassKind;
+        using detail::GraphResource;
+        const Scene3D& scene = *frame_.scene;
+        const WGPUTextureFormat format = world_format(scene, frame_format_);
+        detail::FrameGraph graph;
+        const GraphResource world = graph.import("world");
+        const detail::GraphShape shape =
+            color_shape(format, {.width = scene_width_, .height = scene_height_}, 8);
+        std::vector<GraphResource> screens(scene.effects.size(), world);
+        for (std::size_t index = 0; index < scene.effects.size(); ++index) {
+            if (scene.effects[index].callback == point) {
+                screens[index] = graph.transient("effect screen", shape);
             }
-            WGPUBindGroup textures = bind_group(subsurface_textures_layout_, entries);
-            WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
-            color.view = second ? world_view(*frame_.scene) : subsurface_.across.view;
-            color.loadOp = second ? WGPULoadOp_Load : WGPULoadOp_Clear;
-            color.storeOp = WGPUStoreOp_Store;
-            WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
-            descriptor.colorAttachmentCount = 1;
-            descriptor.colorAttachments = &color;
-            WGPURenderPassEncoder draw = wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
-            wgpuRenderPassEncoderSetPipeline(draw, subsurface_pipeline(second));
-            wgpuRenderPassEncoderSetBindGroup(draw, 2, textures, 0, nullptr);
-            wgpuRenderPassEncoderSetBindGroup(draw, 3, subsurface_uniforms_group_, 1,
-                                              &at.at(second ? 1 : 0));
-            wgpuRenderPassEncoderDraw(draw, 3, 1, 0, 0);
-            wgpuRenderPassEncoderEnd(draw);
-            wgpuRenderPassEncoderRelease(draw);
-            wgpuBindGroupRelease(textures);
         }
+        std::vector<WGPUTextureView> bound(graph.resource_count(), nullptr);
+        std::vector<WGPUTexture> textures;
+        bound.at(world) = world_view(scene);
+        WGPUTexture world_texture =
+            uses_fsr2(scene) ? fsr2_textures_.color.texture : forward_targets_.world.texture;
+        const bool normals = prepass_.normals.texture != nullptr && !mesh_draws_.empty() &&
+                             detail::effects_need_normals(scene);
+        for (std::size_t index = 0; index < scene.effects.size(); ++index) {
+            const CompositorEffect3D& effect = scene.effects[index];
+            if (effect.callback != point) {
+                continue;
+            }
+            const GraphResource screen = screens[index];
+            graph.add_pass({.name = "effect screen",
+                            .kind = GraphPassKind::Copy,
+                            .reads = {world},
+                            .writes = {screen}},
+                           [&, screen](const detail::GraphContext&) {
+                               WGPUTexelCopyTextureInfo from = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+                               from.texture = world_texture;
+                               WGPUTexelCopyTextureInfo to = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+                               to.texture = textures.at(screen);
+                               const WGPUExtent3D extent{.width = scene_width_,
+                                                         .height = scene_height_,
+                                                         .depthOrArrayLayers = 1};
+                               wgpuCommandEncoderCopyTextureToTexture(encoder, &from, &to, &extent);
+                           });
+            graph.add_pass(
+                {.name = "effect",
+                 .kind = GraphPassKind::Render,
+                 .reads = {screen},
+                 .writes = {world}},
+                [&, index, screen](const detail::GraphContext&) {
+                    const CompositorEffect3D& drawn = scene.effects[index];
+                    WGPURenderPipeline pipeline = effect_pipeline(drawn.shader, format);
+                    if (pipeline == nullptr) {
+                        return;
+                    }
+                    std::array<WGPUBindGroupEntry,
+                               cpu_compositor::kFirstParamBinding + (2 * kCompositorTextures)>
+                        entries{};
+                    const std::array<WGPUTextureView, cpu_compositor::kFirstParamBinding> screens{
+                        bound.at(screen), depth_.view,
+                        normals ? prepass_.normals.view : white_.view};
+                    for (std::uint32_t slot = 0; slot < cpu_compositor::kFirstParamBinding;
+                         ++slot) {
+                        entries.at(slot) = WGPU_BIND_GROUP_ENTRY_INIT;
+                        entries.at(slot).binding = slot;
+                        entries.at(slot).textureView = screens.at(slot);
+                    }
+                    for (std::uint32_t param = 0; param < kCompositorTextures; ++param) {
+                        const std::uint32_t slot = cpu_compositor::kFirstParamBinding + param;
+                        const auto [view, sampler] = binding(drawn.textures.at(param), false);
+                        entries.at(slot) = WGPU_BIND_GROUP_ENTRY_INIT;
+                        entries.at(slot).binding = slot;
+                        entries.at(slot).textureView = view;
+                        WGPUBindGroupEntry& sampled = entries.at(kCompositorTextures + slot);
+                        sampled = WGPU_BIND_GROUP_ENTRY_INIT;
+                        sampled.binding = kSamplerBinding + slot;
+                        sampled.sampler = sampler;
+                    }
+                    WGPUBindGroup group = bind_group(compositor_textures_layout_, entries);
+                    WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+                    color.view = bound.at(world);
+                    color.loadOp = WGPULoadOp_Load;
+                    color.storeOp = WGPUStoreOp_Store;
+                    WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
+                    descriptor.colorAttachmentCount = 1;
+                    descriptor.colorAttachments = &color;
+                    WGPURenderPassEncoder draw =
+                        wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
+                    wgpuRenderPassEncoderSetPipeline(draw, pipeline);
+                    wgpuRenderPassEncoderSetBindGroup(draw, 2, group, 0, nullptr);
+                    wgpuRenderPassEncoderSetBindGroup(draw, 3, compositor_uniforms_group_, 1,
+                                                      &effect_uniforms_at_.at(index));
+                    wgpuRenderPassEncoderDraw(draw, 3, 1, 0, 0);
+                    wgpuRenderPassEncoderEnd(draw);
+                    wgpuRenderPassEncoderRelease(draw);
+                    wgpuBindGroupRelease(group);
+                });
+        }
+        run_graph(graph, bound, "compositor effects", &textures);
+    }
+
+    // A compositor shader's pipeline drawing into a world of format, made the first time a frame
+    // needs it.
+    WGPURenderPipeline effect_pipeline(ShaderId shader, WGPUTextureFormat format) {
+        for (const EffectPipeline& made : effect_pipelines_) {
+            if (made.shader == shader && made.format == format) {
+                return made.pipeline;
+            }
+        }
+        const GameShader& game = game_shaders_.at(shader);
+        WGPUColorTargetState color = WGPU_COLOR_TARGET_STATE_INIT;
+        color.format = format;
+        WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
+        fragment.module = game.fragment;
+        fragment.entryPoint = text_view("fs_main");
+        fragment.targetCount = 1;
+        fragment.targets = &color;
+        WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
+        info.layout = pipeline_layouts_.at(kCompositorLayout);
+        info.vertex.module = game.vertex;
+        info.vertex.entryPoint = text_view("vs_main");
+        info.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+        info.primitive.cullMode = WGPUCullMode_None;
+        info.fragment = &fragment;
+        WGPURenderPipeline pipeline = wgpuDeviceCreateRenderPipeline(device_, &info);
+        if (pipeline != nullptr) {
+            effect_pipelines_.push_back({.shader = shader, .format = format, .pipeline = pipeline});
+        }
+        return pipeline;
+    }
+
+    // Subsurface scattering, as a frame graph whose textures come from the pool the post passes
+    // share, the blur's uniforms at at: draw_light draws the scattering meshes' light into the
+    // view it is handed, over the depth the opaque meshes left, then the blur goes across into a
+    // second texture, then down, adding the change to the world.
+    template <typename DrawLight>
+    void encode_subsurface(WGPUCommandEncoder encoder, const std::array<std::uint32_t, 2>& at,
+                           const DrawLight& draw_light) {
+        using detail::GraphPassKind;
+        using detail::GraphResource;
+        detail::FrameGraph graph;
+        const detail::GraphShape shape =
+            color_shape(kHdrFormat, {.width = scene_width_, .height = scene_height_}, 8);
+        const GraphResource light = graph.transient("subsurface light", shape);
+        const GraphResource blurred = graph.transient("subsurface across", shape);
+        const GraphResource world = graph.import("world");
+        std::vector<WGPUTextureView> bound(graph.resource_count(), nullptr);
+        bound.at(world) = world_view(*frame_.scene);
+        graph.add_pass({.name = "subsurface light",
+                        .kind = GraphPassKind::Render,
+                        .reads = {},
+                        .writes = {light}},
+                       [&](const detail::GraphContext&) { draw_light(bound.at(light)); });
+        for (const bool second : {false, true}) {
+            graph.add_pass(
+                {.name = second ? "subsurface down" : "subsurface across",
+                 .kind = GraphPassKind::Render,
+                 .reads = second ? std::vector<GraphResource>{blurred, light}
+                                 : std::vector<GraphResource>{light},
+                 .writes = {second ? world : blurred}},
+                [&, second](const detail::GraphContext&) {
+                    const std::array<WGPUTextureView, 3> views{bound.at(second ? blurred : light),
+                                                               depth_.view, bound.at(light)};
+                    std::array<WGPUBindGroupEntry, 3> entries{};
+                    for (std::uint32_t slot = 0; slot < entries.size(); ++slot) {
+                        entries.at(slot) = WGPU_BIND_GROUP_ENTRY_INIT;
+                        entries.at(slot).binding = slot;
+                        entries.at(slot).textureView = views.at(slot);
+                    }
+                    WGPUBindGroup textures = bind_group(subsurface_textures_layout_, entries);
+                    WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+                    color.view = bound.at(second ? world : blurred);
+                    color.loadOp = second ? WGPULoadOp_Load : WGPULoadOp_Clear;
+                    color.storeOp = WGPUStoreOp_Store;
+                    WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
+                    descriptor.colorAttachmentCount = 1;
+                    descriptor.colorAttachments = &color;
+                    WGPURenderPassEncoder draw =
+                        wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
+                    wgpuRenderPassEncoderSetPipeline(draw, subsurface_pipeline(second));
+                    wgpuRenderPassEncoderSetBindGroup(draw, 2, textures, 0, nullptr);
+                    wgpuRenderPassEncoderSetBindGroup(draw, 3, subsurface_uniforms_group_, 1,
+                                                      &at.at(second ? 1 : 0));
+                    wgpuRenderPassEncoderDraw(draw, 3, 1, 0, 0);
+                    wgpuRenderPassEncoderEnd(draw);
+                    wgpuRenderPassEncoderRelease(draw);
+                    wgpuBindGroupRelease(textures);
+                });
+        }
+        run_graph(graph, bound, "subsurface scattering");
     }
 
     // Subsurface scattering's blur across, or down (add), which adds its color to the world.
@@ -5029,19 +5567,10 @@ private:
         return made;
     }
 
-    // Subsurface scattering's textures for a frame of width x height.
+    // Subsurface scattering's depth target for a frame of width x height (its textures are the
+    // frame graph's, made as encode_subsurface runs).
     void prepare_subsurface(std::uint32_t width, std::uint32_t height) {
         make_depth_target(width, height);
-        if (subsurface_.light.texture != nullptr && subsurface_.width == width &&
-            subsurface_.height == height) {
-            return;
-        }
-        release_pass_texture(subsurface_.light);
-        release_pass_texture(subsurface_.across);
-        subsurface_.light = pass_texture(width, height, kHdrFormat);
-        subsurface_.across = pass_texture(width, height, kHdrFormat);
-        subsurface_.width = width;
-        subsurface_.height = height;
     }
 
     // The pipeline drawing meshes that cull as cull says into the subsurface pass: Forward+'s
@@ -5073,7 +5602,8 @@ private:
         depth.depthCompare = WGPUCompareFunction_GreaterEqual;
         WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
         info.layout = pipeline_layouts_.at(kMeshClusteredLayout);
-        info.vertex.module = module(kMeshVertexModule, joined(shaders::kMeshVertexWgsl));
+        info.vertex.module =
+            module(kMeshInstancedVertexModule, joined(shaders::kMeshInstancedVertexWgsl));
         info.vertex.entryPoint = text_view("vs_main");
         info.vertex.bufferCount = 1;
         info.vertex.buffers = &buffer;
@@ -5106,10 +5636,15 @@ private:
             !prepass && !ssr && uses_ssr(*frame_.scene) ? at.unreflected : at.scene;
         // The motion vectors' prepass reads where the vertices were from a second buffer.
         const bool motion = prepass && uses_motion_vectors(*frame_.scene);
+        // Group 0 holds the draws' Instances and what mesh_cull.hlsl wrote; a clustered pass's
+        // group (bound by the caller) holds them with the clusters.
+        if (prepass || frame_.scene->method != RenderMethod::ForwardPlus) {
+            wgpuRenderPassEncoderSetBindGroup(pass, 0, mesh_instances_group_, 0, nullptr);
+        }
         WGPURenderPipeline bound = nullptr;
-        for (const std::size_t i :
-             mesh_draw_order(std::span<const MeshDraw>(mesh_draws_), *frame_.scene,
-                             [&](std::size_t draw) { return mesh_batches_[draw].bounds; })) {
+        for (std::size_t r = 0; r < at.runs.size(); ++r) {
+            // A run's draws share everything but their Instances, so its first speaks for it.
+            const std::size_t i = at.order[at.runs[r].first];
             const MeshBatch& batch = mesh_batches_[i];
             WGPURenderPipeline pipeline = batch.pipeline;
             if (prepass) {
@@ -5127,10 +5662,11 @@ private:
                 wgpuRenderPassEncoderSetPipeline(pass, pipeline);
                 bound = pipeline;
             }
-            // A spatial shader's draws read its uniforms in the vertex stage too.
+            // A spatial shader's draws read their own Instance, and its uniforms in the vertex
+            // stage too; the rest read their run's draws in view from where InstanceBase says.
             const bool game = mesh_draws_[i].material.shader != ShaderId::None;
-            const std::array<std::uint32_t, 3> vertex_offsets{at.camera, at.draws[i].first,
-                                                              at.games[i]};
+            const std::array<std::uint32_t, 3> vertex_offsets{
+                at.camera, game ? at.draws[i].first : at.bases[r], at.games[i]};
             wgpuRenderPassEncoderSetBindGroup(pass, 1,
                                               game ? mesh_game_vertex_group_ : mesh_vertex_group_,
                                               game ? 3 : 2, vertex_offsets.data());
@@ -5166,8 +5702,134 @@ private:
             }
             wgpuRenderPassEncoderSetIndexBuffer(pass, batch.indices, WGPUIndexFormat_Uint32, 0,
                                                 WGPU_WHOLE_SIZE);
-            wgpuRenderPassEncoderDrawIndexed(pass, batch.range.count, 1, batch.range.first, 0, 0);
+            wgpuRenderPassEncoderDrawIndexedIndirect(pass, cull_outputs_.buffer,
+                                                     r * kCullArgsWords * sizeof(std::uint32_t));
         }
+    }
+
+    // Grows storage to size bytes made for usage if they don't fit; says if it grew.
+    bool reserve_storage(StorageBuffer& storage, std::uint64_t size, WGPUBufferUsage usage) {
+        if (size <= storage.capacity) {
+            return false;
+        }
+        destroy_buffer(storage.buffer);
+        storage.capacity =
+            std::max({size, std::min(storage.capacity * 2, std::uint64_t{kMaxStorageBytes}),
+                      kMinVertexBytes});
+        storage.buffer = create_buffer(usage, storage.capacity);
+        return true;
+    }
+
+    // Whether draw b goes in draw a's run: one mesh with one material, drawn by the same
+    // pipelines with the same textures and surface uniforms, and neither with a game's shader.
+    [[nodiscard]] bool same_run(std::size_t a, std::size_t b,
+                                std::span<const MeshSurfaceUniforms> surfaces) const {
+        const MeshDraw& first = mesh_draws_[a];
+        const MeshDraw& second = mesh_draws_[b];
+        const MeshBatch& x = mesh_batches_[a];
+        const MeshBatch& y = mesh_batches_[b];
+        return first.material.shader == ShaderId::None &&
+               second.material.shader == ShaderId::None &&
+               (first.shadows == ShadowCasting::ShadowsOnly) ==
+                   (second.shadows == ShadowCasting::ShadowsOnly) &&
+               x.vertices == y.vertices && x.indices == y.indices &&
+               x.range.first == y.range.first && x.range.count == y.range.count &&
+               x.previous_vertices == y.previous_vertices && x.pipeline == y.pipeline &&
+               x.normal_pipeline == y.normal_pipeline &&
+               x.subsurface_pipeline == y.subsurface_pipeline && x.bindings == y.bindings &&
+               std::ranges::equal(std::as_bytes(surfaces.subspan(a, 1)),
+                                  std::as_bytes(surfaces.subspan(b, 1)));
+    }
+
+    // Puts the frame's mesh draws in the camera's order and splits them into runs, writes their
+    // records, runs and order for culling and their Instances, and adds each run's InstanceBase
+    // and the culling passes' uniforms to at; says if the buffers the mesh passes read grew.
+    bool prepare_cull(MeshUniforms& at, const Mat4& view_projection) {
+        at.order = mesh_draw_order(std::span<const MeshDraw>(mesh_draws_), *frame_.scene,
+                                   [&](std::size_t draw) { return mesh_batches_[draw].bounds; });
+        std::vector<MeshSurfaceUniforms> surfaces;
+        surfaces.reserve(mesh_draws_.size());
+        for (const MeshDraw& draw : mesh_draws_) {
+            surfaces.push_back(mesh_surface_uniforms(draw.material, draw.layers));
+        }
+        at.runs = cull_runs(std::span<const std::size_t>(at.order),
+                            [&](std::size_t a, std::size_t b) { return same_run(a, b, surfaces); });
+        std::vector<std::uint32_t> records;
+        records.reserve((mesh_draws_.size() * (kCullRecordWords + 1)) + (at.runs.size() * 2));
+        std::vector<MeshInstanceUniforms> instances;
+        instances.reserve(mesh_draws_.size());
+        for (std::size_t i = 0; i < mesh_draws_.size(); ++i) {
+            const MeshDraw& draw = mesh_draws_[i];
+            const MeshBatch& batch = mesh_batches_[i];
+            // A spatial shader's vertex() can move its corners anywhere.
+            push_cull_record(records, view_projection, draw.transform, batch.bounds, batch.range,
+                             draw.material.shader != ShaderId::None);
+            push_instance(instances, draw.transform, draw.material, draw.previous);
+        }
+        push_cull_runs(records, at.runs, at.order);
+        const auto draws = static_cast<std::uint32_t>(mesh_draws_.size());
+        const auto runs = static_cast<std::uint32_t>(at.runs.size());
+        upload_storage(cull_records_, std::as_bytes(std::span(records)));
+        bool grew = upload_storage(mesh_instances_, std::as_bytes(std::span(instances)));
+        const std::uint64_t outputs =
+            std::uint64_t{cull_output_words(draws, runs, draws)} * sizeof(std::uint32_t);
+        grew = reserve_storage(cull_outputs_, outputs,
+                               WGPUBufferUsage_Storage | WGPUBufferUsage_Indirect) ||
+               grew;
+        if (grew || mesh_instances_group_ == nullptr) {
+            if (mesh_instances_group_ != nullptr) {
+                wgpuBindGroupRelease(mesh_instances_group_);
+            }
+            const std::array entries{
+                buffer_entry(6, mesh_instances_.buffer, mesh_instances_.capacity),
+                buffer_entry(7, cull_outputs_.buffer, cull_outputs_.capacity)};
+            mesh_instances_group_ = bind_group(mesh_instances_layout_, entries);
+        }
+        const std::uint32_t list = cull_list_at(draws, runs);
+        at.bases.reserve(at.runs.size());
+        for (const CullRun& run : at.runs) {
+            at.bases.push_back(
+                uniforms_.add(InstanceBaseUniforms{.base = {list + run.first, 0, 0, 0}}));
+        }
+        for (std::uint32_t step = 0; step < at.cull.size(); ++step) {
+            at.cull.at(step) = uniforms_.add(CullUniforms{.counts = {draws, runs, draws, step}});
+        }
+        return grew;
+    }
+
+    // Records mesh_cull.hlsl's two passes over the frame's mesh draws, as at gives them: one
+    // testing each draw, then one listing each run's draws in view and writing its arguments.
+    void encode_cull(WGPUCommandEncoder encoder, const MeshUniforms& at) {
+        if (cull_pipeline_ == nullptr) {
+            WGPUComputePipelineDescriptor info = WGPU_COMPUTE_PIPELINE_DESCRIPTOR_INIT;
+            info.layout = pipeline_layouts_.at(kCullLayout);
+            info.compute.module = module(kCullModule, joined(shaders::kMeshCullComputeWgsl));
+            info.compute.entryPoint = text_view("cs_main");
+            cull_pipeline_ = wgpuDeviceCreateComputePipeline(device_, &info);
+        }
+        const std::array input_entries{
+            buffer_entry(0, cull_records_.buffer, cull_records_.capacity)};
+        WGPUBindGroup inputs = bind_group(cull_inputs_layout_, input_entries);
+        const std::array output_entries{
+            buffer_entry(0, cull_outputs_.buffer, cull_outputs_.capacity)};
+        WGPUBindGroup output = bind_group(skin_output_layout_, output_entries);
+        const std::array<std::uint32_t, 2> threads{static_cast<std::uint32_t>(mesh_draws_.size()),
+                                                   static_cast<std::uint32_t>(at.runs.size())};
+        // One pass: WebGPU makes each dispatch's writes visible to the next, so the second step
+        // reads every flag the first wrote.
+        WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+        wgpuComputePassEncoderSetPipeline(compute, cull_pipeline_);
+        wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
+        wgpuComputePassEncoderSetBindGroup(compute, 1, output, 0, nullptr);
+        for (std::size_t step = 0; step < at.cull.size(); ++step) {
+            wgpuComputePassEncoderSetBindGroup(compute, 2, cull_uniforms_group_, 1,
+                                               &at.cull.at(step));
+            wgpuComputePassEncoderDispatchWorkgroups(compute, cull_groups(threads.at(step)), 1, 1);
+        }
+        wgpuComputePassEncoderEnd(compute);
+        wgpuComputePassEncoderRelease(compute);
+        wgpuBindGroupRelease(inputs);
+        wgpuBindGroupRelease(output);
     }
 
     // The pipeline drawing opaque meshes that cull as cull says into the normal-roughness
@@ -5201,7 +5863,10 @@ private:
         depth.depthCompare = WGPUCompareFunction_Greater;
         WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
         info.layout = pipeline_layouts_.at(game == ShaderId::None ? kMeshLayout : kMeshGameLayout);
-        info.vertex.module = module(kMeshVertexModule, joined(shaders::kMeshVertexWgsl));
+        info.vertex.module =
+            game == ShaderId::None
+                ? module(kMeshInstancedVertexModule, joined(shaders::kMeshInstancedVertexWgsl))
+                : module(kMeshVertexModule, joined(shaders::kMeshVertexWgsl));
         if (game != ShaderId::None && game_shaders_.at(game).vertex != nullptr) {
             info.vertex.module = game_shaders_.at(game).vertex;
         }
@@ -5285,7 +5950,10 @@ private:
         WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
         info.layout = pipeline_layouts_.at(game == ShaderId::None ? kMeshLayout : kMeshGameLayout);
         info.vertex.module =
-            module(kMeshMotionVertexModule, joined(shaders::kMeshMotionVertexWgsl));
+            game == ShaderId::None
+                ? module(kMeshMotionInstancedVertexModule,
+                         joined(shaders::kMeshMotionInstancedVertexWgsl))
+                : module(kMeshMotionVertexModule, joined(shaders::kMeshMotionVertexWgsl));
         if (game != ShaderId::None && game_shaders_.at(game).motion_vertex != nullptr) {
             info.vertex.module = game_shaders_.at(game).motion_vertex;
         }
@@ -5375,36 +6043,6 @@ private:
         prepass_.height = 0;
     }
 
-    // The textures a frame of width x height with settings draws SSAO with: those ssao_plan
-    // sizes. Made again when either changes.
-    void prepare_ssao(std::uint32_t width, std::uint32_t height, const SsaoSettings& settings) {
-        if (ssao_targets_.width == width && ssao_targets_.height == height &&
-            ssao_targets_.settings == settings) {
-            return;
-        }
-        release_ssao_targets();
-        const SsaoPlan plan = ssao_plan(settings, width, height);
-        // The last pass draws into the screen array instead.
-        for (std::uint32_t i = 0; i < kSsaoTextures; ++i) {
-            const PostSize size = plan.sizes.at(i);
-            if (size.width != 0 && i != kSsaoFinal) {
-                ssao_targets_.textures.at(i) =
-                    pass_texture(size.width, size.height, ssao_gpu_format(ssao_format(i)));
-            }
-        }
-        ssao_targets_.width = width;
-        ssao_targets_.height = height;
-        ssao_targets_.settings = settings;
-    }
-
-    void release_ssao_targets() {
-        for (GpuTexture& texture : ssao_targets_.textures) {
-            release_pass_texture(texture);
-        }
-        ssao_targets_.width = 0;
-        ssao_targets_.height = 0;
-    }
-
     // The prepass, which draws the opaque meshes' normals and depth, which SSAO, SSR and TAA
     // read, and their motion vectors into velocity, unless it is null, over kInvalidMotion where
     // invalid_motion says so (FSR 2's).
@@ -5437,49 +6075,122 @@ private:
         wgpuRenderPassEncoderRelease(pass);
     }
 
+    // An SSR texture's bytes a texel.
+    static std::uint64_t ssr_texel_bytes(SsrFormat format) {
+        switch (format) {
+        case SsrFormat::RGBA8:
+            return 4;
+        case SsrFormat::RGBA16F:
+            return 8;
+        case SsrFormat::RGBA32F:
+            return 16;
+        case SsrFormat::R8:
+            return 1;
+        case SsrFormat::R32F:
+            break;
+        }
+        return 4;
+    }
+
+    // An SSAO texture's bytes a texel.
+    static std::uint64_t ssao_texel_bytes(SsaoFormat format) {
+        switch (format) {
+        case SsaoFormat::R16F:
+            return 2;
+        case SsaoFormat::RG8:
+            return 2;
+        case SsaoFormat::R8:
+            return 1;
+        case SsaoFormat::R32F:
+            break;
+        }
+        return 4;
+    }
+
     // ssao.hlsl's passes from the prepass to the occlusion at the frame's size, in the order plan
-    // gives, their uniforms at uniforms.
+    // gives, their uniforms at uniforms: a frame graph whose textures come from the pool the post
+    // passes share, the last pass drawing into the screen array's first layer.
     void encode_ssao(WGPUCommandEncoder encoder, const SsaoPlan& plan,
                      std::span<const std::uint32_t> uniforms) {
+        using detail::GraphPassKind;
+        using detail::GraphResource;
+        detail::FrameGraph graph;
+        constexpr GraphResource kNone = std::numeric_limits<GraphResource>::max();
+        std::array<GraphResource, kSsaoTextures> made{};
+        made.fill(kNone);
+        for (std::uint32_t i = 0; i < kSsaoTextures; ++i) {
+            const PostSize size = plan.sizes.at(i);
+            if (size.width != 0 && i != kSsaoFinal) {
+                const SsaoFormat format = ssao_format(i);
+                made.at(i) = graph.transient(
+                    "ssao " + std::to_string(i),
+                    color_shape(ssao_gpu_format(format), size, ssao_texel_bytes(format)));
+            }
+        }
+        made.at(kSsaoFinal) = graph.import("screen");
+        std::vector<WGPUTextureView> bound(graph.resource_count(), nullptr);
+        bound.at(made.at(kSsaoFinal)) = screen_.layers[0];
+        // A texture no pass drew (very low's skipped slices, which its interleave binds but
+        // doesn't read) is left out of the graph and bound as white.
+        const auto view_of = [this, &bound](GraphResource resource) {
+            WGPUTextureView view = bound.at(resource);
+            return view != nullptr ? view : white_.view;
+        };
+        std::array<bool, kSsaoTextures> written{};
         for (std::size_t i = 0; i < plan.steps.size(); ++i) {
             const SsaoStep& step = plan.steps[i];
-            std::array<WGPUBindGroupEntry, kSsaoSlots> entries{};
-            for (std::uint32_t slot = 0; slot < kSsaoSlots; ++slot) {
-                const std::uint32_t index = step.slots.at(slot);
-                WGPUTextureView view = white_.view;
-                if (index == kSsaoDepthBuffer) {
-                    view = prepass_.depth.view;
-                } else if (index == kSsaoNormals) {
-                    view = prepass_.normals.view;
-                } else if (index < kSsaoTextures &&
-                           ssao_targets_.textures.at(index).view != nullptr) {
-                    view = ssao_targets_.textures.at(index).view;
+            std::vector<GraphResource> reads;
+            for (const std::uint32_t index : step.slots) {
+                if (index < kSsaoTextures && written.at(index) &&
+                    std::ranges::find(reads, made.at(index)) == reads.end()) {
+                    reads.push_back(made.at(index));
                 }
-                entries.at(slot) = WGPU_BIND_GROUP_ENTRY_INIT;
-                entries.at(slot).binding = slot;
-                entries.at(slot).textureView = view;
             }
-            WGPUBindGroup textures = bind_group(ssao_textures_layout_, entries);
-            // The last pass draws into the screen array's first layer, which the mesh pass reads.
-            const bool last = step.target == kSsaoFinal;
-            WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
-            color.view = last ? screen_.layers[0] : ssao_targets_.textures.at(step.target).view;
-            color.loadOp = WGPULoadOp_Clear;
-            color.storeOp = WGPUStoreOp_Store;
-            WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
-            descriptor.colorAttachmentCount = 1;
-            descriptor.colorAttachments = &color;
-            WGPURenderPassEncoder draw = wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
-            wgpuRenderPassEncoderSetPipeline(
-                draw,
-                ssao_pipeline_for(last ? kHdrFormat : ssao_gpu_format(ssao_format(step.target))));
-            wgpuRenderPassEncoderSetBindGroup(draw, 2, textures, 0, nullptr);
-            wgpuRenderPassEncoderSetBindGroup(draw, 3, ssao_uniforms_group_, 1, &uniforms[i]);
-            wgpuRenderPassEncoderDraw(draw, 3, 1, 0, 0);
-            wgpuRenderPassEncoderEnd(draw);
-            wgpuRenderPassEncoderRelease(draw);
-            wgpuBindGroupRelease(textures);
+            written.at(step.target) = true;
+            graph.add_pass(
+                {.name = "ssao " + std::string(ssao_pass_name(step.pass)),
+                 .kind = GraphPassKind::Render,
+                 .reads = std::move(reads),
+                 .writes = {made.at(step.target)}},
+                [&, step, offset = uniforms[i]](const detail::GraphContext&) {
+                    std::array<WGPUBindGroupEntry, kSsaoSlots> entries{};
+                    for (std::uint32_t slot = 0; slot < kSsaoSlots; ++slot) {
+                        const std::uint32_t index = step.slots.at(slot);
+                        WGPUTextureView view = white_.view;
+                        if (index == kSsaoDepthBuffer) {
+                            view = prepass_.depth.view;
+                        } else if (index == kSsaoNormals) {
+                            view = prepass_.normals.view;
+                        } else if (index < kSsaoTextures && made.at(index) != kNone) {
+                            view = view_of(made.at(index));
+                        }
+                        entries.at(slot) = WGPU_BIND_GROUP_ENTRY_INIT;
+                        entries.at(slot).binding = slot;
+                        entries.at(slot).textureView = view;
+                    }
+                    WGPUBindGroup textures = bind_group(ssao_textures_layout_, entries);
+                    const bool last = step.target == kSsaoFinal;
+                    WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+                    color.view = view_of(made.at(step.target));
+                    color.loadOp = WGPULoadOp_Clear;
+                    color.storeOp = WGPUStoreOp_Store;
+                    WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
+                    descriptor.colorAttachmentCount = 1;
+                    descriptor.colorAttachments = &color;
+                    WGPURenderPassEncoder draw =
+                        wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
+                    wgpuRenderPassEncoderSetPipeline(
+                        draw, ssao_pipeline_for(last ? kHdrFormat
+                                                     : ssao_gpu_format(ssao_format(step.target))));
+                    wgpuRenderPassEncoderSetBindGroup(draw, 2, textures, 0, nullptr);
+                    wgpuRenderPassEncoderSetBindGroup(draw, 3, ssao_uniforms_group_, 1, &offset);
+                    wgpuRenderPassEncoderDraw(draw, 3, 1, 0, 0);
+                    wgpuRenderPassEncoderEnd(draw);
+                    wgpuRenderPassEncoderRelease(draw);
+                    wgpuBindGroupRelease(textures);
+                });
         }
+        run_graph(graph, bound, "SSAO");
     }
 
     // SSR's uniforms as the GPU reads them: the matrices turned, as transposed says.
@@ -5552,15 +6263,7 @@ private:
         if (ssr_targets_.width != width || ssr_targets_.height != height ||
             !(ssr_targets_.settings == settings)) {
             release_ssr_targets();
-            // The last pass draws into the screen array instead.
-            for (std::uint32_t i = 0; i < kSsrTextures; ++i) {
-                const PostSize size = plan.sizes.at(i);
-                if (size.width != 0 && i != kSsrFinal) {
-                    ssr_targets_.textures.at(i) =
-                        pass_texture(size.width, size.height, ssr_gpu_format(ssr_format(i)),
-                                     WGPUTextureUsage_CopySrc);
-                }
-            }
+            // The passes' textures are the frame graph's, made as encode_ssr runs.
             ssr_targets_.hiz_mips =
                 pass_texture(plan.size.width, plan.size.height, ssr_gpu_format(ssr_format(kSsrHiz)),
                              WGPUTextureUsage_CopyDst, plan.levels);
@@ -5585,9 +6288,6 @@ private:
     }
 
     void release_ssr_targets() {
-        for (GpuTexture& texture : ssr_targets_.textures) {
-            release_pass_texture(texture);
-        }
         release_pass_texture(ssr_targets_.hiz_mips);
         release_pass_texture(ssr_targets_.color_mips);
         ssr_targets_.width = 0;
@@ -5760,7 +6460,8 @@ private:
         Fsr2Textures& t = fsr2_textures_;
         if (t.color.texture == nullptr || t.sizes != sizes || t.fsr3 != fsr3) {
             release_fsr2_textures();
-            t.color = pass_texture(render_width, render_height, kHdrFormat);
+            t.color =
+                pass_texture(render_width, render_height, kHdrFormat, WGPUTextureUsage_CopySrc);
             t.velocity = pass_texture(render_width, render_height, kVelocityFormat);
             if (fsr3) {
                 const auto [half_width, half_height] = fsr3_half_size(render_width, render_height);
@@ -5985,18 +6686,19 @@ private:
         WGPUBindGroup inputs = bind_group(generation_textures_layout_, textures);
         const std::array buffers{buffer_entry(0, frames.words), buffer_entry(1, frames.atoms)};
         WGPUBindGroup outputs = bind_group(generation_storage_layout_, buffers);
+        // One pass for the plan: each dispatch sees what the ones before it wrote.
+        WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+        wgpuComputePassEncoderSetPipeline(compute, generation_pipeline());
+        wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
+        wgpuComputePassEncoderSetBindGroup(compute, 1, outputs, 0, nullptr);
         for (std::size_t i = 0; i < plan.size(); ++i) {
             const FrameGenerationDispatch& dispatch = plan[i];
-            WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
-            wgpuComputePassEncoderSetPipeline(compute, generation_pipeline());
-            wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
-            wgpuComputePassEncoderSetBindGroup(compute, 1, outputs, 0, nullptr);
             wgpuComputePassEncoderSetBindGroup(compute, 2, generation_uniforms_group_, 1, &at[i]);
             wgpuComputePassEncoderDispatchWorkgroups(compute, dispatch.groups[0],
                                                      dispatch.groups[1], dispatch.groups[2]);
-            wgpuComputePassEncoderEnd(compute);
-            wgpuComputePassEncoderRelease(compute);
         }
+        wgpuComputePassEncoderEnd(compute);
+        wgpuComputePassEncoderRelease(compute);
         wgpuBindGroupRelease(inputs);
         wgpuBindGroupRelease(outputs);
     }
@@ -6259,12 +6961,26 @@ private:
         WGPUBindGroup sums = bind_group(sdfgi_sums_layout_, sums_entries);
         std::vector<WGPUBindGroup> made;
         const std::uint64_t n = layout.cell_count();
+        // Steps between buffer copies share a compute pass, each dispatch seeing what the ones
+        // before it wrote.
+        WGPUComputePassEncoder compute = nullptr;
+        const auto open_pass = [&compute, encoder] {
+            if (compute == nullptr) {
+                compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+            }
+        };
+        const auto end_pass = [&compute] {
+            if (compute != nullptr) {
+                wgpuComputePassEncoderEnd(compute);
+                wgpuComputePassEncoderRelease(compute);
+                compute = nullptr;
+            }
+        };
         for (std::size_t s = 0; s < work.steps.size(); ++s) {
             const SdfgiStep& step = work.steps[s];
             switch (step.kind) {
             case SdfgiStep::Kind::Dispatch: {
-                WGPUComputePassEncoder compute =
-                    wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+                open_pass();
                 wgpuComputePassEncoderSetPipeline(compute, sdfgi_pipeline());
                 wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
                 wgpuComputePassEncoderSetBindGroup(compute, 1, outputs, 0, nullptr);
@@ -6272,13 +6988,10 @@ private:
                                                    &work.uniforms[s]);
                 const std::array<std::uint32_t, 2> groups = sdfgi_groups(step.uniforms.step[3]);
                 wgpuComputePassEncoderDispatchWorkgroups(compute, groups[0], groups[1], 1);
-                wgpuComputePassEncoderEnd(compute);
-                wgpuComputePassEncoderRelease(compute);
                 break;
             }
             case SdfgiStep::Kind::Voxelize: {
-                WGPUComputePassEncoder compute =
-                    wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+                open_pass();
                 wgpuComputePassEncoderSetPipeline(compute, sdfgi_voxelize_pipeline());
                 wgpuComputePassEncoderSetBindGroup(compute, 1, sums, 0, nullptr);
                 for (const SdfgiVoxelizeDraw& voxelized : work.voxelized[s]) {
@@ -6304,12 +7017,11 @@ private:
                     wgpuComputePassEncoderDispatchWorkgroups(compute, voxelized.groups[0],
                                                              voxelized.groups[1], 1);
                 }
-                wgpuComputePassEncoderEnd(compute);
-                wgpuComputePassEncoderRelease(compute);
                 break;
             }
             case SdfgiStep::Kind::CopyCells: {
                 // The new cells, which the resolve wrote over the cascade's field, into its cells.
+                end_pass();
                 constexpr std::uint64_t kWord = sizeof(std::uint32_t);
                 wgpuCommandEncoderCopyBufferToBuffer(
                     encoder, at(SdfgiBuffer::Fields),
@@ -6319,6 +7031,7 @@ private:
             }
             }
         }
+        end_pass();
         // The gather: each pixel the prepass drew takes the cascades' light.
         const std::array read_entries{buffer_entry(0, at(SdfgiBuffer::Cells)),
                                       buffer_entry(1, at(SdfgiBuffer::Fields)),
@@ -6744,19 +7457,19 @@ private:
         dilated[1].textureView = frames.dilated_motion.at(next).view;
         WGPUBindGroup inputs = bind_group(fsr2_compute_textures_layout_, dilated);
         WGPUBindGroup outputs = bind_group(fsr2_compute_storage_layout_, reconstructed);
+        WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+        wgpuComputePassEncoderSetPipeline(compute, fsr2_reconstruct_pipeline());
+        wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
+        wgpuComputePassEncoderSetBindGroup(compute, 1, outputs, 0, nullptr);
         for (std::size_t step = 0; step < 2; ++step) {
-            WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
-            wgpuComputePassEncoderSetPipeline(compute, fsr2_reconstruct_pipeline());
-            wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
-            wgpuComputePassEncoderSetBindGroup(compute, 1, outputs, 0, nullptr);
             wgpuComputePassEncoderSetBindGroup(compute, 2, fsr2_compute_uniforms_group_, 1,
                                                &uniforms.at(1 + step));
             wgpuComputePassEncoderDispatchWorkgroups(
                 compute, (scene_width_ + kFsr2Threads - 1) / kFsr2Threads,
                 (scene_height_ + kFsr2Threads - 1) / kFsr2Threads, 1);
-            wgpuComputePassEncoderEnd(compute);
-            wgpuComputePassEncoderRelease(compute);
         }
+        wgpuComputePassEncoderEnd(compute);
+        wgpuComputePassEncoderRelease(compute);
         wgpuBindGroupRelease(inputs);
         wgpuBindGroupRelease(outputs);
         pass(Fsr2Pass::DepthClip, {t.prepared.view, t.reactive.view},
@@ -6897,19 +7610,19 @@ private:
         dilated[1].textureView = t.dilated_motion.view;
         WGPUBindGroup inputs = bind_group(fsr2_compute_textures_layout_, dilated);
         WGPUBindGroup outputs = bind_group(fsr2_compute_storage_layout_, reconstructed);
+        WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+        wgpuComputePassEncoderSetPipeline(compute, fsr3_reconstruct_pipeline());
+        wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
+        wgpuComputePassEncoderSetBindGroup(compute, 1, outputs, 0, nullptr);
         for (std::size_t step = 0; step < 2; ++step) {
-            WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
-            wgpuComputePassEncoderSetPipeline(compute, fsr3_reconstruct_pipeline());
-            wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
-            wgpuComputePassEncoderSetBindGroup(compute, 1, outputs, 0, nullptr);
             wgpuComputePassEncoderSetBindGroup(compute, 2, fsr3_compute_uniforms_group_, 1,
                                                &uniforms.at(1 + step));
             wgpuComputePassEncoderDispatchWorkgroups(
                 compute, (scene_width_ + kFsr2Threads - 1) / kFsr2Threads,
                 (scene_height_ + kFsr2Threads - 1) / kFsr2Threads, 1);
-            wgpuComputePassEncoderEnd(compute);
-            wgpuComputePassEncoderRelease(compute);
         }
+        wgpuComputePassEncoderEnd(compute);
+        wgpuComputePassEncoderRelease(compute);
         wgpuBindGroupRelease(inputs);
         wgpuBindGroupRelease(outputs);
         pass(Fsr3Pass::Pyramid, {t.farthest_half.view, t.levels[0].view},
@@ -6944,39 +7657,117 @@ private:
     }
 
     // ssr.hlsl's passes, from the prepass's depth and normals and history, to the reflections at
-    // the frame's size, in the order plan gives, their uniforms at uniforms.
+    // the frame's size in the screen array's second layer, in the order plan gives, their
+    // uniforms at uniforms: a frame graph whose textures come from the pool the post passes
+    // share, but for the levels copied into textures with mipmaps, which prepare_ssr keeps.
     void encode_ssr(WGPUCommandEncoder encoder, const SsrPlan& plan,
                     std::span<const std::uint32_t> uniforms, const SsrHistory& history) {
-        for (std::size_t i = 0; i < plan.steps.size(); ++i) {
-            const SsrStep& step = plan.steps[i];
-            if (step.pass != SsrPass::CopyLevels) {
-                encode_ssr_step(encoder, step, uniforms[i], history);
-                continue;
-            }
-            // GPUs can't draw into one level of a texture while reading another, so each level
-            // is drawn into a texture of its own and copied into one with mipmaps for the passes
-            // that read them all.
-            const bool hiz = step.target == kSsrHizMips;
-            for (std::uint32_t level = 0; level < plan.levels; ++level) {
-                const std::uint32_t index = (hiz ? kSsrHiz : kSsrColor) + level;
-                const PostSize size = plan.sizes.at(index);
-                WGPUTexelCopyTextureInfo from = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
-                from.texture = ssr_targets_.textures.at(index).texture;
-                WGPUTexelCopyTextureInfo to = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
-                to.texture = hiz ? ssr_targets_.hiz_mips.texture : ssr_targets_.color_mips.texture;
-                to.mipLevel = level;
-                const WGPUExtent3D extent{
-                    .width = size.width, .height = size.height, .depthOrArrayLayers = 1};
-                wgpuCommandEncoderCopyTextureToTexture(encoder, &from, &to, &extent);
+        using detail::GraphPassKind;
+        using detail::GraphResource;
+        detail::FrameGraph graph;
+        constexpr GraphResource kNone = std::numeric_limits<GraphResource>::max();
+        std::array<GraphResource, kSsrTextures> made{};
+        made.fill(kNone);
+        for (std::uint32_t i = 0; i < kSsrTextures; ++i) {
+            const PostSize size = plan.sizes.at(i);
+            if (size.width != 0 && i != kSsrFinal) {
+                const SsrFormat format = ssr_format(i);
+                made.at(i) = graph.transient(
+                    "ssr " + std::to_string(i),
+                    color_shape(ssr_gpu_format(format), size, ssr_texel_bytes(format)));
             }
         }
+        made.at(kSsrFinal) = graph.import("screen");
+        const GraphResource hiz_mips = graph.import("ssr hiz mips");
+        const GraphResource color_mips = graph.import("ssr color mips");
+        std::vector<WGPUTextureView> bound(graph.resource_count(), nullptr);
+        bound.at(made.at(kSsrFinal)) = screen_.layers[1];
+        bound.at(hiz_mips) = ssr_targets_.hiz_mips.view;
+        bound.at(color_mips) = ssr_targets_.color_mips.view;
+        // The graph's textures, by resource, for copying from.
+        std::vector<WGPUTexture> made_textures;
+        // The passes' views by index, once the graph has given them (null for those not drawn,
+        // which bind as white).
+        std::array<WGPUTextureView, kSsrTextures> views{};
+        const auto gather = [&] {
+            for (std::uint32_t i = 0; i < kSsrTextures; ++i) {
+                views.at(i) = made.at(i) != kNone ? bound.at(made.at(i)) : nullptr;
+            }
+        };
+        std::array<bool, kSsrTextures> written{};
+        for (std::size_t i = 0; i < plan.steps.size(); ++i) {
+            const SsrStep& step = plan.steps[i];
+            if (step.pass == SsrPass::CopyLevels) {
+                // GPUs can't draw into one level of a texture while reading another, so each
+                // level is drawn into a texture of its own and copied into one with mipmaps for
+                // the passes that read them all.
+                const bool hiz = step.target == kSsrHizMips;
+                std::vector<GraphResource> reads;
+                for (std::uint32_t level = 0; level < plan.levels; ++level) {
+                    reads.push_back(made.at((hiz ? kSsrHiz : kSsrColor) + level));
+                }
+                graph.add_pass(
+                    {.name = hiz ? "ssr copy hiz levels" : "ssr copy color levels",
+                     .kind = GraphPassKind::Copy,
+                     .reads = std::move(reads),
+                     .writes = {hiz ? hiz_mips : color_mips}},
+                    [&, hiz](const detail::GraphContext&) {
+                        for (std::uint32_t level = 0; level < plan.levels; ++level) {
+                            const std::uint32_t index = (hiz ? kSsrHiz : kSsrColor) + level;
+                            const PostSize size = plan.sizes.at(index);
+                            WGPUTexelCopyTextureInfo from = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+                            from.texture = made_textures.at(made.at(index));
+                            WGPUTexelCopyTextureInfo to = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+                            to.texture = hiz ? ssr_targets_.hiz_mips.texture
+                                             : ssr_targets_.color_mips.texture;
+                            to.mipLevel = level;
+                            const WGPUExtent3D extent{.width = size.width,
+                                                      .height = size.height,
+                                                      .depthOrArrayLayers = 1};
+                            wgpuCommandEncoderCopyTextureToTexture(encoder, &from, &to, &extent);
+                        }
+                    });
+                continue;
+            }
+            std::vector<GraphResource> reads;
+            for (const std::uint32_t index : step.slots) {
+                GraphResource resource = kNone;
+                if (index < kSsrTextures && written.at(index)) {
+                    resource = made.at(index);
+                } else if (index == kSsrHizMips) {
+                    resource = hiz_mips;
+                } else if (index == kSsrColorMips) {
+                    resource = color_mips;
+                }
+                if (resource != kNone && std::ranges::find(reads, resource) == reads.end()) {
+                    reads.push_back(resource);
+                }
+            }
+            std::vector<GraphResource> writes{made.at(step.target)};
+            written.at(step.target) = true;
+            if (step.pass == SsrPass::Trace) {
+                writes.push_back(made.at(kSsrMipLevel));
+                written.at(kSsrMipLevel) = true;
+            }
+            graph.add_pass({.name = "ssr " + std::string(ssr_pass_name(step.pass)),
+                            .kind = GraphPassKind::Render,
+                            .reads = std::move(reads),
+                            .writes = std::move(writes)},
+                           [&, step, offset = uniforms[i]](const detail::GraphContext&) {
+                               gather();
+                               encode_ssr_step(encoder, step, offset, history, views);
+                           });
+        }
+        run_graph(graph, bound, "SSR", &made_textures);
     }
 
-    // One of SSR's passes, other than a copy, over its target with its uniforms at uniforms: the
-    // trace's over the reflections' first level and the mip levels, the last frame's over
-    // history's texture.
+    // One of SSR's passes, other than a copy, over its target in views (by index; null binds
+    // white) with its uniforms at uniforms: the trace's over the reflections' first level and the
+    // mip levels, the last frame's over history's texture and the resolve's over the screen
+    // array's second layer.
     void encode_ssr_step(WGPUCommandEncoder encoder, const SsrStep& step, std::uint32_t uniforms,
-                         const SsrHistory& history) {
+                         const SsrHistory& history,
+                         const std::array<WGPUTextureView, kSsrTextures>& views) {
         std::array<WGPUBindGroupEntry, kSsrSlots> entries{};
         for (std::uint32_t slot = 0; slot < kSsrSlots; ++slot) {
             const std::uint32_t index = step.slots.at(slot);
@@ -6993,8 +7784,8 @@ private:
                 view = history.texture.view;
             } else if (index == kSsrWorld) {
                 view = world_view(*frame_.scene);
-            } else if (index < kSsrTextures && ssr_targets_.textures.at(index).view != nullptr) {
-                view = ssr_targets_.textures.at(index).view;
+            } else if (index < kSsrTextures && views.at(index) != nullptr) {
+                view = views.at(index);
             }
             entries.at(slot) = WGPU_BIND_GROUP_ENTRY_INIT;
             entries.at(slot).binding = slot;
@@ -7010,8 +7801,8 @@ private:
         }
         colors[0].view = step.target == kSsrLastFrame ? history.texture.view
                          : step.target == kSsrFinal   ? screen_.layers[1]
-                                                      : ssr_targets_.textures.at(step.target).view;
-        colors[1].view = ssr_targets_.textures.at(kSsrMipLevel).view;
+                                                      : views.at(step.target);
+        colors[1].view = views.at(kSsrMipLevel);
         WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
         descriptor.colorAttachmentCount = trace ? 2 : 1;
         descriptor.colorAttachments = colors.data();
@@ -7027,8 +7818,7 @@ private:
         wgpuBindGroupRelease(textures);
     }
 
-    // The textures the meshes and glow draw into, at the frame's size, made again when it
-    // changes.
+    // The texture the meshes draw into, at the frame's size, made again when it changes.
     void prepare_post(std::uint32_t width, std::uint32_t height) {
         if (post_targets_.world.texture != nullptr && post_targets_.width == width &&
             post_targets_.height == height) {
@@ -7041,21 +7831,13 @@ private:
                 TextureFormat::Rgba8);
         };
         post_targets_.world = made(width, height);
-        const std::array<PostSize, kGlowLevels> sizes = glow_sizes(width, height);
-        for (std::size_t i = 0; i < kGlowLevels; ++i) {
-            post_targets_.glow.at(i) = made(sizes.at(i).width, sizes.at(i).height);
-        }
         post_targets_.width = width;
         post_targets_.height = height;
     }
 
     void release_post_targets() {
-        for (GpuTexture* texture :
-             {&post_targets_.world, &post_targets_.glow[0], &post_targets_.glow[1],
-              &post_targets_.glow[2], &post_targets_.glow[3]}) {
-            if (texture->texture != nullptr) {
-                pending_textures_.push_back(std::exchange(*texture, {}));
-            }
+        if (post_targets_.world.texture != nullptr) {
+            pending_textures_.push_back(std::exchange(post_targets_.world, {}));
         }
         post_targets_.width = 0;
         post_targets_.height = 0;
@@ -7090,10 +7872,10 @@ private:
         return {.r = frame_.clear.r, .g = frame_.clear.g, .b = frame_.clear.b, .a = frame_.clear.a};
     }
 
-    // The world's texture of half floats at the frame's size and, with glow, glow's seven levels,
-    // with auto exposure the luminance textures, and with depth of field its textures.
-    void prepare_forward(std::uint32_t width, std::uint32_t height, bool glow, bool auto_exposure,
-                         bool dof) {
+    // The world's texture of half floats at the frame's size and, with auto exposure, the
+    // luminance textures, kept from frame to frame. Glow's and depth of field's textures are the
+    // frame graph's (forward_draws_for).
+    void prepare_forward(std::uint32_t width, std::uint32_t height, bool auto_exposure) {
         const auto made = [&](std::uint32_t w, std::uint32_t h,
                               WGPUTextureFormat format = kHdrFormat,
                               WGPUTextureUsage copies = WGPUTextureUsage_None) {
@@ -7116,12 +7898,6 @@ private:
             forward_targets_.width = width;
             forward_targets_.height = height;
         }
-        if (glow && forward_targets_.glow[0].texture == nullptr) {
-            const GlowPlan plan = forward_glow_plan(PostProcess{}, width, height);
-            for (std::size_t i = 0; i < kMaxGlowLevels; ++i) {
-                forward_targets_.glow.at(i) = made(plan.sizes.at(i).width, plan.sizes.at(i).height);
-            }
-        }
         if (auto_exposure && forward_targets_.brightness.texture == nullptr) {
             for (const PostSize size : luminance_plan(width, height)) {
                 forward_targets_.luminance.push_back(
@@ -7129,16 +7905,6 @@ private:
             }
             forward_targets_.brightness = made(1, 1, kLuminanceFormat);
             forward_targets_.measured = false;
-        }
-        if (dof && forward_targets_.dof[0].texture == nullptr) {
-            // Sized, Secondary, Half0, Half1 and Out, as DofTexture after World
-            const std::uint32_t half_width = std::max(width >> 1U, 1U);
-            const std::uint32_t half_height = std::max(height >> 1U, 1U);
-            for (std::size_t i = 0; i < forward_targets_.dof.size(); ++i) {
-                const bool half = i == 2 || i == 3;
-                forward_targets_.dof.at(i) =
-                    made(half ? half_width : width, half ? half_height : height);
-            }
         }
     }
 
@@ -7149,17 +7915,13 @@ private:
             }
         };
         release(forward_targets_.world);
-        for (GpuTexture& texture : forward_targets_.glow) {
-            release(texture);
-        }
+        transient_pool_.clear(
+            [this](const GpuTexture& texture) { pending_textures_.push_back(texture); });
         for (GpuTexture& texture : forward_targets_.luminance) {
             release(texture);
         }
         forward_targets_.luminance.clear();
         release(forward_targets_.brightness);
-        for (GpuTexture& texture : forward_targets_.dof) {
-            release(texture);
-        }
         forward_targets_.measured = false;
         forward_targets_.width = 0;
         forward_targets_.height = 0;
@@ -7191,28 +7953,117 @@ private:
         return pipeline;
     }
 
-    // forward_post.hlsl's passes, as the GPU device draws them: depth of field's, whose result the
-    // rest read for the world; with auto exposure the luminance passes, then glow's levels, each
-    // from the one before, then the tonemap pass from the world's texture over the frame's
-    // target. Their uniforms are added to the frame's.
+    // A color texture's shape in the frame graph: its format and size, and the bytes it takes.
+    static detail::GraphShape color_shape(WGPUTextureFormat format, PostSize size,
+                                          std::uint64_t texel_bytes) {
+        return {.key = (static_cast<std::uint64_t>(format) << 48U) |
+                       (static_cast<std::uint64_t>(size.width) << 24U) | size.height,
+                .bytes = std::uint64_t{size.width} * size.height * texel_bytes};
+    }
+
+    // forward_post.hlsl's passes, as the GPU device draws them, as a frame graph: depth of
+    // field's, whose result the rest read for the world; with auto exposure the luminance passes,
+    // then glow's levels, each from the one before, then the tonemap pass from the world's
+    // texture over the frame's target. The world, the frame, the depth buffer and auto exposure's
+    // textures are imported; depth of field's and glow's are transient, so those whose uses
+    // don't overlap share one. Their uniforms are added to the frame's.
+    // Compiles graph, gives its transient resources textures from the pool (their views in
+    // bound, by resource, where its imported ones' already are), runs it and adds it to the
+    // frame's report. False, logged, where it couldn't run.
+    bool run_graph(const detail::FrameGraph& graph, std::vector<WGPUTextureView>& bound,
+                   std::string_view what, std::vector<WGPUTexture>* textures = nullptr) {
+        Result<detail::CompiledGraph> compiled = graph.compile();
+        if (!compiled) {
+            log::error("compiling a frame graph failed",
+                       {{"graph", std::string(what)}, {"error", compiled.error().message}});
+            return false;
+        }
+        Result<std::vector<GpuTexture>> handles = transient_pool_.acquire(
+            compiled.value(),
+            [this](const detail::GraphShape& shape) -> Result<GpuTexture> {
+                WGPUTextureDescriptor info = WGPU_TEXTURE_DESCRIPTOR_INIT;
+                // Copied from and into too: SSR copies its levels into textures with mipmaps,
+                // and compositor effects copy the world into their screen.
+                info.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_RenderAttachment |
+                             WGPUTextureUsage_CopySrc | WGPUTextureUsage_CopyDst;
+                info.size = {.width = static_cast<std::uint32_t>((shape.key >> 24U) & 0xFFFFFFU),
+                             .height = static_cast<std::uint32_t>(shape.key & 0xFFFFFFU),
+                             .depthOrArrayLayers = 1};
+                info.format = static_cast<WGPUTextureFormat>(shape.key >> 48U);
+                WGPUTexture texture = wgpuDeviceCreateTexture(device_, &info);
+                return GpuTexture{.texture = texture,
+                                  .view = wgpuTextureCreateView(texture, nullptr),
+                                  .filter = Filter::Linear};
+            },
+            [this](const GpuTexture& texture) { pending_textures_.push_back(texture); });
+        if (!handles) {
+            log::error("making a frame graph's textures failed",
+                       {{"graph", std::string(what)}, {"error", handles.error().message}});
+            return false;
+        }
+        const std::vector<std::uint32_t>& slots = compiled.value().slots;
+        bound.resize(graph.resource_count(), nullptr);
+        if (textures != nullptr) {
+            textures->assign(graph.resource_count(), nullptr);
+        }
+        for (detail::GraphResource resource = 0; resource < bound.size(); ++resource) {
+            if (graph.is_transient(resource) && slots.at(resource) < handles.value().size()) {
+                bound.at(resource) = handles.value().at(slots.at(resource)).view;
+                if (textures != nullptr) {
+                    textures->at(resource) = handles.value().at(slots.at(resource)).texture;
+                }
+            }
+        }
+        graph.execute(compiled.value());
+        graph_report_.add(graph.report(compiled.value()));
+        graph_report_.allocated_bytes = transient_pool_.frame_bytes();
+        return true;
+    }
+
     std::vector<PostDraw> forward_draws_for(const Scene3D& scene) {
+        using detail::GraphPassKind;
+        using detail::GraphResource;
         const PostProcess& post = scene.post;
         std::vector<PostDraw> draws;
+        detail::FrameGraph graph;
+        // Each resource's view: an imported one's now, a transient one's once the pool hands
+        // them out.
+        std::vector<WGPUTextureView> bound;
+        const auto imported = [&](std::string_view name, WGPUTextureView view) {
+            const GraphResource resource = graph.import(name);
+            bound.resize(resource + 1, nullptr);
+            bound[resource] = view;
+            return resource;
+        };
+        const auto transient = [&](std::string_view name, PostSize size) {
+            const GraphResource resource = graph.transient(name, color_shape(kHdrFormat, size, 8));
+            bound.resize(resource + 1, nullptr);
+            return resource;
+        };
+        constexpr GraphResource kNoResource = std::numeric_limits<GraphResource>::max();
+        const auto view_of = [&](GraphResource resource) -> WGPUTextureView {
+            return resource == kNoResource ? nullptr : bound.at(resource);
+        };
+        const GraphResource world = imported("world", forward_targets_.world.view);
+        const GraphResource frame = imported("frame", frame_view_);
+        std::array<GraphResource, kMaxGlowLevels> glow_levels{};
+        glow_levels.fill(kNoResource);
         // The world's texture, or after depth of field its result.
-        WGPUTextureView scene_world = forward_targets_.world.view;
+        GraphResource scene_world = world;
         // A glow pass reads only its source; the tonemap pass reads glow's levels too. A
         // luminance pass after the first loads the level before from a slot of its own. Passes
         // read the measured brightness given them, or white.
         const auto add = [&](WGPUTextureView target, WGPUTextureFormat format,
                              const ForwardPostUniforms& uniforms, WGPUTextureView source,
                              bool levels, WGPUTextureView lut, WGPUTextureView measured = nullptr,
-                             WGPUTextureView depth = nullptr, WGPUTextureView world = nullptr) {
+                             WGPUTextureView depth = nullptr, WGPUTextureView dof_world = nullptr,
+                             bool from_level = false) {
             std::vector<WGPUTextureView> textures(kForwardPostTextures, white_.view);
-            const bool from_level = format == kLuminanceFormat && source != scene_world;
-            textures.front() = from_level ? scene_world : source;
+            textures.front() = from_level ? view_of(scene_world) : source;
             for (std::size_t i = 0; i < kMaxGlowLevels; ++i) {
-                if (levels && forward_targets_.glow.at(i).view != nullptr) {
-                    textures.at(1 + i) = forward_targets_.glow.at(i).view;
+                if (WGPUTextureView level = levels ? view_of(glow_levels.at(i)) : nullptr;
+                    level != nullptr) {
+                    textures.at(1 + i) = level;
                 }
             }
             textures.at(1 + kMaxGlowLevels) = lut;
@@ -7224,7 +8075,7 @@ private:
             }
             if (depth != nullptr) {
                 textures.at(kDepthSlot) = depth;
-                textures.at(kDofWorldSlot) = world;
+                textures.at(kDofWorldSlot) = dof_world;
             }
             draws.push_back({.target = target,
                              .pipeline = forward_pipeline_for(format),
@@ -7232,57 +8083,100 @@ private:
                              .uniforms = uniforms_.add(uniforms)});
         };
         if (uses_dof(post)) {
-            const auto texture = [&](DofTexture which) {
-                return which == DofTexture::World
-                           ? forward_targets_.world.view
-                           : forward_targets_.dof.at(static_cast<std::size_t>(which) - 1).view;
+            const GraphResource depth = imported("depth", depth_.view);
+            // Sized, Secondary, Half0, Half1 and Out, as DofTexture after World.
+            static constexpr std::array<std::string_view, 5> kDofNames{
+                "dof_sized", "dof_secondary", "dof_half0", "dof_half1", "dof_out"};
+            const PostSize half{.width = std::max(frame_width_ >> 1U, 1U),
+                                .height = std::max(frame_height_ >> 1U, 1U)};
+            std::array<GraphResource, 5> dof{};
+            for (std::size_t i = 0; i < dof.size(); ++i) {
+                dof.at(i) = transient(kDofNames.at(i), i == 2 || i == 3
+                                                           ? half
+                                                           : PostSize{.width = frame_width_,
+                                                                      .height = frame_height_});
+            }
+            const auto resource = [&](DofTexture which) {
+                return which == DofTexture::World ? world
+                                                  : dof.at(static_cast<std::size_t>(which) - 1);
             };
             // With FSR 2 the depth buffer is at its render size.
-            const PostSize depth = uses_fsr2(scene)
-                                       ? PostSize{.width = scene_width_, .height = scene_height_}
-                                       : PostSize{};
+            const PostSize depth_size =
+                uses_fsr2(scene) ? PostSize{.width = scene_width_, .height = scene_height_}
+                                 : PostSize{};
             for (const DofStep& step : dof_plan(post, frame_width_, frame_height_)) {
-                add(texture(step.target), kHdrFormat,
-                    dof_uniforms(post, step, scene.projection, depth), texture(step.source), false,
-                    white_.view, nullptr, depth_.view, forward_targets_.world.view);
+                const GraphResource target = resource(step.target);
+                const GraphResource source = resource(step.source);
+                const ForwardPostUniforms uniforms =
+                    dof_uniforms(post, step, scene.projection, depth_size);
+                graph.add_pass({.name = "dof",
+                                .kind = GraphPassKind::Render,
+                                .reads = {source, depth, world},
+                                .writes = {target}},
+                               [&, uniforms, target, source](const detail::GraphContext&) {
+                                   add(view_of(target), kHdrFormat, uniforms, view_of(source),
+                                       false, white_.view, nullptr, depth_.view,
+                                       forward_targets_.world.view);
+                               });
             }
-            scene_world = texture(DofTexture::Out);
+            scene_world = resource(DofTexture::Out);
         }
-        WGPUTextureView brightness = nullptr;
-        if (post.auto_exposure) {
-            // As Godot's Luminance::luminance_reduction: the last pass moves from the last
-            // frame's brightness, then the brightness texture and the last level swap.
+        GraphResource brightness = kNoResource;
+        // As Godot's Luminance::luminance_reduction: the last pass moves from the last frame's
+        // brightness, then the brightness texture and the last level swap.
+        const bool luminance = post.auto_exposure && !forward_targets_.luminance.empty();
+        if (luminance) {
             const bool set = !forward_targets_.measured ||
                              forward_targets_.version != post.auto_exposure_version;
-            std::vector<GpuTexture>& levels = forward_targets_.luminance;
+            const std::vector<GpuTexture>& levels = forward_targets_.luminance;
             const std::vector<PostSize> plan = luminance_plan(frame_width_, frame_height_);
-            PostSize source{.width = frame_width_, .height = frame_height_};
+            const GraphResource last = imported("brightness", forward_targets_.brightness.view);
+            PostSize source_size{.width = frame_width_, .height = frame_height_};
+            GraphResource source = scene_world;
             for (std::size_t i = 0; i < levels.size(); ++i) {
                 ForwardPass kind = i == 0 ? ForwardPass::LuminanceFirst : ForwardPass::Luminance;
                 if (i > 0 && i + 1 == levels.size() && !set) {
                     kind = ForwardPass::LuminanceFinal;
                 }
-                add(levels.at(i).view, kLuminanceFormat,
-                    luminance_uniforms(post, kind, source, plan.at(i), i + 1 == levels.size()),
-                    i == 0 ? scene_world : levels.at(i - 1).view, false, white_.view,
-                    forward_targets_.brightness.view);
-                source = plan.at(i);
+                const GraphResource level = imported("luminance", levels.at(i).view);
+                const ForwardPostUniforms uniforms =
+                    luminance_uniforms(post, kind, source_size, plan.at(i), i + 1 == levels.size());
+                graph.add_pass({.name = "luminance",
+                                .kind = GraphPassKind::Render,
+                                .reads = {source, last},
+                                .writes = {level}},
+                               [&, uniforms, level, source, last, i](const detail::GraphContext&) {
+                                   add(view_of(level), kLuminanceFormat, uniforms, view_of(source),
+                                       false, white_.view, view_of(last), nullptr, nullptr, i > 0);
+                               });
+                source_size = plan.at(i);
+                source = level;
             }
-            std::swap(forward_targets_.brightness, levels.back());
-            forward_targets_.measured = true;
-            forward_targets_.version = post.auto_exposure_version;
-            brightness = forward_targets_.brightness.view;
+            // The last level holds the brightness once the passes run.
+            brightness = source;
         }
         if (post.glow) {
             const GlowPlan plan = forward_glow_plan(post, frame_width_, frame_height_);
             for (std::size_t i = 0; i < plan.count; ++i) {
                 const PostSize size = plan.sizes.at(i);
-                add(forward_targets_.glow.at(i).view, kHdrFormat,
-                    forward_post_uniforms(post,
-                                          i == 0 ? ForwardPass::GlowFirst : ForwardPass::GlowNext,
-                                          size.width, size.height, frame_width_, frame_height_),
-                    i == 0 ? scene_world : forward_targets_.glow.at(i - 1).view, false, white_.view,
-                    brightness);
+                glow_levels.at(i) = transient("glow", size);
+                const GraphResource source = i == 0 ? scene_world : glow_levels.at(i - 1);
+                const GraphResource target = glow_levels.at(i);
+                std::vector<GraphResource> reads{source};
+                if (brightness != kNoResource) {
+                    reads.push_back(brightness);
+                }
+                const ForwardPostUniforms uniforms = forward_post_uniforms(
+                    post, i == 0 ? ForwardPass::GlowFirst : ForwardPass::GlowNext, size.width,
+                    size.height, frame_width_, frame_height_);
+                graph.add_pass({.name = "glow",
+                                .kind = GraphPassKind::Render,
+                                .reads = std::move(reads),
+                                .writes = {target}},
+                               [&, uniforms, source, target](const detail::GraphContext&) {
+                                   add(view_of(target), kHdrFormat, uniforms, view_of(source),
+                                       false, white_.view, view_of(brightness));
+                               });
             }
         }
         WGPUTextureView lut = white_.view;
@@ -7292,10 +8186,36 @@ private:
             lut = found.gpu.view;
             lut_desc = found.desc;
         }
-        add(frame_view_, frame_format_,
-            forward_post_uniforms(post, ForwardPass::Tonemap, frame_width_, frame_height_,
-                                  frame_width_, frame_height_, lut_desc.width, lut_desc.height),
-            scene_world, post.glow, lut, brightness);
+        {
+            std::vector<GraphResource> reads{scene_world};
+            for (const GraphResource level : glow_levels) {
+                if (level != kNoResource) {
+                    reads.push_back(level);
+                }
+            }
+            if (brightness != kNoResource) {
+                reads.push_back(brightness);
+            }
+            const ForwardPostUniforms uniforms =
+                forward_post_uniforms(post, ForwardPass::Tonemap, frame_width_, frame_height_,
+                                      frame_width_, frame_height_, lut_desc.width, lut_desc.height);
+            graph.add_pass({.name = "tonemap",
+                            .kind = GraphPassKind::Render,
+                            .reads = std::move(reads),
+                            .writes = {frame}},
+                           [&, uniforms](const detail::GraphContext&) {
+                               add(frame_view_, frame_format_, uniforms, view_of(scene_world),
+                                   post.glow, lut, view_of(brightness));
+                           });
+        }
+        if (!run_graph(graph, bound, "Forward+'s post passes")) {
+            return draws;
+        }
+        if (luminance) {
+            std::swap(forward_targets_.brightness, forward_targets_.luminance.back());
+            forward_targets_.measured = true;
+            forward_targets_.version = post.auto_exposure_version;
+        }
         return draws;
     }
 
@@ -7358,9 +8278,11 @@ private:
     }
 
     // post.hlsl's passes, as the GPU device draws them: glow's filter, downsampling and
-    // upsampling through its four textures, then the post pass from the meshes' texture over the
-    // frame's target. Their uniforms are added to the frame's.
+    // upsampling, then the post pass from the meshes' texture over the frame's target, as a frame
+    // graph whose pool hands out glow's textures. Their uniforms are added to the frame's.
     std::vector<PostDraw> post_draws_for(const PostProcess& post) {
+        using detail::GraphPassKind;
+        using detail::GraphResource;
         std::vector<PostDraw> draws;
         const auto add = [&](WGPUTextureView target, WGPUTextureFormat format,
                              const PostUniforms& uniforms,
@@ -7370,20 +8292,47 @@ private:
                              .textures = {textures.begin(), textures.end()},
                              .uniforms = uniforms_.add(uniforms)});
         };
+        detail::FrameGraph graph;
+        std::vector<WGPUTextureView> bound;
+        const GraphResource world = graph.import("world");
+        const GraphResource frame = graph.import("frame");
         const std::array<PostSize, kGlowLevels> sizes = glow_sizes(frame_width_, frame_height_);
-        if (post.glow) {
-            for (std::size_t i = 0; i < kGlowLevels; ++i) {
-                add(post_targets_.glow.at(i).view, kTextureFormat,
-                    post_uniforms(post, i == 0 ? PostPass::GlowFilter : PostPass::GlowDownsample,
-                                  sizes.at(i).width, sizes.at(i).height),
-                    {i == 0 ? post_targets_.world.view : post_targets_.glow.at(i - 1).view,
-                     white_.view, white_.view});
+        // Each level is drawn on the way down and again on the way up, each time a resource of its
+        // own, so those whose uses don't overlap share a texture.
+        const auto level = [&](std::size_t i, const char* way) {
+            return graph.transient(std::string("glow ") + way + " " + std::to_string(i),
+                                   color_shape(kTextureFormat, sizes.at(i), 4));
+        };
+        const auto glow_pass = [&](PostPass kind, GraphResource from, std::size_t to,
+                                   GraphResource into) {
+            const char* name = "glow upsample";
+            if (kind == PostPass::GlowFilter) {
+                name = "glow filter";
+            } else if (kind == PostPass::GlowDownsample) {
+                name = "glow downsample";
             }
+            graph.add_pass(
+                {.name = name, .kind = GraphPassKind::Render, .reads = {from}, .writes = {into}},
+                [&, kind, from, to, into](const detail::GraphContext&) {
+                    add(bound.at(into), kTextureFormat,
+                        post_uniforms(post, kind, sizes.at(to).width, sizes.at(to).height),
+                        {bound.at(from), white_.view, white_.view});
+                });
+        };
+        GraphResource glowed = world;
+        if (post.glow) {
+            std::array<GraphResource, kGlowLevels> down{};
+            down[0] = level(0, "down");
+            glow_pass(PostPass::GlowFilter, world, 0, down[0]);
+            for (std::size_t i = 1; i < kGlowLevels; ++i) {
+                down.at(i) = level(i, "down");
+                glow_pass(PostPass::GlowDownsample, down.at(i - 1), i, down.at(i));
+            }
+            glowed = down.back();
             for (std::size_t i = kGlowLevels - 1; i-- > 0;) {
-                add(post_targets_.glow.at(i).view, kTextureFormat,
-                    post_uniforms(post, PostPass::GlowUpsample, sizes.at(i).width,
-                                  sizes.at(i).height),
-                    {post_targets_.glow.at(i + 1).view, white_.view, white_.view});
+                const GraphResource up = level(i, "up");
+                glow_pass(PostPass::GlowUpsample, glowed, i, up);
+                glowed = up;
             }
         }
         WGPUTextureView lut = white_.view;
@@ -7393,10 +8342,24 @@ private:
             lut = found.gpu.view;
             lut_desc = found.desc;
         }
-        add(frame_view_, frame_format_,
-            post_uniforms(post, PostPass::Post, frame_width_, frame_height_, lut_desc.width,
-                          lut_desc.height),
-            {post_targets_.world.view, post.glow ? post_targets_.glow[0].view : white_.view, lut});
+        std::vector<GraphResource> reads{world};
+        if (post.glow) {
+            reads.push_back(glowed);
+        }
+        graph.add_pass({.name = "post",
+                        .kind = GraphPassKind::Render,
+                        .reads = std::move(reads),
+                        .writes = {frame}},
+                       [&](const detail::GraphContext&) {
+                           add(frame_view_, frame_format_,
+                               post_uniforms(post, PostPass::Post, frame_width_, frame_height_,
+                                             lut_desc.width, lut_desc.height),
+                               {bound.at(world), post.glow ? bound.at(glowed) : white_.view, lut});
+                       });
+        bound.assign(graph.resource_count(), nullptr);
+        bound.at(world) = post_targets_.world.view;
+        bound.at(frame) = frame_view_;
+        run_graph(graph, bound, "post-processing");
         return draws;
     }
 
@@ -7582,6 +8545,9 @@ private:
                      std::uint32_t height, bool drawn) {
         in_frame_ = true;
         frame_ = frame;
+        graph_report_ = {};
+        transient_pool_.next_frame(
+            [this](const GpuTexture& texture) { pending_textures_.push_back(texture); });
         frame_view_ = view;
         frame_width_ = width;
         frame_height_ = height;
@@ -7698,6 +8664,10 @@ private:
     static constexpr std::size_t kSdfgiVoxelizeModule = kSdfgiModule + 1;
     static constexpr std::size_t kSdfgiGatherVertexModule = kSdfgiVoxelizeModule + 1;
     static constexpr std::size_t kSdfgiGatherFragmentModule = kSdfgiGatherVertexModule + 1;
+    static constexpr std::size_t kSkinModule = kSdfgiGatherFragmentModule + 1;
+    static constexpr std::size_t kCullModule = kSkinModule + 1;
+    static constexpr std::size_t kMeshInstancedVertexModule = kCullModule + 1;
+    static constexpr std::size_t kMeshMotionInstancedVertexModule = kMeshInstancedVertexModule + 1;
     static constexpr std::size_t kSpriteLayout = 0;
     static constexpr std::size_t kMaterialLayout = 1;
     static constexpr std::size_t kProcessLayout = 2;
@@ -7730,6 +8700,9 @@ private:
     static constexpr std::size_t kSdfgiLayout = kStages3DLayout + 1;
     static constexpr std::size_t kSdfgiVoxelizeLayout = kSdfgiLayout + 1;
     static constexpr std::size_t kSdfgiGatherLayout = kSdfgiVoxelizeLayout + 1;
+    static constexpr std::size_t kSkinLayout = kSdfgiGatherLayout + 1;
+    static constexpr std::size_t kCullLayout = kSkinLayout + 1;
+    static constexpr std::size_t kCompositorLayout = kCullLayout + 1;
 
     WGPUInstance instance_;
     WGPUDevice device_;
@@ -7742,7 +8715,7 @@ private:
     bool can_wait_ = false; // Asyncify lets read_texture wait for the GPU
     // Which formats the GPU samples, by TextureFormat.
     std::array<bool, 4> sampled_{true, false, false, true};
-    std::array<WGPUShaderModule, kSdfgiGatherFragmentModule + 1> modules_{};
+    std::array<WGPUShaderModule, kMeshMotionInstancedVertexModule + 1> modules_{};
     std::vector<Pipeline> pipelines_;
     std::unordered_map<ShaderId, GameShader> game_shaders_;
     std::uint32_t next_shader_ = 1;
@@ -7770,6 +8743,7 @@ private:
     WGPUBindGroupLayout shadow_game_vertex_layout_ = nullptr;
     WGPUBindGroupLayout shadow_game_fragment_layout_ = nullptr;
     WGPUBindGroupLayout mesh_clusters_layout_ = nullptr;
+    WGPUBindGroupLayout mesh_instances_layout_ = nullptr;
     WGPUBindGroupLayout shadow_vertex_layout_ = nullptr;
     WGPUBindGroupLayout shadow_fragment_layout_ = nullptr;
     WGPUBindGroupLayout post_textures_layout_ = nullptr;
@@ -7814,7 +8788,14 @@ private:
     WGPUBindGroupLayout sdfgi_gather_buffers_layout_ = nullptr;
     WGPUBindGroupLayout sdfgi_gather_textures_layout_ = nullptr;
     WGPUBindGroupLayout sdfgi_gather_uniforms_layout_ = nullptr;
-    std::array<WGPUPipelineLayout, kSdfgiGatherLayout + 1> pipeline_layouts_{};
+    WGPUBindGroupLayout skin_inputs_layout_ = nullptr;
+    WGPUBindGroupLayout skin_output_layout_ = nullptr;
+    WGPUBindGroupLayout skin_uniforms_layout_ = nullptr;
+    WGPUBindGroupLayout cull_inputs_layout_ = nullptr;
+    WGPUBindGroupLayout cull_uniforms_layout_ = nullptr;
+    WGPUBindGroupLayout compositor_textures_layout_ = nullptr;
+    WGPUBindGroupLayout compositor_uniforms_layout_ = nullptr;
+    std::array<WGPUPipelineLayout, kCompositorLayout + 1> pipeline_layouts_{};
     std::array<WGPUSampler, 4> samplers_{}; // by sampler_index
     GpuTexture white_;
     std::unordered_map<TextureId, Texture> textures_;
@@ -7858,6 +8839,9 @@ private:
     WGPUBindGroup sdfgi_uniforms_group_ = nullptr;
     WGPUBindGroup sdfgi_voxelize_uniforms_group_ = nullptr;
     WGPUBindGroup sdfgi_gather_uniforms_group_ = nullptr;
+    WGPUBindGroup skin_uniforms_group_ = nullptr;
+    WGPUBindGroup cull_uniforms_group_ = nullptr;
+    WGPUBindGroup compositor_uniforms_group_ = nullptr;
     std::unordered_map<ParticlesId, ParticleSystem> particle_systems_;
     std::uint32_t next_particles_ = 1;
     std::vector<WGPUBuffer> pending_buffers_;
@@ -7905,6 +8889,15 @@ private:
         WGPURenderPipeline pipeline = nullptr;
     };
     std::vector<GameShadowPipeline> game_shadow_pipelines_;
+    // A compositor effect's pipeline, by its shader and the world's format.
+    struct EffectPipeline {
+        ShaderId shader{};
+        WGPUTextureFormat format = WGPUTextureFormat_Undefined;
+        WGPURenderPipeline pipeline = nullptr;
+    };
+    std::vector<EffectPipeline> effect_pipelines_;
+    // The frame's compositor effects' uniforms, by the effect's place in Scene3D::effects.
+    std::vector<std::uint32_t> effect_uniforms_at_;
     // A spatial shader's shadow passes' texture groups, by the textures they bind.
     std::unordered_map<TextureBindings, WGPUBindGroup, BindingsHash> game_shadow_groups_;
     std::vector<std::pair<WGPUTextureFormat, WGPURenderPipeline>> post_pipelines_;
@@ -7912,6 +8905,10 @@ private:
     PostTargets post_targets_;
     std::vector<std::pair<WGPUTextureFormat, WGPURenderPipeline>> forward_pipelines_;
     ForwardTargets forward_targets_;
+    // The textures the frame graph's transient resources take, by shape, from frame to frame, and
+    // what the last frame's graph did.
+    detail::TransientPool<GpuTexture> transient_pool_;
+    detail::FrameGraphReport graph_report_;
     // The normal-roughness prepass's normals and depth at the frame's size, which SSAO and SSR
     // read.
     struct PrepassTargets {
@@ -7920,18 +8917,9 @@ private:
         std::uint32_t width = 0;
         std::uint32_t height = 0;
     };
-    // SSAO's textures for the frame's size and settings: those ssao_plan sizes (none for those it
-    // doesn't draw).
-    struct SsaoTargets {
-        std::array<GpuTexture, kSsaoTextures> textures{};
-        std::uint32_t width = 0;
-        std::uint32_t height = 0;
-        SsaoSettings settings;
-    };
-    // SSR's: those ssr_plan sizes, and Hi-Z's and the reflections' levels copied into a texture
-    // with mipmaps each.
+    // SSR's textures kept for the frame's size and settings: Hi-Z's and the reflections' levels
+    // copied into a texture with mipmaps each (the rest are the frame graph's).
     struct SsrTargets {
-        std::array<GpuTexture, kSsrTextures> textures{};
         GpuTexture hiz_mips;
         GpuTexture color_mips;
         std::uint32_t width = 0;
@@ -7941,7 +8929,6 @@ private:
     std::array<WGPURenderPipeline, 3> normal_pipelines_{}; // by CullMode
     PrepassTargets prepass_;
     std::vector<std::pair<WGPUTextureFormat, WGPURenderPipeline>> ssao_pipelines_;
-    SsaoTargets ssao_targets_;
     std::vector<std::pair<WGPUTextureFormat, WGPURenderPipeline>> ssr_pipelines_;
     WGPURenderPipeline ssr_trace_pipeline_ = nullptr;
     SsrTargets ssr_targets_;
@@ -7949,18 +8936,10 @@ private:
     std::vector<std::pair<TextureId, SsrHistory>> ssr_histories_;
     std::array<WGPURenderPipeline, 3> motion_pipelines_{}; // TAA's prepass's, by CullMode
     WGPURenderPipeline taa_pipeline_ = nullptr;
-    // Subsurface scattering's blur across, its blur down adding to the world (made for the
-    // world's format, kHdrFormat in Forward+), and its two textures of half floats at the
-    // frame's size: the subsurface pass's light and the blur across.
+    // Subsurface scattering's blur across and its blur down adding to the world (made for the
+    // world's format, kHdrFormat in Forward+); its textures are the frame graph's.
     WGPURenderPipeline subsurface_pipeline_ = nullptr;
     WGPURenderPipeline subsurface_add_pipeline_ = nullptr;
-    struct SubsurfaceTargets {
-        GpuTexture light;
-        GpuTexture across;
-        std::uint32_t width = 0;
-        std::uint32_t height = 0;
-    };
-    SubsurfaceTargets subsurface_;
     // Each target's frames before for TAA, by the target.
     std::vector<std::pair<TextureId, TaaHistory>> taa_histories_;
     // FSR 2's pipelines by Fsr2Pass, its reconstruct pass's, the textures a frame's passes draw
@@ -8011,6 +8990,24 @@ private:
     StorageBuffer sdfgi_items_;
     std::optional<SdfgiWork> sdfgi_work_;
     bool sdfgi_failure_logged_ = false;
+    // Skins, the skin_mesh calls waiting for the next frame, their joints and shape weights,
+    // the buffer those go in and the skinning pipeline.
+    std::unordered_map<SkinId, WebSkin> skins_;
+    std::uint32_t next_skin_ = 1;
+    std::vector<SkinJob> skin_jobs_;
+    std::vector<std::uint32_t> skin_poses_;
+    WGPUBuffer skin_poses_buffer_ = nullptr;
+    std::uint64_t skin_poses_capacity_ = 0;
+    WGPUComputePipeline skin_pipeline_ = nullptr;
+    // Culling the camera's mesh draws and drawing runs of them as instances (prepare_cull,
+    // encode_cull): the pipeline, the draws' records, runs and order, what mesh_cull.hlsl writes
+    // (the runs' indirect arguments, the draws' flags and the runs' draws in view), each draw's
+    // Instance, and the group binding the last two for the mesh passes that aren't clustered.
+    WGPUComputePipeline cull_pipeline_ = nullptr;
+    StorageBuffer cull_records_;
+    StorageBuffer cull_outputs_;
+    StorageBuffer mesh_instances_;
+    WGPUBindGroup mesh_instances_group_ = nullptr;
     // The most a storage binding and a buffer may hold, as the device was made with.
     std::uint64_t max_storage_binding_ = 128U << 20U;
     std::uint64_t max_buffer_ = 256U << 20U;

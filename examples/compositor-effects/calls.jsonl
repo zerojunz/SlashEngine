@@ -1,0 +1,6 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture","params":{"points":[[58,44],[2,2],[80,10]],"path":"shots/look.png"}}
+{"jsonrpc":"2.0","id":3,"method":"component.set","params":{"id":"environment","components":{"WorldEnvironment":{"compositor":""}}}}
+{"jsonrpc":"2.0","id":4,"method":"frame.capture","params":{"points":[[58,44],[2,2],[80,10]],"path":"shots/plain.png"}}
+{"jsonrpc":"2.0","id":5,"method":"component.set","params":{"id":"camera","components":{"Camera3D":{"compositor":"night.pipeline.json"}}}}
+{"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"points":[[58,44],[2,2],[80,10]],"path":"shots/night.png"}}

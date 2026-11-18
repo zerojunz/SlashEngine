@@ -1121,14 +1121,24 @@ launch rows and the after-launch features above.
   and rounding in whole numbers, and run in compute shaders on Vulkan, Metal, Direct3D 12 and
   WebGPU
 - GPU-driven rendering, after Unity 7's Graphics Kernel (2026-11-17, queued after the SDFGI
-  port): skinning on the GPU, culling and LOD picks in compute with indirect multi-draws, and
-  a frame graph over every device's passes (what each reads and writes, passes nothing uses
+  port): skinning on the GPU (done: skin.hlsl on Vulkan, Metal and WebGPU, its CPU twin
+  elsewhere), culling in compute with indirect draws (done: mesh_cull.hlsl on Vulkan, Metal,
+  Direct3D 12 and WebGPU, its CPU twin on the software device), instanced multi-draws (done:
+  runs of one mesh and material drawn as instances of one indirect draw, culled per instance),
+  LOD picks in compute (left for when the scene stays on the GPU between frames: while the CPU
+  hands every draw over each frame, its pick is a few multiplies, and the order already keeps a
+  LOD's copies in one run), and
+  a frame graph over the devices' passes (done: what each reads and writes, passes nothing uses
   left out, transient textures sharing memory, independent compute work merged so it shares
-  barriers)
+  barriers, for the post-processing, SSAO, SSR and subsurface passes on the GPU and WebGPU
+  devices; FSR's and the mesh passes' own textures stay theirs for now)
 - Scriptable pipelines on that frame graph, as Godot 4.3's `Compositor` and `CompositorEffect`
   (and Unity's SRP): a `.pipeline.json` file an agent edits that turns built-in passes on and
   off, reorders them and adds its own compute and fragment passes in the game's HLSL at named
-  points, with C++ callbacks for what JSON can't say; no scripting language
+  points, with C++ callbacks for what JSON can't say; no scripting language (done: passes
+  turned off over the environment's, fragment passes in the game's HLSL at Godot's five
+  `effect_callback_type` points reading the screen, depth and the prepass's normals, and C++
+  callbacks by name; built-in passes keep Godot's order, and compute effects wait for a use)
 - Digital humans in the style of MetaHuman. Research note:
   [digital-humans.md](reference/digital-humans.md). Its parts are done (blend shapes, hair and eye
   shading, subsurface scattering and transmittance, face capture and alpha hash), and the

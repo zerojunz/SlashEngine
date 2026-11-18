@@ -471,6 +471,16 @@ struct Stats {
     std::uint64_t triangles = 0;     // triangles drawn
     std::uint32_t textures = 0;      // textures alive
     std::uint64_t texture_bytes = 0; // what they take on the GPU (texture_bytes)
+    // The last frame's graph of passes, as Unity's render graph and Godot's RenderingDevice
+    // graph keep one: the passes it ran and left out, the device passes they were recorded in
+    // (compute passes next to each other share one), and its transient textures' bytes, each
+    // alone and as they share allocations whose uses don't overlap. Zero where a device keeps
+    // none.
+    std::uint32_t graph_passes = 0;
+    std::uint32_t graph_culled = 0;
+    std::uint32_t graph_groups = 0;
+    std::uint64_t transient_bytes = 0;
+    std::uint64_t transient_allocated_bytes = 0;
 };
 
 // The objects of the native API a GPU device draws with, each unretained, as Godot's
@@ -639,6 +649,28 @@ public:
                                                    std::span<const Vertex3D> vertices) = 0;
     // A mesh in use by the frame being built goes once the frame is sent.
     virtual void destroy_mesh(MeshId mesh) = 0;
+
+    // Whether it moves skinned meshes' vertices on the GPU (create_skin and skin_mesh), as
+    // Godot's skeleton compute shader does: the GPU device on Vulkan and Metal and the WebGPU
+    // device. Elsewhere scene3d skins on the CPU and calls update_mesh.
+    [[nodiscard]] virtual bool gpu_skinning() const { return false; }
+    // Keeps what a skin moves on the device: its rest vertices, weights and blend shapes.
+    [[nodiscard]] virtual Result<SkinId> create_skin(const SkinDesc& /*desc*/) {
+        return Error{ErrorCode::NotFound, "this device skins on the CPU"};
+    }
+    // Replaces mesh's vertices, which are as many as the skin's, with the skin's rest vertices
+    // moved by its blend shapes at shape_weights (those of 0 take no part), then by joints, as
+    // scene3d's blend_vertices and skin_vertices do; on the GPU before the next frame draws, as
+    // update_mesh would, so TAA sees how far they moved. Not during a frame. low and high bound
+    // the moved vertices, as set_mesh_bounds.
+    [[nodiscard]] virtual Result<void> skin_mesh(MeshId /*mesh*/, SkinId /*skin*/,
+                                                 std::span<const SkinJoint> /*joints*/,
+                                                 std::span<const float> /*shape_weights*/,
+                                                 std::array<float, 3> /*low*/,
+                                                 std::array<float, 3> /*high*/) {
+        return Error{ErrorCode::NotFound, "this device skins on the CPU"};
+    }
+    virtual void destroy_skin(SkinId /*skin*/) {}
 
     // Starts a frame and clears its target. Returns false when there is nothing to draw to,
     // such as a minimized window: draws are still checked but dropped, and end_frame ends it.

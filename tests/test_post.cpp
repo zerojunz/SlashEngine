@@ -308,3 +308,28 @@ TEST_CASE("devices check post-processing settings") {
         device->destroy_texture(target.value());
     }
 }
+
+TEST_CASE("the GPU device glows as a frame graph whose textures the pool keeps") {
+    auto gpu = slash::test::gpu_device();
+    if (gpu == nullptr) {
+        return;
+    }
+    CAPTURE(render::backend_name(gpu->backend()));
+    const PostProcess glowing{
+        .glow = true, .glow_intensity = 1.0F, .glow_hdr_threshold = 0.5F, .glow_hdr_scale = 0.1F};
+    const std::array<float, 4> white{1.0F, 1.0F, 1.0F, 1.0F};
+    static_cast<void>(draw_post(*gpu, glowing, white));
+    // Glow's filter, three downsamples and three upsamples, then the post pass.
+    const render::Stats stats = gpu->stats();
+    CHECK(stats.graph_passes == 8);
+    CHECK(stats.graph_culled == 0);
+    CHECK(stats.transient_bytes > 0);
+    // Levels whose uses don't overlap share a texture.
+    CHECK(stats.transient_allocated_bytes < stats.transient_bytes);
+    // A second frame takes the same textures from the pool.
+    static_cast<void>(draw_post(*gpu, glowing, white));
+    CHECK(gpu->stats().transient_allocated_bytes == stats.transient_allocated_bytes);
+    // Without glow only the post pass runs.
+    static_cast<void>(draw_post(*gpu, {.adjustments = true}, white));
+    CHECK(gpu->stats().graph_passes == 1);
+}

@@ -85,6 +85,7 @@ add_library(slash_scene3d
     src/flesh.cpp
     src/cloth.cpp
     src/ragdoll.cpp
+    src/pipeline.cpp
     src/primitive.cpp
     src/recipe.cpp
     src/scene3d.cpp

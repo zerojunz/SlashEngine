@@ -1,6 +1,7 @@
 #include "gl_device.hpp"
 
 #include "checks.hpp"
+#include "compositor.hpp"
 #include "cpu_particles.hpp"
 #include "gpu_device.hpp"
 #include "material_shaders.hpp"
@@ -44,6 +45,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -750,6 +752,13 @@ public:
         if (auto checked = check_compiled_shader(shader, Backend::OpenGl); !checked) {
             return checked.error();
         }
+        if (shader.type == ShaderType::Compositor) {
+            // OpenGL draws Compatibility, which runs no compositor effects (as Godot's), so the
+            // shader is only kept by its ID.
+            const auto id = static_cast<ShaderId>(next_shader_++);
+            compositor_shaders_.insert(id);
+            return id;
+        }
         make_current();
         // A spatial shader's fragment stage goes with its vertex stage, or the mesh shader's when
         // it has no vertex(); its shadows draw with its own stages where it runs them there.
@@ -784,6 +793,9 @@ public:
     }
 
     void destroy_shader(ShaderId shader) override {
+        if (compositor_shaders_.erase(shader) != 0) {
+            return;
+        }
         auto& programs = spatial_programs_.contains(shader) ? spatial_programs_ : game_programs_;
         const auto it = programs.find(shader);
         if (it == programs.end()) {
@@ -1027,6 +1039,12 @@ public:
             }
             if (auto checked =
                     check_sky(*frame.scene, [&](TextureId id) { return textures_.contains(id); });
+                !checked) {
+                return checked.error();
+            }
+            if (auto checked = check_effects(
+                    *frame.scene, [&](ShaderId id) { return compositor_shaders_.contains(id); },
+                    [&](TextureId id) { return textures_.contains(id); });
                 !checked) {
                 return checked.error();
             }
@@ -2721,6 +2739,7 @@ private:
     std::vector<Texture> pending_release_;
     std::unordered_map<ShaderId, GLuint> game_programs_;
     std::unordered_map<ShaderId, GLuint> spatial_programs_; // a game's spatial shaders'
+    std::unordered_set<ShaderId> compositor_shaders_;       // kept, never drawn
     // A game's spatial shaders' shadow programs, where they draw their shadows.
     std::unordered_map<ShaderId, GLuint> spatial_shadow_programs_;
     std::uint32_t next_shader_ = 1;

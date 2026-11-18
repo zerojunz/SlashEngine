@@ -1,12 +1,14 @@
 #include "gpu_device.hpp"
 
 #include "checks.hpp"
+#include "compositor.hpp"
 #include "decal.hpp"
 #include "forward_post.hpp"
 #include "forward_post_shaders.hpp"
 #include "frame_generation.hpp"
 #include "frame_generation_draw_shaders.hpp"
 #include "frame_generation_shaders.hpp"
+#include "frame_graph.hpp"
 #include "fsr2.hpp"
 #include "fsr2_accumulate_shaders.hpp"
 #include "fsr2_depth_clip_shaders.hpp"
@@ -29,6 +31,10 @@
 #include "hlsl_compiler.hpp"
 #include "material_shaders.hpp"
 #include "mesh_clustered_shaders.hpp"
+#include "mesh_cull.hpp"
+#include "mesh_cull_shaders.hpp"
+#include "mesh_instanced_shaders.hpp"
+#include "mesh_motion_instanced_shaders.hpp"
 #include "mesh_motion_shaders.hpp"
 #include "mesh_normal_shaders.hpp"
 #include "mesh_shaders.hpp"
@@ -57,6 +63,8 @@
 #include "sdfgi_voxelize_shaders.hpp"
 #include "shader_code.hpp"
 #include "shadow_shaders.hpp"
+#include "skin_gpu.hpp"
+#include "skin_shaders.hpp"
 #include "sky_shaders.hpp"
 #include "sky_shading.hpp"
 #include "sprite_shaders.hpp"
@@ -707,7 +715,6 @@ public:
         for (const auto& [format, pipeline] : subsurface_add_pipelines_) {
             SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
         }
-        release_subsurface();
         for (SDL_GPUShader* shader : ssao_shaders_) {
             if (shader != nullptr) {
                 SDL_ReleaseGPUShader(device_, shader);
@@ -718,7 +725,6 @@ public:
                 SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
             }
         }
-        release_ssao_targets();
         for (SDL_GPUShader* shader : ssr_shaders_) {
             if (shader != nullptr) {
                 SDL_ReleaseGPUShader(device_, shader);
@@ -740,9 +746,10 @@ public:
         while (!taa_histories_.empty()) {
             forget_taa_history(taa_histories_.back().first);
         }
-        if (motion_shaders_[0] != nullptr) {
-            SDL_ReleaseGPUShader(device_, motion_shaders_[0]);
-            SDL_ReleaseGPUShader(device_, motion_shaders_[1]);
+        for (SDL_GPUShader* shader : motion_shaders_) {
+            if (shader != nullptr) {
+                SDL_ReleaseGPUShader(device_, shader);
+            }
         }
         for (SDL_GPUGraphicsPipeline* pipeline : motion_pipelines_) {
             if (pipeline != nullptr) {
@@ -766,7 +773,21 @@ public:
         while (!sdfgi_frames_.empty()) {
             forget_sdfgi_frames(sdfgi_frames_.back().first);
         }
-        for (SDL_GPUComputePipeline* pipeline : {sdfgi_pipeline_, sdfgi_voxelize_pipeline_}) {
+        for (auto& [id, skin] : skins_) {
+            release_skin(skin.buffers);
+        }
+        if (skin_poses_buffer_.buffer != nullptr) {
+            SDL_ReleaseGPUBuffer(device_, skin_poses_buffer_.buffer);
+            SDL_ReleaseGPUTransferBuffer(device_, skin_poses_buffer_.transfer);
+        }
+        for (StorageBuffer* storage : {&cull_records_, &cull_outputs_, &mesh_instances_}) {
+            if (storage->buffer != nullptr) {
+                SDL_ReleaseGPUBuffer(device_, storage->buffer);
+                SDL_ReleaseGPUTransferBuffer(device_, storage->transfer);
+            }
+        }
+        for (SDL_GPUComputePipeline* pipeline :
+             {sdfgi_pipeline_, sdfgi_voxelize_pipeline_, skin_pipeline_, cull_pipeline_}) {
             if (pipeline != nullptr) {
                 SDL_ReleaseGPUComputePipeline(device_, pipeline);
             }
@@ -893,6 +914,9 @@ public:
             SDL_ReleaseGPUSampler(device_, radiance_sampler_);
         }
         for (const auto& [id, game] : game_shaders_) {
+            for (const auto& [format, pipeline] : game.effect_pipelines) {
+                SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
+            }
             release_game_shader(game);
         }
         // What was forgotten above.
@@ -1055,6 +1079,38 @@ public:
             return std::span<const unsigned char>(
                 reinterpret_cast<const unsigned char*>(words.data()), words.size() * 4);
         };
+        if (shader.type == ShaderType::Compositor) {
+            // One triangle over the world, reading the screen, depth, normals and the params'
+            // textures, with CompositorUniforms.
+            const ShaderCode code{.vertex_spirv = bytes(shader.spirv_vertex),
+                                  .fragment_spirv = bytes(shader.spirv_fragment),
+                                  .vertex_msl = shader.msl_vertex,
+                                  .fragment_msl = shader.msl_fragment,
+                                  .hlsl = shader.hlsl};
+            auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 0);
+            if (!vertex) {
+                return vertex.error();
+            }
+            auto fragment =
+                make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code,
+                                cpu_compositor::kFirstParamBinding + kCompositorTextures, 1);
+            if (!fragment) {
+                SDL_ReleaseGPUShader(device_, vertex.value());
+                return fragment.error();
+            }
+            const auto id = static_cast<ShaderId>(next_shader_++);
+            game_shaders_[id] = {.type = ShaderType::Compositor,
+                                 .vertex = vertex.value(),
+                                 .fragment = fragment.value(),
+                                 .clustered = nullptr,
+                                 .normal = nullptr,
+                                 .motion = nullptr,
+                                 .motion_vertex = nullptr,
+                                 .shadow_vertex = nullptr,
+                                 .shadow = nullptr,
+                                 .effect_pipelines = {}};
+            return id;
+        }
         auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX,
                                       {.vertex_spirv = bytes(shader.spirv_vertex),
                                        .fragment_spirv = bytes(shader.spirv_fragment),
@@ -1077,7 +1133,16 @@ public:
             return fragment.error();
         }
         const auto id = static_cast<ShaderId>(next_shader_++);
-        game_shaders_[id] = {.vertex = vertex.value(), .fragment = fragment.value()};
+        game_shaders_[id] = GameShader{.type = ShaderType::Canvas,
+                                       .vertex = vertex.value(),
+                                       .fragment = fragment.value(),
+                                       .clustered = nullptr,
+                                       .normal = nullptr,
+                                       .motion = nullptr,
+                                       .motion_vertex = nullptr,
+                                       .shadow_vertex = nullptr,
+                                       .shadow = nullptr,
+                                       .effect_pipelines = {}};
         return id;
     }
 
@@ -1115,6 +1180,10 @@ public:
             release(pipeline.pipeline);
             return true;
         });
+        for (const auto& [format, pipeline] : it->second.effect_pipelines) {
+            release(pipeline);
+        }
+        it->second.effect_pipelines.clear();
         release_game_shader(it->second);
         game_shaders_.erase(it);
     }
@@ -1617,6 +1686,7 @@ public:
         if (auto checked = check_mesh_update(vertices, it->second.vertex_count); !checked) {
             return checked;
         }
+        std::erase_if(skin_jobs_, [&](const SkinJob& job) { return job.mesh == mesh; });
         const auto bytes = static_cast<std::uint32_t>(vertices.size_bytes());
         // The first update since a frame with TAA drew the mesh keeps the vertices it drew, for
         // the motion of the next one's: the buffers swap, and the new vertices go in the other.
@@ -1675,6 +1745,7 @@ public:
         if (it == meshes_.end()) {
             return;
         }
+        std::erase_if(skin_jobs_, [&](const SkinJob& job) { return job.mesh == mesh; });
         if (in_frame_) {
             // The frame's draws still read its buffers when it is sent.
             pending_buffers_.push_back(it->second.vertices);
@@ -1688,7 +1759,230 @@ public:
         meshes_.erase(it);
     }
 
+    // On Direct3D 12 the meshes are skinned on the CPU, as fill_particle_mesh places particles'
+    // there: SDL's device is lost writing vertex buffers in compute on WARP.
+    bool gpu_skinning() const override { return backend_ != Backend::D3D12; }
+
+    Result<SkinId> create_skin(const SkinDesc& desc) override {
+        if (!gpu_skinning()) {
+            return RenderDevice::create_skin(desc);
+        }
+        auto words = skin_words(desc);
+        if (!words) {
+            return words.error();
+        }
+        GpuSkin skin{.words = std::move(words).value()};
+        const std::array<const std::vector<std::uint32_t>*, 3> sources{
+            &skin.words.rest, &skin.words.weights, &skin.words.shapes};
+        for (std::size_t k = 0; k < sources.size(); ++k) {
+            // A skin without weights or shapes still binds a buffer of a word.
+            static const std::vector<std::uint32_t> kOne{0};
+            const std::vector<std::uint32_t>& from = sources.at(k)->empty() ? kOne : *sources.at(k);
+            auto made = make_skin_buffer(from);
+            if (!made) {
+                release_skin(skin.buffers);
+                return made.error();
+            }
+            skin.buffers.at(k) = made.value();
+        }
+        // The words stay for the poses' uniforms, but not the vertices they were uploaded from.
+        skin.words.rest = {};
+        skin.words.weights = {};
+        skin.words.shapes = {};
+        skin.has_weights = !desc.weights.empty();
+        const auto id = static_cast<SkinId>(next_skin_++);
+        skins_.emplace(id, std::move(skin));
+        return id;
+    }
+
+    Result<void> skin_mesh(MeshId mesh, SkinId skin, std::span<const SkinJoint> joints,
+                           std::span<const float> shape_weights, std::array<float, 3> low,
+                           std::array<float, 3> high) override {
+        if (!gpu_skinning()) {
+            return RenderDevice::skin_mesh(mesh, skin, joints, shape_weights, low, high);
+        }
+        if (in_frame_) {
+            return frame_in_progress("skin_mesh");
+        }
+        const auto found_skin = skins_.find(skin);
+        if (found_skin == skins_.end()) {
+            return make_error(ErrorCode::NotFound, "no such skin");
+        }
+        const auto it = meshes_.find(mesh);
+        if (it == meshes_.end()) {
+            return unknown_mesh(mesh);
+        }
+        Mesh& found = it->second;
+        const GpuSkin& kept = found_skin->second;
+        if (found.vertex_count != kept.words.vertex_count) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a skin of " + std::to_string(kept.words.vertex_count) +
+                                  " vertices can't move a mesh of " +
+                                  std::to_string(found.vertex_count));
+        }
+        // The vertices are written where update_mesh writes them, into a buffer the shader can
+        // write, the ones drawn before kept for TAA as update_mesh keeps them.
+        found.version = ++mesh_versions_;
+        const auto bytes = static_cast<std::uint32_t>(found.vertex_count * sizeof(Vertex3D));
+        if (!found.moved) {
+            if (found.previous == nullptr) {
+                found.previous = make_mesh_vertices(bytes);
+                found.previous_storage = true;
+                if (found.previous == nullptr) {
+                    return sdl_error("making room for a mesh's vertices failed");
+                }
+            }
+            std::swap(found.vertices, found.previous);
+            std::swap(found.storage, found.previous_storage);
+            found.moved = true;
+        }
+        if (!found.storage) {
+            SDL_GPUBuffer* writable = make_mesh_vertices(bytes);
+            if (writable == nullptr) {
+                return sdl_error("making room for a mesh's vertices failed");
+            }
+            // SDL releases the old buffer once the frames that read it are done.
+            SDL_ReleaseGPUBuffer(device_, found.vertices);
+            found.vertices = writable;
+            found.storage = true;
+        }
+        found.bounds = {.low = low, .high = high};
+        std::erase_if(skin_jobs_, [&](const SkinJob& job) { return job.mesh == mesh; });
+        SkinJob job{.mesh = mesh,
+                    .skin = skin,
+                    .uniforms = skin_pose(kept.words, joints, shape_weights, skin_poses_)};
+        // The words' weights went with their upload, so the skin says whether it has them.
+        job.uniforms.at[2] = kept.has_weights ? 1U : 0U;
+        skin_jobs_.push_back(job);
+        return {};
+    }
+
+    void destroy_skin(SkinId skin) override {
+        const auto it = skins_.find(skin);
+        if (it == skins_.end()) {
+            return;
+        }
+        std::erase_if(skin_jobs_, [&](const SkinJob& job) { return job.skin == skin; });
+        release_skin(it->second.buffers);
+        skins_.erase(it);
+    }
+
+    // A storage buffer holding words, uploaded once.
+    Result<SDL_GPUBuffer*> make_skin_buffer(std::span<const std::uint32_t> words) {
+        const auto bytes = static_cast<std::uint32_t>(words.size_bytes());
+        SDL_GPUBufferCreateInfo info{};
+        info.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ;
+        info.size = bytes;
+        SDL_GPUBuffer* buffer = SDL_CreateGPUBuffer(device_, &info);
+        const TransferBuffer transfer(device_, SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, bytes);
+        void* mapped = buffer == nullptr || transfer.get() == nullptr
+                           ? nullptr
+                           : SDL_MapGPUTransferBuffer(device_, transfer.get(), false);
+        if (mapped == nullptr) {
+            if (buffer != nullptr) {
+                SDL_ReleaseGPUBuffer(device_, buffer);
+            }
+            return sdl_error("making room for a skin failed");
+        }
+        std::memcpy(mapped, words.data(), bytes);
+        SDL_UnmapGPUTransferBuffer(device_, transfer.get());
+        SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(device_);
+        if (commands == nullptr) {
+            SDL_ReleaseGPUBuffer(device_, buffer);
+            return sdl_error("uploading a skin failed");
+        }
+        SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+        const SDL_GPUTransferBufferLocation source{.transfer_buffer = transfer.get(), .offset = 0};
+        const SDL_GPUBufferRegion destination{.buffer = buffer, .offset = 0, .size = bytes};
+        SDL_UploadToGPUBuffer(copy, &source, &destination, false);
+        SDL_EndGPUCopyPass(copy);
+        if (!SDL_SubmitGPUCommandBuffer(commands)) {
+            SDL_ReleaseGPUBuffer(device_, buffer);
+            return sdl_error("uploading a skin failed");
+        }
+        return buffer;
+    }
+
+    void release_skin(std::array<SDL_GPUBuffer*, 3>& buffers) {
+        for (SDL_GPUBuffer*& buffer : buffers) {
+            if (buffer != nullptr) {
+                SDL_ReleaseGPUBuffer(device_, buffer);
+                buffer = nullptr;
+            }
+        }
+    }
+
+    // Runs the skin_mesh calls since the last frame, a dispatch each, in a command buffer of
+    // their own sent before the frame's.
+    Result<void> flush_skins() {
+        if (skin_jobs_.empty()) {
+            return {};
+        }
+        const std::vector<SkinJob> jobs = std::exchange(skin_jobs_, {});
+        std::vector<std::uint32_t> poses = std::exchange(skin_poses_, {});
+        if (skin_pipeline_ == nullptr) {
+            // The rest vertices, weights, shapes and poses; the mesh's vertices; the counts.
+            SDL_GPUComputePipelineCreateInfo info{};
+            info.entrypoint = "cs_main";
+            info.num_readonly_storage_buffers = 4;
+            info.num_readwrite_storage_buffers = 1;
+            info.num_uniform_buffers = 1;
+            info.threadcount_x = kSkinThreads;
+            info.threadcount_y = 1;
+            info.threadcount_z = 1;
+            auto made =
+                create_compute_pipeline(info, shaders::kSkinComputeSpirv, shaders::kSkinComputeMsl,
+                                        shaders::kSkinHlsl, "skinning");
+            if (!made) {
+                return made.error();
+            }
+            skin_pipeline_ = made.value();
+        }
+        SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(device_);
+        if (commands == nullptr) {
+            return sdl_error("skinning meshes failed");
+        }
+        SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+        Result<void> uploaded =
+            upload_storage(copy, skin_poses_buffer_, std::as_bytes(std::span(poses)));
+        SDL_EndGPUCopyPass(copy);
+        if (uploaded) {
+            for (const SkinJob& job : jobs) {
+                const auto mesh = meshes_.find(job.mesh);
+                const auto skin = skins_.find(job.skin);
+                if (mesh == meshes_.end() || skin == skins_.end()) {
+                    continue;
+                }
+                // Cycling gives the vertices new memory if a frame sent before still reads them.
+                SDL_GPUStorageBufferReadWriteBinding output{};
+                output.buffer = mesh->second.vertices;
+                output.cycle = true;
+                SDL_GPUComputePass* pass =
+                    SDL_BeginGPUComputePass(commands, nullptr, 0, &output, 1);
+                SDL_BindGPUComputePipeline(pass, skin_pipeline_);
+                const std::array<SDL_GPUBuffer*, 4> inputs{
+                    skin->second.buffers[0], skin->second.buffers[1], skin->second.buffers[2],
+                    skin_poses_buffer_.buffer};
+                SDL_BindGPUComputeStorageBuffers(pass, 0, inputs.data(), 4);
+                SDL_PushGPUComputeUniformData(commands, 0, &job.uniforms,
+                                              static_cast<std::uint32_t>(sizeof(job.uniforms)));
+                const std::array<std::uint32_t, 2> groups = skin_groups(job.uniforms.counts[0]);
+                SDL_DispatchGPUCompute(pass, groups[0], groups[1], 1);
+                SDL_EndGPUComputePass(pass);
+            }
+        }
+        if (!SDL_SubmitGPUCommandBuffer(commands)) {
+            return sdl_error("skinning meshes failed");
+        }
+        return uploaded;
+    }
+
     Result<bool> begin_frame(const Frame& frame) override {
+        if (!in_frame_) {
+            if (auto skinned = flush_skins(); !skinned) {
+                return skinned.error();
+            }
+        }
         if (!in_frame_ && rays_ != nullptr && frame.scene && frame.scene->path_trace &&
             !frame.scene->capture) {
             // A path-traced frame on a device that traces rays: its paths stand for its meshes
@@ -1743,6 +2037,17 @@ public:
                 return checked.error();
             }
             if (auto checked = check_sky(*frame.scene, [&](TextureId id) { return usable(id); });
+                !checked) {
+                return checked.error();
+            }
+            if (auto checked = check_effects(
+                    *frame.scene,
+                    [&](ShaderId id) {
+                        const auto found = game_shaders_.find(id);
+                        return found != game_shaders_.end() &&
+                               found->second.type == ShaderType::Compositor;
+                    },
+                    [&](TextureId id) { return usable(id); });
                 !checked) {
                 return checked.error();
             }
@@ -1807,14 +2112,15 @@ public:
         path_traced_ = rays_ != nullptr && frame.scene && frame.scene->path_trace.has_value();
         if (frame.scene && frame.scene->method == RenderMethod::ForwardPlus) {
             if (auto ready =
-                    prepare_forward(format, width, height, frame.scene->post.glow,
-                                    frame.scene->post.auto_exposure, uses_dof(frame.scene->post));
+                    prepare_forward(format, width, height, frame.scene->post.auto_exposure);
                 !ready) {
                 SDL_CancelGPUCommandBuffer(commands);
                 return ready.error();
             }
-            // Depth of field and FSR 2 read the depth buffer, which a frame without meshes clears.
-            if (uses_dof(frame.scene->post) || uses_fsr2(*frame.scene)) {
+            // Depth of field, FSR 2 and the compositor effects read the depth buffer, which a
+            // frame without meshes clears.
+            if (uses_dof(frame.scene->post) || uses_fsr2(*frame.scene) ||
+                uses_effects(*frame.scene)) {
                 if (auto depth = depth_target(scene_width, scene_height); !depth) {
                     SDL_CancelGPUCommandBuffer(commands);
                     return depth.error();
@@ -1974,7 +2280,7 @@ public:
         scene.post = {};
         captured.lighting = {};
         const std::uint32_t size = textures_.at(capture.atlas).desc.width;
-        if (auto ready = prepare_forward(kTextureFormat, size, size, false, false, false); !ready) {
+        if (auto ready = prepare_forward(kTextureFormat, size, size, false); !ready) {
             return ready.error();
         }
         // Captures trace their shadows' rays as frames do.
@@ -2249,7 +2555,8 @@ public:
         // Depth of field needs the depth buffer cleared, even with nothing drawn over it, and FSR 2
         // upscales the world whatever it holds.
         const bool world = meshes || capture || (frame_.scene && sky_draws(*frame_.scene)) ||
-                           (forward && (uses_dof(frame_.scene->post) || uses_fsr2(*frame_.scene)));
+                           (forward && (uses_dof(frame_.scene->post) || uses_fsr2(*frame_.scene) ||
+                                        uses_effects(*frame_.scene)));
         const bool post = !forward && frame_.scene && post_processes(frame_.scene->post);
         if (world && path_traced_) {
             draw_paths(commands, *frame_.scene);
@@ -2421,6 +2728,12 @@ public:
             stored.format = texture.stored;
             stats.texture_bytes += texture_bytes(stored);
         }
+        for (const detail::FrameGraphReport::Pass& pass : graph_report_.passes) {
+            ++(pass.culled ? stats.graph_culled : stats.graph_passes);
+        }
+        stats.graph_groups = graph_report_.groups;
+        stats.transient_bytes = graph_report_.transient_bytes;
+        stats.transient_allocated_bytes = graph_report_.allocated_bytes;
         return stats;
     }
 
@@ -2656,6 +2969,21 @@ private:
         std::uint64_t version = 0;
     };
 
+    // A skin (create_skin): its rest vertices', weights' and blend shapes' buffers, and the
+    // counts and shapes' turns its poses need.
+    struct GpuSkin {
+        SkinWords words;
+        std::array<SDL_GPUBuffer*, 3> buffers{};
+        bool has_weights = false;
+    };
+
+    // A skin_mesh waiting for the next frame: the mesh it writes and the dispatch's uniforms.
+    struct SkinJob {
+        MeshId mesh = MeshId::None;
+        SkinId skin = SkinId::None;
+        SkinUniforms uniforms;
+    };
+
     // What a mesh draw binds, found when it is made: its mesh may be destroyed before end_frame.
     struct MeshBatch {
         SDL_GPUBuffer* vertices = nullptr;
@@ -2720,6 +3048,8 @@ private:
         SDL_GPUShader* motion_vertex = nullptr;
         SDL_GPUShader* shadow_vertex = nullptr;
         SDL_GPUShader* shadow = nullptr;
+        // A compositor shader's pipelines, by the world's format.
+        std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> effect_pipelines;
     };
 
     // A spatial shader's fragment stages: the Compatibility renderer's, Forward+'s and the
@@ -2741,7 +3071,16 @@ private:
                                        .vertex_msl = {},
                                        .fragment_msl = shader.msl_fragment,
                                        .hlsl = shader.hlsl};
-        GameShader made{.type = ShaderType::Spatial};
+        GameShader made{.type = ShaderType::Spatial,
+                        .vertex = nullptr,
+                        .fragment = nullptr,
+                        .clustered = nullptr,
+                        .normal = nullptr,
+                        .motion = nullptr,
+                        .motion_vertex = nullptr,
+                        .shadow_vertex = nullptr,
+                        .shadow = nullptr,
+                        .effect_pipelines = {}};
         const auto textures = static_cast<std::uint32_t>(kMeshTextures);
         Result<SDL_GPUShader*> stage =
             make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, compatibility, textures + 3, 4);
@@ -3500,26 +3839,46 @@ private:
         if (mesh_shaders_[0] != nullptr) {
             return {};
         }
-        const std::string vertex_msl = joined(shaders::kMeshVertexMsl);
         const std::string fragment_msl = joined(shaders::kMeshFragmentMsl);
         const std::string hlsl = joined(shaders::kMeshHlsl);
-        const ShaderCode code{.vertex_spirv = shaders::kMeshVertexSpirv,
+        const ShaderCode code{.vertex_spirv = {},
                               .fragment_spirv = shaders::kMeshFragmentSpirv,
-                              .vertex_msl = vertex_msl,
+                              .vertex_msl = {},
                               .fragment_msl = fragment_msl,
                               .hlsl = hlsl};
-        auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 2);
-        if (!vertex) {
-            return vertex.error();
-        }
         auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code,
                                         static_cast<std::uint32_t>(kMeshTextures) + 3, 3);
         if (!fragment) {
-            SDL_ReleaseGPUShader(device_, vertex.value());
             return fragment.error();
+        }
+        auto vertex = make_instanced_vertex(shaders::kMeshInstancedVertexSpirv,
+                                            joined(shaders::kMeshInstancedVertexMsl),
+                                            joined(shaders::kMeshInstancedHlsl));
+        if (!vertex) {
+            SDL_ReleaseGPUShader(device_, fragment.value());
+            return vertex.error();
         }
         mesh_shaders_ = {vertex.value(), fragment.value()};
         return {};
+    }
+
+    // A vertex stage of mesh_instanced.hlsl's: the camera and the run's InstanceBase, and the
+    // draws' Instances and the runs' lists as storage buffers.
+    Result<SDL_GPUShader*> make_instanced_vertex(std::span<const unsigned char> spirv,
+                                                 const std::string& msl, const std::string& hlsl) {
+        const ShaderCode code{.vertex_spirv = spirv,
+                              .fragment_spirv = {},
+                              .vertex_msl = msl,
+                              .fragment_msl = {},
+                              .hlsl = hlsl};
+        return make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 2, 2);
+    }
+
+    // Whether a material's draws run its game's own vertex(), which reads its Instance as a
+    // uniform buffer, rather than mesh_instanced.hlsl's vertex stage.
+    [[nodiscard]] bool game_vertex(const Material3D& material) const {
+        return material.shader != ShaderId::None &&
+               game_shaders_.at(material.shader).vertex != nullptr;
     }
 
     // Forward+'s fragment stage, which reads the clusters' storage buffers, unless it is made
@@ -3771,23 +4130,24 @@ private:
             return made;
         }
         if (motion_shaders_[0] == nullptr) {
-            const std::string vertex_msl = joined(shaders::kMeshMotionVertexMsl);
             const std::string fragment_msl = joined(shaders::kMeshMotionFragmentMsl);
             const std::string hlsl = joined(shaders::kMeshMotionHlsl);
-            const ShaderCode code{.vertex_spirv = shaders::kMeshMotionVertexSpirv,
+            const ShaderCode code{.vertex_spirv = {},
                                   .fragment_spirv = shaders::kMeshMotionFragmentSpirv,
-                                  .vertex_msl = vertex_msl,
+                                  .vertex_msl = {},
                                   .fragment_msl = fragment_msl,
                                   .hlsl = hlsl};
-            auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 2);
-            if (!vertex) {
-                return vertex.error();
-            }
             auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code,
                                             static_cast<std::uint32_t>(kMeshTextures) + 3, 3);
             if (!fragment) {
-                SDL_ReleaseGPUShader(device_, vertex.value());
                 return fragment.error();
+            }
+            auto vertex = make_instanced_vertex(shaders::kMeshMotionInstancedVertexSpirv,
+                                                joined(shaders::kMeshMotionInstancedVertexMsl),
+                                                joined(shaders::kMeshMotionInstancedHlsl));
+            if (!vertex) {
+                SDL_ReleaseGPUShader(device_, fragment.value());
+                return vertex.error();
             }
             motion_shaders_ = {vertex.value(), fragment.value()};
         }
@@ -4114,6 +4474,114 @@ private:
         }
     }
 
+    // Culls the frame's mesh draws against the camera's view in compute, and lists each run's
+    // draws in view and writes its indirect arguments into cull_outputs_, with each draw's
+    // Instance in mesh_instances_, for the camera's passes to draw a run by one indirect draw.
+    // Where the device can't cull, the CPU twin lists every draw.
+    Result<void> cull_meshes(SDL_GPUCommandBuffer* commands, const Mat4& view_projection,
+                             std::span<const std::size_t> order, std::span<const CullRun> runs) {
+        const auto draws = static_cast<std::uint32_t>(mesh_draws_.size());
+        const auto run_count = static_cast<std::uint32_t>(runs.size());
+        std::vector<std::uint32_t> records;
+        records.reserve((mesh_draws_.size() * kCullRecordWords) + (runs.size() * 2) + order.size());
+        std::vector<MeshInstanceUniforms> instances;
+        instances.reserve(mesh_draws_.size());
+        for (std::size_t i = 0; i < mesh_draws_.size(); ++i) {
+            const MeshDraw& draw = mesh_draws_[i];
+            const MeshBatch& batch = mesh_batches_[i];
+            // A spatial shader's vertex() can move its corners anywhere.
+            push_cull_record(records, view_projection, draw.transform, batch.bounds, batch.range,
+                             draw.material.shader != ShaderId::None);
+            push_instance(instances, draw.transform, draw.material, draw.previous);
+        }
+        push_cull_runs(records, runs, order);
+        constexpr SDL_GPUBufferUsageFlags kOutputs = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE |
+                                                     SDL_GPU_BUFFERUSAGE_INDIRECT |
+                                                     SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ;
+        if (cull_pipeline_ == nullptr) {
+            SDL_GPUComputePipelineCreateInfo info{};
+            info.entrypoint = "cs_main";
+            info.num_readonly_storage_buffers = 1;
+            info.num_readwrite_storage_buffers = 1;
+            info.num_uniform_buffers = 1;
+            info.threadcount_x = kCullThreads;
+            info.threadcount_y = 1;
+            info.threadcount_z = 1;
+            auto made = create_compute_pipeline(info, shaders::kMeshCullComputeSpirv,
+                                                shaders::kMeshCullComputeMsl,
+                                                shaders::kMeshCullHlsl, "culling meshes");
+            if (made) {
+                cull_pipeline_ = made.value();
+            } else {
+                log::warn("culling meshes failed; drawing them all",
+                          {{"error", made.error().message}});
+            }
+        }
+        SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+        Result<void> uploaded =
+            upload_storage(copy, mesh_instances_, std::as_bytes(std::span(instances)),
+                           SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ);
+        if (uploaded && cull_pipeline_ != nullptr) {
+            uploaded = upload_storage(copy, cull_records_, std::as_bytes(std::span(records)));
+        } else if (uploaded) {
+            const std::vector<std::uint32_t> all =
+                detail::cull_meshes(records, draws, run_count, true);
+            uploaded = upload_storage(copy, cull_outputs_, std::as_bytes(std::span(all)), kOutputs);
+        }
+        SDL_EndGPUCopyPass(copy);
+        if (!uploaded || cull_pipeline_ == nullptr) {
+            return uploaded;
+        }
+        const std::uint32_t output_words =
+            cull_output_words(draws, run_count, static_cast<std::uint32_t>(order.size()));
+        if (auto room = reserve_storage(cull_outputs_, output_words * 4, kOutputs); !room) {
+            return room;
+        }
+        // The draws' flags, then the runs' lists, each pass of its own so the second reads all
+        // of the first's. Cycling gives the outputs new memory if a frame sent before still
+        // draws with them.
+        for (std::uint32_t step = 0; step < 2; ++step) {
+            SDL_GPUStorageBufferReadWriteBinding output{};
+            output.buffer = cull_outputs_.buffer;
+            output.cycle = step == 0;
+            SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(commands, nullptr, 0, &output, 1);
+            SDL_BindGPUComputePipeline(pass, cull_pipeline_);
+            SDL_BindGPUComputeStorageBuffers(pass, 0, &cull_records_.buffer, 1);
+            const CullUniforms uniforms{.counts = {draws, run_count, 0, step}};
+            SDL_PushGPUComputeUniformData(commands, 0, &uniforms,
+                                          static_cast<std::uint32_t>(sizeof(uniforms)));
+            SDL_DispatchGPUCompute(pass, cull_groups(step == 0 ? draws : run_count), 1, 1);
+            SDL_EndGPUComputePass(pass);
+        }
+        return {};
+    }
+
+    // Whether the camera's passes may draw two draws, a after b in the camera's order, as
+    // instances of one draw: one mesh and LOD with one material and its textures, and no game
+    // shader, whose uniforms are its own.
+    [[nodiscard]] bool same_run(std::size_t a, std::size_t b,
+                                std::span<const MeshSurfaceUniforms> surfaces) const {
+        const MeshDraw& x = mesh_draws_[a];
+        const MeshDraw& y = mesh_draws_[b];
+        const MeshBatch& p = mesh_batches_[a];
+        const MeshBatch& q = mesh_batches_[b];
+        const auto same_sampler = [](const SDL_GPUTextureSamplerBinding& u,
+                                     const SDL_GPUTextureSamplerBinding& v) {
+            return u.texture == v.texture && u.sampler == v.sampler;
+        };
+        return x.material.shader == ShaderId::None && y.material.shader == ShaderId::None &&
+               (x.shadows == ShadowCasting::ShadowsOnly) ==
+                   (y.shadows == ShadowCasting::ShadowsOnly) &&
+               p.vertices == q.vertices && p.indices == q.indices &&
+               p.previous_vertices == q.previous_vertices && p.range.first == q.range.first &&
+               p.range.count == q.range.count && p.pipeline == q.pipeline &&
+               p.normal_pipeline == q.normal_pipeline &&
+               p.subsurface_pipeline == q.subsurface_pipeline &&
+               std::ranges::equal(p.samplers, q.samplers, same_sampler) &&
+               std::ranges::equal(std::as_bytes(surfaces.subspan(a, 1)),
+                                  std::as_bytes(surfaces.subspan(b, 1)));
+    }
+
     // The frame's meshes: first into the shadow atlases, then in the order mesh_draw_order gives,
     // in a pass that clears the target and a depth buffer to the far plane.
     // The scene's sky, then its meshes with their shadows planned by plan (null with no meshes).
@@ -4199,6 +4667,24 @@ private:
             order = mesh_draw_order(std::span<const MeshDraw>(mesh_draws_), scene,
                                     [&](std::size_t at) { return mesh_batches_[at].bounds; });
         }
+        // The camera's passes draw each run of draws as instances of one indirect draw, of
+        // those mesh_cull.hlsl leaves in view.
+        std::vector<MeshSurfaceUniforms> surfaces;
+        std::vector<CullRun> runs;
+        if (plan != nullptr && !order.empty()) {
+            surfaces.reserve(mesh_draws_.size());
+            for (const MeshDraw& draw : mesh_draws_) {
+                surfaces.push_back(mesh_surface_uniforms(draw.material, draw.layers));
+            }
+            runs = cull_runs(
+                order, [&](std::size_t a, std::size_t b) { return same_run(a, b, surfaces); });
+            if (auto made = cull_meshes(commands, view_projection, order, runs); !made) {
+                log::error("drawing the frame's meshes failed", {{"error", made.error().message}});
+                runs.clear();
+            }
+        }
+        const auto list_at = cull_list_at(static_cast<std::uint32_t>(mesh_draws_.size()),
+                                          static_cast<std::uint32_t>(runs.size()));
         // Volumetric fog, which frames without meshes go without: its passes, before the meshes
         // and the sky read it.
         FogFrames* fog = clustered && plan != nullptr && uses_volumetric_fog(scene)
@@ -4223,7 +4709,9 @@ private:
             const std::size_t bound_samplers =
                 clustered && !prepass ? kMeshTextures + 5 : kMeshTextures + 3;
             SDL_GPUGraphicsPipeline* bound = nullptr;
-            for (const std::size_t i : order) {
+            for (std::size_t r = 0; r < runs.size(); ++r) {
+                // A run's draws share all but their Instances, so its first speaks for it.
+                const std::size_t i = order[runs[r].first];
                 const MeshDraw& draw = mesh_draws_[i];
                 const MeshBatch& batch = mesh_batches_[i];
                 SDL_GPUGraphicsPipeline* pipeline = batch.pipeline;
@@ -4241,21 +4729,29 @@ private:
                     SDL_BindGPUGraphicsPipeline(pass, pipeline);
                     bound = pipeline;
                 }
-                const MeshInstanceUniforms instance =
-                    mesh_instance_uniforms(draw.transform, draw.material, draw.previous);
-                SDL_PushGPUVertexUniformData(commands, 1, &instance,
-                                             static_cast<std::uint32_t>(sizeof(instance)));
-                const MeshSurfaceUniforms surface =
-                    mesh_surface_uniforms(draw.material, draw.layers);
-                SDL_PushGPUFragmentUniformData(commands, 0, &surface,
-                                               static_cast<std::uint32_t>(sizeof(surface)));
+                if (game_vertex(draw.material) && draws != Draws::Subsurface) {
+                    // A game's vertex() reads its one draw's Instance as uniforms.
+                    const MeshInstanceUniforms instance =
+                        mesh_instance_uniforms(draw.transform, draw.material, draw.previous);
+                    SDL_PushGPUVertexUniformData(commands, 1, &instance,
+                                                 static_cast<std::uint32_t>(sizeof(instance)));
+                } else {
+                    const InstanceBaseUniforms base{.base = {list_at + runs[r].first, 0, 0, 0}};
+                    SDL_PushGPUVertexUniformData(commands, 1, &base,
+                                                 static_cast<std::uint32_t>(sizeof(base)));
+                    const std::array instances{mesh_instances_.buffer, cull_outputs_.buffer};
+                    SDL_BindGPUVertexStorageBuffers(pass, 0, instances.data(),
+                                                    static_cast<std::uint32_t>(instances.size()));
+                }
+                SDL_PushGPUFragmentUniformData(commands, 0, &surfaces[i],
+                                               static_cast<std::uint32_t>(sizeof(surfaces[i])));
                 if (draw.material.shader != ShaderId::None) {
                     const SpatialUniforms game =
                         spatial_uniforms(scene, draw.transform, draw.material, scene_width_,
                                          scene_height_, draw.previous);
                     SDL_PushGPUFragmentUniformData(commands, 3, &game,
                                                    static_cast<std::uint32_t>(sizeof(game)));
-                    if (game_shaders_.at(draw.material.shader).vertex != nullptr) {
+                    if (game_vertex(draw.material)) {
                         SDL_PushGPUVertexUniformData(commands, 2, &game,
                                                      static_cast<std::uint32_t>(sizeof(game)));
                         SDL_BindGPUVertexSamplers(pass, 0, batch.samplers.data(),
@@ -4272,14 +4768,18 @@ private:
                 std::copy(batch.samplers.begin(), batch.samplers.end(), samplers.begin());
                 SDL_BindGPUFragmentSamplers(pass, 0, samplers.data(),
                                             static_cast<std::uint32_t>(bound_samplers));
-                SDL_DrawGPUIndexedPrimitives(pass, batch.range.count, 1, batch.range.first, 0, 0);
+                SDL_DrawGPUIndexedPrimitivesIndirect(
+                    pass, cull_outputs_.buffer,
+                    static_cast<std::uint32_t>(r * kCullArgsWords * sizeof(std::uint32_t)), 1);
             }
         };
-        if (ssao || ssr || motion || traced || sdfgi) {
+        const bool effect_normals = plan != nullptr && effects_need_normals(scene);
+        if (ssao || ssr || motion || traced || sdfgi || effect_normals) {
             // The prepass draws the opaque meshes' normals and depth, from which SSAO's passes
             // make the occlusion the meshes are then lit with, SSR's their reflections, SDFGI's
-            // their ambient light and the rays their shadows, and with TAA their motion vectors,
-            // into the history's next texture, or with FSR 2 into its own.
+            // their ambient light, the rays their shadows and compositor effects their normals,
+            // and with TAA their motion vectors, into the history's next texture, or with FSR 2
+            // into its own.
             std::array<SDL_GPUColorTargetInfo, 2> targets{};
             SDL_GPUColorTargetInfo& normals = targets[0];
             normals.texture = prepass_.normals;
@@ -4323,7 +4823,6 @@ private:
                 traced ? ray_occlusion(scene) : std::nullopt;
             if (ssao && !occlusion) {
                 draw_ssao(commands, scene);
-                copy_to_screen(commands, ssao_targets_.textures.at(kSsaoFinal), 0);
             }
             if (traced) {
                 const std::vector<RayShadowLight> traced_lights = ray_shadow_lights(scene);
@@ -4354,14 +4853,16 @@ private:
                           {kInvalidMotion, kInvalidMotion, 0.0F, 0.0F});
         }
         // Subsurface scattering, where a mesh's light scatters under its surface.
-        const bool subsurface = plan != nullptr && clustered && subsurface_.light != nullptr &&
-                                uses_subsurface(scene) &&
+        const bool subsurface = plan != nullptr && clustered && uses_subsurface(scene) &&
                                 std::ranges::any_of(order, [&](std::size_t i) {
                                     return mesh_batches_[i].subsurface_pipeline != nullptr &&
                                            mesh_draws_[i].shadows != ShadowCasting::ShadowsOnly;
                                 });
-        // The sky, then the meshes over it.
-        const auto draw_color = [&] {
+        // The sky, then the meshes over it, with the compositor effects drawn over the world at
+        // their points (none when with_effects is false, for SSR's first frame).
+        const bool effects = uses_effects(scene);
+        const auto draw_color = [&](bool with_effects) {
+            const bool effect = with_effects && effects;
             SDL_GPUColorTargetInfo color{};
             color.texture = world_texture(scene);
             color.clear_color = world_clear(scene);
@@ -4372,13 +4873,13 @@ private:
             depth.clear_depth = 0.0F;
             depth.load_op = SDL_GPU_LOADOP_CLEAR;
             // Kept for depth of field and FSR 2, which read it after, and for subsurface
-            // scattering's passes.
+            // scattering's passes and the effects.
             depth.store_op = scene.method == RenderMethod::ForwardPlus &&
                                      (uses_dof(scene.post) || fsr2 != nullptr)
                                  ? SDL_GPU_STOREOP_STORE
                                  : SDL_GPU_STOREOP_DONT_CARE;
             const SDL_GPUStoreOp depth_store = depth.store_op;
-            if (subsurface) {
+            if (subsurface || effect) {
                 depth.store_op = SDL_GPU_STOREOP_STORE;
             }
             depth.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
@@ -4408,6 +4909,14 @@ private:
             }
             if (plan == nullptr) {
                 SDL_EndGPURenderPass(pass);
+                if (effect) {
+                    for (const EffectCallback point :
+                         {EffectCallback::PreOpaque, EffectCallback::PostOpaque,
+                          EffectCallback::PostSky, EffectCallback::PreTransparent,
+                          EffectCallback::PostTransparent}) {
+                        draw_effects(commands, scene, point);
+                    }
+                }
                 return;
             }
             const auto bind_storage = [&](SDL_GPURenderPass* to) {
@@ -4421,40 +4930,63 @@ private:
                 }
             };
             bind_storage(pass);
-            if (!subsurface) {
+            if (!subsurface && !effect) {
                 draw_batches(pass, Draws::All);
                 SDL_EndGPURenderPass(pass);
                 return;
             }
-            // The opaque meshes, then those that scatter light under their surface again where
-            // they are seen, into the subsurface pass's texture, its blur added to the world,
-            // then the blended meshes.
-            draw_batches(pass, Draws::Opaque);
-            SDL_EndGPURenderPass(pass);
-            SDL_GPUColorTargetInfo light{};
-            light.texture = subsurface_.light;
-            light.clear_color = {0.0F, 0.0F, 0.0F, 0.0F};
-            light.load_op = SDL_GPU_LOADOP_CLEAR;
-            light.store_op = SDL_GPU_STOREOP_STORE;
             SDL_GPUDepthStencilTargetInfo kept = depth;
             kept.load_op = SDL_GPU_LOADOP_LOAD;
             kept.store_op = SDL_GPU_STOREOP_STORE;
             kept.cycle = false;
-            pass = SDL_BeginGPURenderPass(commands, &light, 1, &kept);
-            bind_storage(pass);
-            draw_batches(pass, Draws::Subsurface);
+            if (effect && !effects_at(scene, EffectCallback::PreOpaque).empty()) {
+                // The effects over the sky, then the meshes over them.
+                SDL_EndGPURenderPass(pass);
+                draw_effects(commands, scene, EffectCallback::PreOpaque);
+                color.load_op = SDL_GPU_LOADOP_LOAD;
+                color.cycle = false;
+                pass = SDL_BeginGPURenderPass(commands, &color, 1, &kept);
+                bind_storage(pass);
+            }
+            // The opaque meshes, then those that scatter light under their surface again where
+            // they are seen, into the subsurface pass's texture, its blur added to the world,
+            // then the effects after the opaque meshes, then the blended meshes and the effects
+            // after them.
+            draw_batches(pass, Draws::Opaque);
             SDL_EndGPURenderPass(pass);
-            draw_subsurface(commands, scene);
+            if (subsurface) {
+                draw_subsurface(commands, scene, [&](SDL_GPUTexture* light_texture) {
+                    SDL_GPUColorTargetInfo light{};
+                    light.texture = light_texture;
+                    light.clear_color = {0.0F, 0.0F, 0.0F, 0.0F};
+                    light.load_op = SDL_GPU_LOADOP_CLEAR;
+                    light.store_op = SDL_GPU_STOREOP_STORE;
+                    SDL_GPURenderPass* lit = SDL_BeginGPURenderPass(commands, &light, 1, &kept);
+                    bind_storage(lit);
+                    draw_batches(lit, Draws::Subsurface);
+                    SDL_EndGPURenderPass(lit);
+                });
+            }
+            if (effect) {
+                for (const EffectCallback point :
+                     {EffectCallback::PostOpaque, EffectCallback::PostSky,
+                      EffectCallback::PreTransparent}) {
+                    draw_effects(commands, scene, point);
+                }
+            }
             color.load_op = SDL_GPU_LOADOP_LOAD;
             color.cycle = false;
-            kept.store_op = depth_store;
+            kept.store_op = effect ? SDL_GPU_STOREOP_STORE : depth_store;
             pass = SDL_BeginGPURenderPass(commands, &color, 1, &kept);
             bind_storage(pass);
             draw_batches(pass, Draws::Blended);
             SDL_EndGPURenderPass(pass);
+            if (effect) {
+                draw_effects(commands, scene, EffectCallback::PostTransparent);
+            }
         };
         if (!ssr) {
-            draw_color();
+            draw_color(true);
             if (taa != nullptr) {
                 resolve_taa(commands, *taa, view_projection);
             }
@@ -4468,13 +5000,12 @@ private:
         const SsrCamera seen = ssr_camera(scene);
         if (!history.primed) {
             lights->ssao[3] = 0.0F;
-            draw_color();
+            draw_color(false);
             keep_last_frame(commands, scene, history, seen);
             lights->ssao[3] = 1.0F;
         }
         draw_ssr(commands, scene, seen, history);
-        copy_to_screen(commands, ssr_targets_.textures.at(kSsrFinal), 1);
-        draw_color();
+        draw_color(true);
         if (taa != nullptr) {
             resolve_taa(commands, *taa, view_projection);
         }
@@ -4814,11 +5345,11 @@ private:
     }
 
     // Forward+'s post passes: their shaders, their pipeline for each target format, the world's
-    // texture of half floats at the frame's size and, with glow, glow's seven levels, with auto
-    // exposure the luminance textures of floats, and with depth of field its textures. Made at
-    // the start of a frame that needs them.
+    // texture of half floats at the frame's size and, with auto exposure, the luminance textures
+    // of floats, kept from frame to frame. Glow's and depth of field's textures are the frame
+    // graph's (draw_forward_post). Made at the start of a frame that needs them.
     Result<void> prepare_forward(SDL_GPUTextureFormat format, std::uint32_t width,
-                                 std::uint32_t height, bool glow, bool auto_exposure, bool dof) {
+                                 std::uint32_t height, bool auto_exposure) {
         if (forward_shaders_[0] == nullptr) {
             const ShaderCode code{.vertex_spirv = shaders::kForwardPostVertexSpirv,
                                   .fragment_spirv = shaders::kForwardPostFragmentSpirv,
@@ -4872,17 +5403,6 @@ private:
             forward_targets_.width = width;
             forward_targets_.height = height;
         }
-        if (glow && forward_targets_.glow[0] == nullptr) {
-            const GlowPlan plan = forward_glow_plan(PostProcess{}, width, height);
-            for (std::size_t i = 0; i < kMaxGlowLevels; ++i) {
-                auto level = made(plan.sizes.at(i).width, plan.sizes.at(i).height);
-                if (!level) {
-                    release_forward_targets();
-                    return level.error();
-                }
-                forward_targets_.glow.at(i) = level.value();
-            }
-        }
         if (auto_exposure && forward_targets_.brightness == nullptr) {
             for (const PostSize size : luminance_plan(width, height)) {
                 auto level = made(size.width, size.height, kLuminanceFormat);
@@ -4900,20 +5420,6 @@ private:
             forward_targets_.brightness = brightness.value();
             forward_targets_.measured = false;
         }
-        if (dof && forward_targets_.dof[0] == nullptr) {
-            // Sized, Secondary, Half0, Half1 and Out, as DofTexture after World
-            const std::uint32_t half_width = std::max(width >> 1U, 1U);
-            const std::uint32_t half_height = std::max(height >> 1U, 1U);
-            for (std::size_t i = 0; i < forward_targets_.dof.size(); ++i) {
-                const bool half = i == 2 || i == 3;
-                auto texture = made(half ? half_width : width, half ? half_height : height);
-                if (!texture) {
-                    release_forward_targets();
-                    return texture.error();
-                }
-                forward_targets_.dof.at(i) = texture.value();
-            }
-        }
         return {};
     }
 
@@ -4924,17 +5430,13 @@ private:
             }
         };
         release(forward_targets_.world);
-        for (SDL_GPUTexture*& texture : forward_targets_.glow) {
-            release(texture);
-        }
+        transient_pool_.clear(
+            [this](SDL_GPUTexture* texture) { pending_release_.push_back(texture); });
         for (SDL_GPUTexture*& texture : forward_targets_.luminance) {
             release(texture);
         }
         forward_targets_.luminance.clear();
         release(forward_targets_.brightness);
-        for (SDL_GPUTexture*& texture : forward_targets_.dof) {
-            release(texture);
-        }
         forward_targets_.measured = false;
         forward_targets_.width = 0;
         forward_targets_.height = 0;
@@ -5388,47 +5890,13 @@ private:
             }
             ssao_shaders_[0] = vertex.value();
         }
+        // The textures are the frame graph's, made as draw_ssao runs.
         for (const SsaoStep& step : ssao_plan(settings, width, height).steps) {
             if (auto pipeline = ssao_pipeline(step); !pipeline) {
                 return pipeline.error();
             }
         }
-        if (ssao_targets_.textures.at(kSsaoFinal) != nullptr && ssao_targets_.width == width &&
-            ssao_targets_.height == height && ssao_targets_.settings == settings) {
-            return {};
-        }
-        release_ssao_targets();
-        const SsaoPlan plan = ssao_plan(settings, width, height);
-        for (std::uint32_t i = 0; i < kSsaoTextures; ++i) {
-            const PostSize size = plan.sizes.at(i);
-            if (size.width == 0) {
-                continue;
-            }
-            auto texture = pass_texture(size.width, size.height, ssao_target_format(i),
-                                        SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, 1, "SSAO");
-            if (!texture) {
-                release_ssao_targets();
-                return texture.error();
-            }
-            ssao_targets_.textures.at(i) = texture.value();
-        }
-        ssao_targets_.width = width;
-        ssao_targets_.height = height;
-        ssao_targets_.settings = settings;
         return {};
-    }
-
-    void release_ssao_targets() {
-        const auto release = [this](SDL_GPUTexture*& texture) {
-            if (texture != nullptr) {
-                pending_release_.push_back(std::exchange(texture, nullptr));
-            }
-        };
-        for (SDL_GPUTexture*& texture : ssao_targets_.textures) {
-            release(texture);
-        }
-        ssao_targets_.width = 0;
-        ssao_targets_.height = 0;
     }
 
     // The pipeline drawing an SSAO pass into its target's format.
@@ -5439,8 +5907,8 @@ private:
                                    ssao_target_format(step.target));
     }
 
-    // An SSAO texture's format: the final one's is half floats, so that it copies into the screen
-    // array's first layer.
+    // An SSAO texture's format: the final one's is half floats, the screen array's, which it draws
+    // into.
     static SDL_GPUTextureFormat ssao_target_format(std::uint32_t texture) {
         return texture == kSsaoFinal ? kHdrFormat : ssao_gpu_format(ssao_format(texture));
     }
@@ -5459,44 +5927,89 @@ private:
     }
 
     // ssao.hlsl's passes, from the prepass's depth and normals to the occlusion at the frame's
-    // size, in the order ssao_plan gives.
+    // size in the screen array's first layer, in the order ssao_plan gives: a frame graph whose
+    // textures come from the pool the post passes share.
     void draw_ssao(SDL_GPUCommandBuffer* commands, const Scene3D& scene) {
+        using detail::GraphPassKind;
+        using detail::GraphResource;
         SDL_GPUSampler* nearest = samplers_.at(sampler_index(Filter::Nearest, false));
         const SsaoPlan plan = ssao_plan(scene.ssao.settings, scene_width_, scene_height_);
-        for (const SsaoStep& step : plan.steps) {
-            const SsaoUniforms uniforms =
-                ssao_uniforms(scene.ssao, step, scene.projection, scene_width_, scene_height_);
-            // Made in prepare_ssao, at the start of the frame.
-            auto pipeline = ssao_pipeline(step);
-            if (!pipeline) {
-                return;
+        detail::FrameGraph graph;
+        constexpr GraphResource kNone = std::numeric_limits<GraphResource>::max();
+        std::array<GraphResource, kSsaoTextures> made{};
+        made.fill(kNone);
+        for (std::uint32_t i = 0; i < kSsaoTextures; ++i) {
+            const PostSize size = plan.sizes.at(i);
+            if (size.width != 0 && i != kSsaoFinal) {
+                const SDL_GPUTextureFormat format = ssao_target_format(i);
+                made.at(i) = graph.transient(
+                    "ssao " + std::to_string(i),
+                    color_shape(format, size, SDL_GPUTextureFormatTexelBlockSize(format)));
             }
-            SDL_GPUColorTargetInfo color{};
-            color.texture = ssao_targets_.textures.at(step.target);
-            color.load_op = SDL_GPU_LOADOP_DONT_CARE;
-            color.store_op = SDL_GPU_STOREOP_STORE;
-            SDL_GPURenderPass* render = SDL_BeginGPURenderPass(commands, &color, 1, nullptr);
-            SDL_BindGPUGraphicsPipeline(render, pipeline.value());
-            SDL_PushGPUFragmentUniformData(commands, 0, &uniforms,
-                                           static_cast<std::uint32_t>(sizeof(uniforms)));
-            std::array<SDL_GPUTextureSamplerBinding, kSsaoSlots> bindings{};
-            for (std::size_t slot = 0; slot < kSsaoSlots; ++slot) {
-                const std::uint32_t index = step.slots.at(slot);
-                SDL_GPUTexture* texture = white_;
-                if (index == kSsaoDepthBuffer) {
-                    texture = prepass_.depth;
-                } else if (index == kSsaoNormals) {
-                    texture = prepass_.normals;
-                } else if (index < kSsaoTextures && ssao_targets_.textures.at(index) != nullptr) {
-                    texture = ssao_targets_.textures.at(index);
-                }
-                bindings.at(slot) = {.texture = texture, .sampler = nearest};
-            }
-            SDL_BindGPUFragmentSamplers(render, 0, bindings.data(),
-                                        static_cast<std::uint32_t>(bindings.size()));
-            SDL_DrawGPUPrimitives(render, 3, 1, 0, 0);
-            SDL_EndGPURenderPass(render);
         }
+        // The last pass draws into the screen array's first layer, which the mesh pass reads.
+        made.at(kSsaoFinal) = graph.import("screen");
+        std::vector<SDL_GPUTexture*> bound(graph.resource_count(), nullptr);
+        bound.at(made.at(kSsaoFinal)) = screen_.texture;
+        // A texture no pass drew (very low's skipped slices, which its interleave binds but
+        // doesn't read) is left out of the graph and bound as white.
+        const auto texture_of = [this, &bound](GraphResource resource) {
+            SDL_GPUTexture* texture = bound.at(resource);
+            return texture != nullptr ? texture : white_;
+        };
+        std::array<bool, kSsaoTextures> written{};
+        for (const SsaoStep& step : plan.steps) {
+            std::vector<GraphResource> reads;
+            for (const std::uint32_t index : step.slots) {
+                if (index < kSsaoTextures && written.at(index) &&
+                    std::ranges::find(reads, made.at(index)) == reads.end()) {
+                    reads.push_back(made.at(index));
+                }
+            }
+            written.at(step.target) = true;
+            graph.add_pass(
+                {.name = "ssao " + std::string(ssao_pass_name(step.pass)),
+                 .kind = GraphPassKind::Render,
+                 .reads = std::move(reads),
+                 .writes = {made.at(step.target)}},
+                [&, step](const detail::GraphContext&) {
+                    const SsaoUniforms uniforms = ssao_uniforms(scene.ssao, step, scene.projection,
+                                                                scene_width_, scene_height_);
+                    // Made in prepare_ssao, at the start of the frame.
+                    auto pipeline = ssao_pipeline(step);
+                    if (!pipeline) {
+                        return;
+                    }
+                    SDL_GPUColorTargetInfo color{};
+                    color.texture = texture_of(made.at(step.target));
+                    color.layer_or_depth_plane = 0;
+                    color.load_op = SDL_GPU_LOADOP_DONT_CARE;
+                    color.store_op = SDL_GPU_STOREOP_STORE;
+                    SDL_GPURenderPass* render =
+                        SDL_BeginGPURenderPass(commands, &color, 1, nullptr);
+                    SDL_BindGPUGraphicsPipeline(render, pipeline.value());
+                    SDL_PushGPUFragmentUniformData(commands, 0, &uniforms,
+                                                   static_cast<std::uint32_t>(sizeof(uniforms)));
+                    std::array<SDL_GPUTextureSamplerBinding, kSsaoSlots> bindings{};
+                    for (std::size_t slot = 0; slot < kSsaoSlots; ++slot) {
+                        const std::uint32_t index = step.slots.at(slot);
+                        SDL_GPUTexture* texture = white_;
+                        if (index == kSsaoDepthBuffer) {
+                            texture = prepass_.depth;
+                        } else if (index == kSsaoNormals) {
+                            texture = prepass_.normals;
+                        } else if (index < kSsaoTextures && made.at(index) != kNone) {
+                            texture = texture_of(made.at(index));
+                        }
+                        bindings.at(slot) = {.texture = texture, .sampler = nearest};
+                    }
+                    SDL_BindGPUFragmentSamplers(render, 0, bindings.data(),
+                                                static_cast<std::uint32_t>(bindings.size()));
+                    SDL_DrawGPUPrimitives(render, 3, 1, 0, 0);
+                    SDL_EndGPURenderPass(render);
+                });
+        }
+        run_graph(graph, bound, "SSAO");
     }
 
     // SSR's shaders, their pipeline for each texture format they draw and the trace's, which draws
@@ -5564,24 +6077,12 @@ private:
                 return sdl_error("creating the SSR trace pipeline failed");
             }
         }
+        // The passes' textures are the frame graph's, made as draw_ssr runs; the levels are copied
+        // into a texture with mipmaps each, kept here.
         const SsrPlan plan = ssr_plan(settings, width, height);
-        if (ssr_targets_.textures.at(kSsrFinal) == nullptr || ssr_targets_.width != width ||
+        if (ssr_targets_.hiz_mips == nullptr || ssr_targets_.width != width ||
             ssr_targets_.height != height || !(ssr_targets_.settings == settings)) {
             release_ssr_targets();
-            for (std::uint32_t i = 0; i < kSsrTextures; ++i) {
-                const PostSize size = plan.sizes.at(i);
-                if (size.width == 0) {
-                    continue;
-                }
-                auto texture = pass_texture(size.width, size.height, ssr_gpu_format(ssr_format(i)),
-                                            SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, 1, "SSR");
-                if (!texture) {
-                    release_ssr_targets();
-                    return texture.error();
-                }
-                ssr_targets_.textures.at(i) = texture.value();
-            }
-            // The passes' levels are copied in, never drawn into.
             for (const auto& [mips, index] : {std::pair{&ssr_targets_.hiz_mips, kSsrHiz},
                                               std::pair{&ssr_targets_.color_mips, kSsrColor}}) {
                 auto texture =
@@ -5624,9 +6125,6 @@ private:
                 pending_release_.push_back(std::exchange(texture, nullptr));
             }
         };
-        for (SDL_GPUTexture*& texture : ssr_targets_.textures) {
-            release(texture);
-        }
         release(ssr_targets_.hiz_mips);
         release(ssr_targets_.color_mips);
         ssr_targets_.width = 0;
@@ -5682,36 +6180,11 @@ private:
             !pipeline) {
             return pipeline.error();
         }
+        // Its textures are the frame graph's, made as draw_subsurface runs.
         if (auto depth = depth_target(width, height); !depth) {
             return depth.error();
         }
-        if (subsurface_.light != nullptr && subsurface_.width == width &&
-            subsurface_.height == height) {
-            return {};
-        }
-        release_subsurface();
-        for (SDL_GPUTexture** texture : {&subsurface_.light, &subsurface_.across}) {
-            auto made = pass_texture(width, height, kHdrFormat, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
-                                     1, "subsurface scattering");
-            if (!made) {
-                release_subsurface();
-                return made.error();
-            }
-            *texture = made.value();
-        }
-        subsurface_.width = width;
-        subsurface_.height = height;
         return {};
-    }
-
-    void release_subsurface() {
-        for (SDL_GPUTexture** texture : {&subsurface_.light, &subsurface_.across}) {
-            if (*texture != nullptr) {
-                pending_release_.push_back(std::exchange(*texture, nullptr));
-            }
-        }
-        subsurface_.width = 0;
-        subsurface_.height = 0;
     }
 
     // The pipeline drawing meshes that cull as cull says into the subsurface pass: Forward+'s
@@ -5777,37 +6250,173 @@ private:
         return made;
     }
 
-    // Subsurface scattering's blur, after the subsurface pass drew its light: across into its
-    // second texture, then down, adding the change to the world.
-    void draw_subsurface(SDL_GPUCommandBuffer* commands, const Scene3D& scene) {
+    // A compositor shader's pipeline drawing one triangle over a world of format.
+    Result<SDL_GPUGraphicsPipeline*> effect_pipeline(ShaderId shader, SDL_GPUTextureFormat format) {
+        GameShader& game = game_shaders_.at(shader);
+        return fullscreen_pipeline(game.effect_pipelines, {game.vertex, game.fragment}, format);
+    }
+
+    // The scene's compositor effects at a point, as a frame graph: each copies the world into a
+    // screen texture from the pool, then draws one triangle over the world reading it, the depth
+    // buffer, the prepass's normals and roughness (white where the frame has none) and its
+    // params' textures.
+    void draw_effects(SDL_GPUCommandBuffer* commands, const Scene3D& scene, EffectCallback point) {
+        using detail::GraphPassKind;
+        using detail::GraphResource;
+        const std::vector<const CompositorEffect3D*> effects = effects_at(scene, point);
+        if (effects.empty()) {
+            return;
+        }
+        const SDL_GPUTextureFormat format = world_format(scene, frame_format_);
+        detail::FrameGraph graph;
+        const detail::GraphShape shape =
+            color_shape(format, {.width = scene_width_, .height = scene_height_},
+                        SDL_GPUTextureFormatTexelBlockSize(format));
+        const GraphResource world = graph.import("world");
+        std::vector<GraphResource> screens;
+        screens.reserve(effects.size());
+        for (std::size_t i = 0; i < effects.size(); ++i) {
+            screens.push_back(graph.transient("effect screen", shape));
+        }
+        std::vector<SDL_GPUTexture*> bound(graph.resource_count(), nullptr);
+        bound.at(world) = world_texture(scene);
+        // The prepass drew its normals only in a frame with meshes.
+        const bool normals = prepass_.normals != nullptr && prepass_.width == scene_width_ &&
+                             prepass_.height == scene_height_ && !mesh_draws_.empty() &&
+                             effects_need_normals(scene);
+        SDL_GPUSampler* nearest = samplers_.at(sampler_index(Filter::Nearest, false));
+        for (std::size_t i = 0; i < effects.size(); ++i) {
+            const CompositorEffect3D& effect = *effects[i];
+            const GraphResource screen = screens[i];
+            graph.add_pass({.name = "effect copy",
+                            .kind = GraphPassKind::Copy,
+                            .reads = {world},
+                            .writes = {screen}},
+                           [&, screen](const detail::GraphContext&) {
+                               SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+                               const SDL_GPUTextureLocation from{.texture = bound.at(world),
+                                                                 .mip_level = 0,
+                                                                 .layer = 0,
+                                                                 .x = 0,
+                                                                 .y = 0,
+                                                                 .z = 0};
+                               const SDL_GPUTextureLocation to{.texture = bound.at(screen),
+                                                               .mip_level = 0,
+                                                               .layer = 0,
+                                                               .x = 0,
+                                                               .y = 0,
+                                                               .z = 0};
+                               SDL_CopyGPUTextureToTexture(copy, &from, &to, scene_width_,
+                                                           scene_height_, 1, false);
+                               SDL_EndGPUCopyPass(copy);
+                           });
+            graph.add_pass(
+                {.name = "effect",
+                 .kind = GraphPassKind::Render,
+                 .reads = {screen},
+                 .writes = {world}},
+                [&, screen](const detail::GraphContext&) {
+                    auto pipeline = effect_pipeline(effect.shader, format);
+                    if (!pipeline) {
+                        log::warn("a compositor effect's pipeline couldn't be made",
+                                  {{"error", pipeline.error().message}});
+                        return;
+                    }
+                    SDL_GPUColorTargetInfo color{};
+                    color.texture = bound.at(world);
+                    color.load_op = SDL_GPU_LOADOP_LOAD;
+                    color.store_op = SDL_GPU_STOREOP_STORE;
+                    SDL_GPURenderPass* render =
+                        SDL_BeginGPURenderPass(commands, &color, 1, nullptr);
+                    SDL_BindGPUGraphicsPipeline(render, pipeline.value());
+                    const CompositorUniforms uniforms =
+                        compositor_uniforms(scene, effect, scene_width_, scene_height_,
+                                            normals && effect.normal_roughness);
+                    SDL_PushGPUFragmentUniformData(commands, 0, &uniforms,
+                                                   static_cast<std::uint32_t>(sizeof(uniforms)));
+                    std::array<SDL_GPUTextureSamplerBinding,
+                               cpu_compositor::kFirstParamBinding + kCompositorTextures>
+                        bindings{};
+                    bindings.at(cpu_compositor::kScreenBinding) = {.texture = bound.at(screen),
+                                                                   .sampler = nearest};
+                    bindings.at(cpu_compositor::kDepthBinding) = {.texture = depth_,
+                                                                  .sampler = nearest};
+                    bindings.at(cpu_compositor::kNormalBinding) = {
+                        .texture = normals ? prepass_.normals : white_, .sampler = nearest};
+                    for (std::uint32_t slot = 0; slot < kCompositorTextures; ++slot) {
+                        bindings.at(cpu_compositor::kFirstParamBinding + slot) =
+                            binding(effect.textures.at(slot), false);
+                    }
+                    SDL_BindGPUFragmentSamplers(render, 0, bindings.data(),
+                                                static_cast<std::uint32_t>(bindings.size()));
+                    SDL_DrawGPUPrimitives(render, 3, 1, 0, 0);
+                    SDL_EndGPURenderPass(render);
+                });
+        }
+        run_graph(graph, bound, "compositor effects");
+    }
+
+    // Subsurface scattering, as a frame graph whose textures come from the pool the post passes
+    // share: draw_light draws the scattering meshes' light into the texture it is handed, over the
+    // depth the opaque meshes left, then the blur goes across into a second texture, then down,
+    // adding the change to the world.
+    template <typename DrawLight>
+    void draw_subsurface(SDL_GPUCommandBuffer* commands, const Scene3D& scene,
+                         const DrawLight& draw_light) {
+        using detail::GraphPassKind;
+        using detail::GraphResource;
         const SDL_GPUTextureFormat format = world_format(scene, frame_format_);
         auto across = fullscreen_pipeline(subsurface_pipelines_, subsurface_shaders_, kHdrFormat);
         auto down = subsurface_add_pipeline(format);
         if (!across || !down) {
             return;
         }
+        detail::FrameGraph graph;
+        const detail::GraphShape shape =
+            color_shape(kHdrFormat, {.width = scene_width_, .height = scene_height_},
+                        SDL_GPUTextureFormatTexelBlockSize(kHdrFormat));
+        const GraphResource light = graph.transient("subsurface light", shape);
+        const GraphResource blurred = graph.transient("subsurface across", shape);
+        const GraphResource world = graph.import("world");
+        std::vector<SDL_GPUTexture*> bound(graph.resource_count(), nullptr);
+        bound.at(world) = world_texture(scene);
+        graph.add_pass({.name = "subsurface light",
+                        .kind = GraphPassKind::Render,
+                        .reads = {},
+                        .writes = {light}},
+                       [&](const detail::GraphContext&) { draw_light(bound.at(light)); });
         SDL_GPUSampler* nearest = samplers_.at(sampler_index(Filter::Nearest, false));
         for (const bool second : {false, true}) {
-            SDL_GPUColorTargetInfo color{};
-            color.texture = second ? world_texture(scene) : subsurface_.across;
-            color.load_op = second ? SDL_GPU_LOADOP_LOAD : SDL_GPU_LOADOP_DONT_CARE;
-            color.store_op = SDL_GPU_STOREOP_STORE;
-            SDL_GPURenderPass* render = SDL_BeginGPURenderPass(commands, &color, 1, nullptr);
-            SDL_BindGPUGraphicsPipeline(render, second ? down.value() : across.value());
-            const SubsurfaceUniforms uniforms =
-                subsurface_uniforms(scene, scene_width_, scene_height_, second);
-            SDL_PushGPUFragmentUniformData(commands, 0, &uniforms,
-                                           static_cast<std::uint32_t>(sizeof(uniforms)));
-            const std::array<SDL_GPUTextureSamplerBinding, 3> bindings{{
-                {.texture = second ? subsurface_.across : subsurface_.light, .sampler = nearest},
-                {.texture = depth_, .sampler = nearest},
-                {.texture = subsurface_.light, .sampler = nearest},
-            }};
-            SDL_BindGPUFragmentSamplers(render, 0, bindings.data(),
-                                        static_cast<std::uint32_t>(bindings.size()));
-            SDL_DrawGPUPrimitives(render, 3, 1, 0, 0);
-            SDL_EndGPURenderPass(render);
+            graph.add_pass(
+                {.name = second ? "subsurface down" : "subsurface across",
+                 .kind = GraphPassKind::Render,
+                 .reads = second ? std::vector<GraphResource>{blurred, light}
+                                 : std::vector<GraphResource>{light},
+                 .writes = {second ? world : blurred}},
+                [&, second](const detail::GraphContext&) {
+                    SDL_GPUColorTargetInfo color{};
+                    color.texture = bound.at(second ? world : blurred);
+                    color.load_op = second ? SDL_GPU_LOADOP_LOAD : SDL_GPU_LOADOP_DONT_CARE;
+                    color.store_op = SDL_GPU_STOREOP_STORE;
+                    SDL_GPURenderPass* render =
+                        SDL_BeginGPURenderPass(commands, &color, 1, nullptr);
+                    SDL_BindGPUGraphicsPipeline(render, second ? down.value() : across.value());
+                    const SubsurfaceUniforms uniforms =
+                        subsurface_uniforms(scene, scene_width_, scene_height_, second);
+                    SDL_PushGPUFragmentUniformData(commands, 0, &uniforms,
+                                                   static_cast<std::uint32_t>(sizeof(uniforms)));
+                    const std::array<SDL_GPUTextureSamplerBinding, 3> bindings{{
+                        {.texture = bound.at(second ? blurred : light), .sampler = nearest},
+                        {.texture = depth_, .sampler = nearest},
+                        {.texture = bound.at(light), .sampler = nearest},
+                    }};
+                    SDL_BindGPUFragmentSamplers(render, 0, bindings.data(),
+                                                static_cast<std::uint32_t>(bindings.size()));
+                    SDL_DrawGPUPrimitives(render, 3, 1, 0, 0);
+                    SDL_EndGPURenderPass(render);
+                });
         }
+        run_graph(graph, bound, "subsurface scattering");
     }
 
     // The blur down's pipeline into a world of format, adding its color.
@@ -7394,42 +8003,120 @@ private:
     }
 
     // ssr.hlsl's passes, from the prepass's depth and normals and the frame before, seen from
-    // history's camera, to the reflections at the frame's size, in the order ssr_plan gives.
+    // history's camera, to the reflections at the frame's size in the screen array's second layer,
+    // in the order ssr_plan gives: a frame graph whose textures come from the pool the post
+    // passes share, but for the levels copied into textures with mipmaps, which prepare_ssr keeps.
     void draw_ssr(SDL_GPUCommandBuffer* commands, const Scene3D& scene, const SsrCamera& camera,
                   const SsrHistory& history) {
+        using detail::GraphPassKind;
+        using detail::GraphResource;
         const SsrPlan plan = ssr_plan(scene.ssr.settings, scene_width_, scene_height_);
+        detail::FrameGraph graph;
+        constexpr GraphResource kNone = std::numeric_limits<GraphResource>::max();
+        std::array<GraphResource, kSsrTextures> made{};
+        made.fill(kNone);
+        for (std::uint32_t i = 0; i < kSsrTextures; ++i) {
+            const PostSize size = plan.sizes.at(i);
+            if (size.width != 0 && i != kSsrFinal) {
+                const SDL_GPUTextureFormat format = ssr_gpu_format(ssr_format(i));
+                made.at(i) = graph.transient(
+                    "ssr " + std::to_string(i),
+                    color_shape(format, size, SDL_GPUTextureFormatTexelBlockSize(format)));
+            }
+        }
+        // The resolve draws into the screen array's second layer, which the mesh pass reads.
+        made.at(kSsrFinal) = graph.import("screen");
+        const GraphResource hiz_mips = graph.import("ssr hiz mips");
+        const GraphResource color_mips = graph.import("ssr color mips");
+        std::vector<SDL_GPUTexture*> bound(graph.resource_count(), nullptr);
+        bound.at(made.at(kSsrFinal)) = screen_.texture;
+        bound.at(hiz_mips) = ssr_targets_.hiz_mips;
+        bound.at(color_mips) = ssr_targets_.color_mips;
+        // The passes' textures by index, once the graph has given them (null for those not
+        // drawn, which bind as white).
+        std::array<SDL_GPUTexture*, kSsrTextures> textures{};
+        const auto gather = [&] {
+            for (std::uint32_t i = 0; i < kSsrTextures; ++i) {
+                textures.at(i) = made.at(i) != kNone ? bound.at(made.at(i)) : nullptr;
+            }
+        };
+        std::array<bool, kSsrTextures> written{};
         for (const SsrStep& step : plan.steps) {
-            if (step.pass != SsrPass::CopyLevels) {
-                draw_ssr_step(commands, step,
-                              ssr_uniforms(scene.ssr, step, camera, history.camera, scene_width_,
-                                           scene_height_),
-                              history);
+            if (step.pass == SsrPass::CopyLevels) {
+                // GPUs can't draw into one level of a texture while sampling another, so each
+                // level is drawn into a texture of its own and copied into one with mipmaps for
+                // the passes that read them all.
+                const bool hiz = step.target == kSsrHizMips;
+                std::vector<GraphResource> reads;
+                for (std::uint32_t level = 0; level < plan.levels; ++level) {
+                    reads.push_back(made.at((hiz ? kSsrHiz : kSsrColor) + level));
+                }
+                graph.add_pass({.name = hiz ? "ssr copy hiz levels" : "ssr copy color levels",
+                                .kind = GraphPassKind::Copy,
+                                .reads = std::move(reads),
+                                .writes = {hiz ? hiz_mips : color_mips}},
+                               [&, hiz](const detail::GraphContext&) {
+                                   gather();
+                                   SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+                                   for (std::uint32_t level = 0; level < plan.levels; ++level) {
+                                       const std::uint32_t index =
+                                           (hiz ? kSsrHiz : kSsrColor) + level;
+                                       const PostSize size = plan.sizes.at(index);
+                                       SDL_GPUTextureLocation from{};
+                                       from.texture = textures.at(index);
+                                       SDL_GPUTextureLocation to{};
+                                       to.texture =
+                                           hiz ? ssr_targets_.hiz_mips : ssr_targets_.color_mips;
+                                       to.mip_level = level;
+                                       SDL_CopyGPUTextureToTexture(copy, &from, &to, size.width,
+                                                                   size.height, 1, false);
+                                   }
+                                   SDL_EndGPUCopyPass(copy);
+                               });
                 continue;
             }
-            // GPUs can't draw into one level of a texture while sampling another, so each level
-            // is drawn into a texture of its own and copied into one with mipmaps for the passes
-            // that read them all.
-            const bool hiz = step.target == kSsrHizMips;
-            SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
-            for (std::uint32_t level = 0; level < plan.levels; ++level) {
-                const std::uint32_t index = (hiz ? kSsrHiz : kSsrColor) + level;
-                const PostSize size = plan.sizes.at(index);
-                SDL_GPUTextureLocation from{};
-                from.texture = ssr_targets_.textures.at(index);
-                SDL_GPUTextureLocation to{};
-                to.texture = hiz ? ssr_targets_.hiz_mips : ssr_targets_.color_mips;
-                to.mip_level = level;
-                SDL_CopyGPUTextureToTexture(copy, &from, &to, size.width, size.height, 1, false);
+            std::vector<GraphResource> reads;
+            for (const std::uint32_t index : step.slots) {
+                GraphResource resource = kNone;
+                if (index < kSsrTextures && written.at(index)) {
+                    resource = made.at(index);
+                } else if (index == kSsrHizMips) {
+                    resource = hiz_mips;
+                } else if (index == kSsrColorMips) {
+                    resource = color_mips;
+                }
+                if (resource != kNone && std::ranges::find(reads, resource) == reads.end()) {
+                    reads.push_back(resource);
+                }
             }
-            SDL_EndGPUCopyPass(copy);
+            std::vector<GraphResource> writes{made.at(step.target)};
+            written.at(step.target) = true;
+            if (step.pass == SsrPass::Trace) {
+                writes.push_back(made.at(kSsrMipLevel));
+                written.at(kSsrMipLevel) = true;
+            }
+            graph.add_pass({.name = "ssr " + std::string(ssr_pass_name(step.pass)),
+                            .kind = GraphPassKind::Render,
+                            .reads = std::move(reads),
+                            .writes = std::move(writes)},
+                           [&, step](const detail::GraphContext&) {
+                               gather();
+                               draw_ssr_step(commands, step,
+                                             ssr_uniforms(scene.ssr, step, camera, history.camera,
+                                                          scene_width_, scene_height_),
+                                             history, textures);
+                           });
         }
+        run_graph(graph, bound, "SSR");
     }
 
-    // One of SSR's passes, other than a copy, drawn with uniforms over its target: the trace's
-    // over the reflections' first level and the mip levels, the last frame's over history's
-    // texture.
+    // One of SSR's passes, other than a copy, drawn with uniforms over its target in textures
+    // (by index; null binds white): the trace's over the reflections' first level and the mip
+    // levels, the last frame's over history's texture and the resolve's over the screen array's
+    // second layer.
     void draw_ssr_step(SDL_GPUCommandBuffer* commands, const SsrStep& step,
-                       const SsrUniforms& uniforms, const SsrHistory& history) {
+                       const SsrUniforms& uniforms, const SsrHistory& history,
+                       const std::array<SDL_GPUTexture*, kSsrTextures>& textures) {
         SDL_GPUGraphicsPipeline* pipeline = ssr_trace_pipeline_;
         if (step.pass != SsrPass::Trace) {
             // Made in prepare_ssr, at the start of the frame.
@@ -7441,12 +8128,19 @@ private:
             pipeline = made.value();
         }
         std::array<SDL_GPUColorTargetInfo, 2> colors{};
-        colors[0].texture =
-            step.target == kSsrLastFrame ? history.texture : ssr_targets_.textures.at(step.target);
+        if (step.target == kSsrLastFrame) {
+            colors[0].texture = history.texture;
+        } else if (step.target == kSsrFinal) {
+            colors[0].texture = screen_.texture;
+            colors[0].layer_or_depth_plane = 1;
+        } else {
+            colors[0].texture = textures.at(step.target);
+        }
         colors[0].load_op = SDL_GPU_LOADOP_DONT_CARE;
         colors[0].store_op = SDL_GPU_STOREOP_STORE;
         colors[1] = colors[0];
-        colors[1].texture = ssr_targets_.textures.at(kSsrMipLevel);
+        colors[1].texture = textures.at(kSsrMipLevel);
+        colors[1].layer_or_depth_plane = 0;
         const std::uint32_t count = step.pass == SsrPass::Trace ? 2 : 1;
         SDL_GPURenderPass* render = SDL_BeginGPURenderPass(commands, colors.data(), count, nullptr);
         SDL_BindGPUGraphicsPipeline(render, pipeline);
@@ -7469,8 +8163,8 @@ private:
                 texture = history.texture;
             } else if (index == kSsrWorld) {
                 texture = frame_.scene ? world_texture(*frame_.scene) : forward_targets_.world;
-            } else if (index < kSsrTextures && ssr_targets_.textures.at(index) != nullptr) {
-                texture = ssr_targets_.textures.at(index);
+            } else if (index < kSsrTextures && textures.at(index) != nullptr) {
+                texture = textures.at(index);
             }
             bindings.at(slot) = {.texture = texture, .sampler = nearest};
         }
@@ -7486,7 +8180,7 @@ private:
         const SsrStep step = ssr_last_frame_step();
         draw_ssr_step(commands, step,
                       ssr_uniforms(scene.ssr, step, camera, camera, scene_width_, scene_height_),
-                      history);
+                      history, {});
         history.camera = camera;
         history.primed = true;
     }
@@ -7495,7 +8189,71 @@ private:
     // auto exposure the luminance passes, from the world's texture down to one texel, then glow's
     // levels, each from the one before, then the tonemap pass from the world's texture over the
     // frame's target. A frame with no sky or mesh draws clears the world's texture first.
+    // A color texture's shape in the frame graph: its format and size, and the bytes it takes.
+    static detail::GraphShape color_shape(SDL_GPUTextureFormat format, PostSize size,
+                                          std::uint64_t texel_bytes) {
+        return {.key = (static_cast<std::uint64_t>(format) << 48U) |
+                       (static_cast<std::uint64_t>(size.width) << 24U) | size.height,
+                .bytes = std::uint64_t{size.width} * size.height * texel_bytes};
+    }
+
+    // Compiles graph, gives its transient resources textures from the pool (in bound, by
+    // resource, where its imported ones are already), runs it and adds it to the frame's report.
+    // False, logged, where it couldn't run.
+    bool run_graph(const detail::FrameGraph& graph, std::vector<SDL_GPUTexture*>& bound,
+                   std::string_view what) {
+        Result<detail::CompiledGraph> compiled = graph.compile();
+        if (!compiled) {
+            log::error("compiling a frame graph failed",
+                       {{"graph", std::string(what)}, {"error", compiled.error().message}});
+            return false;
+        }
+        Result<std::vector<SDL_GPUTexture*>> handles = transient_pool_.acquire(
+            compiled.value(),
+            [this](const detail::GraphShape& shape) { return make_graph_texture(shape); },
+            [this](SDL_GPUTexture* texture) { pending_release_.push_back(texture); });
+        if (!handles) {
+            log::error("making a frame graph's textures failed",
+                       {{"graph", std::string(what)}, {"error", handles.error().message}});
+            return false;
+        }
+        const std::vector<std::uint32_t>& slots = compiled.value().slots;
+        for (detail::GraphResource resource = 0; resource < bound.size(); ++resource) {
+            if (graph.is_transient(resource) && slots.at(resource) < handles.value().size()) {
+                bound.at(resource) = handles.value().at(slots.at(resource));
+            }
+        }
+        graph.execute(compiled.value());
+        graph_report_.add(graph.report(compiled.value()));
+        graph_report_.allocated_bytes = transient_pool_.frame_bytes();
+        return true;
+    }
+
+    // A transient color texture for the frame graph's pool, of the shape color_shape gave.
+    Result<SDL_GPUTexture*> make_graph_texture(const detail::GraphShape& shape) {
+        SDL_GPUTextureCreateInfo info{};
+        info.type = SDL_GPU_TEXTURETYPE_2D;
+        info.format = static_cast<SDL_GPUTextureFormat>(shape.key >> 48U);
+        info.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
+        info.width = static_cast<std::uint32_t>((shape.key >> 24U) & 0xFFFFFFU);
+        info.height = static_cast<std::uint32_t>(shape.key & 0xFFFFFFU);
+        info.layer_count_or_depth = 1;
+        info.num_levels = 1;
+        SDL_GPUTexture* texture = SDL_CreateGPUTexture(device_, &info);
+        if (texture == nullptr) {
+            return sdl_error("creating a " + std::to_string(info.width) + "x" +
+                             std::to_string(info.height) + " texture for the frame graph failed");
+        }
+        return texture;
+    }
+
+    // Forward+'s post passes, as a frame graph: depth of field's, auto exposure's luminance
+    // passes, glow's levels and the tonemap pass into the frame. The world, the frame, the depth
+    // buffer and auto exposure's textures, kept from frame to frame, are imported; depth of
+    // field's and glow's textures are transient, so those whose uses don't overlap share one.
     void draw_forward_post(SDL_GPUCommandBuffer* commands, const Scene3D& scene, bool clear) {
+        using detail::GraphPassKind;
+        using detail::GraphResource;
         const PostProcess& post = scene.post;
         if (clear) {
             SDL_GPUColorTargetInfo color{};
@@ -7508,15 +8266,39 @@ private:
         }
         SDL_GPUSampler* sampler = samplers_.at(sampler_index(Filter::Linear, false));
         SDL_GPUSampler* nearest = samplers_.at(sampler_index(Filter::Nearest, false));
-        // The world's texture, or after depth of field its result.
-        SDL_GPUTexture* scene_world = forward_targets_.world;
+        detail::FrameGraph graph;
+        // Each resource's texture: an imported one's now, a transient one's once the pool hands
+        // them out.
+        std::vector<SDL_GPUTexture*> bound;
+        const auto imported = [&](std::string_view name, SDL_GPUTexture* texture) {
+            const GraphResource resource = graph.import(name);
+            bound.resize(resource + 1, nullptr);
+            bound[resource] = texture;
+            return resource;
+        };
+        const auto transient = [&](std::string_view name, PostSize size) {
+            const GraphResource resource = graph.transient(name, color_shape(kHdrFormat, size, 8));
+            bound.resize(resource + 1, nullptr);
+            return resource;
+        };
+        const GraphResource world = imported("world", forward_targets_.world);
+        const GraphResource frame = imported("frame", frame_texture_);
+        constexpr GraphResource kNoResource = std::numeric_limits<GraphResource>::max();
+        const auto texture_of = [&](GraphResource resource) {
+            return resource == kNoResource ? nullptr : bound.at(resource);
+        };
         // A glow pass reads only its source; the tonemap pass reads glow's levels too. Passes
         // read the measured brightness given them, or white, and depth of field's the depth
         // buffer and the world.
+        std::array<GraphResource, kMaxGlowLevels> glow_levels{};
+        glow_levels.fill(kNoResource);
+        // The world, or after depth of field its result.
+        GraphResource scene_world = world;
         const auto pass = [&](SDL_GPUTexture* target, SDL_GPUTextureFormat format,
                               const ForwardPostUniforms& uniforms, SDL_GPUTexture* source,
                               bool levels, SDL_GPUTexture* lut, SDL_GPUTexture* measured = nullptr,
-                              SDL_GPUTexture* depth = nullptr, SDL_GPUTexture* world = nullptr) {
+                              SDL_GPUTexture* depth = nullptr, SDL_GPUTexture* dof_world = nullptr,
+                              bool from_level = false) {
             SDL_GPUColorTargetInfo color{};
             color.texture = target;
             color.load_op = SDL_GPU_LOADOP_DONT_CARE;
@@ -7533,11 +8315,11 @@ private:
             std::array<SDL_GPUTextureSamplerBinding, kForwardPostTextures> bindings{};
             // A luminance pass after the first loads the level before, a texture of floats, from
             // a slot of its own.
-            const bool from_level = format == kLuminanceFormat && source != scene_world;
-            bindings[0] = {.texture = from_level ? scene_world : source, .sampler = sampler};
+            bindings[0] = {.texture = from_level ? texture_of(scene_world) : source,
+                           .sampler = sampler};
             for (std::size_t i = 0; i < kMaxGlowLevels; ++i) {
-                SDL_GPUTexture* level = forward_targets_.glow.at(i);
-                bindings.at(1 + i) = {.texture = levels && level != nullptr ? level : white_,
+                SDL_GPUTexture* level = levels ? texture_of(glow_levels.at(i)) : nullptr;
+                bindings.at(1 + i) = {.texture = level != nullptr ? level : white_,
                                       .sampler = sampler};
             }
             bindings.at(1 + kMaxGlowLevels) = {.texture = lut, .sampler = sampler};
@@ -7547,7 +8329,7 @@ private:
                                                  .sampler = nearest};
             bindings.at(kDepthSlot) = {.texture = depth != nullptr ? depth : white_,
                                        .sampler = nearest};
-            bindings.at(kDofWorldSlot) = {.texture = world != nullptr ? world : white_,
+            bindings.at(kDofWorldSlot) = {.texture = dof_world != nullptr ? dof_world : white_,
                                           .sampler = nearest};
             SDL_BindGPUFragmentSamplers(render, 0, bindings.data(),
                                         static_cast<std::uint32_t>(bindings.size()));
@@ -7555,57 +8337,100 @@ private:
             SDL_EndGPURenderPass(render);
         };
         if (uses_dof(post)) {
-            const auto texture = [&](DofTexture which) {
-                return which == DofTexture::World
-                           ? forward_targets_.world
-                           : forward_targets_.dof.at(static_cast<std::size_t>(which) - 1);
+            const GraphResource depth = imported("depth", depth_);
+            // Sized, Secondary, Half0, Half1 and Out, as DofTexture after World.
+            static constexpr std::array<std::string_view, 5> kDofNames{
+                "dof_sized", "dof_secondary", "dof_half0", "dof_half1", "dof_out"};
+            const PostSize half{.width = std::max(frame_width_ >> 1U, 1U),
+                                .height = std::max(frame_height_ >> 1U, 1U)};
+            std::array<GraphResource, 5> dof{};
+            for (std::size_t i = 0; i < dof.size(); ++i) {
+                dof.at(i) = transient(kDofNames.at(i), i == 2 || i == 3
+                                                           ? half
+                                                           : PostSize{.width = frame_width_,
+                                                                      .height = frame_height_});
+            }
+            const auto resource = [&](DofTexture which) {
+                return which == DofTexture::World ? world
+                                                  : dof.at(static_cast<std::size_t>(which) - 1);
             };
             // With FSR 2 the depth buffer is at the render size.
-            const PostSize depth = uses_fsr2(scene)
-                                       ? PostSize{.width = scene_width_, .height = scene_height_}
-                                       : PostSize{};
+            const PostSize depth_size =
+                uses_fsr2(scene) ? PostSize{.width = scene_width_, .height = scene_height_}
+                                 : PostSize{};
             for (const DofStep& step : dof_plan(post, frame_width_, frame_height_)) {
-                pass(texture(step.target), kHdrFormat,
-                     dof_uniforms(post, step, scene.projection, depth), texture(step.source), false,
-                     white_, nullptr, depth_, forward_targets_.world);
+                const GraphResource target = resource(step.target);
+                const GraphResource source = resource(step.source);
+                graph.add_pass({.name = "dof",
+                                .kind = GraphPassKind::Render,
+                                .reads = {source, depth, world},
+                                .writes = {target}},
+                               [&, step, target, source, depth_size](const detail::GraphContext&) {
+                                   pass(texture_of(target), kHdrFormat,
+                                        dof_uniforms(post, step, scene.projection, depth_size),
+                                        texture_of(source), false, white_, nullptr, depth_,
+                                        forward_targets_.world);
+                               });
             }
-            scene_world = texture(DofTexture::Out);
+            scene_world = resource(DofTexture::Out);
         }
-        SDL_GPUTexture* brightness = nullptr;
-        if (post.auto_exposure) {
-            // As Godot's Luminance::luminance_reduction: the last pass moves from the last
-            // frame's brightness, then the brightness texture and the last level swap.
+        GraphResource brightness = kNoResource;
+        // As Godot's Luminance::luminance_reduction: the last pass moves from the last frame's
+        // brightness, then the brightness texture and the last level swap.
+        const bool luminance = post.auto_exposure && !forward_targets_.luminance.empty();
+        if (luminance) {
             const bool set = !forward_targets_.measured ||
                              forward_targets_.version != post.auto_exposure_version;
-            std::vector<SDL_GPUTexture*>& levels = forward_targets_.luminance;
+            const std::vector<SDL_GPUTexture*>& levels = forward_targets_.luminance;
             const std::vector<PostSize> plan = luminance_plan(frame_width_, frame_height_);
-            PostSize source{.width = frame_width_, .height = frame_height_};
+            const GraphResource last = imported("brightness", forward_targets_.brightness);
+            PostSize source_size{.width = frame_width_, .height = frame_height_};
+            GraphResource source = scene_world;
             for (std::size_t i = 0; i < levels.size(); ++i) {
                 ForwardPass kind = i == 0 ? ForwardPass::LuminanceFirst : ForwardPass::Luminance;
                 if (i > 0 && i + 1 == levels.size() && !set) {
                     kind = ForwardPass::LuminanceFinal;
                 }
-                pass(levels.at(i), kLuminanceFormat,
-                     luminance_uniforms(post, kind, source, plan.at(i), i + 1 == levels.size()),
-                     i == 0 ? scene_world : levels.at(i - 1), false, white_,
-                     forward_targets_.brightness);
-                source = plan.at(i);
+                const GraphResource level = imported("luminance", levels.at(i));
+                const ForwardPostUniforms uniforms =
+                    luminance_uniforms(post, kind, source_size, plan.at(i), i + 1 == levels.size());
+                graph.add_pass({.name = "luminance",
+                                .kind = GraphPassKind::Render,
+                                .reads = {source, last},
+                                .writes = {level}},
+                               [&, uniforms, level, source, last, i](const detail::GraphContext&) {
+                                   pass(texture_of(level), kLuminanceFormat, uniforms,
+                                        texture_of(source), false, white_, texture_of(last),
+                                        nullptr, nullptr, i > 0);
+                               });
+                source_size = plan.at(i);
+                source = level;
             }
-            std::swap(forward_targets_.brightness, levels.back());
-            forward_targets_.measured = true;
-            forward_targets_.version = post.auto_exposure_version;
-            brightness = forward_targets_.brightness;
+            // The last level holds the brightness once the passes run.
+            brightness = source;
         }
         if (post.glow) {
             const GlowPlan plan = forward_glow_plan(post, frame_width_, frame_height_);
             for (std::size_t i = 0; i < plan.count; ++i) {
                 const PostSize size = plan.sizes.at(i);
-                pass(forward_targets_.glow.at(i), kHdrFormat,
-                     forward_post_uniforms(post,
-                                           i == 0 ? ForwardPass::GlowFirst : ForwardPass::GlowNext,
-                                           size.width, size.height, frame_width_, frame_height_),
-                     i == 0 ? scene_world : forward_targets_.glow.at(i - 1), false, white_,
-                     brightness);
+                glow_levels.at(i) = transient("glow", size);
+                const GraphResource source = i == 0 ? scene_world : glow_levels.at(i - 1);
+                const GraphResource target = glow_levels.at(i);
+                std::vector<GraphResource> reads{source};
+                if (brightness != kNoResource) {
+                    reads.push_back(brightness);
+                }
+                const ForwardPostUniforms uniforms = forward_post_uniforms(
+                    post, i == 0 ? ForwardPass::GlowFirst : ForwardPass::GlowNext, size.width,
+                    size.height, frame_width_, frame_height_);
+                graph.add_pass({.name = "glow",
+                                .kind = GraphPassKind::Render,
+                                .reads = std::move(reads),
+                                .writes = {target}},
+                               [&, uniforms, source, target](const detail::GraphContext&) {
+                                   pass(texture_of(target), kHdrFormat, uniforms,
+                                        texture_of(source), false, white_, texture_of(brightness));
+                               });
             }
         }
         SDL_GPUTexture* lut = white_;
@@ -7615,10 +8440,37 @@ private:
             lut = found.gpu;
             lut_desc = found.desc;
         }
-        pass(frame_texture_, frame_format_,
-             forward_post_uniforms(post, ForwardPass::Tonemap, frame_width_, frame_height_,
-                                   frame_width_, frame_height_, lut_desc.width, lut_desc.height),
-             scene_world, post.glow, lut, brightness);
+        {
+            std::vector<GraphResource> reads{scene_world};
+            for (const GraphResource level : glow_levels) {
+                if (level != kNoResource) {
+                    reads.push_back(level);
+                }
+            }
+            if (brightness != kNoResource) {
+                reads.push_back(brightness);
+            }
+            const ForwardPostUniforms uniforms =
+                forward_post_uniforms(post, ForwardPass::Tonemap, frame_width_, frame_height_,
+                                      frame_width_, frame_height_, lut_desc.width, lut_desc.height);
+            graph.add_pass({.name = "tonemap",
+                            .kind = GraphPassKind::Render,
+                            .reads = std::move(reads),
+                            .writes = {frame}},
+                           [&, uniforms](const detail::GraphContext&) {
+                               pass(frame_texture_, frame_format_, uniforms,
+                                    texture_of(scene_world), post.glow, lut,
+                                    texture_of(brightness));
+                           });
+        }
+        if (!run_graph(graph, bound, "Forward+'s post passes")) {
+            return;
+        }
+        if (luminance) {
+            std::swap(forward_targets_.brightness, forward_targets_.luminance.back());
+            forward_targets_.measured = true;
+            forward_targets_.version = post.auto_exposure_version;
+        }
     }
 
     // The post passes' shaders, their pipeline for a target format, and their textures at the
@@ -7660,16 +8512,8 @@ private:
         if (!world) {
             return world.error();
         }
+        // Glow's levels are the frame graph's, made as draw_post runs.
         post_targets_.world = world.value();
-        const std::array<PostSize, kGlowLevels> sizes = glow_sizes(width, height);
-        for (std::size_t i = 0; i < kGlowLevels; ++i) {
-            auto level = made(sizes.at(i).width, sizes.at(i).height);
-            if (!level) {
-                release_post_targets();
-                return level.error();
-            }
-            post_targets_.glow.at(i) = level.value();
-        }
         post_targets_.width = width;
         post_targets_.height = height;
         return {};
@@ -7753,17 +8597,17 @@ private:
             }
         };
         release(post_targets_.world);
-        for (SDL_GPUTexture*& texture : post_targets_.glow) {
-            release(texture);
-        }
         post_targets_.width = 0;
         post_targets_.height = 0;
     }
 
-    // post.hlsl's passes: glow's filter, downsampling and upsampling through its four textures,
-    // then the post pass from the meshes' texture over the frame's target. A frame with no mesh
-    // draws clears the meshes' texture first.
+    // post.hlsl's passes, as a frame graph: glow's filter, downsampling and upsampling through
+    // its levels, textures from the pool the other passes share, then the post pass from the
+    // meshes' texture over the frame's target. A frame with no mesh draws clears the meshes'
+    // texture first.
     void draw_post(SDL_GPUCommandBuffer* commands, const PostProcess& post, bool clear) {
+        using detail::GraphPassKind;
+        using detail::GraphResource;
         if (clear) {
             SDL_GPUColorTargetInfo color{};
             color.texture = post_targets_.world;
@@ -7799,20 +8643,47 @@ private:
             SDL_DrawGPUPrimitives(render, 3, 1, 0, 0);
             SDL_EndGPURenderPass(render);
         };
+        detail::FrameGraph graph;
+        const GraphResource world = graph.import("world");
+        const GraphResource frame = graph.import("frame");
+        std::vector<SDL_GPUTexture*> bound;
         const std::array<PostSize, kGlowLevels> sizes = glow_sizes(frame_width_, frame_height_);
-        const auto glow_pass = [&](PostPass kind, std::size_t from, std::size_t to) {
-            pass(post_targets_.glow.at(to), kTextureFormat,
-                 post_uniforms(post, kind, sizes.at(to).width, sizes.at(to).height),
-                 kind == PostPass::GlowFilter ? post_targets_.world : post_targets_.glow.at(from),
-                 white_, white_);
+        // Each level is drawn on the way down and again on the way up, each time a resource of its
+        // own, so those whose uses don't overlap share a texture.
+        const auto level = [&](std::size_t i, const char* way) {
+            return graph.transient(std::string("glow ") + way + " " + std::to_string(i),
+                                   color_shape(kTextureFormat, sizes.at(i), 4));
         };
-        if (post.glow) {
-            glow_pass(PostPass::GlowFilter, 0, 0);
-            for (std::size_t i = 1; i < kGlowLevels; ++i) {
-                glow_pass(PostPass::GlowDownsample, i - 1, i);
+        const auto glow_pass = [&](PostPass kind, GraphResource from, std::size_t to,
+                                   GraphResource into) {
+            const char* name = "glow upsample";
+            if (kind == PostPass::GlowFilter) {
+                name = "glow filter";
+            } else if (kind == PostPass::GlowDownsample) {
+                name = "glow downsample";
             }
+            graph.add_pass(
+                {.name = name, .kind = GraphPassKind::Render, .reads = {from}, .writes = {into}},
+                [&, kind, from, to, into](const detail::GraphContext&) {
+                    pass(bound.at(into), kTextureFormat,
+                         post_uniforms(post, kind, sizes.at(to).width, sizes.at(to).height),
+                         bound.at(from), white_, white_);
+                });
+        };
+        GraphResource glowed = world;
+        if (post.glow) {
+            std::array<GraphResource, kGlowLevels> down{};
+            down[0] = level(0, "down");
+            glow_pass(PostPass::GlowFilter, world, 0, down[0]);
+            for (std::size_t i = 1; i < kGlowLevels; ++i) {
+                down.at(i) = level(i, "down");
+                glow_pass(PostPass::GlowDownsample, down.at(i - 1), i, down.at(i));
+            }
+            glowed = down.back();
             for (std::size_t i = kGlowLevels - 1; i-- > 0;) {
-                glow_pass(PostPass::GlowUpsample, i + 1, i);
+                const GraphResource up = level(i, "up");
+                glow_pass(PostPass::GlowUpsample, glowed, i, up);
+                glowed = up;
             }
         }
         SDL_GPUTexture* lut = white_;
@@ -7822,10 +8693,24 @@ private:
             lut = found.gpu;
             lut_desc = found.desc;
         }
-        pass(frame_texture_, frame_format_,
-             post_uniforms(post, PostPass::Post, frame_width_, frame_height_, lut_desc.width,
-                           lut_desc.height),
-             post_targets_.world, post.glow ? post_targets_.glow[0] : white_, lut);
+        std::vector<GraphResource> reads{world};
+        if (post.glow) {
+            reads.push_back(glowed);
+        }
+        graph.add_pass({.name = "post",
+                        .kind = GraphPassKind::Render,
+                        .reads = std::move(reads),
+                        .writes = {frame}},
+                       [&](const detail::GraphContext&) {
+                           pass(bound.at(frame), frame_format_,
+                                post_uniforms(post, PostPass::Post, frame_width_, frame_height_,
+                                              lut_desc.width, lut_desc.height),
+                                bound.at(world), post.glow ? bound.at(glowed) : white_, lut);
+                       });
+        bound.assign(graph.resource_count(), nullptr);
+        bound.at(world) = post_targets_.world;
+        bound.at(frame) = frame_texture_;
+        run_graph(graph, bound, "post-processing");
     }
 
     // Both of a kind's shaders, unless they are made already.
@@ -8163,32 +9048,43 @@ private:
         return uploaded;
     }
 
+    // Makes room for size bytes in storage, made for usage (volumetric fog's passes read the
+    // lights and clusters too), doubling as it grows.
+    Result<void> reserve_storage(StorageBuffer& storage, std::uint32_t size,
+                                 SDL_GPUBufferUsageFlags usage) {
+        if (size <= storage.capacity) {
+            return {};
+        }
+        const std::uint32_t capacity =
+            std::max({size, std::min(storage.capacity * 2, kMaxStorageBytes), kMinVertexBytes});
+        if (storage.buffer != nullptr) {
+            SDL_ReleaseGPUBuffer(device_, storage.buffer);
+            SDL_ReleaseGPUTransferBuffer(device_, storage.transfer);
+            storage = {};
+        }
+        SDL_GPUBufferCreateInfo buffer{};
+        buffer.usage = usage;
+        buffer.size = capacity;
+        storage.buffer = SDL_CreateGPUBuffer(device_, &buffer);
+        SDL_GPUTransferBufferCreateInfo transfer{};
+        transfer.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+        transfer.size = capacity;
+        storage.transfer = SDL_CreateGPUTransferBuffer(device_, &transfer);
+        if (storage.buffer == nullptr || storage.transfer == nullptr) {
+            return sdl_error("making room for the frame's light clusters failed");
+        }
+        storage.capacity = capacity;
+        return {};
+    }
+
     // Copies bytes into a storage buffer, growing it first if they don't fit.
-    Result<void> upload_storage(SDL_GPUCopyPass* copy, StorageBuffer& storage,
-                                std::span<const std::byte> bytes) {
+    Result<void>
+    upload_storage(SDL_GPUCopyPass* copy, StorageBuffer& storage, std::span<const std::byte> bytes,
+                   SDL_GPUBufferUsageFlags usage = SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ |
+                                                   SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ) {
         const auto size = static_cast<std::uint32_t>(bytes.size());
-        if (size > storage.capacity) {
-            const std::uint32_t capacity =
-                std::max({size, std::min(storage.capacity * 2, kMaxStorageBytes), kMinVertexBytes});
-            if (storage.buffer != nullptr) {
-                SDL_ReleaseGPUBuffer(device_, storage.buffer);
-                SDL_ReleaseGPUTransferBuffer(device_, storage.transfer);
-                storage = {};
-            }
-            SDL_GPUBufferCreateInfo buffer{};
-            // Volumetric fog's passes read the lights and clusters too.
-            buffer.usage = SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ |
-                           SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ;
-            buffer.size = capacity;
-            storage.buffer = SDL_CreateGPUBuffer(device_, &buffer);
-            SDL_GPUTransferBufferCreateInfo transfer{};
-            transfer.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-            transfer.size = capacity;
-            storage.transfer = SDL_CreateGPUTransferBuffer(device_, &transfer);
-            if (storage.buffer == nullptr || storage.transfer == nullptr) {
-                return sdl_error("making room for the frame's light clusters failed");
-            }
-            storage.capacity = capacity;
+        if (auto room = reserve_storage(storage, size, usage); !room) {
+            return room;
         }
         void* mapped = SDL_MapGPUTransferBuffer(device_, storage.transfer, true);
         if (mapped == nullptr) {
@@ -8206,6 +9102,9 @@ private:
     void start_frame(const Frame& frame, SDL_GPUCommandBuffer* commands, SDL_GPUTexture* target,
                      std::uint32_t width, std::uint32_t height) {
         in_frame_ = true;
+        graph_report_ = {};
+        transient_pool_.next_frame(
+            [this](SDL_GPUTexture* texture) { pending_release_.push_back(texture); });
         frame_ = frame;
         frame_commands_ = commands;
         frame_texture_ = target;
@@ -8297,8 +9196,9 @@ private:
     SDL_GPUBuffer* no_target_ = nullptr;
     std::unordered_map<MeshId, Mesh> meshes_;
     std::uint32_t next_mesh_ = 1;
-    std::array<SDL_GPUShader*, 2> mesh_shaders_{}; // vertex, then fragment
-    SDL_GPUShader* clustered_shader_ = nullptr;    // Forward+'s fragment stage
+    // mesh_instanced.hlsl's vertex stage, which draws runs of draws, then mesh.hlsl's fragment.
+    std::array<SDL_GPUShader*, 2> mesh_shaders_{};
+    SDL_GPUShader* clustered_shader_ = nullptr; // Forward+'s fragment stage
     std::vector<MeshPipeline> mesh_pipelines_;
     // Forward+'s clusters for the frame, made as it is sent, and the buffers they go in.
     LightClusters clusters_;
@@ -8372,10 +9272,9 @@ private:
     std::uint32_t depth_width_ = 0;
     std::uint32_t depth_height_ = 0;
     // What the post passes draw with: their shaders, a pipeline for each target format, and the
-    // meshes' texture and glow's at the frame's size.
+    // meshes' texture at the frame's size (glow's levels are the frame graph's).
     struct PostTargets {
         SDL_GPUTexture* world = nullptr;
-        std::array<SDL_GPUTexture*, kGlowLevels> glow{};
         std::uint32_t width = 0;
         std::uint32_t height = 0;
     };
@@ -8389,22 +9288,22 @@ private:
     // first frame that glows.
     struct ForwardTargets {
         SDL_GPUTexture* world = nullptr;
-        std::array<SDL_GPUTexture*, kMaxGlowLevels> glow{};
         // Auto exposure's luminance textures, made with the first frame that uses it, and the
         // measured brightness: whether it holds one yet, and the version it was measured for.
         std::vector<SDL_GPUTexture*> luminance;
         SDL_GPUTexture* brightness = nullptr;
         bool measured = false;
         std::uint64_t version = 0;
-        // Depth of field's textures, as DofTexture after World, made with the first frame that
-        // uses it.
-        std::array<SDL_GPUTexture*, 5> dof{};
         std::uint32_t width = 0;
         std::uint32_t height = 0;
     };
     std::array<SDL_GPUShader*, 2> forward_shaders_{}; // vertex, then fragment
     std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> forward_pipelines_;
     ForwardTargets forward_targets_;
+    // The textures the frame graph's transient resources take, by shape, from frame to frame, and
+    // what the last frame's graph did.
+    detail::TransientPool<SDL_GPUTexture*> transient_pool_;
+    detail::FrameGraphReport graph_report_;
     // The normal-roughness prepass's normals and depth at the frame's size, for SSAO and SSR.
     struct PrepassTargets {
         SDL_GPUTexture* normals = nullptr;
@@ -8415,30 +9314,17 @@ private:
     PrepassTargets prepass_;
     // SSAO's textures for the frame's size and settings: those ssao_plan sizes (null for those it
     // doesn't draw).
-    struct SsaoTargets {
-        std::array<SDL_GPUTexture*, kSsaoTextures> textures{};
-        std::uint32_t width = 0;
-        std::uint32_t height = 0;
-        SsaoSettings settings;
-    };
     SDL_GPUShader* normal_shader_ = nullptr;                     // the prepass's fragment stage
     std::array<SDL_GPUGraphicsPipeline*, 3> normal_pipelines_{}; // by CullMode
     // Subsurface scattering: the meshes' fragment stage and pipelines (by CullMode), the blur's
-    // shaders, its pipelines and those adding its change to the world, and its two textures of
-    // half floats at the frame's size: the subsurface pass's light and the blur across.
+    // shaders, and its pipelines and those adding its change to the world (its textures are the
+    // frame graph's).
     SDL_GPUShader* subsurface_mesh_shader_ = nullptr;
     std::array<SDL_GPUGraphicsPipeline*, 3> subsurface_mesh_pipelines_{};
     std::array<SDL_GPUShader*, 2> subsurface_shaders_{};
     std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> subsurface_pipelines_;
     std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>>
         subsurface_add_pipelines_;
-    struct SubsurfaceTargets {
-        SDL_GPUTexture* light = nullptr;
-        SDL_GPUTexture* across = nullptr;
-        std::uint32_t width = 0;
-        std::uint32_t height = 0;
-    };
-    SubsurfaceTargets subsurface_;
     // The vertex shader, then the fragment shader, or on Direct3D 12 one for each group of passes
     // (kSsaoShaderGroups), and the pipelines for each.
     std::array<SDL_GPUShader*, 1 + kSsaoShaderGroups.size()> ssao_shaders_{};
@@ -8446,12 +9332,9 @@ private:
                kSsaoShaderGroups.size()>
         ssao_pipelines_;
     bool ssao_split_ = false;
-    SsaoTargets ssao_targets_;
-    // SSR's textures for the frame's size and settings: those ssr_plan sizes (null for those it
-    // doesn't draw), and Hi-Z's and the reflections' levels copied into one texture each with
-    // mipmaps.
+    // SSR's textures kept for the frame's size and settings: Hi-Z's and the reflections' levels
+    // copied into one texture each with mipmaps (the rest are the frame graph's).
     struct SsrTargets {
-        std::array<SDL_GPUTexture*, kSsrTextures> textures{};
         SDL_GPUTexture* hiz_mips = nullptr;
         SDL_GPUTexture* color_mips = nullptr;
         std::uint32_t width = 0;
@@ -8464,7 +9347,7 @@ private:
     SDL_GPUGraphicsPipeline* ssr_trace_pipeline_ = nullptr;
     SsrTargets ssr_targets_;
     std::vector<std::pair<TextureId, SsrHistory>> ssr_histories_;
-    std::array<SDL_GPUShader*, 2> motion_shaders_{};             // TAA's prepass's stages
+    std::array<SDL_GPUShader*, 2> motion_shaders_{}; // TAA's prepass's stages, instanced
     std::array<SDL_GPUGraphicsPipeline*, 3> motion_pipelines_{}; // by CullMode
     std::array<SDL_GPUShader*, 2> taa_shaders_{};                // vertex, then fragment
     std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> taa_pipelines_;
@@ -8524,6 +9407,21 @@ private:
     std::array<SDL_GPUShader*, 2> sdfgi_gather_shaders_{};
     SDL_GPUGraphicsPipeline* sdfgi_gather_pipeline_ = nullptr;
     bool sdfgi_failure_logged_ = false;
+    // Skins, the skin_mesh calls waiting for the next frame, their joints and shape weights,
+    // the buffer those go in and the skinning pipeline.
+    std::unordered_map<SkinId, GpuSkin> skins_;
+    std::uint32_t next_skin_ = 1;
+    std::vector<SkinJob> skin_jobs_;
+    std::vector<std::uint32_t> skin_poses_;
+    StorageBuffer skin_poses_buffer_;
+    // Culling the camera's mesh draws and drawing their runs (cull_meshes): their records, runs
+    // and order, what mesh_cull.hlsl writes for them (the runs' indirect arguments and lists),
+    // and each draw's Instance, which mesh_instanced.hlsl reads.
+    SDL_GPUComputePipeline* cull_pipeline_ = nullptr;
+    StorageBuffer cull_records_;
+    StorageBuffer cull_outputs_;
+    StorageBuffer mesh_instances_;
+    SDL_GPUComputePipeline* skin_pipeline_ = nullptr;
     std::array<SDL_GPUShader*, 2> fog_sky_shaders_{};
     std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> fog_sky_pipelines_;
     SDL_GPUBuffer* no_fog_ = nullptr;

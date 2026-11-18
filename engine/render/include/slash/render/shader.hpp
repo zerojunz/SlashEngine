@@ -24,9 +24,10 @@ namespace slash::render {
 // NOLINTNEXTLINE(performance-enum-size): ids count up, past 255
 enum class ShaderId : std::uint32_t { None = 0 };
 
-// What a game's shader draws, as Godot's shader_type: sprites and controls (canvas_item), or
-// meshes (spatial), whose material it is (Material3D::shader).
-enum class ShaderType : std::uint8_t { Canvas, Spatial };
+// What a game's shader draws, as Godot's shader_type: sprites and controls (canvas_item), meshes
+// (spatial), whose material it is (Material3D::shader), or the 3D world's screen at a point of a
+// Forward+ frame (compositor: a compositor effect's, compositor.hpp).
+enum class ShaderType : std::uint8_t { Canvas, Spatial, Compositor };
 
 // How many texture params a spatial shader takes: they take the slots of a StandardMaterial3D's
 // albedo, metallic, roughness, emission and normal textures, 0 to 4.

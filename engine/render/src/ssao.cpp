@@ -1012,4 +1012,40 @@ SsaoSettings ssao_settings_from_json(const json::Value& value) {
     return out;
 }
 
+std::string_view detail::ssao_pass_name(detail::SsaoPass pass) {
+    switch (pass) {
+    case detail::SsaoPass::Depth:
+        return "depth";
+    case detail::SsaoPass::Gather:
+        return "gather";
+    case detail::SsaoPass::GatherBase:
+        return "gather base";
+    case detail::SsaoPass::GatherAdaptive:
+        return "gather adaptive";
+    case detail::SsaoPass::ImportanceGenerate:
+        return "importance";
+    case detail::SsaoPass::ImportanceA:
+        return "importance blur a";
+    case detail::SsaoPass::ImportanceB:
+        return "importance blur b";
+    case detail::SsaoPass::ImportanceRows:
+        return "importance rows";
+    case detail::SsaoPass::ImportanceSum:
+        return "importance sum";
+    case detail::SsaoPass::BlurPlain:
+        return "blur";
+    case detail::SsaoPass::BlurSmart:
+        return "blur smart";
+    case detail::SsaoPass::BlurWide:
+        return "blur wide";
+    case detail::SsaoPass::InterleavePlain:
+        return "interleave";
+    case detail::SsaoPass::InterleaveSmart:
+        return "interleave smart";
+    case detail::SsaoPass::InterleaveHalf:
+        return "interleave half";
+    }
+    return "depth";
+}
+
 } // namespace slash::render

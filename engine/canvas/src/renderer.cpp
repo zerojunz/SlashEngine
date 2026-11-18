@@ -518,11 +518,11 @@ CanvasRenderer::override_material(const std::string& path,
         return entry.error();
     }
     const MaterialEntry& found = *entry.value();
-    if (found.material->shader_type != render::ShaderType::Spatial) {
+    if (found.material->shader_type == render::ShaderType::Canvas) {
         return make_error(ErrorCode::InvalidArgument,
                           "\"" + path +
                               "\" is a canvas material; a mesh takes one with \"shader_type\": "
-                              "\"spatial\"");
+                              "\"spatial\", and a compositor effect one with \"compositor\"");
     }
     std::string failed;
     auto instance = instantiate(*found.material, params, time, &failed);
@@ -531,6 +531,7 @@ CanvasRenderer::override_material(const std::string& path,
                           "material_params/" + failed + ": " + instance.error().message);
     }
     const MaterialInstance& made = instance.value();
+    out.type = found.material->shader_type;
     out.shader = found.shader;
     std::copy(made.program.constants.begin(),
               made.program.constants.begin() +
@@ -2347,6 +2348,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         traced ? render::RayTracing3D{} : settings(world).ray_tracing);
     if (scene) {
         apply_settings(scene->scene, settings(world));
+        scene3d::apply_pipeline_passes(scene->pipeline_passes, scene->scene);
         scene->scene.path_trace = options.path_trace;
     }
     for (const scene3d::Problem& unseen : scene3d_.problems()) {

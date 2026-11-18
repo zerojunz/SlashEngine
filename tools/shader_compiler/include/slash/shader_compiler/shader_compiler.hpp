@@ -18,6 +18,11 @@
 // through game_surface, and the CPU runs game_surface alone. Its light(), as Godot's, lights the
 // surface once a light in place of the engine's light model, through game_light.
 //
+// A compositor shader (ShaderType::Compositor), a compositor effect's (render/compositor.hpp), has
+// a fragment() run at each pixel of the 3D world's screen, which reads it through screen_texture,
+// depth_texture and normal_roughness_texture and writes COLOR; its stages draw one triangle over
+// the screen, and the CPU runs the same fragment().
+//
 // slash-cli, slash-mcp and exports link it; games never do, and draw what their export compiled.
 namespace slash::shader_compiler {
 
