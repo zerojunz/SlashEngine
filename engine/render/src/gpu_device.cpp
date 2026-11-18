@@ -4897,7 +4897,6 @@ private:
             lights->ssao[3] = 1.0F;
         }
         draw_ssr(commands, scene, seen, history);
-        copy_to_screen(commands, ssr_targets_.textures.at(kSsrFinal), 1);
         draw_color();
         if (taa != nullptr) {
             resolve_taa(commands, *taa, view_projection);
@@ -5970,24 +5969,12 @@ private:
                 return sdl_error("creating the SSR trace pipeline failed");
             }
         }
+        // The passes' textures are the frame graph's, made as draw_ssr runs; the levels are copied
+        // into a texture with mipmaps each, kept here.
         const SsrPlan plan = ssr_plan(settings, width, height);
-        if (ssr_targets_.textures.at(kSsrFinal) == nullptr || ssr_targets_.width != width ||
+        if (ssr_targets_.hiz_mips == nullptr || ssr_targets_.width != width ||
             ssr_targets_.height != height || !(ssr_targets_.settings == settings)) {
             release_ssr_targets();
-            for (std::uint32_t i = 0; i < kSsrTextures; ++i) {
-                const PostSize size = plan.sizes.at(i);
-                if (size.width == 0) {
-                    continue;
-                }
-                auto texture = pass_texture(size.width, size.height, ssr_gpu_format(ssr_format(i)),
-                                            SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, 1, "SSR");
-                if (!texture) {
-                    release_ssr_targets();
-                    return texture.error();
-                }
-                ssr_targets_.textures.at(i) = texture.value();
-            }
-            // The passes' levels are copied in, never drawn into.
             for (const auto& [mips, index] : {std::pair{&ssr_targets_.hiz_mips, kSsrHiz},
                                               std::pair{&ssr_targets_.color_mips, kSsrColor}}) {
                 auto texture =
@@ -6030,9 +6017,6 @@ private:
                 pending_release_.push_back(std::exchange(texture, nullptr));
             }
         };
-        for (SDL_GPUTexture*& texture : ssr_targets_.textures) {
-            release(texture);
-        }
         release(ssr_targets_.hiz_mips);
         release(ssr_targets_.color_mips);
         ssr_targets_.width = 0;
@@ -7800,42 +7784,120 @@ private:
     }
 
     // ssr.hlsl's passes, from the prepass's depth and normals and the frame before, seen from
-    // history's camera, to the reflections at the frame's size, in the order ssr_plan gives.
+    // history's camera, to the reflections at the frame's size in the screen array's second layer,
+    // in the order ssr_plan gives: a frame graph whose textures come from the pool the post
+    // passes share, but for the levels copied into textures with mipmaps, which prepare_ssr keeps.
     void draw_ssr(SDL_GPUCommandBuffer* commands, const Scene3D& scene, const SsrCamera& camera,
                   const SsrHistory& history) {
+        using detail::GraphPassKind;
+        using detail::GraphResource;
         const SsrPlan plan = ssr_plan(scene.ssr.settings, scene_width_, scene_height_);
+        detail::FrameGraph graph;
+        constexpr GraphResource kNone = std::numeric_limits<GraphResource>::max();
+        std::array<GraphResource, kSsrTextures> made{};
+        made.fill(kNone);
+        for (std::uint32_t i = 0; i < kSsrTextures; ++i) {
+            const PostSize size = plan.sizes.at(i);
+            if (size.width != 0 && i != kSsrFinal) {
+                const SDL_GPUTextureFormat format = ssr_gpu_format(ssr_format(i));
+                made.at(i) = graph.transient(
+                    "ssr " + std::to_string(i),
+                    color_shape(format, size, SDL_GPUTextureFormatTexelBlockSize(format)));
+            }
+        }
+        // The resolve draws into the screen array's second layer, which the mesh pass reads.
+        made.at(kSsrFinal) = graph.import("screen");
+        const GraphResource hiz_mips = graph.import("ssr hiz mips");
+        const GraphResource color_mips = graph.import("ssr color mips");
+        std::vector<SDL_GPUTexture*> bound(graph.resource_count(), nullptr);
+        bound.at(made.at(kSsrFinal)) = screen_.texture;
+        bound.at(hiz_mips) = ssr_targets_.hiz_mips;
+        bound.at(color_mips) = ssr_targets_.color_mips;
+        // The passes' textures by index, once the graph has given them (null for those not
+        // drawn, which bind as white).
+        std::array<SDL_GPUTexture*, kSsrTextures> textures{};
+        const auto gather = [&] {
+            for (std::uint32_t i = 0; i < kSsrTextures; ++i) {
+                textures.at(i) = made.at(i) != kNone ? bound.at(made.at(i)) : nullptr;
+            }
+        };
+        std::array<bool, kSsrTextures> written{};
         for (const SsrStep& step : plan.steps) {
-            if (step.pass != SsrPass::CopyLevels) {
-                draw_ssr_step(commands, step,
-                              ssr_uniforms(scene.ssr, step, camera, history.camera, scene_width_,
-                                           scene_height_),
-                              history);
+            if (step.pass == SsrPass::CopyLevels) {
+                // GPUs can't draw into one level of a texture while sampling another, so each
+                // level is drawn into a texture of its own and copied into one with mipmaps for
+                // the passes that read them all.
+                const bool hiz = step.target == kSsrHizMips;
+                std::vector<GraphResource> reads;
+                for (std::uint32_t level = 0; level < plan.levels; ++level) {
+                    reads.push_back(made.at((hiz ? kSsrHiz : kSsrColor) + level));
+                }
+                graph.add_pass({.name = hiz ? "ssr copy hiz levels" : "ssr copy color levels",
+                                .kind = GraphPassKind::Copy,
+                                .reads = std::move(reads),
+                                .writes = {hiz ? hiz_mips : color_mips}},
+                               [&, hiz](const detail::GraphContext&) {
+                                   gather();
+                                   SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+                                   for (std::uint32_t level = 0; level < plan.levels; ++level) {
+                                       const std::uint32_t index =
+                                           (hiz ? kSsrHiz : kSsrColor) + level;
+                                       const PostSize size = plan.sizes.at(index);
+                                       SDL_GPUTextureLocation from{};
+                                       from.texture = textures.at(index);
+                                       SDL_GPUTextureLocation to{};
+                                       to.texture =
+                                           hiz ? ssr_targets_.hiz_mips : ssr_targets_.color_mips;
+                                       to.mip_level = level;
+                                       SDL_CopyGPUTextureToTexture(copy, &from, &to, size.width,
+                                                                   size.height, 1, false);
+                                   }
+                                   SDL_EndGPUCopyPass(copy);
+                               });
                 continue;
             }
-            // GPUs can't draw into one level of a texture while sampling another, so each level
-            // is drawn into a texture of its own and copied into one with mipmaps for the passes
-            // that read them all.
-            const bool hiz = step.target == kSsrHizMips;
-            SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
-            for (std::uint32_t level = 0; level < plan.levels; ++level) {
-                const std::uint32_t index = (hiz ? kSsrHiz : kSsrColor) + level;
-                const PostSize size = plan.sizes.at(index);
-                SDL_GPUTextureLocation from{};
-                from.texture = ssr_targets_.textures.at(index);
-                SDL_GPUTextureLocation to{};
-                to.texture = hiz ? ssr_targets_.hiz_mips : ssr_targets_.color_mips;
-                to.mip_level = level;
-                SDL_CopyGPUTextureToTexture(copy, &from, &to, size.width, size.height, 1, false);
+            std::vector<GraphResource> reads;
+            for (const std::uint32_t index : step.slots) {
+                GraphResource resource = kNone;
+                if (index < kSsrTextures && written.at(index)) {
+                    resource = made.at(index);
+                } else if (index == kSsrHizMips) {
+                    resource = hiz_mips;
+                } else if (index == kSsrColorMips) {
+                    resource = color_mips;
+                }
+                if (resource != kNone && std::ranges::find(reads, resource) == reads.end()) {
+                    reads.push_back(resource);
+                }
             }
-            SDL_EndGPUCopyPass(copy);
+            std::vector<GraphResource> writes{made.at(step.target)};
+            written.at(step.target) = true;
+            if (step.pass == SsrPass::Trace) {
+                writes.push_back(made.at(kSsrMipLevel));
+                written.at(kSsrMipLevel) = true;
+            }
+            graph.add_pass({.name = "ssr " + std::string(ssr_pass_name(step.pass)),
+                            .kind = GraphPassKind::Render,
+                            .reads = std::move(reads),
+                            .writes = std::move(writes)},
+                           [&, step](const detail::GraphContext&) {
+                               gather();
+                               draw_ssr_step(commands, step,
+                                             ssr_uniforms(scene.ssr, step, camera, history.camera,
+                                                          scene_width_, scene_height_),
+                                             history, textures);
+                           });
         }
+        run_graph(graph, bound, "SSR");
     }
 
-    // One of SSR's passes, other than a copy, drawn with uniforms over its target: the trace's
-    // over the reflections' first level and the mip levels, the last frame's over history's
-    // texture.
+    // One of SSR's passes, other than a copy, drawn with uniforms over its target in textures
+    // (by index; null binds white): the trace's over the reflections' first level and the mip
+    // levels, the last frame's over history's texture and the resolve's over the screen array's
+    // second layer.
     void draw_ssr_step(SDL_GPUCommandBuffer* commands, const SsrStep& step,
-                       const SsrUniforms& uniforms, const SsrHistory& history) {
+                       const SsrUniforms& uniforms, const SsrHistory& history,
+                       const std::array<SDL_GPUTexture*, kSsrTextures>& textures) {
         SDL_GPUGraphicsPipeline* pipeline = ssr_trace_pipeline_;
         if (step.pass != SsrPass::Trace) {
             // Made in prepare_ssr, at the start of the frame.
@@ -7847,12 +7909,19 @@ private:
             pipeline = made.value();
         }
         std::array<SDL_GPUColorTargetInfo, 2> colors{};
-        colors[0].texture =
-            step.target == kSsrLastFrame ? history.texture : ssr_targets_.textures.at(step.target);
+        if (step.target == kSsrLastFrame) {
+            colors[0].texture = history.texture;
+        } else if (step.target == kSsrFinal) {
+            colors[0].texture = screen_.texture;
+            colors[0].layer_or_depth_plane = 1;
+        } else {
+            colors[0].texture = textures.at(step.target);
+        }
         colors[0].load_op = SDL_GPU_LOADOP_DONT_CARE;
         colors[0].store_op = SDL_GPU_STOREOP_STORE;
         colors[1] = colors[0];
-        colors[1].texture = ssr_targets_.textures.at(kSsrMipLevel);
+        colors[1].texture = textures.at(kSsrMipLevel);
+        colors[1].layer_or_depth_plane = 0;
         const std::uint32_t count = step.pass == SsrPass::Trace ? 2 : 1;
         SDL_GPURenderPass* render = SDL_BeginGPURenderPass(commands, colors.data(), count, nullptr);
         SDL_BindGPUGraphicsPipeline(render, pipeline);
@@ -7875,8 +7944,8 @@ private:
                 texture = history.texture;
             } else if (index == kSsrWorld) {
                 texture = frame_.scene ? world_texture(*frame_.scene) : forward_targets_.world;
-            } else if (index < kSsrTextures && ssr_targets_.textures.at(index) != nullptr) {
-                texture = ssr_targets_.textures.at(index);
+            } else if (index < kSsrTextures && textures.at(index) != nullptr) {
+                texture = textures.at(index);
             }
             bindings.at(slot) = {.texture = texture, .sampler = nearest};
         }
@@ -7892,7 +7961,7 @@ private:
         const SsrStep step = ssr_last_frame_step();
         draw_ssr_step(commands, step,
                       ssr_uniforms(scene.ssr, step, camera, camera, scene_width_, scene_height_),
-                      history);
+                      history, {});
         history.camera = camera;
         history.primed = true;
     }
@@ -9019,11 +9088,9 @@ private:
                kSsaoShaderGroups.size()>
         ssao_pipelines_;
     bool ssao_split_ = false;
-    // SSR's textures for the frame's size and settings: those ssr_plan sizes (null for those it
-    // doesn't draw), and Hi-Z's and the reflections' levels copied into one texture each with
-    // mipmaps.
+    // SSR's textures kept for the frame's size and settings: Hi-Z's and the reflections' levels
+    // copied into one texture each with mipmaps (the rest are the frame graph's).
     struct SsrTargets {
-        std::array<SDL_GPUTexture*, kSsrTextures> textures{};
         SDL_GPUTexture* hiz_mips = nullptr;
         SDL_GPUTexture* color_mips = nullptr;
         std::uint32_t width = 0;

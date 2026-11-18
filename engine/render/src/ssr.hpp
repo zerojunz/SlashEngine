@@ -9,6 +9,7 @@
 #include <array>
 #include <cstdint>
 #include <span>
+#include <string_view>
 #include <vector>
 
 // What every device shares to work out a Forward+ frame's screen-space reflections, as Godot 4.6's
@@ -55,6 +56,8 @@ enum class SsrPass : std::uint8_t {
     LastFrame,         // the frame's color, kept for the next frame's reflections, as
                        // copy_internal_texture_to_last_frame
 };
+// A pass's name, for frame graphs' reports.
+[[nodiscard]] std::string_view ssr_pass_name(SsrPass pass);
 
 // The textures SSR draws, by index: Hi-Z's levels, the reflections' levels, the filter's rows at
 // each level (from level 1), the normals and roughness at half size, the mip levels and the result.
