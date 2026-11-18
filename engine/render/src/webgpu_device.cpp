@@ -642,8 +642,6 @@ public:
                 wgpuRenderPipelineRelease(pipeline);
             }
         }
-        release_pass_texture(subsurface_.light);
-        release_pass_texture(subsurface_.across);
         for (WGPURenderPipeline pipeline : fsr2_pipelines_) {
             if (pipeline != nullptr) {
                 wgpuRenderPipelineRelease(pipeline);
@@ -2238,7 +2236,7 @@ public:
             taa != nullptr ? uniforms_.add(taa_uniforms(frame_width_, frame_height_)) : 0;
         // Subsurface scattering's blur across and down, in a frame with meshes that scatter.
         std::optional<std::array<std::uint32_t, 2>> subsurface_at;
-        if (forward && subsurface_.light.texture != nullptr && uses_subsurface(*frame_.scene) &&
+        if (forward && uses_subsurface(*frame_.scene) &&
             std::ranges::any_of(mesh_batches_, [](const MeshBatch& batch) {
                 return batch.subsurface_pipeline != nullptr;
             })) {
@@ -5203,22 +5201,24 @@ private:
         if (!subsurface) {
             return;
         }
-        WGPURenderPassColorAttachment light = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
-        light.view = subsurface_.light.view;
-        light.loadOp = WGPULoadOp_Clear;
-        light.storeOp = WGPUStoreOp_Store;
-        light.clearValue = {0.0, 0.0, 0.0, 0.0};
         depth.depthLoadOp = WGPULoadOp_Load;
         depth.depthStoreOp = WGPUStoreOp_Store;
-        descriptor.colorAttachments = &light;
-        pass = wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
-        if (clustered) {
-            wgpuRenderPassEncoderSetBindGroup(pass, 0, cluster_group_, 0, nullptr);
-        }
-        encode_mesh_draws(pass, at, MeshDraws::Subsurface, ssao, ssr);
-        wgpuRenderPassEncoderEnd(pass);
-        wgpuRenderPassEncoderRelease(pass);
-        encode_subsurface(encoder, *subsurface);
+        encode_subsurface(encoder, *subsurface, [&](WGPUTextureView view) {
+            WGPURenderPassColorAttachment light = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+            light.view = view;
+            light.loadOp = WGPULoadOp_Clear;
+            light.storeOp = WGPUStoreOp_Store;
+            light.clearValue = {0.0, 0.0, 0.0, 0.0};
+            WGPURenderPassDescriptor lit = descriptor;
+            lit.colorAttachments = &light;
+            WGPURenderPassEncoder draw = wgpuCommandEncoderBeginRenderPass(encoder, &lit);
+            if (clustered) {
+                wgpuRenderPassEncoderSetBindGroup(draw, 0, cluster_group_, 0, nullptr);
+            }
+            encode_mesh_draws(draw, at, MeshDraws::Subsurface, ssao, ssr);
+            wgpuRenderPassEncoderEnd(draw);
+            wgpuRenderPassEncoderRelease(draw);
+        });
         color.loadOp = WGPULoadOp_Load;
         depth.depthStoreOp = depth_store;
         descriptor.colorAttachments = &color;
@@ -5231,37 +5231,65 @@ private:
         wgpuRenderPassEncoderRelease(pass);
     }
 
-    // Subsurface scattering's blur, its uniforms at at: across into its second texture, then
-    // down, adding the change to the world.
-    void encode_subsurface(WGPUCommandEncoder encoder, const std::array<std::uint32_t, 2>& at) {
+    // Subsurface scattering, as a frame graph whose textures come from the pool the post passes
+    // share, the blur's uniforms at at: draw_light draws the scattering meshes' light into the
+    // view it is handed, over the depth the opaque meshes left, then the blur goes across into a
+    // second texture, then down, adding the change to the world.
+    template <typename DrawLight>
+    void encode_subsurface(WGPUCommandEncoder encoder, const std::array<std::uint32_t, 2>& at,
+                           const DrawLight& draw_light) {
+        using detail::GraphPassKind;
+        using detail::GraphResource;
+        detail::FrameGraph graph;
+        const detail::GraphShape shape =
+            color_shape(kHdrFormat, {.width = scene_width_, .height = scene_height_}, 8);
+        const GraphResource light = graph.transient("subsurface light", shape);
+        const GraphResource blurred = graph.transient("subsurface across", shape);
+        const GraphResource world = graph.import("world");
+        std::vector<WGPUTextureView> bound(graph.resource_count(), nullptr);
+        bound.at(world) = world_view(*frame_.scene);
+        graph.add_pass({.name = "subsurface light",
+                        .kind = GraphPassKind::Render,
+                        .reads = {},
+                        .writes = {light}},
+                       [&](const detail::GraphContext&) { draw_light(bound.at(light)); });
         for (const bool second : {false, true}) {
-            const std::array<WGPUTextureView, 3> views{second ? subsurface_.across.view
-                                                              : subsurface_.light.view,
-                                                       depth_.view, subsurface_.light.view};
-            std::array<WGPUBindGroupEntry, 3> entries{};
-            for (std::uint32_t slot = 0; slot < entries.size(); ++slot) {
-                entries.at(slot) = WGPU_BIND_GROUP_ENTRY_INIT;
-                entries.at(slot).binding = slot;
-                entries.at(slot).textureView = views.at(slot);
-            }
-            WGPUBindGroup textures = bind_group(subsurface_textures_layout_, entries);
-            WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
-            color.view = second ? world_view(*frame_.scene) : subsurface_.across.view;
-            color.loadOp = second ? WGPULoadOp_Load : WGPULoadOp_Clear;
-            color.storeOp = WGPUStoreOp_Store;
-            WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
-            descriptor.colorAttachmentCount = 1;
-            descriptor.colorAttachments = &color;
-            WGPURenderPassEncoder draw = wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
-            wgpuRenderPassEncoderSetPipeline(draw, subsurface_pipeline(second));
-            wgpuRenderPassEncoderSetBindGroup(draw, 2, textures, 0, nullptr);
-            wgpuRenderPassEncoderSetBindGroup(draw, 3, subsurface_uniforms_group_, 1,
-                                              &at.at(second ? 1 : 0));
-            wgpuRenderPassEncoderDraw(draw, 3, 1, 0, 0);
-            wgpuRenderPassEncoderEnd(draw);
-            wgpuRenderPassEncoderRelease(draw);
-            wgpuBindGroupRelease(textures);
+            graph.add_pass(
+                {.name = second ? "subsurface down" : "subsurface across",
+                 .kind = GraphPassKind::Render,
+                 .reads = second ? std::vector<GraphResource>{blurred, light}
+                                 : std::vector<GraphResource>{light},
+                 .writes = {second ? world : blurred}},
+                [&, second](const detail::GraphContext&) {
+                    const std::array<WGPUTextureView, 3> views{bound.at(second ? blurred : light),
+                                                               depth_.view, bound.at(light)};
+                    std::array<WGPUBindGroupEntry, 3> entries{};
+                    for (std::uint32_t slot = 0; slot < entries.size(); ++slot) {
+                        entries.at(slot) = WGPU_BIND_GROUP_ENTRY_INIT;
+                        entries.at(slot).binding = slot;
+                        entries.at(slot).textureView = views.at(slot);
+                    }
+                    WGPUBindGroup textures = bind_group(subsurface_textures_layout_, entries);
+                    WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+                    color.view = bound.at(second ? world : blurred);
+                    color.loadOp = second ? WGPULoadOp_Load : WGPULoadOp_Clear;
+                    color.storeOp = WGPUStoreOp_Store;
+                    WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
+                    descriptor.colorAttachmentCount = 1;
+                    descriptor.colorAttachments = &color;
+                    WGPURenderPassEncoder draw =
+                        wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
+                    wgpuRenderPassEncoderSetPipeline(draw, subsurface_pipeline(second));
+                    wgpuRenderPassEncoderSetBindGroup(draw, 2, textures, 0, nullptr);
+                    wgpuRenderPassEncoderSetBindGroup(draw, 3, subsurface_uniforms_group_, 1,
+                                                      &at.at(second ? 1 : 0));
+                    wgpuRenderPassEncoderDraw(draw, 3, 1, 0, 0);
+                    wgpuRenderPassEncoderEnd(draw);
+                    wgpuRenderPassEncoderRelease(draw);
+                    wgpuBindGroupRelease(textures);
+                });
         }
+        run_graph(graph, bound, "subsurface scattering");
     }
 
     // Subsurface scattering's blur across, or down (add), which adds its color to the world.
@@ -5296,19 +5324,10 @@ private:
         return made;
     }
 
-    // Subsurface scattering's textures for a frame of width x height.
+    // Subsurface scattering's depth target for a frame of width x height (its textures are the
+    // frame graph's, made as encode_subsurface runs).
     void prepare_subsurface(std::uint32_t width, std::uint32_t height) {
         make_depth_target(width, height);
-        if (subsurface_.light.texture != nullptr && subsurface_.width == width &&
-            subsurface_.height == height) {
-            return;
-        }
-        release_pass_texture(subsurface_.light);
-        release_pass_texture(subsurface_.across);
-        subsurface_.light = pass_texture(width, height, kHdrFormat);
-        subsurface_.across = pass_texture(width, height, kHdrFormat);
-        subsurface_.width = width;
-        subsurface_.height = height;
     }
 
     // The pipeline drawing meshes that cull as cull says into the subsurface pass: Forward+'s
@@ -8625,18 +8644,10 @@ private:
     std::vector<std::pair<TextureId, SsrHistory>> ssr_histories_;
     std::array<WGPURenderPipeline, 3> motion_pipelines_{}; // TAA's prepass's, by CullMode
     WGPURenderPipeline taa_pipeline_ = nullptr;
-    // Subsurface scattering's blur across, its blur down adding to the world (made for the
-    // world's format, kHdrFormat in Forward+), and its two textures of half floats at the
-    // frame's size: the subsurface pass's light and the blur across.
+    // Subsurface scattering's blur across and its blur down adding to the world (made for the
+    // world's format, kHdrFormat in Forward+); its textures are the frame graph's.
     WGPURenderPipeline subsurface_pipeline_ = nullptr;
     WGPURenderPipeline subsurface_add_pipeline_ = nullptr;
-    struct SubsurfaceTargets {
-        GpuTexture light;
-        GpuTexture across;
-        std::uint32_t width = 0;
-        std::uint32_t height = 0;
-    };
-    SubsurfaceTargets subsurface_;
     // Each target's frames before for TAA, by the target.
     std::vector<std::pair<TextureId, TaaHistory>> taa_histories_;
     // FSR 2's pipelines by Fsr2Pass, its reconstruct pass's, the textures a frame's passes draw

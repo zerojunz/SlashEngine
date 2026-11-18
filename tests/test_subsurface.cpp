@@ -414,3 +414,20 @@ TEST_CASE("GPUs scatter light under a surface as the software device does") {
         CHECK(skin_count <= 20);
     }
 }
+
+TEST_CASE("the GPU device scatters light as a frame graph whose textures the pool keeps") {
+    auto gpu = slash::test::gpu_device();
+    if (gpu == nullptr) {
+        return;
+    }
+    CAPTURE(render::backend_name(gpu->backend()));
+    draw_ball(*gpu, {.quality = render::SubsurfaceQuality::High});
+    // The scattering meshes' light, the blur across and down, then the tonemap pass.
+    const render::Stats stats = gpu->stats();
+    CHECK(stats.graph_passes == 4);
+    CHECK(stats.graph_culled == 0);
+    CHECK(stats.transient_bytes > 0);
+    // A second frame takes the same textures from the pool.
+    draw_ball(*gpu, {.quality = render::SubsurfaceQuality::High});
+    CHECK(gpu->stats().transient_allocated_bytes == stats.transient_allocated_bytes);
+}
