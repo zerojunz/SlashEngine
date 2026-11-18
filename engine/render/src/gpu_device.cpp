@@ -725,7 +725,6 @@ public:
                 SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
             }
         }
-        release_ssao_targets();
         for (SDL_GPUShader* shader : ssr_shaders_) {
             if (shader != nullptr) {
                 SDL_ReleaseGPUShader(device_, shader);
@@ -4749,7 +4748,6 @@ private:
                 traced ? ray_occlusion(scene) : std::nullopt;
             if (ssao && !occlusion) {
                 draw_ssao(commands, scene);
-                copy_to_screen(commands, ssao_targets_.textures.at(kSsaoFinal), 0);
             }
             if (traced) {
                 const std::vector<RayShadowLight> traced_lights = ray_shadow_lights(scene);
@@ -5785,47 +5783,13 @@ private:
             }
             ssao_shaders_[0] = vertex.value();
         }
+        // The textures are the frame graph's, made as draw_ssao runs.
         for (const SsaoStep& step : ssao_plan(settings, width, height).steps) {
             if (auto pipeline = ssao_pipeline(step); !pipeline) {
                 return pipeline.error();
             }
         }
-        if (ssao_targets_.textures.at(kSsaoFinal) != nullptr && ssao_targets_.width == width &&
-            ssao_targets_.height == height && ssao_targets_.settings == settings) {
-            return {};
-        }
-        release_ssao_targets();
-        const SsaoPlan plan = ssao_plan(settings, width, height);
-        for (std::uint32_t i = 0; i < kSsaoTextures; ++i) {
-            const PostSize size = plan.sizes.at(i);
-            if (size.width == 0) {
-                continue;
-            }
-            auto texture = pass_texture(size.width, size.height, ssao_target_format(i),
-                                        SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, 1, "SSAO");
-            if (!texture) {
-                release_ssao_targets();
-                return texture.error();
-            }
-            ssao_targets_.textures.at(i) = texture.value();
-        }
-        ssao_targets_.width = width;
-        ssao_targets_.height = height;
-        ssao_targets_.settings = settings;
         return {};
-    }
-
-    void release_ssao_targets() {
-        const auto release = [this](SDL_GPUTexture*& texture) {
-            if (texture != nullptr) {
-                pending_release_.push_back(std::exchange(texture, nullptr));
-            }
-        };
-        for (SDL_GPUTexture*& texture : ssao_targets_.textures) {
-            release(texture);
-        }
-        ssao_targets_.width = 0;
-        ssao_targets_.height = 0;
     }
 
     // The pipeline drawing an SSAO pass into its target's format.
@@ -5836,8 +5800,8 @@ private:
                                    ssao_target_format(step.target));
     }
 
-    // An SSAO texture's format: the final one's is half floats, so that it copies into the screen
-    // array's first layer.
+    // An SSAO texture's format: the final one's is half floats, the screen array's, which it draws
+    // into.
     static SDL_GPUTextureFormat ssao_target_format(std::uint32_t texture) {
         return texture == kSsaoFinal ? kHdrFormat : ssao_gpu_format(ssao_format(texture));
     }
@@ -5856,44 +5820,89 @@ private:
     }
 
     // ssao.hlsl's passes, from the prepass's depth and normals to the occlusion at the frame's
-    // size, in the order ssao_plan gives.
+    // size in the screen array's first layer, in the order ssao_plan gives: a frame graph whose
+    // textures come from the pool the post passes share.
     void draw_ssao(SDL_GPUCommandBuffer* commands, const Scene3D& scene) {
+        using detail::GraphPassKind;
+        using detail::GraphResource;
         SDL_GPUSampler* nearest = samplers_.at(sampler_index(Filter::Nearest, false));
         const SsaoPlan plan = ssao_plan(scene.ssao.settings, scene_width_, scene_height_);
-        for (const SsaoStep& step : plan.steps) {
-            const SsaoUniforms uniforms =
-                ssao_uniforms(scene.ssao, step, scene.projection, scene_width_, scene_height_);
-            // Made in prepare_ssao, at the start of the frame.
-            auto pipeline = ssao_pipeline(step);
-            if (!pipeline) {
-                return;
+        detail::FrameGraph graph;
+        constexpr GraphResource kNone = std::numeric_limits<GraphResource>::max();
+        std::array<GraphResource, kSsaoTextures> made{};
+        made.fill(kNone);
+        for (std::uint32_t i = 0; i < kSsaoTextures; ++i) {
+            const PostSize size = plan.sizes.at(i);
+            if (size.width != 0 && i != kSsaoFinal) {
+                const SDL_GPUTextureFormat format = ssao_target_format(i);
+                made.at(i) = graph.transient(
+                    "ssao " + std::to_string(i),
+                    color_shape(format, size, SDL_GPUTextureFormatTexelBlockSize(format)));
             }
-            SDL_GPUColorTargetInfo color{};
-            color.texture = ssao_targets_.textures.at(step.target);
-            color.load_op = SDL_GPU_LOADOP_DONT_CARE;
-            color.store_op = SDL_GPU_STOREOP_STORE;
-            SDL_GPURenderPass* render = SDL_BeginGPURenderPass(commands, &color, 1, nullptr);
-            SDL_BindGPUGraphicsPipeline(render, pipeline.value());
-            SDL_PushGPUFragmentUniformData(commands, 0, &uniforms,
-                                           static_cast<std::uint32_t>(sizeof(uniforms)));
-            std::array<SDL_GPUTextureSamplerBinding, kSsaoSlots> bindings{};
-            for (std::size_t slot = 0; slot < kSsaoSlots; ++slot) {
-                const std::uint32_t index = step.slots.at(slot);
-                SDL_GPUTexture* texture = white_;
-                if (index == kSsaoDepthBuffer) {
-                    texture = prepass_.depth;
-                } else if (index == kSsaoNormals) {
-                    texture = prepass_.normals;
-                } else if (index < kSsaoTextures && ssao_targets_.textures.at(index) != nullptr) {
-                    texture = ssao_targets_.textures.at(index);
-                }
-                bindings.at(slot) = {.texture = texture, .sampler = nearest};
-            }
-            SDL_BindGPUFragmentSamplers(render, 0, bindings.data(),
-                                        static_cast<std::uint32_t>(bindings.size()));
-            SDL_DrawGPUPrimitives(render, 3, 1, 0, 0);
-            SDL_EndGPURenderPass(render);
         }
+        // The last pass draws into the screen array's first layer, which the mesh pass reads.
+        made.at(kSsaoFinal) = graph.import("screen");
+        std::vector<SDL_GPUTexture*> bound(graph.resource_count(), nullptr);
+        bound.at(made.at(kSsaoFinal)) = screen_.texture;
+        // A texture no pass drew (very low's skipped slices, which its interleave binds but
+        // doesn't read) is left out of the graph and bound as white.
+        const auto texture_of = [this, &bound](GraphResource resource) {
+            SDL_GPUTexture* texture = bound.at(resource);
+            return texture != nullptr ? texture : white_;
+        };
+        std::array<bool, kSsaoTextures> written{};
+        for (const SsaoStep& step : plan.steps) {
+            std::vector<GraphResource> reads;
+            for (const std::uint32_t index : step.slots) {
+                if (index < kSsaoTextures && written.at(index) &&
+                    std::ranges::find(reads, made.at(index)) == reads.end()) {
+                    reads.push_back(made.at(index));
+                }
+            }
+            written.at(step.target) = true;
+            graph.add_pass(
+                {.name = "ssao " + std::string(ssao_pass_name(step.pass)),
+                 .kind = GraphPassKind::Render,
+                 .reads = std::move(reads),
+                 .writes = {made.at(step.target)}},
+                [&, step](const detail::GraphContext&) {
+                    const SsaoUniforms uniforms = ssao_uniforms(scene.ssao, step, scene.projection,
+                                                                scene_width_, scene_height_);
+                    // Made in prepare_ssao, at the start of the frame.
+                    auto pipeline = ssao_pipeline(step);
+                    if (!pipeline) {
+                        return;
+                    }
+                    SDL_GPUColorTargetInfo color{};
+                    color.texture = texture_of(made.at(step.target));
+                    color.layer_or_depth_plane = 0;
+                    color.load_op = SDL_GPU_LOADOP_DONT_CARE;
+                    color.store_op = SDL_GPU_STOREOP_STORE;
+                    SDL_GPURenderPass* render =
+                        SDL_BeginGPURenderPass(commands, &color, 1, nullptr);
+                    SDL_BindGPUGraphicsPipeline(render, pipeline.value());
+                    SDL_PushGPUFragmentUniformData(commands, 0, &uniforms,
+                                                   static_cast<std::uint32_t>(sizeof(uniforms)));
+                    std::array<SDL_GPUTextureSamplerBinding, kSsaoSlots> bindings{};
+                    for (std::size_t slot = 0; slot < kSsaoSlots; ++slot) {
+                        const std::uint32_t index = step.slots.at(slot);
+                        SDL_GPUTexture* texture = white_;
+                        if (index == kSsaoDepthBuffer) {
+                            texture = prepass_.depth;
+                        } else if (index == kSsaoNormals) {
+                            texture = prepass_.normals;
+                        } else if (index < kSsaoTextures && made.at(index) != kNone) {
+                            texture = texture_of(made.at(index));
+                        }
+                        bindings.at(slot) = {.texture = texture, .sampler = nearest};
+                    }
+                    SDL_BindGPUFragmentSamplers(render, 0, bindings.data(),
+                                                static_cast<std::uint32_t>(bindings.size()));
+                    SDL_DrawGPUPrimitives(render, 3, 1, 0, 0);
+                    SDL_EndGPURenderPass(render);
+                });
+        }
+        run_graph(graph, bound, "SSAO");
     }
 
     // SSR's shaders, their pipeline for each texture format they draw and the trace's, which draws
@@ -7900,6 +7909,38 @@ private:
                 .bytes = std::uint64_t{size.width} * size.height * texel_bytes};
     }
 
+    // Compiles graph, gives its transient resources textures from the pool (in bound, by
+    // resource, where its imported ones are already), runs it and adds it to the frame's report.
+    // False, logged, where it couldn't run.
+    bool run_graph(const detail::FrameGraph& graph, std::vector<SDL_GPUTexture*>& bound,
+                   std::string_view what) {
+        Result<detail::CompiledGraph> compiled = graph.compile();
+        if (!compiled) {
+            log::error("compiling a frame graph failed",
+                       {{"graph", std::string(what)}, {"error", compiled.error().message}});
+            return false;
+        }
+        Result<std::vector<SDL_GPUTexture*>> handles = transient_pool_.acquire(
+            compiled.value(),
+            [this](const detail::GraphShape& shape) { return make_graph_texture(shape); },
+            [this](SDL_GPUTexture* texture) { pending_release_.push_back(texture); });
+        if (!handles) {
+            log::error("making a frame graph's textures failed",
+                       {{"graph", std::string(what)}, {"error", handles.error().message}});
+            return false;
+        }
+        const std::vector<std::uint32_t>& slots = compiled.value().slots;
+        for (detail::GraphResource resource = 0; resource < bound.size(); ++resource) {
+            if (graph.is_transient(resource) && slots.at(resource) < handles.value().size()) {
+                bound.at(resource) = handles.value().at(slots.at(resource));
+            }
+        }
+        graph.execute(compiled.value());
+        graph_report_.add(graph.report(compiled.value()));
+        graph_report_.allocated_bytes = transient_pool_.frame_bytes();
+        return true;
+    }
+
     // A transient color texture for the frame graph's pool, of the shape color_shape gave.
     Result<SDL_GPUTexture*> make_graph_texture(const detail::GraphShape& shape) {
         SDL_GPUTextureCreateInfo info{};
@@ -8134,29 +8175,9 @@ private:
                                     texture_of(brightness));
                            });
         }
-        Result<detail::CompiledGraph> compiled = graph.compile();
-        if (!compiled) {
-            log::error("compiling Forward+'s post passes failed",
-                       {{"error", compiled.error().message}});
+        if (!run_graph(graph, bound, "Forward+'s post passes")) {
             return;
         }
-        Result<std::vector<SDL_GPUTexture*>> handles = transient_pool_.acquire(
-            compiled.value(),
-            [this](const detail::GraphShape& shape) { return make_graph_texture(shape); },
-            [this](SDL_GPUTexture* texture) { pending_release_.push_back(texture); });
-        if (!handles) {
-            log::error("making Forward+'s post textures failed",
-                       {{"error", handles.error().message}});
-            return;
-        }
-        const std::vector<std::uint32_t>& slots = compiled.value().slots;
-        for (GraphResource resource = 0; resource < bound.size(); ++resource) {
-            if (graph.is_transient(resource) && slots.at(resource) < handles.value().size()) {
-                bound.at(resource) = handles.value().at(slots.at(resource));
-            }
-        }
-        graph.execute(compiled.value());
-        graph_report_ = graph.report(compiled.value());
         if (luminance) {
             std::swap(forward_targets_.brightness, forward_targets_.luminance.back());
             forward_targets_.measured = true;
@@ -8761,6 +8782,8 @@ private:
                      std::uint32_t width, std::uint32_t height) {
         in_frame_ = true;
         graph_report_ = {};
+        transient_pool_.next_frame(
+            [this](SDL_GPUTexture* texture) { pending_release_.push_back(texture); });
         frame_ = frame;
         frame_commands_ = commands;
         frame_texture_ = target;
@@ -8971,12 +8994,6 @@ private:
     PrepassTargets prepass_;
     // SSAO's textures for the frame's size and settings: those ssao_plan sizes (null for those it
     // doesn't draw).
-    struct SsaoTargets {
-        std::array<SDL_GPUTexture*, kSsaoTextures> textures{};
-        std::uint32_t width = 0;
-        std::uint32_t height = 0;
-        SsaoSettings settings;
-    };
     SDL_GPUShader* normal_shader_ = nullptr;                     // the prepass's fragment stage
     std::array<SDL_GPUGraphicsPipeline*, 3> normal_pipelines_{}; // by CullMode
     // Subsurface scattering: the meshes' fragment stage and pipelines (by CullMode), the blur's
@@ -9002,7 +9019,6 @@ private:
                kSsaoShaderGroups.size()>
         ssao_pipelines_;
     bool ssao_split_ = false;
-    SsaoTargets ssao_targets_;
     // SSR's textures for the frame's size and settings: those ssr_plan sizes (null for those it
     // doesn't draw), and Hi-Z's and the reflections' levels copied into one texture each with
     // mipmaps.

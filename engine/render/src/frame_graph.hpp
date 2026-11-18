@@ -96,6 +96,10 @@ struct FrameGraphReport {
     std::uint32_t groups = 0;
     std::uint64_t transient_bytes = 0;
     std::uint64_t allocated_bytes = 0;
+
+    // Adds another graph of the same frame: its passes after these, its counts to these. The
+    // allocations the two share are the pool's to count (TransientPool::frame_bytes).
+    void add(const FrameGraphReport& other);
 };
 
 class FrameGraph {
@@ -147,8 +151,10 @@ private:
 };
 
 // The allocations a device keeps for its graphs' transient resources, by shape, from frame to
-// frame: acquire hands a compiled graph's allocations a handle each, making those the pool lacks,
-// and drops what no frame has used for kTransientFrames frames.
+// frame: acquire hands a compiled graph's allocations a handle each, making those the pool lacks;
+// graphs acquired one after another in a frame share them, since each is done with its
+// allocations before the next runs. next_frame drops what no graph has used for
+// kTransientFrames frames.
 template <typename Handle>
 class TransientPool {
 public:
@@ -157,8 +163,7 @@ public:
     // Handles for compiled's allocations, in order, or the first error make returned.
     template <typename Make, typename Drop>
     Result<std::vector<Handle>> acquire(const CompiledGraph& compiled, const Make& make,
-                                        const Drop& drop) {
-        ++frame_;
+                                        const Drop& /*drop*/) {
         std::vector<bool> taken(entries_.size(), false);
         std::vector<Handle> handles;
         handles.reserve(compiled.allocations.size());
@@ -182,6 +187,13 @@ public:
             entries_[found].used = frame_;
             handles.push_back(entries_[found].handle);
         }
+        return handles;
+    }
+
+    // Starts a frame, dropping what the last kTransientFrames frames didn't use.
+    template <typename Drop>
+    void next_frame(const Drop& drop) {
+        ++frame_;
         std::erase_if(entries_, [&](const Entry& entry) {
             if (frame_ - entry.used < kTransientFrames) {
                 return false;
@@ -189,7 +201,6 @@ public:
             drop(entry.handle);
             return true;
         });
-        return handles;
     }
 
     template <typename Drop>
@@ -205,6 +216,17 @@ public:
         std::uint64_t total = 0;
         for (const Entry& entry : entries_) {
             total += entry.shape.bytes;
+        }
+        return total;
+    }
+
+    // What this frame's graphs used, in bytes, each allocation once.
+    [[nodiscard]] std::uint64_t frame_bytes() const {
+        std::uint64_t total = 0;
+        for (const Entry& entry : entries_) {
+            if (entry.used == frame_) {
+                total += entry.shape.bytes;
+            }
         }
         return total;
     }

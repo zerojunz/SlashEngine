@@ -153,10 +153,17 @@ TEST_CASE("a transient pool keeps allocations from frame to frame and drops thos
     two.allocations = {kHalf, kHalf};
     slash::render::detail::CompiledGraph one;
     one.allocations = {kFull};
+    pool.next_frame(drop);
     const auto first = pool.acquire(two, make, drop);
     REQUIRE(first.ok());
     CHECK(first.value() == std::vector<int>{1, 2});
+    // A second graph in the same frame runs after the first, so it takes the same allocations.
+    const auto again = pool.acquire(two, make, drop);
+    REQUIRE(again.ok());
+    CHECK(again.value() == std::vector<int>{1, 2});
+    CHECK(pool.frame_bytes() == 2 * kHalf.bytes);
     // The same shapes the next frame: the same allocations.
+    pool.next_frame(drop);
     const auto second = pool.acquire(two, make, drop);
     REQUIRE(second.ok());
     CHECK(second.value() == std::vector<int>{1, 2});
@@ -164,10 +171,36 @@ TEST_CASE("a transient pool keeps allocations from frame to frame and drops thos
     CHECK(pool.bytes() == 2 * kHalf.bytes);
     // Frames without them: kept for a while, then dropped.
     for (int frame = 0; frame < 3; ++frame) {
+        pool.next_frame(drop);
         REQUIRE(pool.acquire(one, make, drop).ok());
     }
     CHECK(dropped == std::vector<int>{1, 2});
     CHECK(pool.bytes() == kFull.bytes);
+    CHECK(pool.frame_bytes() == kFull.bytes);
     pool.clear(drop);
     CHECK(dropped == std::vector<int>{1, 2, 3});
+}
+
+TEST_CASE("a frame's graph reports add up, numbering the later graph's groups after the first's") {
+    using slash::render::detail::FrameGraphReport;
+    FrameGraphReport first;
+    first.passes = {{.name = "a", .kind = GraphPassKind::Render, .culled = false, .group = 0},
+                    {.name = "b", .kind = GraphPassKind::Render, .culled = false, .group = 1}};
+    first.groups = 2;
+    first.resources = 1;
+    first.transient_bytes = 10;
+    FrameGraphReport second;
+    second.passes = {{.name = "c", .kind = GraphPassKind::Copy, .culled = false, .group = 0},
+                     {.name = "d", .kind = GraphPassKind::Render, .culled = true, .group = 0}};
+    second.groups = 1;
+    second.resources = 2;
+    second.transient_bytes = 5;
+    first.add(second);
+    REQUIRE(first.passes.size() == 4);
+    CHECK(first.passes[2].name == "c");
+    CHECK(first.passes[2].group == 2);
+    CHECK(first.passes[3].group == 0);
+    CHECK(first.groups == 3);
+    CHECK(first.resources == 3);
+    CHECK(first.transient_bytes == 15);
 }

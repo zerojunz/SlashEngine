@@ -216,6 +216,20 @@ FrameGraphReport FrameGraph::report(const CompiledGraph& compiled) const {
     return report;
 }
 
+void FrameGraphReport::add(const FrameGraphReport& other) {
+    for (Pass pass : other.passes) {
+        if (!pass.culled) {
+            pass.group += groups;
+        }
+        passes.push_back(std::move(pass));
+    }
+    resources += other.resources;
+    allocations += other.allocations;
+    groups += other.groups;
+    transient_bytes += other.transient_bytes;
+    allocated_bytes += other.allocated_bytes;
+}
+
 std::string_view graph_pass_kind_name(GraphPassKind kind) {
     switch (kind) {
     case GraphPassKind::Render:
