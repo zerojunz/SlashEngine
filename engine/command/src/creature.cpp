@@ -1,5 +1,7 @@
 #include "slash/command/creature.hpp"
 
+#include "animation_layers.hpp"
+
 #include "slash/canvas/canvas.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/text.hpp"
@@ -993,6 +995,16 @@ std::optional<double> number_in(const json::Value& params, std::string_view key)
 }
 
 Reply animation_preview(Session& session, const json::Value& params) {
+    if (params.find("library") != nullptr) {
+        return detail::library_preview(session, params);
+    }
+    for (const std::string_view key : {"set", "layer"}) {
+        if (params.find(key) != nullptr) {
+            return param_error(code::kInvalidParams, "/" + std::string(key),
+                               "a library's animation takes " + std::string(key) +
+                                   "; a creature's takes motion");
+        }
+    }
     world::World& world = session.world();
     std::string error_path;
     auto target = motion_target(world, params, error_path);
@@ -1077,6 +1089,13 @@ struct Tuner {
 };
 
 Reply animation_tune(Session& session, const json::Value& params) {
+    if (params.find("library") != nullptr) {
+        return detail::library_tune(session, params);
+    }
+    if (params.find("layer") != nullptr) {
+        return param_error(code::kInvalidParams, "/layer",
+                           "a library's animation takes layer; a creature's takes set");
+    }
     world::World& world = session.world();
     std::string error_path;
     auto target = motion_target(world, params, error_path);
@@ -1384,10 +1403,19 @@ void register_creature_commands(Registry& registry) {
     const auto who = [](json::Object more) {
         more.emplace("creature", text_property("A creature's ID: its recipe with its own motion."));
         more.emplace("recipe", text_property("A .creature.json file, when no creature is named."));
+        more.emplace("library", text_property("A .anim.json file, in place of a creature: its "
+                                              "animation from a model's (a character's, any "
+                                              "model's), with set and layer as animation.edit's."));
         more.emplace("animation", text_property("idle, walk, run, eat, attack, fly, swim or one "
-                                                "its motion adds."));
+                                                "its motion adds; a library's by name."));
         return more;
     };
+    json::Value library_set = property("object", "A library's animation: a merge patch over its "
+                                                 "entry to try or make first.");
+    json::Value library_layer = property("object", "A library's animation: a layer to merge in by "
+                                                   "name first (tune puts its goals there; "
+                                                   "default \"tune\").");
+    library_layer["required"] = json::Array{"name"};
     registry.add({
         .name = "animation.preview",
         .description = "Measures a creature's animation through a cycle as numbers: each "
@@ -1398,6 +1426,8 @@ void register_creature_commands(Registry& registry) {
         .effect = Effect::Read,
         .params = schema_of(
             who({{"motion", motion_property("A merge patch over its motion block to try.")},
+                 {"set", library_set},
+                 {"layer", library_layer},
                  {"samples", samples},
                  {"move_speed", move},
                  {"bones", bones},
@@ -1419,7 +1449,7 @@ void register_creature_commands(Registry& registry) {
     into["enum"] = json::Array{"instance", "recipe"};
     json::Value set = motion_property("This animation's motion entry to set first (length, "
                                       "speed, loop, amplitude, bones, add, from), as a merge "
-                                      "patch.");
+                                      "patch; a library's animation entry.");
     registry.add({
         .name = "animation.tune",
         .description = "Changes a creature's animation by goals and writes it to the "
@@ -1429,6 +1459,7 @@ void register_creature_commands(Registry& registry) {
         .capabilities = {Read, Edit, Filesystem},
         .effect = Effect::Edit,
         .params = schema_of(who({{"set", std::move(set)},
+                                 {"layer", std::move(library_layer)},
                                  {"slide", std::move(slide)},
                                  {"ranges", std::move(ranges)},
                                  {"move_speed", std::move(move)},
@@ -1438,6 +1469,7 @@ void register_creature_commands(Registry& registry) {
                             {"animation"}),
         .handler = animation_tune,
     });
+    detail::register_animation_edit(registry);
     registry.add({
         .name = "creature.state",
         .description = "What creatures are doing: mode, target, owner, rider, feedings, "

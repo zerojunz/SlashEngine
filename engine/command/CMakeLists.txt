@@ -16,6 +16,7 @@ add_library(slash_command
     src/ragdoll.cpp
     src/character.cpp
     src/face.cpp
+    src/animation_layers.cpp
     src/creature.cpp
     src/damage.cpp
     src/pcg.cpp
@@ -55,5 +56,6 @@ if(TARGET slash_tinyexr)
 endif()
 # Placing is the same everywhere, as the navigation geometry it reads, and so are
 # lighting.check's measures and generated characters, faces and creatures.
-set_source_files_properties(src/place.cpp src/lighting.cpp src/character.cpp src/face.cpp src/creature.cpp PROPERTIES
+set_source_files_properties(src/place.cpp src/lighting.cpp src/character.cpp src/face.cpp src/creature.cpp
+    src/animation_layers.cpp PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")

@@ -81,8 +81,20 @@ struct FoliagePainted {
 
 // How far an instance leans, in radians: in 3D about the world's x and z as a lean toward
 // (x, z), in 2D toward +x. It is the wind at its base times wind_bend, swayed by sway at
-// sway_frequency with a phase of its own, plus the push of characters the foliage system
-// springs, held within max_bend. index is the instance's in its group.
+// sway_frequency with a phase (by phase_spread) and frequency (by frequency_spread) of its own,
+// later the further downwind its base is by wave_length, fluttered across the wind by flutter,
+// with idle_sway's rock of still air, plus the push of characters the foliage system springs,
+// held within max_bend. index is the instance's in its group; base is in the world.
+// An instance's hash, by its entity, group and index, from which its sway's phase, frequency
+// and idle way come.
+[[nodiscard]] std::uint32_t foliage_hash(entt::entity entity, std::size_t group, std::size_t index);
+
+// The wind's lean on an instance with a hash before characters push it and before max_bend
+// holds it: wind in meters a second as (x, z) in 3D, or in 2D as (pixels a second / 100, 0);
+// downwind_distance how far downwind its base is (meters, or pixels in 2D).
+[[nodiscard]] Vec2 foliage_wind_lean(const world::FoliageType& type, Vec2 wind, std::uint32_t hash,
+                                     float downwind_distance, double time);
+
 [[nodiscard]] Vec2 foliage_lean_3d(const world::World& world, entt::entity entity,
                                    std::size_t group, std::size_t index,
                                    const world::FoliageType& type, Vec3 base, Vec3 wind);

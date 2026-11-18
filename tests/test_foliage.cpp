@@ -19,6 +19,7 @@
 #include <doctest/doctest.h>
 
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -243,6 +244,78 @@ TEST_CASE("foliage: grass leans with the wind and parts for a character, then sp
     w.ecs().get<world::Transform3D>(w.find("walker")).position = {-5.0F, 0.5F, 0.0F};
     project.steps(120);
     CHECK(procedural::foliage_pushes(w).empty());
+}
+
+TEST_CASE("foliage: a type's sway is its own: phases, waves, flutter and still air's rock") {
+    world::FoliageType type;
+    type.wind_bend = 0.1F;
+    type.sway = 0.5F;
+    type.sway_frequency = 1.0F;
+    const Vec2 wind{2.0F, 0.0F};
+    const std::uint32_t a = procedural::foliage_hash(entt::entity{0}, 0, 0);
+    const std::uint32_t b = procedural::foliage_hash(entt::entity{0}, 0, 1);
+    // Out of step by default; in step with no phase spread.
+    CHECK(procedural::foliage_wind_lean(type, wind, a, 0.0F, 0.3).x !=
+          doctest::Approx(procedural::foliage_wind_lean(type, wind, b, 0.0F, 0.3).x));
+    type.phase_spread = 0.0F;
+    CHECK(procedural::foliage_wind_lean(type, wind, a, 0.0F, 0.3).x ==
+          doctest::Approx(procedural::foliage_wind_lean(type, wind, b, 0.0F, 0.3).x));
+    // A wave 4 meters long: a blade 1 meter downwind sways a quarter cycle later.
+    type.wave_length = 4.0F;
+    CHECK(procedural::foliage_wind_lean(type, wind, a, 1.0F, 0.55).x ==
+          doctest::Approx(procedural::foliage_wind_lean(type, wind, a, 0.0F, 0.3).x).epsilon(1e-4));
+    // With no flutter it only leans along the wind; with it, across too.
+    CHECK(procedural::foliage_wind_lean(type, wind, a, 0.0F, 0.0).y == doctest::Approx(0.0));
+    type.flutter = 0.5F;
+    CHECK(std::abs(procedural::foliage_wind_lean(type, wind, a, 0.0F, 0.0).y) > 0.05F);
+    // Still air: nothing, unless it rocks idly.
+    CHECK(procedural::foliage_wind_lean(type, {}, a, 0.0F, 0.25).x == doctest::Approx(0.0));
+    type.idle_sway = 0.1F;
+    const Vec2 idle = procedural::foliage_wind_lean(type, {}, a, 0.0F, 0.25);
+    CHECK(std::sqrt((idle.x * idle.x) + (idle.y * idle.y)) == doctest::Approx(0.1).epsilon(0.01));
+
+    // The file's wind block reads them all.
+    const auto read = world::parse_foliage(parse(R"({"format": 1, "mesh": "blade.model.json",
+        "wind": {"bend": 0.1, "phase_spread": 0.25, "frequency_spread": 0.1, "wave_length": 3,
+                 "flutter": 0.2, "idle": 0.04}})"));
+    REQUIRE(read.ok());
+    CHECK(read.value().phase_spread == doctest::Approx(0.25));
+    CHECK(read.value().frequency_spread == doctest::Approx(0.1));
+    CHECK(read.value().wave_length == doctest::Approx(3.0));
+    CHECK(read.value().flutter == doctest::Approx(0.2));
+    CHECK(read.value().idle_sway == doctest::Approx(0.04));
+}
+
+TEST_CASE("foliage: foliage.sway measures a type's sway and tunes its file, with undo") {
+    Project3D project("foliage_sway_project");
+    // grass bends 0.05 a meter a second without sway: 0.15 in a 3 m/s wind, as one.
+    const json::Value measured = project.ok("foliage.sway", R"({"type": "grass.foliage.json"})");
+    const json::Value& sway = *measured.find("sway");
+    CHECK(sway.find("mean")->as_double() == doctest::Approx(0.15));
+    CHECK(sway.find("neighbors")->as_double() == doctest::Approx(0.0));
+    CHECK(sway.find("period")->as_double() == doctest::Approx(2.0));
+
+    // Leaning 0.3 at 3 m/s doubles its bend; sway and a wave make neighbors differ.
+    const json::Value tuned = project.ok(
+        "foliage.sway",
+        R"({"type": "grass.foliage.json", "lean": 0.3, "set": {"wind": {"sway": 0.4, "wave_length": 2}}})");
+    CHECK(tuned.find("wind_settings")->find("bend")->as_double() == doctest::Approx(0.1));
+    CHECK(tuned.find("after")->find("mean")->as_double() == doctest::Approx(0.3).epsilon(0.02));
+    CHECK(tuned.find("after")->find("neighbors")->as_double() > 0.01);
+    auto written = slash::platform::read_file(project.root + "/grass.foliage.json");
+    REQUIRE(written.ok());
+    CHECK(written.value().find("wave_length") != std::string::npos);
+    project.ok("undo");
+    written = slash::platform::read_file(project.root + "/grass.foliage.json");
+    REQUIRE(written.ok());
+    CHECK(written.value().find("wave_length") == std::string::npos);
+
+    // A patch that breaks the file changes nothing.
+    command::Reply bad = project.session->call(
+        "foliage.sway",
+        parse(R"({"type": "grass.foliage.json", "set": {"wind": {"flutter": -1}}})"));
+    CHECK_FALSE(bad.ok);
+    CHECK(bad.data.find("path")->as_string() == "/set/wind/flutter");
 }
 
 TEST_CASE("foliage: rocks block rays, and harvesting one removes it and says what it gave") {

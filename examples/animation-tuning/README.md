@@ -30,3 +30,18 @@ is a meadow with a camera and a sun.
   frames, then its tail swings two and a half times as far, and the run is retimed by `speed`
   0.9986 so its feet stay planted.
 - A misspelled animation is `-32602` at `/animation`, with the one meant.
+
+Any rigged model's animations tune the same way through a `.anim.json` library.
+[hero.gltf](models/hero.gltf) is a humanoid rig with a one-second `Walk-loop`:
+
+- `animation.edit` makes `anim/hero.anim.json`'s `walk` `from` it, and `animation.preview`
+  measures it from the library: the legs swing 0.4 radians each way, and the feet, found by
+  their `LeftFoot` and `RightFoot` bones, sweep back at 1.401 meters a second against the 1.2
+  the hero moves at.
+- `animation.tune` with `slide: "length"` plants them by `speed` 0.8565, a walk 1.168 seconds
+  long, and writes the library.
+- A `tired` layer, at a weight of 0.8, bends the spine forward, halves the arms' swing, lags
+  the right arm and rolls the head twice a step.
+- `animation.tune` puts the arms back to a span of half a radian in a layer of its own,
+  `arms`, over the tired one.
+- A misspelled bone is `-32602` at `/layer`, with the bone meant.

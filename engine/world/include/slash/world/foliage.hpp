@@ -78,6 +78,15 @@ struct FoliageType {
     float sway = 0.0F;
     float sway_frequency = 0.5F;
     float max_bend = 0.8F;
+    // Its own sway: a share of a cycle its phase differs from others' at random (0 rocks a
+    // field in step), a share its frequency differs either way, how far downwind the gusts'
+    // waves are apart (meters in 3D, pixels in 2D; 0 none), the share of its lean it flutters
+    // across the wind, and radians it rocks in still air.
+    float phase_spread = 1.0F;
+    float frequency_spread = 0.0F;
+    float wave_length = 0.0F;
+    float flutter = 0.0F;
+    float idle_sway = 0.0F;
     // Parting for characters: bodies within radius push it over by up to bend radians, and it
     // springs back with stiffness (per second squared) and damping (per second).
     float interaction_radius = 0.0F;

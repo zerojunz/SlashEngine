@@ -54,7 +54,12 @@ constexpr std::string_view kSchema = R"({
         "bend": {"type": "number", "minimum": 0, "description": "Radians it leans per meter a second (3D) or 100 pixels a second (2D) of wind. Default 0."},
         "sway": {"type": "number", "minimum": 0, "description": "The share of its lean it rocks by. Default 0."},
         "frequency": {"type": "number", "minimum": 0, "description": "Times a second it rocks. Default 0.5."},
-        "max": {"type": "number", "minimum": 0, "description": "Radians it leans at most, wind and characters together. Default 0.8."}
+        "max": {"type": "number", "minimum": 0, "description": "Radians it leans at most, wind and characters together. Default 0.8."},
+        "phase_spread": {"type": "number", "minimum": 0, "maximum": 1, "description": "The share of a cycle each instance's sway is out of step with others', at random; 0 rocks them together. Default 1."},
+        "frequency_spread": {"type": "number", "minimum": 0, "maximum": 1, "description": "The share each instance's frequency differs either way, at random. Default 0."},
+        "wave_length": {"type": "number", "minimum": 0, "description": "Meters (3D) or pixels (2D) downwind between the crests of gusts rolling over a field. Default 0, none."},
+        "flutter": {"type": "number", "minimum": 0, "description": "The share of its lean it rocks across the wind, a quarter cycle behind, so its tip goes round. Default 0."},
+        "idle": {"type": "number", "minimum": 0, "description": "Radians it rocks at its frequency in still air, in a way of its own. Default 0."}
       }
     },
     "interaction": {
@@ -225,6 +230,11 @@ Result<FoliageType> parse_foliage(const json::Value& doc) {
         read(*wind, "sway", type.sway);
         read(*wind, "frequency", type.sway_frequency);
         read(*wind, "max", type.max_bend);
+        read(*wind, "phase_spread", type.phase_spread);
+        read(*wind, "frequency_spread", type.frequency_spread);
+        read(*wind, "wave_length", type.wave_length);
+        read(*wind, "flutter", type.flutter);
+        read(*wind, "idle", type.idle_sway);
     }
     if (const json::Value* interaction = doc.find("interaction"); interaction != nullptr) {
         read(*interaction, "radius", type.interaction_radius);

@@ -2789,7 +2789,7 @@ void Renderer::add_foliage(const world::World& world, entt::entity entity,
             } else {
                 // Leaning about its base: its up axis turned toward the lean, the rest kept.
                 const Vec2 lean = procedural::foliage_lean_3d(
-                    world, entity, g, i, *type, base,
+                    world, entity, g, i, *type, base + render_origin_,
                     wind.at(base + render_origin_, world::wind_time(world)));
                 world::Affine3D bend;
                 const float amount = std::sqrt((lean.x * lean.x) + (lean.y * lean.y));

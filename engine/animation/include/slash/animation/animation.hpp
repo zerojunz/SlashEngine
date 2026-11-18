@@ -6,6 +6,7 @@
 #include "slash/core/result.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/world/component_registry.hpp"
+#include "slash/world/creature.hpp"
 #include "slash/world/world.hpp"
 
 #include <array>
@@ -144,6 +145,17 @@ struct ModelClip {
     std::string animation; // its name in the model
 };
 
+// A change layered over a model's animation, as an agent tunes it: its bones' turns and moves
+// scaled, moved in time and held turned, and waves added, weight of the way (the same fields as a
+// creature recipe's motion entry, world::AnimationMotion).
+struct AnimationLayer {
+    std::string name;
+    float weight = 1.0F;
+    float amplitude = 1.0F;
+    std::map<std::string, world::MotionBone, std::less<>> bones;
+    std::vector<world::MotionWave> add;
+};
+
 struct Animation {
     double length = 1.0; // seconds
     LoopMode loop = LoopMode::None;
@@ -154,6 +166,13 @@ struct Animation {
     // Whether length and loop were written, or are to come from the model's animation.
     bool own_length = true;
     bool own_loop = true;
+    // How many times as fast it plays its model's animation, and the layers over it, in order.
+    double speed = 1.0;
+    std::vector<AnimationLayer> layers;
+    // The model's animation with speed and layers baked in, as a model with no meshes whose
+    // animation of from.animation's name plays it (scene3d::ClipSample::source); null where it
+    // plays as it is. resolve_clip makes it.
+    std::shared_ptr<const scene3d::Model> layered;
 };
 
 struct AnimationLibrary {
@@ -200,8 +219,14 @@ validate_animation_library(const json::Value& doc,
 [[nodiscard]] AnimationLibrary model_library(const scene3d::Model& model, std::string_view path);
 
 // Gives an animation from a model the length and loop its model's animation has, where it gives
-// none of its own; the error says the model has no such animation, with "did you mean".
+// none of its own (the length over its speed), and bakes its speed and layers into layered; the
+// error says the model has no such animation or bone, with "did you mean", a bone's starting
+// with the JSON Pointer of its name below the animation ("layers/0/bones/tial: ...").
 [[nodiscard]] Result<void> resolve_clip(Animation& animation, const scene3d::Model& model);
+
+// The model an animation's clip plays from: its layered model, else the one given.
+[[nodiscard]] const scene3d::Model& clip_source(const Animation& animation,
+                                                const scene3d::Model& model);
 
 // Where a value track's path leads: a component's field and the part of it.
 struct Target {
