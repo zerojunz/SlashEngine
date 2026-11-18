@@ -8297,16 +8297,8 @@ private:
         if (!world) {
             return world.error();
         }
+        // Glow's levels are the frame graph's, made as draw_post runs.
         post_targets_.world = world.value();
-        const std::array<PostSize, kGlowLevels> sizes = glow_sizes(width, height);
-        for (std::size_t i = 0; i < kGlowLevels; ++i) {
-            auto level = made(sizes.at(i).width, sizes.at(i).height);
-            if (!level) {
-                release_post_targets();
-                return level.error();
-            }
-            post_targets_.glow.at(i) = level.value();
-        }
         post_targets_.width = width;
         post_targets_.height = height;
         return {};
@@ -8390,17 +8382,17 @@ private:
             }
         };
         release(post_targets_.world);
-        for (SDL_GPUTexture*& texture : post_targets_.glow) {
-            release(texture);
-        }
         post_targets_.width = 0;
         post_targets_.height = 0;
     }
 
-    // post.hlsl's passes: glow's filter, downsampling and upsampling through its four textures,
-    // then the post pass from the meshes' texture over the frame's target. A frame with no mesh
-    // draws clears the meshes' texture first.
+    // post.hlsl's passes, as a frame graph: glow's filter, downsampling and upsampling through
+    // its levels, textures from the pool the other passes share, then the post pass from the
+    // meshes' texture over the frame's target. A frame with no mesh draws clears the meshes'
+    // texture first.
     void draw_post(SDL_GPUCommandBuffer* commands, const PostProcess& post, bool clear) {
+        using detail::GraphPassKind;
+        using detail::GraphResource;
         if (clear) {
             SDL_GPUColorTargetInfo color{};
             color.texture = post_targets_.world;
@@ -8436,20 +8428,47 @@ private:
             SDL_DrawGPUPrimitives(render, 3, 1, 0, 0);
             SDL_EndGPURenderPass(render);
         };
+        detail::FrameGraph graph;
+        const GraphResource world = graph.import("world");
+        const GraphResource frame = graph.import("frame");
+        std::vector<SDL_GPUTexture*> bound;
         const std::array<PostSize, kGlowLevels> sizes = glow_sizes(frame_width_, frame_height_);
-        const auto glow_pass = [&](PostPass kind, std::size_t from, std::size_t to) {
-            pass(post_targets_.glow.at(to), kTextureFormat,
-                 post_uniforms(post, kind, sizes.at(to).width, sizes.at(to).height),
-                 kind == PostPass::GlowFilter ? post_targets_.world : post_targets_.glow.at(from),
-                 white_, white_);
+        // Each level is drawn on the way down and again on the way up, each time a resource of its
+        // own, so those whose uses don't overlap share a texture.
+        const auto level = [&](std::size_t i, const char* way) {
+            return graph.transient(std::string("glow ") + way + " " + std::to_string(i),
+                                   color_shape(kTextureFormat, sizes.at(i), 4));
         };
-        if (post.glow) {
-            glow_pass(PostPass::GlowFilter, 0, 0);
-            for (std::size_t i = 1; i < kGlowLevels; ++i) {
-                glow_pass(PostPass::GlowDownsample, i - 1, i);
+        const auto glow_pass = [&](PostPass kind, GraphResource from, std::size_t to,
+                                   GraphResource into) {
+            const char* name = "glow upsample";
+            if (kind == PostPass::GlowFilter) {
+                name = "glow filter";
+            } else if (kind == PostPass::GlowDownsample) {
+                name = "glow downsample";
             }
+            graph.add_pass(
+                {.name = name, .kind = GraphPassKind::Render, .reads = {from}, .writes = {into}},
+                [&, kind, from, to, into](const detail::GraphContext&) {
+                    pass(bound.at(into), kTextureFormat,
+                         post_uniforms(post, kind, sizes.at(to).width, sizes.at(to).height),
+                         bound.at(from), white_, white_);
+                });
+        };
+        GraphResource glowed = world;
+        if (post.glow) {
+            std::array<GraphResource, kGlowLevels> down{};
+            down[0] = level(0, "down");
+            glow_pass(PostPass::GlowFilter, world, 0, down[0]);
+            for (std::size_t i = 1; i < kGlowLevels; ++i) {
+                down.at(i) = level(i, "down");
+                glow_pass(PostPass::GlowDownsample, down.at(i - 1), i, down.at(i));
+            }
+            glowed = down.back();
             for (std::size_t i = kGlowLevels - 1; i-- > 0;) {
-                glow_pass(PostPass::GlowUpsample, i + 1, i);
+                const GraphResource up = level(i, "up");
+                glow_pass(PostPass::GlowUpsample, glowed, i, up);
+                glowed = up;
             }
         }
         SDL_GPUTexture* lut = white_;
@@ -8459,10 +8478,24 @@ private:
             lut = found.gpu;
             lut_desc = found.desc;
         }
-        pass(frame_texture_, frame_format_,
-             post_uniforms(post, PostPass::Post, frame_width_, frame_height_, lut_desc.width,
-                           lut_desc.height),
-             post_targets_.world, post.glow ? post_targets_.glow[0] : white_, lut);
+        std::vector<GraphResource> reads{world};
+        if (post.glow) {
+            reads.push_back(glowed);
+        }
+        graph.add_pass({.name = "post",
+                        .kind = GraphPassKind::Render,
+                        .reads = std::move(reads),
+                        .writes = {frame}},
+                       [&](const detail::GraphContext&) {
+                           pass(bound.at(frame), frame_format_,
+                                post_uniforms(post, PostPass::Post, frame_width_, frame_height_,
+                                              lut_desc.width, lut_desc.height),
+                                bound.at(world), post.glow ? bound.at(glowed) : white_, lut);
+                       });
+        bound.assign(graph.resource_count(), nullptr);
+        bound.at(world) = post_targets_.world;
+        bound.at(frame) = frame_texture_;
+        run_graph(graph, bound, "post-processing");
     }
 
     // Both of a kind's shaders, unless they are made already.
@@ -9024,10 +9057,9 @@ private:
     std::uint32_t depth_width_ = 0;
     std::uint32_t depth_height_ = 0;
     // What the post passes draw with: their shaders, a pipeline for each target format, and the
-    // meshes' texture and glow's at the frame's size.
+    // meshes' texture at the frame's size (glow's levels are the frame graph's).
     struct PostTargets {
         SDL_GPUTexture* world = nullptr;
-        std::array<SDL_GPUTexture*, kGlowLevels> glow{};
         std::uint32_t width = 0;
         std::uint32_t height = 0;
     };
