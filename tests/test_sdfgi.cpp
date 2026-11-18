@@ -15,6 +15,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -490,4 +491,100 @@ TEST_CASE("GPUs draw SDFGI as the software device does") {
     }
     // The GPU's own light reaches the cube's shadow.
     CHECK(channel(draw_frames(*gpu, lit_cube(), 6), kShaded[0], kShaded[1], 1) > 0);
+}
+
+// TEMPORARY: what differs between the software device and a GPU, printed for each variant, to
+// find which stage the Direct3D 12 device draws the wall's light differently in.
+TEST_CASE("SDFGI diagnostic: where a GPU and the software device part") {
+    auto gpu = slash::test::gpu_device();
+    if (gpu == nullptr) {
+        return;
+    }
+    const auto software = render::create_software_device();
+    const auto draw = [](RenderDevice& device, const render::Scene3D& scene, std::uint32_t frames,
+                         const Mat4& at) {
+        auto target = device.create_texture({.width = 32, .height = 32, .render_target = true});
+        REQUIRE(target.ok());
+        auto box = device.create_mesh(cube(), {});
+        REQUIRE(box.ok());
+        auto floor =
+            device.create_mesh(quad({0, 0, 0}, {1, 0, 0}, {0, 0, -1}, {0, 1, 0}, 8.0F), {});
+        REQUIRE(floor.ok());
+        for (std::uint32_t frame = 0; frame < frames; ++frame) {
+            REQUIRE(
+                device.begin_frame({.target = target.value(), .clear = {}, .scene = scene}).ok());
+            REQUIRE(
+                device
+                    .draw_mesh(floor.value(), moved(0, 0, 0), {.albedo = {0.8F, 0.8F, 0.8F, 1.0F}})
+                    .ok());
+            REQUIRE(device.draw_mesh(box.value(), at, {.albedo = {0.9F, 0.2F, 0.2F, 1.0F}}).ok());
+            REQUIRE(device.end_frame().ok());
+        }
+        auto image = device.read_texture(target.value());
+        REQUIRE(image.ok());
+        device.destroy_mesh(box.value());
+        device.destroy_mesh(floor.value());
+        device.destroy_texture(target.value());
+        return image.value();
+    };
+    const Mat4 wall = placed({0.5F, 3.0F, 6.0F}, {1.25F, 1.5F, 0.0F});
+    struct Variant {
+        const char* name;
+        render::Scene3D scene;
+        std::uint32_t frames;
+        Mat4 at;
+    };
+    std::vector<Variant> variants;
+    variants.push_back({"wall 6", lit_cube(), 6, wall});
+    variants.push_back({"wall no sdfgi", lit_cube(false), 1, wall});
+    variants.push_back({"wall 1", lit_cube(), 1, wall});
+    variants.push_back({"wall 2", lit_cube(), 2, wall});
+    {
+        render::Scene3D scene = lit_cube();
+        scene.sdfgi.energy = 0.0F;
+        variants.push_back({"wall energy 0", scene, 6, wall});
+    }
+    {
+        render::Scene3D scene = lit_cube();
+        scene.sdfgi.bounce_feedback = 0.0F;
+        variants.push_back({"wall no feedback", scene, 6, wall});
+    }
+    {
+        render::Scene3D scene = lit_cube();
+        scene.lights.at(0).shadow = false;
+        variants.push_back({"wall no shadow", scene, 6, wall});
+    }
+    variants.push_back(
+        {"wall off grid", lit_cube(), 6, placed({0.5F, 3.0F, 6.0F}, {1.32F, 1.5F, 0.07F})});
+    variants.push_back({"cube at wall", lit_cube(), 6, moved(1.25F, 0.5F, 0.0F)});
+    variants.push_back({"big cube", lit_cube(), 6, placed({3.0F, 3.0F, 3.0F}, {2.5F, 1.5F, 0.0F})});
+    variants.push_back({"cube 6", lit_cube(), 6, moved(0, 0.5F, 0)});
+    for (const Variant& v : variants) {
+        const Image expected = draw(*software, v.scene, v.frames, v.at);
+        const Image drawn = draw(*gpu, v.scene, v.frames, v.at);
+        std::array<double, 3> signed_sum{};
+        std::array<double, 3> software_sum{};
+        for (std::size_t i = 0; i < drawn.pixels.size(); ++i) {
+            if (i % 4 < 3) {
+                signed_sum.at(i % 4) += int{drawn.pixels[i]} - int{expected.pixels[i]};
+                software_sum.at(i % 4) += expected.pixels[i];
+            }
+        }
+        std::string rows;
+        for (std::uint32_t y = 0; y < 32; y += 4) {
+            for (std::uint32_t x = 0; x < 32; x += 2) {
+                const int d = channel(drawn, x, y, 0) - channel(expected, x, y, 0);
+                rows += d > 3 ? '+' : (d < -3 ? '-' : '.');
+            }
+            rows += '\n';
+        }
+        std::ostringstream text;
+        text << v.name << ": differing " << differing(drawn, expected, 3) << ", worst "
+             << difference(drawn, expected) << ", mean gpu-software rgb " << signed_sum[0] / 1024.0
+             << " " << signed_sum[1] / 1024.0 << " " << signed_sum[2] / 1024.0
+             << ", software mean rgb " << software_sum[0] / 1024.0 << " "
+             << software_sum[1] / 1024.0 << " " << software_sum[2] / 1024.0 << "\n"
+             << rows;
+        MESSAGE(text.str());
+    }
 }
