@@ -480,18 +480,18 @@ std::vector<std::int32_t> squared_distances(const Grid& grid, const SdfgiCascade
 }
 
 // The distance field's byte for a squared distance: 1 + its square root, rounded (never a tie,
-// as no whole number's root ends in a half), up to 255.
+// as no whole number's root ends in a half), up to 255. The root is found a bit at a time, as the
+// shader finds it (squared distances are at most kFar, so 9 bits).
 std::uint32_t sdf_byte(std::int32_t d2) {
-    auto root = static_cast<std::int32_t>(std::sqrt(static_cast<float>(d2)));
-    while (root * root > d2) {
-        --root;
-    }
-    while ((root + 1) * (root + 1) <= d2) {
-        ++root;
+    const auto value = static_cast<std::uint32_t>(std::max(d2, 0));
+    std::uint32_t root = 0;
+    for (std::int32_t b = 8; b >= 0; --b) {
+        const std::uint32_t tried = root | (1U << static_cast<std::uint32_t>(b));
+        root = tried * tried <= value ? tried : root;
     }
     // Rounds up past a half: d2 > root^2 + root.
-    const std::int32_t rounded = d2 > (root * root) + root ? root + 1 : root;
-    return static_cast<std::uint32_t>(std::min(255, 1 + rounded));
+    const std::uint32_t rounded = value > (root * root) + root ? root + 1 : root;
+    return std::min(255U, 1 + rounded);
 }
 
 // Makes a cascade's cells and distance field again from the frame's triangles, as render_region
