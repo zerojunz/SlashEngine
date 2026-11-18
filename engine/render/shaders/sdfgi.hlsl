@@ -185,17 +185,18 @@ void distance_line(uint row) {
     }
 }
 
-// sdf_byte: 1 + the square root of a squared distance, rounded, up to 255.
+// sdf_byte: 1 + the square root of a squared distance, rounded, up to 255, found a bit at a time
+// with no float and no loop whose length depends on the value, so every device makes the
+// same byte.
 uint sdf_byte(int d2) {
-    int root = int(sqrt(float(d2)));
-    [loop] while (root * root > d2) {
-        --root;
+    uint value = uint(max(d2, 0));
+    uint root = 0u;
+    [unroll] for (int b = 8; b >= 0; --b) {
+        uint tried = root | (1u << uint(b));
+        root = tried * tried <= value ? tried : root;
     }
-    [loop] while ((root + 1) * (root + 1) <= d2) {
-        ++root;
-    }
-    int rounded = d2 > (root * root) + root ? root + 1 : root;
-    return uint(min(255, 1 + rounded));
+    uint rounded = value > (root * root) + root ? root + 1u : root;
+    return min(255u, 1u + rounded);
 }
 
 // One of MODE_STORE's 26 neighbors, by its number.
