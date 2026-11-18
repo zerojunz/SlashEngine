@@ -3666,6 +3666,8 @@ and the entity that plays it, whose child `sword` the last track turns:
 | `animations/<name>/from` | No | A model's animation it plays on the nodes of the model the entity's `MeshInstance3D` draws: `{"model": "models/hero.glb", "animation": "Walk"}` ([model animations](#skeletons-and-model-animations)) |
 | `animations/<name>/length` | Unless `from` | Seconds, more than 0. Left out, the length of the model's animation it comes from |
 | `animations/<name>/loop` | No | What happens at the end, as Godot's loop modes: `none` stops there, `linear` starts over, `pingpong` turns round. Left out, the model animation's (`linear` if it loops), else `none` |
+| `animations/<name>/speed` | No | With `from`: how fast the model's animation plays, more than 0 and up to 10 (default 1); a left-out `length` is the model animation's divided by it |
+| `animations/<name>/layers` | No | With `from`: up to 16 [animation layers](#animation-layers) of bone changes over the model's animation, applied in order |
 | `animations/<name>/tracks` | Unless `from` | Value tracks, event tracks and node tracks, and [cinematics](#cinematics)' bezier, animation and audio tracks |
 | `animations/<name>/markers` | No | Named times in seconds, as Godot's animation markers: `{"close_up": 4}`. [`animation.seek`](commands.md#animationseek) takes them |
 | `tracks/<n>/type` | No | What it does: `value`, `bezier`, `event`, `node`, `animation` or `audio`. Left out, a track with `path` is a value track, with `event` an event track and with `node` a node track; bezier, animation and audio tracks say so |
@@ -3718,6 +3720,37 @@ entity, so animate `Sprite2D/offset` to move a sprite around its entity instead.
   its tracks use. A player whose file, animation or track can't
   be used logs one warning and plays what it can.
 - Animation files reload when they change, like every asset, and exports check and ship them.
+
+### Animation layers
+
+An animation that comes `from` a model's animation can change it with `layers`, as a creature
+recipe's [`motion`](#creatures) changes a creature's, so an agent tunes a character's, a
+creature's or any rigged model's animation without keys: each layer's bones are turned and timed
+over the model's own keys, and the result plays wherever the animation does (`AnimationPlayer`,
+`AnimationTree`, `skeleton.get`). `animation.edit` writes them and `animation.tune` sets them
+toward goals (see [commands](commands.md#animationedit)).
+
+```json
+{"format": 1, "animations": {"walk": {
+  "from": {"model": "models/hero.glb", "animation": "Walk-loop"}, "speed": 1.2,
+  "layers": [{"name": "tired", "weight": 0.5, "amplitude": 0.8,
+              "bones": {"Spine": {"pitch": 0.15}, "LeftUpperLeg": {"scale": 0.9, "shift": 0.05}},
+              "add": [{"bone": "Head", "axis": "roll", "angle": 0.05, "cycles": 2}]}]}}}
+```
+
+| Layer key | Default | Meaning |
+| --- | --- | --- |
+| `name` | Required | The layer's name, unique in the animation |
+| `weight` | `1` | How much of the layer counts, 0 to 1 |
+| `amplitude` | `1` | Scales every moving bone's swing about its rest |
+| `bones/<bone>/scale` | `1` | Scales the bone's swing about its rest, times `amplitude` |
+| `bones/<bone>/shift` | `0` | Plays the bone later by this share of the cycle |
+| `bones/<bone>/pitch`, `yaw`, `roll` | `0` | A turn in radians held through the cycle |
+| `add` | `[]` | Waves added on top, as a motion's `waves`: `bone`, `axis` (`pitch`, `yaw` or `roll`), `angle` (radians each way), `offset`, `cycles` a loop and `shift` |
+
+A bone a layer names that the model lacks is an error at its path with the closest name. Layers
+are baked when the library loads into one animation keyed 60 times a second, so they cost
+nothing to play.
 
 ### Cinematics
 
@@ -5226,7 +5259,7 @@ both.
 | `cull_distance` | `[0, 0]` | 3D: meters from the camera where it starts to fade (alpha hash) and is gone; `[0, 0]` never |
 | `impostor_distance`, `impostor` | `0`, `""` | 3D: past this distance it draws as `impostor`, an image facing the camera sized by the model's bounds, or without one as the model's last LOD |
 | `cast_shadow` | `"on"` | 3D: as `MeshInstance3D`'s |
-| `wind` | | `bend` (radians per meter a second, or per 100 pixels a second in 2D, of `WindSource3D` or `WindSource2D` wind; `0`), `sway` (the share it rocks by; `0`), `frequency` (`0.5` a second), `max` (radians at most, wind and characters together; `0.8`) |
+| `wind` | | `bend` (radians per meter a second, or per 100 pixels a second in 2D, of `WindSource3D` or `WindSource2D` wind; `0`), `sway` (the share it rocks by; `0`), `frequency` (`0.5` a second), `max` (radians at most, wind and characters together; `0.8`), `phase_spread` (the share of a cycle each instance is out of step with others at random; `1`, `0` rocks a field together), `frequency_spread` (the share each instance's frequency differs either way at random; `0`), `wave_length` (meters, or pixels in 2D, downwind between the crests of gusts rolling over a field; `0`, none), `flutter` (the share of its lean it rocks across the wind, a quarter cycle behind, so its tip goes round; `0`), `idle` (radians it rocks at its frequency in still air, in a way of its own; `0`). [`foliage.sway`](commands.md#foliagesway) measures and tunes them |
 | `interaction` | | `radius` (how near a body's middle has to come; `0`, never), `bend` (radians a body at its foot pushes it by; `0.8`), `stiffness` (`40` per second squared), `damping` (`8` per second) |
 | `collision` | none | `shape` (3D `capsule`, `sphere`, `cylinder`, `box`; 2D `circle`, `rectangle`, `capsule`; `none`), `radius` (`0.25`), `height` (`2`), `size`, `offset` (default: standing on the ground), in the instance's space, scaled with it |
 | `climbable` | `false` | Characters may climb it; `foliage.get` says so |
@@ -5238,8 +5271,10 @@ both.
 | `Foliage2D` | `groups` `[]` (each `{"type": ".foliage.json file", "instances": [x, y, rotation, scale, ...]}`, four numbers an instance in the entity's space, a negative scale mirrored), `modulate` `[1, 1, 1, 1]`, `collision_layer` `1`, `collision_mask` `1`, `z_index` `0`, `z_as_relative` `true`, `visible` `true`, `light_mask` `1`, `texture_filter` `"inherit"` |
 | `Foliage3D` | `groups` `[]` (each `{"type": ".foliage.json file", "instances": [x, y, z, rx, ry, rz, scale, ...]}`, seven numbers an instance in the entity's space, rotations in radians in Godot's YXZ), `layers` `1`, `collision_layer` `1`, `collision_mask` `1`, `lod_bias` `1` |
 
-- Each instance leans as the wind at its foot says, rocked by `sway` with a phase of its own,
-  plus the push of characters, held within `wind.max`. 3D instances turn about their foot; a 2D
+- Each instance leans as the wind at its foot says, rocked by `sway` with a phase and frequency
+  of its own (by `phase_spread` and `frequency_spread`), later the further downwind it stands by
+  `wave_length`, fluttered across the wind and rocked in still air by `idle`, plus the push of
+  characters, held within `wind.max`. 3D instances turn about their foot; a 2D
   instance's corners lean over by their height above its origin.
 - The `foliage` system (priority 970, after physics) has `CharacterBody3D`, `RigidBody3D` and
   `VehicleBody3D` entities push the `Foliage3D` instances within `interaction.radius` over

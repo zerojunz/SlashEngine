@@ -63,7 +63,7 @@ as `entity.get`, reject it as an unknown param.
 | Textures | [`texture.generate`](#texturegenerate) |
 | Scatter | [`scatter.run`](#scatterrun) |
 | Procedural graphs | [`pcg.run`](#pcgrun), [`pcg.preview`](#pcgpreview), [`pcg.check`](#pcgcheck) |
-| Foliage | [`foliage.paint`](#foliagepaint), [`foliage.erase`](#foliageerase), [`foliage.get`](#foliageget), [`foliage.harvest`](#foliageharvest) |
+| Foliage | [`foliage.paint`](#foliagepaint), [`foliage.erase`](#foliageerase), [`foliage.get`](#foliageget), [`foliage.harvest`](#foliageharvest), [`foliage.sway`](#foliagesway) |
 | Hair | [`hair.get`](#hairget) |
 | Damage | [`damage.apply`](#damageapply), [`damage.state`](#damagestate), [`damage.check`](#damagecheck) |
 | Animations | [`animation.eval`](#animationeval), [`animation.seek`](#animationseek) |
@@ -807,6 +807,24 @@ and world `position`. Nothing to harvest there is `-32001` at `/at`. Needs: `edi
 {"amount":3,"item":"stone","position":[1.584,0.0,-1.46],"type":"boulder.foliage.json"}
 ```
 
+### foliage.sway
+
+Measures how a [foliage type](scene-format.md#foliage) sways in a steady `wind` (meters a
+second in 3D, pixels a second in 2D; default `3` or `300`), over `count` instances (`16`) in a
+row downwind `spacing` apart (`0.5` meters or `32` pixels) for `seconds` (`4`), as the renderers
+lean them: `along` and, in 3D, `across` the wind (radians, least and most), the `mean` lean,
+how much `neighbors` differ on average (`0` sways as one), the share of the time `capped` at
+`wind.max` and the sway's `period`. Without changes it returns them as `sway`. `set` is a JSON
+Merge Patch over the `.foliage.json` file and `lean` sets `wind.bend` so the mean lean along
+this wind is that many radians; either writes the file (with undo) and returns the sway
+`before` and `after` and the `wind_settings`. A patch that leaves the file invalid is `-32602`
+at `/set` and the bad value's pointer. Needs: `read`, `edit`, `filesystem`.
+
+```json
+{"type": "plants/grass.foliage.json", "lean": 0.25,
+ "set": {"wind": {"sway": 0.4, "wave_length": 4, "flutter": 0.3, "phase_spread": 0.2}}}
+```
+
 ## Hair
 
 Reading [hair and fur](scene-format.md#hair-and-fur) as it grew and where physics put it.
@@ -1052,6 +1070,17 @@ cut-out, a `Creature2D`'s by default) and writes a PNG to `out` (default
  "filmstrip": {"out": "previews/old_stag_walk.png", "frames": 6, "size": [96, 72]}}
 ```
 
+With `library` (a `.anim.json` file) in place of a creature, it measures that library's
+animation that comes `from` a model, with its [layers](scene-format.md#animation-layers): the
+bones that turn, and for a humanoid (bones named `LeftFoot` and `RightFoot`) the `gait`, facing
++z. `set` and `layer` try a change as [`animation.edit`](#animationedit) would make it, without
+writing it. A library has no `motion` or `filmstrip`.
+
+```json
+{"library": "anim/hero.anim.json", "animation": "walk", "move_speed": 1.4,
+ "layer": {"name": "try", "bones": {"Spine": {"pitch": 0.1}}}}
+```
+
 ### animation.tune
 
 Changes one of a creature's animations toward goals, trying each change as it would play, and
@@ -1066,6 +1095,34 @@ made to the animation's entry and the animation measured `before` and `after` as
 
 ```json
 {"recipe": "creatures/deer.creature.json", "animation": "walk", "slide": "length"}
+```
+
+With `library` in place of a creature, it tunes that library's animation (one `from` a model)
+and writes the file, with undo: `set` patches its entry first, `ranges` and a `"swing"` slide
+scale bones in the layer `layer` names (a layer merged in by `name` first, as
+`animation.edit`'s; `"tune"` by default, made last if missing), and a
+`"length"` slide sets the animation's `speed`. `into` doesn't apply.
+
+```json
+{"library": "anim/hero.anim.json", "animation": "walk", "move_speed": 1.4, "slide": "length",
+ "ranges": {"LeftUpperArm": 0.5, "RightUpperArm": 0.5}}
+```
+
+### animation.edit
+
+Changes an animation in a `.anim.json` library (made if missing), with undo, and checks that it
+plays: `set` is a JSON Merge Patch over the animation's entry (`from`, `length`, `loop`,
+`speed`, `tracks`, `markers`, `layers`; `null` removes the animation), `layer` merges a
+[layer](scene-format.md#animation-layers) into its `layers` by `name` (adding it last if new;
+`null` fields remove them), and `remove_layer` takes one out by name. Returns the `library`, the
+`animation`, its `length` once it plays and the entry `after`. A bone the model lacks, an
+unknown layer or animation, or a value out of range is an error at its path, with the closest
+name. Needs: `read`, `edit`, `filesystem`.
+
+```json
+{"library": "anim/hero.anim.json", "animation": "sneak",
+ "set": {"from": {"model": "models/hero.glb", "animation": "Walk-loop"}, "speed": 0.7},
+ "layer": {"name": "crouch", "bones": {"Spine": {"pitch": 0.3}, "Hips": {"shift": 0.1}}}}
 ```
 ## Vehicles
 
