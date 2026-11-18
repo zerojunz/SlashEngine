@@ -2370,7 +2370,7 @@ public:
         if (ssr && !history->primed) {
             encode_meshes(encoder, mesh_uniforms, sky_uniforms_at, ssao.has_value(), false,
                           subsurface_at);
-            encode_ssr_step(encoder, ssr_last_frame_step(), last_frame_at, *history);
+            encode_ssr_step(encoder, ssr_last_frame_step(), last_frame_at, *history, {});
         }
         if (ssr) {
             encode_ssr(encoder, *ssr, ssr_uniforms_at, *history);
@@ -2396,7 +2396,7 @@ public:
             return {};
         }
         if (ssr) {
-            encode_ssr_step(encoder, ssr_last_frame_step(), last_frame_at, *history);
+            encode_ssr_step(encoder, ssr_last_frame_step(), last_frame_at, *history, {});
             history->camera = seen;
             history->primed = true;
         }
@@ -5813,6 +5813,23 @@ private:
         wgpuRenderPassEncoderRelease(pass);
     }
 
+    // An SSR texture's bytes a texel.
+    static std::uint64_t ssr_texel_bytes(SsrFormat format) {
+        switch (format) {
+        case SsrFormat::RGBA8:
+            return 4;
+        case SsrFormat::RGBA16F:
+            return 8;
+        case SsrFormat::RGBA32F:
+            return 16;
+        case SsrFormat::R8:
+            return 1;
+        case SsrFormat::R32F:
+            break;
+        }
+        return 4;
+    }
+
     // An SSAO texture's bytes a texel.
     static std::uint64_t ssao_texel_bytes(SsaoFormat format) {
         switch (format) {
@@ -5984,15 +6001,7 @@ private:
         if (ssr_targets_.width != width || ssr_targets_.height != height ||
             !(ssr_targets_.settings == settings)) {
             release_ssr_targets();
-            // The last pass draws into the screen array instead.
-            for (std::uint32_t i = 0; i < kSsrTextures; ++i) {
-                const PostSize size = plan.sizes.at(i);
-                if (size.width != 0 && i != kSsrFinal) {
-                    ssr_targets_.textures.at(i) =
-                        pass_texture(size.width, size.height, ssr_gpu_format(ssr_format(i)),
-                                     WGPUTextureUsage_CopySrc);
-                }
-            }
+            // The passes' textures are the frame graph's, made as encode_ssr runs.
             ssr_targets_.hiz_mips =
                 pass_texture(plan.size.width, plan.size.height, ssr_gpu_format(ssr_format(kSsrHiz)),
                              WGPUTextureUsage_CopyDst, plan.levels);
@@ -6017,9 +6026,6 @@ private:
     }
 
     void release_ssr_targets() {
-        for (GpuTexture& texture : ssr_targets_.textures) {
-            release_pass_texture(texture);
-        }
         release_pass_texture(ssr_targets_.hiz_mips);
         release_pass_texture(ssr_targets_.color_mips);
         ssr_targets_.width = 0;
@@ -7388,39 +7394,117 @@ private:
     }
 
     // ssr.hlsl's passes, from the prepass's depth and normals and history, to the reflections at
-    // the frame's size, in the order plan gives, their uniforms at uniforms.
+    // the frame's size in the screen array's second layer, in the order plan gives, their
+    // uniforms at uniforms: a frame graph whose textures come from the pool the post passes
+    // share, but for the levels copied into textures with mipmaps, which prepare_ssr keeps.
     void encode_ssr(WGPUCommandEncoder encoder, const SsrPlan& plan,
                     std::span<const std::uint32_t> uniforms, const SsrHistory& history) {
-        for (std::size_t i = 0; i < plan.steps.size(); ++i) {
-            const SsrStep& step = plan.steps[i];
-            if (step.pass != SsrPass::CopyLevels) {
-                encode_ssr_step(encoder, step, uniforms[i], history);
-                continue;
-            }
-            // GPUs can't draw into one level of a texture while reading another, so each level
-            // is drawn into a texture of its own and copied into one with mipmaps for the passes
-            // that read them all.
-            const bool hiz = step.target == kSsrHizMips;
-            for (std::uint32_t level = 0; level < plan.levels; ++level) {
-                const std::uint32_t index = (hiz ? kSsrHiz : kSsrColor) + level;
-                const PostSize size = plan.sizes.at(index);
-                WGPUTexelCopyTextureInfo from = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
-                from.texture = ssr_targets_.textures.at(index).texture;
-                WGPUTexelCopyTextureInfo to = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
-                to.texture = hiz ? ssr_targets_.hiz_mips.texture : ssr_targets_.color_mips.texture;
-                to.mipLevel = level;
-                const WGPUExtent3D extent{
-                    .width = size.width, .height = size.height, .depthOrArrayLayers = 1};
-                wgpuCommandEncoderCopyTextureToTexture(encoder, &from, &to, &extent);
+        using detail::GraphPassKind;
+        using detail::GraphResource;
+        detail::FrameGraph graph;
+        constexpr GraphResource kNone = std::numeric_limits<GraphResource>::max();
+        std::array<GraphResource, kSsrTextures> made{};
+        made.fill(kNone);
+        for (std::uint32_t i = 0; i < kSsrTextures; ++i) {
+            const PostSize size = plan.sizes.at(i);
+            if (size.width != 0 && i != kSsrFinal) {
+                const SsrFormat format = ssr_format(i);
+                made.at(i) = graph.transient(
+                    "ssr " + std::to_string(i),
+                    color_shape(ssr_gpu_format(format), size, ssr_texel_bytes(format)));
             }
         }
+        made.at(kSsrFinal) = graph.import("screen");
+        const GraphResource hiz_mips = graph.import("ssr hiz mips");
+        const GraphResource color_mips = graph.import("ssr color mips");
+        std::vector<WGPUTextureView> bound(graph.resource_count(), nullptr);
+        bound.at(made.at(kSsrFinal)) = screen_.layers[1];
+        bound.at(hiz_mips) = ssr_targets_.hiz_mips.view;
+        bound.at(color_mips) = ssr_targets_.color_mips.view;
+        // The graph's textures, by resource, for copying from.
+        std::vector<WGPUTexture> made_textures;
+        // The passes' views by index, once the graph has given them (null for those not drawn,
+        // which bind as white).
+        std::array<WGPUTextureView, kSsrTextures> views{};
+        const auto gather = [&] {
+            for (std::uint32_t i = 0; i < kSsrTextures; ++i) {
+                views.at(i) = made.at(i) != kNone ? bound.at(made.at(i)) : nullptr;
+            }
+        };
+        std::array<bool, kSsrTextures> written{};
+        for (std::size_t i = 0; i < plan.steps.size(); ++i) {
+            const SsrStep& step = plan.steps[i];
+            if (step.pass == SsrPass::CopyLevels) {
+                // GPUs can't draw into one level of a texture while reading another, so each
+                // level is drawn into a texture of its own and copied into one with mipmaps for
+                // the passes that read them all.
+                const bool hiz = step.target == kSsrHizMips;
+                std::vector<GraphResource> reads;
+                for (std::uint32_t level = 0; level < plan.levels; ++level) {
+                    reads.push_back(made.at((hiz ? kSsrHiz : kSsrColor) + level));
+                }
+                graph.add_pass(
+                    {.name = hiz ? "ssr copy hiz levels" : "ssr copy color levels",
+                     .kind = GraphPassKind::Copy,
+                     .reads = std::move(reads),
+                     .writes = {hiz ? hiz_mips : color_mips}},
+                    [&, hiz](const detail::GraphContext&) {
+                        for (std::uint32_t level = 0; level < plan.levels; ++level) {
+                            const std::uint32_t index = (hiz ? kSsrHiz : kSsrColor) + level;
+                            const PostSize size = plan.sizes.at(index);
+                            WGPUTexelCopyTextureInfo from = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+                            from.texture = made_textures.at(made.at(index));
+                            WGPUTexelCopyTextureInfo to = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+                            to.texture = hiz ? ssr_targets_.hiz_mips.texture
+                                             : ssr_targets_.color_mips.texture;
+                            to.mipLevel = level;
+                            const WGPUExtent3D extent{.width = size.width,
+                                                      .height = size.height,
+                                                      .depthOrArrayLayers = 1};
+                            wgpuCommandEncoderCopyTextureToTexture(encoder, &from, &to, &extent);
+                        }
+                    });
+                continue;
+            }
+            std::vector<GraphResource> reads;
+            for (const std::uint32_t index : step.slots) {
+                GraphResource resource = kNone;
+                if (index < kSsrTextures && written.at(index)) {
+                    resource = made.at(index);
+                } else if (index == kSsrHizMips) {
+                    resource = hiz_mips;
+                } else if (index == kSsrColorMips) {
+                    resource = color_mips;
+                }
+                if (resource != kNone && std::ranges::find(reads, resource) == reads.end()) {
+                    reads.push_back(resource);
+                }
+            }
+            std::vector<GraphResource> writes{made.at(step.target)};
+            written.at(step.target) = true;
+            if (step.pass == SsrPass::Trace) {
+                writes.push_back(made.at(kSsrMipLevel));
+                written.at(kSsrMipLevel) = true;
+            }
+            graph.add_pass({.name = "ssr " + std::string(ssr_pass_name(step.pass)),
+                            .kind = GraphPassKind::Render,
+                            .reads = std::move(reads),
+                            .writes = std::move(writes)},
+                           [&, step, offset = uniforms[i]](const detail::GraphContext&) {
+                               gather();
+                               encode_ssr_step(encoder, step, offset, history, views);
+                           });
+        }
+        run_graph(graph, bound, "SSR", &made_textures);
     }
 
-    // One of SSR's passes, other than a copy, over its target with its uniforms at uniforms: the
-    // trace's over the reflections' first level and the mip levels, the last frame's over
-    // history's texture.
+    // One of SSR's passes, other than a copy, over its target in views (by index; null binds
+    // white) with its uniforms at uniforms: the trace's over the reflections' first level and the
+    // mip levels, the last frame's over history's texture and the resolve's over the screen
+    // array's second layer.
     void encode_ssr_step(WGPUCommandEncoder encoder, const SsrStep& step, std::uint32_t uniforms,
-                         const SsrHistory& history) {
+                         const SsrHistory& history,
+                         const std::array<WGPUTextureView, kSsrTextures>& views) {
         std::array<WGPUBindGroupEntry, kSsrSlots> entries{};
         for (std::uint32_t slot = 0; slot < kSsrSlots; ++slot) {
             const std::uint32_t index = step.slots.at(slot);
@@ -7437,8 +7521,8 @@ private:
                 view = history.texture.view;
             } else if (index == kSsrWorld) {
                 view = world_view(*frame_.scene);
-            } else if (index < kSsrTextures && ssr_targets_.textures.at(index).view != nullptr) {
-                view = ssr_targets_.textures.at(index).view;
+            } else if (index < kSsrTextures && views.at(index) != nullptr) {
+                view = views.at(index);
             }
             entries.at(slot) = WGPU_BIND_GROUP_ENTRY_INIT;
             entries.at(slot).binding = slot;
@@ -7454,8 +7538,8 @@ private:
         }
         colors[0].view = step.target == kSsrLastFrame ? history.texture.view
                          : step.target == kSsrFinal   ? screen_.layers[1]
-                                                      : ssr_targets_.textures.at(step.target).view;
-        colors[1].view = ssr_targets_.textures.at(kSsrMipLevel).view;
+                                                      : views.at(step.target);
+        colors[1].view = views.at(kSsrMipLevel);
         WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
         descriptor.colorAttachmentCount = trace ? 2 : 1;
         descriptor.colorAttachments = colors.data();
@@ -7633,7 +7717,7 @@ private:
     // bound, by resource, where its imported ones' already are), runs it and adds it to the
     // frame's report. False, logged, where it couldn't run.
     bool run_graph(const detail::FrameGraph& graph, std::vector<WGPUTextureView>& bound,
-                   std::string_view what) {
+                   std::string_view what, std::vector<WGPUTexture>* textures = nullptr) {
         Result<detail::CompiledGraph> compiled = graph.compile();
         if (!compiled) {
             log::error("compiling a frame graph failed",
@@ -7644,7 +7728,9 @@ private:
             compiled.value(),
             [this](const detail::GraphShape& shape) -> Result<GpuTexture> {
                 WGPUTextureDescriptor info = WGPU_TEXTURE_DESCRIPTOR_INIT;
-                info.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_RenderAttachment;
+                // Copied from too: SSR copies its levels into textures with mipmaps.
+                info.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_RenderAttachment |
+                             WGPUTextureUsage_CopySrc;
                 info.size = {.width = static_cast<std::uint32_t>((shape.key >> 24U) & 0xFFFFFFU),
                              .height = static_cast<std::uint32_t>(shape.key & 0xFFFFFFU),
                              .depthOrArrayLayers = 1};
@@ -7662,9 +7748,15 @@ private:
         }
         const std::vector<std::uint32_t>& slots = compiled.value().slots;
         bound.resize(graph.resource_count(), nullptr);
+        if (textures != nullptr) {
+            textures->assign(graph.resource_count(), nullptr);
+        }
         for (detail::GraphResource resource = 0; resource < bound.size(); ++resource) {
             if (graph.is_transient(resource) && slots.at(resource) < handles.value().size()) {
                 bound.at(resource) = handles.value().at(slots.at(resource)).view;
+                if (textures != nullptr) {
+                    textures->at(resource) = handles.value().at(slots.at(resource)).texture;
+                }
             }
         }
         graph.execute(compiled.value());
@@ -8514,10 +8606,9 @@ private:
         std::uint32_t width = 0;
         std::uint32_t height = 0;
     };
-    // SSR's textures for the frame's size and settings: those ssr_plan sizes, and Hi-Z's and the
-    // reflections' levels copied into a texture with mipmaps each.
+    // SSR's textures kept for the frame's size and settings: Hi-Z's and the reflections' levels
+    // copied into a texture with mipmaps each (the rest are the frame graph's).
     struct SsrTargets {
-        std::array<GpuTexture, kSsrTextures> textures{};
         GpuTexture hiz_mips;
         GpuTexture color_mips;
         std::uint32_t width = 0;

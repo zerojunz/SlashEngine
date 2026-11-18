@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <numbers>
 #include <span>
+#include <string_view>
 #include <vector>
 
 namespace slash::render::detail {
@@ -1043,6 +1044,34 @@ SsrImage ssr_last_frame(const SsrSettings& settings, std::uint32_t width, std::u
     run_ssr_pass(uniforms, step, {},
                  {.depth = {}, .normals = nullptr, .last_frame = nullptr, .world = &source}, out);
     return out;
+}
+
+std::string_view ssr_pass_name(SsrPass pass) {
+    switch (pass) {
+    case SsrPass::DownsampleDepth:
+        return "downsample depth";
+    case SsrPass::DownsampleNormals:
+        return "downsample normals";
+    case SsrPass::CopyDepth:
+        return "copy depth";
+    case SsrPass::Hiz:
+        return "hiz";
+    case SsrPass::CopyLevels:
+        return "copy levels";
+    case SsrPass::Trace:
+        return "trace";
+    case SsrPass::FilterRows:
+        return "filter rows";
+    case SsrPass::FilterColumns:
+        return "filter columns";
+    case SsrPass::Resolve:
+        return "resolve";
+    case SsrPass::Mip:
+        return "mip";
+    case SsrPass::LastFrame:
+        return "last frame";
+    }
+    return "trace";
 }
 
 } // namespace slash::render::detail

@@ -422,3 +422,28 @@ TEST_CASE("GPUs draw SSR as the software device does") {
         CHECK(difference(drawn, expected) <= 40);
     }
 }
+
+TEST_CASE("the GPU device runs SSR as a frame graph whose textures the pool keeps") {
+    auto gpu = slash::test::gpu_device();
+    if (gpu == nullptr) {
+        return;
+    }
+    CAPTURE(render::backend_name(gpu->backend()));
+    render::Ssr3D full{.enabled = true};
+    full.settings.half_size = false;
+    for (const render::Ssr3D& ssr : {render::Ssr3D{.enabled = true}, full}) {
+        CAPTURE(ssr.settings.half_size);
+        const detail::SsrPlan plan = detail::ssr_plan(ssr.settings, 64, 64);
+        draw_mirror(*gpu, {.ssr = ssr});
+        // SSR's passes (copying the levels into textures with mipmaps among them), the resolve
+        // into the screen array, then the tonemap pass.
+        const render::Stats stats = gpu->stats();
+        CHECK(stats.graph_passes == plan.steps.size() + 1);
+        CHECK(stats.graph_culled == 0);
+        CHECK(stats.transient_bytes > 0);
+        CHECK(stats.transient_allocated_bytes <= stats.transient_bytes);
+        // A second frame takes the same textures from the pool.
+        draw_mirror(*gpu, {.ssr = ssr});
+        CHECK(gpu->stats().transient_allocated_bytes == stats.transient_allocated_bytes);
+    }
+}
