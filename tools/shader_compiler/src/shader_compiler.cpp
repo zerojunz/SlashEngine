@@ -1,5 +1,7 @@
 #include "slash/shader_compiler/shader_compiler.hpp"
 
+#include "slash/render/compositor.hpp"
+
 #include <SPIRV/GlslangToSpv.h>
 #include <array>
 #include <cctype>
@@ -789,6 +791,143 @@ Parts cpu_spatial_light_parts(const render::ShaderSource& source, const Scan& fo
     return parts;
 }
 
+// A compositor shader's globals (render::CompositorUniforms and the screen's textures), Godot's
+// built-ins for it, the texture params after the screen's three textures, and the screen's
+// reads: screen_texture filters the world's texels in code and depth_texture and
+// normal_roughness_texture load the nearest, so every device and the CPU read the same values.
+std::string compositor_declarations(const render::ShaderSource& source) {
+    std::string out = "cbuffer Compositor : register(b0, space3) {\n"
+                      "    float4 compositor_constants[32];\n"
+                      "    float4x4 compositor_projection;\n"
+                      "    float4x4 compositor_inv_projection;\n"
+                      "    float4x4 compositor_view;\n"
+                      "    float4x4 compositor_inv_view;\n"
+                      "    float4 compositor_screen;\n"
+                      "    uint4 compositor_options;\n"
+                      "};\n"
+                      "Texture2D<float4> compositor_screen_buffer : register(t0, space2);\n"
+                      "Texture2D<float4> compositor_depth_buffer : register(t1, space2);\n"
+                      "Texture2D<float4> compositor_normal_buffer : register(t2, space2);\n"
+                      "SamplerState compositor_screen_sampler : register(s0, space2);\n"
+                      "SamplerState compositor_depth_sampler : register(s1, space2);\n"
+                      "SamplerState compositor_normal_sampler : register(s2, space2);\n";
+    for (const auto& param : source.params) {
+        if (param.components == 0) {
+            const std::string slot =
+                std::to_string(render::cpu_compositor::kFirstParamBinding + param.slot);
+            out += "Texture2D<float4> " + param.name + " : register(t" + slot + ", space2);\n";
+            out += "SamplerState " + param.name + "_sampler : register(s" + slot + ", space2);\n";
+        } else {
+            out += "static " + std::string(kTypes.at(param.components)) + " " + param.name + ";\n";
+        }
+    }
+    out += "static float4 FRAGCOORD;\n"
+           "static float2 SCREEN_UV;\n"
+           "static float2 SCREEN_PIXEL_SIZE;\n"
+           "static float4 COLOR;\n"
+           "static float TIME;\n"
+           "static float4x4 PROJECTION_MATRIX;\n"
+           "static float4x4 INV_PROJECTION_MATRIX;\n"
+           "static float4x4 VIEW_MATRIX;\n"
+           "static float4x4 INV_VIEW_MATRIX;\n"
+           "static const float PI = 3.14159265358979323846;\n"
+           "static const float TAU = 6.28318530717958647692;\n"
+           "static const float E = 2.71828182845904523536;\n"
+           "#define texture(t, uv) ((t).SampleLevel(t##_sampler, (uv), 0.0))\n"
+           "int2 compositor_clamp(int2 texel) {\n"
+           "    return clamp(texel, int2(0, 0), int2(compositor_screen.zw) - int2(1, 1));\n"
+           "}\n"
+           "float4 compositor_texel(int2 texel) {\n"
+           "    return compositor_screen_buffer.Load(int3(compositor_clamp(texel), 0));\n"
+           "}\n"
+           "int2 compositor_nearest(float2 uv) {\n"
+           "    return compositor_clamp(int2(floor(uv * compositor_screen.zw)));\n"
+           "}\n"
+           "float4 screen_texture(float2 uv) {\n"
+           "    float2 at = uv * compositor_screen.zw - 0.5;\n"
+           "    float2 low = floor(at);\n"
+           "    float2 w = at - low;\n"
+           "    int2 i = int2(low);\n"
+           "    float4 top = lerp(compositor_texel(i), compositor_texel(i + int2(1, 0)), w.x);\n"
+           "    float4 bottom = lerp(compositor_texel(i + int2(0, 1)), "
+           "compositor_texel(i + int2(1, 1)), w.x);\n"
+           "    return lerp(top, bottom, w.y);\n"
+           "}\n"
+           "float depth_texture(float2 uv) {\n"
+           "    return compositor_depth_buffer.Load(int3(compositor_nearest(uv), 0)).r;\n"
+           "}\n"
+           "float4 normal_roughness_texture(float2 uv) {\n"
+           "    if (compositor_options.x == 0u) {\n"
+           "        return float4(0.0, 0.0, 1.0, 1.0);\n"
+           "    }\n"
+           "    float4 texel = compositor_normal_buffer.Load(int3(compositor_nearest(uv), 0));\n"
+           "    float3 n = texel.xyz * 2.0 - 1.0;\n"
+           "    float size = dot(n, n);\n"
+           "    n = size > 0.0 ? n * rsqrt(size) : float3(0.0, 0.0, 1.0);\n"
+           "    return float4(n, texel.w * (255.0 / 127.0));\n"
+           "}\n";
+    if (reads_wind(source)) {
+        out += "static float2 WIND;\n";
+    }
+    return out;
+}
+
+// What a compositor shader's stages run before fragment(), at the pixel's center.
+std::string compositor_setup(std::string_view frag_coord) {
+    return "    FRAGCOORD = float4(" + std::string(frag_coord) +
+           ", 0.0, 1.0);\n"
+           "    SCREEN_PIXEL_SIZE = compositor_screen.xy;\n"
+           "    SCREEN_UV = FRAGCOORD.xy * SCREEN_PIXEL_SIZE;\n"
+           "    PROJECTION_MATRIX = compositor_projection;\n"
+           "    INV_PROJECTION_MATRIX = compositor_inv_projection;\n"
+           "    VIEW_MATRIX = compositor_view;\n"
+           "    INV_VIEW_MATRIX = compositor_inv_view;\n"
+           "    COLOR = compositor_texel(int2(floor(FRAGCOORD.xy)));\n";
+}
+
+// A compositor shader's GPU stages: one triangle over the screen, and fs_main, which writes the
+// world's new color.
+Parts compositor_parts(const render::ShaderSource& source, const Scan& found) {
+    Parts parts;
+    parts.before = "// A game's compositor shader (tools/shader_compiler).\n" +
+                   compositor_declarations(source);
+    parts.after = "\nfloat4 vs_main(uint id : SV_VertexID) : SV_Position {\n"
+                  "    float2 corner = float2((float)((id << 1u) & 2u), (float)(id & 2u));\n"
+                  "    return float4(corner * 2.0 - 1.0, 0.0, 1.0);\n"
+                  "}\n\n"
+                  "float4 fs_main(float4 position : SV_Position) : SV_Target0 {\n";
+    parts.after += load_params(source, "compositor_constants", "");
+    parts.after += compositor_setup("position.xy");
+    if (found.fragment) {
+        parts.after += "    fragment();\n";
+    }
+    parts.after += "    return COLOR;\n}\n";
+    return parts;
+}
+
+// Its CPU module, which reads the pixel's center at render::cpu_compositor::kFragCoord.
+Parts cpu_compositor_parts(const render::ShaderSource& source, const Scan& found) {
+    Parts parts;
+    parts.before = compositor_declarations(source);
+    parts.after = "\nstruct CpuCompositor {\n"
+                  "    [[vk::location(0)]] float2 frag_coord : TEXCOORD0;\n"
+                  "};\n\n"
+                  "struct CpuCompositorColor {\n"
+                  "    [[vk::location(0)]] float4 color : SV_Target0;\n"
+                  "};\n\n"
+                  "CpuCompositorColor cpu_fragment(CpuCompositor input) {\n";
+    parts.after += load_params(source, "compositor_constants", "");
+    parts.after += compositor_setup("input.frag_coord");
+    if (found.fragment) {
+        parts.after += "    fragment();\n";
+    }
+    parts.after += "    CpuCompositorColor output;\n"
+                   "    output.color = COLOR;\n"
+                   "    return output;\n"
+                   "}\n";
+    return parts;
+}
+
 // glslang's info log as errors, each "<path>:<line>: message".
 void read_log(std::string_view log, const std::string& path, std::vector<std::string>& errors) {
     std::istringstream lines{std::string(log)};
@@ -1107,12 +1246,63 @@ Result<render::CompiledShader> compile_spatial(const render::ShaderSource& sourc
     return out;
 }
 
+Result<render::CompiledShader> compile_compositor(const render::ShaderSource& source) {
+    const Scan found = scan(source.code);
+    render::CompiledShader out;
+    out.type = render::ShaderType::Compositor;
+    std::vector<std::string> errors;
+    const Parts gpu = compositor_parts(source, found);
+    out.spirv_vertex = to_spirv(gpu, source, EShLangVertex, "vs_main", errors);
+    if (errors.empty()) {
+        out.spirv_fragment = to_spirv(gpu, source, EShLangFragment, "fs_main", errors);
+    }
+    std::vector<std::uint32_t> wgsl_vertex;
+    std::vector<std::uint32_t> wgsl_fragment;
+    if (errors.empty()) {
+        wgsl_vertex = to_spirv(gpu, source, EShLangVertex, "vs_main", errors, Samplers::Apart);
+    }
+    if (errors.empty()) {
+        wgsl_fragment = to_spirv(gpu, source, EShLangFragment, "fs_main", errors, Samplers::Apart);
+    }
+    if (errors.empty()) {
+        out.wgsl_vertex = to_wgsl(wgsl_vertex, source.path, errors);
+    }
+    if (errors.empty()) {
+        out.wgsl_fragment = to_wgsl(wgsl_fragment, source.path, errors);
+    }
+    if (errors.empty()) {
+        out.cpu_fragment = to_spirv(cpu_compositor_parts(source, found), source, EShLangFragment,
+                                    "cpu_fragment", errors);
+    }
+    if (!errors.empty()) {
+        return compile_errors(errors);
+    }
+    try {
+        out.msl_vertex = to_msl(out.spirv_vertex);
+        out.msl_fragment = to_msl(out.spirv_fragment);
+    } catch (const std::exception& error) {
+        return make_error(ErrorCode::InvalidArgument,
+                          source.path + ": SPIRV-Cross can't translate it: " + error.what());
+    }
+    out.hlsl = joined(gpu, source);
+    if (auto loaded = render::ShaderVm::load(out.cpu_fragment); !loaded) {
+        return make_error(ErrorCode::InvalidArgument,
+                          source.path + ": the CPU can't run it: " + loaded.error().message);
+    }
+    return out;
+}
+
 } // namespace
 
 Wrapped wrap(const render::ShaderSource& source) {
     const Scan found = scan(source.code);
     const auto join = [&](const Parts& parts) { return joined(parts, source); };
     Wrapped out;
+    if (source.type == render::ShaderType::Compositor) {
+        out.gpu = join(compositor_parts(source, found));
+        out.cpu_fragment = join(cpu_compositor_parts(source, found));
+        return out;
+    }
     if (source.type == render::ShaderType::Spatial) {
         out.gpu =
             join(spatial_parts(source, found, MeshStage::Compatibility, MeshTarget::Other, false));
@@ -1136,6 +1326,9 @@ Wrapped wrap(const render::ShaderSource& source) {
 Result<render::CompiledShader> compile(const render::ShaderSource& source) {
     if (source.type == render::ShaderType::Spatial) {
         return compile_spatial(source);
+    }
+    if (source.type == render::ShaderType::Compositor) {
+        return compile_compositor(source);
     }
     const Scan found = scan(source.code);
     render::CompiledShader out;

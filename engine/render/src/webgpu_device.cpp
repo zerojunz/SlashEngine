@@ -5,6 +5,7 @@
 #include "webgpu_device.hpp"
 
 #include "checks.hpp"
+#include "compositor.hpp"
 #include "decal.hpp"
 #include "forward_post.hpp"
 #include "forward_post_shaders.hpp"
@@ -354,28 +355,28 @@ constexpr std::uint64_t kComputeUniformBytes = std::max(
     {sizeof(ProcessUniforms), sizeof(EmitUniforms), sizeof(DrawUniforms), sizeof(ProcessUniforms3D),
      sizeof(SortUniforms3D), sizeof(MeshUniforms3D), sizeof(StagesUniforms3D)});
 // The most bytes any binding of the uniform buffer reads.
-constexpr std::uint64_t kLargestUniforms =
-    std::max<std::uint64_t>({sizeof(Mat4),
-                             sizeof(VertexProgramUniforms),
-                             sizeof(ProgramUniforms),
-                             sizeof(LightsUniforms),
-                             kComputeUniformBytes,
-                             sizeof(MeshInstanceUniforms),
-                             sizeof(MeshSurfaceUniforms),
-                             sizeof(MeshSceneUniforms),
-                             sizeof(MeshShadowUniforms),
-                             sizeof(MeshShadowPassUniforms),
-                             sizeof(PostUniforms),
-                             sizeof(SkyUniforms),
-                             sizeof(RadianceUniforms),
-                             sizeof(SsaoUniforms),
-                             sizeof(SsrUniforms),
-                             sizeof(MeshCameraUniforms),
-                             sizeof(TaaUniforms),
-                             sizeof(Fsr2Uniforms),
-                             sizeof(Fsr3Uniforms),
-                             sizeof(SpatialUniforms),
-                             sizeof(FrameGenerationUniforms)});
+constexpr std::uint64_t kLargestUniforms = std::max<std::uint64_t>({sizeof(Mat4),
+                                                                    sizeof(VertexProgramUniforms),
+                                                                    sizeof(ProgramUniforms),
+                                                                    sizeof(LightsUniforms),
+                                                                    kComputeUniformBytes,
+                                                                    sizeof(MeshInstanceUniforms),
+                                                                    sizeof(MeshSurfaceUniforms),
+                                                                    sizeof(MeshSceneUniforms),
+                                                                    sizeof(MeshShadowUniforms),
+                                                                    sizeof(MeshShadowPassUniforms),
+                                                                    sizeof(PostUniforms),
+                                                                    sizeof(SkyUniforms),
+                                                                    sizeof(RadianceUniforms),
+                                                                    sizeof(SsaoUniforms),
+                                                                    sizeof(SsrUniforms),
+                                                                    sizeof(MeshCameraUniforms),
+                                                                    sizeof(TaaUniforms),
+                                                                    sizeof(Fsr2Uniforms),
+                                                                    sizeof(Fsr3Uniforms),
+                                                                    sizeof(SpatialUniforms),
+                                                                    sizeof(FrameGenerationUniforms),
+                                                                    sizeof(CompositorUniforms)});
 // The bind groups are SDL's GPU API's, which the HLSL's registers name and the WGSL keeps
 // (cmake/compile_shaders.cmake): a vertex stage's uniforms in group 1, a fragment stage's
 // textures in group 2 (samplers kSamplerBinding after their textures) and its uniforms in group
@@ -739,6 +740,9 @@ public:
         for (const GameShadowPipeline& made : game_shadow_pipelines_) {
             wgpuRenderPipelineRelease(made.pipeline);
         }
+        for (const EffectPipeline& made : effect_pipelines_) {
+            wgpuRenderPipelineRelease(made.pipeline);
+        }
         for (WGPUComputePipeline pipeline : compute_pipelines_) {
             if (pipeline != nullptr) {
                 wgpuComputePipelineRelease(pipeline);
@@ -836,7 +840,9 @@ public:
                                            skin_output_layout_,
                                            skin_uniforms_layout_,
                                            cull_inputs_layout_,
-                                           cull_uniforms_layout_}) {
+                                           cull_uniforms_layout_,
+                                           compositor_textures_layout_,
+                                           compositor_uniforms_layout_}) {
             if (layout != nullptr) {
                 wgpuBindGroupLayoutRelease(layout);
             }
@@ -1026,7 +1032,8 @@ public:
             return checked.error();
         }
         const bool spatial = shader.type == ShaderType::Spatial;
-        GameShader made{.vertex = create_module(shader.wgsl_vertex),
+        GameShader made{.type = shader.type,
+                        .vertex = create_module(shader.wgsl_vertex),
                         .fragment = create_module(shader.wgsl_fragment)};
         if (spatial) {
             made = {.type = ShaderType::Spatial,
@@ -1084,6 +1091,13 @@ public:
         });
         std::erase_if(game_shadow_pipelines_, [&](const GameShadowPipeline& made) {
             if (made.game != shader) {
+                return false;
+            }
+            release(made.pipeline);
+            return true;
+        });
+        std::erase_if(effect_pipelines_, [&](const EffectPipeline& made) {
+            if (made.shader != shader) {
                 return false;
             }
             release(made.pipeline);
@@ -1772,6 +1786,17 @@ public:
                 !checked) {
                 return checked.error();
             }
+            if (auto checked = detail::check_effects(
+                    *frame.scene,
+                    [&](ShaderId id) {
+                        const auto found = game_shaders_.find(id);
+                        return found != game_shaders_.end() &&
+                               found->second.type == ShaderType::Compositor;
+                    },
+                    [&](TextureId id) { return usable(id); });
+                !checked) {
+                return checked.error();
+            }
             if (auto checked = check_reflections(*frame.scene,
                                                  [&](TextureId id) {
                                                      const auto found = textures_.find(id);
@@ -2246,6 +2271,26 @@ public:
                 uniforms_.add(
                     subsurface_uniforms(*frame_.scene, scene_width_, scene_height_, true))};
         }
+        // The compositor effects' uniforms, each reading the prepass's normals where it asks and
+        // the frame drew them.
+        const bool effects = forward && detail::uses_effects(*frame_.scene);
+        const bool effect_normals = effects && !mesh_draws_.empty() &&
+                                    detail::effects_need_normals(*frame_.scene) &&
+                                    prepass_.normals.texture != nullptr;
+        effect_uniforms_at_.clear();
+        if (effects) {
+            make_depth_target(scene_width_, scene_height_);
+            for (const CompositorEffect3D& effect : frame_.scene->effects) {
+                CompositorUniforms uniforms =
+                    detail::compositor_uniforms(*frame_.scene, effect, scene_width_, scene_height_,
+                                                effect_normals && effect.normal_roughness);
+                for (Mat4* matrix : {&uniforms.projection, &uniforms.inv_projection, &uniforms.view,
+                                     &uniforms.inv_view}) {
+                    *matrix = transposed(*matrix);
+                }
+                effect_uniforms_at_.push_back(uniforms_.add(uniforms));
+            }
+        }
         // TAA blends frames that draw meshes; one without starts it again.
         if (mesh_draws_.empty() && frame_.scene && uses_taa(*frame_.scene)) {
             if (TaaHistory* frames = find_taa_history(frame_.target); frames != nullptr) {
@@ -2347,7 +2392,7 @@ public:
         } else if (generation != nullptr) {
             velocity = generation->velocity.view;
         }
-        if (ssao || ssr || velocity != nullptr || sdfgi_work_.has_value()) {
+        if (ssao || ssr || velocity != nullptr || sdfgi_work_.has_value() || effect_normals) {
             // FSR 2 works the sky's motion vectors out from the depth, as Godot's.
             encode_prepass(encoder, mesh_uniforms, velocity, taa == nullptr && fsr2 != nullptr);
         } else if (fsr2 != nullptr) {
@@ -2367,15 +2412,15 @@ public:
         }
         if (ssr && !history->primed) {
             encode_meshes(encoder, mesh_uniforms, sky_uniforms_at, ssao.has_value(), false,
-                          subsurface_at);
+                          subsurface_at, false);
             encode_ssr_step(encoder, ssr_last_frame_step(), last_frame_at, *history, {});
         }
         if (ssr) {
             encode_ssr(encoder, *ssr, ssr_uniforms_at, *history);
         }
-        if (!mesh_draws_.empty() || sky || dof || capture || fsr2 != nullptr) {
+        if (!mesh_draws_.empty() || sky || dof || capture || fsr2 != nullptr || effects) {
             encode_meshes(encoder, mesh_uniforms, sky_uniforms_at, ssao.has_value(),
-                          ssr.has_value(), subsurface_at);
+                          ssr.has_value(), subsurface_at, effects);
         }
         if (taa != nullptr) {
             encode_taa(encoder, *taa, taa_uniforms_at,
@@ -3341,6 +3386,26 @@ private:
         const std::array subsurface_entries{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(SubsurfaceUniforms))};
         subsurface_uniforms_layout_ = layout(subsurface_entries);
+        // A compositor effect loads the screen, the depth and the prepass's normals, and samples
+        // its texture params with their samplers.
+        std::array<WGPUBindGroupLayoutEntry,
+                   cpu_compositor::kFirstParamBinding + (2 * kCompositorTextures)>
+            compositor_textures{};
+        for (std::uint32_t slot = 0; slot < cpu_compositor::kFirstParamBinding; ++slot) {
+            compositor_textures.at(slot) = texture_entry(slot);
+            compositor_textures.at(slot).texture.sampleType =
+                WGPUTextureSampleType_UnfilterableFloat;
+        }
+        for (std::uint32_t param = 0; param < kCompositorTextures; ++param) {
+            const std::uint32_t slot = cpu_compositor::kFirstParamBinding + param;
+            compositor_textures.at(slot) = texture_entry(slot);
+            compositor_textures.at(kCompositorTextures + slot) =
+                sampler_entry(kSamplerBinding + slot);
+        }
+        compositor_textures_layout_ = layout(compositor_textures);
+        const std::array compositor_entries{
+            uniform_entry(0, WGPUShaderStage_Fragment, sizeof(CompositorUniforms))};
+        compositor_uniforms_layout_ = layout(compositor_entries);
         const std::array filter{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(RadianceUniforms))};
         filter_uniforms_layout_ = layout(filter);
@@ -3600,6 +3665,9 @@ private:
             pipeline_layout({skin_inputs_layout_, skin_output_layout_, skin_uniforms_layout_});
         pipeline_layouts_.at(kCullLayout) =
             pipeline_layout({cull_inputs_layout_, skin_output_layout_, cull_uniforms_layout_});
+        pipeline_layouts_.at(kCompositorLayout) =
+            pipeline_layout({empty_layout_, empty_layout_, compositor_textures_layout_,
+                             compositor_uniforms_layout_});
     }
 
     WGPUShaderModule create_module(std::string_view wgsl) {
@@ -3932,6 +4000,8 @@ private:
         skin_uniforms_group_ = bind_group(skin_uniforms_layout_, skin);
         const std::array cull{buffer_entry(0, uniform_buffer_, sizeof(CullUniforms))};
         cull_uniforms_group_ = bind_group(cull_uniforms_layout_, cull);
+        const std::array compositor{buffer_entry(0, uniform_buffer_, sizeof(CompositorUniforms))};
+        compositor_uniforms_group_ = bind_group(compositor_uniforms_layout_, compositor);
     }
 
     void release_uniform_groups() {
@@ -3966,7 +4036,8 @@ private:
                                      &sdfgi_voxelize_uniforms_group_,
                                      &sdfgi_gather_uniforms_group_,
                                      &skin_uniforms_group_,
-                                     &cull_uniforms_group_}) {
+                                     &cull_uniforms_group_,
+                                     &compositor_uniforms_group_}) {
             if (*group != nullptr) {
                 wgpuBindGroupRelease(*group);
                 *group = nullptr;
@@ -5135,9 +5206,20 @@ private:
     // With subsurface (the blur's uniforms across and down), the opaque meshes draw first, then
     // those that scatter light under their surface again into the subsurface pass's texture,
     // whose blur adds to the world, then the blended meshes.
+    // With effects, the frame's compositor effects run at their points: pre_opaque after the sky,
+    // post_opaque, post_sky and pre_transparent after the opaque meshes and subsurface
+    // scattering, and post_transparent after the blended meshes.
     void encode_meshes(WGPUCommandEncoder encoder, const MeshUniforms& at,
                        std::optional<std::uint32_t> sky, bool ssao, bool ssr,
-                       const std::optional<std::array<std::uint32_t, 2>>& subsurface) {
+                       const std::optional<std::array<std::uint32_t, 2>>& subsurface,
+                       bool effects) {
+        const auto runs = [&](EffectCallback point) {
+            return effects && !detail::effects_at(*frame_.scene, point).empty();
+        };
+        const bool pre_opaque = runs(EffectCallback::PreOpaque);
+        const bool between = runs(EffectCallback::PostOpaque) || runs(EffectCallback::PostSky) ||
+                             runs(EffectCallback::PreTransparent);
+        const bool post_transparent = runs(EffectCallback::PostTransparent);
         WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
         // A scene that post-processes draws its meshes into a texture the post passes read.
         color.view = world_view(*frame_.scene);
@@ -5152,8 +5234,13 @@ private:
                                      (uses_dof(frame_.scene->post) || uses_fsr2(*frame_.scene))
                                  ? WGPUStoreOp_Store
                                  : WGPUStoreOp_Discard;
+        // Effects read it too.
+        if (post_transparent) {
+            depth.depthStoreOp = WGPUStoreOp_Store;
+        }
         const WGPUStoreOp depth_store = depth.depthStoreOp;
-        if (subsurface) {
+        const bool split = subsurface.has_value() || between;
+        if (split || pre_opaque) {
             depth.depthStoreOp = WGPUStoreOp_Store;
         }
         depth.depthClearValue = 0.0F;
@@ -5190,35 +5277,55 @@ private:
                 wgpuBindGroupRelease(storage);
             }
         }
+        if (pre_opaque) {
+            wgpuRenderPassEncoderEnd(pass);
+            wgpuRenderPassEncoderRelease(pass);
+            encode_effects(encoder, EffectCallback::PreOpaque);
+            color.loadOp = WGPULoadOp_Load;
+            depth.depthLoadOp = WGPULoadOp_Load;
+            depth.depthStoreOp = split ? WGPUStoreOp_Store : depth_store;
+            pass = wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
+        }
         const bool clustered =
             !mesh_draws_.empty() && frame_.scene->method == RenderMethod::ForwardPlus;
         if (clustered) {
             wgpuRenderPassEncoderSetBindGroup(pass, 0, cluster_group_, 0, nullptr);
         }
-        encode_mesh_draws(pass, at, subsurface ? MeshDraws::Opaque : MeshDraws::All, ssao, ssr);
+        encode_mesh_draws(pass, at, split ? MeshDraws::Opaque : MeshDraws::All, ssao, ssr);
         wgpuRenderPassEncoderEnd(pass);
         wgpuRenderPassEncoderRelease(pass);
-        if (!subsurface) {
+        if (!split) {
+            if (post_transparent) {
+                encode_effects(encoder, EffectCallback::PostTransparent);
+            }
             return;
         }
         depth.depthLoadOp = WGPULoadOp_Load;
         depth.depthStoreOp = WGPUStoreOp_Store;
-        encode_subsurface(encoder, *subsurface, [&](WGPUTextureView view) {
-            WGPURenderPassColorAttachment light = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
-            light.view = view;
-            light.loadOp = WGPULoadOp_Clear;
-            light.storeOp = WGPUStoreOp_Store;
-            light.clearValue = {0.0, 0.0, 0.0, 0.0};
-            WGPURenderPassDescriptor lit = descriptor;
-            lit.colorAttachments = &light;
-            WGPURenderPassEncoder draw = wgpuCommandEncoderBeginRenderPass(encoder, &lit);
-            if (clustered) {
-                wgpuRenderPassEncoderSetBindGroup(draw, 0, cluster_group_, 0, nullptr);
+        if (subsurface) {
+            encode_subsurface(encoder, *subsurface, [&](WGPUTextureView view) {
+                WGPURenderPassColorAttachment light = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+                light.view = view;
+                light.loadOp = WGPULoadOp_Clear;
+                light.storeOp = WGPUStoreOp_Store;
+                light.clearValue = {0.0, 0.0, 0.0, 0.0};
+                WGPURenderPassDescriptor lit = descriptor;
+                lit.colorAttachments = &light;
+                WGPURenderPassEncoder draw = wgpuCommandEncoderBeginRenderPass(encoder, &lit);
+                if (clustered) {
+                    wgpuRenderPassEncoderSetBindGroup(draw, 0, cluster_group_, 0, nullptr);
+                }
+                encode_mesh_draws(draw, at, MeshDraws::Subsurface, ssao, ssr);
+                wgpuRenderPassEncoderEnd(draw);
+                wgpuRenderPassEncoderRelease(draw);
+            });
+        }
+        for (const EffectCallback point : {EffectCallback::PostOpaque, EffectCallback::PostSky,
+                                           EffectCallback::PreTransparent}) {
+            if (runs(point)) {
+                encode_effects(encoder, point);
             }
-            encode_mesh_draws(draw, at, MeshDraws::Subsurface, ssao, ssr);
-            wgpuRenderPassEncoderEnd(draw);
-            wgpuRenderPassEncoderRelease(draw);
-        });
+        }
         color.loadOp = WGPULoadOp_Load;
         depth.depthStoreOp = depth_store;
         descriptor.colorAttachments = &color;
@@ -5229,6 +5336,142 @@ private:
         encode_mesh_draws(pass, at, MeshDraws::Blended, ssao, ssr);
         wgpuRenderPassEncoderEnd(pass);
         wgpuRenderPassEncoderRelease(pass);
+        if (post_transparent) {
+            encode_effects(encoder, EffectCallback::PostTransparent);
+        }
+    }
+
+    // The frame's compositor effects at a point, as a frame graph: each copies the world into a
+    // texture of the pool's (the screen it reads), then draws its shader over the world with the
+    // depth, the prepass's normals (or white, which its options say not to read) and its texture
+    // params beside it.
+    void encode_effects(WGPUCommandEncoder encoder, EffectCallback point) {
+        using detail::GraphPassKind;
+        using detail::GraphResource;
+        const Scene3D& scene = *frame_.scene;
+        const WGPUTextureFormat format = world_format(scene, frame_format_);
+        detail::FrameGraph graph;
+        const GraphResource world = graph.import("world");
+        const detail::GraphShape shape =
+            color_shape(format, {.width = scene_width_, .height = scene_height_}, 8);
+        std::vector<GraphResource> screens(scene.effects.size(), world);
+        for (std::size_t index = 0; index < scene.effects.size(); ++index) {
+            if (scene.effects[index].callback == point) {
+                screens[index] = graph.transient("effect screen", shape);
+            }
+        }
+        std::vector<WGPUTextureView> bound(graph.resource_count(), nullptr);
+        std::vector<WGPUTexture> textures;
+        bound.at(world) = world_view(scene);
+        WGPUTexture world_texture =
+            uses_fsr2(scene) ? fsr2_textures_.color.texture : forward_targets_.world.texture;
+        const bool normals = prepass_.normals.texture != nullptr && !mesh_draws_.empty() &&
+                             detail::effects_need_normals(scene);
+        for (std::size_t index = 0; index < scene.effects.size(); ++index) {
+            const CompositorEffect3D& effect = scene.effects[index];
+            if (effect.callback != point) {
+                continue;
+            }
+            const GraphResource screen = screens[index];
+            graph.add_pass({.name = "effect screen",
+                            .kind = GraphPassKind::Copy,
+                            .reads = {world},
+                            .writes = {screen}},
+                           [&, screen](const detail::GraphContext&) {
+                               WGPUTexelCopyTextureInfo from = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+                               from.texture = world_texture;
+                               WGPUTexelCopyTextureInfo to = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+                               to.texture = textures.at(screen);
+                               const WGPUExtent3D extent{.width = scene_width_,
+                                                         .height = scene_height_,
+                                                         .depthOrArrayLayers = 1};
+                               wgpuCommandEncoderCopyTextureToTexture(encoder, &from, &to, &extent);
+                           });
+            graph.add_pass(
+                {.name = "effect",
+                 .kind = GraphPassKind::Render,
+                 .reads = {screen},
+                 .writes = {world}},
+                [&, index, screen](const detail::GraphContext&) {
+                    const CompositorEffect3D& drawn = scene.effects[index];
+                    WGPURenderPipeline pipeline = effect_pipeline(drawn.shader, format);
+                    if (pipeline == nullptr) {
+                        return;
+                    }
+                    std::array<WGPUBindGroupEntry,
+                               cpu_compositor::kFirstParamBinding + (2 * kCompositorTextures)>
+                        entries{};
+                    const std::array<WGPUTextureView, cpu_compositor::kFirstParamBinding> screens{
+                        bound.at(screen), depth_.view,
+                        normals ? prepass_.normals.view : white_.view};
+                    for (std::uint32_t slot = 0; slot < cpu_compositor::kFirstParamBinding;
+                         ++slot) {
+                        entries.at(slot) = WGPU_BIND_GROUP_ENTRY_INIT;
+                        entries.at(slot).binding = slot;
+                        entries.at(slot).textureView = screens.at(slot);
+                    }
+                    for (std::uint32_t param = 0; param < kCompositorTextures; ++param) {
+                        const std::uint32_t slot = cpu_compositor::kFirstParamBinding + param;
+                        const auto [view, sampler] = binding(drawn.textures.at(param), false);
+                        entries.at(slot) = WGPU_BIND_GROUP_ENTRY_INIT;
+                        entries.at(slot).binding = slot;
+                        entries.at(slot).textureView = view;
+                        WGPUBindGroupEntry& sampled = entries.at(kCompositorTextures + slot);
+                        sampled = WGPU_BIND_GROUP_ENTRY_INIT;
+                        sampled.binding = kSamplerBinding + slot;
+                        sampled.sampler = sampler;
+                    }
+                    WGPUBindGroup group = bind_group(compositor_textures_layout_, entries);
+                    WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+                    color.view = bound.at(world);
+                    color.loadOp = WGPULoadOp_Load;
+                    color.storeOp = WGPUStoreOp_Store;
+                    WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
+                    descriptor.colorAttachmentCount = 1;
+                    descriptor.colorAttachments = &color;
+                    WGPURenderPassEncoder draw =
+                        wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
+                    wgpuRenderPassEncoderSetPipeline(draw, pipeline);
+                    wgpuRenderPassEncoderSetBindGroup(draw, 2, group, 0, nullptr);
+                    wgpuRenderPassEncoderSetBindGroup(draw, 3, compositor_uniforms_group_, 1,
+                                                      &effect_uniforms_at_.at(index));
+                    wgpuRenderPassEncoderDraw(draw, 3, 1, 0, 0);
+                    wgpuRenderPassEncoderEnd(draw);
+                    wgpuRenderPassEncoderRelease(draw);
+                    wgpuBindGroupRelease(group);
+                });
+        }
+        run_graph(graph, bound, "compositor effects", &textures);
+    }
+
+    // A compositor shader's pipeline drawing into a world of format, made the first time a frame
+    // needs it.
+    WGPURenderPipeline effect_pipeline(ShaderId shader, WGPUTextureFormat format) {
+        for (const EffectPipeline& made : effect_pipelines_) {
+            if (made.shader == shader && made.format == format) {
+                return made.pipeline;
+            }
+        }
+        const GameShader& game = game_shaders_.at(shader);
+        WGPUColorTargetState color = WGPU_COLOR_TARGET_STATE_INIT;
+        color.format = format;
+        WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
+        fragment.module = game.fragment;
+        fragment.entryPoint = text_view("fs_main");
+        fragment.targetCount = 1;
+        fragment.targets = &color;
+        WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
+        info.layout = pipeline_layouts_.at(kCompositorLayout);
+        info.vertex.module = game.vertex;
+        info.vertex.entryPoint = text_view("vs_main");
+        info.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+        info.primitive.cullMode = WGPUCullMode_None;
+        info.fragment = &fragment;
+        WGPURenderPipeline pipeline = wgpuDeviceCreateRenderPipeline(device_, &info);
+        if (pipeline != nullptr) {
+            effect_pipelines_.push_back({.shader = shader, .format = format, .pipeline = pipeline});
+        }
+        return pipeline;
     }
 
     // Subsurface scattering, as a frame graph whose textures come from the pool the post passes
@@ -6217,7 +6460,8 @@ private:
         Fsr2Textures& t = fsr2_textures_;
         if (t.color.texture == nullptr || t.sizes != sizes || t.fsr3 != fsr3) {
             release_fsr2_textures();
-            t.color = pass_texture(render_width, render_height, kHdrFormat);
+            t.color =
+                pass_texture(render_width, render_height, kHdrFormat, WGPUTextureUsage_CopySrc);
             t.velocity = pass_texture(render_width, render_height, kVelocityFormat);
             if (fsr3) {
                 const auto [half_width, half_height] = fsr3_half_size(render_width, render_height);
@@ -7738,9 +7982,10 @@ private:
             compiled.value(),
             [this](const detail::GraphShape& shape) -> Result<GpuTexture> {
                 WGPUTextureDescriptor info = WGPU_TEXTURE_DESCRIPTOR_INIT;
-                // Copied from too: SSR copies its levels into textures with mipmaps.
+                // Copied from and into too: SSR copies its levels into textures with mipmaps,
+                // and compositor effects copy the world into their screen.
                 info.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_RenderAttachment |
-                             WGPUTextureUsage_CopySrc;
+                             WGPUTextureUsage_CopySrc | WGPUTextureUsage_CopyDst;
                 info.size = {.width = static_cast<std::uint32_t>((shape.key >> 24U) & 0xFFFFFFU),
                              .height = static_cast<std::uint32_t>(shape.key & 0xFFFFFFU),
                              .depthOrArrayLayers = 1};
@@ -8457,6 +8702,7 @@ private:
     static constexpr std::size_t kSdfgiGatherLayout = kSdfgiVoxelizeLayout + 1;
     static constexpr std::size_t kSkinLayout = kSdfgiGatherLayout + 1;
     static constexpr std::size_t kCullLayout = kSkinLayout + 1;
+    static constexpr std::size_t kCompositorLayout = kCullLayout + 1;
 
     WGPUInstance instance_;
     WGPUDevice device_;
@@ -8547,7 +8793,9 @@ private:
     WGPUBindGroupLayout skin_uniforms_layout_ = nullptr;
     WGPUBindGroupLayout cull_inputs_layout_ = nullptr;
     WGPUBindGroupLayout cull_uniforms_layout_ = nullptr;
-    std::array<WGPUPipelineLayout, kCullLayout + 1> pipeline_layouts_{};
+    WGPUBindGroupLayout compositor_textures_layout_ = nullptr;
+    WGPUBindGroupLayout compositor_uniforms_layout_ = nullptr;
+    std::array<WGPUPipelineLayout, kCompositorLayout + 1> pipeline_layouts_{};
     std::array<WGPUSampler, 4> samplers_{}; // by sampler_index
     GpuTexture white_;
     std::unordered_map<TextureId, Texture> textures_;
@@ -8593,6 +8841,7 @@ private:
     WGPUBindGroup sdfgi_gather_uniforms_group_ = nullptr;
     WGPUBindGroup skin_uniforms_group_ = nullptr;
     WGPUBindGroup cull_uniforms_group_ = nullptr;
+    WGPUBindGroup compositor_uniforms_group_ = nullptr;
     std::unordered_map<ParticlesId, ParticleSystem> particle_systems_;
     std::uint32_t next_particles_ = 1;
     std::vector<WGPUBuffer> pending_buffers_;
@@ -8640,6 +8889,15 @@ private:
         WGPURenderPipeline pipeline = nullptr;
     };
     std::vector<GameShadowPipeline> game_shadow_pipelines_;
+    // A compositor effect's pipeline, by its shader and the world's format.
+    struct EffectPipeline {
+        ShaderId shader{};
+        WGPUTextureFormat format = WGPUTextureFormat_Undefined;
+        WGPURenderPipeline pipeline = nullptr;
+    };
+    std::vector<EffectPipeline> effect_pipelines_;
+    // The frame's compositor effects' uniforms, by the effect's place in Scene3D::effects.
+    std::vector<std::uint32_t> effect_uniforms_at_;
     // A spatial shader's shadow passes' texture groups, by the textures they bind.
     std::unordered_map<TextureBindings, WGPUBindGroup, BindingsHash> game_shadow_groups_;
     std::vector<std::pair<WGPUTextureFormat, WGPURenderPipeline>> post_pipelines_;

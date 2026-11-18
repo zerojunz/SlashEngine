@@ -147,7 +147,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, animtree, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, quest, dialogue, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, pcg, physics_material, ragdoll, foliage, groom, damage, character, face, creature, vehicle, vfx, fluid, water, storyboard, project, presets, sdk, plugin, providers, bench)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, animtree, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, quest, dialogue, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, pcg, physics_material, ragdoll, foliage, groom, damage, character, face, creature, vehicle, vfx, fluid, water, pipeline, storyboard, project, presets, sdk, plugin, providers, bench)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -161,7 +161,7 @@ commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`, `.
 `.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`,
 `.scatter.json`, `.pcg.json`, `.physics_material.json`, `.ragdoll.json`, `.foliage.json`,
 `.groom.json`, `.damage.json`, `.character.json`, `.face.json`, `.creature.json`,
-`.vehicle.json`, `.vfx.json`, `.fluid.json` and `.water.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
+`.vehicle.json`, `.vfx.json`, `.fluid.json`, `.water.json` and `.pipeline.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -1526,6 +1526,24 @@ outside the frame (the world, the target, histories). Compatibility's post passe
 way (`run_graph` in each device), the pool keeping its textures from frame to frame, and
 `render::Stats` and `perf.stats`' `frame_graph` report what the last frame's graph did.
 `tests/test_frame_graph.cpp` checks the graph, and each feature's test the pool it shares.
+
+Pipeline files are Godot 4.3's `Compositor` and `CompositorEffect`: a `.pipeline.json` file
+(`$cli schema pipeline`; `slash/scene3d/pipeline.hpp`, `src/pipeline.cpp`) that the current
+`Camera3D`'s `compositor`, else the first `WorldEnvironment`'s, names turns the frame's passes off
+over the environment's and the project's (`passes`, `apply_pipeline_passes`, after
+`CanvasRenderer`'s `apply_settings`) and lists effects. An effect is a material with
+`"shader_type": "compositor"`, whose `fragment()` reads `SCREEN_TEXTURE` through
+`screen_texture()`, `depth_texture()` and `normal_roughness_texture()` and writes `COLOR`
+(`ShaderType::Compositor`, `compile_compositor` in `tools/shader_compiler`), drawn over the
+world at one of Godot's `EffectCallbackType` points (`render::EffectCallback`, `Scene3D::effects`,
+`slash/render/compositor.hpp`), in the file's order within a point; `code` names a C++ callback
+the game registers with `scene3d::add_compositor_code`, run before each frame's effect to change
+it, as Godot's `_render_callback`. `Renderer::add_effects` loads the file and the materials
+through the `ShaderMaterialSource`; each device draws the effects as screen passes in Forward+
+(`src/compositor.cpp` holds the uniforms and the CPU twin, `run_compositor`, which
+`ShaderVm` runs on the software device), and none in Compatibility or on OpenGL, as Godot's
+Compatibility renderer has no compositor. `tests/test_compositor.cpp` holds every device to the
+software device; `examples/compositor-effects` outlines and grades a yard.
 
 Skies and fog are the Compatibility renderer's too. `Scene3D::sky` (`render::Sky3D`: a color,
 procedural, physical or panorama sky, from a `"sky"` background and the sky material on the

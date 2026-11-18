@@ -1,6 +1,7 @@
 #include "gpu_device.hpp"
 
 #include "checks.hpp"
+#include "compositor.hpp"
 #include "decal.hpp"
 #include "forward_post.hpp"
 #include "forward_post_shaders.hpp"
@@ -913,6 +914,9 @@ public:
             SDL_ReleaseGPUSampler(device_, radiance_sampler_);
         }
         for (const auto& [id, game] : game_shaders_) {
+            for (const auto& [format, pipeline] : game.effect_pipelines) {
+                SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
+            }
             release_game_shader(game);
         }
         // What was forgotten above.
@@ -1075,6 +1079,38 @@ public:
             return std::span<const unsigned char>(
                 reinterpret_cast<const unsigned char*>(words.data()), words.size() * 4);
         };
+        if (shader.type == ShaderType::Compositor) {
+            // One triangle over the world, reading the screen, depth, normals and the params'
+            // textures, with CompositorUniforms.
+            const ShaderCode code{.vertex_spirv = bytes(shader.spirv_vertex),
+                                  .fragment_spirv = bytes(shader.spirv_fragment),
+                                  .vertex_msl = shader.msl_vertex,
+                                  .fragment_msl = shader.msl_fragment,
+                                  .hlsl = shader.hlsl};
+            auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 0);
+            if (!vertex) {
+                return vertex.error();
+            }
+            auto fragment =
+                make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code,
+                                cpu_compositor::kFirstParamBinding + kCompositorTextures, 1);
+            if (!fragment) {
+                SDL_ReleaseGPUShader(device_, vertex.value());
+                return fragment.error();
+            }
+            const auto id = static_cast<ShaderId>(next_shader_++);
+            game_shaders_[id] = {.type = ShaderType::Compositor,
+                                 .vertex = vertex.value(),
+                                 .fragment = fragment.value(),
+                                 .clustered = nullptr,
+                                 .normal = nullptr,
+                                 .motion = nullptr,
+                                 .motion_vertex = nullptr,
+                                 .shadow_vertex = nullptr,
+                                 .shadow = nullptr,
+                                 .effect_pipelines = {}};
+            return id;
+        }
         auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX,
                                       {.vertex_spirv = bytes(shader.spirv_vertex),
                                        .fragment_spirv = bytes(shader.spirv_fragment),
@@ -1097,7 +1133,16 @@ public:
             return fragment.error();
         }
         const auto id = static_cast<ShaderId>(next_shader_++);
-        game_shaders_[id] = {.vertex = vertex.value(), .fragment = fragment.value()};
+        game_shaders_[id] = GameShader{.type = ShaderType::Canvas,
+                                       .vertex = vertex.value(),
+                                       .fragment = fragment.value(),
+                                       .clustered = nullptr,
+                                       .normal = nullptr,
+                                       .motion = nullptr,
+                                       .motion_vertex = nullptr,
+                                       .shadow_vertex = nullptr,
+                                       .shadow = nullptr,
+                                       .effect_pipelines = {}};
         return id;
     }
 
@@ -1135,6 +1180,10 @@ public:
             release(pipeline.pipeline);
             return true;
         });
+        for (const auto& [format, pipeline] : it->second.effect_pipelines) {
+            release(pipeline);
+        }
+        it->second.effect_pipelines.clear();
         release_game_shader(it->second);
         game_shaders_.erase(it);
     }
@@ -1991,6 +2040,17 @@ public:
                 !checked) {
                 return checked.error();
             }
+            if (auto checked = check_effects(
+                    *frame.scene,
+                    [&](ShaderId id) {
+                        const auto found = game_shaders_.find(id);
+                        return found != game_shaders_.end() &&
+                               found->second.type == ShaderType::Compositor;
+                    },
+                    [&](TextureId id) { return usable(id); });
+                !checked) {
+                return checked.error();
+            }
         }
         SDL_GPUTexture* target = nullptr;
         std::uint32_t width = 0;
@@ -2057,8 +2117,10 @@ public:
                 SDL_CancelGPUCommandBuffer(commands);
                 return ready.error();
             }
-            // Depth of field and FSR 2 read the depth buffer, which a frame without meshes clears.
-            if (uses_dof(frame.scene->post) || uses_fsr2(*frame.scene)) {
+            // Depth of field, FSR 2 and the compositor effects read the depth buffer, which a
+            // frame without meshes clears.
+            if (uses_dof(frame.scene->post) || uses_fsr2(*frame.scene) ||
+                uses_effects(*frame.scene)) {
                 if (auto depth = depth_target(scene_width, scene_height); !depth) {
                     SDL_CancelGPUCommandBuffer(commands);
                     return depth.error();
@@ -2493,7 +2555,8 @@ public:
         // Depth of field needs the depth buffer cleared, even with nothing drawn over it, and FSR 2
         // upscales the world whatever it holds.
         const bool world = meshes || capture || (frame_.scene && sky_draws(*frame_.scene)) ||
-                           (forward && (uses_dof(frame_.scene->post) || uses_fsr2(*frame_.scene)));
+                           (forward && (uses_dof(frame_.scene->post) || uses_fsr2(*frame_.scene) ||
+                                        uses_effects(*frame_.scene)));
         const bool post = !forward && frame_.scene && post_processes(frame_.scene->post);
         if (world && path_traced_) {
             draw_paths(commands, *frame_.scene);
@@ -2985,6 +3048,8 @@ private:
         SDL_GPUShader* motion_vertex = nullptr;
         SDL_GPUShader* shadow_vertex = nullptr;
         SDL_GPUShader* shadow = nullptr;
+        // A compositor shader's pipelines, by the world's format.
+        std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> effect_pipelines;
     };
 
     // A spatial shader's fragment stages: the Compatibility renderer's, Forward+'s and the
@@ -3006,7 +3071,16 @@ private:
                                        .vertex_msl = {},
                                        .fragment_msl = shader.msl_fragment,
                                        .hlsl = shader.hlsl};
-        GameShader made{.type = ShaderType::Spatial};
+        GameShader made{.type = ShaderType::Spatial,
+                        .vertex = nullptr,
+                        .fragment = nullptr,
+                        .clustered = nullptr,
+                        .normal = nullptr,
+                        .motion = nullptr,
+                        .motion_vertex = nullptr,
+                        .shadow_vertex = nullptr,
+                        .shadow = nullptr,
+                        .effect_pipelines = {}};
         const auto textures = static_cast<std::uint32_t>(kMeshTextures);
         Result<SDL_GPUShader*> stage =
             make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, compatibility, textures + 3, 4);
@@ -4699,11 +4773,13 @@ private:
                     static_cast<std::uint32_t>(r * kCullArgsWords * sizeof(std::uint32_t)), 1);
             }
         };
-        if (ssao || ssr || motion || traced || sdfgi) {
+        const bool effect_normals = plan != nullptr && effects_need_normals(scene);
+        if (ssao || ssr || motion || traced || sdfgi || effect_normals) {
             // The prepass draws the opaque meshes' normals and depth, from which SSAO's passes
             // make the occlusion the meshes are then lit with, SSR's their reflections, SDFGI's
-            // their ambient light and the rays their shadows, and with TAA their motion vectors,
-            // into the history's next texture, or with FSR 2 into its own.
+            // their ambient light, the rays their shadows and compositor effects their normals,
+            // and with TAA their motion vectors, into the history's next texture, or with FSR 2
+            // into its own.
             std::array<SDL_GPUColorTargetInfo, 2> targets{};
             SDL_GPUColorTargetInfo& normals = targets[0];
             normals.texture = prepass_.normals;
@@ -4782,8 +4858,11 @@ private:
                                     return mesh_batches_[i].subsurface_pipeline != nullptr &&
                                            mesh_draws_[i].shadows != ShadowCasting::ShadowsOnly;
                                 });
-        // The sky, then the meshes over it.
-        const auto draw_color = [&] {
+        // The sky, then the meshes over it, with the compositor effects drawn over the world at
+        // their points (none when with_effects is false, for SSR's first frame).
+        const bool effects = uses_effects(scene);
+        const auto draw_color = [&](bool with_effects) {
+            const bool effect = with_effects && effects;
             SDL_GPUColorTargetInfo color{};
             color.texture = world_texture(scene);
             color.clear_color = world_clear(scene);
@@ -4794,13 +4873,13 @@ private:
             depth.clear_depth = 0.0F;
             depth.load_op = SDL_GPU_LOADOP_CLEAR;
             // Kept for depth of field and FSR 2, which read it after, and for subsurface
-            // scattering's passes.
+            // scattering's passes and the effects.
             depth.store_op = scene.method == RenderMethod::ForwardPlus &&
                                      (uses_dof(scene.post) || fsr2 != nullptr)
                                  ? SDL_GPU_STOREOP_STORE
                                  : SDL_GPU_STOREOP_DONT_CARE;
             const SDL_GPUStoreOp depth_store = depth.store_op;
-            if (subsurface) {
+            if (subsurface || effect) {
                 depth.store_op = SDL_GPU_STOREOP_STORE;
             }
             depth.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
@@ -4830,6 +4909,14 @@ private:
             }
             if (plan == nullptr) {
                 SDL_EndGPURenderPass(pass);
+                if (effect) {
+                    for (const EffectCallback point :
+                         {EffectCallback::PreOpaque, EffectCallback::PostOpaque,
+                          EffectCallback::PostSky, EffectCallback::PreTransparent,
+                          EffectCallback::PostTransparent}) {
+                        draw_effects(commands, scene, point);
+                    }
+                }
                 return;
             }
             const auto bind_storage = [&](SDL_GPURenderPass* to) {
@@ -4843,41 +4930,63 @@ private:
                 }
             };
             bind_storage(pass);
-            if (!subsurface) {
+            if (!subsurface && !effect) {
                 draw_batches(pass, Draws::All);
                 SDL_EndGPURenderPass(pass);
                 return;
             }
-            // The opaque meshes, then those that scatter light under their surface again where
-            // they are seen, into the subsurface pass's texture, its blur added to the world,
-            // then the blended meshes.
-            draw_batches(pass, Draws::Opaque);
-            SDL_EndGPURenderPass(pass);
             SDL_GPUDepthStencilTargetInfo kept = depth;
             kept.load_op = SDL_GPU_LOADOP_LOAD;
             kept.store_op = SDL_GPU_STOREOP_STORE;
             kept.cycle = false;
-            draw_subsurface(commands, scene, [&](SDL_GPUTexture* light_texture) {
-                SDL_GPUColorTargetInfo light{};
-                light.texture = light_texture;
-                light.clear_color = {0.0F, 0.0F, 0.0F, 0.0F};
-                light.load_op = SDL_GPU_LOADOP_CLEAR;
-                light.store_op = SDL_GPU_STOREOP_STORE;
-                SDL_GPURenderPass* lit = SDL_BeginGPURenderPass(commands, &light, 1, &kept);
-                bind_storage(lit);
-                draw_batches(lit, Draws::Subsurface);
-                SDL_EndGPURenderPass(lit);
-            });
+            if (effect && !effects_at(scene, EffectCallback::PreOpaque).empty()) {
+                // The effects over the sky, then the meshes over them.
+                SDL_EndGPURenderPass(pass);
+                draw_effects(commands, scene, EffectCallback::PreOpaque);
+                color.load_op = SDL_GPU_LOADOP_LOAD;
+                color.cycle = false;
+                pass = SDL_BeginGPURenderPass(commands, &color, 1, &kept);
+                bind_storage(pass);
+            }
+            // The opaque meshes, then those that scatter light under their surface again where
+            // they are seen, into the subsurface pass's texture, its blur added to the world,
+            // then the effects after the opaque meshes, then the blended meshes and the effects
+            // after them.
+            draw_batches(pass, Draws::Opaque);
+            SDL_EndGPURenderPass(pass);
+            if (subsurface) {
+                draw_subsurface(commands, scene, [&](SDL_GPUTexture* light_texture) {
+                    SDL_GPUColorTargetInfo light{};
+                    light.texture = light_texture;
+                    light.clear_color = {0.0F, 0.0F, 0.0F, 0.0F};
+                    light.load_op = SDL_GPU_LOADOP_CLEAR;
+                    light.store_op = SDL_GPU_STOREOP_STORE;
+                    SDL_GPURenderPass* lit = SDL_BeginGPURenderPass(commands, &light, 1, &kept);
+                    bind_storage(lit);
+                    draw_batches(lit, Draws::Subsurface);
+                    SDL_EndGPURenderPass(lit);
+                });
+            }
+            if (effect) {
+                for (const EffectCallback point :
+                     {EffectCallback::PostOpaque, EffectCallback::PostSky,
+                      EffectCallback::PreTransparent}) {
+                    draw_effects(commands, scene, point);
+                }
+            }
             color.load_op = SDL_GPU_LOADOP_LOAD;
             color.cycle = false;
-            kept.store_op = depth_store;
+            kept.store_op = effect ? SDL_GPU_STOREOP_STORE : depth_store;
             pass = SDL_BeginGPURenderPass(commands, &color, 1, &kept);
             bind_storage(pass);
             draw_batches(pass, Draws::Blended);
             SDL_EndGPURenderPass(pass);
+            if (effect) {
+                draw_effects(commands, scene, EffectCallback::PostTransparent);
+            }
         };
         if (!ssr) {
-            draw_color();
+            draw_color(true);
             if (taa != nullptr) {
                 resolve_taa(commands, *taa, view_projection);
             }
@@ -4891,12 +5000,12 @@ private:
         const SsrCamera seen = ssr_camera(scene);
         if (!history.primed) {
             lights->ssao[3] = 0.0F;
-            draw_color();
+            draw_color(false);
             keep_last_frame(commands, scene, history, seen);
             lights->ssao[3] = 1.0F;
         }
         draw_ssr(commands, scene, seen, history);
-        draw_color();
+        draw_color(true);
         if (taa != nullptr) {
             resolve_taa(commands, *taa, view_projection);
         }
@@ -6139,6 +6248,112 @@ private:
             return sdl_error("creating the subsurface pass's pipeline failed");
         }
         return made;
+    }
+
+    // A compositor shader's pipeline drawing one triangle over a world of format.
+    Result<SDL_GPUGraphicsPipeline*> effect_pipeline(ShaderId shader, SDL_GPUTextureFormat format) {
+        GameShader& game = game_shaders_.at(shader);
+        return fullscreen_pipeline(game.effect_pipelines, {game.vertex, game.fragment}, format);
+    }
+
+    // The scene's compositor effects at a point, as a frame graph: each copies the world into a
+    // screen texture from the pool, then draws one triangle over the world reading it, the depth
+    // buffer, the prepass's normals and roughness (white where the frame has none) and its
+    // params' textures.
+    void draw_effects(SDL_GPUCommandBuffer* commands, const Scene3D& scene, EffectCallback point) {
+        using detail::GraphPassKind;
+        using detail::GraphResource;
+        const std::vector<const CompositorEffect3D*> effects = effects_at(scene, point);
+        if (effects.empty()) {
+            return;
+        }
+        const SDL_GPUTextureFormat format = world_format(scene, frame_format_);
+        detail::FrameGraph graph;
+        const detail::GraphShape shape =
+            color_shape(format, {.width = scene_width_, .height = scene_height_},
+                        SDL_GPUTextureFormatTexelBlockSize(format));
+        const GraphResource world = graph.import("world");
+        std::vector<GraphResource> screens;
+        screens.reserve(effects.size());
+        for (std::size_t i = 0; i < effects.size(); ++i) {
+            screens.push_back(graph.transient("effect screen", shape));
+        }
+        std::vector<SDL_GPUTexture*> bound(graph.resource_count(), nullptr);
+        bound.at(world) = world_texture(scene);
+        // The prepass drew its normals only in a frame with meshes.
+        const bool normals = prepass_.normals != nullptr && prepass_.width == scene_width_ &&
+                             prepass_.height == scene_height_ && !mesh_draws_.empty() &&
+                             effects_need_normals(scene);
+        SDL_GPUSampler* nearest = samplers_.at(sampler_index(Filter::Nearest, false));
+        for (std::size_t i = 0; i < effects.size(); ++i) {
+            const CompositorEffect3D& effect = *effects[i];
+            const GraphResource screen = screens[i];
+            graph.add_pass({.name = "effect copy",
+                            .kind = GraphPassKind::Copy,
+                            .reads = {world},
+                            .writes = {screen}},
+                           [&, screen](const detail::GraphContext&) {
+                               SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+                               const SDL_GPUTextureLocation from{.texture = bound.at(world),
+                                                                 .mip_level = 0,
+                                                                 .layer = 0,
+                                                                 .x = 0,
+                                                                 .y = 0,
+                                                                 .z = 0};
+                               const SDL_GPUTextureLocation to{.texture = bound.at(screen),
+                                                               .mip_level = 0,
+                                                               .layer = 0,
+                                                               .x = 0,
+                                                               .y = 0,
+                                                               .z = 0};
+                               SDL_CopyGPUTextureToTexture(copy, &from, &to, scene_width_,
+                                                           scene_height_, 1, false);
+                               SDL_EndGPUCopyPass(copy);
+                           });
+            graph.add_pass(
+                {.name = "effect",
+                 .kind = GraphPassKind::Render,
+                 .reads = {screen},
+                 .writes = {world}},
+                [&, screen](const detail::GraphContext&) {
+                    auto pipeline = effect_pipeline(effect.shader, format);
+                    if (!pipeline) {
+                        log::warn("a compositor effect's pipeline couldn't be made",
+                                  {{"error", pipeline.error().message}});
+                        return;
+                    }
+                    SDL_GPUColorTargetInfo color{};
+                    color.texture = bound.at(world);
+                    color.load_op = SDL_GPU_LOADOP_LOAD;
+                    color.store_op = SDL_GPU_STOREOP_STORE;
+                    SDL_GPURenderPass* render =
+                        SDL_BeginGPURenderPass(commands, &color, 1, nullptr);
+                    SDL_BindGPUGraphicsPipeline(render, pipeline.value());
+                    const CompositorUniforms uniforms =
+                        compositor_uniforms(scene, effect, scene_width_, scene_height_,
+                                            normals && effect.normal_roughness);
+                    SDL_PushGPUFragmentUniformData(commands, 0, &uniforms,
+                                                   static_cast<std::uint32_t>(sizeof(uniforms)));
+                    std::array<SDL_GPUTextureSamplerBinding,
+                               cpu_compositor::kFirstParamBinding + kCompositorTextures>
+                        bindings{};
+                    bindings.at(cpu_compositor::kScreenBinding) = {.texture = bound.at(screen),
+                                                                   .sampler = nearest};
+                    bindings.at(cpu_compositor::kDepthBinding) = {.texture = depth_,
+                                                                  .sampler = nearest};
+                    bindings.at(cpu_compositor::kNormalBinding) = {
+                        .texture = normals ? prepass_.normals : white_, .sampler = nearest};
+                    for (std::uint32_t slot = 0; slot < kCompositorTextures; ++slot) {
+                        bindings.at(cpu_compositor::kFirstParamBinding + slot) =
+                            binding(effect.textures.at(slot), false);
+                    }
+                    SDL_BindGPUFragmentSamplers(render, 0, bindings.data(),
+                                                static_cast<std::uint32_t>(bindings.size()));
+                    SDL_DrawGPUPrimitives(render, 3, 1, 0, 0);
+                    SDL_EndGPURenderPass(render);
+                });
+        }
+        run_graph(graph, bound, "compositor effects");
     }
 
     // Subsurface scattering, as a frame graph whose textures come from the pool the post passes

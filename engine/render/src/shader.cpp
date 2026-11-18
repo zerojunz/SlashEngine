@@ -88,6 +88,15 @@ constexpr std::string_view kSpatialTakenNames =
     "view_rows volumetric_fog volumetric_fog_process voxel_cone_trace voxel_cone_trace_45_degrees "
     "voxel_gi voxel_gi_compute voxel_gi_level voxel_gi_sample voxel_gis vs_main world ";
 
+// The same for a compositor shader: its wrappers' globals and functions (tools/shader_compiler).
+constexpr std::string_view kCompositorTakenNames =
+    " compositor_clamp compositor_constants compositor_depth_buffer compositor_depth_sampler "
+    "compositor_inv_projection compositor_inv_view compositor_nearest compositor_normal_buffer "
+    "compositor_normal_sampler compositor_options compositor_projection compositor_screen "
+    "compositor_screen_buffer compositor_screen_sampler compositor_texel compositor_view "
+    "cpu_fragment depth_texture fragment fs_main input normal_roughness_texture output "
+    "screen_texture texture vs_main ";
+
 // HLSL's lowercase keywords, besides its numeric types, with those glslang keeps (GLSL's layout
 // and C++'s).
 constexpr std::string_view kKeywords =
@@ -142,7 +151,12 @@ bool shader_name_reserved(std::string_view name, ShaderType type) {
         return true;
     }
     const std::string spaced = " " + std::string(name) + " ";
-    const std::string_view taken = type == ShaderType::Spatial ? kSpatialTakenNames : kTakenNames;
+    std::string_view taken = kTakenNames;
+    if (type == ShaderType::Spatial) {
+        taken = kSpatialTakenNames;
+    } else if (type == ShaderType::Compositor) {
+        taken = kCompositorTakenNames;
+    }
     return taken.find(spaced) != std::string_view::npos ||
            kKeywords.find(spaced) != std::string_view::npos ||
            kIntrinsics.find(spaced) != std::string_view::npos || numeric_type(name);

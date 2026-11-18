@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "params": {
+    "ink": {
+      "type": "color",
+      "value": [0.05, 0.04, 0.08]
+    },
+    "width": {
+      "type": "float",
+      "value": 1.0
+    }
+  },
+  "shader": "shaders/outline.hlsl",
+  "shader_type": "compositor"
+}

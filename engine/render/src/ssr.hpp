@@ -1,5 +1,6 @@
 #pragma once
 
+#include "compositor.hpp"
 #include "post_shading.hpp"
 #include "ssao.hpp"
 #include "taa.hpp"
@@ -31,10 +32,11 @@ namespace slash::render::detail {
     return scene.method == RenderMethod::ForwardPlus && scene.ssr.enabled;
 }
 
-// Whether a scene's frame draws Forward+'s normal-roughness prepass, which SSAO and SSR read, and
-// with TAA or FSR 2 its motion vectors.
+// Whether a scene's frame draws Forward+'s normal-roughness prepass, which SSAO, SSR and the
+// compositor effects that ask read, and with TAA or FSR 2 its motion vectors.
 [[nodiscard]] inline bool uses_prepass(const Scene3D& scene) {
-    return uses_ssao(scene) || uses_ssr(scene) || uses_motion_vectors(scene);
+    return uses_ssao(scene) || uses_ssr(scene) || uses_motion_vectors(scene) ||
+           effects_need_normals(scene);
 }
 
 // ssr.hlsl's passes.

@@ -1,0 +1,12 @@
+{
+  "effects": [
+    {
+      "material": "fx/grade.material.json",
+      "material_params": {
+        "tint": [0.35, 0.45, 0.9],
+        "vignette": 2.5
+      },
+      "name": "grade"
+    }
+  ]
+}

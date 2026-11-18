@@ -74,6 +74,7 @@ add_executable(slash_tests
     test_canvas.cpp
     test_clusters.cpp
     test_command.cpp
+    test_compositor.cpp
     test_csg.cpp
     test_debug.cpp
     test_decal.cpp

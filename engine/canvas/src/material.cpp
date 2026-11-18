@@ -4,6 +4,7 @@
 
 #include "slash/core/math.hpp"
 #include "slash/core/text.hpp"
+#include "slash/render/compositor.hpp"
 #include "slash/render/image.hpp"
 
 #include <algorithm>
@@ -562,13 +563,16 @@ json::Value schema(bool list_ops) {
                                          "the vertex color.";
     properties["shader"] = text_schema(
         "A game's own shader instead of nodes and color: an .hlsl file's project path, with "
-        "fragment() and vertex() functions as Godot's canvas_item shaders, or a fragment() that "
-        "gives a mesh's surface as its spatial shaders.");
-    properties["shader_type"]["enum"] = json::Array{"canvas_item", "spatial"};
+        "fragment() and vertex() functions as Godot's canvas_item shaders, a fragment() that "
+        "gives a mesh's surface as its spatial shaders, or a fragment() that gives the 3D "
+        "world's new color (compositor).");
+    properties["shader_type"]["enum"] = json::Array{"canvas_item", "spatial", "compositor"};
     properties["shader_type"]["default"] = "canvas_item";
     properties["shader_type"]["description"] =
-        "What it draws, as Godot's shader_type: sprites and controls (canvas_item), or meshes "
-        "(spatial, which needs a shader; MeshInstance3D's material_override names it).";
+        "What it draws, as Godot's shader_type: sprites and controls (canvas_item), meshes "
+        "(spatial, which needs a shader; MeshInstance3D's material_override names it), or a "
+        "screen pass over the 3D world (compositor, which needs a shader; a .pipeline.json "
+        "effect names it).";
     json::Array modes;
     for (const std::string_view mode : kRenderModes) {
         modes.emplace_back(mode);
@@ -598,7 +602,7 @@ json::Value schema(bool list_ops) {
                             "vertex_used", "light_used"}) {
         compiled["properties"][key]["type"] = "boolean";
     }
-    compiled["properties"]["type"]["enum"] = json::Array{"canvas_item", "spatial"};
+    compiled["properties"]["type"]["enum"] = json::Array{"canvas_item", "spatial", "compositor"};
     json::Value stage;
     stage["type"] = "object";
     stage["additionalProperties"] = false;
@@ -616,6 +620,17 @@ json::Value schema(bool list_ops) {
     return out;
 }
 
+// The shader type a material file's shader_type (or its compiled code's type) names.
+render::ShaderType shader_type_named(std::string_view name) {
+    if (name == "spatial") {
+        return render::ShaderType::Spatial;
+    }
+    if (name == "compositor") {
+        return render::ShaderType::Compositor;
+    }
+    return render::ShaderType::Canvas;
+}
+
 // Compiles a validated document's graph, collecting every error it finds.
 class Compiler {
 public:
@@ -626,11 +641,12 @@ public:
 
     void run() {
         if (const json::Value* type = doc_.find("shader_type"); type != nullptr) {
-            material_.shader_type = type->as_string() == "spatial" ? render::ShaderType::Spatial
-                                                                   : render::ShaderType::Canvas;
+            material_.shader_type = shader_type_named(type->as_string());
         }
         if (material_.shader_type == render::ShaderType::Spatial) {
             read_spatial();
+        } else if (material_.shader_type == render::ShaderType::Compositor) {
+            read_compositor();
         } else if (doc_.find("render_mode") != nullptr) {
             fail("/render_mode", "only spatial materials have render modes");
         }
@@ -767,6 +783,20 @@ public:
         check_limits();
     }
 
+    // A compositor material's: a shader, and no canvas or spatial fields.
+    void read_compositor() {
+        if (doc_.find("shader") == nullptr) {
+            fail("/shader_type", "a compositor material needs a shader: an .hlsl file with a "
+                                 "fragment() that gives COLOR");
+        }
+        for (const char* key : {"blend", "light_mode", "render_mode"}) {
+            if (doc_.find(key) != nullptr) {
+                fail(std::string("/") + key, std::string("compositor materials have no ") + key +
+                                                 "; the effect's COLOR replaces the world's");
+            }
+        }
+    }
+
     // A spatial material's: its render modes, and no canvas fields.
     void read_spatial() {
         if (doc_.find("shader") == nullptr) {
@@ -827,6 +857,7 @@ public:
             return;
         }
         const bool spatial = material_.shader_type == render::ShaderType::Spatial;
+        const bool compositor = material_.shader_type == render::ShaderType::Compositor;
         int textures = 0;
         for (const auto& [name, json_param] : params->as_object()) {
             const std::string at = "/params/" + json::pointer_escape(name);
@@ -843,10 +874,13 @@ public:
             const bool texture = param.type == "texture";
             if (texture) {
                 ++textures;
-                if (spatial && textures == render::kSpatialShaderTextures + 1) {
+                if (compositor && textures == static_cast<int>(render::kCompositorTextures) + 1) {
+                    fail(at, "a compositor material samples at most " +
+                                 std::to_string(render::kCompositorTextures) + " textures");
+                } else if (spatial && textures == render::kSpatialShaderTextures + 1) {
                     fail(at, "a spatial material samples at most " +
                                  std::to_string(render::kSpatialShaderTextures) + " textures");
-                } else if (!spatial && textures == render::kMaterialTextureSlots) {
+                } else if (!spatial && !compositor && textures == render::kMaterialTextureSlots) {
                     fail(at, "a material samples at most " +
                                  std::to_string(render::kMaterialTextureSlots - 1) +
                                  " textures of its own, besides the sprite's");
@@ -929,7 +963,7 @@ private:
         const bool spatial = type == render::ShaderType::Spatial;
         std::uint32_t constant = 0;
         // A canvas shader's slot 0 is the sprite's texture.
-        std::uint32_t texture = spatial ? 0 : 1;
+        std::uint32_t texture = type == render::ShaderType::Canvas ? 1 : 0;
         for (auto& [name, param] : material_.params) {
             const std::string at = "/params/" + json::pointer_escape(name);
             const bool sampled = param.type == "texture";
@@ -1007,9 +1041,8 @@ private:
         shader->specular_used = flag("specular_used");
         shader->alpha_used = flag("alpha_used");
         shader->alpha_scissor_used = flag("alpha_scissor_used");
-        if (const json::Value* type = compiled.find("type");
-            type != nullptr && type->as_string() == "spatial") {
-            shader->type = render::ShaderType::Spatial;
+        if (const json::Value* type = compiled.find("type"); type != nullptr) {
+            shader->type = shader_type_named(type->as_string());
         }
         if (shader->type != material_.shader_type) {
             fail("/compiled/type", "the compiled shader is for another shader_type");
@@ -1861,6 +1894,9 @@ json::Value compiled_shader_json(const render::CompiledShader& shader,
     words("cpu_vertex", shader.cpu_vertex);
     words("cpu_fragment", shader.cpu_fragment);
     words("cpu_light", shader.cpu_light);
+    if (shader.type == render::ShaderType::Compositor) {
+        out["type"] = "compositor";
+    }
     if (shader.type == render::ShaderType::Spatial) {
         out["type"] = "spatial";
         const auto stage = [&](const char* key, const render::ShaderStage& code) {
@@ -1974,7 +2010,9 @@ Result<MaterialInstance> instantiate(const CanvasMaterial& material,
     instance.compiled = material.compiled;
     instance.shader_type = material.shader_type;
     instance.modes = material.modes;
-    const bool spatial = material.shader_type == render::ShaderType::Spatial;
+    // A compositor shader's textures and colors are a spatial shader's: its own slots from 0,
+    // and colors made linear, as the world it draws over is.
+    const bool spatial = material.shader_type != render::ShaderType::Canvas;
     const auto place = [&](const MaterialParam& param) {
         if (!param.slot) {
             return;
@@ -2042,6 +2080,10 @@ Result<std::vector<std::array<float, 4>>> evaluate(const MaterialInstance& insta
         return make_error(ErrorCode::InvalidArgument,
                           "a spatial material colors meshes, which the 3D lights shade; "
                           "frame.capture shows them");
+    }
+    if (instance.shader_type == render::ShaderType::Compositor) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "a compositor material draws over the 3D world; frame.capture shows it");
     }
     struct Slot {
         const render::Image* image = nullptr;

@@ -40,6 +40,7 @@ target_compile_options(slash_image_codecs PRIVATE
 
 add_library(slash_render
     src/clusters.cpp
+    src/compositor.cpp
     src/d3d12_rays.cpp
     src/decal.cpp
     src/device.cpp
@@ -154,7 +155,7 @@ endif()
 # The software device draws the same pixels, and particles and their graphs move the same, on
 # every platform: no fused multiply-adds, which arm64 compilers would otherwise emit and x86-64
 # ones not.
-set_source_files_properties(src/clusters.cpp src/decal.cpp src/device.cpp src/forward_post.cpp
+set_source_files_properties(src/clusters.cpp src/compositor.cpp src/decal.cpp src/device.cpp src/forward_post.cpp
     src/frame_generation.cpp src/fsr2.cpp src/fsr3.cpp src/ies.cpp src/material.cpp src/mesh.cpp
     src/particle_layout_3d.cpp
     src/particles.cpp src/particles3d.cpp

@@ -68,6 +68,7 @@
 #include "slash/scene3d/material.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/particles.hpp"
+#include "slash/scene3d/pipeline.hpp"
 #include "slash/scene3d/recipe.hpp"
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/scene3d/streaming.hpp"
@@ -561,6 +562,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "vfx") {
         return Reply::success(world::vfx_schema());
+    }
+    if (kind == "pipeline") {
+        return Reply::success(scene3d::pipeline_schema());
     }
     if (kind == "fluid") {
         return Reply::success(world::fluid_schema());
@@ -7209,7 +7213,8 @@ void register_builtin_commands(Registry& registry) {
                                "vehicle",
                                "vfx",
                                "fluid",
-                               "water"};
+                               "water",
+                               "pipeline"};
     registry.add({
         .name = "schema.get",
         .description =
@@ -7222,7 +7227,7 @@ void register_builtin_commands(Registry& registry) {
             ".pcg.json, .physics_material.json, .ragdoll.json, .foliage.json, .groom.json, "
             ".damage.json, "
             ".character.json, .face.json, .creature.json, .vehicle.json, .vfx.json, .fluid.json, "
-            ".water.json, "
+            ".water.json, .pipeline.json, "
             ".replay.json, "
             ".test.json, "
             ".score.json or storyboard "

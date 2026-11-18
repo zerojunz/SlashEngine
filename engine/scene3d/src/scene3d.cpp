@@ -871,8 +871,10 @@ std::string override_problem(const world::World& world, const std::string& path)
     auto doc = json::parse(text.value());
     const json::Value* type = doc ? doc.value().find("shader_type") : nullptr;
     if (type == nullptr || !type->is_string() || type->as_string() != "spatial") {
-        return "\"" + path +
-               R"(" is a canvas material; a mesh takes one with "shader_type": "spatial")";
+        const bool compositor =
+            type != nullptr && type->is_string() && type->as_string() == "compositor";
+        return "\"" + path + "\" is a " + (compositor ? "compositor" : "canvas") +
+               R"( material; a mesh takes one with "shader_type": "spatial")";
     }
     return {};
 }
@@ -1280,6 +1282,13 @@ std::optional<render::Material3D> Renderer::override_material(const world::World
     if (found.standard) {
         return material(*found.standard, textures_, problems_, entity);
     }
+    if (found.type != render::ShaderType::Spatial) {
+        problems_.push_back({entity, field,
+                             "\"" + instance.material_override +
+                                 "\" is a compositor material; a mesh takes one with "
+                                 "\"shader_type\": \"spatial\""});
+        return std::nullopt;
+    }
     render::Material3D out;
     out.shader = found.shader;
     out.shader_constants = found.constants;
@@ -1306,6 +1315,126 @@ std::optional<render::Material3D> Renderer::override_material(const world::World
     out.transparency = found.transparency;
     shadows_disabled = found.shadows_disabled;
     return out;
+}
+
+void Renderer::add_effects(const world::World& world, entt::entity camera,
+                           render::RenderMethod method, Frame3D& frame) {
+    const PipelineChoice choice = pipeline_of(world, camera);
+    if (choice.path.empty()) {
+        pipelines_.clear();
+        return;
+    }
+    const auto problem = [&](std::string message) {
+        problems_.push_back({choice.entity, choice.at, std::move(message)});
+    };
+    if (!is_pipeline_path(choice.path)) {
+        problem("\"" + choice.path + "\" isn't a .pipeline.json file");
+        return;
+    }
+    // The file, through the world's assets (so it reloads) else its file reader.
+    std::shared_ptr<const PipelineFile> file;
+    if (asset::Assets* assets = asset::assets_of(world.ecs()); assets != nullptr) {
+        auto doc = assets->load<json::Value>(choice.path);
+        if (!doc) {
+            problem(doc.error().message);
+            return;
+        }
+        KeptPipeline& kept = pipelines_[choice.path];
+        if (kept.file == nullptr || kept.version != doc.value().version()) {
+            auto parsed = parse_pipeline(*doc.value());
+            if (!parsed) {
+                pipelines_.erase(choice.path);
+                problem("\"" + choice.path + "\": " + parsed.error().message);
+                return;
+            }
+            kept = {.version = doc.value().version(),
+                    .file = std::make_shared<const PipelineFile>(std::move(parsed).value())};
+        }
+        file = kept.file;
+    } else {
+        const world::FileReader& reader = world.file_reader();
+        if (!reader) {
+            problem("pipeline files can't load here");
+            return;
+        }
+        auto bytes = reader(choice.path);
+        if (!bytes) {
+            problem(bytes.error().message);
+            return;
+        }
+        auto doc = json::parse(bytes.value());
+        if (!doc) {
+            problem("\"" + choice.path + "\": " + doc.error().message);
+            return;
+        }
+        auto parsed = parse_pipeline(doc.value());
+        if (!parsed) {
+            problem("\"" + choice.path + "\": " + parsed.error().message);
+            return;
+        }
+        file = std::make_shared<const PipelineFile>(std::move(parsed).value());
+    }
+    frame.pipeline_passes = file->passes;
+    if (method != render::RenderMethod::ForwardPlus) {
+        return;
+    }
+    for (const PipelineEffect& written : file->effects) {
+        PipelineEffect effect = written;
+        const std::string named = "effects/" + written.name + ": ";
+        if (!written.code.empty()) {
+            const CompositorCode code = compositor_code(written.code);
+            if (!code) {
+                problem(named + "no compositor code is named \"" + written.code +
+                        "\"; the game's code registers it with scene3d::add_compositor_code");
+                continue;
+            }
+            code(world, effect);
+        }
+        if (!effect.enabled) {
+            continue;
+        }
+        if (frame.scene.effects.size() >= render::kMaxCompositorEffects) {
+            problem(named + "a frame draws up to " + std::to_string(render::kMaxCompositorEffects) +
+                    " compositor effects");
+            break;
+        }
+        if (!override_materials_) {
+            problem("compositor materials can't load here");
+            return;
+        }
+        auto loaded = override_materials_(effect.material, effect.material_params, capture_time_);
+        if (!loaded) {
+            problem(named + loaded.error().message);
+            continue;
+        }
+        const OverrideMaterial& found = loaded.value();
+        if (found.standard || found.type != render::ShaderType::Compositor) {
+            problem(named + "\"" + effect.material +
+                    "\" isn't a compositor material; an effect takes one with "
+                    "\"shader_type\": \"compositor\"");
+            continue;
+        }
+        render::CompositorEffect3D out;
+        out.shader = found.shader;
+        out.callback = effect.callback;
+        out.constants = found.constants;
+        out.normal_roughness = effect.needs_normal_roughness;
+        for (std::size_t slot = 0; slot < render::kCompositorTextures; ++slot) {
+            const OverrideMaterial::Texture& texture = found.textures.at(slot);
+            if (texture.path.empty()) {
+                continue;
+            }
+            const render::Filter filter =
+                texture.filter == "nearest" ? render::Filter::Nearest : render::Filter::Linear;
+            auto made = textures_(texture.path, filter);
+            if (!made) {
+                problem(named + "\"" + effect.material + "\"'s texture: " + made.error().message);
+                continue;
+            }
+            out.textures.at(slot) = made.value().id;
+        }
+        frame.scene.effects.push_back(out);
+    }
 }
 
 Renderer::Renderer(render::RenderDevice& device, TextureSource textures, ModelSource models,
@@ -4480,6 +4609,7 @@ std::optional<Frame3D> Renderer::prepare(
     if (method == render::RenderMethod::ForwardPlus) {
         add_splats(world, tree, global, lens.cull_mask, frame.scene.splats);
     }
+    add_effects(world, camera, method, frame);
     if (method == render::RenderMethod::ForwardPlus && frame.scene.volumetric_fog.enabled) {
         add_fog_volumes(world, tree, global, lens.cull_mask, frame.scene.volumetric_fog.volumes);
     }
