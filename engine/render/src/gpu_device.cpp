@@ -2426,6 +2426,27 @@ public:
 
     [[nodiscard]] MetalFxSupport metalfx() const override { return metalfx_; }
     [[nodiscard]] bool ray_tracing() const override { return rays_ != nullptr; }
+    // TEMPORARY (SDFGI diagnostic).
+    std::vector<std::vector<std::uint32_t>> sdfgi_words(TextureId target) override {
+        SdfgiFrames* frames = find_sdfgi_frames(target);
+        if (frames == nullptr || frames->buffers[0] == nullptr) {
+            return {};
+        }
+        const SdfgiLayout& layout = frames->layout;
+        const std::array<std::uint32_t, 5> words{
+            layout.cells * layout.cascades, layout.fields * layout.cascades,
+            layout.probes * layout.cascades, layout.scratch, layout.history * layout.cascades};
+        std::vector<std::vector<std::uint32_t>> out(5);
+        for (std::size_t b = 0; b < 5; ++b) {
+            out[b].resize(words.at(b));
+            if (!download(frames->buffers.at(b), std::as_writable_bytes(std::span(out[b])),
+                          "SDFGI's words")
+                     .ok()) {
+                return {};
+            }
+        }
+        return out;
+    }
     [[nodiscard]] bool generates_frames() const override { return true; }
     [[nodiscard]] NativeDevice native_device() const override {
         return detail::native_device(device_, backend_);

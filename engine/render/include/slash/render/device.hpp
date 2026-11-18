@@ -686,6 +686,12 @@ public:
     // Whether it traces rays for a frame's ray-traced effects (Scene3D::ray_tracing) and paths
     // (Scene3D::path_trace); one that doesn't draws them the raster way.
     [[nodiscard]] virtual bool ray_tracing() const { return false; }
+    // TEMPORARY (SDFGI diagnostic): target's SDFGI buffers as words (cells, fields, probes,
+    // scratch, history), or none.
+    [[nodiscard]] virtual std::vector<std::vector<std::uint32_t>>
+    sdfgi_words(TextureId /*target*/) {
+        return {};
+    }
     // Traces a lightmap's light (bake.hpp) on the GPU, outside any frame, waiting for it: the GPU
     // device on Vulkan with ray queries. Elsewhere an error, and scene3d traces the bake on the
     // CPU.
