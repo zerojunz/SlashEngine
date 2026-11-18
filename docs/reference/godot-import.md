@@ -6,7 +6,7 @@ SlashEngine's components already use Godot's names, fields and enums. Scripts do
 since SlashEngine games are plain C++: each becomes a storyboard task to port it, with what the
 port needs. [examples/import-godot](../../examples/import-godot/) imports a small platformer.
 
-Status: current · Updated: 2026-11-20
+Status: current · Updated: 2026-11-22
 
 Only Godot 4 projects import (`config_version=5` in `project.godot`). Open a Godot 3 project in
 Godot 4 and save it there first; Godot converts it. A game exported with Godot 4 imports too,
@@ -645,6 +645,8 @@ on its top.
 | `rendering/environment/screen_space_reflection/half_size` | `rendering.environment.screen_space_reflection` |
 | `rendering/environment/volumetric_fog/volume_size`, `volume_depth`, `use_filter` | `rendering.environment.volumetric_fog` |
 | `rendering/reflections/reflection_atlas/reflection_size`, `reflection_count` | `rendering.reflections.reflection_atlas`; a size that isn't a power of two from 32 to 2048 is reported |
+| `rendering/reflections/sky_reflections/ggx_samples` | `rendering.reflections.sky_reflections.ggx_samples`, held to 1 to 32 |
+| `rendering/lightmapping/bake_quality/*`, `bake_performance/max_rays_per_pass`, `max_rays_per_probe_pass`, `region_size`, `probe_capture/update_speed` | `rendering.lightmapping` |
 | `rendering/textures/decals/filter` | `rendering.textures.decals.filter`: `0` is `"nearest"`, `1` `"linear"` and so on to `5`, `"linear_mipmaps_anisotropic"` |
 | `rendering/global_illumination/voxel_gi/quality` | `rendering.global_illumination.voxel_gi.quality`: `0` is `"low"`, `1` is `"high"` |
 | `rendering/global_illumination/sdfgi/probe_ray_count`, `frames_to_converge`, `frames_to_update_lights` | `rendering.global_illumination.sdfgi`'s settings of the same names, Godot's enum indices made the numbers they stand for |

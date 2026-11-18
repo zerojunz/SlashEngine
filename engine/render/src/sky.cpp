@@ -600,16 +600,18 @@ SkyUniforms radiance_face_uniforms(const Scene3D& scene, std::uint32_t face) {
     return out;
 }
 
-RadianceUniforms radiance_uniforms(std::uint32_t size, std::uint32_t levels, std::uint32_t level) {
+RadianceUniforms radiance_uniforms(std::uint32_t size, std::uint32_t levels, std::uint32_t level,
+                                   std::uint32_t ggx_samples) {
     RadianceUniforms out;
     const std::uint32_t level_size = std::max(size >> level, 1U);
     out.params = {0.0F, 1.0F / static_cast<float>(level_size), 0.0F, 0.0F};
     if (level == 0) {
         return out;
     }
-    constexpr std::array<std::uint32_t, 5> kSampleCounts{
-        1, kRadianceSamples / 16, kRadianceSamples / 8, kRadianceSamples / 4, kRadianceSamples};
-    const std::uint32_t count = kSampleCounts.at(std::min(level, 4U));
+    const std::uint32_t ggx = std::clamp(ggx_samples, 1U, kMaxGgxSamples);
+    const std::array<std::uint32_t, 5> sample_counts{1, std::max(ggx / 4, 1U),
+                                                     std::max(ggx / 2, 1U), ggx, ggx * 4};
+    const std::uint32_t count = sample_counts.at(std::min(level, 4U));
     float roughness = static_cast<float>(level) / static_cast<float>(std::max(levels, 2U) - 1);
     roughness *= roughness; // non-perceptual
     float roughness4 = roughness * roughness;
@@ -644,7 +646,7 @@ RadianceUniforms radiance_uniforms(std::uint32_t size, std::uint32_t levels, std
 }
 
 bool RadianceKey::operator==(const RadianceKey& other) const {
-    return texture == other.texture && size == other.size &&
+    return texture == other.texture && size == other.size && ggx_samples == other.ggx_samples &&
            std::ranges::equal(std::as_bytes(std::span(&face, 1)),
                               std::as_bytes(std::span(&other.face, 1)));
 }
@@ -652,7 +654,8 @@ bool RadianceKey::operator==(const RadianceKey& other) const {
 RadianceKey radiance_key(const Scene3D& scene) {
     return {.face = radiance_face_uniforms(scene, 0),
             .texture = radiance_texture(scene),
-            .size = scene.radiance.size};
+            .size = scene.radiance.size,
+            .ggx_samples = scene.radiance.ggx_samples};
 }
 
 const Float4& CubeImage::texel(std::uint32_t level, std::uint32_t face, std::uint32_t x,
@@ -743,7 +746,7 @@ CubeImage make_radiance(const Scene3D& scene,
         }
     }
     cube_mipmaps(raw, false);
-    return filter_cube(raw, false);
+    return filter_cube(raw, false, scene.radiance.ggx_samples);
 }
 
 void cube_mipmaps(CubeImage& cube, bool linear) {
@@ -769,14 +772,14 @@ void cube_mipmaps(CubeImage& cube, bool linear) {
     }
 }
 
-CubeImage filter_cube(const CubeImage& raw, bool linear) {
+CubeImage filter_cube(const CubeImage& raw, bool linear, std::uint32_t ggx_samples) {
     // radiance.hlsl's twin: level 0 as it is, then each next level blurred from the raw cube.
     const std::uint32_t size = raw.size;
     const auto levels = static_cast<std::uint32_t>(raw.levels.size());
     CubeImage out{.size = size, .levels = {}};
     out.levels.push_back(raw.levels[0]);
     for (std::uint32_t level = 1; level < levels; ++level) {
-        const RadianceUniforms uniforms = radiance_uniforms(size, levels, level);
+        const RadianceUniforms uniforms = radiance_uniforms(size, levels, level, ggx_samples);
         const std::uint32_t n = size >> level;
         out.levels.emplace_back(std::size_t{kCubeFaces} * n * n);
         const auto count = static_cast<std::uint32_t>(uniforms.params[3]);

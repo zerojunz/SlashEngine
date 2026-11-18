@@ -2391,8 +2391,8 @@ public:
             SDL_EndGPUCopyPass(back);
         }
         for (std::uint32_t level = 0; level < levels; ++level) {
-            const auto uniforms =
-                std::make_unique<RadianceUniforms>(radiance_uniforms(size, levels, level));
+            const auto uniforms = std::make_unique<RadianceUniforms>(
+                radiance_uniforms(size, levels, level, capture.ggx_samples));
             filter(*uniforms, level);
         }
         return {};
@@ -5273,7 +5273,7 @@ private:
         }
         for (std::uint32_t level = 0; level < levels; ++level) {
             const auto uniforms = std::make_unique<RadianceUniforms>(
-                radiance_uniforms(radiance_.size, levels, level));
+                radiance_uniforms(radiance_.size, levels, level, scene.radiance.ggx_samples));
             for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
                 uniforms->params[0] = static_cast<float>(face);
                 SDL_PushGPUFragmentUniformData(

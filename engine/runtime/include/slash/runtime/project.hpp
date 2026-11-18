@@ -76,6 +76,9 @@ struct Project {
     std::string vsync_mode = "enabled";
     // The display server Linux games try first, "x11" or "wayland", falling back to the other.
     std::string linux_display_driver = "x11";
+    // rendering.lightmapping.probe_capture.update_speed, as Godot's: how fast moving meshes' light
+    // from light probes follows them, a share a second.
+    double probe_update_speed = 15.0;
     double tick_hz = 60.0;
     // Frames per second at most; 0 means no cap.
     int max_fps = 0;
@@ -179,6 +182,9 @@ struct Project {
     // The job system's worker threads (slash/core/jobs.hpp), as Godot's
     // threading/worker_pool/max_threads: -1 for one per CPU core.
     int max_threads = -1;
+    // rendering.reflections.sky_reflections.ggx_samples, as Godot's: the samples the sky's
+    // radiance and reflection probes are blurred with.
+    std::uint32_t ggx_samples = 32;
 
     // The identifier to use: id, or the default derived from the name.
     [[nodiscard]] std::string bundle_id() const;

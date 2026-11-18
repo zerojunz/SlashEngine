@@ -1898,6 +1898,10 @@ environment/subsurface_scattering/subsurface_scattering_quality=3
 environment/subsurface_scattering/subsurface_scattering_scale=0.1
 reflections/reflection_atlas/reflection_size=512
 reflections/reflection_atlas/reflection_count=16
+reflections/sky_reflections/ggx_samples=16
+lightmapping/bake_quality/high_quality_ray_count=1024
+lightmapping/bake_performance/region_size=256
+lightmapping/probe_capture/update_speed=5.0
 scaling_3d/mode=2
 scaling_3d/scale=0.67
 scaling_3d/fsr_sharpness=0.5
@@ -2283,7 +2287,11 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
         "screen_space_reflection": {"half_size": false},
         "subsurface_scattering": {"quality": "high", "scale": 0.1}})"));
     CHECK(*project_file.find("rendering")->find("reflections") ==
-          parse(R"({"reflection_atlas": {"reflection_size": 512, "reflection_count": 16}})"));
+          parse(R"({"reflection_atlas": {"reflection_size": 512, "reflection_count": 16},
+        "sky_reflections": {"ggx_samples": 16}})"));
+    CHECK(*project_file.find("rendering")->find("lightmapping") ==
+          parse(R"({"bake_quality": {"high_quality_ray_count": 1024},
+        "bake_performance": {"region_size": 256}, "probe_capture": {"update_speed": 5.0}})"));
     CHECK(*project_file.find("rendering")->find("anti_aliasing") ==
           parse(R"({"quality": {"use_taa": true}})"));
     CHECK(*project_file.find("rendering")->find("mesh_lod") ==

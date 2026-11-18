@@ -2452,8 +2452,8 @@ private:
         }
         std::vector<std::size_t> filters;
         for (std::uint32_t level = 0; level < levels; ++level) {
-            const auto uniforms =
-                std::make_unique<RadianceUniforms>(radiance_uniforms(size, levels, level));
+            const auto uniforms = std::make_unique<RadianceUniforms>(
+                radiance_uniforms(size, levels, level, scene.radiance.ggx_samples));
             for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
                 uniforms->params[0] = static_cast<float>(face);
                 filters.push_back(place_uniforms(uniforms.get(), sizeof(RadianceUniforms)));

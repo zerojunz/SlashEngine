@@ -69,9 +69,6 @@ constexpr std::uint32_t kAllIndices = std::numeric_limits<std::uint32_t>::max();
 
 constexpr float kDegrees = 180.0F / std::numbers::pi_v<float>;
 constexpr float kRadians = std::numbers::pi_v<float> / 180.0F;
-// rendering/lightmapping/probe_capture/update_speed: how fast moving meshes' light from light
-// probes follows them, a share per second.
-constexpr double kProbeUpdateSpeed = 15.0;
 
 Vec3 scaled(Vec3 v, float s) {
     return {v.x * s, v.y * s, v.z * s};
@@ -1625,15 +1622,16 @@ render::LightmapCapture Renderer::capture(entt::entity entity, const Vec3& cente
         return out;
     }
     const LightmapSh& target = *taken;
-    // Godot eases a mesh's light by its lightmap_probe_update_speed, 15, times the frame's time;
+    // Godot eases a mesh's light by its lightmap_probe_update_speed (probe_update_speed_, 15 by
+    // default) times the frame's time;
     // the first frame, and after game time goes back, it is set at once.
     auto [found, made] = captured_.try_emplace(entity);
     Captured& captured = found->second;
     if (made || captured.used + 1 != frame_ || capture_time_ < captured.time) {
         captured.sh = target;
     } else {
-        const auto weight =
-            static_cast<float>(std::min(1.0, kProbeUpdateSpeed * (capture_time_ - captured.time)));
+        const auto weight = static_cast<float>(
+            std::min(1.0, probe_update_speed_ * (capture_time_ - captured.time)));
         for (std::size_t j = 0; j < 9; ++j) {
             for (std::size_t c = 0; c < 3; ++c) {
                 float& value = captured.sh.at(j).at(c);
@@ -4568,6 +4566,7 @@ std::optional<Frame3D> Renderer::prepare(
     // Height fog's height is in the world, measured from the render origin as the meshes are.
     frame.scene.fog.height -= static_cast<float>(render_origin_.y);
     frame.scene.radiance = env.radiance;
+    frame.scene.radiance.ggx_samples = ggx_samples_;
     problems_.insert(problems_.end(), env.problems.begin(), env.problems.end());
     if (env.sky.kind != render::SkyKind::None || env.radiance.kind != render::SkyKind::None) {
         frame.scene.sky.lights = sky_lights(world, tree, global);
@@ -5272,8 +5271,10 @@ Result<void> Renderer::reflect(const world::World& world, Frame3D& frame, render
                 scene.camera = render::probe_face_view(transform, offset, face);
                 scene.projection =
                     render::probe_face_projection(size, offset, p.max_distance, face);
-                scene.capture =
-                    render::ProbeCapture{.atlas = atlas_, .cube = slot->second.cube, .face = face};
+                scene.capture = render::ProbeCapture{.atlas = atlas_,
+                                                     .cube = slot->second.cube,
+                                                     .face = face,
+                                                     .ggx_samples = ggx_samples_};
                 render::Frame capture;
                 capture.clear = background;
                 capture.scene = scene;

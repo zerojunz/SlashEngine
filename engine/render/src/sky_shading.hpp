@@ -87,9 +87,11 @@ inline constexpr float kRadianceSteps = 1023.0F;
 // surfaces (RADIANCE_MAX_LOD).
 inline constexpr float kRadianceMaxLevel = 5.0F;
 
-// The samples the roughest levels are blurred with, as Godot's Compatibility renderer: four times
-// rendering/reflections/sky_reflections/ggx_samples, 32 by default.
+// The most samples the roughest levels are blurred with, as Godot's Compatibility renderer: four
+// times rendering/reflections/sky_reflections/ggx_samples, which is 32 by default and at most
+// kMaxGgxSamples here (radiance.hlsl's uniforms hold kRadianceSamples).
 inline constexpr std::uint32_t kRadianceSamples = 128;
+inline constexpr std::uint32_t kMaxGgxSamples = kRadianceSamples / 4;
 
 // How many levels a radiance cube size texels across has, as Godot's mipmap_count: down to faces
 // 4 texels across.
@@ -124,9 +126,10 @@ static_assert(sizeof(RadianceUniforms) == 32 + (16 * kRadianceSamples));
 
 // The filter pass's uniforms for a level of a radiance of size and levels, as Godot's
 // CubemapFilter::filter_radiance: level 0 copies the raw cube's, and each next one blurs it for a
-// rougher surface. The face is params[0]'s, for the device to set.
+// rougher surface, by ggx_samples (Radiance3D's). The face is params[0]'s, for the device to set.
 [[nodiscard]] RadianceUniforms radiance_uniforms(std::uint32_t size, std::uint32_t levels,
-                                                 std::uint32_t level);
+                                                 std::uint32_t level,
+                                                 std::uint32_t ggx_samples = 32);
 
 // Whether a radiance must be drawn again: what its raw cube was drawn from, which devices keep and
 // compare with the next frame's.
@@ -134,6 +137,7 @@ struct RadianceKey {
     SkyUniforms face{};
     TextureId texture = TextureId::None;
     std::uint32_t size = 0;
+    std::uint32_t ggx_samples = 0;
 
     [[nodiscard]] bool operator==(const RadianceKey& other) const;
 };
@@ -158,7 +162,8 @@ void cube_mipmaps(CubeImage& cube, bool linear);
 // A cube's levels filtered as shaders/radiance.hlsl does: level 0 as it is, each next one blurred
 // from raw for a rougher surface. linear filters an RGBA16F cube without the sRGB conversions the
 // sky's radiance takes.
-[[nodiscard]] CubeImage filter_cube(const CubeImage& raw, bool linear);
+[[nodiscard]] CubeImage filter_cube(const CubeImage& raw, bool linear,
+                                    std::uint32_t ggx_samples = 32);
 
 // A scene's radiance on the CPU, drawn as the GPU devices draw it: the sky into the raw cube's
 // faces (texel(coords) samples the sky's texture at a panorama coordinate), its mipmaps by
@@ -226,6 +231,12 @@ template <typename Known>
         return make_error(ErrorCode::InvalidArgument,
                           "a radiance's size is a power of two from 32 to 2048, not " +
                               std::to_string(radiance.size));
+    }
+    if (radiance.ggx_samples < 1 || radiance.ggx_samples > kMaxGgxSamples) {
+        return make_error(ErrorCode::InvalidArgument, "a radiance's ggx_samples are from 1 to " +
+                                                          std::to_string(kMaxGgxSamples) +
+                                                          ", not " +
+                                                          std::to_string(radiance.ggx_samples));
     }
     if (const TextureId texture = radiance_texture(scene);
         texture != TextureId::None && !known(texture)) {
