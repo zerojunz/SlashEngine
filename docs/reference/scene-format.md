@@ -5668,7 +5668,11 @@ Colors are `[r, g, b]` or `[r, g, b, a]` from 0 to 1, lengths meters and speeds 
 | `food` | `[]` | What it eats from people's hands; empty for anything |
 | `tame`, `ride` | `0`, `false` | Feedings that tame it (0 for never), and whether its owner can ride it then (needs `tame`) |
 | `damage`, `reach`, `attack_cooldown` | `10`, `1.2`, `1` | What an attack does, how near it must be to attack or catch, and seconds between attacks |
-| `hunger_rate` | `0.02` | Hunger it gains a second, from 0 full to 1; a hunter hunts past 0.5 |
+| `hunger_rate` | `0.02` | Hunger it gains a second, from 0 full to 1 |
+| `hunt_hunger` | `0.5` | The hunger past which a hunter hunts and an `NpcAgent`'s `hungry` fact is 1 (0 to 1) |
+| `eat_time` | `2` | Seconds it eats what it is fed or caught (0 to 600) |
+| `scare_time` | `3` | Seconds `creature.interact`'s `scare` makes it flee (0 to 600) |
+| `near`, `follow` | `1.5`, `3` | How near a friendly or tame creature comes to its lead, and how far its owner goes before a tame one follows (running past three times that); 0 to 100 meters |
 | `altitude` | `0` | How high `creature.place` and `creature.populate` put fliers above the ground, how deep fish below it: 6 for birds, 1 for insects that fly, 1.5 for fish when 0 |
 
 - **The model** is a skeleton of the plan's bones: a quadruped's `body`, `neck`, `head`, `tail`,
