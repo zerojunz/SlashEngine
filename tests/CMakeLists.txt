@@ -149,6 +149,7 @@ add_executable(slash_tests
     test_particles.cpp
     test_gpu_particles_3d.cpp
     test_gpu_skinning.cpp
+    test_frame_graph.cpp
     test_mesh_cull.cpp
     test_particle_sim.cpp
     test_particles_3d.cpp

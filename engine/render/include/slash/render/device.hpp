@@ -471,6 +471,16 @@ struct Stats {
     std::uint64_t triangles = 0;     // triangles drawn
     std::uint32_t textures = 0;      // textures alive
     std::uint64_t texture_bytes = 0; // what they take on the GPU (texture_bytes)
+    // The last frame's graph of passes, as Unity's render graph and Godot's RenderingDevice
+    // graph keep one: the passes it ran and left out, the device passes they were recorded in
+    // (compute passes next to each other share one), and its transient textures' bytes, each
+    // alone and as they share allocations whose uses don't overlap. Zero where a device keeps
+    // none.
+    std::uint32_t graph_passes = 0;
+    std::uint32_t graph_culled = 0;
+    std::uint32_t graph_groups = 0;
+    std::uint64_t transient_bytes = 0;
+    std::uint64_t transient_allocated_bytes = 0;
 };
 
 // The objects of the native API a GPU device draws with, each unretained, as Godot's

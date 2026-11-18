@@ -6550,6 +6550,17 @@ because the frame before was late. `frames` and `ticks` also count from the star
 `renderer` names the render device (`null` when nothing is drawn). A headless game runs one tick
 per frame and never waits, so its frame times only show how long its ticks take.
 
+On a device that builds its frames as a graph of passes (the GPU device, for Forward+'s post
+passes so far), `frame_graph` says what the last frame's graph did: the `passes` it ran and those
+it left out (`culled`, as nothing kept read what they wrote), the device passes they were
+recorded in (`groups`; compute passes next to each other that touch nothing another writes share
+one), and its transient textures' bytes, each alone (`transient_bytes`) and as allocated
+(`allocated_bytes`), since textures whose uses don't overlap share one:
+
+```json
+{"frame_graph":{"allocated_bytes":12902400,"culled":0,"groups":9,"passes":9,"transient_bytes":19353600}}
+```
+
 ### debug.overlay
 
 Shows or hides the debug panel of a game run with `slash-cli run`, and the collision shapes it
