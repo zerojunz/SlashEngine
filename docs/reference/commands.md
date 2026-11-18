@@ -6550,8 +6550,8 @@ because the frame before was late. `frames` and `ticks` also count from the star
 `renderer` names the render device (`null` when nothing is drawn). A headless game runs one tick
 per frame and never waits, so its frame times only show how long its ticks take.
 
-On a device that builds its frames as a graph of passes (the GPU device, for Forward+'s post
-passes so far), `frame_graph` says what the last frame's graph did: the `passes` it ran and those
+On a device that builds its frames as a graph of passes (the GPU and WebGPU devices, for their
+post-processing, SSAO, SSR and subsurface scattering passes), `frame_graph` says what the last frame's graph did: the `passes` it ran and those
 it left out (`culled`, as nothing kept read what they wrote), the device passes they were
 recorded in (`groups`; compute passes next to each other that touch nothing another writes share
 one), and its transient textures' bytes, each alone (`transient_bytes`) and as allocated

@@ -1128,9 +1128,10 @@ launch rows and the after-launch features above.
   LOD picks in compute (left for when the scene stays on the GPU between frames: while the CPU
   hands every draw over each frame, its pick is a few multiplies, and the order already keeps a
   LOD's copies in one run), and
-  a frame graph over every device's passes (what each reads and writes, passes nothing uses
+  a frame graph over the devices' passes (done: what each reads and writes, passes nothing uses
   left out, transient textures sharing memory, independent compute work merged so it shares
-  barriers)
+  barriers, for the post-processing, SSAO, SSR and subsurface passes on the GPU and WebGPU
+  devices; FSR's and the mesh passes' own textures stay theirs for now)
 - Scriptable pipelines on that frame graph, as Godot 4.3's `Compositor` and `CompositorEffect`
   (and Unity's SRP): a `.pipeline.json` file an agent edits that turns built-in passes on and
   off, reorders them and adds its own compute and fragment passes in the game's HLSL at named

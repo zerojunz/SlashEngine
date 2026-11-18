@@ -1515,6 +1515,18 @@ shared by the shaders. `src/post_shading.hpp` holds the uniforms, the checks and
 (`tonemap`, `run_post_pass`) the software device draws with; `tests/test_post.cpp` holds every
 device to its pixels. `examples/post-processing-3d` is a lantern glowing at night.
 
+The GPU and WebGPU devices record their screen-space passes as a frame graph, as Unity's render
+graph and Godot's `RenderingDevice` graph do (`src/frame_graph.hpp`): each pass names the
+resources it reads and writes, `FrameGraph::compile` leaves out those whose results nothing kept
+reads, gives each transient texture (`transient`, by its `GraphShape`) an allocation from a
+`TransientPool` that textures whose uses don't overlap share, and puts compute passes next to
+each other that touch nothing another writes in one device pass; `import` names what lives
+outside the frame (the world, the target, histories). Compatibility's post passes, Forward+'s
+(depth of field, luminance, glow and the tonemap), SSAO, SSR and subsurface scattering run that
+way (`run_graph` in each device), the pool keeping its textures from frame to frame, and
+`render::Stats` and `perf.stats`' `frame_graph` report what the last frame's graph did.
+`tests/test_frame_graph.cpp` checks the graph, and each feature's test the pool it shares.
+
 Skies and fog are the Compatibility renderer's too. `Scene3D::sky` (`render::Sky3D`: a color,
 procedural, physical or panorama sky, from a `"sky"` background and the sky material on the
 `WorldEnvironment`'s entity) draws before the meshes, as one triangle over the target with no
