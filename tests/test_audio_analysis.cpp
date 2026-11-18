@@ -188,6 +188,16 @@ TEST_CASE("audio::analyze measures tempo and where the beats fall") {
     CHECK(std::min(odd.beat_offset, (60.0 / 128.5) - odd.beat_offset) < 0.02);
     // Too short to tell.
     CHECK_FALSE(audio::analyze(beats(120.0, 0.0, 2.0, kRate), kRate).bpm);
+    // Past the default range, a fast beat counts slower, unless the range takes it.
+    const std::vector<Frame> fast = beats(300.0, 0.0, 12.0, kRate);
+    const audio::Analysis slower = audio::analyze(fast, kRate);
+    REQUIRE(slower.bpm);
+    CHECK(*slower.bpm == doctest::Approx(100.0).epsilon(0.001));
+    const audio::Analysis whole =
+        audio::analyze(fast, kRate, std::nullopt,
+                       {.slowest_bpm = 100.0, .fastest_bpm = 400.0, .likely_bpm = 300.0});
+    REQUIRE(whole.bpm);
+    CHECK(*whole.bpm == doctest::Approx(300.0).epsilon(0.001));
 }
 
 TEST_CASE("audio::analyze finds the key from the notes played") {
@@ -301,6 +311,14 @@ TEST_CASE("audio.analyze measures sounds, .audio.json sounds and buses") {
     CHECK(drums.find("problems") == nullptr);
     CHECK(drums.find("bands_db")->size() == 10);
     CHECK(drums.find("lufs")->is_number());
+    // A tempo range leaning slow counts the knocks at half speed.
+    const json::Value slow =
+        ok(R"({"path": "music/drums.wav", "tempo": {"min": 40, "max": 100, "likely": 60}})");
+    CHECK(slow.find("bpm")->as_double() == 60.0);
+    CHECK(fails(R"({"path": "music/drums.wav", "tempo": {"min": 100, "max": 90}})",
+                command::code::kInvalidArgument)
+              .data.find("path")
+              ->as_string() == "/tempo/max");
     // Looped as a whole, the knocks join cleanly: the last one has died away.
     const json::Value looped = ok(R"({"path": "music/drums.wav", "loop": true})");
     CHECK(*looped.find("loop")->find("beats") == parse("16"));
