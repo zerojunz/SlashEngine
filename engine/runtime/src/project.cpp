@@ -4,6 +4,7 @@
 #include "slash/platform/file.hpp"
 #include "slash/platform/run.hpp"
 #include "slash/scene3d/lightmap.hpp"
+#include "slash/ui/ui.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -864,6 +865,26 @@ json::Value project_schema() {
     gui["properties"]["drag_threshold"]["default"] = 10;
     gui["properties"]["drag_threshold"]["description"] =
         "Pixels the mouse moves with the left button held before a drag and drop starts.";
+    const auto timer = [&](std::string_view key, std::string_view type, double low, double value,
+                           std::string description) {
+        json::Value& field = gui["properties"][std::string(key)];
+        field["type"] = std::string(type);
+        if (type == "integer") {
+            field["minimum"] = static_cast<std::int64_t>(low);
+            field["default"] = static_cast<std::int64_t>(value);
+        } else {
+            field["minimum"] = low;
+            field["default"] = value;
+        }
+        field["description"] = std::move(description);
+    };
+    timer("text_edit_idle_detect_sec", "number", 0, 3,
+          "Seconds after the last edit before typing in a TextEdit starts a new undo step.");
+    timer("text_edit_undo_stack_max_size", "integer", 1, 1024, "The undo steps a TextEdit keeps.");
+    timer("incremental_search_max_interval_msec", "integer", 0, 2000,
+          "Milliseconds between the letters typed to search a popup menu's items.");
+    timer("button_shortcut_feedback_highlight_time", "number", 0, 0.2,
+          "Seconds a button pressed by its shortcut shows pressed.");
     gui["properties"]["accessibility_support"]["enum"] = json::Array{"auto", "always", "disabled"};
     gui["properties"]["accessibility_support"]["default"] = "auto";
     gui["properties"]["accessibility_support"]["description"] =
@@ -1213,6 +1234,13 @@ Result<Project> parse_project(const json::Value& project) {
         if (const json::Value* threshold = gui->find("drag_threshold"); threshold != nullptr) {
             out.drag_threshold = static_cast<int>(threshold->as_int());
         }
+        ui::Settings timers;
+        ui::read_settings(*gui, timers);
+        out.text_edit_idle_detect_sec = timers.text_edit_idle_detect_sec;
+        out.text_edit_undo_stack_max_size = timers.text_edit_undo_stack_max_size;
+        out.incremental_search_max_interval_msec = timers.incremental_search_max_interval_msec;
+        out.button_shortcut_feedback_highlight_time =
+            timers.button_shortcut_feedback_highlight_time;
     }
     if (const json::Value* input = project.find("input"); input != nullptr) {
         auto map = input::parse_map(*input);

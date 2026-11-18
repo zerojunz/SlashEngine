@@ -907,6 +907,19 @@ TEST_CASE("audio tracks start their keys' streams and stop them as Godot's Anima
     scene.world.step(0.1);
     CHECK(sound.take() == std::vector<std::string>{"stop 5"});
 
+    // The player's audio_max_polyphony goes to the voice its streams play on.
+    scene.player(talker).audio_max_polyphony = 4;
+    scene.player(talker).playing = true;
+    scene.player(talker).time = 0.0;
+    for (int tick = 0; tick < 5; ++tick) {
+        scene.world.step(0.1);
+    }
+    CHECK(sound.take() ==
+          std::vector<std::string>{"play voice line.wav 0.25 polyphony 4", "volume 6 0"});
+    scene.player(talker).playing = false;
+    scene.world.step(0.1);
+    sound.take();
+
     // A stream that can't play warns once.
     const Warnings warnings;
     scene.world.ecs().remove<world::AudioStreamPlayer>(scene.world.find("voice"));

@@ -323,7 +323,8 @@ the files written.
 An `AnimationPlayer` node becomes an entity with an [`AnimationPlayer`](scene-format.md#animations)
 that plays one `.anim.json` file holding all its libraries' animations: the default library's by
 their names, another library's as `<library>/<animation>`, as Godot names them. `autoplay` is the
-animation it plays, `speed_scale` carries over, and `active = false` is `playing` `false`.
+animation it plays, `speed_scale` and `audio_max_polyphony` carry over, and `active = false` is
+`playing` `false`.
 
 A Godot track names the node it animates by its path from the player's root node (`root_node`,
 the player's parent by default). Each converted track keeps that path as its `target`, and the
@@ -379,8 +380,8 @@ the component goes on the entity that draws it, since a tree poses the model its
 draws, and the report says so. Godot drops a `-loop` or `_loop`, `-cycle` or `_cycle`, or a
 `$loop` from a model's animation names; the file names each as the model does.
 
-`active`, `deterministic`, `root_motion_track` (the model node it names) and `root_motion_local`
-carry over. A deterministic tree starts each value track from its key in the library's `RESET`
+`active`, `deterministic`, `root_motion_track` (the model node it names), `root_motion_local`
+and `audio_max_polyphony` carry over. A deterministic tree starts each value track from its key in the library's `RESET`
 animation, or from zero (a 3D node's scale from one), as Godot's does, so a converted library
 without one gets `RESET` keys there, as the report says. `parameters/` values that callers set (`request`, `blend_amount`,
 `blend_position`, `transition_request`, a state machine's `conditions/`) become the component's
@@ -655,10 +656,13 @@ on its top.
 | `rendering/occlusion_culling/use_occlusion_culling`, `occlusion_rays_per_thread`, `jitter_projection` | `rendering.occlusion_culling` |
 | `rendering/scaling_3d/mode`, `scale`, `fsr_sharpness` | `rendering.scaling`: `bilinear`, `fsr`, `fsr2`, `metalfx_spatial` or `metalfx_temporal`, by Godot's mode number |
 | `gui/theme/custom` | `gui.theme`, the theme's `.theme.json` file |
+| `gui/timers/tooltip_delay_sec`, `text_edit_idle_detect_sec`, `incremental_search_max_interval_msec`, `button_shortcut_feedback_highlight_time` | `gui.` the same names |
+| `gui/common/text_edit_undo_stack_max_size` | `gui.text_edit_undo_stack_max_size` |
 | `audio/buses/default_bus_layout` | `audio.bus_layout`, the layout's `.bus_layout.json` file |
 | `audio/driver/mix_rate`, `audio/driver/output_latency` | `audio.mix_rate`, `audio.output_latency` |
 | `audio/general/2d_panning_strength` | `audio.panning_strength_2d` |
 | `audio/general/3d_panning_strength` | `audio.panning_strength_3d` |
+| `audio/buses/channel_disable_threshold_db`, `channel_disable_time` | `audio.` the same names, held to -80 to 0 dB and 0 to 5 seconds |
 | `audio/driver/enable_input` | `audio.enable_input` |
 | `xr/openxr/enabled`, `form_factor`, `view_configuration`, `reference_space`, `environment_blend_mode` | `xr.openxr`'s fields of the same names |
 | `xr/shaders/enabled` | `xr.shaders.enabled` |

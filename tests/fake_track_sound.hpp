@@ -29,7 +29,7 @@ struct FakeSound {
     void install(world::World& world) {
         world::AudioTrackSound sound;
         sound.play = [this](world::World& w, entt::entity entity, std::string_view stream,
-                            double from) -> Result<world::AudioTrackPlay> {
+                            double from, int polyphony) -> Result<world::AudioTrackPlay> {
             if (!w.ecs().all_of<world::AudioStreamPlayer>(entity)) {
                 return make_error(ErrorCode::InvalidArgument, "no player");
             }
@@ -37,8 +37,11 @@ struct FakeSound {
             streams[id] = {std::string(stream)};
             char from_text[32];
             std::snprintf(from_text, sizeof(from_text), "%g", from);
+            // The mixer's audio_max_polyphony, when it isn't Godot's 32.
+            const std::string voices =
+                polyphony == 32 ? "" : " polyphony " + std::to_string(polyphony);
             calls.push_back("play " + std::string(w.id_of(entity)) + " " + std::string(stream) +
-                            " " + from_text);
+                            " " + from_text + voices);
             const auto length = lengths.find(stream);
             return world::AudioTrackPlay{id, length != lengths.end() ? length->second : 0.0};
         };

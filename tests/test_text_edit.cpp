@@ -447,6 +447,40 @@ TEST_CASE("undo and redo step through typing, which merges until the typist paus
     CHECK(f.text("notes") == "fresh\ntext");
 }
 
+TEST_CASE("project.json's gui object sets how long typing merges and how many steps undo keeps") {
+    ui::Settings read;
+    ui::read_settings(parse(R"({"text_edit_idle_detect_sec": 0.5,
+        "text_edit_undo_stack_max_size": 2, "incremental_search_max_interval_msec": 500,
+        "button_shortcut_feedback_highlight_time": 0.0})"),
+                      read);
+    CHECK(read.text_edit_idle_detect_sec == 0.5);
+    CHECK(read.text_edit_undo_stack_max_size == 2);
+    CHECK(read.incremental_search_max_interval_msec == 500);
+    CHECK(read.button_shortcut_feedback_highlight_time == 0.0);
+
+    Editors f;
+    ui::Settings quick = ui::settings(f.world);
+    quick.text_edit_idle_detect_sec = 0.5;
+    quick.text_edit_undo_stack_max_size = 2;
+    ui::set_settings(f.world, quick);
+    f.editor("notes", {20, 20, 360, 200});
+    ui::grab_focus(f.world, f.world.find("notes"));
+    f.step();
+    // Half a second's pause ends each step, and only the last two are kept.
+    for (const char* text : {"a", "b", "c"}) {
+        f.send(typed(text));
+        for (int i = 0; i < 40; ++i) {
+            f.step();
+        }
+    }
+    f.tap("Z", kCtrl);
+    CHECK(f.text("notes") == "ab");
+    f.tap("Z", kCtrl);
+    CHECK(f.text("notes") == "a");
+    CHECK(f.tap("Z", kCtrl).empty());
+    CHECK(f.text("notes") == "a");
+}
+
 TEST_CASE("copy and cut take the caret's line when nothing is selected; paste puts it back") {
     Editors f;
     f.editor("notes", {20, 20, 360, 200}, R"("text": "one\ntwo")");

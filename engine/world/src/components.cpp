@@ -5244,7 +5244,12 @@ void register_builtin_components(ComponentRegistry& registry) {
         .describe("backwards", {.doc = "Play toward the start, as Godot's play_backwards. "
                                        "Pingpong loops flip it at each end."})
         .describe("targets", {.doc = "The entity each track target names, by name; tracks with "
-                                     "no target animate this entity."});
+                                     "no target animate this entity."})
+        .describe("audio_max_polyphony",
+                  {.doc = "How many streams its audio tracks play at once on each audio player, "
+                          "as Godot's audio_max_polyphony; a start past it is dropped.",
+                   .min = 1,
+                   .max = 128});
 
     registry.add<AnimationTree>()
         .set_doc("Blends the animations of its libraries as a .animtree.json tree says (blend "
@@ -5270,6 +5275,11 @@ void register_builtin_components(ComponentRegistry& registry) {
                           "posed, for gameplay code to move the entity by."})
         .describe("root_motion_local", {.doc = "Report root_motion_position in the node's own "
                                                "frame, turned by its rotation."})
+        .describe("audio_max_polyphony",
+                  {.doc = "How many streams its audio tracks play at once on each audio player, "
+                          "as Godot's audio_max_polyphony; a start past it is dropped.",
+                   .min = 1,
+                   .max = 128})
         .describe("parameters",
                   {.doc = "Values for the tree's parameters by name, as \"speed/blend_amount\", "
                           "\"shot/request\" or \"state/transition_request\". Requests go back to "

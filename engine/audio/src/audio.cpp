@@ -65,6 +65,7 @@ struct PlayerState {
     // the player an AudioStreamPolyphonic: beside its own voices, mixed as they are.
     std::optional<Server::PlaybackId> track_voice;
     std::shared_ptr<const Stream> track_stream;
+    int track_polyphony = 0; // track_stream's polyphony
 
     // Each voice it mixes: its own and the audio tracks'.
     template <typename F>
@@ -86,7 +87,6 @@ struct TrackStream {
 
 // As many streams as Godot's AnimationMixer lets its audio tracks play on one player at once
 // (audio_max_polyphony).
-constexpr int kTrackPolyphony = 32;
 
 using Request = Snapshot::Request;
 
@@ -319,6 +319,8 @@ struct State {
         layout_version = 0;
         layout_error.clear();
         server->set_input_enabled(settings.enable_input);
+        server->set_channel_disable(settings.channel_disable_threshold_db,
+                                    settings.channel_disable_time);
         server->set_layout(default_bus_layout());
         refresh_layout();
         reset_history();
@@ -422,20 +424,28 @@ std::uint32_t seed_of(std::string_view key, std::uint32_t plays) {
     return h;
 }
 
-// The polyphonic playback a player's audio tracks play on, started when there is none.
+// The polyphonic playback a player's audio tracks play on, started when there is none, or
+// started again, once nothing plays on it, when the mixer asks for another polyphony.
 template <typename T>
 PolyphonicPlayback* track_voice(State& state, PlayerState& player, const T& component,
-                                std::string_view key) {
+                                std::string_view key, int polyphony) {
+    polyphony = std::clamp(polyphony, 1, 128);
     if (player.track_voice) {
         Playback* playback = state.server->playback(*player.track_voice);
-        if (playback != nullptr && playback->polyphonic() != nullptr) {
-            return playback->polyphonic();
+        PolyphonicPlayback* voice = playback != nullptr ? playback->polyphonic() : nullptr;
+        if (voice != nullptr && (voice->polyphony() == polyphony || voice->streams_playing() > 0)) {
+            return voice;
         }
+        if (voice != nullptr) {
+            state.server->stop(*player.track_voice);
+        }
+        player.track_voice.reset();
     }
-    if (player.track_stream == nullptr) {
+    if (player.track_stream == nullptr || player.track_polyphony != polyphony) {
         StreamFile settings;
         settings.kind = StreamFile::Kind::Polyphonic;
-        settings.polyphony = kTrackPolyphony;
+        settings.polyphony = polyphony;
+        player.track_polyphony = polyphony;
         player.track_stream = polyphonic_stream(settings);
     }
     auto playback =
@@ -480,7 +490,7 @@ void track_request(State& state, PlayerState& player, const T& component, std::s
                   {{"player", std::string(key)}, {"stream", request.stream}, {"error", error}});
         return;
     }
-    PolyphonicPlayback* polyphonic = track_voice(state, player, component, key);
+    PolyphonicPlayback* polyphonic = track_voice(state, player, component, key, request.polyphony);
     if (polyphonic == nullptr) {
         return;
     }
@@ -1612,6 +1622,16 @@ json::Value settings_schema() {
         number_setting("How far AudioStreamPlayer3D sounds pan left and right, as Godot's "
                        "audio/general/3d_panning_strength.",
                        0, 4, Settings{}.panning_strength_3d);
+    properties["channel_disable_threshold_db"] =
+        number_setting("A bus's speaker pair quieter than this, in dB, for channel_disable_time "
+                       "stops mixing its effects until sound comes again, as Godot's "
+                       "audio/buses/channel_disable_threshold_db; reverb and delay tails ring "
+                       "longer below a lower one.",
+                       -80, 0, Settings{}.channel_disable_threshold_db);
+    properties["channel_disable_time"] =
+        number_setting("Seconds a bus's speaker pair stays below channel_disable_threshold_db "
+                       "before it stops, as Godot's audio/buses/channel_disable_time.",
+                       0, 5, Settings{}.channel_disable_time);
     properties["speaker_mode"]["enum"] =
         json::Array{"auto", "stereo", "surround_31", "surround_51", "surround_71"};
     properties["speaker_mode"]["default"] = "auto";
@@ -1670,6 +1690,13 @@ Settings parse_settings(const json::Value& settings) {
     }
     if (const json::Value* panning = settings.find("panning_strength_3d"); panning != nullptr) {
         out.panning_strength_3d = static_cast<float>(panning->as_double());
+    }
+    if (const json::Value* threshold = settings.find("channel_disable_threshold_db");
+        threshold != nullptr) {
+        out.channel_disable_threshold_db = static_cast<float>(threshold->as_double());
+    }
+    if (const json::Value* time = settings.find("channel_disable_time"); time != nullptr) {
+        out.channel_disable_time = time->as_double();
     }
     if (const json::Value* speakers = settings.find("speaker_mode"); speakers != nullptr) {
         out.speaker_mode = parse_speaker_mode(speakers->as_string());
@@ -1857,7 +1884,7 @@ const std::string* track_player(const State& state, std::int64_t id) {
 world::AudioTrackSound track_sound() {
     world::AudioTrackSound sound;
     sound.play = [](world::World& world, entt::entity entity, std::string_view stream,
-                    double from_seconds) -> Result<world::AudioTrackPlay> {
+                    double from_seconds, int polyphony) -> Result<world::AudioTrackPlay> {
         State* state = state_of(world);
         if (state == nullptr) {
             return make_error(ErrorCode::InvalidArgument, "audio is not installed in this world");
@@ -1890,6 +1917,7 @@ world::AudioTrackSound track_sound() {
         request.player = key_of(world, kind, entity);
         request.stream = path;
         request.from_seconds = std::max(from_seconds, 0.0);
+        request.polyphony = polyphony;
         request.track = state->next_track++;
         state->requests.push_back(request);
         return world::AudioTrackPlay{request.track, loaded->length()};
