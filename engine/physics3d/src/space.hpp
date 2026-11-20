@@ -217,7 +217,7 @@ struct BuiltShape {
 // Godot does): cell (x, z) at map_scale * (x, height, z), moved back half the terrain when
 // centered. Holes don't collide.
 [[nodiscard]] BuiltShape build_terrain_shape(const scene3d::TerrainData& data, Vec3 map_scale,
-                                             bool centered, const Settings& settings = {});
+                                             bool centered, const Settings& tuning = {});
 // The same scaled, made valid for the shape as Godot's JOLT_ENSURE_SCALE_VALID does (a sphere
 // scales the same along every axis).
 [[nodiscard]] JPH::RefConst<JPH::Shape> scaled(const JPH::Shape* shape, Vec3 scale);

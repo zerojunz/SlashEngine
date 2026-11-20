@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <memory>
+#include <numbers>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -84,7 +85,7 @@ constexpr NumberSetting kNumberSettings[] = {
      &Settings::body_pair_contact_cache_distance_threshold, 0.0, 10.0,
      "How far, in meters, two bodies may move apart before cached contacts are found again."},
     {"body_pair_contact_cache_angle_threshold", &Settings::body_pair_contact_cache_angle_threshold,
-     0.0, 3.14159265,
+     0.0, std::numbers::pi,
      "How far, in radians, two bodies may turn apart before cached contacts are found again."},
     {"bounce_velocity_threshold", &Settings::bounce_velocity_threshold, 0.0, 1000.0,
      "The speed, in meters per second, below which colliding bodies don't bounce."},
@@ -98,7 +99,7 @@ constexpr NumberSetting kNumberSettings[] = {
      "The share of each overlap a character's move pushes out of in each recovery pass."},
     {"collision_margin_fraction", &Settings::collision_margin_fraction, 0.0, 1.0,
      "The share of a convex shape's smallest extent its margin may take."},
-    {"active_edge_threshold", &Settings::active_edge_threshold, 0.0, 3.14159265,
+    {"active_edge_threshold", &Settings::active_edge_threshold, 0.0, std::numbers::pi,
      "The angle, in radians, between faces under which a mesh's edge counts as smooth."},
     {"world_boundary_shape_size", &Settings::world_boundary_shape_size, 1.0, 1.0e7,
      "A world boundary shape's size, in meters."},
