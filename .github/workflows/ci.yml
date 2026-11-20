@@ -975,6 +975,16 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Owner name check
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash scripts/check-owner-name.sh ${{ github.event_name == 'pull_request' && '--pr' || '' }}
 
       # The Ubuntu runners come with toolchains this build never uses (.NET, Swift, GHC,
       # PowerShell, CodeQL, PyPy, and the Android SDK where the job doesn't export for Android),

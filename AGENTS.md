@@ -98,6 +98,7 @@ success, 1 runtime failure, 2 usage error. On a machine with no display, set
 - Every new feature comes with an example in `examples/` (see [Examples](docs/reference/build-and-test.md#examples)).
 - A change to a command, flag, component or file format updates its page in `docs/reference/`,
   and work that finishes a roadmap item ticks it in `docs/roadmap.md`.
+- **No owner name:** never write the owner's name (first name, full name, username or a possessive) in code, comments, tests, docs, commit messages or PRs; write "the owner". Test data uses a neutral name such as "Player". `scripts/check-owner-name.sh` enforces it in CI (owner, 20 Nov 2026).
 
 Format and lint: `clang-format` and `clang-tidy` as in the commands above; CI rejects unformatted code and any clang-tidy finding ([build-and-test](docs/reference/build-and-test.md#lint)).
 

@@ -1043,7 +1043,7 @@ Exit: an agent builds a small 3D sample end to end.
 
 Ad network SDKs (AdMob, Unity Ads, AppLovin and others) are proprietary, so, like console ports,
 their adapters live outside this repository. StoreKit is an OS framework, and Google Play Billing
-is fetched at export time like the rest of the Android SDK, so neither is committed here. the owner
+is fetched at export time like the rest of the Android SDK, so neither is committed here. The owner
 chose this split.
 
 ### Milestone 9: Launch (In progress)
