@@ -4,6 +4,8 @@ How SlashEngine is put together, and the rules every part follows. Read this onc
 pages assume it. Terms in **bold** are defined where they first appear and listed in the
 [glossary](#glossary) at the end.
 
+Status: current · Updated: 2026-11-20
+
 ## The idea
 
 SlashEngine is built for agents first. Four rules follow from that, and anything an agent cannot

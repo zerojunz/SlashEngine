@@ -8,6 +8,8 @@ characters from recipes; see [Characters](scene-format.md#characters),
 as the record of why the parts came in the order they did. No MetaHuman code, assets or file
 formats are used or read: MetaHuman is closed and its assets are licensed for Unreal only.
 
+Status: current · Updated: 2026-11-20
+
 ## What a realistic human needs
 
 A believable close-up character is several systems working together:

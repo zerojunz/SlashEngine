@@ -3,6 +3,8 @@
 Every command the engine registers, with its params, the capabilities it needs and a real example.
 The same commands are available everywhere:
 
+Status: current · Updated: 2026-11-20
+
 | Front end | How to call `entity.create` |
 | --- | --- |
 | MCP | Tool `entity_create` with the params as arguments |
@@ -6600,7 +6602,7 @@ the events and deferred calls it left; threaded systems in the same `stage` run 
 times can add up to more than the tick's. Times are real time, so they vary from run to run and
 machine to machine, and a system that hasn't run yet reports zeros. For a timeline of every
 thread, build with the `tracy` preset and connect the Tracy profiler
-([AGENTS.md](../../AGENTS.md#profiling)).
+([Profiling](profiling.md)).
 
 With `memory`:
 
@@ -6964,7 +6966,7 @@ name. `data.path` is `/sdk` when `sdk` was given.
 
 A game's own components and systems are C++ in the folders and files `project.json`'s
 [`gameplay.sources`](project-format.md#gameplay-code) names, registered in one
-`SLASH_GAME_MODULE` function (see [AGENTS.md](../../AGENTS.md#gameplay-code)). Exports link them
+`SLASH_GAME_MODULE` function (see [Gameplay code](gameplay-code.md)). Exports link them
 in. `slash-cli`, `slash-mcp` and `slash-game` load them from the library this command builds, on
 macOS, Linux and Windows, and every command first swaps in a library that changed since, so a build by
 another program (such as [`slash-cli build`](cli.md#build)) goes in too.
@@ -7950,4 +7952,4 @@ The reply names the `team` and lists the IDs `shared`:
 Register it in `engine/command/src/builtin.cpp` (or a registry of your own) with a name, a short
 description, its capabilities, an `Effect` and a params schema with
 `"additionalProperties": false`, add a test to `tests/test_command.cpp`, and add a section to this
-page. See [AGENTS.md](../../AGENTS.md#commands-mcp-and-json-rpc).
+page. See [protocols](protocols.md).

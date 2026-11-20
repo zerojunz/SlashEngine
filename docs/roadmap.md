@@ -4,6 +4,8 @@ This is the plan for SlashEngine from today to launch and beyond. It has no date
 order is the plan, and each item carries a status instead. It is drawn from the approved
 [design](design.md), whose milestone list and feature parity table it tracks.
 
+Status: current · Updated: 2026-11-20
+
 ## Status words
 
 | Status | Meaning |

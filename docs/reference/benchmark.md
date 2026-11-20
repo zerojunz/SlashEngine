@@ -6,6 +6,8 @@ this is how a change that makes them dearer gets caught. `slash-cli bench` plays
 calls through the MCP server, as slash-mcp serves them, and `ctest` holds every pull request to
 the numbers in `bench/baseline.json`.
 
+Status: current · Updated: 2026-11-20
+
 ```bash
 slash-cli bench                                         # run every task in bench/tasks
 slash-cli bench --baseline bench/baseline.json          # and compare with the baseline

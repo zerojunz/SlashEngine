@@ -6,6 +6,8 @@ Ads, Analytics, In-App Purchasing and Social API. The game names its ad placemen
 achievements and leaderboards in [`project.json`](project-format.md#services) and asks for them
 by name; what happens comes back as events at a later tick, as input does. Backends do the work:
 
+Status: current · Updated: 2026-11-20
+
 | Backend | Runs | Used by |
 | --- | --- | --- |
 | Test | Ads load, purchases end and the player signs in as [`services.test`](commands.md#servicestest) says, with no account. Deterministic, so runs and replays repeat | Sessions: whatever `slash-cli` and `slash-mcp` run, `test.run` included |
@@ -349,3 +351,38 @@ them, through JNI or the Objective-C runtime, and they report to a `Reports` (Ja
 `showBanner(placement, unitId, position)` (Java) or `showBanner:unitID:position:`
 (Objective-C) and moves through `moveBanner`, which by default call `show`, and `hide` then
 `showBanner`.
+
+## Engine notes: Ads, analytics, purchases and achievements
+
+`engine/services` is ads, analytics, in-app purchases, achievements and leaderboards behind one
+API, as Unity's services and Social API
+([docs/reference/services.md](services.md)). `project.json`'s `services` names
+ad placements (banner, interstitial or rewarded, with each platform's ad unit ID and a banner's
+`position`, as Unity's `BannerPosition`, which `set_banner_position` moves), products
+(consumable, non-consumable or subscription), achievements (unlocked at once or in `steps`) and
+leaderboards (`high_to_low` or `low_to_high`); games call `show_ad`, `log_event`, `buy`,
+`finish`, `unlock_achievement`, `increment_achievement` and `submit_score` by those names and
+read what happened from `services::events(world)` (also world events), which the `services`
+system (priority -800) makes from what backends reported since the last tick. Backends
+implement `AdsBackend`, `AnalyticsBackend`, `PurchasesBackend` and `GamesBackend` and report
+through a thread-safe `Reports`; `set_backends` installs them. The player signs in at start,
+as on Play Games and Game Center; progress and best scores made while signed out are kept and
+sent once they sign in. Sessions run on the test backend (`use_test_backend`), whose ads,
+purchases, sign-in and leaderboards behave as `services.test` says, and put its state back with
+the world when a command fails or is a dry run; games with no backend fail ads, purchases and
+sign-in and only keep events, progress and scores. Analytics events are checked against the
+strictest common rules and sent only with the player's consent (`set_consent`); the steps of
+`analytics.funnels` reached in order are `funnel_step` events, and `request_tracking` asks
+Apple's App Tracking Transparency prompt (`src/apple.mm`; `src/tracking.hpp` elsewhere answers
+`unavailable`), whose refusal denies personalized ads. With `analytics.endpoint`,
+windowed games also send them to a server the developer runs: `src/endpoint.cpp`
+(`make_endpoint_analytics`) batches them as the engine's JSON or PostHog's, with Firebase's
+sessions, keeps what is unsent in the user folder and retries, POSTing through the
+`HttpPoster` that `main.cpp` builds on `ai::post_in_background` (`SLASH_GAME_ANALYTICS`).
+Stores are the engine's own SDK packages in `export/sdks/`, which `sdk add` copies in by name
+(`exporter::builtin_sdk`): `storekit` (`SlashStoreKitPurchases.m`, StoreKit 1, which reaches
+iOS 14 and macOS 11) and `play-billing` (`PlayBillingPurchases.java` over Play Billing Library 8,
+fetched and pinned by `sdk lock`); CI exports both and checks the backend each game reports.
+`services.state` shows it all. `examples/services` is a shop selling coins for watched ads and
+purchases, `examples/achievements-and-leaderboards` a race with lap achievements and a
+best-lap leaderboard, and `examples/analytics-endpoint` a tutorial funnel sent to a collector.

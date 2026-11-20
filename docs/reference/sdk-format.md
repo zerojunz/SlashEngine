@@ -6,6 +6,8 @@ package is a folder with an `sdk.json` that says what each platform's build link
 binaries are never committed to the engine's repository: `sdk.json` names a download pinned by
 SHA-256, or a path on the machine that exports.
 
+Status: current · Updated: 2026-11-20
+
 `project.json`'s `sdks` lists the packages' folders. `slash-cli sdk add` adds one,
 `slash-cli sdk check` (or [`sdk.check`](commands.md#sdkcheck)) checks them,
 `slash-cli schema sdk` prints the JSON Schema, and every [export](cli.md#export) builds and links

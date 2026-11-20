@@ -7,6 +7,8 @@ up with `storyboard.query` instead of remembering or guessing it, and changes it
 format version 1. `slash-cli schema storyboard` (or `schema.get` with `{"kind": "storyboard"}`)
 prints the JSON Schema.
 
+Status: current · Updated: 2026-11-20
+
 ## Files
 
 A project's storyboard is up to eight files in its `storyboard/` folder. Each kind of entry lives
@@ -350,3 +352,59 @@ Pointer:
 
 Agents should change the storyboard through `storyboard.edit`, which checks fields and references,
 records the journal and can be undone. A hand edit is checked by the next storyboard command.
+
+## Engine notes: Storyboard
+
+The storyboard is a game's facts that are not code (style, world, story, design rules, music,
+names, decisions, open work) as typed entries in `storyboard/*.json`, under IDs such as
+`character/mira`. Kinds and their fields are defined in `engine/storyboard`
+(`$cli schema storyboard`); `tests/data/game/storyboard` has an example. `storyboard.query` finds
+entries and returns their versions; `storyboard.edit` takes the version it read, refuses stale
+ones with `-32005`, writes the files and appends to `storyboard/journal.jsonl`. Commands that
+change project files stage them through `Session::stage_file` and record undo with
+`Session::add_undo_call`, so a failed command writes nothing and undo replays the reverse edit.
+Other files a command writes go through `Session::write_file`, which a session running a test
+refuses.
+
+`storyboard.brief` returns the entries a task touches: those its scenes' and entities' `StoryRef`
+components name, those linked to its files, global rules and live work. `storyboard.check` finds
+broken references, glossary words to avoid, unknown `StoryRef` IDs in every scene and prefab,
+and textures larger than a `budget` or with colors a `palette` covering them lacks
+(`storyboard::check_textures`), and models with more triangles or larger images inside them
+than a budget allows (`storyboard::check_models`, `src/style.cpp`); `$cli scene validate` checks a scene's `StoryRef` IDs and `$cli project validate` runs the whole
+check. `storyboard.review` (`engine/ai/src/review.cpp`) asks a model from `providers.json`
+whether new text, scene text, images or entries contradict the entries they touch; its findings
+are advisory, and one that quotes nothing in the material or names no real entry is dropped.
+`style.mark` and `style.check` (`engine/command/src/style.cpp`) keep the game's look:
+`style.mark` captures a scene (3D or 2D), the open world, an image, a model or a material in a
+private `Session` and writes a `style/<name>` entry with the frame (`storyboard/style/`), the
+settings that made it and a `storyboard::fingerprint` (`slash/storyboard/fingerprint.hpp`,
+integer math, built with `-ffp-contract=off`: palette, values, contrast, saturation, warmth,
+edges, line weight, flatness, texel density); `style.check` captures what each reference's
+links cover the same way and reports `drift`, measures `over` tolerance, `changed` settings
+and, from `storyboard/style_journal.jsonl`, measures `creeping` up, and `test.run` fails what
+drifted. The library's prompts carry the looks that cover a path (`describe_look`).
+`examples/style-memory` keeps a harbor's look and a title screen's.
+Games made by `$cli init` start with a storyboard and are told to brief before a task and check
+after it.
+
+`project.map` (`engine/command/src/project_map.cpp`) says where things are, made from the files
+on each call: scenes' and prefabs' components, prefabs, used files and storyboard entries, and the
+game's C++ sources read as text by `outline_cpp` (`slash/command/cpp_outline.hpp`: types and
+functions by line, macros, string literals with the call they are passed to, includes), so each
+component, system, event and input action says where it is declared and used. `find` and
+`paths` narrow it. `api.search` (`tools/exporter/src/api_search.cpp`) reads the engine's public
+headers and the game's sources the same way and finds functions, types and macros by name or by
+the words in their docs, with their signatures, fields, the header to include and the lines of
+`examples/` (or of the game) that use them. It finds only what has a doc comment right above it
+by what it does, so give each public declaration one.
+
+`playtest.run` (`engine/command/src/playtest.cpp`) runs many headless copies of a game at once
+and sums them up per combination of the values it varies (an entity's field, every entity's with
+a component, or a prefab's): how runs ended by its named end conditions, ticks, event counts and
+measured fields. Each run is a session of its own, made from the session's world (`Session::save`
+and `restore`) with the game module attached, and played by a scripted bot through
+`input::action_press`; sessions are made and dropped on the calling thread and their worlds step
+on the job system's threads at once, each on a pool of no threads, so a run comes out the same as
+it would alone. Box2D's world list is shared, so `physics2d` creates and destroys its worlds under
+a lock.

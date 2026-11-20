@@ -5,6 +5,8 @@ counterpart. It follows the approach Brian Karis described for Unreal's Nanite i
 Dive" (SIGGRAPH 2021) and builds on meshoptimizer's cluster LOD builder (`demo/clusterlod.h` in
 its MIT source). Read here what it does now, and what it does not do yet.
 
+Status: current · Updated: 2026-11-20
+
 ## What it does
 
 A model's surface is cut into **clusters** of up to 128 triangles. Neighbouring clusters are put
