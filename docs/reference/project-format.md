@@ -62,6 +62,13 @@ Status: current · Updated: 2026-11-20
 | `physics_2d.angular_damp` | No | `1` | How fast rigid bodies stop turning, per second, combined the same way |
 | `physics_2d.substeps` | No | `4` | Box2D's solver substeps each physics tick, 1 to 16: more keep fast, small or stacked bodies steadier, at more cost |
 | `physics_2d.break_budget` | No | `0` | The most pieces breaks from impacts cut each tick (the first always cuts; the rest wait for later ticks); 0 for no limit |
+| `physics_2d.contact_hertz`, `contact_damping_ratio` | No | `30`, `10` | How stiff contacts are, in cycles a second, and how little they bounce while pushing overlapping bodies apart: higher hertz pushes faster but can jitter |
+| `physics_2d.max_contact_push_speed` | No | `192` | The fastest contacts push overlapping bodies apart, in pixels per second (Box2D's 3 meters) |
+| `physics_2d.max_linear_speed` | No | `25600` | The fastest bodies may move, in pixels per second (Box2D's 400 meters) |
+| `physics_2d.bounce_velocity_threshold` | No | `64` | The speed, in pixels per second, below which colliding bodies don't bounce |
+| `physics_2d.hit_event_threshold` | No | `64` | The speed, in pixels per second, a hit needs to count for breaking and damage |
+| `physics_2d.allow_sleep`, `sleep_velocity_threshold` | No | `true`, `3.2` | Whether resting bodies sleep, and how slowly, in pixels per second, they must move for half a second first (Godot's `physics/2d/sleep_threshold_linear`) |
+| `physics_2d.enable_continuous`, `enable_warm_starting`, `enable_speculative` | No | `true`, `true`, `true` | Whether fast bodies are swept against static ones so they don't tunnel, whether the solver starts from the last step's impulses (steadier stacks), and whether contacts are made a little before bodies touch |
 | `physics_3d.gravity` | No | `9.8` | Gravity's strength in meters per second squared, as Godot's `physics/3d/default_gravity` |
 | `physics_3d.gravity_vector` | No | `[0, -1, 0]` | Gravity's direction, as `[x, y, z]`; y points up |
 | `physics_3d.linear_damp` | No | `0.1` | How fast 3D rigid bodies slow down, per second, combined with a body's own as in 2D |
