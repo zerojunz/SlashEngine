@@ -15,8 +15,9 @@
 # The pattern is assembled from pieces so that this file never contains the name itself.
 set -uo pipefail
 
-first="D""an"; full="D""aniel"; user="d""aniellee"
+first="D""an"; full="D""aniel"; user="d""aniellee"; mail="d""anlee"; host="d""aniels-macbook"
 PAT="${first}|${full} ?Lee|${full}Lee|${user}"
+PAT_ANY="${mail}|${host}"   # matched anywhere, also inside longer words (e-mail local part, host name)
 
 exempt=(':(exclude)**/licenses/**' ':(exclude)**/AUTHORS' ':(exclude)**/AUTHORS.*' ':(exclude)**/COPYING*'
         ':(exclude)**/Copyright' ':(exclude)**/LICENSE' ':(exclude)**/LICENSE.*' ':(exclude)**/THIRD_PARTY*'
@@ -29,7 +30,8 @@ fi
 fail=0
 scan_text() {   # $1 label, stdin text
   local hits
-  hits=$(grep -n -w -E "$PAT" || true)
+  local t; t=$(cat)
+  hits=$( { printf '%s\n' "$t" | grep -n -w -E "$PAT"; printf '%s\n' "$t" | grep -n -i -E "$PAT_ANY"; } | sort -t: -k1,1n -u || true)
   if [ -n "$hits" ]; then
     echo "check-owner-name: the owner's name appears in $1:"; echo "$hits" | sed 's/^/  /' | head -20
     fail=1
@@ -40,7 +42,7 @@ if [ "${1:-}" = "--text" ]; then
   [ -f "${2:-}" ] || { echo "usage: $0 --text FILE" >&2; exit 2; }
   scan_text "$2" < "$2"
 else
-  hits=$(cd "$root" && git grep -I -n -w -E "$PAT" -- . "${exempt[@]}" || true)
+  hits=$(cd "$root" && { git grep -I -n -w -E "$PAT" -- . "${exempt[@]}"; git grep -I -n -i -E "$PAT_ANY" -- . "${exempt[@]}"; } | sort -u || true)
   if [ -n "$hits" ]; then
     echo "check-owner-name: the owner's name appears in tracked files (write \"the owner\" instead):"
     echo "$hits" | sed 's/^/  /' | head -50
