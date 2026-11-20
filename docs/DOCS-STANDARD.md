@@ -1,6 +1,6 @@
 # Docs standard
 
-One standard for every doc in Dan's projects: SlashArcade (app, SuperD3D, ARM64 runtime), SlashEngine, and the agent docs (skills, worker briefs, playbooks). Adopted 20 Nov 2026 at Dan's request: "standardize the docs for all projects; make everything concise and organized".
+One standard for every doc in the owner's projects: SlashArcade (app, SuperD3D, ARM64 runtime), SlashEngine, and the agent docs (skills, worker briefs, playbooks). Adopted 20 Nov 2026 at the owner's request: "standardize the docs for all projects; make everything concise and organized".
 
 ## Rules for every doc
 
@@ -8,10 +8,11 @@ One standard for every doc in Dan's projects: SlashArcade (app, SuperD3D, ARM64 
 2. **Lead with the point.** The first line says what the doc is for, and who or what it is for.
 3. **Plain words.** Short declarative sentences, present tense. Explain a term the first time it appears, or don't use it.
 4. **Lists and tables over paragraphs.** Steps are numbered; rules are bullets; lookups are tables.
-5. **Rules keep their source, not their story.** Write `(Dan, 19 Nov)` after a rule. Incident stories go in history files or memory, not in instructions.
+5. **Rules keep their source, not their story.** Write `(owner, 19 Nov)` after a rule. Incident stories go in history files or memory, not in instructions.
 6. **Never drop a rule to save space.** Move detail into a linked reference file, and list every moved section in the PR.
 7. **Commands are copy-pasteable.** Use a code block, absolute paths in agent docs, and repo-relative paths in repo docs.
 8. **Names:** never write "DS". Use DSPACE (Dead Space, `deadspace`) and DSTRAND (Death Stranding, `deathstranding`).
+8a. **No owner name:** never write the owner's name (first name, full name, username or a possessive) in any doc, code, comment, test, commit message or PR; write "the owner". Test data uses a neutral name such as "Player". `check-owner-name.sh` enforces it (owner, 20 Nov 2026; see OWNER-NAME-RULE.md).
 9. **Length caps:** a skill or brief body is ≤ 800 words; a playbook is ≤ 300 words; AGENTS.md is ≤ 200 lines; a README is ≤ 120 lines. Go over only by splitting into references.
 
 ## Templates

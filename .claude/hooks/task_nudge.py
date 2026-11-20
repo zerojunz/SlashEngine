@@ -24,8 +24,8 @@ NOTIFICATION = re.compile(r"^\s*(<task-notification|<agent-message|\[SYSTEM NOTI
 EVENTS = {"UserPromptSubmit": None, "SubagentStart": None, "SubagentStop": None, "PostToolUse": "*"}
 
 MAIN = ("[task-nudge] {m} min on one task{label}. Quick check, no reply needed if all is well: "
-        "same error or step twice? Change approach or ask Dan. Waiting on a long run you started? Carry on. "
-        "Dan has heard nothing for 30 min? Send him one line.")
+        "same error or step twice? Change approach or ask the owner. Waiting on a long run you started? Carry on. "
+        "The owner has heard nothing for 30 min? Send them one line.")
 SUB = ("[task-nudge] {m} min on this task{label}. If you are stuck or going in circles, stop and hand back "
        "what you have and what blocks you. Otherwise carry on.")
 ORCH = "[task-nudge] subagent {kind} {aid} has run {m} min on one task and was nudged; check on it only if you need its result now."
