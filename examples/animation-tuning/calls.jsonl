@@ -1,0 +1,17 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"animation.preview","params":{"recipe":"creatures/deer.creature.json","animation":"walk","bones":["leg_front_near","neck","tail"]}}
+{"jsonrpc":"2.0","id":3,"method":"animation.tune","params":{"recipe":"creatures/deer.creature.json","animation":"walk","slide":"length"}}
+{"jsonrpc":"2.0","id":4,"method":"animation.tune","params":{"recipe":"creatures/deer.creature.json","animation":"stalk","set":{"from":"walk","length":2.4,"amplitude":0.6,"bones":{"neck":{"pitch":0.45},"head":{"pitch":-0.3}},"add":[{"bone":"tail","axis":"yaw","angle":0.25,"cycles":2}]},"slide":"swing","move_speed":0.4,"bones":["neck","tail"]}}
+{"jsonrpc":"2.0","id":5,"method":"creature.place","params":{"recipe":"creatures/deer.creature.json","id":"old_stag","at":[0,0,0],"motion":{"walk":{"amplitude":0.7,"bones":{"head":{"shift":0.1}}}}}}
+{"jsonrpc":"2.0","id":6,"method":"animation.tune","params":{"creature":"old_stag","animation":"walk","slide":"swing","ranges":{"tail":0.15},"bones":["tail"]}}
+{"jsonrpc":"2.0","id":7,"method":"animation.preview","params":{"creature":"old_stag","animation":"walk","bones":["tail"],"filmstrip":{"out":"previews/old_stag_walk.png","frames":6,"size":[96,72]}}}
+{"jsonrpc":"2.0","id":8,"method":"creature.place","params":{"recipe":"creatures/fox.creature.json","id":"fox","at":[0,300],"pixels_per_meter":120}}
+{"jsonrpc":"2.0","id":9,"method":"animation.preview","params":{"creature":"fox","animation":"run","bones":["tail"],"filmstrip":{"out":"previews/fox_run.png","frames":4,"size":[96,72]}}}
+{"jsonrpc":"2.0","id":10,"method":"animation.tune","params":{"creature":"fox","animation":"run","set":{"bones":{"tail":{"scale":2.5}}},"slide":"length","bones":["tail"]}}
+{"jsonrpc":"2.0","id":11,"method":"animation.preview","params":{"recipe":"creatures/deer.creature.json","animation":"wlak"}}
+{"jsonrpc":"2.0","id":12,"method":"animation.edit","params":{"library":"anim/hero.anim.json","animation":"walk","set":{"from":{"model":"models/hero.gltf","animation":"Walk-loop"}}}}
+{"jsonrpc":"2.0","id":13,"method":"animation.preview","params":{"library":"anim/hero.anim.json","animation":"walk","move_speed":1.2,"bones":["LeftUpperLeg","LeftUpperArm","Spine"]}}
+{"jsonrpc":"2.0","id":14,"method":"animation.tune","params":{"library":"anim/hero.anim.json","animation":"walk","move_speed":1.2,"slide":"length","bones":["LeftUpperLeg"]}}
+{"jsonrpc":"2.0","id":15,"method":"animation.edit","params":{"library":"anim/hero.anim.json","animation":"walk","layer":{"name":"tired","weight":0.8,"bones":{"Spine":{"pitch":0.2},"LeftUpperArm":{"scale":0.5},"RightUpperArm":{"scale":0.5,"shift":0.05}},"add":[{"bone":"Head","axis":"roll","angle":0.06,"cycles":2}]}}}
+{"jsonrpc":"2.0","id":16,"method":"animation.tune","params":{"library":"anim/hero.anim.json","animation":"walk","layer":{"name":"arms"},"ranges":{"LeftUpperArm":0.5,"RightUpperArm":0.5},"bones":["LeftUpperArm","RightUpperArm"]}}
+{"jsonrpc":"2.0","id":17,"method":"animation.edit","params":{"library":"anim/hero.anim.json","animation":"walk","layer":{"name":"tired","bones":{"LeftUperArm":{"scale":0.4}}}}}

@@ -162,6 +162,7 @@ add_executable(slash_tests
     test_cloth.cpp
     test_fluid.cpp
     test_foliage.cpp
+    test_animation_layers.cpp
     test_hair.cpp
     test_character.cpp
     test_flesh.cpp

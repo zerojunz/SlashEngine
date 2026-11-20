@@ -1,0 +1,1 @@
+{"entities": {"camera": {"components": {"Camera3D": {"current": true}, "Transform3D": {"position": [0.0, 2.0, 9.0]}}}, "ground": {"components": {"BoxMesh": {"size": [40.0, 1.0, 40.0]}, "MeshInstance3D": {}, "Transform3D": {"position": [0.0, -0.5, 0.0]}}}, "sun": {"components": {"DirectionalLight3D": {}, "Transform3D": {"rotation": [-0.9, 0.5, 0.0]}}}}, "format": 1}

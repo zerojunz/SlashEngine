@@ -2845,11 +2845,12 @@ SLASH_REFLECT(CreatureMind, mode, target, owner, rider, fed, hunger, timer, home
 struct Creature3D {
     std::string recipe;
     bool enabled = true;
+    json::Value motion; // a merge patch over the recipe's motion block, for this one
     CreatureMind mind;
 
     friend bool operator==(const Creature3D&, const Creature3D&) = default;
 };
-SLASH_COMPONENT(Creature3D, recipe, enabled, mind)
+SLASH_COMPONENT(Creature3D, recipe, enabled, motion, mind)
 
 // An animal in 2D, seen from the side: the character_2d system keeps its cut-out as children
 // <id>_<bone> with Polygon2Ds, which the fauna system poses as it walks, runs, flies or swims.
@@ -2858,11 +2859,12 @@ struct Creature2D {
     float pixels_per_meter = 100.0F;
     bool flip_h = false;
     bool enabled = true;
+    json::Value motion; // a merge patch over the recipe's motion block, for this one
     CreatureMind mind;
 
     friend bool operator==(const Creature2D&, const Creature2D&) = default;
 };
-SLASH_COMPONENT(Creature2D, recipe, pixels_per_meter, flip_h, enabled, mind)
+SLASH_COMPONENT(Creature2D, recipe, pixels_per_meter, flip_h, enabled, motion, mind)
 
 // What drives a vehicle this tick, as slash/world/vehicle.hpp's DriveInput: throttle from -1
 // (reverse) to 1, brake and handbrake from 0 to 1, steer from -1 (right) to 1 (left) and, for

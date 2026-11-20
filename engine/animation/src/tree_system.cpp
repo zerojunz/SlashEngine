@@ -242,6 +242,9 @@ struct TreePlayer::State {
         if (animation.from.model.empty()) {
             return has_node_tracks(animation) ? entry.nodes.get() : nullptr;
         }
+        if (animation.layered != nullptr) {
+            return animation.layered.get();
+        }
         if (entry.model && animation.from.model == library_path) {
             return &*entry.model;
         }
@@ -1093,7 +1096,7 @@ struct TreePlayer::State {
                                      .time = played.time,
                                      .weight = played.weight,
                                      .node_weights = played.node_weights,
-                                     .source = own ? nodes : nullptr};
+                                     .source = own ? nodes : animation->layered};
             if (!tree->root_motion_track.empty()) {
                 clip.node_weights.insert_or_assign(tree->root_motion_track, 0.0F);
             }

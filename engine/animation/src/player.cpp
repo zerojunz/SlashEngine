@@ -687,7 +687,8 @@ void add_systems(world::World& world, asset::Assets& assets) {
             out.push_back({.model = animation.from.model,
                            .animation = animation.from.animation,
                            .time = time,
-                           .weight = 1.0F});
+                           .weight = 1.0F,
+                           .source = animation.layered});
         } else if (cached->nodes != nullptr && has_node_tracks(animation)) {
             // Its node tracks, as the library's model of them has them.
             out.push_back({.model = player->library,

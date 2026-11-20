@@ -2,6 +2,7 @@
 
 #include "slash/core/json.hpp"
 #include "slash/core/text.hpp"
+#include "slash/scene3d/creature.hpp"
 #include "slash/scene3d/humanoid.hpp"
 #include "slash/world/world.hpp"
 
@@ -464,7 +465,9 @@ std::vector<ClipSample> clips(const world::World& world, entt::entity entity) {
     if (holder == nullptr || !holder->source) {
         return {};
     }
-    return holder->source(world, entity);
+    std::vector<ClipSample> out = holder->source(world, entity);
+    tune_creature_clips(world, entity, out);
+    return out;
 }
 
 std::vector<NodePose> pose_of(const Model& model, std::span<const ClipSample> clips,

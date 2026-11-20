@@ -1133,7 +1133,11 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                      "MeshInstance3D draws the recipe as a rigged model, whose animations its "
                      "AnimationPlayer plays as it moves.")
             .describe("recipe", {.doc = "Project path of the .creature.json file."})
-            .describe("enabled", {.doc = "Behaves when on; off leaves it standing."}));
+            .describe("enabled", {.doc = "Behaves when on; off leaves it standing."})
+            .describe("motion", {.doc = "A JSON merge patch over its recipe's motion block, "
+                                        "which tunes this one's animations alone: speeds, "
+                                        "turns, bones moved and waves added "
+                                        "(animation.tune writes it)."}));
 
     describe_mind(
         registry.add<Creature2D>()
@@ -1145,7 +1149,11 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                                                   "its recipe's speeds goes.",
                                            .min = 1.0})
             .describe("flip_h", {.doc = "Faces left instead of right; set as it turns."})
-            .describe("enabled", {.doc = "Behaves when on; off leaves it standing."}));
+            .describe("enabled", {.doc = "Behaves when on; off leaves it standing."})
+            .describe("motion", {.doc = "A JSON merge patch over its recipe's motion block, "
+                                        "which tunes this one's animations alone: speeds, "
+                                        "turns, bones moved and waves added "
+                                        "(animation.tune writes it)."}));
 
     // The fields of a vehicle, the same in 3D and 2D.
     const auto describe_vehicle = [](ComponentType& type) -> ComponentType& {

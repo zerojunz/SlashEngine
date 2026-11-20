@@ -65,7 +65,8 @@ Vec2 capped(Vec2 v, float most) {
 }
 
 // A phase of its own for each instance, from its entity, group and index.
-float phase_of(entt::entity entity, std::size_t group, std::size_t index) {
+// An instance's own hash, from which its phase and frequency come.
+std::uint32_t instance_hash(entt::entity entity, std::size_t group, std::size_t index) {
     std::uint32_t hash = 2166136261U;
     const auto mix = [&hash](std::uint32_t value) {
         for (int i = 0; i < 4; ++i) {
@@ -75,22 +76,56 @@ float phase_of(entt::entity entity, std::size_t group, std::size_t index) {
     mix(static_cast<std::uint32_t>(entity));
     mix(static_cast<std::uint32_t>(group));
     mix(static_cast<std::uint32_t>(index));
-    return static_cast<float>(hash % 65536U) / 65536.0F * 2.0F * kPi;
+    return hash;
+}
+
+// A share from 0 to 1 of an instance's hash, the bits from shift on.
+float share_of(std::uint32_t hash, int shift) {
+    return static_cast<float>((hash >> shift) % 65536U) / 65536.0F;
+}
+
+// The turns of a cycle at a frequency by time, from 0 to 1.
+float turns_at(double time, float frequency) {
+    return static_cast<float>(std::fmod(time * static_cast<double>(frequency), 1.0));
 }
 
 // The wind's lean on an instance before characters push it: along the wind, by its speed,
-// rocked by sway.
-Vec2 wind_lean(const world::FoliageType& type, Vec2 wind, float phase, double time) {
-    if (type.wind_bend == 0.0F) {
-        return {};
+// rocked by sway with a phase and frequency of its own, fluttered across it, with the gusts'
+// waves rolling downwind over a field and the idle rock of still air. distance is how far
+// downwind the instance's base is, in meters (3D) or pixels (2D).
+Vec2 wind_lean(const world::FoliageType& type, Vec2 wind, std::uint32_t hash, float distance,
+               double time) {
+    const float phase = share_of(hash, 0) * type.phase_spread * 2.0F * kPi;
+    const float frequency = type.sway_frequency *
+                            (1.0F + (type.frequency_spread * ((share_of(hash, 16) * 2.0F) - 1.0F)));
+    const float rolled = type.wave_length > 0.0F ? distance / type.wave_length * 2.0F * kPi : 0.0F;
+    const Vec2 rock_at = cos_sin((turns_at(time, frequency) * 2.0F * kPi) + phase - rolled);
+    Vec2 out{};
+    if (type.wind_bend != 0.0F) {
+        const float rock = 1.0F + (type.sway * rock_at.y);
+        out = {wind.x * type.wind_bend * rock, wind.y * type.wind_bend * rock};
+        if (type.flutter != 0.0F) {
+            // Across the wind, a quarter of a cycle behind, so each tip goes round.
+            const float across = type.wind_bend * type.flutter * rock_at.x;
+            out.x += -wind.y * across;
+            out.y += wind.x * across;
+        }
     }
-    float rock = 1.0F;
-    if (type.sway != 0.0F) {
-        const auto turns =
-            static_cast<float>(std::fmod(time * static_cast<double>(type.sway_frequency), 1.0));
-        rock += type.sway * cos_sin((turns * 2.0F * kPi) + phase).y;
+    if (type.idle_sway != 0.0F) {
+        // Still air's rock, in a way of the instance's own.
+        const Vec2 way =
+            type.space == "2d" ? Vec2{1.0F, 0.0F} : Vec2(cos_sin(share_of(hash, 8) * 2.0F * kPi));
+        out.x += way.x * type.idle_sway * rock_at.y;
+        out.y += way.y * type.idle_sway * rock_at.y;
     }
-    return {wind.x * type.wind_bend * rock, wind.y * type.wind_bend * rock};
+    return out;
+}
+
+// How far downwind a place is, along the wind's way.
+float downwind(Vec2 place, Vec2 wind) {
+    const real_t speed = std::sqrt((wind.x * wind.x) + (wind.y * wind.y));
+    return speed > 1e-6F ? static_cast<float>(((place.x * wind.x) + (place.y * wind.y)) / speed)
+                         : 0.0F;
 }
 
 const FoliageState* state_of(const world::World& world) {
@@ -433,19 +468,30 @@ FoliagePainted paint_foliage(const world::FoliageType& type, const FoliageStroke
     return out;
 }
 
+std::uint32_t foliage_hash(entt::entity entity, std::size_t group, std::size_t index) {
+    return instance_hash(entity, group, index);
+}
+
+Vec2 foliage_wind_lean(const world::FoliageType& type, Vec2 wind, std::uint32_t hash,
+                       float downwind_distance, double time) {
+    return wind_lean(type, wind, hash, downwind_distance, time);
+}
+
 Vec2 foliage_lean_3d(const world::World& world, entt::entity entity, std::size_t group,
-                     std::size_t index, const world::FoliageType& type, Vec3 /*base*/, Vec3 wind) {
-    const Vec2 blown =
-        wind_lean(type, {wind.x, wind.z}, phase_of(entity, group, index), world::wind_time(world));
+                     std::size_t index, const world::FoliageType& type, Vec3 base, Vec3 wind) {
+    const Vec2 flat{wind.x, wind.z};
+    const Vec2 blown = wind_lean(type, flat, instance_hash(entity, group, index),
+                                 downwind({base.x, base.z}, flat), world::wind_time(world));
     const Vec2 push = pushed(world, entity, group, index);
     return capped({blown.x + push.x, blown.y + push.y}, type.max_bend);
 }
 
 float foliage_lean_2d(const world::World& world, entt::entity entity, std::size_t group,
-                      std::size_t index, const world::FoliageType& type, Vec2 /*base*/, Vec2 wind) {
+                      std::size_t index, const world::FoliageType& type, Vec2 base, Vec2 wind) {
     // Wind of 100 pixels a second counts as 1 meter a second does in 3D.
-    const Vec2 blown = wind_lean(type, {wind.x / 100.0F, 0.0F}, phase_of(entity, group, index),
-                                 world::wind_time(world));
+    const Vec2 flat{wind.x / 100.0F, 0.0F};
+    const Vec2 blown = wind_lean(type, flat, instance_hash(entity, group, index),
+                                 downwind({base.x, 0.0F}, flat), world::wind_time(world));
     const Vec2 push = pushed(world, entity, group, index);
     return static_cast<float>(std::clamp<real_t>(blown.x + push.x, -type.max_bend, type.max_bend));
 }
