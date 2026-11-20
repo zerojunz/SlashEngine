@@ -4,8 +4,8 @@ Thanks for helping build SlashEngine. Contributions from people and from AI agen
 welcome, and they go through the same review. This guide covers what the engine is for, how to
 build and test it, and what a change needs before it can merge.
 
-[AGENTS.md](AGENTS.md) is the detailed day-to-day reference (commands, scenes, the server, how to
-add a component or command) and [docs/design.md](docs/design.md) is the full design. Read the
+[AGENTS.md](AGENTS.md) is the short day-to-day loop; per-area detail (scenes, the server, how to
+add a component or command) is in [docs/reference/](docs/reference/) and [docs/design.md](docs/design.md) is the full design. Read the
 section of the design that covers the area you are changing before you start.
 
 ## What SlashEngine is for
@@ -68,7 +68,7 @@ find engine tools examples -name '*.cpp' -not -path '*/unreal/Source/*' | xargs 
 .github/scripts/check-libcxx.py   # changed files against libc++, as the web and Android builds
 ```
 
-AGENTS.md's [cheat sheet](AGENTS.md#cheat-sheet) has the commands for each platform, and for
+The [cheat sheet](docs/reference/build-and-test.md#cheat-sheet) has the commands for each platform, and for
 checking only the files you changed.
 
 If you edited a scene file by hand, validate it and rewrite it in canonical form:
@@ -113,7 +113,7 @@ Most changes add something an agent will use, so check these when you design it:
 - **Output is deterministic.** Same input, same output: sorted keys, canonical JSON, seeded
   randomness. Agents and tests compare results as text.
 
-[AGENTS.md](AGENTS.md) shows how to add a component and a command step by step.
+[Adding a component](docs/reference/components.md) and [adding a command](docs/reference/protocols.md) are step by step.
 
 ## Dependencies and licensing
 

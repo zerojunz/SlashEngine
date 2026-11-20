@@ -5,6 +5,8 @@ MCP server, set up as `slash-cli init` sets it up. [`.github/scripts/agent-exit-
 runs it for Claude Code, Codex, Cursor, opencode, Antigravity, Hermes Agent and OpenClaw, each in its own
 non-interactive mode and with the person's own sign-in:
 
+Status: current · Updated: 2026-11-20
+
 ```bash
 cmake --build --preset dev --target slash-cli slash-mcp
 .github/scripts/agent-exit-check.py all --out build/exit-check   # or: claude codex cursor ...

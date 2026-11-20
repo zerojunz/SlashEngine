@@ -8,6 +8,8 @@ SlashEngine games are plain C++: each becomes a storyboard task to port it, and 
 skeleton whose component the level's actors fill in.
 [examples/import-unreal](../../examples/import-unreal/) imports a small 3D game.
 
+Status: current · Updated: 2026-11-20
+
 ## How it reads the project
 
 Unreal's levels and assets (`.umap`, `.uasset`) are binary packages that only Unreal reads, so

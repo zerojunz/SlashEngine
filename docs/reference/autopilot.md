@@ -8,6 +8,8 @@ plugins for Unreal, Unity and Godot. SlashEngine's is built in: `slash::autopilo
 (`engine/autopilot`), a port of the Godot addon's game side
 (`plugin/godot/addons/autopilot`), which `slash-cli run` turns on with `--autopilot`.
 
+Status: current · Updated: 2026-11-20
+
 The bridge says it is a Godot game (`"engine": "godot"` in its hello). SlashEngine's scenes
 follow Godot's, so Autopilot plays a SlashEngine game with what it knows of Godot games, and needs
 no change on its side. Where Godot has nodes, the bridge has entities: object paths are entity
@@ -228,3 +230,34 @@ return bridge.exit_code();
 A `Connector` makes each connection; tests and
 [examples/autopilot-playtest](../../examples/autopilot-playtest/) give one of their own, a
 scripted agent service on an in-process `Transport`, and `Options::clock` a clock of their own.
+
+## Engine notes: Autopilot playtests
+
+`engine/autopilot` lets [Autopilot](https://github.com/ramenvr/autopilot) (Apache 2.0), an agent
+that plays a game to explore it for bugs, verify a claim or reach a goal, play SlashEngine games
+([docs/reference/autopilot.md](autopilot.md)). Its agent service listens on a
+WebSocket and engine plugins connect out to it; `autopilot::Bridge` (`src/bridge.cpp`) is a port
+of its Godot addon's game side, saying `"engine": "godot"` in its hello so Autopilot plays with
+what it knows of Godot games, and answering in its kit frame (Unreal's axes and centimeters;
+2D as `(x, 0, -y)`). `poll` runs before each tick: it connects through a `Connector` (a
+`websocket_connector` over `net::WebSocketPeer`, again with a backoff), answers requests (taps
+and moves through `input::push` and `input::action_press`, the player, view, finds and watches in
+`src/world.cpp`, screen text and controls through `ui::layout` in `src/ui.cpp`, `rc` over
+components and commands in `src/rc.cpp`, pictures through `canvas::capture` and
+`render::encode_jpeg`, the project's files under `.godot/autopilot_codex/` in `src/codex.cpp`),
+runs the addon's detectors (log errors through a `log::sink` wrapper, NaNs, falls, hitches, HUD
+fractions) and writes the run's result and report files. `slash-cli run --autopilot-run` keeps
+ticks to real time (`RunOptions::real_time`) and exits with the run's code. Tests drive it with
+a scripted agent service on a fake `Transport` and a clock of their own (`Options::clock`);
+`examples/autopilot-playtest` finds a HUD that counts 4 coins out of 3.
+
+`autopilot::agent_connector` (`src/agent.cpp`) is SlashEngine's own agent service, for
+`slash-cli run --autopilot-agent <role>`: a `Transport` the bridge connects to in-process, which
+plays the hello's run with an `ai::Provider` from providers.json, as Autopilot's agent session
+does with its instructions, kinds and rules. Its tools are the bridge's ops (with `look`, `wait`,
+`note` and `report` of its own), sent one at a time; it pauses the game (`pause`) while a reply
+comes, through `ai::Call` (waited for with `AgentOptions::wait` in headless runs), and the bridge
+runs on `game_clock`, so holds and the play budget count game time. `report` becomes the result
+frame, whose `report.md` it writes, and notes go to `.slash/autopilot/notes.md`.
+`tests/test_autopilot_agent.cpp` plays runs with a scripted provider, and
+`examples/playtest-agent` with a stand-in model.

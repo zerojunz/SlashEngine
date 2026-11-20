@@ -4,6 +4,8 @@ This is the plan for SlashEngine from today to launch and beyond. It has no date
 order is the plan, and each item carries a status instead. It is drawn from the approved
 [design](design.md), whose milestone list and feature parity table it tracks.
 
+Status: current · Updated: 2026-11-20
+
 ## Status words
 
 | Status | Meaning |
@@ -1041,7 +1043,7 @@ Exit: an agent builds a small 3D sample end to end.
 
 Ad network SDKs (AdMob, Unity Ads, AppLovin and others) are proprietary, so, like console ports,
 their adapters live outside this repository. StoreKit is an OS framework, and Google Play Billing
-is fetched at export time like the rest of the Android SDK, so neither is committed here. the owner
+is fetched at export time like the rest of the Android SDK, so neither is committed here. The owner
 chose this split.
 
 ### Milestone 9: Launch (In progress)

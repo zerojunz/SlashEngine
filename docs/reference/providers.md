@@ -8,6 +8,8 @@ vendor. [examples/ai-provider](../../examples/ai-provider/) has a shopkeeper who
 one, and [examples/ai-dialogue](../../examples/ai-dialogue/) a baker who talks from gameplay
 code.
 
+Status: current · Updated: 2026-11-20
+
 ```json
 {
   "providers": {
@@ -352,3 +354,37 @@ browser's event loop. The adapters, roles and replay files start requests with
 `Transport::post_async` and wait to retry with `Transport::later`, which the web's transport
 does with `fetch` and timers. A provider or transport of a game's own can override them too;
 by default they call `complete` and `post`, then hand over the outcome before returning.
+
+## Engine notes: AI providers
+
+`engine/ai` calls language models through `ai::Provider`, one interface over any vendor
+([docs/reference/providers.md](providers.md)). Adapters translate a `Request`
+(messages with text, images, tool calls and tool results; tools; an `output_schema`; params) and
+the reply for OpenAI's chat completions (also Ollama, llama.cpp, vLLM, LM Studio and OpenRouter),
+OpenAI's Responses API, Anthropic's Messages API and Gemini (`src/openai.cpp`,
+`src/openai_responses.cpp`, `src/anthropic.cpp`, `src/gemini.cpp` on
+`src/http_provider.cpp`, which retries and streams server-sent events). A reply keeps what its
+provider needs back in later turns (thinking blocks, thought signatures) in `Message::native`.
+`fit_request` puts an output schema in the prompt for models that can't take one, and
+`parse_output` checks every reply against it. `providers.json` (`ai::load_config`,
+`$cli schema providers`) names providers and roles; keys come from the environment variables it
+names, never from the file. `ai::open` gives a role's provider, wrapped in a `ReplayProvider`
+when the file names a replay file: answers keyed by the model and the whole request, recorded
+once and replayed after, so tests run offline (`SLASH_AI_REPLAY=replay` in CI). `ai::Call` runs
+a request on its own thread so games never wait on a model. Gameplay code calls `ai::ask`
+(`src/world.cpp`), and the `ai` system (priority 1150) emits `ai_reply` or `ai_failed` world
+events; sessions and games with a `providers.json` install it (`SLASH_GAME_AI` in exports, which
+stage the file without its replay settings), headless runs wait for each reply so they repeat,
+and a session without the `network` capability answers only from the replay file. `slash_ai_commands` adds
+`command_tools` and `run_tool_calls` (engine commands as a model's tools) and the `ai.providers`
+and `ai.complete` commands, which need the `network` capability. Tests talk to a fake
+`ai::Transport` or a local server, never a real model. `src/transport.cpp` is the HTTP client:
+httplib with Mbed TLS, which checks `https://` servers against the system's certificates
+(SecTrust on Apple platforms, which `apple_trusts` asks through `platform::system_trusts`), or `SSL_CERT_FILE`'s, and reaches them
+through the proxies curl's variables name (`ai::proxy_for`). Its tests make their certificates
+when they run, so no key is committed. The web has no threads, so there `Call` uses
+`Provider::start`, which the adapters, roles and replay files run on `Transport::post_async` and
+`Transport::later`: the web's transport calls the browser's `fetch` through `EM_JS` and reads
+the body as it streams, and retries wait on browser timers (`DeferredTransport` in
+`tests/test_ai.cpp` tests the same path natively). `examples/ai-provider` is a shopkeeper who talks through a
+model, and `examples/ai-dialogue` a baker who talks from gameplay code.

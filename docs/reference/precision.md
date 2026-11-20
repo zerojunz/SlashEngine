@@ -6,6 +6,8 @@ are millimeters apart, and at ten thousand kilometers a whole meter. An engine c
 `SLASH_PRECISION=double` keeps them in doubles, for worlds that reach far from the origin (a
 planet, a long road, space).
 
+Status: current · Updated: 2026-11-20
+
 ```bash
 cmake --preset double                       # RelWithDebInfo in build/double, warnings as errors
 cmake --build --preset double --target slash_tests slash-cli

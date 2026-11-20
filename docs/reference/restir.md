@@ -6,6 +6,8 @@ resampling for real-time ray tracing with dynamic direct lighting* (SIGGRAPH 202
 behind the many-light shadows of recent games. Only the software device draws it for now. Read
 here what it does now, and what it does not do yet.
 
+Status: current · Updated: 2026-11-20
+
 ## What it does
 
 Forward+ already culls lights into clusters, so each pixel only loops over the omni and spot
