@@ -302,8 +302,19 @@ const Result<AnimationLibrary>& CheckedFiles::library(const std::string& path) {
                                                           ": " + found.error().message);
             }
             if (auto resolved = resolve_clip(animation, found.value()); !resolved) {
-                return make_error(resolved.error().code,
-                                  at + "/animation: " + resolved.error().message);
+                const std::string& message = resolved.error().message;
+                // A layer's bone the model lacks is at its own place in the animation.
+                std::string where;
+                if (message.starts_with("layers/")) {
+                    where = "/animations/";
+                    where += json::pointer_escape(name);
+                    where += '/';
+                } else {
+                    where = at;
+                    where += "/animation: ";
+                }
+                where += message;
+                return make_error(resolved.error().code, where);
             }
         }
         return library;

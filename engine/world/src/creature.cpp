@@ -6,6 +6,7 @@
 
 #include "slash/asset/assets.hpp"
 #include "slash/core/log.hpp"
+#include "slash/core/text.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/ragdoll.hpp"
 #include "slash/world/vfx.hpp"
@@ -101,7 +102,53 @@ constexpr std::string_view kSchema = R"({
   }
 })";
 
+constexpr std::string_view kMotionSchema = R"({
+  "type": "object",
+  "description": "Its animations tuned, by name: idle, walk, run, eat, attack, fly (those that fly) and swim (fish), or a new name with from. animation.preview measures them and animation.tune sets them.",
+  "maxProperties": 32,
+  "additionalProperties": {
+    "type": "object", "additionalProperties": false,
+    "properties": {
+      "from": {"type": "string", "minLength": 1, "description": "For a new animation: the built-in one it plays as, before this one's changes."},
+      "length": {"type": "number", "minimum": 0.05, "maximum": 10, "description": "Seconds a cycle takes, in place of the recipe's (walk and run play one stride at their speeds)."},
+      "speed": {"type": "number", "exclusiveMinimum": 0, "maximum": 10, "description": "Plays it this many times as fast. Default 1."},
+      "loop": {"type": "boolean", "description": "Whether it loops; default the built-in's (attack plays once)."},
+      "amplitude": {"type": "number", "minimum": 0, "maximum": 4, "description": "Scales every bone's turn. Default 1."},
+      "bones": {
+        "type": "object", "maxProperties": 16,
+        "description": "Changes to a bone's turns, by bone: body, neck, head, tail, leg_front_near, leg_back_far, leg_middle_near (insects), leg_near (birds), wing_near, wing_far.",
+        "additionalProperties": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "scale": {"type": "number", "minimum": 0, "maximum": 4, "description": "Times its turns. Default 1."},
+            "shift": {"type": "number", "minimum": -1, "maximum": 1, "description": "Cycles later it moves (negative: earlier). Default 0."},
+            "pitch": {"type": "number", "minimum": -3.2, "maximum": 3.2, "description": "Radians held about x (nose down for a neck, forward for a leg)."},
+            "yaw": {"type": "number", "minimum": -3.2, "maximum": 3.2, "description": "Radians held about y (a tail toward its near side)."},
+            "roll": {"type": "number", "minimum": -3.2, "maximum": 3.2, "description": "Radians held about z (a wing up)."}
+          }
+        }
+      },
+      "add": {
+        "type": "array", "maxItems": 16,
+        "description": "Waves added to bones' turns: angle * sin(2 pi (cycles * t + shift)) + offset, t from 0 to 1 through the cycle.",
+        "items": {
+          "type": "object", "additionalProperties": false, "required": ["bone", "axis"],
+          "properties": {
+            "bone": {"type": "string", "minLength": 1},
+            "axis": {"enum": ["pitch", "yaw", "roll"]},
+            "angle": {"type": "number", "minimum": -3.2, "maximum": 3.2, "description": "Radians each way. Default 0."},
+            "offset": {"type": "number", "minimum": -3.2, "maximum": 3.2, "description": "Radians it swings about. Default 0."},
+            "cycles": {"type": "number", "minimum": 0, "maximum": 16, "description": "Swings a cycle; 0 holds offset. Default 1."},
+            "shift": {"type": "number", "minimum": 0, "maximum": 1, "description": "Cycles later. Default 0."}
+          }
+        }
+      }
+    }
+  }
+})";
+
 constexpr int kMaxExtends = 8;
+constexpr std::size_t kMaxTuned = 64;
 constexpr float kPi = std::numbers::pi_v<float>;
 
 void read(const json::Value& doc, std::string_view key, float& out) {
@@ -322,9 +369,17 @@ struct CacheEntry {
     std::shared_ptr<const CreatureRecipe> recipe;
 };
 
+// A recipe with an instance's motion over it: the recipe it was made from and the patch's text.
+struct TunedEntry {
+    std::shared_ptr<const CreatureRecipe> base;
+    std::string patch;
+    std::shared_ptr<const CreatureRecipe> recipe;
+};
+
 struct CreatureCache {
     std::mutex mutex;
     std::map<std::string, CacheEntry, std::less<>> recipes;
+    std::vector<TunedEntry> tuned; // the newest last, at most kMaxTuned
 };
 using CreatureCacheHolder = std::shared_ptr<CreatureCache>;
 
@@ -435,6 +490,7 @@ json::Value creature_schema() {
     static const json::Value schema = [] {
         json::Value made = json::parse(kSchema).value();
         made["properties"]["vfx"] = vfx_hooks_schema();
+        made["properties"]["motion"] = creature_motion_schema();
         return made;
     }();
     return schema;
@@ -593,6 +649,15 @@ Result<CreatureRecipe> parse_creature(const json::Value& source, const FileReade
         out.behavior.run_speed = out.behavior.walk_speed;
     }
     out.vfx = read_vfx_hooks(doc);
+    if (const json::Value* motion = doc.find("motion"); motion != nullptr) {
+        std::vector<json::ValidationError> problems;
+        auto parsed = parse_creature_motion(out, *motion, &problems);
+        if (!parsed) {
+            return make_error(ErrorCode::InvalidArgument, "/motion" + parsed.error().message);
+        }
+        out.motion = std::move(parsed).value();
+        out.motion_source = *motion;
+    }
     return out;
 }
 
@@ -747,7 +812,10 @@ std::vector<CreatureBone> creature_skeleton(const CreatureRecipe& recipe) {
     return bones;
 }
 
-std::vector<CreatureAnimation> creature_animations(const CreatureRecipe& recipe) {
+namespace {
+
+// The built-in animations, as creature_animations made them before motion blocks.
+std::vector<CreatureAnimation> builtin_animations(const CreatureRecipe& recipe) {
     const CreatureMeasures m = creature_measures(recipe);
     const double stride = std::max<double>(m.leg * 1.6, m.length * 0.4);
     std::vector<CreatureAnimation> out{
@@ -772,17 +840,24 @@ std::vector<CreatureAnimation> creature_animations(const CreatureRecipe& recipe)
     return out;
 }
 
-std::vector<CreatureTurn> creature_pose(const CreatureRecipe& recipe, std::string_view animation,
-                                        double time) {
-    const std::vector<CreatureAnimation> animations = creature_animations(recipe);
-    const auto found = std::ranges::find_if(
-        animations, [&](const CreatureAnimation& a) { return a.name == animation; });
-    const CreatureAnimation& playing = found != animations.end() ? *found : animations.front();
-    const std::string_view name = playing.name;
-    const double length = playing.length;
-    // How far through the animation it is, from 0 to 1.
-    double at = time / length;
-    at = playing.loop ? at - std::floor(at) : std::clamp(at, 0.0, 1.0);
+Vec3 axis_named(std::string_view name) {
+    if (name == "yaw") {
+        return {0.0F, 1.0F, 0.0F};
+    }
+    if (name == "roll") {
+        return {0.0F, 0.0F, 1.0F};
+    }
+    return {1.0F, 0.0F, 0.0F};
+}
+
+float number_or(const json::Value& doc, std::string_view key, float fallback) {
+    const json::Value* value = doc.find(key);
+    return value != nullptr ? static_cast<float>(value->as_double()) : fallback;
+}
+
+// A built-in animation's turns at a point through its cycle, from 0 to 1.
+std::vector<CreatureTurn> builtin_pose(const CreatureRecipe& recipe, std::string_view name,
+                                       double at) {
     const auto wave = [at](double shift, double cycles = 1.0) {
         const double turns = (at * cycles) + shift;
         return slash::cos_sin(2.0F * kPi * static_cast<float>(turns - std::floor(turns))).y;
@@ -910,6 +985,251 @@ std::vector<CreatureTurn> creature_pose(const CreatureRecipe& recipe, std::strin
     if (plan == "insect") {
         turn("wing_near", roll, 0.08F * wave(0.0, 3.0));
         turn("wing_far", roll, -0.08F * wave(0.0, 3.0));
+    }
+    return out;
+}
+
+} // namespace
+
+std::vector<std::string> creature_builtin_animations(const CreatureRecipe& recipe) {
+    std::vector<std::string> out;
+    for (const CreatureAnimation& animation : builtin_animations(recipe)) {
+        out.push_back(animation.name);
+    }
+    return out;
+}
+
+const json::Value& creature_motion_schema() {
+    static const json::Value schema = json::parse(kMotionSchema).value();
+    return schema;
+}
+
+Result<CreatureMotion> parse_creature_motion(const CreatureRecipe& recipe,
+                                             const json::Value& motion,
+                                             std::vector<json::ValidationError>* problems) {
+    std::vector<json::ValidationError> found = json::validate(motion, creature_motion_schema());
+    const std::vector<std::string> builtin = creature_builtin_animations(recipe);
+    std::vector<std::string> bone_names;
+    for (const CreatureBone& bone : creature_skeleton(recipe)) {
+        bone_names.push_back(bone.name);
+    }
+    const auto unknown = [](std::string_view what, std::string_view name,
+                            const std::vector<std::string>& known) {
+        std::string message =
+            "\"" + std::string(name) + "\" is no " + std::string(what) + " of this creature";
+        if (const std::string_view hint = closest_match(name, known); !hint.empty()) {
+            message += "; did you mean \"" + std::string(hint) + "\"?";
+        }
+        return message;
+    };
+    CreatureMotion out;
+    if (found.empty()) {
+        for (const auto& [name, entry] : motion.as_object()) {
+            const std::string at = "/" + json::pointer_escape(name);
+            AnimationMotion made;
+            if (const json::Value* from = entry.find("from"); from != nullptr) {
+                made.from = from->as_string();
+                if (std::ranges::find(builtin, made.from) == builtin.end()) {
+                    found.push_back(
+                        {at + "/from", unknown("built-in animation", made.from, builtin)});
+                }
+                if (std::ranges::find(builtin, name) != builtin.end()) {
+                    found.push_back(
+                        {at + "/from",
+                         "\"" + name + "\" is built in; only a new animation plays from another"});
+                }
+            } else if (std::ranges::find(builtin, name) == builtin.end()) {
+                found.push_back(
+                    {at, unknown("animation", name, builtin) + " (a new one needs from)"});
+            }
+            if (const json::Value* length = entry.find("length"); length != nullptr) {
+                made.length = length->as_double();
+            }
+            if (const json::Value* speed = entry.find("speed"); speed != nullptr) {
+                made.speed = speed->as_double();
+            }
+            if (const json::Value* loop = entry.find("loop"); loop != nullptr) {
+                made.loop = loop->as_bool() ? 1 : 0;
+            }
+            made.amplitude = number_or(entry, "amplitude", 1.0F);
+            if (const json::Value* bones = entry.find("bones"); bones != nullptr) {
+                for (const auto& [bone, change] : bones->as_object()) {
+                    if (std::ranges::find(bone_names, bone) == bone_names.end()) {
+                        found.push_back({at + "/bones/" + json::pointer_escape(bone),
+                                         unknown("bone", bone, bone_names)});
+                    }
+                    MotionBone b;
+                    b.scale = number_or(change, "scale", 1.0F);
+                    b.shift = number_or(change, "shift", 0.0F);
+                    b.hold = {number_or(change, "pitch", 0.0F), number_or(change, "yaw", 0.0F),
+                              number_or(change, "roll", 0.0F)};
+                    made.bones.emplace(bone, b);
+                }
+            }
+            if (const json::Value* add = entry.find("add"); add != nullptr) {
+                std::size_t i = 0;
+                for (const json::Value& item : add->as_array()) {
+                    MotionWave w;
+                    w.bone = item.find("bone")->as_string();
+                    if (std::ranges::find(bone_names, w.bone) == bone_names.end()) {
+                        found.push_back({at + "/add/" + std::to_string(i) + "/bone",
+                                         unknown("bone", w.bone, bone_names)});
+                    }
+                    w.axis = axis_named(item.find("axis")->as_string());
+                    w.angle = number_or(item, "angle", 0.0F);
+                    w.offset = number_or(item, "offset", 0.0F);
+                    w.cycles = number_or(item, "cycles", 1.0F);
+                    w.shift = number_or(item, "shift", 0.0F);
+                    made.add.push_back(std::move(w));
+                    ++i;
+                }
+            }
+            out.emplace(name, std::move(made));
+        }
+    }
+    if (!found.empty()) {
+        std::string message = found.front().path + ": " + found.front().message;
+        if (problems != nullptr) {
+            *problems = std::move(found);
+        }
+        return make_error(ErrorCode::InvalidArgument, std::move(message));
+    }
+    return out;
+}
+
+Result<CreatureRecipe> with_motion(const CreatureRecipe& recipe, const json::Value& patch) {
+    CreatureRecipe out = recipe;
+    if (patch.is_null()) {
+        return out;
+    }
+    const json::Value base =
+        recipe.motion_source.is_object() ? recipe.motion_source : json::Value(json::Object{});
+    json::Value merged = merge_patch(base, patch);
+    auto parsed = parse_creature_motion(recipe, merged);
+    if (!parsed) {
+        return parsed.error();
+    }
+    out.motion = std::move(parsed).value();
+    out.motion_source = std::move(merged);
+    return out;
+}
+
+std::vector<CreatureAnimation> creature_animations(const CreatureRecipe& recipe) {
+    std::vector<CreatureAnimation> out = builtin_animations(recipe);
+    const auto tune = [](CreatureAnimation& animation, const AnimationMotion& motion) {
+        if (motion.length > 0.0) {
+            animation.length = motion.length;
+        }
+        animation.length = std::clamp(animation.length / motion.speed, 0.01, 100.0);
+        if (motion.loop >= 0) {
+            animation.loop = motion.loop == 1;
+        }
+    };
+    for (CreatureAnimation& animation : out) {
+        if (const auto found = recipe.motion.find(animation.name); found != recipe.motion.end()) {
+            tune(animation, found->second);
+        }
+    }
+    const std::vector<CreatureAnimation> builtin = builtin_animations(recipe);
+    for (const auto& [name, motion] : recipe.motion) {
+        if (motion.from.empty()) {
+            continue;
+        }
+        const auto base = std::ranges::find_if(
+            builtin, [&](const CreatureAnimation& a) { return a.name == motion.from; });
+        if (base == builtin.end()) {
+            continue;
+        }
+        CreatureAnimation made = *base;
+        made.name = name;
+        tune(made, motion);
+        out.push_back(std::move(made));
+    }
+    return out;
+}
+
+double creature_length(const CreatureRecipe& recipe, std::string_view animation) {
+    for (const CreatureAnimation& made : creature_animations(recipe)) {
+        if (made.name == animation) {
+            return made.length;
+        }
+    }
+    return 0.0;
+}
+
+std::vector<CreatureTurn> creature_pose(const CreatureRecipe& recipe, std::string_view animation,
+                                        double time) {
+    const std::vector<CreatureAnimation> animations = creature_animations(recipe);
+    const auto found = std::ranges::find_if(
+        animations, [&](const CreatureAnimation& a) { return a.name == animation; });
+    const CreatureAnimation& playing = found != animations.end() ? *found : animations.front();
+    // How far through the animation it is, from 0 to 1.
+    double at = time / playing.length;
+    at = playing.loop ? at - std::floor(at) : std::clamp(at, 0.0, 1.0);
+    const auto tuned = recipe.motion.find(playing.name);
+    if (tuned == recipe.motion.end()) {
+        return builtin_pose(recipe, playing.name, at);
+    }
+    const AnimationMotion& motion = tuned->second;
+    const std::string_view base =
+        motion.from.empty() ? std::string_view(playing.name) : std::string_view(motion.from);
+    const auto shifted = [&](float shift) {
+        const double moved = at + shift;
+        return playing.loop ? moved - std::floor(moved) : std::clamp(moved, 0.0, 1.0);
+    };
+    std::vector<CreatureTurn> out;
+    // Bones moved in time take their turns from later in the cycle.
+    const std::vector<CreatureTurn> now = builtin_pose(recipe, base, at);
+    std::map<float, std::vector<CreatureTurn>> later;
+    for (const auto& [bone, change] : motion.bones) {
+        if (change.shift != 0.0F && !later.contains(change.shift)) {
+            later.emplace(change.shift, builtin_pose(recipe, base, shifted(change.shift)));
+        }
+    }
+    const auto bone_change = [&](std::string_view bone) -> const MotionBone* {
+        const auto it = motion.bones.find(bone);
+        return it != motion.bones.end() ? &it->second : nullptr;
+    };
+    const auto keep = [&](const CreatureTurn& turn, float scale) {
+        if (const float angle = turn.angle * scale; angle != 0.0F) {
+            out.push_back({.bone = turn.bone, .axis = turn.axis, .angle = angle});
+        }
+    };
+    for (const CreatureTurn& turn : now) {
+        const MotionBone* change = bone_change(turn.bone);
+        if (change == nullptr || change->shift == 0.0F) {
+            keep(turn, motion.amplitude * (change != nullptr ? change->scale : 1.0F));
+        }
+    }
+    for (const auto& [shift, turns] : later) {
+        for (const CreatureTurn& turn : turns) {
+            const MotionBone* change = bone_change(turn.bone);
+            if (change != nullptr && change->shift == shift) {
+                keep(turn, motion.amplitude * change->scale);
+            }
+        }
+    }
+    const std::array<Vec3, 3> axes{Vec3{1.0F, 0.0F, 0.0F}, Vec3{0.0F, 1.0F, 0.0F},
+                                   Vec3{0.0F, 0.0F, 1.0F}};
+    for (const auto& [bone, change] : motion.bones) {
+        const std::array<float, 3> held{static_cast<float>(change.hold.x),
+                                        static_cast<float>(change.hold.y),
+                                        static_cast<float>(change.hold.z)};
+        for (std::size_t a = 0; a < 3; ++a) {
+            if (held.at(a) != 0.0F) {
+                out.push_back({.bone = bone, .axis = axes.at(a), .angle = held.at(a)});
+            }
+        }
+    }
+    for (const MotionWave& w : motion.add) {
+        const double turns = (at * w.cycles) + w.shift;
+        const float swing =
+            w.cycles == 0.0F
+                ? 0.0F
+                : slash::cos_sin(2.0F * kPi * static_cast<float>(turns - std::floor(turns))).y;
+        if (const float angle = (w.angle * swing) + w.offset; angle != 0.0F) {
+            out.push_back({.bone = w.bone, .axis = w.axis, .angle = angle});
+        }
     }
     return out;
 }
@@ -1198,6 +1518,48 @@ Result<std::shared_ptr<const CreatureRecipe>> load_creature(const World& world,
     auto shared = std::make_shared<const CreatureRecipe>(std::move(recipe).value());
     if (cache != nullptr) {
         cache->recipes[std::string(path)] = {.files = std::move(files), .recipe = shared};
+    }
+    return std::shared_ptr<const CreatureRecipe>(shared);
+}
+
+Result<std::shared_ptr<const CreatureRecipe>>
+load_creature(const World& world, std::string_view path, const json::Value& motion) {
+    auto base = load_creature(world, path);
+    if (!base || motion.is_null()) {
+        return base;
+    }
+    const std::string patch = json::write(motion, json::Style::Compact);
+    const auto* holder = world.ecs().ctx().find<CreatureCacheHolder>();
+    CreatureCache* cache = holder != nullptr ? holder->get() : nullptr;
+    if (cache != nullptr) {
+        const std::scoped_lock lock(cache->mutex);
+        for (const TunedEntry& entry : cache->tuned) {
+            if (entry.base == base.value() && entry.patch == patch) {
+                return entry.recipe;
+            }
+        }
+    }
+    auto tuned = with_motion(*base.value(), motion);
+    if (!tuned) {
+        return make_error(ErrorCode::InvalidArgument, "/motion" + tuned.error().message);
+    }
+    // A 3D creature's animations are its recipe's model's, so an instance tunes them and adds
+    // none.
+    for (const auto& [name, each] : tuned.value().motion) {
+        if (!each.from.empty() && !base.value()->motion.contains(name)) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "/motion/" + json::pointer_escape(name) +
+                                  ": an instance's motion can't add an animation; add \"" + name +
+                                  "\" to the recipe's motion");
+        }
+    }
+    auto shared = std::make_shared<const CreatureRecipe>(std::move(tuned).value());
+    if (cache != nullptr) {
+        const std::scoped_lock lock(cache->mutex);
+        if (cache->tuned.size() >= kMaxTuned) {
+            cache->tuned.erase(cache->tuned.begin());
+        }
+        cache->tuned.push_back({.base = base.value(), .patch = patch, .recipe = shared});
     }
     return std::shared_ptr<const CreatureRecipe>(shared);
 }

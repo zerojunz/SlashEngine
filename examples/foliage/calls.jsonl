@@ -15,3 +15,6 @@
 {"jsonrpc":"2.0","id":15,"method":"foliage.erase","params":{"entity":"meadow3d","type":"grass.foliage.json","at":[0,0,0],"radius":0.5}}
 {"jsonrpc":"2.0","id":16,"method":"undo","params":{}}
 {"jsonrpc":"2.0","id":17,"method":"foliage.get","params":{"entity":"meadow3d"}}
+{"jsonrpc":"2.0","id":18,"method":"foliage.sway","params":{"type":"grass.foliage.json"}}
+{"jsonrpc":"2.0","id":19,"method":"foliage.sway","params":{"type":"grass.foliage.json","lean":0.2,"set":{"wind":{"wave_length":4,"flutter":0.3,"phase_spread":0.5}}}}
+{"jsonrpc":"2.0","id":20,"method":"foliage.sway","params":{"type":"tuft.foliage.json","wind":0,"set":{"wind":{"idle":0.05}}}}

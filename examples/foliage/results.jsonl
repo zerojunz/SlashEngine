@@ -15,3 +15,6 @@
 {"id":15,"jsonrpc":"2.0","result":{"removed":13}}
 {"id":16,"jsonrpc":"2.0","result":{"can_redo":1,"can_undo":6,"undone":"foliage.erase"}}
 {"id":17,"jsonrpc":"2.0","result":{"groups":[{"count":77,"kind":"grass","type":"grass.foliage.json"},{"blocks":true,"count":3,"harvest":"stone","kind":"rock","type":"boulder.foliage.json"}]}}
+{"id":18,"jsonrpc":"2.0","result":{"sway":{"across":[0.0,0.0],"along":[0.168,0.312],"capped":0.0,"mean":0.24,"neighbors":0.065,"period":2.0},"type":"grass.foliage.json","wind":3.0}}
+{"id":19,"jsonrpc":"2.0","result":{"after":{"across":[-0.06,0.06],"along":[0.141,0.261],"capped":0.0,"mean":0.201,"neighbors":0.054,"period":2.0},"before":{"across":[0.0,0.0],"along":[0.168,0.312],"capped":0.0,"mean":0.24,"neighbors":0.065,"period":2.0},"type":"grass.foliage.json","wind":3.0,"wind_settings":{"bend":0.067,"flutter":0.3,"phase_spread":0.5,"sway":0.3,"wave_length":4}}}
+{"id":20,"jsonrpc":"2.0","result":{"after":{"along":[-0.05,0.05],"capped":0.0,"mean":0.0,"neighbors":0.045,"period":2.0},"before":{"along":[0.0,0.0],"capped":0.0,"mean":0.0,"neighbors":0.0,"period":2.0},"type":"tuft.foliage.json","wind":0.0,"wind_settings":{"bend":0.2,"idle":0.05}}}

@@ -63,7 +63,7 @@ as `entity.get`, reject it as an unknown param.
 | Textures | [`texture.generate`](#texturegenerate) |
 | Scatter | [`scatter.run`](#scatterrun) |
 | Procedural graphs | [`pcg.run`](#pcgrun), [`pcg.preview`](#pcgpreview), [`pcg.check`](#pcgcheck) |
-| Foliage | [`foliage.paint`](#foliagepaint), [`foliage.erase`](#foliageerase), [`foliage.get`](#foliageget), [`foliage.harvest`](#foliageharvest) |
+| Foliage | [`foliage.paint`](#foliagepaint), [`foliage.erase`](#foliageerase), [`foliage.get`](#foliageget), [`foliage.harvest`](#foliageharvest), [`foliage.sway`](#foliagesway) |
 | Hair | [`hair.get`](#hairget) |
 | Damage | [`damage.apply`](#damageapply), [`damage.state`](#damagestate), [`damage.check`](#damagecheck) |
 | Animations | [`animation.eval`](#animationeval), [`animation.seek`](#animationseek) |
@@ -807,6 +807,24 @@ and world `position`. Nothing to harvest there is `-32001` at `/at`. Needs: `edi
 {"amount":3,"item":"stone","position":[1.584,0.0,-1.46],"type":"boulder.foliage.json"}
 ```
 
+### foliage.sway
+
+Measures how a [foliage type](scene-format.md#foliage) sways in a steady `wind` (meters a
+second in 3D, pixels a second in 2D; default `3` or `300`), over `count` instances (`16`) in a
+row downwind `spacing` apart (`0.5` meters or `32` pixels) for `seconds` (`4`), as the renderers
+lean them: `along` and, in 3D, `across` the wind (radians, least and most), the `mean` lean,
+how much `neighbors` differ on average (`0` sways as one), the share of the time `capped` at
+`wind.max` and the sway's `period`. Without changes it returns them as `sway`. `set` is a JSON
+Merge Patch over the `.foliage.json` file and `lean` sets `wind.bend` so the mean lean along
+this wind is that many radians; either writes the file (with undo) and returns the sway
+`before` and `after` and the `wind_settings`. A patch that leaves the file invalid is `-32602`
+at `/set` and the bad value's pointer. Needs: `read`, `edit`, `filesystem`.
+
+```json
+{"type": "plants/grass.foliage.json", "lean": 0.25,
+ "set": {"wind": {"sway": 0.4, "wave_length": 4, "flutter": 0.3, "phase_spread": 0.2}}}
+```
+
 ## Hair
 
 Reading [hair and fur](scene-format.md#hair-and-fur) as it grew and where physics put it.
@@ -981,8 +999,10 @@ it in 3D: a `Transform3D` turned by `yaw`, a `MeshInstance3D` drawing the rigged
 Two numbers place a 2D cut-out: a `Transform2D` and a `Creature2D` at `pixels_per_meter` (default
 100), facing left with `flip_h`, whose bones the `character_2d` system keeps as `<id>_<bone>`
 children. Under `parent` when given. Returns the `id`, its `components` and whether it `flies`
-and `swims`. A recipe that doesn't validate is `-32002` at `/recipe`, a taken `id` at `/id`.
-Needs: `read`, `edit`.
+and `swims`. `motion` is a merge patch over the recipe's `motion` block for this one alone
+(kept in its `Creature3D` or `Creature2D`): it retunes the recipe's animations but can't add one.
+A recipe that doesn't validate is `-32002` at `/recipe`, a bad `motion` at `/motion`, a taken `id`
+at `/id`. Needs: `read`, `edit`.
 
 ```json
 {"recipe": "fauna/dog.creature.json", "id": "rex", "at": [-6, 0, 6]}
@@ -1028,6 +1048,82 @@ and `rider` when it has them, `fed`, `hunger`, `position` (meters in 3D, pixels 
 {"creature": "deer_1"}
 ```
 
+### animation.preview
+
+Measures one of a creature's animations through a cycle, as numbers an agent reads in place of
+watching it. Name a `creature` (its recipe with its own motion) or a `recipe`, and the
+`animation`; `motion` is a merge patch over its motion block to try without making it, and
+`samples` (default 16, 4 to 64) the moments measured. Returns its `length` (seconds), `loop`,
+`bones` (each bone's least and most turn about `pitch`, `yaw` and `roll` in radians, for the
+axes that move; `bones` in the params keeps only those named) and, for those with legs, `gait`:
+`stride` (meters each foot sweeps fore and aft), `foot_speed` (how fast a foot sweeps back while
+it is planted, the half of the cycle it moves back), `move_speed` (how fast the body moves while
+it plays: `walk_speed` for walk and what plays as it, `run_speed` for run, else 0, or the param)
+and `slide` (`move_speed - foot_speed`: 0 is planted, positive feet skating forward). A
+`filmstrip` draws `frames` (default 6) through the cycle side by side, each `size` (default
+`[160, 120]`), on a stage of its own (the 3D model from its near side, or with `two_d` the 2D
+cut-out, a `Creature2D`'s by default) and writes a PNG to `out` (default
+`previews/<animation>.png`). Needs: `read`, `filesystem`.
+
+```json
+{"creature": "old_stag", "animation": "walk", "bones": ["tail"],
+ "filmstrip": {"out": "previews/old_stag_walk.png", "frames": 6, "size": [96, 72]}}
+```
+
+With `library` (a `.anim.json` file) in place of a creature, it measures that library's
+animation that comes `from` a model, with its [layers](scene-format.md#animation-layers): the
+bones that turn, and for a humanoid (bones named `LeftFoot` and `RightFoot`) the `gait`, facing
++z. `set` and `layer` try a change as [`animation.edit`](#animationedit) would make it, without
+writing it. A library has no `motion` or `filmstrip`.
+
+```json
+{"library": "anim/hero.anim.json", "animation": "walk", "move_speed": 1.4,
+ "layer": {"name": "try", "bones": {"Spine": {"pitch": 0.1}}}}
+```
+
+### animation.tune
+
+Changes one of a creature's animations toward goals, trying each change as it would play, and
+writes it `into` the creature's own `motion` (`"instance"`, the default when a `creature` is
+named) or its `.creature.json` file's (`"recipe"`, with undo). `set` is a merge patch over the
+animation's motion entry made first (so a new animation's `from` comes in here); `ranges` sets
+bones' swings (radians from least to most turn of a bone's most-moving axis) by scaling them;
+`slide` plants the feet, by `"length"` (the animation's `speed`, its cadence) or `"swing"` (the
+legs' `scale`), against `move_speed` (as `animation.preview`'s). Returns `into`, the `change`
+made to the animation's entry and the animation measured `before` and `after` as
+`animation.preview` returns it. Needs: `read`, `edit`, `filesystem`.
+
+```json
+{"recipe": "creatures/deer.creature.json", "animation": "walk", "slide": "length"}
+```
+
+With `library` in place of a creature, it tunes that library's animation (one `from` a model)
+and writes the file, with undo: `set` patches its entry first, `ranges` and a `"swing"` slide
+scale bones in the layer `layer` names (a layer merged in by `name` first, as
+`animation.edit`'s; `"tune"` by default, made last if missing), and a
+`"length"` slide sets the animation's `speed`. `into` doesn't apply.
+
+```json
+{"library": "anim/hero.anim.json", "animation": "walk", "move_speed": 1.4, "slide": "length",
+ "ranges": {"LeftUpperArm": 0.5, "RightUpperArm": 0.5}}
+```
+
+### animation.edit
+
+Changes an animation in a `.anim.json` library (made if missing), with undo, and checks that it
+plays: `set` is a JSON Merge Patch over the animation's entry (`from`, `length`, `loop`,
+`speed`, `tracks`, `markers`, `layers`; `null` removes the animation), `layer` merges a
+[layer](scene-format.md#animation-layers) into its `layers` by `name` (adding it last if new;
+`null` fields remove them), and `remove_layer` takes one out by name. Returns the `library`, the
+`animation`, its `length` once it plays and the entry `after`. A bone the model lacks, an
+unknown layer or animation, or a value out of range is an error at its path, with the closest
+name. Needs: `read`, `edit`, `filesystem`.
+
+```json
+{"library": "anim/hero.anim.json", "animation": "sneak",
+ "set": {"from": {"model": "models/hero.glb", "animation": "Walk-loop"}, "speed": 0.7},
+ "layer": {"name": "crouch", "bones": {"Spine": {"pitch": 0.3}, "Hips": {"shift": 0.1}}}}
+```
 ## Vehicles
 
 Placing, driving, tuning and test-driving [vehicles](scene-format.md#vehicle-recipes).

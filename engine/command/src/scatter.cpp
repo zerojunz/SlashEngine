@@ -8,6 +8,7 @@
 #include "slash/core/text.hpp"
 #include "slash/navigation/navigation.hpp"
 #include "slash/procedural/foliage.hpp"
+#include "slash/world/ragdoll.hpp"
 #include "slash/world/scene.hpp"
 #include "slash/world/tree2d.hpp"
 #include "slash/world/tree3d.hpp"
@@ -931,6 +932,160 @@ Reply foliage_harvest(Session& session, const json::Value& params) {
                            " of there");
 }
 
+// ---- foliage.sway ----
+
+// How a foliage type sways in a steady wind, over a row of instances downwind.
+struct Sway {
+    Vec2 along{};  // radians it leans along the wind, least and most
+    Vec2 across{}; // and across it (3D)
+    double mean = 0.0;
+    double neighbors = 0.0; // radians next instances differ by, on average
+    double capped = 0.0;    // the share of the time held at max_bend
+};
+
+double round3(double value) {
+    return (std::round(value * 1000.0) / 1000.0) + 0.0;
+}
+
+Sway measure_sway(const world::FoliageType& type, double wind, int count, double spacing,
+                  double seconds) {
+    const bool flat = type.space == "2d";
+    // 2D wind counts in pixels a second, a hundredth of 3D's meters a second.
+    const Vec2 blowing{static_cast<real_t>(flat ? wind / 100.0 : wind), 0.0F};
+    constexpr double kRate = 30.0;
+    const int steps = std::max(1, static_cast<int>(seconds * kRate));
+    Sway out;
+    out.along = {1e9F, -1e9F};
+    out.across = {1e9F, -1e9F};
+    double sum = 0.0;
+    double differ = 0.0;
+    std::int64_t samples = 0;
+    std::int64_t pairs = 0;
+    std::int64_t capped = 0;
+    for (int step = 0; step < steps; ++step) {
+        const double time = static_cast<double>(step) / kRate;
+        float last = 0.0F;
+        for (int k = 0; k < count; ++k) {
+            const std::uint32_t hash =
+                procedural::foliage_hash(entt::entity{0}, 0, static_cast<std::size_t>(k));
+            const Vec2 lean = procedural::foliage_wind_lean(type, blowing, hash,
+                                                            static_cast<float>(spacing * k), time);
+            auto along = static_cast<float>(lean.x);
+            auto across = static_cast<float>(lean.y);
+            const float amount = std::sqrt((along * along) + (across * across));
+            if (amount > type.max_bend) {
+                along *= type.max_bend / amount;
+                across *= type.max_bend / amount;
+                ++capped;
+            }
+            out.along = {std::min<real_t>(out.along.x, along),
+                         std::max<real_t>(out.along.y, along)};
+            out.across = {std::min<real_t>(out.across.x, across),
+                          std::max<real_t>(out.across.y, across)};
+            sum += along;
+            ++samples;
+            if (k > 0) {
+                differ += std::abs(along - last);
+                ++pairs;
+            }
+            last = along;
+        }
+    }
+    out.mean = sum / static_cast<double>(samples);
+    out.neighbors = pairs > 0 ? differ / static_cast<double>(pairs) : 0.0;
+    out.capped = static_cast<double>(capped) / static_cast<double>(samples);
+    return out;
+}
+
+json::Value sway_json(const Sway& sway, const world::FoliageType& type) {
+    json::Value out;
+    out["along"] = json::Array{round3(sway.along.x), round3(sway.along.y)};
+    if (type.space != "2d") {
+        out["across"] = json::Array{round3(sway.across.x), round3(sway.across.y)};
+    }
+    out["mean"] = round3(sway.mean);
+    out["neighbors"] = round3(sway.neighbors);
+    out["capped"] = round3(sway.capped);
+    out["period"] =
+        type.sway_frequency > 0.0F ? json::Value(round3(1.0 / type.sway_frequency)) : json::Value();
+    return out;
+}
+
+Reply foliage_sway(Session& session, const json::Value& params) {
+    const std::string path = params.find("type")->as_string();
+    auto text = session.read_project_file(path);
+    if (!text) {
+        return Reply::failure(text.error());
+    }
+    const std::optional<std::string>& existing = text.value();
+    if (!existing) {
+        return param_error(code::kNotFound, "/type", quoted(path) + " doesn't exist");
+    }
+    auto doc = json::parse(*existing);
+    if (!doc) {
+        return param_error(code::kInvalidParams, "/type", doc.error().message);
+    }
+    auto before = world::parse_foliage(doc.value());
+    if (!before) {
+        return param_error(code::kInvalidParams, "/type", before.error().message);
+    }
+    const bool flat = before.value().space == "2d";
+    const auto number_or = [&](std::string_view key, double fallback) {
+        const json::Value* given = params.find(key);
+        return given != nullptr ? given->as_double() : fallback;
+    };
+    const double wind = number_or("wind", flat ? 300.0 : 3.0);
+    const int count = static_cast<int>(number_or("count", 16.0));
+    const double spacing = number_or("spacing", flat ? 32.0 : 0.5);
+    const double seconds = number_or("seconds", 4.0);
+    const Sway measured = measure_sway(before.value(), wind, count, spacing, seconds);
+    json::Value out;
+    out["type"] = path;
+    out["wind"] = wind;
+    const json::Value* set = params.find("set");
+    const json::Value* lean = params.find("lean");
+    if (set == nullptr && lean == nullptr) {
+        out["sway"] = sway_json(measured, before.value());
+        session.mark_unchanged();
+        return Reply::success(std::move(out));
+    }
+    json::Value file = set != nullptr ? world::merge_patch(doc.value(), *set) : doc.value();
+    if (lean != nullptr) {
+        // The mean lean along a steady wind is the wind times bend, as sway rocks either way.
+        const double speed = flat ? wind / 100.0 : wind;
+        if (speed <= 0.0) {
+            return param_error(code::kInvalidParams, "/lean", "needs a wind above 0");
+        }
+        file["wind"]["bend"] = round3(lean->as_double() / speed);
+    }
+    if (const std::vector<json::ValidationError> problems = world::validate_foliage(file);
+        !problems.empty()) {
+        const json::ValidationError& first = problems.front();
+        return param_error(code::kInvalidParams, set != nullptr ? "/set" + first.path : "/lean",
+                           first.message);
+    }
+    auto after = world::parse_foliage(file);
+    if (!after) {
+        return param_error(code::kInvalidParams, "/set", after.error().message);
+    }
+    std::string written = json::write(file);
+    if (written != *existing) {
+        if (auto staged = session.stage_file(path, written); !staged) {
+            return Reply::failure(staged.error());
+        }
+        session.add_undo_file(path, existing, std::move(written));
+    } else {
+        session.mark_unchanged();
+    }
+    out["before"] = sway_json(measured, before.value());
+    out["after"] =
+        sway_json(measure_sway(after.value(), wind, count, spacing, seconds), after.value());
+    if (const json::Value* wind_block = file.find("wind"); wind_block != nullptr) {
+        out["wind_settings"] = *wind_block;
+    }
+    return Reply::success(std::move(out));
+}
+
 } // namespace
 
 void register_scatter_commands(Registry& registry) {
@@ -1053,6 +1208,48 @@ void register_scatter_commands(Registry& registry) {
             .effect = Effect::Edit,
             .params = std::move(schema),
             .handler = foliage_harvest,
+        });
+    }
+    {
+        json::Value wind = property("number", "The steady wind: meters a second (3D) or pixels "
+                                              "a second (2D). Default 3 or 300.");
+        wind["minimum"] = 0;
+        json::Value count = property("integer", "Instances in the row downwind. Default 16.");
+        count["minimum"] = 1;
+        count["maximum"] = 256;
+        json::Value spacing = property("number", "Their distance apart: meters (3D) or pixels "
+                                                 "(2D). Default 0.5 or 32.");
+        spacing["minimum"] = 0;
+        json::Value seconds = property("number", "How long to watch. Default 4.");
+        seconds["minimum"] = 0.1;
+        seconds["maximum"] = 120;
+        json::Value set = property("object", "A merge patch over the .foliage.json file "
+                                             "(wind, interaction, ...) to write.");
+        json::Value lean = property("number", "Radians it should lean along this wind on "
+                                              "average: sets wind.bend.");
+        lean["minimum"] = 0;
+        json::Value schema;
+        schema["type"] = "object";
+        schema["additionalProperties"] = false;
+        schema["required"] = json::Array{"type"};
+        json::Value& p = schema["properties"];
+        p["type"] = property("string", "The .foliage.json file.");
+        p["wind"] = std::move(wind);
+        p["count"] = std::move(count);
+        p["spacing"] = std::move(spacing);
+        p["seconds"] = std::move(seconds);
+        p["set"] = std::move(set);
+        p["lean"] = std::move(lean);
+        registry.add({
+            .name = "foliage.sway",
+            .description = "Measures how a foliage type sways in a steady wind over a row of "
+                           "instances downwind: lean along and across it, mean, how much "
+                           "neighbors differ, share capped, period. set or lean changes the "
+                           "file and returns before and after.",
+            .capabilities = {Read, Edit, Filesystem},
+            .effect = Effect::Edit,
+            .params = std::move(schema),
+            .handler = foliage_sway,
         });
     }
 }

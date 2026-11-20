@@ -1889,7 +1889,14 @@ animates, a game's own included; a track with a `target` acts on the entity the 
 model file, and an animation can come `from` a model's animation, posing the entity's model
 (see Rendering's skinned meshes). Keys are passed as Godot passes them: after where playback was,
 up to and including where it got to. `animation.eval` returns a track's values at given times;
-`examples/keyframe-animation` plays a walk cycle and a hit. Cinematics are Godot's timeline tracks: a `"type": "bezier"` track
+`examples/keyframe-animation` plays a walk cycle and a hit. An animation `from` a model takes a
+`speed` and `layers` (`animation::AnimationLayer`: a weight, an amplitude, bones' scale, shift
+and held angles and added waves, the pieces of a creature's motion), which `resolve_clip` bakes
+into `Animation::layered`, a model of one animation keyed 60 times a second that players and
+trees pose from; `animation.edit` (`engine/command/src/animation_layers.cpp`) writes them with
+undo, and `animation.preview` and `animation.tune` take a `library` in place of a creature,
+measuring a humanoid's gait from its feet and tuning a layer of its own.
+`examples/animation-tuning` tunes a hero's walk this way too. Cinematics are Godot's timeline tracks: a `"type": "bezier"` track
 eases one number along its keys' `in` and `out` handles (`bezier_value`, Godot's
 `bezier_track_interpolate`), an `"animation"` track starts and stops the animations of another
 `AnimationPlayer` it targets (`play_started` in `src/player.cpp`, `[stop]` stopping it; trees
@@ -2127,7 +2134,9 @@ brush paints it, how it bends and parts, whether it blocks and what harvesting i
 instance). `engine/procedural`'s `slash/procedural/foliage.hpp` is what drawing, collision and
 commands ask: `foliage_type` (types read through the world's assets, kept by version),
 `paint_foliage` (a brush stroke through `procedural::scatter`), `foliage_lean_3d` and `_2d` (wind
-times `bend` with sway, plus the push of characters, capped) and `install_foliage`, the
+times `bend` with sway, each instance's phase and rate hashed from its place by the type's
+`phase_spread` and `frequency_spread`, gusts rolling downwind by `wave_length`, `flutter` across
+the wind and an `idle` rock in still air, plus the push of characters, capped) and `install_foliage`, the
 `foliage` system (priority 970) springing instances that `CharacterBody`, `RigidBody` and
 `VehicleBody3D` entities push. `scene3d::Renderer` draws each instance's model bent about its
 foot, fading by alpha hash past `cull_distance` and as an impostor far off; `CanvasRenderer`
@@ -2135,7 +2144,8 @@ draws 2D instances as quads leaned by their height. Blocking types are a static 
 entity's: physics3d takes `scene3d::foliage_bodies` (`src/foliage.cpp`) as grid bodies with a
 cell per instance, physics2d takes polygons through the canvas's tile shape source, so
 `physics.raycast` names the `instance` hit. `foliage.paint`, `erase`, `get` and `harvest` are in
-`engine/command/src/scatter.cpp`. `examples/foliage` paints a meadow in 3D and 2D.
+`engine/command/src/scatter.cpp`, with `foliage.sway`, which measures a type's sway along a row
+downwind and tunes its file (`set`, or `lean` for the bend a wind gives). `examples/foliage` paints a meadow in 3D and 2D.
 
 Hair and fur are Unreal's Groom and its Chaos hair (Godot has none): a `.groom.json` file
 (`slash/world/hair.hpp`, `engine/world/src/hair.cpp`, built with `-ffp-contract=off`;
@@ -2247,6 +2257,18 @@ character body, playing its animations and posing its cut-out, and setting an `N
 (`slash/npc/fauna.hpp`) are gameplay code's; `creature.place`, `creature.populate`,
 `creature.interact` and `creature.state` (`engine/command/src/creature.cpp`) an agent's.
 `examples/fauna` keeps a meadow and a pond.
+A recipe's `motion` block tunes its animations by name (`world::AnimationMotion`: length,
+speed, loop, amplitude, each bone's `scale`, `shift` and `hold`, added `waves`, and new animations
+`from` a built-in one), which `creature_pose` and `creature_animations` play, so the model, the
+cut-out and the `fauna` system follow it; a `Creature3D`'s or `Creature2D`'s own `motion` is a
+merge patch over it (`load_creature`'s overload, `with_motion`), which `tune_creature_clips`
+plays on the recipe's model by retiming its clips, so it can't add an animation.
+`animation.preview` (`engine/command/src/creature.cpp`) measures one as numbers (each bone's
+range by axis and, from the feet's places by forward kinematics, the `gait`: stride, how fast a
+planted foot sweeps back and the `slide` against the body's speed) and draws a `filmstrip` in a
+private `Session`; `animation.tune` sets a motion, scales bones to `ranges` and plants the feet
+by `slide` (`length` or `swing`), writing the instance's motion or the recipe file.
+`examples/animation-tuning` plants a deer's feet and tunes a stag and a 2D fox.
 
 Vehicles are recipes, after Unreal's Chaos Vehicles (Godot has only `VehicleBody3D`): a
 `.vehicle.json` file (`slash/world/vehicle.hpp`, `engine/world/src/vehicle.cpp`, built with

@@ -34,3 +34,8 @@ the meadows themselves are made by the brush.
   through: `foliage.get` counts the instances still bent by them (`pushed`), which spring back
   by their type's stiffness and damping.
 - `foliage.erase` clears a circle of grass, and `undo` puts it back.
+- `foliage.sway` measures the grass in a 3 meter a second wind, 16 blades in a row downwind:
+  they lean 0.24 radians on average, between 0.168 and 0.312, and neighbors differ by 0.065.
+  Asked to `lean` 0.2 with gusts rolling 4 meters downwind, a flutter across the wind and their
+  phases half as spread, it sets `wind.bend` to 0.067 and writes the file: 0.201 along and
+  0.06 each way across. In still air a 2D tuft with an `idle` of 0.05 rocks that far each way.

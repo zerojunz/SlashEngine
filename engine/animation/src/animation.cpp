@@ -5,6 +5,7 @@
 #include "slash/core/text.hpp"
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/creature.hpp"
 #include "slash/world/tree3d.hpp"
 
 #include <algorithm>
@@ -176,6 +177,38 @@ json::Value schema() {
         property("object", "Named times in seconds, as Godot's animation markers.");
     animation["properties"]["markers"]["additionalProperties"]["type"] = "number";
     animation["properties"]["markers"]["additionalProperties"]["minimum"] = 0;
+    animation["properties"]["speed"] =
+        property("number", "Plays its model's animation this many times as fast. Default 1.");
+    animation["properties"]["speed"]["exclusiveMinimum"] = 0;
+    animation["properties"]["speed"]["maximum"] = 10;
+    // A layer takes the fields of a creature recipe's motion entry that change bones.
+    const json::Value& motion = *world::creature_motion_schema().find("additionalProperties");
+    json::Value layer;
+    layer["type"] = "object";
+    layer["additionalProperties"] = false;
+    layer["required"] = json::Array{"name"};
+    layer["description"] = "A change over its model's animation, after the layers before it.";
+    layer["properties"]["name"] = property("string", "Unique in the animation.");
+    layer["properties"]["name"]["minLength"] = 1;
+    layer["properties"]["weight"] =
+        property("number", "How much of its change counts, from 0 to 1. Default 1.");
+    layer["properties"]["weight"]["minimum"] = 0;
+    layer["properties"]["weight"]["maximum"] = 1;
+    layer["properties"]["amplitude"] = *motion.find("properties")->find("amplitude");
+    layer["properties"]["amplitude"]["description"] =
+        "Scales every bone's turns and moves from rest. Default 1.";
+    layer["properties"]["bones"] = *motion.find("properties")->find("bones");
+    layer["properties"]["bones"]["maxProperties"] = 64;
+    layer["properties"]["bones"]["description"] =
+        "Changes to bones' turns and moves from rest, by the model's node names: scale times "
+        "them, shift moves them in cycles, pitch, yaw and roll hold turns.";
+    layer["properties"]["add"] = *motion.find("properties")->find("add");
+    layer["properties"]["add"]["maxItems"] = 32;
+    animation["properties"]["layers"]["type"] = "array";
+    animation["properties"]["layers"]["maxItems"] = 16;
+    animation["properties"]["layers"]["items"] = std::move(layer);
+    animation["properties"]["layers"]["description"] =
+        "Changes over its model's animation, in order; animation.edit writes them.";
 
     json::Value out;
     out["$schema"] = "https://json-schema.org/draft/2020-12/schema";
@@ -416,6 +449,26 @@ private:
             }
             fail(at, "an animation needs " + missing +
                          ", unless it comes \"from\" a model's animation");
+        }
+        if (from == nullptr) {
+            for (const std::string_view key : {"speed", "layers"}) {
+                if (animation.find(key) != nullptr) {
+                    fail(at + "/" + std::string(key),
+                         "only an animation \"from\" a model's animation takes " +
+                             std::string(key));
+                }
+            }
+        }
+        if (const json::Value* layers = animation.find("layers"); layers != nullptr) {
+            std::set<std::string, std::less<>> names;
+            const json::Array& list = layers->as_array();
+            for (std::size_t i = 0; i < list.size(); ++i) {
+                const std::string& name = list[i].find("name")->as_string();
+                if (!names.insert(name).second) {
+                    fail(at + "/layers/" + std::to_string(i) + "/name",
+                         "another layer is named \"" + name + "\"");
+                }
+            }
         }
         if (from != nullptr) {
             const std::string& model = from->find("model")->as_string();
@@ -952,6 +1005,226 @@ AnimationLibrary model_library(const scene3d::Model& model, std::string_view pat
     return library;
 }
 
+namespace {
+
+// Keys a second a layered animation is baked at, and the most it gets.
+constexpr double kLayerKeysPerSecond = 60.0;
+constexpr std::size_t kMaxLayerKeys = 2400;
+
+// A unit quaternion's turn times s: the same axis, s times the angle (the shorter way round).
+Quat scale_turn(Quat q, float s) {
+    if (q.w < 0.0F) {
+        q = {-q.x, -q.y, -q.z, -q.w};
+    }
+    const auto x = static_cast<float>(q.x);
+    const auto y = static_cast<float>(q.y);
+    const auto z = static_cast<float>(q.z);
+    const float sine = std::sqrt((x * x) + (y * y) + (z * z));
+    if (sine < 1e-7F) {
+        return {};
+    }
+    const float half = slash::atan2(sine, static_cast<float>(q.w));
+    const Vec2f turned = slash::cos_sin(half * s);
+    const float k = turned.y / sine;
+    return {x * k, y * k, z * k, turned.x};
+}
+
+std::string no_bone(const scene3d::Model& model, const ModelClip& from, std::string_view bone) {
+    std::vector<std::string_view> names;
+    names.reserve(model.nodes.size());
+    for (const scene3d::ModelNode& node : model.nodes) {
+        names.emplace_back(node.name);
+    }
+    std::string message = from.model + " has no bone \"" + std::string(bone) + "\"";
+    if (const std::string_view hint = closest_match(bone, names); !hint.empty()) {
+        message += "; did you mean \"" + std::string(hint) + "\"?";
+    }
+    return message;
+}
+
+// Bakes an animation's speed and layers over its model's animation into Animation::layered: each
+// node the animation or a layer moves keyed kLayerKeysPerSecond times a second.
+Result<void> bake_layers(Animation& animation, const scene3d::Model& model,
+                         const scene3d::ModelAnimation& clip) {
+    animation.layered = nullptr;
+    if (animation.layers.empty() && animation.speed == 1.0) {
+        return {};
+    }
+    std::vector<bool> moved(model.nodes.size(), false);
+    for (const scene3d::NodeTrack& track : clip.tracks) {
+        if (track.node < moved.size()) {
+            moved[track.node] = true;
+        }
+    }
+    for (std::size_t i = 0; i < animation.layers.size(); ++i) {
+        const AnimationLayer& layer = animation.layers[i];
+        const std::string at = "layers/" + std::to_string(i);
+        for (const auto& [bone, change] : layer.bones) {
+            const int node = scene3d::find_node(model, bone);
+            if (node < 0) {
+                return make_error(ErrorCode::NotFound, at + "/bones/" + json::pointer_escape(bone) +
+                                                           ": " +
+                                                           no_bone(model, animation.from, bone));
+            }
+            moved[static_cast<std::size_t>(node)] = true;
+        }
+        for (std::size_t w = 0; w < layer.add.size(); ++w) {
+            const int node = scene3d::find_node(model, layer.add[w].bone);
+            if (node < 0) {
+                return make_error(ErrorCode::NotFound,
+                                  at + "/add/" + std::to_string(w) + "/bone: " +
+                                      no_bone(model, animation.from, layer.add[w].bone));
+            }
+            moved[static_cast<std::size_t>(node)] = true;
+        }
+    }
+    const double base = clip.length;
+    const double length = animation.length;
+    const auto keys = static_cast<std::size_t>(std::clamp(std::ceil(length * kLayerKeysPerSecond),
+                                                          2.0, static_cast<double>(kMaxLayerKeys)));
+    auto out = std::make_shared<scene3d::Model>();
+    out->nodes = model.nodes;
+    out->skins = model.skins;
+    scene3d::ModelAnimation baked;
+    baked.name = clip.name;
+    baked.length = length;
+    baked.loop = animation.loop != LoopMode::None;
+    for (scene3d::BlendShapeTrack track : clip.blend_tracks) {
+        for (float& time : track.times) {
+            time = static_cast<float>(time / animation.speed);
+        }
+        baked.blend_tracks.push_back(std::move(track));
+    }
+    for (std::size_t n = 0; n < moved.size(); ++n) {
+        if (!moved[n]) {
+            continue;
+        }
+        const scene3d::ModelNode& rest = model.nodes[n];
+        std::array<const scene3d::NodeTrack*, 3> tracks{};
+        for (const scene3d::NodeTrack& track : clip.tracks) {
+            if (track.node == n) {
+                tracks.at(static_cast<std::size_t>(track.property)) = &track;
+            }
+        }
+        // How the layers change this bone: its turns and moves scaled, cycles later, and turns
+        // held or waved after.
+        float scale = 1.0F;
+        float shift = 0.0F;
+        for (const AnimationLayer& layer : animation.layers) {
+            const auto change = layer.bones.find(rest.name);
+            const float times =
+                layer.amplitude * (change != layer.bones.end() ? change->second.scale : 1.0F);
+            scale *= 1.0F + (layer.weight * (times - 1.0F));
+            if (change != layer.bones.end()) {
+                shift += layer.weight * change->second.shift;
+            }
+        }
+        scene3d::NodeTrack position;
+        position.node = n;
+        position.property = scene3d::NodeProperty::Position;
+        scene3d::NodeTrack rotation;
+        rotation.node = n;
+        rotation.property = scene3d::NodeProperty::Rotation;
+        // Keys every 60th of a second, and where its own keys fall, so no turn is cut short.
+        std::vector<double> key_times;
+        for (std::size_t k = 0; k <= keys; ++k) {
+            key_times.push_back(length * static_cast<double>(k) / static_cast<double>(keys));
+        }
+        if (base > 0.0) {
+            const double cycles = length * animation.speed / base;
+            for (const scene3d::NodeTrack* track : {tracks[0], tracks[1]}) {
+                if (track == nullptr) {
+                    continue;
+                }
+                for (const float key : track->times) {
+                    const double first = (static_cast<double>(key) / base) - shift;
+                    const auto from = clip.loop ? static_cast<std::int64_t>(std::floor(-first)) : 0;
+                    const auto to =
+                        clip.loop ? static_cast<std::int64_t>(std::ceil(cycles - first)) : 0;
+                    for (std::int64_t j = from; j <= to; ++j) {
+                        const double time =
+                            (first + static_cast<double>(j)) * base / animation.speed;
+                        if (time > 0.0 && time < length) {
+                            key_times.push_back(time);
+                        }
+                    }
+                }
+            }
+        }
+        std::ranges::sort(key_times);
+        const auto close = [](double a, double b) { return b - a < 1e-6; };
+        key_times.erase(std::unique(key_times.begin(), key_times.end(), close), key_times.end());
+        for (const double time : key_times) {
+            // Cycles of its model's animation played by now, and where this bone is in them.
+            const double played = base > 0.0 ? time * animation.speed / base : 0.0;
+            double cycle = played + shift;
+            cycle = clip.loop ? cycle - std::floor(cycle) : std::clamp(cycle, 0.0, 1.0);
+            const double at = cycle * base;
+            Quat turn = rest.rotation;
+            if (tracks[1] != nullptr) {
+                const std::array<float, 4> v =
+                    scene3d::sample_track(*tracks[1], at, base, clip.loop);
+                turn = Quat{v[0], v[1], v[2], v[3]};
+            }
+            Quat change =
+                scale_turn(scene3d::multiply(scene3d::inverse(rest.rotation), turn), scale);
+            for (const AnimationLayer& layer : animation.layers) {
+                if (const auto bone = layer.bones.find(rest.name);
+                    bone != layer.bones.end() && bone->second.hold != Vec3{}) {
+                    change = scene3d::multiply(change,
+                                               world::quaternion(bone->second.hold * layer.weight));
+                }
+                for (const world::MotionWave& wave : layer.add) {
+                    if (wave.bone != rest.name) {
+                        continue;
+                    }
+                    const double turns = (played * wave.cycles) + wave.shift;
+                    const float swing =
+                        wave.cycles == 0.0F
+                            ? 0.0F
+                            : slash::cos_sin(2.0F * std::numbers::pi_v<float> *
+                                             static_cast<float>(turns - std::floor(turns)))
+                                  .y;
+                    const float angle = ((wave.angle * swing) + wave.offset) * layer.weight;
+                    if (angle != 0.0F) {
+                        change = scene3d::multiply(change, world::quaternion(wave.axis * angle));
+                    }
+                }
+            }
+            const Quat q = scene3d::normalized(scene3d::multiply(rest.rotation, change));
+            rotation.times.push_back(static_cast<float>(time));
+            rotation.values.push_back({static_cast<float>(q.x), static_cast<float>(q.y),
+                                       static_cast<float>(q.z), static_cast<float>(q.w)});
+            if (tracks[0] != nullptr) {
+                const std::array<float, 4> v =
+                    scene3d::sample_track(*tracks[0], at, base, clip.loop);
+                const Vec3 moved_to =
+                    rest.position + ((Vec3{v[0], v[1], v[2]} - rest.position) * scale);
+                position.times.push_back(static_cast<float>(time));
+                position.values.push_back({static_cast<float>(moved_to.x),
+                                           static_cast<float>(moved_to.y),
+                                           static_cast<float>(moved_to.z), 0.0F});
+            }
+        }
+        if (!position.times.empty()) {
+            baked.tracks.push_back(std::move(position));
+        }
+        baked.tracks.push_back(std::move(rotation));
+        if (tracks[2] != nullptr) {
+            scene3d::NodeTrack sized = *tracks[2];
+            for (float& time : sized.times) {
+                time = static_cast<float>(time / animation.speed);
+            }
+            baked.tracks.push_back(std::move(sized));
+        }
+    }
+    out->animations.push_back(std::move(baked));
+    animation.layered = std::move(out);
+    return {};
+}
+
+} // namespace
+
 Result<void> resolve_clip(Animation& animation, const scene3d::Model& model) {
     const auto found = std::ranges::find(model.animations, animation.from.animation,
                                          &scene3d::ModelAnimation::name);
@@ -972,13 +1245,64 @@ Result<void> resolve_clip(Animation& animation, const scene3d::Model& model) {
         return make_error(ErrorCode::NotFound, std::move(message));
     }
     if (!animation.own_length) {
-        animation.length = found->length;
+        animation.length = found->length / animation.speed;
     }
     if (!animation.own_loop) {
         animation.loop = found->loop ? LoopMode::Linear : LoopMode::None;
     }
-    return {};
+    return bake_layers(animation, model, *found);
 }
+
+const scene3d::Model& clip_source(const Animation& animation, const scene3d::Model& model) {
+    return animation.layered != nullptr ? *animation.layered : model;
+}
+
+namespace {
+
+float number_or(const json::Value& doc, std::string_view key, float fallback) {
+    const json::Value* value = doc.find(key);
+    return value != nullptr ? static_cast<float>(value->as_double()) : fallback;
+}
+
+Vec3 axis_named(std::string_view name) {
+    if (name == "yaw") {
+        return {0.0F, 1.0F, 0.0F};
+    }
+    if (name == "roll") {
+        return {0.0F, 0.0F, 1.0F};
+    }
+    return {1.0F, 0.0F, 0.0F};
+}
+
+// A layer as the schema has checked it.
+AnimationLayer read_layer(const json::Value& doc) {
+    AnimationLayer layer;
+    layer.name = doc.find("name")->as_string();
+    layer.weight = number_or(doc, "weight", 1.0F);
+    layer.amplitude = number_or(doc, "amplitude", 1.0F);
+    if (const json::Value* bones = doc.find("bones"); bones != nullptr) {
+        for (const auto& [name, bone] : bones->as_object()) {
+            world::MotionBone& out = layer.bones[name];
+            out.scale = number_or(bone, "scale", 1.0F);
+            out.shift = number_or(bone, "shift", 0.0F);
+            out.hold = {number_or(bone, "pitch", 0.0F), number_or(bone, "yaw", 0.0F),
+                        number_or(bone, "roll", 0.0F)};
+        }
+    }
+    if (const json::Value* add = doc.find("add"); add != nullptr) {
+        for (const json::Value& wave : add->as_array()) {
+            layer.add.push_back({.bone = wave.find("bone")->as_string(),
+                                 .axis = axis_named(wave.find("axis")->as_string()),
+                                 .angle = number_or(wave, "angle", 0.0F),
+                                 .offset = number_or(wave, "offset", 0.0F),
+                                 .cycles = number_or(wave, "cycles", 1.0F),
+                                 .shift = number_or(wave, "shift", 0.0F)});
+        }
+    }
+    return layer;
+}
+
+} // namespace
 
 Result<AnimationLibrary> parse_animation_library(const json::Value& doc) {
     const std::vector<json::ValidationError> errors = validate_animation_library(doc);
@@ -1004,6 +1328,14 @@ Result<AnimationLibrary> parse_animation_library(const json::Value& doc) {
         if (const json::Value* from = json_animation.find("from"); from != nullptr) {
             animation.from.model = from->find("model")->as_string();
             animation.from.animation = from->find("animation")->as_string();
+        }
+        if (const json::Value* speed = json_animation.find("speed"); speed != nullptr) {
+            animation.speed = speed->as_double();
+        }
+        if (const json::Value* layers = json_animation.find("layers"); layers != nullptr) {
+            for (const json::Value& json_layer : layers->as_array()) {
+                animation.layers.push_back(read_layer(json_layer));
+            }
         }
         if (const json::Value* markers = json_animation.find("markers"); markers != nullptr) {
             for (const auto& [marker, time] : markers->as_object()) {

@@ -1055,8 +1055,10 @@ if(SLASH_ACCESSKIT AND NOT EMSCRIPTEN AND NOT ANDROID AND NOT IOS AND
         target_link_libraries(slash_accesskit INTERFACE ${_slash_accesskit_lib})
         # What Rust's standard library and AccessKit's crates link to (rustc
         # --print native-static-libs). The windows crates name their DLLs' functions themselves.
+        # Newer standard libraries wait on locks with WaitOnAddress, from synchronization.lib.
         if(WIN32)
-            target_link_libraries(slash_accesskit INTERFACE kernel32 ntdll userenv ws2_32 dbghelp)
+            target_link_libraries(slash_accesskit INTERFACE kernel32 ntdll userenv ws2_32 dbghelp
+                synchronization)
             if(MINGW AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
                 target_link_libraries(slash_accesskit INTERFACE unwind)
             endif()

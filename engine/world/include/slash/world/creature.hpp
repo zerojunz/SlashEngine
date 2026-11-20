@@ -83,6 +83,54 @@ struct CreatureBehavior {
     float altitude = 0.0F;     // birds and insects: how high above home they fly; fish: how deep
 };
 
+struct CreatureRecipe;
+
+// How an agent tunes one of a recipe's animations (its "motion" block, by animation name): the
+// built-in animations as they are, played faster or slower, their turns scaled, bones moved in
+// time and held turned, and waves added. A new name plays from a built-in one.
+struct MotionBone {
+    float scale = 1.0F; // times its turns
+    float shift = 0.0F; // cycles later (negative: earlier)
+    Vec3 hold;          // radians added about pitch (x), yaw (y) and roll (z) all through
+};
+struct MotionWave {
+    std::string bone;
+    Vec3 axis{1.0F, 0.0F, 0.0F}; // pitch, yaw or roll
+    float angle = 0.0F;          // radians each way
+    float offset = 0.0F;         // radians it swings about
+    float cycles = 1.0F;         // swings a cycle; 0 holds offset
+    float shift = 0.0F;          // cycles later
+};
+struct AnimationMotion {
+    std::string from;    // a built-in animation a new one plays as; empty for a built-in one
+    double length = 0.0; // seconds a cycle; 0 keeps the recipe's
+    double speed = 1.0;  // times as fast
+    int loop = -1;       // -1 keeps the built-in's, else 0 or 1
+    float amplitude = 1.0F;
+    std::map<std::string, MotionBone, std::less<>> bones;
+    std::vector<MotionWave> add;
+};
+using CreatureMotion = std::map<std::string, AnimationMotion, std::less<>>;
+
+// The built-in animations' names a recipe has: idle, walk, run, eat and attack, fly for those
+// that fly and swim for fish.
+[[nodiscard]] std::vector<std::string> creature_builtin_animations(const CreatureRecipe& recipe);
+
+// The JSON Schema of a "motion" block, which recipes and Creature3D's and Creature2D's motion
+// (a JSON Merge Patch over the recipe's) take.
+[[nodiscard]] const json::Value& creature_motion_schema();
+
+// A motion block's JSON read, checked against the recipe's bones and animations: problems at
+// their JSON Pointers below the block.
+[[nodiscard]] Result<CreatureMotion>
+parse_creature_motion(const CreatureRecipe& recipe, const json::Value& motion,
+                      std::vector<json::ValidationError>* problems = nullptr);
+
+// A recipe with its motion block patched (a JSON Merge Patch over motion_source, as an
+// instance's motion is), or the problem with the patch.
+[[nodiscard]] Result<CreatureRecipe> with_motion(const CreatureRecipe& recipe,
+                                                 const json::Value& patch);
+
 struct CreatureRecipe {
     std::string name;
     std::string species;
@@ -93,6 +141,9 @@ struct CreatureRecipe {
     CreatureBehavior behavior;
     // The effects it plays by the world events about it (slash/world/vfx.hpp's VfxHooks).
     std::map<std::string, std::string, std::less<>> vfx;
+    // Its animations as tuned, and the block they were read from.
+    CreatureMotion motion;
+    json::Value motion_source;
 };
 
 // The JSON Schema of .creature.json files.
@@ -144,13 +195,17 @@ struct CreatureBone {
 
 // A recipe's animations, which its 3D model has and its 2D cut-out is posed by: "idle", "walk",
 // "run", "eat" and "attack" (once; the rest loop), "fly" for those that fly and "swim" for fish.
-// Lengths are seconds; walk and run play one stride at the recipe's speeds.
+// Lengths are seconds; walk and run play one stride at the recipe's speeds. The recipe's motion
+// changes them and adds its new ones, after the built-in ones.
 struct CreatureAnimation {
     std::string name;
     double length = 1.0;
     bool loop = true;
 };
 [[nodiscard]] std::vector<CreatureAnimation> creature_animations(const CreatureRecipe& recipe);
+
+// How long one of a recipe's animations plays, in seconds; 0 for one it hasn't.
+[[nodiscard]] double creature_length(const CreatureRecipe& recipe, std::string_view animation);
 
 // How far each bone turns from rest at a time in an animation, about an axis in its parent's
 // space (x pitches a leg or neck, y wags a tail, z flaps a wing): the 3D model's keys and the 2D
@@ -172,6 +227,10 @@ struct CreatureTurn {
 // assets (kept until a file it was made from changes).
 [[nodiscard]] Result<std::shared_ptr<const CreatureRecipe>> load_creature(const World& world,
                                                                           std::string_view path);
+// The same with an instance's motion patched over the recipe's (with_motion), kept while the
+// recipe and the patch stay the same; a null patch is the recipe.
+[[nodiscard]] Result<std::shared_ptr<const CreatureRecipe>>
+load_creature(const World& world, std::string_view path, const json::Value& motion);
 
 // The entity each Creature2D keeps for a bone of its cut-out: <id>_<bone>, cut to 64 characters.
 [[nodiscard]] std::string creature_bone_id(std::string_view owner, std::string_view bone);
