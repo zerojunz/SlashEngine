@@ -11,6 +11,8 @@ port needs, and each Animator controller's state machine a task to set its param
 [examples/import-unity-3d](../../examples/import-unity-3d/) a 3D courtyard and
 [examples/import-unity-terrain](../../examples/import-unity-terrain/) a terrain.
 
+Status: current · Updated: 2026-11-20
+
 A folder imports as a Unity project when it has `Assets/` and
 `ProjectSettings/ProjectVersion.txt`. Projects saved by Unity 2018.3 or later import (prefabs
 were saved another way before); open an older project in a newer Unity and save it there first.

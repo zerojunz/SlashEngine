@@ -5,8 +5,7 @@ A video game engine completely built for AI Agents only. Welcome to the future b
 SlashEngine is a lightweight, free and open-source C++20 game engine designed for agents rather
 than manual human input: scenes are plain text, the engine describes itself, and every action is a
 command an agent can call over MCP. It is model agnostic and works with Claude Code, Codex, Cursor,
-opencode, Antigravity, Hermes Agent, OpenClaw or any other MCP client. [docs/](docs/README.md) has a getting-started guide, reference pages and
-the [roadmap](docs/roadmap.md); [docs/design.md](docs/design.md) is the full design.
+opencode, Antigravity, Hermes Agent, OpenClaw or any other MCP client.
 
 **Status:** milestones 1 to 8 are done, and so is every feature planned for the launch release,
 including the [agent-built worlds](docs/roadmap.md#agent-built-worlds-and-smart-npcs) tool set;
@@ -56,8 +55,22 @@ To build a game for players, export it from its folder. `--test` runs the result
 slash-cli export macos --test        # or windows, linux, web, android, ios
 ```
 
-To contribute, read [CONTRIBUTING.md](CONTRIBUTING.md). Agents working on the engine itself should
-start with [AGENTS.md](AGENTS.md).
+## Layout
+
+| Folder | What lives there |
+| --- | --- |
+| `engine/` | Engine libraries, one folder per module ([modules](docs/reference/engine-modules.md)) |
+| `tools/` | `slash-cli`, `slash-mcp`, `slash-game`, exporter, importer, shader compiler, bench |
+| `tests/`, `examples/` | Unit and smoke tests; one checked example per feature |
+| `docs/` | Getting started, concepts, [design](docs/design.md), [roadmap](docs/roadmap.md), reference pages |
+
+## Docs
+
+[docs/README.md](docs/README.md) indexes every doc: a getting-started guide, the reference pages and the roadmap. Agents working on the engine itself start with [AGENTS.md](AGENTS.md).
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

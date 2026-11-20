@@ -2,6 +2,8 @@
 
 SlashEngine has three programs, built into `build/<preset>/tools/`:
 
+Status: current · Updated: 2026-11-20
+
 - **`slash-cli`** runs games, checks scenes and projects, calls commands, serves them over HTTP
   and exports games.
 - **`slash-mcp`** serves the engine's commands to MCP clients over stdio.

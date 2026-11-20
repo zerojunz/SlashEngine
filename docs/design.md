@@ -2,6 +2,8 @@
 
 Approved 2026-10-14. The living version is the [SlashEngine Design Doc](https://claude.ai/code/artifact/9bb8a68c-122e-47aa-b966-4556d10784af); this file is the copy the code is built against.
 
+Status: current · Updated: 2026-11-20
+
 ## Summary
 
 SlashEngine is a small C++20 game engine whose primary user is an AI agent: every scene is plain text, every engine object is introspectable, and every action an editor could take is a command an agent can call over MCP. It builds with CMake, runs on SDL3 plus a thin renderer, and talks to any LLM through one provider interface. Where a choice is open, the default is to follow Godot's approach, adapted for agents.

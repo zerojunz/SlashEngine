@@ -5,6 +5,8 @@ HTTP and the command line. All four are generated from one command registry and 
 same session, so params, results and errors are identical; only the envelope differs. This page
 covers the envelopes, the HTTP server and the error codes.
 
+Status: current · Updated: 2026-11-20
+
 ## Choosing one
 
 | If you are | Use |
@@ -185,3 +187,76 @@ SlashEngine's own.
 | `capability` | The capability a session lacked: `read`, `edit`, `run`, `filesystem` or `build` |
 | `step`, `tail`, `log` | Where an `export.run` failed, the end of its build log and the full log's path |
 | `command`, `index` | The command inside a `batch` that failed, and its position |
+
+## Engine notes: Commands, MCP and JSON-RPC
+
+Every change to a world goes through a command registered in `engine/command`. The same registry
+backs three front ends, so they never drift apart:
+
+```bash
+mcp=./build/dev/tools/slash-mcp/slash-mcp
+$mcp --project . --scene tests/data/basic.scene.json     # MCP over stdio; tools use '_' for '.'
+$mcp --project . --tools all                             # every command as a tool, not core + tools_load
+$cli rpc --project .                                     # JSON-RPC 2.0, one message per line
+$cli call world.query '{"with": ["Transform2D"]}' --scene tests/data/basic.scene.json
+$cli call batch '{"commands": [{"command": "entity.create", "params": {"id": "a"}}]}' \
+    --scene build/out.scene.json --save
+$cli init path/to/game                                   # MCP configs for Claude Code, Codex, Cursor, opencode, Antigravity, Hermes, OpenClaw
+```
+
+A session checks each command's capabilities (`--allow read,edit,run,filesystem,build,network`),
+validates its params against the command's JSON Schema, runs it, and records an undo step if it
+changed the world. A failed command changes nothing. Paths are relative to `--project` and cannot
+leave it. Commands that change the world take `"dry_run": true`, which returns what would change
+and changes nothing; `world.snapshot`, `world.diff` and `world.restore` save, compare against and
+go back to a copy of the entities. `events.subscribe` and `events.read` report entities created and
+destroyed, each change to the world and events gameplay code emits with `World::emit`. Systems
+react to them through `World::events()`, the events of the tick before, which each system sees
+once whatever its priority; sessions put them back when a command fails or is a dry run.
+
+MCP clients start with the core commands as tools (`kCoreCommands` in
+`engine/command/src/mcp.cpp`) and `tools_load`, a directory that adds the rest by group as a task
+needs them, since OpenAI's API takes at most 128 tools and each definition costs tokens every turn
+([docs/reference/protocols.md](protocols.md#mcp)). A command most sessions need
+belongs in that list; the bench's setup counts it.
+
+Commands are built for agents, so keep them cheap to call:
+
+- Return only what the caller needs: IDs before full components, changed fields after an edit.
+- Report every error with the JSON Pointer of the bad value and, for a misspelled name, the
+  closest valid one ("did you mean").
+- Keep descriptions short; they are sent to the model as tool definitions.
+
+The benchmark in `bench/` holds commands to that. `slash-cli bench` plays standard agent tasks
+through MCP and counts each one's calls and estimated tokens, and `ctest` fails when a task
+stops passing its checks or costs more than `bench/baseline.json` (setup included, so a new
+command's definition counts). When a change costs more or less on purpose, run
+`slash-cli bench --baseline bench/baseline.json --update` and commit the file. With `--live`, a
+model does the tasks from their prompts instead; see
+[docs/reference/benchmark.md](benchmark.md).
+
+To add a command, register it in `engine/command/src/builtin.cpp` (or your own registry) with a
+name, description, capabilities, an `Effect` and a params schema with
+`"additionalProperties": false`, then add a test to `tests/test_command.cpp`.
+
+## Engine notes: HTTP server and live games
+
+`engine/server` serves a session over HTTP on the loopback interface, so agents can drive a game
+while it runs:
+
+```bash
+$cli serve --scene tests/data/basic.scene.json     # until Ctrl+C; prints the URL and token
+$cli run --serve                                   # a running game, served between ticks
+$mcp --live --project .                            # MCP over stdio, forwarded to that game
+```
+
+Endpoints: `POST /v1/commands/<name>` (REST, params as the body), `GET /v1/commands`,
+`GET /v1/openapi.json`, `POST /rpc` (JSON-RPC) and `POST /mcp` (MCP over Streamable HTTP). Every
+request needs `Authorization: Bearer <token>`; a `Host` or `Origin` naming another site gets 403.
+The URL and token are written to `.slash/server.json` (owner-only on macOS and Linux) and removed
+on exit.
+
+Requests are queued and run only when the session's owner calls `Server::poll()`, so commands
+never race the game loop. A running game adds `play` and `pause`; while paused it keeps serving
+but stops stepping the world. Tests drive the server from a helper thread while the test thread polls;
+see `tests/test_server.cpp`.

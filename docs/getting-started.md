@@ -4,6 +4,8 @@ This walks through building SlashEngine, running a scene, changing it with comma
 connecting an AI agent to it. It takes a few minutes once the build is done. Every result shown
 here is real output from the engine.
 
+Status: current · Updated: 2026-11-20
+
 SlashEngine is early: it runs worlds of entities and components, saves them as JSON scenes and
 draws 2D sprites with animations, materials, tile maps and lights, but has no physics, audio or
 3D yet (see the [roadmap](roadmap.md)). What works today is the part agents use most: scenes, the command API,

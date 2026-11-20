@@ -6,6 +6,8 @@ Radiance Field Rendering* (SIGGRAPH 2023), the way photos of a real place are tu
 scenery that looks like the photos. Only the software device draws it for now. Read here what it
 does now, and what it does not do yet.
 
+Status: current · Updated: 2026-11-20
+
 ## What it does
 
 A capture made with 3D Gaussian Splatting's trainer, or a tool that writes its files (Postshot,
