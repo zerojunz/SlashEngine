@@ -4,6 +4,8 @@ Games talk over the network as Godot's high-level multiplayer does. A peer is on
 of the game's network: a server is peer 1, and each client joins it with an ID of its own.
 Transports are kinds of peer, so code written against `net::Peer` runs over any of them.
 
+Status: current · Updated: 2026-11-20
+
 | Peer | Godot's | Where |
 | --- | --- | --- |
 | `net::ENetPeer` | `ENetMultiplayerPeer` | Reliable UDP over [ENet](https://github.com/lsalzman/enet): macOS, Windows, Linux, iOS and Android. Not on the web, whose browsers have no UDP sockets. IPv4 only |
@@ -334,3 +336,43 @@ tracking as the `multiplayer` part.
 
 [`examples/network-sessions`](../../examples/network-sessions/) plays a game on three sessions
 with these commands.
+
+## Engine notes: Networking
+
+`engine/net` is networking, as Godot's high-level multiplayer
+([docs/reference/networking.md](networking.md)). `net::Peer` is Godot's
+`MultiplayerPeer`: `poll` takes in what arrived, packets wait with their sender, channel and
+transfer mode, and peers joining and leaving wait in `take_events` (Godot's signals). Server is
+peer 1; clients pick their IDs (`generate_unique_id`). `src/enet.cpp` ports
+`ENetMultiplayerPeer` and the parts of `ENetConnection` it uses onto upstream ENet (IPv4, as
+Godot without its fork), built from its C files in `cmake/Dependencies.cmake` everywhere but the
+web (`enet_supported`); `OfflinePeer` is `OfflineMultiplayerPeer`. `src/multiplayer.cpp` ports
+`SceneMultiplayer`, `SceneCacheInterface` and `SceneRPCInterface` with entities for nodes and
+their IDs for paths: `net::install` gives a world its `Multiplayer` (in the world's context) and
+the `multiplayer` system (priority -950) that polls it; peers join (through authentication when
+there is a callback), the server announces and relays, its signals are world events, and
+`add_rpc` and `rpc` call procedures on entities by name with Godot's modes, an RPC's ID being its
+index among the entity's procedures (those whose `component` it has) by name. It replicates as
+`SceneReplicationInterface` does, comparing the world with what it tracked at each poll in place
+of Godot's tree signals: a `MultiplayerSpawner`'s authority spawns the entities extending its
+`spawnable_scenes` placed under its `spawn_path` on each peer that can see them (`spawned` and
+`despawned` events; custom spawns through `set_spawn_function`), and a `MultiplayerSynchronizer`
+sends its root's properties, `"Component/field[/part]"` read and written through reflection, as
+syncs and reliable deltas whose intervals count world time. `src/websocket.cpp` ports
+Godot's `WebSocketPeer` and `WebSocketMultiplayerPeer`: natively `WSLPeer` (the handshake, with
+Mbed TLS's SHA-1, and wslay's framing over TCP through ENet's socket calls, `TcpStream` and
+`TcpServer`; `wss://` through `TlsStream`, Godot's `StreamPeerMbedTLS`, with `net::TlsOptions`
+as its `TLSOptions` and the system's certificates from `platform::system_ca_certificates`, or
+`platform::system_trusts` on Apple platforms, as `engine/ai`'s transport;
+`generate_self_signed_certificate` makes test certificates in code), on the web `EMWSPeer` (the browser's WebSocket through `EM_JS`, its
+events queued for `poll`). `tests/web/run.mjs` starts an echo server for the web build's test,
+`test_websocket_web.cpp`. Sessions and `runtime::Game` install a multiplayer in every world,
+offline; `engine/command/src/net.cpp` is `net.host`, `net.join`, `net.state`, `net.rpc` and
+`net.close`, which keep the transport beside it in the world's context, and `Session::restore`
+calls `Multiplayer::rebind` so entities put back by undo or a failed command stay spawned on the
+other peers. Tests talk over
+127.0.0.1 on ports the OS picks (`create_server(0)`, `local_port`). `examples/enet-peers` runs a
+server and three clients, `examples/multiplayer-rpc` three worlds' game,
+`examples/multiplayer-replication` bullets and players replicated between them and
+`examples/websocket-peers` the same game's calls over WebSocket, and `examples/network-sessions`
+plays a game on three sessions through the commands.

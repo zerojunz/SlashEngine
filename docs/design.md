@@ -2,6 +2,8 @@
 
 Approved 2026-10-14. The living version is the [SlashEngine Design Doc](https://claude.ai/code/artifact/9bb8a68c-122e-47aa-b966-4556d10784af); this file is the copy the code is built against.
 
+Status: current · Updated: 2026-11-20
+
 ## Summary
 
 SlashEngine is a small C++20 game engine whose primary user is an AI agent: every scene is plain text, every engine object is introspectable, and every action an editor could take is a command an agent can call over MCP. It builds with CMake, runs on SDL3 plus a thin renderer, and talks to any LLM through one provider interface. Where a choice is open, the default is to follow Godot's approach, adapted for agents.
@@ -147,20 +149,20 @@ The Godot and UE5 columns come from their public feature lists, not a line-by-li
 
 Every line in the repo is Apache 2.0 or comes from a dependency under a permissive open-source license, and CI fails any change that adds anything else.
 
-- **Allowed licenses:** MIT (with its variants, such as HarfBuzz's "Old MIT"), BSD, zlib, Apache 2.0, Boost, MIT-0, the FreeType License and public domain. No GPL or LGPL in the runtime, so games built on SlashEngine can ship under any license. One exception, in the tools only: glslang, which slash-cli and slash-mcp link to compile a game's shaders as Godot's editor links it, has a parser Bison made, under GPL-3.0 with the Bison exception that lets it ship under any terms (approved by Dan, 2026-10-19). Unicode's permissive data license (Unicode-DFS-2016) is allowed too, for the unicode-ident crate in AccessKit's Linux build (approved by Dan, 2026-10-30); the Rust crates AccessKit is built from are held to the same list.
+- **Allowed licenses:** MIT (with its variants, such as HarfBuzz's "Old MIT"), BSD, zlib, Apache 2.0, Boost, MIT-0, the FreeType License and public domain. No GPL or LGPL in the runtime, so games built on SlashEngine can ship under any license. One exception, in the tools only: glslang, which slash-cli and slash-mcp link to compile a game's shaders as Godot's editor links it, has a parser Bison made, under GPL-3.0 with the Bison exception that lets it ship under any terms (approved by the owner, 2026-10-19). Unicode's permissive data license (Unicode-DFS-2016) is allowed too, for the unicode-ident crate in AccessKit's Linux build (approved by the owner, 2026-10-30); the Rust crates AccessKit is built from are held to the same list.
 - **No copied engine code.** Nothing from UE5 or any other closed engine, including snippets from its source or docs. Godot is MIT, so its ideas and code may be borrowed with attribution in `THIRD_PARTY.md`.
 - **System APIs are linked, not shipped.** Win32, Direct3D, Metal, Vulkan drivers and mobile OS SDKs are called through SDL3; none of their code lives in the repo.
 - **Generators are called, not shipped.** The asset generator talks to image and audio models over HTTP, like `ai::Provider`, so no model or vendor SDK is in the repo. Each generated asset records its generator, model and license terms, because what a team may do with an asset depends on the service that made it.
-- **Store and ad SDKs follow the same rule.** StoreKit is an OS framework and Google Play Billing is fetched at export time with the Android SDK, so the repo holds only SlashEngine's glue for them. Ad network SDKs are proprietary, so their adapters live outside the repo, like console backends (decided by Dan).
+- **Store and ad SDKs follow the same rule.** StoreKit is an OS framework and Google Play Billing is fetched at export time with the Android SDK, so the repo holds only SlashEngine's glue for them. Ad network SDKs are proprietary, so their adapters live outside the repo, like console backends (decided by the owner).
 - **Vendor upscalers follow the same rule.** AMD's FSR 1, 2 and 3 are MIT code, so they are built in. NVIDIA's DLSS, Intel's XeSS and AMD's FSR 4 ship only as closed binaries under their vendors' licenses, so their adapters live outside the repo behind `render::Upscaler`, and a game that wants one adds it with its own copy of the vendor's SDK.
-- **Closed SDKs plug in as SDK packages.** A game adds a closed SDK (an ad network, DLSS, Steamworks, a store or analytics service) as an SDK package in its own project: an `sdk.json` file naming the vendor's binaries for each platform, by URL and checksum or by a local path, and glue code that implements one of the engine's interfaces. Exports fetch, check and link them and list the closed SDKs each build includes. The engine ships the mechanism; no vendor's binaries or headers enter the repo (requested by Dan).
+- **Closed SDKs plug in as SDK packages.** A game adds a closed SDK (an ad network, DLSS, Steamworks, a store or analytics service) as an SDK package in its own project: an `sdk.json` file naming the vendor's binaries for each platform, by URL and checksum or by a local path, and glue code that implements one of the engine's interfaces. Exports fetch, check and link them and list the closed SDKs each build includes. The engine ships the mechanism; no vendor's binaries or headers enter the repo (requested by the owner).
 - **Consoles live outside the repo.** PlayStation, Xbox and Switch SDKs are closed and under NDA, so, as with Godot, console ports are private backends built by licensed porting partners and offered to studios separately. They plug in behind the same `RenderDevice` and platform interfaces.
 - **Enforced in CI.** Each dependency is pinned with its license in a manifest, and a license check runs on every PR.
 
 | Library | Used for | License |
 | --- | --- | --- |
 | SDL3 | Platform layer, GPU API | zlib |
-| glslang, SPIRV-Cross | Compiling HLSL shaders: the engine's ahead of time, and a game's own in slash-cli, slash-mcp and exports; linked into the tools only, nothing of theirs ships | BSD-3-Clause and others (glslang's parser under GPL-3.0 with the Bison exception, approved by Dan), Apache 2.0 |
+| glslang, SPIRV-Cross | Compiling HLSL shaders: the engine's ahead of time, and a game's own in slash-cli, slash-mcp and exports; linked into the tools only, nothing of theirs ships | BSD-3-Clause and others (glslang's parser under GPL-3.0 with the Bison exception, approved by the owner), Apache 2.0 |
 | Tint (from Dawn), with SPIRV-Tools and Abseil | Turning those shaders' SPIR-V into WGSL for WebGPU; linked into the tools only | BSD-3-Clause, Apache 2.0 |
 | EnTT | ECS and runtime type metadata | MIT |
 | yyjson | JSON parsing | MIT |
@@ -527,4 +529,4 @@ After launch: Windows and Linux hosts for the engine and tools (done: CI builds,
 
 **Open questions**
 
-- [x] Minimum OS versions. Decided by Dan: only versions released in 2020 or later are supported. That means macOS 11, iOS 14, Android 11 (API level 30), Windows 10 version 2004, Linux with glibc 2.31 (Ubuntu 20.04 or newer), and on the web Chrome and Edge 85, Firefox 79 and Safari 15, the oldest browsers Emscripten supports (Safari 14 also lacks WebGL2). SDL3's GPU API needs less on every platform.
+- [x] Minimum OS versions. Decided by the owner: only versions released in 2020 or later are supported. That means macOS 11, iOS 14, Android 11 (API level 30), Windows 10 version 2004, Linux with glibc 2.31 (Ubuntu 20.04 or newer), and on the web Chrome and Edge 85, Firefox 79 and Safari 15, the oldest browsers Emscripten supports (Safari 14 also lacks WebGL2). SDL3's GPU API needs less on every platform.

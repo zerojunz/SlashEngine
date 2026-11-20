@@ -8,6 +8,8 @@ RendererRD's `GI::SDFGI` (`servers/rendering/renderer_rd/environment/gi.cpp`) an
 Direct3D 12) and the WebGPU device draw it; the OpenGL devices never will, as Godot's
 Compatibility renderer has none. Read here what it does now, and what it does not do yet.
 
+Status: current · Updated: 2026-11-20
+
 ## What it does
 
 SDFGI lights a scene with no baking. Lights, meshes and the camera can all move.

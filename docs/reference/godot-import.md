@@ -6,6 +6,8 @@ SlashEngine's components already use Godot's names, fields and enums. Scripts do
 since SlashEngine games are plain C++: each becomes a storyboard task to port it, with what the
 port needs. [examples/import-godot](../../examples/import-godot/) imports a small platformer.
 
+Status: current · Updated: 2026-11-20
+
 Only Godot 4 projects import (`config_version=5` in `project.godot`). Open a Godot 3 project in
 Godot 4 and save it there first; Godot converts it. A game exported with Godot 4 imports too,
 from its `.pck` file or executable: see [Exported games](#exported-games).

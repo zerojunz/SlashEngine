@@ -4,6 +4,8 @@ SlashEngine is a lightweight, free and open-source C++20 game engine whose prima
 agent. These docs are written for both people and agents: plain Markdown, one topic per file,
 real commands and real output, and no screenshots.
 
+Status: current · Updated: 2026-11-20
+
 ## Where to start
 
 | You want to | Read |
@@ -42,7 +44,70 @@ real commands and real output, and no screenshots.
 | Measure what agent tasks cost in calls and tokens | [reference/benchmark.md](reference/benchmark.md) |
 | Check that each coding agent edits a scene over MCP | [exit-check/README.md](exit-check/README.md) |
 | Read the full design and the reasons behind it | [design.md](design.md) |
-| Work on the engine's own code | [../AGENTS.md](../AGENTS.md) |
+| Work on the engine's own code | [../AGENTS.md](../AGENTS.md), then its [reference index](../AGENTS.md#reference-index) |
+
+## All docs
+
+Every doc in this folder. Each new doc gets a row in the same PR ([DOCS-STANDARD.md](DOCS-STANDARD.md)). Pages under `reference/` marked "engine notes" hold the subsystem detail that used to be in AGENTS.md.
+
+| Doc | What it covers | Status |
+| --- | --- | --- |
+| [getting-started.md](getting-started.md) | Build SlashEngine, run a scene, change it with commands, connect an agent. | current |
+| [concepts.md](concepts.md) | How the pieces fit together and the rules every command follows. | current |
+| [design.md](design.md) | The approved design and the reasons behind it; changes only when a design decision changes. | current |
+| [roadmap.md](roadmap.md) | The ordered plan to launch and beyond, with a status per item. | current |
+| [DOCS-STANDARD.md](DOCS-STANDARD.md) | Docs standard: templates, length caps and rules for every doc. | current |
+| [reference/animation.md](reference/animation.md) | Keyframe animation and animation trees. | current |
+| [reference/asset-library.md](reference/asset-library.md) | The asset library: generators, commands and storage. | current |
+| [reference/assets.md](reference/assets.md) | Asset loading and hot reload. | current |
+| [reference/audio.md](reference/audio.md) | Sound files, the mixer, buses and effects. | current |
+| [reference/autopilot.md](reference/autopilot.md) | Autopilot, an agent that plays a game to find bugs or reach a goal; plus engine notes. | current |
+| [reference/benchmark.md](reference/benchmark.md) | What standard agent tasks cost in calls and tokens, and the CI baseline. | current |
+| [reference/build-and-test.md](reference/build-and-test.md) | Full build, test, lint and CI-parity commands for engine work, per platform. | current |
+| [reference/cli.md](reference/cli.md) | `slash-cli`, `slash-mcp` and `slash-game`: every flag and subcommand. | current |
+| [reference/commands.md](reference/commands.md) | Every command: params, capabilities and a real example. | current |
+| [reference/components.md](reference/components.md) | How to add a reflected component and register its docs. | current |
+| [reference/debug-overlay.md](reference/debug-overlay.md) | The debug overlay over a running game. | current |
+| [reference/digital-humans.md](reference/digital-humans.md) | Research note: what digital humans needed and the order they came in. | current |
+| [reference/engine-modules.md](reference/engine-modules.md) | What each engine module under engine/ holds. | current |
+| [reference/game-projects.md](reference/game-projects.md) | Game projects and exports: presets and building for each platform (engine notes). | current |
+| [reference/gameplay-code.md](reference/gameplay-code.md) | Writing and reloading a game's own C++ code. | current |
+| [reference/gaussian-splats.md](reference/gaussian-splats.md) | Research: scenery captured from photos as Gaussian splats. | current |
+| [reference/godot-import.md](reference/godot-import.md) | Importing a Godot 4 project. | current |
+| [reference/importing.md](reference/importing.md) | How the Godot, Unity and Unreal importers work (engine notes). | current |
+| [reference/input.md](reference/input.md) | Input events, action maps and input state. | current |
+| [reference/jobs.md](reference/jobs.md) | The job system. | current |
+| [reference/localization.md](reference/localization.md) | Translation files, locales and plural rules. | current |
+| [reference/navigation.md](reference/navigation.md) | Navigation meshes, maps, paths and agents. | current |
+| [reference/networking.md](reference/networking.md) | Multiplayer packets between machines, as Godot's high-level multiplayer; plus engine notes. | current |
+| [reference/npcs.md](reference/npcs.md) | NPC brains, planning, quests, dialogue and fauna. | current |
+| [reference/particles.md](reference/particles.md) | CPU and GPU particles. | current |
+| [reference/physics-2d.md](reference/physics-2d.md) | 2D physics on Box2D. | current |
+| [reference/physics-3d.md](reference/physics-3d.md) | 3D physics on Jolt. | current |
+| [reference/precision.md](reference/precision.md) | Building with double-precision positions. | current |
+| [reference/procedural.md](reference/procedural.md) | Procedural generation: noise, textures, scatter rules and PCG graphs. | current |
+| [reference/profiling.md](reference/profiling.md) | Profiling a running game. | current |
+| [reference/project-format.md](reference/project-format.md) | A game's `project.json` and folder layout. | current |
+| [reference/protocols.md](reference/protocols.md) | The engine's commands over CLI, JSON-RPC, MCP and REST; plus engine notes on the command registry and HTTP server. | current |
+| [reference/providers.md](reference/providers.md) | `ai::Provider`: calling a language model from a game, tool or test; plus engine notes. | current |
+| [reference/rendering.md](reference/rendering.md) | The renderer: devices, passes, materials, lighting and ray tracing (engine notes). | current |
+| [reference/replays.md](reference/replays.md) | Recording and replaying a game session. | current |
+| [reference/restir.md](reference/restir.md) | Research: many shadowed lights with ReSTIR. | current |
+| [reference/scene-format.md](reference/scene-format.md) | `.scene.json` and `.prefab.json` files. | current |
+| [reference/scenes.md](reference/scenes.md) | Scene files and the commands that edit them (engine notes). | current |
+| [reference/sdfgi.md](reference/sdfgi.md) | Research: SDFGI, fully dynamic global illumination. | current |
+| [reference/sdk-format.md](reference/sdk-format.md) | An SDK package adds a closed vendor SDK (an ad network, a store, analytics, Steamworks, an upscaler) to a game without changing the... | current |
+| [reference/services.md](reference/services.md) | Ads, analytics, purchases, achievements and leaderboards; plus engine notes. | current |
+| [reference/soundtracks.md](reference/soundtracks.md) | Scores, MIDI, stems and cue sheets. | current |
+| [reference/storyboard-format.md](reference/storyboard-format.md) | The storyboard: a game's characters, story, rules and decisions; plus engine notes. | current |
+| [reference/ui-text.md](reference/ui-text.md) | UI controls, themes and text. | current |
+| [reference/unity-import.md](reference/unity-import.md) | Importing a Unity project. | current |
+| [reference/unreal-import.md](reference/unreal-import.md) | Importing an Unreal Engine 5 project. | current |
+| [reference/video.md](reference/video.md) | AV1 video decoding, encoding and playback. | current |
+| [reference/virtualized-geometry.md](reference/virtualized-geometry.md) | Research: Nanite-style cluster hierarchies. | current |
+| [reference/xr.md](reference/xr.md) | The XR server, interfaces, trackers and OpenXR. | current |
+| [exit-check/README.md](exit-check/README.md) | Milestone 3 exit check: each coding agent edits a scene over MCP. | current |
+| [exit-check/claude-code.md](exit-check/claude-code.md) | Generated result of the exit check for Claude Code. | historical |
 
 ## Reading order for agents
 

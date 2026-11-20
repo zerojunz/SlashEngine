@@ -5,6 +5,8 @@ Godot's `project.godot`: it names the game and says which scene starts it. `slas
 writes one, `slash-cli schema project` prints its JSON Schema, and `slash-cli project validate`
 checks it.
 
+Status: current · Updated: 2026-11-20
+
 ```json
 {
   "format": 1,
