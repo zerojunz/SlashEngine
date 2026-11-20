@@ -1,5 +1,7 @@
 #include "space.hpp"
 
+#include "slash/core/math.hpp"
+
 #include <Jolt/Geometry/ConvexHullBuilder.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
@@ -21,13 +23,10 @@ namespace slash::physics3d::detail {
 
 namespace {
 
-// Godot's physics/jolt_physics_3d/collisions/collision_margin_fraction: no more of a box,
-// cylinder or hull than this fraction of its shortest half extent is rounded off.
-constexpr float kMarginFraction = 0.08F;
-// Godot's active_edge_threshold, 50 degrees, as its cosine: mesh edges sharper than it collide.
-constexpr float kActiveEdgeCos = 0.64278761F;
-// Godot's world_boundary_shape_size: how far a world boundary reaches.
-constexpr float kWorldBoundarySize = 2000.0F;
+// Godot's active_edge_threshold as its cosine: mesh edges sharper than it collide.
+float active_edge_cos(const Settings& settings) {
+    return slash::cos_sin(settings.active_edge_threshold).x;
+}
 
 Vec3 column_scale(Vec3 v, float s) {
     return {v.x * s, v.y * s, v.z * s};
@@ -130,12 +129,15 @@ JPH::RMat44 place_matrix_of(const world::Affine3D& transform) {
             to_jolt_place(transform.origin)};
 }
 
-BuiltShape build_shape(const world::CollisionShape3D& shape) {
+BuiltShape build_shape(const world::CollisionShape3D& shape, const Settings& settings) {
+    // Godot's collision_margin_fraction: no more of a box, cylinder or hull than this fraction
+    // of its shortest half extent is rounded off.
+    const float margin_fraction = std::max(settings.collision_margin_fraction, 0.0F);
     if (shape.shape == "box") {
         // Godot's JoltBoxShape3D.
         const Vec3 half = column_scale(shape.size, 0.5F);
         const float margin =
-            std::min<real_t>(shape.margin, std::min({half.x, half.y, half.z}) * kMarginFraction);
+            std::min<real_t>(shape.margin, std::min({half.x, half.y, half.z}) * margin_fraction);
         return made(JPH::BoxShapeSettings(to_jolt(half), std::max(margin, 0.0F)), "box");
     }
     if (shape.shape == "sphere") {
@@ -160,7 +162,7 @@ BuiltShape build_shape(const world::CollisionShape3D& shape) {
     if (shape.shape == "cylinder") {
         const float half_height = shape.height / 2.0F;
         const float margin =
-            std::min(shape.margin, std::min(half_height, shape.radius) * kMarginFraction);
+            std::min(shape.margin, std::min(half_height, shape.radius) * margin_fraction);
         return made(JPH::CylinderShapeSettings(half_height, shape.radius, std::max(margin, 0.0F)),
                     "cylinder");
     }
@@ -184,7 +186,7 @@ BuiltShape build_shape(const world::CollisionShape3D& shape) {
         }
         const Vec3 size = high - low;
         const float margin = std::min<real_t>(shape.margin, std::min({size.x, size.y, size.z}) *
-                                                                0.5F * kMarginFraction);
+                                                                0.5F * margin_fraction);
         return made(JPH::ConvexHullShapeSettings(points, std::max(margin, 0.0F)), "convex polygon");
     }
     if (shape.shape == "concave_polygon") {
@@ -209,9 +211,9 @@ BuiltShape build_shape(const world::CollisionShape3D& shape) {
                 triangles.emplace_back(float3(a), float3(b), float3(c), 0);
             }
         }
-        JPH::MeshShapeSettings settings(triangles);
-        settings.mActiveEdgeCosThresholdAngle = kActiveEdgeCos;
-        return made(settings, "concave polygon");
+        JPH::MeshShapeSettings mesh(triangles);
+        mesh.mActiveEdgeCosThresholdAngle = active_edge_cos(settings);
+        return made(mesh, "concave polygon");
     }
     if (shape.shape == "world_boundary") {
         const Vec3 normal{shape.plane.x, shape.plane.y, shape.plane.z};
@@ -221,13 +223,15 @@ BuiltShape build_shape(const world::CollisionShape3D& shape) {
         }
         // Godot's plane holds the points p where normal . p = d; Jolt's, normal . p + c = 0.
         const JPH::Plane plane(to_jolt(normal * (1.0F / l)), -shape.plane.w / l);
-        return made(JPH::PlaneShapeSettings(plane, nullptr, kWorldBoundarySize / 2.0F),
-                    "world boundary");
+        return made(
+            JPH::PlaneShapeSettings(plane, nullptr, settings.world_boundary_shape_size / 2.0F),
+            "world boundary");
     }
     return {nullptr, "unknown shape \"" + shape.shape + "\""};
 }
 
-BuiltShape build_terrain_shape(const scene3d::TerrainData& data, Vec3 map_scale, bool centered) {
+BuiltShape build_terrain_shape(const scene3d::TerrainData& data, Vec3 map_scale, bool centered,
+                               const Settings& tuning) {
     const int r = data.resolution;
     if (data.empty() || r < 2) {
         return {};
@@ -251,7 +255,7 @@ BuiltShape build_terrain_shape(const scene3d::TerrainData& data, Vec3 map_scale,
     JPH::HeightFieldShapeSettings settings(rows.data(), offset, to_jolt(map_scale),
                                            static_cast<JPH::uint32>(r));
     settings.mBitsPerSample = settings.CalculateBitsPerSampleForError(0.0F);
-    settings.mActiveEdgeCosThresholdAngle = kActiveEdgeCos;
+    settings.mActiveEdgeCosThresholdAngle = active_edge_cos(tuning);
     BuiltShape built = made(settings, "terrain");
     if (built.shape != nullptr) {
         const JPH::ShapeSettings::ShapeResult mirrored =

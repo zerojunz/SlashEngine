@@ -31,10 +31,6 @@ namespace slash::physics3d::detail {
 
 namespace {
 
-// The same as a SoftBody3D's.
-constexpr float kPointRadius = 0.01F;
-constexpr float kMaxLinearVelocity = 500.0F;
-
 JPH::SoftBodyMotionProperties& motion_of(JPH::Body& body) {
     return static_cast<JPH::SoftBodyMotionProperties&>(*body.GetMotionProperties()); // NOLINT
 }
@@ -312,8 +308,8 @@ void Space::create_cloth(SoftBody& soft, const world::Cloth3D& cloth, const worl
     settings.mNumIterations = static_cast<JPH::uint32>(soft.precision);
     settings.mLinearDamping = soft.damping;
     settings.mGravityFactor = cloth.gravity_scale;
-    settings.mVertexRadius = kPointRadius;
-    settings.mMaxLinearVelocity = kMaxLinearVelocity;
+    settings.mVertexRadius = settings_.soft_body_point_radius;
+    settings.mMaxLinearVelocity = settings_.max_linear_velocity;
     settings.mRestitution = 0.0F;
     settings.mFriction = 1.0F;
     settings.mUpdatePosition = false;

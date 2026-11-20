@@ -1,5 +1,7 @@
 #include "slash/physics3d/vehicle_tool.hpp"
 
+#include "space.hpp"
+
 #include "slash/core/log.hpp"
 #include "slash/scene3d/ragdoll.hpp"
 #include "slash/world/components.hpp"
@@ -25,7 +27,6 @@ using world::Affine3D;
 using world::VehicleRecipe;
 
 constexpr float kAir = 1.225F;       // kilograms a cubic meter
-constexpr float kGravity = 9.8F;     // meters a second squared
 constexpr float kPersonMass = 80.0F; // what a character or creature weighs when it says nothing
 constexpr float kHitRestitution = 0.5F;
 constexpr float kHitCooldown = 0.5F; // seconds before the same vehicle hits the same one again
@@ -151,8 +152,16 @@ void keep_body(entt::registry& ecs, entt::entity entity, const VehicleRecipe& re
     }
 }
 
+// The project's gravity, in meters a second squared, which suspensions, hulls and balance are
+// sized to carry.
+real_t gravity_strength(const world::World& world) {
+    const Settings settings =
+        detail::find_space(world) != nullptr ? detail::find_space(world)->settings() : Settings{};
+    return length(settings.gravity_vector * settings.gravity);
+}
+
 world::VehicleWheel3D wheel_settings(world::VehicleWheel3D wheel, const VehicleRecipe& recipe,
-                                     const world::VehicleWheel& made) {
+                                     const world::VehicleWheel& made, real_t gravity) {
     const world::VehiclePhysics& p = recipe.physics;
     const auto count = static_cast<float>(std::max<std::size_t>(recipe.wheels.size(), 1));
     wheel.use_as_traction = made.drive;
@@ -166,7 +175,7 @@ world::VehicleWheel3D wheel_settings(world::VehicleWheel3D wheel, const VehicleR
     wheel.wheel_friction_slip = p.tire_friction;
     wheel.wheel_roll_influence = p.roll_influence;
     wheel.suspension_max_force =
-        p.suspension_max_force > 0.0F ? p.suspension_max_force : 4.0F * p.mass * kGravity / count;
+        p.suspension_max_force > 0.0F ? p.suspension_max_force : 4.0F * p.mass * gravity / count;
     return wheel;
 }
 
@@ -186,6 +195,7 @@ bool same_settings(const world::VehicleWheel3D& a, const world::VehicleWheel3D& 
 std::vector<entt::entity> keep_wheels(world::World& world, entt::entity entity,
                                       const VehicleRecipe& recipe) {
     entt::registry& ecs = world.ecs();
+    const real_t gravity = gravity_strength(world);
     std::vector<entt::entity> wheels;
     if (!world::vehicle_rolls(recipe)) {
         return wheels;
@@ -205,7 +215,8 @@ std::vector<entt::entity> keep_wheels(world::World& world, entt::entity entity,
             world::Transform3D place;
             place.position = made.position + Vec3{0.0F, recipe.physics.suspension_rest, 0.0F};
             ecs.emplace_or_replace<world::Transform3D>(wheel, place);
-            ecs.emplace_or_replace<world::VehicleWheel3D>(wheel, wheel_settings({}, recipe, made));
+            ecs.emplace_or_replace<world::VehicleWheel3D>(
+                wheel, wheel_settings({}, recipe, made, gravity));
             ecs.get<world::Transform3D>(entity).children.push_back(wheel);
             // The tire turned so the cylinder's axis is the axle.
             const entt::entity tire = create_named(world, name.empty() ? name : name + "_tire");
@@ -227,7 +238,7 @@ std::vector<entt::entity> keep_wheels(world::World& world, entt::entity entity,
             ecs.get<world::Transform3D>(wheel).children.push_back(tire);
         } else {
             const auto& old = ecs.get<world::VehicleWheel3D>(wheel);
-            if (const world::VehicleWheel3D fresh = wheel_settings(old, recipe, made);
+            if (const world::VehicleWheel3D fresh = wheel_settings(old, recipe, made, gravity);
                 !same_settings(fresh, old)) {
                 ecs.replace<world::VehicleWheel3D>(wheel, fresh);
             }
@@ -289,14 +300,14 @@ struct Push {
 };
 
 Push boat_forces(const VehicleRecipe& recipe, const Affine3D& global, Vec3 velocity, Vec3 angular,
-                 const world::VehicleControls& controls) {
+                 const world::VehicleControls& controls, real_t gravity) {
     Push out;
     const world::VehiclePhysics& p = recipe.physics;
     const world::VehicleBody& b = recipe.body;
     const Vec3 com = global.apply(p.center_of_mass);
     const real_t draft = std::max(p.draft, 0.05F);
     // Each of the hull's four corners floats a quarter of its weight at its draft.
-    const real_t spring = p.mass * kGravity / (4.0F * draft);
+    const real_t spring = p.mass * gravity / (4.0F * draft);
     const real_t damper = 2.0F * std::sqrt(spring * p.mass * 0.25F) * 0.6F;
     real_t submerged = 0.0F;
     for (const real_t x : {b.width * 0.45F, -b.width * 0.45F}) {
@@ -377,7 +388,8 @@ Push slew_forces(const VehicleRecipe& recipe, const Affine3D& global, Vec3 angul
 }
 
 // A bike leans back upright.
-Push balance_forces(const VehicleRecipe& recipe, const Affine3D& global, Vec3 angular) {
+Push balance_forces(const VehicleRecipe& recipe, const Affine3D& global, Vec3 angular,
+                    real_t gravity) {
     Push out;
     const world::VehiclePhysics& p = recipe.physics;
     if (p.balance <= 0.0F) {
@@ -387,7 +399,7 @@ Push balance_forces(const VehicleRecipe& recipe, const Affine3D& global, Vec3 an
     const Vec3 up = normalized(global.basis({0.0F, 1.0F, 0.0F}));
     const real_t lean = dot(cross(up, Vec3{0.0F, 1.0F, 0.0F}), forward);
     const real_t height = std::max(recipe.body.height, 0.5F);
-    const real_t spring = p.balance * p.mass * kGravity * height * 4.0F;
+    const real_t spring = p.balance * p.mass * gravity * height * 4.0F;
     const real_t damper = p.balance * p.mass * height * height * 2.0F;
     out.torque = forward * ((spring * lean) - (damper * dot(angular, forward)));
     return out;
@@ -497,6 +509,7 @@ void drive_vehicle(world::World& world, const world::Tree3D& tree, entt::entity 
     const VehicleRecipe& recipe = *tuned.value();
     keep_body(ecs, entity, recipe);
     const std::vector<entt::entity> wheels = keep_wheels(world, entity, recipe);
+    const real_t gravity = gravity_strength(world);
     const Affine3D global = tree.global(entity);
     const auto& body = ecs.get<world::RigidBody3D>(entity);
     const Vec3 velocity = body.linear_velocity;
@@ -556,7 +569,7 @@ void drive_vehicle(world::World& world, const world::Tree3D& tree, entt::entity 
     }
     const int rear_driven = driven - front_driven;
     const float idle_brake = std::abs(controls.throttle) < 0.05F && out.brake <= 0.0F
-                                 ? 0.015F * recipe.physics.mass * kGravity /
+                                 ? 0.015F * recipe.physics.mass * gravity /
                                        static_cast<float>(std::max<std::size_t>(wheels.size(), 1))
                                  : 0.0F;
     for (std::size_t i = 0; i < wheels.size(); ++i) {
@@ -595,7 +608,7 @@ void drive_vehicle(world::World& world, const world::Tree3D& tree, entt::entity 
     const real_t front_area = b.width * std::max<real_t>(b.height - b.clearance, 0.1F);
     push.force = velocity * (-0.5F * kAir * recipe.physics.drag * front_area * length(velocity));
     if (recipe.kind == "boat") {
-        const Push water = boat_forces(recipe, global, velocity, angular, controls);
+        const Push water = boat_forces(recipe, global, velocity, angular, controls, gravity);
         push.force = push.force + water.force;
         push.torque = push.torque + water.torque;
     } else if (recipe.kind == "aircraft") {
@@ -603,7 +616,7 @@ void drive_vehicle(world::World& world, const world::Tree3D& tree, entt::entity 
         push.force = push.force + air.force;
         push.torque = push.torque + air.torque;
     } else if (recipe.kind == "bike") {
-        push.torque = push.torque + balance_forces(recipe, global, angular).torque;
+        push.torque = push.torque + balance_forces(recipe, global, angular, gravity).torque;
     } else if (tracked && vehicle.enabled) {
         push.torque =
             push.torque + slew_forces(recipe, global, angular, vehicle.drive.steer).torque;
