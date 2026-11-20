@@ -209,13 +209,15 @@ struct BuiltShape {
     JPH::RefConst<JPH::Shape> shape;
     std::string error;
 };
-[[nodiscard]] BuiltShape build_shape(const world::CollisionShape3D& shape);
+// settings gives the margins, mesh edges and world boundaries' size.
+[[nodiscard]] BuiltShape build_shape(const world::CollisionShape3D& shape,
+                                     const Settings& settings = {});
 // An HTerrain's heights as a Jolt height field in its entity's space, as Godot's
 // JoltHeightMapShape3D builds a height map shape (mirrored along z, so Jolt splits each quad as
 // Godot does): cell (x, z) at map_scale * (x, height, z), moved back half the terrain when
 // centered. Holes don't collide.
 [[nodiscard]] BuiltShape build_terrain_shape(const scene3d::TerrainData& data, Vec3 map_scale,
-                                             bool centered);
+                                             bool centered, const Settings& tuning = {});
 // The same scaled, made valid for the shape as Godot's JOLT_ENSURE_SCALE_VALID does (a sphere
 // scales the same along every axis).
 [[nodiscard]] JPH::RefConst<JPH::Shape> scaled(const JPH::Shape* shape, Vec3 scale);

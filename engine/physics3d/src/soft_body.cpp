@@ -35,10 +35,6 @@ namespace {
 
 using world::SoftBody3D;
 
-// Godot's physics/jolt_physics_3d/simulation/soft_body_point_radius.
-constexpr float kPointRadius = 0.01F;
-// Godot's physics/jolt_physics_3d/limits/max_linear_velocity.
-constexpr float kMaxLinearVelocity = 500.0F;
 // Kilograms a cubic meter of air weighs at sea level, for the drag of WindSource3Ds' wind.
 constexpr float kAirDensity = 1.225F;
 
@@ -282,8 +278,8 @@ void Space::create_soft_body(SoftBody& soft, const scene3d::MeshData& mesh,
     settings.mNumIterations = static_cast<JPH::uint32>(soft.precision);
     settings.mLinearDamping = soft.damping;
     settings.mPressure = soft.pressure;
-    settings.mVertexRadius = kPointRadius;
-    settings.mMaxLinearVelocity = kMaxLinearVelocity;
+    settings.mVertexRadius = settings_.soft_body_point_radius;
+    settings.mMaxLinearVelocity = settings_.max_linear_velocity;
     settings.mRestitution = 0.0F;
     settings.mFriction = 1.0F;
     settings.mUpdatePosition = false;

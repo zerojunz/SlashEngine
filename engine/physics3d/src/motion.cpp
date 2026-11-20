@@ -22,9 +22,6 @@ namespace slash::physics3d::detail {
 
 namespace {
 
-// Godot's physics/jolt_physics_3d/motion_queries settings.
-constexpr int kRecoveryIterations = 4;
-constexpr float kRecoveryAmount = 0.4F;
 constexpr int kMaxCollisions = 32;
 constexpr int kMaxCastBodies = 1024;
 
@@ -205,9 +202,25 @@ int log2_floor(float x) {
     return exponent - 1;
 }
 
+// A narrow phase shape query, skipping inner edges as Godot's motion queries do unless its
+// motion_queries/use_enhanced_internal_edge_removal is off.
+void collide_shape(const JPH::NarrowPhaseQuery& query, const Settings& tuning,
+                   const JPH::Shape* shape, JPH::RMat44Arg place,
+                   const JPH::CollideShapeSettings& settings, JPH::RVec3Arg base,
+                   JPH::CollideShapeCollector& collector, const MotionFilter& filter) {
+    if (tuning.motion_use_enhanced_internal_edge_removal) {
+        query.CollideShapeWithInternalEdgeRemoval(shape, JPH::Vec3::sOne(), place, settings, base,
+                                                  collector, filter, filter, filter);
+    } else {
+        query.CollideShape(shape, JPH::Vec3::sOne(), place, settings, base, collector, filter,
+                           filter, filter);
+    }
+}
+
 // Godot's _body_motion_recover: pushes the body out of what it overlaps, a little at a time.
+// Godot's motion_queries settings say how many passes and how much of each overlap.
 bool recover(const JPH::PhysicsSystem& system, const Body& body, const world::Affine3D& transform,
-             float margin, const MotionFilter& filter, Vec3& recovery) {
+             float margin, const MotionFilter& filter, const Settings& tuning, Vec3& recovery) {
     const JPH::NarrowPhaseQuery& query = system.GetNarrowPhaseQueryNoLock();
     world::Affine3D transform_com =
         translated_local(transform, from_jolt(body.shape->GetCenterOfMass()));
@@ -215,12 +228,11 @@ bool recover(const JPH::PhysicsSystem& system, const Body& body, const world::Af
     settings.mMaxSeparationDistance = margin;
     AnyMulti<JPH::CollideShapeCollector> collector(32);
     bool recovered = false;
-    for (int i = 0; i < kRecoveryIterations; ++i) {
+    for (int i = 0; i < tuning.recovery_iterations; ++i) {
         collector.Reset();
         const Vec3 base = transform_com.origin;
-        query.CollideShapeWithInternalEdgeRemoval(
-            body.shape.GetPtr(), JPH::Vec3::sOne(), place_matrix_of(transform_com), settings,
-            to_jolt_place(base), collector, filter, filter, filter);
+        collide_shape(query, tuning, body.shape.GetPtr(), place_matrix_of(transform_com), settings,
+                      to_jolt_place(base), collector, filter);
         if (collector.hits.empty()) {
             break;
         }
@@ -235,7 +247,7 @@ bool recover(const JPH::PhysicsSystem& system, const Body& body, const world::Af
             if (depth <= 0.0F) {
                 continue;
             }
-            step = step - (axis * (depth * kRecoveryAmount));
+            step = step - (axis * (depth * tuning.recovery_amount));
         }
         if (step == Vec3{}) {
             break;
@@ -250,7 +262,8 @@ bool recover(const JPH::PhysicsSystem& system, const Body& body, const world::Af
 // binary search to about a millimeter against each body in its way.
 bool cast_shape(const JPH::PhysicsSystem& system, const JPH::ConvexShape& shape,
                 const world::Affine3D& transform_com, Vec3 scale, Vec3 motion,
-                const MotionFilter& filter, float& closest_safe, float& closest_unsafe) {
+                const MotionFilter& filter, const Settings& tuning, float& closest_safe,
+                float& closest_unsafe) {
     closest_safe = 1.0F;
     closest_unsafe = 1.0F;
     const float motion_length = length(motion);
@@ -277,6 +290,10 @@ bool cast_shape(const JPH::PhysicsSystem& system, const JPH::ConvexShape& shape,
     const auto collides = [&](const JPH::TransformedShape& other_shape, float fraction) {
         motion_shape.set_motion(motion_local * fraction);
         Any<JPH::CollideShapeCollector> collector;
+        if (!tuning.motion_use_enhanced_internal_edge_removal) {
+            other_shape.CollideShape(&motion_shape, jolt_scale, com, settings, base, collector);
+            return collector.hit;
+        }
         JPH::InternalEdgeRemovingCollector edges(collector,
                                                  settings.mInternalEdgeRemovalVertexToleranceSq);
         other_shape.CollideShape(&motion_shape, jolt_scale, com, settings, base, edges);
@@ -324,7 +341,8 @@ bool cast_shape(const JPH::PhysicsSystem& system, const JPH::ConvexShape& shape,
 
 // Godot's _body_motion_cast: each convex shape of the body swept on its own.
 bool cast(const JPH::PhysicsSystem& system, const Body& body, const world::Affine3D& transform,
-          Vec3 scale, Vec3 motion, const MotionFilter& filter, float& safe, float& unsafe) {
+          Vec3 scale, Vec3 motion, const MotionFilter& filter, const Settings& tuning, float& safe,
+          float& unsafe) {
     const world::Affine3D body_transform = scaled_local(transform, scale);
     bool collided = false;
     for (const auto& [index, shape] : body.parts) {
@@ -338,7 +356,7 @@ bool cast(const JPH::PhysicsSystem& system, const Body& body, const world::Affin
         float shape_safe = 1.0F;
         float shape_unsafe = 1.0F;
         collided |= cast_shape(system, static_cast<const JPH::ConvexShape&>(*shape), com.transform,
-                               valid, motion, filter, shape_safe, shape_unsafe);
+                               valid, motion, filter, tuning, shape_safe, shape_unsafe);
         safe = std::min(safe, shape_safe);
         unsafe = std::min(unsafe, shape_unsafe);
     }
@@ -356,7 +374,7 @@ Vec3 point_velocity(const JPH::Body& jolt, const Body& body, Vec3 position) {
 // Godot's _body_motion_collide: what the body touches at transform, deepest first.
 bool collide(const JPH::PhysicsSystem& system, const Body& body, const world::Affine3D& transform,
              Vec3 motion, float margin, int max_collisions, const MotionFilter& filter,
-             MotionResult& result) {
+             const Settings& tuning, MotionResult& result) {
     if (max_collisions <= 0) {
         return false;
     }
@@ -367,9 +385,8 @@ bool collide(const JPH::PhysicsSystem& system, const Body& body, const world::Af
     settings.mMaxSeparationDistance = margin;
     const Vec3 base = transform_com.origin;
     ClosestMulti collector(max_collisions);
-    system.GetNarrowPhaseQueryNoLock().CollideShapeWithInternalEdgeRemoval(
-        body.shape.GetPtr(), JPH::Vec3::sOne(), place_matrix_of(transform_com), settings,
-        to_jolt_place(base), collector, filter, filter, filter);
+    collide_shape(system.GetNarrowPhaseQueryNoLock(), tuning, body.shape.GetPtr(),
+                  place_matrix_of(transform_com), settings, to_jolt_place(base), collector, filter);
     const JPH::BodyLockInterfaceNoLock& locks = system.GetBodyLockInterfaceNoLock();
     const float tolerance_squared = system.GetPhysicsSettings().mManifoldTolerance *
                                     system.GetPhysicsSettings().mManifoldTolerance;
@@ -454,20 +471,20 @@ bool Space::test_motion(const Body& body, const MotionParameters& parameters,
     const MotionFilter filter(*this, body, parameters.exclude);
 
     Vec3 recovery;
-    const bool recovered = recover(*system_, body, transform, margin, filter, recovery);
+    const bool recovered = recover(*system_, body, transform, margin, filter, settings_, recovery);
     transform.origin = transform.origin + recovery;
 
     float safe = 1.0F;
     float unsafe = 1.0F;
-    const bool hit =
-        cast(*system_, body, transform, from.scale, parameters.motion, filter, safe, unsafe);
+    const bool hit = cast(*system_, body, transform, from.scale, parameters.motion, filter,
+                          settings_, safe, unsafe);
 
     bool collided = false;
     if (hit || (recovered && parameters.recovery_as_collision)) {
         world::Affine3D at = transform;
         at.origin = at.origin + (parameters.motion * unsafe);
-        collided =
-            collide(*system_, body, at, parameters.motion, margin, max_collisions, filter, result);
+        collided = collide(*system_, body, at, parameters.motion, margin, max_collisions, filter,
+                           settings_, result);
     }
     if (collided) {
         result.travel = recovery + (parameters.motion * safe);

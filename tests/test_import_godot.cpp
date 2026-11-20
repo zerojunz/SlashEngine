@@ -1874,6 +1874,9 @@ general/3d_panning_strength=0.75
 3d/default_gravity_vector=Vector3(0, -1, 0)
 3d/default_linear_damp=0.2
 jolt_physics_3d/simulation/areas_detect_static_bodies=true
+jolt_physics_3d/simulation/velocity_steps=16
+jolt_physics_3d/motion_queries/recovery_amount=0.5
+jolt_physics_3d/limits/max_angular_velocity=31.4159
 
 [rendering]
 
@@ -2267,7 +2270,8 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     const json::Value project_file = parse(files.at("project.json"));
     CHECK(*project_file.find("physics_3d") == parse(R"({
         "gravity": 12.0, "gravity_vector": [0.0, -1.0, 0.0], "linear_damp": 0.2,
-        "areas_detect_static_bodies": true})"));
+        "areas_detect_static_bodies": true, "velocity_steps": 16, "recovery_amount": 0.5,
+        "max_angular_velocity": 31.4159})"));
     CHECK(project_file.find("audio")->find("panning_strength_3d")->as_double() == 0.75);
     CHECK(*project_file.find("rendering")->find("camera") == parse(R"({"depth_of_field": {
         "depth_of_field_bokeh_shape": "circle", "depth_of_field_bokeh_quality": "high",
