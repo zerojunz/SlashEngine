@@ -27,8 +27,8 @@ ID as Actions secrets ([CONTRIBUTING.md](../CONTRIBUTING.md#releases)).
 
 The [agent-built worlds](#agent-built-worlds-and-smart-npcs) tool set is done too: its first 22
 items, from planning NPCs to procedural graphs that drive every tool, in 2D and 3D, ship in the
-launch release. Item 23, textures agents author as graphs and layer stacks, is next and ships
-in it too.
+launch release. Items 23 and 24, textures agents author as graphs and layer stacks and
+watching agents work, are next and ship in it too.
 
 The engine builds and is tested on macOS, Linux and Windows. It covers the 2D and 3D feature
 sets, networking, XR, localization, video, accessibility, procedural generation and platform
@@ -1479,6 +1479,17 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
               `paint.preview`, on models and sprites
         - [ ] Weathering, wear from damage, text and logo stamps, seeded variants, drafts from a
               prompt and Blender shader node import
+24. [ ] Watching agents work (2026-11-22): the person sees what any agent is doing, at any time,
+        whichever vendor's agent it is:
+        - [ ] A work journal every session writes (`.slash/work/`), sessions that serve themselves
+              on loopback, `slash-cli watch --text`, `work digest` and `work.feed`
+        - [ ] `slash-cli watch`: the agent's world in a window as it edits, touched entities
+              outlined
+        - [ ] A watch page in the browser: frames, diffs, the plan and test results
+        - [ ] Checkpoints, a timeline, compare, `work restore` and the timeline as a video
+        - [ ] Steering: `work pause` and `work note`, and the agent's own `work.plan`
+        - [ ] Remote viewing through agents: `work.view`, `work.timeline`, `work.report` and
+              `slash-mcp --watch`, so a person checks in from a phone by asking any agent
 
 Console ports are not on this roadmap and never will be in this repository. As with Godot,
 PlayStation, Xbox and Switch support comes from licensed porting partners as private backends.
@@ -1536,6 +1547,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | Done: every platform exports, and one Mac builds them all |
 | Procedural generation | FastNoiseLite noise, noise and gradient textures, scatter rules agents write, and procedural content imported from other tools | 8 | Done |
 | Texture authoring | Texture graphs baked or live, mesh map bakes and layer stacks agents write, after Substance Designer and Painter | Launch | Next |
+| Watching agents work | A journal of every session, a live window and page, checkpoints, pausing and notes, and remote viewing through agents | Launch | Next |
 | Large worlds | Double-precision transforms, world streaming | After launch | Done: the double-precision build, camera-relative 3D drawing and world streaming |
 | Cinematics | Timeline tracks for cameras and events | After launch | Done: bezier, animation and audio tracks, camera cuts, markers and `animation.seek` |
 | Cloth and soft bodies | Jolt soft bodies | After launch | Done: Godot's `SoftBody3D` on Jolt, with pins, attachments and pressure |
