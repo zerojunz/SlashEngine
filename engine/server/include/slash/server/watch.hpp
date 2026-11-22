@@ -1,6 +1,7 @@
 #pragma once
 
 #include "slash/command/work.hpp"
+#include "slash/core/json.hpp"
 #include "slash/core/result.hpp"
 #include "slash/server/server.hpp"
 
@@ -13,6 +14,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <vector>
 
 namespace slash::command {
 class Session;
@@ -78,6 +80,58 @@ private:
     command::work::Settings settings_;
     std::unique_ptr<command::work::Journal> journal_;
     std::unique_ptr<Watched> watched_;
+};
+
+// Follows a session for "slash-cli watch": the lines its journal gains and, through its watch
+// server, its world as scene.get gives it. The journal is read again only when its files grow.
+class Follower {
+public:
+    // With world off, only the journal is read.
+    Follower(std::string project_root, std::string id, bool world = true);
+    // Leaves a fetch still waiting on the session to finish on its own.
+    ~Follower();
+    Follower(const Follower&) = delete;
+    Follower& operator=(const Follower&) = delete;
+    Follower(Follower&&) = delete;
+    Follower& operator=(Follower&&) = delete;
+
+    struct Update {
+        std::vector<json::Value> lines;   // journal lines written since the last poll, in order
+        std::optional<json::Value> scene; // the session's scene file, when it changed
+        // The session ended: its last line came, or its process ended with nothing more written.
+        bool ended = false;
+    };
+    // Reads what is new. The world is asked for when the journal grew, and otherwise at most
+    // every `refresh`, as a running game moves things without commands; never with refresh 0
+    // and nothing written. The session answers between the agent's commands, so the request
+    // runs on a thread of its own and its answer comes with a later poll.
+    [[nodiscard]] Update poll(std::chrono::milliseconds refresh = std::chrono::seconds(1));
+
+    [[nodiscard]] const std::string& id() const noexcept { return id_; }
+    // The session's entry in sessions.json, once a poll has found it live.
+    [[nodiscard]] const std::optional<command::work::SessionEntry>& entry() const noexcept {
+        return entry_;
+    }
+
+private:
+    std::string project_root_;
+    std::string id_;
+    bool world_ = true;
+    std::optional<command::work::SessionEntry> entry_;
+    std::int64_t seen_ = 0;
+    std::uint64_t bytes_ = 0;
+    bool read_once_ = false;
+    bool ended_ = false;
+    std::string scene_text_;
+    std::chrono::steady_clock::time_point fetched_;
+    bool wanted_ = false; // the journal grew since the last fetch began
+    struct Fetch {
+        std::mutex mutex;
+        bool done = false;
+        std::optional<std::string> body; // scene.get's answer, when it came
+    };
+    std::shared_ptr<Fetch> fetch_;
+    std::thread fetcher_;
 };
 
 // Lines from stdin, read on a thread of their own, so a host speaking JSON-RPC or MCP over

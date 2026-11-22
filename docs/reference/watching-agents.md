@@ -51,7 +51,7 @@ session's client name.
 
 ## Watching
 
-`slash-cli watch` follows a session line by line in plain words until it ends, and `slash-cli
+`slash-cli watch --text` follows a session line by line in plain words until it ends, and `slash-cli
 work digest` sums up the project's work over a stretch ([CLI](cli.md#watch)):
 
 ```text
@@ -65,6 +65,25 @@ work digest` sums up the project's work over a stretch ([CLI](cli.md#watch)):
 
 Agents read the same with [`work.feed`](commands.md#workfeed) and
 [`work.digest`](commands.md#workdigest), to review another agent's work or say what was done.
+
+## The watch window
+
+`slash-cli watch` with no flags opens a window on the session ([CLI](cli.md#watch)). It asks the
+session's watch server for its world with `scene.get` whenever the journal grows, and every
+second otherwise (a running game moves things with no command), and shows it as a game's window
+would, without stepping it. Over it:
+
+- A bar along the top: the session's ID, its program and client, the agent's last command in the
+  journal's plain words, and "ended" once the session ends.
+- An outline round each entity the journal says a command or event touched: green round one it
+  added, amber round one it changed, named by its ID, at full strength for 3 seconds and then
+  fading over 2. An entity removed loses its outline at once.
+- A 2D entity's outline covers what it and its children drew in the frame (sprites, tiles,
+  polygons, particles, controls); a 3D entity's covers its own and its children's meshes and
+  shapes as the current `Camera3D` sees them (the geometry a navigation bake reads). An entity
+  that draws nothing gets a small square at its origin.
+
+The window keeps showing the last world after the session ends, until it is closed.
 
 ## Settings
 
@@ -85,5 +104,11 @@ Agents read the same with [`work.feed`](commands.md#workfeed) and
 is the hosts' side: `server::Work` opens the journal from the settings before the session and
 serves it with `Watched`, a `watch_only` server that runs each request with
 `Session::set_watching`; `StdinLines` reads stdin on a thread so `slash-mcp` and `slash-cli rpc`
-answer watchers while they wait for the agent. `examples/work-journal` journals an agent's
-edits and reads them back.
+answer watchers while they wait for the agent. `server::Follower` follows a session for the
+window: the journal's new lines, read again when its files grow, and the world, fetched from the
+watch server on a thread of its own, since the session answers only between the agent's commands.
+`debug::WatchView` (`slash/debug/watch_view.hpp`) is the window's UI, controls in a world of their
+own drawn with `CanvasOptions::overlay`: it places outlines from the frame's
+`canvas::FrameContents` in 2D, and in 3D from `navigation::world_geometry`'s boxes projected
+through `scene3d::camera_view`. `examples/work-journal` journals an agent's edits and reads them
+back, and `examples/watch-window` follows a session and prints what the window outlines.

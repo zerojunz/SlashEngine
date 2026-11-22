@@ -320,6 +320,66 @@ TEST_CASE("a watch server serves reads and refuses edits") {
     CHECK(work::live_sessions(root).empty());
 }
 
+TEST_CASE("a follower reads a session's new journal lines and its world as it changes") {
+    const std::string root = fresh_project("follow");
+    Journaled run(root);
+    CHECK(run.call("entity.create", R"({"id": "crate"})").ok);
+    auto started =
+        server::Watched::start(*run.session, run.journal->id(), "test", run.journal->path());
+    REQUIRE(started.ok());
+    server::Follower follower(root, run.journal->id());
+    // Polls the follower while the session answers watchers between commands, as a host does,
+    // until the world comes.
+    const auto follow = [&] {
+        server::Follower::Update all;
+        for (int i = 0; i < 400 && !all.scene; ++i) {
+            run.journal->flush();
+            server::Follower::Update update = follower.poll(0ms);
+            for (json::Value& line : update.lines) {
+                all.lines.push_back(std::move(line));
+            }
+            if (update.scene) {
+                all.scene = std::move(update.scene);
+            }
+            all.ended = update.ended;
+            started.value()->poll(5ms);
+        }
+        return all;
+    };
+    server::Follower::Update first = follow();
+    // The session's start, then the edit.
+    REQUIRE(first.lines.size() == 2);
+    CHECK(first.lines.front().find("start") != nullptr);
+    CHECK(first.lines.back().find("command")->as_string() == "entity.create");
+    REQUIRE(first.scene.has_value());
+    CHECK(first.scene->find("entities")->find("crate") != nullptr);
+    CHECK_FALSE(first.ended);
+    REQUIRE(follower.entry().has_value());
+
+    // Nothing written, nothing asked for; the next edit brings its line and the new world.
+    const server::Follower::Update quiet = follower.poll(0ms);
+    CHECK(quiet.lines.empty());
+    CHECK_FALSE(quiet.scene.has_value());
+    CHECK(run.call("component.set",
+                   R"({"id": "crate", "components": {"Transform2D": {"position": [5, 6]}}})")
+              .ok);
+    server::Follower::Update second = follow();
+    REQUIRE(second.lines.size() == 1);
+    CHECK(second.lines.front().find("command")->as_string() == "component.set");
+    REQUIRE(second.scene.has_value());
+    CHECK(*second.scene->find("entities")->find("crate")->find("components") ==
+          parse(R"({"Transform2D": {"position": [5.0, 6.0]}})"));
+
+    // The session ends: its last line comes and the follower stops.
+    started.value().reset();
+    run.session.reset();
+    run.journal.reset();
+    server::Follower::Update last = follower.poll(0ms);
+    CHECK(last.ended);
+    REQUIRE(last.lines.size() == 1);
+    CHECK(last.lines.front().find("end") != nullptr);
+}
+
 TEST_CASE("work.feed pages through a journal and work.digest sums it up") {
     const std::string root = fresh_project("feed");
     Journaled run(root);

@@ -30,6 +30,7 @@
 #include "slash/core/log.hpp"
 #include "slash/core/version.hpp"
 #include "slash/debug/overlay.hpp"
+#include "slash/debug/watch_view.hpp"
 #include "slash/exporter/commands.hpp"
 #include "slash/exporter/export.hpp"
 #include "slash/exporter/gameplay.hpp"
@@ -236,14 +237,18 @@ Usage:
       --scene <file>                 Open this scene first
       --port <n>                     Port (default: any free port)
       --token <token>                Bearer token clients must send (default: random)
-  slash-cli watch                    Follow what an agent's session does, line by line, from
-                                     its work journal (.slash/work), until it ends
+  slash-cli watch                    Open a window on an agent's session: its world as it
+                                     edits it, with what each command touched outlined
       --project <dir>                Project folder (default ".")
       --session <id>                 Which session (default: the newest live one, else the
                                      newest journal)
-      --last <n>                     Lines to show first (default 20)
-      --once                         Print them and stop
-      --json                         Journal lines as JSON instead of text
+      --text                         Follow its work journal line by line instead
+      --json                         The journal's lines as JSON instead
+      --last <n>                     With --text or --json, lines to show first (default 20)
+      --once                         Print the last lines and stop
+      --driver <name>                The window's graphics driver, as run's
+      --headless                     No window: follow, then print a summary (tests)
+      --ticks <n>                    Stop after n ticks, 60 a second
   slash-cli work digest              What the project's sessions did, in a dozen lines
       --since <time>                 A duration ("45m", "3h", "2d") or a UTC time (default 3h)
       --session <id>                 One session only
@@ -2475,20 +2480,160 @@ void print_journal_line(const json::Value& line, bool as_json) {
 }
 
 // The newest lines of a session's journal from line number `after` on, oldest first.
-std::vector<json::Value> journal_lines_after(std::string_view project_root, std::string_view id,
-                                             std::int64_t after) {
-    std::vector<json::Value> lines;
-    auto read = command::work::read_journal(project_root, id);
-    if (!read) {
-        return lines;
-    }
-    for (json::Value& line : read.value()) {
-        const json::Value* number = line.find("n");
-        if (number != nullptr && number->is_int() && number->as_int() > after) {
-            lines.push_back(std::move(line));
+// The line a watch window's bar shows: the session, its program and client, and the agent's
+// last command.
+std::string watch_status(std::string_view id, const json::Value* start, std::string_view client,
+                         std::string_view last, bool ended) {
+    std::string text = "Watching " + std::string(id);
+    if (start != nullptr) {
+        if (const json::Value* host = start->find("host"); host != nullptr && host->is_string()) {
+            text += "  " + host->as_string();
         }
     }
-    return lines;
+    if (!client.empty()) {
+        text += " (" + std::string(client) + ")";
+    }
+    if (!last.empty()) {
+        text += "  |  " + std::string(last);
+    }
+    if (ended) {
+        text += "  |  ended";
+    }
+    return text;
+}
+
+// slash-cli watch with a window: the session's world as it is now, redrawn whenever the agent
+// changes it, with what each command touched outlined.
+int watch_window(const std::string& project, const std::string& id, bool headless,
+                 std::uint64_t ticks, std::string driver) {
+    command::SessionOptions session_options;
+    session_options.project_root = project;
+    Engine engine(session_options);
+    world::World& shown = engine.session->world();
+
+    slash::platform::Config config;
+    config.title = "SlashEngine: watching " + id;
+    config.headless = headless;
+    config.opengl = slash::render::uses_opengl(driver);
+    config.opengl_es = driver == "opengl_es";
+    config.choose_opengl = [&driver] {
+        driver = slash::render::choose_driver(driver, true);
+        return slash::render::uses_opengl(driver);
+    };
+    auto platform = slash::platform::Platform::create(config);
+    if (!platform) {
+        return failure("could not start the platform", platform.error());
+    }
+    platform.value().show_window();
+    const std::unique_ptr<slash::render::RenderDevice> renderer =
+        headless ? slash::render::create_null_device()
+                 : slash::render::create_device_or_null(
+                       {.window = platform.value().window(), .driver = driver, .debug = false});
+    slash::platform::RunOptions options;
+    options.max_ticks = ticks;
+    // Polls go by the clock, headless too.
+    options.real_time = true;
+    auto loop = slash::platform::Loop::create(platform.value(), options);
+    if (!loop) {
+        return failure("watch failed", loop.error());
+    }
+    slash::canvas::CanvasRenderer canvas(*renderer, engine.session->assets());
+    slash::debug::WatchView view(engine.session->assets());
+    slash::server::Follower follower(project, id);
+
+    const auto began = std::chrono::steady_clock::now();
+    const auto seconds = [&] {
+        return std::chrono::duration<double>(std::chrono::steady_clock::now() - began).count();
+    };
+    json::Value start;
+    std::string client;
+    std::string last;
+    std::size_t lines_read = 0;
+    std::size_t scenes = 0;
+    bool ended = false;
+    bool changed = true;
+    slash::Vec2 viewport{static_cast<float>(config.width), static_cast<float>(config.height)};
+    slash::canvas::FrameContents contents;
+    constexpr std::uint64_t kPollTicks = 6; // ten times a second
+
+    slash::platform::FrameFn draw_frame;
+    if (renderer->backend() != slash::render::Backend::Null) {
+        draw_frame = [&] {
+            const slash::platform::WindowSize window = platform.value().window_size();
+            slash::canvas::CanvasOptions canvas_options;
+            canvas_options.width = static_cast<float>(window.width);
+            canvas_options.height = static_cast<float>(window.height);
+            canvas_options.pixel_width = static_cast<std::uint32_t>(window.pixel_width);
+            canvas_options.pixel_height = static_cast<std::uint32_t>(window.pixel_height);
+            canvas_options.overlay = view.world();
+            contents = {};
+            canvas_options.contents = &contents;
+            (void)canvas.draw(shown, canvas_options);
+        };
+    }
+    const slash::platform::RunStats stats = slash::platform::run(
+        loop.value(),
+        [&](std::uint64_t tick, double /*tick_seconds*/) {
+            if (tick % kAssetPollTicks == 0) {
+                engine.session->poll_assets();
+            }
+            if (tick % kPollTicks == 0 && !ended) {
+                slash::server::Follower::Update update = follower.poll();
+                for (const json::Value& line : update.lines) {
+                    if (const json::Value* begun = line.find("start"); begun != nullptr) {
+                        start = *begun;
+                    }
+                    if (const json::Value* who = line.find("client");
+                        who != nullptr && who->is_string()) {
+                        client = who->as_string();
+                    }
+                    view.touch(line, seconds());
+                    last = command::work::describe(line);
+                }
+                lines_read += update.lines.size();
+                ended = update.ended;
+                view.set_status(
+                    watch_status(id, start.is_null() ? nullptr : &start, client, last, ended));
+                if (update.scene) {
+                    shown.clear();
+                    auto loaded = world::load_scene(shown, *update.scene);
+                    if (!loaded) {
+                        // Systems may have moved a value outside its range; show it as it is.
+                        loaded = world::restore_scene(shown, *update.scene, {});
+                    }
+                    if (!loaded) {
+                        slash::log::warn("could not show the session's world",
+                                         {{"error", loaded.error().message}});
+                    }
+                    changed = true;
+                    ++scenes;
+                }
+            }
+            if (const slash::platform::WindowSize window = platform.value().window_size();
+                window.width > 0) {
+                viewport = {static_cast<float>(window.width), static_cast<float>(window.height)};
+            }
+            slash::ui::set_viewport(shown, viewport);
+            canvas.before_tick(shown);
+            view.update(shown, engine.session->assets(), contents, viewport, seconds(), changed);
+            changed = false;
+        },
+        draw_frame);
+
+    json::Value result;
+    result["session"] = id;
+    result["ticks"] = stats.ticks;
+    result["lines"] = static_cast<std::int64_t>(lines_read);
+    result["worlds"] = static_cast<std::int64_t>(scenes);
+    result["entities"] = shown.size();
+    result["ended"] = ended;
+    json::Array outlined;
+    for (const slash::debug::Outline& outline : view.outlines()) {
+        outlined.emplace_back(outline.id);
+    }
+    result["outlined"] = std::move(outlined);
+    print(result);
+    return kExitOk;
 }
 
 int cmd_watch(const std::vector<std::string>& args) {
@@ -2497,6 +2642,10 @@ int cmd_watch(const std::vector<std::string>& args) {
     std::size_t last = 20;
     bool once = false;
     bool as_json = false;
+    bool text = false;
+    bool headless = false;
+    std::uint64_t ticks = 0;
+    std::string driver = "auto";
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string& arg = args[i];
         const bool has_value = i + 1 < args.size();
@@ -2514,9 +2663,24 @@ int cmd_watch(const std::vector<std::string>& args) {
             once = true;
         } else if (arg == "--json") {
             as_json = true;
-        } else if (arg != "--text") {
+        } else if (arg == "--text") {
+            text = true;
+        } else if (arg == "--headless") {
+            headless = true;
+        } else if (arg == "--ticks") {
+            if (!has_value || !parse_u64(args[++i], ticks)) {
+                return usage_error("--ticks needs a whole number");
+            }
+        } else if (arg == "--driver" && has_value) {
+            driver = args[++i];
+        } else {
             return usage_error("unexpected argument for watch: " + arg);
         }
+    }
+    const bool window = !text && !as_json && !once;
+    if (!window && (headless || ticks > 0)) {
+        return usage_error(
+            "--headless and --ticks are for the window, not --text, --json or --once");
     }
     const std::string id = command::work::pick_session(project, session);
     if (id.empty()) {
@@ -2525,53 +2689,33 @@ int cmd_watch(const std::vector<std::string>& args) {
             slash::Error{slash::ErrorCode::NotFound, "no live session and no journal in " +
                                                          std::string(command::work::kFolder)});
     }
-    std::vector<json::Value> lines = journal_lines_after(project, id, 0);
-    const std::size_t skip = lines.size() > last ? lines.size() - last : 0;
-    std::int64_t seen = 0;
-    bool ended = false;
-    for (std::size_t i = 0; i < lines.size(); ++i) {
-        seen = lines[i].find("n")->as_int();
-        ended = ended || lines[i].find("end") != nullptr;
-        if (i >= skip) {
-            print_journal_line(lines[i], as_json);
-        }
+    if (window) {
+        return watch_window(project, id, headless, ticks, driver);
+    }
+
+    slash::server::Follower follower(project, id, /*world=*/false);
+    slash::server::Follower::Update update = follower.poll();
+    const std::size_t skip = update.lines.size() > last ? update.lines.size() - last : 0;
+    for (std::size_t i = skip; i < update.lines.size(); ++i) {
+        print_journal_line(update.lines[i], as_json);
     }
     std::fflush(stdout);
-    if (once || ended) {
+    if (once || update.ended) {
         return kExitOk;
     }
     std::signal(SIGINT, request_stop);
     std::signal(SIGTERM, request_stop);
-    // Follows the journal: reads it again only when its files grow.
-    std::uint64_t bytes = 0;
     constexpr std::chrono::milliseconds kFollowPoll{250};
     while (g_stop_requested == 0) {
-        std::uint64_t now_bytes = 0;
-        for (const command::work::JournalFile& file : command::work::list_journals(project)) {
-            if (file.id == id) {
-                now_bytes = file.bytes;
-            }
-        }
-        if (now_bytes != bytes) {
-            bytes = now_bytes;
-            for (const json::Value& line : journal_lines_after(project, id, seen)) {
-                seen = line.find("n")->as_int();
-                print_journal_line(line, as_json);
-                ended = ended || line.find("end") != nullptr;
-            }
-            std::fflush(stdout);
-        }
-        if (ended) {
-            break;
-        }
-        const auto live = command::work::live_sessions(project);
-        if (std::ranges::none_of(
-                live, [&](const command::work::SessionEntry& entry) { return entry.id == id; }) &&
-            now_bytes == bytes) {
-            // The session ended without its last line (it was killed).
-            break;
-        }
         std::this_thread::sleep_for(kFollowPoll);
+        update = follower.poll();
+        for (const json::Value& line : update.lines) {
+            print_journal_line(line, as_json);
+        }
+        std::fflush(stdout);
+        if (update.ended) {
+            break;
+        }
     }
     return kExitOk;
 }
