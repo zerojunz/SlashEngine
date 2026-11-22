@@ -6,7 +6,7 @@ version 1. The authoritative schemas are generated from the registered component
 `{"kind": "scene"}`, or the MCP resource `slash://schema/scene`), so they always match the engine
 you are running.
 
-Status: current · Updated: 2026-11-20
+Status: current · Updated: 2026-11-22
 
 ## Shape
 
