@@ -1,10 +1,13 @@
 #include "slash/platform/file.hpp"
 
 #include "slash/core/text.hpp"
+#include "slash/platform/process.hpp"
 
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <filesystem>
+#include <system_error>
 
 #if defined(_WIN32)
 #ifndef NOMINMAX
@@ -123,6 +126,47 @@ Result<void> write_file(std::string_view path, std::string_view contents) {
     if (!SDL_SaveFile(name.c_str(), contents.data(), contents.size())) {
         return make_error(ErrorCode::PlatformFailure,
                           "could not write \"" + name + "\": " + SDL_GetError());
+    }
+    return {};
+}
+
+Result<void> append_file(std::string_view path, std::string_view contents) {
+    const std::string name(path);
+    SDL_IOStream* stream = SDL_IOFromFile(name.c_str(), "ab");
+    if (stream == nullptr) {
+        return make_error(ErrorCode::PlatformFailure,
+                          "could not open \"" + name + "\": " + SDL_GetError());
+    }
+    const std::size_t wrote = SDL_WriteIO(stream, contents.data(), contents.size());
+    const bool closed = SDL_CloseIO(stream);
+    if (wrote != contents.size() || !closed) {
+        return make_error(ErrorCode::PlatformFailure,
+                          "could not write \"" + name + "\": " + SDL_GetError());
+    }
+    return {};
+}
+
+Result<void> write_private_file(std::string_view path, std::string_view contents) {
+    const std::string name(path);
+    // Named for this process, as others may replace the same file at once.
+    const std::string temporary =
+        name + "." + std::to_string(process_id()) + "." + std::to_string(SDL_GetTicksNS()) + ".tmp";
+    // Made empty and closed to its owner before the secret goes in.
+    if (auto made = write_file(temporary, {}); !made) {
+        return made;
+    }
+    std::error_code error;
+    std::filesystem::permissions(std::filesystem::path(temporary),
+                                 std::filesystem::perms::owner_read |
+                                     std::filesystem::perms::owner_write,
+                                 std::filesystem::perm_options::replace, error);
+    if (auto written = write_file(temporary, contents); !written) {
+        (void)remove_file(temporary);
+        return written;
+    }
+    if (auto moved = rename_file(temporary, name); !moved) {
+        (void)remove_file(temporary);
+        return moved;
     }
     return {};
 }

@@ -926,6 +926,29 @@ json::Value project_schema() {
         "Folders of SDK packages, relative to the project: closed vendor SDKs, each with an "
         "sdk.json (\"slash-cli schema sdk\"), that exports link into the game.";
     properties["threading"] = jobs::settings_schema();
+    json::Value work;
+    work["type"] = "object";
+    work["additionalProperties"] = false;
+    work["description"] =
+        "The work journal: what agents' sessions did, so a person can watch them work "
+        "(\"slash-cli watch\", work.feed, work.digest).";
+    json::Value& journal = work["properties"]["journal"];
+    journal["type"] = "boolean";
+    journal["default"] = true;
+    journal["description"] =
+        "Whether sessions write a line per command to .slash/work/<session>.jsonl.";
+    json::Value& serve = work["properties"]["serve"];
+    serve["type"] = "boolean";
+    serve["default"] = true;
+    serve["description"] = "Whether sessions serve themselves read-only on the loopback "
+                           "interface, so watchers can ask them what they see.";
+    json::Value& max_mb = work["properties"]["max_mb"];
+    max_mb["type"] = "integer";
+    max_mb["minimum"] = 1;
+    max_mb["default"] = 64;
+    max_mb["description"] =
+        "The most the project's journals hold together, in MiB; the oldest sessions' go first.";
+    properties["work"] = std::move(work);
     return schema;
 }
 

@@ -589,6 +589,38 @@ It prints where it listens, and writes the same to `.slash/server.json`:
 {"endpoint_file":".slash/server.json","host":"127.0.0.1","port":18765,"token":"t0k","url":"http://127.0.0.1:18765"}
 ```
 
+### watch
+
+Follows what an agent's session does, a line per command in plain words, from its
+[work journal](watching-agents.md), until the session ends or Ctrl+C. Watch any session in the
+project, whichever agent runs it.
+
+| Flag | Meaning |
+| --- | --- |
+| `--project <dir>` | Project folder (default `.`) |
+| `--session <id>` | Which session (default: the newest live one, else the newest journal) |
+| `--last <n>` | Lines to show first (default 20) |
+| `--once` | Print them and stop |
+| `--json` | The journal's lines as JSON rather than text (`--text`, the default) |
+
+```text
+13:05:03  claude-code  entity.create {"id":"crate"}  +crate
+13:05:04  claude-code  read: entity.get, world.query x3
+```
+
+### work
+
+`work digest` prints what the project's sessions did in a dozen lines; `--json` prints the whole
+[`work.digest`](commands.md#workdigest) result. `work list` prints each session's journal with
+its size and whether its session runs.
+
+| Flag | Meaning |
+| --- | --- |
+| `--project <dir>` | Project folder (default `.`) |
+| `--since <time>` | `digest`: a duration (`45m`, `3h`, `2d`) or a UTC time (default `3h`) |
+| `--session <id>` | `digest`: one session only |
+| `--json` | `digest`: JSON rather than lines |
+
 ### init
 
 Sets a game folder up for Claude Code, Codex, Cursor, opencode, Antigravity, Hermes Agent and

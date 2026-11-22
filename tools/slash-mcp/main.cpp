@@ -20,14 +20,17 @@
 #include "slash/runtime/plugins.hpp"
 #include "slash/server/client.hpp"
 #include "slash/server/server.hpp"
+#include "slash/server/watch.hpp"
 #include "slash/shader_compiler/shader_compiler.hpp"
 #include "slash/soundtrack/commands.hpp"
 #include "slash/video/commands.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 
+#include <chrono>
 #include <cstdio>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -199,7 +202,11 @@ int main(int argc, char** argv) {
     slash::plugin::Plugins plugins(components);
     (void)slash::runtime::load_plugins(plugins, options.project_root);
     options.plugins = &plugins;
+    // The work journal, and the read-only server watchers attach to (slash-cli watch).
+    slash::server::Work work(options.project_root, "slash-mcp");
+    options.journal = work.journal();
     command::Session session(components, commands, options);
+    work.watch(session);
     // Until the code is built, its components are stand-ins, so its scenes still open.
     slash::runtime::add_stand_ins(gameplay, options.project_root);
 
@@ -216,14 +223,16 @@ int main(int argc, char** argv) {
     slash::log::info("slash-mcp ready",
                      {{"project", options.project_root}, {"tools", commands.commands().size()}});
 
-    while (std::getline(std::cin, line)) {
-        if (!line.empty() && line.back() == '\r') {
-            line.pop_back();
-        }
-        if (line.find_first_not_of(" \t") == std::string::npos) {
+    // Watchers are served while the agent thinks, between its messages.
+    slash::server::StdinLines input;
+    constexpr std::chrono::milliseconds kWatchPoll{50};
+    while (!input.ended()) {
+        work.poll();
+        const std::optional<std::string> next = input.next(kWatchPoll);
+        if (!next || next->find_first_not_of(" \t") == std::string::npos) {
             continue;
         }
-        if (const std::string response = server.handle(line); !response.empty()) {
+        if (const std::string response = server.handle(*next); !response.empty()) {
             send(response);
         }
         for (const std::string& notification : server.take_notifications()) {

@@ -127,6 +127,7 @@ Subsystem detail moved here from this file (20 Nov 2026, see [docs/DOCS-STANDARD
 | Storyboard | [storyboard-format](docs/reference/storyboard-format.md) |
 | Commands, MCP, JSON-RPC; HTTP server | [protocols](docs/reference/protocols.md) |
 | Replays | [replays](docs/reference/replays.md) |
+| Watching agents (work journal) | [watching-agents](docs/reference/watching-agents.md) |
 | Debug overlay | [debug-overlay](docs/reference/debug-overlay.md) |
 | Autopilot | [autopilot](docs/reference/autopilot.md) |
 | Game projects and exports | [game-projects](docs/reference/game-projects.md) |

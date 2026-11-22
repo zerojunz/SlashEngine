@@ -1482,7 +1482,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
               prompt and Blender shader node import
 24. [ ] Watching agents work (2026-11-22): the person sees what any agent is doing, at any time,
         whichever vendor's agent it is:
-        - [ ] A work journal every session writes (`.slash/work/`), sessions that serve themselves
+        - [x] A work journal every session writes (`.slash/work/`), sessions that serve themselves
               on loopback, `slash-cli watch --text`, `work digest` and `work.feed`
         - [ ] `slash-cli watch`: the agent's world in a window as it edits, touched entities
               outlined

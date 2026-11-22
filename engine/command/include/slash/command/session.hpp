@@ -31,6 +31,10 @@ class Plugins;
 
 namespace slash::command {
 
+namespace work {
+class Journal;
+} // namespace work
+
 struct SessionOptions {
     // Folder that scene paths are relative to. Commands cannot reach files outside it.
     std::string project_root = ".";
@@ -63,6 +67,9 @@ struct SessionOptions {
     // test-drives the recipe it is fitting).
     std::map<std::string, std::string, std::less<>>
         files{}; // NOLINT(readability-redundant-member-init)
+    // The work journal (slash/command/work.hpp) the session writes each command it runs to, with
+    // the entities and files it changed; null for none. It must outlive the session.
+    work::Journal* journal = nullptr;
 };
 
 // One editing session: a world, the commands that act on it, undo history and recent logs.
@@ -162,8 +169,19 @@ public:
     void mark_unchanged() noexcept { unchanged_ = true; }
 
     // Who is calling, for records such as the storyboard journal: the MCP client's name, or "".
+    // A watcher can't change it.
     [[nodiscard]] const std::string& client() const noexcept { return client_; }
-    void set_client(std::string client) { client_ = std::move(client); }
+    void set_client(std::string client) {
+        if (!watching_) {
+            client_ = std::move(client);
+        }
+    }
+
+    // While a watcher's request runs (slash/server/watch.hpp): only Read commands that need no
+    // capability but read run, and they go in no journal, so watching leaves the session as the
+    // agent left it.
+    [[nodiscard]] bool watching() const noexcept { return watching_; }
+    void set_watching(bool watching) noexcept { watching_ = watching; }
 
     // The project-relative path of the open scene, or "" for an unsaved one.
     [[nodiscard]] const std::string& scene_path() const noexcept { return scene_path_; }
@@ -319,7 +337,12 @@ private:
     std::vector<UndoCall> undo_calls_; // from the command running now
     std::vector<UndoFile> undo_files_;
     bool replaying_ = false; // undo or redo is running a step's calls
+    bool watching_ = false;
+    bool journaling_ = false; // the outermost command running now goes in the journal
     std::string client_;
+    // What the outermost command running now changed, for the journal.
+    json::Value journal_changes_;
+    mutable std::vector<std::string> journal_files_;
     CallListener call_listener_;
     mutable std::mutex logs_mutex_; // the log sink may run on any thread
     std::deque<std::string> logs_;
