@@ -1,0 +1,26 @@
+-- the agent's session
+entity.create {"id": "crate", "components": {"Transform2D": {"position": [40, 0]}}}
+scene.save {"path": "main.scene.json"}
+component.set {"id": "crate", "components": {"Transform2D": {"position": [400, 180]}}}
+work.checkpoint {"label": "crate on the shelf"}
+  {"files":[],"frame":true,"label":"crate on the shelf","line":5,"n":2,"reason":"work.checkpoint","session":"20261122-140000-e5f6","time":"2026-11-22T14:00:07.000Z"}
+scene.save {"path": "main.scene.json"}
+entity.create {"id": "lamp", "components": {"Transform2D": {"position": [200, 60]}}}
+scene.save {"path": "lamp.scene.json"}
+-- a reviewer's session
+work.checkpoints {"session": "20261122-140000-e5f6"}
+  {"files":["main.scene.json"],"frame":true,"line":3,"n":1,"reason":"scene.save","time":"2026-11-22T14:00:04.000Z"}
+  {"files":[],"frame":true,"label":"crate on the shelf","line":5,"n":2,"reason":"work.checkpoint","time":"2026-11-22T14:00:07.000Z"}
+  {"files":["main.scene.json"],"frame":true,"line":8,"n":3,"reason":"scene.save","time":"2026-11-22T14:00:12.000Z"}
+  {"files":["lamp.scene.json"],"frame":true,"line":11,"n":4,"reason":"scene.save","time":"2026-11-22T14:00:16.000Z"}
+work.compare {"session": "20261122-140000-e5f6", "from": 1, "to": 4}
+  {"entities":{"added":["lamp"],"changed":{"crate":{"Transform2D":{"position":[400.0,180.0]}},"lamp":{"Transform2D":{"position":[200.0,60.0]}}}},"files":{"added":["lamp.scene.json"],"changed":[{"lines":"+1 -1","path":"main.scene.json"}]},"from":{"frame":true,"line":3,"n":1,"reason":"scene.save","time":"2026-11-22T14:00:04.000Z"},"session":"20261122-140000-e5f6","to":{"frame":true,"line":11,"n":4,"reason":"scene.save","time":"2026-11-22T14:00:16.000Z"}}
+-- restore while the reviewer's session runs
+  session 20261122-141000-a7b8 (slash-cli rpc) is running; restore once no agent is working in the project
+-- restore once no session runs, as slash-cli work restore 1
+  before: crate at x 400.0, lamp.scene.json there
+  {"files":["lamp.scene.json","main.scene.json"],"kept":5,"restored":1,"world":".slash/work/checkpoints/20261122-140000-e5f6/1/world.scene.json"}
+  after: crate at x 40.0, lamp.scene.json gone
+  checkpoint 5: before restoring checkpoint 1
+  {"files":["lamp.scene.json","main.scene.json"],"kept":6,"restored":5}
+  after: crate at x 400.0, lamp.scene.json there

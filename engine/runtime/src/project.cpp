@@ -942,12 +942,19 @@ json::Value project_schema() {
     serve["default"] = true;
     serve["description"] = "Whether sessions serve themselves read-only on the loopback "
                            "interface, so watchers can ask them what they see.";
+    json::Value& checkpoints = work["properties"]["checkpoints"];
+    checkpoints["type"] = "boolean";
+    checkpoints["default"] = true;
+    checkpoints["description"] =
+        "Whether sessions take checkpoints at each scene.save, each passing test.run and each "
+        "work.checkpoint, to compare and go back to (slash-cli work restore).";
     json::Value& max_mb = work["properties"]["max_mb"];
     max_mb["type"] = "integer";
     max_mb["minimum"] = 1;
     max_mb["default"] = 64;
     max_mb["description"] =
-        "The most the project's journals hold together, in MiB; the oldest sessions' go first.";
+        "The most the project's journals and checkpoints hold together, in MiB; the oldest "
+        "sessions' go first.";
     properties["work"] = std::move(work);
     return schema;
 }

@@ -257,6 +257,16 @@ Usage:
       --session <id>                 One session only
       --json                         The whole digest as JSON
   slash-cli work list                Every session's journal, with its size and whether it runs
+  slash-cli work checkpoints         A session's checkpoints: number, time, why, files
+      --session <id>                 Which session (default: the newest live one, else newest)
+      --json                         As JSON
+  slash-cli work compare [<a>] <b>   What changed from checkpoint a (default: the one before b)
+                                     to b (default: the last): files and entities, as JSON
+  slash-cli work restore <n>         Put the files the session changed back as they were at
+                                     checkpoint n, keeping them as they are now as a new one;
+                                     refuses while any session in the project runs
+  slash-cli work video --out <file>  The checkpoints' frames as an .ivf video
+      --fps <n>                      Checkpoints a second (default 1)
   slash-cli init [dir]               Set a project up for Claude Code, Codex, Cursor, opencode,
                                      Antigravity, Hermes Agent and OpenClaw
       --force                        Replace files that already exist
@@ -2763,9 +2773,186 @@ int cmd_watch(const std::vector<std::string>& args) {
     return kExitOk;
 }
 
+// A PNG's width and height, from its header.
+std::pair<std::uint32_t, std::uint32_t> png_size(std::string_view png) {
+    constexpr std::size_t kHeader = 24;
+    if (png.size() < kHeader) {
+        return {0, 0};
+    }
+    const auto word = [&](std::size_t at) {
+        std::uint32_t value = 0;
+        for (std::size_t i = 0; i < 4; ++i) {
+            value = (value << 8U) | static_cast<std::uint8_t>(png[at + i]);
+        }
+        return value;
+    };
+    return {word(16), word(20)};
+}
+
+// slash-cli work checkpoints, compare, restore and video.
+int cmd_work_checkpoints(const std::vector<std::string>& args) {
+    const std::string& what = args[0];
+    std::string project = ".";
+    std::string session;
+    std::string out;
+    std::uint64_t fps = 1;
+    bool as_json = false;
+    std::vector<std::int64_t> numbers;
+    for (std::size_t i = 1; i < args.size(); ++i) {
+        const std::string& arg = args[i];
+        const bool has_value = i + 1 < args.size();
+        std::uint64_t number = 0;
+        if (arg == "--project" && has_value) {
+            project = args[++i];
+        } else if (arg == "--session" && has_value) {
+            session = args[++i];
+        } else if (arg == "--json") {
+            as_json = true;
+        } else if (what == "video" && arg == "--out" && has_value) {
+            out = args[++i];
+        } else if (what == "video" && arg == "--fps") {
+            if (!has_value || !parse_u64(args[++i], fps) || fps == 0 || fps > 240) {
+                return usage_error("--fps needs a whole number from 1 to 240");
+            }
+        } else if ((what == "compare" || what == "restore") && !arg.starts_with("--") &&
+                   parse_u64(arg, number) && number > 0) {
+            numbers.push_back(static_cast<std::int64_t>(number));
+        } else {
+            std::string message = "unexpected argument for work ";
+            message += what;
+            message += ": ";
+            message += arg;
+            return usage_error(message);
+        }
+    }
+    const std::string id = command::work::pick_session(project, session);
+    if (id.empty()) {
+        return failure("no session",
+                       slash::Error{slash::ErrorCode::NotFound,
+                                    "no session has written a work journal in this project"});
+    }
+    const std::vector<command::work::Checkpoint> list =
+        command::work::list_checkpoints(project, id);
+    if (what == "checkpoints") {
+        if (as_json) {
+            json::Array entries;
+            for (const auto& checkpoint : list) {
+                entries.push_back(checkpoint.to_json());
+            }
+            json::Value result;
+            result["session"] = id;
+            result["checkpoints"] = std::move(entries);
+            print(result);
+            return kExitOk;
+        }
+        for (const auto& checkpoint : list) {
+            std::string line =
+                std::to_string(checkpoint.n) + "  " +
+                checkpoint.time.substr(std::min<std::size_t>(11, checkpoint.time.size()), 8) +
+                "  " + (checkpoint.label.empty() ? checkpoint.reason : checkpoint.label);
+            const std::size_t files = checkpoint.files.size() + checkpoint.removed.size();
+            if (files > 0) {
+                line += "  (" + std::to_string(files) + (files == 1 ? " file)" : " files)");
+            }
+            std::puts(line.c_str());
+        }
+        return kExitOk;
+    }
+    if (what == "restore") {
+        if (numbers.size() != 1) {
+            return usage_error("work restore needs one checkpoint number");
+        }
+        auto restored = command::work::restore_checkpoint(project, id, numbers[0]);
+        if (!restored) {
+            return failure("restore failed", restored.error());
+        }
+        json::Value result = std::move(restored).value();
+        result["session"] = id;
+        print(result);
+        return kExitOk;
+    }
+    command::SessionOptions options;
+    options.project_root = project;
+    Engine engine(options);
+    if (what == "compare") {
+        if (numbers.size() > 2) {
+            return usage_error("work compare takes at most two checkpoint numbers");
+        }
+        json::Value params;
+        params["session"] = id;
+        if (numbers.size() == 2) {
+            params["from"] = numbers[0];
+            params["to"] = numbers[1];
+        } else if (numbers.size() == 1) {
+            params["to"] = numbers[0];
+        }
+        const command::Reply reply = engine.session->call("work.compare", params);
+        if (!reply.ok) {
+            print(error_json(reply));
+            return kExitFailure;
+        }
+        print(reply.value);
+        return kExitOk;
+    }
+    // video: each checkpoint's frame the size of the first, held 1/fps seconds.
+    if (out.empty()) {
+        return usage_error("work video needs --out <file.ivf>");
+    }
+    json::Array frames;
+    std::pair<std::uint32_t, std::uint32_t> size{0, 0};
+    for (const auto& checkpoint : list) {
+        if (!checkpoint.frame) {
+            continue;
+        }
+        std::string path(command::work::kCheckpointsFolder);
+        path += "/";
+        path += id;
+        path += "/";
+        path += std::to_string(checkpoint.n);
+        path += "/frame.png";
+        std::string full = project;
+        full += "/";
+        full += path;
+        auto png = slash::platform::read_file(full);
+        if (!png) {
+            continue;
+        }
+        const auto here = png_size(png.value());
+        if (size.first == 0) {
+            size = here;
+        }
+        if (here == size) {
+            frames.emplace_back(path);
+        }
+    }
+    if (frames.empty()) {
+        return failure("no video", slash::Error{slash::ErrorCode::NotFound,
+                                                "session " + id + " has no checkpoint frames"});
+    }
+    json::Value params;
+    params["frames"] = std::move(frames);
+    params["out"] = out;
+    params["fps"] = static_cast<std::int64_t>(fps);
+    params["kf_interval"] = 0;
+    const command::Reply reply = engine.session->call("video.encode", params);
+    if (!reply.ok) {
+        print(error_json(reply));
+        return kExitFailure;
+    }
+    json::Value result = reply.value;
+    result["session"] = id;
+    print(result);
+    return kExitOk;
+}
+
 int cmd_work(const std::vector<std::string>& args) {
+    if (!args.empty() && (args[0] == "checkpoints" || args[0] == "compare" ||
+                          args[0] == "restore" || args[0] == "video")) {
+        return cmd_work_checkpoints(args);
+    }
     if (args.empty() || (args[0] != "digest" && args[0] != "list")) {
-        return usage_error(R"(work needs "digest" or "list")");
+        return usage_error(
+            R"(work needs "digest", "list", "checkpoints", "compare", "restore" or "video")");
     }
     std::string project = ".";
     std::string session;

@@ -17,7 +17,8 @@ work.feed {"session": "20261122-130500-a1b2", "text": true, "limit": 50}
   13:05:08  claude-code  entity.get {"id":"crat"}  FAILED: /id: no entity has the id "crat"; did you mean "crate"?
   13:05:09  claude-code  storyboard.check  -> ok
   13:05:10  claude-code  scene.save {"path":"main.scene.json"}  wrote main.scene.json
-  13:05:11  session ended
+  13:05:12  checkpoint 1 (scene.save)
+  13:05:13  session ended
 work.feed {"session": "20261122-130500-a1b2", "after": 1, "limit": 2}
 {"lines":[{"changes":{"added":["floor"]},"client":"claude-code","command":"entity.create","n":2,"params":{"components":{"Transform2D":{"position":[0,200]}},"id":"floor"},"time":"2026-11-22T13:05:02.000Z"},{"changes":{"added":["crate"]},"client":"claude-code","command":"entity.create","n":3,"params":{"components":{"Transform2D":{"position":[40,0]}},"id":"crate"},"time":"2026-11-22T13:05:03.000Z"}],"live":false,"more":true,"next":3,"session":"20261122-130500-a1b2"}
 work.digest {"since": "2026-11-22T13:00:00Z"}

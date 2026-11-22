@@ -59,7 +59,7 @@ struct Journaled {
 
     explicit Journaled(const std::string& root,
                        std::uint64_t max_bytes = work::Settings{}.max_bytes,
-                       std::string id = "20261122-130000-test") {
+                       std::string id = "20261122-130000-test", bool checkpoints = true) {
         slash::world::register_builtin_components(components);
         command::register_builtin_commands(commands);
         work::JournalOptions options;
@@ -67,6 +67,7 @@ struct Journaled {
         options.host = "test";
         options.id = std::move(id);
         options.max_bytes = max_bytes;
+        options.checkpoints = checkpoints;
         options.clock = test_clock();
         auto opened = work::Journal::open(std::move(options));
         REQUIRE_MESSAGE(opened.ok(), (opened.ok() ? std::string() : opened.error().message));
@@ -432,6 +433,85 @@ TEST_CASE("journal times read and write as UTC") {
     CHECK_FALSE(work::parse_since("2026-13-40T00:00Z").ok());
     CHECK(work::line_time(parse(R"({"time": "2026-11-22T13:00:00.000Z"})")) == 1795352400000);
     CHECK_FALSE(work::line_time(parse(R"({"n": 1})")).has_value());
+}
+
+TEST_CASE("checkpoints keep the files and world, compare them and put the files back") {
+    const std::string root = fresh_project("checkpoints");
+    // Files the agent will write over, as they were before.
+    REQUIRE(slash::platform::write_file(root + "/level.scene.json", "{}\n").ok());
+    REQUIRE(slash::platform::write_file(root + "/notes.scene.json", "ORIGINAL\n").ok());
+    const std::string id = "20261122-130000-test";
+    {
+        Journaled run(root);
+        CHECK(
+            run.call("entity.create", R"({"id": "floor", "components": {"Transform2D": {}}})").ok);
+        CHECK(run.call("scene.save", R"({"path": "level.scene.json"})").ok); // 1
+        CHECK(
+            run.call("entity.create", R"({"id": "crate", "components": {"Transform2D": {}}})").ok);
+        const command::Reply marked = run.call("work.checkpoint", R"({"label": "crate placed"})");
+        REQUIRE(marked.ok); // 2
+        CHECK(marked.value.find("n")->as_int() == 2);
+        CHECK(marked.value.find("files")->as_array().empty());
+        CHECK(run.call("scene.save", R"({"path": "notes.scene.json"})").ok); // 3
+        CHECK(run.call("scene.save", R"({"path": "new.scene.json"})").ok);   // 4
+        // A failing test.run takes none; the journal says when each was taken.
+        bool described = false;
+        for (const json::Value& line : run.lines()) {
+            if (line.find("checkpoint") != nullptr && line.find("label") != nullptr) {
+                CHECK(work::describe(line).ends_with("checkpoint 2: crate placed"));
+                described = true;
+            }
+        }
+        CHECK(described);
+
+        const command::Reply listed = run.call("work.checkpoints", R"({"after": 2})");
+        REQUIRE(listed.ok);
+        CHECK(listed.value.find("checkpoints")->as_array().size() == 2);
+        const command::Reply compared = run.call("work.compare", R"({"from": 1, "to": 4})");
+        REQUIRE(compared.ok);
+        CHECK(*compared.value.find("files") == parse(R"({"added": ["new.scene.json"],
+                        "changed": [{"path": "notes.scene.json", "lines": "+15 -1"}]})"));
+        CHECK(*compared.value.find("entities")->find("added") == parse(R"(["crate"])"));
+        CHECK(run.call("work.compare", R"({"image": true})").value.find("to")->find("png") !=
+              nullptr);
+
+        // Nothing is restored while a session runs.
+        work::SessionEntry entry;
+        entry.id = id;
+        entry.pid = slash::platform::process_id();
+        REQUIRE(work::add_session(root, entry).ok());
+        CHECK_FALSE(work::restore_checkpoint(root, id, 1).ok());
+        REQUIRE(work::remove_session(root, id).ok());
+    }
+    const std::vector<work::Checkpoint> list = work::list_checkpoints(root, id);
+    REQUIRE(list.size() == 4);
+    CHECK(list[0].reason == "scene.save");
+    CHECK(list[0].files == std::vector<std::string>{"level.scene.json"});
+    CHECK(list[1].label == "crate placed");
+    CHECK(list[0].frame);
+
+    // Back to the first: notes as it was before the session, the new file gone, the level with
+    // the floor alone; what was there is kept as checkpoint 5.
+    const auto level_now = slash::platform::read_file(root + "/level.scene.json").value();
+    auto restored = work::restore_checkpoint(root, id, 1);
+    REQUIRE_MESSAGE(restored.ok(), (restored.ok() ? std::string() : restored.error().message));
+    CHECK(restored.value().find("kept")->as_int() == 5);
+    CHECK(*restored.value().find("files") == parse(R"(["new.scene.json", "notes.scene.json"])"));
+    CHECK(slash::platform::read_file(root + "/notes.scene.json").value() == "ORIGINAL\n");
+    CHECK_FALSE(slash::platform::exists(root + "/new.scene.json"));
+    CHECK(slash::platform::read_file(root + "/level.scene.json").value() == level_now);
+    // And back again.
+    REQUIRE(work::restore_checkpoint(root, id, 5).ok());
+    CHECK(slash::platform::exists(root + "/new.scene.json"));
+    CHECK(slash::platform::read_file(root + "/notes.scene.json").value() != "ORIGINAL\n");
+    CHECK_FALSE(work::restore_checkpoint(root, id, 9).ok());
+
+    // Turned off, there are none.
+    const std::string off = fresh_project("checkpoints_off");
+    Journaled quiet(off, work::Settings{}.max_bytes, "20261122-130000-off", false);
+    CHECK(quiet.call("scene.save", R"({"path": "a.scene.json"})").ok);
+    CHECK_FALSE(quiet.call("work.checkpoint").ok);
+    CHECK(work::list_checkpoints(off, "20261122-130000-off").empty());
 }
 
 TEST_CASE("project.json's work block turns the journal and watch server off") {

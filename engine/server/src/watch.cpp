@@ -63,6 +63,7 @@ Work::Work(std::string project_root, std::string host)
     options.project_root = project_root_;
     options.host = host_;
     options.max_bytes = settings_.max_bytes;
+    options.checkpoints = settings_.checkpoints;
     auto opened = command::work::Journal::open(std::move(options));
     if (!opened) {
         log::warn("no work journal for this session", {{"detail", opened.error().message}});

@@ -1487,7 +1487,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         - [x] `slash-cli watch`: the agent's world in a window as it edits, touched entities
               outlined
         - [x] A watch page in the browser: frames, diffs, the plan and test results
-        - [ ] Checkpoints, a timeline, compare, `work restore` and the timeline as a video
+        - [x] Checkpoints, a timeline, compare, `work restore` and the timeline as a video
         - [ ] Steering: `work pause` and `work note`, and the agent's own `work.plan`
         - [ ] Remote viewing through agents: `work.view`, `work.timeline`, `work.report` and
               `slash-mcp --watch`, so a person checks in from a phone by asking any agent

@@ -137,7 +137,8 @@ Status: current · Updated: 2026-11-22
 | `threading.max_threads` | No | `-1` | Worker threads the [job system](../concepts.md#world-entities-and-components) runs threaded systems, particles and physics on beside the main thread, 0 to 63, as Godot's `threading/worker_pool/max_threads`. `-1` is one per CPU core; `0` runs everything on the main thread, as the web does. Every count gives the same results |
 | `work.journal` | No | `true` | Whether agents' sessions write a [work journal](watching-agents.md) in `.slash/work/` |
 | `work.serve` | No | `true` | Whether sessions serve themselves read-only on the loopback interface for [watchers](watching-agents.md#watch-servers) |
-| `work.max_mb` | No | `64` | The most the project's work journals hold together, in MiB, at least 1; the oldest sessions' go first |
+| `work.checkpoints` | No | `true` | Whether journaled sessions keep [checkpoints](watching-agents.md#checkpoints) of the files they write, the world and a frame |
+| `work.max_mb` | No | `64` | The most the project's work journals and checkpoints hold together, in MiB, at least 1; the oldest sessions' go first |
 | `input` | No | Godot's `ui_*` actions | [Input actions](#input-actions) by name, each with the events that press it |
 | `input_devices.pointing.emulate_mouse_from_touch` | No | `true` | A touch also clicks the left mouse button and dragging it moves the mouse, so mouse code works on phones, as Godot's setting of the same name |
 | `input_devices.pointing.emulate_touch_from_mouse` | No | `false` | A left click also touches the screen and dragging with it drags a finger, so touch code can be tried with a mouse |

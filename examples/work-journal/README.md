@@ -18,7 +18,8 @@ work.feed {"session": "20261122-130500-a1b2", "text": true, "limit": 50}
   13:05:08  claude-code  entity.get {"id":"crat"}  FAILED: /id: no entity has the id "crat"; did you mean "crate"?
   13:05:09  claude-code  storyboard.check  -> ok
   13:05:10  claude-code  scene.save {"path":"main.scene.json"}  wrote main.scene.json
-  13:05:11  session ended
+  13:05:12  checkpoint 1 (scene.save)
+  13:05:13  session ended
 work.digest {"since": "2026-11-22T13:00:00Z"}
   2 sessions: 20261122-130500-a1b2 (slash-mcp, claude-code); 20261122-131000-c3d4 (slash-cli rpc, codex)
   4 commands and 6 reads from 13:05:01 to 13:15:04 UTC; 1 failed.

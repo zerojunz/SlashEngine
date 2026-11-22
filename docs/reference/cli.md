@@ -630,12 +630,39 @@ the entities shown and those outlined last.
 [`work.digest`](commands.md#workdigest) result. `work list` prints each session's journal with
 its size and whether its session runs.
 
+The rest read and use a session's [checkpoints](watching-agents.md#checkpoints), the newest live
+session's unless `--session` names one:
+
+- `work checkpoints` prints one line a checkpoint (number, time, label or reason, how many files
+  it holds); `--json` prints [`work.checkpoints`](commands.md#workcheckpoints)' result.
+- `work compare [<a>] [<b>]` prints [`work.compare`](commands.md#workcompare)'s result from
+  checkpoint `a` (default: the one before `b`) to `b` (default: the last).
+- `work restore <n>` puts the files the session wrote back as they were at checkpoint `n`,
+  removing those it made after, and first keeps them as they are now as a new checkpoint, so a
+  restore can be undone by restoring that one. It refuses while any session in the project runs.
+  It prints the files it changed, the checkpoint that kept them and, when `n` holds a world, its
+  path, which [`scene.open`](commands.md#sceneopen) can load.
+- `work video --out <file.ivf>` encodes the checkpoints' frames as an AV1 video with
+  [`video.encode`](commands.md#videoencode), `--fps` of them a second.
+
+```text
+1  15:06:47  scene.save  (1 file)
+2  15:06:47  crate placed
+3  15:06:47  scene.save  (1 file)
+```
+
+```json
+{"files":["main.scene.json"],"kept":5,"restored":3,"session":"20261122-150646-d839","world":".slash/work/checkpoints/20261122-150646-d839/3/world.scene.json"}
+```
+
 | Flag | Meaning |
 | --- | --- |
 | `--project <dir>` | Project folder (default `.`) |
 | `--since <time>` | `digest`: a duration (`45m`, `3h`, `2d`) or a UTC time (default `3h`) |
-| `--session <id>` | `digest`: one session only |
-| `--json` | `digest`: JSON rather than lines |
+| `--session <id>` | `digest`: one session only; the others: which session |
+| `--json` | `digest`, `checkpoints`: JSON rather than lines |
+| `--out <file>` | `video`: the `.ivf` file to write, in the project |
+| `--fps <n>` | `video`: checkpoints a second, 1 to 240 (default 1) |
 
 ### init
 
