@@ -2361,7 +2361,7 @@ public:
         }
         std::optional<ProbeOffsets> probe_offsets;
         if (capture && capture->face + 1 == kCubeFaces) {
-            probe_offsets = add_probe_uniforms();
+            probe_offsets = add_probe_uniforms(*capture);
         }
         upload_frame();
 
@@ -4538,7 +4538,7 @@ private:
 
     // Adds a capture's filter uniforms: for each level past the first and face, its mipmap's,
     // then for each level and face, its filter's, linear.
-    ProbeOffsets add_probe_uniforms() {
+    ProbeOffsets add_probe_uniforms(const ProbeCapture& capture) {
         ProbeOffsets at;
         const std::uint32_t size = probe_raw_size_;
         const std::uint32_t levels = probe_levels(size);
@@ -4552,8 +4552,8 @@ private:
             }
         }
         for (std::uint32_t level = 0; level < levels; ++level) {
-            const auto filter =
-                std::make_unique<RadianceUniforms>(radiance_uniforms(size, levels, level));
+            const auto filter = std::make_unique<RadianceUniforms>(
+                radiance_uniforms(size, levels, level, capture.ggx_samples));
             filter->options = {1.0F, 0.0F, 0.0F, 0.0F};
             for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
                 filter->params[0] = static_cast<float>(face);
@@ -4607,8 +4607,8 @@ private:
         for (std::uint32_t level = 0; level < levels; ++level) {
             auto mipmap = std::make_unique<RadianceUniforms>();
             mipmap->params[1] = 1.0F / static_cast<float>(std::max(size >> level, 1U));
-            const auto filter =
-                std::make_unique<RadianceUniforms>(radiance_uniforms(size, levels, level));
+            const auto filter = std::make_unique<RadianceUniforms>(
+                radiance_uniforms(size, levels, level, scene.radiance.ggx_samples));
             for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
                 mipmap->params[0] = static_cast<float>(face);
                 filter->params[0] = static_cast<float>(face);

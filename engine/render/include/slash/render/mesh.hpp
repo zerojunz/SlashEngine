@@ -731,6 +731,10 @@ struct Radiance3D {
     bool ambient = false;
     float ambient_mix = 1.0F;
     bool reflections = false; // lit meshes reflect it
+    // GGX samples its second roughest level blurs with (Godot's
+    // rendering/reflections/sky_reflections/ggx_samples, 1 to kMaxGgxSamples): the levels below
+    // take a half, a quarter and one, the roughest four times as many.
+    std::uint32_t ggx_samples = 32;
 
     bool operator==(const Radiance3D&) const = default;
 };
@@ -754,6 +758,9 @@ struct ReflectionAtlasSettings {
 // Reads project.json's rendering.reflections.reflection_atlas: {"reflection_size",
 // "reflection_count"}. What is missing or not valid keeps its default.
 [[nodiscard]] ReflectionAtlasSettings reflection_atlas_settings_from_json(const json::Value& value);
+// project.json's rendering object's reflections.sky_reflections.ggx_samples, as Godot's
+// rendering/reflections/sky_reflections/ggx_samples (Radiance3D::ggx_samples): 1 to 32, else 32.
+[[nodiscard]] std::uint32_t sky_ggx_samples(const json::Value& rendering);
 // Whether project.json's rendering object asks for high quality VoxelGIs:
 // global_illumination.voxel_gi.quality "high" (Scene3D::voxel_gi_high_quality).
 [[nodiscard]] bool voxel_gi_high_quality(const json::Value& rendering);
@@ -908,7 +915,8 @@ struct Decals3D {
 struct ProbeCapture {
     TextureId atlas{};
     std::uint32_t cube = 0;
-    std::uint32_t face = 0; // +x, -x, +y, -y, +z, -z, as cube textures lay them out
+    std::uint32_t face = 0;         // +x, -x, +y, -y, +z, -z, as cube textures lay them out
+    std::uint32_t ggx_samples = 32; // the cube's levels are blurred as Radiance3D's
 
     bool operator==(const ProbeCapture&) const = default;
 };

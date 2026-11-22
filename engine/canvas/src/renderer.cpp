@@ -1310,6 +1310,8 @@ bool ready_scene3d(scene3d::Renderer& scene3d, const render::RenderDevice& devic
     // A path-traced frame's paths see every cluster of a virtualized surface.
     scene3d.set_cluster_culling(options.cull_clusters && !traced);
     scene3d.set_cluster_streaming(settings.cluster_streaming);
+    scene3d.set_ggx_samples(settings.ggx_samples);
+    scene3d.set_probe_update_speed(settings.probe_update_speed);
     return generate;
 }
 

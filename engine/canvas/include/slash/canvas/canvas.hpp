@@ -595,6 +595,12 @@ struct Settings {
     // rendering.frame_generation: a frame made between each two drawn ones, as AMD's FSR 3
     // frame generation (CanvasOptions::generate).
     bool frame_generation = false;
+    // rendering.reflections.sky_reflections.ggx_samples: the samples the sky's radiance and
+    // reflection probes are blurred with.
+    std::uint32_t ggx_samples = 32;
+    // rendering.lightmapping.probe_capture.update_speed: how fast moving meshes' light from light
+    // probes follows them, a share a second.
+    double probe_update_speed = 15.0;
 };
 void set_settings(world::World& world, const Settings& settings);
 // The settings given to the world, or the defaults.
