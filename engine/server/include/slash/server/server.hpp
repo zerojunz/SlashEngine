@@ -36,6 +36,10 @@ struct ServerOptions {
     std::string token;
     // How long a request waits for the owner thread to run it before failing with 503.
     std::chrono::milliseconds request_timeout{30000};
+    // Serves watchers (watch.hpp): requests run with the session watching
+    // (command::Session::set_watching), so only commands that read run and the session's journal
+    // and client are left alone.
+    bool watch_only = false;
 };
 
 // Where a running server listens, as written to .slash/server.json for other tools to find.

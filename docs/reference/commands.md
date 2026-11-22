@@ -103,6 +103,7 @@ as `entity.get`, reject it as an unknown param.
 | Replays | [`replay.record`](#replayrecord), [`replay.stop`](#replaystop), [`replay.run`](#replayrun), [`replay.seek`](#replayseek) |
 | Tests | [`test.run`](#testrun), [`playtest.run`](#playtestrun) |
 | History | [`undo`](#undo), [`redo`](#redo), [`history.get`](#historyget) |
+| Work | [`work.feed`](#workfeed), [`work.digest`](#workdigest) |
 | Several at once | [`batch`](#batch) |
 | Observe | [`events.subscribe`](#eventssubscribe), [`events.read`](#eventsread), [`events.unsubscribe`](#eventsunsubscribe), [`log.tail`](#logtail), [`frame.capture`](#framecapture), [`frame.summary`](#framesummary), [`canvas.convert`](#canvasconvert) |
 | Display | [`display.list`](#displaylist), [`display.set`](#displayset), [`perf.stats`](#perfstats), [`debug.overlay`](#debugoverlay) |
@@ -6179,6 +6180,47 @@ entry and the first `redo` entry are next. No params. Needs: `read`.
 
 ```json
 {"redo":[],"undo":["batch","component.remove","entity.destroy"]}
+```
+
+## Work
+
+What agents' sessions did, from the project's [work journals](watching-agents.md). MCP clients
+load these with `tools_load`'s `work` group.
+
+### work.feed
+
+Lines of a session's journal: each edit with its changes and files, runs of reads, failures, and
+tests and checks with their results. Writes the calling session's waiting reads first. Needs:
+`read`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `session` | string | the newest live session, else the newest journal | The session's ID |
+| `after` | integer | | Only lines after this number, oldest first (a reply's `next`); without it, the last lines |
+| `limit` | integer, 1 to 500 | `20` | The most lines to return |
+| `text` | boolean | `false` | Lines in plain words rather than as JSON |
+
+```json
+{"lines":["13:05:03  claude-code  entity.create {\"id\":\"crate\"}  +crate"],"live":true,"more":false,"next":7,"session":"20261122-130500-4f2a"}
+```
+
+`more` says lines after these are waiting; call again with `after` set to `next`. A session
+with no journal fails with `-32001`.
+
+### work.digest
+
+A summary of the project's sessions' work over a stretch: sessions and their clients, commands,
+reads and failures, the scenes and files changed, the entities added, removed and changed, the
+last result of each test command and each check's state (`started_failing` when it passed
+earlier in the stretch), with the same in a dozen plain `lines`. Needs: `read`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `since` | string | `"3h"` | A duration (`45s`, `90m`, `3h`, `2d`) or a UTC time (`2026-11-22T13:05:00Z`) |
+| `session` | string | every session | Only this session |
+
+```json
+{"checks":{"storyboard.check":{"gist":"ok","ok":true,"runs":1,"time":"2026-11-22T13:05:09.000Z"}},"commands":4,"entities":{"added":2,"changed":1,"removed":0},"failed":1,"files":["main.scene.json"],"from":"2026-11-22T13:05:01.000Z","last_failure":{"command":"entity.get","message":"/id: no entity has the id \"crat\"; did you mean \"crate\"?","time":"2026-11-22T13:05:08.000Z"},"lines":["1 session: 20261122-130500-a1b2 (slash-mcp, claude-code)","4 commands and 2 reads from 13:05:01 to 13:05:11 UTC; 1 failed.","..."],"reads":2,"scenes":["main.scene.json"],"sessions":[{"clients":["claude-code"],"commands":4,"host":"slash-mcp","id":"20261122-130500-a1b2","live":false}],"since":"2026-11-22T13:00:00.000Z","tests":{},"until":"2026-11-22T13:05:11.000Z"}
 ```
 
 ## Several at once

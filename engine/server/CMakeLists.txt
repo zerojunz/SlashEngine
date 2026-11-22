@@ -1,7 +1,8 @@
 add_library(slash_server
     src/client.cpp
     src/openapi.cpp
-    src/server.cpp)
+    src/server.cpp
+    src/watch.cpp)
 add_library(slash::server ALIAS slash_server)
 
 target_include_directories(slash_server PUBLIC include)

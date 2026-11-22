@@ -13,6 +13,20 @@
 #include <string_view>
 #include <thread>
 
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#elif !defined(__EMSCRIPTEN__)
+#include <cerrno>
+#include <csignal>
+#include <unistd.h>
+#endif
+
 namespace slash::platform {
 namespace {
 
@@ -308,6 +322,38 @@ Result<std::unique_ptr<ChildProcess>> start_process(const std::vector<std::strin
         shared->ended.store(true);
     });
     return std::make_unique<ChildProcess>(std::move(impl));
+}
+
+std::int64_t process_id() {
+#if defined(_WIN32)
+    return static_cast<std::int64_t>(GetCurrentProcessId());
+#elif defined(__EMSCRIPTEN__)
+    return 1;
+#else
+    return static_cast<std::int64_t>(getpid());
+#endif
+}
+
+bool process_running(std::int64_t id) {
+    if (id <= 0) {
+        return false;
+    }
+#if defined(_WIN32)
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, static_cast<DWORD>(id));
+    if (process == nullptr) {
+        // A process this one may not open is still running.
+        return GetLastError() == ERROR_ACCESS_DENIED;
+    }
+    DWORD code = 0;
+    const bool running = GetExitCodeProcess(process, &code) != 0 && code == STILL_ACTIVE;
+    CloseHandle(process);
+    return running;
+#elif defined(__EMSCRIPTEN__)
+    return false;
+#else
+    // Signal 0 checks the process exists; EPERM means it does, under another user.
+    return kill(static_cast<pid_t>(id), 0) == 0 || errno == EPERM;
+#endif
 }
 
 } // namespace slash::platform

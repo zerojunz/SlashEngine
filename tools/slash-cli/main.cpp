@@ -25,6 +25,7 @@
 #include "slash/command/rpc.hpp"
 #include "slash/command/session.hpp"
 #include "slash/command/test.hpp"
+#include "slash/command/work.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/version.hpp"
@@ -68,6 +69,7 @@
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
 #include "slash/server/server.hpp"
+#include "slash/server/watch.hpp"
 #include "slash/shader_compiler/shader_compiler.hpp"
 #include "slash/soundtrack/commands.hpp"
 #include "slash/soundtrack/score.hpp"
@@ -234,6 +236,19 @@ Usage:
       --scene <file>                 Open this scene first
       --port <n>                     Port (default: any free port)
       --token <token>                Bearer token clients must send (default: random)
+  slash-cli watch                    Follow what an agent's session does, line by line, from
+                                     its work journal (.slash/work), until it ends
+      --project <dir>                Project folder (default ".")
+      --session <id>                 Which session (default: the newest live one, else the
+                                     newest journal)
+      --last <n>                     Lines to show first (default 20)
+      --once                         Print them and stop
+      --json                         Journal lines as JSON instead of text
+  slash-cli work digest              What the project's sessions did, in a dozen lines
+      --since <time>                 A duration ("45m", "3h", "2d") or a UTC time (default 3h)
+      --session <id>                 One session only
+      --json                         The whole digest as JSON
+  slash-cli work list                Every session's journal, with its size and whether it runs
   slash-cli init [dir]               Set a project up for Claude Code, Codex, Cursor, opencode,
                                      Antigravity, Hermes Agent and OpenClaw
       --force                        Replace files that already exist
@@ -751,7 +766,13 @@ int cmd_run(const std::vector<std::string>& args) {
         }
     }
 
+    // The work journal; a served game also lets watchers read it (slash-cli watch).
+    slash::server::Work work(session_options.project_root, "slash-cli run");
+    session_options.journal = work.journal();
     Engine engine(session_options, /*running=*/true);
+    if (serve) {
+        work.watch(*engine.session);
+    }
     world::World& game = engine.session->world();
     if (!scene_path.empty()) {
         auto text = slash::platform::read_file(scene_path);
@@ -969,6 +990,7 @@ int cmd_run(const std::vector<std::string>& args) {
             if (server) {
                 server->poll();
             }
+            work.poll();
             if (autopilot_bridge) {
                 autopilot_bridge->poll(tick_seconds);
                 if (autopilot_bridge->finished()) {
@@ -2365,23 +2387,28 @@ int cmd_rpc(const std::vector<std::string>& args) {
             return usage_error(error);
         }
     }
+    // The work journal, and the read-only server watchers attach to (slash-cli watch).
+    slash::server::Work work(session_args.options.project_root, "slash-cli rpc");
+    session_args.options.journal = work.journal();
     Engine engine(session_args.options);
     command::Session& session = *engine.session;
+    work.watch(session);
     if (!session_args.scene.empty()) {
         if (const auto opened = open_scene_arg(session, session_args.scene); !opened.ok) {
             print(error_json(opened));
             return kExitFailure;
         }
     }
-    std::string line;
-    while (std::getline(std::cin, line)) {
-        if (!line.empty() && line.back() == '\r') {
-            line.pop_back();
-        }
-        if (line.find_first_not_of(" \t") == std::string::npos) {
+    // Watchers are served while the caller thinks, between its messages.
+    slash::server::StdinLines input;
+    constexpr std::chrono::milliseconds kWatchPoll{50};
+    while (!input.ended()) {
+        work.poll();
+        const std::optional<std::string> line = input.next(kWatchPoll);
+        if (!line || line->find_first_not_of(" \t") == std::string::npos) {
             continue;
         }
-        if (const std::string response = command::rpc::handle(session, line); !response.empty()) {
+        if (const std::string response = command::rpc::handle(session, *line); !response.empty()) {
             const std::string out = response + "\n";
             std::fwrite(out.data(), 1, out.size(), stdout);
             std::fflush(stdout);
@@ -2403,8 +2430,11 @@ int cmd_serve(const std::vector<std::string>& args) {
             return usage_error(error);
         }
     }
+    slash::server::Work work(session_args.options.project_root, "slash-cli serve");
+    session_args.options.journal = work.journal();
     Engine engine(session_args.options);
     command::Session& session = *engine.session;
+    work.watch(session);
     if (!session_args.scene.empty()) {
         if (const auto opened = open_scene_arg(session, session_args.scene); !opened.ok) {
             print(error_json(opened));
@@ -2426,9 +2456,182 @@ int cmd_serve(const std::vector<std::string>& args) {
     while (g_stop_requested == 0) {
         server.value()->poll(std::chrono::milliseconds(100));
         session.poll_assets();
+        work.poll();
     }
     server.value()->stop();
     slash::log::info("server stopped");
+    return kExitOk;
+}
+
+// Prints a journal line as text, or as it is with --json.
+void print_journal_line(const json::Value& line, bool as_json) {
+    if (as_json) {
+        print(line);
+        return;
+    }
+    const std::string text = command::work::describe(line);
+    std::fwrite(text.data(), 1, text.size(), stdout);
+    std::fputc('\n', stdout);
+}
+
+// The newest lines of a session's journal from line number `after` on, oldest first.
+std::vector<json::Value> journal_lines_after(std::string_view project_root, std::string_view id,
+                                             std::int64_t after) {
+    std::vector<json::Value> lines;
+    auto read = command::work::read_journal(project_root, id);
+    if (!read) {
+        return lines;
+    }
+    for (json::Value& line : read.value()) {
+        const json::Value* number = line.find("n");
+        if (number != nullptr && number->is_int() && number->as_int() > after) {
+            lines.push_back(std::move(line));
+        }
+    }
+    return lines;
+}
+
+int cmd_watch(const std::vector<std::string>& args) {
+    std::string project = ".";
+    std::string session;
+    std::size_t last = 20;
+    bool once = false;
+    bool as_json = false;
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        const std::string& arg = args[i];
+        const bool has_value = i + 1 < args.size();
+        if (arg == "--project" && has_value) {
+            project = args[++i];
+        } else if (arg == "--session" && has_value) {
+            session = args[++i];
+        } else if (arg == "--last" && has_value) {
+            std::uint64_t count = 0;
+            if (!parse_u64(args[++i], count)) {
+                return usage_error("--last needs a whole number");
+            }
+            last = static_cast<std::size_t>(count);
+        } else if (arg == "--once") {
+            once = true;
+        } else if (arg == "--json") {
+            as_json = true;
+        } else if (arg != "--text") {
+            return usage_error("unexpected argument for watch: " + arg);
+        }
+    }
+    const std::string id = command::work::pick_session(project, session);
+    if (id.empty()) {
+        return failure(
+            "no session to watch",
+            slash::Error{slash::ErrorCode::NotFound, "no live session and no journal in " +
+                                                         std::string(command::work::kFolder)});
+    }
+    std::vector<json::Value> lines = journal_lines_after(project, id, 0);
+    const std::size_t skip = lines.size() > last ? lines.size() - last : 0;
+    std::int64_t seen = 0;
+    bool ended = false;
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+        seen = lines[i].find("n")->as_int();
+        ended = ended || lines[i].find("end") != nullptr;
+        if (i >= skip) {
+            print_journal_line(lines[i], as_json);
+        }
+    }
+    std::fflush(stdout);
+    if (once || ended) {
+        return kExitOk;
+    }
+    std::signal(SIGINT, request_stop);
+    std::signal(SIGTERM, request_stop);
+    // Follows the journal: reads it again only when its files grow.
+    std::uint64_t bytes = 0;
+    constexpr std::chrono::milliseconds kFollowPoll{250};
+    while (g_stop_requested == 0) {
+        std::uint64_t now_bytes = 0;
+        for (const command::work::JournalFile& file : command::work::list_journals(project)) {
+            if (file.id == id) {
+                now_bytes = file.bytes;
+            }
+        }
+        if (now_bytes != bytes) {
+            bytes = now_bytes;
+            for (const json::Value& line : journal_lines_after(project, id, seen)) {
+                seen = line.find("n")->as_int();
+                print_journal_line(line, as_json);
+                ended = ended || line.find("end") != nullptr;
+            }
+            std::fflush(stdout);
+        }
+        if (ended) {
+            break;
+        }
+        const auto live = command::work::live_sessions(project);
+        if (std::ranges::none_of(
+                live, [&](const command::work::SessionEntry& entry) { return entry.id == id; }) &&
+            now_bytes == bytes) {
+            // The session ended without its last line (it was killed).
+            break;
+        }
+        std::this_thread::sleep_for(kFollowPoll);
+    }
+    return kExitOk;
+}
+
+int cmd_work(const std::vector<std::string>& args) {
+    if (args.empty() || (args[0] != "digest" && args[0] != "list")) {
+        return usage_error(R"(work needs "digest" or "list")");
+    }
+    std::string project = ".";
+    std::string session;
+    std::string since = "3h";
+    bool as_json = false;
+    for (std::size_t i = 1; i < args.size(); ++i) {
+        const std::string& arg = args[i];
+        const bool has_value = i + 1 < args.size();
+        if (arg == "--project" && has_value) {
+            project = args[++i];
+        } else if (arg == "--session" && has_value) {
+            session = args[++i];
+        } else if (arg == "--since" && has_value) {
+            since = args[++i];
+        } else if (arg == "--json") {
+            as_json = true;
+        } else {
+            return usage_error("unexpected argument for work " + args[0] + ": " + arg);
+        }
+    }
+    if (args[0] == "list") {
+        const auto live = command::work::live_sessions(project);
+        json::Array sessions;
+        for (const command::work::JournalFile& file : command::work::list_journals(project)) {
+            json::Value entry;
+            entry["id"] = file.id;
+            entry["bytes"] = static_cast<std::int64_t>(file.bytes);
+            entry["live"] = std::ranges::any_of(
+                live, [&](const command::work::SessionEntry& one) { return one.id == file.id; });
+            sessions.push_back(std::move(entry));
+        }
+        json::Value result;
+        result["sessions"] = std::move(sessions);
+        print(result);
+        return kExitOk;
+    }
+    const auto start = command::work::parse_since(since);
+    if (!start) {
+        return usage_error(start.error().message);
+    }
+    const json::Value result = command::work::digest(project, start.value(), session);
+    if (as_json) {
+        print(result);
+        return kExitOk;
+    }
+    if (const json::Value* text = result.find("lines"); text != nullptr && text->is_array()) {
+        for (const json::Value& line : text->as_array()) {
+            if (line.is_string()) {
+                std::fwrite(line.as_string().data(), 1, line.as_string().size(), stdout);
+                std::fputc('\n', stdout);
+            }
+        }
+    }
     return kExitOk;
 }
 
@@ -2995,6 +3198,12 @@ int main(int argc, char** argv) {
     }
     if (name == "serve") {
         return cmd_serve(args);
+    }
+    if (name == "watch") {
+        return cmd_watch(args);
+    }
+    if (name == "work") {
+        return cmd_work(args);
     }
     if (name == "init") {
         return cmd_init(args);

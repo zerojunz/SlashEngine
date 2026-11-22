@@ -208,7 +208,12 @@ struct Server::Impl {
             jobs.pop_front();
             job->taken = true;
             lock.unlock();
+            const bool was_watching = session->watching();
+            if (options.watch_only) {
+                session->set_watching(true);
+            }
             job->run();
+            session->set_watching(was_watching);
             lock.lock();
             job->done = true;
             ++count;
