@@ -202,6 +202,53 @@ TEST_CASE("physics settings set gravity and damping") {
             .size() == 1);
 }
 
+TEST_CASE("physics_2d takes Box2D's world settings") {
+    const json::Value all = json::parse(R"({"contact_hertz": 60, "contact_damping_ratio": 5,
+        "max_contact_push_speed": 300, "max_linear_speed": 100, "bounce_velocity_threshold": 32,
+        "hit_event_threshold": 16, "allow_sleep": false, "sleep_velocity_threshold": 2,
+        "enable_continuous": false, "enable_warm_starting": false,
+        "enable_speculative": false})")
+                                .value();
+    CHECK(json::validate(all, physics2d::settings_schema()).empty());
+    CHECK(json::validate(json::parse(R"({"max_linear_speed": 0})").value(),
+                         physics2d::settings_schema())
+              .size() == 1);
+    const physics2d::Settings parsed = physics2d::parse_settings(all);
+    CHECK(parsed.contact_hertz == 60.0F);
+    CHECK(parsed.contact_damping_ratio == 5.0F);
+    CHECK(parsed.max_contact_push_speed == 300.0F);
+    CHECK(parsed.max_linear_speed == 100.0F);
+    CHECK(parsed.bounce_velocity_threshold == 32.0F);
+    CHECK(parsed.hit_event_threshold == 16.0F);
+    CHECK_FALSE(parsed.allow_sleep);
+    CHECK(parsed.sleep_velocity_threshold == 2.0F);
+    CHECK_FALSE(parsed.enable_continuous);
+    CHECK_FALSE(parsed.enable_warm_starting);
+    CHECK_FALSE(parsed.enable_speculative);
+
+    // Falling bodies stop speeding up at the cap, and a lower cap set later holds them to it.
+    Physics physics(physics2d::Settings{.linear_damp = 0.0F, .max_linear_speed = 100.0F});
+    physics.crate("crate", {0.0F, 0.0F});
+    physics.step(60);
+    CHECK(physics.get<world::RigidBody2D>("crate").linear_velocity.y ==
+          doctest::Approx(100.0F).epsilon(0.001));
+    physics2d::set_settings(physics.world, {.linear_damp = 0.0F, .max_linear_speed = 50.0F});
+    physics.step(5);
+    CHECK(physics.get<world::RigidBody2D>("crate").linear_velocity.y ==
+          doctest::Approx(50.0F).epsilon(0.001));
+
+    // A resting body sleeps only while the world lets bodies sleep.
+    const auto rests_asleep = [](bool allow_sleep) {
+        Physics resting(physics2d::Settings{.allow_sleep = allow_sleep});
+        resting.box("floor", {-200.0F, 200.0F}, {200.0F, 220.0F});
+        resting.crate("crate", {0.0F, 170.0F});
+        resting.step(180);
+        return resting.get<world::RigidBody2D>("crate").sleeping;
+    };
+    CHECK(rests_asleep(true));
+    CHECK_FALSE(rests_asleep(false));
+}
+
 TEST_CASE("bodies collide when either one's mask has the other's layer") {
     const auto lands = [](std::uint32_t crate_layer, std::uint32_t crate_mask,
                           std::uint32_t floor_layer, std::uint32_t floor_mask) {

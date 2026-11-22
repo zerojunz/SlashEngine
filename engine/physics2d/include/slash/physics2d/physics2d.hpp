@@ -47,6 +47,28 @@ struct Settings {
     int substeps = 4;
     // The most pieces breaks from impacts may cut a tick, as physics_3d's; 0 for no limit.
     int break_budget = 0;
+    // Box2D's world settings, in pixels where Box2D's are in meters (64 pixels a meter).
+    // How stiff contacts are (cycles a second) and how much they bounce while pushing bodies
+    // apart, and the fastest they push.
+    float contact_hertz = 30.0F;
+    float contact_damping_ratio = 10.0F;
+    float max_contact_push_speed = 192.0F; // pixels per second, 3 meters
+    // The fastest bodies may move, in pixels per second (400 meters).
+    float max_linear_speed = 25600.0F;
+    // The speed, in pixels per second, below which colliding bodies don't bounce.
+    float bounce_velocity_threshold = 64.0F;
+    // The speed, in pixels per second, a hit needs to count for breaking and damage.
+    float hit_event_threshold = 64.0F;
+    // Whether resting bodies sleep, once they move slower than sleep_velocity_threshold pixels a
+    // second for half a second, as Godot's physics/2d/sleep_threshold_linear.
+    bool allow_sleep = true;
+    float sleep_velocity_threshold = 3.2F;
+    // Whether fast bodies are swept against static ones so they don't tunnel, whether the
+    // solver starts from the last step's impulses, and whether contacts are made a little
+    // before bodies touch.
+    bool enable_continuous = true;
+    bool enable_warm_starting = true;
+    bool enable_speculative = true;
 
     friend bool operator==(const Settings&, const Settings&) = default;
 };

@@ -240,6 +240,7 @@ common/physics_ticks_per_second=30
 2d/default_gravity=490.0
 2d/default_gravity_vector=Vector2(0, 1)
 2d/default_linear_damp=0.5
+2d/sleep_threshold_linear=4.0
 
 [rendering]
 
@@ -778,6 +779,7 @@ TEST_CASE("importing a Godot project converts its settings and input map") {
     CHECK_FALSE(settings.find("rendering")->find("fallback_to_opengl")->as_bool());
     CHECK(settings.find("physics_2d")->find("gravity")->as_double() == 490.0);
     CHECK(settings.find("physics_2d")->find("linear_damp")->as_double() == 0.5);
+    CHECK(settings.find("physics_2d")->find("sleep_velocity_threshold")->as_double() == 4.0);
 
     const json::Value& shoot = *settings.find("input")->find("shoot");
     CHECK(shoot.find("deadzone")->as_double() == 0.5);

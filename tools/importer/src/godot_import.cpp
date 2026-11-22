@@ -2091,6 +2091,9 @@ private:
         if (const Value* damp = number("physics", "2d/default_angular_damp")) {
             project["physics_2d"]["angular_damp"] = damp->number();
         }
+        if (const Value* sleep = number("physics", "2d/sleep_threshold_linear")) {
+            project["physics_2d"]["sleep_velocity_threshold"] = sleep->number();
+        }
         if (const Value* gravity = number("physics", "3d/default_gravity")) {
             project["physics_3d"]["gravity"] = gravity->number();
         }
