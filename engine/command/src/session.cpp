@@ -5,6 +5,7 @@
 #include "slash/animation/animation.hpp"
 #include "slash/audio/audio.hpp"
 #include "slash/canvas/canvas.hpp"
+#include "slash/command/work.hpp"
 #include "slash/core/assert.hpp"
 #include "slash/core/jobs.hpp"
 #include "slash/core/json_schema.hpp"
@@ -31,12 +32,26 @@
 #include "slash/xr/xr.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
+#include <filesystem>
 #include <ranges>
 #include <utility>
 
 namespace slash::command {
 namespace {
+
+// Whether a command that succeeded is a checkpoint: a saved scene, or tests that all passed.
+bool passed_checkpoint(std::string_view name, const Reply& reply) {
+    if (name == "scene.save") {
+        return true;
+    }
+    if (name != "test.run" || !reply.value.is_object()) {
+        return false;
+    }
+    const json::Value* failed = reply.value.find("failed");
+    return failed != nullptr && failed->is_array() && failed->as_array().empty();
+}
 
 // How many log lines a session keeps for log.tail.
 constexpr std::size_t kMaxLogLines = 1000;
@@ -397,8 +412,63 @@ Session::~Session() {
 Reply Session::call(std::string_view name, const json::Value& params) {
     SLASH_PROFILE_ZONE_NAMED(name);
     const bool outermost = depth_ == 0;
+    const bool journal = outermost && options_.journal != nullptr && !watching_;
+    const auto started = std::chrono::steady_clock::now();
+    if (journal) {
+        journaling_ = true;
+        journal_changes_ = {};
+        journal_files_.clear();
+    }
     const std::uint64_t tick = world_.tick();
     Reply reply = call_command(name, params);
+    // Notes from the people watching ride on the agent's next reply.
+    if (outermost && !watching_ && !steering_.notes.empty()) {
+        json::Value& target = reply.ok ? reply.value : reply.data;
+        if (target.is_null()) {
+            target = json::Object{};
+        }
+        if (target.is_object()) {
+            target["notes"] = std::move(steering_.notes);
+            steering_.notes = {};
+        }
+    }
+    // work.plan and work.checkpoint write lines of their own.
+    const bool own_line = reply.ok && (name == "work.plan" || name == "work.checkpoint");
+    if (journal && own_line) {
+        journaling_ = false;
+        journal_changes_ = {};
+        journal_files_.clear();
+    } else if (journal) {
+        journaling_ = false;
+        const Command* command = commands_->find(name);
+        const json::Value* dry_run = params.is_object() ? params.find("dry_run") : nullptr;
+        const json::Value empty = json::Object{};
+        // A command that wrote files did something, even if it changed no entity.
+        const bool read = journal_files_.empty() &&
+                          (command == nullptr || command->effect == Effect::Read ||
+                           (dry_run != nullptr && dry_run->is_bool() && dry_run->as_bool()));
+        options_.journal->record({
+            .command = name,
+            .params = params.is_null() ? empty : params,
+            .reply = reply,
+            .read = read,
+            .changes = std::move(journal_changes_),
+            .files = std::move(journal_files_),
+            .milliseconds = std::chrono::duration<double, std::milli>(
+                                std::chrono::steady_clock::now() - started)
+                                .count(),
+            .client = client_,
+        });
+        journal_changes_ = {};
+        journal_files_.clear();
+        // A saved scene and tests that pass are moments to go back to.
+        if (reply.ok && options_.journal->keeps_checkpoints() && passed_checkpoint(name, reply)) {
+            if (auto taken = work::take_checkpoint(*this, name, ""); !taken) {
+                log::warn("no checkpoint was taken",
+                          {{"command", std::string(name)}, {"detail", taken.error().message}});
+            }
+        }
+    }
     if (outermost && reply.ok && call_listener_) {
         const json::Value* dry_run = params.is_object() ? params.find("dry_run") : nullptr;
         if (dry_run == nullptr || !dry_run->is_bool() || !dry_run->as_bool()) {
@@ -422,6 +492,29 @@ Reply Session::call_command(std::string_view name, const json::Value& params) {
             message += "; did you mean \"" + std::string(hint) + "\"?";
         }
         return Reply::failure(code::kMethodNotFound, std::move(message));
+    }
+
+    const bool reads_only = command->effect == Effect::Read &&
+                            std::ranges::all_of(command->capabilities, [](Capability capability) {
+                                return capability == Capability::Read;
+                            });
+    if (watching_ && depth_ == 0 && !reads_only) {
+        return Reply::failure(code::kPermissionDenied,
+                              "\"" + command->name +
+                                  "\" is not open to watchers, who may run only commands that "
+                                  "read and need nothing but the read capability");
+    }
+    // While a person watching has paused the session, it runs what a watcher could: reads.
+    if (!watching_ && depth_ == 0 && !reads_only && steering_.paused.is_object()) {
+        const json::Value* why = steering_.paused.find("why");
+        json::Value data;
+        data["paused"] = steering_.paused;
+        return Reply::failure(
+            code::kPaused,
+            "a person watching paused this session's edits: \"" +
+                (why != nullptr && why->is_string() ? why->as_string() : std::string()) +
+                "\"; reads still work, and edits will once they resume",
+            std::move(data));
     }
 
     for (const Capability capability : command->capabilities) {
@@ -558,7 +651,7 @@ Reply Session::call_command(std::string_view name, const json::Value& params) {
         after = save();
         world_changed = !same_world(before.saved, *after);
     }
-    if ((edited_ || replaced_) && world_changed && wants("command")) {
+    if ((edited_ || replaced_) && world_changed && (wants("command") || journaling_)) {
         publish_changes(command->name, before.saved, after ? *after : save());
     }
     if (replaced_) {
@@ -659,7 +752,24 @@ Result<void> Session::write_file(const std::string& full, std::string_view conte
             return made.error();
         }
     }
-    return platform::write_file(full, contents);
+    std::string path;
+    if (journaling_) {
+        // The journal names files by their project paths.
+        path = std::filesystem::path(full)
+                   .lexically_relative(std::filesystem::path(options_.project_root))
+                   .generic_string();
+        if (path.empty() || path.starts_with("..")) {
+            path = full;
+        }
+        options_.journal->before_write(path);
+    }
+    if (auto written = platform::write_file(full, contents); !written) {
+        return written;
+    }
+    if (journaling_ && std::ranges::find(journal_files_, path) == journal_files_.end()) {
+        journal_files_.push_back(std::move(path));
+    }
+    return {};
 }
 
 Reply Session::undo() {
@@ -856,9 +966,15 @@ Result<void> Session::commit_files() {
         }
         // Assets reload what was written even when its stamp didn't change.
         assets_.mark_changed(path);
+        if (journaling_) {
+            options_.journal->before_write(path);
+        }
         if (file.remove) {
             if (auto removed = platform::remove_file(resolved.value()); !removed) {
                 return removed.error();
+            }
+            if (journaling_ && std::ranges::find(journal_files_, path) == journal_files_.end()) {
+                journal_files_.push_back(path);
             }
             continue;
         }
@@ -1169,11 +1285,24 @@ void Session::publish(const world::Event& event) {
 
 void Session::publish_changes(std::string_view command, const SavedWorld& before,
                               const SavedWorld& after) {
-    if (!wants("command")) {
+    // Hot reloads go in the journal as lines of their own, and a command's changes with it.
+    const bool reload = command == "asset.reload" || command == "gameplay.reload";
+    const bool journal = options_.journal != nullptr && !watching_ && (journaling_ || reload);
+    if (!wants("command") && !journal) {
         return;
     }
     json::Value changes =
         world::diff_scenes(components(), before.scene, after.scene, before.links, after.links);
+    if (journal) {
+        if (reload) {
+            options_.journal->record_event(command, changes);
+        } else {
+            journal_changes_ = changes;
+        }
+        if (!wants("command")) {
+            return;
+        }
+    }
     std::vector<std::string> ids;
     for (const std::string_view section : {"added", "removed"}) {
         if (const json::Value* list = changes.find(section); list != nullptr) {

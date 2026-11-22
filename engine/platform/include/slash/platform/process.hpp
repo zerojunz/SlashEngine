@@ -3,6 +3,7 @@
 #include "slash/core/result.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -38,6 +39,16 @@ struct ProcessResult {
 // The value of an environment variable of this process, or "" if it is not set. Names are
 // case-sensitive on every platform.
 [[nodiscard]] std::string environment_variable(const std::string& name);
+
+// This process's ID, as the system numbers it.
+[[nodiscard]] std::int64_t process_id();
+// Whether a process with this ID is running on this machine. Always false on the web, which has
+// no processes to ask about.
+[[nodiscard]] bool process_running(std::int64_t id);
+
+// Opens a link in the system's web browser (SDL_OpenURL), as Godot's OS.shell_open does. Fails
+// where there is no browser to open it in.
+[[nodiscard]] Result<void> open_url(const std::string& url);
 
 // Runs a program to completion. args[0] is the program, found on PATH if it has no directory.
 // Fails only if the program could not be started; a nonzero exit code is a successful result.

@@ -211,6 +211,7 @@ add_executable(slash_tests
     test_soundtrack_render.cpp
     test_sdk.cpp
     test_server.cpp
+    test_work.cpp
     test_services.cpp
     test_shader.cpp
     test_spatial_shader.cpp

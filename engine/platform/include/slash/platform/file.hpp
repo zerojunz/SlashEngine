@@ -32,6 +32,14 @@ namespace slash::platform {
 // Creates or replaces the file.
 [[nodiscard]] Result<void> write_file(std::string_view path, std::string_view contents);
 
+// Adds to the end of the file, creating it if there is none.
+[[nodiscard]] Result<void> append_file(std::string_view path, std::string_view contents);
+
+// Creates or replaces the file, which only its owner may read or write on macOS and Linux, as
+// rename_file replaces it, so readers never see half of it. For files holding secrets, such as a
+// server's token.
+[[nodiscard]] Result<void> write_private_file(std::string_view path, std::string_view contents);
+
 // Creates a directory and any missing parents. Succeeds if it already exists.
 [[nodiscard]] Result<void> create_directories(std::string_view path);
 

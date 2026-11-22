@@ -44,8 +44,9 @@ inline constexpr std::array<std::string_view, 4> kProtocolVersions{"2025-11-25",
 
 // Which commands tools/list offers as tools.
 enum class Tools : std::uint8_t {
-    Core, // the commands most tasks need (core_commands), tools_load and what it loaded
-    All,  // every command
+    Core,  // the commands most tasks need (core_commands), tools_load and what it loaded
+    All,   // every command
+    Watch, // the work.* commands a watcher may run (slash-mcp --watch), for checking on a session
 };
 
 // The commands offered as tools by default. engine.describe lists the rest, schema.get with kind
@@ -54,6 +55,9 @@ enum class Tools : std::uint8_t {
 
 // The directory tool's name. No command maps to it.
 inline constexpr std::string_view kLoadTool = "tools_load";
+
+// The commands Tools::Watch offers: what a session did and does, and steering it.
+[[nodiscard]] std::span<const std::string_view> watch_commands();
 
 // Reads "core" or "all", as slash-mcp's --tools takes it.
 [[nodiscard]] Result<Tools> parse_tools(std::string_view text);

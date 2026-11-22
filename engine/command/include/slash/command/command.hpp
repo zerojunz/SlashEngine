@@ -63,6 +63,7 @@ inline constexpr int kInvalidArgument = -32002;
 inline constexpr int kPermissionDenied = -32003;
 inline constexpr int kPlatformFailure = -32004;
 inline constexpr int kConflict = -32005; // the data changed since the caller read it
+inline constexpr int kPaused = -32006;   // a person watching paused the session's edits
 } // namespace code
 
 // The outcome of a command: a JSON value, or an error code, message and optional structured

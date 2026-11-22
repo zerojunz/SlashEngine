@@ -41,6 +41,7 @@ Status: current · Updated: 2026-11-20
 | Bring a game over from Unity | [reference/unity-import.md](reference/unity-import.md) |
 | Bring a game over from Unreal Engine | [reference/unreal-import.md](reference/unreal-import.md) |
 | Call the engine over HTTP, JSON-RPC or MCP | [reference/protocols.md](reference/protocols.md) |
+| See what any agent is doing in a project, or did | [reference/watching-agents.md](reference/watching-agents.md) |
 | Measure what agent tasks cost in calls and tokens | [reference/benchmark.md](reference/benchmark.md) |
 | Check that each coding agent edits a scene over MCP | [exit-check/README.md](exit-check/README.md) |
 | Read the full design and the reasons behind it | [design.md](design.md) |
@@ -105,6 +106,7 @@ Every doc in this folder. Each new doc gets a row in the same PR ([DOCS-STANDARD
 | [reference/unreal-import.md](reference/unreal-import.md) | Importing an Unreal Engine 5 project. | current |
 | [reference/video.md](reference/video.md) | AV1 video decoding, encoding and playback. | current |
 | [reference/virtualized-geometry.md](reference/virtualized-geometry.md) | Research: Nanite-style cluster hierarchies. | current |
+| [reference/watching-agents.md](reference/watching-agents.md) | Watching agents work: the work journal, watch servers and `slash-cli watch`. | current |
 | [reference/xr.md](reference/xr.md) | The XR server, interfaces, trackers and OpenXR. | current |
 | [exit-check/README.md](exit-check/README.md) | Milestone 3 exit check: each coding agent edits a scene over MCP. | current |
 | [exit-check/claude-code.md](exit-check/claude-code.md) | Generated result of the exit check for Claude Code. | historical |

@@ -1,0 +1,877 @@
+#include "slash/command/builtin.hpp"
+#include "slash/command/command.hpp"
+#include "slash/command/mcp.hpp"
+#include "slash/command/session.hpp"
+#include "slash/command/work.hpp"
+#include "slash/core/json.hpp"
+#include "slash/core/text.hpp"
+#include "slash/platform/file.hpp"
+#include "slash/platform/process.hpp"
+#include "slash/render/image.hpp"
+#include "slash/server/client.hpp"
+#include "slash/server/server.hpp"
+#include "slash/server/watch.hpp"
+#include "slash/world/component_registry.hpp"
+#include "slash/world/components.hpp"
+
+#include <doctest/doctest.h>
+
+#include <algorithm>
+#include <chrono>
+#include <cstdint>
+#include <filesystem>
+#include <future>
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace json = slash::json;
+namespace command = slash::command;
+namespace work = slash::command::work;
+namespace server = slash::server;
+using namespace std::chrono_literals;
+
+namespace {
+
+json::Value parse(std::string_view text) {
+    auto parsed = json::parse(text);
+    REQUIRE_MESSAGE(parsed.ok(), (parsed.ok() ? std::string() : parsed.error().message));
+    return std::move(parsed).value();
+}
+
+// A project folder of its own for each test, emptied first.
+std::string fresh_project(std::string_view name) {
+    const std::string root = "work_test_" + std::string(name);
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    return root;
+}
+
+// 2026-11-22T13:00:00Z, moved on by a millisecond each time it is read, so lines repeat.
+work::Clock test_clock() {
+    auto time = std::make_shared<std::int64_t>(1795352400000);
+    return [time] { return (*time)++; };
+}
+
+// A session keeping a journal under a fixed ID and clock.
+struct Journaled {
+    slash::world::ComponentRegistry components;
+    command::Registry commands;
+    std::unique_ptr<work::Journal> journal;
+    std::unique_ptr<command::Session> session;
+
+    explicit Journaled(const std::string& root,
+                       std::uint64_t max_bytes = work::Settings{}.max_bytes,
+                       std::string id = "20261122-130000-test", bool checkpoints = true) {
+        slash::world::register_builtin_components(components);
+        command::register_builtin_commands(commands);
+        work::JournalOptions options;
+        options.project_root = root;
+        options.host = "test";
+        options.id = std::move(id);
+        options.max_bytes = max_bytes;
+        options.checkpoints = checkpoints;
+        options.clock = test_clock();
+        auto opened = work::Journal::open(std::move(options));
+        REQUIRE_MESSAGE(opened.ok(), (opened.ok() ? std::string() : opened.error().message));
+        journal = std::move(opened).value();
+        command::SessionOptions session_options;
+        session_options.project_root = root;
+        session_options.capture_logs = false;
+        session_options.journal = journal.get();
+        session = std::make_unique<command::Session>(components, commands, session_options);
+    }
+
+    command::Reply call(std::string_view name, std::string_view params = "{}") {
+        return session->call(name, parse(params));
+    }
+
+    std::vector<json::Value> lines() {
+        journal->flush();
+        auto read = work::read_journal(session->options().project_root, journal->id());
+        REQUIRE(read.ok());
+        return read.value();
+    }
+};
+
+const json::Value* find_command(const std::vector<json::Value>& lines, std::string_view name) {
+    for (const json::Value& line : lines) {
+        if (const json::Value* command = line.find("command");
+            command != nullptr && command->as_string() == name) {
+            return &line;
+        }
+    }
+    return nullptr;
+}
+
+} // namespace
+
+TEST_CASE("the work journal records edits with their changes, folds reads and keeps errors") {
+    const std::string root = fresh_project("record");
+    Journaled run(root);
+    // Nothing done yet: no file.
+    CHECK(work::list_journals(root).empty());
+
+    CHECK(run.call("entity.create", R"({"id": "player", "components": {"Transform2D": {}}})").ok);
+    for (int i = 0; i < 3; ++i) {
+        CHECK(run.call("world.query").ok);
+    }
+    CHECK(run.call("entity.get", R"({"id": "player"})").ok);
+    CHECK(run.call("component.set",
+                   R"({"id": "player", "components": {"Transform2D": {"position": [4, 5]}}})")
+              .ok);
+    CHECK_FALSE(run.call("entity.get", R"({"id": "playr"})").ok);
+    CHECK_FALSE(run.call("ai.complete", R"({"api_key": "sk-123", "prompt": "hi"})").ok);
+    CHECK(run.call("entity.create", R"({"id": "ghost", "dry_run": true})").ok);
+    CHECK(run.call("scene.save", R"({"path": "levels/one.scene.json"})").ok);
+
+    const std::vector<json::Value> lines = run.lines();
+    REQUIRE(lines.size() >= 7);
+    const json::Value& first = lines.front();
+    CHECK(first.find("session")->as_string() == "20261122-130000-test");
+    CHECK(first.find("start")->find("host")->as_string() == "test");
+    CHECK(first.find("start")->find("pid")->as_int() == slash::platform::process_id());
+    CHECK(first.find("time")->as_string() == "2026-11-22T13:00:00.001Z");
+
+    const json::Value* created = find_command(lines, "entity.create");
+    REQUIRE(created != nullptr);
+    CHECK(*created->find("changes")->find("added") == parse(R"(["player"])"));
+    CHECK(created->find("params")->find("id")->as_string() == "player");
+
+    // The three queries and the get are one line.
+    const json::Value* reads = nullptr;
+    for (const json::Value& line : lines) {
+        if (line.find("reads") != nullptr && reads == nullptr) {
+            reads = &line;
+        }
+    }
+    REQUIRE(reads != nullptr);
+    CHECK(reads->find("reads")->find("world.query")->as_int() == 3);
+    CHECK(reads->find("reads")->find("entity.get")->as_int() == 1);
+
+    const json::Value* set = find_command(lines, "component.set");
+    REQUIRE(set != nullptr);
+    CHECK(*set->find("changes")->find("changed")->find("player")->find("Transform2D") ==
+          parse(R"(["position"])"));
+
+    // A failed read is a line of its own, with its error.
+    bool failed_get = false;
+    for (const json::Value& line : lines) {
+        if (const json::Value* command = line.find("command");
+            command != nullptr && command->as_string() == "entity.get" &&
+            line.find("error") != nullptr) {
+            failed_get = true;
+            CHECK(line.find("error")->find("code")->as_int() == command::code::kNotFound);
+        }
+    }
+    CHECK(failed_get);
+
+    // Secrets never reach the journal.
+    const json::Value* asked = find_command(lines, "ai.complete");
+    REQUIRE(asked != nullptr);
+    CHECK(asked->find("params")->find("api_key")->as_string() == "[left out]");
+    CHECK(asked->find("params")->find("prompt")->as_string() == "hi");
+    const std::string text = slash::platform::read_file(root + "/" + run.journal->path()).value();
+    CHECK(text.find("sk-123") == std::string::npos);
+
+    // A dry run changes nothing, so it is a read.
+    const json::Value* dry = nullptr;
+    for (const json::Value& line : lines) {
+        if (const json::Value* command = line.find("command");
+            command != nullptr && command->as_string() == "entity.create" &&
+            line.find("read") != nullptr) {
+            dry = &line;
+        }
+    }
+    CHECK(dry == nullptr); // folded into a run of reads
+
+    const json::Value* saved = find_command(lines, "scene.save");
+    REQUIRE(saved != nullptr);
+    CHECK(*saved->find("files") == parse(R"(["levels/one.scene.json"])"));
+
+    // Lines are numbered in order.
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+        CHECK(lines[i].find("n")->as_int() == static_cast<std::int64_t>(i + 1));
+    }
+
+    // The session's end is the last line.
+    run.session.reset();
+    run.journal.reset();
+    auto ended = work::read_journal(root, "20261122-130000-test");
+    REQUIRE(ended.ok());
+    CHECK(ended.value().back().find("end") != nullptr);
+    CHECK(work::describe(ended.value().back()).find("session ended") != std::string::npos);
+}
+
+TEST_CASE("tests and checks keep their results in the journal") {
+    const std::string root = fresh_project("checks");
+    Journaled run(root);
+    CHECK(run.call("storyboard.check").ok);
+    const std::vector<json::Value> lines = run.lines();
+    const json::Value* check = find_command(lines, "storyboard.check");
+    REQUIRE(check != nullptr);
+    CHECK(check->find("result") != nullptr);
+    CHECK(check->find("read") != nullptr);
+}
+
+TEST_CASE("journals rotate past a quarter of the project's share and old ones are pruned") {
+    const std::string root = fresh_project("rotate");
+    {
+        Journaled run(root, 8 * 1024, "20261121-090000-aaaa");
+        for (int i = 0; i < 40; ++i) {
+            CHECK(run.call("entity.create", R"({"components": {"Transform2D": {}}})").ok);
+        }
+        const std::vector<work::JournalFile> files = work::list_journals(root);
+        REQUIRE(files.size() == 1);
+        CHECK(files.front().paths.size() == 2);
+        CHECK(files.front().paths.front().ends_with(".1.jsonl"));
+        CHECK(files.front().bytes <= 4 * 1024);
+        // Lines go on being numbered across the two files.
+        const std::vector<json::Value> lines = run.lines();
+        for (std::size_t i = 1; i < lines.size(); ++i) {
+            CHECK(lines[i].find("n")->as_int() > lines[i - 1].find("n")->as_int());
+        }
+    }
+    {
+        Journaled other(root, 8 * 1024, "20261121-100000-bbbb");
+        for (int i = 0; i < 40; ++i) {
+            CHECK(other.call("entity.create", R"({"components": {"Transform2D": {}}})").ok);
+        }
+    }
+    // Opening a third finds the two over half the share and drops the older.
+    Journaled third(root, 8 * 1024, "20261121-110000-cccc");
+    std::vector<std::string> ids;
+    for (const work::JournalFile& file : work::list_journals(root)) {
+        ids.push_back(file.id);
+    }
+    CHECK(ids == std::vector<std::string>{"20261121-100000-bbbb"});
+}
+
+TEST_CASE("sessions.json lists running sessions and drops ended ones") {
+    const std::string root = fresh_project("sessions");
+    work::SessionEntry mine;
+    mine.id = "20261122-120000-0001";
+    mine.host = "slash-mcp";
+    mine.pid = slash::platform::process_id();
+    mine.url = "http://127.0.0.1:1";
+    mine.token = "t";
+    REQUIRE(work::add_session(root, mine).ok());
+    work::SessionEntry gone = mine;
+    gone.id = "20261122-130000-0002";
+    gone.pid = 0x7FFFFFF0; // no such process
+    REQUIRE(work::add_session(root, gone).ok());
+
+    const std::vector<work::SessionEntry> live = work::live_sessions(root);
+    REQUIRE(live.size() == 1);
+    CHECK(live.front().id == mine.id);
+    CHECK(live.front().host == "slash-mcp");
+    CHECK(work::pick_session(root) == mine.id);
+    CHECK(work::pick_session(root, "named") == "named");
+#if !defined(_WIN32)
+    const auto permissions =
+        std::filesystem::status(root + "/" + std::string(work::kSessionsFile)).permissions();
+    CHECK((permissions & (std::filesystem::perms::group_all |
+                          std::filesystem::perms::others_all)) == std::filesystem::perms::none);
+#endif
+    REQUIRE(work::remove_session(root, mine.id).ok());
+    CHECK(work::live_sessions(root).empty());
+    CHECK(work::pick_session(root).empty());
+}
+
+TEST_CASE("a watch server serves reads and refuses edits") {
+    const std::string root = fresh_project("watch");
+    Journaled run(root);
+    CHECK(run.call("entity.create", R"({"id": "player"})").ok);
+    auto started =
+        server::Watched::start(*run.session, run.journal->id(), "test", run.journal->path());
+    REQUIRE(started.ok());
+    const std::unique_ptr<server::Watched>& watched = started.value();
+    const std::vector<work::SessionEntry> live = work::live_sessions(root);
+    REQUIRE(live.size() == 1);
+    CHECK(live.front().journal == run.journal->path());
+
+    server::Endpoint endpoint;
+    endpoint.host = "127.0.0.1";
+    endpoint.token = live.front().token;
+    const std::string& url = live.front().url;
+    endpoint.port = std::stoi(url.substr(url.rfind(':') + 1));
+    const auto send = [&](std::string_view path, std::string_view body) {
+        server::HttpRequest request;
+        request.path = path;
+        request.body = body;
+        auto future =
+            std::async(std::launch::async, [&] { return server::send(endpoint, request); });
+        while (future.wait_for(0ms) != std::future_status::ready) {
+            watched->poll(5ms);
+        }
+        auto response = future.get();
+        REQUIRE(response.ok());
+        return response.value();
+    };
+    const auto read = send("/v1/commands/world.query", "");
+    CHECK(read.status == 200);
+    CHECK(*parse(read.body).find("entities") == parse(R"(["player"])"));
+    const auto edit = send("/v1/commands/entity.create", R"({"id": "intruder"})");
+    CHECK(edit.status == 403);
+    CHECK(run.session->world().size() == 1);
+    CHECK_FALSE(run.session->watching());
+
+    // Watchers aren't in the journal.
+    for (const json::Value& line : run.lines()) {
+        CHECK(line.find("reads") == nullptr);
+    }
+    started.value().reset();
+    CHECK(work::live_sessions(root).empty());
+}
+
+TEST_CASE("a follower reads a session's new journal lines and its world as it changes") {
+    const std::string root = fresh_project("follow");
+    Journaled run(root);
+    CHECK(run.call("entity.create", R"({"id": "crate"})").ok);
+    auto started =
+        server::Watched::start(*run.session, run.journal->id(), "test", run.journal->path());
+    REQUIRE(started.ok());
+    server::Follower follower(root, run.journal->id());
+    // Polls the follower while the session answers watchers between commands, as a host does,
+    // until the world comes.
+    const auto follow = [&] {
+        server::Follower::Update all;
+        for (int i = 0; i < 400 && !all.scene; ++i) {
+            run.journal->flush();
+            server::Follower::Update update = follower.poll(0ms);
+            for (json::Value& line : update.lines) {
+                all.lines.push_back(std::move(line));
+            }
+            if (update.scene) {
+                all.scene = std::move(update.scene);
+            }
+            all.ended = update.ended;
+            started.value()->poll(5ms);
+        }
+        return all;
+    };
+    server::Follower::Update first = follow();
+    // The session's start, then the edit.
+    REQUIRE(first.lines.size() == 2);
+    CHECK(first.lines.front().find("start") != nullptr);
+    CHECK(first.lines.back().find("command")->as_string() == "entity.create");
+    REQUIRE(first.scene.has_value());
+    CHECK(first.scene->find("entities")->find("crate") != nullptr);
+    CHECK_FALSE(first.ended);
+    REQUIRE(follower.entry().has_value());
+
+    // Nothing written, nothing asked for; the next edit brings its line and the new world.
+    const server::Follower::Update quiet = follower.poll(0ms);
+    CHECK(quiet.lines.empty());
+    CHECK_FALSE(quiet.scene.has_value());
+    CHECK(run.call("component.set",
+                   R"({"id": "crate", "components": {"Transform2D": {"position": [5, 6]}}})")
+              .ok);
+    server::Follower::Update second = follow();
+    REQUIRE(second.lines.size() == 1);
+    CHECK(second.lines.front().find("command")->as_string() == "component.set");
+    REQUIRE(second.scene.has_value());
+    CHECK(*second.scene->find("entities")->find("crate")->find("components") ==
+          parse(R"({"Transform2D": {"position": [5.0, 6.0]}})"));
+
+    // The session ends: its last line comes and the follower stops.
+    started.value().reset();
+    run.session.reset();
+    run.journal.reset();
+    server::Follower::Update last = follower.poll(0ms);
+    CHECK(last.ended);
+    REQUIRE(last.lines.size() == 1);
+    CHECK(last.lines.front().find("end") != nullptr);
+}
+
+TEST_CASE("work.feed pages through a journal and work.digest sums it up") {
+    const std::string root = fresh_project("feed");
+    Journaled run(root);
+    CHECK(run.call("entity.create", R"({"id": "a"})").ok);
+    CHECK(run.call("entity.create", R"({"id": "b"})").ok);
+    CHECK(run.call("entity.destroy", R"({"id": "a"})").ok);
+    CHECK_FALSE(run.call("entity.destroy", R"({"id": "zzz"})").ok);
+    CHECK(run.call("scene.save", R"({"path": "main.scene.json"})").ok);
+
+    command::Reply page = run.call("work.feed", R"({"after": 0, "limit": 2})");
+    REQUIRE(page.ok);
+    CHECK(page.value.find("session")->as_string() == run.journal->id());
+    CHECK(page.value.find("lines")->as_array().size() == 2);
+    CHECK(page.value.find("more")->as_bool());
+    const std::int64_t next = page.value.find("next")->as_int();
+    CHECK(next == 2);
+    page = run.call("work.feed", R"({"after": 2, "text": true})");
+    REQUIRE(page.ok);
+    const json::Array& text = page.value.find("lines")->as_array();
+    REQUIRE_FALSE(text.empty());
+    CHECK(text.front().as_string().find("entity.create") != std::string::npos);
+    CHECK(text.front().as_string().find("+b") != std::string::npos);
+
+    command::Reply summed = run.call("work.digest", R"({"since": "2026-11-22T12:00:00Z"})");
+    REQUIRE(summed.ok);
+    const json::Value& digest = summed.value;
+    CHECK(digest.find("commands")->as_int() == 5);
+    CHECK(digest.find("failed")->as_int() == 1);
+    CHECK(digest.find("entities")->find("added")->as_int() == 2);
+    CHECK(digest.find("entities")->find("removed")->as_int() == 1);
+    CHECK(*digest.find("scenes") == parse(R"(["main.scene.json"])"));
+    CHECK(digest.find("last_failure")->find("command")->as_string() == "entity.destroy");
+    CHECK(digest.find("lines")->as_array().size() >= 2);
+
+    CHECK_FALSE(run.call("work.digest", R"({"since": "yesterday"})").ok);
+    CHECK_FALSE(run.call("work.feed", R"({"session": "nope"})").ok);
+}
+
+TEST_CASE("journal times read and write as UTC") {
+    CHECK(work::format_time(1795352400000) == "2026-11-22T13:00:00.000Z");
+    CHECK(work::format_time(1795352703120) == "2026-11-22T13:05:03.120Z");
+    CHECK(work::parse_duration("45s").value() == 45000);
+    CHECK(work::parse_duration("90m").value() == 90 * 60000);
+    CHECK(work::parse_duration("3h").value() == 3 * 3600000);
+    CHECK(work::parse_duration("2d").value() == 2 * 86400000);
+    CHECK_FALSE(work::parse_duration("3").ok());
+    CHECK_FALSE(work::parse_duration("h").ok());
+    CHECK(work::parse_since("2026-11-22T13:05:03.120Z").value() == 1795352703120);
+    CHECK(work::parse_since("2026-11-22T13:05Z").value() == 1795352700000);
+    CHECK_FALSE(work::parse_since("2026-13-40T00:00Z").ok());
+    CHECK(work::line_time(parse(R"({"time": "2026-11-22T13:00:00.000Z"})")) == 1795352400000);
+    CHECK_FALSE(work::line_time(parse(R"({"n": 1})")).has_value());
+}
+
+TEST_CASE("checkpoints keep the files and world, compare them and put the files back") {
+    const std::string root = fresh_project("checkpoints");
+    // Files the agent will write over, as they were before.
+    REQUIRE(slash::platform::write_file(root + "/level.scene.json", "{}\n").ok());
+    REQUIRE(slash::platform::write_file(root + "/notes.scene.json", "ORIGINAL\n").ok());
+    const std::string id = "20261122-130000-test";
+    {
+        Journaled run(root);
+        CHECK(
+            run.call("entity.create", R"({"id": "floor", "components": {"Transform2D": {}}})").ok);
+        CHECK(run.call("scene.save", R"({"path": "level.scene.json"})").ok); // 1
+        CHECK(
+            run.call("entity.create", R"({"id": "crate", "components": {"Transform2D": {}}})").ok);
+        const command::Reply marked = run.call("work.checkpoint", R"({"label": "crate placed"})");
+        REQUIRE(marked.ok); // 2
+        CHECK(marked.value.find("n")->as_int() == 2);
+        CHECK(marked.value.find("files")->as_array().empty());
+        CHECK(run.call("scene.save", R"({"path": "notes.scene.json"})").ok); // 3
+        CHECK(run.call("scene.save", R"({"path": "new.scene.json"})").ok);   // 4
+        // A failing test.run takes none; the journal says when each was taken.
+        bool described = false;
+        for (const json::Value& line : run.lines()) {
+            if (line.find("checkpoint") != nullptr && line.find("label") != nullptr) {
+                CHECK(work::describe(line).ends_with("checkpoint 2: crate placed"));
+                described = true;
+            }
+        }
+        CHECK(described);
+
+        const command::Reply listed = run.call("work.checkpoints", R"({"after": 2})");
+        REQUIRE(listed.ok);
+        CHECK(listed.value.find("checkpoints")->as_array().size() == 2);
+        const command::Reply compared = run.call("work.compare", R"({"from": 1, "to": 4})");
+        REQUIRE(compared.ok);
+        CHECK(*compared.value.find("files") == parse(R"({"added": ["new.scene.json"],
+                        "changed": [{"path": "notes.scene.json", "lines": "+15 -1"}]})"));
+        CHECK(*compared.value.find("entities")->find("added") == parse(R"(["crate"])"));
+        CHECK(run.call("work.compare", R"({"image": true})").value.find("to")->find("png") !=
+              nullptr);
+
+        // Nothing is restored while a session runs.
+        work::SessionEntry entry;
+        entry.id = id;
+        entry.pid = slash::platform::process_id();
+        REQUIRE(work::add_session(root, entry).ok());
+        CHECK_FALSE(work::restore_checkpoint(root, id, 1).ok());
+        REQUIRE(work::remove_session(root, id).ok());
+    }
+    const std::vector<work::Checkpoint> list = work::list_checkpoints(root, id);
+    REQUIRE(list.size() == 4);
+    CHECK(list[0].reason == "scene.save");
+    CHECK(list[0].files == std::vector<std::string>{"level.scene.json"});
+    CHECK(list[1].label == "crate placed");
+    CHECK(list[0].frame);
+
+    // Back to the first: notes as it was before the session, the new file gone, the level with
+    // the floor alone; what was there is kept as checkpoint 5.
+    const auto level_now = slash::platform::read_file(root + "/level.scene.json").value();
+    auto restored = work::restore_checkpoint(root, id, 1);
+    REQUIRE_MESSAGE(restored.ok(), (restored.ok() ? std::string() : restored.error().message));
+    CHECK(restored.value().find("kept")->as_int() == 5);
+    CHECK(*restored.value().find("files") == parse(R"(["new.scene.json", "notes.scene.json"])"));
+    CHECK(slash::platform::read_file(root + "/notes.scene.json").value() == "ORIGINAL\n");
+    CHECK_FALSE(slash::platform::exists(root + "/new.scene.json"));
+    CHECK(slash::platform::read_file(root + "/level.scene.json").value() == level_now);
+    // And back again.
+    REQUIRE(work::restore_checkpoint(root, id, 5).ok());
+    CHECK(slash::platform::exists(root + "/new.scene.json"));
+    CHECK(slash::platform::read_file(root + "/notes.scene.json").value() != "ORIGINAL\n");
+    CHECK_FALSE(work::restore_checkpoint(root, id, 9).ok());
+
+    // Turned off, there are none.
+    const std::string off = fresh_project("checkpoints_off");
+    Journaled quiet(off, work::Settings{}.max_bytes, "20261122-130000-off", false);
+    CHECK(quiet.call("scene.save", R"({"path": "a.scene.json"})").ok);
+    CHECK_FALSE(quiet.call("work.checkpoint").ok);
+    CHECK(work::list_checkpoints(off, "20261122-130000-off").empty());
+}
+
+TEST_CASE("project.json's work block turns the journal and watch server off") {
+    const std::string root = fresh_project("settings");
+    CHECK(work::read_settings(root).journal);
+    REQUIRE(
+        slash::platform::write_file(root + "/project.json",
+                                    R"({"work": {"journal": false, "serve": false, "max_mb": 2}})")
+            .ok());
+    const work::Settings settings = work::read_settings(root);
+    CHECK_FALSE(settings.journal);
+    CHECK_FALSE(settings.serve);
+    CHECK(settings.max_bytes == 2U << 20U);
+    server::Work host(root, "test");
+    CHECK(host.journal() == nullptr);
+}
+
+TEST_CASE("people watching pause a session's edits, leave notes and resume it") {
+    const std::string root = fresh_project("steer");
+    Journaled run(root);
+    CHECK(run.call("entity.create", R"({"id": "crate"})").ok);
+
+    // The agent can't pause or resume itself.
+    const command::Reply self = run.call("work.resume");
+    CHECK(self.code == command::code::kPermissionDenied);
+    CHECK(self.message.find("slash-cli work resume") != std::string::npos);
+
+    // A person watching pauses it, through the session's watch server.
+    auto started =
+        server::Watched::start(*run.session, run.journal->id(), "test", run.journal->path());
+    REQUIRE(started.ok());
+    const std::unique_ptr<server::Watched>& watched = started.value();
+    const work::SessionEntry entry = watched->entry();
+    const auto watch = [&](std::string_view name, std::string_view params) {
+        auto future = std::async(std::launch::async,
+                                 [&] { return server::call_watched(entry, name, parse(params)); });
+        while (future.wait_for(0ms) != std::future_status::ready) {
+            watched->poll(5ms);
+        }
+        auto reply = future.get();
+        REQUIRE_MESSAGE(reply.ok(), (reply.ok() ? std::string() : reply.error().message));
+        return reply.value();
+    };
+    const command::Reply paused = watch("work.pause", R"({"why": "Wrong level: use level_2"})");
+    REQUIRE(paused.ok);
+    CHECK(paused.value == parse(R"({"paused": {"why": "Wrong level: use level_2"}})"));
+
+    // Edits fail with the person's words; reads still work.
+    const command::Reply edit = run.call("entity.create", R"({"id": "lamp"})");
+    CHECK(edit.code == command::code::kPaused);
+    CHECK(edit.message.find("Wrong level: use level_2") != std::string::npos);
+    CHECK(edit.data == parse(R"({"paused": {"why": "Wrong level: use level_2"}})"));
+    CHECK(run.session->world().size() == 1);
+    CHECK(run.call("entity.get", R"({"id": "crate"})").ok);
+    CHECK(run.call("work.plan", R"({"status": "blocked"})").ok);
+
+    // A note rides on the agent's next reply, once.
+    CHECK(watch("work.note", R"({"text": "The crate goes left of the door"})").value ==
+          parse(R"({"waiting": 1})"));
+    const command::Reply noted = run.call("world.query");
+    REQUIRE(noted.ok);
+    CHECK(*noted.value.find("notes") == parse(R"([{"text": "The crate goes left of the door"}])"));
+    CHECK(run.call("world.query").value.find("notes") == nullptr);
+
+    CHECK(watch("work.resume", "{}").value == parse(R"({"resumed": true})"));
+    CHECK(watch("work.resume", "{}").value == parse(R"({"resumed": false})"));
+    CHECK(run.call("entity.create", R"({"id": "lamp"})").ok);
+
+    // The journal says so, in plain words too, and the digest sums it up.
+    std::vector<std::string> said;
+    for (const json::Value& line : run.lines()) {
+        said.push_back(work::describe(line).substr(10));
+    }
+    CHECK(std::ranges::find(said, "paused by a person watching: Wrong level: use level_2") !=
+          said.end());
+    CHECK(std::ranges::find(said, "note from a person watching: The crate goes left of the door") !=
+          said.end());
+    CHECK(std::ranges::find(said, "resumed by a person watching") != said.end());
+    CHECK(std::ranges::find(said, "plan: 0 of 0 steps done (blocked)") != said.end());
+    started.value().reset();
+}
+
+TEST_CASE("work.plan keeps the agent's plan and closes the storyboard tasks its steps finish") {
+    const std::string root = fresh_project("plan");
+    REQUIRE(slash::platform::create_directories(root + "/storyboard").ok());
+    REQUIRE(
+        slash::platform::write_file(
+            root + "/storyboard/work.json",
+            R"({"entries": {"task/boss_room": {"name": "Boss room", "summary": "Build the boss room.",
+                    "status": "open"}},
+                    "format": 1})")
+            .ok());
+    Journaled run(root);
+    CHECK(run.call("work.plan").value ==
+          parse(R"({"session": "20261122-130000-test", "steps": []})"));
+
+    const command::Reply set =
+        run.call("work.plan", R"({"task": "Build the boss room", "steps": ["Lay out the floor",
+                        {"text": "Place the boss", "story": "task/boss_room"}, "Run the tests"]})");
+    REQUIRE(set.ok);
+    CHECK(set.value == parse(R"({"status": "working", "task": "Build the boss room", "steps": [
+        {"done": false, "text": "Lay out the floor"},
+        {"done": false, "story": "task/boss_room", "text": "Place the boss"},
+        {"done": false, "text": "Run the tests"}]})"));
+
+    // Ticking the step that finishes a task hands back the edit that closes it.
+    const command::Reply ticked = run.call("work.plan", R"({"done": [1, 2]})");
+    REQUIRE(ticked.ok);
+    const json::Value* edits = ticked.value.find("story_edits");
+    REQUIRE(edits != nullptr);
+    REQUIRE(edits->as_array().size() == 1);
+    CHECK(*edits->as_array()[0].find("id") == json::Value("task/boss_room"));
+    CHECK(*edits->as_array()[0].find("set") == parse(R"({"status": "done"})"));
+    CHECK(edits->as_array()[0].find("version")->as_string().size() == 8);
+    json::Value close;
+    close["edits"] = *edits;
+    const command::Reply closed = run.session->call("storyboard.edit", close);
+    CHECK_MESSAGE(closed.ok, closed.message);
+    // Again, nothing more to close.
+    CHECK(run.call("work.plan", R"({"done": [2]})").value.find("story_edits") == nullptr);
+
+    // Mistakes say where.
+    const command::Reply far = run.call("work.plan", R"({"done": [4]})");
+    CHECK(far.code == command::code::kInvalidArgument);
+    CHECK(far.message == "/done/0: the plan has 3 steps, so no step 4");
+    const command::Reply typo =
+        run.call("work.plan", R"({"steps": [{"text": "Fight", "story": "task/boss_rom"}]})");
+    CHECK(typo.code == command::code::kNotFound);
+    CHECK(*typo.data.find("path") == json::Value("/steps/0/story"));
+    CHECK(typo.message.find("task/boss_room") != std::string::npos);
+
+    // Watchers read it but can't set it; plans are their own journal lines.
+    run.session->set_watching(true);
+    CHECK(run.call("work.plan").value.find("task")->as_string() == "Build the boss room");
+    CHECK(run.call("work.plan", R"({"done": [3]})").code == command::code::kPermissionDenied);
+    run.session->set_watching(false);
+    // Only the failed calls are command lines; the last plan line is the plan as it stands.
+    const std::vector<json::Value> lines = run.lines();
+    const json::Value* last_plan = nullptr;
+    for (const json::Value& line : lines) {
+        if (const json::Value* command = line.find("command");
+            command != nullptr && command->as_string() == "work.plan") {
+            CHECK(line.find("error") != nullptr);
+        }
+        if (line.find("plan") != nullptr) {
+            last_plan = &line;
+        }
+    }
+    REQUIRE(last_plan != nullptr);
+    CHECK(work::describe(*last_plan).substr(10) ==
+          "plan: Build the boss room, 2 of 3 steps done; next: Run the tests");
+
+    const json::Value digest = work::digest(root, 0, "");
+    const std::string gist = "Plan: Build the boss room, 2 of 3 steps done; next: Run the tests.";
+    bool found = false;
+    for (const json::Value& line : digest.find("lines")->as_array()) {
+        found = found || line.as_string() == gist;
+    }
+    CHECK(found);
+}
+
+namespace {
+
+// The image a reply's base64 "png" holds.
+slash::render::Image reply_image(const json::Value& value) {
+    const json::Value* png = value.find("png");
+    REQUIRE(png != nullptr);
+    const std::optional<std::string> bytes = slash::base64_decode(png->as_string());
+    REQUIRE(bytes.has_value());
+    auto image = slash::render::decode_image(*bytes);
+    REQUIRE(image.ok());
+    return std::move(image).value();
+}
+
+// A session that laid out a title screen: three checkpoints, a plan and a label to escape.
+void lay_out_title(Journaled& run) {
+    REQUIRE(
+        run.call("work.plan",
+                 R"({"task": "Lay out the title screen", "steps": ["Backdrop", "Start button"]})")
+            .ok);
+    REQUIRE(run.call("entity.create", R"({"id": "sky", "components": {
+        "Control": {"anchor_right": 1, "anchor_bottom": 1},
+        "ColorRect": {"color": [0.25, 0.45, 0.8, 1]}}})")
+                .ok);
+    REQUIRE(run.call("scene.save", R"({"path": "title.scene.json"})").ok);
+    REQUIRE(run.call("work.plan", R"({"done": [1]})").ok);
+    REQUIRE(run.call("entity.create", R"({"id": "start", "components": {
+        "Control": {"offset_left": 540, "offset_top": 420, "offset_right": 740,
+                    "offset_bottom": 480},
+        "ColorRect": {"color": [0.95, 0.7, 0.2, 1]}}})")
+                .ok);
+    REQUIRE(run.call("work.checkpoint", R"({"label": "start <button>"})").ok);
+    REQUIRE(
+        run.call("component.set",
+                 R"({"id": "start", "components": {"ColorRect": {"color": [0.3, 0.85, 0.4, 1]}}})")
+            .ok);
+    REQUIRE(run.call("scene.save", R"({"path": "title.scene.json"})").ok);
+}
+
+} // namespace
+
+TEST_CASE("work.view, work.timeline and work.report show a session to someone far away") {
+    const std::string root = fresh_project("view");
+    const std::string id = "20261122-130000-test";
+    {
+        Journaled run(root);
+        lay_out_title(run);
+
+        // The moment: the world as an image no wider than asked, the plan and the last lines.
+        const command::Reply view = run.call("work.view", R"({"width": 320, "lines": 3})");
+        REQUIRE(view.ok);
+        const slash::render::Image frame = reply_image(view.value);
+        CHECK(frame.width == 320);
+        CHECK(*view.value.find("frame") ==
+              parse(R"({"width": 320, "height": )" + std::to_string(frame.height) + "}"));
+        CHECK(view.value.find("plan")->find("task")->as_string() == "Lay out the title screen");
+        REQUIRE(view.value.find("recent")->as_array().size() == 3);
+        CHECK(view.value.find("recent")->as_array()[2].as_string().substr(10) ==
+              "checkpoint 3 (scene.save)");
+        CHECK(*view.value.find("live") == json::Value(true));
+        const command::Reply plain = run.call("work.view", R"({"image": false, "lines": 0})");
+        CHECK(plain.value.find("png") == nullptr);
+        CHECK(plain.value.find("recent")->as_array().empty());
+
+        // The way there: the checkpoints' frames in rows of two, oldest first.
+        const command::Reply strip = run.call("work.timeline", R"({"columns": 2, "width": 100})");
+        REQUIRE(strip.ok);
+        const slash::render::Image sheet = reply_image(strip.value);
+        CHECK(sheet.width == (2 * 100) + (3 * 4));
+        const std::uint32_t tile = (sheet.height - (3 * 4)) / 2;
+        CHECK(tile == 100 * frame.height / frame.width);
+        std::vector<std::int64_t> numbers;
+        for (const json::Value& entry : strip.value.find("checkpoints")->as_array()) {
+            numbers.push_back(entry.find("n")->as_int());
+        }
+        CHECK(numbers == std::vector<std::int64_t>{1, 2, 3});
+        CHECK(strip.value.find("checkpoints")->as_array()[1].find("label")->as_string() ==
+              "start <button>");
+        const command::Reply page = run.call("work.timeline", R"({"after": 1, "limit": 1})");
+        CHECK(page.value.find("checkpoints")->as_array().size() == 1);
+        CHECK(*page.value.find("next") == json::Value(2));
+        CHECK(*page.value.find("more") == json::Value(true));
+        CHECK(run.call("work.timeline", R"({"after": 3})").code == command::code::kNotFound);
+
+        // A page of it all to hand on.
+        const command::Reply report = run.call("work.report");
+        REQUIRE(report.ok);
+        CHECK(report.value.find("path")->as_string() == ".slash/work/reports/" + id + ".html");
+        auto html = slash::platform::read_file(root + "/" + report.value.find("path")->as_string());
+        REQUIRE(html.ok());
+        CHECK(report.value.find("bytes")->as_int() ==
+              static_cast<std::int64_t>(html.value().size()));
+        CHECK(html.value().starts_with("<!doctype html>"));
+        CHECK(html.value().find("Lay out the title screen, 1 of 2 steps done") !=
+              std::string::npos);
+        CHECK(html.value().find("2. work.checkpoint: start &lt;button&gt;") != std::string::npos);
+        CHECK(html.value().find("start <button>") == std::string::npos);
+        CHECK(html.value().find("Files changed: title.scene.json") != std::string::npos);
+        std::size_t images = 0;
+        for (std::size_t at = html.value().find("data:image/png;base64,"); at != std::string::npos;
+             at = html.value().find("data:image/png;base64,", at + 1)) {
+            ++images;
+        }
+        CHECK(images == 3);
+        CHECK(run.call("work.report", R"({"since": "soon"})").code ==
+              command::code::kInvalidParams);
+    }
+
+    // Once the session ends, another one sees it as its last checkpoint left it.
+    Journaled other(root, work::Settings{}.max_bytes, "20261122-140000-peer");
+    const command::Reply ended = other.call("work.view", R"({"session": ")" + id + R"("})");
+    REQUIRE(ended.ok);
+    CHECK(*ended.value.find("live") == json::Value(false));
+    CHECK(*ended.value.find("frame")->find("checkpoint") == json::Value(3));
+    CHECK(reply_image(ended.value).width > 0);
+    CHECK(ended.value.find("plan")->find("task")->as_string() == "Lay out the title screen");
+    CHECK(other.call("work.view", R"({"session": "20261122-000000-none"})").code ==
+          command::code::kNotFound);
+}
+
+TEST_CASE("an agent in another session views and steers a session through its watch server") {
+    const std::string root = fresh_project("remote");
+    Journaled working(root);
+    REQUIRE(working.call("work.plan", R"({"task": "Build a yard", "steps": ["Floor"]})").ok);
+    REQUIRE(working.call("entity.create", R"({"id": "crate"})").ok);
+    auto started = server::Watched::start(*working.session, working.journal->id(), "test",
+                                          working.journal->path());
+    REQUIRE(started.ok());
+    const std::unique_ptr<server::Watched>& watched = started.value();
+    REQUIRE(work::add_session(root, watched->entry()).ok());
+    server::install_work_forwarder();
+
+    // The second agent's session asks; the working one answers between its own commands.
+    Journaled asking(root, work::Settings{}.max_bytes, "20261122-140000-peer");
+    const std::string target = R"("session": ")" + working.journal->id() + "\"";
+    const auto ask = [&](std::string_view name, const std::string& params) {
+        auto future = std::async(std::launch::async, [&] { return asking.call(name, params); });
+        while (future.wait_for(0ms) != std::future_status::ready) {
+            watched->poll(5ms);
+        }
+        return future.get();
+    };
+    const command::Reply view = ask("work.view", "{" + target + R"(, "image": false})");
+    REQUIRE_MESSAGE(view.ok, view.message);
+    CHECK(*view.value.find("live") == json::Value(true));
+    CHECK(view.value.find("plan")->find("task")->as_string() == "Build a yard");
+    CHECK(view.value.find("session")->as_string() == working.journal->id());
+
+    const command::Reply paused = ask("work.pause", "{" + target + R"(, "why": "Wrong yard"})");
+    REQUIRE_MESSAGE(paused.ok, paused.message);
+    CHECK(working.call("entity.create", R"({"id": "lamp"})").code == command::code::kPaused);
+    CHECK(ask("work.note", "{" + target + R"(, "text": "Use the cave"})").ok);
+    CHECK(*ask("work.resume", "{" + target + "}").value.find("resumed") == json::Value(true));
+    const command::Reply edited = working.call("entity.create", R"({"id": "lamp"})");
+    REQUIRE(edited.ok);
+    CHECK(*edited.value.find("notes") == parse(R"([{"text": "Use the cave"}])"));
+
+    // Its own session it can't steer, and a session that isn't running says which are.
+    CHECK(asking.call("work.pause", R"({"why": "x"})").code == command::code::kPermissionDenied);
+    const command::Reply missing =
+        asking.call("work.pause", R"({"session": "20261122-130000-tset", "why": "x"})");
+    CHECK(missing.code == command::code::kNotFound);
+    CHECK(*missing.data.find("path") == json::Value("/session"));
+    CHECK(missing.message.find("did you mean \"20261122-130000-test\"?") != std::string::npos);
+    REQUIRE(work::remove_session(root, working.journal->id()).ok());
+}
+
+TEST_CASE("slash-mcp --watch offers only the work tools a watcher may use") {
+    slash::world::ComponentRegistry components;
+    slash::world::register_builtin_components(components);
+    command::Registry commands;
+    command::register_builtin_commands(commands);
+    command::SessionOptions options;
+    options.capabilities = {command::Capability::Read};
+    options.capture_logs = false;
+    command::Session session(components, commands, options);
+    command::mcp::Server server(session, command::mcp::Tools::Watch);
+    const command::Reply listed = server.dispatch("tools/list", json::Value());
+    REQUIRE(listed.ok);
+    std::vector<std::string> names;
+    for (const json::Value& tool : listed.value.find("tools")->as_array()) {
+        names.push_back(tool.find("name")->as_string());
+        CHECK(*tool.find("annotations")->find("readOnlyHint") == json::Value(true));
+    }
+    std::vector<std::string> expected;
+    for (const std::string_view name : command::mcp::watch_commands()) {
+        expected.push_back(command::mcp::tool_name(name));
+    }
+    std::ranges::sort(expected);
+    CHECK(names == expected);
+    CHECK(std::ranges::find(names, "work_view") != names.end());
+    CHECK(std::ranges::find(names, "tools_load") == names.end());
+    const command::Reply started = server.dispatch("initialize", json::Object{});
+    CHECK(started.value.find("instructions")->as_string().find("look in on another agent") !=
+          std::string::npos);
+    CHECK(*started.value.find("capabilities")->find("tools")->find("listChanged") ==
+          json::Value(false));
+}

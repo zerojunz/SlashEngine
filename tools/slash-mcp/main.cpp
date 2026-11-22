@@ -7,6 +7,7 @@
 #include "slash/command/command.hpp"
 #include "slash/command/mcp.hpp"
 #include "slash/command/session.hpp"
+#include "slash/command/work.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/version.hpp"
@@ -20,14 +21,17 @@
 #include "slash/runtime/plugins.hpp"
 #include "slash/server/client.hpp"
 #include "slash/server/server.hpp"
+#include "slash/server/watch.hpp"
 #include "slash/shader_compiler/shader_compiler.hpp"
 #include "slash/soundtrack/commands.hpp"
 #include "slash/video/commands.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 
+#include <chrono>
 #include <cstdio>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -51,10 +55,15 @@ Usage:
                              tools_load, which adds others by group, or all
       --live                 Drive the game already running in the project ("slash-cli run
                              --serve" or "slash-cli serve") instead of an engine of its own
+      --watch                Look in on another agent's session in the project instead: only
+                             the work tools (view, digest, timeline, report, pause, note...),
+                             none of which changes its game
+      --session <id>         With --watch, the session to watch (default the newest running)
       --version              Print the engine version
       --help                 Show this message
 
 Claude Code:  claude mcp add slashengine -- slash-mcp --project .
+Watching:     claude mcp add slashengine-watch -- slash-mcp --project . --watch
 Or run "slash-cli init" in a project to write the configs for Claude Code, Codex and Cursor.
 )";
 
@@ -92,6 +101,70 @@ bool loaded_tools(std::string_view message, std::string_view response) {
            error != nullptr && error->is_bool() && !error->as_bool();
 }
 
+// A tools/call message with "session" set to the watched session where the call names none;
+// work.digest is left to cover every session. Other messages as they are.
+std::string with_session(const std::string& message, const std::string& session) {
+    if (session.empty()) {
+        return message;
+    }
+    auto parsed = slash::json::parse(message);
+    if (!parsed || !parsed.value().is_object()) {
+        return message;
+    }
+    slash::json::Value request = std::move(parsed).value();
+    const slash::json::Value* method = request.find("method");
+    slash::json::Value* params = request.find("params");
+    if (method == nullptr || !method->is_string() || method->as_string() != "tools/call" ||
+        params == nullptr || !params->is_object()) {
+        return message;
+    }
+    const slash::json::Value* name = params->find("name");
+    if (name == nullptr || !name->is_string() || name->as_string() == "work_digest") {
+        return message;
+    }
+    slash::json::Value& arguments = (*params)["arguments"];
+    if (arguments.is_null()) {
+        arguments = slash::json::Object{};
+    }
+    if (!arguments.is_object() || arguments.find("session") != nullptr) {
+        return message;
+    }
+    arguments["session"] = session;
+    return slash::json::write(request, slash::json::Style::Compact);
+}
+
+// slash-mcp --watch: the work tools over a session of its own that changes nothing, each call
+// looking at the watched session, which it reaches through its watch server.
+int serve_watcher(const std::string& project, const std::string& pinned) {
+    slash::world::ComponentRegistry components;
+    slash::world::register_builtin_components(components);
+    command::Registry commands;
+    command::register_builtin_commands(commands);
+    command::SessionOptions options;
+    options.project_root = project;
+    options.capabilities = {command::Capability::Read};
+    command::Session session(components, commands, options);
+    command::mcp::Server server(session, command::mcp::Tools::Watch);
+    slash::log::info("slash-mcp watching", {{"project", project}, {"session", pinned}});
+    std::string line;
+    while (std::getline(std::cin, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        if (line.find_first_not_of(" \t") == std::string::npos) {
+            continue;
+        }
+        // The newest running session for each call, unless one was named, so a new agent's
+        // session is picked up.
+        const std::string watched = pinned.empty() ? command::work::pick_session(project) : pinned;
+        if (const std::string response = server.handle(with_session(line, watched));
+            !response.empty()) {
+            send(response);
+        }
+    }
+    return kExitOk;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -99,11 +172,14 @@ int main(int argc, char** argv) {
     if (argc > 1 && std::string_view(argv[1]) == slash::exporter::kWaylandScanner) {
         return slash::exporter::run_wayland_scanner(argc - 1, argv + 1);
     }
-    slash::shader_compiler::install(); // for materials with a game's own shader
+    slash::shader_compiler::install();       // for materials with a game's own shader
+    slash::server::install_work_forwarder(); // work tools reach other sessions
     const std::vector<std::string> args(argv + 1, argv + argc);
     command::SessionOptions options;
     std::string scene;
     bool live = false;
+    bool watch = false;
+    std::string watched;
     bool restricted = false;
     command::mcp::Tools tools = command::mcp::Tools::Core;
     bool tools_set = false;
@@ -120,6 +196,10 @@ int main(int argc, char** argv) {
         }
         if (arg == "--live") {
             live = true;
+        } else if (arg == "--watch") {
+            watch = true;
+        } else if (arg == "--session" && has_value) {
+            watched = args[++i];
         } else if (arg == "--project" && has_value) {
             options.project_root = args[++i];
         } else if (arg == "--scene" && has_value) {
@@ -152,8 +232,18 @@ int main(int argc, char** argv) {
         return usage_error("--tools has no effect with --live; the running game offers core "
                            "tools and tools_load");
     }
+    if (watch && (live || !scene.empty() || restricted || tools_set)) {
+        return usage_error("--watch takes only --project and --session: it looks in on another "
+                           "session and changes nothing");
+    }
+    if (!watched.empty() && !watch) {
+        return usage_error("--session needs --watch");
+    }
     if (!slash::platform::exists(options.project_root)) {
         return usage_error("the project folder does not exist: " + options.project_root);
+    }
+    if (watch) {
+        return serve_watcher(options.project_root, watched);
     }
 
     std::string line;
@@ -199,7 +289,11 @@ int main(int argc, char** argv) {
     slash::plugin::Plugins plugins(components);
     (void)slash::runtime::load_plugins(plugins, options.project_root);
     options.plugins = &plugins;
+    // The work journal, and the read-only server watchers attach to (slash-cli watch).
+    slash::server::Work work(options.project_root, "slash-mcp");
+    options.journal = work.journal();
     command::Session session(components, commands, options);
+    work.watch(session);
     // Until the code is built, its components are stand-ins, so its scenes still open.
     slash::runtime::add_stand_ins(gameplay, options.project_root);
 
@@ -216,14 +310,16 @@ int main(int argc, char** argv) {
     slash::log::info("slash-mcp ready",
                      {{"project", options.project_root}, {"tools", commands.commands().size()}});
 
-    while (std::getline(std::cin, line)) {
-        if (!line.empty() && line.back() == '\r') {
-            line.pop_back();
-        }
-        if (line.find_first_not_of(" \t") == std::string::npos) {
+    // Watchers are served while the agent thinks, between its messages.
+    slash::server::StdinLines input;
+    constexpr std::chrono::milliseconds kWatchPoll{50};
+    while (!input.ended()) {
+        work.poll();
+        const std::optional<std::string> next = input.next(kWatchPoll);
+        if (!next || next->find_first_not_of(" \t") == std::string::npos) {
             continue;
         }
-        if (const std::string response = server.handle(line); !response.empty()) {
+        if (const std::string response = server.handle(*next); !response.empty()) {
             send(response);
         }
         for (const std::string& notification : server.take_notifications()) {

@@ -41,7 +41,10 @@ add_library(slash_command
     src/vfx.cpp
     src/fluid.cpp
     src/water.cpp
-    src/test.cpp)
+    src/test.cpp
+    src/work.cpp
+    src/work_view.cpp
+    src/checkpoints.cpp)
 add_library(slash::command ALIAS slash_command)
 
 target_include_directories(slash_command PUBLIC include)
