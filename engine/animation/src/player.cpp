@@ -282,6 +282,7 @@ Result<void> seek_player(world::World& world, detail::LibraryCache& cache, entt:
             tick.track = &animation.tracks[i];
             tick.time = time;
             tick.backward = player.backwards;
+            tick.polyphony = player.audio_max_polyphony;
             static_cast<void>(detail::audio_track_tick(world, tick));
         }
     }
@@ -576,6 +577,7 @@ struct PlayerState {
             tick.track = &track;
             tick.time = player.time;
             tick.backward = backward;
+            tick.polyphony = player.audio_max_polyphony;
             for (const Span& span : step.spans) {
                 if (const auto keys = span.keys_of(track); !keys.empty()) {
                     tick.key = keys.back();

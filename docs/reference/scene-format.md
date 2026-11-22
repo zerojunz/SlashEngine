@@ -6,7 +6,7 @@ version 1. The authoritative schemas are generated from the registered component
 `{"kind": "scene"}`, or the MCP resource `slash://schema/scene`), so they always match the engine
 you are running.
 
-Status: current · Updated: 2026-11-20
+Status: current · Updated: 2026-11-22
 
 ## Shape
 
@@ -123,6 +123,7 @@ A reference must name an entity that exists in the same scene.
 | | `time` | `double` | `0` | Seconds into the animation, from 0 to its length |
 | | `backwards` | `bool` | `false` | Play toward the start, as Godot's `play_backwards`; pingpong loops flip it at each end |
 | | `targets` | `std::map<std::string, entt::entity>` | `{}` | The entity each track [`target`](#animations) names, by name; `null` leaves that target's tracks unplayed |
+| | `audio_max_polyphony` | `int` | `32` | How many streams its [audio tracks](#cinematics) play at once on each audio player, 1 to 128, as Godot's `audio_max_polyphony`; a start past it is dropped, and a new value takes once nothing plays on that player's track voice |
 | `AnimationTree` | `tree_root` | `std::string` | `""` | Project path of a [`.animtree.json`](#animation-trees) file |
 | | `libraries` | `std::map<std::string, std::string>` | `{}` | Its animation libraries by name: `.anim.json` files or models. The tree names the animations of the library `""` by themselves, others' as `"library/animation"` |
 | | `targets` | `std::map<std::string, entt::entity>` | `{}` | The entity each track `target` names, by name |
@@ -130,6 +131,7 @@ A reference must name an entity that exists in the same scene.
 | | `deterministic` | `bool` | `true` | Tracks no animation plays go back to their `RESET` values; off, each track's weights are scaled to add up to 1 and unplayed tracks stay |
 | | `root_motion_track` | `std::string` | `""` | A model node whose motion is reported in `root_motion_*` instead of posed |
 | | `root_motion_local` | `bool` | `false` | Report `root_motion_position` in the node's own frame |
+| | `audio_max_polyphony` | `int` | `32` | As `AnimationPlayer`'s |
 | | `parameters` | `json::Object` | `{}` | Values for the tree's parameters, as `"speed/blend_amount"` or `"shot/request"`; requests go back to their defaults once the tree acts on them |
 | | `state` | `json::Object` | `{}` | What the tree keeps as it plays (times, fades, the current input); set by the tree, and empty starts it over |
 | | `playing` | `std::vector<TreeAnimation>` | `[]` | The animations the last tick played: `animation`, `time`, `weight` and `node_weights` (filtered model nodes). Set by the tree |
@@ -5666,7 +5668,11 @@ Colors are `[r, g, b]` or `[r, g, b, a]` from 0 to 1, lengths meters and speeds 
 | `food` | `[]` | What it eats from people's hands; empty for anything |
 | `tame`, `ride` | `0`, `false` | Feedings that tame it (0 for never), and whether its owner can ride it then (needs `tame`) |
 | `damage`, `reach`, `attack_cooldown` | `10`, `1.2`, `1` | What an attack does, how near it must be to attack or catch, and seconds between attacks |
-| `hunger_rate` | `0.02` | Hunger it gains a second, from 0 full to 1; a hunter hunts past 0.5 |
+| `hunger_rate` | `0.02` | Hunger it gains a second, from 0 full to 1 |
+| `hunt_hunger` | `0.5` | The hunger past which a hunter hunts and an `NpcAgent`'s `hungry` fact is 1 (0 to 1) |
+| `eat_time` | `2` | Seconds it eats what it is fed or caught (0 to 600) |
+| `scare_time` | `3` | Seconds `creature.interact`'s `scare` makes it flee (0 to 600) |
+| `near`, `follow` | `1.5`, `3` | How near a friendly or tame creature comes to its lead, and how far its owner goes before a tame one follows (running past three times that); 0 to 100 meters |
 | `altitude` | `0` | How high `creature.place` and `creature.populate` put fliers above the ground, how deep fish below it: 6 for birds, 1 for insects that fly, 1.5 for fish when 0 |
 
 - **The model** is a skeleton of the plan's bones: a quadruped's `body`, `neck`, `head`, `tail`,

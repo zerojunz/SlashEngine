@@ -475,6 +475,10 @@ public:
     // set_paused(id, false).
     PlaybackId start(std::unique_ptr<Playback> playback, std::string bus, const Volumes& volume,
                      double from_seconds, float pitch_scale, bool paused = false);
+    // When a bus's speaker pair stops mixing, as Godot's audio/buses/channel_disable_threshold_db
+    // and channel_disable_time: once it has stayed below threshold_db for seconds, until sound
+    // comes again. -60 dB and 2 seconds at first.
+    void set_channel_disable(float threshold_db, double seconds);
     // Fades a playback out over the next mix step and removes it.
     void stop(PlaybackId id);
     void set_paused(PlaybackId id, bool paused);
@@ -573,8 +577,14 @@ struct Settings {
     // The speakers to mix for; none for the output device's, as Godot asks its driver, which is
     // stereo where nothing plays the sound, as in headless runs.
     std::optional<SpeakerMode> speaker_mode;
+    // A bus's speaker pair quieter than this, in dB, for channel_disable_time stops mixing until
+    // sound comes again, as Godot's audio/buses/channel_disable_threshold_db.
+    float channel_disable_threshold_db = -60.0F;
     // Seconds of each bus's output kept for capture(); sessions keep some, games none.
     double history_seconds = 0.0;
+    // Seconds a speaker pair stays that quiet before it stops, as Godot's
+    // audio/buses/channel_disable_time.
+    double channel_disable_time = 2.0;
     // Whether microphone input can turn on, as Godot's audio/driver/enable_input. Exports then
     // ask the player for the microphone, giving input_usage_description as the reason on macOS
     // and iOS.
@@ -688,6 +698,9 @@ struct Snapshot {
         double from_seconds = 0.0;
         float volume_db = 0.0F;   // play_stream's
         float pitch_scale = 1.0F; // play_stream's
+        // How many of an animation's audio tracks' streams its player plays at once, from the
+        // mixer's audio_max_polyphony, when this start makes the player's polyphonic stream.
+        int polyphony = 32;
         bool play = true;
         // An animation's audio track's stream (world::AudioTrackSound), by its ID: with a stream
         // it starts, with play off it stops, and otherwise its volume becomes volume_db.

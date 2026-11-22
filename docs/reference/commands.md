@@ -3,7 +3,7 @@
 Every command the engine registers, with its params, the capabilities it needs and a real example.
 The same commands are available everywhere:
 
-Status: current · Updated: 2026-11-20
+Status: current · Updated: 2026-11-22
 
 | Front end | How to call `entity.create` |
 | --- | --- |
@@ -4260,6 +4260,7 @@ played. From [examples/music-analysis](../../examples/music-analysis/).
 | `bus` | string | | A bus to measure instead of a file |
 | `seconds` | number, 0 to 10 | `10` | With `bus`, how far back; surround is measured folded to stereo |
 | `loop` | boolean | the file's settings | Measure the loop's join; `true` loops a plain sound whole |
+| `tempo` | object | `{"min": 50, "max": 240, "likely": 120}` | The tempos in bpm to look between (`min`, `max`), and the one to lean toward (`likely`) when a beat could be counted at half or twice the speed; 10 to 1000, `max` above `min` |
 
 Needs: `read`. A four-bar groove's `.audio.json` file, which loops it every 16 beats:
 

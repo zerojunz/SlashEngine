@@ -4971,7 +4971,21 @@ Reply audio_analyze(Session& session, const json::Value& params) {
                      : std::move(captured).value().frames;
         mix_rate = audio_server(session).mix_rate();
     }
-    return Reply::success(analysis_json(audio::analyze(frames, mix_rate, loop)));
+    audio::TempoRange tempo;
+    if (const json::Value* range = params.find("tempo"); range != nullptr) {
+        const auto read = [range](std::string_view key, double& value) {
+            if (const json::Value* given = range->find(key); given != nullptr) {
+                value = given->as_double();
+            }
+        };
+        read("min", tempo.slowest_bpm);
+        read("max", tempo.fastest_bpm);
+        read("likely", tempo.likely_bpm);
+        if (tempo.fastest_bpm <= tempo.slowest_bpm) {
+            return param_error(code::kInvalidArgument, "/tempo/max", "must be faster than \"min\"");
+        }
+    }
+    return Reply::success(analysis_json(audio::analyze(frames, mix_rate, loop, tempo)));
 }
 
 // The index of the effect of a type on a bus: the "effect" asked for, or the first such.
@@ -8460,6 +8474,19 @@ void register_builtin_commands(Registry& registry) {
         property("number", "With bus: how far back, in seconds. Default: 10, all that is kept.");
     analyze_seconds["minimum"] = 0;
     analyze_seconds["maximum"] = kMaxCaptureSeconds;
+    json::Value analyze_tempo = property(
+        "object", "The tempos to look between and the one to lean toward when a beat could be "
+                  "counted at half or twice the speed. Default: 50 to 240, likely 120.");
+    for (const auto& [key, fallback, doc] :
+         {std::tuple{"min", 50.0, "Slowest bpm."}, std::tuple{"max", 240.0, "Fastest bpm."},
+          std::tuple{"likely", 120.0, "The bpm to lean toward."}}) {
+        json::Value bpm = property("number", doc);
+        bpm["minimum"] = 10;
+        bpm["maximum"] = 1000;
+        bpm["default"] = fallback;
+        analyze_tempo["properties"][key] = std::move(bpm);
+    }
+    analyze_tempo["additionalProperties"] = false;
     registry.add({
         .name = "audio.analyze",
         .description =
@@ -8475,6 +8502,7 @@ void register_builtin_commands(Registry& registry) {
                                          "with a \"source\".")},
              {"bus", id_property("Measure what this bus played instead, as audio.capture.")},
              {"seconds", std::move(analyze_seconds)},
+             {"tempo", std::move(analyze_tempo)},
              {"loop", property("boolean", "Measure the loop's join: true for a sound file to "
                                           "loop end to start. Default: as a .audio.json file "
                                           "loops.")}}),
