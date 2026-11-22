@@ -8,6 +8,7 @@
 #include "slash/render/particles.hpp"
 #include "slash/render/particles3d.hpp"
 #include "slash/render/shader.hpp"
+#include "slash/render/texture_graph.hpp"
 
 #include <array>
 #include <cstdint>
@@ -671,6 +672,18 @@ public:
         return Error{ErrorCode::NotFound, "this device skins on the CPU"};
     }
     virtual void destroy_skin(SkinId /*skin*/) {}
+
+    // Whether it bakes texture graphs on the GPU (bake_texture_graph), in compute passes of
+    // shaders/texture_graph.hlsl: the GPU device on Vulkan and Metal and the WebGPU device.
+    [[nodiscard]] virtual bool gpu_texture_graphs() const { return false; }
+    // Runs a texture graph program's passes and returns the slots asked for, in order, as
+    // run_texture_graph does; not during a frame. Devices that bake on the GPU hold to the CPU
+    // twin within a step of 8 bits a channel; the rest run the twin, so headless runs make the
+    // same texels everywhere.
+    [[nodiscard]] virtual Result<std::vector<GraphTexels>>
+    bake_texture_graph(const TextureGraphProgram& program, std::span<const std::uint32_t> outputs) {
+        return run_texture_graph(program, outputs);
+    }
 
     // Starts a frame and clears its target. Returns false when there is nothing to draw to,
     // such as a minimized window: draws are still checked but dropped, and end_frame ends it.

@@ -2,7 +2,7 @@
 
 Procedural generation: noise, textures, scatter rules and PCG graphs.
 
-Status: current · Updated: 2026-11-20
+Status: current · Updated: 2026-11-22
 
 `engine/procedural` is Godot's noise module and procedural texture resources. `procedural::Noise`
 (`slash/procedural/noise.hpp`) is Godot's `FastNoiseLite` resource on Auburn's FastNoiseLite
@@ -19,7 +19,17 @@ and `ui::add_asset_types` register it as a texture, and code that reads texture 
 and `is_texture_path`, so any texture field takes one. Exports ship the file and validate it.
 `texture.generate` (`engine/command/src/procedural.cpp`) makes one from a file or inline settings
 and measures it (channels' range, and `wrap`, which says whether it tiles), returns pixels and
-writes a PNG. `examples/procedural-textures` tunes water that tiles.
+writes a PNG. `examples/procedural-textures` tunes water that tiles. A `.texture.json` file of
+`"type": "graph"` is a texture graph (`slash/procedural/texture_graph.hpp`, `src/texture_graph.cpp`):
+nodes over parameters, `extends` and named outputs, checked and compiled into a
+`render::TextureGraphProgram` of passes over shared slots (`compile_texture_graph`).
+`RenderDevice::bake_texture_graph` runs it: the GPU and WebGPU devices dispatch
+`shaders/texture_graph.hlsl` per pass (with `fast_noise_lite.hlsl`, FastNoiseLite's HLSL, its
+tables in group memory), and every other device (and Direct3D 12, and any device inside a frame)
+runs the CPU twin, `render::run_texture_graph` (`engine/render/src/texture_graph.cpp`, on the job
+pool, built with `-ffp-contract=off`). A change to an op goes in both, and
+`tests/test_texture_graph_gpu.cpp` holds every device to the twin over every op.
+`examples/texture-graphs` tunes a brick wall.
 
 Gameplay code makes textures and meshes while a game runs, as Godot's `ImageTexture` and
 `ArrayMesh`: `asset::Assets::put` keeps a value at a `made:<name>` path (`asset::is_made_path`)

@@ -27,6 +27,7 @@ if(EMSCRIPTEN)
         test_ssr.cpp
         test_subsurface.cpp
         test_taa.cpp
+        test_texture_graph_gpu.cpp
         test_upscaler.cpp
         test_volumetric_fog.cpp
         test_websocket_web.cpp)
@@ -227,6 +228,8 @@ add_executable(slash_tests
     test_text.cpp
     test_text_edit.cpp
     test_texture_forms.cpp
+    test_texture_graph.cpp
+    test_texture_graph_gpu.cpp
     test_textures.cpp
     test_tilemap.cpp
     test_tree2d.cpp
@@ -410,6 +413,13 @@ foreach(dependency IN LISTS SLASH_DEPENDENCIES)
     list(APPEND license_args "-DSOURCE_${dependency}=${${dependency}_SOURCE_DIR}")
 endforeach()
 list(JOIN SLASH_DEPENDENCIES "|" fetched_dependencies)
+# Exports can copy every fetched dependency's license file into a game's data.
+get_property(notice_sources GLOBAL PROPERTY SLASH_DEPENDENCY_SOURCES)
+list(JOIN notice_sources "|" notice_sources)
+add_test(NAME export_notices
+    COMMAND ${CMAKE_COMMAND} -DROOT=${PROJECT_SOURCE_DIR}
+        -DOUT=${CMAKE_CURRENT_BINARY_DIR}/notices/licenses/slashengine "-DSOURCES=${notice_sources}"
+        -P ${PROJECT_SOURCE_DIR}/cmake/stage_notices.cmake)
 add_test(NAME licenses
     COMMAND ${CMAKE_COMMAND} -DROOT=${PROJECT_SOURCE_DIR} -DDEPENDENCIES=${fetched_dependencies}
         ${license_args} -P ${PROJECT_SOURCE_DIR}/cmake/check_licenses.cmake)

@@ -465,6 +465,10 @@ private:
 
     render::RenderDevice* device_;
     asset::Assets* assets_;
+    // The device that baked texture graphs before this renderer's took over
+    // (procedural::set_graph_device), put back when it goes.
+    render::RenderDevice* previous_graph_device_ = nullptr;
+    bool bakes_graphs_ = false;
     const world::World* world_ = nullptr; // the world draw() is drawing, for "video:" textures
     std::map<std::pair<std::string, render::Filter>, Texture> textures_;
     std::map<std::string, MaterialEntry, std::less<>> materials_;
