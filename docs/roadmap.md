@@ -27,8 +27,9 @@ ID as Actions secrets ([CONTRIBUTING.md](../CONTRIBUTING.md#releases)).
 
 The [agent-built worlds](#agent-built-worlds-and-smart-npcs) tool set is done too: its first 22
 items, from planning NPCs to procedural graphs that drive every tool, in 2D and 3D, ship in the
-launch release. Items 23 and 24, textures agents author as graphs and layer stacks and
-watching agents work, are next and ship in it too.
+launch release. Items 23 to 25, textures agents author as graphs and layer stacks, watching
+agents work and publishing to Steam, the Epic Games Store and itch.io, are next and ship in it
+too.
 
 The engine builds and is tested on macOS, Linux and Windows. It covers the 2D and 3D feature
 sets, networking, XR, localization, video, accessibility, procedural generation and platform
@@ -1490,6 +1491,15 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         - [ ] Steering: `work pause` and `work note`, and the agent's own `work.plan`
         - [ ] Remote viewing through agents: `work.view`, `work.timeline`, `work.report` and
               `slash-mcp --watch`, so a person checks in from a phone by asking any agent
+25. [ ] Publishing to stores (2026-11-22): exports go to Steam, the Epic Games Store and itch.io
+        with one command, as Godot's export to those stores is done by hand:
+        - [ ] `slash-cli publish` and the `publish` command: itch.io through butler (MIT, run as
+              a program of its own), channels per preset, the API key from the environment
+        - [ ] Steam: SteamPipe build files from the presets and uploads through steamcmd, and a
+              built-in `steamworks` SDK package (the developer's own copy of the SDK) backing
+              achievements, leaderboards, cloud saves and the overlay
+        - [ ] The Epic Games Store: uploads through BuildPatchTool and a built-in `eos` SDK
+              package backing the same services
 
 Console ports are not on this roadmap and never will be in this repository. As with Godot,
 PlayStation, Xbox and Switch support comes from licensed porting partners as private backends.
@@ -1548,6 +1558,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Procedural generation | FastNoiseLite noise, noise and gradient textures, scatter rules agents write, and procedural content imported from other tools | 8 | Done |
 | Texture authoring | Texture graphs baked or live, mesh map bakes and layer stacks agents write, after Substance Designer and Painter | Launch | Next |
 | Watching agents work | A journal of every session, a live window and page, checkpoints, pausing and notes, and remote viewing through agents | Launch | Next |
+| Store publishing | Exports uploaded to Steam, the Epic Games Store and itch.io, with Steamworks and Epic Online Services behind the services API | Launch | Next |
 | Large worlds | Double-precision transforms, world streaming | After launch | Done: the double-precision build, camera-relative 3D drawing and world streaming |
 | Cinematics | Timeline tracks for cameras and events | After launch | Done: bezier, animation and audio tracks, camera cuts, markers and `animation.seek` |
 | Cloth and soft bodies | Jolt soft bodies | After launch | Done: Godot's `SoftBody3D` on Jolt, with pins, attachments and pressure |
