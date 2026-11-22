@@ -597,8 +597,10 @@ each entity its commands touched, green round what it made and amber round what 
 fading after a few seconds ([watching agents](watching-agents.md#the-watch-window)). The window
 reads the session through its read-only watch server, so it never changes the agent's world.
 With `--text`, `--json` or `--once` it follows the session's [work journal](watching-agents.md)
-instead, a line per command in plain words, until the session ends or Ctrl+C. Watch any session
-in the project, whichever agent runs it.
+instead, a line per command in plain words, until the session ends or Ctrl+C. With `--browser` it
+opens the session's [watch page](watching-agents.md#the-watch-page) in the browser instead, and
+with `--url` prints its link (`{"session": ..., "url": ...}`). Watch any session in the project,
+whichever agent runs it.
 
 | Flag | Meaning |
 | --- | --- |
@@ -606,6 +608,8 @@ in the project, whichever agent runs it.
 | `--session <id>` | Which session (default: the newest live one, else the newest journal) |
 | `--text` | Lines in plain words rather than the window |
 | `--json` | The journal's lines as JSON rather than the window |
+| `--browser` | Open the watch page of a running session in the browser rather than the window |
+| `--url` | Print the watch page's link rather than opening anything |
 | `--last <n>` | `--text` and `--json`: lines to show first (default 20) |
 | `--once` | Print the last lines and stop |
 | `--driver <name>` | The window's graphics driver, as `run`'s (default `auto`) |

@@ -46,6 +46,10 @@ struct ProcessResult {
 // no processes to ask about.
 [[nodiscard]] bool process_running(std::int64_t id);
 
+// Opens a link in the system's web browser (SDL_OpenURL), as Godot's OS.shell_open does. Fails
+// where there is no browser to open it in.
+[[nodiscard]] Result<void> open_url(const std::string& url);
+
 // Runs a program to completion. args[0] is the program, found on PATH if it has no directory.
 // Fails only if the program could not be started; a nonzero exit code is a successful result.
 [[nodiscard]] Result<ProcessResult> run_process(const std::vector<std::string>& args,

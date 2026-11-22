@@ -244,6 +244,9 @@ Usage:
                                      newest journal)
       --text                         Follow its work journal line by line instead
       --json                         The journal's lines as JSON instead
+      --browser                      Open its watch page in the browser instead: frames,
+                                     diffs, tests and the summary (a running session only)
+      --url                          Print the watch page's link only, to open elsewhere
       --last <n>                     With --text or --json, lines to show first (default 20)
       --once                         Print the last lines and stop
       --driver <name>                The window's graphics driver, as run's
@@ -2636,6 +2639,33 @@ int watch_window(const std::string& project, const std::string& id, bool headles
     return kExitOk;
 }
 
+// Prints the link to a live session's watch page and, with `open`, opens it in the browser.
+int watch_link(const std::string& project, const std::string& id, bool open) {
+    const auto live = command::work::live_sessions(project);
+    const auto entry = std::ranges::find_if(
+        live, [&](const command::work::SessionEntry& one) { return one.id == id; });
+    if (entry == live.end()) {
+        return failure("no watch page",
+                       slash::Error{slash::ErrorCode::NotFound,
+                                    "session " + id +
+                                        " is not running, and only a running session serves "
+                                        "its page; read its journal with watch --text"});
+    }
+    json::Value result;
+    result["session"] = id;
+    result["url"] = entry->url + "/watch#token=" + entry->token;
+    if (open) {
+        if (auto opened = slash::platform::open_url(result["url"].as_string()); !opened) {
+            result["opened"] = false;
+            result["error"] = opened.error().message;
+        } else {
+            result["opened"] = true;
+        }
+    }
+    print(result);
+    return kExitOk;
+}
+
 int cmd_watch(const std::vector<std::string>& args) {
     std::string project = ".";
     std::string session;
@@ -2644,6 +2674,8 @@ int cmd_watch(const std::vector<std::string>& args) {
     bool as_json = false;
     bool text = false;
     bool headless = false;
+    bool browser = false;
+    bool link_only = false;
     std::uint64_t ticks = 0;
     std::string driver = "auto";
     for (std::size_t i = 0; i < args.size(); ++i) {
@@ -2667,6 +2699,10 @@ int cmd_watch(const std::vector<std::string>& args) {
             text = true;
         } else if (arg == "--headless") {
             headless = true;
+        } else if (arg == "--browser") {
+            browser = true;
+        } else if (arg == "--url") {
+            link_only = true;
         } else if (arg == "--ticks") {
             if (!has_value || !parse_u64(args[++i], ticks)) {
                 return usage_error("--ticks needs a whole number");
@@ -2677,7 +2713,11 @@ int cmd_watch(const std::vector<std::string>& args) {
             return usage_error("unexpected argument for watch: " + arg);
         }
     }
-    const bool window = !text && !as_json && !once;
+    const bool page = browser || link_only;
+    if (page && (text || as_json || once || headless || ticks > 0)) {
+        return usage_error("--browser and --url take only --project and --session");
+    }
+    const bool window = !page && !text && !as_json && !once;
     if (!window && (headless || ticks > 0)) {
         return usage_error(
             "--headless and --ticks are for the window, not --text, --json or --once");
@@ -2688,6 +2728,9 @@ int cmd_watch(const std::vector<std::string>& args) {
             "no session to watch",
             slash::Error{slash::ErrorCode::NotFound, "no live session and no journal in " +
                                                          std::string(command::work::kFolder)});
+    }
+    if (page) {
+        return watch_link(project, id, browser);
     }
     if (window) {
         return watch_window(project, id, headless, ticks, driver);

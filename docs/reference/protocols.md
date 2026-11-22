@@ -112,11 +112,15 @@ game. Both write their URL and token to `.slash/server.json` in the project fold
 | `GET /v1/openapi.json` | The same commands as an OpenAPI 3.1 document |
 | `POST /rpc` | JSON-RPC 2.0, one message or batch per request |
 | `POST /mcp` | MCP over Streamable HTTP. Responses are plain JSON; the server never opens an event stream, so `GET /mcp` returns 405 |
+| `GET /watch` | A session's [watch server](watching-agents.md#the-watch-page) only: the watch page, for people |
 
 ### Security
 
 - The server listens on the loopback interface only.
-- Every request needs `Authorization: Bearer <token>`. A missing or wrong token gets 401.
+- Every request needs `Authorization: Bearer <token>`. A missing or wrong token gets 401. The
+  one exception is a watch server's `GET /watch`, a page that holds no secret: it reads the token
+  from its link's fragment (`/watch#token=...`), which browsers never send to servers, and sends
+  it with each command it calls.
 - A request whose `Host` or `Origin` header names another site gets 403, which blocks DNS
   rebinding attacks from web pages.
 - `.slash/server.json` is owner-only on macOS and Linux, should stay out of git (`slash-cli init`

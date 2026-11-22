@@ -10,3 +10,5 @@ window at 6.0 s: Watching 20261122-140000-w1n2  slash-mcp  |  component.set {"co
   green outline round crate at [277, 249] 54 x 54, 50% strong
   amber outline round floor at [37, 317] 566 x 26, 50% strong
 window at 7.5 s: Watching 20261122-140000-w1n2  slash-mcp  |  component.set {"components":{"Transform2D":{"position":[40,320]}},"id":"floor"}  ~floor(Transform2D)
+watch page: 200 text/html; charset=utf-8, names 20261122-140000-w1n2: yes
+its link: http://127.0.0.1:<port>/watch#token=<token>

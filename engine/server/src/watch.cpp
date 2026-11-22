@@ -21,6 +21,7 @@ Result<std::unique_ptr<Watched>> Watched::start(command::Session& session, std::
                                                 std::string host, std::string journal) {
     ServerOptions options;
     options.watch_only = true;
+    options.watch_session = id;
     auto server = Server::start(session, options);
     if (!server) {
         return server.error();

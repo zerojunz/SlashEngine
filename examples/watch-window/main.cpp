@@ -7,7 +7,7 @@
 // journal's new lines, and the world through the session's watch server. It draws that world on
 // the software device with a debug::WatchView over it, and prints the bar and where each outline
 // went: green round the crate the agent made, amber round the floor it moved, fading a few
-// seconds after.
+// seconds after. Then it reads the same session's watch page, as a browser would.
 
 #include "slash/canvas/canvas.hpp"
 #include "slash/command/builtin.hpp"
@@ -17,6 +17,8 @@
 #include "slash/core/json.hpp"
 #include "slash/debug/watch_view.hpp"
 #include "slash/render/device.hpp"
+#include "slash/server/client.hpp"
+#include "slash/server/server.hpp"
 #include "slash/server/watch.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/component_registry.hpp"
@@ -140,5 +142,19 @@ int main() {
     // Four seconds on, both outlines are half faded; a second and a half later they are gone.
     watch(6.0, false);
     watch(7.5, false);
+
+    // The same session's watch page, for a browser: "slash-cli watch --browser" opens it. The page
+    // needs no token, since it reads it from the link's fragment; its commands need it.
+    const work::SessionEntry entry = work::live_sessions(".").front();
+    server::Endpoint endpoint;
+    endpoint.host = "127.0.0.1";
+    endpoint.port = std::stoi(entry.url.substr(entry.url.rfind(':') + 1));
+    server::HttpRequest request;
+    request.method = "GET";
+    request.path = "/watch";
+    const server::HttpResponse page = server::send(endpoint, request).value();
+    std::printf("watch page: %d %s, names %s: %s\n", page.status, page.content_type.c_str(),
+                entry.id.c_str(), page.body.find(entry.id) != std::string::npos ? "yes" : "no");
+    std::printf("its link: http://127.0.0.1:<port>/watch#token=<token>\n");
     return 0;
 }
