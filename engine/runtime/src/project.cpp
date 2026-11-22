@@ -3,6 +3,7 @@
 #include "slash/core/jobs.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/run.hpp"
+#include "slash/scene3d/lightmap.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -311,6 +312,20 @@ json::Value reflections_schema() {
     out["additionalProperties"] = false;
     out["description"] = "Reflections, as Godot's rendering/reflections settings.";
     out["properties"]["reflection_atlas"] = std::move(atlas);
+    json::Value ggx;
+    ggx["type"] = "integer";
+    ggx["minimum"] = 1;
+    ggx["maximum"] = 32;
+    ggx["default"] = 32;
+    ggx["description"] =
+        "GGX samples the sky's radiance and reflection probes are blurred with: fewer are faster "
+        "to filter, more are smoother on rough surfaces.";
+    json::Value sky;
+    sky["type"] = "object";
+    sky["additionalProperties"] = false;
+    sky["description"] = "The sky's reflections, as Godot's sky_reflections.";
+    sky["properties"]["ggx_samples"] = std::move(ggx);
+    out["properties"]["sky_reflections"] = std::move(sky);
     return out;
 }
 
@@ -732,6 +747,7 @@ json::Value project_schema() {
     rendering["properties"]["environment"] = environment_schema();
     rendering["properties"]["reflections"] = reflections_schema();
     rendering["properties"]["global_illumination"] = global_illumination_schema();
+    rendering["properties"]["lightmapping"] = scene3d::lightmapping_schema();
     rendering["properties"]["anti_aliasing"] = anti_aliasing_schema();
     rendering["properties"]["mesh_lod"] = mesh_lod_schema();
     rendering["properties"]["virtual_geometry"] = virtual_geometry_schema();
@@ -1150,6 +1166,8 @@ Result<Project> parse_project(const json::Value& project) {
         out.decal_filter = render::decal_filter(*rendering);
         out.mesh_lod_threshold = render::mesh_lod_threshold(*rendering);
         out.cluster_streaming = scene3d::cluster_streaming_settings(*rendering);
+        out.ggx_samples = render::sky_ggx_samples(*rendering);
+        out.probe_update_speed = scene3d::lightmapping_settings(*rendering).probe_update_speed;
         out.occlusion_culling = render::occlusion_culling(*rendering);
         out.ray_tracing = render::ray_tracing(*rendering);
         if (const json::Value* textures = rendering->find("textures"); textures != nullptr) {

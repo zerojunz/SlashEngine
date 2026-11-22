@@ -167,6 +167,11 @@ struct LightmapSettings {
     std::uint32_t max_texture_size = 16384;
     float supersampling = 1.0F; // supersampling_factor when supersampling, else 1
     float exposure = 1.0F;      // the camera attributes' exposure multiplier
+    // LightmappingSettings' bake_performance: the rays a bounce pass and a probe pass trace (each
+    // pass seeded afresh) and the texels a GPU dispatch lights at most.
+    std::uint32_t rays_per_pass = 32;
+    std::uint32_t rays_per_probe_pass = 64;
+    std::uint32_t region_size = 512;
     // A device that traces the light on its GPU (RenderDevice::trace_lightmap), as Godot's
     // LightmapperRD does; with none, or one that can't, the CPU traces it.
     render::RenderDevice* device = nullptr;
@@ -302,11 +307,34 @@ struct LightmapCaptureSource {
 [[nodiscard]] std::optional<LightmapSh>
 lightmap_capture(std::span<const LightmapCaptureSource> lightmaps, std::array<float, 3> center);
 
+// Godot's rendering/lightmapping project settings (project.json's rendering.lightmapping): the
+// rays a texel and a probe trace at each LightmapGI quality (low, medium, high, ultra), how bakes
+// split their rays and texels into passes, and how fast moving meshes' light from probes follows
+// them.
+struct LightmappingSettings {
+    std::array<std::uint32_t, 4> ray_count{32, 128, 512, 2048};
+    std::array<std::uint32_t, 4> probe_ray_count{64, 256, 512, 2048};
+    std::uint32_t max_rays_per_pass = 32;
+    std::uint32_t max_rays_per_probe_pass = 64;
+    std::uint32_t region_size = 512;
+    double probe_update_speed = 15.0; // a share a second
+
+    bool operator==(const LightmappingSettings&) const = default;
+};
+// Reads project.json's rendering object's lightmapping: {"bake_quality": {"low_quality_ray_count",
+// ..., "ultra_quality_probe_ray_count"}, "bake_performance": {"max_rays_per_pass",
+// "max_rays_per_probe_pass", "region_size"}, "probe_capture": {"update_speed"}}, by Godot's names.
+// What is missing or out of range keeps its default.
+[[nodiscard]] LightmappingSettings lightmapping_settings(const json::Value& rendering);
+// The JSON Schema of rendering.lightmapping.
+[[nodiscard]] json::Value lightmapping_schema();
+
 // The images and models a bake reads materials from, by project path.
 struct LightmapSources {
     std::function<Result<std::shared_ptr<const render::Image>>(const std::string& path)> images;
     ModelLoader models;
     render::RenderDevice* device = nullptr; // LightmapSettings::device
+    LightmappingSettings lightmapping{};    // the project's rays and passes
 };
 
 // Bakes the lightmap of a LightmapGI entity, as Godot's LightmapGI::bake: the static

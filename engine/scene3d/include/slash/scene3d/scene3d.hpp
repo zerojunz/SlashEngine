@@ -311,6 +311,12 @@ public:
     void set_cluster_streaming(const ClusterStreamingSettings& settings) {
         cluster_streaming_ = settings;
     }
+    // How fast moving meshes' light from light probes follows them, a share a second
+    // (rendering/lightmapping/probe_capture/update_speed, 15 as Godot's).
+    void set_probe_update_speed(double speed) { probe_update_speed_ = speed; }
+    // The GGX samples the sky's radiance and reflection probes' cubes are blurred with
+    // (rendering/reflections/sky_reflections/ggx_samples, render::Radiance3D::ggx_samples).
+    void set_ggx_samples(std::uint32_t samples) { ggx_samples_ = samples; }
 
     // Where the last frame's world was drawn around: the frame's positions are relative to it,
     // so meshes, lights and the camera stay near the origin in the floats the device draws with.
@@ -402,6 +408,8 @@ private:
     bool frame_generation_ = false;
     bool cluster_culling_ = true;
     ClusterStreamingSettings cluster_streaming_;
+    double probe_update_speed_ = 15.0;
+    std::uint32_t ggx_samples_ = 32;
     struct Local {
         Vec3 position;
         Quat rotation;

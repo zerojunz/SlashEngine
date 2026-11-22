@@ -2008,6 +2008,32 @@ private:
                     probes;
             }
         }
+        // The sky's radiance samples and bakes' rays, which keep Godot's names and ranges.
+        if (const Value* ggx = number("rendering", "reflections/sky_reflections/ggx_samples")) {
+            project["rendering"]["reflections"]["sky_reflections"]["ggx_samples"] =
+                std::clamp<std::int64_t>(static_cast<std::int64_t>(ggx->number()), 1, 32);
+        }
+        for (const std::string_view key :
+             {"bake_quality/low_quality_ray_count", "bake_quality/medium_quality_ray_count",
+              "bake_quality/high_quality_ray_count", "bake_quality/ultra_quality_ray_count",
+              "bake_quality/low_quality_probe_ray_count",
+              "bake_quality/medium_quality_probe_ray_count",
+              "bake_quality/high_quality_probe_ray_count",
+              "bake_quality/ultra_quality_probe_ray_count", "bake_performance/max_rays_per_pass",
+              "bake_performance/max_rays_per_probe_pass", "bake_performance/region_size",
+              "probe_capture/update_speed"}) {
+            if (const Value* value = number("rendering", "lightmapping/" + std::string(key))) {
+                const std::size_t slash = key.find('/');
+                json::Value& group =
+                    project["rendering"]["lightmapping"][std::string(key.substr(0, slash))];
+                if (key.ends_with("update_speed")) {
+                    group[std::string(key.substr(slash + 1))] = value->number();
+                } else {
+                    group[std::string(key.substr(slash + 1))] =
+                        static_cast<std::int64_t>(value->number());
+                }
+            }
+        }
         // VoxelGIs' cones: Godot's "Low (4 Cones)" and "High (6 Cones)".
         if (const Value* quality = number("rendering", "global_illumination/voxel_gi/quality")) {
             project["rendering"]["global_illumination"]["voxel_gi"]["quality"] =

@@ -299,6 +299,51 @@ TEST_CASE("a LightmapGI bakes its static meshes' light, shadows and bounces, as 
     CHECK(shadowed > 0.0F);
 }
 
+TEST_CASE("project.json's rendering.lightmapping sets bakes' rays and passes, as Godot's") {
+    const json::Value rendering = json::parse(R"({"lightmapping": {
+        "bake_quality": {"low_quality_ray_count": 8, "medium_quality_ray_count": 16,
+            "high_quality_ray_count": 4096, "ultra_quality_ray_count": 0,
+            "low_quality_probe_ray_count": 16, "ultra_quality_probe_ray_count": 8192},
+        "bake_performance": {"max_rays_per_pass": 4, "max_rays_per_probe_pass": 16,
+            "region_size": 64},
+        "probe_capture": {"update_speed": 2.5}}})")
+                                      .value();
+    CHECK(json::validate(*rendering.find("lightmapping"), scene3d::lightmapping_schema()).size() ==
+          1); // ultra_quality_ray_count 0
+    const scene3d::LightmappingSettings settings = scene3d::lightmapping_settings(rendering);
+    CHECK(settings.ray_count == std::array<std::uint32_t, 4>{8, 16, 4096, 2048});
+    CHECK(settings.probe_ray_count == std::array<std::uint32_t, 4>{16, 256, 512, 8192});
+    CHECK(settings.max_rays_per_pass == 4);
+    CHECK(settings.max_rays_per_probe_pass == 16);
+    CHECK(settings.region_size == 64);
+    CHECK(settings.probe_update_speed == 2.5);
+    CHECK(scene3d::lightmapping_settings(json::parse("{}").value()) ==
+          scene3d::LightmappingSettings{});
+
+    // Fewer rays at the room's low quality and smaller passes make other bakes, lit and finite.
+    Room room;
+    room.world.ecs().get<world::LightmapGI>(room.gi).use_denoiser = false;
+    const scene3d::LightmapBake standard = scene3d::bake_lightmap(room.world, room.gi, {}).value();
+    scene3d::LightmapSources sources;
+    sources.lightmapping.ray_count[0] = 8;
+    const scene3d::LightmapBake fewer =
+        scene3d::bake_lightmap(room.world, room.gi, sources).value();
+    sources.lightmapping.ray_count[0] = 32;
+    sources.lightmapping.max_rays_per_pass = 8;
+    const scene3d::LightmapBake smaller =
+        scene3d::bake_lightmap(room.world, room.gi, sources).value();
+    CHECK(fewer.texels != standard.texels);
+    CHECK(smaller.texels != standard.texels);
+    for (const scene3d::LightmapBake* bake : {&fewer, &smaller}) {
+        for (const float value : bake->texels.rgb) {
+            REQUIRE(std::isfinite(value));
+            REQUIRE(value >= 0.0F);
+        }
+        const float lit = brightness(light_at(*bake, "floor", floor_uv2(*bake, -1.5F, -1.5F)));
+        CHECK(lit > 0.5F);
+    }
+}
+
 TEST_CASE("bakes are the same for any number of threads") {
     Room room;
     const scene3d::LightmapBake bake = scene3d::bake_lightmap(room.world, room.gi, {}).value();

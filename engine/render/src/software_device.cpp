@@ -1779,7 +1779,8 @@ private:
         }
         if (capture.face + 1 == detail::kCubeFaces) {
             detail::cube_mipmaps(capture_raw_, true);
-            atlas.cubes.at(capture.cube) = detail::filter_cube(capture_raw_, true);
+            atlas.cubes.at(capture.cube) =
+                detail::filter_cube(capture_raw_, true, capture.ggx_samples);
         }
     }
 

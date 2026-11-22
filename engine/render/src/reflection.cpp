@@ -130,6 +130,17 @@ ReflectionAtlasSettings reflection_atlas_settings_from_json(const json::Value& v
     return out;
 }
 
+std::uint32_t sky_ggx_samples(const json::Value& rendering) {
+    const json::Value* found = rendering.is_object() ? rendering.find("reflections") : nullptr;
+    found = found != nullptr && found->is_object() ? found->find("sky_reflections") : nullptr;
+    found = found != nullptr && found->is_object() ? found->find("ggx_samples") : nullptr;
+    if (found == nullptr || !found->is_number() || found->as_double() < 1.0 ||
+        found->as_double() > 32.0) {
+        return 32;
+    }
+    return static_cast<std::uint32_t>(found->as_double());
+}
+
 bool voxel_gi_high_quality(const json::Value& rendering) {
     const json::Value* found =
         rendering.is_object() ? rendering.find("global_illumination") : nullptr;

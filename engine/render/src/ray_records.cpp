@@ -7,12 +7,6 @@ namespace slash::render::detail {
 
 namespace {
 
-// Godot's rendering/lightmapping/bake_performance/region_size, squared: the texels a dispatch
-// lights at most; max_rays_per_pass and max_rays_per_probe_pass, the rays.
-constexpr std::uint32_t kBakeRegionTexels = 512U * 512U;
-constexpr std::uint32_t kBakeRaysPerPass = 32;
-constexpr std::uint32_t kBakeRaysPerProbePass = 64;
-
 std::uint32_t probe_rays_of(const LightmapTrace& trace) {
     return std::clamp(trace.probe_rays, 16U, 8192U);
 }
@@ -229,8 +223,9 @@ run_lightmap_passes(const LightmapTrace& trace, std::size_t light_count,
     const std::uint32_t slice_texels = trace.width * trace.height;
     const auto each_region = [&](std::size_t pass) -> Result<void> {
         for (std::uint32_t slice = 0; slice < trace.slices; ++slice) {
-            for (std::uint32_t first = 0; first < slice_texels; first += kBakeRegionTexels) {
-                const std::uint32_t end = std::min(first + kBakeRegionTexels, slice_texels);
+            const std::uint32_t region = std::max(trace.region_texels, 1U);
+            for (std::uint32_t first = 0; first < slice_texels; first += region) {
+                const std::uint32_t end = std::min(first + region, slice_texels);
                 params.step[0] = slice;
                 params.flags[1] = first;
                 params.flags[2] = end;
@@ -245,9 +240,10 @@ run_lightmap_passes(const LightmapTrace& trace, std::size_t light_count,
         return ran;
     }
     if (trace.bounces > 0) {
-        for (std::uint32_t from = 0; from < trace.rays; from += kBakeRaysPerPass) {
+        const std::uint32_t per_pass = std::max(trace.rays_per_pass, 1U);
+        for (std::uint32_t from = 0; from < trace.rays; from += per_pass) {
             params.step[1] = from;
-            params.step[2] = std::min(from + kBakeRaysPerPass, trace.rays);
+            params.step[2] = std::min(from + per_pass, trace.rays);
             if (auto ran = each_region(1); !ran) {
                 return ran;
             }
@@ -257,9 +253,10 @@ run_lightmap_passes(const LightmapTrace& trace, std::size_t light_count,
     const std::uint32_t probe_rays = probe_rays_of(trace);
     if (probe_count > 0) {
         params.step[3] = probe_count;
-        for (std::uint32_t from = 0; from < probe_rays; from += kBakeRaysPerProbePass) {
+        const std::uint32_t per_pass = std::max(trace.rays_per_probe_pass, 1U);
+        for (std::uint32_t from = 0; from < probe_rays; from += per_pass) {
             params.step[1] = from;
-            params.step[2] = std::min(from + kBakeRaysPerProbePass, probe_rays);
+            params.step[2] = std::min(from + per_pass, probe_rays);
             if (auto ran = dispatch(2, probe_count, params); !ran) {
                 return ran;
             }
