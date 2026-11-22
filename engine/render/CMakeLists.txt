@@ -85,6 +85,7 @@ add_library(slash_render
     src/subsurface.cpp
     src/taa.cpp
     src/texture_codec.cpp
+    src/texture_graph.cpp
     src/uniforms.cpp
     src/upscaler.cpp
     src/volumetric_fog.cpp
@@ -94,7 +95,7 @@ add_library(slash::render ALIAS slash_render)
 # Rays decide which triangles they meet, splats blend in order and color temperatures tint lights,
 # so their math is the same on every machine.
 set_source_files_properties(src/light_units.cpp src/path_trace.cpp src/ray_shadows.cpp src/restir.cpp
-    src/splats.cpp
+    src/splats.cpp src/texture_graph.cpp
     PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 
@@ -106,6 +107,8 @@ slash_engine_target(slash_render)
 # Vulkan's headers, which SDL carries, for the ray queries the GPU device records itself
 # (src/vulkan_rays.cpp).
 target_include_directories(slash_render SYSTEM PRIVATE ${SDL3_SOURCE_DIR}/src/video/khronos)
+# FastNoiseLite for texture graphs' noise passes (src/texture_graph.cpp), as engine/procedural.
+target_include_directories(slash_render SYSTEM PRIVATE ${FastNoiseLite_SOURCE_DIR}/Cpp)
 
 # Apple's MetalFX scalers (src/metalfx.mm), linked weakly so games still start on macOS 11 and
 # iOS 14, where MetalFX isn't. The iOS Simulator has none.
