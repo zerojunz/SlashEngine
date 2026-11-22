@@ -3,6 +3,7 @@
 #include "json_fields.hpp"
 
 #include "slash/asset/assets.hpp"
+#include "slash/procedural/texture_graph.hpp"
 #include "slash/render/image.hpp"
 
 #include <algorithm>
@@ -427,8 +428,8 @@ json::Value texture_schema() {
     schema["title"] = "SlashEngine procedural texture";
     schema["description"] = "A texture made as it loads, as Godot's NoiseTexture2D, "
                             "GradientTexture1D or GradientTexture2D; \"type\" says which.";
-    schema["oneOf"] =
-        json::Array{noise_texture_schema(), gradient_1d_schema(), gradient_2d_schema()};
+    schema["oneOf"] = json::Array{noise_texture_schema(), gradient_1d_schema(),
+                                  gradient_2d_schema(), texture_graph_schema()};
     return schema;
 }
 
@@ -452,15 +453,22 @@ std::vector<json::ValidationError> validate_texture(const json::Value& doc) {
     if (name == kGradient2DType) {
         return json::validate(doc, gradient_2d_schema());
     }
+    if (is_texture_graph(doc)) {
+        return validate_texture_graph(doc);
+    }
     std::string message = "unknown texture type \"" + name +
-                          R"(": expected "NoiseTexture2D", "GradientTexture1D" or )"
-                          R"("GradientTexture2D")";
+                          R"(": expected "NoiseTexture2D", "GradientTexture1D", )"
+                          R"("GradientTexture2D" or "graph")";
     return {{"/type", std::move(message)}};
 }
 
 Result<ProceduralTexture> parse_texture(const json::Value& doc) {
     if (const auto errors = validate_texture(doc); !errors.empty()) {
         return detail::first_error(errors);
+    }
+    if (is_texture_graph(doc)) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "a texture graph is compiled (compile_texture_graph), not parsed");
     }
     const std::string& type = doc.find("type")->as_string();
     const auto gradient_at = [&doc](std::string_view key) -> Gradient {
@@ -619,23 +627,56 @@ void bump_to_normal_map(render::Image& image, float bump_scale) {
 }
 
 bool is_texture_path(std::string_view path) {
-    return render::is_image_path(path) || path.ends_with(kTextureSuffix) ||
+    return render::is_image_path(path) || asset::file_of(path).ends_with(kTextureSuffix) ||
            asset::is_made_path(path);
 }
 
 Result<render::Image> decode_texture(std::string_view path, std::string_view bytes) {
-    if (!path.ends_with(kTextureSuffix)) {
+    return decode_texture(path, bytes, nullptr, nullptr);
+}
+
+Result<render::Image>
+decode_texture(std::string_view path, std::string_view bytes,
+               const std::function<Result<std::string>(std::string_view path)>& read,
+               render::RenderDevice* device) {
+    if (!asset::file_of(path).ends_with(kTextureSuffix)) {
         return render::decode_image(bytes);
     }
     auto doc = json::parse(bytes);
     if (!doc) {
         return doc.error();
     }
+    if (is_texture_graph(doc.value())) {
+        GraphReader reader;
+        if (read) {
+            reader.text = [&read](std::string_view file) { return read(file); };
+            reader.image = [&read, device](std::string_view file) -> Result<render::Image> {
+                auto image_bytes = read(asset::file_of(file));
+                if (!image_bytes) {
+                    return image_bytes.error();
+                }
+                return decode_texture(file, image_bytes.value(), read, device);
+            };
+        }
+        return texture_graph_image(doc.value(), asset::subresource_of(path), reader, device);
+    }
+    if (!asset::subresource_of(path).empty()) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "only a texture graph has outputs to name after \"::\"");
+    }
     auto texture = parse_texture(doc.value());
     if (!texture) {
         return texture.error();
     }
     return make_image(texture.value());
+}
+
+Result<render::Image> load_texture(asset::Assets& assets, std::string_view path,
+                                   std::string_view text) {
+    return decode_texture(
+        path, text,
+        [&assets](std::string_view file) { return assets.read(file, "procedural_texture"); },
+        graph_device());
 }
 
 render::Image make_image(const ProceduralTexture& texture) {

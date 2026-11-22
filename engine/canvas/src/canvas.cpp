@@ -223,11 +223,12 @@ void add_asset_types(asset::Assets& assets) {
         [](const render::Image& image) {
             return sizeof(render::Image) + image.pixels.capacity() + image.blocks.capacity();
         });
-    // A procedural texture (.texture.json), made into pixels as it loads.
+    // A procedural texture (.texture.json), made into pixels as it loads; a texture graph's
+    // output baked on the renderer's device, reloading when a file it names changes.
     assets.add_type<render::Image>(
         "procedural_texture", {std::string(procedural::kTextureSuffix)},
-        [](std::string_view text, std::string_view path) {
-            return procedural::decode_texture(path, text);
+        [&assets](std::string_view text, std::string_view path) {
+            return procedural::load_texture(assets, path, text);
         },
         [](const render::Image& image) { return sizeof(render::Image) + image.pixels.capacity(); });
     assets.add_type<SpriteFrames>(
