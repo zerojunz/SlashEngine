@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "height": 48,
+  "nodes": {
+    "crust": {"down": 3, "mortar": "$mortar", "op": "bricks", "across": 2},
+    "flow": {
+      "noise": {"fractal_octaves": 3, "fractal_type": "fbm", "frequency": 0.05, "offset": ["=time * 6", 0, 0]},
+      "op": "noise"
+    },
+    "hot": {
+      "gradient": {"points": [{"color": [0.2, 0, 0, 1], "offset": 0}, {"color": "$glow", "offset": 1}]},
+      "input": "warped",
+      "op": "gradient_map"
+    },
+    "lava": {"base": "hot", "layer": "crust", "mode": "multiply", "op": "blend", "opacity": 0.5},
+    "swirl": {"noise": {"frequency": 0.08, "seed": 4}, "op": "noise"},
+    "warped": {"by": "swirl", "input": "flow", "op": "warp", "strength": 0.05}
+  },
+  "outputs": [{"name": "albedo", "node": "lava"}],
+  "parameters": {"glow": [1, 0.45, 0.1, 1], "mortar": 0.1, "time": 0},
+  "tiling": true,
+  "type": "graph",
+  "width": 64
+}

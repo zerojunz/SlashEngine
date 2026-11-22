@@ -3,9 +3,12 @@
 # games never link it.
 
 # The engine's shaders a game's are written into: canvas.hlsl for canvas shaders, mesh.hlsl, the
-# tonemap.hlsl it includes and shadow.hlsl for spatial ones.
+# tonemap.hlsl it includes and shadow.hlsl for spatial ones; and the texture graph ops live graphs
+# include (procedural::texture_graph_shader).
 set(_slash_embedded_hlsl "")
-foreach(entry IN ITEMS canvas:kCanvasHlsl mesh:kMeshHlsl tonemap:kTonemapHlsl shadow:kShadowHlsl)
+foreach(entry IN ITEMS canvas:kCanvasHlsl mesh:kMeshHlsl tonemap:kTonemapHlsl shadow:kShadowHlsl
+                       texture_graph_common:kTextureGraphCommonHlsl
+                       texture_graph_ops:kTextureGraphOpsHlsl fast_noise_lite:kFastNoiseLiteHlsl)
     string(REPLACE ":" ";" parts ${entry})
     list(GET parts 0 shader)
     list(GET parts 1 name)
@@ -31,8 +34,20 @@ target_include_directories(slash_shader_compiler PUBLIC include)
 target_link_libraries(slash_shader_compiler
     PUBLIC slash::core slash::render
     PRIVATE glslang::glslang glslang::glslang-default-resource-limits glslang::SPIRV
-            spirv-cross-core spirv-cross-glsl spirv-cross-msl tint_api)
+            spirv-cross-core spirv-cross-glsl spirv-cross-msl tint_api SPIRV-Tools-opt)
 slash_target_warnings(slash_shader_compiler)
+# SPIRV-Tools' optimizer runs over each live texture graph's shaders (shader_compiler.cpp's
+# optimized); built without optimization it takes minutes over one, so Debug builds optimize it.
+if(NOT MSVC)
+    foreach(target IN ITEMS SPIRV-Tools-opt SPIRV-Tools-static SPIRV-Tools)
+        if(TARGET ${target})
+            get_target_property(aliased ${target} ALIASED_TARGET)
+            if(NOT aliased)
+                target_compile_options(${target} PRIVATE $<$<CONFIG:Debug>:-O2>)
+            endif()
+        endif()
+    endforeach()
+endif()
 
 # Compiles the canvas shaders the engine builds in, written as a game's are, into a header
 # engine/render commits (src/shader_header.cpp). The shaders target runs it, beside the HLSL

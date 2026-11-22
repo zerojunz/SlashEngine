@@ -410,8 +410,8 @@ TEST_CASE("a shader material gives its params slots in name order and the time t
 TEST_CASE("shader material mistakes point at the bad value") {
     const std::string shader = R"("shader": "shaders/a.hlsl")";
     CHECK(first_error(R"({"format": 1, "shader": "shaders/a.glsl"})") ==
-          "/shader: expected an .hlsl file's path inside the project folder, separated by '/', "
-          "with no \".\" or \"..\" parts");
+          "/shader: expected the path of an .hlsl file or a .texture.json graph inside the "
+          "project folder, separated by '/', with no \".\" or \"..\" parts");
     CHECK(first_error(R"({"format": 1, "shader": "../a.hlsl"})").starts_with("/shader: "));
     CHECK(first_error(R"({"format": 1, "color": "color", )" + shader + "}") ==
           "/color: a material with a shader has no color; the shader colors the pixels");
