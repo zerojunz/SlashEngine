@@ -3319,7 +3319,7 @@ returns the colors a material draws. [examples/materials](../../examples/materia
 | `params/<name>/doc` | No | What the param does, for whoever sets it |
 | `blend` | No | How the color combines with what is under it, as Godot's blend modes: `mix` (default), `add`, `sub`, `mul` or `premul_alpha` |
 | `light_mode` | No | How [2D lights](#2d-lights) shade it, as Godot's: `normal` (default), `unshaded` (lights and `CanvasModulate` leave it alone) or `light_only` (visible only where lights reach) |
-| `shader` | No | A game's own shader instead of `color` and `nodes`: an `.hlsl` file's project path (see [Shaders](#shaders)) |
+| `shader` | No | A game's own shader instead of `color` and `nodes`: an `.hlsl` file's project path (see [Shaders](#shaders)), or a `.texture.json` graph worked out as it draws (see [Live texture graphs](#live-texture-graphs)) |
 | `compiled` | No | The shader compiled for each backend. Exports write it; never written by hand |
 
 An arg is a number, an array of 2 to 4 numbers, a node written in place, or a name: a node in
@@ -3445,6 +3445,46 @@ void fragment() {
   library on the CPU, which can differ from a GPU's in the last bits.
 - Not yet: passing a texture to a function of your own (sample it in `fragment()` instead), and
   Godot's shader language itself.
+
+#### Live texture graphs
+
+`shader` can name a [texture graph](#texture-graphs) (a `.texture.json` file of `"type": "graph"`)
+in place of an `.hlsl` file: the graph is worked out per pixel as the material draws instead of
+baked, so its parameters can move every frame. `procedural::texture_graph_shader` writes it as a
+shader with a function per pass (each a copy of `shaders/texture_graph_ops.hlsl` with its op,
+size and inputs fixed), and it compiles, exports and reloads as any shader does.
+
+```json
+{
+  "format": 1,
+  "params": {"glow": {"type": "color", "value": [1, 0.45, 0.1, 1]}},
+  "shader": "textures/lava.texture.json"
+}
+```
+
+- A material param named as one of the graph's parameters, with as many numbers, moves it: set
+  it with `material_params` or animate it as any param. A graph parameter named `time` follows
+  `TIME` (seconds) unless the material has a `time` param, so `"offset": ["=time * 3", 0, 0]`
+  makes noise flow.
+- Each setting a moved parameter reaches must follow it in a straight line (`"=speed * 4"`, not
+  `"=speed * speed"`), and moving it must not change which nodes run; the material reports the
+  parameter otherwise.
+- `canvas_item`: `COLOR` is the first output times what the sprite draws (its texture and
+  `modulate`), so draw it over a white texture of the size wanted, such as a graph of one
+  `constant` node. `spatial`: outputs named `albedo` (or `color`), `normal`, `roughness`,
+  `metallic`, `ao`, `emission` and `alpha` set `ALBEDO` (made linear), `NORMAL_MAP`,
+  `ROUGHNESS`, `METALLIC`, `AO`, `EMISSION` (made linear) and `ALPHA`, and `orm` sets `AO`,
+  `ROUGHNESS` and `METALLIC` from red, green and blue; others are left out. Compositor effects
+  can't use one.
+- Each output is filtered as a texture of the graph's `width` and `height`, clamped to 0-1 a
+  texel, so at texel centers it draws what the graph bakes to.
+- Every pixel drawn works its nodes out again, and each node pixel the nodes before it at each
+  pixel its op reads, so blurs and ambient occlusion multiply: an output may cost at most 2048
+  node pixels a pixel (four texels filtered). `image` nodes can't be live; bake those graphs.
+- The shader holds only the kinds of noise, fractal and domain warp the graph's `noise` nodes
+  use (all of them where a parameter moves a kind), and the compiler folds its fixed settings
+  and drops the code they rule out before writing each backend's code, so drivers compile it in
+  seconds. Compiling one takes the tools a few seconds more than an `.hlsl` shader.
 
 #### Spatial shaders
 

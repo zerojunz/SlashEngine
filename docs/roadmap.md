@@ -1470,7 +1470,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
               (generators, filters, height and normals, blends, PBR outputs), baked in compute
               on every device (the CPU twin on Direct3D 12 and OpenGL), with `texture.generate`
         - [x] `texture.inspect`, `texture.edit` and `texture.check` for graphs
-        - [ ] Live graphs: a graph compiled to a spatial or canvas shader, its parameters
+        - [x] Live graphs: a graph compiled to a spatial or canvas shader, its parameters
               uniforms that animations and gameplay code drive
         - [ ] Mesh map bakes: `model.bake_maps` (ambient occlusion, curvature, thickness, world
               normal and position, part and material IDs, sky exposure, high to low height and

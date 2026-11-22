@@ -4,6 +4,8 @@
 
 #include "slash/core/math.hpp"
 #include "slash/core/text.hpp"
+#include "slash/procedural/texture.hpp"
+#include "slash/procedural/texture_graph.hpp"
 #include "slash/render/compositor.hpp"
 #include "slash/render/image.hpp"
 
@@ -565,7 +567,9 @@ json::Value schema(bool list_ops) {
         "A game's own shader instead of nodes and color: an .hlsl file's project path, with "
         "fragment() and vertex() functions as Godot's canvas_item shaders, a fragment() that "
         "gives a mesh's surface as its spatial shaders, or a fragment() that gives the 3D "
-        "world's new color (compositor).");
+        "world's new color (compositor). A .texture.json graph's path works the graph out as "
+        "it draws: params named as its parameters move it, and its \"time\" parameter follows "
+        "TIME.");
     properties["shader_type"]["enum"] = json::Array{"canvas_item", "spatial", "compositor"};
     properties["shader_type"]["default"] = "canvas_item";
     properties["shader_type"]["description"] =
@@ -946,9 +950,11 @@ private:
 
     // A game's shader: every param gets a slot, in name order, and the time the last constant.
     void read_shader(const std::string& path) {
-        if (!is_project_path(path) || !path.ends_with(kShaderSuffix)) {
-            fail("/shader", "expected an .hlsl file's path inside the project folder, separated "
-                            "by '/', with no \".\" or \"..\" parts");
+        if (!is_project_path(path) ||
+            !(path.ends_with(kShaderSuffix) || path.ends_with(procedural::kTextureSuffix))) {
+            fail("/shader", "expected the path of an .hlsl file or a .texture.json graph inside "
+                            "the project folder, separated by '/', with no \".\" or \"..\" "
+                            "parts");
         }
         for (const char* key : {"nodes", "color"}) {
             if (doc_.find(key) != nullptr) {
@@ -1826,7 +1832,23 @@ compile_material_shader(const CanvasMaterial& material, const world::FileReader&
     if (!code) {
         return code.error();
     }
-    return render::compile_shader(shader_source(material, std::move(code).value()));
+    if (!material.shader.ends_with(procedural::kTextureSuffix)) {
+        return render::compile_shader(shader_source(material, std::move(code).value()));
+    }
+    // A texture graph worked out as it draws.
+    render::ShaderSource source = shader_source(material, {});
+    auto doc = json::parse(code.value());
+    if (!doc) {
+        return make_error(ErrorCode::InvalidArgument, material.shader + ": " + doc.error().message);
+    }
+    const procedural::GraphReader reader{.text = read, .image = {}};
+    auto made =
+        procedural::texture_graph_shader(doc.value(), reader, material.shader_type, source.params);
+    if (!made) {
+        return make_error(made.error().code, material.shader + ": " + made.error().message);
+    }
+    source.code = std::move(made).value();
+    return render::compile_shader(source);
 }
 
 std::vector<json::ValidationError> check_material_shader(const json::Value& doc,

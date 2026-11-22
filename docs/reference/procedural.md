@@ -36,6 +36,14 @@ an edit is a JSON Merge Patch that returns each output measured (`measure`: lumi
 contrast and whether it tiles), and the check holds each graph to its `expect` ranges and the
 storyboard's palettes and budgets (`storyboard::check_textures`); `test.run` and
 `slash-cli project validate` run it. `examples/texture-graph-tools` tunes the wall to a budget.
+A material's `shader` can name a graph, which then draws live:
+`procedural::texture_graph_shader` (`src/texture_graph_shader.cpp`) writes a shader with a
+function per pass, each `shaders/texture_graph_ops.hlsl` included with the pass's op, size and
+inputs as macros (`texture_graph.hlsl`, the compute pass, includes it once for every op; both
+share `texture_graph_common.hlsl`, and fast_noise_lite.hlsl reads its tables where they are with
+`FNL_STATIC_TABLES`), and the shader tools' compiler has the three files built in. Settings that
+material params (and `time`, as `TIME`) move are found by compiling the graph again with each
+moved, and must follow in a straight line. `examples/live-texture-graphs` flows lava.
 
 Gameplay code makes textures and meshes while a game runs, as Godot's `ImageTexture` and
 `ArrayMesh`: `asset::Assets::put` keeps a value at a `made:<name>` path (`asset::is_made_path`)

@@ -12,6 +12,7 @@
 #include <glslang/Public/ShaderLang.h>
 #include <mutex>
 #include <span>
+#include <spirv-tools/optimizer.hpp>
 #include <spirv_glsl.hpp>
 #include <spirv_msl.hpp>
 #include <src/tint/api/tint.h>
@@ -35,6 +36,12 @@ extern const unsigned char kTonemapHlsl[];
 extern const std::size_t kTonemapHlsl_size;
 extern const unsigned char kShadowHlsl[];
 extern const std::size_t kShadowHlsl_size;
+extern const unsigned char kTextureGraphCommonHlsl[];
+extern const std::size_t kTextureGraphCommonHlsl_size;
+extern const unsigned char kTextureGraphOpsHlsl[];
+extern const std::size_t kTextureGraphOpsHlsl_size;
+extern const unsigned char kFastNoiseLiteHlsl[];
+extern const std::size_t kFastNoiseLiteHlsl_size;
 } // namespace detail
 
 namespace {
@@ -981,6 +988,40 @@ void initialize_glslang() {
 // bind groups, as the WebGPU device lays them out).
 enum class Samplers : std::uint8_t { Combined, Apart };
 
+// Whether to_spirv optimizes the SPIR-V it makes: on while compile() compiles a live texture
+// graph, whose shader inlines whole chains of nodes and every kind of noise, most of it ruled
+// out by settings that are constants. Drivers compile the unoptimized code slowly (Mesa's
+// Vulkan took minutes over two noise nodes), so the compiler folds those constants and drops the
+// branches they rule out first.
+thread_local bool t_optimize = false;
+
+// SPIR-V with its functions inlined, its constants folded and the branches they rule out
+// dropped, or as it was where SPIRV-Tools fails: the part of its performance passes that
+// shrinks the code, which takes a fraction of their time.
+std::vector<std::uint32_t> optimized(std::vector<std::uint32_t> spirv) {
+    spvtools::Optimizer optimizer(SPV_ENV_VULKAN_1_0);
+    optimizer.RegisterPass(spvtools::CreateMergeReturnPass())
+        .RegisterPass(spvtools::CreateInlineExhaustivePass())
+        .RegisterPass(spvtools::CreateEliminateDeadFunctionsPass())
+        .RegisterPass(spvtools::CreatePrivateToLocalPass())
+        .RegisterPass(spvtools::CreateLocalSingleBlockLoadStoreElimPass())
+        .RegisterPass(spvtools::CreateLocalSingleStoreElimPass())
+        .RegisterPass(spvtools::CreateScalarReplacementPass())
+        .RegisterPass(spvtools::CreateSSARewritePass())
+        .RegisterPass(spvtools::CreateCCPPass())
+        .RegisterPass(spvtools::CreateDeadBranchElimPass())
+        .RegisterPass(spvtools::CreateAggressiveDCEPass())
+        .RegisterPass(spvtools::CreateBlockMergePass())
+        .RegisterPass(spvtools::CreateSimplificationPass())
+        .RegisterPass(spvtools::CreateDeadBranchElimPass())
+        .RegisterPass(spvtools::CreateAggressiveDCEPass());
+    std::vector<std::uint32_t> out;
+    if (!optimizer.Run(spirv.data(), spirv.size(), &out)) {
+        return spirv;
+    }
+    return out;
+}
+
 // The code between parts compiled to SPIR-V for a stage, or nothing with errors added.
 std::vector<std::uint32_t> to_spirv(const Parts& parts, const render::ShaderSource& source,
                                     EShLanguage stage, const char* entry,
@@ -1028,7 +1069,7 @@ std::vector<std::uint32_t> to_spirv(const Parts& parts, const render::ShaderSour
     glslang::SpvOptions options;
     options.disableOptimizer = true;
     glslang::GlslangToSpv(*program.getIntermediate(stage), spirv, &options);
-    return spirv;
+    return t_optimize ? optimized(std::move(spirv)) : spirv;
 }
 
 std::string to_msl(const std::vector<std::uint32_t>& spirv) {
@@ -1323,7 +1364,38 @@ Wrapped wrap(const render::ShaderSource& source) {
     return out;
 }
 
-Result<render::CompiledShader> compile(const render::ShaderSource& source) {
+namespace {
+
+// The engine's shaders a game's code may include by name: a live texture graph's
+// (procedural::texture_graph_shader) includes the graph ops once a pass.
+std::string with_engine_includes(std::string code, int depth = 0) {
+    struct Included {
+        std::string_view name;
+        const unsigned char* text;
+        std::size_t size;
+    };
+    const std::array<Included, 3> files{{
+        {"texture_graph_common.hlsl", detail::kTextureGraphCommonHlsl,
+         detail::kTextureGraphCommonHlsl_size},
+        {"texture_graph_ops.hlsl", detail::kTextureGraphOpsHlsl, detail::kTextureGraphOpsHlsl_size},
+        {"fast_noise_lite.hlsl", detail::kFastNoiseLiteHlsl, detail::kFastNoiseLiteHlsl_size},
+    }};
+    if (depth > 4) {
+        return code;
+    }
+    for (const Included& file : files) {
+        const std::string line = "#include \"" + std::string(file.name) + "\"";
+        std::string text(reinterpret_cast<const char*>(file.text), file.size);
+        text = with_engine_includes(std::move(text), depth + 1);
+        for (std::size_t at = code.find(line); at != std::string::npos;
+             at = code.find(line, at + text.size())) {
+            code.replace(at, line.size(), text);
+        }
+    }
+    return code;
+}
+
+Result<render::CompiledShader> compile_source(const render::ShaderSource& source) {
     if (source.type == render::ShaderType::Spatial) {
         return compile_spatial(source);
     }
@@ -1387,6 +1459,20 @@ Result<render::CompiledShader> compile(const render::ShaderSource& source) {
         }
     }
     return out;
+}
+
+} // namespace
+
+Result<render::CompiledShader> compile(const render::ShaderSource& source) {
+    if (source.code.find("#include") == std::string::npos) {
+        return compile_source(source);
+    }
+    render::ShaderSource expanded = source;
+    expanded.code = with_engine_includes(source.code);
+    t_optimize = source.code.find("#include \"texture_graph_ops.hlsl\"") != std::string::npos;
+    auto compiled = compile_source(expanded);
+    t_optimize = false;
+    return compiled;
 }
 
 void install() {

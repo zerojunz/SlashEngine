@@ -8,7 +8,8 @@ add_library(slash_procedural
     src/pcg.cpp
     src/scatter.cpp
     src/texture.cpp
-    src/texture_graph.cpp)
+    src/texture_graph.cpp
+    src/texture_graph_shader.cpp)
 add_library(slash::procedural ALIAS slash_procedural)
 
 target_include_directories(slash_procedural PUBLIC include)
