@@ -4,7 +4,7 @@ This is the plan for SlashEngine from today to launch and beyond. It has no date
 order is the plan, and each item carries a status instead. It is drawn from the approved
 [design](design.md), whose milestone list and feature parity table it tracks.
 
-Status: current · Updated: 2026-11-20
+Status: current · Updated: 2026-11-22
 
 ## Status words
 
@@ -25,9 +25,11 @@ published macOS release remain; both need the owner. The release needs only a ve
 with the packages, signing and notarizing the macOS tools once the repository has his Developer
 ID as Actions secrets ([CONTRIBUTING.md](../CONTRIBUTING.md#releases)).
 
-The [agent-built worlds](#agent-built-worlds-and-smart-npcs) tool set is done too: all 21
+The [agent-built worlds](#agent-built-worlds-and-smart-npcs) tool set is done too: its first 22
 items, from planning NPCs to procedural graphs that drive every tool, in 2D and 3D, ship in the
-launch release.
+launch release. Items 23 to 26, textures agents author as graphs and layer stacks, watching
+agents work, publishing to Steam, the Epic Games Store, GOG and itch.io, and hooks for vendors'
+frame generation, latency reduction and denoisers, are next and ship in it too.
 
 The engine builds and is tested on macOS, Linux and Windows. It covers the 2D and 3D feature
 sets, networking, XR, localization, video, accessibility, procedural generation and platform
@@ -1150,8 +1152,8 @@ launch rows and the after-launch features above.
 ## Agent-built worlds and smart NPCs
 
 Ways for agents to build detailed 3D worlds and many smarter NPCs at a fraction of Unreal's
-cost, from the research proposal of 2026-11-07, in order. All 21 are done and ship in the launch
-release. Each works in 2D worlds as well as 3D ones,
+cost, from the research proposal of 2026-11-07 and the owner's later additions, in order. All
+ship in the launch release; items 1 to 22 are done. Each works in 2D worlds as well as 3D ones,
 on physics2d and the canvas where 3D uses physics3d and meshes: `WindSource2D` wind for canvas
 shaders and 2D particles, the simulation's fields, materials and ragdolls on Box2D, foliage
 scattered on tile maps and polygons, 2D lights and reflections, 2D strands and ribbons of hair,
@@ -1461,6 +1463,103 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         layers over a model's animation (speed, weights, bones' scale, shift and held angles,
         added waves), `animation.edit`, and `animation.preview` and `animation.tune` given a
         library; `.pcg.json` graphs reach all of them through their `command` nodes
+23. [ ] Textures agents author (2026-11-22), after Substance Designer and Painter, Houdini's COPs
+        and Blender's shader nodes, in 2D and 3D, GPU first with a CPU twin held to every
+        device ([design](design.md#procedural-generation)):
+        - [x] Texture graphs: `.texture.json` files of `"type": "graph"`, nodes over parameters
+              (generators, filters, height and normals, blends, PBR outputs), baked in compute
+              on every device (the CPU twin on Direct3D 12 and OpenGL), with `texture.generate`
+        - [ ] `texture.inspect`, `texture.edit` and `texture.check` for graphs
+        - [ ] Live graphs: a graph compiled to a spatial or canvas shader, its parameters
+              uniforms that animations and gameplay code drive
+        - [ ] Mesh map bakes: `model.bake_maps` (ambient occlusion, curvature, thickness, world
+              normal and position, part and material IDs, sky exposure, high to low height and
+              normal) on ray queries
+        - [ ] Layer stacks: `.paint.json` layers, masks over mesh maps and part names, strokes
+              and decals as data, smart materials, and `paint.edit`, `paint.bake` and
+              `paint.preview`, on models and sprites
+        - [ ] Weathering, wear from damage, text and logo stamps, seeded variants, drafts from a
+              prompt and Blender shader node import
+24. [ ] Watching agents work (2026-11-22): the person sees what any agent is doing, at any time,
+        whichever vendor's agent it is:
+        - [ ] A work journal every session writes (`.slash/work/`), sessions that serve themselves
+              on loopback, `slash-cli watch --text`, `work digest` and `work.feed`
+        - [ ] `slash-cli watch`: the agent's world in a window as it edits, touched entities
+              outlined
+        - [ ] A watch page in the browser: frames, diffs, the plan and test results
+        - [ ] Checkpoints, a timeline, compare, `work restore` and the timeline as a video
+        - [ ] Steering: `work pause` and `work note`, and the agent's own `work.plan`
+        - [ ] Remote viewing through agents: `work.view`, `work.timeline`, `work.report` and
+              `slash-mcp --watch`, so a person checks in from a phone by asking any agent
+25. [ ] Publishing to stores (2026-11-22): exports go to Steam, the Epic Games Store, GOG and
+        itch.io with one command, as Godot's export to those stores is done by hand:
+        - [ ] `slash-cli publish` and the `publish` command: itch.io through butler (MIT, run as
+              a program of its own), channels per preset, the API key from the environment
+        - [ ] Steam: SteamPipe build files from the presets and uploads through steamcmd, and a
+              built-in `steamworks` SDK package (the developer's own copy of the SDK) backing
+              achievements, leaderboards, cloud saves and the overlay
+        - [ ] The Epic Games Store: uploads through BuildPatchTool and a built-in `eos` SDK
+              package backing the same services
+        - [ ] GOG: builds made and uploaded through GOG's Pipeline Builder, and a built-in
+              `galaxy` SDK package (the developer's own copy of the GOG Galaxy SDK) backing the
+              same services
+26. [ ] Vendor frame generation, latency and denoiser hooks (2026-11-22): interfaces a game's SDK
+        package fills, as the temporal upscaler hook does, with no vendor code in the repository:
+        - [ ] Frame generation from a vendor's SDK (DLSS Frame Generation and Multi Frame
+              Generation, XeSS Frame Generation, FSR's) at the point frames are shown, in place of
+              the engine's own
+        - [ ] Latency markers for NVIDIA Reflex, AMD Anti-Lag 2 and Intel XeLL
+        - [ ] A denoiser hook with the ray-traced passes' inputs, for DLSS Ray Reconstruction
+27. [ ] Launch gaps (2026-11-22), from audits against Godot 4.6 and Unreal Engine 5, last in the
+        queue:
+        - [x] Exports ship the engine's third-party notices (`licenses/slashengine/`)
+        - [ ] Save data for game code, as Godot's `user://` and `ConfigFile`
+        - [ ] WebRTC peers, as Godot's `WebRTCMultiplayerPeer`
+        - [ ] Gamepad rumble, gyro and controller button glyphs
+        - [ ] HTTP requests from game code, as Godot's `HTTPRequest`
+        - [ ] 2D skeletons: `Skeleton2D`, `Bone2D` and skinned `Polygon2D`
+        - [ ] Dedicated server exports
+        - [ ] Sample games, `samples/pong` first
+        - [ ] Motion blur and lens effects (film grain, chromatic aberration, lens flares)
+        - [ ] Sky atmosphere and volumetric clouds, as Unreal's
+        - [ ] AI perception: sight and hearing senses for NPCs, as Unreal's AI Perception
+        - [ ] Client-side prediction and lag compensation for multiplayer
+        - [ ] Shader pipeline warm-up, as Unreal's PSO caches
+        - [ ] Subtitles and captions
+        - [ ] Spline meshes, as Unreal's `SplineMeshComponent`
+        - [ ] Virtual shadow maps
+        - [ ] Motion matching
+        - [ ] Sound graphs, as Unreal's MetaSounds
+        - [ ] A gameplay ability system, as Unreal's
+        - [ ] Crowds of many agents, as Unreal's Mass
+        - [ ] Online lobbies and voice chat through an SDK package (Epic Online Services first)
+        - [ ] USD and Alembic import
+        - [ ] Runtime virtual textures
+        - [ ] Audio occlusion
+        - [ ] Hierarchical LODs for far geometry
+        - [ ] Crash reports with automatic analysis: games catch crashes, write a report
+              (stack, log tail, build and platform), and `crash.analyze` groups reports and
+              names the likely cause in the game's code
+        - [ ] Sprite sheets: `sprite.sheet` generates an animation's frames of one character with
+              the asset library's generators (each frame from the last and a reference, held to
+              the same palette and outline), or slices a sheet, packs them into an atlas and writes
+              the `.frames.json`, with `sprite.check` measuring frame-to-frame consistency
+        - [ ] Aseprite import: `.aseprite` and `.ase` files' layers, frames, tags (as animations
+              with their directions) and slices read as textures and `.frames.json` files, and
+              reloaded when the file changes
+28. [ ] Grains (2026-11-22): sand, mud, snow, rubble and flesh that stretches and tears, as
+        glued grains on an XPBD solver, in 2D and 3D, GPU first with a CPU twin (after the feature
+        list of Carnage Grains for Blender; none of its files):
+        - [ ] `.grains.json` recipes: grains filling a model's volume (size, packing), glue that
+              breaks past a stretch, plasticity, clumping, friction and attachments to bones and
+              bodies that break past a distance; physics bodies, particle SDFs and fields act on
+              them, and torn glue raises events
+        - [ ] Activation by a sphere, a mask, `damage.apply` or infection spreading grain to
+              grain, so a hit turns part of a wall to rubble or a creature to torn flesh
+        - [ ] Upres and meshing: finer grains for drawing, the surface meshed with the source
+              model's UVs and glued links as strands
+        - [ ] `grains.place`, `grains.state`, `grains.check` and `grains.preview`, with PCG and
+              VFX hooks
 
 Console ports are not on this roadmap and never will be in this repository. As with Godot,
 PlayStation, Xbox and Switch support comes from licensed porting partners as private backends.
@@ -1517,6 +1616,10 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Closed vendor SDKs | SDK packages: an `sdk.json` per SDK that exports fetch, check and link on all six platforms, with JNI and Objective-C bridges and engine interfaces for the glue | 6 | Done: packages, exports, `sdk.add`, `sdk.check` and `sdk.lock`, Android libraries and Maven, services and glue code |
 | One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | Done: every platform exports, and one Mac builds them all |
 | Procedural generation | FastNoiseLite noise, noise and gradient textures, scatter rules agents write, and procedural content imported from other tools | 8 | Done |
+| Texture authoring | Texture graphs baked or live, mesh map bakes and layer stacks agents write, after Substance Designer and Painter | Launch | Next |
+| Watching agents work | A journal of every session, a live window and page, checkpoints, pausing and notes, and remote viewing through agents | Launch | Next |
+| Store publishing | Exports uploaded to Steam, the Epic Games Store, GOG and itch.io, with Steamworks, Epic Online Services and GOG Galaxy behind the services API | Launch | Next |
+| Vendor frame generation | Hooks for DLSS, XeSS and FSR frame generation, Reflex, Anti-Lag 2 and XeLL latency markers and DLSS Ray Reconstruction, filled by a game's SDK packages | Launch | Next |
 | Large worlds | Double-precision transforms, world streaming | After launch | Done: the double-precision build, camera-relative 3D drawing and world streaming |
 | Cinematics | Timeline tracks for cameras and events | After launch | Done: bezier, animation and audio tracks, camera cuts, markers and `animation.seek` |
 | Cloth and soft bodies | Jolt soft bodies | After launch | Done: Godot's `SoftBody3D` on Jolt, with pins, attachments and pressure |

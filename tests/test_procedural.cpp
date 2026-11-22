@@ -399,7 +399,8 @@ TEST_CASE(".texture.json files validate, format and load as textures") {
     CHECK(paths == std::vector<std::string>{"/fill", "/gradient/points/0/color",
                                             "/gradient/points/0/offset", "/width"});
     CHECK_FALSE(procedural::parse_texture(parse(R"({"type": "NoiseTexture2D"})")).ok());
-    CHECK(procedural::texture_schema().find("oneOf")->as_array().size() == 3);
+    CHECK(procedural::texture_schema().find("oneOf")->as_array().size() ==
+          4); // three resources and graphs
 
     // Written back, only what differs from Godot's defaults stays.
     const json::Value doc = parse(R"({"format": 1, "type": "NoiseTexture2D", "width": 128,
@@ -493,6 +494,41 @@ TEST_CASE("texture.generate makes and measures a texture") {
     CHECK(call(R"({"path": "missing.texture.json"})").code == command::code::kNotFound);
     CHECK_FALSE(call(R"({"path": "ramp.texture.json", "pixels": [[4, 0]]})").ok);
     CHECK_FALSE(call(R"({"path": "ramp.texture.json", "out": "ramp.jpg"})").ok);
+
+    // A texture graph bakes one output, by name, with its parameters changed for the call.
+    REQUIRE(slash::platform::write_file(root + "/wall.texture.json",
+                                        R"({"format": 1, "type": "graph", "width": 8,
+                                            "height": 4, "parameters": {"level": 0.25},
+                                            "nodes": {"flat": {"op": "constant",
+                                                               "color": ["$level", 0, 0, 1]},
+                                                      "dark": {"op": "invert",
+                                                               "input": "flat"}},
+                                            "outputs": [{"name": "albedo", "node": "flat"},
+                                                        {"name": "inverse",
+                                                         "node": "dark"}]})")
+                .ok());
+    reply = call(R"({"path": "wall.texture.json", "pixels": [[0, 0]]})");
+    REQUIRE_MESSAGE(reply.ok, reply.message);
+    CHECK(reply.value.find("width")->as_double() == 8);
+    CHECK(*reply.value.find("outputs") == parse(R"(["albedo", "inverse"])"));
+    CHECK(*reply.value.find("pixels") == parse(R"([[64, 0, 0, 255]])"));
+    reply = call(R"({"path": "wall.texture.json::inverse", "parameters": {"level": 1},
+                     "pixels": [[0, 0]]})");
+    REQUIRE_MESSAGE(reply.ok, reply.message);
+    CHECK(*reply.value.find("pixels") == parse(R"([[0, 255, 255, 255]])"));
+    reply = call(R"({"path": "wall.texture.json", "output": "inverted"})");
+    CHECK_FALSE(reply.ok);
+    CHECK(reply.message.find("/output") != std::string::npos);
+    CHECK(reply.message.find("\"inverse\"") != std::string::npos);
+    reply = call(R"({"path": "wall.texture.json", "parameters": {"levle": 1}})");
+    CHECK_FALSE(reply.ok);
+    CHECK(reply.message.find("/parameters") != std::string::npos);
+    reply = call(R"({"texture": {"format": 1, "type": "graph", "width": 4, "height": 4,
+                                 "nodes": {"a": {"op": "noize"}},
+                                 "outputs": [{"name": "a", "node": "a"}]}})");
+    CHECK_FALSE(reply.ok);
+    CHECK(reply.message.find("/texture/nodes/a/op") != std::string::npos);
+    CHECK_FALSE(call(R"({"path": "ramp.texture.json", "output": "albedo"})").ok);
 
     // Writing a file needs the filesystem capability.
     auto [components2, commands2, reader] = make_session({command::Capability::Read});

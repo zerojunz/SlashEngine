@@ -6,6 +6,7 @@
 #include "slash/core/log.hpp"
 #include "slash/core/profile.hpp"
 #include "slash/procedural/foliage.hpp"
+#include "slash/procedural/texture_graph.hpp"
 #include "slash/scene3d/fluid.hpp"
 #include "slash/scene3d/material.hpp"
 #include "slash/ui/ui.hpp"
@@ -495,6 +496,12 @@ CanvasRenderer::CanvasRenderer(render::RenderDevice& device, asset::Assets& asse
             }
             return it->second.share();
         });
+    // Texture graphs loaded from now on bake on this device's GPU where it has one.
+    if (device.gpu_texture_graphs()) {
+        bakes_graphs_ = true;
+        previous_graph_device_ = procedural::graph_device();
+        procedural::set_graph_device(&device);
+    }
 }
 
 Result<scene3d::OverrideMaterial>
@@ -557,6 +564,9 @@ CanvasRenderer::override_material(const std::string& path,
 }
 
 CanvasRenderer::~CanvasRenderer() {
+    if (bakes_graphs_ && procedural::graph_device() == device_) {
+        procedural::set_graph_device(previous_graph_device_);
+    }
     for (const auto& [key, texture] : textures_) {
         device_->destroy_texture(texture.id);
     }

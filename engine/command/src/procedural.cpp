@@ -1,8 +1,10 @@
 #include "procedural.hpp"
 
+#include "slash/asset/assets.hpp"
 #include "slash/command/session.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/procedural/texture.hpp"
+#include "slash/procedural/texture_graph.hpp"
 #include "slash/render/image.hpp"
 
 #include <algorithm>
@@ -118,6 +120,67 @@ json::Value wrap_differences(const render::Image& image) {
     return out;
 }
 
+// Reads what a graph names from the project: text files, and images decoded as texture paths
+// are (a graph's images may be other graphs' outputs).
+procedural::GraphReader graph_reader(Session& session) {
+    auto read = [&session](std::string_view file) -> Result<std::string> {
+        auto resolved = session.resolve_path(std::string(file));
+        if (!resolved) {
+            return resolved.error();
+        }
+        return platform::read_file(resolved.value());
+    };
+    procedural::GraphReader reader;
+    reader.text = read;
+    reader.image = [read](std::string_view file) -> Result<render::Image> {
+        auto bytes = read(asset::file_of(file));
+        if (!bytes) {
+            return bytes.error();
+        }
+        return procedural::decode_texture(file, bytes.value(), read, procedural::graph_device());
+    };
+    return reader;
+}
+
+// A texture graph made with the params' "parameters", its output by name ("" for the first),
+// and every output's name.
+Reply bake_graph(Session& session, const json::Value& doc, std::string_view output,
+                 const json::Value& params, std::string_view at, render::Image& image,
+                 json::Array& names) {
+    json::Object overrides;
+    if (const json::Value* given = params.find("parameters"); given != nullptr) {
+        overrides = given->as_object();
+    }
+    auto compiled = procedural::compile_texture_graph(doc, graph_reader(session), overrides);
+    if (!compiled) {
+        const bool overriding =
+            compiled.error().message.find("parameter") != std::string::npos && !overrides.empty();
+        return param_error(code::kInvalidArgument, overriding ? "/parameters" : at,
+                           compiled.error().message);
+    }
+    std::size_t index = compiled.value().outputs.size();
+    for (std::size_t i = 0; i < compiled.value().outputs.size(); ++i) {
+        const std::string& name = compiled.value().outputs[i].name;
+        names.emplace_back(name);
+        if (index == compiled.value().outputs.size() && (output.empty() || name == output)) {
+            index = i;
+        }
+    }
+    if (index == compiled.value().outputs.size()) {
+        return param_error(code::kInvalidArgument, "/output",
+                           "the graph has no output " + quoted(output) + "; it has " +
+                               json::write(json::Value(names), json::Style::Compact));
+    }
+    procedural::CompiledGraph one = std::move(compiled).value();
+    one.outputs = {one.outputs[index]};
+    auto baked = procedural::bake_texture_graph(one, procedural::graph_device());
+    if (!baked) {
+        return Reply::failure(baked.error());
+    }
+    image = std::move(baked.value().front());
+    return Reply::success(json::Value());
+}
+
 Reply texture_generate(Session& session, const json::Value& params) {
     const json::Value* path = params.find("path");
     const json::Value* inline_texture = params.find("texture");
@@ -145,7 +208,64 @@ Reply texture_generate(Session& session, const json::Value& params) {
     render::Image made;
     asset::Handle<render::Image> loaded;
     const render::Image* image = nullptr;
-    if (path != nullptr) {
+    // A graph, given inline or as a file: made here, so parameters and an output can be named.
+    std::optional<json::Value> graph;
+    std::string output =
+        params.find("output") != nullptr ? params.find("output")->as_string() : std::string();
+    if (inline_texture != nullptr && procedural::is_texture_graph(*inline_texture)) {
+        graph = *inline_texture;
+    } else if (path != nullptr &&
+               asset::file_of(path->as_string()).ends_with(procedural::kTextureSuffix)) {
+        const std::string file(asset::file_of(path->as_string()));
+        auto resolved = session.resolve_path(file);
+        auto text = resolved ? platform::read_file(resolved.value())
+                             : Result<std::string>(resolved.error());
+        if (!text) {
+            return param_error(
+                text.error().code == ErrorCode::NotFound ? code::kNotFound : code::kInvalidArgument,
+                "/path",
+                text.error().code == ErrorCode::NotFound ? "the project has no file " + quoted(file)
+                                                         : text.error().message);
+        }
+        auto doc = json::parse(text.value());
+        if (doc && procedural::is_texture_graph(doc.value())) {
+            const std::vector<json::ValidationError> errors =
+                procedural::validate_texture_graph(doc.value());
+            if (!errors.empty()) {
+                const json::ValidationError& first = errors.front();
+                return param_error(code::kInvalidArgument, "/path",
+                                   quoted(file) + (first.path.empty() ? "" : " at " + first.path) +
+                                       ": " + first.message);
+            }
+            graph = std::move(doc).value();
+            if (output.empty()) {
+                output = std::string(asset::subresource_of(path->as_string()));
+            }
+        }
+    }
+    if (!graph && (params.find("parameters") != nullptr || !output.empty())) {
+        return param_error(code::kInvalidArgument,
+                           params.find("parameters") != nullptr ? "/parameters" : "/output",
+                           R"(only a texture graph ("type": "graph") has parameters and outputs)");
+    }
+    json::Array outputs;
+    if (graph) {
+        if (inline_texture != nullptr) {
+            std::vector<json::ValidationError> errors = procedural::validate_texture_graph(*graph);
+            if (!errors.empty()) {
+                for (json::ValidationError& error : errors) {
+                    error.path = "/texture" + error.path;
+                }
+                return Reply::invalid_params(errors);
+            }
+        }
+        Reply baked = bake_graph(session, *graph, output, params,
+                                 inline_texture != nullptr ? "/texture" : "/path", made, outputs);
+        if (!baked.ok) {
+            return baked;
+        }
+        image = &made;
+    } else if (path != nullptr) {
         const std::string& file = path->as_string();
         if (!procedural::is_texture_path(file)) {
             return param_error(
@@ -178,6 +298,9 @@ Reply texture_generate(Session& session, const json::Value& params) {
     result["height"] = image->height;
     result["channels"] = channel_stats(*image);
     result["wrap"] = wrap_differences(*image);
+    if (graph) {
+        result["outputs"] = std::move(outputs);
+    }
     if (const json::Value* pixels = params.find("pixels"); pixels != nullptr) {
         json::Array colors;
         const json::Array& points = pixels->as_array();
@@ -324,12 +447,16 @@ void register_procedural_commands(Registry& registry) {
             "given inline (\"texture\"), and measures it so you can tune it without looking: "
             "size, each channel's [min, mean, max] (0-255) and \"wrap\", the mean difference of "
             "neighboring pixels inside and across the edges (x, y near inside: it tiles). "
-            "\"pixels\" returns those pixels; \"out\" writes a .png (needs filesystem).",
+            "\"pixels\" returns those pixels; \"out\" writes a .png (needs filesystem). A graph "
+            "(\"type\": \"graph\") bakes \"output\" with \"parameters\" set and lists its "
+            "\"outputs\".",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({
             {"path", property("string", "A texture file.")},
             {"texture", std::move(texture)},
+            {"output", property("string", "A graph's output by name (default: its first).")},
+            {"parameters", property("object", "A graph's parameters to set, by name.")},
             {"pixels", std::move(pixels)},
             {"out", property("string", "A .png file to write the texture to.")},
         }),

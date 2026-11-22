@@ -77,6 +77,8 @@
 #include "subsurface_shaders.hpp"
 #include "taa.hpp"
 #include "taa_shaders.hpp"
+#include "texture_graph_gpu.hpp"
+#include "texture_graph_shaders.hpp"
 #include "uniforms.hpp"
 #include "volumetric_fog.hpp"
 #include "volumetric_fog_shaders.hpp"
@@ -786,8 +788,8 @@ public:
                 SDL_ReleaseGPUTransferBuffer(device_, storage->transfer);
             }
         }
-        for (SDL_GPUComputePipeline* pipeline :
-             {sdfgi_pipeline_, sdfgi_voxelize_pipeline_, skin_pipeline_, cull_pipeline_}) {
+        for (SDL_GPUComputePipeline* pipeline : {sdfgi_pipeline_, sdfgi_voxelize_pipeline_,
+                                                 skin_pipeline_, cull_pipeline_, graph_pipeline_}) {
             if (pipeline != nullptr) {
                 SDL_ReleaseGPUComputePipeline(device_, pipeline);
             }
@@ -1855,6 +1857,174 @@ public:
         job.uniforms.at[2] = kept.has_weights ? 1U : 0U;
         skin_jobs_.push_back(job);
         return {};
+    }
+
+    // Texture graphs bake in compute but on Direct3D 12, as skinning does.
+    bool gpu_texture_graphs() const override { return backend_ != Backend::D3D12; }
+
+    // Bakes a texture graph a dispatch a pass (shaders/texture_graph.hlsl), each slot a storage
+    // buffer of RGBA floats, and reads back the outputs; inside a frame, and where compute
+    // doesn't bake graphs, the CPU twin does.
+    Result<std::vector<GraphTexels>>
+    bake_texture_graph(const TextureGraphProgram& program,
+                       std::span<const std::uint32_t> outputs) override {
+        if (!gpu_texture_graphs() || in_frame_) {
+            return run_texture_graph(program, outputs);
+        }
+        if (auto checked = check_texture_graph(program); !checked) {
+            return checked.error();
+        }
+        for (const std::uint32_t slot : outputs) {
+            if (slot >= program.slots) {
+                return make_error(ErrorCode::InvalidArgument,
+                                  "an output names a slot past the last");
+            }
+        }
+        if (graph_pipeline_ == nullptr) {
+            // Four inputs and an image; the output slot; the pass.
+            SDL_GPUComputePipelineCreateInfo info{};
+            info.entrypoint = "cs_main";
+            info.num_readonly_storage_buffers = 5;
+            info.num_readwrite_storage_buffers = 1;
+            info.num_uniform_buffers = 1;
+            info.threadcount_x = detail::kGraphGroup;
+            info.threadcount_y = detail::kGraphGroup;
+            info.threadcount_z = 1;
+            auto made = create_compute_pipeline(
+                info, shaders::kTextureGraphComputeSpirv, shaders::kTextureGraphComputeMsl,
+                joined(shaders::kTextureGraphHlsl), "texture graph");
+            if (!made) {
+                return made.error();
+            }
+            graph_pipeline_ = made.value();
+        }
+        GraphBuffers buffers(device_);
+        const std::uint64_t slot_bytes = std::uint64_t{program.width} * program.height * 16U;
+        for (std::uint32_t i = 0; i < program.slots; ++i) {
+            SDL_GPUBufferCreateInfo info{};
+            info.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ |
+                         SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
+            info.size = static_cast<std::uint32_t>(slot_bytes);
+            SDL_GPUBuffer* slot = SDL_CreateGPUBuffer(device_, &info);
+            if (slot == nullptr) {
+                return sdl_error("making room for a texture graph failed");
+            }
+            buffers.slots.push_back(slot);
+        }
+        // What a pass binds for inputs it leaves out: one texel, never read.
+        const std::array<float, 4> white{1.0F, 1.0F, 1.0F, 1.0F};
+        auto spare = make_graph_buffer(std::as_bytes(std::span(white)));
+        if (!spare) {
+            return spare.error();
+        }
+        buffers.images.push_back(spare.value());
+        for (const GraphImage& image : program.images) {
+            auto made = make_graph_buffer(std::as_bytes(std::span(image.texels)));
+            if (!made) {
+                return made.error();
+            }
+            buffers.images.push_back(made.value());
+        }
+        SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(device_);
+        if (commands == nullptr) {
+            return sdl_error("baking a texture graph failed");
+        }
+        const std::array<std::uint32_t, 2> groups = detail::graph_groups(program);
+        for (const GraphPass& pass : program.passes) {
+            SDL_GPUStorageBufferReadWriteBinding output{};
+            output.buffer = buffers.slots[pass.out];
+            output.cycle = false;
+            SDL_GPUComputePass* compute = SDL_BeginGPUComputePass(commands, nullptr, 0, &output, 1);
+            SDL_BindGPUComputePipeline(compute, graph_pipeline_);
+            std::array<SDL_GPUBuffer*, 5> inputs{};
+            for (std::size_t k = 0; k < kGraphInputs; ++k) {
+                inputs.at(k) = pass.in.at(k) == kNoGraphSlot ? buffers.images[0]
+                                                             : buffers.slots[pass.in.at(k)];
+            }
+            const GraphImage* image = detail::graph_image(program, pass);
+            inputs[4] =
+                image == nullptr
+                    ? buffers.images[0]
+                    : buffers.images[1 + static_cast<std::size_t>(image - program.images.data())];
+            SDL_BindGPUComputeStorageBuffers(compute, 0, inputs.data(), 5);
+            const detail::GraphUniforms uniforms = detail::graph_uniforms(program, pass);
+            SDL_PushGPUComputeUniformData(commands, 0, &uniforms,
+                                          static_cast<std::uint32_t>(sizeof(uniforms)));
+            SDL_DispatchGPUCompute(compute, groups[0], groups[1], 1);
+            SDL_EndGPUComputePass(compute);
+        }
+        if (!SDL_SubmitGPUCommandBuffer(commands)) {
+            return sdl_error("baking a texture graph failed");
+        }
+        std::vector<GraphTexels> result;
+        result.reserve(outputs.size());
+        for (const std::uint32_t slot : outputs) {
+            GraphTexels texels(static_cast<std::size_t>(slot_bytes / sizeof(float)));
+            if (auto read = download(buffers.slots[slot], std::as_writable_bytes(std::span(texels)),
+                                     "a texture graph");
+                !read) {
+                return read.error();
+            }
+            result.push_back(std::move(texels));
+        }
+        return result;
+    }
+
+    // A texture graph's buffers while it bakes, released after.
+    struct GraphBuffers {
+        explicit GraphBuffers(SDL_GPUDevice* gpu) : device(gpu) {}
+        GraphBuffers(const GraphBuffers&) = delete;
+        GraphBuffers& operator=(const GraphBuffers&) = delete;
+        GraphBuffers(GraphBuffers&&) = delete;
+        GraphBuffers& operator=(GraphBuffers&&) = delete;
+        ~GraphBuffers() {
+            for (SDL_GPUBuffer* buffer : slots) {
+                SDL_ReleaseGPUBuffer(device, buffer);
+            }
+            for (SDL_GPUBuffer* buffer : images) {
+                SDL_ReleaseGPUBuffer(device, buffer);
+            }
+        }
+        SDL_GPUDevice* device;
+        std::vector<SDL_GPUBuffer*> slots;
+        // The spare texel, then the program's images.
+        std::vector<SDL_GPUBuffer*> images;
+    };
+
+    // A storage buffer compute reads, holding bytes, uploaded once.
+    Result<SDL_GPUBuffer*> make_graph_buffer(std::span<const std::byte> bytes) {
+        const auto size = static_cast<std::uint32_t>(bytes.size());
+        SDL_GPUBufferCreateInfo info{};
+        info.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ;
+        info.size = size;
+        SDL_GPUBuffer* buffer = SDL_CreateGPUBuffer(device_, &info);
+        const TransferBuffer transfer(device_, SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, size);
+        void* mapped = buffer == nullptr || transfer.get() == nullptr
+                           ? nullptr
+                           : SDL_MapGPUTransferBuffer(device_, transfer.get(), false);
+        if (mapped == nullptr) {
+            if (buffer != nullptr) {
+                SDL_ReleaseGPUBuffer(device_, buffer);
+            }
+            return sdl_error("making room for a texture graph's image failed");
+        }
+        std::memcpy(mapped, bytes.data(), size);
+        SDL_UnmapGPUTransferBuffer(device_, transfer.get());
+        SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(device_);
+        if (commands == nullptr) {
+            SDL_ReleaseGPUBuffer(device_, buffer);
+            return sdl_error("uploading a texture graph's image failed");
+        }
+        SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+        const SDL_GPUTransferBufferLocation source{.transfer_buffer = transfer.get(), .offset = 0};
+        const SDL_GPUBufferRegion destination{.buffer = buffer, .offset = 0, .size = size};
+        SDL_UploadToGPUBuffer(copy, &source, &destination, false);
+        SDL_EndGPUCopyPass(copy);
+        if (!SDL_SubmitGPUCommandBuffer(commands)) {
+            SDL_ReleaseGPUBuffer(device_, buffer);
+            return sdl_error("uploading a texture graph's image failed");
+        }
+        return buffer;
     }
 
     void destroy_skin(SkinId skin) override {
@@ -9418,6 +9588,8 @@ private:
     // and order, what mesh_cull.hlsl writes for them (the runs' indirect arguments and lists),
     // and each draw's Instance, which mesh_instanced.hlsl reads.
     SDL_GPUComputePipeline* cull_pipeline_ = nullptr;
+    // Texture graphs' passes, made at the first bake.
+    SDL_GPUComputePipeline* graph_pipeline_ = nullptr;
     StorageBuffer cull_records_;
     StorageBuffer cull_outputs_;
     StorageBuffer mesh_instances_;

@@ -1,0 +1,107 @@
+#pragma once
+
+#include "slash/core/json.hpp"
+#include "slash/core/json_schema.hpp"
+#include "slash/core/result.hpp"
+#include "slash/render/device.hpp"
+#include "slash/render/texture_graph.hpp"
+
+#include <cstdint>
+#include <functional>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace slash::jobs {
+class Pool;
+}
+
+// Texture graphs: a .texture.json file of "type": "graph" is a graph of nodes over whole images,
+// after Substance Designer, Unreal's Texture Graph and Houdini's COPs, that agents write and
+// tune as text. It compiles to a render::TextureGraphProgram, which a render device bakes in a
+// compute pass (RenderDevice::bake_texture_graph) or the CPU twin runs, and each of its outputs
+// is a texture: "wall.texture.json" is the first, "wall.texture.json::normal" the one named so.
+//
+//   {
+//     "format": 1,
+//     "type": "graph",
+//     "width": 512, "height": 512, "tiling": true,
+//     "parameters": {"mortar": 0.06, "tint": [0.62, 0.3, 0.22, 1]},
+//     "nodes": {
+//       "bricks": {"op": "bricks", "across": 4, "down": 8, "mortar": "$mortar"},
+//       "grain": {"op": "noise", "noise": {"frequency": 0.02}},
+//       "height": {"op": "blend", "base": "bricks", "layer": "grain", "mode": "multiply"},
+//       "color": {"op": "gradient_map", "input": "height", "gradient": {...}},
+//       "normal": {"op": "normal_from_height", "height": "height", "strength": 4}
+//     },
+//     "outputs": [{"name": "albedo", "node": "color"}, {"name": "normal", "node": "normal"}]
+//   }
+//
+// A setting is a value, "$name" (a parameter) or "=" and an expression over the parameters in
+// Godot's Expression syntax ("=mortar * 2"). "extends" names another graph file whose document
+// this one is a JSON merge patch over. Every op and its settings are in texture_graph_schema().
+namespace slash::procedural {
+
+// Reads what a graph names: another graph's text ("extends") and image files ("image" nodes).
+// Paths are the project's, as a scene names them.
+struct GraphReader {
+    std::function<Result<std::string>(std::string_view path)> text;
+    std::function<Result<render::Image>(std::string_view path)> image;
+};
+
+// One output of a compiled graph: its name, the slot holding it and how it becomes RGBA8.
+struct GraphOutput {
+    std::string name;
+    std::uint32_t slot = 0;
+    // Gray outputs take the slot's red into every color channel, with alpha 1.
+    bool gray = false;
+};
+
+struct CompiledGraph {
+    render::TextureGraphProgram program;
+    std::vector<GraphOutput> outputs;
+    // The files the graph read: the ones it extends and its images.
+    std::vector<std::string> files;
+};
+
+// Whether a .texture.json document is a graph ("type": "graph").
+[[nodiscard]] bool is_texture_graph(const json::Value& doc);
+
+// JSON Schema for a graph document: its fields and, under "$defs", each op's node.
+[[nodiscard]] json::Value texture_graph_schema();
+
+// Every error in a graph document, each with the JSON Pointer of the bad value: unknown ops and
+// nodes (with the closest name), settings out of range, references to missing parameters, links
+// to missing nodes and cycles. Files it extends or reads are not opened.
+[[nodiscard]] std::vector<json::ValidationError> validate_texture_graph(const json::Value& doc);
+
+// The program a graph document compiles to, with parameters' values replaced by those in
+// overrides (by name; each must be a parameter's and of its kind). Only the nodes the outputs
+// need run, in an order where each reads what ran before, and slots are shared by nodes whose
+// values aren't needed at once.
+[[nodiscard]] Result<CompiledGraph> compile_texture_graph(const json::Value& doc,
+                                                          const GraphReader& reader,
+                                                          const json::Object& overrides = {});
+
+// Bakes a compiled graph's outputs as RGBA8 images, in its outputs' order: on device when it is
+// given (RenderDevice::bake_texture_graph), else with the CPU twin on pool.
+[[nodiscard]] Result<std::vector<render::Image>> bake_texture_graph(const CompiledGraph& graph,
+                                                                    render::RenderDevice* device,
+                                                                    jobs::Pool* pool = nullptr);
+
+// One output's texels as RGBA8, rounded to the nearest step.
+[[nodiscard]] render::Image graph_texels_image(const render::GraphTexels& texels,
+                                               std::uint32_t width, std::uint32_t height,
+                                               bool gray);
+
+// A graph file's output by name ("" for the first), baked: the image a texture path names.
+[[nodiscard]] Result<render::Image>
+texture_graph_image(const json::Value& doc, std::string_view output, const GraphReader& reader,
+                    render::RenderDevice* device = nullptr, jobs::Pool* pool = nullptr);
+
+// Sets the device that bakes graphs loaded as assets (canvas's .texture.json loader); null
+// bakes them with the CPU twin. A renderer sets its device while it lives and clears it after.
+void set_graph_device(render::RenderDevice* device);
+[[nodiscard]] render::RenderDevice* graph_device();
+
+} // namespace slash::procedural

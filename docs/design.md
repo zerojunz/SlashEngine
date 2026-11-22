@@ -2,7 +2,7 @@
 
 Approved 2026-10-14. The living version is the [SlashEngine Design Doc](https://claude.ai/code/artifact/9bb8a68c-122e-47aa-b966-4556d10784af); this file is the copy the code is built against.
 
-Status: current · Updated: 2026-11-20
+Status: current · Updated: 2026-11-22
 
 ## Summary
 
@@ -69,6 +69,7 @@ SDL3 is the only platform layer: windowing, input, audio, file I/O, threads and 
 - **Toolchains on demand.** `slash-cli toolchain install` downloads and pins the open-source cross toolchains above, so one Mac can produce every build with no manual setup.
 - **CI as a second path.** `slash-cli init` also writes a GitHub Actions workflow that builds and runs headless tests for every platform on native runners, which is how Windows and Linux exports get tested before those hosts are supported.
 - **Signing.** As in Godot, each developer brings their own Apple team ID and certificates, Android keystore and Windows code-signing certificate. Export presets live in a text file (`export_presets.json`) that agents can edit, with secrets read from environment variables. macOS exports are always signed, ad hoc unless a preset names a Developer ID identity. The engine generates a throwaway debug keystore for Android test builds, and the project's own accounts sign only its sample games in CI.
+- **Publishing to stores** (roadmap item 25, requested by the owner). `slash-cli publish <store>` (the `publish` command) uploads an export to itch.io through butler (MIT), to Steam through steamcmd with SteamPipe build files written from the presets, to the Epic Games Store through BuildPatchTool and to GOG through its Pipeline Builder, each run as a program of its own with credentials from the environment. Built-in `steamworks`, `eos` and `galaxy` SDK packages, pointed at the developer's own copy of each closed SDK, back the services API's achievements, leaderboards and cloud saves, so no vendor code enters the repo. Agents ask before uploading, since a store build is public. Linux builds run on Steam Deck as they are.
 
 ## Feature parity with Godot and UE5
 
@@ -154,7 +155,7 @@ Every line in the repo is Apache 2.0 or comes from a dependency under a permissi
 - **System APIs are linked, not shipped.** Win32, Direct3D, Metal, Vulkan drivers and mobile OS SDKs are called through SDL3; none of their code lives in the repo.
 - **Generators are called, not shipped.** The asset generator talks to image and audio models over HTTP, like `ai::Provider`, so no model or vendor SDK is in the repo. Each generated asset records its generator, model and license terms, because what a team may do with an asset depends on the service that made it.
 - **Store and ad SDKs follow the same rule.** StoreKit is an OS framework and Google Play Billing is fetched at export time with the Android SDK, so the repo holds only SlashEngine's glue for them. Ad network SDKs are proprietary, so their adapters live outside the repo, like console backends (decided by the owner).
-- **Vendor upscalers follow the same rule.** AMD's FSR 1, 2 and 3 are MIT code, so they are built in. NVIDIA's DLSS, Intel's XeSS and AMD's FSR 4 ship only as closed binaries under their vendors' licenses, so their adapters live outside the repo behind `render::Upscaler`, and a game that wants one adds it with its own copy of the vendor's SDK.
+- **Vendor upscalers follow the same rule.** AMD's FSR 1, 2 and 3 are MIT code, so they are built in. NVIDIA's DLSS, Intel's XeSS and AMD's FSR 4 ship only as closed binaries under their vendors' licenses, so their adapters live outside the repo behind `render::Upscaler`, and a game that wants one adds it with its own copy of the vendor's SDK. Their frame generation, latency reduction (Reflex, Anti-Lag 2, XeLL) and DLSS Ray Reconstruction follow the same way, behind hooks of their own (roadmap item 26, requested by the owner).
 - **Closed SDKs plug in as SDK packages.** A game adds a closed SDK (an ad network, DLSS, Steamworks, a store or analytics service) as an SDK package in its own project: an `sdk.json` file naming the vendor's binaries for each platform, by URL and checksum or by a local path, and glue code that implements one of the engine's interfaces. Exports fetch, check and link them and list the closed SDKs each build includes. The engine ships the mechanism; no vendor's binaries or headers enter the repo (requested by the owner).
 - **Consoles live outside the repo.** PlayStation, Xbox and Switch SDKs are closed and under NDA, so, as with Godot, console ports are private backends built by licensed porting partners and offered to studios separately. They plug in behind the same `RenderDevice` and platform interfaces.
 - **Enforced in CI.** Each dependency is pinned with its license in a manifest, and a license check runs on every PR.
@@ -329,6 +330,10 @@ Agents can't be forced to prefer a tool, but they reliably use what the project 
 
 A custom language for agents is deliberately not on this list: models write C++ and JSON reliably because they have seen so much of both, and MCP tool calls are JSON already. When agents repeat the same sequence of calls, the fix is a new command or prefab.
 
+
+### Watching agents work
+
+The person can look in on any agent at any time (roadmap item 24). Every session writes a work journal to `.slash/work/` and serves itself read-only on loopback. `slash-cli watch` shows the agent's world in a window, a terminal or a browser page as it edits. Checkpoints keep a timeline the person can compare and restore files from. `work pause` and `work note` steer the agent, and the agent may keep a plan with `work.plan`. Remote viewing goes through agents rather than an exposed server: `work.view`, `work.timeline` and `work.report` give any MCP client the frame, digest and a self-contained report to show the person wherever they are.
 ## Model-agnostic provider interface
 
 Model agnosticism works at two levels. Outside the engine, agents connect over MCP and JSON-RPC, which are open protocols any model can use. Inside the engine, features that call a model (NPC dialogue, procedural content, an in-game assistant) go through one `ai::Provider` interface, and no engine code ever names a vendor.
@@ -442,6 +447,7 @@ Games often make their textures, terrain and props from rules rather than by han
 - **Made while the game runs.** Gameplay code can make textures and meshes at run time, as Godot's `ImageTexture`, `ArrayMesh` and `SurfaceTool`.
 - **Scatter rules.** Agents write rules that place prefabs or meshes over terrain, meshes, tile maps and areas by noise, density, slope and spacing, seeded so they repeat. A command writes the result as entities an agent can then edit, or a game runs the rules itself. Tile maps and terrains generate from noise files too.
 - **Every tool, procedurally.** Graphs of steps, as Unreal's PCG, drive the world tools too: foliage and grooms, fauna by habitat, characters with their routes and stories, vehicles, wind and physics fields, lights, effects, destructible props and fluids, in 2D and 3D, seeded so a world repeats and checked against budgets and navigation (roadmap item 21).
+- **Textures agents author (roadmap item 23).** A `.texture.json` file can also be a graph, as Substance Designer's and Houdini's COPs are: nodes over named parameters (noise, patterns, filters, height and normals, blends) with PBR outputs, baked in compute on every device with a CPU twin held to it, or compiled into a live shader whose parameters animations and gameplay code drive. `model.bake_maps` bakes a model's mesh maps on ray queries (occlusion, curvature, thickness, IDs, sky exposure, high to low detail). A `.paint.json` layer stack, as Substance Painter's, lays fills, graphs and generators over a model or sprite, masked by those maps and by part and material names, with strokes and decals as data and smart materials through `extends`. Every bake returns numbers (channel ranges, mask coverage, tiling, palette distance, texel density) before any picture, and `texture.check` holds graphs, stacks and their output to the storyboard. Weathering by gravity, wind and sky exposure, wear from gameplay damage, text and logo stamps, seeded variants, drafts from a prompt and Blender shader node import complete it. Strokes are written by agents; painting by hand waits for after launch.
 - **Imported from other tools.** Godot's noise and gradient resources convert with the Godot importer. Blender's geometry nodes and Houdini export instances through glTF's `EXT_mesh_gpu_instancing`, and terrain tools (World Machine, Gaea, World Creator) export heightmaps as 16-bit PNG, RAW or EXR, which become HTerrain maps. Closed formats such as Substance's `.sbsar` are left out; their exported texture maps import as any texture.
 
 ## Languages

@@ -77,6 +77,8 @@
 #include "subsurface_shaders.hpp"
 #include "taa.hpp"
 #include "taa_shaders.hpp"
+#include "texture_graph_gpu.hpp"
+#include "texture_graph_shaders.hpp"
 #include "uniforms.hpp"
 #include "volumetric_fog.hpp"
 #include "volumetric_fog_shaders.hpp"
@@ -703,8 +705,8 @@ public:
         while (!sdfgi_frames_.empty()) {
             forget_sdfgi_frames(sdfgi_frames_.back().first);
         }
-        for (WGPUComputePipeline pipeline :
-             {sdfgi_pipeline_, sdfgi_voxelize_pipeline_, skin_pipeline_, cull_pipeline_}) {
+        for (WGPUComputePipeline pipeline : {sdfgi_pipeline_, sdfgi_voxelize_pipeline_,
+                                             skin_pipeline_, cull_pipeline_, graph_pipeline_}) {
             if (pipeline != nullptr) {
                 wgpuComputePipelineRelease(pipeline);
             }
@@ -841,6 +843,8 @@ public:
                                            skin_uniforms_layout_,
                                            cull_inputs_layout_,
                                            cull_uniforms_layout_,
+                                           graph_inputs_layout_,
+                                           graph_uniforms_layout_,
                                            compositor_textures_layout_,
                                            compositor_uniforms_layout_}) {
             if (layout != nullptr) {
@@ -1596,6 +1600,127 @@ public:
             }
         }
         meshes_.erase(it);
+    }
+
+    // Texture graphs bake in compute, unless a slot is larger than a storage binding may be or
+    // the build can't wait for the GPU to read them back.
+    bool gpu_texture_graphs() const override { return can_wait_; }
+
+    // Bakes a texture graph a dispatch a pass (shaders/texture_graph.hlsl), each slot a storage
+    // buffer of RGBA floats, and reads back the outputs; inside a frame, and where compute
+    // doesn't bake graphs, the CPU twin does.
+    Result<std::vector<GraphTexels>>
+    bake_texture_graph(const TextureGraphProgram& program,
+                       std::span<const std::uint32_t> outputs) override {
+        const std::uint64_t slot_bytes = std::uint64_t{program.width} * program.height * 16U;
+        if (!gpu_texture_graphs() || in_frame_ || slot_bytes > max_storage_binding_) {
+            return run_texture_graph(program, outputs);
+        }
+        if (auto checked = check_texture_graph(program); !checked) {
+            return checked.error();
+        }
+        for (const std::uint32_t slot : outputs) {
+            if (slot >= program.slots) {
+                return make_error(ErrorCode::InvalidArgument,
+                                  "an output names a slot past the last");
+            }
+        }
+        if (graph_pipeline_ == nullptr) {
+            WGPUComputePipelineDescriptor info = WGPU_COMPUTE_PIPELINE_DESCRIPTOR_INIT;
+            info.layout = pipeline_layouts_.at(kGraphLayout);
+            info.compute.module = module(kGraphModule, joined(shaders::kTextureGraphComputeWgsl));
+            info.compute.entryPoint = text_view("cs_main");
+            graph_pipeline_ = wgpuDeviceCreateComputePipeline(device_, &info);
+        }
+        std::vector<WGPUBuffer> slots;
+        std::vector<WGPUBuffer> images;
+        std::vector<WGPUBindGroup> made;
+        const auto release = [&] {
+            for (WGPUBindGroup group : made) {
+                wgpuBindGroupRelease(group);
+            }
+            for (WGPUBuffer buffer : slots) {
+                destroy_buffer(buffer);
+            }
+            for (WGPUBuffer buffer : images) {
+                destroy_buffer(buffer);
+            }
+        };
+        for (std::uint32_t i = 0; i < program.slots; ++i) {
+            slots.push_back(
+                create_buffer(WGPUBufferUsage_Storage | WGPUBufferUsage_CopySrc, slot_bytes));
+        }
+        // What a pass binds for inputs it leaves out: one texel, never read; then the images.
+        const std::array<float, 4> white{1.0F, 1.0F, 1.0F, 1.0F};
+        images.push_back(
+            create_buffer(WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst, sizeof(white)));
+        wgpuQueueWriteBuffer(queue_, images[0], 0, white.data(), sizeof(white));
+        for (const GraphImage& image : program.images) {
+            const std::size_t bytes = image.texels.size() * sizeof(float);
+            images.push_back(
+                create_buffer(WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst, bytes));
+            wgpuQueueWriteBuffer(queue_, images.back(), 0, image.texels.data(), bytes);
+        }
+        uniforms_.clear();
+        std::vector<std::uint32_t> at;
+        at.reserve(program.passes.size());
+        for (const GraphPass& pass : program.passes) {
+            at.push_back(uniforms_.add(detail::graph_uniforms(program, pass)));
+        }
+        upload_uniforms();
+        WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, nullptr);
+        const std::array<std::uint32_t, 2> groups = detail::graph_groups(program);
+        for (std::size_t p = 0; p < program.passes.size(); ++p) {
+            const GraphPass& pass = program.passes[p];
+            const auto input = [&](std::size_t k) {
+                return pass.in.at(k) == kNoGraphSlot ? images[0] : slots[pass.in.at(k)];
+            };
+            const GraphImage* image = detail::graph_image(program, pass);
+            WGPUBuffer sampled =
+                image == nullptr
+                    ? images[0]
+                    : images[1 + static_cast<std::size_t>(image - program.images.data())];
+            const std::array input_entries{buffer_entry(0, input(0)), buffer_entry(1, input(1)),
+                                           buffer_entry(2, input(2)), buffer_entry(3, input(3)),
+                                           buffer_entry(4, sampled)};
+            WGPUBindGroup inputs = bind_group(graph_inputs_layout_, input_entries);
+            const std::array output_entries{buffer_entry(0, slots[pass.out])};
+            WGPUBindGroup output = bind_group(skin_output_layout_, output_entries);
+            made.push_back(inputs);
+            made.push_back(output);
+            // A pass each, so each dispatch sees what the one before wrote.
+            WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+            wgpuComputePassEncoderSetPipeline(compute, graph_pipeline_);
+            wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
+            wgpuComputePassEncoderSetBindGroup(compute, 1, output, 0, nullptr);
+            wgpuComputePassEncoderSetBindGroup(compute, 2, graph_uniforms_group_, 1, &at[p]);
+            wgpuComputePassEncoderDispatchWorkgroups(compute, groups[0], groups[1], 1);
+            wgpuComputePassEncoderEnd(compute);
+            wgpuComputePassEncoderRelease(compute);
+        }
+        std::vector<WGPUBuffer> readbacks;
+        for (const std::uint32_t slot : outputs) {
+            readbacks.push_back(
+                create_buffer(WGPUBufferUsage_MapRead | WGPUBufferUsage_CopyDst, slot_bytes));
+            wgpuCommandEncoderCopyBufferToBuffer(encoder, slots[slot], 0, readbacks.back(), 0,
+                                                 slot_bytes);
+        }
+        submit(encoder);
+        std::vector<GraphTexels> result;
+        Result<void> read;
+        for (WGPUBuffer readback : readbacks) {
+            GraphTexels texels(static_cast<std::size_t>(slot_bytes / sizeof(float)));
+            if (read) {
+                read = map_and_read(readback, std::as_writable_bytes(std::span(texels)));
+            }
+            destroy_buffer(readback);
+            result.push_back(std::move(texels));
+        }
+        release();
+        if (!read) {
+            return read.error();
+        }
+        return result;
     }
 
     bool gpu_skinning() const override { return true; }
@@ -3562,6 +3687,15 @@ private:
         const std::array skin_entries{
             uniform_entry(0, WGPUShaderStage_Compute, sizeof(SkinUniforms))};
         skin_uniforms_layout_ = layout(skin_entries);
+        // Texture graphs: four inputs and an image; the output slot (skinning's layout); the
+        // pass.
+        const std::array graph_inputs{storage_entry(0, true), storage_entry(1, true),
+                                      storage_entry(2, true), storage_entry(3, true),
+                                      storage_entry(4, true)};
+        graph_inputs_layout_ = layout(graph_inputs);
+        const std::array graph_entries{
+            uniform_entry(0, WGPUShaderStage_Compute, sizeof(detail::GraphUniforms))};
+        graph_uniforms_layout_ = layout(graph_entries);
         // Culling meshes: the draws' records; their indirect arguments (skinning's output
         // layout); the count.
         const std::array cull_inputs{storage_entry(0, true)};
@@ -3665,6 +3799,8 @@ private:
             pipeline_layout({skin_inputs_layout_, skin_output_layout_, skin_uniforms_layout_});
         pipeline_layouts_.at(kCullLayout) =
             pipeline_layout({cull_inputs_layout_, skin_output_layout_, cull_uniforms_layout_});
+        pipeline_layouts_.at(kGraphLayout) =
+            pipeline_layout({graph_inputs_layout_, skin_output_layout_, graph_uniforms_layout_});
         pipeline_layouts_.at(kCompositorLayout) =
             pipeline_layout({empty_layout_, empty_layout_, compositor_textures_layout_,
                              compositor_uniforms_layout_});
@@ -4000,6 +4136,8 @@ private:
         skin_uniforms_group_ = bind_group(skin_uniforms_layout_, skin);
         const std::array cull{buffer_entry(0, uniform_buffer_, sizeof(CullUniforms))};
         cull_uniforms_group_ = bind_group(cull_uniforms_layout_, cull);
+        const std::array graph{buffer_entry(0, uniform_buffer_, sizeof(detail::GraphUniforms))};
+        graph_uniforms_group_ = bind_group(graph_uniforms_layout_, graph);
         const std::array compositor{buffer_entry(0, uniform_buffer_, sizeof(CompositorUniforms))};
         compositor_uniforms_group_ = bind_group(compositor_uniforms_layout_, compositor);
     }
@@ -4037,6 +4175,7 @@ private:
                                      &sdfgi_gather_uniforms_group_,
                                      &skin_uniforms_group_,
                                      &cull_uniforms_group_,
+                                     &graph_uniforms_group_,
                                      &compositor_uniforms_group_}) {
             if (*group != nullptr) {
                 wgpuBindGroupRelease(*group);
@@ -8668,6 +8807,7 @@ private:
     static constexpr std::size_t kCullModule = kSkinModule + 1;
     static constexpr std::size_t kMeshInstancedVertexModule = kCullModule + 1;
     static constexpr std::size_t kMeshMotionInstancedVertexModule = kMeshInstancedVertexModule + 1;
+    static constexpr std::size_t kGraphModule = kMeshMotionInstancedVertexModule + 1;
     static constexpr std::size_t kSpriteLayout = 0;
     static constexpr std::size_t kMaterialLayout = 1;
     static constexpr std::size_t kProcessLayout = 2;
@@ -8703,6 +8843,7 @@ private:
     static constexpr std::size_t kSkinLayout = kSdfgiGatherLayout + 1;
     static constexpr std::size_t kCullLayout = kSkinLayout + 1;
     static constexpr std::size_t kCompositorLayout = kCullLayout + 1;
+    static constexpr std::size_t kGraphLayout = kCompositorLayout + 1;
 
     WGPUInstance instance_;
     WGPUDevice device_;
@@ -8715,7 +8856,7 @@ private:
     bool can_wait_ = false; // Asyncify lets read_texture wait for the GPU
     // Which formats the GPU samples, by TextureFormat.
     std::array<bool, 4> sampled_{true, false, false, true};
-    std::array<WGPUShaderModule, kMeshMotionInstancedVertexModule + 1> modules_{};
+    std::array<WGPUShaderModule, kGraphModule + 1> modules_{};
     std::vector<Pipeline> pipelines_;
     std::unordered_map<ShaderId, GameShader> game_shaders_;
     std::uint32_t next_shader_ = 1;
@@ -8791,11 +8932,13 @@ private:
     WGPUBindGroupLayout skin_inputs_layout_ = nullptr;
     WGPUBindGroupLayout skin_output_layout_ = nullptr;
     WGPUBindGroupLayout skin_uniforms_layout_ = nullptr;
+    WGPUBindGroupLayout graph_inputs_layout_ = nullptr;
+    WGPUBindGroupLayout graph_uniforms_layout_ = nullptr;
     WGPUBindGroupLayout cull_inputs_layout_ = nullptr;
     WGPUBindGroupLayout cull_uniforms_layout_ = nullptr;
     WGPUBindGroupLayout compositor_textures_layout_ = nullptr;
     WGPUBindGroupLayout compositor_uniforms_layout_ = nullptr;
-    std::array<WGPUPipelineLayout, kCompositorLayout + 1> pipeline_layouts_{};
+    std::array<WGPUPipelineLayout, kGraphLayout + 1> pipeline_layouts_{};
     std::array<WGPUSampler, 4> samplers_{}; // by sampler_index
     GpuTexture white_;
     std::unordered_map<TextureId, Texture> textures_;
@@ -8840,6 +8983,7 @@ private:
     WGPUBindGroup sdfgi_voxelize_uniforms_group_ = nullptr;
     WGPUBindGroup sdfgi_gather_uniforms_group_ = nullptr;
     WGPUBindGroup skin_uniforms_group_ = nullptr;
+    WGPUBindGroup graph_uniforms_group_ = nullptr;
     WGPUBindGroup cull_uniforms_group_ = nullptr;
     WGPUBindGroup compositor_uniforms_group_ = nullptr;
     std::unordered_map<ParticlesId, ParticleSystem> particle_systems_;
@@ -8999,6 +9143,8 @@ private:
     WGPUBuffer skin_poses_buffer_ = nullptr;
     std::uint64_t skin_poses_capacity_ = 0;
     WGPUComputePipeline skin_pipeline_ = nullptr;
+    // Texture graphs' passes, made at the first bake.
+    WGPUComputePipeline graph_pipeline_ = nullptr;
     // Culling the camera's mesh draws and drawing runs of them as instances (prepare_cull,
     // encode_cull): the pipeline, the draws' records, runs and order, what mesh_cull.hlsl writes
     // (the runs' indirect arguments, the draws' flags and the runs' draws in view), each draw's

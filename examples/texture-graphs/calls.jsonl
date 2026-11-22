@@ -1,0 +1,8 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"texture.generate","params":{"path":"textures/wall.texture.json","pixels":[[0,0],[16,4]]}}
+{"jsonrpc":"2.0","id":3,"method":"texture.generate","params":{"path":"textures/wall.texture.json::height"}}
+{"jsonrpc":"2.0","id":4,"method":"texture.generate","params":{"path":"textures/wall.texture.json","parameters":{"mortar":0.2}}}
+{"jsonrpc":"2.0","id":5,"method":"texture.generate","params":{"path":"textures/wall.texture.json","output":"normal","out":"build/wall_normal.png"}}
+{"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"points":[[40,45],[120,45]]}}
+{"jsonrpc":"2.0","id":7,"method":"texture.generate","params":{"path":"textures/wall.texture.json","parameters":{"morter":0.2}}}
+{"jsonrpc":"2.0","id":8,"method":"texture.generate","params":{"path":"textures/wall.texture.json","output":"roughness"}}
