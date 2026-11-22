@@ -103,7 +103,7 @@ as `entity.get`, reject it as an unknown param.
 | Replays | [`replay.record`](#replayrecord), [`replay.stop`](#replaystop), [`replay.run`](#replayrun), [`replay.seek`](#replayseek) |
 | Tests | [`test.run`](#testrun), [`playtest.run`](#playtestrun) |
 | History | [`undo`](#undo), [`redo`](#redo), [`history.get`](#historyget) |
-| Work | [`work.feed`](#workfeed), [`work.digest`](#workdigest), [`work.checkpoint`](#workcheckpoint), [`work.checkpoints`](#workcheckpoints), [`work.compare`](#workcompare) |
+| Work | [`work.feed`](#workfeed), [`work.digest`](#workdigest), [`work.checkpoint`](#workcheckpoint), [`work.checkpoints`](#workcheckpoints), [`work.compare`](#workcompare), [`work.plan`](#workplan), [`work.pause`](#workpause), [`work.resume`](#workresume), [`work.note`](#worknote) |
 | Several at once | [`batch`](#batch) |
 | Observe | [`events.subscribe`](#eventssubscribe), [`events.read`](#eventsread), [`events.unsubscribe`](#eventsunsubscribe), [`log.tail`](#logtail), [`frame.capture`](#framecapture), [`frame.summary`](#framesummary), [`canvas.convert`](#canvasconvert) |
 | Display | [`display.list`](#displaylist), [`display.set`](#displayset), [`perf.stats`](#perfstats), [`debug.overlay`](#debugoverlay) |
@@ -6276,6 +6276,86 @@ both checkpoints hold a world. Needs: `read`.
 
 A checkpoint the session doesn't have fails with `-32001` and the path of the param that named
 it.
+
+### work.plan
+
+The agent's plan: what it is doing and its steps, which people watching see beside its commands
+([steering](watching-agents.md#steering)). Set the `task` and `steps` at the start of a task, tick
+steps with `done` as they finish and set `status` to `blocked` when a person is needed. With
+none of those, it returns the plan (another session's with `session`), and watchers may only
+read it. Each change is a line of the journal; the reply is the whole plan. Needs: `read`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `task` | string, at most 200 characters | | What the agent is doing, in a few words |
+| `steps` | array of up to 50 | | Every step, replacing the list: its text, or `{"text", "done", "story"}` |
+| `done` | array of integers | | Steps to tick, by number from 1 |
+| `status` | `"working"`, `"blocked"` or `"done"` | `"working"` | How the task stands |
+| `session` | string | this session | Read this session's plan instead |
+
+A step's `story` names a storyboard `task/...` entry it finishes. Ticking it while the task is
+still open hands back the [`storyboard.edit`](#storyboardedit) edit that closes it, in
+`story_edits`; pass them on as they are.
+
+```json
+{"task": "Build the boss room", "steps": ["Lay out the floor",
+  {"text": "Place the boss", "story": "task/boss_room"}, "Run the tests"]}
+```
+
+```json
+{"done": [1, 2]}
+```
+
+```json
+{"status":"working","steps":[{"done":true,"text":"Lay out the floor"},{"done":true,"story":"task/boss_room","text":"Place the boss"},{"done":false,"text":"Run the tests"}],"story_edits":[{"id":"task/boss_room","set":{"status":"done"},"version":"79769a08"}],"task":"Build the boss room"}
+```
+
+A step number past the list fails with `-32002` and the param's path; a `story` that names no
+task fails with `-32001` and the closest ID.
+
+### work.pause
+
+Pauses the agent's edits, for a person watching: until [`work.resume`](#workresume), every
+command a watcher couldn't run (anything that changes the world or files, or needs more than
+`read`) fails with `-32006`, its message carrying `why` and its `data.paused` the pause. Reads
+still work, so the agent can look around and say what it was doing. Only watchers may call it,
+through the session's watch server: `slash-cli work pause` or the watch page;
+the agent's own call fails with `-32003`. Needs: `read`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `why` | string, 1 to 500 characters | required | Why, for the agent |
+
+```json
+{"paused":{"why":"Wrong level: use level_2"}}
+```
+
+```json
+{"error":{"code":-32006,"data":{"paused":{"why":"Wrong level: use level_2"}},"message":"a person watching paused this session's edits: \"Wrong level: use level_2\"; reads still work, and edits will once they resume"}}
+```
+
+### work.resume
+
+Lets the agent edit again after [`work.pause`](#workpause); `resumed` says whether it was paused.
+Only watchers may call it. Needs: `read`.
+
+```json
+{"resumed":true}
+```
+
+### work.note
+
+Leaves the agent a note, for a person watching. Nothing stops: the agent's next reply, success
+or error, carries the notes waiting in `notes` (`[{"text"}]`), once. Notes are words for the
+agent to weigh, never commands the engine runs. Only watchers may call it. Needs: `read`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `text` | string, 1 to 2000 characters | required | The note |
+
+```json
+{"waiting":1}
+```
 
 ## Several at once
 

@@ -98,6 +98,8 @@ int http_status(int error_code) noexcept {
         return 404;
     case command::code::kConflict:
         return 409;
+    case command::code::kPaused:
+        return 423;
     default:
         return 500;
     }

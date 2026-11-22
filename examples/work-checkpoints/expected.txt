@@ -11,10 +11,10 @@ scene.save {"path": "lamp.scene.json"}
 work.checkpoints {"session": "20261122-140000-e5f6"}
   {"files":["main.scene.json"],"frame":true,"line":3,"n":1,"reason":"scene.save","time":"2026-11-22T14:00:04.000Z"}
   {"files":[],"frame":true,"label":"crate on the shelf","line":5,"n":2,"reason":"work.checkpoint","time":"2026-11-22T14:00:07.000Z"}
-  {"files":["main.scene.json"],"frame":true,"line":8,"n":3,"reason":"scene.save","time":"2026-11-22T14:00:12.000Z"}
-  {"files":["lamp.scene.json"],"frame":true,"line":11,"n":4,"reason":"scene.save","time":"2026-11-22T14:00:16.000Z"}
+  {"files":["main.scene.json"],"frame":true,"line":7,"n":3,"reason":"scene.save","time":"2026-11-22T14:00:10.000Z"}
+  {"files":["lamp.scene.json"],"frame":true,"line":10,"n":4,"reason":"scene.save","time":"2026-11-22T14:00:14.000Z"}
 work.compare {"session": "20261122-140000-e5f6", "from": 1, "to": 4}
-  {"entities":{"added":["lamp"],"changed":{"crate":{"Transform2D":{"position":[400.0,180.0]}},"lamp":{"Transform2D":{"position":[200.0,60.0]}}}},"files":{"added":["lamp.scene.json"],"changed":[{"lines":"+1 -1","path":"main.scene.json"}]},"from":{"frame":true,"line":3,"n":1,"reason":"scene.save","time":"2026-11-22T14:00:04.000Z"},"session":"20261122-140000-e5f6","to":{"frame":true,"line":11,"n":4,"reason":"scene.save","time":"2026-11-22T14:00:16.000Z"}}
+  {"entities":{"added":["lamp"],"changed":{"crate":{"Transform2D":{"position":[400.0,180.0]}},"lamp":{"Transform2D":{"position":[200.0,60.0]}}}},"files":{"added":["lamp.scene.json"],"changed":[{"lines":"+1 -1","path":"main.scene.json"}]},"from":{"frame":true,"line":3,"n":1,"reason":"scene.save","time":"2026-11-22T14:00:04.000Z"},"session":"20261122-140000-e5f6","to":{"frame":true,"line":10,"n":4,"reason":"scene.save","time":"2026-11-22T14:00:14.000Z"}}
 -- restore while the reviewer's session runs
   session 20261122-141000-a7b8 (slash-cli rpc) is running; restore once no agent is working in the project
 -- restore once no session runs, as slash-cli work restore 1

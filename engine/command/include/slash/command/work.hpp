@@ -126,6 +126,9 @@ public:
     void idle();
     // Writes the run of reads since the last line.
     void flush();
+    // A line of steering: {"paused": {"why"}}, {"resumed": true}, {"note": "<text>"} from the
+    // people watching, or {"plan": {...}} from the agent.
+    void steer(json::Value line);
 
     // The session calls this before it writes or removes a project file: the first time for each
     // path, it keeps what the file held, so a restore can put it back.
@@ -205,6 +208,9 @@ struct SessionEntry {
 
 // A journal line in plain words, one line, for slash-cli watch --text and work.feed.
 [[nodiscard]] std::string describe(const json::Value& line);
+// A plan (work.plan) in a few words: its task, how many steps are done, its status and the next
+// step.
+[[nodiscard]] std::string plan_gist(const json::Value& plan);
 
 // Reads "45s", "90m", "3h" or "2d" as milliseconds.
 [[nodiscard]] Result<std::int64_t> parse_duration(std::string_view text);

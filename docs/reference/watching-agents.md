@@ -103,7 +103,9 @@ second while the session runs:
 - Tests and checks: the last result of each command that returned one, judged as the journal
   judges it (`ok`, `passed`, `valid`, `failed` and lists of problems).
 - So far: [`work.digest`](commands.md#workdigest)'s summary of the session.
-- The agent's plan, once the engine has `work.plan`.
+- The agent's plan ([`work.plan`](commands.md#workplan)): its task and steps, ticked as they finish.
+- Steer, while the session runs: Pause with a reason, Resume, and a note for the agent
+  ([steering](#steering)).
 - Checkpoints: a strip of each [checkpoint](#checkpoints)'s frame with its label, newest last.
   Picking one sets it beside the one before with what changed between them
   ([`work.compare`](commands.md#workcompare)).
@@ -145,6 +147,33 @@ first, then writes each one the session touched back as it was at the checkpoint
 it made after), and refuses while any session in the project runs. It names the checkpoint's
 world file, which [`scene.open`](commands.md#sceneopen) loads.
 
+## Steering
+
+People watching can steer the agent without its vendor's app, from the CLI or the watch page,
+both through the session's watch server
+([`work.pause`](commands.md#workpause), [`work.resume`](commands.md#workresume),
+[`work.note`](commands.md#worknote)):
+
+```bash
+slash-cli work pause "Wrong level: use level_2"   # its edits fail with this; reads still work
+slash-cli work note "The crate goes left of the door"
+slash-cli work resume
+slash-cli work plan                               # its plan, ticked as it goes
+```
+
+While paused, each command a watcher couldn't run fails with `-32006` and the person's words, so
+the agent's next edit tells it why it stopped; it can still read, say what it was doing and keep
+its plan. A note rides on the agent's next reply, in `notes`, once. Notes are the person's words
+for the agent to weigh, never commands the engine runs. Only watchers can pause, resume and leave
+notes, so an agent can't lift a pause itself. Each is a line in the journal, and `work.digest`
+says when a session is paused.
+
+The agent keeps its own plan with [`work.plan`](commands.md#workplan): a task, steps it ticks as
+they finish and a status (`working`, `blocked` when it needs a person, `done`), which the watch
+page, `work.feed`, `work.digest` and `slash-cli work plan` show. A step can name the storyboard
+`task/...` it finishes: ticking it hands back the `storyboard.edit` that closes the task. Games
+made by `slash-cli init` tell agents to keep a plan, read notes and stop editing when paused.
+
 ## Settings
 
 `project.json`'s [`work`](project-format.md) block turns each part off:
@@ -169,6 +198,10 @@ window: the journal's new lines, read again when its files grow, and the world, 
 watch server on a thread of its own, since the session answers only between the agent's commands.
 The watch page is `watch_page` in `engine/server/src/watch_page.cpp`, which the server serves when
 `ServerOptions::watch_session` names the session.
+Steering is `Session::steering()`: `Session::call_command` refuses what a watcher couldn't run
+while `paused` is set, with `code::kPaused`, and `Session::call` moves the waiting `notes` into
+the agent's next reply; `Journal::steer` writes the lines, and `server::call_watched` runs a
+command on a live session through its watch server for the CLI.
 Checkpoints are `engine/command/src/checkpoints.cpp`: `Journal::before_write` keeps a file's
 first contents in the session's `base/` folder before `Session::write_file` or `commit_files`
 writes it, `take_checkpoint` saves the world and draws it with `canvas::capture`, and
