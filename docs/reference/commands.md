@@ -3,7 +3,7 @@
 Every command the engine registers, with its params, the capabilities it needs and a real example.
 The same commands are available everywhere:
 
-Status: current · Updated: 2026-11-20
+Status: current · Updated: 2026-11-22
 
 | Front end | How to call `entity.create` |
 | --- | --- |
