@@ -808,8 +808,8 @@ void add_asset_types(asset::Assets& assets) {
                                        return render::decode_image(bytes);
                                    });
     assets.add_type<render::Image>("procedural_texture", {std::string(procedural::kTextureSuffix)},
-                                   [](std::string_view text, std::string_view path) {
-                                       return procedural::decode_texture(path, text);
+                                   [&assets](std::string_view text, std::string_view path) {
+                                       return procedural::load_texture(assets, path, text);
                                    });
     assets.add_type<Theme>("theme", {std::string(kThemeSuffix)},
                            [](std::string_view text, std::string_view /*path*/) -> Result<Theme> {

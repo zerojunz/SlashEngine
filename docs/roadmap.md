@@ -27,9 +27,9 @@ ID as Actions secrets ([CONTRIBUTING.md](../CONTRIBUTING.md#releases)).
 
 The [agent-built worlds](#agent-built-worlds-and-smart-npcs) tool set is done too: its first 22
 items, from planning NPCs to procedural graphs that drive every tool, in 2D and 3D, ship in the
-launch release. Items 23 to 25, textures agents author as graphs and layer stacks, watching
-agents work and publishing to Steam, the Epic Games Store, GOG and itch.io, are next and ship in it
-too.
+launch release. Items 23 to 26, textures agents author as graphs and layer stacks, watching
+agents work, publishing to Steam, the Epic Games Store, GOG and itch.io, and hooks for vendors'
+frame generation, latency reduction and denoisers, are next and ship in it too.
 
 The engine builds and is tested on macOS, Linux and Windows. It covers the 2D and 3D feature
 sets, networking, XR, localization, video, accessibility, procedural generation and platform
@@ -1503,6 +1503,13 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         - [ ] GOG: builds made and uploaded through GOG's Pipeline Builder, and a built-in
               `galaxy` SDK package (the developer's own copy of the GOG Galaxy SDK) backing the
               same services
+26. [ ] Vendor frame generation, latency and denoiser hooks (2026-11-22): interfaces a game's SDK
+        package fills, as the temporal upscaler hook does, with no vendor code in the repository:
+        - [ ] Frame generation from a vendor's SDK (DLSS Frame Generation and Multi Frame
+              Generation, XeSS Frame Generation, FSR's) at the point frames are shown, in place of
+              the engine's own
+        - [ ] Latency markers for NVIDIA Reflex, AMD Anti-Lag 2 and Intel XeLL
+        - [ ] A denoiser hook with the ray-traced passes' inputs, for DLSS Ray Reconstruction
 
 Console ports are not on this roadmap and never will be in this repository. As with Godot,
 PlayStation, Xbox and Switch support comes from licensed porting partners as private backends.
@@ -1562,6 +1569,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Texture authoring | Texture graphs baked or live, mesh map bakes and layer stacks agents write, after Substance Designer and Painter | Launch | Next |
 | Watching agents work | A journal of every session, a live window and page, checkpoints, pausing and notes, and remote viewing through agents | Launch | Next |
 | Store publishing | Exports uploaded to Steam, the Epic Games Store, GOG and itch.io, with Steamworks, Epic Online Services and GOG Galaxy behind the services API | Launch | Next |
+| Vendor frame generation | Hooks for DLSS, XeSS and FSR frame generation, Reflex, Anti-Lag 2 and XeLL latency markers and DLSS Ray Reconstruction, filled by a game's SDK packages | Launch | Next |
 | Large worlds | Double-precision transforms, world streaming | After launch | Done: the double-precision build, camera-relative 3D drawing and world streaming |
 | Cinematics | Timeline tracks for cameras and events | After launch | Done: bezier, animation and audio tracks, camera cuts, markers and `animation.seek` |
 | Cloth and soft bodies | Jolt soft bodies | After launch | Done: Godot's `SoftBody3D` on Jolt, with pins, attachments and pressure |

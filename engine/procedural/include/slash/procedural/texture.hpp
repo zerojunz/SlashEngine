@@ -1,5 +1,6 @@
 #pragma once
 
+#include "slash/asset/assets.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/json_schema.hpp"
 #include "slash/core/math.hpp"
@@ -10,6 +11,7 @@
 #include "slash/world/world.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -33,7 +35,8 @@
 //   }
 //
 // Every field but "format" and "type" is optional, with Godot's default. The pixels are the same
-// on every machine.
+// on every machine. A file of "type": "graph" is a texture graph instead
+// (slash/procedural/texture_graph.hpp).
 namespace slash::procedural {
 
 inline constexpr std::string_view kTextureSuffix = ".texture.json";
@@ -78,13 +81,15 @@ struct GradientTexture2D {
 
 using ProceduralTexture = std::variant<NoiseTexture2D, GradientTexture1D, GradientTexture2D>;
 
-// JSON Schema for .texture.json files.
+// JSON Schema for .texture.json files, texture graphs included.
 [[nodiscard]] json::Value texture_schema();
 
-// Every error in a .texture.json document, each with the JSON Pointer of the bad value.
+// Every error in a .texture.json document, each with the JSON Pointer of the bad value; a graph's
+// through validate_texture_graph.
 [[nodiscard]] std::vector<json::ValidationError> validate_texture(const json::Value& doc);
 
-// The texture a .texture.json document describes, or its first error.
+// The texture a .texture.json document describes, or its first error; a graph is no
+// ProceduralTexture (compile_texture_graph makes it).
 [[nodiscard]] Result<ProceduralTexture> parse_texture(const json::Value& doc);
 
 // The texture as a .texture.json document, leaving out fields at their defaults.
@@ -95,8 +100,8 @@ using ProceduralTexture = std::variant<NoiseTexture2D, GradientTexture1D, Gradie
 // GradientTexture1D::_update and GradientTexture2D::_update.
 [[nodiscard]] render::Image make_image(const ProceduralTexture& texture);
 
-// Whether a path names a texture: an image file (render::is_image_path), a .texture.json file or
-// a texture gameplay code made (asset::is_made_path).
+// Whether a path names a texture: an image file (render::is_image_path), a .texture.json file
+// (with a graph's output after "::") or a texture gameplay code made (asset::is_made_path).
 [[nodiscard]] bool is_texture_path(std::string_view path);
 
 // Makes a texture from pixels gameplay code drew, as Godot's ImageTexture.create_from_image, an
@@ -111,6 +116,18 @@ Result<std::string> make_texture(world::World& world, std::string_view name, ren
 // image file by render::decode_image. For code that reads texture files outside assets, such as
 // checks of a material's textures.
 [[nodiscard]] Result<render::Image> decode_texture(std::string_view path, std::string_view bytes);
+// The same, with a texture graph's output named after "::" in path ("wall.texture.json::normal";
+// the first when none is) baked on device (null: the CPU twin), reading the files the graph names
+// through read: another graph's text, which is decoded the same way, and image files.
+[[nodiscard]] Result<render::Image>
+decode_texture(std::string_view path, std::string_view bytes,
+               const std::function<Result<std::string>(std::string_view path)>& read,
+               render::RenderDevice* device);
+
+// A .texture.json file's pixels as canvas and ui load them: a graph read through assets, so an
+// edit to a file it names reloads it, and baked on graph_device() (texture_graph.hpp).
+[[nodiscard]] Result<render::Image> load_texture(asset::Assets& assets, std::string_view path,
+                                                 std::string_view text);
 
 // Godot's Noise::get_image (seamless false) or get_seamless_image: one gray byte a pixel.
 [[nodiscard]] std::vector<std::uint8_t> noise_image(const Noise& noise, int width, int height,
