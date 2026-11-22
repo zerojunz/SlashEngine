@@ -21,6 +21,7 @@ class Session;
 //   GET  /v1/openapi.json      the same commands as an OpenAPI 3.1 document
 //   POST /rpc                  JSON-RPC 2.0, as slash-cli rpc speaks it over stdio
 //   POST /mcp                  MCP over Streamable HTTP (JSON responses, no event stream)
+//   GET  /watch                on a watch server, the watch page (ServerOptions::watch_session)
 //
 // Every request needs "Authorization: Bearer <token>". The server binds to the loopback
 // interface only and rejects requests whose Host or Origin header names another site, which
@@ -40,6 +41,10 @@ struct ServerOptions {
     // (command::Session::set_watching), so only commands that read run and the session's journal
     // and client are left alone.
     bool watch_only = false;
+    // On a watch server, the ID of the session GET /watch shows: a page for people (no token
+    // needed for the page itself; it reads the token from the link's fragment, /watch#token=...,
+    // which browsers never send, and calls the commands with it).
+    std::string watch_session;
 };
 
 // Where a running server listens, as written to .slash/server.json for other tools to find.

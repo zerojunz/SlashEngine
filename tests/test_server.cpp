@@ -156,6 +156,41 @@ TEST_CASE("requests need the token and a local Host and Origin") {
     CHECK(live.session->world().size() == 0);
 }
 
+TEST_CASE("a watch server serves its watch page without the token, to local pages only") {
+    server::ServerOptions options;
+    options.watch_only = true;
+    options.watch_session = "20261122-150000-w1n2</script>";
+    Live live(options);
+    server::Endpoint anyone = live.http->endpoint();
+    anyone.token.clear();
+    server::HttpRequest page;
+    page.method = "GET";
+    page.path = "/watch";
+    const server::HttpResponse shown = live.send_to(anyone, page);
+    CHECK(shown.status == 200);
+    CHECK(shown.content_type == "text/html; charset=utf-8");
+    // The ID is a JavaScript string, and can't end the script.
+    CHECK(shown.body.find(R"(const SESSION = "20261122-150000-w1n2<\/script>";)") !=
+          std::string::npos);
+    CHECK(shown.body.find("w1n2</script>") == std::string::npos);
+    CHECK(shown.body.find("location.hash") != std::string::npos);
+
+    // The commands still need the token, and the page a local Host.
+    server::HttpRequest query;
+    query.path = "/v1/commands/world.query";
+    CHECK(live.send_to(anyone, query).status == 401);
+    server::HttpRequest rebinding = page;
+    rebinding.headers = {{"Host", "evil.example"}};
+    CHECK(live.send(rebinding).status == 403);
+
+    // Other servers have no watch page, and say so only to those with the token.
+    Live plain;
+    server::Endpoint stranger = plain.http->endpoint();
+    stranger.token.clear();
+    CHECK(plain.send_to(stranger, page).status == 401);
+    CHECK(plain.send(page).status == 404);
+}
+
 TEST_CASE("JSON-RPC is served at /rpc") {
     Live live;
     auto response = live.post("/rpc", R"({"jsonrpc": "2.0", "id": 4, "method": "entity.create",

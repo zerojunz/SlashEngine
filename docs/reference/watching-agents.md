@@ -85,6 +85,29 @@ would, without stepping it. Over it:
 
 The window keeps showing the last world after the session ends, until it is closed.
 
+## The watch page
+
+Each watch server also serves a page for people at `GET /watch`. `slash-cli watch --browser`
+opens it for a running session, and `--url` prints its link, `http://127.0.0.1:<port>/watch#token=<token>`,
+to open elsewhere on the same machine ([CLI](cli.md#watch)). The token rides in the link's
+fragment, which browsers never send, so the page itself needs none; it calls the session's
+commands with it as any watcher does, so it can only read. It shows, and keeps up to date every
+second while the session runs:
+
+- The world now: `frame.capture`'s picture, drawn again after each command that changed
+  something and every 10 seconds otherwise, or with "Draw again".
+- What the agent did, newest first, from [`work.feed`](commands.md#workfeed): each command with its
+  params, chips for the entities it added, removed and changed (with the components) and the
+  files it wrote, and each failure's message.
+- Tests and checks: the last result of each command that returned one, judged as the journal
+  judges it (`ok`, `passed`, `valid`, `failed` and lists of problems).
+- So far: [`work.digest`](commands.md#workdigest)'s summary of the session.
+- The agent's plan, once the engine has `work.plan`.
+
+The page follows the system's light or dark theme and fits a phone's screen. It is one
+self-contained file with no outside scripts, styles or fonts, served with a Content Security
+Policy that lets it reach only its own server.
+
 ## Settings
 
 `project.json`'s [`work`](project-format.md) block turns either part off:
@@ -107,6 +130,8 @@ serves it with `Watched`, a `watch_only` server that runs each request with
 answer watchers while they wait for the agent. `server::Follower` follows a session for the
 window: the journal's new lines, read again when its files grow, and the world, fetched from the
 watch server on a thread of its own, since the session answers only between the agent's commands.
+The watch page is `watch_page` in `engine/server/src/watch_page.cpp`, which the server serves when
+`ServerOptions::watch_session` names the session.
 `debug::WatchView` (`slash/debug/watch_view.hpp`) is the window's UI, controls in a world of their
 own drawn with `CanvasOptions::overlay`: it places outlines from the frame's
 `canvas::FrameContents` in 2D, and in 3D from `navigation::world_geometry`'s boxes projected

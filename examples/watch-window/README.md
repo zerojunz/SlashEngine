@@ -26,4 +26,7 @@ window at 6.0 s: ...
   read only, and go in no journal.
 - A 3D entity's outline covers its meshes and shapes, and its children's, as the current camera
   sees them; an entity that draws nothing gets a small square at its origin.
-- `slash-cli watch --text` prints the journal's lines instead, as before.
+- `slash-cli watch --text` prints the journal's lines instead, as before, and
+  `slash-cli watch --browser` opens the session's watch page: its frame, each command's diff, its
+  tests and checks, and a summary, kept up to date every second. The page needs no token; its
+  link carries it in the fragment, which browsers never send.

@@ -334,6 +334,14 @@ std::int64_t process_id() {
 #endif
 }
 
+Result<void> open_url(const std::string& url) {
+    if (!SDL_OpenURL(url.c_str())) {
+        return make_error(ErrorCode::PlatformFailure,
+                          std::string("could not open the link: ") + SDL_GetError());
+    }
+    return {};
+}
+
 bool process_running(std::int64_t id) {
     if (id <= 0) {
         return false;
