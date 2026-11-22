@@ -1,7 +1,10 @@
 #include "slash/command/work.hpp"
 
+#include "checkpoints.hpp"
+
 #include "slash/command/session.hpp"
 #include "slash/core/log.hpp"
+#include "slash/core/text.hpp"
 #include "slash/core/version.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/process.hpp"
@@ -409,6 +412,10 @@ Settings read_settings(std::string_view project_root) {
     if (const json::Value* serve = work->find("serve"); serve != nullptr && serve->is_bool()) {
         settings.serve = serve->as_bool();
     }
+    if (const json::Value* checkpoints = work->find("checkpoints");
+        checkpoints != nullptr && checkpoints->is_bool()) {
+        settings.checkpoints = checkpoints->as_bool();
+    }
     if (const json::Value* size = work->find("max_mb");
         size != nullptr && size->is_int() && size->as_int() >= 1) {
         settings.max_bytes = static_cast<std::uint64_t>(size->as_int()) << 20U;
@@ -556,6 +563,7 @@ Result<std::unique_ptr<Journal>> Journal::open(JournalOptions options) {
         for (const std::string& path : file.paths) {
             (void)platform::remove_file(join(options.project_root, path));
         }
+        remove_checkpoints(options.project_root, file.id);
         total -= std::min(total, file.bytes);
     }
 
@@ -751,6 +759,7 @@ std::vector<JournalFile> list_journals(std::string_view project_root) {
         }
     }
     for (auto& [id, file] : by_id) {
+        file.bytes += checkpoint_bytes(project_root, id);
         journals.push_back(std::move(file));
     }
     return journals;
@@ -927,6 +936,17 @@ std::string describe(const json::Value& line) {
     }
     if (line.find("end") != nullptr) {
         return text + "session ended";
+    }
+    if (const json::Value* n = line.find("checkpoint"); n != nullptr && n->is_int()) {
+        text += "checkpoint " + std::to_string(n->as_int());
+        const json::Value* label = line.find("label");
+        const json::Value* reason = line.find("reason");
+        if (label != nullptr && label->is_string()) {
+            text += ": " + label->as_string();
+        } else if (reason != nullptr && reason->is_string()) {
+            text += " (" + reason->as_string() + ")";
+        }
+        return text;
     }
     if (const json::Value* client = line.find("client");
         client != nullptr && client->is_string() && !client->as_string().empty()) {
@@ -1421,6 +1441,167 @@ void register_work_commands(Registry& registry) {
                 const json::Value* named = params.find("session");
                 return Reply::success(digest(session.options().project_root, from.value(),
                                              named != nullptr ? named->as_string() : ""));
+            },
+    });
+
+    json::Value mark;
+    mark["type"] = "object";
+    mark["additionalProperties"] = false;
+    mark["properties"]["label"]["type"] = "string";
+    mark["properties"]["label"]["maxLength"] = 200;
+    mark["properties"]["label"]["description"] = "What the work has reached, in a few words.";
+    registry.add({
+        .name = "work.checkpoint",
+        .description = "Marks a checkpoint in this session's work, as scene.save and a passing "
+                       "test.run do: the files written since the last one, the world and a "
+                       "frame, so a person can compare it and go back to it.",
+        .capabilities = {Capability::Read},
+        .effect = Effect::Read,
+        .params = std::move(mark),
+        .handler =
+            [](Session& session, const json::Value& params) {
+                const json::Value* label = params.find("label");
+                auto taken = take_checkpoint(session, "work.checkpoint",
+                                             label != nullptr ? label->as_string() : "");
+                if (!taken) {
+                    return Reply::failure(taken.error());
+                }
+                json::Value result = taken.value().to_json();
+                result["session"] = session.options().journal->id();
+                return Reply::success(std::move(result));
+            },
+    });
+
+    // The session named, else the newest; a failure when there is none.
+    const auto pick = [](Session& session, const json::Value& params) -> Result<std::string> {
+        if (session.options().journal != nullptr) {
+            session.options().journal->flush();
+        }
+        const json::Value* named = params.find("session");
+        std::string id = pick_session(session.options().project_root,
+                                      named != nullptr ? std::string_view(named->as_string()) : "");
+        if (id.empty()) {
+            return make_error(ErrorCode::NotFound,
+                              "no session has written a work journal in this project yet");
+        }
+        return id;
+    };
+
+    json::Value listing;
+    listing["type"] = "object";
+    listing["additionalProperties"] = false;
+    listing["properties"]["session"] = session_param;
+    listing["properties"]["after"]["type"] = "integer";
+    listing["properties"]["after"]["minimum"] = 0;
+    listing["properties"]["after"]["description"] = "Only checkpoints after this one.";
+    listing["properties"]["image"]["type"] = "boolean";
+    listing["properties"]["image"]["default"] = false;
+    listing["properties"]["image"]["description"] = "Each one's frame as a base64 PNG, as \"png\".";
+    registry.add({
+        .name = "work.checkpoints",
+        .description = "A session's checkpoints, oldest first: when, why, the files each holds "
+                       "and, with image, its frame.",
+        .capabilities = {Capability::Read},
+        .effect = Effect::Read,
+        .params = std::move(listing),
+        .handler =
+            [pick](Session& session, const json::Value& params) {
+                auto id = pick(session, params);
+                if (!id) {
+                    return Reply::failure(id.error());
+                }
+                const json::Value* after = params.find("after");
+                const bool image = params.find("image") != nullptr && at(params, "image").as_bool();
+                json::Array list;
+                for (const Checkpoint& checkpoint :
+                     list_checkpoints(session.options().project_root, id.value())) {
+                    if (after != nullptr && checkpoint.n <= after->as_int()) {
+                        continue;
+                    }
+                    json::Value entry = checkpoint.to_json();
+                    if (image && checkpoint.frame) {
+                        if (auto png = checkpoint_frame(session.options().project_root, id.value(),
+                                                        checkpoint.n);
+                            png) {
+                            entry["png"] = base64_encode(png.value());
+                        }
+                    }
+                    list.push_back(std::move(entry));
+                }
+                json::Value result;
+                result["session"] = id.value();
+                result["checkpoints"] = std::move(list);
+                return Reply::success(std::move(result));
+            },
+    });
+
+    json::Value compare;
+    compare["type"] = "object";
+    compare["additionalProperties"] = false;
+    compare["properties"]["session"] = session_param;
+    compare["properties"]["from"]["type"] = "integer";
+    compare["properties"]["from"]["minimum"] = 1;
+    compare["properties"]["from"]["description"] = "A checkpoint; default the one before to.";
+    compare["properties"]["to"]["type"] = "integer";
+    compare["properties"]["to"]["minimum"] = 1;
+    compare["properties"]["to"]["description"] = "A checkpoint; default the last.";
+    compare["properties"]["image"]["type"] = "boolean";
+    compare["properties"]["image"]["default"] = false;
+    compare["properties"]["image"]["description"] =
+        "Both frames as base64 PNGs, to set side by side.";
+    registry.add({
+        .name = "work.compare",
+        .description = "What changed between two of a session's checkpoints: files added, "
+                       "removed and changed (with lines), and entities as world.diff gives "
+                       "them; with image, both frames.",
+        .capabilities = {Capability::Read},
+        .effect = Effect::Read,
+        .params = std::move(compare),
+        .handler =
+            [pick](Session& session, const json::Value& params) {
+                auto id = pick(session, params);
+                if (!id) {
+                    return Reply::failure(id.error());
+                }
+                const std::string& root = session.options().project_root;
+                const std::vector<Checkpoint> list = list_checkpoints(root, id.value());
+                const json::Value* from = params.find("from");
+                const json::Value* to = params.find("to");
+                if (to == nullptr && list.empty()) {
+                    return Reply::failure(code::kNotFound,
+                                          "session " + id.value() + " has no checkpoints yet");
+                }
+                const std::int64_t last = to != nullptr ? to->as_int() : list.back().n;
+                std::int64_t first = last - 1;
+                if (from != nullptr) {
+                    first = from->as_int();
+                } else {
+                    // The checkpoint before it, or itself when it is the first.
+                    first = last;
+                    for (const Checkpoint& checkpoint : list) {
+                        if (checkpoint.n < last) {
+                            first = checkpoint.n;
+                        }
+                    }
+                }
+                auto compared =
+                    compare_checkpoints(root, id.value(), first, last, session.components());
+                if (!compared) {
+                    json::Value data;
+                    data["path"] = from != nullptr ? "/from" : "/to";
+                    return Reply::failure(code::kNotFound, compared.error().message,
+                                          std::move(data));
+                }
+                json::Value result = std::move(compared).value();
+                result["session"] = id.value();
+                if (params.find("image") != nullptr && at(params, "image").as_bool()) {
+                    for (const auto& [key, n] : {std::pair{"from", first}, std::pair{"to", last}}) {
+                        if (auto png = checkpoint_frame(root, id.value(), n); png) {
+                            result[key]["png"] = base64_encode(png.value());
+                        }
+                    }
+                }
+                return Reply::success(std::move(result));
             },
     });
 }

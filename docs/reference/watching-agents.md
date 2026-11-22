@@ -61,6 +61,7 @@ work digest` sums up the project's work over a stretch ([CLI](cli.md#watch)):
 13:05:08  claude-code  entity.get {"id":"crat"}  FAILED: /id: no entity has the id "crat"; did you mean "crate"?
 13:05:09  claude-code  storyboard.check  -> ok
 13:05:10  claude-code  scene.save {"path":"main.scene.json"}  wrote main.scene.json
+13:05:12  checkpoint 1 (scene.save)
 ```
 
 Agents read the same with [`work.feed`](commands.md#workfeed) and
@@ -103,17 +104,53 @@ second while the session runs:
   judges it (`ok`, `passed`, `valid`, `failed` and lists of problems).
 - So far: [`work.digest`](commands.md#workdigest)'s summary of the session.
 - The agent's plan, once the engine has `work.plan`.
+- Checkpoints: a strip of each [checkpoint](#checkpoints)'s frame with its label, newest last.
+  Picking one sets it beside the one before with what changed between them
+  ([`work.compare`](commands.md#workcompare)).
 
 The page follows the system's light or dark theme and fits a phone's screen. It is one
 self-contained file with no outside scripts, styles or fonts, served with a Content Security
 Policy that lets it reach only its own server.
 
+## Checkpoints
+
+A journaled session keeps checkpoints of its work in `.slash/work/checkpoints/<session>/`, so a
+person can see how it got where it is, compare two points and go back to one. It takes one after
+each `scene.save`, each `test.run` with no failures and each
+[`work.checkpoint`](commands.md#workcheckpoint), which an agent calls with a `label` when its
+work reaches a point worth keeping. A checkpoint holds:
+
+- The files the session wrote since the last one, as they are then (the first time the session
+  writes a file, it keeps the file as it was before too, so the project can go back to before the
+  session started).
+- The world, as `scene.save` writes it, and a frame of it drawn on the CPU, at most 480 pixels
+  wide.
+
+Each is a line in the journal too (`checkpoint 2: crate on the shelf`). Checkpoints share the
+journals' room (`work.max_mb`) and go with their session's journal.
+
+```bash
+slash-cli work checkpoints            # the timeline: number, time, label, files
+slash-cli work compare 2 5            # what changed from checkpoint 2 to 5
+slash-cli work restore 3              # the files back as they were at checkpoint 3
+slash-cli work video --out work.ivf   # the frames as a video, one a second
+```
+
+[`work.checkpoints`](commands.md#workcheckpoints) lists them and
+[`work.compare`](commands.md#workcompare) compares two: the files added, removed and changed,
+with lines, and the entities as `world.diff` gives them, with both frames when asked
+(`image`). `work restore` ([CLI](cli.md#work)) is the CLI's alone, never a command, since it runs only
+while no session does, an agent's included: it keeps the files as they are now as a new checkpoint
+first, then writes each one the session touched back as it was at the checkpoint (removing those
+it made after), and refuses while any session in the project runs. It names the checkpoint's
+world file, which [`scene.open`](commands.md#sceneopen) loads.
+
 ## Settings
 
-`project.json`'s [`work`](project-format.md) block turns either part off:
+`project.json`'s [`work`](project-format.md) block turns each part off:
 
 ```json
-{"work": {"journal": true, "serve": true, "max_mb": 64}}
+{"work": {"journal": true, "serve": true, "checkpoints": true, "max_mb": 64}}
 ```
 
 ## Engine notes
@@ -132,6 +169,13 @@ window: the journal's new lines, read again when its files grow, and the world, 
 watch server on a thread of its own, since the session answers only between the agent's commands.
 The watch page is `watch_page` in `engine/server/src/watch_page.cpp`, which the server serves when
 `ServerOptions::watch_session` names the session.
+Checkpoints are `engine/command/src/checkpoints.cpp`: `Journal::before_write` keeps a file's
+first contents in the session's `base/` folder before `Session::write_file` or `commit_files`
+writes it, `take_checkpoint` saves the world and draws it with `canvas::capture`, and
+`Journal::checkpoint` stores the files written since the last one in `<n>/` with a
+`checkpoint.json`, so a file's contents at checkpoint n are those of the last checkpoint up to n
+that holds it, else `base/`'s. `list_checkpoints`, `compare_checkpoints` and
+`restore_checkpoint` read them back.
 `debug::WatchView` (`slash/debug/watch_view.hpp`) is the window's UI, controls in a world of their
 own drawn with `CanvasOptions::overlay`: it places outlines from the frame's
 `canvas::FrameContents` in 2D, and in 3D from `navigation::world_geometry`'s boxes projected

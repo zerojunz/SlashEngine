@@ -64,6 +64,11 @@ code { background: var(--code); border-radius: 4px; padding: 0 4px; font-size: 1
 .reads { color: var(--muted); }
 #checks li, #plan li { padding: 3px 0; }
 #summary { margin: 0; padding-left: 18px; }
+#strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.thumb { flex: 0 0 auto; width: 132px; padding: 4px; text-align: left; font-size: 12px; }
+.thumb img, .pair img { width: 100%; display: block; border-radius: 4px; background: var(--code); }
+.thumb.picked { border-color: var(--changed); }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
 </style>
 </head>
 )HTML";
@@ -82,6 +87,11 @@ constexpr std::string_view kBody = R"HTML(<body>
       <img id="frame" alt="The agent's world as its window shows it">
       <p class="muted"><span id="frame-note">No frame yet.</span>
         <button id="refresh" type="button">Draw again</button></p>
+    </section>
+    <section id="checkpoints-section" hidden>
+      <h2>Checkpoints</h2>
+      <div id="strip"></div>
+      <div id="compare"></div>
     </section>
     <section>
       <h2>So far</h2>
@@ -112,6 +122,7 @@ const token = new URLSearchParams(location.hash.slice(1)).get("token") || "";
 const $ = (id) => document.getElementById(id);
 $("session").textContent = SESSION;
 let next = 0, live = true, framed = 0, wantFrame = true;
+let lastCheckpoint = 0, wantCheckpoints = true;
 const checks = new Map();
 
 async function call(name, params) {
@@ -169,6 +180,10 @@ function show(line) {
   } else if (line.reads) {
     const names = Object.entries(line.reads).map(([n, k]) => k > 1 ? n + " x" + k : n);
     item.append(el("span", "reads", "read: " + names.join(", ")));
+  } else if (line.checkpoint) {
+    item.append(el("span", "ok", "checkpoint " + line.checkpoint + ": " +
+                                  (line.label || line.reason || "")));
+    wantCheckpoints = true;
   } else if (line.event) {
     item.append(el("span", "muted", line.event));
   } else {
@@ -248,6 +263,73 @@ async function readFrame() {
   wantFrame = false;
 }
 
+function caption(c) {
+  return c.n + "  " + clock(c.time) + "  " + (c.label || c.reason);
+}
+
+function chipList(target, cls, prefix, items) {
+  for (const item of items || []) target.append(el("span", "chip " + cls, prefix + item));
+}
+
+async function pick(n, button) {
+  for (const other of document.querySelectorAll(".thumb")) other.classList.remove("picked");
+  button.classList.add("picked");
+  const out = $("compare");
+  try {
+    const c = await call("work.compare", {session: SESSION, to: n, image: true});
+    out.replaceChildren();
+    const files = c.files || {};
+    const entities = c.entities || {};
+    const what = el("div");
+    what.append(el("span", "muted", c.from.n === c.to.n ? "The first checkpoint. "
+                                   : "From " + c.from.n + " to " + c.to.n + ": "));
+    chipList(what, "added", "+", files.added);
+    chipList(what, "removed", "-", files.removed);
+    chipList(what, "changed", "~", (files.changed || []).map((f) => f.path + " " + f.lines));
+    chipList(what, "added", "+", entities.added);
+    chipList(what, "removed", "-", entities.removed);
+    chipList(what, "changed", "~", Object.keys(entities.changed || {})
+                                         .filter((id) => !(entities.added || []).includes(id)));
+    out.append(what);
+    const pair = el("div", "pair");
+    for (const side of [c.from, c.to]) {
+      const figure = el("div");
+      if (side.png) {
+        const img = el("img");
+        img.src = "data:image/png;base64," + side.png;
+        img.alt = "Checkpoint " + side.n;
+        figure.append(img);
+      }
+      figure.append(el("div", "muted", caption(side)));
+      pair.append(figure);
+    }
+    out.append(pair);
+  } catch (error) {
+    out.replaceChildren(el("div", "failing", error.message));
+  }
+}
+
+async function readCheckpoints() {
+  wantCheckpoints = false;
+  const list = await call("work.checkpoints", {session: SESSION, after: lastCheckpoint,
+                                               image: true});
+  for (const c of list.checkpoints || []) {
+    const button = el("button", "thumb");
+    button.type = "button";
+    if (c.png) {
+      const img = el("img");
+      img.src = "data:image/png;base64," + c.png;
+      img.alt = "Checkpoint " + c.n;
+      button.append(img);
+    }
+    button.append(el("div", "", caption(c)));
+    button.addEventListener("click", () => pick(c.n, button));
+    $("strip").append(button);
+    lastCheckpoint = Math.max(lastCheckpoint, c.n);
+    $("checkpoints-section").hidden = false;
+  }
+}
+
 $("refresh").addEventListener("click", () => { wantFrame = true; tick(); });
 
 let busy = false;
@@ -259,6 +341,7 @@ async function tick() {
     if (wantFrame || (live && Date.now() - framed > 10000)) await readFrame();
     await readSummary();
     await readPlan();
+    if (wantCheckpoints) await readCheckpoints();
   } catch (error) {
     $("state").textContent = token ? "ended, or out of reach" : "no token in the link";
     $("state").className = "pill failing";

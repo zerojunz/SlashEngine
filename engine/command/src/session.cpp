@@ -41,6 +41,18 @@
 namespace slash::command {
 namespace {
 
+// Whether a command that succeeded is a checkpoint: a saved scene, or tests that all passed.
+bool passed_checkpoint(std::string_view name, const Reply& reply) {
+    if (name == "scene.save") {
+        return true;
+    }
+    if (name != "test.run" || !reply.value.is_object()) {
+        return false;
+    }
+    const json::Value* failed = reply.value.find("failed");
+    return failed != nullptr && failed->is_array() && failed->as_array().empty();
+}
+
 // How many log lines a session keeps for log.tail.
 constexpr std::size_t kMaxLogLines = 1000;
 
@@ -432,6 +444,13 @@ Reply Session::call(std::string_view name, const json::Value& params) {
         });
         journal_changes_ = {};
         journal_files_.clear();
+        // A saved scene and tests that pass are moments to go back to.
+        if (reply.ok && options_.journal->keeps_checkpoints() && passed_checkpoint(name, reply)) {
+            if (auto taken = work::take_checkpoint(*this, name, ""); !taken) {
+                log::warn("no checkpoint was taken",
+                          {{"command", std::string(name)}, {"detail", taken.error().message}});
+            }
+        }
     }
     if (outermost && reply.ok && call_listener_) {
         const json::Value* dry_run = params.is_object() ? params.find("dry_run") : nullptr;
@@ -704,20 +723,22 @@ Result<void> Session::write_file(const std::string& full, std::string_view conte
             return made.error();
         }
     }
-    if (auto written = platform::write_file(full, contents); !written) {
-        return written;
-    }
+    std::string path;
     if (journaling_) {
         // The journal names files by their project paths.
-        std::string path = std::filesystem::path(full)
-                               .lexically_relative(std::filesystem::path(options_.project_root))
-                               .generic_string();
+        path = std::filesystem::path(full)
+                   .lexically_relative(std::filesystem::path(options_.project_root))
+                   .generic_string();
         if (path.empty() || path.starts_with("..")) {
             path = full;
         }
-        if (std::ranges::find(journal_files_, path) == journal_files_.end()) {
-            journal_files_.push_back(std::move(path));
-        }
+        options_.journal->before_write(path);
+    }
+    if (auto written = platform::write_file(full, contents); !written) {
+        return written;
+    }
+    if (journaling_ && std::ranges::find(journal_files_, path) == journal_files_.end()) {
+        journal_files_.push_back(std::move(path));
     }
     return {};
 }
@@ -916,6 +937,9 @@ Result<void> Session::commit_files() {
         }
         // Assets reload what was written even when its stamp didn't change.
         assets_.mark_changed(path);
+        if (journaling_) {
+            options_.journal->before_write(path);
+        }
         if (file.remove) {
             if (auto removed = platform::remove_file(resolved.value()); !removed) {
                 return removed.error();

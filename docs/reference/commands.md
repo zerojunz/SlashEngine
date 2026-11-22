@@ -103,7 +103,7 @@ as `entity.get`, reject it as an unknown param.
 | Replays | [`replay.record`](#replayrecord), [`replay.stop`](#replaystop), [`replay.run`](#replayrun), [`replay.seek`](#replayseek) |
 | Tests | [`test.run`](#testrun), [`playtest.run`](#playtestrun) |
 | History | [`undo`](#undo), [`redo`](#redo), [`history.get`](#historyget) |
-| Work | [`work.feed`](#workfeed), [`work.digest`](#workdigest) |
+| Work | [`work.feed`](#workfeed), [`work.digest`](#workdigest), [`work.checkpoint`](#workcheckpoint), [`work.checkpoints`](#workcheckpoints), [`work.compare`](#workcompare) |
 | Several at once | [`batch`](#batch) |
 | Observe | [`events.subscribe`](#eventssubscribe), [`events.read`](#eventsread), [`events.unsubscribe`](#eventsunsubscribe), [`log.tail`](#logtail), [`frame.capture`](#framecapture), [`frame.summary`](#framesummary), [`canvas.convert`](#canvasconvert) |
 | Display | [`display.list`](#displaylist), [`display.set`](#displayset), [`perf.stats`](#perfstats), [`debug.overlay`](#debugoverlay) |
@@ -6222,6 +6222,60 @@ earlier in the stretch), with the same in a dozen plain `lines`. Needs: `read`.
 ```json
 {"checks":{"storyboard.check":{"gist":"ok","ok":true,"runs":1,"time":"2026-11-22T13:05:09.000Z"}},"commands":4,"entities":{"added":2,"changed":1,"removed":0},"failed":1,"files":["main.scene.json"],"from":"2026-11-22T13:05:01.000Z","last_failure":{"command":"entity.get","message":"/id: no entity has the id \"crat\"; did you mean \"crate\"?","time":"2026-11-22T13:05:08.000Z"},"lines":["1 session: 20261122-130500-a1b2 (slash-mcp, claude-code)","4 commands and 2 reads from 13:05:01 to 13:05:11 UTC; 1 failed.","..."],"reads":2,"scenes":["main.scene.json"],"sessions":[{"clients":["claude-code"],"commands":4,"host":"slash-mcp","id":"20261122-130500-a1b2","live":false}],"since":"2026-11-22T13:00:00.000Z","tests":{},"until":"2026-11-22T13:05:11.000Z"}
 ```
+
+### work.checkpoint
+
+Marks a checkpoint in the calling session's work, as `scene.save` and a `test.run` with no
+failures do by themselves: the files the session wrote since the last checkpoint, the world and
+a frame drawn on the CPU, so a person can [compare](#workcompare) it and go back to it
+([checkpoints](watching-agents.md#checkpoints)). Needs: `read`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `label` | string, at most 200 characters | | What the work has reached, in a few words |
+
+```json
+{"files":[],"frame":true,"label":"crate placed","line":5,"n":2,"reason":"work.checkpoint","session":"20261122-150646-d839","time":"2026-11-22T15:06:47.358Z"}
+```
+
+It fails in a session that keeps no checkpoints (no journal, or `project.json`'s
+`work.checkpoints` off) and for watchers.
+
+### work.checkpoints
+
+A session's checkpoints, oldest first: each one's number, time, reason (the command that took
+it), label, journal line, the files it holds and removed and whether it has a frame. Needs:
+`read`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `session` | string | the newest live session, else the newest journal | The session's ID |
+| `after` | integer | | Only checkpoints after this number |
+| `image` | boolean | `false` | Each one's frame as a base64 PNG, as `png` |
+
+```json
+{"checkpoints":[{"files":["main.scene.json"],"frame":true,"line":8,"n":3,"reason":"scene.save","time":"2026-11-22T15:06:47.360Z"}],"session":"20261122-150646-d839"}
+```
+
+### work.compare
+
+What changed between two of a session's checkpoints: the files added, removed and changed (with
+the lines added and removed), and the entities as [`world.diff`](#worlddiff) gives them when
+both checkpoints hold a world. Needs: `read`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `session` | string | the newest live session, else the newest journal | The session's ID |
+| `from` | integer | the checkpoint before `to` | The checkpoint to compare from |
+| `to` | integer | the last checkpoint | The checkpoint to compare to |
+| `image` | boolean | `false` | Both frames as base64 PNGs, as `from.png` and `to.png`, to set side by side |
+
+```json
+{"entities":{"changed":{"crate":{"Transform2D":{"position":[420.0,200.0]}}}},"files":{"changed":[{"lines":"+1 -1","path":"main.scene.json"}]},"from":{"frame":true,"line":8,"n":3,"reason":"scene.save","time":"2026-11-22T15:06:47.360Z"},"session":"20261122-150646-d839","to":{"frame":true,"line":11,"n":4,"reason":"scene.save","time":"2026-11-22T15:06:47.362Z"}}
+```
+
+A checkpoint the session doesn't have fails with `-32001` and the path of the param that named
+it.
 
 ## Several at once
 
