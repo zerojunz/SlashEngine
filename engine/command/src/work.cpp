@@ -8,6 +8,7 @@
 #include "slash/core/version.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/process.hpp"
+#include "slash/storyboard/storyboard.hpp"
 
 #include <algorithm>
 #include <array>
@@ -704,6 +705,11 @@ void Journal::record_event(std::string_view what, const json::Value& changes) {
     write(std::move(line));
 }
 
+void Journal::steer(json::Value line) {
+    flush();
+    write(std::move(line));
+}
+
 void Journal::idle() {
     if (read_count_ > 0 && now() - reads_until_ >= kReadQuietMs) {
         flush();
@@ -920,6 +926,52 @@ std::string pick_session(std::string_view project_root, std::string_view id) {
 
 // Plain words ------------------------------------------------------------------------------------
 
+namespace {
+
+// Text with a full stop, unless it ends with one already.
+std::string sentence(std::string text) {
+    if (text.empty() || (text.back() != '.' && text.back() != '?' && text.back() != '!')) {
+        text += '.';
+    }
+    return text;
+}
+
+} // namespace
+
+std::string plan_gist(const json::Value& plan) {
+    std::string text;
+    if (const json::Value* task = plan.find("task"); task != nullptr && task->is_string()) {
+        text = task->as_string();
+    }
+    std::size_t done = 0;
+    std::size_t steps = 0;
+    std::string next;
+    if (const json::Value* list = plan.find("steps"); list != nullptr && list->is_array()) {
+        for (const json::Value& step : list->as_array()) {
+            ++steps;
+            const json::Value* ticked = step.find("done");
+            if (ticked != nullptr && ticked->is_bool() && ticked->as_bool()) {
+                ++done;
+            } else if (const json::Value* words = step.find("text");
+                       next.empty() && words != nullptr && words->is_string()) {
+                next = words->as_string();
+            }
+        }
+    }
+    if (!text.empty()) {
+        text += ", ";
+    }
+    text += std::to_string(done) + " of " + std::to_string(steps) + " steps done";
+    if (const json::Value* status = plan.find("status");
+        status != nullptr && status->is_string() && status->as_string() != "working") {
+        text += " (" + status->as_string() + ")";
+    }
+    if (!next.empty()) {
+        text += "; next: " + next;
+    }
+    return text;
+}
+
 std::string describe(const json::Value& line) {
     std::string text = time_of_day(line) + "  ";
     if (const json::Value* start = line.find("start"); start != nullptr && start->is_object()) {
@@ -948,9 +1000,23 @@ std::string describe(const json::Value& line) {
         }
         return text;
     }
+    if (const json::Value* paused = line.find("paused"); paused != nullptr) {
+        const json::Value* why = paused->is_object() ? paused->find("why") : nullptr;
+        return text + "paused by a person watching: " +
+               (why != nullptr && why->is_string() ? why->as_string() : std::string());
+    }
+    if (line.find("resumed") != nullptr) {
+        return text + "resumed by a person watching";
+    }
+    if (const json::Value* note = line.find("note"); note != nullptr && note->is_string()) {
+        return text + "note from a person watching: " + note->as_string();
+    }
     if (const json::Value* client = line.find("client");
         client != nullptr && client->is_string() && !client->as_string().empty()) {
         text += client->as_string() + "  ";
+    }
+    if (const json::Value* plan = line.find("plan"); plan != nullptr && plan->is_object()) {
+        return text + "plan: " + plan_gist(*plan);
     }
     if (const json::Value* reads = line.find("reads"); reads != nullptr && reads->is_object()) {
         text += "read:";
@@ -1053,12 +1119,23 @@ json::Value digest(std::string_view project_root, std::int64_t since, std::strin
         std::set<std::string> clients;
         std::int64_t session_commands = 0;
         bool active = false;
+        // The session's plan and pause as they stand, from any time.
+        json::Value plan;
+        json::Value paused;
         for (const json::Value& line : lines.value()) {
             if (const json::Value* start = line.find("start"); start != nullptr) {
                 if (const json::Value* name = start->find("host");
                     name != nullptr && name->is_string()) {
                     host = name->as_string();
                 }
+            }
+            if (const json::Value* set = line.find("plan"); set != nullptr && set->is_object()) {
+                plan = *set;
+            }
+            if (const json::Value* stop = line.find("paused"); stop != nullptr) {
+                paused = *stop;
+            } else if (line.find("resumed") != nullptr || line.find("end") != nullptr) {
+                paused = json::Value();
             }
             const std::optional<std::int64_t> when = line_time(line);
             if (!when || *when < since) {
@@ -1179,6 +1256,12 @@ json::Value digest(std::string_view project_root, std::int64_t since, std::strin
         entry["commands"] = session_commands;
         entry["live"] =
             std::ranges::any_of(live, [&](const SessionEntry& other) { return other.id == id; });
+        if (plan.is_object()) {
+            entry["plan"] = std::move(plan);
+        }
+        if (paused.is_object()) {
+            entry["paused"] = std::move(paused);
+        }
         sessions.push_back(std::move(entry));
     }
     // A check that passed earlier in the stretch and fails now started failing.
@@ -1244,10 +1327,29 @@ json::Value digest(std::string_view project_root, std::int64_t since, std::strin
         }
         lines.emplace_back(std::to_string(sessions.size()) +
                            (sessions.size() == 1 ? " session: " : " sessions: ") + who);
-        lines.emplace_back(std::to_string(commands) + " commands and " + std::to_string(reads) +
-                           " reads from " + result["from"].as_string().substr(11, 8) + " to " +
-                           result["until"].as_string().substr(11, 8) + " UTC; " +
-                           std::to_string(failed) + " failed.");
+        std::string done =
+            std::to_string(commands) + (commands == 1 ? " command and " : " commands and ");
+        done += std::to_string(reads) + (reads == 1 ? " read from " : " reads from ");
+        done += result["from"].as_string().substr(11, 8);
+        done += " to ";
+        done += result["until"].as_string().substr(11, 8);
+        done += " UTC; ";
+        done += std::to_string(failed);
+        done += " failed.";
+        lines.emplace_back(std::move(done));
+        for (const json::Value& entry : sessions) {
+            const std::string whose =
+                sessions.size() == 1 ? "" : " (" + at(entry, "id").as_string() + ")";
+            if (const json::Value* plan = entry.find("plan"); plan != nullptr) {
+                lines.emplace_back(sentence("Plan" + whose + ": " + plan_gist(*plan)));
+            }
+            if (const json::Value* paused = entry.find("paused"); paused != nullptr) {
+                const json::Value* why = paused->find("why");
+                lines.emplace_back(sentence(
+                    "Paused" + whose + " by a person watching: " +
+                    (why != nullptr && why->is_string() ? why->as_string() : std::string())));
+            }
+        }
         constexpr std::size_t kNamed = 6;
         const auto named = [&](const std::set<std::string>& items) {
             std::string text;
@@ -1600,6 +1702,322 @@ void register_work_commands(Registry& registry) {
                             result[key]["png"] = base64_encode(png.value());
                         }
                     }
+                }
+                return Reply::success(std::move(result));
+            },
+    });
+
+    // Steering ------------------------------------------------------------------------------------
+
+    const auto watchers_only = [](Session& session, std::string_view name) -> std::optional<Reply> {
+        if (session.watching()) {
+            return std::nullopt;
+        }
+        return Reply::failure(code::kPermissionDenied,
+                              "\"" + std::string(name) +
+                                  "\" is for the people watching, through the session's watch "
+                                  "server: slash-cli work " +
+                                  std::string(name.substr(5)) + ", or the watch page");
+    };
+    const auto steer = [](Session& session, json::Value line) {
+        if (session.options().journal != nullptr) {
+            session.options().journal->steer(std::move(line));
+        }
+    };
+
+    json::Value pause;
+    pause["type"] = "object";
+    pause["additionalProperties"] = false;
+    pause["required"] = json::Array{json::Value("why")};
+    pause["properties"]["why"]["type"] = "string";
+    pause["properties"]["why"]["minLength"] = 1;
+    pause["properties"]["why"]["maxLength"] = 500;
+    pause["properties"]["why"]["description"] = "Why, for the agent: its edits fail with it.";
+    registry.add({
+        .name = "work.pause",
+        .description = "Pauses the agent's edits, for a person watching: until work.resume, "
+                       "commands that change anything fail with the reason; reads still work.",
+        .capabilities = {Capability::Read},
+        .effect = Effect::Read,
+        .params = std::move(pause),
+        .handler =
+            [watchers_only, steer](Session& session, const json::Value& params) {
+                if (auto refused = watchers_only(session, "work.pause")) {
+                    return *refused;
+                }
+                json::Value paused;
+                paused["why"] = at(params, "why");
+                session.steering().paused = paused;
+                json::Value line;
+                line["paused"] = paused;
+                steer(session, std::move(line));
+                json::Value result;
+                result["paused"] = std::move(paused);
+                return Reply::success(std::move(result));
+            },
+    });
+
+    json::Value resume;
+    resume["type"] = "object";
+    resume["additionalProperties"] = false;
+    resume["properties"] = json::Object{};
+    registry.add({
+        .name = "work.resume",
+        .description = "Lets the agent edit again after work.pause, for a person watching.",
+        .capabilities = {Capability::Read},
+        .effect = Effect::Read,
+        .params = std::move(resume),
+        .handler =
+            [watchers_only, steer](Session& session, const json::Value&) {
+                if (auto refused = watchers_only(session, "work.resume")) {
+                    return *refused;
+                }
+                const bool was = session.steering().paused.is_object();
+                session.steering().paused = json::Value();
+                if (was) {
+                    json::Value line;
+                    line["resumed"] = true;
+                    steer(session, std::move(line));
+                }
+                json::Value result;
+                result["resumed"] = was;
+                return Reply::success(std::move(result));
+            },
+    });
+
+    json::Value note;
+    note["type"] = "object";
+    note["additionalProperties"] = false;
+    note["required"] = json::Array{json::Value("text")};
+    note["properties"]["text"]["type"] = "string";
+    note["properties"]["text"]["minLength"] = 1;
+    note["properties"]["text"]["maxLength"] = 2000;
+    note["properties"]["text"]["description"] = "The note.";
+    registry.add({
+        .name = "work.note",
+        .description = "Leaves the agent a note, for a person watching: its next reply carries "
+                       "it in \"notes\". Nothing stops.",
+        .capabilities = {Capability::Read},
+        .effect = Effect::Read,
+        .params = std::move(note),
+        .handler =
+            [watchers_only, steer](Session& session, const json::Value& params) {
+                if (auto refused = watchers_only(session, "work.note")) {
+                    return *refused;
+                }
+                json::Value line;
+                line["note"] = at(params, "text");
+                steer(session, std::move(line));
+                json::Value waiting;
+                waiting["text"] = at(params, "text");
+                session.steering().notes.push_back(std::move(waiting));
+                json::Value result;
+                result["waiting"] = static_cast<std::int64_t>(session.steering().notes.size());
+                return Reply::success(std::move(result));
+            },
+    });
+
+    json::Value step;
+    step["type"] = "object";
+    step["additionalProperties"] = false;
+    step["required"] = json::Array{json::Value("text")};
+    step["properties"]["text"]["type"] = "string";
+    step["properties"]["text"]["minLength"] = 1;
+    step["properties"]["text"]["maxLength"] = 200;
+    step["properties"]["done"]["type"] = "boolean";
+    step["properties"]["done"]["default"] = false;
+    step["properties"]["story"]["type"] = "string";
+    step["properties"]["story"]["description"] =
+        "A storyboard task this step finishes, such as \"task/boss_fight\".";
+    json::Value step_text;
+    step_text["type"] = "string";
+    step_text["minLength"] = 1;
+    step_text["maxLength"] = 200;
+    json::Value plan;
+    plan["type"] = "object";
+    plan["additionalProperties"] = false;
+    plan["properties"]["task"]["type"] = "string";
+    plan["properties"]["task"]["maxLength"] = 200;
+    plan["properties"]["task"]["description"] = "What the agent is doing, in a few words.";
+    plan["properties"]["steps"]["type"] = "array";
+    plan["properties"]["steps"]["maxItems"] = 50;
+    plan["properties"]["steps"]["items"]["oneOf"] = json::Array{step_text, step};
+    plan["properties"]["steps"]["description"] =
+        "Every step, replacing the list: text, or {text, done, story}.";
+    plan["properties"]["done"]["type"] = "array";
+    plan["properties"]["done"]["maxItems"] = 50;
+    plan["properties"]["done"]["items"]["type"] = "integer";
+    plan["properties"]["done"]["items"]["minimum"] = 1;
+    plan["properties"]["done"]["description"] = "Steps to tick, by number from 1.";
+    plan["properties"]["status"]["enum"] =
+        json::Array{json::Value("working"), json::Value("blocked"), json::Value("done")};
+    plan["properties"]["status"]["description"] =
+        "How the task stands; \"blocked\" when a person is needed.";
+    plan["properties"]["session"] = session_param;
+    plan["properties"]["session"]["description"] =
+        "Read this session's plan; with nothing else, the plan is only read.";
+    registry.add({
+        .name = "work.plan",
+        .description = "Keeps the agent's plan, which people watching see beside its commands: "
+                       "set the task and steps, tick steps done, set the status. With no "
+                       "params, returns it.",
+        .capabilities = {Capability::Read},
+        .effect = Effect::Read,
+        .params = std::move(plan),
+        .handler =
+            [steer](Session& session, const json::Value& params) {
+                const bool changes =
+                    params.find("task") != nullptr || params.find("steps") != nullptr ||
+                    params.find("done") != nullptr || params.find("status") != nullptr;
+                const Journal* journal = session.options().journal;
+                const std::string own = journal != nullptr ? journal->id() : "";
+                const json::Value* named = params.find("session");
+                if (!changes) {
+                    json::Value found = session.steering().plan;
+                    std::string id = own;
+                    if (named != nullptr && named->as_string() != own) {
+                        id = named->as_string();
+                        found = json::Value();
+                        auto lines = read_journal(session.options().project_root, id);
+                        if (!lines) {
+                            json::Value data;
+                            data["path"] = "/session";
+                            return Reply::failure(code::kNotFound,
+                                                  "/session: no session " + id +
+                                                      " has a work journal in this project",
+                                                  std::move(data));
+                        }
+                        for (const json::Value& line : lines.value()) {
+                            if (const json::Value* set = line.find("plan");
+                                set != nullptr && set->is_object()) {
+                                found = *set;
+                            }
+                        }
+                    }
+                    json::Value result = found.is_object() ? found : json::Value(json::Object{});
+                    if (result.find("steps") == nullptr) {
+                        result["steps"] = json::Array{};
+                    }
+                    if (!id.empty()) {
+                        result["session"] = id;
+                    }
+                    return Reply::success(std::move(result));
+                }
+                if (session.watching()) {
+                    return Reply::failure(code::kPermissionDenied,
+                                          "only the agent keeps its plan; watchers read it");
+                }
+                if (named != nullptr) {
+                    json::Value data;
+                    data["path"] = "/session";
+                    return Reply::failure(code::kInvalidArgument,
+                                          "/session: an agent sets only its own session's plan; "
+                                          "leave session out",
+                                          std::move(data));
+                }
+                json::Value next = session.steering().plan;
+                if (!next.is_object()) {
+                    next = json::Object{};
+                    next["status"] = "working";
+                    next["steps"] = json::Array{};
+                }
+                std::set<std::size_t> done_before;
+                for (std::size_t i = 0; i < at(next, "steps").as_array().size(); ++i) {
+                    const json::Value* done = at(next, "steps").as_array()[i].find("done");
+                    if (done != nullptr && done->as_bool()) {
+                        done_before.insert(i);
+                    }
+                }
+                if (const json::Value* task = params.find("task")) {
+                    next["task"] = *task;
+                }
+                if (const json::Value* status = params.find("status")) {
+                    next["status"] = *status;
+                }
+                if (const json::Value* steps = params.find("steps")) {
+                    json::Array list;
+                    for (const json::Value& item : steps->as_array()) {
+                        json::Value entry;
+                        entry["text"] = item.is_string() ? item : at(item, "text");
+                        const json::Value* done = item.is_object() ? item.find("done") : nullptr;
+                        entry["done"] = done != nullptr && done->as_bool();
+                        if (const json::Value* story =
+                                item.is_object() ? item.find("story") : nullptr) {
+                            entry["story"] = *story;
+                        }
+                        list.push_back(std::move(entry));
+                    }
+                    next["steps"] = std::move(list);
+                }
+                json::Array& list = next["steps"].as_array();
+                if (const json::Value* done = params.find("done")) {
+                    for (std::size_t i = 0; i < done->as_array().size(); ++i) {
+                        const std::int64_t n = done->as_array()[i].as_int();
+                        if (n > static_cast<std::int64_t>(list.size())) {
+                            json::Value data;
+                            data["path"] = "/done/" + std::to_string(i);
+                            return Reply::failure(code::kInvalidArgument,
+                                                  "/done/" + std::to_string(i) + ": the plan has " +
+                                                      std::to_string(list.size()) +
+                                                      " steps, so no step " + std::to_string(n),
+                                                  std::move(data));
+                        }
+                        list[static_cast<std::size_t>(n - 1)]["done"] = true;
+                    }
+                }
+                // Steps naming storyboard tasks: the task must exist, and a step just done hands
+                // back the edit that closes it.
+                json::Array story_edits;
+                if (std::ranges::any_of(list, [](const json::Value& entry) {
+                        return entry.find("story") != nullptr;
+                    })) {
+                    auto loaded = storyboard::load([&session](std::string_view path) {
+                        return session.read_project_file(path);
+                    });
+                    if (!loaded) {
+                        return Reply::failure(loaded.error());
+                    }
+                    const json::Object& entries = loaded.value().entries;
+                    for (std::size_t i = 0; i < list.size(); ++i) {
+                        const json::Value* story = list[i].find("story");
+                        if (story == nullptr) {
+                            continue;
+                        }
+                        const std::string& id = story->as_string();
+                        const auto it = entries.find(id);
+                        const storyboard::Kind* kind = storyboard::kind_of(id);
+                        if (it == entries.end() || kind == nullptr || kind->name != "task") {
+                            json::Value data;
+                            data["path"] = "/steps/" + std::to_string(i) + "/story";
+                            return Reply::failure(code::kNotFound,
+                                                  "/steps/" + std::to_string(i) + "/story: " +
+                                                      (it == entries.end()
+                                                           ? storyboard::unknown_entry(entries, id)
+                                                           : "\"" + id + "\" is no task"),
+                                                  std::move(data));
+                        }
+                        const json::Value* status = it->second.find("status");
+                        const bool closed = status != nullptr && status->is_string() &&
+                                            status->as_string() == "done";
+                        if (at(list[i], "done").as_bool() && !done_before.contains(i) && !closed) {
+                            json::Value edit;
+                            edit["id"] = id;
+                            edit["version"] = storyboard::version(it->second);
+                            edit["set"]["status"] = "done";
+                            story_edits.push_back(std::move(edit));
+                        }
+                    }
+                }
+                session.steering().plan = next;
+                json::Value line;
+                line["plan"] = next;
+                if (!session.client().empty()) {
+                    line["client"] = session.client();
+                }
+                steer(session, std::move(line));
+                json::Value result = std::move(next);
+                if (!story_edits.empty()) {
+                    result["story_edits"] = std::move(story_edits);
                 }
                 return Reply::success(std::move(result));
             },

@@ -69,6 +69,10 @@ code { background: var(--code); border-radius: 4px; padding: 0 4px; font-size: 1
 .thumb img, .pair img { width: 100%; display: block; border-radius: 4px; background: var(--code); }
 .thumb.picked { border-color: var(--changed); }
 .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.row input { flex: 1 1 160px; min-width: 0; font: inherit; padding: 4px 8px; border-radius: 6px;
+             border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+.pill.paused, #steer-state.paused { color: var(--changed); border-color: var(--changed); }
 </style>
 </head>
 )HTML";
@@ -99,8 +103,18 @@ constexpr std::string_view kBody = R"HTML(<body>
     </section>
   </div>
   <div>
+    <section id="steer-section" hidden>
+      <h2>Steer</h2>
+      <p id="steer-state" class="muted">The agent is working.</p>
+      <div class="row"><input id="why" maxlength="500" aria-label="Why pause"
+        placeholder="Why, for the agent"><button id="pause" type="button">Pause</button><button
+        id="resume" type="button" hidden>Resume</button></div>
+      <div class="row"><input id="note" maxlength="2000" aria-label="A note for the agent"
+        placeholder="A note for the agent"><button id="send" type="button">Send note</button></div>
+    </section>
     <section id="plan-section" hidden>
       <h2>The agent's plan</h2>
+      <p id="plan-task" class="muted"></p>
       <ol id="plan"></ol>
     </section>
     <section>
@@ -184,6 +198,17 @@ function show(line) {
     item.append(el("span", "ok", "checkpoint " + line.checkpoint + ": " +
                                   (line.label || line.reason || "")));
     wantCheckpoints = true;
+  } else if (line.paused) {
+    item.append(el("span", "changed", "paused by a person watching: " + (line.paused.why || "")));
+  } else if (line.resumed) {
+    item.append(el("span", "ok", "resumed by a person watching"));
+  } else if (typeof line.note === "string") {
+    item.append(el("span", "changed", "note from a person watching: " + line.note));
+  } else if (line.plan) {
+    const steps = line.plan.steps || [];
+    item.append(el("span", "muted", "plan: " + (line.plan.task ? line.plan.task + ", " : "") +
+                                    steps.filter((s) => s.done).length + " of " + steps.length +
+                                    " steps done"));
   } else if (line.event) {
     item.append(el("span", "muted", line.event));
   } else {
@@ -236,7 +261,40 @@ async function readSummary() {
   const digest = await call("work.digest", {session: SESSION, since: "30d"});
   const list = $("summary");
   list.replaceChildren(...(digest.lines || []).map((text) => el("li", "", text)));
+  const me = (digest.sessions || []).find((one) => one.id === SESSION);
+  showPaused(me && me.paused);
 }
+
+// Pausing and notes reach the agent through the session's own server, as any watcher's call.
+function showPaused(paused) {
+  $("steer-section").hidden = !live;
+  $("pause").hidden = !!paused;
+  $("resume").hidden = !paused;
+  $("steer-state").textContent = paused ? "Paused: " + (paused.why || "") +
+                                          ". Its edits fail with this until you resume."
+                                        : "The agent is working.";
+  $("steer-state").className = paused ? "paused" : "muted";
+}
+
+async function steer(name, params, done) {
+  try {
+    await call(name, params);
+    if (done) done();
+  } catch (error) {
+    $("steer-state").textContent = "Couldn't " + name.slice(5) + ": " + error.message;
+    $("steer-state").className = "failing";
+  }
+  tick();
+}
+
+$("pause").onclick = () => steer("work.pause", {why: $("why").value.trim() ||
+                                                    "Paused from the watch page"},
+                                 () => { $("why").value = ""; });
+$("resume").onclick = () => steer("work.resume", {});
+$("send").onclick = () => {
+  const text = $("note").value.trim();
+  if (text) steer("work.note", {text}, () => { $("note").value = ""; });
+};
 
 // An engine without work.plan answers 404 once, and the page stops asking.
 let hasPlan = true;
@@ -245,9 +303,11 @@ async function readPlan() {
   try {
     const plan = await call("work.plan", {session: SESSION});
     const steps = plan.steps || [];
-    $("plan-section").hidden = steps.length === 0;
+    $("plan-section").hidden = steps.length === 0 && !plan.task;
+    $("plan-task").textContent = (plan.task || "") +
+        (plan.status && plan.status !== "working" ? " (" + plan.status + ")" : "");
     $("plan").replaceChildren(...steps.map((step) =>
-      el("li", step.done ? "ok" : "", (step.done ? "done  " : "      ") + step.text)));
+      el("li", step.done ? "ok" : "", (step.done ? "\u2713 " : "\u25CB ") + step.text)));
   } catch (error) {
     $("plan-section").hidden = true;
     if (error.status === 404) hasPlan = false;

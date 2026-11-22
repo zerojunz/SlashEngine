@@ -1488,7 +1488,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
               outlined
         - [x] A watch page in the browser: frames, diffs, the plan and test results
         - [x] Checkpoints, a timeline, compare, `work restore` and the timeline as a video
-        - [ ] Steering: `work pause` and `work note`, and the agent's own `work.plan`
+        - [x] Steering: `work pause` and `work note`, and the agent's own `work.plan`
         - [ ] Remote viewing through agents: `work.view`, `work.timeline`, `work.report` and
               `slash-mcp --watch`, so a person checks in from a phone by asking any agent
 25. [ ] Publishing to stores (2026-11-22): exports go to Steam, the Epic Games Store, GOG and

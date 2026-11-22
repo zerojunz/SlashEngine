@@ -178,6 +178,46 @@ std::optional<Endpoint> endpoint_of(const command::work::SessionEntry& entry) {
 
 } // namespace
 
+Result<command::Reply> call_watched(const command::work::SessionEntry& entry,
+                                    std::string_view command, const json::Value& params) {
+    const std::optional<Endpoint> endpoint = endpoint_of(entry);
+    if (!endpoint) {
+        return make_error(ErrorCode::NotFound,
+                          "session " + entry.id +
+                              " serves no watchers (project.json's work.serve)");
+    }
+    HttpRequest request;
+    request.path = "/v1/commands/" + std::string(command);
+    request.body =
+        json::write(params.is_null() ? json::Value(json::Object{}) : params, json::Style::Compact);
+    auto response = send(*endpoint, request);
+    if (!response) {
+        return make_error(ErrorCode::PlatformFailure,
+                          "session " + entry.id + " doesn't answer: " + response.error().message);
+    }
+    auto body = json::parse(response.value().body);
+    if (!body) {
+        return make_error(ErrorCode::PlatformFailure,
+                          "session " + entry.id + " answered something other than JSON");
+    }
+    if (response.value().status == 200) {
+        return command::Reply::success(std::move(body).value());
+    }
+    const json::Value* error = body.value().find("error");
+    if (error == nullptr || !error->is_object()) {
+        return make_error(ErrorCode::PlatformFailure, "session " + entry.id + " answered HTTP " +
+                                                          std::to_string(response.value().status));
+    }
+    const json::Value* code = error->find("code");
+    const json::Value* message = error->find("message");
+    const json::Value* data = error->find("data");
+    return command::Reply::failure(
+        code != nullptr && code->is_int() ? static_cast<int>(code->as_int())
+                                          : command::code::kInternalError,
+        message != nullptr && message->is_string() ? message->as_string() : std::string(),
+        data != nullptr ? *data : json::Value());
+}
+
 Follower::Follower(std::string project_root, std::string id, bool world)
     : project_root_(std::move(project_root)), id_(std::move(id)), world_(world) {}
 

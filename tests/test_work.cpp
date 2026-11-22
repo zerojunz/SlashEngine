@@ -13,6 +13,7 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -527,4 +528,148 @@ TEST_CASE("project.json's work block turns the journal and watch server off") {
     CHECK(settings.max_bytes == 2U << 20U);
     server::Work host(root, "test");
     CHECK(host.journal() == nullptr);
+}
+
+TEST_CASE("people watching pause a session's edits, leave notes and resume it") {
+    const std::string root = fresh_project("steer");
+    Journaled run(root);
+    CHECK(run.call("entity.create", R"({"id": "crate"})").ok);
+
+    // The agent can't pause or resume itself.
+    const command::Reply self = run.call("work.resume");
+    CHECK(self.code == command::code::kPermissionDenied);
+    CHECK(self.message.find("slash-cli work resume") != std::string::npos);
+
+    // A person watching pauses it, through the session's watch server.
+    auto started =
+        server::Watched::start(*run.session, run.journal->id(), "test", run.journal->path());
+    REQUIRE(started.ok());
+    const std::unique_ptr<server::Watched>& watched = started.value();
+    const work::SessionEntry entry = watched->entry();
+    const auto watch = [&](std::string_view name, std::string_view params) {
+        auto future = std::async(std::launch::async,
+                                 [&] { return server::call_watched(entry, name, parse(params)); });
+        while (future.wait_for(0ms) != std::future_status::ready) {
+            watched->poll(5ms);
+        }
+        auto reply = future.get();
+        REQUIRE_MESSAGE(reply.ok(), (reply.ok() ? std::string() : reply.error().message));
+        return reply.value();
+    };
+    const command::Reply paused = watch("work.pause", R"({"why": "Wrong level: use level_2"})");
+    REQUIRE(paused.ok);
+    CHECK(paused.value == parse(R"({"paused": {"why": "Wrong level: use level_2"}})"));
+
+    // Edits fail with the person's words; reads still work.
+    const command::Reply edit = run.call("entity.create", R"({"id": "lamp"})");
+    CHECK(edit.code == command::code::kPaused);
+    CHECK(edit.message.find("Wrong level: use level_2") != std::string::npos);
+    CHECK(edit.data == parse(R"({"paused": {"why": "Wrong level: use level_2"}})"));
+    CHECK(run.session->world().size() == 1);
+    CHECK(run.call("entity.get", R"({"id": "crate"})").ok);
+    CHECK(run.call("work.plan", R"({"status": "blocked"})").ok);
+
+    // A note rides on the agent's next reply, once.
+    CHECK(watch("work.note", R"({"text": "The crate goes left of the door"})").value ==
+          parse(R"({"waiting": 1})"));
+    const command::Reply noted = run.call("world.query");
+    REQUIRE(noted.ok);
+    CHECK(*noted.value.find("notes") == parse(R"([{"text": "The crate goes left of the door"}])"));
+    CHECK(run.call("world.query").value.find("notes") == nullptr);
+
+    CHECK(watch("work.resume", "{}").value == parse(R"({"resumed": true})"));
+    CHECK(watch("work.resume", "{}").value == parse(R"({"resumed": false})"));
+    CHECK(run.call("entity.create", R"({"id": "lamp"})").ok);
+
+    // The journal says so, in plain words too, and the digest sums it up.
+    std::vector<std::string> said;
+    for (const json::Value& line : run.lines()) {
+        said.push_back(work::describe(line).substr(10));
+    }
+    CHECK(std::ranges::find(said, "paused by a person watching: Wrong level: use level_2") !=
+          said.end());
+    CHECK(std::ranges::find(said, "note from a person watching: The crate goes left of the door") !=
+          said.end());
+    CHECK(std::ranges::find(said, "resumed by a person watching") != said.end());
+    CHECK(std::ranges::find(said, "plan: 0 of 0 steps done (blocked)") != said.end());
+    started.value().reset();
+}
+
+TEST_CASE("work.plan keeps the agent's plan and closes the storyboard tasks its steps finish") {
+    const std::string root = fresh_project("plan");
+    REQUIRE(slash::platform::create_directories(root + "/storyboard").ok());
+    REQUIRE(
+        slash::platform::write_file(
+            root + "/storyboard/work.json",
+            R"({"entries": {"task/boss_room": {"name": "Boss room", "summary": "Build the boss room.",
+                    "status": "open"}},
+                    "format": 1})")
+            .ok());
+    Journaled run(root);
+    CHECK(run.call("work.plan").value ==
+          parse(R"({"session": "20261122-130000-test", "steps": []})"));
+
+    const command::Reply set =
+        run.call("work.plan", R"({"task": "Build the boss room", "steps": ["Lay out the floor",
+                        {"text": "Place the boss", "story": "task/boss_room"}, "Run the tests"]})");
+    REQUIRE(set.ok);
+    CHECK(set.value == parse(R"({"status": "working", "task": "Build the boss room", "steps": [
+        {"done": false, "text": "Lay out the floor"},
+        {"done": false, "story": "task/boss_room", "text": "Place the boss"},
+        {"done": false, "text": "Run the tests"}]})"));
+
+    // Ticking the step that finishes a task hands back the edit that closes it.
+    const command::Reply ticked = run.call("work.plan", R"({"done": [1, 2]})");
+    REQUIRE(ticked.ok);
+    const json::Value* edits = ticked.value.find("story_edits");
+    REQUIRE(edits != nullptr);
+    REQUIRE(edits->as_array().size() == 1);
+    CHECK(*edits->as_array()[0].find("id") == json::Value("task/boss_room"));
+    CHECK(*edits->as_array()[0].find("set") == parse(R"({"status": "done"})"));
+    CHECK(edits->as_array()[0].find("version")->as_string().size() == 8);
+    json::Value close;
+    close["edits"] = *edits;
+    const command::Reply closed = run.session->call("storyboard.edit", close);
+    CHECK_MESSAGE(closed.ok, closed.message);
+    // Again, nothing more to close.
+    CHECK(run.call("work.plan", R"({"done": [2]})").value.find("story_edits") == nullptr);
+
+    // Mistakes say where.
+    const command::Reply far = run.call("work.plan", R"({"done": [4]})");
+    CHECK(far.code == command::code::kInvalidArgument);
+    CHECK(far.message == "/done/0: the plan has 3 steps, so no step 4");
+    const command::Reply typo =
+        run.call("work.plan", R"({"steps": [{"text": "Fight", "story": "task/boss_rom"}]})");
+    CHECK(typo.code == command::code::kNotFound);
+    CHECK(*typo.data.find("path") == json::Value("/steps/0/story"));
+    CHECK(typo.message.find("task/boss_room") != std::string::npos);
+
+    // Watchers read it but can't set it; plans are their own journal lines.
+    run.session->set_watching(true);
+    CHECK(run.call("work.plan").value.find("task")->as_string() == "Build the boss room");
+    CHECK(run.call("work.plan", R"({"done": [3]})").code == command::code::kPermissionDenied);
+    run.session->set_watching(false);
+    // Only the failed calls are command lines; the last plan line is the plan as it stands.
+    const std::vector<json::Value> lines = run.lines();
+    const json::Value* last_plan = nullptr;
+    for (const json::Value& line : lines) {
+        if (const json::Value* command = line.find("command");
+            command != nullptr && command->as_string() == "work.plan") {
+            CHECK(line.find("error") != nullptr);
+        }
+        if (line.find("plan") != nullptr) {
+            last_plan = &line;
+        }
+    }
+    REQUIRE(last_plan != nullptr);
+    CHECK(work::describe(*last_plan).substr(10) ==
+          "plan: Build the boss room, 2 of 3 steps done; next: Run the tests");
+
+    const json::Value digest = work::digest(root, 0, "");
+    const std::string gist = "Plan: Build the boss room, 2 of 3 steps done; next: Run the tests.";
+    bool found = false;
+    for (const json::Value& line : digest.find("lines")->as_array()) {
+        found = found || line.as_string() == gist;
+    }
+    CHECK(found);
 }

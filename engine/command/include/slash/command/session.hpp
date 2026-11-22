@@ -183,6 +183,17 @@ public:
     [[nodiscard]] bool watching() const noexcept { return watching_; }
     void set_watching(bool watching) noexcept { watching_ = watching; }
 
+    // Steering from the people watching (work.pause, work.note) and the agent's own plan
+    // (work.plan). While paused is set (an object with "why"), commands that a watcher couldn't
+    // run fail with code::kPaused; notes ride on the next reply of the agent's, in "notes".
+    struct Steering {
+        json::Value paused;
+        json::Array notes;
+        json::Value plan;
+    };
+    [[nodiscard]] Steering& steering() noexcept { return steering_; }
+    [[nodiscard]] const Steering& steering() const noexcept { return steering_; }
+
     // The project-relative path of the open scene, or "" for an unsaved one.
     [[nodiscard]] const std::string& scene_path() const noexcept { return scene_path_; }
     void set_scene_path(std::string path) { scene_path_ = std::move(path); }
@@ -346,6 +357,7 @@ private:
     CallListener call_listener_;
     mutable std::mutex logs_mutex_; // the log sink may run on any thread
     std::deque<std::string> logs_;
+    Steering steering_;
 };
 
 } // namespace slash::command

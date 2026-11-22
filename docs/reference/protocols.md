@@ -150,6 +150,7 @@ error code:
 | `-32003` | 403 (and 401 for a bad token) |
 | `-32601`, `-32001` | 404 |
 | `-32005` | 409 |
+| `-32006` | 423 |
 | Anything else | 500 |
 | Request waited more than 30 s for the game loop, or the server stopped | 503 |
 
@@ -181,6 +182,7 @@ SlashEngine's own.
 | `-32003` | Permission denied | The session lacks a capability, or a path leaves the project folder |
 | `-32004` | Platform failure | The operating system or a tool refused, such as a failed file write or a failed export build |
 | `-32005` | Conflict | The data changed since the caller read it, such as a storyboard entry another agent edited; read it again and retry |
+| `-32006` | Paused | A person watching paused the session's edits ([`work.pause`](commands.md#workpause)); the message says why, and reads still work |
 
 `data` carries structured details where they help:
 

@@ -421,7 +421,24 @@ Reply Session::call(std::string_view name, const json::Value& params) {
     }
     const std::uint64_t tick = world_.tick();
     Reply reply = call_command(name, params);
-    if (journal) {
+    // Notes from the people watching ride on the agent's next reply.
+    if (outermost && !watching_ && !steering_.notes.empty()) {
+        json::Value& target = reply.ok ? reply.value : reply.data;
+        if (target.is_null()) {
+            target = json::Object{};
+        }
+        if (target.is_object()) {
+            target["notes"] = std::move(steering_.notes);
+            steering_.notes = {};
+        }
+    }
+    // work.plan and work.checkpoint write lines of their own.
+    const bool own_line = reply.ok && (name == "work.plan" || name == "work.checkpoint");
+    if (journal && own_line) {
+        journaling_ = false;
+        journal_changes_ = {};
+        journal_files_.clear();
+    } else if (journal) {
         journaling_ = false;
         const Command* command = commands_->find(name);
         const json::Value* dry_run = params.is_object() ? params.find("dry_run") : nullptr;
@@ -477,15 +494,27 @@ Reply Session::call_command(std::string_view name, const json::Value& params) {
         return Reply::failure(code::kMethodNotFound, std::move(message));
     }
 
-    if (watching_ && depth_ == 0 &&
-        (command->effect != Effect::Read ||
-         std::ranges::any_of(command->capabilities, [](Capability capability) {
-             return capability != Capability::Read;
-         }))) {
+    const bool reads_only = command->effect == Effect::Read &&
+                            std::ranges::all_of(command->capabilities, [](Capability capability) {
+                                return capability == Capability::Read;
+                            });
+    if (watching_ && depth_ == 0 && !reads_only) {
         return Reply::failure(code::kPermissionDenied,
                               "\"" + command->name +
                                   "\" is not open to watchers, who may run only commands that "
                                   "read and need nothing but the read capability");
+    }
+    // While a person watching has paused the session, it runs what a watcher could: reads.
+    if (!watching_ && depth_ == 0 && !reads_only && steering_.paused.is_object()) {
+        const json::Value* why = steering_.paused.find("why");
+        json::Value data;
+        data["paused"] = steering_.paused;
+        return Reply::failure(
+            code::kPaused,
+            "a person watching paused this session's edits: \"" +
+                (why != nullptr && why->is_string() ? why->as_string() : std::string()) +
+                "\"; reads still work, and edits will once they resume",
+            std::move(data));
     }
 
     for (const Capability capability : command->capabilities) {

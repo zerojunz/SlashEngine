@@ -267,6 +267,11 @@ Usage:
                                      refuses while any session in the project runs
   slash-cli work video --out <file>  The checkpoints' frames as an .ivf video
       --fps <n>                      Checkpoints a second (default 1)
+  slash-cli work pause "<why>"       Pause a running agent's edits: they fail with why, reads
+                                     still work (--session <id>: which; default the newest)
+  slash-cli work resume              Let it edit again
+  slash-cli work note "<text>"       Leave it a note, which its next reply carries
+  slash-cli work plan                Print its plan (--json: as JSON)
   slash-cli init [dir]               Set a project up for Claude Code, Codex, Cursor, opencode,
                                      Antigravity, Hermes Agent and OpenClaw
       --force                        Replace files that already exist
@@ -2945,14 +2950,97 @@ int cmd_work_checkpoints(const std::vector<std::string>& args) {
     return kExitOk;
 }
 
+// slash-cli work pause, resume, note and plan: steering a running session through its watch
+// server, as the people watching do.
+int cmd_work_steer(const std::vector<std::string>& args) {
+    const std::string& what = args[0];
+    std::string project = ".";
+    std::string session;
+    std::string text;
+    bool as_json = false;
+    for (std::size_t i = 1; i < args.size(); ++i) {
+        const std::string& arg = args[i];
+        const bool has_value = i + 1 < args.size();
+        if (arg == "--project" && has_value) {
+            project = args[++i];
+        } else if (arg == "--session" && has_value) {
+            session = args[++i];
+        } else if (what == "plan" && arg == "--json") {
+            as_json = true;
+        } else if ((what == "pause" || what == "note") && text.empty() && !arg.starts_with("--")) {
+            text = arg;
+        } else {
+            std::string message = "unexpected argument for work ";
+            message += what;
+            message += ": ";
+            message += arg;
+            return usage_error(message);
+        }
+    }
+    if ((what == "pause" || what == "note") && text.empty()) {
+        return usage_error(what == "pause" ? R"(work pause needs why, as "<why>")"
+                                           : R"(work note needs its text, as "<text>")");
+    }
+    const auto live = command::work::live_sessions(project);
+    const command::work::SessionEntry* entry = nullptr;
+    for (const command::work::SessionEntry& one : live) {
+        if (session.empty() || one.id == session) {
+            entry = &one; // the newest, as they are listed oldest first
+        }
+    }
+    if (entry == nullptr) {
+        return failure("no session",
+                       slash::Error{slash::ErrorCode::NotFound,
+                                    session.empty() ? "no session is running in this project"
+                                                    : "session " + session + " isn't running"});
+    }
+    json::Value params = json::Object{};
+    if (what == "pause") {
+        params["why"] = text;
+    } else if (what == "note") {
+        params["text"] = text;
+    }
+    auto reply = slash::server::call_watched(*entry, "work." + what, params);
+    if (!reply) {
+        return failure(what + " failed", reply.error());
+    }
+    if (!reply.value().ok) {
+        print(error_json(reply.value()));
+        return kExitFailure;
+    }
+    json::Value result = std::move(reply.value().value);
+    if (what == "plan" && !as_json) {
+        std::puts(command::work::plan_gist(result).c_str());
+        if (const json::Value* steps = result.find("steps"); steps != nullptr) {
+            std::size_t n = 0;
+            for (const json::Value& step : steps->as_array()) {
+                const json::Value* done = step.find("done");
+                const json::Value* words = step.find("text");
+                std::printf("%zu. [%c] %s\n", ++n,
+                            done != nullptr && done->is_bool() && done->as_bool() ? 'x' : ' ',
+                            words != nullptr && words->is_string() ? words->as_string().c_str()
+                                                                   : "");
+            }
+        }
+        return kExitOk;
+    }
+    result["session"] = entry->id;
+    print(result);
+    return kExitOk;
+}
+
 int cmd_work(const std::vector<std::string>& args) {
     if (!args.empty() && (args[0] == "checkpoints" || args[0] == "compare" ||
                           args[0] == "restore" || args[0] == "video")) {
         return cmd_work_checkpoints(args);
     }
+    if (!args.empty() &&
+        (args[0] == "pause" || args[0] == "resume" || args[0] == "note" || args[0] == "plan")) {
+        return cmd_work_steer(args);
+    }
     if (args.empty() || (args[0] != "digest" && args[0] != "list")) {
-        return usage_error(
-            R"(work needs "digest", "list", "checkpoints", "compare", "restore" or "video")");
+        return usage_error(R"(work needs "digest", "list", "checkpoints", "compare", "restore", )"
+                           R"("video", "pause", "resume", "note" or "plan")");
     }
     std::string project = ".";
     std::string session;

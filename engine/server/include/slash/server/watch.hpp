@@ -1,5 +1,6 @@
 #pragma once
 
+#include "slash/command/command.hpp"
 #include "slash/command/work.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/result.hpp"
@@ -52,6 +53,13 @@ private:
     std::unique_ptr<Server> server_;
     command::work::SessionEntry entry_;
 };
+
+// Runs a command on a live session through its watch server, as a watcher: what slash-cli work
+// pause, resume and note send. Fails when the session doesn't serve or doesn't answer; a reply
+// with an error is a reply, not a failure.
+[[nodiscard]] Result<command::Reply> call_watched(const command::work::SessionEntry& entry,
+                                                  std::string_view command,
+                                                  const json::Value& params);
 
 // What a host keeps for its session's watchers, by project.json's "work" block: the journal the
 // session writes (made before the session, which takes it in SessionOptions::journal) and,

@@ -645,6 +645,19 @@ session's unless `--session` names one:
 - `work video --out <file.ivf>` encodes the checkpoints' frames as an AV1 video with
   [`video.encode`](commands.md#videoencode), `--fps` of them a second.
 
+`work pause "<why>"`, `work resume` and `work note "<text>"` [steer](watching-agents.md#steering)
+a running session, the newest unless `--session` names one, through its watch server, as
+[`work.pause`](commands.md#workpause), [`work.resume`](commands.md#workresume) and
+[`work.note`](commands.md#worknote); `work plan` prints its [plan](commands.md#workplan) (`--json`
+as JSON):
+
+```text
+Build the boss room, 2 of 3 steps done; next: Run the tests
+1. [x] Lay out the floor
+2. [x] Place the boss
+3. [ ] Run the tests
+```
+
 ```text
 1  15:06:47  scene.save  (1 file)
 2  15:06:47  crate placed
@@ -659,8 +672,8 @@ session's unless `--session` names one:
 | --- | --- |
 | `--project <dir>` | Project folder (default `.`) |
 | `--since <time>` | `digest`: a duration (`45m`, `3h`, `2d`) or a UTC time (default `3h`) |
-| `--session <id>` | `digest`: one session only; the others: which session |
-| `--json` | `digest`, `checkpoints`: JSON rather than lines |
+| `--session <id>` | `digest`: one session only; the others: which session (default: the newest live one) |
+| `--json` | `digest`, `checkpoints`, `plan`: JSON rather than lines |
 | `--out <file>` | `video`: the `.ivf` file to write, in the project |
 | `--fps <n>` | `video`: checkpoints a second, 1 to 240 (default 1) |
 
