@@ -93,7 +93,8 @@ std::optional<std::array<float, 2>> project(const scene3d::CameraView& view, Vec
     }
     const float x = clip[0] / clip[3];
     const float y = clip[1] / clip[3];
-    return std::array<float, 2>{(x + 1.0F) * 0.5F * viewport.x, (1.0F - y) * 0.5F * viewport.y};
+    return std::array<float, 2>{static_cast<float>((x + 1.0F) * 0.5F * viewport.x),
+                                static_cast<float>((1.0F - y) * 0.5F * viewport.y)};
 }
 
 json::Value outline_style(Vec4 color) {
