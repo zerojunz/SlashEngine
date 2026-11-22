@@ -103,7 +103,7 @@ Result<void> audio_track_tick(world::World& world, const AudioTrackTick& tick) {
     if (tick.seeked) {
         start += tick.time - tick.key->time;
     }
-    auto played = sound->play(world, tick.on, tick.key->value.as_string(), start);
+    auto played = sound->play(world, tick.on, tick.key->value.as_string(), start, tick.polyphony);
     if (!played) {
         return played.error();
     }

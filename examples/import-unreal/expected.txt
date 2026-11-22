@@ -1012,6 +1012,7 @@ world.query {"include":["AnimationPlayer"],"with":["AnimationPlayer"]}
       "components": {
         "AnimationPlayer": {
           "animation": "Idle",
+          "audio_max_polyphony": 32,
           "backwards": false,
           "library": "unreal/Content/Characters/A_Idle.anim.json",
           "playing": true,

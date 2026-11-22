@@ -41,8 +41,6 @@ namespace slash::ui {
 namespace {
 
 constexpr std::uint64_t kNever = ~std::uint64_t{0};
-// Godot's gui/timers/button_shortcut_feedback_highlight_time.
-constexpr double kFeedbackSeconds = 0.2;
 constexpr int kMaxNeighborSearch = 512;
 constexpr float kNoScore = 1e10F;
 constexpr float kEpsilon = 0.00001F; // CMP_EPSILON
@@ -125,8 +123,6 @@ struct TextEditBars {
            !status.pressed_down_with_focus && status.touch_index == -1 && status.feedback <= 0.0;
 }
 
-// Godot's gui/timers/incremental_search_max_interval_msec, in seconds.
-constexpr double kSearchInterval = 2.0;
 // PopupMenu ignores a release this soon after it opened under a held button, so the press that
 // opened it doesn't pick an item.
 constexpr double kGrabbedClickSeconds = 0.4;
@@ -2519,7 +2515,7 @@ private:
             PopupStatus& s = *status();
             const double diff = now_ - s.search_time;
             s.search_time = now_;
-            if (diff > kSearchInterval) {
+            if (diff > settings(world_).incremental_search_max_interval_msec / 1000.0) {
                 s.search.clear();
             }
             if (s.search != std::u32string(1, event.unicode)) {
@@ -4794,7 +4790,8 @@ private:
             fire(world_, state_, entity);
             handled_ = true;
             if (base->shortcut_feedback) {
-                status_of(world_, state_, entity).feedback = kFeedbackSeconds;
+                status_of(world_, state_, entity).feedback =
+                    settings(world_).button_shortcut_feedback_highlight_time;
             }
             return;
         }

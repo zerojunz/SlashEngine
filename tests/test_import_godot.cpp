@@ -210,6 +210,8 @@ Music="*res://autoload/music.gd"
 driver/mix_rate=48000
 driver/enable_input=true
 general/2d_panning_strength=0.8
+buses/channel_disable_threshold_db=-90.0
+buses/channel_disable_time=0.5
 
 [display]
 
@@ -222,6 +224,11 @@ window/stretch/mode="viewport"
 [gui]
 
 theme/custom="res://ui/theme.tres"
+timers/tooltip_delay_sec=0.25
+timers/text_edit_idle_detect_sec=1.5
+timers/incremental_search_max_interval_msec=800
+timers/button_shortcut_feedback_highlight_time=0.0
+common/text_edit_undo_stack_max_size=64
 
 [input]
 
@@ -795,9 +802,16 @@ TEST_CASE("importing a Godot project converts its settings and input map") {
           "InputEventScreenTouch bindings");
     CHECK(!unsupported(report, "setting display/window/stretch/mode").is_null());
     CHECK(settings.find("gui")->find("theme")->as_string() == "godot/ui/theme.theme.json");
+    CHECK(settings.find("gui")->find("tooltip_delay_sec")->as_double() == 0.25);
+    CHECK(settings.find("gui")->find("text_edit_idle_detect_sec")->as_double() == 1.5);
+    CHECK(settings.find("gui")->find("incremental_search_max_interval_msec")->as_int() == 800);
+    CHECK(settings.find("gui")->find("button_shortcut_feedback_highlight_time")->as_double() ==
+          0.0);
+    CHECK(settings.find("gui")->find("text_edit_undo_stack_max_size")->as_int() == 64);
     CHECK(*settings.find("audio") ==
           parse(R"({"bus_layout": "godot/default_bus_layout.bus_layout.json",
-                     "mix_rate": 48000, "panning_strength_2d": 0.8, "enable_input": true})"));
+                     "mix_rate": 48000, "panning_strength_2d": 0.8, "enable_input": true,
+                     "channel_disable_threshold_db": -80.0, "channel_disable_time": 0.5})"));
     CHECK(unsupported(report, "file type .gdshader").find("where")->as_string() ==
           "shaders/glow.gdshader");
     // Godot's own folders and add-ons stay out.
@@ -1644,6 +1658,7 @@ libraries = {
 }
 autoplay = "walk"
 speed_scale = 2.0
+audio_max_polyphony = 8
 )";
 
 constexpr std::string_view kExtraAnimations =
@@ -3896,7 +3911,8 @@ autoplay = "extra/spin"
     const std::string hero = "godot/hero.scene.json";
     CHECK(entity(files, hero, "animation_player") == parse(R"({"AnimationPlayer": {
         "library": "godot/hero_animation_player.anim.json", "animation": "walk",
-        "speed_scale": 2.0, "targets": {".": "hero", "Sprite2D": "sprite2d"}}})"));
+        "speed_scale": 2.0, "audio_max_polyphony": 8,
+        "targets": {".": "hero", "Sprite2D": "sprite2d"}}})"));
     CHECK(slash::animation::check_players(parse(files.at(hero)), reader_of(files)).empty());
 
     // Instances keep the scene's library; their targets follow their IDs.
@@ -4189,6 +4205,7 @@ active = false
 callback_mode_process = 2
 root_motion_track = NodePath("Armature/Skeleton3D:Upper")
 root_motion_local = true
+audio_max_polyphony = 200
 parameters/pick/transition_request = "move"
 parameters/pick/current_state = "rest"
 parameters/lean/blend_position = 0.5
@@ -4342,7 +4359,7 @@ TEST_CASE("importing Godot AnimationTrees writes their trees and plays them wher
     CHECK(*entry(files, hero, "arm").find("components")->find("AnimationTree") == parse(R"({
         "tree_root": "godot/trees/moves.animtree.json",
         "libraries": {"": "godot/models/arm.glb"}, "active": false,
-        "root_motion_track": "Upper", "root_motion_local": true,
+        "root_motion_track": "Upper", "root_motion_local": true, "audio_max_polyphony": 128,
         "parameters": {"aim/blend_position": [0.25, 0.5], "layer/add_amount": 1.5,
                        "lean/blend_position": 0.5, "pick/transition_request": "move"}})"));
     CHECK(unsupported(plan.report, "AnimationTree").find("why")->as_string() ==

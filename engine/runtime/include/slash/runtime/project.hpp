@@ -153,11 +153,17 @@ struct Project {
     std::string gui_theme;
     // Seconds the mouse rests on a control before its tooltip shows.
     double tooltip_delay_sec = 0.5;
+    // gui.text_edit_idle_detect_sec and button_shortcut_feedback_highlight_time (ui::Settings).
+    double text_edit_idle_detect_sec = 3.0;
+    double button_shortcut_feedback_highlight_time = 0.2;
     std::string accessibility_support = "auto"; // gui.accessibility_support
     // Where a tooltip shows from the pointer, in pixels.
     Vec2 tooltip_position_offset{10.0F, 10.0F};
     // Pixels the mouse moves with the left button held before a drag starts.
     int drag_threshold = 10;
+    // gui.text_edit_undo_stack_max_size and incremental_search_max_interval_msec (ui::Settings).
+    int text_edit_undo_stack_max_size = 1024;
+    int incremental_search_max_interval_msec = 2000;
     // Text may use fonts installed on the machine for characters the project's fonts lack.
     bool allow_system_fallback = true;
     // Input actions and their bindings: Godot's ui_* actions, then the project's.

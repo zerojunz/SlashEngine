@@ -35,9 +35,6 @@ constexpr double kGateLufs = -70.0;
 constexpr int kAnalysisRate = 11025;
 // Tempos searched, in beats per minute, and the one the search leans toward, as most music is
 // near it: a beat at 60 could as well be heard at 120.
-constexpr double kSlowestBpm = 50.0;
-constexpr double kFastestBpm = 240.0;
-constexpr double kLikelyBpm = 120.0;
 constexpr double kMinTempoSeconds = 3.0;
 constexpr double kMinTempoConfidence = 0.25;
 // Onsets on the beat must rise by this share of the sound's average compressed spectrum, or
@@ -441,7 +438,7 @@ Comb comb(const std::vector<double>& envelope, double period) {
     return best;
 }
 
-void measure_tempo(const Mono& mono, Analysis& out) {
+void measure_tempo(const Mono& mono, const TempoRange& tempo, Analysis& out) {
     const std::size_t window = mono.rate >= 8000.0 ? 256 : 128;
     const auto hop = static_cast<std::size_t>(std::max(1.0, std::floor(mono.rate / 200.0)));
     const double fps = mono.rate / static_cast<double>(hop);
@@ -517,11 +514,11 @@ void measure_tempo(const Mono& mono, Analysis& out) {
         return;
     }
 
-    // The period: the autocorrelation's strongest lag, leaning toward kLikelyBpm.
+    // The period: the autocorrelation's strongest lag, leaning toward the likely tempo.
     const auto shortest =
-        static_cast<std::size_t>(std::max(1.0, std::floor(fps * 60.0 / kFastestBpm)));
+        static_cast<std::size_t>(std::max(1.0, std::floor(fps * 60.0 / tempo.fastest_bpm)));
     const auto longest =
-        std::min(frames / 2, static_cast<std::size_t>(std::ceil(fps * 60.0 / kSlowestBpm)));
+        std::min(frames / 2, static_cast<std::size_t>(std::ceil(fps * 60.0 / tempo.slowest_bpm)));
     if (longest < shortest + 2) {
         return;
     }
@@ -533,7 +530,7 @@ void measure_tempo(const Mono& mono, Analysis& out) {
             sum += envelope[t] * envelope[t + lag];
         }
         const double correlation = sum / static_cast<double>(frames - lag);
-        const double octaves = std::log2(fps * 60.0 / static_cast<double>(lag) / kLikelyBpm);
+        const double octaves = std::log2(fps * 60.0 / static_cast<double>(lag) / tempo.likely_bpm);
         weighted[lag] = correlation * std::exp(-0.5 * octaves * octaves);
         if (best_lag == 0 || weighted[lag] > weighted[best_lag]) {
             best_lag = lag;
@@ -816,7 +813,8 @@ std::optional<Analysis::Loop> measure_loop(std::span<const Frame> frames, int mi
 
 } // namespace
 
-Analysis analyze(std::span<const Frame> frames, int mix_rate, std::optional<LoopPoints> loop) {
+Analysis analyze(std::span<const Frame> frames, int mix_rate, std::optional<LoopPoints> loop,
+                 const TempoRange& tempo) {
     Analysis out;
     if (mix_rate <= 0 || frames.empty()) {
         return out;
@@ -828,7 +826,7 @@ Analysis analyze(std::span<const Frame> frames, int mix_rate, std::optional<Loop
     }
     measure_loudness(frames, mix_rate, out);
     const Mono mono = decimate(frames, mix_rate);
-    measure_tempo(mono, out);
+    measure_tempo(mono, tempo, out);
     measure_key(mono, out);
     measure_bands(frames, mix_rate, out);
     if (loop) {

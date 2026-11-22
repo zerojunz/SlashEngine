@@ -81,6 +81,11 @@ struct CreatureBehavior {
     float attack_cooldown = 1.0F;   // seconds between attacks
     float hunger_rate = 0.02F; // hunger gained a second, from 0 to 1; a predator hunts past 0.5
     float altitude = 0.0F;     // birds and insects: how high above home they fly; fish: how deep
+    float hunt_hunger = 0.5F;  // the hunger past which a hunter hunts, and its brain is hungry
+    float near = 1.5F;         // how near a friendly or tame one comes, in meters
+    float follow = 3.0F;       // how far its owner goes before it follows; three times: it runs
+    float scare_time = 3.0F;   // seconds a scare makes it flee
+    float eat_time = 2.0F;     // seconds it eats what it is fed or catches
 };
 
 struct CreatureRecipe;

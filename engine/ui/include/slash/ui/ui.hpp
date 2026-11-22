@@ -64,6 +64,17 @@ struct Settings {
     // Pixels the mouse moves with the left button held before a drag starts, as Godot's
     // Viewport.gui_drag_threshold.
     int drag_threshold = 10;
+    // Seconds after the last edit before typing in a TextEdit starts a new undo step, as
+    // Godot's gui/timers/text_edit_idle_detect_sec.
+    double text_edit_idle_detect_sec = 3.0;
+    // The undo steps a TextEdit keeps, as Godot's gui/common/text_edit_undo_stack_max_size.
+    int text_edit_undo_stack_max_size = 1024;
+    // Milliseconds between the letters of one popup menu search, as Godot's
+    // gui/timers/incremental_search_max_interval_msec.
+    int incremental_search_max_interval_msec = 2000;
+    // Seconds a button pressed by its shortcut shows pressed, as Godot's
+    // gui/timers/button_shortcut_feedback_highlight_time.
+    double button_shortcut_feedback_highlight_time = 0.2;
     // When controls serve a screen reader, as Godot's accessibility/general/
     // accessibility_support: "auto" (while one is in use), "always" or "disabled". Serving one,
     // focus_mode "accessibility" takes focus as "all" does.
@@ -74,7 +85,8 @@ struct Settings {
 };
 
 // Reads project.json's "gui" object into settings: theme, allow_system_fallback,
-// tooltip_delay_sec, tooltip_position_offset, drag_threshold and accessibility_support. What is
+// tooltip_delay_sec, tooltip_position_offset, drag_threshold, accessibility_support and the
+// text edit, search and shortcut timers named as Settings' fields. What is
 // missing or of the wrong type keeps its value.
 void read_settings(const json::Value& gui, Settings& settings);
 

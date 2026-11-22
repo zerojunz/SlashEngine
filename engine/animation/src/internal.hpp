@@ -154,6 +154,7 @@ struct AudioTrackTick {
     float blend = 1.0F;
     const Key* key = nullptr;
     bool seeked = false;
+    int polyphony = 32; // the owner's audio_max_polyphony
 };
 // Before an owner's tick: its audio tracks count for nothing until ticked, as _blend_init.
 void begin_audio(world::World& world, entt::entity owner, Mixer mixer);

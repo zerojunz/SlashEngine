@@ -22,10 +22,6 @@ namespace {
 
 using Operation = TextEditState::Operation;
 
-// gui/timers/text_edit_idle_detect_sec: typing this long after the last edit starts a new step.
-constexpr double kIdleSeconds = 3.0;
-// gui/common/text_edit_undo_stack_max_size.
-constexpr std::size_t kUndoStackMax = 1024;
 // A third click this soon after a double click, this near it, selects a line.
 constexpr double kTripleClickSeconds = 0.6;
 constexpr float kTripleClickTolerance = 5.0F;
@@ -73,7 +69,7 @@ void push_current_op(TextEditState& s) {
     s.current_op.type = Operation::Type::None;
     s.current_op.text.clear();
     s.current_op.chain_forward = false;
-    if (s.undo_stack.size() > kUndoStackMax) {
+    if (s.undo_stack.size() > std::max<std::size_t>(s.undo_stack_max, 1)) {
         s.undo_stack.erase(s.undo_stack.begin());
         if (s.undo_stack_pos > 0) {
             --s.undo_stack_pos;
@@ -163,6 +159,12 @@ public:
     Editor(const TextEditContext& context, world::TextEdit& edit, TextEditState& state,
            TextArea& area)
         : context_(context), edit_(edit), s_(state), area_(area) {
+        if (context_.world != nullptr) {
+            // gui/timers/text_edit_idle_detect_sec and gui/common/text_edit_undo_stack_max_size.
+            const Settings gui = settings(*context_.world);
+            idle_seconds_ = gui.text_edit_idle_detect_sec;
+            s_.undo_stack_max = static_cast<std::size_t>(gui.text_edit_undo_stack_max_size);
+        }
         sync();
         area_.mark_lines();
     }
@@ -442,7 +444,7 @@ private:
     // _insert_text: an insertion, gathered for the history.
     std::pair<int, int> insert_text_op(int line, int column, std::u32string_view text) {
         if (!setting_text_) {
-            s_.idle_left = kIdleSeconds;
+            s_.idle_left = idle_seconds_;
         }
         clear_redo(s_);
         const auto [end_line, end_column] = base_insert_text(line, column, text);
@@ -465,7 +467,7 @@ private:
     // _remove_text.
     void remove_text_op(int from_line, int from_column, int to_line, int to_column) {
         if (!setting_text_) {
-            s_.idle_left = kIdleSeconds;
+            s_.idle_left = idle_seconds_;
         }
         clear_redo(s_);
         std::u32string removed = area_.get(from_line, from_column, to_line, to_column);
@@ -2155,6 +2157,7 @@ private:
     world::TextEdit& edit_;
     TextEditState& s_;
     TextArea& area_;
+    double idle_seconds_ = 3.0; // gui.text_edit_idle_detect_sec
     bool quiet_ = false;        // signals aren't emitted
     bool setting_text_ = false; // in set_text, which doesn't emit text_changed
     bool setting_caret_line_ = false;

@@ -16,6 +16,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -237,6 +238,18 @@ void read_settings(const json::Value& gui, Settings& settings) {
         threshold != nullptr && threshold->is_number()) {
         settings.drag_threshold = static_cast<int>(threshold->as_double());
     }
+    const auto number = [&](std::string_view name, double low, auto& field) {
+        if (const json::Value* value = gui.find(name);
+            value != nullptr && value->is_number() && value->as_double() >= low) {
+            field = static_cast<std::remove_reference_t<decltype(field)>>(value->as_double());
+        }
+    };
+    number("text_edit_idle_detect_sec", 0.0, settings.text_edit_idle_detect_sec);
+    number("text_edit_undo_stack_max_size", 1.0, settings.text_edit_undo_stack_max_size);
+    number("incremental_search_max_interval_msec", 0.0,
+           settings.incremental_search_max_interval_msec);
+    number("button_shortcut_feedback_highlight_time", 0.0,
+           settings.button_shortcut_feedback_highlight_time);
     if (const json::Value* support = gui.find("accessibility_support");
         support != nullptr && support->is_string()) {
         settings.accessibility_support = support->as_string();

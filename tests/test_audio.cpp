@@ -1054,7 +1054,7 @@ TEST_CASE("animations' audio tracks play streams on a voice of the player's own,
     const world::AudioTrackSound* sound = world::audio_track_sound(sounds.world);
     REQUIRE(sound != nullptr);
     sounds.step();
-    auto played = sound->play(sounds.world, speaker, "line.wav", 0.0);
+    auto played = sound->play(sounds.world, speaker, "line.wav", 0.0, 32);
     REQUIRE(played.ok());
     const std::int64_t line = played.value().id;
     CHECK(played.value().length == doctest::Approx(0.5));
@@ -1078,28 +1078,45 @@ TEST_CASE("animations' audio tracks play streams on a voice of the player's own,
 
     // A stream that ends stops playing; one stopped before it starts never does; a restored
     // snapshot takes back one asked for after it was saved.
-    played = sound->play(sounds.world, speaker, "line.wav", 0.4);
+    played = sound->play(sounds.world, speaker, "line.wav", 0.4, 32);
     REQUIRE(played.ok());
     sounds.step(10);
     CHECK_FALSE(sound->playing(sounds.world, played.value().id));
-    played = sound->play(sounds.world, speaker, "line.wav", 0.0);
+    played = sound->play(sounds.world, speaker, "line.wav", 0.0, 32);
     sound->stop(sounds.world, played.value().id);
     sounds.step();
     CHECK(sounds.player("speaker")->track_streams == 0);
     const audio::Snapshot saved = audio::save(sounds.world);
-    played = sound->play(sounds.world, speaker, "line.wav", 0.0);
+    played = sound->play(sounds.world, speaker, "line.wav", 0.0, 32);
     audio::restore(sounds.world, saved);
     CHECK_FALSE(sound->playing(sounds.world, played.value().id));
     sounds.step();
     CHECK(sounds.player("speaker")->track_streams == 0);
 
+    // The mixer's audio_max_polyphony caps the streams at once: once nothing plays on the
+    // voice, it starts again with the new polyphony, and a start past it is dropped.
+    const std::int64_t first = sound->play(sounds.world, speaker, "line.wav", 0.0, 1).value().id;
+    const std::int64_t second = sound->play(sounds.world, speaker, "line.wav", 0.0, 1).value().id;
+    sounds.step();
+    CHECK(sound->playing(sounds.world, first));
+    CHECK_FALSE(sound->playing(sounds.world, second));
+    CHECK(sounds.player("speaker")->track_streams == 1);
+    sounds.step(40);
+    played = sound->play(sounds.world, speaker, "line.wav", 0.0, 2);
+    const std::int64_t third = sound->play(sounds.world, speaker, "line.wav", 0.0, 2).value().id;
+    sounds.step();
+    CHECK(sound->playing(sounds.world, played.value().id));
+    CHECK(sound->playing(sounds.world, third));
+    CHECK(sounds.player("speaker")->track_streams == 2);
+    sounds.step(40);
+
     // It plays on any kind of player, and fails without one or a stream that loads.
     CHECK_FALSE(
-        sound->play(sounds.world, sounds.world.create("bare").value(), "line.wav", 0.0).ok());
-    auto missing = sound->play(sounds.world, speaker, "missing.wav", 0.0);
+        sound->play(sounds.world, sounds.world.create("bare").value(), "line.wav", 0.0, 32).ok());
+    auto missing = sound->play(sounds.world, speaker, "missing.wav", 0.0, 32);
     REQUIRE_FALSE(missing.ok());
     // A player that goes away stops them.
-    played = sound->play(sounds.world, speaker, "line.wav", 0.0);
+    played = sound->play(sounds.world, speaker, "line.wav", 0.0, 32);
     sounds.step();
     CHECK(sound->playing(sounds.world, played.value().id));
     sounds.world.destroy(speaker);
@@ -1310,6 +1327,27 @@ TEST_CASE("a microphone needs audio.enable_input and plays only as a player's ow
     auto played = audio::play_stream(sounds.world, sfx, "audio/mic.audio.json");
     REQUIRE_FALSE(played.ok());
     CHECK(contains(played.error().message, "plays only as a player's own stream"));
+}
+
+TEST_CASE("a bus goes quiet after the project's channel disable time under its threshold") {
+    // Whether Master's last mix step mixed, after a short sound and some silence.
+    const auto mixing_after = [](float threshold_db, double seconds, int silent_frames) {
+        audio::Server server(kRate);
+        server.set_channel_disable(threshold_db, seconds);
+        bool mixing = true;
+        server.set_bus_listener([&mixing](int bus, int /*channel*/, std::span<const Frame> frames) {
+            if (bus == 0) {
+                mixing = !frames.empty();
+            }
+        });
+        const auto stream = steady_stream(1000, {0.5F, 0.25F});
+        server.start(stream->instantiate(kRate, 0), "Master", {Frame{1.0F, 1.0F}}, 0.0, 1.0F);
+        mix(server, 2048 + silent_frames);
+        return mixing;
+    };
+    // Godot's two seconds keep it mixing a quarter of a second on; a tenth of a second doesn't.
+    CHECK(mixing_after(-60.0F, 2.0, kRate / 4));
+    CHECK_FALSE(mixing_after(-60.0F, 0.1, kRate / 4));
 }
 
 TEST_CASE("a sound plays through Master a lookahead late, then its playback ends") {
@@ -2826,7 +2864,11 @@ TEST_CASE("project.json's audio settings are checked") {
         parse(R"({"bus_layout": "a.bus_layout.json", "mix_rate": 48000, "output_latency": 30,
                   "panning_strength_2d": 1, "panning_strength_3d": 2, "enable_input": true,
                   "input_usage_description": "Sing to the lanterns.",
-                  "speaker_mode": "surround_51"})"));
+                  "speaker_mode": "surround_51", "channel_disable_threshold_db": -72,
+                  "channel_disable_time": 0.5})"));
+    CHECK(parsed.channel_disable_threshold_db == -72.0F);
+    CHECK(parsed.channel_disable_time == 0.5);
+    CHECK(errors(R"({"channel_disable_time": 9})").front().path == "/audio/channel_disable_time");
     CHECK(parsed.bus_layout == "a.bus_layout.json");
     CHECK(parsed.mix_rate == 48000);
     CHECK(parsed.output_latency == 30.0F);
