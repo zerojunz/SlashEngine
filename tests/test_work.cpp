@@ -1,10 +1,13 @@
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
+#include "slash/command/mcp.hpp"
 #include "slash/command/session.hpp"
 #include "slash/command/work.hpp"
 #include "slash/core/json.hpp"
+#include "slash/core/text.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/process.hpp"
+#include "slash/render/image.hpp"
 #include "slash/server/client.hpp"
 #include "slash/server/server.hpp"
 #include "slash/server/watch.hpp"
@@ -19,6 +22,7 @@
 #include <filesystem>
 #include <future>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -672,4 +676,202 @@ TEST_CASE("work.plan keeps the agent's plan and closes the storyboard tasks its 
         found = found || line.as_string() == gist;
     }
     CHECK(found);
+}
+
+namespace {
+
+// The image a reply's base64 "png" holds.
+slash::render::Image reply_image(const json::Value& value) {
+    const json::Value* png = value.find("png");
+    REQUIRE(png != nullptr);
+    const std::optional<std::string> bytes = slash::base64_decode(png->as_string());
+    REQUIRE(bytes.has_value());
+    auto image = slash::render::decode_image(*bytes);
+    REQUIRE(image.ok());
+    return std::move(image).value();
+}
+
+// A session that laid out a title screen: three checkpoints, a plan and a label to escape.
+void lay_out_title(Journaled& run) {
+    REQUIRE(
+        run.call("work.plan",
+                 R"({"task": "Lay out the title screen", "steps": ["Backdrop", "Start button"]})")
+            .ok);
+    REQUIRE(run.call("entity.create", R"({"id": "sky", "components": {
+        "Control": {"anchor_right": 1, "anchor_bottom": 1},
+        "ColorRect": {"color": [0.25, 0.45, 0.8, 1]}}})")
+                .ok);
+    REQUIRE(run.call("scene.save", R"({"path": "title.scene.json"})").ok);
+    REQUIRE(run.call("work.plan", R"({"done": [1]})").ok);
+    REQUIRE(run.call("entity.create", R"({"id": "start", "components": {
+        "Control": {"offset_left": 540, "offset_top": 420, "offset_right": 740,
+                    "offset_bottom": 480},
+        "ColorRect": {"color": [0.95, 0.7, 0.2, 1]}}})")
+                .ok);
+    REQUIRE(run.call("work.checkpoint", R"({"label": "start <button>"})").ok);
+    REQUIRE(
+        run.call("component.set",
+                 R"({"id": "start", "components": {"ColorRect": {"color": [0.3, 0.85, 0.4, 1]}}})")
+            .ok);
+    REQUIRE(run.call("scene.save", R"({"path": "title.scene.json"})").ok);
+}
+
+} // namespace
+
+TEST_CASE("work.view, work.timeline and work.report show a session to someone far away") {
+    const std::string root = fresh_project("view");
+    const std::string id = "20261122-130000-test";
+    {
+        Journaled run(root);
+        lay_out_title(run);
+
+        // The moment: the world as an image no wider than asked, the plan and the last lines.
+        const command::Reply view = run.call("work.view", R"({"width": 320, "lines": 3})");
+        REQUIRE(view.ok);
+        const slash::render::Image frame = reply_image(view.value);
+        CHECK(frame.width == 320);
+        CHECK(*view.value.find("frame") ==
+              parse(R"({"width": 320, "height": )" + std::to_string(frame.height) + "}"));
+        CHECK(view.value.find("plan")->find("task")->as_string() == "Lay out the title screen");
+        REQUIRE(view.value.find("recent")->as_array().size() == 3);
+        CHECK(view.value.find("recent")->as_array()[2].as_string().substr(10) ==
+              "checkpoint 3 (scene.save)");
+        CHECK(*view.value.find("live") == json::Value(true));
+        const command::Reply plain = run.call("work.view", R"({"image": false, "lines": 0})");
+        CHECK(plain.value.find("png") == nullptr);
+        CHECK(plain.value.find("recent")->as_array().empty());
+
+        // The way there: the checkpoints' frames in rows of two, oldest first.
+        const command::Reply strip = run.call("work.timeline", R"({"columns": 2, "width": 100})");
+        REQUIRE(strip.ok);
+        const slash::render::Image sheet = reply_image(strip.value);
+        CHECK(sheet.width == (2 * 100) + (3 * 4));
+        const std::uint32_t tile = (sheet.height - (3 * 4)) / 2;
+        CHECK(tile == 100 * frame.height / frame.width);
+        std::vector<std::int64_t> numbers;
+        for (const json::Value& entry : strip.value.find("checkpoints")->as_array()) {
+            numbers.push_back(entry.find("n")->as_int());
+        }
+        CHECK(numbers == std::vector<std::int64_t>{1, 2, 3});
+        CHECK(strip.value.find("checkpoints")->as_array()[1].find("label")->as_string() ==
+              "start <button>");
+        const command::Reply page = run.call("work.timeline", R"({"after": 1, "limit": 1})");
+        CHECK(page.value.find("checkpoints")->as_array().size() == 1);
+        CHECK(*page.value.find("next") == json::Value(2));
+        CHECK(*page.value.find("more") == json::Value(true));
+        CHECK(run.call("work.timeline", R"({"after": 3})").code == command::code::kNotFound);
+
+        // A page of it all to hand on.
+        const command::Reply report = run.call("work.report");
+        REQUIRE(report.ok);
+        CHECK(report.value.find("path")->as_string() == ".slash/work/reports/" + id + ".html");
+        auto html = slash::platform::read_file(root + "/" + report.value.find("path")->as_string());
+        REQUIRE(html.ok());
+        CHECK(report.value.find("bytes")->as_int() ==
+              static_cast<std::int64_t>(html.value().size()));
+        CHECK(html.value().starts_with("<!doctype html>"));
+        CHECK(html.value().find("Lay out the title screen, 1 of 2 steps done") !=
+              std::string::npos);
+        CHECK(html.value().find("2. work.checkpoint: start &lt;button&gt;") != std::string::npos);
+        CHECK(html.value().find("start <button>") == std::string::npos);
+        CHECK(html.value().find("Files changed: title.scene.json") != std::string::npos);
+        std::size_t images = 0;
+        for (std::size_t at = html.value().find("data:image/png;base64,"); at != std::string::npos;
+             at = html.value().find("data:image/png;base64,", at + 1)) {
+            ++images;
+        }
+        CHECK(images == 3);
+        CHECK(run.call("work.report", R"({"since": "soon"})").code ==
+              command::code::kInvalidParams);
+    }
+
+    // Once the session ends, another one sees it as its last checkpoint left it.
+    Journaled other(root, work::Settings{}.max_bytes, "20261122-140000-peer");
+    const command::Reply ended = other.call("work.view", R"({"session": ")" + id + R"("})");
+    REQUIRE(ended.ok);
+    CHECK(*ended.value.find("live") == json::Value(false));
+    CHECK(*ended.value.find("frame")->find("checkpoint") == json::Value(3));
+    CHECK(reply_image(ended.value).width > 0);
+    CHECK(ended.value.find("plan")->find("task")->as_string() == "Lay out the title screen");
+    CHECK(other.call("work.view", R"({"session": "20261122-000000-none"})").code ==
+          command::code::kNotFound);
+}
+
+TEST_CASE("an agent in another session views and steers a session through its watch server") {
+    const std::string root = fresh_project("remote");
+    Journaled working(root);
+    REQUIRE(working.call("work.plan", R"({"task": "Build a yard", "steps": ["Floor"]})").ok);
+    REQUIRE(working.call("entity.create", R"({"id": "crate"})").ok);
+    auto started = server::Watched::start(*working.session, working.journal->id(), "test",
+                                          working.journal->path());
+    REQUIRE(started.ok());
+    const std::unique_ptr<server::Watched>& watched = started.value();
+    REQUIRE(work::add_session(root, watched->entry()).ok());
+    server::install_work_forwarder();
+
+    // The second agent's session asks; the working one answers between its own commands.
+    Journaled asking(root, work::Settings{}.max_bytes, "20261122-140000-peer");
+    const std::string target = R"("session": ")" + working.journal->id() + "\"";
+    const auto ask = [&](std::string_view name, const std::string& params) {
+        auto future = std::async(std::launch::async, [&] { return asking.call(name, params); });
+        while (future.wait_for(0ms) != std::future_status::ready) {
+            watched->poll(5ms);
+        }
+        return future.get();
+    };
+    const command::Reply view = ask("work.view", "{" + target + R"(, "image": false})");
+    REQUIRE_MESSAGE(view.ok, view.message);
+    CHECK(*view.value.find("live") == json::Value(true));
+    CHECK(view.value.find("plan")->find("task")->as_string() == "Build a yard");
+    CHECK(view.value.find("session")->as_string() == working.journal->id());
+
+    const command::Reply paused = ask("work.pause", "{" + target + R"(, "why": "Wrong yard"})");
+    REQUIRE_MESSAGE(paused.ok, paused.message);
+    CHECK(working.call("entity.create", R"({"id": "lamp"})").code == command::code::kPaused);
+    CHECK(ask("work.note", "{" + target + R"(, "text": "Use the cave"})").ok);
+    CHECK(*ask("work.resume", "{" + target + "}").value.find("resumed") == json::Value(true));
+    const command::Reply edited = working.call("entity.create", R"({"id": "lamp"})");
+    REQUIRE(edited.ok);
+    CHECK(*edited.value.find("notes") == parse(R"([{"text": "Use the cave"}])"));
+
+    // Its own session it can't steer, and a session that isn't running says which are.
+    CHECK(asking.call("work.pause", R"({"why": "x"})").code == command::code::kPermissionDenied);
+    const command::Reply missing =
+        asking.call("work.pause", R"({"session": "20261122-130000-tset", "why": "x"})");
+    CHECK(missing.code == command::code::kNotFound);
+    CHECK(*missing.data.find("path") == json::Value("/session"));
+    CHECK(missing.message.find("did you mean \"20261122-130000-test\"?") != std::string::npos);
+    REQUIRE(work::remove_session(root, working.journal->id()).ok());
+}
+
+TEST_CASE("slash-mcp --watch offers only the work tools a watcher may use") {
+    slash::world::ComponentRegistry components;
+    slash::world::register_builtin_components(components);
+    command::Registry commands;
+    command::register_builtin_commands(commands);
+    command::SessionOptions options;
+    options.capabilities = {command::Capability::Read};
+    options.capture_logs = false;
+    command::Session session(components, commands, options);
+    command::mcp::Server server(session, command::mcp::Tools::Watch);
+    const command::Reply listed = server.dispatch("tools/list", json::Value());
+    REQUIRE(listed.ok);
+    std::vector<std::string> names;
+    for (const json::Value& tool : listed.value.find("tools")->as_array()) {
+        names.push_back(tool.find("name")->as_string());
+        CHECK(*tool.find("annotations")->find("readOnlyHint") == json::Value(true));
+    }
+    std::vector<std::string> expected;
+    for (const std::string_view name : command::mcp::watch_commands()) {
+        expected.push_back(command::mcp::tool_name(name));
+    }
+    std::ranges::sort(expected);
+    CHECK(names == expected);
+    CHECK(std::ranges::find(names, "work_view") != names.end());
+    CHECK(std::ranges::find(names, "tools_load") == names.end());
+    const command::Reply started = server.dispatch("initialize", json::Object{});
+    CHECK(started.value.find("instructions")->as_string().find("look in on another agent") !=
+          std::string::npos);
+    CHECK(*started.value.find("capabilities")->find("tools")->find("listChanged") ==
+          json::Value(false));
 }

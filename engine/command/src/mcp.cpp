@@ -83,6 +83,23 @@ constexpr std::array<Resource, 3> kResources{{
      "log.tail"},
 }};
 
+// What a watching agent needs (slash-mcp --watch): everything it reads, the plan, and steering.
+// work.checkpoint is left out, since a watcher takes none.
+constexpr std::array<std::string_view, 11> kWatchCommands{
+    "work.view",    "work.digest", "work.feed",  "work.timeline", "work.report", "work.checkpoints",
+    "work.compare", "work.plan",   "work.pause", "work.resume",   "work.note"};
+
+constexpr std::string_view kWatchInstructions =
+    "These tools look in on another agent's SlashEngine session, for the person who asked you: "
+    "nothing here changes its game. work_view shows it now (its world as an image, its plan, its "
+    "last commands and its tests); work_digest sums up a stretch (\"since\": \"3h\"); "
+    "work_timeline shows its checkpoints as one image and work_compare what changed between two; "
+    "work_report writes one HTML page of it all to hand on, such as an artifact. work_pause "
+    "stops its edits with a reason the agent sees, work_note leaves it a note and work_resume "
+    "lets it go on: do these only when the person asks. Each tool looks at the watched session "
+    "unless "
+    "given another \"session\"; work_digest without one covers every session.";
+
 // Kept to the commands nearly every session uses, so the tools fit every client and cost few
 // tokens; the bench's setup counts them.
 constexpr std::array<std::string_view, 45> kCoreCommands{
@@ -172,6 +189,10 @@ std::span<const std::string_view> core_commands() {
     return kCoreCommands;
 }
 
+std::span<const std::string_view> watch_commands() {
+    return kWatchCommands;
+}
+
 Result<Tools> parse_tools(std::string_view text) {
     if (text == "core") {
         return Tools::Core;
@@ -196,6 +217,9 @@ std::vector<std::string> Server::take_notifications() {
 }
 
 bool Server::offered(const Command& command) const {
+    if (offered_ == Tools::Watch) {
+        return std::ranges::find(kWatchCommands, command.name) != kWatchCommands.end();
+    }
     return offered_ == Tools::All ||
            std::ranges::find(kCoreCommands, command.name) != kCoreCommands.end() ||
            loaded_.contains(command.name);
@@ -259,7 +283,7 @@ Reply Server::initialize(const json::Value& params) const {
     result["serverInfo"]["name"] = "slashengine";
     result["serverInfo"]["title"] = "SlashEngine";
     result["serverInfo"]["version"] = slash::version();
-    result["instructions"] = kInstructions;
+    result["instructions"] = offered_ == Tools::Watch ? kWatchInstructions : kInstructions;
     return Reply::success(std::move(result));
 }
 

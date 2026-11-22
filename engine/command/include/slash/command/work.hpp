@@ -33,6 +33,8 @@ inline constexpr std::string_view kFolder = ".slash/work";
 inline constexpr std::string_view kSessionsFile = ".slash/work/sessions.json";
 // Each session's checkpoints, in a folder named after it.
 inline constexpr std::string_view kCheckpointsFolder = ".slash/work/checkpoints";
+// Each session's report (work.report).
+inline constexpr std::string_view kReportsFolder = ".slash/work/reports";
 
 // project.json's "work" block.
 struct Settings {
@@ -251,7 +253,28 @@ struct SessionEntry {
 [[nodiscard]] Result<Checkpoint> take_checkpoint(Session& session, std::string_view reason,
                                                  std::string_view label);
 
-// work.feed, work.digest, work.checkpoint, work.checkpoints and work.compare.
+// Runs a command in another live session through its watch server, as a person watching would.
+// slash-cli and slash-mcp install server::call_watched with set_forwarder; engine/command can't
+// reach the server module itself.
+using Forwarder = std::function<Result<Reply>(const SessionEntry& entry, std::string_view command,
+                                              const json::Value& params)>;
+void set_forwarder(Forwarder forwarder);
+
+// The checkpoints' frames side by side, a row of `columns` at a time, each `width` pixels wide,
+// as PNG bytes, oldest first.
+[[nodiscard]] Result<std::string> timeline_strip(std::string_view project_root,
+                                                 std::string_view session,
+                                                 const std::vector<Checkpoint>& checkpoints,
+                                                 std::uint32_t width, std::uint32_t columns);
+// Writes one self-contained HTML page of a session's work since a time (0 for all of it): the
+// plan, the digest, the tests and checks, each checkpoint's frame and what changed since the one
+// before, and the feed. Returns its project path, .slash/work/reports/<session>.html.
+[[nodiscard]] Result<std::string> write_report(std::string_view project_root,
+                                               std::string_view session, std::int64_t since,
+                                               const world::ComponentRegistry& components);
+
+// work.feed, work.digest, work.checkpoint, work.checkpoints, work.compare, steering (work.pause,
+// work.resume, work.note, work.plan) and remote viewing (work.view, work.timeline, work.report).
 void register_work_commands(Registry& registry);
 
 } // namespace slash::command::work

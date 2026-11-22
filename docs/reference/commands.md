@@ -103,7 +103,7 @@ as `entity.get`, reject it as an unknown param.
 | Replays | [`replay.record`](#replayrecord), [`replay.stop`](#replaystop), [`replay.run`](#replayrun), [`replay.seek`](#replayseek) |
 | Tests | [`test.run`](#testrun), [`playtest.run`](#playtestrun) |
 | History | [`undo`](#undo), [`redo`](#redo), [`history.get`](#historyget) |
-| Work | [`work.feed`](#workfeed), [`work.digest`](#workdigest), [`work.checkpoint`](#workcheckpoint), [`work.checkpoints`](#workcheckpoints), [`work.compare`](#workcompare), [`work.plan`](#workplan), [`work.pause`](#workpause), [`work.resume`](#workresume), [`work.note`](#worknote) |
+| Work | [`work.feed`](#workfeed), [`work.digest`](#workdigest), [`work.checkpoint`](#workcheckpoint), [`work.checkpoints`](#workcheckpoints), [`work.compare`](#workcompare), [`work.view`](#workview), [`work.timeline`](#worktimeline), [`work.report`](#workreport), [`work.plan`](#workplan), [`work.pause`](#workpause), [`work.resume`](#workresume), [`work.note`](#worknote) |
 | Several at once | [`batch`](#batch) |
 | Observe | [`events.subscribe`](#eventssubscribe), [`events.read`](#eventsread), [`events.unsubscribe`](#eventsunsubscribe), [`log.tail`](#logtail), [`frame.capture`](#framecapture), [`frame.summary`](#framesummary), [`canvas.convert`](#canvasconvert) |
 | Display | [`display.list`](#displaylist), [`display.set`](#displayset), [`perf.stats`](#perfstats), [`debug.overlay`](#debugoverlay) |
@@ -6277,6 +6277,67 @@ both checkpoints hold a world. Needs: `read`.
 A checkpoint the session doesn't have fails with `-32001` and the path of the param that named
 it.
 
+### work.view
+
+A session as it is now, in one call, for an agent a person asks how the work is going: its world
+drawn on the CPU, its plan, whether it is paused, its last lines in plain words and its last tests
+and checks ([remote viewing](watching-agents.md#remote-viewing)). Another live session's view goes
+through that session's watch server, between its own commands; once a session has ended, it comes
+from its files, with its last checkpoint's frame as kept (`frame.checkpoint`) and `live` false.
+Needs: `read`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `session` | string | this session, else the newest | The session's ID |
+| `image` | boolean | `true` | The frame as a base64 PNG, as `png`; MCP sends it as an image |
+| `width` | integer, 160 to 1280 | `640` | The frame's width at most, in pixels |
+| `lines` | integer, 0 to 50 | `8` | The last lines of the feed to include |
+
+```json
+{"frame":{"height":180,"width":320},"live":true,"paused":{"why":"Crates go by the gate"},"plan":{"status":"working","steps":[{"done":true,"text":"Lay the floor"},{"done":false,"text":"Stack the crates"}],"task":"Build the yard"},"png":"iVBORw0...","recent":["14:00:11  checkpoint 2: first crate"],"session":"20261122-140000-y4rd"}
+```
+
+A session that isn't running and has no journal here fails with `-32001`.
+
+### work.timeline
+
+A session's checkpoints' frames in one picture, oldest first, in rows of `columns`, with each
+one's number, reason, label, time and how many files it holds: the way the work went, for a person
+far away. Needs: `read`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `session` | string | this session, else the newest | The session's ID |
+| `after` | integer | | Only checkpoints after this one |
+| `limit` | integer, 1 to 48 | `12` | The most checkpoints in the picture |
+| `width` | integer, 64 to 480 | `192` | Each frame's width, in pixels |
+| `columns` | integer, 1 to 8 | `4` | Frames in a row |
+
+```json
+{"checkpoints":[{"files":1,"n":1,"reason":"scene.save","time":"2026-11-22T14:00:06.000Z"},{"files":0,"label":"first crate","n":2,"reason":"work.checkpoint","time":"2026-11-22T14:00:10.000Z"}],"more":true,"next":2,"png":"iVBORw0...","session":"20261122-140000-y4rd"}
+```
+
+`more` says checkpoints after these are waiting; call again with `after` set to `next`. A session
+with no checkpoints after `after` fails with `-32001`.
+
+### work.report
+
+Writes one self-contained HTML page of a session's work, to hand on as an artifact or a file in a
+chat: its plan, a summary with its tests and checks, each checkpoint's frame and what changed
+since the one before, and its feed. It goes in `.slash/work/reports/<session>.html`. Needs:
+`read`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `session` | string | this session, else the newest | The session's ID |
+| `since` | string | the whole session | A duration (`45s`, `90m`, `3h`, `2d`) or a UTC time |
+
+```json
+{"bytes":48211,"path":".slash/work/reports/20261122-140000-y4rd.html","session":"20261122-140000-y4rd"}
+```
+
+A `since` that is neither fails with `-32602` at `/since`.
+
 ### work.plan
 
 The agent's plan: what it is doing and its steps, which people watching see beside its commands
@@ -6318,13 +6379,16 @@ task fails with `-32001` and the closest ID.
 Pauses the agent's edits, for a person watching: until [`work.resume`](#workresume), every
 command a watcher couldn't run (anything that changes the world or files, or needs more than
 `read`) fails with `-32006`, its message carrying `why` and its `data.paused` the pause. Reads
-still work, so the agent can look around and say what it was doing. Only watchers may call it,
-through the session's watch server: `slash-cli work pause` or the watch page;
-the agent's own call fails with `-32003`. Needs: `read`.
+still work, so the agent can look around and say what it was doing. Only watchers may call it:
+through the session's watch server (`slash-cli work pause` or the watch page), or from another
+session with `session`, which goes through that watch server
+([remote viewing](watching-agents.md#remote-viewing)); the agent's own call fails with `-32003`.
+Needs: `read`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `why` | string, 1 to 500 characters | required | Why, for the agent |
+| `session` | string | | Another running session to steer, as named in `.slash/work/sessions.json` |
 
 ```json
 {"paused":{"why":"Wrong level: use level_2"}}
@@ -6337,7 +6401,11 @@ the agent's own call fails with `-32003`. Needs: `read`.
 ### work.resume
 
 Lets the agent edit again after [`work.pause`](#workpause); `resumed` says whether it was paused.
-Only watchers may call it. Needs: `read`.
+Only watchers may call it, or another session with `session`, as `work.pause`. Needs: `read`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `session` | string | | Another running session to steer |
 
 ```json
 {"resumed":true}
@@ -6347,11 +6415,13 @@ Only watchers may call it. Needs: `read`.
 
 Leaves the agent a note, for a person watching. Nothing stops: the agent's next reply, success
 or error, carries the notes waiting in `notes` (`[{"text"}]`), once. Notes are words for the
-agent to weigh, never commands the engine runs. Only watchers may call it. Needs: `read`.
+agent to weigh, never commands the engine runs. Only watchers may call it, or another session
+with `session`, as `work.pause`. Needs: `read`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `text` | string, 1 to 2000 characters | required | The note |
+| `session` | string | | Another running session to steer |
 
 ```json
 {"waiting":1}

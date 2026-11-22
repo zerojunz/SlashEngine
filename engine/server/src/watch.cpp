@@ -218,6 +218,10 @@ Result<command::Reply> call_watched(const command::work::SessionEntry& entry,
         data != nullptr ? *data : json::Value());
 }
 
+void install_work_forwarder() {
+    command::work::set_forwarder(call_watched);
+}
+
 Follower::Follower(std::string project_root, std::string id, bool world)
     : project_root_(std::move(project_root)), id_(std::move(id)), world_(world) {}
 

@@ -267,6 +267,10 @@ Usage:
                                      refuses while any session in the project runs
   slash-cli work video --out <file>  The checkpoints' frames as an .ivf video
       --fps <n>                      Checkpoints a second (default 1)
+  slash-cli work timeline --out <file.png>  The last 12 checkpoints' frames as one image
+  slash-cli work report              One HTML page of a session's work, to share: its plan,
+                                     summary, checkpoints and feed, in .slash/work/reports/
+      --since <time>                 Only since then (default the whole session)
   slash-cli work pause "<why>"       Pause a running agent's edits: they fail with why, reads
                                      still work (--session <id>: which; default the newest)
   slash-cli work resume              Let it edit again
@@ -2801,6 +2805,7 @@ int cmd_work_checkpoints(const std::vector<std::string>& args) {
     std::string session;
     std::string out;
     std::uint64_t fps = 1;
+    std::string since;
     bool as_json = false;
     std::vector<std::int64_t> numbers;
     for (std::size_t i = 1; i < args.size(); ++i) {
@@ -2813,8 +2818,10 @@ int cmd_work_checkpoints(const std::vector<std::string>& args) {
             session = args[++i];
         } else if (arg == "--json") {
             as_json = true;
-        } else if (what == "video" && arg == "--out" && has_value) {
+        } else if ((what == "video" || what == "timeline") && arg == "--out" && has_value) {
             out = args[++i];
+        } else if (what == "report" && arg == "--since" && has_value) {
+            since = args[++i];
         } else if (what == "video" && arg == "--fps") {
             if (!has_value || !parse_u64(args[++i], fps) || fps == 0 || fps > 240) {
                 return usage_error("--fps needs a whole number from 1 to 240");
@@ -2879,6 +2886,36 @@ int cmd_work_checkpoints(const std::vector<std::string>& args) {
     command::SessionOptions options;
     options.project_root = project;
     Engine engine(options);
+    if (what == "report" || what == "timeline") {
+        if (what == "timeline" && out.empty()) {
+            return usage_error("work timeline needs --out <file.png>");
+        }
+        json::Value params;
+        params["session"] = id;
+        if (!since.empty()) {
+            params["since"] = since;
+        }
+        command::Reply reply = engine.session->call("work." + what, params);
+        if (!reply.ok) {
+            print(error_json(reply));
+            return kExitFailure;
+        }
+        if (what == "timeline") {
+            const std::optional<std::string> png =
+                slash::base64_decode(reply.value.find("png")->as_string());
+            reply.value.as_object().erase("png");
+            if (!png) {
+                return failure("no image", slash::Error{slash::ErrorCode::PlatformFailure,
+                                                        "the timeline's image didn't decode"});
+            }
+            if (auto written = slash::platform::write_file(out, *png); !written) {
+                return failure("could not write the image", written.error());
+            }
+            reply.value["out"] = out;
+        }
+        print(reply.value);
+        return kExitOk;
+    }
     if (what == "compare") {
         if (numbers.size() > 2) {
             return usage_error("work compare takes at most two checkpoint numbers");
@@ -3030,8 +3067,9 @@ int cmd_work_steer(const std::vector<std::string>& args) {
 }
 
 int cmd_work(const std::vector<std::string>& args) {
-    if (!args.empty() && (args[0] == "checkpoints" || args[0] == "compare" ||
-                          args[0] == "restore" || args[0] == "video")) {
+    if (!args.empty() &&
+        (args[0] == "checkpoints" || args[0] == "compare" || args[0] == "restore" ||
+         args[0] == "video" || args[0] == "timeline" || args[0] == "report")) {
         return cmd_work_checkpoints(args);
     }
     if (!args.empty() &&
@@ -3040,7 +3078,7 @@ int cmd_work(const std::vector<std::string>& args) {
     }
     if (args.empty() || (args[0] != "digest" && args[0] != "list")) {
         return usage_error(R"(work needs "digest", "list", "checkpoints", "compare", "restore", )"
-                           R"("video", "pause", "resume", "note" or "plan")");
+                           R"("video", "timeline", "report", "pause", "resume", "note" or "plan")");
     }
     std::string project = ".";
     std::string session;
@@ -3614,6 +3652,7 @@ int cmd_init(const std::vector<std::string>& args) {
 } // namespace
 
 int main(int argc, char** argv) {
+    slash::server::install_work_forwarder(); // work tools reach other sessions
     // Linux exports run this program as their wayland-scanner (tools/exporter).
     if (argc > 1 && std::string_view(argv[1]) == slash::exporter::kWaylandScanner) {
         return slash::exporter::run_wayland_scanner(argc - 1, argv + 1);
