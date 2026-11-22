@@ -2,6 +2,8 @@
 
 #include "slash/command/command.hpp"
 #include "slash/procedural/noise.hpp"
+#include "slash/procedural/texture_graph.hpp"
+#include "slash/render/image.hpp"
 
 #include <optional>
 #include <string>
@@ -12,6 +14,21 @@ namespace slash::command {
 
 // Adds texture.generate, over slash/procedural/texture.hpp.
 void register_procedural_commands(Registry& registry);
+
+// Adds texture.inspect, texture.edit and texture.check, over
+// slash/procedural/texture_graph.hpp (texture_tools.cpp).
+void register_texture_tools(Registry& registry);
+
+// Reads what a graph names from the session's project: text files, and images decoded as
+// texture paths are (a graph's images may be other graphs' outputs).
+[[nodiscard]] procedural::GraphReader graph_reader(Session& session);
+
+// Each channel's [min, mean, max] over an image, 0 to 255.
+[[nodiscard]] json::Value channel_stats(const render::Image& image);
+
+// How far apart, on average per channel, neighboring pixels are inside an image ("inside") and
+// across its edges when it repeats ("x", "y"), 0 to 255.
+[[nodiscard]] json::Value wrap_differences(const render::Image& image);
 
 // Adds scatter.run, over slash/procedural/scatter.hpp (scatter.cpp).
 void register_scatter_commands(Registry& registry);

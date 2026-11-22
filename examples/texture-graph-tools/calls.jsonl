@@ -1,0 +1,9 @@
+{"jsonrpc":"2.0","id":1,"method":"texture.inspect","params":{"path":"textures/wall.texture.json"}}
+{"jsonrpc":"2.0","id":2,"method":"texture.edit","params":{"path":"textures/wall.texture.json","patch":{"parameters":{"mortar":0.12},"expect":{"albedo.value":[0.3,0.45],"albedo.tiles":true,"height.contrast":[0.15,1]}}}}
+{"jsonrpc":"2.0","id":3,"method":"texture.check","params":{}}
+{"jsonrpc":"2.0","id":4,"method":"texture.edit","params":{"path":"textures/wall.texture.json","patch":{"width":32,"height":16,"nodes":{"color":{"gradient":{"points":[{"color":[0.35,0.33,0.3,1],"offset":0},{"color":[0.8,0.42,0.3,1],"offset":1}]}}}}}}
+{"jsonrpc":"2.0","id":5,"method":"texture.check","params":{}}
+{"jsonrpc":"2.0","id":6,"method":"texture.edit","params":{"path":"textures/wall.texture.json","patch":{"nodes":{"soft":{"input":"heigth"}}}}}
+{"jsonrpc":"2.0","id":7,"method":"texture.edit","params":{"path":"textures/wall.texture.json","patch":{"nodes":{"grain":null,"height":null,"soft":{"input":"bricks"}}},"dry_run":true}}
+{"jsonrpc":"2.0","id":8,"method":"undo","params":{}}
+{"jsonrpc":"2.0","id":9,"method":"texture.check","params":{}}

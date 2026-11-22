@@ -460,6 +460,18 @@ Reply test_run(Session& session, const json::Value& params) {
         }
     }
 
+    // And the texture graphs: each bakes and keeps its expected ranges and the style's palettes.
+    if (paths == nullptr && wanted.empty() && session.commands().find("texture.check") != nullptr) {
+        Reply checked = session.call("texture.check", json::Object{});
+        if (!checked.ok) {
+            failed.push_back(file_failure("textures", "", checked.message));
+        } else if (json::Value* errors = checked.value.find("errors"); errors != nullptr) {
+            for (json::Value& error : errors->as_array()) {
+                failed.push_back(std::move(error));
+            }
+        }
+    }
+
     // And the translations, once the project lists some.
     if (paths == nullptr && wanted.empty() &&
         !l10n::settings(session.world()).translations.empty()) {
