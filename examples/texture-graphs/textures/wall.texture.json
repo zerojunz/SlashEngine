@@ -1,0 +1,45 @@
+{
+  "format": 1,
+  "height": 32,
+  "nodes": {
+    "bricks": {
+      "across": "$across",
+      "bevel": 0.2,
+      "down": "$rows",
+      "mortar": "$mortar",
+      "op": "bricks"
+    },
+    "color": {
+      "gradient": {
+        "points": [
+          {"color": [0.25, 0.24, 0.22, 1.0], "offset": 0.0},
+          {"color": [0.62, 0.3, 0.2, 1.0], "offset": 1.0}
+        ]
+      },
+      "input": "soft",
+      "op": "gradient_map"
+    },
+    "grain": {
+      "noise": {"frequency": 0.12, "noise_type": "cellular", "seed": 7},
+      "op": "noise",
+      "seamless": true
+    },
+    "height": {
+      "base": "bricks",
+      "layer": "grain",
+      "mode": "multiply",
+      "op": "blend",
+      "opacity": 0.3
+    },
+    "normal": {"height": "soft", "op": "normal_from_height", "strength": 4},
+    "soft": {"input": "height", "op": "blur", "radius": 1}
+  },
+  "outputs": [
+    {"name": "albedo", "node": "color"},
+    {"name": "normal", "node": "normal"},
+    {"as": "gray", "name": "height", "node": "soft"}
+  ],
+  "parameters": {"across": "=rows / 2", "mortar": 0.08, "rows": 4},
+  "type": "graph",
+  "width": 64
+}

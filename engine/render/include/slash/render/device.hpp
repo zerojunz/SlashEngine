@@ -681,8 +681,7 @@ public:
     // twin within a step of 8 bits a channel; the rest run the twin, so headless runs make the
     // same texels everywhere.
     [[nodiscard]] virtual Result<std::vector<GraphTexels>>
-    bake_texture_graph(const TextureGraphProgram& program,
-                       std::span<const std::uint32_t> outputs) {
+    bake_texture_graph(const TextureGraphProgram& program, std::span<const std::uint32_t> outputs) {
         return run_texture_graph(program, outputs);
     }
 

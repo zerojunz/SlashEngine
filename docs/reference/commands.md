@@ -602,6 +602,8 @@ each channel counted. A texture tiles without seams when `x` and `y` are near `i
 | `texture` | object | | A `.texture.json` document, made without a file |
 | `pixels` | array of `[x, y]` | | Up to 256 pixels to return as `[r, g, b, a]` bytes, from the top left |
 | `out` | string | | A `.png` file to write the texture to |
+| `output` | string | | A [texture graph](scene-format.md#texture-graphs)'s output to make (default: the one `path` names after `::`, else the first) |
+| `parameters` | object | | Values for a graph's parameters, for this call only |
 
 Give `path` or `texture`, not both. Needs: `read`, and `filesystem` for `out`; a dry run writes
 nothing. From [examples/procedural-textures](../../examples/procedural-textures/):
@@ -617,6 +619,15 @@ nothing. From [examples/procedural-textures](../../examples/procedural-textures/
 The same noise without `seamless` jumps at its edges, `"wrap":{"inside":13.99,"x":43.44,"y":37.04}`.
 Inline settings' errors are at their JSON Pointer under `/texture`, a file's at `/path`, and a
 pixel outside the texture at its place in `/pixels`.
+
+A graph's reply adds `outputs`, the names of every output. A graph bakes on the session's render
+device, in compute where it can, and the CPU twin gives the same pixels. An unknown output fails
+at `/output` with the outputs there are, and an unknown parameter at `/parameters`. From
+[examples/texture-graphs](../../examples/texture-graphs/):
+
+```json
+{"path": "textures/wall.texture.json", "output": "normal", "out": "build/wall_normal.png"}
+```
 
 ## Scatter
 

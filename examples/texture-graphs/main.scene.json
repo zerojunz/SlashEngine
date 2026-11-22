@@ -1,0 +1,25 @@
+{
+  "entities": {
+    "tall_wall": {
+      "components": {
+        "Sprite2D": {
+          "texture": "textures/tall_wall.texture.json"
+        },
+        "Transform2D": {
+          "position": [120.0, 45.0]
+        }
+      }
+    },
+    "wall": {
+      "components": {
+        "Sprite2D": {
+          "texture": "textures/wall.texture.json"
+        },
+        "Transform2D": {
+          "position": [40.0, 45.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

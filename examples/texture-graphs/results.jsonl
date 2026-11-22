@@ -1,0 +1,8 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":2,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"channels":{"a":[255,255,255],"b":[53,54.55,56],"g":[63,65.8,70],"r":[74,92.19,118]},"height":32,"outputs":["albedo","normal","height"],"pixels":[[80,64,55,255],[89,65,55,255]],"width":64,"wrap":{"inside":0.37,"x":1.1,"y":1.06}}}
+{"id":3,"jsonrpc":"2.0","result":{"channels":{"a":[255,255,255],"b":[2,103.49,206],"g":[2,103.49,206],"r":[2,103.49,206]},"height":32,"outputs":["albedo","normal","height"],"width":64,"wrap":{"inside":6.83,"x":0.23,"y":13.96}}}
+{"id":4,"jsonrpc":"2.0","result":{"channels":{"a":[255,255,255],"b":[53,54.66,56],"g":[63,65.41,70],"r":[73,89.88,118]},"height":32,"outputs":["albedo","normal","height"],"width":64,"wrap":{"inside":0.35,"x":1.06,"y":0.97}}}
+{"id":5,"jsonrpc":"2.0","result":{"channels":{"a":[255,255,255],"b":[214,239.95,255],"g":[33,127.52,221],"r":[69,127.5,186]},"height":32,"out":"build/wall_normal.png","outputs":["albedo","normal","height"],"width":64,"wrap":{"inside":3.21,"x":2.84,"y":27.67}}}
+{"id":6,"jsonrpc":"2.0","result":{"colors":[[0.329,0.255,0.216,1],[0.31,0.251,0.216,1]],"drawn":{"sprites":2},"height":90,"width":160}}
+{"error":{"code":-32002,"data":{"path":"/parameters"},"message":"/parameters: /parameters/morter: isn't a parameter of the graph (did you mean \"mortar\"?)"},"id":7,"jsonrpc":"2.0"}
+{"error":{"code":-32002,"data":{"path":"/output"},"message":"/output: the graph has no output \"roughness\"; it has [\"albedo\",\"normal\",\"height\"]"},"id":8,"jsonrpc":"2.0"}

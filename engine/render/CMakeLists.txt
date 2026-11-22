@@ -226,7 +226,7 @@ set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
     frame_generation_draw:FrameGenerationDraw:fog_sky
     sdfgi:Sdfgi:sdfgi_compute sdfgi_voxelize:SdfgiVoxelize:compute_alone
     sdfgi_gather:SdfgiGather:sdfgi_draw skin:Skin:compute_alone
-    mesh_cull:MeshCull:compute_alone)
+    mesh_cull:MeshCull:compute_alone texture_graph:TextureGraph:compute_pieces)
 foreach(entry IN LISTS slash_shaders)
     string(REPLACE ":" ";" parts ${entry})
     list(GET parts 0 shader)
@@ -257,6 +257,11 @@ foreach(entry IN LISTS slash_shaders)
         elseif(kind STREQUAL "compute_alone")
             set(compute ON)
             set(include ${shader})
+        elseif(kind STREQUAL "compute_pieces")
+            # The same, its HLSL too long for one literal (MSVC takes 64 KiB).
+            set(compute ON)
+            set(include ${shader})
+            set(pieces ON)
         elseif(kind STREQUAL "sdfgi_compute")
             set(compute ON)
             set(include sdfgi_common)
@@ -342,6 +347,7 @@ foreach(entry IN LISTS slash_shaders)
             -P ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake
         COMMAND ${CMAKE_COMMAND} -E touch ${stamp}
         DEPENDS shaders/${shader}.hlsl shaders/${include}.hlsl shaders/material_ops.hlsl
+            shaders/fast_noise_lite.hlsl
             shaders/tonemap.hlsl
             ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake
         COMMENT "Compiling ${shader}.hlsl"

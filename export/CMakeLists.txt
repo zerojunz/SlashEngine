@@ -135,6 +135,19 @@ endif()
 # Only the targets the game links are built; tools and tests stay off outside the engine repo.
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/.. slashengine EXCLUDE_FROM_ALL)
 
+# The engine's notices ship in the game's data, in licenses/slashengine/: its license,
+# THIRD_PARTY.md and each fetched dependency's license file.
+get_property(slash_dependency_sources GLOBAL PROPERTY SLASH_DEPENDENCY_SOURCES)
+list(JOIN slash_dependency_sources "|" slash_dependency_sources)
+execute_process(
+    COMMAND ${CMAKE_COMMAND} -DROOT=${CMAKE_CURRENT_LIST_DIR}/..
+        -DOUT=${SLASH_GAME_DATA}/licenses/slashengine "-DSOURCES=${slash_dependency_sources}"
+        -P ${CMAKE_CURRENT_LIST_DIR}/../cmake/stage_notices.cmake
+    RESULT_VARIABLE slash_notices_result)
+if(NOT slash_notices_result EQUAL 0)
+    message(FATAL_ERROR "Could not copy the engine's notices into ${SLASH_GAME_DATA}")
+endif()
+
 if(ANDROID)
     # SDL's Java activity loads the game as libmain.so.
     add_library(game SHARED)

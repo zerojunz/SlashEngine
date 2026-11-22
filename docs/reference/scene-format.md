@@ -2999,6 +2999,55 @@ A gradient object is Godot's `Gradient`: colors at offsets from 0 to 1. Colors a
 
 Before the first point and after the last, the gradient holds their colors.
 
+### Texture graphs
+
+A `.texture.json` file of `"type": "graph"` is a texture made by a node graph, in the spirit of
+Substance Designer, Unreal's Texture Graph and Houdini's COPs. Each node is one op over a whole
+image (`width` by `height`, up to 4096), and named `outputs` pick the nodes the graph makes. A
+texture field takes the first output, or another by name after `::`
+(`"textures/wall.texture.json::normal"`). Graphs bake in a compute pass on the GPU devices
+(Vulkan, Metal and WebGPU) and with the CPU twin everywhere else (`render::run_texture_graph`).
+The software device always uses the twin, and a test holds every device to it, so the pixels are
+the same either way.
+
+```json
+{
+  "format": 1,
+  "type": "graph",
+  "width": 64,
+  "height": 32,
+  "parameters": {"across": "=rows / 2", "mortar": 0.08, "rows": 4},
+  "nodes": {
+    "bricks": {"op": "bricks", "across": "$across", "down": "$rows", "mortar": "$mortar"},
+    "grain": {"op": "noise", "noise": {"noise_type": "cellular", "frequency": 0.12}},
+    "height": {"op": "blend", "base": "bricks", "layer": "grain", "mode": "multiply"},
+    "normal": {"op": "normal_from_height", "height": "height", "strength": 4}
+  },
+  "outputs": [{"name": "albedo", "node": "height"}, {"name": "normal", "node": "normal"}]
+}
+```
+
+- **Parameters** are numbers, lists of numbers (colors and points) or `=` expressions over the
+  other parameters. Any setting reads one as `"$name"` or computes an expression with `"=..."`.
+  `texture.generate`'s `parameters` overrides them for one call.
+- **`extends`** names another graph, by its project path, that this one is a JSON Merge Patch over. A variant usually
+  changes only its `parameters`, and it reloads when the graph it extends changes.
+- **`tiling`** (default `true`) makes filters, warps and seamless noise wrap across the edges,
+  so the texture repeats without seams.
+- **Outputs** are `color` (the node's RGBA) or `gray` (its red in every channel).
+
+| Ops | What they make |
+| --- | --- |
+| `constant`, `noise`, `gradient`, `shape`, `bricks`, `checker`, `waves`, `image` | Generators: a color, Godot's FastNoiseLite noise (with domain warp and `seamless`), Godot's `GradientTexture2D`, shapes and bricks in cells, bands, an image file |
+| `levels`, `invert`, `clamp`, `gradient_map`, `hsv`, `grayscale`, `threshold`, `posterize`, `swizzle`, `remap` | Color and value adjustments |
+| `blur`, `sharpen`, `warp`, `transform`, `edge_detect` | Filters and moves |
+| `normal_from_height`, `ao_from_height`, `curvature_from_height` | Maps from a height's red |
+| `blend`, `math`, `merge` | Blend modes with a mask, per-channel math, channels packed as an ORM or mask texture |
+
+`slash-cli schema texture` lists each op's settings with their defaults. `scene validate` reports
+each mistake at its JSON Pointer with a "did you mean". A node no output reaches is left out, and
+nodes share slots once nothing later reads them.
+
 ## Scatter rules
 
 A `.scatter.json` file says what to place over terrains, meshes, tile maps and areas and how
