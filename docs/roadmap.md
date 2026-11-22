@@ -4,7 +4,7 @@ This is the plan for SlashEngine from today to launch and beyond. It has no date
 order is the plan, and each item carries a status instead. It is drawn from the approved
 [design](design.md), whose milestone list and feature parity table it tracks.
 
-Status: current · Updated: 2026-11-20
+Status: current · Updated: 2026-11-22
 
 ## Status words
 
@@ -25,9 +25,10 @@ published macOS release remain; both need the owner. The release needs only a ve
 with the packages, signing and notarizing the macOS tools once the repository has his Developer
 ID as Actions secrets ([CONTRIBUTING.md](../CONTRIBUTING.md#releases)).
 
-The [agent-built worlds](#agent-built-worlds-and-smart-npcs) tool set is done too: all 21
+The [agent-built worlds](#agent-built-worlds-and-smart-npcs) tool set is done too: its first 22
 items, from planning NPCs to procedural graphs that drive every tool, in 2D and 3D, ship in the
-launch release.
+launch release. Item 23, textures agents author as graphs and layer stacks, is next and ships
+in it too.
 
 The engine builds and is tested on macOS, Linux and Windows. It covers the 2D and 3D feature
 sets, networking, XR, localization, video, accessibility, procedural generation and platform
@@ -1150,8 +1151,8 @@ launch rows and the after-launch features above.
 ## Agent-built worlds and smart NPCs
 
 Ways for agents to build detailed 3D worlds and many smarter NPCs at a fraction of Unreal's
-cost, from the research proposal of 2026-11-07, in order. All 21 are done and ship in the launch
-release. Each works in 2D worlds as well as 3D ones,
+cost, from the research proposal of 2026-11-07 and the owner's later additions, in order. All
+ship in the launch release; items 1 to 22 are done. Each works in 2D worlds as well as 3D ones,
 on physics2d and the canvas where 3D uses physics3d and meshes: `WindSource2D` wind for canvas
 shaders and 2D particles, the simulation's fields, materials and ragdolls on Box2D, foliage
 scattered on tile maps and polygons, 2D lights and reflections, 2D strands and ribbons of hair,
@@ -1461,6 +1462,23 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         layers over a model's animation (speed, weights, bones' scale, shift and held angles,
         added waves), `animation.edit`, and `animation.preview` and `animation.tune` given a
         library; `.pcg.json` graphs reach all of them through their `command` nodes
+23. [ ] Textures agents author (2026-11-22), after Substance Designer and Painter, Houdini's COPs
+        and Blender's shader nodes, in 2D and 3D, GPU first with a CPU twin held to every
+        device ([design](design.md#procedural-generation)):
+        - [ ] Texture graphs: `.texture.json` files of `"type": "graph"`, nodes over parameters
+              (generators, filters, height and normals, blends, PBR outputs), baked in compute
+              on every device, with `texture.generate`, `texture.inspect`, `texture.edit` and
+              `texture.check`
+        - [ ] Live graphs: a graph compiled to a spatial or canvas shader, its parameters
+              uniforms that animations and gameplay code drive
+        - [ ] Mesh map bakes: `model.bake_maps` (ambient occlusion, curvature, thickness, world
+              normal and position, part and material IDs, sky exposure, high to low height and
+              normal) on ray queries
+        - [ ] Layer stacks: `.paint.json` layers, masks over mesh maps and part names, strokes
+              and decals as data, smart materials, and `paint.edit`, `paint.bake` and
+              `paint.preview`, on models and sprites
+        - [ ] Weathering, wear from damage, text and logo stamps, seeded variants, drafts from a
+              prompt and Blender shader node import
 
 Console ports are not on this roadmap and never will be in this repository. As with Godot,
 PlayStation, Xbox and Switch support comes from licensed porting partners as private backends.
@@ -1517,6 +1535,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Closed vendor SDKs | SDK packages: an `sdk.json` per SDK that exports fetch, check and link on all six platforms, with JNI and Objective-C bridges and engine interfaces for the glue | 6 | Done: packages, exports, `sdk.add`, `sdk.check` and `sdk.lock`, Android libraries and Maven, services and glue code |
 | One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | Done: every platform exports, and one Mac builds them all |
 | Procedural generation | FastNoiseLite noise, noise and gradient textures, scatter rules agents write, and procedural content imported from other tools | 8 | Done |
+| Texture authoring | Texture graphs baked or live, mesh map bakes and layer stacks agents write, after Substance Designer and Painter | Launch | Next |
 | Large worlds | Double-precision transforms, world streaming | After launch | Done: the double-precision build, camera-relative 3D drawing and world streaming |
 | Cinematics | Timeline tracks for cameras and events | After launch | Done: bezier, animation and audio tracks, camera cuts, markers and `animation.seek` |
 | Cloth and soft bodies | Jolt soft bodies | After launch | Done: Godot's `SoftBody3D` on Jolt, with pins, attachments and pressure |

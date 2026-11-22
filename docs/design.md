@@ -2,7 +2,7 @@
 
 Approved 2026-10-14. The living version is the [SlashEngine Design Doc](https://claude.ai/code/artifact/9bb8a68c-122e-47aa-b966-4556d10784af); this file is the copy the code is built against.
 
-Status: current · Updated: 2026-11-20
+Status: current · Updated: 2026-11-22
 
 ## Summary
 
@@ -442,6 +442,7 @@ Games often make their textures, terrain and props from rules rather than by han
 - **Made while the game runs.** Gameplay code can make textures and meshes at run time, as Godot's `ImageTexture`, `ArrayMesh` and `SurfaceTool`.
 - **Scatter rules.** Agents write rules that place prefabs or meshes over terrain, meshes, tile maps and areas by noise, density, slope and spacing, seeded so they repeat. A command writes the result as entities an agent can then edit, or a game runs the rules itself. Tile maps and terrains generate from noise files too.
 - **Every tool, procedurally.** Graphs of steps, as Unreal's PCG, drive the world tools too: foliage and grooms, fauna by habitat, characters with their routes and stories, vehicles, wind and physics fields, lights, effects, destructible props and fluids, in 2D and 3D, seeded so a world repeats and checked against budgets and navigation (roadmap item 21).
+- **Textures agents author (roadmap item 23).** A `.texture.json` file can also be a graph, as Substance Designer's and Houdini's COPs are: nodes over named parameters (noise, patterns, filters, height and normals, blends) with PBR outputs, baked in compute on every device with a CPU twin held to it, or compiled into a live shader whose parameters animations and gameplay code drive. `model.bake_maps` bakes a model's mesh maps on ray queries (occlusion, curvature, thickness, IDs, sky exposure, high to low detail). A `.paint.json` layer stack, as Substance Painter's, lays fills, graphs and generators over a model or sprite, masked by those maps and by part and material names, with strokes and decals as data and smart materials through `extends`. Every bake returns numbers (channel ranges, mask coverage, tiling, palette distance, texel density) before any picture, and `texture.check` holds graphs, stacks and their output to the storyboard. Weathering by gravity, wind and sky exposure, wear from gameplay damage, text and logo stamps, seeded variants, drafts from a prompt and Blender shader node import complete it. Strokes are written by agents; painting by hand waits for after launch.
 - **Imported from other tools.** Godot's noise and gradient resources convert with the Godot importer. Blender's geometry nodes and Houdini export instances through glTF's `EXT_mesh_gpu_instancing`, and terrain tools (World Machine, Gaea, World Creator) export heightmaps as 16-bit PNG, RAW or EXR, which become HTerrain maps. Closed formats such as Substance's `.sbsar` are left out; their exported texture maps import as any texture.
 
 ## Languages
