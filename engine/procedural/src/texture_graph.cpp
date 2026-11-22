@@ -405,6 +405,17 @@ json::Value top_schema() {
     output["properties"]["node"] = node_field("The node it is.");
     output["properties"]["as"] = names_field(
         kOutputKinds, "color", "color: the node's RGBA; gray: its red in every color channel.");
+    json::Value& expect = p["expect"];
+    expect["type"] = "object";
+    expect["description"] = "What the outputs should measure, which texture.check holds them to: "
+                            "\"<output>.<measure>\" "
+                            "and a [min, max] range (value, r, g, b, a, contrast, low, high; 0 to "
+                            "1), or \"<output>.tiles\" "
+                            "and whether it tiles.";
+    expect["additionalProperties"]["type"] = json::Array{"array", "boolean"};
+    expect["additionalProperties"]["items"]["type"] = "number";
+    expect["additionalProperties"]["minItems"] = 2;
+    expect["additionalProperties"]["maxItems"] = 2;
     return schema;
 }
 
@@ -516,6 +527,28 @@ public:
         return resolved_;
     }
     [[nodiscard]] const std::vector<std::string>& order() const { return order_; }
+    [[nodiscard]] const std::vector<std::string>& parameter_names() const { return names_; }
+    [[nodiscard]] std::optional<json::Value> parameter_value(std::string_view name) const {
+        const auto found = values_.find(name);
+        return found == values_.end() ? std::nullopt : found->second;
+    }
+
+    // The names of the nodes a node reads, in its inputs' order.
+    static std::vector<std::string> inputs_of(const OpSpec& spec, const json::Value& node) {
+        std::vector<std::string> out;
+        for (const std::string_view input : spec.inputs) {
+            const json::Value* value = input.empty() ? nullptr : node.find(input);
+            if (value == nullptr) {
+                continue;
+            }
+            if (value->is_string()) {
+                out.push_back(value->as_string());
+            } else if (value->is_object() && value->find("node") != nullptr) {
+                out.push_back(value->find("node")->as_string());
+            }
+        }
+        return out;
+    }
 
 private:
     // ---- Parameters ----
@@ -813,22 +846,6 @@ private:
         for (const json::Value& output : outputs.as_array()) {
             visit(output.find("node")->as_string(), done, path);
         }
-    }
-
-    static std::vector<std::string> inputs_of(const OpSpec& spec, const json::Value& node) {
-        std::vector<std::string> out;
-        for (const std::string_view input : spec.inputs) {
-            const json::Value* value = input.empty() ? nullptr : node.find(input);
-            if (value == nullptr) {
-                continue;
-            }
-            if (value->is_string()) {
-                out.push_back(value->as_string());
-            } else if (value->is_object() && value->find("node") != nullptr) {
-                out.push_back(value->find("node")->as_string());
-            }
-        }
-        return out;
     }
 
     void visit(const std::string& name, std::set<std::string, std::less<>>& done,
@@ -1302,6 +1319,156 @@ Result<CompiledGraph> compile_texture_graph(const json::Value& doc, const GraphR
     }
     if (auto checked = render::check_texture_graph(program); !checked) {
         return checked.error();
+    }
+    return out;
+}
+
+namespace {
+
+// The parameters a setting reads: "$name", and the names in "=expressions".
+void collect_uses(const json::Value& value, std::set<std::string, std::less<>>& uses) {
+    if (value.is_string()) {
+        const std::string& text = value.as_string();
+        if (text.starts_with('$')) {
+            uses.insert(text.substr(1));
+        } else if (text.starts_with('=')) {
+            if (auto parsed = Expression::parse(std::string_view(text).substr(1)); parsed) {
+                for (const std::string& name : parsed.value().names()) {
+                    uses.insert(name);
+                }
+            }
+        }
+    } else if (value.is_array()) {
+        for (const json::Value& item : value.as_array()) {
+            collect_uses(item, uses);
+        }
+    } else if (value.is_object()) {
+        for (const auto& [key, item] : value.as_object()) {
+            collect_uses(item, uses);
+        }
+    }
+}
+
+json::Array names_array(const auto& names) {
+    json::Array out;
+    for (const auto& name : names) {
+        out.emplace_back(std::string(name));
+    }
+    return out;
+}
+
+} // namespace
+
+Result<json::Value> describe_texture_graph(const json::Value& doc, const GraphReader& reader) {
+    std::vector<std::string> files;
+    auto merged = merged_document(doc, reader, files);
+    if (!merged) {
+        return merged.error();
+    }
+    const json::Value& graph_doc = merged.value();
+    std::vector<json::ValidationError> errors;
+    Graph graph(graph_doc, errors);
+    graph.check({}, true);
+    if (!errors.empty()) {
+        return detail::first_error(errors);
+    }
+    json::Value out;
+    const json::Value* width = graph_doc.find("width");
+    const json::Value* height = graph_doc.find("height");
+    out["width"] = width != nullptr ? width->as_int() : kDefaultSize;
+    out["height"] = height != nullptr ? height->as_int() : kDefaultSize;
+    const json::Value* tiling = graph_doc.find("tiling");
+    out["tiling"] = tiling == nullptr || tiling->as_bool();
+    if (!files.empty()) {
+        out["extends"] = names_array(files);
+    }
+
+    // Parameters: each one's value, the expression that makes it, and the nodes that read it.
+    std::map<std::string, std::vector<std::string>, std::less<>> readers;
+    const json::Object& nodes = graph_doc.find("nodes")->as_object();
+    json::Value listed_nodes = json::Object{};
+    for (const auto& [name, node] : nodes) {
+        std::set<std::string, std::less<>> uses;
+        collect_uses(node, uses);
+        for (const std::string& use : uses) {
+            readers[use].push_back(name);
+        }
+        json::Value item;
+        item["op"] = node.find("op")->as_string();
+        const std::vector<std::string> reads =
+            Graph::inputs_of(*find_op(node.find("op")->as_string()), node);
+        if (!reads.empty()) {
+            item["reads"] = names_array(reads);
+        }
+        if (!uses.empty()) {
+            item["parameters"] = names_array(uses);
+        }
+        listed_nodes[name] = std::move(item);
+    }
+    json::Value parameters = json::Object{};
+    const json::Value* raw = graph_doc.find("parameters");
+    for (const std::string& name : graph.parameter_names()) {
+        json::Value item;
+        if (std::optional<json::Value> value = graph.parameter_value(name); value) {
+            item["value"] = std::move(*value);
+        }
+        const json::Value& given = *raw->find(name);
+        if (given.is_string()) {
+            item["expression"] = given;
+        }
+        if (const auto found = readers.find(name); found != readers.end()) {
+            item["read_by"] = names_array(found->second);
+        }
+        parameters[name] = std::move(item);
+    }
+    out["parameters"] = std::move(parameters);
+    out["nodes"] = std::move(listed_nodes);
+
+    // Outputs: what each one needs, in the order the bake runs it.
+    std::set<std::string, std::less<>> used;
+    json::Array outputs;
+    for (const json::Value& output : graph_doc.find("outputs")->as_array()) {
+        std::vector<std::string> needs;
+        std::vector<std::string> stack{output.find("node")->as_string()};
+        std::set<std::string, std::less<>> seen;
+        while (!stack.empty()) {
+            const std::string name = stack.back();
+            stack.pop_back();
+            if (!seen.insert(name).second) {
+                continue;
+            }
+            const json::Value& node = nodes.at(name);
+            for (const std::string& input :
+                 Graph::inputs_of(*find_op(node.find("op")->as_string()), node)) {
+                stack.push_back(input);
+            }
+        }
+        for (const std::string& name : graph.order()) {
+            if (seen.contains(name)) {
+                needs.push_back(name);
+                used.insert(name);
+            }
+        }
+        json::Value item;
+        item["name"] = output.find("name")->as_string();
+        item["node"] = output.find("node")->as_string();
+        const json::Value* as = output.find("as");
+        item["as"] = as != nullptr ? as->as_string() : std::string("color");
+        item["needs"] = names_array(needs);
+        outputs.push_back(std::move(item));
+    }
+    out["outputs"] = std::move(outputs);
+    std::vector<std::string> unused;
+    for (const auto& [name, node] : nodes) {
+        if (!used.contains(name)) {
+            unused.push_back(name);
+        }
+    }
+    if (!unused.empty()) {
+        out["unused"] = names_array(unused);
+    }
+    if (const json::Value* expect = graph_doc.find("expect"); expect != nullptr) {
+        out["expect"] = *expect;
     }
     return out;
 }

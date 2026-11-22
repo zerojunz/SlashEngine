@@ -8957,6 +8957,7 @@ void register_builtin_commands(Registry& registry) {
     register_place_commands(registry);
     register_terrain_commands(registry);
     register_procedural_commands(registry);
+    register_texture_tools(registry);
     register_scatter_commands(registry);
     register_pcg_commands(registry);
     register_hair_commands(registry);

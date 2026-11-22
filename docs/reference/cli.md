@@ -446,7 +446,8 @@ Checks a folder's `project.json`, its `export_presets.json` if there is one, the
 layout its `audio.bus_layout` names, the [translation
 files](project-format.md#internationalization) its `internationalization` lists (each must load,
 with its problems by line), the [icons](project-format.md#icons)
-it and its presets name (each must be a square image), its storyboard with [`storyboard.check`](commands.md#storyboardcheck), and
+it and its presets name (each must be a square image), its storyboard with [`storyboard.check`](commands.md#storyboardcheck), its
+texture graphs with [`texture.check`](commands.md#texturecheck), and
 its [SDK packages](sdk-format.md#sdk-check) (their `sdk.json` files, the presets' `sdks` and the
 files in the packages, not keys or downloads) and its [`providers.json`](providers.md) if
 there is one, and lists every error with its file and JSON

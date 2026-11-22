@@ -29,7 +29,13 @@ tables in group memory), and every other device (and Direct3D 12, and any device
 runs the CPU twin, `render::run_texture_graph` (`engine/render/src/texture_graph.cpp`, on the job
 pool, built with `-ffp-contract=off`). A change to an op goes in both, and
 `tests/test_texture_graph_gpu.cpp` holds every device to the twin over every op.
-`examples/texture-graphs` tunes a brick wall.
+`examples/texture-graphs` tunes a brick wall. `texture.inspect`, `texture.edit` and
+`texture.check` (`engine/command/src/texture_tools.cpp`) work on graphs as text:
+`procedural::describe_texture_graph` says what reads each parameter and what each output needs,
+an edit is a JSON Merge Patch that returns each output measured (`measure`: luminance, channels,
+contrast and whether it tiles), and the check holds each graph to its `expect` ranges and the
+storyboard's palettes and budgets (`storyboard::check_textures`); `test.run` and
+`slash-cli project validate` run it. `examples/texture-graph-tools` tunes the wall to a budget.
 
 Gameplay code makes textures and meshes while a game runs, as Godot's `ImageTexture` and
 `ArrayMesh`: `asset::Assets::put` keeps a value at a `made:<name>` path (`asset::is_made_path`)

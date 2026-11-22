@@ -539,6 +539,148 @@ TEST_CASE("texture.generate makes and measures a texture") {
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("texture.inspect, texture.edit and texture.check work on graphs as text") {
+    const std::string root = "texture_tools_test_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    const std::string brick = R"({"format": 1, "type": "graph", "width": 8, "height": 8,
+        "parameters": {"level": 0.25, "half": "=level / 2", "spare": 1},
+        "nodes": {"flat": {"op": "constant", "color": ["$level", "$half", 0, 1]},
+                  "dark": {"op": "invert", "input": "flat"},
+                  "lost": {"op": "invert", "input": "flat"}},
+        "outputs": [{"name": "albedo", "node": "flat"}, {"name": "inverse", "node": "dark"}],
+        "expect": {"albedo.value": [0.1, 0.3], "albedo.tiles": true}})";
+    REQUIRE(slash::platform::write_file(root + "/brick.texture.json", brick).ok());
+
+    auto components = std::make_unique<world::ComponentRegistry>();
+    world::register_builtin_components(*components);
+    auto commands = std::make_unique<command::Registry>();
+    command::register_builtin_commands(*commands);
+    command::SessionOptions options;
+    options.project_root = root;
+    options.capture_logs = false;
+    options.capabilities = {command::Capability::Read, command::Capability::Edit,
+                            command::Capability::Filesystem, command::Capability::Run};
+    command::Session session(*components, *commands, options);
+    const auto call = [&](std::string_view name, std::string_view params) {
+        return session.call(name, parse(params));
+    };
+    const auto errors_of = [](const command::Reply& reply) {
+        std::vector<std::string> found;
+        for (const json::Value& error : reply.value.find("errors")->as_array()) {
+            found.push_back(error.find("file")->as_string() + " " +
+                            error.find("path")->as_string() + " " +
+                            error.find("message")->as_string());
+        }
+        return found;
+    };
+
+    // The graph as text: what reads each parameter, what each node reads, what each output
+    // needs, and the nodes no output needs.
+    command::Reply reply = call("texture.inspect", R"({"path": "brick.texture.json"})");
+    REQUIRE_MESSAGE(reply.ok, reply.message);
+    CHECK(*reply.value.find("parameters") == parse(R"({
+        "half": {"expression": "=level / 2", "read_by": ["flat"], "value": 0.125},
+        "level": {"read_by": ["flat"], "value": 0.25}, "spare": {"value": 1}})"));
+    CHECK(*reply.value.find("nodes") == parse(R"({
+        "dark": {"op": "invert", "reads": ["flat"]},
+        "flat": {"op": "constant", "parameters": ["half", "level"]},
+        "lost": {"op": "invert", "reads": ["flat"]}})"));
+    CHECK(*reply.value.find("outputs") == parse(R"([
+        {"as": "color", "name": "albedo", "needs": ["flat"], "node": "flat"},
+        {"as": "color", "name": "inverse", "needs": ["flat", "dark"], "node": "dark"}])"));
+    CHECK(*reply.value.find("unused") == parse(R"(["lost"])"));
+    CHECK(reply.value.find("tiling")->as_bool());
+
+    // An edit is a merge patch: it returns what changed and each output measured, no pixels.
+    reply = call("texture.edit",
+                 R"({"path": "brick.texture.json", "patch": {"parameters": {"level": 1}}})");
+    REQUIRE_MESSAGE(reply.ok, reply.message);
+    CHECK(*reply.value.find("changed") == parse(R"(["/parameters/level"])"));
+    const json::Value& albedo = *reply.value.find("outputs")->find("albedo");
+    CHECK(albedo.find("r")->as_double() == 1.0);
+    CHECK(albedo.find("g")->as_double() == doctest::Approx(0.502).epsilon(0.002));
+    CHECK(albedo.find("contrast")->as_double() == 0.0);
+    CHECK(albedo.find("tiles")->as_bool());
+    CHECK(reply.value.find("outputs")->find("inverse")->find("b")->as_double() == 1.0);
+
+    // texture.check holds the graph to its expected ranges, now that the edit brightened it.
+    reply = call("texture.check", "{}");
+    REQUIRE_MESSAGE(reply.ok, reply.message);
+    REQUIRE(errors_of(reply).size() == 1);
+    CHECK(errors_of(reply)[0].starts_with(
+        "brick.texture.json /expect/albedo.value \"albedo\"'s value is 0.572, outside [0.1, 0.3]"));
+
+    // Undo puts the file back as it was written.
+    REQUIRE(call("undo", "{}").ok);
+    CHECK(slash::platform::read_file(root + "/brick.texture.json").value() == brick);
+    CHECK(errors_of(call("texture.check", "{}")).empty());
+
+    // A dry run says what would change and writes nothing.
+    reply = call("texture.edit", R"({"path": "brick.texture.json", "patch": {"nodes":
+                                    {"lost": null}}, "dry_run": true})");
+    REQUIRE_MESSAGE(reply.ok, reply.message);
+    CHECK(*reply.value.find("result")->find("changed") == parse(R"(["/nodes/lost"])"));
+    CHECK(slash::platform::read_file(root + "/brick.texture.json").value() == brick);
+
+    // A new file is made with the format and type filled in.
+    reply = call("texture.edit", R"({"path": "red.texture.json", "patch": {"width": 4,
+        "height": 4, "nodes": {"a": {"op": "constant", "color": [1, 0, 0, 1]}},
+        "outputs": [{"name": "a", "node": "a"}]}})");
+    REQUIRE_MESSAGE(reply.ok, reply.message);
+    const auto made = json::parse(slash::platform::read_file(root + "/red.texture.json").value());
+    REQUIRE(made.ok());
+    CHECK(*made.value().find("type") == parse(R"("graph")"));
+    CHECK(made.value().find("format")->as_int() == 1);
+
+    // Errors point into the patch, with the closest name for a misspelled one.
+    reply = call("texture.edit", R"({"path": "brick.texture.json", "patch": {"nodes":
+                                    {"flat": {"op": "noize"}}}})");
+    CHECK_FALSE(reply.ok);
+    CHECK(reply.message.starts_with("/patch/nodes/flat/op:"));
+    CHECK(reply.message.find(R"(did you mean "noise"?)") != std::string::npos);
+    reply = call("texture.edit",
+                 R"({"path": "brick.texture.json", "patch": {"type": "NoiseTexture2D"}})");
+    CHECK_FALSE(reply.ok);
+    CHECK(reply.message.starts_with("/patch/type:"));
+    CHECK_FALSE(call("texture.inspect", R"({"path": "missing.texture.json"})").ok);
+    CHECK_FALSE(call("texture.inspect", "{}").ok);
+
+    // Expectations name outputs and measures that exist; a palette covering a graph's path
+    // holds its first output to its colors.
+    REQUIRE(slash::platform::write_file(root + "/bad.texture.json",
+                                        R"({"format": 1, "type": "graph", "width": 4,
+        "height": 4, "nodes": {"a": {"op": "constant", "color": [1, 0, 0, 1]}},
+        "outputs": [{"name": "a", "node": "a"}],
+        "expect": {"b.value": [0, 1], "a.valeu": [0, 1], "a.contrast": [0.5, 1]}})")
+                .ok());
+    REQUIRE(slash::platform::create_directories(root + "/storyboard").ok());
+    REQUIRE(slash::platform::write_file(root + "/storyboard/style.json",
+                                        R"({"format": 1, "entries": {"palette/stone": {
+        "name": "Stone", "links": ["red.texture.json"], "colors": {"grey": "#808080"}}}})")
+                .ok());
+    reply = call("texture.check", "{}");
+    REQUIRE_MESSAGE(reply.ok, reply.message);
+    CHECK(reply.value.find("checked")->as_int() == 3);
+    const std::vector<std::string> found = errors_of(reply);
+    REQUIRE(found.size() == 4);
+    CHECK(found[0] ==
+          R"(bad.texture.json /expect/a.contrast "a"'s contrast is 0, outside [0.5, 1])");
+    CHECK(found[1] ==
+          R"(bad.texture.json /expect/a.valeu "valeu" isn't a measure (did you mean "value"?))");
+    CHECK(found[2] == R"(bad.texture.json /expect/b.value "b" isn't an output of the graph )"
+                      R"((did you mean "a"?))");
+    CHECK(found[3] == R"(red.texture.json  has 16 pixels in 1 color not in palette/stone: )"
+                      R"(#ff0000 at (0, 0), nearest "grey" #808080)");
+
+    // test.run runs it with the project's other checks.
+    reply = call("test.run", "{}");
+    REQUIRE_MESSAGE(reply.ok, reply.message);
+    CHECK(json::write(reply.value, json::Style::Compact).find("/expect/a.valeu") !=
+          std::string::npos);
+    std::filesystem::remove_all(root);
+}
+
 namespace {
 
 // A world with the built-in components and the canvas installed, on a 32x32 screen.

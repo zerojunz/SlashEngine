@@ -83,6 +83,14 @@ struct CompiledGraph {
                                                           const GraphReader& reader,
                                                           const json::Object& overrides = {});
 
+// What a graph is made of, after what it extends is merged under it, for agents to read before
+// they edit it: its size and tiling, the files it extends, each parameter's value (with its
+// expression and the nodes reading it), each node's op, the nodes it reads and the parameters it
+// uses, each output's node, kind and the nodes it needs in the order they run, the nodes no
+// output needs ("unused") and its "expect". Fails with the first error a compile would.
+[[nodiscard]] Result<json::Value> describe_texture_graph(const json::Value& doc,
+                                                         const GraphReader& reader);
+
 // Bakes a compiled graph's outputs as RGBA8 images, in its outputs' order: on device when it is
 // given (RenderDevice::bake_texture_graph), else with the CPU twin on pool.
 [[nodiscard]] Result<std::vector<render::Image>> bake_texture_graph(const CompiledGraph& graph,
