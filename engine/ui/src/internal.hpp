@@ -25,16 +25,16 @@ namespace slash::ui {
 [[nodiscard]] std::string icon_path_error(const std::string& path);
 
 // The control types an entity's components make it, as Godot's classes: "Label",
-// "VBoxContainer" for a vertical BoxContainer and so on, the drawing ones first and containers
-// last; "Control" when it has only a Control.
+// "VBoxContainer" for a vertical StackBox and so on, the drawing ones first and containers
+// last; "Widget" when it has only a Widget.
 [[nodiscard]] std::vector<std::string_view> control_classes(const world::World& world,
                                                             entt::entity entity);
 
-// The Button an entity has: its Button, or its CheckBox, CheckButton, OptionButton or
+// The Button an entity has: its Button, or its CheckBox, ToggleSwitch, Dropdown or
 // MenuButton, which are buttons too; nullptr for none.
 [[nodiscard]] const world::Button* button_of(const world::World& world, entt::entity entity);
 [[nodiscard]] world::Button* button_of(world::World& world, entt::entity entity);
-// Which component button_of found: "Button", "CheckBox", "CheckButton", "OptionButton" or
+// Which component button_of found: "Button", "CheckBox", "ToggleSwitch", "Dropdown" or
 // "MenuButton"; "" for none.
 [[nodiscard]] std::string_view button_type(const world::World& world, entt::entity entity);
 
@@ -45,10 +45,10 @@ namespace slash::ui {
 // "click", "all" or "accessibility").
 [[nodiscard]] std::string_view focus_mode_name(const world::World& world, entt::entity entity);
 
-// Scrolls the ScrollContainer a control is in to show it, as ensure_control_visible; false if
+// Scrolls the ScrollBox a control is in to show it, as ensure_control_visible; false if
 // its parent isn't one.
 bool scroll_into_view(world::World& world, entt::entity control);
-// Sets a ScrollContainer's scroll on the axes given, [horizontal, vertical], kept in its bars'
+// Sets a ScrollBox's scroll on the axes given, [horizontal, vertical], kept in its bars'
 // ranges; false for one that isn't laid out.
 bool scroll_container_to(world::World& world, entt::entity container,
                          std::array<std::optional<double>, 2> to);
@@ -83,10 +83,10 @@ struct BarLook {
     bool increment_pressed = false;
     bool dragging = false;
 };
-// Which bar: a ScrollBar's own, or a ScrollContainer's horizontal or vertical one.
+// Which bar: a ScrollBar's own, or a ScrollBox's horizontal or vertical one.
 enum class Bar : std::uint8_t { Own, Horizontal, Vertical };
 [[nodiscard]] BarLook bar_look(const world::World& world, entt::entity control, Bar bar);
-// The scroll a ScrollContainer asks for, [horizontal, vertical]: the gui system's, which keeps
+// The scroll a ScrollBox asks for, [horizontal, vertical]: the gui system's, which keeps
 // fractions of a pixel, while its component's whole pixels still match it; else the
 // component's.
 [[nodiscard]] std::array<double, 2> wanted_scroll(const world::World& world,

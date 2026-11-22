@@ -2,7 +2,7 @@
   "entities": {
     "layers": {
       "components": {
-        "AudioStreamPlayer": {
+        "SoundPlayer": {
           "parameters": {
             "stream_1_volume_db": -80.0
           },
@@ -12,14 +12,14 @@
     },
     "radio": {
       "components": {
-        "AudioStreamPlayer": {
+        "SoundPlayer": {
           "stream": "audio/radio.audio.json"
         }
       }
     },
     "score": {
       "components": {
-        "AudioStreamPlayer": {
+        "SoundPlayer": {
           "autoplay": true,
           "parameters": {
             "switch_to_clip": "explore"

@@ -138,7 +138,7 @@ private:
 // One audio track's tick, as Godot's AnimationMixer::_blend_process takes it: the owner (the
 // player or tree playing it), the entity whose audio player it plays on, where the animation is,
 // how much it counts, and the key to start, if any (seeked starts it from the middle).
-// What plays an animation's audio tracks: an AnimationPlayer or an AnimationTree, which an entity
+// What plays an animation's audio tracks: an Animator or an AnimationGraph, which an entity
 // can have both of, as Godot's are nodes of their own.
 enum class Mixer : std::uint8_t { Player, Tree };
 struct AudioTrackTick {
@@ -176,7 +176,7 @@ void reset_audio(world::World& world);
 Result<void> play_started(world::World& world, LibraryCache& cache, entt::entity entity,
                           const std::string& name);
 // Seeks an animation track's player to where the animation a key started since seconds ago is,
-// as Godot's mixer seeks an animation track's AnimationPlayer: sets what its tracks set there,
+// as Godot's mixer seeks an animation track's Animator: sets what its tracks set there,
 // and those of the players its own animation tracks start, depth players down. False for
 // "[stop]", an animation the player lacks, or, unless past_end, one that doesn't loop and ended
 // since.

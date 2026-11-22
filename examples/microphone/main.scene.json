@@ -2,7 +2,7 @@
   "entities": {
     "voice": {
       "components": {
-        "AudioStreamPlayer": {
+        "SoundPlayer": {
           "autoplay": true,
           "bus": "Mic",
           "stream": "audio/mic.audio.json"

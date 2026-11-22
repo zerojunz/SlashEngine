@@ -2,7 +2,7 @@
 
 Meshes hidden behind walls aren't drawn, as Godot 4.6's occlusion culling leaves them out.
 [main.scene.json](main.scene.json) is a street: a wall in front of the camera, three houses behind
-it and a tall tower behind them. The wall has an `OccluderInstance3D` box a little smaller than
+it and a tall tower behind them. The wall has an `Occluder3D` box a little smaller than
 the wall itself, and [project.json](project.json) turns culling on:
 
 ```json

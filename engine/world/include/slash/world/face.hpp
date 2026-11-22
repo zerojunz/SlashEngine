@@ -181,7 +181,7 @@ struct SculptedHead {
 [[nodiscard]] SculptedHead sculpt_head(const CharacterFace& face, const HeadShape& head);
 
 // ARKit's 52 expression shapes (Apple's ARFaceAnchor.BlendShapeLocation), in the order Live Link
-// Face records them: what face capture records and XRFaceModifier3D drives. "Left" is the face's
+// Face records them: what face capture records and XRFace3D drives. "Left" is the face's
 // own left (+x).
 [[nodiscard]] const std::vector<std::string_view>& face_expression_names();
 [[nodiscard]] std::optional<std::size_t> face_expression_index(std::string_view name);

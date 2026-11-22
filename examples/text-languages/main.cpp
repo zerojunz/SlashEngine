@@ -140,7 +140,7 @@ int main() {
 
     // Laid out left to right, the same menu starts at the left.
     call(session, "component.set",
-         R"({"id": "menu", "components": {"Control": {"layout_direction": "ltr"}}})");
+         R"({"id": "menu", "components": {"Widget": {"layout_direction": "ltr"}}})");
     call(session, "ui.layout", R"({"ids": ["menu", "title", "start", "quit"]})");
     call(session, "undo", "{}");
 

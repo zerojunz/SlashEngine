@@ -139,9 +139,9 @@ std::optional<Reply> read_regions(const world::World& world, const json::Value& 
         if (entity == entt::null) {
             return unknown_entity(world, id, path);
         }
-        if (!world.ecs().any_of<world::NavigationRegion2D, world::NavigationRegion3D>(entity)) {
+        if (!world.ecs().any_of<world::NavArea2D, world::NavArea3D>(entity)) {
             return param_error(code::kInvalidParams, path,
-                               quoted(id) + " has no NavigationRegion2D or NavigationRegion3D");
+                               quoted(id) + " has no NavArea2D or NavArea3D");
         }
         out.push_back(entity);
     }
@@ -318,10 +318,10 @@ Reply navigation_agent(Session& session, const json::Value& params) {
     if (entity == entt::null) {
         return unknown_entity(world, id, "/id");
     }
-    const bool three_d = world.ecs().all_of<world::NavigationAgent3D>(entity);
-    if (!three_d && !world.ecs().all_of<world::NavigationAgent2D>(entity)) {
+    const bool three_d = world.ecs().all_of<world::NavAgent3D>(entity);
+    if (!three_d && !world.ecs().all_of<world::NavAgent2D>(entity)) {
         return param_error(code::kInvalidParams, "/id",
-                           quoted(id) + " has no NavigationAgent2D or NavigationAgent3D");
+                           quoted(id) + " has no NavAgent2D or NavAgent3D");
     }
     json::Value result;
     if (three_d) {
@@ -340,9 +340,9 @@ Reply navigation_agent(Session& session, const json::Value& params) {
     }
     result["path"] = std::move(points);
     result["path_index"] = static_cast<std::int64_t>(info.path_index);
-    const bool avoiding =
-        three_d ? world.ecs().get<const world::NavigationAgent3D>(entity).avoidance_enabled
-                : world.ecs().get<const world::NavigationAgent2D>(entity).avoidance_enabled;
+    const bool avoiding = three_d
+                              ? world.ecs().get<const world::NavAgent3D>(entity).avoidance_enabled
+                              : world.ecs().get<const world::NavAgent2D>(entity).avoidance_enabled;
     if (avoiding) {
         result["safe_velocity"] =
             three_d ? point_value(info.safe_velocity)
@@ -401,11 +401,11 @@ Reply navigation_bake(Session& session, const json::Value& params) {
     if (entity == entt::null) {
         return unknown_entity(world, id, "/id");
     }
-    const auto* region_3d = world.ecs().try_get<world::NavigationRegion3D>(entity);
-    const auto* region_2d = world.ecs().try_get<world::NavigationRegion2D>(entity);
+    const auto* region_3d = world.ecs().try_get<world::NavArea3D>(entity);
+    const auto* region_2d = world.ecs().try_get<world::NavArea2D>(entity);
     if (region_3d == nullptr && region_2d == nullptr) {
         return param_error(code::kInvalidParams, "/id",
-                           quoted(id) + " has no NavigationRegion2D or NavigationRegion3D");
+                           quoted(id) + " has no NavArea2D or NavArea3D");
     }
     const std::string& path =
         region_3d != nullptr ? region_3d->navigation_mesh : region_2d->navigation_polygon;
@@ -440,7 +440,7 @@ Reply navigation_bake(Session& session, const json::Value& params) {
         const navigation::SourceGeometry3D geometry =
             navigation::parse_source_geometry(world, session.assets(), entity, settings, &warnings);
         if (geometry.indices.empty()) {
-            warnings.emplace_back("no geometry to bake: put MeshInstance3D entities, or "
+            warnings.emplace_back("no geometry to bake: put Model3D entities, or "
                                   "StaticBody3D entities on geometry_collision_mask, under the "
                                   "region in Transform3D children");
         }
@@ -467,7 +467,7 @@ Reply navigation_bake(Session& session, const json::Value& params) {
             navigation::parse_source_geometry(world, session.assets(), entity, settings, &warnings);
         if (settings.outlines.empty() && geometry.traversable_outlines.empty()) {
             warnings.emplace_back("nothing to bake: give the file outlines of where agents can "
-                                  "go, or put TileMapLayer entities whose tiles have navigation "
+                                  "go, or put TileLayer2D entities whose tiles have navigation "
                                   "outlines under the region in Transform2D children");
         }
         auto baked = navigation::bake(settings, geometry);
@@ -580,7 +580,7 @@ void register_navigation_commands(Registry& registry) {
         .params = params_schema({{"map", enum_property({"2d", "3d"}, "Default: both.")}}),
         .handler = navigation_map,
     });
-    json::Value agent_id = property("string", "An entity with a NavigationAgent2D or 3D.");
+    json::Value agent_id = property("string", "An entity with a NavAgent2D or 3D.");
     agent_id["minLength"] = 1;
     registry.add({
         .name = "navigation.agent",
@@ -592,8 +592,7 @@ void register_navigation_commands(Registry& registry) {
         .params = params_schema({{"id", std::move(agent_id)}}, {"id"}),
         .handler = navigation_agent,
     });
-    json::Value region_id =
-        property("string", "An entity with a NavigationRegion3D or NavigationRegion2D.");
+    json::Value region_id = property("string", "An entity with a NavArea3D or NavArea2D.");
     region_id["minLength"] = 1;
     registry.add({
         .name = "navigation.bake",

@@ -13,7 +13,7 @@ same on every machine.
   sunset, blended in Oklab.
 
 [main.scene.json](main.scene.json) names them where it would name `.png` files: the water and the
-glow are `Sprite2D`s and the dusk sky is a `TextureRect` stretched across the top.
+glow are `Sprite2D`s and the dusk sky is a `Picture` stretched across the top.
 
 [calls.jsonl](calls.jsonl) tunes them the way an agent does, with no image to look at, and
 [results.jsonl](results.jsonl) holds the replies:
@@ -27,7 +27,7 @@ glow are `Sprite2D`s and the dusk sky is a `TextureRect` stretched across the to
   orange at its radius and past it.
 - `frame.capture` reads the water, the glow and both ends of the sky as the scene draws them.
 - `texture.generate` with `out` writes a normal map of the water's noise to a PNG, for a
-  `StandardMaterial3D`'s `normal_texture` or a person to look at.
+  `Surface3D`'s `normal_texture` or a person to look at.
 - A misspelled `noise_type` fails at its JSON Pointer, listing the types there are.
 
 `slash-cli scene validate textures/water.texture.json` checks a file and `slash-cli schema

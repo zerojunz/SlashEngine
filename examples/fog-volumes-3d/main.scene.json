@@ -14,13 +14,13 @@
     },
     "clearing": {
       "components": {
-        "FogMaterial": {
-          "density": -1.0,
-          "edge_fade": 0.0
-        },
         "FogVolume": {
           "shape": "cylinder",
           "size": [1.6, 3.0, 1.6]
+        },
+        "FogVolumeLook": {
+          "density": -1.0,
+          "edge_fade": 0.0
         },
         "Transform3D": {
           "position": [1.5, 1.0, 1.0]
@@ -29,7 +29,7 @@
     },
     "environment": {
       "components": {
-        "WorldEnvironment": {
+        "Environment3D": {
           "ambient_light_color": [0.4, 0.45, 0.6, 1.0],
           "ambient_light_energy": 0.3,
           "ambient_light_source": "color",
@@ -44,11 +44,11 @@
     },
     "floor": {
       "components": {
-        "MeshInstance3D": {},
-        "PlaneMesh": {
+        "Model3D": {},
+        "PlaneGeometry": {
           "size": [16.0, 16.0]
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "albedo_color": [0.5, 0.45, 0.4, 1.0]
         },
         "Transform3D": {}
@@ -56,7 +56,7 @@
     },
     "lamp": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.7, 0.4, 1.0],
           "light_energy": 3.0,
           "light_volumetric_fog_energy": 2.0,
@@ -69,14 +69,14 @@
     },
     "mist": {
       "components": {
-        "FogMaterial": {
+        "FogVolume": {
+          "size": [8.0, 1.5, 6.0]
+        },
+        "FogVolumeLook": {
           "albedo": [0.8, 0.85, 1.0, 1.0],
           "density": 0.8,
           "edge_fade": 0.3,
           "height_falloff": 1.5
-        },
-        "FogVolume": {
-          "size": [8.0, 1.5, 6.0]
         },
         "Transform3D": {
           "position": [0.0, 0.5, 0.0]
@@ -85,11 +85,11 @@
     },
     "wall": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [12.0, 4.0, 0.4]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.55, 0.5, 0.45, 1.0]
         },
         "Transform3D": {
@@ -99,13 +99,13 @@
     },
     "wisp": {
       "components": {
-        "FogMaterial": {
-          "density": 0.5,
-          "emission": [0.3, 0.9, 0.4, 1.0]
-        },
         "FogVolume": {
           "shape": "ellipsoid",
           "size": [1.6, 1.6, 1.6]
+        },
+        "FogVolumeLook": {
+          "density": 0.5,
+          "emission": [0.3, 0.9, 0.4, 1.0]
         },
         "Transform3D": {
           "position": [-2.0, 2.0, -1.0]

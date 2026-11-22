@@ -64,7 +64,7 @@ void print_car(const world::World& world) {
                 static_cast<unsigned long long>(world.tick()), car.position.x, car.position.y,
                 car.position.z, car.rotation.y, speed);
     for (const std::string_view id : {"front_left", "rear_left"}) {
-        const auto& wheel = world.ecs().get<world::VehicleWheel3D>(world.find(id));
+        const auto& wheel = world.ecs().get<world::Wheel3D>(world.find(id));
         std::printf("  %.*s: %s, suspension %.2f m, %.0f rpm, grip %.2f\n",
                     static_cast<int>(id.size()), id.data(),
                     wheel.in_contact ? "on the ground" : "in the air", wheel.suspension_length,
@@ -96,20 +96,20 @@ int main() {
          R"({"id": "door_hinge", "components": {"HingeJoint3D": {"motor_enabled": true}}})");
     // Throttle for two seconds: the rear wheels drive the car toward +z.
     call(session, "component.set",
-         R"({"id": "car", "components": {"VehicleBody3D": {"engine_force": 60}}})");
+         R"({"id": "car", "components": {"WheeledBody3D": {"engine_force": 60}}})");
     step(session, 120);
     print_car(session.world());
 
     // Steering left (toward +x) for two seconds, still on the throttle.
     call(session, "component.set",
-         R"({"id": "car", "components": {"VehicleBody3D": {"steering": 0.3}}})");
+         R"({"id": "car", "components": {"WheeledBody3D": {"steering": 0.3}}})");
     step(session, 120);
     print_car(session.world());
 
     // Off the throttle, wheels straight and the brake on: the car stops.
     call(
         session, "component.set",
-        R"({"id": "car", "components": {"VehicleBody3D": {"engine_force": 0, "steering": 0, "brake": 2}}})");
+        R"({"id": "car", "components": {"WheeledBody3D": {"engine_force": 0, "steering": 0, "brake": 2}}})");
     step(session, 120);
     print_car(session.world());
     print_props(session.world());

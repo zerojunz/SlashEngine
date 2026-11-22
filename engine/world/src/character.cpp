@@ -29,7 +29,7 @@ namespace {
 constexpr std::string_view kSchema = R"({
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "SlashEngine character",
-  "description": "A person built from a recipe, after Unreal's MetaHuman Creator and Mutable: their body, face, hair, clothing and props. A MeshInstance3D draws it as a rigged humanoid model; a Character2D as a cut-out of Polygon2Ds. Colors are [r, g, b] or [r, g, b, a] from 0 to 1.",
+  "description": "A person built from a recipe, after Unreal's MetaHuman Creator and Mutable: their body, face, hair, clothing and props. A Model3D draws it as a rigged humanoid model; a Character2D as a cut-out of Polygon2Ds. Colors are [r, g, b] or [r, g, b, a] from 0 to 1.",
   "type": "object",
   "additionalProperties": false,
   "required": ["format"],
@@ -68,7 +68,7 @@ constexpr std::string_view kSchema = R"({
         "style": {"enum": ["none", "short", "long", "ponytail", "bun", "mohawk"], "description": "Default short."},
         "color": {"$ref": "#/$defs/color", "description": "Default [0.18, 0.12, 0.08]."},
         "length": {"$ref": "#/$defs/share", "description": "How far long hair and ponytails hang, 0 to 1. Default 0.5."},
-        "groom": {"type": "string", "pattern": "\\.groom\\.json$", "description": "A .groom.json file grown over the scalp (the model's \"scalp\" section, which a HairInstance3D names) in place of the style's shape. 3D only; 2D draws the style."}
+        "groom": {"type": "string", "pattern": "\\.groom\\.json$", "description": "A .groom.json file grown over the scalp (the model's \"scalp\" section, which a Hair3D names) in place of the style's shape. 3D only; 2D draws the style."}
       }
     },
     "clothing": {

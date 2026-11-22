@@ -19,7 +19,7 @@ namespace {
 constexpr std::string_view kSchema = R"({
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "SlashEngine groom",
-  "description": "Hair or fur that a HairInstance3D grows over a model or a Hair2D along a line, after Unreal's Groom: how its strands grow, draw and move. Lengths are meters in 3D and pixels in 2D.",
+  "description": "Hair or fur that a Hair3D grows over a model or a Hair2D along a line, after Unreal's Groom: how its strands grow, draw and move. Lengths are meters in 3D and pixels in 2D.",
   "type": "object",
   "additionalProperties": false,
   "required": ["format"],
@@ -50,9 +50,9 @@ constexpr std::string_view kSchema = R"({
     "texture": {"type": "string", "description": "Cards: the ribbon's image, across its width and down its length, its alpha cutting it out."},
     "shell_count": {"type": "integer", "minimum": 1, "maximum": 64, "description": "Shells: layers of fur over the surface. Default 16."},
     "shell_tiling": {"type": "number", "exclusiveMinimum": 0, "description": "Shells: times the fur's pattern repeats over the texture coordinates. Default 8."},
-    "roughness": {"type": "number", "minimum": 0, "maximum": 1, "description": "3D: as StandardMaterial3D's. Default 0.45."},
-    "anisotropy": {"type": "number", "minimum": -1, "maximum": 1, "description": "3D: how far the highlight stretches across the strands, as StandardMaterial3D's anisotropy. Default 0.8."},
-    "specular": {"type": "number", "minimum": 0, "maximum": 1, "description": "3D: as StandardMaterial3D's metallic_specular. Default 0.5."},
+    "roughness": {"type": "number", "minimum": 0, "maximum": 1, "description": "3D: as Surface3D's. Default 0.45."},
+    "anisotropy": {"type": "number", "minimum": -1, "maximum": 1, "description": "3D: how far the highlight stretches across the strands, as Surface3D's anisotropy. Default 0.8."},
+    "specular": {"type": "number", "minimum": 0, "maximum": 1, "description": "3D: as Surface3D's metallic_specular. Default 0.5."},
     "simulation": {
       "type": "object", "additionalProperties": false,
       "description": "How the guides move, stepped by physics.",
@@ -510,10 +510,10 @@ std::vector<StrandCollider> strand_colliders_3d(const World& world, const Tree3D
     if (root == entt::null) {
         return out;
     }
-    for (const auto [entity, own] : world.ecs().view<const CollisionShape3D>().each()) {
+    for (const auto [entity, own] : world.ecs().view<const Collider3D>().each()) {
         const auto* shape = &own;
         if (shape->disabled || !under(tree, entity, root) ||
-            on_character<CharacterBody3D>(world, tree, entity)) {
+            on_character<CharacterMover3D>(world, tree, entity)) {
             continue;
         }
         Transform3D local;
@@ -542,10 +542,10 @@ std::vector<StrandCollider> strand_colliders_2d(const World& world, const Tree2D
     if (root == entt::null) {
         return out;
     }
-    for (const auto [entity, own] : world.ecs().view<const CollisionShape2D>().each()) {
+    for (const auto [entity, own] : world.ecs().view<const Collider2D>().each()) {
         const auto* shape = &own;
         if (shape->disabled || !under(tree, entity, root) ||
-            on_character<CharacterBody2D>(world, tree, entity)) {
+            on_character<CharacterMover2D>(world, tree, entity)) {
             continue;
         }
         const Affine2D global = tree.global_affine(entity);

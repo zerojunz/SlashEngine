@@ -13,7 +13,7 @@
     },
     "director": {
       "components": {
-        "AnimationPlayer": {
+        "Animator": {
           "animation": "intro",
           "library": "intro.anim.json",
           "targets": {
@@ -26,14 +26,14 @@
     },
     "door": {
       "components": {
-        "AnimationPlayer": {
+        "Animator": {
           "library": "door.anim.json",
           "playing": false
         },
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [1.0, 2.0, 0.1]
         },
-        "MeshInstance3D": {},
+        "Model3D": {},
         "Transform3D": {
           "position": [0.0, 1.0, 0.0]
         }
@@ -41,7 +41,7 @@
     },
     "sun": {
       "components": {
-        "DirectionalLight3D": {},
+        "SunLight3D": {},
         "Transform3D": {
           "rotation": [-0.8, 0.5, 0.0]
         }

@@ -14,7 +14,7 @@
     },
     "environment": {
       "components": {
-        "WorldEnvironment": {
+        "Environment3D": {
           "ambient_light_color": [1.0, 1.0, 1.0, 1.0],
           "ambient_light_energy": 0.05,
           "ambient_light_source": "color",
@@ -25,11 +25,11 @@
     },
     "floor": {
       "components": {
-        "MeshInstance3D": {},
-        "PlaneMesh": {
+        "Model3D": {},
+        "PlaneGeometry": {
           "size": [20.0, 20.0]
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "albedo_color": [0.75, 0.72, 0.65, 1.0]
         },
         "Transform3D": {}
@@ -37,7 +37,7 @@
     },
     "lamp_01": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.75, 0.5, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -50,7 +50,7 @@
     },
     "lamp_02": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.6, 0.8, 1.0, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -63,7 +63,7 @@
     },
     "lamp_03": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.6, 0.8, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -76,7 +76,7 @@
     },
     "lamp_04": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.7, 1.0, 0.7, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -89,7 +89,7 @@
     },
     "lamp_05": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.75, 0.5, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -102,7 +102,7 @@
     },
     "lamp_06": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.6, 0.8, 1.0, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -115,7 +115,7 @@
     },
     "lamp_07": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.6, 0.8, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -128,7 +128,7 @@
     },
     "lamp_08": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.7, 1.0, 0.7, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -141,7 +141,7 @@
     },
     "lamp_09": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.6, 0.8, 1.0, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -154,7 +154,7 @@
     },
     "lamp_10": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.6, 0.8, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -167,7 +167,7 @@
     },
     "lamp_11": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.7, 1.0, 0.7, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -180,7 +180,7 @@
     },
     "lamp_12": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.75, 0.5, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -193,7 +193,7 @@
     },
     "lamp_13": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.6, 0.8, 1.0, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -206,7 +206,7 @@
     },
     "lamp_14": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.6, 0.8, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -219,7 +219,7 @@
     },
     "lamp_15": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.7, 1.0, 0.7, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -232,7 +232,7 @@
     },
     "lamp_16": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.75, 0.5, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -245,7 +245,7 @@
     },
     "lamp_17": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.6, 0.8, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -258,7 +258,7 @@
     },
     "lamp_18": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.7, 1.0, 0.7, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -271,7 +271,7 @@
     },
     "lamp_19": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.75, 0.5, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -284,7 +284,7 @@
     },
     "lamp_20": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.6, 0.8, 1.0, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -297,7 +297,7 @@
     },
     "lamp_21": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.6, 0.8, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -310,7 +310,7 @@
     },
     "lamp_22": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.7, 1.0, 0.7, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -323,7 +323,7 @@
     },
     "lamp_23": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.75, 0.5, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -336,7 +336,7 @@
     },
     "lamp_24": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.6, 0.8, 1.0, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -349,7 +349,7 @@
     },
     "lamp_25": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.7, 1.0, 0.7, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -362,7 +362,7 @@
     },
     "lamp_26": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.75, 0.5, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -375,7 +375,7 @@
     },
     "lamp_27": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.6, 0.8, 1.0, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -388,7 +388,7 @@
     },
     "lamp_28": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.6, 0.8, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -401,7 +401,7 @@
     },
     "lamp_29": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.7, 1.0, 0.7, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -414,7 +414,7 @@
     },
     "lamp_30": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.75, 0.5, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -427,7 +427,7 @@
     },
     "lamp_31": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.6, 0.8, 1.0, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -440,7 +440,7 @@
     },
     "lamp_32": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.6, 0.8, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -453,7 +453,7 @@
     },
     "lamp_33": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.75, 0.5, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -466,7 +466,7 @@
     },
     "lamp_34": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.6, 0.8, 1.0, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -479,7 +479,7 @@
     },
     "lamp_35": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.6, 0.8, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -492,7 +492,7 @@
     },
     "lamp_36": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.7, 1.0, 0.7, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -505,7 +505,7 @@
     },
     "lamp_37": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.75, 0.5, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -518,7 +518,7 @@
     },
     "lamp_38": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.6, 0.8, 1.0, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -531,7 +531,7 @@
     },
     "lamp_39": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.6, 0.8, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -544,7 +544,7 @@
     },
     "lamp_40": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.7, 1.0, 0.7, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -557,7 +557,7 @@
     },
     "lamp_41": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.6, 0.8, 1.0, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -570,7 +570,7 @@
     },
     "lamp_42": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.6, 0.8, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -583,7 +583,7 @@
     },
     "lamp_43": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.7, 1.0, 0.7, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -596,7 +596,7 @@
     },
     "lamp_44": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.75, 0.5, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -609,7 +609,7 @@
     },
     "lamp_45": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.6, 0.8, 1.0, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -622,7 +622,7 @@
     },
     "lamp_46": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.6, 0.8, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -635,7 +635,7 @@
     },
     "lamp_47": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.7, 1.0, 0.7, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -648,7 +648,7 @@
     },
     "lamp_48": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.75, 0.5, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -661,7 +661,7 @@
     },
     "lamp_49": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.6, 0.8, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -674,7 +674,7 @@
     },
     "lamp_50": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.7, 1.0, 0.7, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -687,7 +687,7 @@
     },
     "lamp_51": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.75, 0.5, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -700,7 +700,7 @@
     },
     "lamp_52": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.6, 0.8, 1.0, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -713,7 +713,7 @@
     },
     "lamp_53": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.6, 0.8, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -726,7 +726,7 @@
     },
     "lamp_54": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.7, 1.0, 0.7, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -739,7 +739,7 @@
     },
     "lamp_55": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.75, 0.5, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -752,7 +752,7 @@
     },
     "lamp_56": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.6, 0.8, 1.0, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -765,7 +765,7 @@
     },
     "lamp_57": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.7, 1.0, 0.7, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -778,7 +778,7 @@
     },
     "lamp_58": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.75, 0.5, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -791,7 +791,7 @@
     },
     "lamp_59": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.6, 0.8, 1.0, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -804,7 +804,7 @@
     },
     "lamp_60": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.6, 0.8, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -817,7 +817,7 @@
     },
     "lamp_61": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.7, 1.0, 0.7, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -830,7 +830,7 @@
     },
     "lamp_62": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.75, 0.5, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -843,7 +843,7 @@
     },
     "lamp_63": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.6, 0.8, 1.0, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -856,7 +856,7 @@
     },
     "lamp_64": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.6, 0.8, 1.0],
           "light_energy": 0.6,
           "omni_range": 4.0,
@@ -869,11 +869,11 @@
     },
     "pillar_1": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [0.6, 3.0, 0.6]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.85, 0.85, 0.8, 1.0]
         },
         "Transform3D": {
@@ -883,11 +883,11 @@
     },
     "pillar_2": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [0.6, 3.0, 0.6]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.85, 0.85, 0.8, 1.0]
         },
         "Transform3D": {
@@ -897,11 +897,11 @@
     },
     "pillar_3": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [0.6, 3.0, 0.6]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.85, 0.85, 0.8, 1.0]
         },
         "Transform3D": {
@@ -911,11 +911,11 @@
     },
     "pillar_4": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [0.6, 3.0, 0.6]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.85, 0.85, 0.8, 1.0]
         },
         "Transform3D": {
@@ -925,11 +925,11 @@
     },
     "pillar_5": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [0.6, 3.0, 0.6]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.85, 0.85, 0.8, 1.0]
         },
         "Transform3D": {
@@ -939,11 +939,11 @@
     },
     "pillar_6": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [0.6, 3.0, 0.6]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.85, 0.85, 0.8, 1.0]
         },
         "Transform3D": {

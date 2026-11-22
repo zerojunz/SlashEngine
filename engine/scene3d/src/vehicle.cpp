@@ -40,7 +40,7 @@ ModelCollision box_collision(Vec3 low, Vec3 high) {
 }
 
 MeshData unit_box() {
-    world::BoxMesh box;
+    world::BoxGeometry box;
     box.size = {1.0F, 1.0F, 1.0F};
     return box_mesh(box);
 }
@@ -48,20 +48,20 @@ MeshData unit_box() {
 // A part's shape a meter across, centered on its origin, as its side view's outline is.
 MeshData unit_shape(const std::string& shape) {
     if (shape == "cylinder") {
-        world::CylinderMesh cylinder;
+        world::CylinderGeometry cylinder;
         cylinder.height = 1.0F;
         cylinder.radial_segments = 24;
         cylinder.rings = 1;
         return cylinder_mesh(cylinder);
     }
     if (shape == "sphere") {
-        world::SphereMesh sphere;
+        world::SphereGeometry sphere;
         sphere.radial_segments = 24;
         sphere.rings = 12;
         return sphere_mesh(sphere);
     }
     if (shape == "prism") {
-        return prism_mesh(world::PrismMesh{});
+        return prism_mesh(world::PrismGeometry{});
     }
     return unit_box();
 }

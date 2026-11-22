@@ -1,9 +1,9 @@
 # Text editor
 
 A text field of several lines, as Godot's `TextEdit`. [main.scene.json](main.scene.json) is a
-letter to write: a `TextEdit` that wraps its lines at words (`wrap_mode` `boundary`) and
+letter to write: a `TextArea` that wraps its lines at words (`wrap_mode` `boundary`) and
 highlights the caret's line, with a word count under it. [main.cpp](main.cpp) adds a
-`word_count` system that reads the TextEdit's `text_changed` events, then writes the letter the
+`word_count` system that reads the TextArea's `text_changed` events, then writes the letter the
 way an agent does over MCP (tools `input_inject`, `ui_layout`, `events_read`) or JSON-RPC, and
 draws it into a texture. [expected.txt](expected.txt) holds each call and its reply.
 
@@ -15,7 +15,7 @@ ui.layout {"ids":["letter"]}
 ```
 
 - A click, Tab or `ui.focus` puts the caret in it. `input.inject`'s `text` events type at the
-  caret and `ime` events compose as an input method does, as in a `LineEdit`; Enter
+  caret and `ime` events compose as an input method does, as in a `TextField`; Enter
   (`ui_text_newline`) starts a line, Ctrl+Enter a blank one below and Ctrl+Shift+Enter one
   above (Command for Ctrl on a Mac). Tab types a tab while `tab_input_mode` is on, and Ctrl+M (`ui_focus_mode`) turns that
   off so Tab moves focus.
@@ -34,7 +34,7 @@ ui.layout {"ids":["letter"]}
 - It emits `text_changed` and `caret_changed` once a tick, `lines_edited_from`
   (`{"from_line", "to_line"}`) for each edit and `text_set`, as world events; gameplay code
   reads them with `ui::events(world)`.
-- `ui.layout` reports each TextEdit's `text_edit`: its `caret` and `selection` as
+- `ui.layout` reports each TextArea's `text_edit`: its `caret` and `selection` as
   `[line, column]`, input method text, whether it shows its `placeholder`, the `visible_lines`
   when they aren't all of them, its `rows` when wrapping makes more rows than lines, and the
   grabber of each scroll bar that shows. Its `lines` are the rows in view.

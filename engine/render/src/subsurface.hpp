@@ -26,7 +26,7 @@ using Float4 = std::array<float, 4>;
 // other than disabled, when it is no probe's capture and isn't path traced.
 [[nodiscard]] bool uses_subsurface(const Scene3D& scene);
 
-// Whether a material draws in the subsurface pass: a lit, opaque StandardMaterial3D with a
+// Whether a material draws in the subsurface pass: a lit, opaque Surface3D with a
 // subsurface strength above 0. Games' shaders don't.
 [[nodiscard]] bool draws_subsurface(const Material3D& material);
 

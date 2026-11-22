@@ -2,7 +2,7 @@
 
 A pipeline file, as Godot 4.3's `Compositor` and `CompositorEffect`: it turns the frame's own
 passes off and adds screen passes of the game's own. [main.scene.json](main.scene.json) is a yard
-with a crate and a ball under the sun, and its `WorldEnvironment` names
+with a crate and a ball under the sun, and its `Environment3D` names
 [look.pipeline.json](look.pipeline.json), which:
 
 - turns glow off for this scene, whatever the environment says;

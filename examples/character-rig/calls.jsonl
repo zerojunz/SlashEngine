@@ -2,7 +2,7 @@
 {"jsonrpc":"2.0","id":2,"method":"character.place","params":{"recipe":"characters/ada.character.json","id":"ada","at":[0,0,0],"look_at":"lantern"}}
 {"jsonrpc":"2.0","id":3,"method":"model.inspect","params":{"id":"ada","brief":true}}
 {"jsonrpc":"2.0","id":4,"method":"skeleton.get","params":{"id":"ada","bones":["LeftEye","RightEye","Jaw"]}}
-{"jsonrpc":"2.0","id":5,"method":"component.set","params":{"id":"ada","components":{"AnimationPlayer":{"library":"characters/ada.character.json","animation":"fist_right"}}}}
+{"jsonrpc":"2.0","id":5,"method":"component.set","params":{"id":"ada","components":{"Animator":{"library":"characters/ada.character.json","animation":"fist_right"}}}}
 {"jsonrpc":"2.0","id":6,"method":"step","params":{"ticks":1}}
 {"jsonrpc":"2.0","id":7,"method":"skeleton.get","params":{"id":"ada","bones":["RightHand","RightIndexDistal","RightThumbDistal"]}}
 {"jsonrpc":"2.0","id":8,"method":"component.set","params":{"id":"ada","components":{"Skeleton3D":{"bone_rotations":{"RightHand":[0,-0.9,0]}}}}}

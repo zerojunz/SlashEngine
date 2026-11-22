@@ -110,10 +110,10 @@ constexpr std::string_view kRoom = R"({"commands": [
         "Camera3D": {"current": true},
         "Transform3D": {"position": [0, 2, 4], "rotation": [-0.45, 0, 0]}}}},
     {"command": "entity.create", "params": {"id": "floor", "components": {
-        "MeshInstance3D": {}, "PlaneMesh": {"size": [20, 20]},
-        "StandardMaterial3D": {"albedo_color": [0.6, 0.6, 0.6, 1]}, "Transform3D": {}}}},
+        "Model3D": {}, "PlaneGeometry": {"size": [20, 20]},
+        "Surface3D": {"albedo_color": [0.6, 0.6, 0.6, 1]}, "Transform3D": {}}}},
     {"command": "entity.create", "params": {"id": "bulb", "components": {
-        "OmniLight3D": {"omni_range": 6}, "Transform3D": {"position": [0, 1, 0]}}}}]})";
+        "PointLight3D": {"omni_range": 6}, "Transform3D": {"position": [0, 1, 0]}}}}]})";
 
 // The light at the origin, as light.sample sees it.
 json::Value sampled(Project& project) {
@@ -159,7 +159,7 @@ TEST_CASE("physical light units brighten lights by their lumens and tint them by
     CHECK(base > 0.05);
     plain.ok(
         "component.set",
-        R"({"id": "bulb", "components": {"OmniLight3D": {"light_temperature": 1900, "light_intensity_lumens": 5000}}})");
+        R"({"id": "bulb", "components": {"PointLight3D": {"light_temperature": 1900, "light_intensity_lumens": 5000}}})");
     CHECK(plain.mean() == base);
 
     Project units("light_units_on_project",
@@ -172,18 +172,17 @@ TEST_CASE("physical light units brighten lights by their lumens and tint them by
     // nearly white.
     units.ok(
         "component.set",
-        R"({"id": "bulb", "components": {"OmniLight3D": {"light_intensity_lumens": 39.4784176}}})");
+        R"({"id": "bulb", "components": {"PointLight3D": {"light_intensity_lumens": 39.4784176}}})");
     CHECK(units.mean() == doctest::Approx(base).epsilon(0.05));
     const std::array<int, 3> white = units.pixel(32, 30);
     units.ok("component.set",
-             R"({"id": "bulb", "components": {"OmniLight3D": {"light_temperature": 1900}}})");
+             R"({"id": "bulb", "components": {"PointLight3D": {"light_temperature": 1900}}})");
     const std::array<int, 3> warm = units.pixel(32, 30);
     CHECK(warm[0] > warm[2] + 20);
     CHECK(std::abs(white[0] - white[2]) < 12);
 
     // A camera's exposure sensitivity normalizes exposure: ISO 100 is far darker.
-    units.ok("component.set",
-             R"({"id": "camera", "components": {"CameraAttributesPractical": {}}})");
+    units.ok("component.set", R"({"id": "camera", "components": {"CameraLens": {}}})");
     CHECK(units.mean() < base * 0.5);
 }
 
@@ -191,7 +190,7 @@ TEST_CASE("2D lights tint by their temperature when it is set") {
     Project project("light_temperature_2d_project", "");
     project.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "dark", "components": {
-            "CanvasModulate": {"color": [0, 0, 0, 1]}}}},
+            "AmbientTint2D": {"color": [0, 0, 0, 1]}}}},
         {"command": "entity.create", "params": {"id": "lamp", "components": {
             "Transform2D": {}, "PointLight2D": {"texture": "white.png", "texture_scale": 50}}}}]})");
     CHECK(sampled(project) == parse("[1, 1, 1]"));
@@ -210,12 +209,12 @@ TEST_CASE("light.tune scales 3D lights to a mean brightness and each light's sha
             "Camera3D": {"current": true},
             "Transform3D": {"position": [0, 2, 5], "rotation": [-0.35, 0, 0]}}}},
         {"command": "entity.create", "params": {"id": "ground", "components": {
-            "MeshInstance3D": {}, "PlaneMesh": {"size": [20, 20]},
-            "StandardMaterial3D": {"albedo_color": [0.6, 0.6, 0.6, 1]}, "Transform3D": {}}}},
+            "Model3D": {}, "PlaneGeometry": {"size": [20, 20]},
+            "Surface3D": {"albedo_color": [0.6, 0.6, 0.6, 1]}, "Transform3D": {}}}},
         {"command": "entity.create", "params": {"id": "sun", "components": {
-            "DirectionalLight3D": {}, "Transform3D": {"rotation": [-0.9, 0.3, 0]}}}},
+            "SunLight3D": {}, "Transform3D": {"rotation": [-0.9, 0.3, 0]}}}},
         {"command": "entity.create", "params": {"id": "blaze", "components": {
-            "OmniLight3D": {"light_energy": 60, "omni_range": 4},
+            "PointLight3D": {"light_energy": 60, "omni_range": 4},
             "Transform3D": {"position": [0, 0.5, 1]}}}}]})");
     // The blaze clips the ground under it.
     json::Value tuned = project.ok("light.tune", R"({"scale": 1, "mean": 0.3})");
@@ -230,10 +229,10 @@ TEST_CASE("light.tune scales 3D lights to a mean brightness and each light's sha
     CHECK(changes[0]["to"].as_double() < 60);
     // One undo step puts the energies back.
     project.ok("undo");
-    CHECK(
-        project.ok("entity.get",
-                   R"({"id": "blaze", "components": ["OmniLight3D"]})")["components"]["OmniLight3D"]
-                                                                       ["light_energy"] == 60);
+    CHECK(project.ok(
+              "entity.get",
+              R"({"id": "blaze", "components": ["PointLight3D"]})")["components"]["PointLight3D"]
+                                                                   ["light_energy"] == 60);
 
     // Shares: the sun gives most of the light and the blaze little.
     tuned = project.ok("light.tune",
@@ -257,7 +256,7 @@ TEST_CASE("lighting.check and light.tune look at a 2D world's lights") {
     Project project("light_tune_2d_project", "");
     project.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "night", "components": {
-            "CanvasModulate": {"color": [0.05, 0.05, 0.05, 1]}}}},
+            "AmbientTint2D": {"color": [0.05, 0.05, 0.05, 1]}}}},
         {"command": "entity.create", "params": {"id": "ground", "components": {
             "Transform2D": {"scale": [16, 9]},
             "Sprite2D": {"texture": "white.png", "centered": false}}}},
@@ -265,12 +264,12 @@ TEST_CASE("lighting.check and light.tune look at a 2D world's lights") {
             "Transform2D": {"position": [20, 18]},
             "PointLight2D": {"texture": "white.png", "texture_scale": 4, "energy": 0.2}}}},
         {"command": "entity.create", "params": {"id": "moon", "components": {
-            "DirectionalLight2D": {"energy": 0.1}}}}]})");
+            "SunLight2D": {"energy": 0.1}}}}]})");
     json::Value checked = project.ok("lighting.check", R"({"scale": 1})");
     json::Array lights = checked["lights"].as_array();
     REQUIRE(lights.size() == 2);
     CHECK(lights[0]["id"] == "moon");
-    CHECK(lights[0]["type"] == "DirectionalLight2D");
+    CHECK(lights[0]["type"] == "SunLight2D");
     CHECK(lights[1]["id"] == "torch");
     CHECK(lights[1]["lit"].as_double() > 0.0);
 

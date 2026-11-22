@@ -26,8 +26,8 @@
 #include <unordered_map>
 #include <vector>
 
-// UI, as Godot's Control nodes: Control places a rect in its parent's by anchors and offsets,
-// containers place their children, and Label, Panel, TextureRect and the rest draw in it. Theme
+// UI, as Godot's Control nodes: Widget places a rect in its parent's by anchors and offsets,
+// containers place their children, and Label, Panel, Picture and the rest draw in it. Theme
 // items (colors, constants, fonts, font sizes, icons and style boxes) come from each control's
 // overrides, the .theme.json themes of it and its parents, the project's theme and Godot's
 // default theme. layout() places every control of a world in a viewport, and draw_calls() turns
@@ -64,10 +64,10 @@ struct Settings {
     // Pixels the mouse moves with the left button held before a drag starts, as Godot's
     // Viewport.gui_drag_threshold.
     int drag_threshold = 10;
-    // Seconds after the last edit before typing in a TextEdit starts a new undo step, as
+    // Seconds after the last edit before typing in a TextArea starts a new undo step, as
     // Godot's gui/timers/text_edit_idle_detect_sec.
     double text_edit_idle_detect_sec = 3.0;
-    // The undo steps a TextEdit keeps, as Godot's gui/common/text_edit_undo_stack_max_size.
+    // The undo steps a TextArea keeps, as Godot's gui/common/text_edit_undo_stack_max_size.
     int text_edit_undo_stack_max_size = 1024;
     // Milliseconds between the letters of one popup menu search, as Godot's
     // gui/timers/incremental_search_max_interval_msec.
@@ -106,11 +106,11 @@ void set_viewport(world::World& world, Vec2 viewport);
 // The fonts of a world ui was installed in, or nullptr.
 [[nodiscard]] text::Fonts* fonts(const world::World& world);
 
-// Whether an entity is a control: it has Control or one of the UI components that draw in or lay
-// out one (Label, ColorRect, Panel, a container and so on).
+// Whether an entity is a control: it has Widget or one of the UI components that draw in or lay
+// out one (Label, ColorFill, Panel, a container and so on).
 [[nodiscard]] bool is_control(const world::World& world, entt::entity entity);
 // The control type an entity draws as, as Godot's class: "Button", "Label", "VBoxContainer" for
-// a vertical BoxContainer and so on, or "Control" when it has only a Control.
+// a vertical StackBox and so on, or "Widget" when it has only a Widget.
 [[nodiscard]] std::string_view control_class(const world::World& world, entt::entity entity);
 
 // A style box, as Godot's StyleBox: what a panel or a bar draws behind its content, and the
@@ -146,7 +146,7 @@ struct StyleBox {
     Vec4 modulate_color{1.0F, 1.0F, 1.0F, 1.0F};
     Stretch axis_stretch_horizontal = Stretch::Stretch;
     Stretch axis_stretch_vertical = Stretch::Stretch;
-    bool flip_h = false; // for TextureRect: drawn mirrored
+    bool flip_h = false; // for Picture: drawn mirrored
     bool flip_v = false;
     // Line: along the top of the rect, or down its left side when vertical.
     Vec4 color{0.0F, 0.0F, 0.0F, 1.0F};
@@ -199,19 +199,19 @@ struct LabelText {
     std::string ellipsis;  // what they end with: "" unless text_overrun_behavior adds one
     std::size_t first = 0; // the lines shown: [first, last)
     std::size_t last = 0;
-    // Lines from here on show a TextEdit's gutters (its line numbers): drawn, but not its text.
+    // Lines from here on show a TextArea's gutters (its line numbers): drawn, but not its text.
     std::size_t gutters_from = static_cast<std::size_t>(-1);
     std::vector<Vec2> pens;     // where each shown line starts, on its baseline, in the rect
     std::vector<float> stretch; // extra pixels after each space of a shown line, for fill
     // Glyphs of the source's bytes from here on are hidden (visible_characters after shaping).
     std::size_t visible_bytes = static_cast<std::size_t>(-1);
     // Glyphs of the source's bytes [selected_start, selected_end) draw in selected_color: a
-    // LineEdit's selection.
+    // TextField's selection.
     std::size_t selected_start = 0;
     std::size_t selected_end = 0;
     Vec4 selected_color;
     // Glyphs of the source's bytes from each entry's on draw in its color, until the next
-    // entry's (a TextEdit's syntax highlighting); before the first, in font_color.
+    // entry's (a TextArea's syntax highlighting); before the first, in font_color.
     std::vector<std::pair<std::size_t, Vec4>> colors;
     bool overflow = false; // a line is wider than the rect, or lines don't fit its height
     bool clip = false;     // drawn cut off at the rect
@@ -231,7 +231,7 @@ struct LabelText {
 struct Placed {
     entt::entity entity = entt::null;
     entt::entity parent = entt::null;
-    // The canvas it draws in, its place in Layout::canvases: a root's is the CanvasLayer that
+    // The canvas it draws in, its place in Layout::canvases: a root's is the ScreenLayer that
     // lists it, or the world's, and a child's its parent's. A drag's preview, over every canvas,
     // has canvases.size().
     std::size_t canvas = 0;
@@ -249,7 +249,7 @@ struct Placed {
     // The part of the viewport it draws in, [left, top, right, bottom]: what the controls
     // around it that clip leave, and its own rect too when it clips; nullopt when none clips.
     std::optional<Vec4> clip;
-    bool clips = false;    // it clips itself and its children: clip_contents, or a ScrollContainer
+    bool clips = false;    // it clips itself and its children: clip_contents, or a ScrollBox
     bool translate = true; // its text shows translated (Node::can_auto_translate)
 };
 
@@ -267,7 +267,7 @@ enum class DrawMode : std::uint8_t { Normal, Pressed, Hover, Disabled, HoverPres
 // "normal", "pressed", "hover", "disabled" or "hover_pressed".
 [[nodiscard]] std::string_view draw_mode_name(DrawMode mode);
 
-// A button's state as laid out: a Button's, CheckBox's, CheckButton's or TextureButton's.
+// A button's state as laid out: a Button's, CheckBox's, ToggleSwitch's or ImageButton's.
 struct ButtonState {
     DrawMode mode = DrawMode::Normal;
     float click_margin = 0.0F; // pixels around its rect that still hit it
@@ -285,12 +285,12 @@ struct SliderState {
 };
 
 // A scroll bar as laid out, as ScrollBar measures itself: a ScrollBar's, or one of a
-// ScrollContainer's. Lengths run along it: across a horizontal one, down a vertical one.
+// ScrollBox's. Lengths run along it: across a horizontal one, down a vertical one.
 struct ScrollBarView {
     Vec2 position; // in its control's rect
     Vec2 size;
     bool vertical = false;
-    bool visible = false; // a ScrollContainer hides a bar it doesn't need
+    bool visible = false; // a ScrollBox hides a bar it doesn't need
     // Its range, as Range keeps it: max_value at least min_value, page at most the span.
     double min_value = 0.0;
     double max_value = 0.0;
@@ -307,7 +307,7 @@ struct ScrollBarView {
     double grabber_size = 0.0;
 };
 
-// A ScrollContainer as laid out: its scroll bars, how far it is scrolled, and the part of its
+// A ScrollBox as laid out: its scroll bars, how far it is scrolled, and the part of its
 // rect its children show in, less the bars.
 struct ScrollView {
     ScrollBarView h;
@@ -318,7 +318,7 @@ struct ScrollView {
     Vec2 visible_size;
 };
 
-// A LineEdit as laid out: its theme items and what it shows.
+// A TextField as laid out: its theme items and what it shows.
 struct LineEditView {
     StyleBox normal;
     StyleBox read_only;
@@ -350,19 +350,19 @@ struct LineEditView {
     float caret_x = 0.0F;
 };
 
-// One of a TextEdit's gutters as laid out, as Godot's TextEdit::GutterInfo: a CodeEdit's
+// One of a TextArea's gutters as laid out, as Godot's TextEdit::GutterInfo: a CodeEditor's
 // main_gutter (breakpoints, bookmarks and executing lines) and line_numbers come first, then the
-// TextEdit's own gutters.
+// TextArea's own gutters.
 struct TextEditGutterView {
     enum class Kind : std::uint8_t { Main, LineNumbers, String, Icon };
     std::string name;
     Kind kind = Kind::String;
     bool draw = true;
-    int width = 0;  // a CodeEdit's are worked out from the font and the lines when drawn
+    int width = 0;  // a CodeEditor's are worked out from the font and the lines when drawn
     float x = 0.0F; // where it was drawn in the rect, from the left
 };
 
-// What a CodeEdit's gutters and guidelines draw with: its theme items (type CodeEdit).
+// What a CodeEditor's gutters and guidelines draw with: its theme items (type CodeEditor).
 struct CodeEditView {
     std::string breakpoint_icon;
     std::string bookmark_icon;
@@ -379,13 +379,13 @@ struct CodeEditView {
     int line_numbers_min_digits = 3;
 };
 
-// A TextEdit as laid out: its theme items and what it shows. Lines and columns count from 0,
+// A TextArea as laid out: its theme items and what it shows. Lines and columns count from 0,
 // columns in characters (code points); rows are lines as wrapped.
 struct TextEditView {
     // Its placeholder_text as it shows, translated when the control auto-translates; nullopt
     // for placeholder_text as written.
     std::optional<std::string> placeholder_text;
-    std::optional<std::string> language; // shapes in it instead of the TextEdit's
+    std::optional<std::string> language; // shapes in it instead of the TextArea's
     StyleBox normal;
     StyleBox read_only;
     StyleBox focus;
@@ -413,7 +413,7 @@ struct TextEditView {
     Vec2 v_bar_minimum;
     Vec2 h_bar_minimum;
     std::vector<TextEditGutterView> gutters;
-    std::optional<CodeEditView> code;                    // with a CodeEdit
+    std::optional<CodeEditView> code;                    // with a CodeEditor
     std::map<std::string, Vec2, std::less<>> icon_sizes; // the gutters' icons that load
     bool rtl = false;                                    // laid out right to left
     std::string error; // why its font didn't load, so the default font drew it
@@ -442,7 +442,7 @@ struct TextEditView {
     bool placeholder = false; // it shows its placeholder text
 };
 
-// One item of an open popup menu as laid out, as PopupMenu caches it while drawing.
+// One item of an open popup menu as laid out, as PopupList caches it while drawing.
 struct PopupItemView {
     float y = 0.0F;      // its top in the menu's list, before scrolling
     float height = 0.0F; // its height; v_separation keeps items apart
@@ -450,11 +450,11 @@ struct PopupItemView {
     bool selectable = false; // neither a separator nor disabled
 };
 
-// An open popup menu as laid out: a PopupMenu's, or the list an OptionButton or MenuButton
+// An open popup menu as laid out: a PopupList's, or the list an Dropdown or MenuButton
 // opened. Godot draws it in a window of its own: a panel, with the list scrolled inside its
 // margins.
 struct PopupView {
-    entt::entity owner = entt::null; // the PopupMenu, OptionButton or MenuButton
+    entt::entity owner = entt::null; // the PopupList, Dropdown or MenuButton
     Vec2 position;                   // its top left corner in the viewport, moved to fit inside it
     Vec2 size;                       // its contents' minimum size, at most the viewport's
     std::array<float, 4> margins{};  // its panel's content margins, which the list keeps inside
@@ -504,13 +504,13 @@ struct DragView {
 // What one control the layout can't place properly is doing wrong.
 struct Problem {
     std::string id;
-    std::string path; // JSON Pointer in the entity, e.g. "/components/Control/children/2"
+    std::string path; // JSON Pointer in the entity, e.g. "/components/Widget/children/2"
     std::string message;
 };
 
 struct Layout {
     Vec2 viewport;
-    // The world's canvases in drawing order (world::Canvases). A control in a CanvasLayer is
+    // The world's canvases in drawing order (world::Canvases). A control in a ScreenLayer is
     // placed by the layer's transform; one in the world stays on the screen, over the world's
     // sprites.
     std::vector<world::Canvas> canvases;
@@ -530,14 +530,14 @@ struct Layout {
     std::map<entt::entity, ButtonState> buttons;    // each button
     std::map<entt::entity, SliderState> sliders;
     std::map<entt::entity, ScrollBarView> scroll_bars; // each ScrollBar's
-    std::map<entt::entity, ScrollView> scrolls;        // each ScrollContainer's
+    std::map<entt::entity, ScrollView> scrolls;        // each ScrollBox's
     std::map<entt::entity, LineEditView> line_edits;
     std::map<entt::entity, TextEditView> text_edits;
-    // What each control draws over its text: a LineEdit's or TextEdit's caret and composition
-    // underline, and a TextEdit's scroll bars.
+    // What each control draws over its text: a TextField's or TextArea's caret and composition
+    // underline, and a TextArea's scroll bars.
     std::map<entt::entity, std::vector<Box>> overlays;
     // What each control draws over its children, after the last of them with its z: a
-    // ScrollContainer's scroll bars and focus border.
+    // ScrollBox's scroll bars and focus border.
     std::map<entt::entity, std::vector<Box>> over_children;
     // The popup menus open, over every control, the last on top.
     std::vector<PopupView> popups;
@@ -562,10 +562,10 @@ struct ThemeItems {
     std::map<std::string, StyleBox, std::less<>> styles;
 };
 // The theme items a control type has in Godot's default theme, its base types' included: a
-// VBoxContainer has BoxContainer's, Container's and Control's.
+// VBoxContainer has StackBox's, Container's and Widget's.
 [[nodiscard]] const ThemeItems& default_theme(std::string_view type);
 // A control type and the types it is built on, as Godot's classes: "Label" gives Label and
-// Control. Empty for a type that isn't one.
+// Widget. Empty for a type that isn't one.
 [[nodiscard]] std::vector<std::string_view> base_types(std::string_view type);
 // Every control type, for suggestions.
 [[nodiscard]] const std::vector<std::string_view>& control_types();
@@ -586,9 +586,9 @@ struct Theme {
 [[nodiscard]] json::Value theme_schema();
 // Every error in a .theme.json document, each with the JSON Pointer of the bad value: unknown
 // types and item names with the closest ones, and variations that lead to no control type.
-[[nodiscard]] std::vector<json::ValidationError> validate_theme(const json::Value& doc);
+[[nodiscard]] std::vector<json::ValidationError> validate_theme(const json::Value& given);
 // The theme in a .theme.json document, or its first error.
-[[nodiscard]] Result<Theme> parse_theme(const json::Value& doc);
+[[nodiscard]] Result<Theme> parse_theme(const json::Value& given);
 
 // One theme item a control uses, and where its value comes from: "override", a theme file's
 // path, or "default".
@@ -616,7 +616,7 @@ inline constexpr std::string_view kBuiltinPrefix = "builtin:";
 [[nodiscard]] std::vector<Problem> check(const world::World& world, text::Fonts& fonts);
 
 // The same mistakes in a parsed scene file, each with the JSON Pointer of the bad value in it,
-// e.g. "/entities/menu/components/Control/children/0". Prefabs and fonts are read with reader.
+// e.g. "/entities/menu/components/Widget/children/0". Prefabs and fonts are read with reader.
 // A scene that doesn't load has none: validate_scene reports why.
 [[nodiscard]] std::vector<json::ValidationError>
 check_scene(const world::ComponentRegistry& components, const json::Value& scene,
@@ -687,7 +687,7 @@ struct UiEvent {
     std::string kind;
     std::string id;          // the control's entity ID
     bool toggled_on = false; // for toggled and editing_toggled
-    std::string text;  // for a LineEdit's text_changed, text_submitted and text_change_rejected
+    std::string text;  // for a TextField's text_changed, text_submitted and text_change_rejected
     int from_line = 0; // for lines_edited_from
     int to_line = 0;
     int line = 0;               // for gutter_clicked and breakpoint_toggled
@@ -723,23 +723,23 @@ void release_focus(world::World& world);
 
 // ---- Popup menus ----
 
-// The items an entity's popup menu shows: a PopupMenu's or MenuButton's, or an OptionButton's
-// options as radio items with the selected one checked, as OptionButton fills its PopupMenu;
+// The items an entity's popup menu shows: a PopupList's or MenuButton's, or an Dropdown's
+// options as radio items with the selected one checked, as Dropdown fills its PopupList;
 // empty for an entity with none of them.
 [[nodiscard]] std::vector<world::PopupMenuItem> popup_items(const world::World& world,
                                                             entt::entity owner);
 // An item's ID, as PopupMenu::add_item gives one: its own, or its index when it has none.
 [[nodiscard]] int item_id(const world::PopupMenuItem& item, std::size_t index);
-// Opens a popup menu: a PopupMenu at its position (setting visible), or the list of an
-// OptionButton or MenuButton below it, as their show_popup does, closing any other. False for
+// Opens a popup menu: a PopupList at its position (setting visible), or the list of an
+// Dropdown or MenuButton below it, as their show_popup does, closing any other. False for
 // an entity that has none of them.
 bool open_popup(world::World& world, entt::entity owner);
 // Closes a popup menu that is open, emitting popup_hide; false if it isn't open.
 bool close_popup(world::World& world, entt::entity owner);
 // The entities whose popup menus are open, the last on top.
 [[nodiscard]] std::vector<entt::entity> open_popups(const world::World& world);
-// Picks an item at the next tick as a click on it would: a PopupMenu's or MenuButton's item
-// emits id_pressed and index_pressed and closes the menu as it says, and an OptionButton's option
+// Picks an item at the next tick as a click on it would: a PopupList's or MenuButton's item
+// emits id_pressed and index_pressed and closes the menu as it says, and an Dropdown's option
 // is selected, emitting item_selected. False for an item that doesn't exist, is a separator or
 // is disabled, or a disabled button.
 bool select_item(world::World& world, entt::entity owner, int index);
@@ -804,12 +804,12 @@ struct Drag {
 
 // ---- Text fields ----
 
-// Whether a LineEdit is being edited: it has focus and takes typing.
+// Whether a TextField is being edited: it has focus and takes typing.
 [[nodiscard]] bool is_editing(const world::World& world, entt::entity line_edit);
-// A LineEdit's selection, [from, to) in characters, or nullopt for none.
+// A TextField's selection, [from, to) in characters, or nullopt for none.
 [[nodiscard]] std::optional<std::pair<int, int>> selection(const world::World& world,
                                                            entt::entity line_edit);
-// The text an input method is composing in a LineEdit, shown at its caret until it is done.
+// The text an input method is composing in a TextField, shown at its caret until it is done.
 [[nodiscard]] std::string ime_text(const world::World& world, entt::entity line_edit);
 
 // How TextEdit::search matches, as its SearchFlags: match_case compares letters by case,
@@ -820,7 +820,7 @@ struct SearchOptions {
     bool whole_words = false;
     bool backwards = false;
 };
-// TextEdit::search over a TextEdit's text: where key next occurs from [line, column] on, as
+// TextEdit::search over a TextArea's text: where key next occurs from [line, column] on, as
 // [line, column] (columns in characters), going round the end to the start (or the start to the
 // end) until it has looked at every line; nullopt if it occurs nowhere or the position is past
 // the text.
@@ -828,11 +828,11 @@ struct SearchOptions {
                                                                  std::string_view key,
                                                                  const SearchOptions& options,
                                                                  int from_line, int from_column);
-// Every place key occurs in a TextEdit's text, in order from the start, ignoring backwards.
+// Every place key occurs in a TextArea's text, in order from the start, ignoring backwards.
 [[nodiscard]] std::vector<std::array<int, 2>>
 text_edit_search_all(std::string_view text, std::string_view key, const SearchOptions& options);
 
-// What the LineEdit being edited asks of the platform (text input, where its caret is, the
+// What the TextField being edited asks of the platform (text input, where its caret is, the
 // on-screen keyboard), as Godot's LineEdit asks DisplayServer; inactive when none is. Games pass
 // it to SdlReader::set_text_input each frame.
 [[nodiscard]] input::TextInput text_input(const world::World& world);

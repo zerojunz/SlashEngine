@@ -2,43 +2,43 @@
   "entities": {
     "buttons": {
       "components": {
-        "BoxContainer": {},
-        "Control": {
+        "StackBox": {},
+        "Widget": {
           "children": ["start", "quit"]
         }
       }
     },
     "greeting": {
       "components": {
-        "Control": {
+        "Label": {
+          "text": "שלום, world"
+        },
+        "Widget": {
           "anchor_bottom": 1.0,
           "anchor_top": 1.0,
           "grow_vertical": "begin",
           "offset_bottom": -40.0,
           "offset_left": 16.0,
           "offset_top": -40.0
-        },
-        "Label": {
-          "text": "שלום, world"
         }
       }
     },
     "loading": {
       "components": {
-        "Control": {
-          "custom_minimum_size": [0.0, 24.0]
-        },
         "ProgressBar": {
           "value": 30.0
+        },
+        "Widget": {
+          "custom_minimum_size": [0.0, 24.0]
         }
       }
     },
     "menu": {
       "components": {
-        "BoxContainer": {
+        "StackBox": {
           "vertical": true
         },
-        "Control": {
+        "Widget": {
           "anchor_bottom": 1.0,
           "anchor_right": 1.0,
           "children": ["title", "buttons", "loading", "version"],
@@ -55,28 +55,32 @@
         "Button": {
           "text": "خروج"
         },
-        "Control": {}
+        "Widget": {}
       }
     },
     "sign": {
       "components": {
-        "Control": {
+        "Label": {
+          "language": "ja",
+          "text": "出口 Exit"
+        },
+        "Widget": {
           "anchor_bottom": 1.0,
           "anchor_top": 1.0,
           "grow_vertical": "begin",
           "offset_bottom": -12.0,
           "offset_left": 16.0,
           "offset_top": -12.0
-        },
-        "Label": {
-          "language": "ja",
-          "text": "出口 Exit"
         }
       }
     },
     "sign_chinese": {
       "components": {
-        "Control": {
+        "Label": {
+          "language": "zh-Hant",
+          "text": "出口"
+        },
+        "Widget": {
           "anchor_bottom": 1.0,
           "anchor_left": 1.0,
           "anchor_right": 1.0,
@@ -87,10 +91,6 @@
           "offset_left": -16.0,
           "offset_right": -16.0,
           "offset_top": -12.0
-        },
-        "Label": {
-          "language": "zh-Hant",
-          "text": "出口"
         }
       }
     },
@@ -99,18 +99,18 @@
         "Button": {
           "text": "ابدأ"
         },
-        "Control": {}
+        "Widget": {}
       }
     },
     "title": {
       "components": {
-        "Control": {
+        "Label": {
+          "text": "القائمة الرئيسية"
+        },
+        "Widget": {
           "theme_override_font_sizes": {
             "font_size": 24
           }
-        },
-        "Label": {
-          "text": "القائمة الرئيسية"
         }
       }
     },

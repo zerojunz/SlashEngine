@@ -106,9 +106,9 @@ struct Project {
             "entities": {
               "floor": {"components": {"Transform3D": {"position": [0, -0.5, 0]},
                                        "StaticBody3D": {},
-                                       "CollisionShape3D": {"size": [20, 1, 20]}}},
+                                       "Collider3D": {"size": [20, 1, 20]}}},
               "hero": {"components": {"Transform3D": {},
-                                      "MeshInstance3D": {"mesh": "characters/hero.glb"}}}}})")
+                                      "Model3D": {"mesh": "characters/hero.glb"}}}}})")
                     .ok());
         command::SessionOptions options;
         options.project_root = root;
@@ -299,7 +299,7 @@ TEST_CASE("ragdoll.tune merges overrides and reports the bones it touched") {
     engine.steps(2);
     CHECK(engine.session->world()
               .ecs()
-              .get<const world::PhysicalBone3D>(engine.find("hero_mixamorig_Head"))
+              .get<const world::SimulatedBone3D>(engine.find("hero_mixamorig_Head"))
               .mass == doctest::Approx(6.0F));
 
     const command::Reply bad = engine.fails(
@@ -334,7 +334,7 @@ struct Project2D {
             "entities": {
               "floor": {"components": {"Transform2D": {"position": [200, 320]},
                                        "StaticBody2D": {},
-                                       "CollisionShape2D": {"size": [2000, 40]}}},
+                                       "Collider2D": {"size": [2000, 40]}}},
               "kid": {"components": {"Transform2D": {"position": [200, 300],
                                                      "children": ["pelvis"]}}},
               "pelvis": {"components": {"Transform2D": {"position": [0, -60],
@@ -404,7 +404,7 @@ TEST_CASE("ragdoll.generate makes a 2D profile of a cut-out's tree and a Ragdoll
     // Its bodies, shapes and joints, frozen on the pose while it is animated.
     engine.steps(30);
     const auto& ecs = engine.session->world().ecs();
-    REQUIRE(ecs.all_of<world::RigidBody2D, world::CollisionShape2D>(engine.find("arm")));
+    REQUIRE(ecs.all_of<world::RigidBody2D, world::Collider2D>(engine.find("arm")));
     CHECK(ecs.get<const world::RigidBody2D>(engine.find("arm")).freeze);
     REQUIRE((engine.find("arm_joint") != entt::null));
     CHECK(ecs.get<const world::PinJoint2D>(engine.find("arm_joint")).node_a ==

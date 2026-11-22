@@ -82,26 +82,26 @@ void make_settings(Session& s) {
         {"command": "entity.create", "params": {"id": "title", "components": {
             "Label": {"text": "Settings"}}}},
         {"command": "entity.create", "params": {"id": "name", "components": {
-            "LineEdit": {"placeholder_text": "Your name"},
-            "Control": {"accessibility_name": "Name", "custom_minimum_size": [120, 0]}}}},
+            "TextField": {"placeholder_text": "Your name"},
+            "Widget": {"accessibility_name": "Name", "custom_minimum_size": [120, 0]}}}},
         {"command": "entity.create", "params": {"id": "news", "components": {
             "CheckBox": {"text": "News", "button_pressed": true}}}},
         {"command": "entity.create", "params": {"id": "volume", "components": {
             "Slider": {"value": 50, "step": 5},
-            "Control": {"accessibility_name": "Volume", "custom_minimum_size": [100, 0],
+            "Widget": {"accessibility_name": "Volume", "custom_minimum_size": [100, 0],
                         "accessibility_description": "Music and sounds"}}}},
         {"command": "entity.create", "params": {"id": "mute", "components": {
             "Button": {"text": "Mute", "toggle_mode": true, "disabled": true}}}},
         {"command": "entity.create", "params": {"id": "entry", "components": {
             "Label": {"text": "Day one"},
-            "Control": {"custom_minimum_size": [0, 400]}}}},
+            "Widget": {"custom_minimum_size": [0, 400]}}}},
         {"command": "entity.create", "params": {"id": "log", "components": {
-            "ScrollContainer": {},
-            "Control": {"children": ["entry"], "custom_minimum_size": [120, 60],
+            "ScrollBox": {},
+            "Widget": {"children": ["entry"], "custom_minimum_size": [120, 60],
                         "accessibility_live": "polite"}}}},
         {"command": "entity.create", "params": {"id": "form", "components": {
-            "BoxContainer": {"vertical": true},
-            "Control": {"children": ["title", "name", "news", "volume", "mute", "log"]}}}}
+            "StackBox": {"vertical": true},
+            "Widget": {"children": ["title", "name", "news", "volume", "mute", "log"]}}}}
     ]})");
 }
 
@@ -228,9 +228,9 @@ TEST_CASE("TalkBack's actions run on the controls they name") {
     s.ok("step", R"({"ticks": 1})");
 
     CHECK(s.get("volume", "Slider").find("value")->as_double() == doctest::Approx(20.0));
-    CHECK(s.get("name", "LineEdit").find("text")->as_string() == "Ada");
+    CHECK(s.get("name", "TextField").find("text")->as_string() == "Ada");
     CHECK(s.get("news", "CheckBox").find("button_pressed")->as_bool() == false);
-    CHECK(s.get("log", "ScrollContainer").find("scroll_vertical")->as_double() > 0.0);
+    CHECK(s.get("log", "ScrollBox").find("scroll_vertical")->as_double() > 0.0);
 }
 
 TEST_CASE("Nodes become UIAccessibilityElements, and VoiceOver's gestures requests") {
@@ -294,5 +294,5 @@ TEST_CASE("Nodes become UIAccessibilityElements, and VoiceOver's gestures reques
     s.ok("step", R"({"ticks": 1})");
     CHECK(s.get("volume", "Slider").find("value")->as_double() == doctest::Approx(45.0));
     CHECK(s.get("news", "CheckBox").find("button_pressed")->as_bool() == false);
-    CHECK(s.get("log", "ScrollContainer").find("scroll_vertical")->as_double() > 0.0);
+    CHECK(s.get("log", "ScrollBox").find("scroll_vertical")->as_double() > 0.0);
 }

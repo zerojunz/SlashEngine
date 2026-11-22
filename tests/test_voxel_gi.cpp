@@ -60,9 +60,9 @@ struct Scene {
     }
 };
 
-// A mesh made of a primitive, placed at x, y, z in a VoxelGI's space, of one material.
+// A mesh made of a primitive, placed at x, y, z in a VoxelLighting3D's space, of one material.
 scene3d::VoxelGIMesh mesh_of(const scene3d::MeshData& data, float x, float y, float z,
-                             const world::StandardMaterial3D& standard = {}) {
+                             const world::Surface3D& standard = {}) {
     scene3d::VoxelGIMesh mesh;
     mesh.transform.origin = {x, y, z};
     mesh.vertices = data.vertices;
@@ -73,13 +73,13 @@ scene3d::VoxelGIMesh mesh_of(const scene3d::MeshData& data, float x, float y, fl
     return mesh;
 }
 
-// A floor of about 3 by 3 meters in the middle of a VoxelGI of 4 meters at 64 cells a side, a
-// sixteenth of a meter each: its cells are those of row y = 16 from 8 to 55 along x and z. With a
+// A floor of about 3 by 3 meters in the middle of a VoxelLighting3D of 4 meters at 64 cells a side,
+// a sixteenth of a meter each: its cells are those of row y = 16 from 8 to 55 along x and z. With a
 // box of a meter floating a meter over it where asked, its faces in columns and rows 24 and 40 and
 // its bottom and top in rows 32 and 48 (each face half a cell off the cells' edges, so it is in one
 // cell).
 std::vector<scene3d::VoxelGIMesh> floor_meshes(bool with_box) {
-    world::PlaneMesh plane;
+    world::PlaneGeometry plane;
     plane.size = {2.96875F, 2.96875F};
     std::vector<scene3d::VoxelGIMesh> meshes;
     meshes.push_back(mesh_of(scene3d::plane_mesh(plane), 0.0F, -0.96875F, 0.0F));
@@ -99,7 +99,7 @@ std::int8_t normal_y(const scene3d::VoxelGICell& cell) {
     return static_cast<std::int8_t>((cell[3] >> 8U) & 0xFFU);
 }
 
-// A texel of a level of a VoxelGI's light texture.
+// A texel of a level of a VoxelLighting3D's light texture.
 std::array<std::uint8_t, 4> texel(const scene3d::VoxelGITexture& texture, std::size_t level,
                                   std::uint32_t x, std::uint32_t y, std::uint32_t z) {
     const auto& size = texture.sizes.at(level);
@@ -124,7 +124,7 @@ scene3d::VoxelGILight sun(bool shadow) {
 
 } // namespace
 
-TEST_CASE("VoxelGI octrees are as big as Godot's for a box and its subdiv") {
+TEST_CASE("VoxelLighting3D octrees are as big as Godot's for a box and its subdiv") {
     CHECK(scene3d::voxel_gi_subdiv("64") == 6);
     CHECK(scene3d::voxel_gi_subdiv("512") == 9);
     CHECK(scene3d::voxel_gi_subdiv("100") == 0);
@@ -152,10 +152,10 @@ TEST_CASE("VoxelGI octrees are as big as Godot's for a box and its subdiv") {
     CHECK(far.z == doctest::Approx(32.0F));
 }
 
-TEST_CASE("a VoxelGI voxelizes meshes into an octree of cells, as Godot's Voxelizer") {
-    world::StandardMaterial3D red;
+TEST_CASE("a VoxelLighting3D voxelizes meshes into an octree of cells, as Godot's Voxelizer") {
+    world::Surface3D red;
     red.albedo_color = {1.0F, 0.2F, 0.2F, 1.0F};
-    world::PlaneMesh plane;
+    world::PlaneGeometry plane;
     plane.size = {2.96875F, 2.96875F};
     const std::vector<scene3d::VoxelGIMesh> meshes{
         mesh_of(scene3d::plane_mesh(plane), 0.0F, -0.96875F, 0.0F, red)};
@@ -208,7 +208,7 @@ TEST_CASE("a VoxelGI voxelizes meshes into an octree of cells, as Godot's Voxeli
 }
 
 TEST_CASE("emissive materials voxelize their emission at the bake's exposure") {
-    world::StandardMaterial3D glow;
+    world::Surface3D glow;
     glow.emission_enabled = true;
     glow.emission = {1.0F, 0.5F, 0.0F, 1.0F};
     glow.emission_energy_multiplier = 2.0F;
@@ -223,7 +223,7 @@ TEST_CASE("emissive materials voxelize their emission at the bake's exposure") {
     CHECK(material.albedo[0][0] == doctest::Approx(1.0F));
 }
 
-TEST_CASE(".voxelgi.json files keep a VoxelGI's cells, and say what's wrong with them") {
+TEST_CASE(".voxelgi.json files keep a VoxelLighting3D's cells, and say what's wrong with them") {
     const scene3d::VoxelGIData data = scene3d::voxelize(floor_meshes(true), kSize, 6, 0.75F);
     const json::Value doc = scene3d::voxel_gi_json(data);
     CHECK(scene3d::validate_voxel_gi(doc).empty());
@@ -259,7 +259,8 @@ TEST_CASE(".voxelgi.json files keep a VoxelGI's cells, and say what's wrong with
     CHECK(first_error(scene3d::voxel_gi_json(orphan)).path.starts_with("/cells"));
 }
 
-TEST_CASE("a VoxelGI's octree links its cells and measures how far each place is from one") {
+TEST_CASE(
+    "a VoxelLighting3D's octree links its cells and measures how far each place is from one") {
     const scene3d::VoxelGIData data = scene3d::voxelize(floor_meshes(false), kSize, 6);
     const scene3d::VoxelGIOctree octree = scene3d::voxel_gi_octree(data);
     REQUIRE(octree.level_offsets.size() == 8);
@@ -297,7 +298,7 @@ TEST_CASE("a VoxelGI's octree links its cells and measures how far each place is
     CHECK(threaded.distance_field == octree.distance_field);
 }
 
-TEST_CASE("light injected into a VoxelGI's cells lights them, casts shadows and bounces") {
+TEST_CASE("light injected into a VoxelLighting3D's cells lights them, casts shadows and bounces") {
     const scene3d::VoxelGIData data = scene3d::voxelize(floor_meshes(true), kSize, 6);
     const scene3d::VoxelGIOctree octree = scene3d::voxel_gi_octree(data);
     scene3d::VoxelGISettings settings;
@@ -356,7 +357,7 @@ TEST_CASE("light injected into a VoxelGI's cells lights them, casts shadows and 
     CHECK(threaded.levels == bounced.levels);
 }
 
-TEST_CASE("omni and spot lights reach a VoxelGI's cells as far as their range") {
+TEST_CASE("omni and spot lights reach a VoxelLighting3D's cells as far as their range") {
     const scene3d::VoxelGIData data = scene3d::voxelize(floor_meshes(false), kSize, 6);
     const scene3d::VoxelGIOctree octree = scene3d::voxel_gi_octree(data);
     scene3d::VoxelGISettings settings;
@@ -389,56 +390,56 @@ TEST_CASE("omni and spot lights reach a VoxelGI's cells as far as their range") 
     CHECK(texel(cone, 0, 10, 16, 10)[0] == 0);
 }
 
-TEST_CASE("a VoxelGI bakes the static meshes in its box, as Godot's VoxelGI::bake") {
+TEST_CASE("a VoxelLighting3D bakes the static meshes in its box, as Godot's VoxelGI::bake") {
     Scene scene;
     scene.create("floor", R"({"Transform3D": {"position": [0, -0.96875, 0]},
-        "MeshInstance3D": {}, "PlaneMesh": {"size": [2.96875, 2.96875]}})");
+        "Model3D": {}, "PlaneGeometry": {"size": [2.96875, 2.96875]}})");
     scene.create("box", R"({"Transform3D": {"position": [0.03125, 0.53125, 0.03125]},
-        "MeshInstance3D": {}, "BoxMesh": {}})");
+        "Model3D": {}, "BoxGeometry": {}})");
     scene.create("moving", R"({"Transform3D": {"position": [1, 0.5, 1]},
-        "MeshInstance3D": {"gi_mode": "dynamic"}, "BoxMesh": {}})");
-    scene.create("far", R"({"Transform3D": {"position": [10, 0, 0]}, "MeshInstance3D": {},
-        "BoxMesh": {}})");
+        "Model3D": {"gi_mode": "dynamic"}, "BoxGeometry": {}})");
+    scene.create("far", R"({"Transform3D": {"position": [10, 0, 0]}, "Model3D": {},
+        "BoxGeometry": {}})");
     const entt::entity gi = scene.create(
-        "gi", R"({"Transform3D": {}, "VoxelGI": {"subdiv": "64", "size": [4, 4, 4]}})");
+        "gi", R"({"Transform3D": {}, "VoxelLighting3D": {"subdiv": "64", "size": [4, 4, 4]}})");
     const scene3d::VoxelGIBake bake = scene3d::bake_voxel_gi(scene.world, gi, {}).value();
     CHECK(bake.problems.empty());
     CHECK(bake.meshes == 2);
     CHECK(bake.data == scene3d::voxelize(floor_meshes(true), kSize, 6));
 
-    // Baked where the VoxelGI is: moved, the meshes are elsewhere in its box.
+    // Baked where the VoxelLighting3D is: moved, the meshes are elsewhere in its box.
     const entt::entity moved = scene.create("moved", R"({"Transform3D": {"position": [0, 1, 0]},
-        "VoxelGI": {"subdiv": "64", "size": [4, 4, 4]}})");
+        "VoxelLighting3D": {"subdiv": "64", "size": [4, 4, 4]}})");
     const scene3d::VoxelGIBake higher = scene3d::bake_voxel_gi(scene.world, moved, {}).value();
     CHECK(higher.meshes == 2);
     CHECK(higher.data != bake.data);
 
     // Its emission at the exposure of its camera attributes.
-    scene.create("camera", R"({"CameraAttributesPractical": {"exposure_multiplier": 0.5}})");
+    scene.create("camera", R"({"CameraLens": {"exposure_multiplier": 0.5}})");
     const entt::entity exposed = scene.create(
-        "exposed", R"({"Transform3D": {}, "VoxelGI": {"subdiv": "64", "size": [4, 4, 4],
+        "exposed", R"({"Transform3D": {}, "VoxelLighting3D": {"subdiv": "64", "size": [4, 4, 4],
         "camera_attributes": "camera"}})");
     CHECK(scene3d::bake_voxel_gi(scene.world, exposed, {}).value().data.baked_exposure == 0.5F);
 
-    const entt::entity bad = scene.create("bad", R"({"VoxelGI": {"subdiv": "100"}})");
+    const entt::entity bad = scene.create("bad", R"({"VoxelLighting3D": {"subdiv": "100"}})");
     CHECK_FALSE(scene3d::bake_voxel_gi(scene.world, bad, {}).ok());
     CHECK_FALSE(scene3d::bake_voxel_gi(scene.world, scene.world.find("floor"), {}).ok());
 }
 
 TEST_CASE("VoxelGIs say what's wrong with their settings and data") {
     Scene scene;
-    scene.create("gi", R"({"VoxelGI": {"subdiv": "100", "size": [4, 0, 4],
+    scene.create("gi", R"({"VoxelLighting3D": {"subdiv": "100", "size": [4, 0, 4],
         "camera_attributes": "nobody", "data": "gi.json"}})");
     const std::vector<scene3d::Problem> problems = scene3d::check_voxel_gis(scene.world);
     REQUIRE(problems.size() == 4);
-    CHECK(problems[0].path == "/components/VoxelGI/subdiv");
-    CHECK(problems[1].path == "/components/VoxelGI/size");
-    CHECK(problems[2].path == "/components/VoxelGI/camera_attributes");
-    CHECK(problems[3].path == "/components/VoxelGI/data");
+    CHECK(problems[0].path == "/components/VoxelLighting3D/subdiv");
+    CHECK(problems[1].path == "/components/VoxelLighting3D/size");
+    CHECK(problems[2].path == "/components/VoxelLighting3D/camera_attributes");
+    CHECK(problems[3].path == "/components/VoxelLighting3D/data");
     CHECK(problems[3].message.find(".voxelgi.json") != std::string::npos);
 }
 
-TEST_CASE("a VoxelGI's texture packs into an atlas, each level's slices side by side") {
+TEST_CASE("a VoxelLighting3D's texture packs into an atlas, each level's slices side by side") {
     scene3d::VoxelGITexture texture;
     for (const std::array<std::uint32_t, 3> size :
          {std::array<std::uint32_t, 3>{8, 4, 2}, std::array<std::uint32_t, 3>{4, 2, 1}}) {
@@ -482,7 +483,8 @@ TEST_CASE("a VoxelGI's texture packs into an atlas, each level's slices side by 
     CHECK_FALSE(scene3d::voxel_gi_atlas({}).ok());
 }
 
-TEST_CASE("moving meshes plot their light into a VoxelGI's texture, as Godot's dynamic objects") {
+TEST_CASE(
+    "moving meshes plot their light into a VoxelLighting3D's texture, as Godot's dynamic objects") {
     const scene3d::VoxelGIData data = scene3d::voxelize(floor_meshes(false), kSize, 6);
     const scene3d::VoxelGIOctree octree = scene3d::voxel_gi_octree(data);
     scene3d::VoxelGISettings settings;
@@ -539,7 +541,7 @@ TEST_CASE("moving meshes plot their light into a VoxelGI's texture, as Godot's d
     CHECK(other.levels == texture.levels);
 
     // An emissive mesh gives its emission with no lights at all.
-    world::StandardMaterial3D glowing;
+    world::Surface3D glowing;
     glowing.albedo_color = {0.0F, 0.0F, 0.0F, 1.0F};
     glowing.emission_enabled = true;
     glowing.emission = {1.0F, 0.0F, 0.0F, 1.0F};
@@ -562,7 +564,7 @@ TEST_CASE("a moving mesh's material culls its faces as Godot's material pass doe
     const scene3d::VoxelGITexture texture = scene3d::light_voxel_gi(data, octree, lit, settings);
     // A plane facing up, lit from above, half a cell into row 40.
     const auto plot = [&](const std::string& cull_mode) {
-        world::StandardMaterial3D standard;
+        world::Surface3D standard;
         standard.cull_mode = cull_mode;
         const std::vector<scene3d::VoxelGIMesh> plane{
             mesh_of(scene3d::plane_mesh({}), 0.03125F, 0.53125F, 0.03125F, standard)};
@@ -586,11 +588,11 @@ TEST_CASE("a moving mesh's material culls its faces as Godot's material pass doe
     CHECK(both[0] < back[0]);
 }
 
-TEST_CASE("a mesh entity's meshes read as a VoxelGI takes them") {
+TEST_CASE("a mesh entity's meshes read as a VoxelLighting3D takes them") {
     Scene scene;
     const entt::entity ball = scene.create("ball", R"({"Transform3D": {"position": [1, 2, 3]},
-        "MeshInstance3D": {"gi_mode": "dynamic"}, "SphereMesh": {},
-        "StandardMaterial3D": {"albedo_color": [1, 0, 0, 1], "albedo_texture": "red.png",
+        "Model3D": {"gi_mode": "dynamic"}, "SphereGeometry": {},
+        "Surface3D": {"albedo_color": [1, 0, 0, 1], "albedo_texture": "red.png",
         "cull_mode": "disabled"}})");
     std::vector<scene3d::Problem> problems;
     const std::vector<scene3d::VoxelGIMesh> meshes =
@@ -604,7 +606,7 @@ TEST_CASE("a mesh entity's meshes read as a VoxelGI takes them") {
     CHECK(meshes[0].surfaces[0].material->cull_mode == render::CullMode::Disabled);
     CHECK(meshes[0].surfaces[0].material->albedo[0][1] == 0.0F);
     REQUIRE(problems.size() == 1);
-    CHECK(problems[0].path == "/components/StandardMaterial3D/albedo_texture");
+    CHECK(problems[0].path == "/components/Surface3D/albedo_texture");
     CHECK(problems[0].message == "images can't load here");
     // An entity with no mesh has none.
     const entt::entity empty = scene.create("empty", R"({"Transform3D": {}})");
@@ -614,7 +616,7 @@ TEST_CASE("a mesh entity's meshes read as a VoxelGI takes them") {
 namespace {
 
 // The floor and box voxelized at 64 cells, lit by a sun from above at a slant that the box shades,
-// in the atlas a device samples, and the probe of a VoxelGI at the world's origin.
+// in the atlas a device samples, and the probe of a VoxelLighting3D at the world's origin.
 struct LitVoxelGI {
     scene3d::VoxelGIAtlas atlas;
     render::VoxelGIProbe probe;
@@ -632,7 +634,7 @@ LitVoxelGI lit_voxel_gi(bool interior = false) {
         scene3d::light_voxel_gi(data, octree, std::span(&sunlight, 1), {});
     auto atlas = scene3d::voxel_gi_atlas(texture);
     REQUIRE(atlas.ok());
-    world::VoxelGI component;
+    world::VoxelLighting3D component;
     component.interior = interior;
     LitVoxelGI out{.atlas = std::move(atlas).value(), .probe = {}};
     out.probe = scene3d::voxel_gi_probe(component, data, out.atlas, {});
@@ -646,7 +648,7 @@ struct VoxelGIDraw {
 };
 
 // The floor and box drawn with no lights, under a blue ambient light, their ambient light and
-// reflections from the VoxelGI where traced.
+// reflections from the VoxelLighting3D where traced.
 render::Image draw_voxel_gi(render::RenderDevice& device, const LitVoxelGI& gi,
                             const VoxelGIDraw& options = {}) {
     auto target = device.create_texture({.width = 48, .height = 48, .render_target = true});
@@ -654,7 +656,7 @@ render::Image draw_voxel_gi(render::RenderDevice& device, const LitVoxelGI& gi,
     auto atlas = device.create_texture(
         {.width = gi.atlas.image.width, .height = gi.atlas.image.height}, gi.atlas.image.pixels);
     REQUIRE(atlas.ok());
-    world::PlaneMesh plane;
+    world::PlaneGeometry plane;
     plane.size = {2.96875F, 2.96875F};
     const scene3d::MeshData floor_data = scene3d::plane_mesh(plane);
     const scene3d::MeshData box_data = scene3d::box_mesh({});
@@ -720,7 +722,7 @@ std::array<int, 2> differences(const render::Image& a, const render::Image& b) {
 
 } // namespace
 
-TEST_CASE("meshes take ambient light and reflections from a VoxelGI's cones, as Godot's") {
+TEST_CASE("meshes take ambient light and reflections from a VoxelLighting3D's cones, as Godot's") {
     const auto software = render::create_software_device();
     const LitVoxelGI gi = lit_voxel_gi();
     const render::Image traced = draw_voxel_gi(*software, gi);
@@ -734,7 +736,8 @@ TEST_CASE("meshes take ambient light and reflections from a VoxelGI's cones, as 
     CHECK(ambient[2] > ambient[0]);
     // High quality's six narrower cones differ from the four of 45 degrees.
     CHECK(draw_voxel_gi(*software, gi, {.high_quality = true}).pixels != traced.pixels);
-    // An interior VoxelGI lets none of the ambient light through where its cones see nothing.
+    // An interior VoxelLighting3D lets none of the ambient light through where its cones see
+    // nothing.
     CHECK(draw_voxel_gi(*software, lit_voxel_gi(true)).pixels != traced.pixels);
     // Compatibility traces no VoxelGIs.
     CHECK(draw_voxel_gi(*software, gi, {.method = render::RenderMethod::Compatibility}).pixels ==
@@ -776,8 +779,8 @@ TEST_CASE("meshes take ambient light and reflections from a VoxelGI's cones, as 
 
 namespace {
 
-// The floor and box under a sun, with a VoxelGI around them whose data is "gi.voxelgi.json", seen
-// from above.
+// The floor and box under a sun, with a VoxelLighting3D around them whose data is
+// "gi.voxelgi.json", seen from above.
 struct VoxelGIWorld {
     Scene scene;
     entt::entity sun = entt::null;
@@ -788,16 +791,16 @@ struct VoxelGIWorld {
         scene.create("camera", R"({"Transform3D": {"position": [0.8, 0.9, 1.4],
             "rotation": [-0.6, 0.4, 0]}, "Camera3D": {"current": true}})");
         scene.create("floor", R"({"Transform3D": {"position": [0, -0.96875, 0]},
-            "MeshInstance3D": {}, "PlaneMesh": {"size": [2.96875, 2.96875]},
-            "StandardMaterial3D": {"roughness": 0.6}})");
+            "Model3D": {}, "PlaneGeometry": {"size": [2.96875, 2.96875]},
+            "Surface3D": {"roughness": 0.6}})");
         scene.create("box", R"({"Transform3D": {"position": [0.03125, 0.53125, 0.03125]},
-            "MeshInstance3D": {}, "BoxMesh": {},
-            "StandardMaterial3D": {"albedo_color": [1, 0.2, 0.2, 1]}})");
-        scene.create("environment", R"({"WorldEnvironment": {"ambient_light_source": "color",
+            "Model3D": {}, "BoxGeometry": {},
+            "Surface3D": {"albedo_color": [1, 0.2, 0.2, 1]}})");
+        scene.create("environment", R"({"Environment3D": {"ambient_light_source": "color",
             "ambient_light_color": [0.1, 0.2, 0.6, 1]}})");
         sun = scene.create("sun", R"({"Transform3D": {"rotation": [-1.2, 0.3, 0]},
-            "DirectionalLight3D": {"shadow_enabled": true, "light_energy": 2}})");
-        gi = scene.create("gi", R"({"Transform3D": {}, "VoxelGI": {"subdiv": "64",
+            "SunLight3D": {"shadow_enabled": true, "light_energy": 2}})");
+        gi = scene.create("gi", R"({"Transform3D": {}, "VoxelLighting3D": {"subdiv": "64",
             "size": [4, 4, 4], "data": "gi.voxelgi.json"}})");
         data = std::make_shared<const scene3d::VoxelGIData>(
             scene3d::bake_voxel_gi(scene.world, gi, {}).value().data);
@@ -854,7 +857,7 @@ TEST_CASE("the 3D renderer lights a world's VoxelGIs with its lights and traces 
     // A renderer with no VoxelGIs to load reports it, and draws as before.
     const render::Image plain = draw_world(*device, without, gi.scene.world);
     REQUIRE(without.problems().size() == 1);
-    CHECK(without.problems()[0].path == "/components/VoxelGI/data");
+    CHECK(without.problems()[0].path == "/components/VoxelLighting3D/data");
     CHECK(without.problems()[0].message == "VoxelGIs can't load here");
     CHECK(differences(traced, plain)[0] > 100);
 
@@ -862,21 +865,22 @@ TEST_CASE("the 3D renderer lights a world's VoxelGIs with its lights and traces 
     CHECK(draw_world(*device, renderer, gi.scene.world).pixels == traced.pixels);
     CHECK(loads == 2);
     // Its lights are injected again when they change.
-    auto& sun = gi.scene.world.ecs().get<world::DirectionalLight3D>(gi.sun);
+    auto& sun = gi.scene.world.ecs().get<world::SunLight3D>(gi.sun);
     const auto white = sun.light_color;
     sun.light_color = {1.0F, 0.5F, 0.1F, 1.0F};
     const render::Image orange = draw_world(*device, renderer, gi.scene.world);
     CHECK(differences(orange, traced)[0] > 100);
-    // A light's indirect energy scales only what it injects; a VoxelGI's energy what it gives.
+    // A light's indirect energy scales only what it injects; a VoxelLighting3D's energy what it
+    // gives.
     sun.light_color = white;
     sun.light_indirect_energy = 0.0F;
     const render::Image unlit = draw_world(*device, renderer, gi.scene.world);
     CHECK(differences(unlit, traced)[0] > 100);
     sun.light_indirect_energy = 1.0F;
     CHECK(draw_world(*device, renderer, gi.scene.world).pixels == traced.pixels);
-    gi.scene.world.ecs().get<world::VoxelGI>(gi.gi).energy = 2.0F;
+    gi.scene.world.ecs().get<world::VoxelLighting3D>(gi.gi).energy = 2.0F;
     CHECK(differences(draw_world(*device, renderer, gi.scene.world), traced)[0] > 100);
-    gi.scene.world.ecs().get<world::VoxelGI>(gi.gi).energy = 1.0F;
+    gi.scene.world.ecs().get<world::VoxelLighting3D>(gi.gi).energy = 1.0F;
 
     // High quality traces other cones; Compatibility none.
     CHECK(draw_world(*device, renderer, gi.scene.world, render::RenderMethod::ForwardPlus, true)
@@ -890,8 +894,8 @@ TEST_CASE("the 3D renderer lights a world's VoxelGIs with its lights and traces 
     CHECK(draw_world(*device, renderer, gi.scene.world).pixels == plain.pixels);
     gi.scene.world.ecs().get<world::Transform3D>(gi.gi).position = {};
 
-    // Data that doesn't load is a problem at the VoxelGI's data.
-    gi.scene.world.ecs().get<world::VoxelGI>(gi.gi).data = "other.voxelgi.json";
+    // Data that doesn't load is a problem at the VoxelLighting3D's data.
+    gi.scene.world.ecs().get<world::VoxelLighting3D>(gi.gi).data = "other.voxelgi.json";
     (void)draw_world(*device, renderer, gi.scene.world);
     REQUIRE(renderer.problems().size() == 1);
     CHECK(renderer.problems()[0].message == "\"other.voxelgi.json\" doesn't exist");
@@ -901,8 +905,8 @@ TEST_CASE("the 3D renderer plots dynamic meshes into the VoxelGIs they touch") {
     VoxelGIWorld gi;
     // A glowing ball on the floor, which the bake left out.
     const entt::entity ball = gi.scene.create("ball", R"({"Transform3D":
-        {"position": [-0.7, -0.6, 0.5]}, "MeshInstance3D": {"gi_mode": "dynamic"},
-        "SphereMesh": {"radius": 0.3, "height": 0.6}, "StandardMaterial3D":
+        {"position": [-0.7, -0.6, 0.5]}, "Model3D": {"gi_mode": "dynamic"},
+        "SphereGeometry": {"radius": 0.3, "height": 0.6}, "Surface3D":
         {"albedo_color": [0.2, 1, 0.2, 1], "emission_enabled": true,
         "emission": [0.2, 1, 0.2, 1], "emission_energy_multiplier": 4}})");
     const auto device = render::create_software_device();
@@ -910,7 +914,7 @@ TEST_CASE("the 3D renderer plots dynamic meshes into the VoxelGIs they touch") {
     const render::Image plotted = draw_world(*device, renderer, gi.scene.world);
     CHECK(renderer.problems().empty());
     // Unplotted, as when its gi_mode leaves it out, the floor round it takes none of its glow.
-    auto& instance = gi.scene.world.ecs().get<world::MeshInstance3D>(ball);
+    auto& instance = gi.scene.world.ecs().get<world::Model3D>(ball);
     instance.gi_mode = "disabled";
     const render::Image unplotted = draw_world(*device, renderer, gi.scene.world);
     CHECK(differences(plotted, unplotted)[0] > 50);
@@ -924,7 +928,7 @@ TEST_CASE("the 3D renderer plots dynamic meshes into the VoxelGIs they touch") {
     place.position.x = -0.7F;
     CHECK(draw_world(*device, renderer, gi.scene.world).pixels == plotted.pixels);
     // A new material is read again.
-    gi.scene.world.ecs().get<world::StandardMaterial3D>(ball).emission = {1.0F, 0.2F, 0.2F, 1.0F};
+    gi.scene.world.ecs().get<world::Surface3D>(ball).emission = {1.0F, 0.2F, 0.2F, 1.0F};
     CHECK(differences(draw_world(*device, renderer, gi.scene.world), plotted)[0] > 50);
 }
 

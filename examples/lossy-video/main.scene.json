@@ -2,8 +2,8 @@
   "entities": {
     "cutscene": {
       "components": {
-        "Control": {"anchor_bottom": 1, "anchor_right": 1},
-        "VideoStreamPlayer": {"autoplay": true, "expand": true, "stream": "sunset.ivf"}
+        "Widget": {"anchor_bottom": 1, "anchor_right": 1},
+        "Video": {"autoplay": true, "expand": true, "stream": "sunset.ivf"}
       }
     }
   },

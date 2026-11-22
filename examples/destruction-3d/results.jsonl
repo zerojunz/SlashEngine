@@ -12,4 +12,4 @@
 {"id":12,"jsonrpc":"2.0","result":{"can_redo":2,"can_undo":1,"undone":"physics.break"}}
 {"id":13,"jsonrpc":"2.0","result":{"count":1,"entities":["crate"],"truncated":false}}
 {"id":14,"jsonrpc":"2.0","result":{"id":"sign"}}
-{"error":{"code":-32602,"data":{"path":"/id"},"message":"/id: \"sign\" can't break: its PlaneMesh is flat, so it has no inside: use a closed mesh such as a BoxMesh"},"id":15,"jsonrpc":"2.0"}
+{"error":{"code":-32602,"data":{"path":"/id"},"message":"/id: \"sign\" can't break: its PlaneGeometry is flat, so it has no inside: use a closed mesh such as a BoxGeometry"},"id":15,"jsonrpc":"2.0"}

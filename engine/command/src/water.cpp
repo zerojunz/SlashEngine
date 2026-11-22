@@ -158,11 +158,11 @@ Reply water_place(Session& session, const json::Value& params) {
         if (found == entt::null) {
             return unknown_id(world, river_path, "/path");
         }
-        if (!ecs.all_of<world::Path3D>(found)) {
-            return param_error("/path", quoted(river_path) + " has no Path3D");
+        if (!ecs.all_of<world::Spline3D>(found)) {
+            return param_error("/path", quoted(river_path) + " has no Spline3D");
         }
     } else if (!flat && recipe.kind == world::WaterRecipe::Kind::River) {
-        return param_error("/path", "a river needs the Path3D it runs along");
+        return param_error("/path", "a river needs the Spline3D it runs along");
     }
     entt::entity parent = entt::null;
     if (const json::Value* given = params.find("parent"); given != nullptr) {
@@ -354,7 +354,7 @@ void register_water_commands(Registry& registry) {
             "A lake's or ocean's area [x, z] in meters (default 20 by 20), or 2d water's "
             "[width, depth] in pixels.",
             1, 2);
-        p["path"] = property("string", "A river's Path3D entity, which it runs along.");
+        p["path"] = property("string", "A river's Spline3D entity, which it runs along.");
         p["width"] = property("number", "A river's width in meters. Default 4.");
         p["parent"] = property("string", "An entity to place it under, moving with it.");
         p["overrides"] = property("object", "Fields over the recipe's, as a JSON Merge Patch.");

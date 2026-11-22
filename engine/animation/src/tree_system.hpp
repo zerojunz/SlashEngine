@@ -1,6 +1,6 @@
 #pragma once
 
-// The animation_tree system: plays each AnimationTree's tree (tree_run.hpp) and mixes the
+// The animation_tree system: plays each AnimationGraph's tree (tree_run.hpp) and mixes the
 // animations it plays as Godot's AnimationMixer does.
 
 #include "slash/asset/assets.hpp"
@@ -22,11 +22,11 @@ public:
     TreePlayer(TreePlayer&&) = delete;
     TreePlayer& operator=(TreePlayer&&) = delete;
 
-    // One tick of every AnimationTree.
+    // One tick of every AnimationGraph.
     void run(world::World& world, double tick_seconds);
 
-    // The clips an entity's AnimationTree poses its model with, as its last tick left them, or
-    // none when the entity has no AnimationTree playing a tree.
+    // The clips an entity's AnimationGraph poses its model with, as its last tick left them, or
+    // none when the entity has no AnimationGraph playing a tree.
     [[nodiscard]] std::optional<std::vector<scene3d::ClipSample>> clips(const world::World& world,
                                                                         entt::entity entity);
 

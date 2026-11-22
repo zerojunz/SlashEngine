@@ -7,7 +7,7 @@ orange lamp:
 - the [toon](toon.material.json) ball is cel-shaded by [shaders/toon.hlsl](shaders/toon.hlsl),
   whose `light()` cuts each light's diffuse light into `steps` flat bands, adds a sharp highlight
   and a rim of sunlight at its edge;
-- the smooth ball has a `StandardMaterial3D` of the same color, lit by the engine's own light
+- the smooth ball has a `Surface3D` of the same color, lit by the engine's own light
   model, for comparison.
 
 ```hlsl

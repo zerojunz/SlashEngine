@@ -33,14 +33,14 @@ void write_project(const std::filesystem::path& root) {
     std::ofstream(root / "bullet.prefab.json") << R"({
   "components": {
     "Transform2D": {"position": [10.0, 20.0]},
-    "MultiplayerSynchronizer": {"properties": [{"path": "Transform2D/position"}]}
+    "NetSync": {"properties": [{"path": "Transform2D/position"}]}
   },
   "format": 1
 })";
     std::ofstream(root / "arena.scene.json") << R"({
   "entities": {
     "arena": {"components": {"Transform2D": {}}},
-    "spawner": {"components": {"MultiplayerSpawner": {
+    "spawner": {"components": {"NetSpawner": {
       "spawnable_scenes": ["bullet.prefab.json"], "spawn_path": "arena"}}},
     "table": {}
   },

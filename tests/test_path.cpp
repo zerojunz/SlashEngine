@@ -262,7 +262,7 @@ TEST_CASE("progress wraps round a loop and stops at the ends without one, as God
     CHECK(world::wrap_progress(5.0F, 0.0F, true) == 0.0F);
 }
 
-TEST_CASE("PathFollow2D goes along its curve, turned with it, offsets along and across it") {
+TEST_CASE("SplineFollower2D goes along its curve, turned with it, offsets along and across it") {
     // Godot's tests/scene/test_path_follow_2d.h.
     const world::Curve2D square(
         {point2({0, 0}), point2({100, 0}), point2({100, 100}), point2({0, 100}), point2({0, 0})},
@@ -270,7 +270,7 @@ TEST_CASE("PathFollow2D goes along its curve, turned with it, offsets along and 
     REQUIRE(square.length() == doctest::Approx(400.0F));
     const std::array<Vec2, 9> places{
         {{0, 0}, {50, 0}, {100, 0}, {100, 50}, {100, 100}, {50, 100}, {0, 100}, {0, 50}, {0, 0}}};
-    world::PathFollow2D follower;
+    world::SplineFollower2D follower;
     follower.loop = false;
     for (std::size_t i = 0; i < places.size(); ++i) {
         follower.progress = 50.0F * static_cast<float>(i);
@@ -301,7 +301,7 @@ TEST_CASE("PathFollow2D goes along its curve, turned with it, offsets along and 
     CHECK(turned.scale == Vec2{2, 2});
 }
 
-TEST_CASE("PathFollow3D goes along its curve, its rotation as its rotation_mode says") {
+TEST_CASE("SplineFollower3D goes along its curve, its rotation as its rotation_mode says") {
     // Godot's tests/scene/test_path_follow_3d.h.
     const world::Curve3D zigzag({point({0, 0, 0}), point({100, 0, 0}), point({100, 100, 0}),
                                  point({100, 100, 100}), point({100, 0, 100})},
@@ -316,7 +316,7 @@ TEST_CASE("PathFollow3D goes along its curve, its rotation as its rotation_mode 
                                       {100, 100, 100},
                                       {100, 50, 100},
                                       {100, 0, 100}}};
-    world::PathFollow3D follower;
+    world::SplineFollower3D follower;
     follower.loop = false;
     for (std::size_t i = 0; i < places.size(); ++i) {
         follower.progress = 50.0F * static_cast<float>(i);
@@ -407,15 +407,15 @@ TEST_CASE("the path_follow system wraps followers' progress and places them on t
     Scene scene;
     const entt::entity rail = scene.create("rail", R"({
         "Transform2D": {"position": [10, 0]},
-        "Path2D": {"points": [{"position": [0, 0]}, {"position": [100, 0]}]}
+        "Spline2D": {"points": [{"position": [0, 0]}, {"position": [100, 0]}]}
     })");
     const entt::entity cart =
-        scene.create("cart", R"({"Transform2D": {}, "PathFollow2D": {"progress": 150}})");
+        scene.create("cart", R"({"Transform2D": {}, "SplineFollower2D": {"progress": 150}})");
     scene.world.ecs().get<world::Transform2D>(rail).children.push_back(cart);
     const entt::entity lost =
-        scene.create("lost", R"({"Transform2D": {"position": [7, 7]}, "PathFollow2D": {}})");
+        scene.create("lost", R"({"Transform2D": {"position": [7, 7]}, "SplineFollower2D": {}})");
     scene.world.step(1.0 / 60.0);
-    const auto& follower = scene.world.ecs().get<world::PathFollow2D>(cart);
+    const auto& follower = scene.world.ecs().get<world::SplineFollower2D>(cart);
     CHECK(follower.progress == doctest::Approx(50.0F));
     CHECK(near(scene.world.ecs().get<world::Transform2D>(cart).position, {50, 0}));
     CHECK(near(world::Tree2D(scene.world).global(cart).position, {60, 0}));
@@ -424,7 +424,7 @@ TEST_CASE("the path_follow system wraps followers' progress and places them on t
     // The curve is kept until the path changes.
     const auto first = world::curve_2d(scene.world, rail);
     CHECK(world::curve_2d(scene.world, rail) == first);
-    scene.world.ecs().get<world::Path2D>(rail).points[1].position = {0, 100};
+    scene.world.ecs().get<world::Spline2D>(rail).points[1].position = {0, 100};
     scene.world.step(1.0 / 60.0);
     CHECK(world::curve_2d(scene.world, rail) != first);
     const auto& moved = scene.world.ecs().get<world::Transform2D>(cart);
@@ -433,59 +433,61 @@ TEST_CASE("the path_follow system wraps followers' progress and places them on t
 
     const entt::entity track = scene.create("track", R"({
         "Transform3D": {},
-        "Path3D": {"points": [{"position": [0, 0, 0]}, {"position": [0, 0, -10]}]}
+        "Spline3D": {"points": [{"position": [0, 0, 0]}, {"position": [0, 0, -10]}]}
     })");
     const entt::entity car = scene.create(
-        "car", R"({"Transform3D": {}, "PathFollow3D": {"progress": -4, "loop": false}})");
+        "car", R"({"Transform3D": {}, "SplineFollower3D": {"progress": -4, "loop": false}})");
     scene.world.ecs().get<world::Transform3D>(track).children.push_back(car);
-    scene.world.ecs().get<world::PathFollow3D>(car).progress = 4.0F;
+    scene.world.ecs().get<world::SplineFollower3D>(car).progress = 4.0F;
     scene.world.step(1.0 / 60.0);
     CHECK(near(scene.world.ecs().get<world::Transform3D>(car).position, {0, 0, -4}));
-    scene.world.ecs().get<world::PathFollow3D>(car).progress = 40.0F;
+    scene.world.ecs().get<world::SplineFollower3D>(car).progress = 40.0F;
     scene.world.step(1.0 / 60.0);
-    CHECK(scene.world.ecs().get<world::PathFollow3D>(car).progress == 10.0F);
+    CHECK(scene.world.ecs().get<world::SplineFollower3D>(car).progress == 10.0F);
     CHECK(near(scene.world.ecs().get<world::Transform3D>(car).position, {0, 0, -10}));
 
     // Without add_path_systems, curves are baked on each call.
     Scene bare(false);
-    const entt::entity path = bare.create("path", R"({"Path3D": {}})");
+    const entt::entity path = bare.create("path", R"({"Spline3D": {}})");
     CHECK(world::curve_3d(bare.world, path) != world::curve_3d(bare.world, path));
     CHECK(world::curve_3d(bare.world, bare.create("none", R"({"Transform3D": {}})")) == nullptr);
 }
 
 TEST_CASE("check_paths reports followers that can't follow, as Godot's warnings") {
     Scene scene;
-    scene.create("drifter", R"({"Transform2D": {}, "PathFollow2D": {}})");
+    scene.create("drifter", R"({"Transform2D": {}, "SplineFollower2D": {}})");
     const entt::entity node = scene.create("node", R"({"Transform3D": {}})");
-    const entt::entity rider = scene.create("rider", R"({"Transform3D": {}, "PathFollow3D": {}})");
+    const entt::entity rider =
+        scene.create("rider", R"({"Transform3D": {}, "SplineFollower3D": {}})");
     scene.world.ecs().get<world::Transform3D>(node).children.push_back(rider);
     const entt::entity rail =
-        scene.create("rail", R"({"Transform3D": {}, "Path3D": {"points": [{"position": [0, 0, 0]},
+        scene.create("rail", R"({"Transform3D": {}, "Spline3D": {"points": [{"position": [0, 0, 0]},
                     {"position": [1, 0, 0]}], "up_vector_enabled": false}})");
     const entt::entity looker = scene.create(
-        "looker", R"({"Transform3D": {}, "PathFollow3D": {"rotation_mode": "oriented"}})");
+        "looker", R"({"Transform3D": {}, "SplineFollower3D": {"rotation_mode": "oriented"}})");
     scene.world.ecs().get<world::Transform3D>(rail).children.push_back(looker);
     const std::vector<std::string> expected{
-        "drifter/components/PathFollow2D: only follows a path as a Transform2D child of an "
-        "entity with a Path2D",
-        "rider/components/PathFollow3D: only follows a path as a Transform3D child of an entity "
-        "with a Path3D",
-        "looker/components/PathFollow3D/rotation_mode: \"oriented\" needs up vectors: set "
-        "up_vector_enabled on the parent's Path3D"};
+        "drifter/components/SplineFollower2D: only follows a path as a Transform2D child of an "
+        "entity with a Spline2D",
+        "rider/components/SplineFollower3D: only follows a path as a Transform3D child of an "
+        "entity "
+        "with a Spline3D",
+        "looker/components/SplineFollower3D/rotation_mode: \"oriented\" needs up vectors: set "
+        "up_vector_enabled on the parent's Spline3D"};
     CHECK(messages(world::check_paths(scene.world), scene.world) == expected);
     // scene validate and exports report them through check_meshes.
     CHECK(scene3d::check_meshes(scene.world).size() == 3);
 }
 
-TEST_CASE("CSGPolygon3D's path mode pushes its polygon along a Path3D, as Godot's") {
+TEST_CASE("SolidExtrusion3D's path mode pushes its polygon along a Spline3D, as Godot's") {
     Scene scene;
     const entt::entity rail = scene.create("rail", R"({
         "Transform3D": {},
-        "Path3D": {"points": [{"position": [0, 0, 0]}, {"position": [0, 0, -10]}]}
+        "Spline3D": {"points": [{"position": [0, 0, 0]}, {"position": [0, 0, -10]}]}
     })");
     const entt::entity beam = scene.create("beam", R"({
         "Transform3D": {},
-        "CSGPolygon3D": {"polygon": [[0, 0], [1, 0], [1, 1], [0, 1]], "mode": "path",
+        "SolidExtrusion3D": {"polygon": [[0, 0], [1, 0], [1, 1], [0, 1]], "mode": "path",
                          "path_node": "rail"}
     })");
     // A ring each unit along it, the rings facing the way it goes, capped at both ends.
@@ -496,7 +498,7 @@ TEST_CASE("CSGPolygon3D's path mode pushes its polygon along a Path3D, as Godot'
     CHECK(near(mesh->min, {0, 0, -10}));
     CHECK(near(mesh->max, {1, 1, 0}));
 
-    auto& polygon = scene.world.ecs().get<world::CSGPolygon3D>(beam);
+    auto& polygon = scene.world.ecs().get<world::SolidExtrusion3D>(beam);
     // Rings that turn less than path_simplify_angle are merged.
     polygon.path_simplify_angle = 5.0F;
     mesh = scene.mesh(beam);
@@ -507,8 +509,8 @@ TEST_CASE("CSGPolygon3D's path mode pushes its polygon along a Path3D, as Godot'
     polygon.path_interval_type = "subdivide";
     mesh = scene.mesh(beam);
     CHECK(mesh->triangles == 12);
-    scene.world.ecs().get<world::Path3D>(rail).points.insert(
-        scene.world.ecs().get<world::Path3D>(rail).points.begin() + 1, point({0, 0, -5}));
+    scene.world.ecs().get<world::Spline3D>(rail).points.insert(
+        scene.world.ecs().get<world::Spline3D>(rail).points.begin() + 1, point({0, 0, -5}));
     mesh = scene.mesh(beam);
     CHECK(mesh->triangles == (2 * 4 * 2) + 4);
     CHECK(volume(*mesh) == doctest::Approx(10.0));
@@ -528,7 +530,7 @@ TEST_CASE("CSGPolygon3D's path mode pushes its polygon along a Path3D, as Godot'
     scene.world.ecs().get<world::Transform3D>(rail).position = {};
 
     // Round a closed loop and joined, it has no ends.
-    auto& path = scene.world.ecs().get<world::Path3D>(rail);
+    auto& path = scene.world.ecs().get<world::Spline3D>(rail);
     path.points = {point({0, 0, 0}), point({10, 0, 0}), point({10, 0, -10}), point({0, 0, -10})};
     path.closed = true;
     polygon.path_joined = true;
@@ -543,18 +545,18 @@ TEST_CASE("CSGPolygon3D's path mode pushes its polygon along a Path3D, as Godot'
     polygon.path_node = entt::null;
     mesh = scene.mesh(beam);
     REQUIRE(mesh->problems.size() >= 1);
-    CHECK(mesh->problems[0].path == "/components/CSGPolygon3D/path_node");
+    CHECK(mesh->problems[0].path == "/components/SolidExtrusion3D/path_node");
     CHECK(mesh->problems[0].message ==
-          "names no entity: name the entity with the Path3D to push the polygon along");
+          "names no entity: name the entity with the Spline3D to push the polygon along");
     polygon.path_node = scene.create("post", R"({"Transform3D": {}})");
     mesh = scene.mesh(beam);
     REQUIRE(mesh->problems.size() >= 1);
     CHECK(mesh->problems[0].message ==
-          "\"post\" has no Path3D: give it one, or name another entity");
+          "\"post\" has no Spline3D: give it one, or name another entity");
     polygon.path_node = rail;
     path.points.resize(1);
     mesh = scene.mesh(beam);
     REQUIRE(mesh->problems.size() >= 1);
-    CHECK(mesh->problems[0].message == "names a Path3D with fewer than 2 points: give it more");
+    CHECK(mesh->problems[0].message == "names a Spline3D with fewer than 2 points: give it more");
     CHECK(scene3d::check_csg(scene.world).size() >= 1);
 }

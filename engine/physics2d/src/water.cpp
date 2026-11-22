@@ -126,7 +126,7 @@ world::WaterHost water_host_2d(world::World& world) {
             }
             const auto& ecs = held->ecs();
             if (!ecs.all_of<world::RigidBody2D>(hit->entity) &&
-                !ecs.all_of<world::CharacterBody2D>(hit->entity)) {
+                !ecs.all_of<world::CharacterMover2D>(hit->entity)) {
                 return to_float(hit->point.y);
             }
             filter.exclude.push_back(hit->entity);

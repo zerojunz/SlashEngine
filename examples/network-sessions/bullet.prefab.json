@@ -1,6 +1,6 @@
 {
   "components": {
-    "MultiplayerSynchronizer": {
+    "NetSync": {
       "properties": [
         {
           "path": "Transform2D/position"

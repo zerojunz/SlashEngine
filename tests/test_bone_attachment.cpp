@@ -151,12 +151,12 @@ struct Scene {
 
 TEST_CASE("a bone attachment goes where its bone is posed, carrying what hangs under it") {
     Scene scene;
-    scene.create("sword", R"({"Transform3D": {"position": [0, 0.5, 0]}, "AnimatableBody3D": {},
-        "CollisionShape3D": {"size": [0.2, 1, 0.2]}})");
+    scene.create("sword", R"({"Transform3D": {"position": [0, 0.5, 0]}, "MovingBody3D": {},
+        "Collider3D": {"size": [0.2, 1, 0.2]}})");
     scene.create("grip", R"({"Transform3D": {"children": ["sword"]},
-        "BoneAttachment3D": {"bone_name": "Hand"}})");
+        "BoneSocket3D": {"bone_name": "Hand"}})");
     const entt::entity arm = scene.create("arm", R"({"Transform3D": {"position": [0, 1, 0],
-        "children": ["grip"]}, "MeshInstance3D": {"mesh": "models/arm.gltf"}})");
+        "children": ["grip"]}, "Model3D": {"mesh": "models/arm.gltf"}})");
     CHECK(scene.problems().empty());
     scene.step();
 
@@ -191,9 +191,9 @@ TEST_CASE("a bone attachment follows the bone after the IK modifiers turn it") {
     Scene scene;
     scene.create("goal", R"({"Transform3D": {"position": [1, 2, 0]}})");
     scene.create("pole", R"({"Transform3D": {"position": [5, 1, 0]}})");
-    scene.create("grip", R"({"Transform3D": {}, "BoneAttachment3D": {"bone_name": "Wrist"}})");
+    scene.create("grip", R"({"Transform3D": {}, "BoneSocket3D": {"bone_name": "Wrist"}})");
     scene.create("arm", R"({"Transform3D": {"position": [0, 1, 0], "children": ["grip"]},
-        "MeshInstance3D": {"mesh": "models/arm.gltf"},
+        "Model3D": {"mesh": "models/arm.gltf"},
         "TwoBoneIK3D": {"settings": [{"root_bone": "Shoulder", "middle_bone": "Elbow",
             "end_bone": "Wrist", "target": "goal", "pole": "pole"}]}})");
     scene.step();
@@ -203,10 +203,10 @@ TEST_CASE("a bone attachment follows the bone after the IK modifiers turn it") {
 TEST_CASE("external_skeleton follows a model from anywhere in the world") {
     Scene scene;
     scene.create("arm", R"({"Transform3D": {"position": [2, 0, 0], "rotation": [0, 0, -1.5707964]},
-        "MeshInstance3D": {"mesh": "models/arm.gltf"}})");
-    scene.create("shield", R"({"Transform3D": {}, "BoneAttachment3D": {"bone_name": "Elbow",
+        "Model3D": {"mesh": "models/arm.gltf"}})");
+    scene.create("shield", R"({"Transform3D": {}, "BoneSocket3D": {"bone_name": "Elbow",
         "external_skeleton": "arm"}})");
-    scene.create("held", R"({"Transform3D": {}, "BoneAttachment3D": {"bone_name": "Hand",
+    scene.create("held", R"({"Transform3D": {}, "BoneSocket3D": {"bone_name": "Hand",
         "external_skeleton": "arm"}})");
     scene.create("holder", R"({"Transform3D": {"position": [0, 5, 0], "scale": [2, 2, 2],
         "children": ["held"]}})");
@@ -219,25 +219,25 @@ TEST_CASE("external_skeleton follows a model from anywhere in the world") {
 
 TEST_CASE("bone attachments are checked against their models, with did you mean") {
     Scene scene;
-    scene.create("typo", R"({"Transform3D": {}, "BoneAttachment3D": {"bone_name": "Hnd"}})");
-    scene.create("unnamed", R"({"Transform3D": {}, "BoneAttachment3D": {}})");
+    scene.create("typo", R"({"Transform3D": {}, "BoneSocket3D": {"bone_name": "Hnd"}})");
+    scene.create("unnamed", R"({"Transform3D": {}, "BoneSocket3D": {}})");
     scene.create("arm", R"({"Transform3D": {"children": ["typo", "unnamed"]},
-        "MeshInstance3D": {"mesh": "models/arm.gltf"}})");
-    scene.create("loose", R"({"Transform3D": {}, "BoneAttachment3D": {"bone_name": "Hand"}})");
-    scene.create("crate", R"({"Transform3D": {"children": ["loose"]}, "MeshInstance3D": {},
-        "BoxMesh": {}})");
-    scene.create("far", R"({"Transform3D": {}, "BoneAttachment3D": {"bone_name": "Hand",
+        "Model3D": {"mesh": "models/arm.gltf"}})");
+    scene.create("loose", R"({"Transform3D": {}, "BoneSocket3D": {"bone_name": "Hand"}})");
+    scene.create("crate", R"({"Transform3D": {"children": ["loose"]}, "Model3D": {},
+        "BoxGeometry": {}})");
+    scene.create("far", R"({"Transform3D": {}, "BoneSocket3D": {"bone_name": "Hand",
         "external_skeleton": "crate"}})");
     CHECK(scene.problems() ==
           std::vector<std::string>{
-              "typo /components/BoneAttachment3D/bone_name: \"models/arm.gltf\" has no bone or "
+              "typo /components/BoneSocket3D/bone_name: \"models/arm.gltf\" has no bone or "
               "node named \"Hnd\"; did you mean \"Hand\"?",
-              "unnamed /components/BoneAttachment3D/bone_name: names no bone",
-              "loose /components/BoneAttachment3D: follows a bone, but its Transform3D parent "
-              "draws no model file: put it in the Transform3D children of the MeshInstance3D's "
+              "unnamed /components/BoneSocket3D/bone_name: names no bone",
+              "loose /components/BoneSocket3D: follows a bone, but its Transform3D parent "
+              "draws no model file: put it in the Transform3D children of the Model3D's "
               "entity, or name that entity in external_skeleton",
-              "far /components/BoneAttachment3D/external_skeleton: follows an entity that draws "
-              "no model file: name the entity whose MeshInstance3D draws the model",
+              "far /components/BoneSocket3D/external_skeleton: follows an entity that draws "
+              "no model file: name the entity whose Model3D draws the model",
           });
 
     // Ones that can't follow stay where they are.

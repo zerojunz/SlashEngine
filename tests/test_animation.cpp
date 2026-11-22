@@ -129,8 +129,8 @@ struct Scene {
         return entity;
     }
 
-    world::AnimationPlayer& player(entt::entity entity) {
-        return world.ecs().get<world::AnimationPlayer>(entity);
+    world::Animator& player(entt::entity entity) {
+        return world.ecs().get<world::Animator>(entity);
     }
     world::Transform2D& transform(entt::entity entity) {
         return world.ecs().get<world::Transform2D>(entity);
@@ -431,12 +431,12 @@ TEST_CASE("values between keys follow Godot's interpolation and easing") {
     CHECK(animation::sample(scale, scale.tracks[0], 0.5, false) == parse("[5, 10]"));
 }
 
-TEST_CASE("AnimationPlayer sets fields each tick and stops at the end, as Godot's does") {
+TEST_CASE("Animator sets fields each tick and stops at the end, as Godot's does") {
     Scene scene;
     scene.files.write("pop.anim.json", library(R"({"path": "Transform2D/position/x",
         "keys": [{"time": 0, "value": 0}, {"time": 0.5, "value": 30}]})",
                                                0.5));
-    const entt::entity hero = scene.create("hero", R"({"AnimationPlayer":
+    const entt::entity hero = scene.create("hero", R"({"Animator":
         {"library": "pop.anim.json", "animation": "a"}})");
 
     // The track adds the Transform2D the entity didn't have.
@@ -484,7 +484,7 @@ TEST_CASE("at 60 Hz, a key at 0.3 seconds is passed on tick 18 and a half-second
         "keys": [{"time": 0, "value": 0}, {"time": 0.5, "value": 1}]},
         {"event": "beat", "keys": [{"time": 0.3}]})",
                                                0.5));
-    const entt::entity hero = scene.create("hero", R"({"AnimationPlayer":
+    const entt::entity hero = scene.create("hero", R"({"Animator":
         {"library": "pop.anim.json", "animation": "a"}})");
     for (int tick = 1; tick <= 29; ++tick) {
         scene.world.step(1.0 / 60.0);
@@ -504,7 +504,7 @@ TEST_CASE("loops wrap or turn round, and each event key fires once as playback p
                                                             {"time": 0.5, "data": "mid"}]},
                                  {"event": "hit", "keys": [{"time": 0.4, "data": 1}]})",
                               1.0, "linear"));
-    const entt::entity hero = scene.create("hero", R"({"AnimationPlayer":
+    const entt::entity hero = scene.create("hero", R"({"Animator":
         {"library": "loop.anim.json", "animation": "a"}})");
     scene.world.step(0.3);
     CHECK(scene.take_events() == std::vector<std::string>{R"(step "start")"});
@@ -540,7 +540,7 @@ TEST_CASE("loops wrap or turn round, and each event key fires once as playback p
                                  {"event": "edge", "keys": [{"time": 0, "data": "low"},
                                                             {"time": 1, "data": "high"}]})",
                                                     1.0, "pingpong"));
-    const entt::entity ball = scene.create("ball", R"({"AnimationPlayer":
+    const entt::entity ball = scene.create("ball", R"({"Animator":
         {"library": "pingpong.anim.json", "animation": "a"}})");
     scene.world.destroy(hero);
     scene.take_events();
@@ -567,7 +567,7 @@ TEST_CASE("discrete tracks set a key's value only when playback passes it") {
     scene.files.write("frames.anim.json", library(R"({"path": "Sprite2D/frame",
         "keys": [{"time": 0, "value": 0}, {"time": 0.5, "value": 1}]},
         {"path": "Sprite2D/texture", "keys": [{"time": 0.75, "value": "b.png"}]})"));
-    const entt::entity hero = scene.create("hero", R"({"AnimationPlayer":
+    const entt::entity hero = scene.create("hero", R"({"Animator":
         {"library": "frames.anim.json", "animation": "a"},
         "Sprite2D": {"texture": "a.png", "frame": 3}})");
     const auto sprite = [&]() -> world::Sprite2D& {
@@ -586,7 +586,7 @@ TEST_CASE("discrete tracks set a key's value only when playback passes it") {
     CHECK(sprite().texture == "b.png");
 }
 
-TEST_CASE("an AnimationPlayer that can't play warns once, and its other tracks still play") {
+TEST_CASE("an Animator that can't play warns once, and its other tracks still play") {
     const Warnings warnings;
     Scene scene;
     scene.files.write("bob.anim.json", R"({"format": 1, "animations": {
@@ -594,13 +594,13 @@ TEST_CASE("an AnimationPlayer that can't play warns once, and its other tracks s
           {"path": "Health/current", "keys": [{"time": 0, "value": 1}]},
           {"path": "Transform2D/rotation", "keys": [{"time": 0, "value": 0},
                                                     {"time": 1, "value": 1}]}]}}})");
-    const entt::entity missing = scene.create("missing", R"({"AnimationPlayer":
+    const entt::entity missing = scene.create("missing", R"({"Animator":
         {"library": "nope.anim.json", "animation": "bob"}})");
-    const entt::entity misspelled = scene.create("misspelled", R"({"AnimationPlayer":
+    const entt::entity misspelled = scene.create("misspelled", R"({"Animator":
         {"library": "bob.anim.json", "animation": "bop"}})");
-    const entt::entity partial = scene.create("partial", R"({"AnimationPlayer":
+    const entt::entity partial = scene.create("partial", R"({"Animator":
         {"library": "bob.anim.json", "animation": "bob"}})");
-    const entt::entity idle = scene.create("idle", R"({"AnimationPlayer": {}})");
+    const entt::entity idle = scene.create("idle", R"({"Animator": {}})");
     scene.world.step(0.5);
     scene.world.step(0.5);
     CHECK(warnings.lines.size() == 3);
@@ -614,7 +614,7 @@ TEST_CASE("an AnimationPlayer that can't play warns once, and its other tracks s
     CHECK(scene.player(missing).time == 0.0);
 }
 
-TEST_CASE("a track with a target acts on the entity the AnimationPlayer's targets name") {
+TEST_CASE("a track with a target acts on the entity the Animator's targets name") {
     const Warnings warnings;
     Scene scene;
     scene.files.write("swing.anim.json", R"({"format": 1, "animations": {
@@ -629,7 +629,7 @@ TEST_CASE("a track with a target acts on the entity the AnimationPlayer's target
           {"target": "helmet", "path": "Transform2D/rotation", "keys": [{"time": 0, "value": 1}]}
         ]}}})");
     const entt::entity sword = scene.create("sword", R"({"Transform2D": {}})");
-    const entt::entity hero = scene.create("hero", R"({"Transform2D": {}, "AnimationPlayer":
+    const entt::entity hero = scene.create("hero", R"({"Transform2D": {}, "Animator":
         {"library": "swing.anim.json", "animation": "swing",
          "targets": {"sword": "sword", "shield": null}}})");
     scene.world.step(0.5);
@@ -646,7 +646,7 @@ TEST_CASE("a track with a target acts on the entity the AnimationPlayer's target
     // Targets with no entity warn once and leave their tracks unplayed.
     CHECK(warnings.lines.size() == 2);
     CHECK(warnings.logged(R"(target \"shield\" names no entity)"));
-    CHECK(warnings.logged(R"(no entity for target \"helmet\" in the AnimationPlayer's targets)"));
+    CHECK(warnings.logged(R"(no entity for target \"helmet\" in the Animator's targets)"));
 
     // A destroyed target stops its tracks; the player's own go on.
     scene.world.destroy(sword);
@@ -670,33 +670,33 @@ TEST_CASE("AnimationPlayers in a scene are checked against their libraries") {
         return it->second;
     };
     const json::Value scene = parse(R"({"format": 1, "entities": {
-        "bad": {"components": {"AnimationPlayer": {"library": "swing.json"}}},
-        "ghost": {"components": {"AnimationPlayer": {"library": "gone.anim.json"}}},
-        "hero": {"components": {"AnimationPlayer": {"library": "swing.anim.json",
+        "bad": {"components": {"Animator": {"library": "swing.json"}}},
+        "ghost": {"components": {"Animator": {"library": "gone.anim.json"}}},
+        "hero": {"components": {"Animator": {"library": "swing.anim.json",
             "animation": "swng", "targets": {"swrd": "hero", "shield": "hero"}}}},
-        "knight": {"components": {"AnimationPlayer": {"library": "swing.anim.json"}}},
-        "page": {"components": {"AnimationPlayer": {"library": "swing.anim.json",
+        "knight": {"components": {"Animator": {"library": "swing.anim.json"}}},
+        "page": {"components": {"Animator": {"library": "swing.anim.json",
             "animation": "swing", "targets": {"sword": "page", "shield": null}}}},
         "squire": {"extends": "squire.prefab.json",
-                   "components": {"AnimationPlayer": {"library": "swing.anim.json"}}},
-        "idle": {"components": {"AnimationPlayer": {}}}}})");
+                   "components": {"Animator": {"library": "swing.anim.json"}}},
+        "idle": {"components": {"Animator": {}}}}})");
     std::vector<std::string> errors;
     for (const json::ValidationError& error : animation::check_players(scene, reader)) {
         errors.push_back(error.path + ": " + error.message);
     }
     CHECK(errors ==
           std::vector<std::string>{
-              "/entities/bad/components/AnimationPlayer/library: animation libraries are "
+              "/entities/bad/components/Animator/library: animation libraries are "
               ".anim.json files or models, as \"anim/hero.anim.json\" or \"models/hero.glb\"",
-              "/entities/ghost/components/AnimationPlayer/library: gone.anim.json: no such file",
-              "/entities/hero/components/AnimationPlayer/animation: swing.anim.json has no "
+              "/entities/ghost/components/Animator/library: gone.anim.json: no such file",
+              "/entities/hero/components/Animator/animation: swing.anim.json has no "
               "animation \"swng\"; did you mean \"swing\"?",
-              "/entities/hero/components/AnimationPlayer/targets: no entity for target "
+              "/entities/hero/components/Animator/targets: no entity for target "
               "\"sword\", which swing.anim.json's tracks name; add it to targets; did you mean "
               "\"swrd\"?",
-              "/entities/knight/components/AnimationPlayer: no entity for target \"shield\", "
+              "/entities/knight/components/Animator: no entity for target \"shield\", "
               "which swing.anim.json's tracks name; add it to targets",
-              "/entities/knight/components/AnimationPlayer: no entity for target \"sword\", "
+              "/entities/knight/components/Animator: no entity for target \"sword\", "
               "which swing.anim.json's tracks name; add it to targets",
           });
     CHECK(animation::check_players(scene, {}).empty());
@@ -707,7 +707,7 @@ TEST_CASE("an edited animation file plays its new keys from the next tick") {
     scene.files.write("spin.anim.json", library(R"({"path": "Transform2D/rotation",
         "keys": [{"time": 0, "value": 0}, {"time": 1, "value": 1}]})",
                                                 1.0, "linear"));
-    const entt::entity hero = scene.create("hero", R"({"AnimationPlayer":
+    const entt::entity hero = scene.create("hero", R"({"Animator":
         {"library": "spin.anim.json", "animation": "a"}})");
     scene.world.step(0.5);
     CHECK(scene.transform(hero).rotation == doctest::Approx(0.5F));
@@ -775,9 +775,9 @@ TEST_CASE("cinematic tracks and markers are checked, each error at its JSON Poin
                    "/animations/shot/tracks/1/keys/1/in/0: an in handle points back in time: 0 "
                    "seconds or less\n"
                    "/animations/shot/tracks/2: an animation track plays the animations of its "
-                   "target's AnimationPlayer, so it has no path, event or node\n"
+                   "target's Animator, so it has no path, event or node\n"
                    "/animations/shot/tracks/3: an animation track needs a \"target\": the entity "
-                   "whose AnimationPlayer it plays\n"
+                   "whose Animator it plays\n"
                    "/animations/shot/tracks/3/keys/0: an animation track's keys need an "
                    "\"animation\": the one its player plays from there, or \"[stop]\"\n"
                    "/animations/shot/tracks/3/keys/0/value: an animation track's keys carry "
@@ -820,7 +820,7 @@ TEST_CASE("audio tracks are checked, each error at its JSON Pointer") {
     CHECK(talk.tracks[0].keys[0].end_offset == 0.25);
 }
 
-TEST_CASE("an animation track plays and stops another AnimationPlayer's animations") {
+TEST_CASE("an animation track plays and stops another Animator's animations") {
     Scene scene;
     scene.files.write("door.anim.json", R"({"format": 1, "animations": {
         "open": {"length": 1, "tracks": [{"path": "Transform2D/rotation",
@@ -833,9 +833,9 @@ TEST_CASE("an animation track plays and stops another AnimationPlayer's animatio
           {"time": 3, "animation": "shut"}]}]}}})");
     // The door's player waits on its own. The director's plays first, as the newer entity, so
     // the door plays on from the tick its key starts it.
-    const entt::entity door = scene.create("door", R"({"Transform2D": {}, "AnimationPlayer":
+    const entt::entity door = scene.create("door", R"({"Transform2D": {}, "Animator":
         {"library": "door.anim.json", "playing": false}})");
-    scene.create("director", R"({"AnimationPlayer": {"library": "scene.anim.json",
+    scene.create("director", R"({"Animator": {"library": "scene.anim.json",
         "animation": "intro", "targets": {"door": "door"}}})");
     scene.world.step(0.25);
     CHECK_FALSE(scene.player(door).playing);
@@ -868,8 +868,8 @@ TEST_CASE("audio tracks start their keys' streams and stop them as Godot's Anima
         "talk": {"length": 2, "tracks": [{"type": "audio", "target": "voice", "keys": [
           {"time": 0.5, "stream": "line.wav", "start_offset": 0.25, "end_offset": 0.25},
           {"time": 1.5, "stream": "sigh.wav"}]}]}}})");
-    scene.create("voice", R"({"AudioStreamPlayer": {}})");
-    const entt::entity talker = scene.create("talker", R"({"AnimationPlayer": {
+    scene.create("voice", R"({"SoundPlayer": {}})");
+    const entt::entity talker = scene.create("talker", R"({"Animator": {
         "library": "talk.anim.json", "animation": "talk", "targets": {"voice": "voice"}}})");
     std::vector<std::string> calls;
     for (int tick = 1; tick <= 20; ++tick) {
@@ -922,7 +922,7 @@ TEST_CASE("audio tracks start their keys' streams and stop them as Godot's Anima
 
     // A stream that can't play warns once.
     const Warnings warnings;
-    scene.world.ecs().remove<world::AudioStreamPlayer>(scene.world.find("voice"));
+    scene.world.ecs().remove<world::SoundPlayer>(scene.world.find("voice"));
     scene.player(talker).playing = true;
     scene.player(talker).time = 0.0;
     for (int tick = 0; tick < 6; ++tick) {
@@ -939,7 +939,7 @@ TEST_CASE("a track that makes a camera current cuts to it, as Godot's Camera3D.c
          "keys": [{"time": 0, "value": 60}, {"time": 1, "value": 40}]})"));
     const entt::entity wide = scene.create("wide", R"({"Camera3D": {"current": true}})");
     const entt::entity close = scene.create("close", R"({"Camera3D": {}})");
-    scene.create("director", R"({"AnimationPlayer": {"library": "cut.anim.json",
+    scene.create("director", R"({"Animator": {"library": "cut.anim.json",
         "animation": "a", "targets": {"close": "close"}}})");
     const auto camera = [&](entt::entity entity) -> world::Camera3D& {
         return scene.world.ecs().get<world::Camera3D>(entity);
@@ -967,9 +967,9 @@ TEST_CASE("seeking sets what an animation's tracks set there, its started player
           {"event": "boom", "keys": [{"time": 1}]},
           {"type": "animation", "target": "door", "keys": [{"time": 1, "animation": "swing"}]}
         ]}}})");
-    const entt::entity door = scene.create("door", R"({"Transform2D": {}, "AnimationPlayer":
+    const entt::entity door = scene.create("door", R"({"Transform2D": {}, "Animator":
         {"library": "door.anim.json", "playing": false}})");
-    const entt::entity director = scene.create("director", R"({"Transform2D": {}, "AnimationPlayer":
+    const entt::entity director = scene.create("director", R"({"Transform2D": {}, "Animator":
         {"library": "scene.anim.json", "animation": "intro", "playing": false,
          "targets": {"door": "door"}}})");
     REQUIRE(animation::seek(scene.world, scene.assets, director, 2.5).ok());

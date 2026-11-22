@@ -1,5 +1,5 @@
 // Hair and fur in the one simulation, as Chaos steps a groom's guides with the rest of the
-// world: each HairInstance3D's guide strands are carried by its model's skin and stepped after
+// world: each Hair3D's guide strands are carried by its model's skin and stepped after
 // the bodies have moved, by gravity, WindSource3Ds' wind and PhysicsField3Ds, kept off the
 // spheres, capsules and boxes of the body they grow on.
 #include "slash/scene3d/hair.hpp"
@@ -30,9 +30,9 @@ std::uint32_t seed_of(std::string_view id) {
 void Space::step_hair(world::World& world, float seconds) {
     const entt::registry& registry = world.ecs();
     hairs_.erase_if([&](entt::entity entity, const std::unique_ptr<Hair3DBody>& /*hair*/) {
-        return !world.valid(entity) || !registry.all_of<world::HairInstance3D>(entity);
+        return !world.valid(entity) || !registry.all_of<world::Hair3D>(entity);
     });
-    const auto view = registry.view<const world::HairInstance3D>();
+    const auto view = registry.view<const world::Hair3D>();
     if (view.empty()) {
         return;
     }
@@ -44,7 +44,7 @@ void Space::step_hair(world::World& world, float seconds) {
     const double field_time = static_cast<double>(world.tick()) * static_cast<double>(seconds);
     const Vec3 gravity = settings_.gravity_vector * settings_.gravity;
     for (const entt::entity entity : view) {
-        const auto& hair = registry.get<const world::HairInstance3D>(entity);
+        const auto& hair = registry.get<const world::Hair3D>(entity);
         Hair3DBody* body = nullptr;
         if (std::unique_ptr<Hair3DBody>* found = hairs_.find(entity); found != nullptr) {
             body = found->get();

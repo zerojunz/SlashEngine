@@ -2,25 +2,25 @@
   "entities": {
     "body": {
       "components": {
-        "Control": {
-          "anchor_right": 1.0,
-          "offset_left": 16.0,
-          "offset_right": -16.0,
-          "offset_top": 64.0
-        },
         "Label": {
           "autowrap_mode": "word",
           "horizontal_alignment": "center",
           "text": "The tower is quiet. Mira's lantern still burns at the top of the stairs."
+        },
+        "Widget": {
+          "anchor_right": 1.0,
+          "offset_left": 16.0,
+          "offset_right": -16.0,
+          "offset_top": 64.0
         }
       }
     },
     "dim": {
       "components": {
-        "ColorRect": {
+        "ColorFill": {
           "color": [0.0, 0.0, 0.0, 0.5]
         },
-        "Control": {
+        "Widget": {
           "anchor_bottom": 1.0,
           "anchor_right": 1.0
         }
@@ -28,7 +28,10 @@
     },
     "hint": {
       "components": {
-        "Control": {
+        "Label": {
+          "text": "Esc: resume"
+        },
+        "Widget": {
           "anchor_bottom": 1.0,
           "anchor_left": 1.0,
           "anchor_right": 1.0,
@@ -43,18 +46,15 @@
             "font_color": [0.8, 0.8, 0.8, 1.0],
             "font_shadow_color": [0.0, 0.0, 0.0, 0.6]
           }
-        },
-        "Label": {
-          "text": "Esc: resume"
         }
       }
     },
     "panel": {
       "components": {
-        "ColorRect": {
+        "ColorFill": {
           "color": [0.12, 0.13, 0.2, 0.95]
         },
-        "Control": {
+        "Widget": {
           "anchor_bottom": 0.5,
           "anchor_left": 0.5,
           "anchor_right": 0.5,
@@ -69,23 +69,26 @@
     },
     "quest": {
       "components": {
-        "Control": {
-          "anchor_right": 1.0,
-          "offset_left": 16.0,
-          "offset_right": -16.0,
-          "offset_top": 116.0
-        },
         "Label": {
           "autowrap_mode": "word",
           "max_lines_visible": 1,
           "text": "Quest: find the cellar key, then light every brazier on the north wall before the bell rings.",
           "text_overrun_behavior": "trim_ellipsis"
+        },
+        "Widget": {
+          "anchor_right": 1.0,
+          "offset_left": 16.0,
+          "offset_right": -16.0,
+          "offset_top": 116.0
         }
       }
     },
     "score": {
       "components": {
-        "Control": {
+        "Label": {
+          "text": "Score 1200"
+        },
+        "Widget": {
           "offset_left": 12.0,
           "offset_top": 8.0,
           "theme_override_constants": {
@@ -94,30 +97,32 @@
           "theme_override_font_sizes": {
             "font_size": 20
           }
-        },
-        "Label": {
-          "text": "Score 1200"
         }
       }
     },
     "sign": {
       "components": {
-        "Control": {
+        "Label": {
+          "text": "出口 Exit"
+        },
+        "Widget": {
           "anchor_left": 1.0,
           "anchor_right": 1.0,
           "grow_horizontal": "begin",
           "offset_left": -12.0,
           "offset_right": -12.0,
           "offset_top": 8.0
-        },
-        "Label": {
-          "text": "出口 Exit"
         }
       }
     },
     "title": {
       "components": {
-        "Control": {
+        "Label": {
+          "horizontal_alignment": "center",
+          "text": "Paused",
+          "uppercase": true
+        },
+        "Widget": {
           "anchor_right": 1.0,
           "offset_top": 10.0,
           "theme_override_colors": {
@@ -132,11 +137,6 @@
           "theme_override_fonts": {
             "font": "fonts/title.font.json"
           }
-        },
-        "Label": {
-          "horizontal_alignment": "center",
-          "text": "Paused",
-          "uppercase": true
         }
       }
     }

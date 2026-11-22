@@ -27,8 +27,8 @@ using CacheHolder = std::shared_ptr<FoliageCollisionCache>;
 
 // A type's collision as a shape in an instance's space: a capsule or cylinder standing up, a
 // sphere or a box, its middle at offset.
-std::optional<world::CollisionShape3D> shape_of(const world::FoliageCollision& collision) {
-    world::CollisionShape3D shape;
+std::optional<world::Collider3D> shape_of(const world::FoliageCollision& collision) {
+    world::Collider3D shape;
     if (collision.shape == "capsule" || collision.shape == "cylinder" ||
         collision.shape == "sphere") {
         shape.shape = collision.shape;
@@ -52,11 +52,11 @@ make_shapes(const world::Foliage3D& foliage,
         if (types[g] == nullptr || types[g]->space != "3d") {
             continue;
         }
-        const std::optional<world::CollisionShape3D> shape = shape_of(types[g]->collision);
+        const std::optional<world::Collider3D> shape = shape_of(types[g]->collision);
         if (!shape.has_value()) {
             continue;
         }
-        const world::CollisionShape3D& base = shape.value();
+        const world::Collider3D& base = shape.value();
         world::Transform3D offset;
         offset.position = base.position;
         const std::size_t count = procedural::foliage_count(foliage.groups[g]);

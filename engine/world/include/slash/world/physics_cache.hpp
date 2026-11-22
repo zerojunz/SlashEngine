@@ -3,7 +3,7 @@
 // Recorded simulations, as Unreal's Chaos Cache Manager records them (Godot has none): while a
 // world records, 3D and 2D physics add where each recorded rigid body is after every step, and
 // physics.cache writes the recording as an animation of their transforms, which an
-// AnimationPlayer, or a cinematic's animation track, plays back the same every time.
+// Animator, or a cinematic's animation track, plays back the same every time.
 
 #include "slash/core/math.hpp"
 

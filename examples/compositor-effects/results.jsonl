@@ -1,6 +1,6 @@
 {"id":1,"jsonrpc":"2.0","result":{"entities":6,"path":"main.scene.json"}}
 {"id":2,"jsonrpc":"2.0","result":{"colors":[[0.051,0.031,0.055,1],[0.306,0.38,0.471,1],[0.412,0.502,0.62,1]],"drawn":{"meshes":3},"height":90,"path":"shots/look.png","width":160}}
-{"id":3,"jsonrpc":"2.0","result":{"changed":{"WorldEnvironment":{"compositor":""}},"id":"environment"}}
+{"id":3,"jsonrpc":"2.0","result":{"changed":{"Environment3D":{"compositor":""}},"id":"environment"}}
 {"id":4,"jsonrpc":"2.0","result":{"colors":[[0.243,0.204,0.137,1],[0.451,0.6,0.851,1],[0.451,0.6,0.851,1]],"drawn":{"meshes":3},"height":90,"path":"shots/plain.png","width":160}}
 {"id":5,"jsonrpc":"2.0","result":{"changed":{"Camera3D":{"compositor":"night.pipeline.json"}},"id":"camera"}}
 {"id":6,"jsonrpc":"2.0","result":{"colors":[[0.059,0.067,0.114,1],[0,0,0,1],[0.106,0.204,0.624,1]],"drawn":{"meshes":3},"height":90,"path":"shots/night.png","width":160}}

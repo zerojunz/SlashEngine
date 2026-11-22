@@ -20,7 +20,7 @@ its reply.
   Latin words inside them still read left to right. `Label` and `Button` take a
   `text_direction` (`auto`, `ltr`, `rtl` or `inherited` from the layout) and a `language`.
   `ui.layout` and `text.measure` say `rtl` for lines that go right to left.
-- `Control.layout_direction` `rtl` mirrors a control and the controls under it: anchors and
+- `Widget.layout_direction` `rtl` mirrors a control and the controls under it: anchors and
   offsets count from the right, a row's first child is at its right, a grid's first column too,
   `left` alignment is the right, a button's icon swaps sides and a progress bar fills from the
   right. The Hebrew greeting goes right to left, but its control is laid out left to right, so

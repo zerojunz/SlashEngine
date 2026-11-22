@@ -34,7 +34,7 @@ struct Vec2i {
     friend constexpr Vec2i operator-(Vec2i a, Vec2i b) { return {a.x - b.x, a.y - b.y}; }
 };
 
-// Three integers, such as a cell of a GridMap, written to JSON as [x, y, z], as Godot's
+// Three integers, such as a cell of a BlockMap3D, written to JSON as [x, y, z], as Godot's
 // Vector3i.
 struct Vec3i {
     int x = 0;

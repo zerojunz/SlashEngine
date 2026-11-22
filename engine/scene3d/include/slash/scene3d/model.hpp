@@ -26,7 +26,7 @@ class Assets;
 // and the .mtl material libraries and textures beside them), and FBX as modules/fbx/
 // fbx_document.cpp reads it with ufbx (.fbx files, binary or ASCII, and their textures inside them
 // or beside them). Blender's .blend files are read as the glTF Blender exports of them
-// (blend.hpp). MeshInstance3D's mesh draws one.
+// (blend.hpp). Model3D's mesh draws one.
 // Meshes keep Godot's clockwise front faces, and a model with no tangents gets MikkTSpace's, as
 // Godot's importers make them.
 namespace slash::scene3d {
@@ -41,13 +41,13 @@ struct ModelImage {
     render::Image image;
 };
 
-// A model's material as Godot's importer makes it a StandardMaterial3D. Its texture fields are
+// A model's material as Godot's importer makes it a Surface3D. Its texture fields are
 // left empty: the *_image fields say which of the model's images each one samples, or -1 for
 // none, read from the channels standard's *_texture_channel fields name (a glTF model's metallic
 // and roughness share one image, read from its blue and green).
 struct ModelMaterial {
     std::string name;
-    world::StandardMaterial3D standard;
+    world::Surface3D standard;
     int albedo_image = -1;
     int metallic_image = -1;
     int roughness_image = -1;
@@ -106,7 +106,7 @@ struct ModelMesh {
     std::vector<ModelSurface> surfaces;
     // Its blend shapes' names, as Godot's ArrayMesh blend shapes (a glTF mesh's morph targets,
     // named by its extras' targetNames, else "morph_<n>" as Godot's importer names them), and
-    // the weight each has until a MeshInstance3D or an animation gives it another (the mesh's
+    // the weight each has until a Model3D or an animation gives it another (the mesh's
     // weights).
     std::vector<std::string> blend_shapes{}; // NOLINT(readability-redundant-member-init)
     std::vector<float> blend_weights{};      // NOLINT(readability-redundant-member-init)
@@ -312,7 +312,7 @@ struct ModelSummary {
     // Attachment points, as Godot's Marker3D in an imported scene: nodes that place no mesh,
     // have no children and are no skin's joint. Each is placed at rest in the model's space,
     // under the nearest node above it that places a mesh ("" for none), and a
-    // BoneAttachment3D's bone_name follows it.
+    // BoneSocket3D's bone_name follows it.
     struct Point {
         std::string name;
         std::string part;
@@ -322,7 +322,7 @@ struct ModelSummary {
     std::vector<Point> points;
     std::vector<std::string> animations;
     // Its blend shapes' names, each once, in the order its meshes have them: the names
-    // MeshInstance3D's blend_shapes takes.
+    // Model3D's blend_shapes takes.
     std::vector<std::string> blend_shapes{}; // NOLINT(readability-redundant-member-init)
     // What it collides as (Model::collision): each shape's name, whether it is a convex hull or
     // a trimesh, and its points and triangles.

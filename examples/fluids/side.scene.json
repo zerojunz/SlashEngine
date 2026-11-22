@@ -2,7 +2,7 @@
   "entities": {
     "ground": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [160.0, 10.0]
         },
         "StaticBody2D": {},
@@ -13,7 +13,7 @@
     },
     "left_wall": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [8.0, 60.0]
         },
         "StaticBody2D": {},
@@ -24,7 +24,7 @@
     },
     "right_wall": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [8.0, 60.0]
         },
         "StaticBody2D": {},
@@ -35,7 +35,7 @@
     },
     "rock": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "shape": "circle"
         },
         "StaticBody2D": {},

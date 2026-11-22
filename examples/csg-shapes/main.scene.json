@@ -14,7 +14,7 @@
     },
     "door": {
       "components": {
-        "CSGBox3D": {
+        "SolidBox3D": {
           "operation": "subtraction",
           "size": [0.8, 1.5, 1.0]
         },
@@ -25,7 +25,7 @@
     },
     "environment": {
       "components": {
-        "WorldEnvironment": {
+        "Environment3D": {
           "ambient_light_color": [0.6, 0.7, 0.9, 1.0],
           "ambient_light_energy": 0.5,
           "ambient_light_source": "color",
@@ -36,11 +36,11 @@
     },
     "ground": {
       "components": {
-        "CSGBox3D": {
+        "SolidBox3D": {
           "size": [24.0, 1.0, 16.0],
           "use_collision": true
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "albedo_color": [0.3, 0.45, 0.2, 1.0]
         },
         "Transform3D": {
@@ -50,11 +50,11 @@
     },
     "house": {
       "components": {
-        "CSGBox3D": {
+        "SolidBox3D": {
           "size": [3.0, 2.4, 3.0],
           "use_collision": true
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "albedo_color": [0.9, 0.85, 0.7, 1.0]
         },
         "Transform3D": {
@@ -65,11 +65,11 @@
     },
     "inside": {
       "components": {
-        "CSGBox3D": {
+        "SolidBox3D": {
           "operation": "subtraction",
           "size": [2.6, 2.0, 2.6]
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "albedo_color": [0.45, 0.3, 0.2, 1.0]
         },
         "Transform3D": {}
@@ -77,13 +77,13 @@
     },
     "ring": {
       "components": {
-        "CSGTorus3D": {
+        "SolidTorus3D": {
           "inner_radius": 0.35,
           "outer_radius": 0.8,
           "ring_sides": 8,
           "sides": 16
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "albedo_color": [0.95, 0.75, 0.2, 1.0],
           "metallic": 0.8,
           "roughness": 0.3
@@ -96,7 +96,7 @@
     },
     "roof": {
       "components": {
-        "CSGPolygon3D": {
+        "SolidExtrusion3D": {
           "depth": 3.4,
           "polygon": [
             [-1.8, 0.0],
@@ -104,7 +104,7 @@
             [0.0, 1.3]
           ]
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "albedo_color": [0.7, 0.2, 0.15, 1.0]
         },
         "Transform3D": {
@@ -114,13 +114,13 @@
     },
     "spire": {
       "components": {
-        "CSGCylinder3D": {
+        "SolidCylinder3D": {
           "cone": true,
           "height": 1.8,
           "radius": 1.1,
           "sides": 12
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "albedo_color": [0.2, 0.3, 0.7, 1.0]
         },
         "Transform3D": {
@@ -130,7 +130,7 @@
     },
     "sun": {
       "components": {
-        "DirectionalLight3D": {
+        "SunLight3D": {
           "light_color": [1.0, 0.95, 0.85, 1.0],
           "shadow_enabled": true
         },
@@ -141,13 +141,13 @@
     },
     "tower": {
       "components": {
-        "CSGCylinder3D": {
+        "SolidCylinder3D": {
           "height": 4.0,
           "radius": 0.9,
           "sides": 12,
           "use_collision": true
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "albedo_color": [0.6, 0.6, 0.62, 1.0]
         },
         "Transform3D": {
@@ -158,7 +158,7 @@
     },
     "vase": {
       "components": {
-        "CSGPolygon3D": {
+        "SolidExtrusion3D": {
           "mode": "spin",
           "polygon": [
             [0.0, 0.0],
@@ -171,7 +171,7 @@
           "smooth_faces": true,
           "spin_sides": 16
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "albedo_color": [0.2, 0.6, 0.6, 1.0]
         },
         "Transform3D": {
@@ -181,7 +181,7 @@
     },
     "window": {
       "components": {
-        "CSGCylinder3D": {
+        "SolidCylinder3D": {
           "height": 1.0,
           "operation": "subtraction",
           "radius": 0.35,

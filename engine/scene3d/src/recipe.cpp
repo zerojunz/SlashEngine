@@ -68,60 +68,65 @@ struct Field {
 const std::vector<Field>& shape_fields() {
     static const std::vector<Field> fields{
         {"size", Kind::Vector, "box and prism: width, height and depth in meters, as [x, y, z].",
-         "CSGBox3D"},
-        {"radius", Kind::Number, "sphere, cylinder and capsule: meters.", "CSGSphere3D"},
+         "SolidBox3D"},
+        {"radius", Kind::Number, "sphere, cylinder and capsule: meters.", "SolidSphere3D"},
         {"height", Kind::Number, "cylinder and capsule: meters along y, end to end.",
-         "CSGCylinder3D"},
+         "SolidCylinder3D"},
         {"radial_segments", Kind::Integer,
-         "sphere and capsule: corners around y; 12 for a sphere, 64 for a capsule.", "CSGSphere3D"},
+         "sphere and capsule: corners around y; 12 for a sphere, 64 for a capsule.",
+         "SolidSphere3D"},
         {"rings", Kind::Integer,
          "sphere and capsule: rows of corners from top to bottom; 6 for a sphere, 8 for a capsule.",
-         "CSGSphere3D"},
-        {"sides", Kind::Integer, "cylinder and torus: corners around y.", "CSGCylinder3D"},
-        {"cone", Kind::Boolean, "cylinder: a cone with its point up.", "CSGCylinder3D"},
-        {"inner_radius", Kind::Number, "torus: meters from y to the ring's inside.", "CSGTorus3D"},
-        {"outer_radius", Kind::Number, "torus: meters from y to the ring's outside.", "CSGTorus3D"},
-        {"ring_sides", Kind::Integer, "torus: corners around the ring.", "CSGTorus3D"},
+         "SolidSphere3D"},
+        {"sides", Kind::Integer, "cylinder and torus: corners around y.", "SolidCylinder3D"},
+        {"cone", Kind::Boolean, "cylinder: a cone with its point up.", "SolidCylinder3D"},
+        {"inner_radius", Kind::Number, "torus: meters from y to the ring's inside.",
+         "SolidTorus3D"},
+        {"outer_radius", Kind::Number, "torus: meters from y to the ring's outside.",
+         "SolidTorus3D"},
+        {"ring_sides", Kind::Integer, "torus: corners around the ring.", "SolidTorus3D"},
         {"smooth_faces", Kind::Boolean,
          "sphere, cylinder, torus and polygon: shade across faces as one smooth surface; on but "
          "for a polygon.",
-         "CSGSphere3D"},
+         "SolidSphere3D"},
         {"polygon", Kind::Polygon,
-         "polygon: at least 3 points [x, y] in the part's xy plane, in meters.", "CSGPolygon3D"},
+         "polygon: at least 3 points [x, y] in the part's xy plane, in meters.",
+         "SolidExtrusion3D"},
         {"mode", Kind::Choice,
          "polygon: pushed depth along -z (\"depth\"), spun around y (\"spin\", a lathe) or swept "
          "along path (\"path\").",
-         "CSGPolygon3D", std::vector<std::string_view>{"depth", "spin", "path"}},
-        {"depth", Kind::Number, "polygon, depth mode: meters along -z.", "CSGPolygon3D"},
-        {"spin_degrees", Kind::Number, "polygon, spin mode: degrees around y.", "CSGPolygon3D"},
-        {"spin_sides", Kind::Integer, "polygon, spin mode: steps around y.", "CSGPolygon3D"},
+         "SolidExtrusion3D", std::vector<std::string_view>{"depth", "spin", "path"}},
+        {"depth", Kind::Number, "polygon, depth mode: meters along -z.", "SolidExtrusion3D"},
+        {"spin_degrees", Kind::Number, "polygon, spin mode: degrees around y.", "SolidExtrusion3D"},
+        {"spin_sides", Kind::Integer, "polygon, spin mode: steps around y.", "SolidExtrusion3D"},
         {"path", Kind::Path,
-         "polygon, path mode: the curve it is swept along, as a Path3D's fields, in the part's "
+         "polygon, path mode: the curve it is swept along, as a Spline3D's fields, in the part's "
          "space.",
          ""},
         {"path_interval_type", Kind::Choice,
          "polygon, path mode: path_interval is \"distance\" in meters or \"subdivide\" each "
          "curve segment.",
-         "CSGPolygon3D", std::vector<std::string_view>{"distance", "subdivide"}},
+         "SolidExtrusion3D", std::vector<std::string_view>{"distance", "subdivide"}},
         {"path_interval", Kind::Number, "polygon, path mode: how often a ring is placed.",
-         "CSGPolygon3D"},
+         "SolidExtrusion3D"},
         {"path_simplify_angle", Kind::Number,
-         "polygon, path mode: degrees of bend under which rings are left out.", "CSGPolygon3D"},
+         "polygon, path mode: degrees of bend under which rings are left out.", "SolidExtrusion3D"},
         {"path_rotation", Kind::Choice,
-         "polygon, path mode: how the polygon turns along the path, as Godot's.", "CSGPolygon3D",
-         std::vector<std::string_view>{"polygon", "path", "path_follow"}},
+         "polygon, path mode: how the polygon turns along the path, as Godot's.",
+         "SolidExtrusion3D", std::vector<std::string_view>{"polygon", "path", "path_follow"}},
         {"path_rotation_accurate", Kind::Boolean,
-         "polygon, path mode: turn by the curve's exact direction.", "CSGPolygon3D"},
+         "polygon, path mode: turn by the curve's exact direction.", "SolidExtrusion3D"},
         {"path_continuous_u", Kind::Boolean,
-         "polygon, path mode: texture coordinates run on along the path.", "CSGPolygon3D"},
+         "polygon, path mode: texture coordinates run on along the path.", "SolidExtrusion3D"},
         {"path_u_distance", Kind::Number,
-         "polygon, path mode: meters along the path a texture spans.", "CSGPolygon3D"},
-        {"path_joined", Kind::Boolean, "polygon, path mode: join the path's ends.", "CSGPolygon3D"},
+         "polygon, path mode: meters along the path a texture spans.", "SolidExtrusion3D"},
+        {"path_joined", Kind::Boolean, "polygon, path mode: join the path's ends.",
+         "SolidExtrusion3D"},
         {"left_to_right", Kind::Number, "prism: where its top edge is, 0 left to 1 right.",
-         "PrismMesh"},
-        {"subdivide_width", Kind::Integer, "prism: cuts across x.", "PrismMesh"},
-        {"subdivide_height", Kind::Integer, "prism: cuts across y.", "PrismMesh"},
-        {"subdivide_depth", Kind::Integer, "prism: cuts across z.", "PrismMesh"},
+         "PrismGeometry"},
+        {"subdivide_width", Kind::Integer, "prism: cuts across x.", "PrismGeometry"},
+        {"subdivide_height", Kind::Integer, "prism: cuts across y.", "PrismGeometry"},
+        {"subdivide_depth", Kind::Integer, "prism: cuts across z.", "PrismGeometry"},
         {"bevel", Kind::Number,
          "box and cylinder: meters its edges are rounded by; 0 leaves them sharp.", ""},
         {"bevel_segments", Kind::Integer,
@@ -286,7 +291,7 @@ json::Value field_schema(const Field& field, bool loose, world::SchemaBuilder& b
                              fallback != nullptr ? fallback->as_string() : field.choices.front());
     }
     case Kind::Path: {
-        json::Value out = components().find("Path3D")->schema(builder);
+        json::Value out = components().find("Spline3D")->schema(builder);
         out["description"] = field.doc;
         return out;
     }
@@ -321,8 +326,8 @@ json::Value make_schema(bool loose) {
     properties["shape"]["enum"] = std::move(shapes);
     properties["shape"]["default"] = "combiner";
     properties["shape"]["description"] =
-        "combiner (only its children, as CSGCombiner3D), box, sphere, cylinder, torus, polygon "
-        "(CSGPolygon3D), capsule or prism (CSGMesh3D of that primitive mesh).";
+        "combiner (only its children, as SolidGroup3D), box, sphere, cylinder, torus, polygon "
+        "(SolidExtrusion3D), capsule or prism (SolidMesh3D of that primitive mesh).";
     properties["model"]["type"] = "string";
     properties["model"]["minLength"] = 1;
     properties["model"]["description"] =
@@ -359,8 +364,8 @@ json::Value make_schema(bool loose) {
     properties["children"]["description"] =
         "Shapes in its space, combined with it in order, as a CSG shape's children.";
 
-    (void)components().find("StandardMaterial3D")->schema(builder);
-    json::Value fields = builder.definition("StandardMaterial3D");
+    (void)components().find("Surface3D")->schema(builder);
+    json::Value fields = builder.definition("Surface3D");
     fields["properties"]["extends"]["type"] = "string";
     fields["properties"]["extends"]["minLength"] = 1;
     fields["properties"]["extends"]["description"] =
@@ -403,7 +408,7 @@ json::Value make_schema(bool loose) {
     form["properties"]["parameters"]["additionalProperties"] = parameter;
     form["properties"]["materials"]["type"] = "object";
     form["properties"]["materials"]["description"] =
-        "StandardMaterial3D fields by material name, over the recipe's, or new materials; a "
+        "Surface3D fields by material name, over the recipe's, or new materials; a "
         "material file's path replaces the material.";
     form["properties"]["materials"]["additionalProperties"] = material;
     json::Value changed_part;
@@ -419,7 +424,7 @@ json::Value make_schema(bool loose) {
     schema["properties"]["parameters"]["additionalProperties"] = std::move(parameter);
     schema["properties"]["materials"]["type"] = "object";
     schema["properties"]["materials"]["description"] =
-        "Materials by name, which parts' material names: StandardMaterial3D fields, a material "
+        "Materials by name, which parts' material names: Surface3D fields, a material "
         "file's path, or fields with extends naming the file they change.";
     schema["properties"]["materials"]["additionalProperties"] = std::move(material);
     schema["properties"]["parts"]["type"] = "array";
@@ -432,7 +437,7 @@ json::Value make_schema(bool loose) {
     point["additionalProperties"] = false;
     point["required"] = json::Array{"name"};
     point["description"] = "An attachment point: a node with no mesh, as Godot's Marker3D, which a "
-                           "BoneAttachment3D's bone_name follows.";
+                           "BoneSocket3D's bone_name follows.";
     point["properties"]["name"]["type"] = "string";
     point["properties"]["name"]["minLength"] = 1;
     point["properties"]["name"]["description"] = "Its node name, unique in the model.";
@@ -815,7 +820,7 @@ public:
             return;
         }
         for (const auto& [name, fields] : materials->as_object()) {
-            world::StandardMaterial3D standard;
+            world::Surface3D standard;
             std::string path;
             if (auto read = world::from_json(scratch_, fields, standard, path); !read) {
                 errors_.push_back(
@@ -828,7 +833,7 @@ public:
 
     // The copies a part makes, each with its shapes.
     std::vector<CsgTree> read_part(const json::Value& part, const std::string& at,
-                                   const std::optional<world::StandardMaterial3D>& inherited) {
+                                   const std::optional<world::Surface3D>& inherited) {
         std::vector<CsgTree> out;
         if (part.find("model") != nullptr) {
             errors_.push_back({at + "/model", "only a top-level part can be a model; put it in "
@@ -861,7 +866,7 @@ public:
             errors_.push_back({at + "/flip_faces", "a combiner has no faces of its own to flip"});
             fits = false;
         }
-        std::optional<world::StandardMaterial3D> material = inherited;
+        std::optional<world::Surface3D> material = inherited;
         if (const json::Value* name = part.find("material"); name != nullptr) {
             if (const auto found = materials_.find(name->as_string()); found != materials_.end()) {
                 material = found->second;
@@ -921,8 +926,7 @@ public:
         return out;
     }
 
-    [[nodiscard]] const std::map<std::string, world::StandardMaterial3D, std::less<>>&
-    materials() const {
+    [[nodiscard]] const std::map<std::string, world::Surface3D, std::less<>>& materials() const {
         return materials_;
     }
 
@@ -962,9 +966,9 @@ private:
         return out;
     }
 
-    // A CSGMesh3D of a primitive mesh or a model.
-    static world::CSGMesh3D mesh_shape(const json::Value& part, const std::string& operation) {
-        world::CSGMesh3D mesh;
+    // A SolidMesh3D of a primitive mesh or a model.
+    static world::SolidMesh3D mesh_shape(const json::Value& part, const std::string& operation) {
+        world::SolidMesh3D mesh;
         mesh.operation = operation;
         if (const json::Value* flip = part.find("flip_faces"); flip != nullptr) {
             mesh.flip_faces = flip->as_bool();
@@ -974,7 +978,7 @@ private:
 
     std::optional<CsgTree> make_shape(const json::Value& part, const std::string& shape,
                                       const std::string& at,
-                                      const std::optional<world::StandardMaterial3D>& material) {
+                                      const std::optional<world::Surface3D>& material) {
         const std::string operation =
             part.find("operation") != nullptr ? part.find("operation")->as_string() : "union";
         CsgTree tree;
@@ -983,11 +987,11 @@ private:
         const float bevel = number_of(part, "bevel", 0.0F);
         const int segments = static_cast<int>(number_of(part, "bevel_segments", 4.0F));
         if (shape == "combiner") {
-            world::CSGCombiner3D combiner;
+            world::SolidGroup3D combiner;
             combiner.operation = operation;
             tree.shape = combiner;
         } else if (shape == "box") {
-            auto box = component<world::CSGBox3D>(part, shape, at);
+            auto box = component<world::SolidBox3D>(part, shape, at);
             if (!box) {
                 return std::nullopt;
             }
@@ -1006,14 +1010,14 @@ private:
                 tree.shape = *box;
             }
         } else if (shape == "sphere") {
-            auto sphere = component<world::CSGSphere3D>(part, shape, at);
+            auto sphere = component<world::SolidSphere3D>(part, shape, at);
             if (!sphere) {
                 return std::nullopt;
             }
             sphere->operation = operation;
             tree.shape = *sphere;
         } else if (shape == "cylinder") {
-            auto cylinder = component<world::CSGCylinder3D>(part, shape, at);
+            auto cylinder = component<world::SolidCylinder3D>(part, shape, at);
             if (!cylinder) {
                 return std::nullopt;
             }
@@ -1040,21 +1044,21 @@ private:
                 tree.shape = *cylinder;
             }
         } else if (shape == "torus") {
-            auto torus = component<world::CSGTorus3D>(part, shape, at);
+            auto torus = component<world::SolidTorus3D>(part, shape, at);
             if (!torus) {
                 return std::nullopt;
             }
             torus->operation = operation;
             tree.shape = *torus;
         } else if (shape == "polygon") {
-            auto polygon = component<world::CSGPolygon3D>(part, shape, at);
+            auto polygon = component<world::SolidExtrusion3D>(part, shape, at);
             if (!polygon) {
                 return std::nullopt;
             }
             polygon->operation = operation;
             polygon->path_local = true;
             if (const json::Value* path = part.find("path"); path != nullptr) {
-                world::Path3D curve;
+                world::Spline3D curve;
                 std::string field;
                 if (auto read = world::from_json(scratch_, *path, curve, field); !read) {
                     errors_.push_back({at + "/path" + field, read.error().message});
@@ -1074,13 +1078,13 @@ private:
         } else if (shape == "capsule" || shape == "prism") {
             Primitive primitive;
             if (shape == "capsule") {
-                auto capsule = component<world::CapsuleMesh>(part, shape, at, false);
+                auto capsule = component<world::CapsuleGeometry>(part, shape, at, false);
                 if (!capsule) {
                     return std::nullopt;
                 }
                 primitive = *capsule;
             } else {
-                auto prism = component<world::PrismMesh>(part, shape, at, false);
+                auto prism = component<world::PrismGeometry>(part, shape, at, false);
                 if (!prism) {
                     return std::nullopt;
                 }
@@ -1098,7 +1102,7 @@ private:
 
     world::World scratch_{components()};
     std::vector<json::ValidationError>& errors_;
-    std::map<std::string, world::StandardMaterial3D, std::less<>> materials_;
+    std::map<std::string, world::Surface3D, std::less<>> materials_;
     std::size_t shapes_ = 0;
     bool too_many_ = false;
 };
@@ -1116,7 +1120,7 @@ struct Read {
     json::Value doc;
     std::vector<Root> roots;
     std::vector<Point> points;
-    std::map<std::string, world::StandardMaterial3D, std::less<>> materials;
+    std::map<std::string, world::Surface3D, std::less<>> materials;
     json::Value checks; // null for none
 };
 
@@ -1308,7 +1312,7 @@ Read read_recipe(const json::Value& doc, std::vector<json::ValidationError>& err
         const std::string at = "/points/" + std::to_string(i);
         Point point;
         point.name = given.find("name")->as_string();
-        // Kept as given, so the name a BoneAttachment3D gives is the one the node has.
+        // Kept as given, so the name a BoneSocket3D gives is the one the node has.
         if (taken.contains(point.name)) {
             errors.push_back({at + "/name", "a part or point is already named " +
                                                 quoted(point.name) +
@@ -1482,7 +1486,7 @@ Model build(const Read& read, std::vector<json::ValidationError>* problems,
         taken.insert(point.name);
     }
     std::vector<int> root_nodes;
-    std::vector<world::StandardMaterial3D> made;
+    std::vector<world::Surface3D> made;
     const auto material_index = [&](const SurfaceMaterial& material) {
         if (!material.standard) {
             return -1;
@@ -1763,7 +1767,7 @@ Result<Model> build_model_recipe(const json::Value& doc, const ModelPartLoader& 
         if (const std::string at = first_material_file(doc); !at.empty()) {
             return make_error(ErrorCode::InvalidArgument,
                               at + ": a material file is read from the project: load the recipe "
-                                   "as a model, through its MeshInstance3D or load_model");
+                                   "as a model, through its Model3D or load_model");
         }
     }
     const Read read = read_recipe(doc, errors, files);
@@ -1781,7 +1785,7 @@ Result<Model> build_model_recipe(const json::Value& doc, const ModelPartLoader& 
             if (!root.model.empty()) {
                 errors.push_back({root.at + "/model",
                                   "a model part's file is read from the project: load the "
-                                  "recipe as a model, through its MeshInstance3D or load_model"});
+                                  "recipe as a model, through its Model3D or load_model"});
                 return failed();
             }
         }

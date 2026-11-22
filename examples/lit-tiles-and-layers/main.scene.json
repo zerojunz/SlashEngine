@@ -2,7 +2,7 @@
   "entities": {
     "floor": {
       "components": {
-        "TileMapLayer": {
+        "TileLayer2D": {
           "legend": {
             "b": "block"
           },
@@ -13,14 +13,14 @@
     },
     "hud": {
       "components": {
-        "CanvasLayer": {
+        "ScreenLayer": {
           "children": ["hud_dim", "panel", "lantern"]
         }
       }
     },
     "hud_dim": {
       "components": {
-        "CanvasModulate": {
+        "AmbientTint2D": {
           "color": [0.35, 0.35, 0.35, 1.0]
         }
       }
@@ -41,7 +41,7 @@
     },
     "night": {
       "components": {
-        "CanvasModulate": {
+        "AmbientTint2D": {
           "color": [0.1, 0.1, 0.15, 1.0]
         }
       }

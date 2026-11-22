@@ -207,7 +207,7 @@ void carry_rider(world::World& world, const Thing& self, const CreatureMind& min
         auto& rider = ecs.get<world::Transform3D>(mind.rider);
         rider.position = body.position + Vec3{0.0F, recipe.body.height, 0.0F};
         rider.rotation.y = body.rotation.y;
-        if (auto* character = ecs.try_get<world::CharacterBody3D>(mind.rider);
+        if (auto* character = ecs.try_get<world::CharacterMover3D>(mind.rider);
             character != nullptr) {
             character->velocity = {};
         }
@@ -215,7 +215,7 @@ void carry_rider(world::World& world, const Thing& self, const CreatureMind& min
         const auto& body = ecs.get<const world::Transform2D>(self.entity);
         auto& rider = ecs.get<world::Transform2D>(mind.rider);
         rider.position = body.position + Vec2{0.0F, -recipe.body.height * self.ppm};
-        if (auto* character = ecs.try_get<world::CharacterBody2D>(mind.rider);
+        if (auto* character = ecs.try_get<world::CharacterMover2D>(mind.rider);
             character != nullptr) {
             character->velocity = {};
         }
@@ -545,7 +545,7 @@ void step_creature(Tick& tick, FaunaState& state, const Thing& self) {
     const float rate = chosen.second;
     if (!self.two_d) {
         auto& transform = ecs.get<world::Transform3D>(self.entity);
-        auto* body = ecs.try_get<world::CharacterBody3D>(self.entity);
+        auto* body = ecs.try_get<world::CharacterMover3D>(self.entity);
         if (body != nullptr) {
             body->velocity.x = velocity.x;
             body->velocity.z = velocity.z;
@@ -560,7 +560,7 @@ void step_creature(Tick& tick, FaunaState& state, const Thing& self) {
                 slash::atan2(static_cast<float>(velocity.x), static_cast<float>(velocity.z));
         }
         const auto& creature = ecs.get<const world::Creature3D>(self.entity);
-        if (auto* player = ecs.try_get<world::AnimationPlayer>(self.entity);
+        if (auto* player = ecs.try_get<world::Animator>(self.entity);
             player != nullptr && player->library == creature.recipe) {
             if (player->animation != animation) {
                 player->animation = animation;
@@ -584,7 +584,7 @@ void step_creature(Tick& tick, FaunaState& state, const Thing& self) {
     } else {
         auto& transform = ecs.get<world::Transform2D>(self.entity);
         const Vec2 pixels{velocity.x * self.ppm, -velocity.y * self.ppm};
-        if (auto* body = ecs.try_get<world::CharacterBody2D>(self.entity); body != nullptr) {
+        if (auto* body = ecs.try_get<world::CharacterMover2D>(self.entity); body != nullptr) {
             body->velocity = free_moving ? pixels : Vec2{pixels.x, body->velocity.y};
         } else {
             transform.position = transform.position + (pixels * dt);
@@ -684,8 +684,8 @@ void step(world::World& world, FaunaState& state, double dt) {
         if (ecs.all_of<world::Creature3D>(entity)) {
             continue;
         }
-        const auto* mesh = ecs.try_get<const world::MeshInstance3D>(entity);
-        if (ecs.all_of<world::CharacterBody3D>(entity) ||
+        const auto* mesh = ecs.try_get<const world::Model3D>(entity);
+        if (ecs.all_of<world::CharacterMover3D>(entity) ||
             (mesh != nullptr && mesh->mesh.ends_with(world::kCharacterSuffix))) {
             tick.people.push_back({.entity = entity,
                                    .two_d = false,
@@ -695,8 +695,9 @@ void step(world::World& world, FaunaState& state, double dt) {
         }
     }
     for (const entt::entity entity : in_order(ecs.view<const world::Transform2D>())) {
-        if (ecs.all_of<world::Creature2D>(entity) || !(ecs.all_of<world::CharacterBody2D>(entity) ||
-                                                       ecs.all_of<world::Character2D>(entity))) {
+        if (ecs.all_of<world::Creature2D>(entity) ||
+            !(ecs.all_of<world::CharacterMover2D>(entity) ||
+              ecs.all_of<world::Character2D>(entity))) {
             continue;
         }
         const Vec2 p = tree2.global(entity).position;

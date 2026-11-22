@@ -38,7 +38,7 @@
 //   {"format": 1, "polyphonic": {"polyphony": 16}}
 //   {"format": 1, "microphone": {}}
 //
-// AudioStreamPlayer, AudioStreamPlayer2D and AudioStreamPlayer3D components play them through
+// SoundPlayer, SoundPlayer2D and SoundPlayer3D components play them through
 // the buses a .bus_layout.json file sets up, each bus with Godot's volume, mute, solo, effects
 // and send. Mixing follows the fixed ticks rather than the sound card, so the same ticks always
 // make the same sound: each tick, the "audio" system mixes that tick's share of samples and hands
@@ -608,7 +608,7 @@ void add_asset_types(asset::Assets& assets);
 
 // Gives the world a Server, loads the bus layout through assets (which must outlive the world)
 // and adds the "audio" system (priority 1200, after everything else), which plays each
-// AudioStreamPlayer, AudioStreamPlayer2D and AudioStreamPlayer3D and mixes each tick's sound.
+// SoundPlayer, SoundPlayer2D and SoundPlayer3D and mixes each tick's sound.
 void install(world::World& world, asset::Assets& assets, const Settings& settings = {});
 // Applies new settings; a change starts the buses over from the layout, and a new mix rate
 // stops every sound.
@@ -659,7 +659,7 @@ struct InputInfo {
 };
 [[nodiscard]] InputInfo input_info(const world::World& world);
 
-// Plays an AudioStreamPlayer, AudioStreamPlayer2D or AudioStreamPlayer3D from a position in
+// Plays an SoundPlayer, SoundPlayer2D or SoundPlayer3D from a position in
 // seconds at the next tick, as Godot's play(): with max_polyphony 1 it restarts, with more
 // another voice joins.
 void play(world::World& world, entt::entity entity, double from_seconds = 0.0);
@@ -722,7 +722,7 @@ void restore(world::World& world, const Snapshot& snapshot);
 // A player as the audio system sees it.
 struct PlayerInfo {
     std::string id;
-    std::string kind; // "AudioStreamPlayer", "AudioStreamPlayer2D" or "AudioStreamPlayer3D"
+    std::string kind; // "SoundPlayer", "SoundPlayer2D" or "SoundPlayer3D"
     std::string stream;
     std::string bus;
     int voices = 0;      // playbacks mixing

@@ -10,10 +10,10 @@ and elbow so the hand reaches the ball, with the elbow toward the `elbow_hint` e
                               "end_bone": "Hand", "target": "ball", "pole": "elbow_hint"}]}
 ```
 
-and the right arm a `FABRIK3D` that turns the chain from the shoulder to the hand toward it:
+and the right arm a `FabrikIK3D` that turns the chain from the shoulder to the hand toward it:
 
 ```json
-"FABRIK3D": {"settings": [{"root_bone": "Shoulder", "end_bone": "Hand", "target": "ball"}]}
+"FabrikIK3D": {"settings": [{"root_bone": "Shoulder", "end_bone": "Hand", "target": "ball"}]}
 ```
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
@@ -21,7 +21,7 @@ and the right arm a `FABRIK3D` that turns the chain from the shoulder to the han
 
 - Before any tick `skeleton.get` shows the left hand on the ball already: a two-bone modifier
   solves from the pose each time. The right hand is still where the wave puts it, since a
-  `FABRIK3D` turns each joint at most two degrees a step and four steps a tick, as Godot's.
+  `FabrikIK3D` turns each joint at most two degrees a step and four steps a tick, as Godot's.
 - After 60 ticks the right hand is on the ball too, and `frame.capture` reads the two arms, the
   hands meeting over the ball and the sky.
 - `component.set` moves the ball down. A tick later the left hand is on it and the right hand

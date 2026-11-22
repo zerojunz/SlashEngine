@@ -60,7 +60,7 @@ constexpr std::string_view kSchema = R"({
           "components": {"type": "object", "description": "Its entity's components by name, as a scene writes them; values may be expressions.", "additionalProperties": {"type": "object"}},
           "curves": {
             "type": "object",
-            "description": "Fields moved while it lasts, by path ('OmniLight3D/light_energy', 'ColorRect/color/a'): keys of [seconds into the layer, value], or an object of keys and ease.",
+            "description": "Fields moved while it lasts, by path ('PointLight3D/light_energy', 'ColorFill/color/a'): keys of [seconds into the layer, value], or an object of keys and ease.",
             "additionalProperties": {
               "oneOf": [
                 {"type": "array", "minItems": 1, "items": {"type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{"type": "number", "minimum": 0}, {}]}},
@@ -102,15 +102,15 @@ constexpr std::string_view kSchema = R"({
   }
 })";
 
-constexpr std::array<std::string_view, 4> kEmitters = {"CPUParticles3D", "CPUParticles2D",
-                                                       "GPUParticles3D", "GPUParticles2D"};
+constexpr std::array<std::string_view, 4> kEmitters = {"Emitter3D", "Emitter2D", "GpuEmitter3D",
+                                                       "GpuEmitter2D"};
 // The most seconds a part's liquid lingers after its layer ends, its particles still falling
 // and settling.
 constexpr float kFluidLinger = 10.0F;
-constexpr std::array<std::string_view, 5> kLights = {
-    "OmniLight3D", "SpotLight3D", "DirectionalLight3D", "PointLight2D", "DirectionalLight2D"};
-constexpr std::array<std::string_view, 3> kSounds = {"AudioStreamPlayer", "AudioStreamPlayer2D",
-                                                     "AudioStreamPlayer3D"};
+constexpr std::array<std::string_view, 5> kLights = {"PointLight3D", "SpotLight3D", "SunLight3D",
+                                                     "PointLight2D", "SunLight2D"};
+constexpr std::array<std::string_view, 3> kSounds = {"SoundPlayer", "SoundPlayer2D",
+                                                     "SoundPlayer3D"};
 
 bool is_one_of(std::string_view name, std::span<const std::string_view> names) {
     return std::ranges::find(names, name) != names.end();
@@ -452,7 +452,7 @@ Result<entt::entity> spawn_part(World& world, const Effect& effect, const VfxLay
     }
     ecs.emplace_or_replace<VfxPart>(
         entity, VfxPart{.effect = id, .layer = layer.name, .cycle = cycle, .linger = -1.0F});
-    const bool control = fields.find("Control") != nullptr;
+    const bool control = fields.find("Widget") != nullptr;
     if (control) {
         return entity; // a screen flash or overlay: placed on the screen, not in the world
     }
@@ -886,7 +886,7 @@ void run(World& world, double tick_seconds) {
                 ecs.any_of<Fluid3D, Fluid2D>(entity) ? fluid_particles(world, entity) : nullptr;
             const bool drained =
                 left != nullptr && left->size() == 0 &&
-                !ecs.any_of<CPUParticles3D, CPUParticles2D, GPUParticles3D, GPUParticles2D>(entity);
+                !ecs.any_of<Emitter3D, Emitter2D, GpuEmitter3D, GpuEmitter2D>(entity);
             if (part.linger <= 0.0F || drained) {
                 part.linger = 0.0F;
                 gone.push_back(entity);
@@ -1026,7 +1026,7 @@ std::vector<json::ValidationError> validate_vfx(const json::Value& doc) {
                 if (split(path).size() < 2) {
                     errors.push_back({at + "/curves/" + json::pointer_escape(path),
                                       "a path names a component and a field, such as "
-                                      "OmniLight3D/light_energy"});
+                                      "PointLight3D/light_energy"});
                 }
             }
         }
@@ -1476,8 +1476,7 @@ VfxHooks vfx_hooks_of(const World& world, entt::entity entity) {
     if (const auto* c = ecs.try_get<Character2D>(entity); c != nullptr && !c->recipe.empty()) {
         return hooks(load_character(world, c->recipe));
     }
-    if (const auto* m = ecs.try_get<MeshInstance3D>(entity);
-        m != nullptr && is_character_path(m->mesh)) {
+    if (const auto* m = ecs.try_get<Model3D>(entity); m != nullptr && is_character_path(m->mesh)) {
         return hooks(load_character(world, m->mesh));
     }
     return {};

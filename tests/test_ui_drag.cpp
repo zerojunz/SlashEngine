@@ -24,7 +24,7 @@
 #include <vector>
 
 // Tooltips and drag and drop, as Godot's Viewport (scene/main/viewport.cpp: _gui_show_tooltip,
-// _gui_input_event, _perform_drop), Control (get_drag_data, can_drop_data, drop_data,
+// _gui_input_event, _perform_drop), Widget (get_drag_data, can_drop_data, drop_data,
 // set_drag_preview, force_drag) and the text fields' own drag and drop (scene/gui/line_edit.cpp
 // and text_edit.cpp). The sizes expected here follow those files and Godot's default theme.
 
@@ -146,8 +146,8 @@ struct Gui {
                            ".,-_!?"));
         files.files["game.theme.json"] = R"({"format": 1, "types": {
             "TooltipLabel": {"fonts": {"font": "boxes.ttf"}, "font_sizes": {"font_size": 20}},
-            "LineEdit": {"fonts": {"font": "boxes.ttf"}, "font_sizes": {"font_size": 20}},
-            "TextEdit": {"fonts": {"font": "boxes.ttf"}, "font_sizes": {"font_size": 20}}}})";
+            "TextField": {"fonts": {"font": "boxes.ttf"}, "font_sizes": {"font_size": 20}},
+            "TextArea": {"fonts": {"font": "boxes.ttf"}, "font_sizes": {"font_size": 20}}}})";
         world::register_builtin_components(components);
         ui::install(world, assets,
                     {.viewport = {400.0F, 300.0F},
@@ -162,15 +162,15 @@ struct Gui {
         return entity;
     }
 
-    // A ColorRect at [x, y, w, h] with more components.
+    // A ColorFill at [x, y, w, h] with more components.
     entt::entity box(std::string_view id, std::array<int, 4> rect, std::string_view control = "",
                      std::string_view more = "") {
-        return create(id, "{\"Control\": {\"offset_left\": " + std::to_string(rect[0]) +
+        return create(id, "{\"Widget\": {\"offset_left\": " + std::to_string(rect[0]) +
                               ", \"offset_top\": " + std::to_string(rect[1]) +
                               ", \"offset_right\": " + std::to_string(rect[0] + rect[2]) +
                               ", \"offset_bottom\": " + std::to_string(rect[1] + rect[3]) +
                               (control.empty() ? "" : ", ") + std::string(control) +
-                              "}, \"ColorRect\": {}" + (more.empty() ? "" : ", ") +
+                              "}, \"ColorFill\": {}" + (more.empty() ? "" : ", ") +
                               std::string(more) + "}");
     }
 
@@ -280,15 +280,15 @@ struct Gui {
     // A text field's text and selection.
     [[nodiscard]] std::string text_of(std::string_view id) const {
         const entt::entity entity = world.find(id);
-        if (const auto* edit = world.ecs().try_get<world::LineEdit>(entity)) {
+        if (const auto* edit = world.ecs().try_get<world::TextField>(entity)) {
             return edit->text;
         }
-        return world.ecs().get<world::TextEdit>(entity).text;
+        return world.ecs().get<world::TextArea>(entity).text;
     }
     [[nodiscard]] std::optional<std::pair<int, int>> selection(std::string_view id) const {
         return ui::selection(world, world.find(id));
     }
-    // A TextEdit's selection, as [from_line, from_column, to_line, to_column].
+    // A TextArea's selection, as [from_line, from_column, to_line, to_column].
     std::optional<std::array<int, 4>> text_selection(std::string_view id) {
         const ui::Layout placed = layout();
         const auto found = placed.text_edits.find(world.find(id));
@@ -368,7 +368,7 @@ TEST_CASE("a tooltip shows once the pointer rests on a control, beside where it 
     CHECK(ui::tooltip(gui.world).position == Vec2{40.0F, 30.0F});
 
     // Hidden, the control takes its tooltip with it.
-    gui.set("play", R"({"Control": {"visible": false}})");
+    gui.set("play", R"({"Widget": {"visible": false}})");
     gui.step();
     CHECK(gui.tooltip() == "none");
 }
@@ -381,7 +381,7 @@ TEST_CASE("a tooltip that would leave the viewport shows on the other side of th
     // Left of and above the pointer by the offset, as Godot flips it.
     CHECK(gui.tooltip_rect() == "[292,256,88,24]");
     // Too wide for either side, it hugs the viewport's right edge.
-    gui.set("corner", R"({"Control": {"tooltip_text": "A tooltip far too long to fit"}})");
+    gui.set("corner", R"({"Widget": {"tooltip_text": "A tooltip far too long to fit"}})");
     gui.send(move(310, 290));
     gui.steps(kRest);
     CHECK(gui.tooltip() == "corner: A tooltip far too long to fit");
@@ -393,7 +393,7 @@ TEST_CASE("a press or Escape hides a tooltip, and a parent's shows through a chi
     gui.box("panel", {20, 20, 200, 100}, R"("tooltip_text": "The panel")");
     gui.box("pass", {0, 0, 50, 50}, R"("mouse_filter": "pass")");
     gui.box("stop", {100, 0, 50, 50});
-    gui.set("panel", R"({"Control": {"children": ["pass", "stop"]}})");
+    gui.set("panel", R"({"Widget": {"children": ["pass", "stop"]}})");
     gui.box("button", {20, 200, 100, 30}, R"("focus_mode": "all")");
 
     // Over a child that passes the mouse on, the panel's tooltip shows; over one that stops it,
@@ -439,8 +439,8 @@ TEST_CASE("a press or Escape hides a tooltip, and a parent's shows through a chi
 
 TEST_CASE("an item of an open list shows its tooltip, and the tooltip goes with the list") {
     Gui gui;
-    gui.create("size", R"({"Control": {"offset_left": 20, "offset_top": 20},
-        "OptionButton": {"selected": 0, "items": [
+    gui.create("size", R"({"Widget": {"offset_left": 20, "offset_top": 20},
+        "Dropdown": {"selected": 0, "items": [
             {"text": "Small", "tooltip": "For phones"}, {"text": "Large"}]}})");
     gui.send({press(30, 30), release(30, 30)});
     REQUIRE(gui.layout().popups.size() == 1);
@@ -540,14 +540,14 @@ TEST_CASE("a right click or Escape cancels a drag, and a drop where nothing take
 
     // A child that passes the mouse on drops on its parent; one that stops it doesn't.
     gui.box("gem", {5, 5, 10, 10}, R"("mouse_filter": "pass")");
-    gui.set("bag", R"({"Control": {"children": ["gem"]}})");
+    gui.set("bag", R"({"Widget": {"children": ["gem"]}})");
     drag_sword(gui);
     gui.send(move(207, 107));
     CHECK(gui.over() == "bag");
     CHECK(gui.send(release(207, 107)) ==
           R"(drop_data bag {"heals":5,"kind":"potion"} from sword at [7,7], )"
           "drag_end sword dropped");
-    gui.set("gem", R"({"Control": {"mouse_filter": "stop"}})");
+    gui.set("gem", R"({"Widget": {"mouse_filter": "stop"}})");
     drag_sword(gui);
     gui.send(move(207, 107));
     CHECK(gui.over() == "none");
@@ -555,7 +555,7 @@ TEST_CASE("a right click or Escape cancels a drag, and a drop where nothing take
 
     // A control that gives nothing doesn't drag, and its parent is asked instead.
     gui.box("handle", {0, 0, 10, 10}, R"("mouse_filter": "pass")");
-    gui.set("sword", R"({"Control": {"children": ["handle"]}})");
+    gui.set("sword", R"({"Widget": {"children": ["handle"]}})");
     gui.send(move(25, 25));
     gui.send(press(25, 25));
     CHECK(gui.send(move(40, 25)) ==
@@ -621,12 +621,12 @@ TEST_CASE("drag forwarding, drag previews and force_drag let gameplay code drive
           R"(drop_data bag "gold" from bag at [20,20], drag_end bag dropped)");
 }
 
-TEST_CASE("a LineEdit's selection drags into another, moving it, or copying it with Ctrl") {
+TEST_CASE("a TextField's selection drags into another, moving it, or copying it with Ctrl") {
     Gui gui;
     const auto field = [&](std::string_view id, int y, std::string_view text) {
-        gui.create(id, "{\"Control\": {\"offset_left\": 20, \"offset_top\": " + std::to_string(y) +
+        gui.create(id, "{\"Widget\": {\"offset_left\": 20, \"offset_top\": " + std::to_string(y) +
                            ", \"offset_right\": 380, \"offset_bottom\": " + std::to_string(y + 40) +
-                           "}, \"LineEdit\": {\"text\": \"" + std::string(text) + "\"}}");
+                           "}, \"TextField\": {\"text\": \"" + std::string(text) + "\"}}");
     };
     field("a", 20, "hello world");
     field("b", 80, "");
@@ -697,7 +697,7 @@ TEST_CASE("a LineEdit's selection drags into another, moving it, or copying it w
     CHECK(gui.selection("a") == std::pair{0, 5});
 
     // With drag_and_drop_selection_enabled off, a press on the selection selects anew.
-    gui.set("a", R"({"LineEdit": {"drag_and_drop_selection_enabled": false}})");
+    gui.set("a", R"({"TextField": {"drag_and_drop_selection_enabled": false}})");
     for (int i = 0; i < 40; ++i) {
         gui.step();
     }
@@ -708,12 +708,12 @@ TEST_CASE("a LineEdit's selection drags into another, moving it, or copying it w
     CHECK(gui.selection("a") == std::pair{1, 4});
 }
 
-TEST_CASE("a TextEdit's selection drags within it, onto a LineEdit, and back") {
+TEST_CASE("a TextArea's selection drags within it, onto a TextField, and back") {
     Gui gui;
-    gui.create("notes", R"({"Control": {"offset_left": 20, "offset_top": 20, "offset_right": 380,
-        "offset_bottom": 140}, "TextEdit": {"text": "one two\nthree"}})");
-    gui.create("line", R"({"Control": {"offset_left": 20, "offset_top": 200, "offset_right": 380,
-        "offset_bottom": 240}, "LineEdit": {}})");
+    gui.create("notes", R"({"Widget": {"offset_left": 20, "offset_top": 20, "offset_right": 380,
+        "offset_bottom": 140}, "TextArea": {"text": "one two\nthree"}})");
+    gui.create("line", R"({"Widget": {"offset_left": 20, "offset_top": 200, "offset_right": 380,
+        "offset_bottom": 240}, "TextField": {}})");
     const auto x_of = [](int column) {
         return 20.0F + kLeft + (static_cast<float>(column) * kBox) + 2.0F;
     };
@@ -749,7 +749,7 @@ TEST_CASE("a TextEdit's selection drags within it, onto a LineEdit, and back") {
     CHECK(gui.text_of("notes") == "one \ntwothree");
     CHECK(gui.text_selection("notes") == std::array{1, 0, 1, 3});
 
-    // Onto the LineEdit, it leaves the TextEdit.
+    // Onto the TextField, it leaves the TextArea.
     for (int i = 0; i < 40; ++i) {
         gui.step();
     }
@@ -766,8 +766,8 @@ TEST_CASE("a TextEdit's selection drags within it, onto a LineEdit, and back") {
 
 TEST_CASE("check finds tooltips that can't show and drag previews that can't be shown") {
     Gui gui;
-    gui.create("title", R"({"Control": {"tooltip_text": "Never shown"}, "Label": {"text": "T"}})");
-    gui.create("ok", R"({"Control": {"tooltip_text": "Shown", "mouse_filter": "pass"},
+    gui.create("title", R"({"Widget": {"tooltip_text": "Never shown"}, "Label": {"text": "T"}})");
+    gui.create("ok", R"({"Widget": {"tooltip_text": "Shown", "mouse_filter": "pass"},
         "Label": {"text": "T"}})");
     gui.create("thing", R"({"DragAndDrop": {"drag_data": 1}})");
     gui.box("child", {0, 0, 10, 10});
@@ -782,9 +782,9 @@ TEST_CASE("check finds tooltips that can't show and drag previews that can't be 
               "drag preview must have no parent",
               "odd/components/DragAndDrop/drag_preview: \"thing\" isn't a control",
               "self/components/DragAndDrop/drag_preview: a control can't be its own drag preview",
-              "title/components/Control/tooltip_text: the tooltip won't show: the pointer passes "
+              "title/components/Widget/tooltip_text: the tooltip won't show: the pointer passes "
               "this control by; set mouse_filter to \"stop\" or \"pass\"",
-              "thing/components/DragAndDrop: DragAndDrop works on a control; give it a Control"});
+              "thing/components/DragAndDrop: DragAndDrop works on a control; give it a Widget"});
 }
 
 namespace {
@@ -824,19 +824,19 @@ TEST_CASE("ui.drag, ui.tooltip and ui.layout drag controls, show tooltips and re
     Session s;
     s.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "sword", "components": {
-            "Control": {"offset_left": 20, "offset_top": 20, "offset_right": 60,
+            "Widget": {"offset_left": 20, "offset_top": 20, "offset_right": 60,
                         "offset_bottom": 60, "tooltip_text": "A sword"},
-            "ColorRect": {},
+            "ColorFill": {},
             "DragAndDrop": {"drag_data": {"item": "sword"}}}}},
         {"command": "entity.create", "params": {"id": "slot", "components": {
-            "Control": {"offset_left": 200, "offset_top": 20, "offset_right": 240,
+            "Widget": {"offset_left": 200, "offset_top": 20, "offset_right": 240,
                         "offset_bottom": 60},
-            "ColorRect": {},
+            "ColorFill": {},
             "DragAndDrop": {"can_drop": [{"item": "sword"}]}}}},
         {"command": "entity.create", "params": {"id": "bag", "components": {
-            "Control": {"offset_left": 200, "offset_top": 100, "offset_right": 240,
+            "Widget": {"offset_left": 200, "offset_top": 100, "offset_right": 240,
                         "offset_bottom": 140},
-            "ColorRect": {}}}}]})");
+            "ColorFill": {}}}}]})");
     s.ok("events.subscribe", R"({"kinds": ["drag_begin", "drop_data", "drag_end"]})");
     CHECK(s.ok("ui.drag", R"({"from": "sword", "to": "slot"})") == parse(R"({"tick": 0})"));
     s.ok("step");
@@ -870,7 +870,7 @@ TEST_CASE("ui.drag, ui.tooltip and ui.layout drag controls, show tooltips and re
           "/from: no entity has the id \"swrd\"; did you mean \"sword\"?");
     s.ok("entity.create", R"({"id": "plain"})");
     CHECK(s.fails("ui.drag", R"({"from": "sword", "to": "plain"})") ==
-          "/to: \"plain\" isn't a control: it has no Control or UI component");
+          "/to: \"plain\" isn't a control: it has no Widget or UI component");
     CHECK(s.fails("ui.tooltip", "{}") == "/id: no entity has the id \"\"");
 }
 
@@ -891,7 +891,7 @@ TEST_CASE("project.json's gui object sets the tooltip delay, its offset and the 
     slow.drag_threshold = 30;
     ui::set_settings(gui.world, slow);
     inventory(gui);
-    gui.set("sword", R"({"Control": {"tooltip_text": "Sword"}})");
+    gui.set("sword", R"({"Widget": {"tooltip_text": "Sword"}})");
     gui.send(move(30, 30));
     gui.steps(kRest);
     CHECK(gui.tooltip() == "none");

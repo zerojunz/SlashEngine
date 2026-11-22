@@ -147,7 +147,7 @@ json::Value camera_schema() {
     json::Value dof;
     dof["type"] = "object";
     dof["additionalProperties"] = false;
-    dof["description"] = "Depth of field's blur, for every camera's CameraAttributesPractical.";
+    dof["description"] = "Depth of field's blur, for every camera's CameraLens.";
     dof["properties"]["depth_of_field_bokeh_shape"] =
         choice(render::kBokehShapeNames, static_cast<std::size_t>(defaults.bokeh_shape),
                "The blur's shape: box is fastest, then hexagon, then circle.");
@@ -201,7 +201,7 @@ json::Value environment_schema() {
     ssao["type"] = "object";
     ssao["additionalProperties"] = false;
     ssao["description"] =
-        "Screen-space ambient occlusion, for every WorldEnvironment with ssao_enabled.";
+        "Screen-space ambient occlusion, for every Environment3D with ssao_enabled.";
     ssao["properties"]["quality"] = std::move(quality);
     ssao["properties"]["half_size"] = std::move(half_size);
     ssao["properties"]["adaptive_target"] =
@@ -224,7 +224,7 @@ json::Value environment_schema() {
     json::Value ssr;
     ssr["type"] = "object";
     ssr["additionalProperties"] = false;
-    ssr["description"] = "Screen-space reflections, for every WorldEnvironment with ssr_enabled.";
+    ssr["description"] = "Screen-space reflections, for every Environment3D with ssr_enabled.";
     ssr["properties"]["half_size"] = std::move(ssr_half_size);
     out["properties"]["screen_space_reflection"] = std::move(ssr);
     const render::VolumetricFogSettings fog_defaults;
@@ -245,7 +245,7 @@ json::Value environment_schema() {
     fog["type"] = "object";
     fog["additionalProperties"] = false;
     fog["description"] =
-        "Forward+'s volumetric fog, for every WorldEnvironment with volumetric_fog_enabled.";
+        "Forward+'s volumetric fog, for every Environment3D with volumetric_fog_enabled.";
     fog["properties"]["volume_size"] =
         froxels(fog_defaults.volume_size, "Froxels across and down, for a square frame.");
     fog["properties"]["volume_depth"] =
@@ -358,8 +358,7 @@ json::Value global_illumination_schema() {
     json::Value sdfgi;
     sdfgi["type"] = "object";
     sdfgi["additionalProperties"] = false;
-    sdfgi["description"] =
-        "SDFGI's probes and light, for every WorldEnvironment with sdfgi_enabled.";
+    sdfgi["description"] = "SDFGI's probes and light, for every Environment3D with sdfgi_enabled.";
     sdfgi["properties"]["probe_ray_count"] =
         choice(json::Array{4, 8, 16, 32, 64, 96, 128}, sdfgi_defaults.probe_ray_count,
                "Rays each probe traces a frame: more for less noise, at more cost.");
@@ -879,8 +878,8 @@ json::Value project_schema() {
         field["description"] = std::move(description);
     };
     timer("text_edit_idle_detect_sec", "number", 0, 3,
-          "Seconds after the last edit before typing in a TextEdit starts a new undo step.");
-    timer("text_edit_undo_stack_max_size", "integer", 1, 1024, "The undo steps a TextEdit keeps.");
+          "Seconds after the last edit before typing in a TextArea starts a new undo step.");
+    timer("text_edit_undo_stack_max_size", "integer", 1, 1024, "The undo steps a TextArea keeps.");
     timer("incremental_search_max_interval_msec", "integer", 0, 2000,
           "Milliseconds between the letters typed to search a popup menu's items.");
     timer("button_shortcut_feedback_highlight_time", "number", 0, 0.2,

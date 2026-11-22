@@ -123,16 +123,16 @@ double polygon_area(const std::vector<Vec2>& points) {
 constexpr std::string_view kWall3D = R"({
     "Transform3D": {"position": [0, 1, 0]},
     "StaticBody3D": {},
-    "CollisionShape3D": {"shape": "box", "size": [2, 2, 0.3]},
-    "BoxMesh": {"size": [2, 2, 0.3]},
-    "MeshInstance3D": {},
-    "StandardMaterial3D": {"albedo_color": [0.8, 0.4, 0.3, 1]},
+    "Collider3D": {"shape": "box", "size": [2, 2, 0.3]},
+    "BoxGeometry": {"size": [2, 2, 0.3]},
+    "Model3D": {},
+    "Surface3D": {"albedo_color": [0.8, 0.4, 0.3, 1]},
     "Destructible3D": {"profile": "wall.damage.json"}})";
 
 constexpr std::string_view kCrate2D = R"({
     "Transform2D": {"position": [0, 0]},
     "StaticBody2D": {},
-    "CollisionShape2D": {"shape": "rectangle", "size": [64, 64]},
+    "Collider2D": {"shape": "rectangle", "size": [64, 64]},
     "Polygon2D": {"polygon": [[-32, -32], [32, -32], [32, 32], [-32, 32]],
                   "color": [0.6, 0.4, 0.2, 1]},
     "Destructible2D": {"profile": "crate.damage.json"}})";
@@ -337,7 +337,7 @@ TEST_CASE("damage: a 3D wall shows its damage, then breaks where it is hit") {
     auto second = physics3d::damage_body(scene.world, wall, 20.0F, "blunt", std::nullopt);
     REQUIRE(second.ok());
     CHECK(second.value().state == 1);
-    const auto& material = scene.world.ecs().get<world::StandardMaterial3D>(wall);
+    const auto& material = scene.world.ecs().get<world::Surface3D>(wall);
     CHECK(material.albedo_color.x == doctest::Approx(0.4));
     CHECK(scene.count("damaged") == 2); // the fire did nothing
 
@@ -429,7 +429,7 @@ TEST_CASE("damage: a 2D crate breaks into polygons that cover it") {
     REQUIRE(pieces.size() >= 2);
     double area = 0.0;
     for (const entt::entity piece : pieces) {
-        const auto& shape = scene.world.ecs().get<world::CollisionPolygon2D>(piece);
+        const auto& shape = scene.world.ecs().get<world::PolygonCollider2D>(piece);
         const auto& look = scene.world.ecs().get<world::Polygon2D>(piece);
         CHECK(look.polygon.size() == shape.polygon.size());
         CHECK(scene.world.ecs().all_of<world::RigidBody2D>(piece));
@@ -446,7 +446,7 @@ TEST_CASE("damage: a fast 2D ball breaks a glass pane it hits") {
     scene.create("crate", kCrate2D);
     scene.create("ball", R"({"Transform2D": {"position": [-200, 0]},
         "RigidBody2D": {"mass": 2, "gravity_scale": 0, "linear_velocity": [900, 0]},
-        "CollisionShape2D": {"shape": "circle", "radius": 8}})");
+        "Collider2D": {"shape": "circle", "radius": 8}})");
     scene.step(30);
     CHECK((scene.world.find("crate") == entt::null));
     CHECK(scene.count("broken") == 1);

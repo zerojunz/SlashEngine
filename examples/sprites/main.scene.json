@@ -14,7 +14,7 @@
     },
     "hero": {
       "components": {
-        "AnimatedSprite2D": {
+        "Flipbook2D": {
           "animation": "walk",
           "sprite_frames": "hero.frames.json"
         },

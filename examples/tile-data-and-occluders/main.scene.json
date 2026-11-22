@@ -2,14 +2,14 @@
   "entities": {
     "ground": {
       "components": {
-        "TileMapLayer": {
+        "TileLayer2D": {
           "tile_set": "dungeon.tileset.json"
         }
       }
     },
     "night": {
       "components": {
-        "CanvasModulate": {
+        "AmbientTint2D": {
           "color": [0.1, 0.1, 0.15, 1.0]
         }
       }
@@ -28,7 +28,7 @@
     },
     "walls": {
       "components": {
-        "TileMapLayer": {
+        "TileLayer2D": {
           "tile_set": "dungeon.tileset.json",
           "z_index": 1
         }

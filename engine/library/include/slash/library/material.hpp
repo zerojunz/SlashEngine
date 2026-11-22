@@ -3,7 +3,7 @@
 #include "slash/render/device.hpp"
 
 // Tileable PBR materials from one image, as the library makes them: the image made to tile, then
-// a normal map and a roughness map worked out from its brightness, for a StandardMaterial3D's
+// a normal map and a roughness map worked out from its brightness, for a Surface3D's
 // albedo_texture, normal_texture and roughness_texture. Integer math only, so the maps are the
 // same bytes on every machine.
 namespace slash::library {

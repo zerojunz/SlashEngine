@@ -1,13 +1,13 @@
 # Navigation avoidance
 
-Agents steering round each other and round obstacles, as Godot 4.6's `NavigationAgent2D` and
-`NavigationObstacle2D` avoidance, on RVO2's optimal reciprocal collision avoidance.
-[main.scene.json](main.scene.json) has a plaza (a `NavigationRegion2D`) with a fountain, and five
-walkers, each a `NavigationAgent2D` with `avoidance_enabled`:
+Agents steering round each other and round obstacles, as Godot 4.6's `NavAgent2D` and
+`NavObstacle2D` avoidance, on RVO2's optimal reciprocal collision avoidance.
+[main.scene.json](main.scene.json) has a plaza (a `NavArea2D`) with a fountain, and five
+walkers, each a `NavAgent2D` with `avoidance_enabled`:
 
 ```json
 "west_1": {"components": {
-  "NavigationAgent2D": {"avoidance_enabled": true, "avoidance_priority": 0.5,
+  "NavAgent2D": {"avoidance_enabled": true, "avoidance_priority": 0.5,
                         "target_position": [380.0, 280.0]},
   "Transform2D": {"position": [20.0, 280.0]}
 }}
@@ -19,9 +19,9 @@ higher than the others' 0.5, so it makes way for no one and they make way for it
 also has Godot's `radius`, `neighbor_distance`, `max_neighbors`, `time_horizon_agents`,
 `time_horizon_obstacles`, `max_speed`, `avoidance_layers` and `avoidance_mask`.
 
-The fountain is a `NavigationObstacle2D` with a `radius` and `affect_navigation_mesh`, so
+The fountain is a `NavObstacle2D` with a `radius` and `affect_navigation_mesh`, so
 `navigation.bake` cuts it out of the plaza's polygons, grown by the agents' radius, and paths go
-round it; agents also avoid it while they walk. The cart is a `NavigationObstacle2D` with a
+round it; agents also avoid it while they walk. The cart is a `NavObstacle2D` with a
 `velocity`: avoidance takes that as where it is going, and the program moves it.
 
 [main.cpp](main.cpp) moves the walkers as a Godot script would. A system before the navigation

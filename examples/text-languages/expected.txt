@@ -18,8 +18,8 @@ text.measure {"direction":"rtl","font":"fonts/ui.font.json","text":"Score: 120"}
 {"ascent":17,"line_height":22,"lines":["Score: 120"],"rtl":true,"size":[75,22]}
 text.measure {"font":"fonts/roboto.ttf","text":"مرحبا"}
 {"ascent":17,"line_height":22,"lines":["مرحبا"],"missing_glyphs":5,"rtl":true,"size":[35,22]}
-component.set {"components":{"Control":{"layout_direction":"ltr"}},"id":"menu"}
-{"changed":{"Control":{"layout_direction":"ltr"}},"id":"menu"}
+component.set {"components":{"Widget":{"layout_direction":"ltr"}},"id":"menu"}
+{"changed":{"Widget":{"layout_direction":"ltr"}},"id":"menu"}
 ui.layout {"ids":["menu","title","start","quit"]}
 {"controls":[{"id":"menu","rect":[16,16,368,160]},{"id":"title","lines":["القائمة الرئيسية"],"rect":[16,16,368,33],"rtl":true},{"draw_mode":"normal","id":"start","lines":["ابدأ"],"rect":[16,53,48,30],"rtl":true},{"draw_mode":"normal","id":"quit","lines":["خروج"],"rect":[68,53,48,30],"rtl":true}],"viewport":[400,240]}
 undo {}

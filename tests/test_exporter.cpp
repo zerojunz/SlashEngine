@@ -909,7 +909,7 @@ TEST_CASE("exports ship textures, frames, material, animation and tile set files
     write("project.json", R"({"format": 1, "name": "Sprites", "main_scene": "main.scene.json"})");
     // A tile map layer whose rows use a key its legend lacks.
     write("main.scene.json", R"({"format": 1, "entities": {"map": {"components": {
-        "TileMapLayer": {"tile_set": "sprites/ground.tileset.json", "legend": {"r": "rock"},
+        "TileLayer2D": {"tile_set": "sprites/ground.tileset.json", "legend": {"r": "rock"},
                          "rows": ["rx"]}}}}})");
     const slash::render::Image image{
         .width = 2, .height = 1, .pixels = {255, 0, 0, 255, 0, 0, 255, 255}};
@@ -958,7 +958,7 @@ TEST_CASE("exports ship textures, frames, material, animation and tile set files
     REQUIRE(problems.size() == 6);
     INFO(problems[0], "\n", problems[1], "\n", problems[2], "\n", problems[3], "\n", problems[4],
          "\n", problems[5]);
-    CHECK(problems[0] == "main.scene.json /entities/map/components/TileMapLayer/rows/0 column 1: "
+    CHECK(problems[0] == "main.scene.json /entities/map/components/TileLayer2D/rows/0 column 1: "
                          "\"x\" is not in the legend");
     CHECK(problems[1] == "sprites/bad.anim.json /animations/spin/tracks/0/keys/0/value expected "
                          "number, got string");
@@ -1049,7 +1049,7 @@ TEST_CASE("exports ship fonts and themes and check them, and the controls of sce
     write("project.json", R"({"format": 1, "name": "Fonts", "main_scene": "main.scene.json"})");
     // A control listed as its own child.
     write("main.scene.json", R"({"format": 1, "entities": {"panel": {"components": {
-        "Control": {"children": ["panel"],
+        "Widget": {"children": ["panel"],
                     "theme_override_fonts": {"font": "fonts/title.font.json"}},
         "Label": {"text": "Paused"}}}}})");
     const std::span<const std::uint8_t> roboto = slash::text::default_font();
@@ -1092,7 +1092,7 @@ TEST_CASE("exports ship fonts and themes and check them, and the controls of sce
     CHECK(problems[0] == "fonts/bad.font.json /font expected a .ttf or .otf file");
     CHECK(problems[1] == "fonts/broken.ttf  not a TrueType or OpenType font");
     CHECK(problems[2] ==
-          "main.scene.json /entities/panel/components/Control/children/0 a control can't be "
+          "main.scene.json /entities/panel/components/Widget/children/0 a control can't be "
           "its own child");
     CHECK(problems[3] ==
           "ui/bad.theme.json /types/Lable \"Lable\" isn't a control type; did you mean "
@@ -1210,7 +1210,7 @@ TEST_CASE("exports ship glTF models with their buffers and images, and check the
     };
     write("project.json", R"({"format": 1, "name": "Models", "main_scene": "main.scene.json"})");
     write("main.scene.json", R"({"format": 1, "entities": {"house": {"components": {
-        "Transform3D": {}, "MeshInstance3D": {"mesh": "models/house.gltf"}}}}})");
+        "Transform3D": {}, "Model3D": {"mesh": "models/house.gltf"}}}}})");
     slash::test::Gltf house = slash::test::quad(0);
     house.document["images"] = parse(R"([{"uri": "wood.jpg"}])");
     house.document["textures"] = parse(R"([{"source": 0}])");
@@ -1271,7 +1271,7 @@ TEST_CASE("a preset's model_quality ships model recipes as that tier makes them"
 #endif
     write("project.json", R"({"format": 1, "name": "Crates", "main_scene": "main.scene.json"})");
     write("main.scene.json", R"({"format": 1, "entities": {"crate": {"components": {
-        "Transform3D": {}, "MeshInstance3D": {"mesh": "props/crate.model.json::burnt"}}}}})");
+        "Transform3D": {}, "Model3D": {"mesh": "props/crate.model.json::burnt"}}}}})");
     write("props/crate.model.json", R"({"format": 1, "parts": [
         {"name": "box", "shape": "box",
          "children": [{"name": "hole", "shape": "sphere", "operation": "subtraction",
@@ -1336,7 +1336,7 @@ TEST_CASE("exports ship .blend models as the glTF Blender makes of them, and che
     };
     write("project.json", R"({"format": 1, "name": "Models", "main_scene": "main.scene.json"})");
     write("main.scene.json", R"({"format": 1, "entities": {"house": {"components": {
-        "Transform3D": {}, "MeshInstance3D": {"mesh": "models/house.blend"}}}}})");
+        "Transform3D": {}, "Model3D": {"mesh": "models/house.blend"}}}}})");
     // Stand-ins for .blend files, which Blender's stand-in exports as the glTF after the first
     // line; it can't read the broken one.
     write("models/house.blend", "BLENDER-fake\n" + slash::test::quad().gltf());

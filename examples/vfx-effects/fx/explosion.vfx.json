@@ -9,13 +9,13 @@
   "layers": [
     {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": "=color",
           "omni_range": "=8 * size"
         }
       },
       "curves": {
-        "OmniLight3D/light_energy": {
+        "PointLight3D/light_energy": {
           "ease": "smooth",
           "keys": [
             [0, 12],
@@ -29,7 +29,7 @@
     },
     {
       "components": {
-        "CPUParticles3D": {
+        "Emitter3D": {
           "amount": "=48 * size",
           "color": "=color",
           "direction": [0, 1, 0],
@@ -41,7 +41,7 @@
           "one_shot": true,
           "spread": 180
         },
-        "SphereMesh": {
+        "SphereGeometry": {
           "height": 0.2,
           "radius": 0.1
         }
@@ -51,7 +51,7 @@
     },
     {
       "components": {
-        "CPUParticles3D": {
+        "Emitter3D": {
           "amount": 24,
           "color": [0.2, 0.2, 0.2, 0.6],
           "direction": [0, 1, 0],
@@ -60,7 +60,7 @@
           "initial_velocity_min": 0.5,
           "lifetime": 1.5
         },
-        "SphereMesh": {
+        "SphereGeometry": {
           "height": 0.6,
           "radius": 0.3
         }

@@ -385,7 +385,7 @@ bool Game::frame() {
                              {static_cast<float>(window.width), static_cast<float>(window.height)});
         }
         world_.step(tick_seconds);
-        // The input method and on-screen keyboard follow the LineEdit being edited.
+        // The input method and on-screen keyboard follow the TextField being edited.
         if (!platform_.headless()) {
             input_reader_.set_text_input(platform_.window(), ui::text_input(world_));
         }

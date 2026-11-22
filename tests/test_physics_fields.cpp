@@ -205,7 +205,7 @@ TEST_CASE("physics fields: 3D bodies are pushed, held, set moving, put to sleep 
     const auto crate = [&](std::string_view id, float x) {
         scene.create(id, R"({"Transform3D": {"position": [)" + std::to_string(x) +
                              R"(, 0, 0]}, "RigidBody3D": {"mass": 2},
-            "CollisionShape3D": {"shape": "box", "size": [1, 1, 1]}})");
+            "Collider3D": {"shape": "box", "size": [1, 1, 1]}})");
     };
     crate("pushed", 0.0F);
     crate("held", 20.0F);
@@ -257,7 +257,7 @@ TEST_CASE("physics materials: 3D bodies take friction, bounce, mass and surface 
         R"({"format": 1, "density": 500, "bounce": 0.5, "surface": "wood"})";
     scene.create("plank", R"({"Transform3D": {}, "RigidBody3D": {"mass": 1,
         "physics_material_override": "oak.physics_material.json"},
-        "CollisionShape3D": {"shape": "box", "size": [2, 0.5, 1]}})");
+        "Collider3D": {"shape": "box", "size": [2, 0.5, 1]}})");
     scene.create("field", R"({"PhysicsField3D": {"type": "directional_force",
         "magnitude": 500, "shape": "everywhere"}})");
     scene.step(60);
@@ -272,7 +272,7 @@ TEST_CASE("physics materials: 3D bodies take friction, bounce, mass and surface 
     // A missing file warns and leaves the body's own values.
     scene.create("odd", R"({"Transform3D": {"position": [10, 0, 0]}, "StaticBody3D": {
         "physics_material_override": "missing.physics_material.json"},
-        "CollisionShape3D": {"shape": "box", "size": [1, 1, 1]}})");
+        "Collider3D": {"shape": "box", "size": [1, 1, 1]}})");
     scene.step(1);
     const auto plain = physics3d::raycast(scene.world, {10.0F, 5.0F, 0.0F}, {10.0F, -5.0F, 0.0F});
     REQUIRE(plain.has_value());
@@ -286,7 +286,7 @@ TEST_CASE("physics fields: 2D bodies are pushed, held and removed, and weigh the
     const auto rock = [&](std::string_view id, float x, std::string_view extra) {
         scene.create(id, R"({"Transform2D": {"position": [)" + std::to_string(x) +
                              R"(, 0]}, "RigidBody2D": {"mass": 1)" + std::string(extra) +
-                             R"(}, "CollisionShape2D": {"shape": "rectangle", "size": [64, 64]}})");
+                             R"(}, "Collider2D": {"shape": "rectangle", "size": [64, 64]}})");
     };
     rock("pushed", 0.0F, R"(, "physics_material_override": "stone.physics_material.json")");
     rock("held", 1000.0F, "");
@@ -326,13 +326,13 @@ TEST_CASE("physics materials: a rough material's friction wins in 2D, as Godot's
     scene.files["grit.physics_material.json"] = R"({"format": 1, "friction": 1, "rough": true})";
     scene.create("floor", R"({"Transform2D": {"position": [0, 100]},
         "StaticBody2D": {"physics_material_override": "ice.physics_material.json"},
-        "CollisionShape2D": {"shape": "rectangle", "size": [4000, 64]}})");
+        "Collider2D": {"shape": "rectangle", "size": [4000, 64]}})");
     const auto slider = [&](std::string_view id, float x, std::string_view material) {
         scene.create(id, R"({"Transform2D": {"position": [)" + std::to_string(x) +
                              R"(, 36]}, "RigidBody2D": {"physics_material_override": ")" +
                              std::string(material) + R"(", "linear_velocity": [200, 0],
             "lock_rotation": true},
-            "CollisionShape2D": {"shape": "rectangle", "size": [64, 64]}})");
+            "Collider2D": {"shape": "rectangle", "size": [64, 64]}})");
     };
     slider("skater", -1000.0F, "ice.physics_material.json");
     slider("gritty", 1000.0F, "grit.physics_material.json");
@@ -345,8 +345,8 @@ TEST_CASE("physics materials: a rough material's friction wins in 2D, as Godot's
 TEST_CASE("physics fields: strain breaks a Destructible3D's body") {
     Scene scene = still_scene();
     scene.create("glass", R"({"Transform3D": {"position": [0, 1, 0]}, "StaticBody3D": {},
-        "CollisionShape3D": {"shape": "box", "size": [2, 2, 0.1]},
-        "BoxMesh": {"size": [2, 2, 0.1]}, "MeshInstance3D": {},
+        "Collider3D": {"shape": "box", "size": [2, 2, 0.1]},
+        "BoxGeometry": {"size": [2, 2, 0.1]}, "Model3D": {},
         "Destructible3D": {"pieces": 4, "damage_threshold": 50}})");
     scene.create("press", R"({"Transform3D": {"position": [0, 1, 0]},
         "PhysicsField3D": {"type": "strain", "magnitude": 30, "radius": 2}})");
@@ -367,11 +367,11 @@ TEST_CASE("physics fields: particles with particles on are pushed, in 3D and 2D"
     Scene scene = still_scene();
     slash::scene3d::add_particles_system(scene.world);
     slash::canvas::add_particles_system(scene.world);
-    const std::string emitter3d = R"({"Transform3D": {}, "CPUParticles3D": {"amount": 4,
+    const std::string emitter3d = R"({"Transform3D": {}, "Emitter3D": {"amount": 4,
         "lifetime": 2, "explosiveness": 1, "gravity": [0, 0, 0],
         "initial_velocity_min": 0, "initial_velocity_max": 0, "spread": 0}})";
     scene.create("sparks", emitter3d);
-    scene.create("sparks2d", R"({"Transform2D": {}, "CPUParticles2D": {"amount": 4,
+    scene.create("sparks2d", R"({"Transform2D": {}, "Emitter2D": {"amount": 4,
         "lifetime": 2, "explosiveness": 1, "gravity": [0, 0],
         "initial_velocity_min": 0, "initial_velocity_max": 0, "spread": 0}})");
     scene.create("up", R"({"Transform3D": {"rotation": [1.5707963, 0, 0]},
@@ -415,9 +415,9 @@ TEST_CASE("physics settings: substeps") {
         settings.substeps = substeps;
         Scene scene(settings, physics2d::Settings{});
         scene.create("floor", R"({"Transform3D": {"position": [0, -0.5, 0]}, "StaticBody3D": {},
-            "CollisionShape3D": {"shape": "box", "size": [20, 1, 20]}})");
+            "Collider3D": {"shape": "box", "size": [20, 1, 20]}})");
         scene.create("ball", R"({"Transform3D": {"position": [0, 3, 0]}, "RigidBody3D": {},
-            "CollisionShape3D": {"shape": "sphere", "radius": 0.25}})");
+            "Collider3D": {"shape": "sphere", "radius": 0.25}})");
         scene.step(120);
         CHECK(scene.get<world::Transform3D>("ball").position.y ==
               doctest::Approx(0.25).epsilon(0.05));

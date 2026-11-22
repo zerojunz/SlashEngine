@@ -1,5 +1,5 @@
 // Three worlds in one program share an arena over ENet, replicated as Godot's
-// MultiplayerSpawner and MultiplayerSynchronizer replicate a scene tree: the server spawns a
+// NetSpawner and NetSync replicate a scene tree: the server spawns a
 // player for each client, which the client then moves, bullets that fly on every peer and change
 // color when they hit, and a treasure only alice can see; bullets and a player that leaves are
 // despawned everywhere. IDs change every run, so the output names peers by role.
@@ -30,7 +30,7 @@ constexpr std::string_view kBullet = R"({
   "components": {
     "Transform2D": {},
     "Sprite2D": {"texture": "bullet.png"},
-    "MultiplayerSynchronizer": {"properties": [
+    "NetSync": {"properties": [
       {"path": "Transform2D/position"},
       {"path": "Sprite2D/modulate", "replication_mode": "on_change"}
     ]}
@@ -42,7 +42,7 @@ constexpr std::string_view kBullet = R"({
 constexpr std::string_view kArena = R"({
   "entities": {
     "arena": {"components": {"Transform2D": {}}},
-    "spawner": {"components": {"MultiplayerSpawner": {
+    "spawner": {"components": {"NetSpawner": {
       "spawnable_scenes": ["bullet.prefab.json", "treasure.prefab.json"],
       "spawn_path": "arena"}}}
   },
@@ -68,8 +68,7 @@ std::string position_of(const world::World& world, std::string_view id) {
 Result<entt::entity> make_player(world::World& w, std::string_view id, const json::Value& data) {
     json::Value components = json::Object{
         {"Transform2D", json::Object{{"position", *data.find("at")}}},
-        {"MultiplayerSynchronizer",
-         json::parse(R"({"properties": [{"path": "Transform2D/position"}]})").value()}};
+        {"NetSync", json::parse(R"({"properties": [{"path": "Transform2D/position"}]})").value()}};
     json::Value entities =
         json::Object{{std::string(id), json::Object{{"components", std::move(components)}}}};
     const json::Value scene = json::Object{{"entities", std::move(entities)}, {"format", 1}};
@@ -96,7 +95,7 @@ struct Machine {
             }
             if (path == "treasure.prefab.json") {
                 return std::string(R"({"components": {"Transform2D": {},
-                    "MultiplayerSynchronizer": {"public_visibility": false}}, "format": 1})");
+                    "NetSync": {"public_visibility": false}}, "format": 1})");
             }
             return make_error(ErrorCode::NotFound, std::string(path));
         });

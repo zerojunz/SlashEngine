@@ -2,10 +2,17 @@
   "entities": {
     "potion": {
       "components": {
-        "ColorRect": {
+        "ColorFill": {
           "color": [0.85, 0.2, 0.25, 1.0]
         },
-        "Control": {
+        "DragAndDrop": {
+          "drag_data": {
+            "id": "potion",
+            "kind": "item"
+          },
+          "drag_preview": "potion_ghost"
+        },
+        "Widget": {
           "anchor_bottom": 1.0,
           "anchor_right": 1.0,
           "mouse_filter": "pass",
@@ -14,22 +21,15 @@
           "offset_right": -8.0,
           "offset_top": 8.0,
           "tooltip_text": "Potion: heals 20"
-        },
-        "DragAndDrop": {
-          "drag_data": {
-            "id": "potion",
-            "kind": "item"
-          },
-          "drag_preview": "potion_ghost"
         }
       }
     },
     "potion_ghost": {
       "components": {
-        "ColorRect": {
+        "ColorFill": {
           "color": [0.85, 0.2, 0.25, 1.0]
         },
-        "Control": {
+        "Widget": {
           "modulate": [1.0, 1.0, 1.0, 0.6],
           "mouse_filter": "ignore",
           "offset_bottom": 32.0,
@@ -40,56 +40,50 @@
     },
     "slot_1": {
       "components": {
-        "ColorRect": {
+        "ColorFill": {
           "color": [0.2, 0.2, 0.25, 1.0]
         },
-        "Control": {
+        "DragAndDrop": {
+          "can_drop": [
+            {
+              "kind": "item"
+            }
+          ]
+        },
+        "Widget": {
           "children": ["sword"],
           "offset_bottom": 88.0,
           "offset_left": 16.0,
           "offset_right": 64.0,
           "offset_top": 40.0
-        },
-        "DragAndDrop": {
-          "can_drop": [
-            {
-              "kind": "item"
-            }
-          ]
         }
       }
     },
     "slot_2": {
       "components": {
-        "ColorRect": {
+        "ColorFill": {
           "color": [0.2, 0.2, 0.25, 1.0]
         },
-        "Control": {
+        "DragAndDrop": {
+          "can_drop": [
+            {
+              "kind": "item"
+            }
+          ]
+        },
+        "Widget": {
           "children": ["potion"],
           "offset_bottom": 88.0,
           "offset_left": 72.0,
           "offset_right": 120.0,
           "offset_top": 40.0
-        },
-        "DragAndDrop": {
-          "can_drop": [
-            {
-              "kind": "item"
-            }
-          ]
         }
       }
     },
     "slot_3": {
       "components": {
-        "ColorRect": {
+        "ColorFill": {
           "color": [0.2, 0.2, 0.25, 1.0]
-        },
-        "Control": {
-          "offset_bottom": 88.0,
-          "offset_left": 128.0,
-          "offset_right": 176.0,
-          "offset_top": 40.0
         },
         "DragAndDrop": {
           "can_drop": [
@@ -97,15 +91,28 @@
               "kind": "item"
             }
           ]
+        },
+        "Widget": {
+          "offset_bottom": 88.0,
+          "offset_left": 128.0,
+          "offset_right": 176.0,
+          "offset_top": 40.0
         }
       }
     },
     "sword": {
       "components": {
-        "ColorRect": {
+        "ColorFill": {
           "color": [0.75, 0.78, 0.82, 1.0]
         },
-        "Control": {
+        "DragAndDrop": {
+          "drag_data": {
+            "id": "sword",
+            "kind": "item"
+          },
+          "drag_preview": "sword_ghost"
+        },
+        "Widget": {
           "anchor_bottom": 1.0,
           "anchor_right": 1.0,
           "mouse_filter": "pass",
@@ -114,22 +121,15 @@
           "offset_right": -8.0,
           "offset_top": 8.0,
           "tooltip_text": "Sword: 12 damage"
-        },
-        "DragAndDrop": {
-          "drag_data": {
-            "id": "sword",
-            "kind": "item"
-          },
-          "drag_preview": "sword_ghost"
         }
       }
     },
     "sword_ghost": {
       "components": {
-        "ColorRect": {
+        "ColorFill": {
           "color": [0.75, 0.78, 0.82, 1.0]
         },
-        "Control": {
+        "Widget": {
           "modulate": [1.0, 1.0, 1.0, 0.6],
           "mouse_filter": "ignore",
           "offset_bottom": 32.0,
@@ -140,26 +140,19 @@
     },
     "title": {
       "components": {
-        "Control": {
-          "offset_left": 16.0,
-          "offset_top": 8.0
-        },
         "Label": {
           "text": "Inventory"
+        },
+        "Widget": {
+          "offset_left": 16.0,
+          "offset_top": 8.0
         }
       }
     },
     "trash": {
       "components": {
-        "ColorRect": {
+        "ColorFill": {
           "color": [0.45, 0.12, 0.1, 1.0]
-        },
-        "Control": {
-          "offset_bottom": 88.0,
-          "offset_left": 256.0,
-          "offset_right": 304.0,
-          "offset_top": 40.0,
-          "tooltip_text": "Drop an item here to throw it away"
         },
         "DragAndDrop": {
           "can_drop": [
@@ -167,6 +160,13 @@
               "kind": "item"
             }
           ]
+        },
+        "Widget": {
+          "offset_bottom": 88.0,
+          "offset_left": 256.0,
+          "offset_right": 304.0,
+          "offset_top": 40.0,
+          "tooltip_text": "Drop an item here to throw it away"
         }
       }
     }

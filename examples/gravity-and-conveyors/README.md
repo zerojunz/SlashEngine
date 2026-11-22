@@ -13,7 +13,7 @@ physics.gravity {"ids":["hero","rock_below","probe"]}
 "areas":["planet_pull"],"gravity":[0,-440.894],"linear_damp":0.1}}}
 ```
 
-- An `Area2D` changes gravity and damping for the bodies inside it through its
+- An `Zone2D` changes gravity and damping for the bodies inside it through its
   `gravity_space_override`, `linear_damp_space_override` and `angular_damp_space_override`:
   `combine` adds its value, `replace` sets it and ignores areas of lower priority and the
   project's, and `combine_replace` and `replace_combine` mix the two, as in Godot. Areas apply
@@ -33,4 +33,4 @@ physics.gravity {"ids":["hero","rock_below","probe"]}
 - A `StaticBody2D` with `constant_linear_velocity` or `constant_angular_velocity` doesn't move,
   but what touches it moves as if it did: the belt carries the crate off its end, and the hero,
   walking left at the belt's speed, stays in place. `platform_velocity` says how fast the floor
-  carries the hero. An `AnimatableBody2D` adds its constant velocities to how it moves.
+  carries the hero. An `MovingBody2D` adds its constant velocities to how it moves.

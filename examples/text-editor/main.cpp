@@ -1,6 +1,6 @@
 // A text field of several lines, as Godot's TextEdit: main.scene.json is a letter to write, a
-// TextEdit that wraps its lines and highlights the caret's, with a word count under it. The
-// word_count system below reads the TextEdit's text_changed events, as gameplay code does.
+// TextArea that wraps its lines and highlights the caret's, with a word count under it. The
+// word_count system below reads the TextArea's text_changed events, as gameplay code does.
 //
 // This program writes the letter as an agent does over MCP or JSON-RPC: a click, typed text and
 // new lines with input.inject, a double click to select a word and type over it, undo and redo,
@@ -47,7 +47,7 @@ void word_count(world::World& w, double /*tick_seconds*/) {
         if (event.kind != "text_changed" || event.id != "letter") {
             continue;
         }
-        const std::string& letter = w.ecs().get<world::TextEdit>(w.find("letter")).text;
+        const std::string& letter = w.ecs().get<world::TextArea>(w.find("letter")).text;
         int words = 0;
         bool in_word = false;
         for (const char c : letter) {
@@ -143,7 +143,7 @@ int main() {
         {"type": "mouse_button", "button": "wheel_up", "position": [160, 80], "pressed": true}]})");
     call(session, "step", "{}");
     call(session, "ui.layout", R"({"ids": ["letter"]})");
-    call(session, "entity.get", R"({"id": "letter", "components": ["TextEdit"]})");
+    call(session, "entity.get", R"({"id": "letter", "components": ["TextArea"]})");
 
     // Draw into a 320x240 texture: the field's box, the caret's line, the text, the caret and
     // the scroll bar.

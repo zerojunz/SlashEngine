@@ -13,11 +13,11 @@
     },
     "card": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [1.6, 1.6, 0.1]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.95, 0.9, 0.8, 1.0],
           "shading_mode": "unshaded"
         },
@@ -28,7 +28,7 @@
     },
     "environment": {
       "components": {
-        "WorldEnvironment": {
+        "Environment3D": {
           "background_color": [0.05, 0.08, 0.15, 1.0],
           "background_mode": "color"
         }

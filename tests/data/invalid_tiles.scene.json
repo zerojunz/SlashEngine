@@ -2,7 +2,7 @@
   "entities": {
     "map": {
       "components": {
-        "TileMapLayer": {
+        "TileLayer2D": {
           "legend": {
             "g": "grass",
             "w": "watr"

@@ -1,6 +1,6 @@
 // 3D physics on Jolt, as Godot's: main.scene.json has a floor, a step, a ramp and a conveyor
-// belt (StaticBody3D), a ball, a parcel and three crates (RigidBody3D), three coins (Area3D) and
-// the hero (CharacterBody3D).
+// belt (StaticBody3D), a ball, a parcel and three crates (RigidBody3D), three coins (Zone3D) and
+// the hero (CharacterMover3D).
 //
 // The hero's controls are plain C++ systems, as a game's would be: gravity, walking along x, a
 // jump when a wall is in the way, and coins taken when the hero touches them. Then the program
@@ -34,11 +34,11 @@ constexpr float kJumpSpeed = 4.5F;
 constexpr float kFlag = 14.0F; // where the hero stops
 
 // Gravity off the floor, walking to the flag, and a jump when a wall blocks the way, as Godot's
-// CharacterBody3D template script does it. The physics3d system moves the hero by its velocity
+// CharacterMover3D template script does it. The physics3d system moves the hero by its velocity
 // after this.
 void control_hero(world::World& world, double seconds) {
     const entt::entity hero = world.find("hero");
-    auto& body = world.ecs().get<world::CharacterBody3D>(hero);
+    auto& body = world.ecs().get<world::CharacterMover3D>(hero);
     if (!body.on_floor) {
         body.velocity.y -= kGravity * static_cast<float>(seconds);
     }
@@ -53,7 +53,7 @@ void control_hero(world::World& world, double seconds) {
 void take_coins(world::World& world, double /*seconds*/) {
     const entt::entity hero = world.find("hero");
     std::vector<entt::entity> taken;
-    for (const entt::entity coin : world.ecs().view<world::Area3D>()) {
+    for (const entt::entity coin : world.ecs().view<world::Zone3D>()) {
         const physics3d::Contacts contacts = physics3d::contacts(world, coin);
         if (std::ranges::find(contacts.bodies, hero) != contacts.bodies.end()) {
             taken.push_back(coin);
@@ -85,7 +85,7 @@ void print_position(const world::World& world, std::string_view id) {
 void print_hero(const world::World& world) {
     const entt::entity hero = world.find("hero");
     const auto& transform = world.ecs().get<world::Transform3D>(hero);
-    const auto& body = world.ecs().get<world::CharacterBody3D>(hero);
+    const auto& body = world.ecs().get<world::CharacterMover3D>(hero);
     std::printf("tick %llu: hero at (%.2f, %.2f, %.2f)%s%s\n",
                 static_cast<unsigned long long>(world.tick()), transform.position.x,
                 transform.position.y, transform.position.z, body.on_floor ? ", on the floor" : "",

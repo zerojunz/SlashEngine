@@ -46,7 +46,7 @@ constexpr std::string_view kSchema = R"({
     "impostor_distance": {"type": "number", "minimum": 0,
                           "description": "3D: meters past which it draws as an impostor, a picture of it facing the camera. Default 0, never."},
     "impostor": {"type": "string", "description": "3D: the impostor's image; without one, far instances draw the model's last LOD."},
-    "cast_shadow": {"enum": ["off", "on", "double_sided", "shadows_only"], "description": "3D: as MeshInstance3D's. Default on."},
+    "cast_shadow": {"enum": ["off", "on", "double_sided", "shadows_only"], "description": "3D: as Model3D's. Default on."},
     "wind": {
       "type": "object", "additionalProperties": false,
       "description": "How it bends in WindSource3Ds' and WindSource2Ds' wind.",

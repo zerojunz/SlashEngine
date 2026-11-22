@@ -172,7 +172,7 @@ struct Scene {
         ui.viewport = {64.0F, 64.0F};
         slash::ui::set_settings(world, ui);
         create("camera", R"({"Transform3D": {"position": [0, 0, 3]}, "Camera3D": {}})");
-        create("env", R"({"WorldEnvironment": {"background_mode": "color",
+        create("env", R"({"Environment3D": {"background_mode": "color",
                                                "background_color": [0, 0, 1, 1]}})");
     }
 
@@ -228,7 +228,7 @@ TEST_CASE("glTF models load as Godot's importer reads them") {
     }
 
     REQUIRE(m.materials.size() == 2);
-    const world::StandardMaterial3D& glass = m.materials[0].standard;
+    const world::Surface3D& glass = m.materials[0].standard;
     CHECK(m.materials[0].name == "Glass");
     // glTF colors are linear; Godot's are sRGB.
     CHECK(near(glass.albedo_color.x, 0.735357F));
@@ -242,7 +242,7 @@ TEST_CASE("glTF models load as Godot's importer reads them") {
     CHECK(glass.emission_enabled);
     CHECK(near(glass.emission.x, 1.0F));
     CHECK(m.materials[0].albedo_image == -1);
-    const world::StandardMaterial3D& cutout = m.materials[1].standard;
+    const world::Surface3D& cutout = m.materials[1].standard;
     CHECK(m.materials[1].name == "material_1");
     CHECK(cutout.shading_mode == "unshaded");
     CHECK(cutout.transparency == "alpha_scissor");
@@ -469,7 +469,7 @@ TEST_CASE("models that can't load say why, and check_model reports their files")
     CHECK(errors[0].message == "\"models/paint.png\" could not be read: no such file");
 }
 
-TEST_CASE("MeshInstance3D draws a glTF model as it draws a primitive mesh") {
+TEST_CASE("Model3D draws a glTF model as it draws a primitive mesh") {
     Scene scene;
     // An unlit red quad, and the same quad textured with the checker.
     Gltf red = quad(0);
@@ -487,20 +487,20 @@ TEST_CASE("MeshInstance3D draws a glTF model as it draws a primitive mesh") {
 
     const entt::entity model = scene.create(
         "model", R"({"Transform3D": {"position": [-1.2, 0, 0], "scale": [0.5, 0.5, 0.5]},
-                                  "MeshInstance3D": {"mesh": "models/red.gltf"}})");
+                                  "Model3D": {"mesh": "models/red.gltf"}})");
     scene.create("primitive",
                  R"({"Transform3D": {"position": [1.2, 0, 0], "scale": [0.5, 0.5, 0.5]},
-        "MeshInstance3D": {}, "QuadMesh": {"size": [2, 2]},
-        "StandardMaterial3D": {"shading_mode": "unshaded", "albedo_color": [1, 0, 0, 1]}})");
+        "Model3D": {}, "QuadGeometry": {"size": [2, 2]},
+        "Surface3D": {"shading_mode": "unshaded", "albedo_color": [1, 0, 0, 1]}})");
     scene.create("checker", R"({"Transform3D": {"position": [0, 1.2, 0], "scale": [0.5, 0.5, 0.5]},
-                                "MeshInstance3D": {"mesh": "models/checker.glb"}})");
+                                "Model3D": {"mesh": "models/checker.glb"}})");
     CHECK(scene3d::check_meshes(scene.world).empty());
 
     const auto captured = canvas::capture(scene.world, scene.assets);
     REQUIRE_MESSAGE(captured.ok(), error_of(captured));
     const render::Image& image = captured.value().image;
     CHECK(captured.value().meshes == 3);
-    // The model and the QuadMesh draw alike, either side of the middle.
+    // The model and the QuadGeometry draw alike, either side of the middle.
     for (std::uint32_t y = 27; y < 38; y += 3) {
         for (std::uint32_t x = 10; x < 22; x += 3) {
             CAPTURE(x);
@@ -570,11 +570,11 @@ TEST_CASE("MeshInstance3D draws a glTF model as it draws a primitive mesh") {
     CHECK(drawn_at(13, 32) == Rgba{255, 255, 0, 255});
     software->destroy_texture(target.value());
 
-    // A StandardMaterial3D on the entity takes the place of the model's materials.
-    world::StandardMaterial3D override;
+    // A Surface3D on the entity takes the place of the model's materials.
+    world::Surface3D override;
     override.shading_mode = "unshaded";
     override.albedo_color = {0.0F, 1.0F, 0.0F, 1.0F};
-    scene.world.ecs().emplace<world::StandardMaterial3D>(model, override);
+    scene.world.ecs().emplace<world::Surface3D>(model, override);
     const auto green = canvas::capture(scene.world, scene.assets);
     REQUIRE(green.ok());
     CHECK(pixel(green.value().image, 13, 32) == Rgba{0, 255, 0, 255});
@@ -583,14 +583,15 @@ TEST_CASE("MeshInstance3D draws a glTF model as it draws a primitive mesh") {
 TEST_CASE("models that can't draw are reported, in the world and in scene files") {
     Scene scene;
     scene.files.files["models/quad.gltf"] = quad().gltf();
-    scene.create("both", R"({"Transform3D": {}, "BoxMesh": {},
-                             "MeshInstance3D": {"mesh": "models/quad.gltf"}})");
-    scene.create("dae", R"({"Transform3D": {}, "MeshInstance3D": {"mesh": "models/quad.dae"}})");
-    scene.create("gone", R"({"Transform3D": {}, "MeshInstance3D": {"mesh": "models/gone.glb"}})");
+    scene.create("both", R"({"Transform3D": {}, "BoxGeometry": {},
+                             "Model3D": {"mesh": "models/quad.gltf"}})");
+    scene.create("dae", R"({"Transform3D": {}, "Model3D": {"mesh": "models/quad.dae"}})");
+    scene.create("gone", R"({"Transform3D": {}, "Model3D": {"mesh": "models/gone.glb"}})");
     const auto problems = scene3d::check_meshes(scene.world);
     REQUIRE(problems.size() == 3);
-    CHECK(problems[0].path == "/components/MeshInstance3D/mesh");
-    CHECK(problems[0].message == "draws a model, so its BoxMesh is left out: remove one of them");
+    CHECK(problems[0].path == "/components/Model3D/mesh");
+    CHECK(problems[0].message ==
+          "draws a model, so its BoxGeometry is left out: remove one of them");
     CHECK(problems[1].message ==
           "expected a .gltf, .glb, .obj, .fbx, .blend or .model.json file, or a mesh gameplay "
           "code made (\"made:<name>\")");
@@ -605,14 +606,14 @@ TEST_CASE("models that can't draw are reported, in the world and in scene files"
     REQUIRE(renderer.draw(scene.world, options).ok());
     CHECK(renderer.meshes_drawn() == 0);
     REQUIRE(contents.problems.size() == 3);
-    CHECK(contents.problems[2].path == "/components/MeshInstance3D/mesh");
+    CHECK(contents.problems[2].path == "/components/Model3D/mesh");
 
     const auto errors = scene3d::check_meshes(scene.components, parse(R"({"format": 1,
         "entities": {"ship": {"components": {"Transform3D": {},
-            "MeshInstance3D": {"mesh": "models/ship.gltf"}}}}})"),
+            "Model3D": {"mesh": "models/ship.gltf"}}}}})"),
                                               scene.files.reader());
     REQUIRE(errors.size() == 1);
-    CHECK(errors[0].path == "/entities/ship/components/MeshInstance3D/mesh");
+    CHECK(errors[0].path == "/entities/ship/components/Model3D/mesh");
 }
 
 namespace {
@@ -865,7 +866,7 @@ TEST_CASE("models write as glTF files that load back as written") {
         CHECK(near(read.standard.albedo_color.z, wrote.standard.albedo_color.z));
         CHECK(near(read.standard.emission.x, wrote.standard.emission.x));
         CHECK(near(read.standard.emission.y, wrote.standard.emission.y));
-        world::StandardMaterial3D standard = read.standard;
+        world::Surface3D standard = read.standard;
         standard.albedo_color = wrote.standard.albedo_color;
         standard.emission = wrote.standard.emission;
         CHECK(standard == wrote.standard);
@@ -1133,7 +1134,7 @@ TEST_CASE("OBJ files that can't load say why, and libraries that can't are left 
                                "project folder; its materials are left out");
 }
 
-TEST_CASE("MeshInstance3D draws an OBJ model as it draws the same glTF one") {
+TEST_CASE("Model3D draws an OBJ model as it draws the same glTF one") {
     Scene scene;
     const std::string png = render::encode_png(checker()).value();
     scene.files.files["models/checker.png"] = png;
@@ -1146,15 +1147,15 @@ TEST_CASE("MeshInstance3D draws an OBJ model as it draws the same glTF one") {
     gltf.document["materials"] = parse(R"([{"pbrMetallicRoughness":
         {"baseColorTexture": {"index": 0}, "metallicFactor": 0}}])");
     scene.files.files["models/checker.gltf"] = gltf.gltf();
-    scene.create("sun", R"({"Transform3D": {}, "DirectionalLight3D": {}})");
-    const entt::entity model = scene.create(
-        "model", R"({"Transform3D": {}, "MeshInstance3D": {"mesh": "models/checker.obj"}})");
+    scene.create("sun", R"({"Transform3D": {}, "SunLight3D": {}})");
+    const entt::entity model =
+        scene.create("model", R"({"Transform3D": {}, "Model3D": {"mesh": "models/checker.obj"}})");
     CHECK(scene3d::check_meshes(scene.world).empty());
 
     const auto obj = canvas::capture(scene.world, scene.assets);
     REQUIRE_MESSAGE(obj.ok(), error_of(obj));
     CHECK(obj.value().meshes == 1);
-    scene.world.ecs().get<world::MeshInstance3D>(model).mesh = "models/checker.gltf";
+    scene.world.ecs().get<world::Model3D>(model).mesh = "models/checker.gltf";
     const auto gltf_drawn = canvas::capture(scene.world, scene.assets);
     REQUIRE_MESSAGE(gltf_drawn.ok(), error_of(gltf_drawn));
     const render::Image& a = obj.value().image;
@@ -1175,9 +1176,9 @@ namespace {
 // "Quad", is under the scene's root.
 Fbx fbx_quad(std::vector<std::int32_t> materials = {}) {
     Fbx out;
-    out.geometry(10, "QuadMesh", {-1.0, -1.0, 0.0, 1.0, -1.0, 0.0, 1.0, 1.0, 0.0, -1.0, 1.0, 0.0},
-                 {0, 1, 2, -4}, {}, {0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0}, {},
-                 std::move(materials));
+    out.geometry(10, "QuadGeometry",
+                 {-1.0, -1.0, 0.0, 1.0, -1.0, 0.0, 1.0, 1.0, 0.0, -1.0, 1.0, 0.0}, {0, 1, 2, -4},
+                 {}, {0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0}, {}, std::move(materials));
     out.model(20, "Quad");
     out.connect(20, 0);
     out.connect(10, 20);
@@ -1239,7 +1240,7 @@ TEST_CASE("FBX models load as Godot's importer reads them, in meters with y up")
         // A Lambert material: its diffuse color, from linear to sRGB, and corner colors shown.
         REQUIRE(m.materials.size() == 1);
         CHECK(m.materials[0].name == "Red");
-        const world::StandardMaterial3D& standard = m.materials[0].standard;
+        const world::Surface3D& standard = m.materials[0].standard;
         CHECK(near(standard.albedo_color.x, 0.735357F));
         CHECK(near(standard.albedo_color.y, 0.537099F));
         CHECK(near(standard.albedo_color.z, 1.0F));
@@ -1346,7 +1347,7 @@ TEST_CASE("FBX materials become StandardMaterial3Ds as Godot's importer makes th
     const scene3d::Model& m = loaded.value();
     REQUIRE(m.materials.size() == 3);
 
-    const world::StandardMaterial3D& g = m.materials[0].standard;
+    const world::Surface3D& g = m.materials[0].standard;
     CHECK(near(g.albedo_color.x, 0.537099F));
     CHECK(near(g.albedo_color.y, 0.388573F));
     CHECK(near(g.albedo_color.z, 0.735357F));
@@ -1463,7 +1464,7 @@ TEST_CASE("FBX files that can't load say why, and warnings are reported") {
     CHECK(errors[0].message.ends_with(": Bad UTF-8 string"));
 }
 
-TEST_CASE("MeshInstance3D draws an FBX model as it draws the same OBJ one") {
+TEST_CASE("Model3D draws an FBX model as it draws the same OBJ one") {
     Scene scene;
     const std::string png = render::encode_png(checker()).value();
     scene.files.files["models/checker.png"] = png;
@@ -1476,15 +1477,15 @@ TEST_CASE("MeshInstance3D draws an FBX model as it draws the same OBJ one") {
     file.connect(30, 20);
     file.connect(40, 30, "DiffuseColor");
     scene.files.files["models/checker.fbx"] = file.binary();
-    scene.create("sun", R"({"Transform3D": {}, "DirectionalLight3D": {}})");
-    const entt::entity model = scene.create(
-        "model", R"({"Transform3D": {}, "MeshInstance3D": {"mesh": "models/checker.fbx"}})");
+    scene.create("sun", R"({"Transform3D": {}, "SunLight3D": {}})");
+    const entt::entity model =
+        scene.create("model", R"({"Transform3D": {}, "Model3D": {"mesh": "models/checker.fbx"}})");
     CHECK(scene3d::check_meshes(scene.world).empty());
 
     const auto fbx = canvas::capture(scene.world, scene.assets);
     REQUIRE_MESSAGE(fbx.ok(), error_of(fbx));
     CHECK(fbx.value().meshes == 1);
-    scene.world.ecs().get<world::MeshInstance3D>(model).mesh = "models/checker.obj";
+    scene.world.ecs().get<world::Model3D>(model).mesh = "models/checker.obj";
     const auto obj = canvas::capture(scene.world, scene.assets);
     REQUIRE_MESSAGE(obj.ok(), error_of(obj));
     const render::Image& a = fbx.value().image;
@@ -1493,13 +1494,12 @@ TEST_CASE("MeshInstance3D draws an FBX model as it draws the same OBJ one") {
     CHECK(a.pixels == b.pixels);
 }
 
-TEST_CASE("MeshInstance3D draws a model recipe, built as it loads") {
+TEST_CASE("Model3D draws a model recipe, built as it loads") {
     Scene scene;
     scene.files.files["props/crate.model.json"] = R"({"format": 1, "parameters": {"side": 1},
         "materials": {"red": {"albedo_color": [1, 0, 0, 1], "shading_mode": "unshaded"}},
         "parts": [{"shape": "box", "size": ["=side", "=side", "=side"], "material": "red"}]})";
-    scene.create("crate",
-                 R"({"Transform3D": {}, "MeshInstance3D": {"mesh": "props/crate.model.json"}})");
+    scene.create("crate", R"({"Transform3D": {}, "Model3D": {"mesh": "props/crate.model.json"}})");
     CHECK(scene3d::check_meshes(scene.world).empty());
     const auto captured = canvas::capture(scene.world, scene.assets);
     REQUIRE_MESSAGE(captured.ok(), error_of(captured));
@@ -1806,17 +1806,17 @@ TEST_CASE("FBX skins and animation stacks load as Godot's importer reads them") 
     }
 }
 
-TEST_CASE("AnimationPlayer plays a model's animations on the skinned mesh its entity draws") {
+TEST_CASE("Animator plays a model's animations on the skinned mesh its entity draws") {
     Scene scene;
     slash::animation::install(scene.world, scene.assets);
     scene.files.files["models/arm.gltf"] = slash::test::arm().gltf();
     // Unlit white, so pixels say where the arm is.
-    world::StandardMaterial3D white;
+    world::Surface3D white;
     white.shading_mode = "unshaded";
     const entt::entity arm = scene.create("arm", R"({"Transform3D": {"position": [0, -1, 0]},
-                   "MeshInstance3D": {"mesh": "models/arm.gltf"},
-                   "AnimationPlayer": {"library": "models/arm.gltf", "animation": "Bend"}})");
-    scene.world.ecs().emplace<world::StandardMaterial3D>(arm, white);
+                   "Model3D": {"mesh": "models/arm.gltf"},
+                   "Animator": {"library": "models/arm.gltf", "animation": "Bend"}})");
+    scene.world.ecs().emplace<world::Surface3D>(arm, white);
     CHECK(scene3d::check_meshes(scene.world).empty());
 
     // Paused at the start, the arm stands straight up from the middle of the view; bent, its top
@@ -1833,11 +1833,11 @@ TEST_CASE("AnimationPlayer plays a model's animations on the skinned mesh its en
           std::vector<scene3d::ClipSample>{
               {.model = "models/arm.gltf", .animation = "Bend", .time = 0.0, .weight = 1.0F}});
 
-    scene.world.ecs().get<world::AnimationPlayer>(arm).playing = true;
+    scene.world.ecs().get<world::Animator>(arm).playing = true;
     for (int tick = 0; tick < 60; ++tick) {
         scene.world.step(1.0 / 60.0);
     }
-    const auto& player = scene.world.ecs().get<world::AnimationPlayer>(arm);
+    const auto& player = scene.world.ecs().get<world::Animator>(arm);
     CHECK(player.time == doctest::Approx(1.0));
     CHECK_FALSE(player.playing); // Bend doesn't loop
     CHECK(scene3d::clips(scene.world, arm).at(0).time == doctest::Approx(1.0));
@@ -1862,12 +1862,12 @@ TEST_CASE("AnimationPlayer plays a model's animations on the skinned mesh its en
     for (const auto& device : drawing_devices()) {
         CAPTURE(render::backend_name(device->backend()));
         canvas::CanvasRenderer renderer(*device, scene.assets);
-        scene.world.ecs().get<world::AnimationPlayer>(arm).time = 1.0;
+        scene.world.ecs().get<world::Animator>(arm).time = 1.0;
         const render::Image bent = drawn_by(*device, renderer);
         CHECK(pixel(bent, 22, 32) != kBackground);
         CHECK(pixel(bent, 32, 21) == kBackground);
         // The same mesh, its vertices replaced.
-        scene.world.ecs().get<world::AnimationPlayer>(arm).time = 0.0;
+        scene.world.ecs().get<world::Animator>(arm).time = 0.0;
         const render::Image straight = drawn_by(*device, renderer);
         CHECK(pixel(straight, 22, 32) == kBackground);
         CHECK(pixel(straight, 32, 21) != kBackground);
@@ -1879,7 +1879,7 @@ TEST_CASE("AnimationPlayer plays a model's animations on the skinned mesh its en
     skeleton.bone_rotations["Lower"] = {0.0F, 0.0F, 0.0F};
     skeleton.bone_positions["Lowr"] = {0.0F, 2.0F, 0.0F};
     scene.world.ecs().emplace<world::Skeleton3D>(arm, skeleton);
-    scene.world.ecs().get<world::AnimationPlayer>(arm).time = 1.0;
+    scene.world.ecs().get<world::Animator>(arm).time = 1.0;
     CHECK(at(32, 21) != kBackground);
     const auto problems = scene3d::check_meshes(scene.world);
     REQUIRE(problems.size() == 1);
@@ -1981,15 +1981,15 @@ TEST_CASE("glTF morph targets load as Godot's importer makes them blend shapes")
     CHECK(copy.value().animations[0].blend_tracks[1].values == std::vector<float>{0.0F, 0.5F});
 }
 
-TEST_CASE("MeshInstance3D's blend shapes and animations move the vertices of the model it draws") {
+TEST_CASE("Model3D's blend shapes and animations move the vertices of the model it draws") {
     Scene scene;
     slash::animation::install(scene.world, scene.assets);
     scene.files.files["models/face.gltf"] = slash::test::face().gltf();
-    world::StandardMaterial3D white;
+    world::Surface3D white;
     white.shading_mode = "unshaded";
-    const entt::entity face = scene.create(
-        "face", R"({"Transform3D": {}, "MeshInstance3D": {"mesh": "models/face.gltf"}})");
-    scene.world.ecs().emplace<world::StandardMaterial3D>(face, white);
+    const entt::entity face =
+        scene.create("face", R"({"Transform3D": {}, "Model3D": {"mesh": "models/face.gltf"}})");
+    scene.world.ecs().emplace<world::Surface3D>(face, white);
     constexpr std::array<std::uint8_t, 4> kBackground{0, 0, 255, 255};
     const auto at = [&](std::uint32_t x, std::uint32_t y) {
         const auto captured = canvas::capture(scene.world, scene.assets);
@@ -1999,36 +1999,36 @@ TEST_CASE("MeshInstance3D's blend shapes and animations move the vertices of the
     // At rest the quad spans pixels 18 to 46; smiling, its top reaches past pixel 10.
     CHECK(at(32, 10) == kBackground);
     CHECK(at(50, 32) == kBackground);
-    scene.world.ecs().get<world::MeshInstance3D>(face).blend_shapes["smile"] = 1.0F;
+    scene.world.ecs().get<world::Model3D>(face).blend_shapes["smile"] = 1.0F;
     CHECK(at(32, 10) != kBackground);
     CHECK(at(50, 32) == kBackground);
 
     // The model's animation moves both, from the entity's weights.
-    scene.world.ecs().get<world::MeshInstance3D>(face).blend_shapes.clear();
-    world::AnimationPlayer talk;
+    scene.world.ecs().get<world::Model3D>(face).blend_shapes.clear();
+    world::Animator talk;
     talk.library = "models/face.gltf";
     talk.animation = "Talk";
     talk.playing = false;
     talk.time = 1.0;
-    scene.world.ecs().emplace<world::AnimationPlayer>(face, talk);
+    scene.world.ecs().emplace<world::Animator>(face, talk);
     CHECK(at(32, 10) != kBackground);
     CHECK(at(50, 32) != kBackground);
-    scene.world.ecs().get<world::AnimationPlayer>(face).time = 0.0;
+    scene.world.ecs().get<world::Animator>(face).time = 0.0;
     CHECK(at(32, 10) == kBackground);
 
     // An animation file's value track sets the entity's weight by name.
-    scene.world.ecs().remove<world::AnimationPlayer>(face);
+    scene.world.ecs().remove<world::Animator>(face);
     scene.files.files["anim/face.anim.json"] = R"({"format": 1, "animations": {
-        "grin": {"length": 1, "tracks": [{"path": "MeshInstance3D/blend_shapes/smile",
+        "grin": {"length": 1, "tracks": [{"path": "Model3D/blend_shapes/smile",
                  "keys": [{"time": 0, "value": 0}, {"time": 1, "value": 1}]}]}}})";
-    world::AnimationPlayer grin;
+    world::Animator grin;
     grin.library = "anim/face.anim.json";
     grin.animation = "grin";
-    scene.world.ecs().emplace<world::AnimationPlayer>(face, grin);
+    scene.world.ecs().emplace<world::Animator>(face, grin);
     for (int tick = 0; tick < 30; ++tick) {
         scene.world.step(1.0 / 60.0);
     }
-    CHECK(scene.world.ecs().get<world::MeshInstance3D>(face).blend_shapes.at("smile") ==
+    CHECK(scene.world.ecs().get<world::Model3D>(face).blend_shapes.at("smile") ==
           doctest::Approx(0.5F));
     CHECK(at(32, 12) != kBackground);
 }
@@ -2049,13 +2049,13 @@ TEST_CASE("animation files play a model's animations with tracks of their own") 
                  "tracks": [{"event": "breath", "keys": [{"time": 0.5}]}]},
         "slow": {"from": {"model": "models/arm.gltf", "animation": "Bend"}, "length": 2}}})";
     const entt::entity arm =
-        scene.create("arm", R"({"Transform3D": {}, "MeshInstance3D": {"mesh": "models/arm.gltf"},
-                   "AnimationPlayer": {"library": "anim/arm.anim.json", "animation": "idle",
+        scene.create("arm", R"({"Transform3D": {}, "Model3D": {"mesh": "models/arm.gltf"},
+                   "Animator": {"library": "anim/arm.anim.json", "animation": "idle",
                                        "playing": true}})");
     for (int tick = 0; tick < 90; ++tick) {
         scene.world.step(1.0 / 60.0);
     }
-    const auto& player = scene.world.ecs().get<world::AnimationPlayer>(arm);
+    const auto& player = scene.world.ecs().get<world::Animator>(arm);
     CHECK(player.playing); // it loops, as Idle-loop does
     CHECK(player.time == doctest::Approx(0.5));
     CHECK(events == std::vector<std::string>{"breath", "breath"});
@@ -2067,10 +2067,10 @@ TEST_CASE("animation files play a model's animations with tracks of their own") 
 
     // Scenes are checked against the model's animations.
     const json::Value doc = parse(R"({"format": 1, "entities": {
-        "a": {"components": {"AnimationPlayer": {"library": "models/arm.gltf",
+        "a": {"components": {"Animator": {"library": "models/arm.gltf",
                                                  "animation": "Bnd"}}},
-        "b": {"components": {"AnimationPlayer": {"library": "anim/bad.anim.json"}}},
-        "c": {"components": {"AnimationPlayer": {"library": "anim/arm.anim.json",
+        "b": {"components": {"Animator": {"library": "anim/bad.anim.json"}}},
+        "c": {"components": {"Animator": {"library": "anim/arm.anim.json",
                                                  "animation": "slow"}}}}})");
     scene.files.files["anim/bad.anim.json"] = R"({"format": 1, "animations": {
         "x": {"from": {"model": "models/arm.gltf", "animation": "Idel-loop"}}}})";
@@ -2080,9 +2080,9 @@ TEST_CASE("animation files play a model's animations with tracks of their own") 
         errors.push_back(error.path + ": " + error.message);
     }
     CHECK(errors == std::vector<std::string>{
-                        "/entities/a/components/AnimationPlayer/animation: models/arm.gltf has "
+                        "/entities/a/components/Animator/animation: models/arm.gltf has "
                         "no animation \"Bnd\"; did you mean \"Bend\"?",
-                        "/entities/b/components/AnimationPlayer/library: anim/bad.anim.json: "
+                        "/entities/b/components/Animator/library: anim/bad.anim.json: "
                         "/animations/x/from/animation: models/arm.gltf has no animation "
                         "\"Idel-loop\"; did you mean \"Idle-loop\"?",
                     });
@@ -2101,8 +2101,8 @@ TEST_CASE("node tracks in animation files move the nodes of the model the entity
             {"node": "Upper", "property": "position", "interpolation": "nearest",
              "keys": [{"time": 0, "value": [0, 0.5, 0]}, {"time": 0.5, "value": [0, 0, 0]}]}]}}})";
     const entt::entity arm =
-        scene.create("arm", R"({"Transform3D": {}, "MeshInstance3D": {"mesh": "models/arm.gltf"},
-                   "AnimationPlayer": {"library": "anim/arm.anim.json", "animation": "bend",
+        scene.create("arm", R"({"Transform3D": {}, "Model3D": {"mesh": "models/arm.gltf"},
+                   "Animator": {"library": "anim/arm.anim.json", "animation": "bend",
                                        "playing": true}})");
     auto model = scene.assets.load<scene3d::Model>("models/arm.gltf");
     REQUIRE(model.ok());
@@ -2149,23 +2149,23 @@ TEST_CASE("node tracks in animation files move the nodes of the model the entity
         "wave": {"length": 1, "tracks": [{"node": "Lowr", "property": "scale",
                                           "keys": [{"time": 0, "value": [1, 1, 1]}]}]}}})";
     const json::Value doc = parse(R"({"format": 1, "entities": {
-        "a": {"components": {"MeshInstance3D": {"mesh": "models/arm.gltf"},
-                             "AnimationPlayer": {"library": "anim/typo.anim.json"}}},
-        "b": {"components": {"AnimationPlayer": {"library": "anim/arm.anim.json"}}},
-        "c": {"components": {"MeshInstance3D": {"mesh": "models/arm.gltf"},
-                             "AnimationPlayer": {"library": "anim/arm.anim.json"}}}}})");
+        "a": {"components": {"Model3D": {"mesh": "models/arm.gltf"},
+                             "Animator": {"library": "anim/typo.anim.json"}}},
+        "b": {"components": {"Animator": {"library": "anim/arm.anim.json"}}},
+        "c": {"components": {"Model3D": {"mesh": "models/arm.gltf"},
+                             "Animator": {"library": "anim/arm.anim.json"}}}}})");
     std::vector<std::string> errors;
     for (const json::ValidationError& error :
          slash::animation::check_players(doc, scene.files.reader())) {
         errors.push_back(error.path + ": " + error.message);
     }
     CHECK(errors == std::vector<std::string>{
-                        "/entities/a/components/AnimationPlayer: \"Lowr\", which "
+                        "/entities/a/components/Animator: \"Lowr\", which "
                         "anim/typo.anim.json's node tracks move, isn't a node of "
                         "models/arm.gltf; did you mean \"Lower\"?",
-                        "/entities/b/components/AnimationPlayer: anim/arm.anim.json's node "
+                        "/entities/b/components/Animator: anim/arm.anim.json's node "
                         "tracks move the nodes of the model the entity draws, but it draws none: "
-                        "give it a MeshInstance3D whose mesh is a model file",
+                        "give it a Model3D whose mesh is a model file",
                     });
 }
 
@@ -2311,7 +2311,7 @@ f 13 14 15
             CHECK(dot(cross(b - a, c - a), face - Vec3{0.5F, 0.5F, 0.5F}) < 0.0F);
         }
         const std::size_t first = &floor == model.collision.data() ? 0 : 1;
-        const std::vector<world::CollisionShape3D> shapes = scene3d::collision_shapes(model);
+        const std::vector<world::Collider3D> shapes = scene3d::collision_shapes(model);
         REQUIRE(shapes.size() == 2);
         CHECK(shapes[first].shape == "concave_polygon");
         CHECK(shapes[first].faces.size() == 6);

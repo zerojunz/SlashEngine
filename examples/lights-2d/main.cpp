@@ -1,5 +1,5 @@
-// 2D lights, as Godot's: a CanvasModulate darkens the scene in main.scene.json, a torch
-// (PointLight2D) and the moon (DirectionalLight2D) light it, the crate's LightOccluder2D casts a
+// 2D lights, as Godot's: a AmbientTint2D darkens the scene in main.scene.json, a torch
+// (PointLight2D) and the moon (SunLight2D) light it, the crate's Occluder2D casts a
 // shadow from the torch and its normal map gives it bevelled edges, and the neon sign's material
 // is unshaded, so it glows in the dark.
 //

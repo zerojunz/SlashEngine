@@ -61,7 +61,7 @@ Surface*: `procedural::scatter` picks a triangle by area and a point in it as Go
 places and the layers it `avoid`s), and turns and scales it as `MultiMeshEditor::_populate`, with a
 seeded PCG32 so places repeat everywhere. `scatter.run` (`engine/command/src/scatter.cpp`) reads
 the ground as `navigation::world_geometry` (3D) or tile map cells (2D) and puts each layer under
-`into` as entities extending a prefab or drawing a mesh, or as one `MultiMeshInstance3D`, Godot's
+`into` as entities extending a prefab or drawing a mesh, or as one `ModelInstances3D`, Godot's
 (`Renderer::add_multimesh` draws its model at each instance), replacing what `into` held.
 `examples/scatter-rules` grows a forest.
 
@@ -84,7 +84,7 @@ through `src/scatter_ground.hpp`. `examples/procedural-worlds` fills a valley an
 Maps come from noise too: `tilemap.generate` (`engine/command/src/builtin.cpp`) samples a noise
 over a rect of cells and gives each the first band its value is under, painting each band's
 terrain with `paint_terrain` in turn or setting its tile, and `terrain.generate`'s `noise` puts a
-FastNoiseLite's values (`TerrainNoise::values`) in place of HTerrain's Perlin noise before its
+FastNoiseLite's values (`TerrainNoise::values`) in place of Terrain3D's Perlin noise before its
 curve, island and erosion. Both take a NoiseTexture2D's `.texture.json` file or inline settings
 (`read_noise_source` and `sample_noise_source` in `engine/command/src/procedural.cpp`, sampled
 and normalized as Godot's `Noise::_get_image`), so the noise an agent tuned with
@@ -95,7 +95,7 @@ Procedural content from other tools comes in as those files. The Godot importer 
 (`procedural_texture_file` in `tools/importer/src/godot_import.cpp`, its `FastNoiseLite` and
 `Gradient` by Godot's property names), and `terrain.import` (`engine/command/src/terrain.cpp`)
 reads a terrain tool's heightmap (16-bit PNG, `.r16`/`.raw`, `.r32` floats, or EXR through
-tinyexr, `slash_tinyexr`, tools only) and splat and color maps into an `HTerrain` as HTerrain's
+tinyexr, `slash_tinyexr`, tools only) and splat and color maps into an `Terrain3D` as Terrain3D's
 import dialog does, sizing it by `adjusted_map_size`. `examples/procedural-imports` brings in a
 pond's water and a valley. glTF's `EXT_mesh_gpu_instancing`, as Blender's geometry nodes and
 Houdini export scattered copies, loads each instance as a child node drawing the mesh

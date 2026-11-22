@@ -129,9 +129,9 @@ struct Scene {
         files.files["pattern.png"] = pattern_png(64);
         picture = create("picture", R"({"Transform2D": {},
             "Sprite2D": {"texture": "pattern.png", "centered": false}})");
-        create("bar", R"({"Control": {"offset_left": 40, "offset_top": 4, "offset_right": 60,
+        create("bar", R"({"Widget": {"offset_left": 40, "offset_top": 4, "offset_right": 60,
                                       "offset_bottom": 12},
-                          "ColorRect": {"color": [1, 0, 0, 1]}})");
+                          "ColorFill": {"color": [1, 0, 0, 1]}})");
         canvas::Settings settings;
         settings.clear_color = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
         settings.texture_filter = render::Filter::Nearest;
@@ -265,8 +265,8 @@ TEST_CASE("display.set turns frame generation on and off, and display.list shows
         "rendering": {"clear_color": [0, 0, 0, 1], "frame_generation": true}})")
                 .ok());
     REQUIRE(slash::platform::write_file(root + "/main.scene.json", R"({"format": 1,
-        "entities": {"bar": {"components": {"Control": {"offset_right": 4, "offset_bottom": 4},
-            "ColorRect": {"color": [1, 0, 0, 1]}}}}})")
+        "entities": {"bar": {"components": {"Widget": {"offset_right": 4, "offset_bottom": 4},
+            "ColorFill": {"color": [1, 0, 0, 1]}}}}})")
                 .ok());
 
     auto platform = slash::platform::Platform::create({.headless = true});

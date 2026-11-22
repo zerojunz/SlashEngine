@@ -11,5 +11,5 @@
 {"jsonrpc":"2.0","id":11,"method":"undo"}
 {"jsonrpc":"2.0","id":12,"method":"undo"}
 {"jsonrpc":"2.0","id":13,"method":"world.query","params":{"with":["Destructible3D"]}}
-{"jsonrpc":"2.0","id":14,"method":"entity.create","params":{"id":"sign","components":{"Transform3D":{"position":[0,1,2]},"StaticBody3D":{},"PlaneMesh":{},"MeshInstance3D":{},"Destructible3D":{}}}}
+{"jsonrpc":"2.0","id":14,"method":"entity.create","params":{"id":"sign","components":{"Transform3D":{"position":[0,1,2]},"StaticBody3D":{},"PlaneGeometry":{},"Model3D":{},"Destructible3D":{}}}}
 {"jsonrpc":"2.0","id":15,"method":"physics.break","params":{"id":"sign"}}

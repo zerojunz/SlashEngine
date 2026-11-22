@@ -57,7 +57,7 @@ struct FogClock {
 struct FogVolumeUniforms {
     Mat4 to_local{};   // the world to the volume's space
     Float4 position{}; // its place in the world, then its shape (FogVolumeShape)
-    Float4 size{};     // its size (twice the froxels for World), then 1 for a FogMaterial
+    Float4 size{};     // its size (twice the froxels for World), then 1 for a FogVolumeLook
     std::array<std::int32_t, 4> corner{};     // the first froxel it fills
     std::array<std::int32_t, 4> corner_end{}; // past the last froxel it fills
     Float4 albedo{};                          // linear, then the material's density
@@ -65,7 +65,7 @@ struct FogVolumeUniforms {
     Float4 fade{};                            // the edge fade
 };
 static_assert(sizeof(FogVolumeUniforms) == 176);
-// The float4s a fog volume and a VoxelGI (MeshVoxelGIUniforms) take in the frame's items.
+// The float4s a fog volume and a VoxelLighting3D (MeshVoxelGIUniforms) take in the frame's items.
 inline constexpr std::size_t kFogVolumeItems = sizeof(FogVolumeUniforms) / sizeof(Float4);
 inline constexpr std::size_t kFogVoxelGIItems = sizeof(MeshVoxelGIUniforms) / sizeof(Float4);
 

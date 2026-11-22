@@ -6,7 +6,7 @@ in its Forward+ renderer, the default `rendering.rendering_method`.
 metallic floor with a roughness of 0.05, a warm back wall, a red crate, a blue pillar and a rug,
 lit by grey ambient light and a lamp.
 
-The `WorldEnvironment`'s `ssr_enabled` turns SSR on with Godot's defaults: rays of up to
+The `Environment3D`'s `ssr_enabled` turns SSR on with Godot's defaults: rays of up to
 `ssr_max_steps` 64 steps, fading in over `ssr_fade_in` 0.15 near where they leave the floor and
 out over `ssr_fade_out` 2 toward the screen's edges, and hitting what they pass within
 `ssr_depth_tolerance` 0.5 meters behind. [project.json](project.json) sets

@@ -180,7 +180,7 @@ TEST_CASE("navigation files are validated with the JSON Pointer of each error") 
 TEST_CASE("paths over a navigation mesh are shaped as Godot's three postprocessings") {
     Scene scene;
     scene.files.write("l.navmesh.json", std::string(kL));
-    const entt::entity floor = scene.create("floor", R"({"Transform3D": {}, "NavigationRegion3D":
+    const entt::entity floor = scene.create("floor", R"({"Transform3D": {}, "NavArea3D":
         {"navigation_mesh": "l.navmesh.json"}})");
     const auto info = navigation::map_info(scene.world, navigation::Map::ThreeD);
     CHECK(info.regions == 1);
@@ -219,7 +219,7 @@ TEST_CASE("paths over a navigation mesh are shaped as Godot's three postprocessi
 TEST_CASE("paths from off the map start and end at its closest points") {
     Scene scene;
     scene.files.write("l.navmesh.json", std::string(kL));
-    const entt::entity floor = scene.create("floor", R"({"Transform3D": {}, "NavigationRegion3D":
+    const entt::entity floor = scene.create("floor", R"({"Transform3D": {}, "NavArea3D":
         {"navigation_mesh": "l.navmesh.json"}})");
     const auto path = navigation::query_path(scene.world, Vec3{-3, 2, 1}, Vec3{20, 0, 20});
     CHECK(text_of(path.points) == "(0, 0, 1) (4, 0, 4) (8, 0, 8)");
@@ -240,7 +240,7 @@ TEST_CASE("paths from off the map start and end at its closest points") {
 TEST_CASE("random points repeat from a seed and land on the map") {
     Scene scene;
     scene.files.write("l.navmesh.json", std::string(kL));
-    scene.create("floor", R"({"Transform3D": {}, "NavigationRegion3D":
+    scene.create("floor", R"({"Transform3D": {}, "NavArea3D":
         {"navigation_mesh": "l.navmesh.json"}})");
     for (const bool uniformly : {false, true}) {
         for (std::uint64_t seed = 0; seed < 20; ++seed) {
@@ -264,10 +264,10 @@ TEST_CASE("regions join where edges meet or come within the edge connection marg
     Scene scene;
     scene.files.write("a.navmesh.json", R"({"format": 1,
         "vertices": [[0, 0, 0], [0, 0, 4], [4, 0, 4], [4, 0, 0]], "polygons": [[0, 1, 2, 3]]})");
-    scene.create("a", R"({"Transform3D": {}, "NavigationRegion3D":
+    scene.create("a", R"({"Transform3D": {}, "NavArea3D":
         {"navigation_mesh": "a.navmesh.json"}})");
     const entt::entity b = scene.create("b", R"({"Transform3D": {"position": [4, 0, 0]},
-        "NavigationRegion3D": {"navigation_mesh": "a.navmesh.json"}})");
+        "NavArea3D": {"navigation_mesh": "a.navmesh.json"}})");
     auto info = navigation::map_info(scene.world, navigation::Map::ThreeD);
     CHECK(info.regions == 2);
     // The shared edge joins them; the path has a point where it crosses it, as Godot's.
@@ -295,7 +295,7 @@ TEST_CASE("regions join where edges meet or come within the edge connection marg
     wide.map_3d.edge_connection_margin = 1.5F;
     navigation::set_settings(scene.world, wide);
     CHECK(navigation::map_info(scene.world, navigation::Map::ThreeD).edge_connections == 2);
-    scene.world.ecs().get<world::NavigationRegion3D>(b).use_edge_connections = false;
+    scene.world.ecs().get<world::NavArea3D>(b).use_edge_connections = false;
     CHECK(navigation::map_info(scene.world, navigation::Map::ThreeD).edge_connections == 0);
 }
 
@@ -308,10 +308,10 @@ TEST_CASE("links carry paths between regions, and travel costs steer them") {
                      [0, 0, 12], [12, 0, 12], [4, 0, 12], [8, 0, 12]],
         "polygons": [[0, 1, 2, 3], [1, 4, 5, 2], [4, 12, 14, 5], [5, 14, 15, 10],
                      [10, 15, 13, 11], [7, 10, 11, 8], [6, 7, 8, 9]]})");
-    scene.create("rooms", R"({"Transform3D": {}, "NavigationRegion3D":
+    scene.create("rooms", R"({"Transform3D": {}, "NavArea3D":
         {"navigation_mesh": "u.navmesh.json"}})");
     const entt::entity link = scene.create("door", R"({"Transform3D": {},
-        "NavigationLink3D": {"start_position": [3, 0, 2], "end_position": [9, 0, 2]}})");
+        "NavLink3D": {"start_position": [3, 0, 2], "end_position": [9, 0, 2]}})");
     CHECK(navigation::map_info(scene.world, navigation::Map::ThreeD).links == 1);
 
     const auto through = navigation::query_path(scene.world, Vec3{2, 0, 2}, Vec3{10, 0, 2});
@@ -324,14 +324,14 @@ TEST_CASE("links carry paths between regions, and travel costs steer them") {
     CHECK(through.types[2] == navigation::Segment::Region);
 
     // Going through the link costs ten times its length: the corridor is cheaper.
-    scene.world.ecs().get<world::NavigationLink3D>(link).travel_cost = 10;
+    scene.world.ecs().get<world::NavLink3D>(link).travel_cost = 10;
     const auto round = navigation::query_path(scene.world, Vec3{2, 0, 2}, Vec3{10, 0, 2});
     CHECK(round.length > 20);
     CHECK(std::ranges::find(round.owners, link) == round.owners.end());
-    scene.world.ecs().get<world::NavigationLink3D>(link).travel_cost = 1;
+    scene.world.ecs().get<world::NavLink3D>(link).travel_cost = 1;
 
     // A one-way link only goes from start to end.
-    scene.world.ecs().get<world::NavigationLink3D>(link).bidirectional = false;
+    scene.world.ecs().get<world::NavLink3D>(link).bidirectional = false;
     CHECK(navigation::query_path(scene.world, Vec3{2, 0, 2}, Vec3{10, 0, 2}).length ==
           doctest::Approx(8));
     CHECK(navigation::query_path(scene.world, Vec3{10, 0, 2}, Vec3{2, 0, 2}).length > 20);
@@ -341,10 +341,10 @@ TEST_CASE("navigation layers and region filters keep paths off regions") {
     Scene scene;
     scene.files.write("a.navmesh.json", R"({"format": 1,
         "vertices": [[0, 0, 0], [0, 0, 4], [4, 0, 4], [4, 0, 0]], "polygons": [[0, 1, 2, 3]]})");
-    scene.create("a", R"({"Transform3D": {}, "NavigationRegion3D":
+    scene.create("a", R"({"Transform3D": {}, "NavArea3D":
         {"navigation_mesh": "a.navmesh.json"}})");
     const entt::entity b = scene.create("b", R"({"Transform3D": {"position": [4, 0, 0]},
-        "NavigationRegion3D": {"navigation_mesh": "a.navmesh.json", "navigation_layers": 2}})");
+        "NavArea3D": {"navigation_mesh": "a.navmesh.json", "navigation_layers": 2}})");
     navigation::PathOptions options;
     CHECK(text_of(
               navigation::query_path(scene.world, Vec3{1, 0, 1}, Vec3{7, 0, 1}, options).points) ==
@@ -365,7 +365,7 @@ TEST_CASE("navigation layers and region filters keep paths off regions") {
 
     // A disabled region is off the map.
     options.included_regions.clear();
-    scene.world.ecs().get<world::NavigationRegion3D>(b).enabled = false;
+    scene.world.ecs().get<world::NavArea3D>(b).enabled = false;
     CHECK(text_of(
               navigation::query_path(scene.world, Vec3{1, 0, 1}, Vec3{7, 0, 1}, options).points) ==
           "(1, 0, 1) (4, 0, 1)");
@@ -375,7 +375,7 @@ TEST_CASE("the map is rebuilt only when what it is made of changes") {
     Scene scene;
     scene.files.write("a.navmesh.json", R"({"format": 1,
         "vertices": [[0, 0, 0], [0, 0, 4], [4, 0, 4], [4, 0, 0]], "polygons": [[0, 1, 2, 3]]})");
-    const entt::entity a = scene.create("a", R"({"Transform3D": {}, "NavigationRegion3D":
+    const entt::entity a = scene.create("a", R"({"Transform3D": {}, "NavArea3D":
         {"navigation_mesh": "a.navmesh.json"}})");
     scene.world.step(kTick);
     const std::uint64_t first =
@@ -400,9 +400,9 @@ TEST_CASE("the map is rebuilt only when what it is made of changes") {
     CHECK(text_of(navigation::closest_point(scene.world, Vec3{20, 0, 2}).point) == "(9, 0, 2)");
 
     // Files that don't load are left out and reported.
-    scene.create("bad", R"({"Transform3D": {}, "NavigationRegion3D":
+    scene.create("bad", R"({"Transform3D": {}, "NavArea3D":
         {"navigation_mesh": "missing.navmesh.json"}})");
-    scene.create("wrong", R"({"Transform3D": {}, "NavigationRegion3D":
+    scene.create("wrong", R"({"Transform3D": {}, "NavArea3D":
         {"navigation_mesh": "a.navpoly.json"}})");
     const auto info = navigation::map_info(scene.world, navigation::Map::ThreeD);
     CHECK(info.regions == 1);
@@ -419,9 +419,9 @@ TEST_CASE("the 2D map is in pixels and follows Transform2D") {
     scene.files.write("room.navpoly.json", R"({"format": 1,
         "vertices": [[0, 0], [64, 0], [64, 64], [0, 64]], "polygons": [[0, 1, 2, 3]]})");
     const entt::entity room = scene.create("room", R"({"Transform2D": {"position": [100, 50]},
-        "NavigationRegion2D": {"navigation_polygon": "room.navpoly.json"}})");
+        "NavArea2D": {"navigation_polygon": "room.navpoly.json"}})");
     scene.create("hall", R"({"Transform2D": {"position": [164, 50]},
-        "NavigationRegion2D": {"navigation_polygon": "room.navpoly.json"}})");
+        "NavArea2D": {"navigation_polygon": "room.navpoly.json"}})");
     CHECK(navigation::map_info(scene.world, navigation::Map::TwoD).regions == 2);
     CHECK(navigation::map_info(scene.world, navigation::Map::ThreeD).regions == 0);
     const auto path = navigation::query_path(scene.world, Vec2{110, 60}, Vec2{200, 100});
@@ -438,10 +438,10 @@ TEST_CASE("the 2D map is in pixels and follows Transform2D") {
     CHECK(random.y <= 114);
 
     // A link on the 2D map, in the link's space.
-    scene.create("jump", R"({"Transform2D": {"position": [100, 50]}, "NavigationLink2D":
+    scene.create("jump", R"({"Transform2D": {"position": [100, 50]}, "NavLink2D":
         {"start_position": [10, 10], "end_position": [10, 300]}})");
     scene.create("roof", R"({"Transform2D": {"position": [100, 340]},
-        "NavigationRegion2D": {"navigation_polygon": "room.navpoly.json"}})");
+        "NavArea2D": {"navigation_polygon": "room.navpoly.json"}})");
     const auto up = navigation::query_path(scene.world, Vec2{110, 60}, Vec2{120, 380});
     CHECK(text_of(up.points) == "(110, 60) (110, 350) (120, 380)");
 }
@@ -449,10 +449,10 @@ TEST_CASE("the 2D map is in pixels and follows Transform2D") {
 TEST_CASE("an agent follows its path and emits Godot's signals as events") {
     Scene scene;
     scene.files.write("l.navmesh.json", std::string(kL));
-    scene.create("floor", R"({"Transform3D": {}, "NavigationRegion3D":
+    scene.create("floor", R"({"Transform3D": {}, "NavArea3D":
         {"navigation_mesh": "l.navmesh.json"}})");
     const entt::entity walker = scene.create("walker", R"({"Transform3D": {"position": [1, 0, 1]},
-        "NavigationAgent3D": {"target_position": [6, 0, 7], "path_desired_distance": 0.5,
+        "NavAgent3D": {"target_position": [6, 0, 7], "path_desired_distance": 0.5,
         "target_desired_distance": 0.5}})");
     CHECK(!navigation::is_navigation_finished(scene.world, walker));
     CHECK(navigation::is_target_reachable(scene.world, walker));
@@ -495,8 +495,7 @@ TEST_CASE("an agent follows its path and emits Godot's signals as events") {
     navigation::set_target_position(scene.world, walker, Vec3{1, 0, 3});
     CHECK(!navigation::is_navigation_finished(scene.world, walker));
     CHECK(!navigation::is_target_reached(scene.world, walker));
-    CHECK(text_of(scene.world.ecs().get<world::NavigationAgent3D>(walker).target_position) ==
-          "(1, 0, 3)");
+    CHECK(text_of(scene.world.ecs().get<world::NavAgent3D>(walker).target_position) == "(1, 0, 3)");
     CHECK(scene.kinds("walker").front() == "path_changed");
 }
 
@@ -504,10 +503,10 @@ TEST_CASE("an agent that can't reach its target finishes at the end of its path"
     Scene scene;
     scene.files.write("a.navmesh.json", R"({"format": 1,
         "vertices": [[0, 0, 0], [0, 0, 4], [4, 0, 4], [4, 0, 0]], "polygons": [[0, 1, 2, 3]]})");
-    scene.create("a", R"({"Transform3D": {}, "NavigationRegion3D":
+    scene.create("a", R"({"Transform3D": {}, "NavArea3D":
         {"navigation_mesh": "a.navmesh.json"}})");
     const entt::entity walker = scene.create("walker", R"({"Transform3D": {"position": [1, 0, 1]},
-        "NavigationAgent3D": {"target_position": [9, 0, 1]}})");
+        "NavAgent3D": {"target_position": [9, 0, 1]}})");
     CHECK(!navigation::is_target_reachable(scene.world, walker));
     CHECK(text_of(navigation::final_position_3d(scene.world, walker)) == "(4, 0, 1)");
     scene.world.ecs().get<world::Transform3D>(walker).position = {3.5F, 0, 1};
@@ -522,10 +521,10 @@ TEST_CASE("an agent that can't reach its target finishes at the end of its path"
 TEST_CASE("agents' paths are saved and put back with the world") {
     Scene scene;
     scene.files.write("l.navmesh.json", std::string(kL));
-    scene.create("floor", R"({"Transform3D": {}, "NavigationRegion3D":
+    scene.create("floor", R"({"Transform3D": {}, "NavArea3D":
         {"navigation_mesh": "l.navmesh.json"}})");
     const entt::entity walker = scene.create("walker", R"({"Transform3D": {"position": [1, 0, 1]},
-        "NavigationAgent3D": {"target_position": [6, 0, 7]}})");
+        "NavAgent3D": {"target_position": [6, 0, 7]}})");
     scene.world.step(kTick);
     const navigation::Snapshot saved = navigation::save(scene.world);
     const auto before = navigation::agent_info(scene.world, walker);
@@ -534,7 +533,7 @@ TEST_CASE("agents' paths are saved and put back with the world") {
     CHECK(text_of(navigation::agent_info(scene.world, walker).path.points) !=
           text_of(before.path.points));
     navigation::restore(scene.world, saved);
-    scene.world.ecs().get<world::NavigationAgent3D>(walker).target_position = {6, 0, 7};
+    scene.world.ecs().get<world::NavAgent3D>(walker).target_position = {6, 0, 7};
     const auto after = navigation::agent_info(scene.world, walker);
     CHECK(text_of(after.path.points) == text_of(before.path.points));
     CHECK(after.path_index == before.path_index);
@@ -555,19 +554,19 @@ TEST_CASE("scene checks find navigation files that don't load") {
         return found->second;
     };
     const auto errors = navigation::check_scene(parse(R"({"format": 1, "entities": {
-        "a": {"components": {"NavigationRegion3D": {"navigation_mesh": "ok.navmesh.json"}}},
-        "b": {"components": {"NavigationRegion3D": {"navigation_mesh": "gone.navmesh.json"}}},
-        "c": {"components": {"NavigationRegion2D": {"navigation_polygon": "bad.navpoly.json"}}},
-        "d": {"components": {"NavigationRegion2D": {"navigation_polygon": "ok.navmesh.json"}}}
+        "a": {"components": {"NavArea3D": {"navigation_mesh": "ok.navmesh.json"}}},
+        "b": {"components": {"NavArea3D": {"navigation_mesh": "gone.navmesh.json"}}},
+        "c": {"components": {"NavArea2D": {"navigation_polygon": "bad.navpoly.json"}}},
+        "d": {"components": {"NavArea2D": {"navigation_polygon": "ok.navmesh.json"}}}
     }})"),
                                                 reader);
     REQUIRE(errors.size() == 3);
-    CHECK(errors[0].path == "/entities/b/components/NavigationRegion3D/navigation_mesh");
+    CHECK(errors[0].path == "/entities/b/components/NavArea3D/navigation_mesh");
     CHECK(errors[0].message == "gone.navmesh.json: no such file");
-    CHECK(errors[1].path == "/entities/c/components/NavigationRegion2D/navigation_polygon");
+    CHECK(errors[1].path == "/entities/c/components/NavArea2D/navigation_polygon");
     CHECK(errors[1].message == "bad.navpoly.json: /polygons/0/1: vertex 1 is past the last of 1 "
                                "vertices");
-    CHECK(errors[2].path == "/entities/d/components/NavigationRegion2D/navigation_polygon");
+    CHECK(errors[2].path == "/entities/d/components/NavArea2D/navigation_polygon");
     CHECK(errors[2].message == "navigation polygons are .navpoly.json files");
 }
 
@@ -601,11 +600,11 @@ namespace {
 // (2, 2), both under a region.
 entt::entity floor_and_pillar(Scene& scene) {
     scene.create("floor", R"({"Transform3D": {"position": [0, -0.5, 0]}, "StaticBody3D": {},
-                              "CollisionShape3D": {"size": [10, 1, 10]}})");
-    scene.create("pillar", R"({"Transform3D": {"position": [2, 1.5, 2]}, "MeshInstance3D": {},
-                               "BoxMesh": {"size": [1, 3, 1]}})");
+                              "Collider3D": {"size": [10, 1, 10]}})");
+    scene.create("pillar", R"({"Transform3D": {"position": [2, 1.5, 2]}, "Model3D": {},
+                               "BoxGeometry": {"size": [1, 3, 1]}})");
     return scene.create("level", R"({"Transform3D": {"children": ["floor", "pillar"]},
-                                     "NavigationRegion3D": {}})");
+                                     "NavArea3D": {}})");
 }
 
 std::size_t triangles(const navigation::SourceGeometry3D& geometry) {
@@ -685,7 +684,7 @@ TEST_CASE("a 3D bake finds the walkable floor around what stands on it") {
     const json::Value doc = navigation::with_polygons(nullptr, mesh);
     CHECK(navigation::validate_mesh(doc).empty());
     scene.files.write("level.navmesh.json", json::write(doc));
-    scene.create("baked", R"({"Transform3D": {}, "NavigationRegion3D":
+    scene.create("baked", R"({"Transform3D": {}, "NavArea3D":
         {"navigation_mesh": "level.navmesh.json"}})");
     const auto path =
         navigation::query_path(scene.world, Vec3{-4.0F, 0.0F, -4.0F}, Vec3{4.0F, 0.0F, 4.0F});
@@ -717,24 +716,24 @@ TEST_CASE("what a 3D bake takes follows the parsed geometry type and the collisi
 
     // A rigid body's shape is left out, and so is a child shape with a body of its own; a
     // shape on a child with no body of its own is the static body's.
-    scene.create("crate", R"({"Transform3D": {}, "RigidBody3D": {}, "CollisionShape3D": {}})");
-    scene.create("trigger", R"({"Transform3D": {}, "Area3D": {}, "CollisionShape3D": {}})");
-    scene.create("rail", R"({"Transform3D": {}, "CollisionShape3D": {"shape": "sphere"}})");
+    scene.create("crate", R"({"Transform3D": {}, "RigidBody3D": {}, "Collider3D": {}})");
+    scene.create("trigger", R"({"Transform3D": {}, "Zone3D": {}, "Collider3D": {}})");
+    scene.create("rail", R"({"Transform3D": {}, "Collider3D": {"shape": "sphere"}})");
     scene.create("wall", R"({"Transform3D": {"children": ["trigger", "rail"]},
                              "StaticBody3D": {}})");
     const entt::entity yard = scene.create("yard", R"({"Transform3D": {
-        "position": [0, 10, 0], "children": ["crate", "wall"]}, "NavigationRegion3D": {}})");
+        "position": [0, 10, 0], "children": ["crate", "wall"]}, "NavArea3D": {}})");
     const navigation::SourceGeometry3D geometry = navigation::parse_source_geometry(
         scene.world, scene.assets, yard, navigation::NavigationMesh{});
-    const auto sphere = slash::scene3d::make_mesh(world::SphereMesh{});
+    const auto sphere = slash::scene3d::make_mesh(world::SphereGeometry{});
     REQUIRE(sphere.ok());
     CHECK(triangles(geometry) == sphere.value().indices.size() / 3);
 
     // Geometry is in the region's space, wherever the region is.
     scene.create("ground", R"({"Transform3D": {"position": [0, 3, 0], "top_level": true},
-        "StaticBody3D": {}, "CollisionShape3D": {"size": [2, 2, 2]}})");
+        "StaticBody3D": {}, "Collider3D": {"size": [2, 2, 2]}})");
     const entt::entity high = scene.create("high", R"({"Transform3D": {
-        "position": [0, 10, 0], "children": ["ground"]}, "NavigationRegion3D": {}})");
+        "position": [0, 10, 0], "children": ["ground"]}, "NavArea3D": {}})");
     const navigation::SourceGeometry3D placed = navigation::parse_source_geometry(
         scene.world, scene.assets, high, navigation::NavigationMesh{});
     float low = placed.vertices[1];
@@ -785,9 +784,9 @@ TEST_CASE("3D bakes warn of settings that don't fit whole cells and refuse too m
 TEST_CASE("a 2D bake merges outlines, cuts out obstructions and shrinks by the agent's radius") {
     Scene scene;
     scene.create("rock", R"({"Transform2D": {"position": [100, 100]}, "StaticBody2D": {},
-        "CollisionShape2D": {"shape": "circle", "radius": 20}})");
-    const entt::entity yard = scene.create(
-        "yard", R"({"Transform2D": {"children": ["rock"]}, "NavigationRegion2D": {}})");
+        "Collider2D": {"shape": "circle", "radius": 20}})");
+    const entt::entity yard =
+        scene.create("yard", R"({"Transform2D": {"children": ["rock"]}, "NavArea2D": {}})");
     const navigation::NavigationPolygon settings = square_outline(200.0F);
     const navigation::SourceGeometry2D geometry =
         navigation::parse_source_geometry(scene.world, scene.assets, yard, settings);
@@ -837,11 +836,11 @@ TEST_CASE("a 2D bake merges outlines, cuts out obstructions and shrinks by the a
     CHECK(area(half.value()) == doctest::Approx(90.0 * 190.0));
 
     // A rigid body is no obstruction, nor a static body off parsed_collision_mask.
-    scene.create("ball", R"({"Transform2D": {}, "RigidBody2D": {}, "CollisionShape2D": {}})");
+    scene.create("ball", R"({"Transform2D": {}, "RigidBody2D": {}, "Collider2D": {}})");
     scene.create("wall", R"({"Transform2D": {}, "StaticBody2D": {"collision_layer": 2},
-        "CollisionPolygon2D": {"polygon": [[0, 0], [10, 0], [10, 10]]}})");
+        "PolygonCollider2D": {"polygon": [[0, 0], [10, 0], [10, 10]]}})");
     const entt::entity park = scene.create("park", R"({"Transform2D": {
-        "children": ["ball", "wall"]}, "NavigationRegion2D": {}})");
+        "children": ["ball", "wall"]}, "NavArea2D": {}})");
     CHECK(navigation::parse_source_geometry(scene.world, scene.assets, park, settings)
               .obstruction_outlines.size() == 1);
     navigation::NavigationPolygon layer_one = settings;
@@ -887,7 +886,7 @@ namespace {
 void open_field(Scene& scene) {
     scene.files.write("field.navpoly.json", R"({"format": 1,
         "vertices": [[0, 0], [1000, 0], [1000, 1000], [0, 1000]], "polygons": [[0, 1, 2, 3]]})");
-    scene.create("field", R"({"Transform2D": {}, "NavigationRegion2D":
+    scene.create("field", R"({"Transform2D": {}, "NavArea2D":
         {"navigation_polygon": "field.navpoly.json"}})");
 }
 
@@ -895,7 +894,7 @@ void open_field(Scene& scene) {
 void open_ground(Scene& scene) {
     scene.files.write("ground.navmesh.json", R"({"format": 1, "vertices": [[-50, 0, -50],
         [-50, 0, 50], [50, 0, 50], [50, 0, -50]], "polygons": [[0, 1, 2, 3]]})");
-    scene.create("ground", R"({"Transform3D": {}, "NavigationRegion3D":
+    scene.create("ground", R"({"Transform3D": {}, "NavArea3D":
         {"navigation_mesh": "ground.navmesh.json"}})");
 }
 
@@ -912,7 +911,7 @@ float drive(Scene& scene, const std::vector<entt::entity>& agents, float speed, 
             const Vec2 position = scene.world.ecs().get<world::Transform2D>(agent).position;
             const Vec2 to = navigation::next_path_position_2d(scene.world, agent) - position;
             const float length = std::hypot(to.x, to.y);
-            scene.world.ecs().get<world::NavigationAgent2D>(agent).velocity =
+            scene.world.ecs().get<world::NavAgent2D>(agent).velocity =
                 length > 0.0F ? to * (speed / length) : Vec2{};
         }
         scene.world.step(kTick);
@@ -946,10 +945,10 @@ TEST_CASE("agents with avoidance_enabled steer round each other, as Godot's RVO2
         open_field(scene);
         const std::string flag = avoid ? "true" : "false";
         const entt::entity a = scene.create("a", R"({"Transform2D": {"position": [100, 500]},
-            "NavigationAgent2D": {"target_position": [500, 500], "avoidance_enabled": )" +
+            "NavAgent2D": {"target_position": [500, 500], "avoidance_enabled": )" +
                                                      flag + "}}");
         const entt::entity b = scene.create("b", R"({"Transform2D": {"position": [500, 503]},
-            "NavigationAgent2D": {"target_position": [100, 503], "avoidance_enabled": )" +
+            "NavAgent2D": {"target_position": [100, 503], "avoidance_enabled": )" +
                                                      flag + "}}");
         const float closest = drive(scene, {a, b}, 100.0F, 400);
         CHECK(navigation::is_target_reached(scene.world, a));
@@ -970,11 +969,11 @@ TEST_CASE("avoidance layers, masks and priorities pick whom an agent makes way f
         Scene scene;
         open_field(scene);
         const entt::entity a =
-            scene.create("a", R"({"Transform2D": {"position": [100, 500]}, "NavigationAgent2D": {
+            scene.create("a", R"({"Transform2D": {"position": [100, 500]}, "NavAgent2D": {
             "target_position": [500, 500], "avoidance_enabled": true)" +
                                   std::string(a_fields) + "}}");
         const entt::entity b =
-            scene.create("b", R"({"Transform2D": {"position": [500, 503]}, "NavigationAgent2D": {
+            scene.create("b", R"({"Transform2D": {"position": [500, 503]}, "NavAgent2D": {
             "target_position": [100, 503], "avoidance_enabled": true)" +
                                   std::string(b_fields) + "}}");
         std::pair<bool, bool> out{false, false};
@@ -983,12 +982,12 @@ TEST_CASE("avoidance layers, masks and priorities pick whom an agent makes way f
                 const Vec2 to = navigation::next_path_position_2d(scene.world, agent) -
                                 position_of(scene, agent);
                 const float length = std::hypot(to.x, to.y);
-                scene.world.ecs().get<world::NavigationAgent2D>(agent).velocity =
+                scene.world.ecs().get<world::NavAgent2D>(agent).velocity =
                     length > 0.0F ? to * (100.0F / length) : Vec2{};
             }
             scene.world.step(kTick);
             for (const entt::entity agent : {a, b}) {
-                const Vec2 asked = scene.world.ecs().get<world::NavigationAgent2D>(agent).velocity;
+                const Vec2 asked = scene.world.ecs().get<world::NavAgent2D>(agent).velocity;
                 const Vec2 safe = navigation::safe_velocity_2d(scene.world, agent);
                 // The tick it finishes, it stops.
                 if (!navigation::is_navigation_finished(scene.world, agent)) {
@@ -1016,12 +1015,11 @@ TEST_CASE("agents keep out of obstacles' circles and outlines") {
         Scene scene;
         open_field(scene);
         scene.create("rock", R"({"Transform2D": {"position": [300, 500]},
-                                 "NavigationObstacle2D": )" +
+                                 "NavObstacle2D": )" +
                                  std::string(obstacle) + "}");
         const entt::entity walker = scene.create(
             "walker", R"({"Transform2D": {"position": [100, )" + std::to_string(y) +
-                          R"(]}, "NavigationAgent2D": {"target_position": [500, )" +
-                          std::to_string(y) +
+                          R"(]}, "NavAgent2D": {"target_position": [500, )" + std::to_string(y) +
                           R"(], "avoidance_enabled": true, "time_horizon_obstacles": 1}})");
         float closest = std::numeric_limits<float>::max();
         for (int tick = 0; tick < 400; ++tick) {
@@ -1084,7 +1082,7 @@ Crossing cross(Scene& scene, entt::entity a, entt::entity b, float speed, float 
             const float length = std::hypot(to.x, to.z);
             Vec3 velocity = length > 0.0F ? to * (speed / length) : Vec3{};
             velocity.y = y_velocity;
-            scene.world.ecs().get<world::NavigationAgent3D>(agent).velocity = velocity;
+            scene.world.ecs().get<world::NavAgent3D>(agent).velocity = velocity;
         }
         scene.world.step(kTick);
         for (const entt::entity agent : {a, b}) {
@@ -1114,11 +1112,11 @@ Crossing head_on_3d(float b_y, std::string_view fields, float y_velocity = 0.0F,
     open_ground(scene);
     const std::string y = std::to_string(b_y);
     const entt::entity a = scene.create("a", R"({"Transform3D": {"position": [-10, 0, 0]},
-        "NavigationAgent3D": {"target_position": [10, 0, 0], "avoidance_enabled": true)" +
+        "NavAgent3D": {"target_position": [10, 0, 0], "avoidance_enabled": true)" +
                                                  std::string(fields) + "}}");
     const entt::entity b =
         scene.create("b", R"({"Transform3D": {"position": [10, )" + y + R"(, 0.1]},
-        "NavigationAgent3D": {"target_position": [-10, )" +
+        "NavAgent3D": {"target_position": [-10, )" +
                               y + R"(, 0.1], "path_height_offset": )" + std::to_string(-b_y) +
                               R"(, "avoidance_enabled": true)" + std::string(fields) + "}}");
     return cross(scene, a, b, 2.0F, y_velocity, 360, ground);
@@ -1159,9 +1157,9 @@ TEST_CASE("avoidance velocities stop at the target, can be forced, and are saved
         entt::entity b = entt::null;
         Run() {
             open_field(scene);
-            a = scene.create("a", R"({"Transform2D": {"position": [100, 500]}, "NavigationAgent2D":
+            a = scene.create("a", R"({"Transform2D": {"position": [100, 500]}, "NavAgent2D":
                 {"target_position": [500, 500], "avoidance_enabled": true}})");
-            b = scene.create("b", R"({"Transform2D": {"position": [500, 503]}, "NavigationAgent2D":
+            b = scene.create("b", R"({"Transform2D": {"position": [500, 503]}, "NavAgent2D":
                 {"target_position": [100, 503], "avoidance_enabled": true}})");
         }
         std::vector<Vec2> ticks(int count) {
@@ -1206,21 +1204,21 @@ TEST_CASE("avoidance velocities stop at the target, can be forced, and are saved
     // Once an agent finishes, it asks avoidance for nothing, whatever its velocity says.
     first.ticks(300);
     REQUIRE(navigation::is_navigation_finished(first.scene.world, first.a));
-    first.scene.world.ecs().get<world::NavigationAgent2D>(first.a).velocity = {100.0F, 0.0F};
+    first.scene.world.ecs().get<world::NavAgent2D>(first.a).velocity = {100.0F, 0.0F};
     first.scene.world.step(kTick);
     CHECK(text_of(navigation::safe_velocity_2d(first.scene.world, first.a)) == "(0, 0)");
     // Without avoidance, its velocity is its safe velocity.
-    first.scene.world.ecs().get<world::NavigationAgent2D>(first.a).avoidance_enabled = false;
+    first.scene.world.ecs().get<world::NavAgent2D>(first.a).avoidance_enabled = false;
     CHECK(text_of(navigation::safe_velocity_2d(first.scene.world, first.a)) == "(100, 0)");
 }
 
 TEST_CASE("obstacles that affect the navigation mesh are cut out of 2D bakes") {
     Scene scene;
     const entt::entity crate = scene.create("crate", R"({"Transform2D": {"position": [100, 100]},
-        "NavigationObstacle2D": {"vertices": [[-20, -20], [20, -20], [20, 20], [-20, 20]],
+        "NavObstacle2D": {"vertices": [[-20, -20], [20, -20], [20, 20], [-20, 20]],
         "affect_navigation_mesh": true}})");
-    const entt::entity yard = scene.create(
-        "yard", R"({"Transform2D": {"children": ["crate"]}, "NavigationRegion2D": {}})");
+    const entt::entity yard =
+        scene.create("yard", R"({"Transform2D": {"children": ["crate"]}, "NavArea2D": {}})");
     const navigation::NavigationPolygon settings = square_outline(200.0F);
     const auto baked_area = [&] {
         const navigation::SourceGeometry2D geometry =
@@ -1238,7 +1236,7 @@ TEST_CASE("obstacles that affect the navigation mesh are cut out of 2D bakes") {
     // Grown by the agent's radius, 10, as obstructions are: 180 squared less 60 squared.
     CHECK(baked_area() == doctest::Approx(28800.0));
     // Carving, it cuts out its own shape only.
-    auto& obstacle = scene.world.ecs().get<world::NavigationObstacle2D>(crate);
+    auto& obstacle = scene.world.ecs().get<world::NavObstacle2D>(crate);
     obstacle.carve_navigation_mesh = true;
     CHECK(baked_area() == doctest::Approx(32400.0 - 1600.0));
     // A circle is 12 sides, as Godot's, turned with the obstacle and scaled by its largest scale.
@@ -1261,12 +1259,12 @@ TEST_CASE("obstacles that affect the navigation mesh are cut out of 2D bakes") {
 TEST_CASE("obstacles that affect the navigation mesh are cut out of 3D bakes") {
     Scene scene;
     scene.create("floor", R"({"Transform3D": {"position": [0, -0.5, 0]}, "StaticBody3D": {},
-                              "CollisionShape3D": {"size": [10, 1, 10]}})");
+                              "Collider3D": {"size": [10, 1, 10]}})");
     const entt::entity crate = scene.create("crate", R"({"Transform3D": {"position": [2, 0, 2]},
-        "NavigationObstacle3D": {"vertices": [[-0.5, 0, -0.5], [0.5, 0, -0.5], [0.5, 0, 0.5],
+        "NavObstacle3D": {"vertices": [[-0.5, 0, -0.5], [0.5, 0, -0.5], [0.5, 0, 0.5],
         [-0.5, 0, 0.5]], "height": 2, "affect_navigation_mesh": true}})");
     const entt::entity level = scene.create("level", R"({"Transform3D": {"children": ["floor",
-        "crate"]}, "NavigationRegion3D": {}})");
+        "crate"]}, "NavArea3D": {}})");
     const navigation::NavigationMesh settings;
     const auto bake = [&] {
         const navigation::SourceGeometry3D geometry =
@@ -1292,7 +1290,7 @@ TEST_CASE("obstacles that affect the navigation mesh are cut out of 3D bakes") {
     const navigation::NavigationMesh grown = bake();
     CHECK(inside(grown, 0.5F + settings.agent_radius) == 0);
     // Carving, it is marked after, so only its own shape goes.
-    scene.world.ecs().get<world::NavigationObstacle3D>(crate).carve_navigation_mesh = true;
+    scene.world.ecs().get<world::NavObstacle3D>(crate).carve_navigation_mesh = true;
     const navigation::NavigationMesh carved = bake();
     CHECK(inside(carved, 0.5F + settings.agent_radius) > 0);
     CHECK(inside(carved, 0.4F) == 0);
@@ -1300,7 +1298,7 @@ TEST_CASE("obstacles that affect the navigation mesh are cut out of 3D bakes") {
     // Above the floor's walkable top, it cuts nothing, as with affect_navigation_mesh off.
     scene.world.ecs().get<world::Transform3D>(crate).position.y = 3.0F;
     const navigation::NavigationMesh above = bake();
-    scene.world.ecs().get<world::NavigationObstacle3D>(crate).affect_navigation_mesh = false;
+    scene.world.ecs().get<world::NavObstacle3D>(crate).affect_navigation_mesh = false;
     const navigation::NavigationMesh plain = bake();
     CHECK(plain.polygons.size() == 2);
     CHECK(text_of(above.vertices) == text_of(plain.vertices));
@@ -1330,7 +1328,7 @@ TEST_CASE("a tile map layer's cells are regions of their tiles' navigation polyg
     slash::canvas::add_asset_types(scene.assets);
     scene.files.write("tiles.tileset.json", std::string(kTiles));
     const entt::entity ground = scene.create("ground", R"({"Transform2D": {"position": [100, 0]},
-        "TileMapLayer": {"tile_set": "tiles.tileset.json",
+        "TileLayer2D": {"tile_set": "tiles.tileset.json",
             "legend": {"f": "floor", "w": "wall", "l": "ledge", "a": "water"},
             "rows": ["fff", "fwa", "fla"]}})");
     auto info = navigation::map_info(scene.world, navigation::Map::TwoD);
@@ -1355,7 +1353,7 @@ TEST_CASE("a tile map layer's cells are regions of their tiles' navigation polyg
     CHECK(text_of(walk.points.back()) == "(164, 80)");
 
     // A turned tile turns its polygon: the ledge flipped upside down walks on its bottom half.
-    auto& layer = scene.world.ecs().get<world::TileMapLayer>(ground);
+    auto& layer = scene.world.ecs().get<world::TileLayer2D>(ground);
     layer.legend["l"] = "ledge:v";
     scene.world.step(kTick);
     CHECK(navigation::map_info(scene.world, navigation::Map::TwoD).iteration_id == first + 1);
@@ -1383,7 +1381,7 @@ TEST_CASE("a tile map layer's cells are regions of their tiles' navigation polyg
     scene.files.write("plain.tileset.json", R"({"format": 1, "tile_size": [32, 32],
         "sources": {"t": {"texture": "t.png", "tiles": {"0,0": {"name": "floor"},
             "1,0": {"name": "wall"}, "2,0": {"name": "ledge"}, "3,0": {"name": "water"}}}}})");
-    auto& layer_now = scene.world.ecs().get<world::TileMapLayer>(ground);
+    auto& layer_now = scene.world.ecs().get<world::TileLayer2D>(ground);
     layer_now.tile_set = "plain.tileset.json";
     CHECK(navigation::map_info(scene.world, navigation::Map::TwoD).regions == 0);
     layer_now.tile_set = "tiles.tileset.json";
@@ -1408,12 +1406,12 @@ TEST_CASE("2D bakes take tile map layers' navigation outlines and collision poly
     slash::canvas::add_asset_types(scene.assets);
     scene.files.write("tiles.tileset.json", std::string(kTiles));
     scene.create("ground", R"({"Transform2D": {"position": [32, 0]},
-        "TileMapLayer": {"tile_set": "tiles.tileset.json",
+        "TileLayer2D": {"tile_set": "tiles.tileset.json",
             "legend": {"f": "floor", "w": "wall", "l": "ledge", "a": "water"},
             "rows": ["ffff", "fwfa", "ffl."]}})");
     const entt::entity yard =
         scene.create("yard", R"({"Transform2D": {"position": [-32, 0], "children": ["ground"]},
-                    "NavigationRegion2D": {}})");
+                    "NavArea2D": {}})");
     navigation::NavigationPolygon settings;
     settings.agent_radius = 0.0F;
     std::vector<std::string> warnings;
@@ -1444,7 +1442,7 @@ TEST_CASE("2D bakes take tile map layers' navigation outlines and collision poly
     CHECK(outlines_only.obstruction_outlines.empty());
 
     // A tile set that doesn't load is a warning.
-    scene.world.ecs().get<world::TileMapLayer>(scene.world.find("ground")).tile_set =
+    scene.world.ecs().get<world::TileLayer2D>(scene.world.find("ground")).tile_set =
         "gone.tileset.json";
     warnings.clear();
     CHECK(navigation::parse_source_geometry(scene.world, scene.assets, yard, settings, &warnings)

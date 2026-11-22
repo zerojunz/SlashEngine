@@ -20,6 +20,7 @@
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/storyboard/storyboard.hpp"
+#include "slash/world/aliases.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
@@ -1048,6 +1049,7 @@ private:
     // Keeps only what validates, reporting the rest, so one bad value can't stop a file.
     template <typename Validate>
     void keep_valid(json::Value& doc, const std::string& path, Validate validate) {
+        world::upgrade_scene(doc);
         for (int pass = 0; pass < 64; ++pass) {
             const std::vector<json::ValidationError> errors = validate(doc);
             if (errors.empty()) {
@@ -7961,7 +7963,7 @@ private:
                                         .flip_v = cell_tile.turns[1],
                                         .transpose = cell_tile.turns[2]};
                 }
-                world::TileMapLayer encoded;
+                world::TileLayer2D encoded;
                 canvas::encode_cells(cells, parsed.value(), encoded);
                 layer["origin"] = json::Array{encoded.origin.x, encoded.origin.y};
                 json::Object legend;
@@ -11013,8 +11015,11 @@ private:
         }
         const auto& entities = scene_components(instance.prefab->scene);
         if (const auto it = entities.find(source); it != entities.end()) {
+            // The prefab's scene names its components by their current names.
             for (const std::string& name : it->second) {
-                if (!components.contains(name)) {
+                if (std::ranges::none_of(components, [&](const auto& entry) {
+                        return world::current_component_name(entry.first) == name;
+                    })) {
                     components[name] = nullptr;
                 }
             }
@@ -11272,6 +11277,7 @@ private:
         if (file.root >= 0) {
             converted["root"] = file.objects[static_cast<std::size_t>(file.root)].entity;
         }
+        world::upgrade_scene(converted);
         const world::FileReader reader = planned_files();
         for (int pass = 0; pass < 64; ++pass) {
             auto errors = world::validate_scene(components_, converted, reader);

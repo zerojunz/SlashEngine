@@ -133,8 +133,8 @@ void add_problems(const world::World& world, const std::vector<scene3d::Problem>
     result["problems"] = std::move(problems);
 }
 
-// Where a LightmapGI with no light_data bakes to, as Godot's: beside the scene, named after it,
-// or after the entity when the scene isn't saved.
+// Where a BakedLighting3D with no light_data bakes to, as Godot's: beside the scene, named after
+// it, or after the entity when the scene isn't saved.
 std::string default_path(const Session& session, std::string_view id) {
     std::string_view scene = session.scene_path();
     if (scene.ends_with(".scene.json")) {
@@ -151,9 +151,9 @@ Reply lightmap_bake(Session& session, const json::Value& params) {
     if (entity == entt::null) {
         return unknown_entity(world, id, "/id");
     }
-    auto* gi = world.ecs().try_get<world::LightmapGI>(entity);
+    auto* gi = world.ecs().try_get<world::BakedLighting3D>(entity);
     if (gi == nullptr) {
-        return param_error(code::kInvalidParams, "/id", quoted(id) + " has no LightmapGI");
+        return param_error(code::kInvalidParams, "/id", quoted(id) + " has no BakedLighting3D");
     }
     std::string path;
     std::string_view pointer = "/id";
@@ -237,8 +237,8 @@ Reply lightmap_bake(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
-// Where a VoxelGI with no data bakes to, as Godot's editor offers: beside the scene, named after
-// it and the entity, or after the entity when the scene isn't saved.
+// Where a VoxelLighting3D with no data bakes to, as Godot's editor offers: beside the scene, named
+// after it and the entity, or after the entity when the scene isn't saved.
 std::string default_voxel_gi_path(const Session& session, std::string_view id) {
     std::string_view scene = session.scene_path();
     if (scene.ends_with(".scene.json")) {
@@ -255,9 +255,9 @@ Reply voxel_gi_bake(Session& session, const json::Value& params) {
     if (entity == entt::null) {
         return unknown_entity(world, id, "/id");
     }
-    auto* gi = world.ecs().try_get<world::VoxelGI>(entity);
+    auto* gi = world.ecs().try_get<world::VoxelLighting3D>(entity);
     if (gi == nullptr) {
-        return param_error(code::kInvalidParams, "/id", quoted(id) + " has no VoxelGI");
+        return param_error(code::kInvalidParams, "/id", quoted(id) + " has no VoxelLighting3D");
     }
     std::string path;
     std::string_view pointer = "/id";
@@ -316,9 +316,9 @@ Reply occluder_bake(Session& session, const json::Value& params) {
     if (entity == entt::null) {
         return unknown_entity(world, id, "/id");
     }
-    auto* occluder = world.ecs().try_get<world::OccluderInstance3D>(entity);
+    auto* occluder = world.ecs().try_get<world::Occluder3D>(entity);
     if (occluder == nullptr) {
-        return param_error(code::kInvalidParams, "/id", quoted(id) + " has no OccluderInstance3D");
+        return param_error(code::kInvalidParams, "/id", quoted(id) + " has no Occluder3D");
     }
     std::vector<scene3d::Problem> problems;
     scene3d::OccluderMesh baked =
@@ -345,7 +345,7 @@ Reply occluder_bake(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
-// Where a GPUParticlesCollisionSDF3D with no texture bakes to, as Godot's editor offers: beside the
+// Where a ParticleColliderSdf3D with no texture bakes to, as Godot's editor offers: beside the
 // scene, named after it and the entity, or after the entity when the scene isn't saved.
 std::string default_sdf_path(const Session& session, std::string_view id) {
     std::string_view scene = session.scene_path();
@@ -364,10 +364,10 @@ Reply particles_bake_sdf(Session& session, const json::Value& params) {
     if (entity == entt::null) {
         return unknown_entity(world, id, "/id");
     }
-    auto* collider = world.ecs().try_get<world::GPUParticlesCollisionSDF3D>(entity);
+    auto* collider = world.ecs().try_get<world::ParticleColliderSdf3D>(entity);
     if (collider == nullptr) {
         return param_error(code::kInvalidParams, "/id",
-                           quoted(id) + " has no GPUParticlesCollisionSDF3D");
+                           quoted(id) + " has no ParticleColliderSdf3D");
     }
     std::string path;
     std::string_view pointer = "/id";
@@ -430,18 +430,18 @@ Reply particles_bake_sdf(Session& session, const json::Value& params) {
 
 void register_lightmap_commands(Registry& registry) {
     using enum Capability;
-    json::Value id = property("string", "An entity with a LightmapGI.");
+    json::Value id = property("string", "An entity with a BakedLighting3D.");
     id["minLength"] = 1;
     json::Value file =
         property("string", "The .lightmap.json file to write, project path. Default: the "
-                           "LightmapGI's light_data, else beside the scene, named after it.");
+                           "BakedLighting3D's light_data, else beside the scene, named after it.");
     file["minLength"] = 1;
     json::Value device = property("string", "\"gpu\" traces on a GPU that traces rays, else the "
                                             "CPU, and returns which did. Default \"cpu\".");
     device["enum"] = json::Array{"cpu", "gpu"};
     registry.add({
         .name = "lightmap.bake",
-        .description = "Bakes a LightmapGI's light into a .lightmap.json file and its .hdr "
+        .description = "Bakes a BakedLighting3D's light into a .lightmap.json file and its .hdr "
                        "texels, as Godot's LightmapGI bake: the static meshes under its parent, "
                        "lit by the lights whose light_bake_mode isn't disabled and its "
                        "environment, with shadows and bounces, and light probes for dynamic "
@@ -454,19 +454,20 @@ void register_lightmap_commands(Registry& registry) {
         .handler = lightmap_bake,
     });
 
-    json::Value voxel_gi = property("string", "An entity with a VoxelGI.");
+    json::Value voxel_gi = property("string", "An entity with a VoxelLighting3D.");
     voxel_gi["minLength"] = 1;
-    json::Value voxel_gi_file =
-        property("string", "The .voxelgi.json file to write, project path. Default: the "
-                           "VoxelGI's data, else beside the scene, named after it and the entity.");
+    json::Value voxel_gi_file = property(
+        "string", "The .voxelgi.json file to write, project path. Default: the "
+                  "VoxelLighting3D's data, else beside the scene, named after it and the entity.");
     voxel_gi_file["minLength"] = 1;
     registry.add({
         .name = "voxel_gi.bake",
-        .description = "Bakes a VoxelGI's cells into a .voxelgi.json file, as Godot's VoxelGI "
-                       "bake: the static meshes under its parent that touch its box, voxelized "
-                       "at its subdiv with their albedo, emission and normals. Lights are "
-                       "injected as the game runs. Sets data. Returns the file, counts, cells "
-                       "along each axis, levels and problems.",
+        .description =
+            "Bakes a VoxelLighting3D's cells into a .voxelgi.json file, as Godot's VoxelGI "
+            "bake: the static meshes under its parent that touch its box, voxelized "
+            "at its subdiv with their albedo, emission and normals. Lights are "
+            "injected as the game runs. Sets data. Returns the file, counts, cells "
+            "along each axis, levels and problems.",
         .capabilities = {Edit, Filesystem},
         .effect = Effect::Edit,
         .params = params_schema({{"id", std::move(voxel_gi)}, {"file", std::move(voxel_gi_file)}},
@@ -474,11 +475,11 @@ void register_lightmap_commands(Registry& registry) {
         .handler = voxel_gi_bake,
     });
 
-    json::Value occluder = property("string", "An entity with an OccluderInstance3D.");
+    json::Value occluder = property("string", "An entity with an Occluder3D.");
     occluder["minLength"] = 1;
     registry.add({
         .name = "occluder.bake",
-        .description = "Bakes an OccluderInstance3D's shape from the visible, opaque meshes on "
+        .description = "Bakes an Occluder3D's shape from the visible, opaque meshes on "
                        "layers of its bake_mask, as Godot's Bake Occluders: simplified to its "
                        "bake_simplification_distance and set as its array shape. Returns the "
                        "vertex and triangle counts and problems.",
@@ -488,7 +489,7 @@ void register_lightmap_commands(Registry& registry) {
         .handler = occluder_bake,
     });
 
-    json::Value sdf = property("string", "An entity with a GPUParticlesCollisionSDF3D.");
+    json::Value sdf = property("string", "An entity with a ParticleColliderSdf3D.");
     sdf["minLength"] = 1;
     json::Value sdf_file =
         property("string", "The .sdf.png file to write, project path. Default: the collider's "
@@ -496,7 +497,7 @@ void register_lightmap_commands(Registry& registry) {
     sdf_file["minLength"] = 1;
     registry.add({
         .name = "particles.bake_sdf",
-        .description = "Bakes a GPUParticlesCollisionSDF3D's signed distance field into a .sdf.png "
+        .description = "Bakes a ParticleColliderSdf3D's signed distance field into a .sdf.png "
                        "file, as Godot's bake: the visible meshes on layers of its bake_mask under "
                        "its parent that touch its box, at its resolution and thickness. Sets "
                        "texture and its slices. Returns the file, counts, cells along each axis "

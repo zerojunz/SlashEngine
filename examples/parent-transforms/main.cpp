@@ -110,7 +110,7 @@ int main() {
     agent.call("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "barrel", "components": {
             "Transform2D": {"position": [0, -40]}, "Sprite2D": {"texture": "barrel.png"},
-            "RigidBody2D": {}, "CollisionShape2D": {"size": [8, 8]}}}},
+            "RigidBody2D": {}, "Collider2D": {"size": [8, 8]}}}},
         {"command": "component.set", "params": {"id": "boat", "components": {
             "Transform2D": {"children": ["deck", "mast", "cannon", "barrel"]}}}}]})");
     agent.call("step", R"({"ticks": 90})");

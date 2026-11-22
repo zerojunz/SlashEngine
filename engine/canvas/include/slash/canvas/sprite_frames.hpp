@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-// .frames.json files: named flipbook animations, like Godot's SpriteFrames. AnimatedSprite2D
+// .frames.json files: named flipbook animations, like Godot's SpriteFrames. Flipbook2D
 // plays them.
 //
 //   {

@@ -614,7 +614,7 @@ Result<FrameSummary> summarize(world::World& world, asset::Assets& assets,
         switch (fates[i]) {
         case Fate::Shown: {
             Bounds rect = drawn[i];
-            if (items[i].kind == FrameItem::Kind::Control) {
+            if (items[i].kind == FrameItem::Kind::Widget) {
                 if (const ui::Placed* placed = summary.contents.layout.find(items[i].entity);
                     placed != nullptr) {
                     rect = control_rect(*placed);

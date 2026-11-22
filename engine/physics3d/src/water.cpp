@@ -190,7 +190,7 @@ world::WaterHost water_host(world::World& world) {
             }
             const auto& ecs = held->ecs();
             if (!ecs.all_of<world::RigidBody3D>(hit->entity) &&
-                !ecs.all_of<world::CharacterBody3D>(hit->entity)) {
+                !ecs.all_of<world::CharacterMover3D>(hit->entity)) {
                 return to_float(hit->point.y);
             }
             filter.exclude.push_back(hit->entity);

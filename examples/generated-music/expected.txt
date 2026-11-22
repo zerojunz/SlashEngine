@@ -16,7 +16,7 @@ asset.use {"id":"bce0fcbcf493","loop":true,"path":"music/boss.wav","stems":true}
 {"files":["music/boss/drums.wav","music/boss/drums.audio.json","music/boss/pads.wav","music/boss/pads.audio.json","music/boss.audio.json"],"path":"music/boss.wav"}
 music/boss.audio.json: {"format":1,"synchronized":[{"stream":"music/boss/drums.audio.json"},{"stream":"music/boss/pads.audio.json"}]}
 music/boss/drums.audio.json: {"beat_count":16,"bpm":140,"format":1,"loop_mode":"forward","source":"music/boss/drums.wav"}
-entity.create {"components":{"AudioStreamPlayer":{"autoplay":true,"stream":"music/boss.audio.json"}},"id":"music"}
+entity.create {"components":{"SoundPlayer":{"autoplay":true,"stream":"music/boss.audio.json"}},"id":"music"}
 {"id":"music"}
 step {"ticks":420}
 {"tick":420,"ticks":420}

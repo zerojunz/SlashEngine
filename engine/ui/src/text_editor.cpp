@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-// TextEdit's editing, as Godot's scene/gui/text_edit.cpp: gui_input and unhandled_key_input, the
+// TextArea's editing, as Godot's scene/gui/text_edit.cpp: gui_input and unhandled_key_input, the
 // caret and selection functions, the text operations and the undo history, for its one caret.
 // Each function names the Godot function it follows. Multiple carets, drag and drop, the context
 // menu, selection handles, inertial and smooth scrolling and Alt codes aren't here.
@@ -151,13 +151,13 @@ void clear_redo(TextEditState& s) {
 
 // ---- Editing ----
 
-// One TextEdit being worked on, as Godot's TextEdit methods work on its members: its lines in
-// the TextArea, its caret and history in its TextEditState and its caret, text and scroll in
+// One TextArea being worked on, as Godot's TextEdit methods work on its members: its lines in
+// the EditArea, its caret and history in its TextEditState and its caret, text and scroll in
 // the component, which finish() brings up to date.
 class Editor {
 public:
-    Editor(const TextEditContext& context, world::TextEdit& edit, TextEditState& state,
-           TextArea& area)
+    Editor(const TextEditContext& context, world::TextArea& edit, TextEditState& state,
+           EditArea& area)
         : context_(context), edit_(edit), s_(state), area_(area) {
         if (context_.world != nullptr) {
             // gui/timers/text_edit_idle_detect_sec and gui/common/text_edit_undo_stack_max_size.
@@ -1002,7 +1002,7 @@ private:
                                          .line = line,
                                          .gutter = clicked.name});
         }
-        world::CodeEdit* code = context_.code;
+        world::CodeEditor* code = context_.code;
         if (code == nullptr || !area_.view().code) {
             return;
         }
@@ -1043,9 +1043,9 @@ private:
     }
 
     // What the gutters show moves with the lines the edits since mark_lines moved, as Godot's
-    // Text::Line keeps it, and goes with a line removed: CodeEdit's lines, with
+    // Text::Line keeps it, and goes with a line removed: CodeEditor's lines, with
     // breakpoint_toggled for each line a breakpoint left or came to (_text_changed, which can
-    // miss a line a breakpoint came to when another moved off it), and the TextEdit's gutters'
+    // miss a line a breakpoint came to when another moved off it), and the TextArea's gutters'
     // entries. Lines past the end, which nothing moves, stay as they are.
     void move_line_marks() {
         const std::vector<int> to = area_.moved_lines();
@@ -1062,7 +1062,7 @@ private:
             }
             lines = std::move(kept);
         };
-        if (world::CodeEdit* code = context_.code; code != nullptr) {
+        if (world::CodeEditor* code = context_.code; code != nullptr) {
             std::vector<int> before = code->breakpointed_lines;
             std::sort(before.begin(), before.end());
             move(code->breakpointed_lines);
@@ -2154,9 +2154,9 @@ private:
     }
 
     const TextEditContext& context_;
-    world::TextEdit& edit_;
+    world::TextArea& edit_;
     TextEditState& s_;
-    TextArea& area_;
+    EditArea& area_;
     double idle_seconds_ = 3.0; // gui.text_edit_idle_detect_sec
     bool quiet_ = false;        // signals aren't emitted
     bool setting_text_ = false; // in set_text, which doesn't emit text_changed
@@ -2166,22 +2166,22 @@ private:
 
 } // namespace
 
-void sync_text_edit(const TextEditContext& context, world::TextEdit& edit, TextEditState& state,
-                    TextArea& area) {
+void sync_text_edit(const TextEditContext& context, world::TextArea& edit, TextEditState& state,
+                    EditArea& area) {
     Editor editor(context, edit, state, area);
     editor.finish();
 }
 
-bool text_edit_input(const TextEditContext& context, world::TextEdit& edit, TextEditState& state,
-                     TextArea& area, const input::Event& event, Vec2 local, Vec2 relative) {
+bool text_edit_input(const TextEditContext& context, world::TextArea& edit, TextEditState& state,
+                     EditArea& area, const input::Event& event, Vec2 local, Vec2 relative) {
     Editor editor(context, edit, state, area);
     const bool taken = editor.gui_input(event, local, relative);
     editor.finish();
     return taken;
 }
 
-void text_edit_scroll_to(const TextEditContext& context, world::TextEdit& edit,
-                         TextEditState& state, TextArea& area, bool vertical, double value) {
+void text_edit_scroll_to(const TextEditContext& context, world::TextArea& edit,
+                         TextEditState& state, EditArea& area, bool vertical, double value) {
     Editor editor(context, edit, state, area);
     if (vertical) {
         area.set_v_scroll(value);
@@ -2191,15 +2191,15 @@ void text_edit_scroll_to(const TextEditContext& context, world::TextEdit& edit,
     editor.finish();
 }
 
-bool text_edit_unhandled_key(const TextEditContext& context, world::TextEdit& edit,
-                             TextEditState& state, TextArea& area, const input::Event& event) {
+bool text_edit_unhandled_key(const TextEditContext& context, world::TextArea& edit,
+                             TextEditState& state, EditArea& area, const input::Event& event) {
     Editor editor(context, edit, state, area);
     const bool taken = editor.unhandled_key_input(event);
     editor.finish();
     return taken;
 }
 
-void text_edit_focus_enter(const world::TextEdit& edit, TextEditState& state) {
+void text_edit_focus_enter(const world::TextArea& edit, TextEditState& state) {
     if (edit.caret_blink) {
         state.blink_timer = 0.0;
     } else {
@@ -2210,8 +2210,8 @@ void text_edit_focus_enter(const world::TextEdit& edit, TextEditState& state) {
     }
 }
 
-void text_edit_focus_exit(const TextEditContext& context, world::TextEdit& edit,
-                          TextEditState& state, TextArea* area) {
+void text_edit_focus_exit(const TextEditContext& context, world::TextArea& edit,
+                          TextEditState& state, EditArea* area) {
     if (area != nullptr) {
         Editor editor(context, edit, state, *area);
         editor.apply_ime();
@@ -2226,8 +2226,8 @@ void text_edit_focus_exit(const TextEditContext& context, world::TextEdit& edit,
     }
 }
 
-bool text_edit_drop_text(const TextEditContext& context, world::TextEdit& edit,
-                         TextEditState& state, TextArea& area, Vec2 local, std::u32string_view text,
+bool text_edit_drop_text(const TextEditContext& context, world::TextArea& edit,
+                         TextEditState& state, EditArea& area, Vec2 local, std::u32string_view text,
                          bool command) {
     Editor editor(context, edit, state, area);
     const bool dropped = editor.drop_text(local, text, command);
@@ -2235,29 +2235,29 @@ bool text_edit_drop_text(const TextEditContext& context, world::TextEdit& edit,
     return dropped;
 }
 
-void text_edit_drag_end(const TextEditContext& context, world::TextEdit& edit, TextEditState& state,
-                        TextArea& area, bool command) {
+void text_edit_drag_end(const TextEditContext& context, world::TextArea& edit, TextEditState& state,
+                        EditArea& area, bool command) {
     Editor editor(context, edit, state, area);
     editor.drag_end(command);
     editor.finish();
 }
 
-void text_edit_ime_update(const TextEditContext& context, world::TextEdit& edit,
-                          TextEditState& state, TextArea& area, std::u32string text,
+void text_edit_ime_update(const TextEditContext& context, world::TextArea& edit,
+                          TextEditState& state, EditArea& area, std::u32string text,
                           int selection_start, int selection_length) {
     Editor editor(context, edit, state, area);
     editor.ime_update(std::move(text), selection_start, selection_length);
     editor.finish();
 }
 
-void text_edit_click_held(const TextEditContext& context, world::TextEdit& edit,
-                          TextEditState& state, TextArea& area, Vec2 local) {
+void text_edit_click_held(const TextEditContext& context, world::TextArea& edit,
+                          TextEditState& state, EditArea& area, Vec2 local) {
     Editor editor(context, edit, state, area);
     editor.click_selection_held(local);
     editor.finish();
 }
 
-bool text_edit_tick(const world::TextEdit& edit, TextEditState& state, bool focused,
+bool text_edit_tick(const world::TextArea& edit, TextEditState& state, bool focused,
                     double tick_seconds, bool left_held) {
     // The caret's blink, while it has focus.
     if (edit.caret_blink && focused && edit.caret_blink_interval > 0.0F) {

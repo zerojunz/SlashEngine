@@ -57,7 +57,7 @@ struct ClothSection {
 // section's name, or "" when it draws no model. A change means the section changed.
 [[nodiscard]] std::string cloth_key(const world::World& world, entt::entity entity);
 
-// The section of the model an entity's MeshInstance3D draws that its Cloth3D names, its model
+// The section of the model an entity's Model3D draws that its Cloth3D names, its model
 // read through the world's assets (else its file reader); an error when the entity draws no
 // model or the section has no triangles.
 [[nodiscard]] Result<std::shared_ptr<const ClothSection>> cloth_section(const world::World& world,
@@ -80,7 +80,7 @@ model_section(const world::World& world, entt::entity entity, const std::string&
 [[nodiscard]] std::vector<float> cloth_shares(const world::Cloth3D& cloth,
                                               const ClothSection& section);
 
-// What keeps each Cloth3D from being made: a MeshInstance3D drawing a model is needed, and its
+// What keeps each Cloth3D from being made: a Model3D drawing a model is needed, and its
 // section must name one of the model's materials with triangles.
 [[nodiscard]] std::vector<Problem> check_cloths(const world::World& world);
 

@@ -2,14 +2,14 @@
   "entities": {
     "tv": {
       "components": {
-        "Control": {
-          "offset_left": 8.0,
-          "offset_top": 8.0
-        },
-        "VideoStreamPlayer": {
+        "Video": {
           "autoplay": true,
           "bus": "Cutscenes",
           "stream": "clip.mkv"
+        },
+        "Widget": {
+          "offset_left": 8.0,
+          "offset_top": 8.0
         }
       }
     }

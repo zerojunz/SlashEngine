@@ -1,8 +1,8 @@
 // Areas that change a sound's bus, and effects that measure and keep what plays, as Godot's
-// Area2D audio bus override, AudioEffectPitchShift, AudioEffectSpectrumAnalyzer,
+// Zone2D audio bus override, AudioEffectPitchShift, AudioEffectSpectrumAnalyzer,
 // AudioEffectCapture and AudioEffectRecord. audio/default.bus_layout.json puts a spectrum
 // analyzer, a capture and a record effect on Master, a pitch shift an octave up on Voice and a
-// reverb on Cave; the cave's Area2D sends 2D sounds inside it to Cave.
+// reverb on Cave; the cave's Zone2D sends 2D sounds inside it to Cave.
 //
 // This program writes the sound files (square waves, made without libm so they are the same
 // everywhere), then plays the game as an agent does over MCP or JSON-RPC: audio.spectrum reads
@@ -91,7 +91,7 @@ int main() {
     call(session, "audio.play", R"({"id": "bat"})");
     call(session, "step", R"({"ticks": 2})");
     call(session, "audio.state", R"({"ids": ["bat"]})");
-    // ...and flies in: the cave's Area2D overrides its bus with Cave, and its reverb.
+    // ...and flies in: the cave's Zone2D overrides its bus with Cave, and its reverb.
     call(session, "component.set",
          R"({"id": "bat", "components": {"Transform2D": {"position": [480, 180]}}})");
     call(session, "step", R"({"ticks": 2})");

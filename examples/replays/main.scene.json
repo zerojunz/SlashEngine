@@ -2,21 +2,21 @@
   "entities": {
     "coin": {
       "components": {
-        "Area2D": {
-          "collision_mask": 2
-        },
-        "CollisionShape2D": {
+        "Collider2D": {
           "radius": 6.0,
           "shape": "circle"
         },
         "Transform2D": {
           "position": [160.0, 140.0]
+        },
+        "Zone2D": {
+          "collision_mask": 2
         }
       }
     },
     "crate": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [24.0, 24.0]
         },
         "RigidBody2D": {
@@ -29,7 +29,7 @@
     },
     "ground": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [320.0, 20.0]
         },
         "StaticBody2D": {},
@@ -40,10 +40,10 @@
     },
     "hero": {
       "components": {
-        "CharacterBody2D": {
+        "CharacterMover2D": {
           "collision_layer": 2
         },
-        "CollisionShape2D": {
+        "Collider2D": {
           "height": 32.0,
           "radius": 8.0,
           "shape": "capsule"

@@ -2,10 +2,10 @@
   "entities": {
     "bar": {
       "components": {
-        "ColorRect": {
+        "ColorFill": {
           "color": [0.2, 0.8, 0.3, 1.0]
         },
-        "Control": {
+        "Widget": {
           "offset_bottom": 10.0,
           "offset_left": 64.0,
           "offset_right": 92.0,

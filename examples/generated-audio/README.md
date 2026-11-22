@@ -1,7 +1,7 @@
 # Generated audio
 
 Sound a game makes as it runs, as Godot's `AudioStreamGenerator` and `AudioStreamPolyphonic`.
-Each is an `.audio.json` file that an `AudioStreamPlayer` plays like any sound. [main.cpp](main.cpp)
+Each is an `.audio.json` file that an `SoundPlayer` plays like any sound. [main.cpp](main.cpp)
 writes the hit sound (no audio files are committed) and adds a gameplay system, then plays the
 game the way an agent does over MCP (tools `audio_play`, `audio_state`, `audio_capture`) or
 JSON-RPC. `expected.txt` holds each call and its reply.

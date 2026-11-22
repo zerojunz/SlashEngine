@@ -21,18 +21,18 @@ namespace slash::physics2d::detail {
 
 namespace {
 
-using world::AnimatableBody2D;
-using world::Area2D;
-using world::CharacterBody2D;
-using world::CollisionPolygon2D;
-using world::CollisionShape2D;
-using world::DampedSpringJoint2D;
-using world::GrooveJoint2D;
+using world::CharacterMover2D;
+using world::Collider2D;
+using world::MovingBody2D;
 using world::PinJoint2D;
+using world::PolygonCollider2D;
 using world::RigidBody2D;
+using world::SpringJoint2D;
 using world::StaticBody2D;
-using world::TileMapLayer;
+using world::TileLayer2D;
+using world::TrackJoint2D;
 using world::Transform2D;
+using world::Zone2D;
 
 // Box2D substeps per tick, as its documentation recommends.
 // Joint motors push as hard as it takes, as Godot's do.
@@ -132,7 +132,7 @@ std::string_view material_path(const entt::registry& registry, entt::entity enti
     case Kind::Rigid:
         return registry.get<RigidBody2D>(entity).physics_material_override;
     case Kind::Animatable:
-        return registry.get<AnimatableBody2D>(entity).physics_material_override;
+        return registry.get<MovingBody2D>(entity).physics_material_override;
     case Kind::Static:
         return registry.get<StaticBody2D>(entity).physics_material_override;
     case Kind::Character:
@@ -147,16 +147,16 @@ std::optional<Kind> kind_of(const entt::registry& registry, entt::entity entity)
     if (registry.all_of<RigidBody2D>(entity)) {
         return Kind::Rigid;
     }
-    if (registry.all_of<CharacterBody2D>(entity)) {
+    if (registry.all_of<CharacterMover2D>(entity)) {
         return Kind::Character;
     }
-    if (registry.all_of<AnimatableBody2D>(entity)) {
+    if (registry.all_of<MovingBody2D>(entity)) {
         return Kind::Animatable;
     }
     if (registry.all_of<StaticBody2D>(entity)) {
         return Kind::Static;
     }
-    if (registry.all_of<Area2D>(entity)) {
+    if (registry.all_of<Zone2D>(entity)) {
         return Kind::Area;
     }
     return std::nullopt;
@@ -183,7 +183,7 @@ struct BodyFields {
 };
 
 // Whether an area changes the gravity or damping of the bodies in it.
-bool overrides_space(const Area2D& area) {
+bool overrides_space(const Zone2D& area) {
     return area.gravity_space_override != "disabled" ||
            area.linear_damp_space_override != "disabled" ||
            area.angular_damp_space_override != "disabled";
@@ -203,11 +203,11 @@ BodyFields fields_of(const entt::registry& registry, entt::entity entity, Kind k
     case Kind::Rigid:
         return material(registry.get<RigidBody2D>(entity));
     case Kind::Animatable:
-        return material(registry.get<AnimatableBody2D>(entity));
+        return material(registry.get<MovingBody2D>(entity));
     case Kind::Static:
         return material(registry.get<StaticBody2D>(entity));
     case Kind::Character: {
-        const auto& character = registry.get<CharacterBody2D>(entity);
+        const auto& character = registry.get<CharacterMover2D>(entity);
         return {.layer = character.collision_layer,
                 .mask = character.collision_mask,
                 .friction = 0.0F,
@@ -217,7 +217,7 @@ BodyFields fields_of(const entt::registry& registry, entt::entity entity, Kind k
                 .overrides = false};
     }
     case Kind::Area: {
-        const auto& area = registry.get<Area2D>(entity);
+        const auto& area = registry.get<Zone2D>(entity);
         return {.layer = area.collision_layer,
                 .mask = area.collision_mask,
                 .friction = 0.0F,
@@ -235,10 +235,10 @@ ShapeKey shape_key_of(const entt::registry& registry, const world::Tree2D& tree,
     ShapeKey key;
     const auto add = [&](entt::entity owner, std::optional<world::Affine2D> frame) {
         ShapeSource source{.entity = owner, .shape = {}, .polygon = {}, .owner = frame};
-        if (const auto* shape = registry.try_get<CollisionShape2D>(owner); shape != nullptr) {
+        if (const auto* shape = registry.try_get<Collider2D>(owner); shape != nullptr) {
             source.shape = *shape;
         }
-        if (const auto* polygon = registry.try_get<CollisionPolygon2D>(owner); polygon != nullptr) {
+        if (const auto* polygon = registry.try_get<PolygonCollider2D>(owner); polygon != nullptr) {
             source.polygon = *polygon;
         }
         if (source.shape || source.polygon) {
@@ -246,8 +246,8 @@ ShapeKey shape_key_of(const entt::registry& registry, const world::Tree2D& tree,
         }
     };
     add(entity, std::nullopt);
-    // As a Godot CollisionObject2D takes the shapes of its CollisionShape2D and
-    // CollisionPolygon2D children: child entities with shapes and no body of their own, placed
+    // As a Godot CollisionObject2D takes the shapes of its Collider2D and
+    // PolygonCollider2D children: child entities with shapes and no body of their own, placed
     // by their own transforms.
     if (const auto* transform = registry.try_get<Transform2D>(entity);
         transform != nullptr && tree.nested()) {
@@ -302,7 +302,7 @@ std::pair<Vec2, float> constant_velocity_of(const entt::registry& registry, entt
         return {body.constant_linear_velocity, body.constant_angular_velocity};
     }
     if (kind == Kind::Animatable) {
-        const auto& body = registry.get<AnimatableBody2D>(entity);
+        const auto& body = registry.get<MovingBody2D>(entity);
         return {body.constant_linear_velocity, body.constant_angular_velocity};
     }
     return {};
@@ -573,7 +573,7 @@ void Space::build_shapes(world::World& world, Body& body, const ShapeKey& key) {
     for (std::size_t index = 0; index < key.sources.size(); ++index) {
         const ShapeSource& source = key.sources[index];
         if (source.shape && !source.shape->disabled) {
-            const CollisionShape2D& shape = *source.shape;
+            const Collider2D& shape = *source.shape;
             const ShapePlacement place{.rotation = b2MakeRot(shape.rotation),
                                        .position = shape.position,
                                        .scale = key.scale,
@@ -639,7 +639,7 @@ void Space::build_shapes(world::World& world, Body& body, const ShapeKey& key) {
         }
 
         if (source.polygon && !source.polygon->disabled) {
-            const CollisionPolygon2D& polygon = *source.polygon;
+            const PolygonCollider2D& polygon = *source.polygon;
             const ShapePlacement place{.rotation = b2Rot_identity,
                                        .position = {},
                                        .scale = key.scale,
@@ -820,7 +820,7 @@ void Space::sync_body(world::World& world, const world::Tree2D& tree, entt::enti
         }
         // An animatable body that jumps where it goes keeps no velocity once it stops carrying.
         if (!carrying && kind == Kind::Animatable &&
-            !registry.get<AnimatableBody2D>(entity).sync_to_physics &&
+            !registry.get<MovingBody2D>(entity).sync_to_physics &&
             (b2LengthSquared(b2Body_GetLinearVelocity(body.id)) > 0.0F ||
              b2Body_GetAngularVelocity(body.id) != 0.0F)) {
             b2Body_SetLinearVelocity(body.id, b2Vec2_zero);
@@ -829,7 +829,7 @@ void Space::sync_body(world::World& world, const world::Tree2D& tree, entt::enti
     }
 
     const bool moved = transform.position != body.position || transform.rotation != body.rotation;
-    if (kind == Kind::Animatable && registry.get<AnimatableBody2D>(entity).sync_to_physics) {
+    if (kind == Kind::Animatable && registry.get<MovingBody2D>(entity).sync_to_physics) {
         // Moved during the step (step sets the target), so it pushes what is in its way.
         return;
     }
@@ -852,7 +852,7 @@ void Space::sync_joints(world::World& world, const world::Tree2D& tree) {
     // Joints whose entity is gone.
     joints_.erase_if([&](entt::entity entity, const Joint& joint) {
         if (world.valid(entity) &&
-            registry.any_of<PinJoint2D, DampedSpringJoint2D, GrooveJoint2D>(entity)) {
+            registry.any_of<PinJoint2D, SpringJoint2D, TrackJoint2D>(entity)) {
             return false;
         }
         if (b2Joint_IsValid(joint.id)) {
@@ -917,7 +917,7 @@ void Space::sync_joints(world::World& world, const world::Tree2D& tree) {
             def.maxMotorTorque = kMaxMotorTorque;
             def.collideConnected = !pin->disable_collision;
             joint.id = b2CreateRevoluteJoint(world_, &def);
-        } else if (const auto* spring = std::get_if<DampedSpringJoint2D>(&key); spring != nullptr) {
+        } else if (const auto* spring = std::get_if<SpringJoint2D>(&key); spring != nullptr) {
             // Godot's stiffness and damping, as Box2D's frequency and damping ratio for the
             // bodies' masses.
             const float mass_a = b2Body_GetMass(body_a);
@@ -939,7 +939,7 @@ void Space::sync_joints(world::World& world, const world::Tree2D& tree) {
                 stiffness > 0.0F ? spring->damping / (2.0F * std::sqrt(stiffness * mass)) : 0.0F;
             def.collideConnected = !spring->disable_collision;
             joint.id = b2CreateDistanceJoint(world_, &def);
-        } else if (const auto* groove = std::get_if<GrooveJoint2D>(&key); groove != nullptr) {
+        } else if (const auto* groove = std::get_if<TrackJoint2D>(&key); groove != nullptr) {
             // A wheel joint without its spring: node_b slides along the axis and turns freely.
             b2WheelJointDef def = b2DefaultWheelJointDef();
             def.bodyIdA = body_a;
@@ -968,18 +968,18 @@ void Space::sync_joints(world::World& world, const world::Tree2D& tree) {
         const auto& pin = registry.get<PinJoint2D>(entity);
         place(entity, pin, pin.node_a, pin.node_b);
     }
-    for (const entt::entity entity : registry.view<DampedSpringJoint2D>()) {
+    for (const entt::entity entity : registry.view<SpringJoint2D>()) {
         if (registry.all_of<PinJoint2D>(entity)) {
             continue;
         }
-        const auto& spring = registry.get<DampedSpringJoint2D>(entity);
+        const auto& spring = registry.get<SpringJoint2D>(entity);
         place(entity, spring, spring.node_a, spring.node_b);
     }
-    for (const entt::entity entity : registry.view<GrooveJoint2D>()) {
-        if (registry.any_of<PinJoint2D, DampedSpringJoint2D>(entity)) {
+    for (const entt::entity entity : registry.view<TrackJoint2D>()) {
+        if (registry.any_of<PinJoint2D, SpringJoint2D>(entity)) {
             continue;
         }
-        const auto& groove = registry.get<GrooveJoint2D>(entity);
+        const auto& groove = registry.get<TrackJoint2D>(entity);
         place(entity, groove, groove.node_a, groove.node_b);
     }
     // Past a limit a pin's motor stops pushing, as in Godot's GodotPinJoint2D::solve, so it
@@ -1077,8 +1077,8 @@ void Space::sync_tiles(world::World& world, const world::Tree2D& tree) {
         if (source == nullptr || !*source || !world.valid(entity)) {
             return nullptr;
         }
-        if (registry.all_of<TileMapLayer>(entity)) {
-            if (!registry.get<TileMapLayer>(entity).collision_enabled) {
+        if (registry.all_of<TileLayer2D>(entity)) {
+            if (!registry.get<TileLayer2D>(entity).collision_enabled) {
                 return nullptr;
             }
         } else if (!registry.all_of<world::Foliage2D>(entity) ||
@@ -1090,14 +1090,14 @@ void Space::sync_tiles(world::World& world, const world::Tree2D& tree) {
     };
     std::vector<std::pair<entt::entity, TileShapes>> layers;
     if (source != nullptr) {
-        for (const entt::entity entity : registry.view<TileMapLayer>()) {
+        for (const entt::entity entity : registry.view<TileLayer2D>()) {
             if (TileShapes shapes = shapes_of(entity); shapes != nullptr) {
                 layers.emplace_back(entity, std::move(shapes));
             }
         }
         // Foliage2Ds whose instances block are static bodies the same way, after the layers.
         for (const entt::entity entity : registry.view<world::Foliage2D>()) {
-            if (registry.all_of<TileMapLayer>(entity)) {
+            if (registry.all_of<TileLayer2D>(entity)) {
                 continue;
             }
             if (TileShapes shapes = shapes_of(entity); shapes != nullptr) {
@@ -1161,10 +1161,9 @@ void Space::sync(world::World& world, const world::Tree2D& tree) {
     entt::registry& registry = world.ecs();
     if (!b2World_IsValid(world_)) {
         const bool tiles = registry.ctx().contains<TileShapeSource>() &&
-                           (has_any<TileMapLayer>(registry) || has_any<world::Foliage2D>(registry));
+                           (has_any<TileLayer2D>(registry) || has_any<world::Foliage2D>(registry));
         if (!tiles &&
-            !has_any<RigidBody2D, CharacterBody2D, AnimatableBody2D, StaticBody2D, Area2D>(
-                registry)) {
+            !has_any<RigidBody2D, CharacterMover2D, MovingBody2D, StaticBody2D, Zone2D>(registry)) {
             return;
         }
         create_world(world.pool());
@@ -1180,10 +1179,10 @@ void Space::sync(world::World& world, const world::Tree2D& tree) {
         }
     };
     each.template operator()<RigidBody2D>(Kind::Rigid);
-    each.template operator()<CharacterBody2D>(Kind::Character);
-    each.template operator()<AnimatableBody2D>(Kind::Animatable);
+    each.template operator()<CharacterMover2D>(Kind::Character);
+    each.template operator()<MovingBody2D>(Kind::Animatable);
     each.template operator()<StaticBody2D>(Kind::Static);
-    each.template operator()<Area2D>(Kind::Area);
+    each.template operator()<Zone2D>(Kind::Area);
     sync_tiles(world, tree);
     sync_joints(world, tree);
 }
@@ -1247,7 +1246,7 @@ void Space::read_back(world::World& world, const world::Tree2D& tree) {
 
 void Space::move_characters(world::World& world, const world::Tree2D& tree, float seconds) {
     entt::registry& registry = world.ecs();
-    for (const entt::entity entity : registry.view<CharacterBody2D>()) {
+    for (const entt::entity entity : registry.view<CharacterMover2D>()) {
         const auto* found = bodies_.find(entity);
         if (found == nullptr || (*found)->kind != Kind::Character) {
             continue;
@@ -1259,7 +1258,7 @@ void Space::move_characters(world::World& world, const world::Tree2D& tree, floa
         const bool nested = tree.parent(entity) != entt::null;
         Transform2D placed = nested ? tree.global(entity) : Transform2D{};
         Transform2D& transform = nested ? placed : own;
-        auto& character = registry.get<CharacterBody2D>(entity);
+        auto& character = registry.get<CharacterMover2D>(entity);
         move_character(world_, body, transform, character, seconds);
         if (nested) {
             tree.set_global_position(world, entity, placed.position);
@@ -1342,7 +1341,7 @@ Vec2 normalized(Vec2 v) {
 
 // An area's gravity at a point, as Godot's GodotArea2D::compute_gravity: along its direction,
 // or toward its center, falling off with distance squared past a unit distance.
-Vec2 area_gravity(const world::Tree2D& tree, entt::entity entity, const Area2D& area,
+Vec2 area_gravity(const world::Tree2D& tree, entt::entity entity, const Zone2D& area,
                   Vec2 position) {
     if (!area.gravity_point) {
         return area.gravity_direction * area.gravity;
@@ -1371,7 +1370,7 @@ Space::AreaLists Space::area_lists(const world::World& world) const {
     AreaLists lists;
     std::vector<std::pair<entt::entity, bool>> overlaps;
     for (const auto& [entity, body] : bodies_) {
-        if (body->kind != Kind::Area || !overrides_space(registry.get<Area2D>(entity))) {
+        if (body->kind != Kind::Area || !overrides_space(registry.get<Zone2D>(entity))) {
             continue;
         }
         overlaps.clear();
@@ -1389,7 +1388,7 @@ Space::AreaLists Space::area_lists(const world::World& world) const {
     // Highest priority first, then in the order the areas were made.
     for (auto& [entity, list] : lists) {
         std::ranges::stable_sort(list, std::greater<>(), [&](const Body* area) {
-            return registry.get<Area2D>(area->entity).priority;
+            return registry.get<Zone2D>(area->entity).priority;
         });
     }
     return lists;
@@ -1423,7 +1422,7 @@ AreaForces Space::forces(const world::World& world, const world::Tree2D& tree, c
         if (gravity_done && linear_done && angular_done) {
             break;
         }
-        const auto& area = registry.get<Area2D>(area_body->entity);
+        const auto& area = registry.get<Zone2D>(area_body->entity);
         bool used = false;
         if (!gravity_done && area.gravity_space_override != "disabled") {
             out.gravity_overridden = true;
@@ -1534,8 +1533,8 @@ void Space::step(world::World& world, float seconds) {
     // back.
     std::vector<Body*> carriers;
     for (auto& [entity, body] : bodies_) {
-        const bool animated = body->kind == Kind::Animatable &&
-                              registry.get<AnimatableBody2D>(entity).sync_to_physics;
+        const bool animated =
+            body->kind == Kind::Animatable && registry.get<MovingBody2D>(entity).sync_to_physics;
         const bool carrying =
             (body->kind == Kind::Static || body->kind == Kind::Animatable) && carries(*body);
         if (!animated && !carrying) {
@@ -1656,7 +1655,7 @@ void Space::emit_events(world::World& world) {
                     now.emplace(id, other_id, false);
                 }
             }
-        } else if (body->kind == Kind::Area && registry.get<Area2D>(entity).monitoring) {
+        } else if (body->kind == Kind::Area && registry.get<Zone2D>(entity).monitoring) {
             overlaps.clear();
             area_overlaps(*body, overlaps);
             for (const auto& [other, is_area] : overlaps) {

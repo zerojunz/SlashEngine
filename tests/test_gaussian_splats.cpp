@@ -295,9 +295,9 @@ TEST_CASE("GaussianSplat3Ds name .ply files that read as splats") {
         }
         return slash::make_error(slash::ErrorCode::NotFound, "no such file");
     });
-    const auto add = [&](const char* id, world::GaussianSplat3D cloud) {
+    const auto add = [&](const char* id, world::Splat3D cloud) {
         const entt::entity entity = w.create(id).value();
-        w.ecs().emplace<world::GaussianSplat3D>(entity, std::move(cloud));
+        w.ecs().emplace<world::Splat3D>(entity, std::move(cloud));
     };
     add("rock", {.splats = "rock.ply"});
     add("empty", {});
@@ -309,13 +309,12 @@ TEST_CASE("GaussianSplat3Ds name .ply files that read as splats") {
         found.push_back(std::string(w.id_of(problem.entity)) + " " + problem.path + ": " +
                         problem.message);
     }
-    CHECK(found ==
-          std::vector<std::string>{
-              "broken /components/GaussianSplat3D/splats: \"bad.ply\": the .ply file has no "
-              "vertex element",
-              "missing /components/GaussianSplat3D/splats: \"gone.ply\" could not be read: no "
-              "such file",
-              "mesh /components/GaussianSplat3D/sh_degree: is 4, not 0 to 3",
-              "mesh /components/GaussianSplat3D/splats: \"rock.glb\" is no .ply file of Gaussian "
-              "splats"});
+    CHECK(found == std::vector<std::string>{
+                       "broken /components/Splat3D/splats: \"bad.ply\": the .ply file has no "
+                       "vertex element",
+                       "missing /components/Splat3D/splats: \"gone.ply\" could not be read: no "
+                       "such file",
+                       "mesh /components/Splat3D/sh_degree: is 4, not 0 to 3",
+                       "mesh /components/Splat3D/splats: \"rock.glb\" is no .ply file of Gaussian "
+                       "splats"});
 }

@@ -79,7 +79,7 @@ void update(World& /*world*/, entt::entity /*entity*/, Frog& /*self*/, double /*
 }
 
 // Line 28: void OnTriggerEnter2D(Collider2D other)
-// run() calls it on both entities when a body or area enters an Area2D, as Unity calls
+// run() calls it on both entities when a body or area enters a Zone2D, as Unity calls
 // OnTriggerEnter2D, with the other entity as other.
 void on_trigger_enter2d(World& /*world*/, entt::entity /*entity*/, Frog& /*self*/,
                         entt::entity /*other*/) {
@@ -121,7 +121,7 @@ void run(World& world, double tick_seconds) {
         if (event.kind == "body_entered" || event.kind == "area_entered") {
             const auto [first, second] = touching(world, event);
             const bool trigger =
-                event.kind == "area_entered" || ecs.all_of<slash::world::Area2D>(first);
+                event.kind == "area_entered" || ecs.all_of<slash::world::Zone2D>(first);
             for (const auto& [entity, other] :
                  {std::pair{first, second}, std::pair{second, first}}) {
                 if (Frog* self = ecs.try_get<Frog>(entity); self != nullptr) {

@@ -201,9 +201,9 @@ Reply vehicle_place(Session& session, const json::Value& params) {
             transform.rotation.y = static_cast<real_t>(yaw->as_double());
         }
         ecs.emplace<world::Transform3D>(entity, transform);
-        world::MeshInstance3D instance;
+        world::Model3D instance;
         instance.mesh = path;
-        ecs.emplace<world::MeshInstance3D>(entity, instance);
+        ecs.emplace<world::Model3D>(entity, instance);
         world::RigidBody3D body;
         body.mass = recipe.value()->physics.mass;
         ecs.emplace<world::RigidBody3D>(entity, body);
@@ -215,7 +215,7 @@ Reply vehicle_place(Session& session, const json::Value& params) {
                 tree->children.push_back(entity);
             }
         }
-        components = {"Transform3D", "MeshInstance3D", "RigidBody3D", "Vehicle3D"};
+        components = {"Transform3D", "Model3D", "RigidBody3D", "Vehicle3D"};
     }
     const world::VehicleRecipe& made = *recipe.value();
     json::Value result;
@@ -453,19 +453,19 @@ Drive make_drive(Session& host, const std::string& recipe, const json::Value& ov
             place.position = {0.0F, 500.0F};
             ecs.emplace<world::Transform2D>(ground, place);
             ecs.emplace<world::StaticBody2D>(ground);
-            world::CollisionShape2D shape;
+            world::Collider2D shape;
             shape.size = {2000000.0F, 1000.0F};
-            ecs.emplace<world::CollisionShape2D>(ground, shape);
+            ecs.emplace<world::Collider2D>(ground, shape);
         } else {
             world::Transform3D place;
             // 40 kilometers ahead, so a fast car never runs off it.
             place.position = {0.0F, -0.5F, 19000.0F};
             ecs.emplace<world::Transform3D>(ground, place);
             ecs.emplace<world::StaticBody3D>(ground);
-            world::CollisionShape3D shape;
+            world::Collider3D shape;
             shape.shape = "box";
             shape.size = {2000.0F, 1.0F, 40000.0F};
-            ecs.emplace<world::CollisionShape3D>(ground, shape);
+            ecs.emplace<world::Collider3D>(ground, shape);
         }
     }
     auto made = world.create("test_vehicle");
@@ -481,9 +481,9 @@ Drive make_drive(Session& host, const std::string& recipe, const json::Value& ov
         world::Transform3D place;
         place.position = {0.0F, boat ? 0.0F : 0.05F, 0.0F};
         ecs.emplace<world::Transform3D>(drive.vehicle, place);
-        world::MeshInstance3D instance;
+        world::Model3D instance;
         instance.mesh = recipe;
-        ecs.emplace<world::MeshInstance3D>(drive.vehicle, instance);
+        ecs.emplace<world::Model3D>(drive.vehicle, instance);
         world::Vehicle3D vehicle;
         vehicle.recipe = recipe;
         vehicle.overrides = overrides;
@@ -1044,7 +1044,7 @@ void register_vehicle_commands(Registry& registry) {
     registry.add({
         .name = "vehicle.place",
         .description = "Makes a vehicle of a .vehicle.json recipe: in 3D a RigidBody3D with a "
-                       "MeshInstance3D drawing its model and a Vehicle3D; in 2D a RigidBody2D "
+                       "Model3D drawing its model and a Vehicle3D; in 2D a RigidBody2D "
                        "and a Vehicle2D. The vehicles systems then build its wheels and drive "
                        "it. Returns its kind, seats and wheel count.",
         .capabilities = {Read, Edit},

@@ -11,7 +11,7 @@ crate on the grass.
   "StaticBody3D": {},
   "Destructible3D": {"pieces": 6, "seed": 1, "damage_threshold": 10.0, "mass": 20.0,
                      "debris_lifetime": 3.0},
-  "BoxMesh": {"size": [2.0, 2.0, 0.3]}, "MeshInstance3D": {}, ...
+  "BoxGeometry": {"size": [2.0, 2.0, 0.3]}, "Model3D": {}, ...
 }}
 ```
 
@@ -35,5 +35,5 @@ same way on every machine.
 - After 150 more ticks the wall's pieces are gone (their 3 seconds are up) and the crate's,
   with no lifetime, stay.
 - `undo` twice takes back the last step and the break: the crate is whole again.
-- A `PlaneMesh` has no inside, so `physics.break` refuses to break a sign drawn with one.
+- A `PlaneGeometry` has no inside, so `physics.break` refuses to break a sign drawn with one.
   `slash-cli scene validate` reports the same.

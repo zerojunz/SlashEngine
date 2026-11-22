@@ -38,7 +38,7 @@ std::string read(const std::filesystem::path& path) {
 }
 
 // A project with a face whose blend shapes are named as ARKit's and Unified Expressions' (the
-// test quad's "smile" and "wide" renamed), followed by an XRFaceModifier3D.
+// test quad's "smile" and "wide" renamed), followed by an XRFace3D.
 struct FaceProject {
     std::filesystem::path root;
     world::ComponentRegistry components;
@@ -56,10 +56,10 @@ struct FaceProject {
         std::ofstream(root / "models/face.gltf") << face.gltf();
         std::ofstream(root / "main.scene.json") << R"({
   "entities": {
-    "face": {"components": {"MeshInstance3D": {"mesh": "models/face.gltf"}, "Transform3D": {},
-                            "XRFaceModifier3D": {}}},
-    "mirror": {"components": {"XRFaceModifier3D": {"target": "twin"}}},
-    "twin": {"components": {"MeshInstance3D": {"mesh": "models/face.gltf"}, "Transform3D": {}}}
+    "face": {"components": {"Model3D": {"mesh": "models/face.gltf"}, "Transform3D": {},
+                            "XRFace3D": {}}},
+    "mirror": {"components": {"XRFace3D": {"target": "twin"}}},
+    "twin": {"components": {"Model3D": {"mesh": "models/face.gltf"}, "Transform3D": {}}}
   },
   "format": 1
 })";
@@ -90,9 +90,8 @@ struct FaceProject {
 
     double blend_shape(std::string_view entity, std::string_view name) {
         json::Value got = ok("entity.get", R"({"id": ")" + std::string(entity) +
-                                               R"(", "components": ["MeshInstance3D"]})");
-        const json::Value* shapes =
-            got.find("components")->find("MeshInstance3D")->find("blend_shapes");
+                                               R"(", "components": ["Model3D"]})");
+        const json::Value* shapes = got.find("components")->find("Model3D")->find("blend_shapes");
         const json::Value* value = shapes != nullptr ? shapes->find(name) : nullptr;
         return value != nullptr ? value->as_double() : -1.0;
     }
@@ -143,7 +142,7 @@ TEST_CASE("face: shapes a recording gives fill in the shapes they imply") {
     CHECK(weights.at(shape("EyeClosed")) == 0.0F);
 }
 
-TEST_CASE("face: XRFaceModifier3D drives its mesh's blend shapes from the face tracker") {
+TEST_CASE("face: XRFace3D drives its mesh's blend shapes from the face tracker") {
     FaceProject project("face_tracker_project");
     project.ok("scene.open", R"({"path": "main.scene.json"})");
     project.ok("xr.set", R"({"trackers": {"/user/face_tracker": {"type": "face",
@@ -190,7 +189,7 @@ TEST_CASE("face: animation.import_face_capture turns a recording into blend shap
     json::Value file = parse(read(project.root / "talk.anim.json"));
     const json::Value& tracks = *file.find("animations")->find("talk")->find("tracks");
     REQUIRE(tracks.as_array().size() == 3);
-    CHECK(tracks.as_array()[0].find("path")->as_string() == "MeshInstance3D/blend_shapes/jawOpen");
+    CHECK(tracks.as_array()[0].find("path")->as_string() == "Model3D/blend_shapes/jawOpen");
     CHECK(json::write(*tracks.as_array()[0].find("keys"), json::Style::Compact) ==
           R"([{"time":0.0,"value":0.0},{"time":0.25,"value":1.0},{"time":0.5,"value":0.0}])");
     CHECK(tracks.as_array()[1].find("keys")->as_array().size() == 1);
@@ -206,8 +205,7 @@ TEST_CASE("face: animation.import_face_capture turns a recording into blend shap
     file = parse(read(project.root / "face.anim.json"));
     CHECK(file.find("animations")->find("idle") != nullptr);
     const json::Value& smile = *file.find("animations")->find("smile")->find("tracks");
-    CHECK(smile.as_array()[0].find("path")->as_string() ==
-          "MeshInstance3D/blend_shapes/MouthSmile");
+    CHECK(smile.as_array()[0].find("path")->as_string() == "Model3D/blend_shapes/MouthSmile");
     CHECK(smile.as_array()[0].find("keys")->as_array()[0].find("value")->as_double() ==
           doctest::Approx(0.6));
 
@@ -219,7 +217,7 @@ TEST_CASE("face: animation.import_face_capture turns a recording into blend shap
 
     // The animation plays on the face.
     project.ok("scene.open", R"({"path": "main.scene.json"})");
-    project.ok("component.set", R"({"id": "face", "components": {"AnimationPlayer":
+    project.ok("component.set", R"({"id": "face", "components": {"Animator":
         {"library": "face.anim.json", "animation": "smile", "playing": true}}})");
     project.ok("step", R"({"ticks": 15})");
     CHECK(project.blend_shape("face", "jawOpen") > 0.9);

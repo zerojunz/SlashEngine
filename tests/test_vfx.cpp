@@ -58,13 +58,13 @@ constexpr std::string_view kBoom = R"({"format": 1, "name": "Boom", "duration": 
     "parameters": {"intensity": 1, "color": [1, 0.6, 0.2, 1]},
     "layers": [
         {"name": "flash", "duration": 0.3,
-         "components": {"OmniLight3D": {"light_color": "=color", "omni_range": 6}},
-         "curves": {"OmniLight3D/light_energy": [[0, "=8 * intensity"], [0.3, 0]]}},
+         "components": {"PointLight3D": {"light_color": "=color", "omni_range": 6}},
+         "curves": {"PointLight3D/light_energy": [[0, "=8 * intensity"], [0.3, 0]]}},
         {"name": "sparks", "duration": 0.5,
-         "components": {"CPUParticles3D": {"amount": "=40 * intensity", "lifetime": 0.6,
+         "components": {"Emitter3D": {"amount": "=40 * intensity", "lifetime": 0.6,
                                            "explosiveness": 1}}},
         {"name": "smoke", "start": 0.2, "detail": 0.75, "offset": [0, 0.5, 0],
-         "components": {"CPUParticles3D": {"amount": 30, "lifetime": 1}}},
+         "components": {"Emitter3D": {"amount": 30, "lifetime": 1}}},
         {"name": "scorch", "start": 0.1, "world": true,
          "components": {"Decal": {"size": [2, 1, 2]}}},
         {"name": "shake", "duration": 0.4,
@@ -158,15 +158,15 @@ TEST_CASE("vfx: recipes parse, and validation finds expressions, names and keys 
     CHECK(world::vfx_layer_length(boom, boom.layers[2]) == doctest::Approx(1.3));
 
     const auto bad = messages(world::validate_vfx(parse(R"({"format": 1, "layers": [
-        {"name": "a", "components": {"OmniLight3D": {"light_energy": "=2 *"}}},
+        {"name": "a", "components": {"PointLight3D": {"light_energy": "=2 *"}}},
         {"name": "a", "components": {},
-         "curves": {"OmniLight3D/light_energy": [[0.5, 1], [0.2, 0]]}}],
+         "curves": {"PointLight3D/light_energy": [[0.5, 1], [0.2, 0]]}}],
         "lod": [{"distance": 50, "detail": 0.5}, {"distance": 10, "detail": 0.2}]})")));
     REQUIRE(bad.size() == 4);
     CHECK(bad[0].starts_with("/layers/1/name: another layer"));
-    CHECK(bad[1].starts_with("/layers/1/curves/OmniLight3D~1light_energy: keys"));
+    CHECK(bad[1].starts_with("/layers/1/curves/PointLight3D~1light_energy: keys"));
     CHECK(bad[2].starts_with("/lod/1: levels go nearest first"));
-    CHECK(bad[3].starts_with("/layers/0/components/OmniLight3D/light_energy: at character 4"));
+    CHECK(bad[3].starts_with("/layers/0/components/PointLight3D/light_energy: at character 4"));
     CHECK_FALSE(world::validate_vfx(parse(R"({"format": 1, "layers": [
         {"name": "bad name", "components": {}}]})"))
                     .empty());
@@ -194,13 +194,13 @@ TEST_CASE("vfx: values work out over parameters, and particles thin with detail"
     // Particles' amount scales by detail, never below one.
     auto full = world::vfx_components(boom.layers[1], params, 1.0F);
     REQUIRE(full.ok());
-    CHECK(full.value().find("CPUParticles3D")->find("amount")->as_int() == 80);
+    CHECK(full.value().find("Emitter3D")->find("amount")->as_int() == 80);
     auto half = world::vfx_components(boom.layers[1], params, 0.5F);
     REQUIRE(half.ok());
-    CHECK(half.value().find("CPUParticles3D")->find("amount")->as_int() == 40);
+    CHECK(half.value().find("Emitter3D")->find("amount")->as_int() == 40);
     auto none = world::vfx_components(boom.layers[1], params, 0.0F);
     REQUIRE(none.ok());
-    CHECK(none.value().find("CPUParticles3D")->find("amount")->as_int() == 1);
+    CHECK(none.value().find("Emitter3D")->find("amount")->as_int() == 1);
 
     // Curves: linear from 16 to 0 over 0.3 s; smooth eases at its ends.
     auto energy = world::vfx_curve_value(boom.layers[0].curves[0], 0.15F, 0.3F, params, 1.0F);
@@ -258,12 +258,12 @@ TEST_CASE("vfx: an effect plays its layers as entities under it on its timeline"
     CHECK(std::ranges::find(children, flash) != children.end());
     CHECK(world::Tree3D(scene.world).global(flash).origin.x == doctest::Approx(2.0));
     // Its curve sets the light's energy from the parameters: 16 fading to 0 over 0.3 s.
-    CHECK(ecs.get<const world::OmniLight3D>(flash).light_energy ==
+    CHECK(ecs.get<const world::PointLight3D>(flash).light_energy ==
           doctest::Approx(16.0F * (1.0F - (1.0F / 60.0F / 0.3F))).epsilon(0.01));
-    CHECK(ecs.get<const world::OmniLight3D>(flash).light_color.x == doctest::Approx(1.0));
+    CHECK(ecs.get<const world::PointLight3D>(flash).light_color.x == doctest::Approx(1.0));
     const entt::entity sparks = world::vfx_layer_entity(scene.world, boom, "sparks");
     REQUIRE((sparks != entt::null));
-    CHECK(ecs.get<const world::CPUParticles3D>(sparks).amount == 80);
+    CHECK(ecs.get<const world::Emitter3D>(sparks).amount == 80);
     CHECK_FALSE(scene.has("boom_smoke"));
 
     scene.step(12); // 0.22 s: the smoke and the scorch have come
@@ -283,7 +283,7 @@ TEST_CASE("vfx: an effect plays its layers as entities under it on its timeline"
     // The sparks stop emitting at their end, and their particles finish before they go.
     scene.step(12); // 0.52 s
     REQUIRE(scene.has("boom_sparks"));
-    CHECK_FALSE(ecs.get<const world::CPUParticles3D>(sparks).emitting);
+    CHECK_FALSE(ecs.get<const world::Emitter3D>(sparks).emitting);
     CHECK(ecs.get<const world::VfxPart>(sparks).linger > 0.0F);
     CHECK((world::vfx_layer_entity(scene.world, boom, "sparks") == entt::null));
     scene.step(42); // 1.22 s
@@ -313,7 +313,7 @@ TEST_CASE("vfx: far from the camera layers drop and particles thin; one-shots fr
     CHECK_FALSE(scene.has("boom_smoke")); // needs 0.75 detail, and 40 m gives 0.5
     const entt::entity sparks = world::vfx_layer_entity(scene.world, boom, "sparks");
     REQUIRE((sparks != entt::null));
-    CHECK(ecs.get<const world::CPUParticles3D>(sparks).amount == 20);
+    CHECK(ecs.get<const world::Emitter3D>(sparks).amount == 20);
     // lod_bias reaches further: at 4, 40 m counts as 10.
     scene.world.ecs().get<world::VisualEffect3D>(boom).lod_bias = 4.0F;
     scene.step(1);
@@ -331,20 +331,20 @@ TEST_CASE("vfx: a looping effect starts its layers again each cycle with new see
     Scene scene;
     scene.files["torch.vfx.json"] = R"({"format": 1, "duration": 0.5, "loop": true,
         "layers": [{"name": "embers", "duration": 0.25,
-                    "components": {"CPUParticles3D": {"amount": 4, "lifetime": 0.1, "seed": 3}}}]})";
+                    "components": {"Emitter3D": {"amount": 4, "lifetime": 0.1, "seed": 3}}}]})";
     const entt::entity torch = scene.create("torch", R"({"Transform3D": {},
                      "VisualEffect3D": {"recipe": "torch.vfx.json", "seed": 10}})");
     const auto& ecs = scene.world.ecs();
     scene.step(1);
     const entt::entity first = world::vfx_layer_entity(scene.world, torch, "embers");
     REQUIRE((first != entt::null));
-    CHECK(ecs.get<const world::CPUParticles3D>(first).seed == 13);
+    CHECK(ecs.get<const world::Emitter3D>(first).seed == 13);
     scene.step(30); // into the second cycle
     const entt::entity second = world::vfx_layer_entity(scene.world, torch, "embers");
     REQUIRE((second != entt::null));
     CHECK((second != first));
     CHECK(ecs.get<const world::VfxPart>(second).cycle == 1);
-    CHECK(ecs.get<const world::CPUParticles3D>(second).seed == 13 + 7919);
+    CHECK(ecs.get<const world::Emitter3D>(second).seed == 13 + 7919);
     CHECK(scene.count("vfx_finished") == 0);
     CHECK(ecs.get<const world::VisualEffect3D>(torch).playing);
     // Stopped, it plays nothing more; its embers finish.
@@ -358,14 +358,14 @@ TEST_CASE("vfx: a 2D effect plays in pixels, flashes the screen and shakes the c
     scene.files["hit.vfx.json"] = R"({"format": 1, "dimension": "2d", "duration": 0.5,
         "layers": [
             {"name": "sparks", "duration": 0.2, "offset": [10, 0],
-             "components": {"CPUParticles2D": {"amount": 12, "lifetime": 0.3}}},
+             "components": {"Emitter2D": {"amount": 12, "lifetime": 0.3}}},
             {"name": "glow", "duration": 0.3,
              "components": {"PointLight2D": {"energy": 2}},
              "curves": {"PointLight2D/energy": [[0, 2], [0.3, 0]]}},
             {"name": "flash", "duration": 0.2,
-             "components": {"Control": {"anchor_right": 1, "anchor_bottom": 1},
-                            "ColorRect": {"color": [1, 1, 1, 0.8]}},
-             "curves": {"ColorRect/color/a": [[0, 0.8], [0.2, 0]]}},
+             "components": {"Widget": {"anchor_right": 1, "anchor_bottom": 1},
+                            "ColorFill": {"color": [1, 1, 1, 0.8]}},
+             "curves": {"ColorFill/color/a": [[0, 0.8], [0.2, 0]]}},
             {"name": "shake", "duration": 0.3,
              "components": {"CameraShake": {"strength": 6, "frequency": 25}}}]})";
     const entt::entity camera =
@@ -377,7 +377,7 @@ TEST_CASE("vfx: a 2D effect plays in pixels, flashes the screen and shakes the c
     const entt::entity sparks = world::vfx_layer_entity(scene.world, hit, "sparks");
     REQUIRE((sparks != entt::null));
     CHECK(ecs.get<const world::Transform2D>(sparks).position.x == doctest::Approx(10.0));
-    CHECK(ecs.get<const world::CPUParticles2D>(sparks).amount == 12);
+    CHECK(ecs.get<const world::Emitter2D>(sparks).amount == 12);
     const entt::entity glow = world::vfx_layer_entity(scene.world, hit, "glow");
     REQUIRE((glow != entt::null));
     CHECK(ecs.get<const world::PointLight2D>(glow).energy == doctest::Approx(4.0 / 3.0));
@@ -385,7 +385,7 @@ TEST_CASE("vfx: a 2D effect plays in pixels, flashes the screen and shakes the c
     const entt::entity flash = world::vfx_layer_entity(scene.world, hit, "flash");
     REQUIRE((flash != entt::null));
     CHECK_FALSE(ecs.all_of<world::Transform2D>(flash));
-    CHECK(ecs.get<const world::ColorRect>(flash).color.w == doctest::Approx(0.4));
+    CHECK(ecs.get<const world::ColorFill>(flash).color.w == doctest::Approx(0.4));
     // The shake moves the camera off its own offset, and puts it back after.
     const Vec2 shaken = ecs.get<const world::Camera2D>(camera).offset;
     CHECK((shaken.x != 5.0F || shaken.y != 0.0F));
@@ -404,10 +404,10 @@ TEST_CASE("vfx: damage profiles play an effect where hits land, as hard as they 
     physics2d::install(scene.world);
     scene.files["sparks.vfx.json"] = R"vfx({"format": 1, "duration": 0.3,
         "parameters": {"strength": 1},
-        "layers": [{"name": "burst", "components": {"CPUParticles3D": {
+        "layers": [{"name": "burst", "components": {"Emitter3D": {
             "amount": "=round(30 * strength)", "lifetime": 0.2, "one_shot": true}}}]})vfx";
     scene.files["chips.vfx.json"] = R"({"format": 1, "dimension": "2d", "duration": 0.2,
-        "layers": [{"name": "burst", "components": {"CPUParticles2D": {"amount": 6}}}]})";
+        "layers": [{"name": "burst", "components": {"Emitter2D": {"amount": 6}}}]})";
     scene.files["metal.damage.json"] = R"({"format": 1, "material": "metal", "health": 1000,
         "deform": {"dent": 0, "hole": 0, "carve": 0},
         "effects": {"hit_scale": 20, "hit": {"debris": {"amount": 0}, "dust": {"amount": 0},
@@ -418,12 +418,12 @@ TEST_CASE("vfx: damage profiles play an effect where hits land, as hard as they 
                             "vfx": "chips.vfx.json"}}})";
     const entt::entity plate = scene.create("plate", R"({
         "Transform3D": {"position": [0, 0.5, 0]}, "StaticBody3D": {},
-        "CollisionShape3D": {"shape": "box", "size": [1, 1, 1]},
-        "BoxMesh": {"size": [1, 1, 1]}, "MeshInstance3D": {},
+        "Collider3D": {"shape": "box", "size": [1, 1, 1]},
+        "BoxGeometry": {"size": [1, 1, 1]}, "Model3D": {},
         "Destructible3D": {"profile": "metal.damage.json"}})");
     const entt::entity crate = scene.create("crate", R"({
         "Transform2D": {"position": [300, 0]}, "StaticBody2D": {},
-        "CollisionShape2D": {"shape": "rectangle", "size": [64, 64]},
+        "Collider2D": {"shape": "rectangle", "size": [64, 64]},
         "Polygon2D": {"polygon": [[-32, -32], [32, -32], [32, 32], [-32, 32]]},
         "Destructible2D": {"profile": "wood.damage.json"}})");
     scene.step(1);
@@ -442,7 +442,7 @@ TEST_CASE("vfx: damage profiles play an effect where hits land, as hard as they 
     scene.step(1);
     const entt::entity burst = world::vfx_layer_entity(scene.world, effect, "burst");
     REQUIRE((burst != entt::null));
-    CHECK(ecs.get<const world::CPUParticles3D>(burst).amount == std::lround(30.0 * strength));
+    CHECK(ecs.get<const world::Emitter3D>(burst).amount == std::lround(30.0 * strength));
     auto chipped =
         physics2d::damage_body_2d(scene.world, crate, 10.0F, "blunt", Vec2{332.0F, 0.0F});
     REQUIRE(chipped.ok());
@@ -486,8 +486,8 @@ struct Project {
         const std::map<std::string, std::string_view> files{
             {"fx/boom.vfx.json", kBoom},
             {"fx/broken.vfx.json", R"({"format": 1, "duration": 1, "layers": [
-                {"name": "late", "start": 2, "components": {"OmniLigth3D": {}}},
-                {"name": "fine", "detail": 1, "components": {"OmniLight3D": {}},
+                {"name": "late", "start": 2, "components": {"PointLigth3D": {}}},
+                {"name": "fine", "detail": 1, "components": {"PointLight3D": {}},
                  "curves": {"SpotLight3D/light_energy": [[0, 1]]}}],
                 "lod": [{"distance": 0, "detail": 0.5}]})"},
             {"main.scene.json", R"({"format": 1, "entities": {
@@ -590,7 +590,7 @@ TEST_CASE("vfx commands: play an effect, read its state, check recipes and previ
         *broken.find("recipes")->find("fx/broken.vfx.json")->find("warnings");
     REQUIRE(warnings.as_array().size() == 4);
     CHECK(warnings.as_array()[0].as_string().find("never plays") != std::string::npos);
-    CHECK(warnings.as_array()[1].as_string().find("did you mean \"OmniLight3D\"") !=
+    CHECK(warnings.as_array()[1].as_string().find("did you mean \"PointLight3D\"") !=
           std::string::npos);
     CHECK(warnings.as_array()[2].as_string().find("more detail") != std::string::npos);
     CHECK(warnings.as_array()[3].as_string().find("SpotLight3D/light_energy") != std::string::npos);
@@ -693,8 +693,8 @@ TEST_CASE("vfx distortion: a 2D lens bends the world's picture but not the contr
         "polygon": [[0, 0], [300, 0], [300, 600], [0, 600]], "color": [1, 0, 0, 1]}})");
     scene.create("blue", R"({"Transform2D": {}, "Polygon2D": {
         "polygon": [[300, 0], [1000, 0], [1000, 600], [300, 600]], "color": [0, 0, 1, 1]}})");
-    scene.create("panel", R"({"Control": {"offset_right": 40, "offset_bottom": 40},
-        "ColorRect": {"color": [0, 1, 0, 1]}})");
+    scene.create("panel", R"({"Widget": {"offset_right": 40, "offset_bottom": 40},
+        "ColorFill": {"color": [0, 1, 0, 1]}})");
     const auto pixel = [](const slash::render::Image& image, int x, int y) {
         const std::size_t i =
             ((static_cast<std::size_t>(y) * image.width) + static_cast<std::size_t>(x)) * 4;
@@ -749,10 +749,10 @@ TEST_CASE("vfx distortion: a 3D shockwave is placed and sized through the camera
 TEST_CASE("vfx hooks: creatures, characters and vehicles play their recipes' effects") {
     Scene scene;
     scene.files["fx/puff.vfx.json"] = R"({"format": 1, "dimension": "2d", "duration": 0.5,
-        "layers": [{"name": "dust", "components": {"CPUParticles2D": {"amount": 8}}}]})";
+        "layers": [{"name": "dust", "components": {"Emitter2D": {"amount": 8}}}]})";
     scene.files["fx/exhaust.vfx.json"] = R"({"format": 1, "dimension": "2d", "loop": true,
         "duration": 0.5,
-        "layers": [{"name": "smoke", "components": {"CPUParticles2D": {"amount": 4}}}]})";
+        "layers": [{"name": "smoke", "components": {"Emitter2D": {"amount": 4}}}]})";
     scene.files["deer.creature.json"] = R"({"format": 1, "vfx": {"fled": "fx/puff.vfx.json"}})";
     scene.files["van.vehicle.json"] = R"({"format": 1, "vfx": {"running": "fx/exhaust.vfx.json"}})";
     const entt::entity deer = scene.create("deer", R"({"Transform2D": {"position": [40, 30]},
@@ -798,7 +798,7 @@ TEST_CASE("vfx hooks: creatures, characters and vehicles play their recipes' eff
 TEST_CASE("vfx hooks: foliage plays its type's effects where it parts and is harvested") {
     Scene scene;
     scene.files["fx/rustle.vfx.json"] = R"({"format": 1, "dimension": "2d", "duration": 0.3,
-        "layers": [{"name": "leaves", "components": {"CPUParticles2D": {"amount": 3}}}]})";
+        "layers": [{"name": "leaves", "components": {"Emitter2D": {"amount": 3}}}]})";
     scene.files["tuft.foliage.json"] = R"({"format": 1, "space": "2d", "kind": "grass",
         "texture": "tuft.png", "size": [8, 16], "interaction": {"radius": 20, "bend": 0.5},
         "vfx": {"foliage_parted": "fx/rustle.vfx.json",
@@ -807,7 +807,7 @@ TEST_CASE("vfx hooks: foliage plays its type's effects where it parts and is har
     CHECK(world::foliage_vfx_hooks(scene.world, "nothing.json").empty());
     scene.create("meadow", R"({"Transform2D": {}, "Foliage2D": {"groups": [
         {"type": "tuft.foliage.json", "instances": [100, 100, 0, 1, 300, 100, 0, 1]}]}})");
-    scene.create("kid", R"({"Transform2D": {"position": [90, 95]}, "CharacterBody2D": {}})");
+    scene.create("kid", R"({"Transform2D": {"position": [90, 95]}, "CharacterMover2D": {}})");
     scene.step(3);
     // Only the tuft beside the kid parts, once, and its rustle plays at its foot.
     CHECK(scene.count("foliage_parted") == 1);

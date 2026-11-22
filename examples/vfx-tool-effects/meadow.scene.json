@@ -16,7 +16,7 @@
     },
     "kid": {
       "components": {
-        "CharacterBody2D": {},
+        "CharacterMover2D": {},
         "Transform2D": {
           "position": [30.0, 65.0]
         }

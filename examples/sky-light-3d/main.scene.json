@@ -14,9 +14,9 @@
     },
     "chalk": {
       "components": {
-        "MeshInstance3D": {},
-        "SphereMesh": {},
-        "StandardMaterial3D": {},
+        "Model3D": {},
+        "SphereGeometry": {},
+        "Surface3D": {},
         "Transform3D": {
           "position": [1.25, 0.5, 0.0]
         }
@@ -24,9 +24,9 @@
     },
     "chrome": {
       "components": {
-        "MeshInstance3D": {},
-        "SphereMesh": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "SphereGeometry": {},
+        "Surface3D": {
           "metallic": 1.0,
           "roughness": 0.05
         },
@@ -37,24 +37,24 @@
     },
     "environment": {
       "components": {
-        "ProceduralSkyMaterial": {
+        "Environment3D": {
+          "background_mode": "sky"
+        },
+        "SkyGradient": {
           "ground_bottom_color": [0.3, 0.22, 0.14, 1.0],
           "ground_horizon_color": [0.6, 0.55, 0.48, 1.0],
           "sky_horizon_color": [0.75, 0.8, 0.88, 1.0],
           "sky_top_color": [0.16, 0.34, 0.75, 1.0]
-        },
-        "WorldEnvironment": {
-          "background_mode": "sky"
         }
       }
     },
     "ground": {
       "components": {
-        "MeshInstance3D": {},
-        "PlaneMesh": {
+        "Model3D": {},
+        "PlaneGeometry": {
           "size": [200.0, 200.0]
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "albedo_color": [0.45, 0.45, 0.45, 1.0]
         },
         "Transform3D": {}
@@ -62,9 +62,9 @@
     },
     "satin": {
       "components": {
-        "MeshInstance3D": {},
-        "SphereMesh": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "SphereGeometry": {},
+        "Surface3D": {
           "albedo_color": [0.95, 0.75, 0.4, 1.0],
           "metallic": 1.0,
           "roughness": 0.45
@@ -76,7 +76,7 @@
     },
     "sun": {
       "components": {
-        "DirectionalLight3D": {},
+        "SunLight3D": {},
         "Transform3D": {
           "rotation": [-0.6, 0.8, 0.0]
         }

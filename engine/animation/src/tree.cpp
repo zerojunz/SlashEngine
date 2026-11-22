@@ -393,7 +393,7 @@ json::Value schema() {
     out["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     out["title"] = "SlashEngine animation tree";
     out["description"] = "A tree of animation nodes that blends animations, as Godot's "
-                         "AnimationTree. The AnimationTree component plays it.";
+                         "AnimationGraph. The AnimationGraph component plays it.";
     out["type"] = "object";
     out["additionalProperties"] = false;
     out["required"] = json::Array{"format", "root"};
@@ -1483,7 +1483,7 @@ std::vector<json::ValidationError> check_trees(const json::Value& doc,
         return trees.emplace(path, parse()).first->second;
     };
     const auto check = [&](const json::Value& components, const std::string& at, bool extends) {
-        const json::Value* component = components.find("AnimationTree");
+        const json::Value* component = components.find("AnimationGraph");
         if (component == nullptr || !component->is_object()) {
             return;
         }
@@ -1721,12 +1721,12 @@ std::vector<json::ValidationError> check_trees(const json::Value& doc,
         for (const auto& [id, entity] : entities->as_object()) {
             if (const json::Value* components = entity.find("components"); components != nullptr) {
                 check(*components,
-                      "/entities/" + json::pointer_escape(id) + "/components/AnimationTree",
+                      "/entities/" + json::pointer_escape(id) + "/components/AnimationGraph",
                       entity.find("extends") != nullptr || id.find('/') != std::string::npos);
             }
         }
     } else if (const json::Value* components = doc.find("components"); components != nullptr) {
-        check(*components, "/components/AnimationTree", doc.find("extends") != nullptr);
+        check(*components, "/components/AnimationGraph", doc.find("extends") != nullptr);
     }
     return errors;
 }

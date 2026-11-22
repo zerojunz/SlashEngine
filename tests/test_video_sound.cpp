@@ -517,7 +517,7 @@ struct SoundEngine {
     [[nodiscard]] double position() const {
         return ok("entity.get", R"({"id": "tv"})")
             .find("components")
-            ->find("VideoStreamPlayer")
+            ->find("Video")
             ->find("stream_position")
             ->as_double();
     }
@@ -538,7 +538,7 @@ bool close_to(double sound, double picture) {
 
 } // namespace
 
-TEST_CASE("video: a VideoStreamPlayer's sound plays on its bus with its picture") {
+TEST_CASE("video: a Video's sound plays on its bus with its picture") {
     const std::string root = "video_sound_project";
     std::filesystem::remove_all(root);
     REQUIRE(platform::create_directories(root).ok());
@@ -560,13 +560,13 @@ TEST_CASE("video: a VideoStreamPlayer's sound plays on its bus with its picture"
                                  std::string(clip.value().begin(), clip.value().end()))
                 .ok());
     SoundEngine engine(root);
-    (void)engine.ok("entity.create", R"({"id": "tv", "components": {"Control": {},
-        "VideoStreamPlayer": {"stream": "clip.mkv", "autoplay": true}}})");
+    (void)engine.ok("entity.create", R"({"id": "tv", "components": {"Widget": {},
+        "Video": {"stream": "clip.mkv", "autoplay": true}}})");
 
     // It starts with the picture, and each tick mixes a tick ahead of the frame shown.
     (void)engine.ok("step", R"({"tick_seconds": 0.05})");
     audio::PlayerInfo sound = engine.sound();
-    CHECK(sound.kind == "VideoStreamPlayer");
+    CHECK(sound.kind == "Video");
     CHECK(sound.stream == "clip.mkv");
     CHECK(sound.voices == 1);
     CHECK(sound.length == doctest::Approx(0.3));
@@ -576,11 +576,11 @@ TEST_CASE("video: a VideoStreamPlayer's sound plays on its bus with its picture"
     CHECK(engine.peak_db() == doctest::Approx(-6.02).epsilon(0.01));
 
     // Quieter, then paused: the sound fades out and holds where it got to.
-    (void)engine.ok("component.set", R"({"id": "tv", "components": {"VideoStreamPlayer":
+    (void)engine.ok("component.set", R"({"id": "tv", "components": {"Video":
         {"volume_db": -20}}})");
     (void)engine.ok("step", R"({"tick_seconds": 0.05})");
     CHECK(engine.peak_db() == doctest::Approx(-26.02).epsilon(0.01));
-    (void)engine.ok("component.set", R"({"id": "tv", "components": {"VideoStreamPlayer":
+    (void)engine.ok("component.set", R"({"id": "tv", "components": {"Video":
         {"paused": true}}})");
     (void)engine.ok("step", R"({"tick_seconds": 0.05})");
     const double held = engine.sound().position;
@@ -591,7 +591,7 @@ TEST_CASE("video: a VideoStreamPlayer's sound plays on its bus with its picture"
     CHECK(engine.peak_db() < -100.0F);
 
     // A jump starts it again where the picture is.
-    (void)engine.ok("component.set", R"({"id": "tv", "components": {"VideoStreamPlayer":
+    (void)engine.ok("component.set", R"({"id": "tv", "components": {"Video":
         {"paused": false, "stream_position": 0.05}}})");
     (void)engine.ok("step", R"({"tick_seconds": 0.05})");
     CHECK(close_to(engine.sound().position, engine.position() + 0.05));
@@ -601,7 +601,7 @@ TEST_CASE("video: a VideoStreamPlayer's sound plays on its bus with its picture"
     CHECK(engine.sound().voices == 0);
 
     // A track the video doesn't have says so.
-    (void)engine.ok("component.set", R"({"id": "tv", "components": {"VideoStreamPlayer":
+    (void)engine.ok("component.set", R"({"id": "tv", "components": {"Video":
         {"audio_track": 1, "playing": true, "stream_position": 0}}})");
     (void)engine.ok("step", R"({"tick_seconds": 0.05})");
     CHECK(engine.sound().error == "audio_track 1 isn't one of the 1 audio tracks of the video");

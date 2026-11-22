@@ -14,7 +14,7 @@
     },
     "environment": {
       "components": {
-        "WorldEnvironment": {
+        "Environment3D": {
           "ambient_light_color": [0.4, 0.45, 0.6, 1.0],
           "ambient_light_energy": 0.5,
           "ambient_light_source": "color",
@@ -25,7 +25,7 @@
     },
     "fire": {
       "components": {
-        "CPUParticles3D": {
+        "Emitter3D": {
           "amount": 40,
           "angle_max": 360.0,
           "color_ramp": [
@@ -58,10 +58,10 @@
           "scale_amount_min": 0.6,
           "spread": 20.0
         },
-        "QuadMesh": {
+        "QuadGeometry": {
           "size": [0.5, 0.5]
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "billboard_keep_scale": true,
           "billboard_mode": "particles",
           "blend_mode": "add",
@@ -76,7 +76,7 @@
     },
     "fountain": {
       "components": {
-        "CPUParticles3D": {
+        "Emitter3D": {
           "amount": 80,
           "color": [0.55, 0.8, 1.0, 1.0],
           "direction": [0.0, 1.0, 0.0],
@@ -89,13 +89,13 @@
           ],
           "spread": 12.0
         },
-        "SphereMesh": {
+        "SphereGeometry": {
           "height": 0.14,
           "radial_segments": 8,
           "radius": 0.07,
           "rings": 4
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "roughness": 0.2,
           "vertex_color_use_as_albedo": true
         },
@@ -106,11 +106,11 @@
     },
     "ground": {
       "components": {
-        "MeshInstance3D": {},
-        "PlaneMesh": {
+        "Model3D": {},
+        "PlaneGeometry": {
           "size": [14.0, 14.0]
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "albedo_color": [0.2, 0.3, 0.2, 1.0]
         },
         "Transform3D": {}
@@ -118,7 +118,7 @@
     },
     "moon": {
       "components": {
-        "DirectionalLight3D": {
+        "SunLight3D": {
           "light_energy": 0.8
         },
         "Transform3D": {
@@ -128,10 +128,10 @@
     },
     "snow": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [0.06, 0.06, 0.06]
         },
-        "CPUParticles3D": {
+        "Emitter3D": {
           "amount": 120,
           "angle_max": 360.0,
           "emission_box_extents": [6.0, 0.1, 3.0],
@@ -142,7 +142,7 @@
           "preprocess": 6.0,
           "spread": 0.0
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "shading_mode": "unshaded"
         },
         "Transform3D": {

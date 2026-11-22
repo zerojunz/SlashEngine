@@ -198,7 +198,7 @@ enum class DataFile : std::uint8_t {
     Material,
     ProcessMaterial,
     Animation,
-    AnimationTree,
+    AnimationGraph,
     TileSet,
     Heightmap,
     Texture,
@@ -228,7 +228,7 @@ enum class DataFile : std::uint8_t {
     StandardMaterial,
     Lightmap,
     LightmapTexels,
-    VoxelGI,
+    VoxelLighting3D,
     Model,
     Buffer,
     Translation,
@@ -256,7 +256,7 @@ DataFile data_file(std::string_view name) {
         return DataFile::Animation;
     }
     if (name.ends_with(animation::kTreeSuffix)) {
-        return DataFile::AnimationTree;
+        return DataFile::AnimationGraph;
     }
     if (name.ends_with(canvas::kTileSetSuffix)) {
         return DataFile::TileSet;
@@ -347,7 +347,7 @@ DataFile data_file(std::string_view name) {
         return DataFile::Lightmap;
     }
     if (name.ends_with(scene3d::kVoxelGISuffix)) {
-        return DataFile::VoxelGI;
+        return DataFile::VoxelLighting3D;
     }
     if (name.ends_with(scene3d::kSplatSuffix)) {
         return DataFile::Splats;
@@ -465,7 +465,7 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         return canvas::validate_process_material(parsed.value());
     case DataFile::Animation:
         return animation::validate_animation_library(parsed.value(), &components);
-    case DataFile::AnimationTree:
+    case DataFile::AnimationGraph:
         return animation::validate_tree(parsed.value());
     case DataFile::TileSet:
         return canvas::validate_tileset(parsed.value());
@@ -530,7 +530,7 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         return scene3d::validate_mesh_library(parsed.value());
     case DataFile::Lightmap:
         return scene3d::validate_lightmap(parsed.value());
-    case DataFile::VoxelGI:
+    case DataFile::VoxelLighting3D:
         return scene3d::validate_voxel_gi(parsed.value());
     case DataFile::Prefab:
         errors = world::validate_prefab(components, parsed.value(), reader);
@@ -539,8 +539,8 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         errors = world::validate_scene(components, parsed.value(), reader);
         break;
     }
-    // Each tile map layer's cells must name tiles in its tile set, each AnimationPlayer's
-    // animation and track targets must be in its library and targets, each AnimationTree's tree
+    // Each tile map layer's cells must name tiles in its tile set, each Animator's
+    // animation and track targets must be in its library and targets, each AnimationGraph's tree
     // must play from its libraries, controls must lay out, each sub-emitter must take part in a
     // chain, each 3D mesh must draw, each path follower must have its path and each navigation
     // region's file and each NPC's brain must load.
@@ -656,7 +656,7 @@ Result<bool> stage_texture_forms(std::string_view file, std::string_view bytes,
 }
 
 // The splat and color maps the HTerrains in a project's scenes and prefabs name, and the textures
-// of their vector field attractors. They ship as they are, as the HTerrain plugin keeps its maps:
+// of their vector field attractors. They ship as they are, as the Terrain3D plugin keeps its maps:
 // terrains read their pixels for holes, collision and navigation and particles move by a field's,
 // which a texture's compressed forms don't keep the same on every GPU.
 std::set<std::string, std::less<>> exact_textures(const fs::path& project_dir) {
@@ -672,7 +672,7 @@ std::set<std::string, std::less<>> exact_textures(const fs::path& project_dir) {
             return;
         }
         for (const auto& [key, item] : value.as_object()) {
-            if (key == "HTerrain" && item.is_object()) {
+            if (key == "Terrain3D" && item.is_object()) {
                 for (const std::string_view map : {"splatmap", "colormap"}) {
                     if (const json::Value* path = item.find(map);
                         path != nullptr && path->is_string() && !path->as_string().empty()) {
@@ -680,7 +680,7 @@ std::set<std::string, std::less<>> exact_textures(const fs::path& project_dir) {
                     }
                 }
             }
-            if (key == "GPUParticlesAttractorVectorField3D" && item.is_object()) {
+            if (key == "ParticleFlowField3D" && item.is_object()) {
                 if (const json::Value* path = item.find("texture");
                     path != nullptr && path->is_string() && !path->as_string().empty()) {
                     maps.insert(path->as_string());

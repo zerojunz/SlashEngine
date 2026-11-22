@@ -9,7 +9,7 @@
 #include <optional>
 #include <vector>
 
-// Godot's VehicleBody3D and VehicleWheel3D (scene/3d/physics/vehicle_body_3d.cpp), its port of
+// Godot's VehicleBody3D and Wheel3D (scene/3d/physics/vehicle_body_3d.cpp), its port of
 // Bullet's raycast vehicle: after each step every wheel of an awake vehicle casts a ray down its
 // suspension, and its spring, damper and tire friction push the vehicle's body.
 namespace slash::physics3d::detail {
@@ -18,8 +18,8 @@ namespace {
 
 using world::Affine3D;
 using world::Transform3D;
-using world::VehicleBody3D;
-using world::VehicleWheel3D;
+using world::Wheel3D;
+using world::WheeledBody3D;
 
 constexpr float kTau = 2.0F * std::numbers::pi_v<float>;
 
@@ -53,7 +53,7 @@ bool same_place(const Transform3D& a, const Transform3D& b) {
            a.top_level == b.top_level;
 }
 
-// The wheels of a vehicle: the entities with a VehicleWheel3D placed right under it, in its
+// The wheels of a vehicle: the entities with a Wheel3D placed right under it, in its
 // children's order, as Godot keeps the wheels in the order they entered the tree.
 std::vector<entt::entity> wheels_of(const entt::registry& registry, const world::Tree3D& tree,
                                     entt::entity vehicle) {
@@ -63,7 +63,7 @@ std::vector<entt::entity> wheels_of(const entt::registry& registry, const world:
         return wheels;
     }
     for (const entt::entity child : transform->children) {
-        if (registry.valid(child) && registry.all_of<VehicleWheel3D, Transform3D>(child) &&
+        if (registry.valid(child) && registry.all_of<Wheel3D, Transform3D>(child) &&
             tree.transform_parent(child) == vehicle &&
             std::ranges::find(wheels, child) == wheels.end()) {
             wheels.push_back(child);
@@ -76,7 +76,7 @@ std::vector<entt::entity> wheels_of(const entt::registry& registry, const world:
 // out: its m_raycastInfo, suspension and friction.
 struct WheelStep {
     entt::entity entity = entt::null;
-    VehicleWheel3D* wheel = nullptr;
+    Wheel3D* wheel = nullptr;
     Wheel* mount = nullptr;
     Vec3 hard_point{}; // where it is mounted, in the world
     Vec3 direction{};  // down its suspension
@@ -111,13 +111,13 @@ struct Ground {
 void Space::pre_step_vehicles(world::World& world, const world::Tree3D& tree, float seconds) {
     entt::registry& registry = world.ecs();
     wheels_.erase_if([&](entt::entity entity, const Wheel& /*wheel*/) {
-        return !registry.valid(entity) || !registry.all_of<VehicleWheel3D, Transform3D>(entity);
+        return !registry.valid(entity) || !registry.all_of<Wheel3D, Transform3D>(entity);
     });
     vehicles_.erase_if([&](entt::entity entity, const VehicleInputs& /*inputs*/) {
-        return !registry.valid(entity) || !registry.all_of<VehicleBody3D>(entity);
+        return !registry.valid(entity) || !registry.all_of<WheeledBody3D>(entity);
     });
     for (auto& [entity, body] : bodies_) {
-        if (body->kind != Kind::Rigid || !registry.all_of<VehicleBody3D>(entity)) {
+        if (body->kind != Kind::Rigid || !registry.all_of<WheeledBody3D>(entity)) {
             continue;
         }
         const std::vector<entt::entity> wheels = wheels_of(registry, tree, entity);
@@ -131,7 +131,7 @@ void Space::pre_step_vehicles(world::World& world, const world::Tree3D& tree, fl
             // A new or moved wheel: where it is mounted is where its Transform3D puts it, less its
             // steering, roll and suspension, as Godot takes the mount from where a wheel enters
             // the tree.
-            const auto& wheel = registry.get<VehicleWheel3D>(wheel_entity);
+            const auto& wheel = registry.get<Wheel3D>(wheel_entity);
             const Unscaled pose = unscale(scale_rows(world::affine(transform), scale));
             Affine3D mount = pose.transform * rotation({1.0F, 0.0F, 0.0F}, -wheel.rotation) *
                              rotation({0.0F, 1.0F, 0.0F}, -wheel.steering);
@@ -148,14 +148,14 @@ void Space::pre_step_vehicles(world::World& world, const world::Tree3D& tree, fl
         }
         // As Godot's set_engine_force, set_brake and set_steering, when they change. A change
         // also wakes the vehicle, which Godot leaves asleep.
-        const auto& inputs = registry.get<VehicleBody3D>(entity);
+        const auto& inputs = registry.get<WheeledBody3D>(entity);
         VehicleInputs* last = vehicles_.find(entity);
         if (last == nullptr) {
             last = &vehicles_.emplace(entity, VehicleInputs{});
         }
         bool changed = false;
         for (const entt::entity wheel_entity : wheels) {
-            auto& wheel = registry.get<VehicleWheel3D>(wheel_entity);
+            auto& wheel = registry.get<Wheel3D>(wheel_entity);
             if (inputs.engine_force != last->engine_force && wheel.use_as_traction) {
                 wheel.engine_force = inputs.engine_force;
             }
@@ -210,7 +210,7 @@ void Space::step_vehicles(world::World& world, const world::Tree3D& tree, float 
 
     for (auto& [entity, body] : bodies_) {
         if (body->kind != Kind::Rigid || body->id.IsInvalid() ||
-            !registry.all_of<VehicleBody3D>(entity)) {
+            !registry.all_of<WheeledBody3D>(entity)) {
             continue;
         }
         JPH::Body* jolt = locks.TryGetBody(body->id);
@@ -221,7 +221,7 @@ void Space::step_vehicles(world::World& world, const world::Tree3D& tree, float 
         for (const entt::entity wheel_entity : wheels_of(registry, tree, entity)) {
             if (Wheel* mount = wheels_.find(wheel_entity); mount != nullptr) {
                 wheels.push_back({.entity = wheel_entity,
-                                  .wheel = &registry.get<VehicleWheel3D>(wheel_entity),
+                                  .wheel = &registry.get<Wheel3D>(wheel_entity),
                                   .mount = mount});
             }
         }
@@ -253,7 +253,7 @@ void Space::step_vehicles(world::World& world, const world::Tree3D& tree, float 
 
         // _update_wheel_transform and _ray_cast.
         for (WheelStep& step_wheel : wheels) {
-            const VehicleWheel3D& wheel = *step_wheel.wheel;
+            const Wheel3D& wheel = *step_wheel.wheel;
             const Affine3D& mount = step_wheel.mount->mount;
             step_wheel.hard_point = chassis.apply(mount.origin);
             step_wheel.direction = normalized(chassis.basis(mount.y * -1.0F));
@@ -302,7 +302,7 @@ void Space::step_vehicles(world::World& world, const world::Tree3D& tree, float 
 
         // _update_suspension, and the suspension's impulses.
         for (WheelStep& step_wheel : wheels) {
-            const VehicleWheel3D& wheel = *step_wheel.wheel;
+            const Wheel3D& wheel = *step_wheel.wheel;
             if (!step_wheel.in_contact) {
                 step_wheel.suspension_force = 0.0F;
                 continue;
@@ -328,7 +328,7 @@ void Space::step_vehicles(world::World& world, const world::Tree3D& tree, float 
             if (!step_wheel.in_contact) {
                 continue;
             }
-            const VehicleWheel3D& wheel = *step_wheel.wheel;
+            const Wheel3D& wheel = *step_wheel.wheel;
             const Vec3 normal = step_wheel.contact_normal;
             Vec3 axle = rotation(step_wheel.up, wheel.steering).basis(step_wheel.axle);
             axle = normalized(axle - (normal * dot(axle, normal)));
@@ -352,7 +352,7 @@ void Space::step_vehicles(world::World& world, const world::Tree3D& tree, float 
         }
         bool sliding = false;
         for (WheelStep& step_wheel : wheels) {
-            const VehicleWheel3D& wheel = *step_wheel.wheel;
+            const Wheel3D& wheel = *step_wheel.wheel;
             float rolling = 0.0F;
             if (step_wheel.in_contact) {
                 if (wheel.engine_force != 0.0F) {
@@ -414,7 +414,7 @@ void Space::step_vehicles(world::World& world, const world::Tree3D& tree, float 
         // The wheels roll with the ground under them, and keep turning, slower, in the air.
         const Vec3 scale = inverse_of(unscale(tree.global(entity)).scale);
         for (const WheelStep& step_wheel : wheels) {
-            VehicleWheel3D& wheel = *step_wheel.wheel;
+            Wheel3D& wheel = *step_wheel.wheel;
             Wheel& mount = *step_wheel.mount;
             if (step_wheel.in_contact) {
                 Vec3 forward = chassis.z;

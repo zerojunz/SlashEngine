@@ -28,7 +28,7 @@ and leaves a scorch, a radial gradient from
   shows, and a second shot kills it. The living never break: its `killed` reply and event say
   it died, and it stops.
 - A blast by the van wrecks it: it drives no more, and its own break effects leave black smoke.
-- The 2D crate takes the same profile in pixels: a `CPUParticles2D`, a `Sprite2D` scorch.
+- The 2D crate takes the same profile in pixels: a `Emitter2D`, a `Sprite2D` scorch.
 - `damage.state` marks the deer `dead` and the van `wrecked`, `world.query` lists what the
   hits left, and 150 ticks later only the scorches remain.
 - `project.json`'s `physics_3d.break_budget` caps the pieces breaks from impacts cut a tick;

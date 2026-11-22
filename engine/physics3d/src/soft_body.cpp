@@ -41,7 +41,7 @@ constexpr float kAirDensity = 1.225F;
 // The primitive mesh a soft body simulates, with its key, or nullopt when the entity draws none.
 std::optional<std::pair<scene3d::Primitive, std::string>> mesh_of(const world::World& world,
                                                                   entt::entity entity) {
-    const auto* instance = world.ecs().try_get<world::MeshInstance3D>(entity);
+    const auto* instance = world.ecs().try_get<world::Model3D>(entity);
     if (instance == nullptr || !instance->mesh.empty()) {
         return std::nullopt;
     }
@@ -436,7 +436,7 @@ std::vector<AreaWind> Space::area_winds(const world::World& world,
         if (area->kind != Kind::Area || area->id.IsInvalid()) {
             continue;
         }
-        const auto& component = world.ecs().get<world::Area3D>(entity);
+        const auto& component = world.ecs().get<world::Zone3D>(entity);
         if (component.wind_force_magnitude == 0.0F || component.wind_source_path == entt::null ||
             !world.valid(component.wind_source_path)) {
             continue;

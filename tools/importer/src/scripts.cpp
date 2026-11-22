@@ -3496,7 +3496,7 @@ private:
         if (uses("slash::world::to_json")) {
             engine.emplace_back("slash/world/serialize.hpp");
         }
-        if (uses("slash::world::Area2D") || uses("slash::world::Area3D")) {
+        if (uses("slash::world::Zone2D") || uses("slash::world::Zone3D")) {
             engine.emplace_back("slash/world/components.hpp");
         }
         engine.emplace_back("slash/world/world.hpp");
@@ -3753,8 +3753,8 @@ private:
         case Call::TriggerExited:
             return "run() calls it on both entities when a body or area " +
                    std::string(call_of(function) == Call::TriggerEntered ? "enters" : "leaves") +
-                   " an " + (unreal() ? "Area3D" : "Area2D") + ", as " + engine_ + " calls " +
-                   name + unity_other;
+                   " a " + (unreal() ? "Zone3D" : "Zone2D") + ", as " + engine_ + " calls " + name +
+                   unity_other;
         case Call::CollisionEntered:
         case Call::CollisionExited:
             return "run() calls it on both entities when a " +
@@ -3958,7 +3958,7 @@ private:
             events += "            const bool trigger =\n";
             events += "                event.kind == \"area_" + ending;
             events +=
-                "\" || ecs.all_of<slash::world::" + std::string(unreal() ? "Area3D" : "Area2D") +
+                "\" || ecs.all_of<slash::world::" + std::string(unreal() ? "Zone3D" : "Zone2D") +
                 ">(first);\n";
             events += "            for (const auto& [entity, other] :\n";
             events += "                 {std::pair{first, second}, std::pair{second, first}}) {\n";

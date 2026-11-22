@@ -1,7 +1,7 @@
 // Plays a video's sound with its picture. The clip is made here: four colors, a quarter of a
 // second each, written by the engine's own AV1 encoder into a Matroska file with two audio
 // tracks of a square wave that halves in loudness with each color: PCM, then the same at 48 kHz
-// encoded as Opus. The VideoStreamPlayer "tv" plays it on the "Cutscenes" bus, and the output is
+// encoded as Opus. The Video "tv" plays it on the "Cutscenes" bus, and the output is
 // what audio.state and audio.capture say as it plays, gets quieter, pauses, seeks, finishes and
 // plays its Opus track.
 #include "slash/command/builtin.hpp"
@@ -92,8 +92,8 @@ struct Game {
     }
 
     void set(std::string_view fields) const {
-        (void)ok("component.set", R"({"id": "tv", "components": {"VideoStreamPlayer": )" +
-                                      std::string(fields) + "}}");
+        (void)ok("component.set",
+                 R"({"id": "tv", "components": {"Video": )" + std::string(fields) + "}}");
     }
 
     // The picture's position, the sound as audio.state lists it, and how loud the Cutscenes bus
@@ -101,7 +101,7 @@ struct Game {
     void show(const char* what) const {
         const json::Value got = ok("entity.get", R"({"id": "tv"})");
         const json::Value* position =
-            got.find("components")->find("VideoStreamPlayer")->find("stream_position");
+            got.find("components")->find("Video")->find("stream_position");
         std::printf("%s\n  picture at %.2f s\n", what,
                     position != nullptr ? position->as_double() : 0.0);
         const json::Value state = ok("audio.state", R"({"ids": ["tv"]})");

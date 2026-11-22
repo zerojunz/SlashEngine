@@ -382,7 +382,7 @@ TEST_CASE("fauna: a wary herd roams, keeps together and flees a person") {
     CHECK(project.events("events_1").empty());
     // A person walks into the herd: they run.
     project.ok("entity.create", R"({"id": "hunter", "components": {
-        "Transform3D": {"position": [0, 0, 0]}, "CharacterBody3D": {}}})");
+        "Transform3D": {"position": [0, 0, 0]}, "CharacterMover3D": {}}})");
     project.ok("step", R"({"ticks": 30})");
     const std::vector<std::string> events = project.events("events_1");
     CHECK(has(events, "creature_fled"));
@@ -402,7 +402,7 @@ TEST_CASE("fauna: a wary herd roams, keeps together and flees a person") {
     CHECK(std::abs(std::sin(transform.rotation.y) -
                    (mind.velocity.x / std::hypot(mind.velocity.x, mind.velocity.z))) < 0.05);
     // Their AnimationPlayers run.
-    const auto& player = project.session->world().ecs().get<world::AnimationPlayer>(
+    const auto& player = project.session->world().ecs().get<world::Animator>(
         project.session->world().find("deer_1"));
     CHECK(player.animation == "run");
 }
@@ -455,7 +455,7 @@ TEST_CASE("fauna: a recipe's behavior sets when it hunts and how long it eats") 
 TEST_CASE("fauna: fed enough, a friendly dog is tamed, follows and can be ridden") {
     Project project("fauna_dog_project", kFiles);
     project.ok("entity.create", R"({"id": "kid", "components": {
-        "Transform3D": {"position": [0, 0, 0]}, "CharacterBody3D": {}}})");
+        "Transform3D": {"position": [0, 0, 0]}, "CharacterMover3D": {}}})");
     project.ok("creature.place",
                R"({"recipe": "fauna/dog.creature.json", "id": "dog", "at": [6, 0, 0]})");
     project.ok("step", R"({"ticks": 240})");
@@ -518,7 +518,7 @@ TEST_CASE("fauna: 2D creatures walk along the ground, swim and fly, turning thei
     CHECK(world.ecs().all_of<world::Polygon2D>(world.find("doe_head")));
     // A person comes close from the left: the doe runs right along the ground.
     project.ok("entity.create", R"({"id": "walker", "components": {
-        "Transform2D": {"position": [-150, 400]}, "CharacterBody2D": {}}})");
+        "Transform2D": {"position": [-150, 400]}, "CharacterMover2D": {}}})");
     project.ok("step", R"({"ticks": 45})");
     const json::Value doe = project.state("doe");
     CHECK(field(doe, "mode").as_string() == "fleeing");
@@ -664,7 +664,7 @@ TEST_CASE("fauna: a creature's own motion retimes its model's animations and add
     for (const char* id : {"plain", "quick"}) {
         project.ok("component.set", R"({"id": ")" + std::string(id) + R"(", "components": {
             "Creature3D": {"enabled": false},
-            "AnimationPlayer": {"animation": "walk", "playing": false, "time": 0.2}}})");
+            "Animator": {"animation": "walk", "playing": false, "time": 0.2}}})");
     }
     const auto pose = [&](std::string_view id) {
         return project.ok("skeleton.get",

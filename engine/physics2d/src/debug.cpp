@@ -37,10 +37,10 @@ std::string joint_kind(const JointKey& key) {
             using Joint = std::decay_t<decltype(joint)>;
             if constexpr (std::is_same_v<Joint, world::PinJoint2D>) {
                 return std::string("PinJoint2D");
-            } else if constexpr (std::is_same_v<Joint, world::DampedSpringJoint2D>) {
-                return std::string("DampedSpringJoint2D");
+            } else if constexpr (std::is_same_v<Joint, world::SpringJoint2D>) {
+                return std::string("SpringJoint2D");
             } else {
-                return std::string("GrooveJoint2D");
+                return std::string("TrackJoint2D");
             }
         },
         key);

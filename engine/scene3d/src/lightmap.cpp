@@ -78,7 +78,7 @@ json::Value make_schema() {
     user["description"] = "Where one mesh's light is, as Godot's LightmapGIData user.";
     user["properties"]["entity"]["type"] = "string";
     user["properties"]["entity"]["minLength"] = 1;
-    user["properties"]["entity"]["description"] = "The MeshInstance3D's entity ID.";
+    user["properties"]["entity"]["description"] = "The Model3D's entity ID.";
     user["properties"]["part"]["type"] = "integer";
     user["properties"]["part"]["minimum"] = 0;
     user["properties"]["part"]["default"] = 0;
@@ -105,7 +105,7 @@ json::Value make_schema() {
     probes["required"] = json::Array{"bounds", "points", "sh", "tetrahedra", "bsp"};
     probes["description"] =
         "Its light probes, as Godot's LightmapGIData capture data, which meshes that move take "
-        "their light from; all in the LightmapGI's space.";
+        "their light from; all in the BakedLighting3D's space.";
     probes["properties"]["bounds"]["type"] = "array";
     probes["properties"]["bounds"]["items"]["type"] = "number";
     probes["properties"]["bounds"]["minItems"] = 6;
@@ -140,9 +140,9 @@ json::Value make_schema() {
     json::Value schema;
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     schema["title"] = "SlashEngine lightmap";
-    schema["description"] =
-        "The light a LightmapGI baked, as Godot's LightmapGIData: its .hdr texture, the meshes' "
-        "lightmap UVs and where each mesh's light is. lightmap.bake writes it.";
+    schema["description"] = "The light a BakedLighting3D baked, as Godot's LightmapGIData: its "
+                            ".hdr texture, the meshes' "
+                            "lightmap UVs and where each mesh's light is. lightmap.bake writes it.";
     schema["type"] = "object";
     schema["additionalProperties"] = false;
     schema["required"] = json::Array{"format", "texture", "width", "height", "slices"};
@@ -455,10 +455,10 @@ struct MaterialImages {
     std::shared_ptr<const render::Image> emission;
 };
 
-// A StandardMaterial3D as a bake sees it: what StandardMaterial3D's shader gives as albedo and
+// A Surface3D as a bake sees it: what Surface3D's shader gives as albedo and
 // emission at a point, Godot's bake_render_uv2, with metals' albedo taken out (they reflect
 // rather than scatter light). With physical light units (units), emission shines by its nits.
-void set_material(LightmapMesh::Surface& surface, const world::StandardMaterial3D& standard,
+void set_material(LightmapMesh::Surface& surface, const world::Surface3D& standard,
                   const MaterialImages& images, bool units = false) {
     const bool nearest = standard.texture_filter.starts_with("nearest");
     const render::Filter filter = nearest ? render::Filter::Nearest : render::Filter::Linear;
@@ -518,7 +518,7 @@ void set_material(LightmapMesh::Surface& surface, const world::StandardMaterial3
 
 // Godot's default material: white, lit, back faces culled.
 void set_default_material(LightmapMesh::Surface& surface) {
-    set_material(surface, world::StandardMaterial3D{}, {});
+    set_material(surface, world::Surface3D{}, {});
 }
 
 // Whether entity is in the subtree under scope (every entity for a null scope).
@@ -569,8 +569,8 @@ public:
         return loaded.value();
     }
 
-    MaterialImages standard_images(const world::StandardMaterial3D& standard, entt::entity entity) {
-        const std::string field = "/components/StandardMaterial3D/";
+    MaterialImages standard_images(const world::Surface3D& standard, entt::entity entity) {
+        const std::string field = "/components/Surface3D/";
         return {.albedo = image(standard.albedo_texture, entity, field + "albedo_texture"),
                 .metallic = image(standard.metallic_texture, entity, field + "metallic_texture"),
                 .emission = standard.emission_enabled ? image(standard.emission_texture, entity,
@@ -579,10 +579,10 @@ public:
     }
 
     // The LightmapProbes under scope, in the order they were made, as places in space (a
-    // LightmapGI's), as LightmapGI::_find_meshes_and_lights finds them.
+    // BakedLighting3D's), as LightmapGI::_find_meshes_and_lights finds them.
     void add_probes(entt::entity scope, const world::Affine3D& space,
                     std::vector<std::array<float, 3>>& probes) const {
-        for (const entt::entity entity : made<world::LightmapProbe>(world_)) {
+        for (const entt::entity entity : made<world::LightProbe3D>(world_)) {
             if (under(tree_, entity, scope)) {
                 const Vec3 at = space.apply(tree_.global(entity).origin);
                 probes.push_back(
@@ -593,8 +593,8 @@ public:
 
     void add_meshes(entt::entity scope, std::vector<LightmapMesh>& meshes) {
         const auto& ecs = world_.ecs();
-        for (const entt::entity entity : made<world::MeshInstance3D>(world_)) {
-            const auto& instance = ecs.get<const world::MeshInstance3D>(entity);
+        for (const entt::entity entity : made<world::Model3D>(world_)) {
+            const auto& instance = ecs.get<const world::Model3D>(entity);
             if (instance.gi_mode != "static" || !tree_.visible(entity) ||
                 !under(tree_, entity, scope)) {
                 continue;
@@ -602,12 +602,12 @@ public:
             const std::string id(world_.id_of(entity));
             if (id.empty()) {
                 out_.problems.push_back(
-                    {entity, "/components/MeshInstance3D",
+                    {entity, "/components/Model3D",
                      "has no ID, which its place in the lightmap is kept by; left out"});
                 continue;
             }
             const world::Affine3D place = tree_.global(entity);
-            const auto* standard = ecs.try_get<const world::StandardMaterial3D>(entity);
+            const auto* standard = ecs.try_get<const world::Surface3D>(entity);
             std::optional<MaterialImages> override_images;
             if (standard != nullptr) {
                 override_images = standard_images(*standard, entity);
@@ -646,18 +646,17 @@ public:
     }
 
     void add_lights(entt::entity scope, std::vector<LightmapLight>& lights) {
-        add<world::DirectionalLight3D>(scope, lights);
-        add<world::OmniLight3D>(scope, lights);
+        add<world::SunLight3D>(scope, lights);
+        add<world::PointLight3D>(scope, lights);
         add<world::SpotLight3D>(scope, lights);
     }
 
 private:
-    void add_model(entt::entity entity, const std::string& id,
-                   const world::MeshInstance3D& instance, const world::Affine3D& place,
-                   const world::StandardMaterial3D* standard,
+    void add_model(entt::entity entity, const std::string& id, const world::Model3D& instance,
+                   const world::Affine3D& place, const world::Surface3D* standard,
                    const std::optional<MaterialImages>& override_images,
                    std::vector<LightmapMesh>& meshes) {
-        const std::string field = "/components/MeshInstance3D/mesh";
+        const std::string field = "/components/Model3D/mesh";
         if (!sources_.models) {
             out_.problems.push_back({entity, field, "models can't load here"});
             return;
@@ -744,7 +743,7 @@ private:
                 continue;
             }
             LightmapLight out;
-            if constexpr (std::is_same_v<T, world::DirectionalLight3D>) {
+            if constexpr (std::is_same_v<T, world::SunLight3D>) {
                 if (light.sky_mode == "sky_only") {
                     continue;
                 }
@@ -752,7 +751,7 @@ private:
                 // As LightmapperRD::add_directional_light: the tangent of the angular distance.
                 const Vec2 cs = slash::cos_sin(light.light_angular_distance * kPi / 180.0F);
                 out.size = cs.x != 0.0F ? cs.y / cs.x : 0.0F;
-            } else if constexpr (std::is_same_v<T, world::OmniLight3D>) {
+            } else if constexpr (std::is_same_v<T, world::PointLight3D>) {
                 out.type = render::LightType::Omni;
                 out.range = light.omni_range;
                 out.attenuation = light.omni_attenuation;
@@ -774,9 +773,9 @@ private:
                 out.color = {out.color[0] * srgb_to_linear(tint[0]),
                              out.color[1] * srgb_to_linear(tint[1]),
                              out.color[2] * srgb_to_linear(tint[2])};
-                if constexpr (std::is_same_v<T, world::DirectionalLight3D>) {
+                if constexpr (std::is_same_v<T, world::SunLight3D>) {
                     out.energy *= render::directional_light_units(light.light_intensity_lux);
-                } else if constexpr (std::is_same_v<T, world::OmniLight3D>) {
+                } else if constexpr (std::is_same_v<T, world::PointLight3D>) {
                     out.energy *= render::omni_light_units(light.light_intensity_lumens);
                 } else {
                     out.energy *= render::spot_light_units(light.light_intensity_lumens);
@@ -804,7 +803,7 @@ private:
 
 // The light rays that leave the scene bring, as LightmapGI::bake's environment.
 render::HdrImage environment_of(const world::World& world, const world::Tree3D& tree,
-                                const world::LightmapGI& gi, Gatherer& gatherer) {
+                                const world::BakedLighting3D& gi, Gatherer& gatherer) {
     render::HdrImage out;
     if (gi.environment_mode == "disabled") {
         return out;
@@ -823,7 +822,7 @@ render::HdrImage environment_of(const world::World& world, const world::Tree3D& 
         }
         return out;
     }
-    // "scene": the ambient light the WorldEnvironment gives lit surfaces, as Godot's
+    // "scene": the ambient light the Environment3D gives lit surfaces, as Godot's
     // environment_bake_panorama, before any camera's exposure.
     const Environment env = world_environment(world, {});
     render::Scene3D scene;
@@ -1153,7 +1152,7 @@ json::Value lightmapping_schema() {
         out["description"] = std::move(description);
         return out;
     };
-    json::Value quality = object("The rays each LightmapGI quality traces.");
+    json::Value quality = object("The rays each BakedLighting3D quality traces.");
     for (std::size_t i = 0; i < kQualityNames.size(); ++i) {
         const std::string name = kQualityNames.at(i);
         quality["properties"][name + "_quality_ray_count"] =
@@ -1189,10 +1188,10 @@ json::Value lightmapping_schema() {
 
 Result<LightmapBake> bake_lightmap(const world::World& world, entt::entity entity,
                                    const LightmapSources& sources) {
-    if (!world.valid(entity) || !world.ecs().all_of<world::LightmapGI>(entity)) {
-        return make_error(ErrorCode::InvalidArgument, "the entity has no LightmapGI");
+    if (!world.valid(entity) || !world.ecs().all_of<world::BakedLighting3D>(entity)) {
+        return make_error(ErrorCode::InvalidArgument, "the entity has no BakedLighting3D");
     }
-    const auto& gi = world.ecs().get<const world::LightmapGI>(entity);
+    const auto& gi = world.ecs().get<const world::BakedLighting3D>(entity);
     LightmapSettings settings;
     const LightmappingSettings& project = sources.lightmapping;
     const std::size_t quality = quality_index(gi.quality);
@@ -1213,14 +1212,13 @@ Result<LightmapBake> bake_lightmap(const world::World& world, entt::entity entit
     settings.device = sources.device;
     if (!gi.camera_attributes.empty()) {
         const entt::entity attributes = world.find(gi.camera_attributes);
-        if (attributes == entt::null ||
-            !world.ecs().all_of<world::CameraAttributesPractical>(attributes)) {
-            return make_error(ErrorCode::InvalidArgument,
-                              "camera_attributes \"" + gi.camera_attributes +
-                                  "\" isn't an entity with CameraAttributesPractical");
+        if (attributes == entt::null || !world.ecs().all_of<world::CameraLens>(attributes)) {
+            return make_error(ErrorCode::InvalidArgument, "camera_attributes \"" +
+                                                              gi.camera_attributes +
+                                                              "\" isn't an entity with CameraLens");
         }
         settings.exposure =
-            world.ecs().get<const world::CameraAttributesPractical>(attributes).exposure_multiplier;
+            world.ecs().get<const world::CameraLens>(attributes).exposure_multiplier;
     }
 
     LightmapBake gathered;
@@ -1232,7 +1230,7 @@ Result<LightmapBake> bake_lightmap(const world::World& world, entt::entity entit
     gatherer.add_lights(scope, lights);
     const render::HdrImage environment = environment_of(world, gatherer.tree(), gi, gatherer);
 
-    // The light probes, placed in the LightmapGI's space as LightmapGI::bake places them, from
+    // The light probes, placed in the BakedLighting3D's space as LightmapGI::bake places them, from
     // the meshes' triangles and the LightmapProbes.
     const world::Affine3D space = gatherer.tree().global(entity);
     const world::Affine3D to_space = space.inverse();
@@ -1283,26 +1281,25 @@ Result<LightmapBake> bake_lightmap(const world::World& world, entt::entity entit
 std::vector<Problem> check_lightmaps(const world::World& world) {
     std::vector<Problem> problems;
     std::vector<entt::entity> entities;
-    for (const entt::entity entity : world.ecs().view<const world::LightmapGI>()) {
+    for (const entt::entity entity : world.ecs().view<const world::BakedLighting3D>()) {
         entities.push_back(entity);
     }
     std::ranges::sort(entities, {}, [](entt::entity entity) { return entt::to_entity(entity); });
     for (const entt::entity entity : entities) {
-        const auto& gi = world.ecs().get<const world::LightmapGI>(entity);
+        const auto& gi = world.ecs().get<const world::BakedLighting3D>(entity);
         if (!gi.camera_attributes.empty()) {
             const entt::entity attributes = world.find(gi.camera_attributes);
-            if (attributes == entt::null ||
-                !world.ecs().all_of<world::CameraAttributesPractical>(attributes)) {
-                problems.push_back({entity, "/components/LightmapGI/camera_attributes",
-                                    "\"" + gi.camera_attributes +
-                                        "\" isn't an entity with CameraAttributesPractical"});
+            if (attributes == entt::null || !world.ecs().all_of<world::CameraLens>(attributes)) {
+                problems.push_back(
+                    {entity, "/components/BakedLighting3D/camera_attributes",
+                     "\"" + gi.camera_attributes + "\" isn't an entity with CameraLens"});
             }
         }
         const std::string& path = gi.light_data;
         if (path.empty()) {
             continue;
         }
-        const std::string field = "/components/LightmapGI/light_data";
+        const std::string field = "/components/BakedLighting3D/light_data";
         if (!path.ends_with(kLightmapSuffix)) {
             problems.push_back(
                 {entity, field,

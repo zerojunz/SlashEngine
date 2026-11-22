@@ -350,19 +350,19 @@ SceneLighting collect_lighting(const world::World& world, const LightImage& imag
     };
 
     std::vector<entt::entity> modulating(out.canvases.size(), entt::entity{entt::null});
-    for (const entt::entity entity : in_order(ecs.view<const world::CanvasModulate>())) {
+    for (const entt::entity entity : in_order(ecs.view<const world::AmbientTint2D>())) {
         const std::size_t canvas = canvas_of(entity);
         if (!shown[canvas]) {
             continue;
         }
         if (modulating[canvas] != entt::null) {
-            problems.push_back({entity, "a canvas has one CanvasModulate, and \"" +
+            problems.push_back({entity, "a canvas has one AmbientTint2D, and \"" +
                                             std::string(world.id_of(modulating[canvas])) +
                                             "\" is the one used"});
             continue;
         }
         modulating[canvas] = entity;
-        const Vec4& color = ecs.get<world::CanvasModulate>(entity).color;
+        const Vec4& color = ecs.get<world::AmbientTint2D>(entity).color;
         out.canvases[canvas].ambient = {color.x, color.y, color.z, color.w};
         out.canvases[canvas].lit = true;
     }
@@ -374,12 +374,12 @@ SceneLighting collect_lighting(const world::World& world, const LightImage& imag
     };
 
     std::vector<Occluder> occluders;
-    for (const entt::entity entity : in_order(ecs.view<const world::LightOccluder2D>())) {
+    for (const entt::entity entity : in_order(ecs.view<const world::Occluder2D>())) {
         const std::size_t canvas = canvas_of(entity);
         if (!shown[canvas]) {
             continue;
         }
-        const auto& component = ecs.get<world::LightOccluder2D>(entity);
+        const auto& component = ecs.get<world::Occluder2D>(entity);
         Occluder occluder;
         occluder.mask = mask_of(component.occluder_light_mask);
         if (component.cull_mode == "clockwise") {
@@ -407,9 +407,9 @@ SceneLighting collect_lighting(const world::World& world, const LightImage& imag
     }
     // Each cell's occluders, at its center, as Godot's TileMapLayer makes them while the layer
     // shows. A tile set that doesn't load is the renderer's to report.
-    for (const entt::entity entity : tile_sets ? in_order(ecs.view<const world::TileMapLayer>())
-                                               : std::vector<entt::entity>{}) {
-        const auto& layer = ecs.get<world::TileMapLayer>(entity);
+    for (const entt::entity entity :
+         tile_sets ? in_order(ecs.view<const world::TileLayer2D>()) : std::vector<entt::entity>{}) {
+        const auto& layer = ecs.get<world::TileLayer2D>(entity);
         const std::size_t canvas = canvas_of(entity);
         if (!shown[canvas] || !layer.visible || !layer.occlusion_enabled ||
             layer.tile_set.empty()) {
@@ -464,7 +464,7 @@ SceneLighting collect_lighting(const world::World& world, const LightImage& imag
     for (const entt::entity entity : ecs.view<const world::PointLight2D>()) {
         lights.push_back(entity);
     }
-    for (const entt::entity entity : ecs.view<const world::DirectionalLight2D>()) {
+    for (const entt::entity entity : ecs.view<const world::SunLight2D>()) {
         lights.push_back(entity);
     }
     std::ranges::sort(lights, {}, [](entt::entity e) { return entt::to_entity(e); });
@@ -552,7 +552,7 @@ SceneLighting collect_lighting(const world::World& world, const LightImage& imag
                                     .max_distance = 0.0F});
             }
         } else {
-            const auto& sun = ecs.get<world::DirectionalLight2D>(entity);
+            const auto& sun = ecs.get<world::SunLight2D>(entity);
             if (!sun.enabled) {
                 continue;
             }

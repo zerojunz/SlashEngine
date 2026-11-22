@@ -37,11 +37,11 @@
     },
     "ground": {
       "components": {
-        "MeshInstance3D": {},
-        "PlaneMesh": {
+        "Model3D": {},
+        "PlaneGeometry": {
           "size": [12.0, 12.0]
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "albedo_color": [0.35, 0.25, 0.15, 1.0],
           "shading_mode": "unshaded"
         },
@@ -50,11 +50,11 @@
     },
     "hiker": {
       "components": {
-        "CharacterBody3D": {
+        "CharacterMover3D": {
           "motion_mode": "floating",
           "velocity": [1.5, 0.0, 0.0]
         },
-        "CollisionShape3D": {
+        "Collider3D": {
           "height": 1.8,
           "radius": 0.3,
           "shape": "capsule"
@@ -66,11 +66,11 @@
     },
     "kid": {
       "components": {
-        "CharacterBody2D": {
+        "CharacterMover2D": {
           "motion_mode": "floating",
           "velocity": [60.0, 0.0]
         },
-        "CollisionShape2D": {
+        "Collider2D": {
           "radius": 4.0,
           "shape": "circle"
         },

@@ -339,7 +339,7 @@ struct Server::Impl {
                            "script-src 'unsafe-inline'; connect-src 'self'");
             res.set_header("Referrer-Policy", "no-referrer");
             res.set_header("X-Frame-Options", "DENY");
-            res.set_header("Cache-Control", "no-store");
+            res.set_header("Cache-Widget", "no-store");
             res.set_content(watch_page(options.watch_session), "text/html; charset=utf-8");
         });
 

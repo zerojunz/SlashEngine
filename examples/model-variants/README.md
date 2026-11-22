@@ -19,7 +19,7 @@ sets one parameter. A model path picks a variant after `::`, so
 [main.scene.json](main.scene.json) draws all three from the one file:
 
 ```json
-"MeshInstance3D": {"mesh": "props/crate.model.json::burnt"}
+"Model3D": {"mesh": "props/crate.model.json::burnt"}
 ```
 
 The recipe's `quality` tiers work the same way for exports. Its `phone` tier leaves the knot

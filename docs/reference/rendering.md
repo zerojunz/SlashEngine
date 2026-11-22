@@ -54,7 +54,7 @@ player behind a bush and off the screen.
 
 `engine/canvas` is 2D drawing, as Godot's canvas. `Sprite2D` draws a texture, or a frame of a
 sprite sheet, at the entity's `Transform2D`, in `z_index` order, then the order entities were
-made. `AnimatedSprite2D` plays a `.frames.json` file's animations on it through the
+made. `Flipbook2D` plays a `.frames.json` file's animations on it through the
 `animated_sprite_2d` system (`$cli schema frames`; `animation_finished` events). `canvas::install`
 adds the asset types and the systems (that one, `camera_2d`, `parallax_2d`, `cpu_particles_2d` and
 `gpu_particles_2d`) to a world;
@@ -71,10 +71,10 @@ reports the world rect it shows. `examples/camera-2d` follows a player through a
 
 Canvas layers follow Godot's `CanvasLayer` and `Parallax2D` (`engine/world/src/canvas_layer.cpp`).
 `world::Canvases` lists a world's canvases in drawing order (by `layer`, the world first among
-layer 0) and says which one each entity draws in: that of the `CanvasLayer` whose `children` hold
+layer 0) and says which one each entity draws in: that of the `ScreenLayer` whose `children` hold
 it or an entity above it, else the world's. `CanvasRenderer` draws each canvas's sprites, tiles
 and particles, then its controls, through its transform (`canvas_layer_transform`, after the
-camera's when `follow_viewport_enabled`), each lit by its own `CanvasModulate` and the lights
+camera's when `follow_viewport_enabled`), each lit by its own `AmbientTint2D` and the lights
 whose `range_layer_min`/`range_layer_max` hold its layer; `ui::layout` places each
 control by its canvas's transform (`Placed::canvas`, `DrawCall::canvas`), so hit tests follow.
 The `parallax_2d` system (priority 1060) sets each `Parallax2D`'s position from the camera as
@@ -108,7 +108,7 @@ a sway.
 
 A material with `"shader_type": "spatial"` is Godot's spatial shader: its `fragment()` gives a
 mesh's surface (`ALBEDO`, `ROUGHNESS`, `NORMAL_MAP`, `EMISSION`, `ALPHA` and the rest, Godot's
-built-ins in view space), and `MeshInstance3D.material_override` draws it (`Renderer::override_material`
+built-ins in view space), and `Model3D.material_override` draws it (`Renderer::override_material`
 in `engine/scene3d/src/scene3d.cpp`, through the `ShaderMaterialSource` `CanvasRenderer` gives it).
 The compiler puts the game's code, as `game_surface`, before `shaders/mesh.hlsl` with
 `GAME_SHADER` defined, and compiles that file's Compatibility, Forward+ and prepass fragment
@@ -131,10 +131,10 @@ for the pixel and light.
 `examples/spatial-shaders` has a crystal, a fence and a glass ball, and
 `examples/custom-lighting-3d` cel-shades a ball with `light()`.
 
-Tile maps follow Godot's TileSet and TileMapLayer (`tilemap.hpp` in `engine/canvas`). A
+Tile maps follow Godot's TileSet and TileLayer2D (`tilemap.hpp` in `engine/canvas`). A
 `.tileset.json` file (`$cli schema tileset`) cuts atlas textures into tiles and names terrain
 sets; a terrain tile's `peering` names the terrain each side and corner must touch. A
-`TileMapLayer` stores its cells as text: `origin`, a `legend` of short keys and `rows` of keys,
+`TileLayer2D` stores its cells as text: `origin`, a `legend` of short keys and `rows` of keys,
 `.` for empty, which `decode_cells` and `encode_cells` read and write in canonical form.
 `paint_terrain` picks connecting tiles for painted cells and their neighbors; the commands are
 `tilemap.paint`, `tilemap.generate` (by noise), `tilemap.set` and `tilemap.get`. `CanvasRenderer` draws layers in runs of one
@@ -158,12 +158,12 @@ turning with the cell. `tilemap.convert` turns cells into points and back;
 `examples/animated-tiles` has water, torches and a bridge two cells wide. Tile sets have
 Godot's custom data layers (`TileSet::custom_data` gives a tile's value or the type's default;
 `tilemap.get` with `cells` returns them) and occlusion layers: `collect_lighting` places each
-cell's `tile_occluders` as `LightOccluder2D`s with the layer's `light_mask`, unless the layer's
+cell's `tile_occluders` as `Occluder2D`s with the layer's `light_mask`, unless the layer's
 `occlusion_enabled` is off. `examples/tile-data-and-occluders` has walls that cast shadows and
 lava that hurts.
 
-2D lights follow Godot's: `PointLight2D`, `DirectionalLight2D`, `LightOccluder2D` and
-`CanvasModulate`, with `Sprite2D`'s `light_mask`, `normal_texture` and `specular_texture` and a
+2D lights follow Godot's: `PointLight2D`, `SunLight2D`, `Occluder2D` and
+`AmbientTint2D`, with `Sprite2D`'s `light_mask`, `normal_texture` and `specular_texture` and a
 material's `light_mode`. `engine/render/include/slash/render/light.hpp` is the device side: a
 frame's `render::Lighting` (up to 64 lights, a light atlas and a shadow map) and a draw's
 `Material::shading` (its canvas's layer, ambient color and `to_lights`, which maps a canvas
@@ -191,10 +191,10 @@ CPU twins of its two stages (`mesh_vertex`, `shade_mesh`), which the software de
 `tests/test_mesh.cpp` holds every device to the software device's pixels, so a change to the 3D
 shading goes in both. `examples/meshes-3d` draws a lit scene.
 
-`Material3D`'s `rim`, `clearcoat` and `anisotropy` are `StandardMaterial3D`'s `rim_*`,
+`Material3D`'s `rim`, `clearcoat` and `anisotropy` are `Surface3D`'s `rim_*`,
 `clearcoat_*` and `anisotropy_*` fields, which Godot shades hair cards, skin and eyes with:
 `mesh.hlsl`'s `light_compute` and its CPU twin in `src/mesh.cpp` add them as Godot's scene shader
-does, from a `Layers` that `material_layers` reads out of lanes the lightmap and VoxelGI uniforms
+does, from a `Layers` that `material_layers` reads out of lanes the lightmap and VoxelLighting3D uniforms
 leave free (`MeshSurfaceUniforms::lightmap`'s z and w, `voxel_gi`'s y, z and w), so the surface
 uniforms keep their size; the clearcoat also reflects the sky and anisotropy bends the normal
 reflections take. Their textures aren't read yet (texture slots are full).
@@ -215,7 +215,7 @@ programs at the first draw that uses alpha hash (`alpha_hashed` in `src/gl_devic
 Apple's software OpenGL renderer takes minutes compiling the mesh shader with it.
 
 Subsurface scattering is Godot 4.6's Forward+ screen-space blur (`Material3D::subsurface`, from
-`StandardMaterial3D`'s `subsurf_scatter_*`; project.json's
+`Surface3D`'s `subsurf_scatter_*`; project.json's
 `rendering.environment.subsurface_scattering`, `render::SubsurfaceSettings`). `src/subsurface.hpp`
 holds what devices share (`uses_subsurface`, `draws_subsurface`, the uniforms) and the CPU twin of
 `shaders/subsurface.hlsl`'s two passes (`run_subsurface_pass`, `run_subsurface`, Jimenez's
@@ -231,12 +231,12 @@ and an ear.
 
 `engine/scene3d` puts Godot's 3D nodes in scenes. `Transform3D` (position, Euler rotation in
 radians in Godot's YXZ order, scale, `visible`, `top_level`, `children`) makes trees that
-`world::Tree3D` (`slash/world/tree3d.hpp`) walks, as `Tree2D` walks 2D ones. `MeshInstance3D`
-draws its entity's primitive mesh component (`BoxMesh`, `SphereMesh`, `CylinderMesh`,
-`CapsuleMesh`, `PlaneMesh`, `QuadMesh`, `PrismMesh`, `TorusMesh`, made as Godot's
-`primitive_meshes.cpp` makes them, in `src/primitive.cpp`) with its `StandardMaterial3D`, seen
-through the current `Camera3D` and lit by `DirectionalLight3D`, `OmniLight3D` and `SpotLight3D`,
-over a `WorldEnvironment`'s background and ambient light. `scene3d::Renderer` turns a world into
+`world::Tree3D` (`slash/world/tree3d.hpp`) walks, as `Tree2D` walks 2D ones. `Model3D`
+draws its entity's primitive mesh component (`BoxGeometry`, `SphereGeometry`, `CylinderGeometry`,
+`CapsuleGeometry`, `PlaneGeometry`, `QuadGeometry`, `PrismGeometry`, `TorusGeometry`, made as Godot's
+`primitive_meshes.cpp` makes them, in `src/primitive.cpp`) with its `Surface3D`, seen
+through the current `Camera3D` and lit by `SunLight3D`, `PointLight3D` and `SpotLight3D`,
+over a `Environment3D`'s background and ambient light. `scene3d::Renderer` turns a world into
 a frame's `Scene3D` and mesh draws, keeping one device mesh per set of primitive settings and
 interpolating transforms between ticks; `CanvasRenderer` owns one and draws the 3D world under
 every canvas, so games, `slash-cli run` and `frame.capture` draw it. `check_meshes` backs
@@ -254,11 +254,11 @@ atlas. It draws each pass with `shaders/shadow.hlsl` into a depth atlas
 (`Scene3D::shadows`, from `rendering.lights_and_shadows`), then the forward pass samples them
 with a comparison sampler in `mesh.hlsl`, filtered by the soft shadow quality. `shadow_vertex`
 and `ShadowAtlas::compare` are the CPU twins, and `tests/test_shadow.cpp` holds every device to
-the software device's pixels. `MeshInstance3D.cast_shadow` and the lights' `shadow_*` fields
+the software device's pixels. `Model3D.cast_shadow` and the lights' `shadow_*` fields
 are Godot's; `examples/shadows-3d` is a courtyard with three shadowed lights.
 
 Post-processing follows the scene's renderer. `Scene3D::post` (`render::PostProcess`, from
-`WorldEnvironment`'s `tonemap_*`, `glow_*` and `adjustment_*` fields) picks a tonemapper (linear,
+`Environment3D`'s `tonemap_*`, `glow_*` and `adjustment_*` fields) picks a tonemapper (linear,
 Reinhard, filmic, ACES, AgX), the exposure and white, glow, and brightness, contrast, saturation
 and a lookup texture. `color_stage` (`src/post.cpp`) tells `mesh.hlsl` and `sky.hlsl` where their
 colors go: linear for Forward+, untonemapped for Compatibility's post pass, or tonemapped as they
@@ -272,8 +272,8 @@ over the target, before the 2D draws. `src/forward_post.hpp` holds the uniforms 
 world as half floats too, and `tests/test_forward_post.cpp` holds the GPU to its pixels. The
 OpenGL devices always draw as Compatibility. `examples/glow-3d` is neon signs at night.
 
-Auto exposure is Godot 4.6's: `CameraAttributesPractical` (the camera's, else the
-`WorldEnvironment`'s; `scene3d::camera_attributes`) sets `PostProcess::auto_exposure_*`, and
+Auto exposure is Godot 4.6's: `CameraLens` (the camera's, else the
+`Environment3D`'s; `scene3d::camera_attributes`) sets `PostProcess::auto_exposure_*`, and
 its `exposure_multiplier` scales lights, emission, the background and the sky in
 `scene3d::environment` and `Renderer::prepare`. Forward+ devices measure each frame with
 `forward_post.hlsl`'s luminance passes (`luminance_plan`, `run_luminance_pass`) into R32F
@@ -283,7 +283,7 @@ measure over. `auto_exposure_metering`'s `"log_average"` (SlashEngine's own, `au
 `options.y` in the luminance passes) averages the brightness's natural logarithm instead, as
 Unreal meters, which the Unreal importer sets. `examples/auto-exposure-3d` walks out of a tunnel.
 
-Depth of field is Godot 4.6's too: `CameraAttributesPractical`'s `dof_blur_*` fields set
+Depth of field is Godot 4.6's too: `CameraLens`'s `dof_blur_*` fields set
 `PostProcess::dof_*`, and project.json's `rendering.camera.depth_of_field` the bokeh shape,
 quality and jitter (`render::DepthOfFieldSettings`). Forward+ devices keep the depth buffer and
 run `forward_post.hlsl`'s depth of field passes before glow, as `dof_plan` lists them: blur sizes
@@ -291,7 +291,7 @@ from depth, the box, hexagon or circle blur, and the composite into the world. `
 `run_dof_blur_pass` and `run_dof_composite_pass` are the CPU twins. `examples/depth-of-field-3d`
 racks focus across a garden.
 
-SSAO is Godot 4.6's Forward+ SSAO (Intel's ASSAO): `WorldEnvironment`'s `ssao_*` fields set
+SSAO is Godot 4.6's Forward+ SSAO (Intel's ASSAO): `Environment3D`'s `ssao_*` fields set
 `Scene3D::ssao` (`render::Ssao3D`), and project.json's `rendering.environment.ssao` its quality,
 size, blur and fade (`render::SsaoSettings`). Forward+ devices draw the opaque meshes' depth and
 normals in a prepass (`mesh_normal.hlsl`), then `ssao.hlsl`'s passes as `ssao_plan` lists them
@@ -302,7 +302,7 @@ with every pass in it. `mesh.hlsl` applies the result as Godot's scene shader do
 `run_ssao_pass`, their CPU twin, matches every device. `examples/ssao-3d` darkens a room's
 corners.
 
-SSR is Godot 4.6's Forward+ screen-space reflections: `WorldEnvironment`'s `ssr_*` fields set
+SSR is Godot 4.6's Forward+ screen-space reflections: `Environment3D`'s `ssr_*` fields set
 `Scene3D::ssr` (`render::Ssr3D`), and project.json's `rendering.environment.screen_space_reflection`
 its size (`render::SsrSettings`). After the same prepass, Forward+ devices run `ssr.hlsl`'s passes
 as `ssr_plan` lists them (`src/ssr.hpp`): the depth (halved at half size) and a Hi-Z pyramid, the
@@ -324,8 +324,8 @@ device filters the cube's levels with `radiance.hlsl`, as it does the sky's. `Sc
 CPU twin, `reflect_probes`. SSAO and SSR share one two-layer screen texture the mesh pass reads.
 `examples/reflection-probes-3d` reflects a lit room in a metal floor.
 
-Baked lightmaps are Godot 4.6's `LightmapGI` (`slash/scene3d/lightmap.hpp`). `bake_lightmap`
-gathers a LightmapGI's static meshes and baking lights (`src/lightmap.cpp`), unwraps each mesh
+Baked lightmaps are Godot 4.6's `BakedLighting3D` (`slash/scene3d/lightmap.hpp`). `bake_lightmap`
+gathers a BakedLighting3D's static meshes and baking lights (`src/lightmap.cpp`), unwraps each mesh
 with xatlas (`unwrap_lightmap`; `src/xatlas_build.cpp` builds xatlas and stb_rect_pack with the
 engine's sines and a stable sort, so charts are the same everywhere), then `src/lightmapper.cpp`
 packs them into an atlas's slices and traces them on the CPU, following Godot's `LightmapperRD`
@@ -351,7 +351,7 @@ renderer eases each `"dynamic"` mesh's capture and draws it with `Material3D::ca
 `mesh.hlsl`'s `capture_light` and its CPU twin evaluate per pixel. `examples/lightmaps-3d` bakes a
 courtyard.
 
-VoxelGI is Godot 4.6's (`slash/scene3d/voxel_gi.hpp`, `src/voxel_gi.cpp`). `voxelize` follows
+VoxelLighting3D is Godot 4.6's (`slash/scene3d/voxel_gi.hpp`, `src/voxel_gi.cpp`). `voxelize` follows
 Godot's `Voxelizer` (an octree down to `subdiv` cells, each with albedo, emission and normal), and
 `voxel_gi.bake` (`engine/command/src/lightmap.cpp`) writes the `.voxelgi.json` file
 (`$cli schema voxel_gi`), Godot's `VoxelGIData`. `light_voxel_gi` injects lights on the CPU on the
@@ -361,7 +361,7 @@ out as z slices in one RGBA8 atlas. `plot_voxel_gi_objects` plots moving meshes 
 Godot's dynamic objects (a material pass from six sides at 16 times the cells, lit per pixel, then
 shrunk and blended into each level), and `voxel_gi_meshes` reads an entity's meshes for it and the
 bake. `scene3d::Renderer::trace_voxel_gis` injects again when the lights or settings change, plots
-the `"dynamic"` meshes in each box again whenever they move, stacks every VoxelGI's atlas into one
+the `"dynamic"` meshes in each box again whenever they move, stacks every VoxelLighting3D's atlas into one
 texture and gives each draw the
 VoxelGIs its bounds touch as `Material3D::voxel_gi` (`render::VoxelGIShading`, texture slot 5);
 `mesh.hlsl`'s `trace_voxel_gis` follows `gi.glsl`'s `voxel_gi_compute` with manual trilinear
@@ -369,7 +369,7 @@ sampling of the slices, and `render::detail::trace_voxel_gis` (`engine/render/sr
 is its CPU twin. `examples/voxel-gi-3d` bounces a sun around a room.
 
 SDFGI is Godot 4.6's fully dynamic GI, a research spike on the CPU
-([docs/reference/sdfgi.md](sdfgi.md)): `WorldEnvironment`'s `sdfgi_*` fields set
+([docs/reference/sdfgi.md](sdfgi.md)): `Environment3D`'s `sdfgi_*` fields set
 `Scene3D::sdfgi` (`render::Sdfgi3D`), and the software device, after the prepass, keeps a
 `detail::SdfgiState` per target (`src/sdfgi.cpp`, after `gi.cpp`'s `GI::SDFGI` and its shaders):
 `update_sdfgi` moves the cascades with the camera (a moved one keeps the cells it still holds
@@ -426,7 +426,7 @@ cluster's (`MeshMaps::restir`). Other devices light every light as before.
 `examples/many-lights` lights a hall with 64 shadowed lamps.
 
 Gaussian splats are a research spike on the software device
-([docs/reference/gaussian-splats.md](gaussian-splats.md)): a `GaussianSplat3D`
+([docs/reference/gaussian-splats.md](gaussian-splats.md)): a `Splat3D`
 names a 3D Gaussian Splatting `.ply` file (`render::read_splat_ply` and `write_splat_ply` in
 `engine/render/src/splats.cpp`, loaded as an asset by `scene3d::add_splat_type`), which
 `scene3d::Renderer::add_splats` puts in `Scene3D::splats`; in Forward+ the software device's
@@ -447,7 +447,7 @@ and too bright, with one undo step. Physical light units are Godot's
 (`rendering.lights_and_shadows.use_physical_light_units`, `scene3d::physical_light_units`):
 `render::color_temperature` and the unit factors (`engine/render/src/light_units.cpp`, built
 with `-ffp-contract=off`) tint and scale lights in `light_base` (`engine/scene3d/src/scene3d.cpp`)
-and in the lightmap and VoxelGI bakes, with the background's and emission's nits and the
+and in the lightmap and VoxelLighting3D bakes, with the background's and emission's nits and the
 camera's exposure normalization; light.tune then scales lux and lumens. 2D lights' `temperature`
 is SlashEngine's own (`fill_common` in `engine/canvas/src/light.cpp`). Light projectors are
 Godot 4.6's Forward+ `light_projector`: `scene3d::Renderer::add_projectors` loads each omni and
@@ -622,7 +622,7 @@ at `kMaxDecalAtlasTexels` (2^25, WebGPU's 128 MiB storage binding); `add_decals`
 those past it. Compatibility draws none. `examples/decals-3d` paints a street.
 
 Volumetric fog is Godot 4.6's Forward+ `volumetric_fog_*` (`render::VolumetricFog3D`,
-`Scene3D::volumetric_fog`, from `WorldEnvironment`; the volume's size from project.json's
+`Scene3D::volumetric_fog`, from `Environment3D`; the volume's size from project.json's
 `rendering.environment.volumetric_fog`). `src/volumetric_fog.hpp` holds what devices share: the
 froxel volume's size as Godot's `_update_volumetric_fog` (`fog_volume_size`), the uniforms and
 the CPU twins of `shaders/volumetric_fog.hlsl`'s compute passes (`run_volumetric_fog`: each
@@ -634,7 +634,7 @@ and filters it itself (`sample_fog_volume`), and `volumetric_fog_sky.hlsl` draws
 its last slice by `sky_affect` (`fog_sky`). Each target keeps its density for the next frame
 (`FogClock`); probe captures and frames without meshes have none, and Compatibility draws none.
 A change to the fog math goes in both. `examples/volumetric-fog-3d` lights a misty courtyard.
-`FogVolume`s and their `FogMaterial`s are Godot's (`render::FogVolume3D` in
+`FogVolume`s and their `FogVolumeLook`s are Godot's (`render::FogVolume3D` in
 `VolumetricFog3D::volumes`, gathered by `scene3d::Renderer::add_fog_volumes`, up to
 `kMaxFogVolumes`): `fog_volume_froxels` picks each one's froxels as Godot's
 `volumetric_fog_update` does, and the density pass (`fog_volumes` in the shader and its twin)
@@ -669,7 +669,7 @@ way (`run_graph` in each device), the pool keeping its textures from frame to fr
 
 Pipeline files are Godot 4.3's `Compositor` and `CompositorEffect`: a `.pipeline.json` file
 (`$cli schema pipeline`; `slash/scene3d/pipeline.hpp`, `src/pipeline.cpp`) that the current
-`Camera3D`'s `compositor`, else the first `WorldEnvironment`'s, names turns the frame's passes off
+`Camera3D`'s `compositor`, else the first `Environment3D`'s, names turns the frame's passes off
 over the environment's and the project's (`passes`, `apply_pipeline_passes`, after
 `CanvasRenderer`'s `apply_settings`) and lists effects. An effect is a material with
 `"shader_type": "compositor"`, whose `fragment()` reads `SCREEN_TEXTURE` through
@@ -687,9 +687,9 @@ software device; `examples/compositor-effects` outlines and grades a yard.
 
 Skies and fog are the Compatibility renderer's too. `Scene3D::sky` (`render::Sky3D`: a color,
 procedural, physical or panorama sky, from a `"sky"` background and the sky material on the
-`WorldEnvironment`'s entity) draws before the meshes, as one triangle over the target with no
+`Environment3D`'s entity) draws before the meshes, as one triangle over the target with no
 depth test: `shaders/sky.hlsl` works out each pixel's view direction and shades it as Godot's sky
-shaders do, with the suns of up to four `DirectionalLight3D`s. In Forward+ (`kSkyLinear`) it
+shaders do, with the suns of up to four `SunLight3D`s. In Forward+ (`kSkyLinear`) it
 works from linear colors and leaves the result linear, as Godot's RD sky does; in Compatibility
 it works in sRGB and makes the result linear, as `drivers/gles3` does. `Scene3D::fog` (`render::Fog3D`)
 fades meshes in `mesh.hlsl`'s `fog_process` and the sky by its `sky_affect`; fog over a color
@@ -699,20 +699,20 @@ uniforms, the checks and the CPU twins (`sky_ray`, `shade_sky`) the software dev
 skies.
 
 The sky's light is Godot's sky radiance. `Scene3D::radiance` (`render::Radiance3D`, from
-`WorldEnvironment`'s `ambient_light_source`, `reflected_light_source` and `sky_radiance_size`)
+`Environment3D`'s `ambient_light_source`, `reflected_light_source` and `sky_radiance_size`)
 names the sky material to light with; each device draws it with `sky.hlsl` into an RGB10A2 cube,
 mipmaps it and filters each level with `shaders/radiance.hlsl`'s GGX samples, only when the sky
 changes, and `mesh.hlsl` reads it for ambient light and reflections. Cube faces follow one table
 on every API (`cube_direction`); `make_radiance` in `src/sky.cpp` is the CPU twin the software
 device lights with, and `tests/test_sky.cpp` holds every device to its pixels.
 
-Models are glTF 2.0 files that `MeshInstance3D.mesh` names, read with cgltf as Godot's glTF
+Models are glTF 2.0 files that `Model3D.mesh` names, read with cgltf as Godot's glTF
 importer reads them (`engine/scene3d/src/model.cpp`): `load_model` turns a `.gltf` or `.glb`
 file into a `scene3d::Model` of meshes in Godot's winding, with MikkTSpace tangents where the
-file has none, materials made `StandardMaterial3D`s as Godot's importer makes them, images and
+file has none, materials made `Surface3D`s as Godot's importer makes them, images and
 the parts its scene's nodes place. `scene3d::add_asset_types` loads them as assets, so they
 reload, and `check_model` backs `scene validate`, exports and `model.inspect`; a
-`StandardMaterial3D` on the entity is Godot's `material_override`. `write_gltf`
+`Surface3D` on the entity is Godot's `material_override`. `write_gltf`
 (`src/gltf_writer.cpp`) writes a `Model` back out as a `.gltf` file that loads as written (its
 buffer embedded, images by their paths or embedded as PNGs, skins and animations kept), which
 importers use to pick one mesh out of a model, and `write_glb` as one `.glb` file holding everything. `model.cleanup`
@@ -727,7 +727,7 @@ reads `-col`, `-convcol`, `-colonly` and `-convcolonly` on nodes' names into `Mo
 when a model loads, `generate_collision` makes a trimesh, a hull or V-HACD's convex
 decomposition (`src/vhacd_build.cpp`, built with `-ffp-contract=off` and patched by
 `cmake/patches/vhacd-deterministic.cmake` so hulls are the same everywhere), and `write_glb`
-writes them back as hinted nodes. physics3d makes each `MeshInstance3D` whose model collides a
+writes them back as hinted nodes. physics3d makes each `Model3D` whose model collides a
 static body of `model_shapes`, or adds them to the body it is on or under (`add_model_shapes` in
 `engine/physics3d/src/space.cpp`). `examples/model-collision` drops balls on a yard and an arch.
 `delight_textures` (`src/delight.cpp`) takes the light baked into albedo textures out, as Unity's
@@ -769,7 +769,7 @@ children in order, with bevels, arrays and numbers written as `Expression`s over
 (`"=width / 2"`). `build_model_recipe` evaluates them, checks the result against the strict
 schema and the shapes' fields, and builds each top-level part as a CSG root through
 `csg_mesh(const CsgTree&)`, the same code CSG entities use; bevels are hulls of corner spheres
-fed in as `CSGMesh3D`s. `load_model` and `check_model` take recipes, so `MeshInstance3D`,
+fed in as `SolidMesh3D`s. `load_model` and `check_model` take recipes, so `Model3D`,
 `model.inspect`, LODs, hot reload and exports treat them as any model, and
 `validate_model_recipe` backs `scene validate` and `scene format`.
 A top-level part can be another model file (`"model": "props/crate.model.json"`), its nodes placed
@@ -793,7 +793,7 @@ mesh after the parts' nodes, under the part they name. `scene3d::summarize` (`mo
 describes any model in a few numbers and names: its size, `pivot` (the origin's place in its
 bounds), triangles, each part's box and materials and its attachment points (nodes that place no
 mesh, have no children and are no joint, as Godot's `Marker3D`), which `model.inspect`'s `brief`
-returns and `BoneAttachment3D` follows by name; `examples/model-parts` opens a cabinet's door and
+returns and `BoneSocket3D` follows by name; `examples/model-parts` opens a cabinet's door and
 stands a lamp on it.
 
 Models' surfaces get LODs when they load, as Godot 4.6's importer generates them
@@ -804,7 +804,7 @@ in their rest pose, and lightmapped meshes' LODs made again from their unwrap.
 `RenderDevice::create_mesh` takes a mesh's LOD index lists and `draw_mesh` the LOD to draw, which
 every device draws from one index buffer (`mesh_index_buffer`, `IndexRange`).
 `scene3d::Renderer::pick_lods` picks each draw's LOD as Godot's `_fill_render_list` and
-`mesh_surface_get_lod` do (`pick_lod`), by `MeshInstance3D.lod_bias` and project.json's
+`mesh_surface_get_lod` do (`pick_lod`), by `Model3D.lod_bias` and project.json's
 `rendering.mesh_lod.lod_change.threshold_pixels`; shadow maps draw the camera's LODs and
 reflection probes pick their own. `examples/mesh-lods` draws boulders near and far.
 
@@ -827,7 +827,7 @@ then nearest first), so a mesh's copies sit next to each other.
 `tests/test_mesh_cull.cpp` holds every device to the software device.
 
 Occlusion culling is Godot 4.6's raycast culler (`slash/scene3d/occlusion.hpp`,
-`src/occlusion.cpp`, after `raycast_occlusion_cull.cpp`). `OccluderInstance3D`'s quad, box,
+`src/occlusion.cpp`, after `raycast_occlusion_cull.cpp`). `Occluder3D`'s quad, box,
 sphere, polygon and array shapes (`occluder_mesh`, as Godot's `Occluder3D`s make them) go into an
 `OccluderScene`, a bounding volume hierarchy of its own where Godot's uses Embree; with
 project.json's `rendering.occlusion_culling` on, `scene3d::Renderer::prepare` has an
@@ -846,7 +846,7 @@ builds a surface's DAG of cluster groups with meshoptimizer's cluster LOD builde
 `slash_meshoptimizer`), locking open edges as Godot's LODs do, using only the regular
 simplifier and dropping triangles folded over their twins; `select_clusters` cuts it for a
 `ClusterView` by its groups' projected errors, so a cut covers the surface once with no cracks.
-`MeshInstance3D.virtualized` has `scene3d::Renderer` cut each such surface for the camera in
+`Model3D.virtualized` has `scene3d::Renderer` cut each such surface for the camera in
 `pick_lods` (`cut_clusters`; probes draw the last cut) and draw the cut as a mesh of its own,
 made again when the clusters change; `frame.capture` counts them as `clusters`. The camera's
 draw then leaves out the clusters out of view, facing away (`Cluster::cone`, from
@@ -870,7 +870,7 @@ with `ufbx_bake_anim` as Godot's FBX importer bakes them (`src/fbx.cpp`).
 `pose_of` poses a model from its rest, then by its clips (`blend_animation`, Godot's blend of 3D
 tracks with its deterministic slerp), then by the entity's `Skeleton3D`; poses are worked out
 from components every time, never kept. The animation module tells scene3d what an entity's
-`AnimationPlayer` plays through `scene3d::set_clip_source`: a library can be a model file, and a
+`Animator` plays through `scene3d::set_clip_source`: a library can be a model file, and a
 `.anim.json` animation can come `from` a model's and add its own tracks. The renderer skins
 each surface into a mesh per entity and blends poses between ticks: where
 `RenderDevice::gpu_skinning()` says so (the GPU device on Vulkan and Metal, and the WebGPU
@@ -884,7 +884,7 @@ poses bones; `examples/skinned-meshes` waves an arm. glTF morph targets are Godo
 (`slash/scene3d/blend_shapes.hpp`): each surface keeps its shapes' offsets
 (`ModelSurface::blend_shapes`, carried through merging corners by `Triangles::origins` and
 `follow_origins`), animations' weights channels are `BlendShapeTrack`s, `blend_shape_weights`
-blends them over `MeshInstance3D.blend_shapes` as Godot's mixer does, and the renderer moves the
+blends them over `Model3D.blend_shapes` as Godot's mixer does, and the renderer moves the
 vertices with `blend_vertices` before skinning; `examples/blend-shapes` makes a face smile.
 
 Retargeting follows Godot 4.6's importer (`slash/scene3d/humanoid.hpp`): `humanoid_profile` is
@@ -906,8 +906,8 @@ retargets the result before the library keeps it. `examples/humanoid-rigging` ri
 and plays a dancer's wave on it.
 
 CSG shapes are Godot 4.6's CSG module (`engine/scene3d/src/csg.cpp`, after
-`modules/csg/csg_shape.cpp`): `CSGBox3D`, `CSGSphere3D`, `CSGCylinder3D`, `CSGTorus3D`,
-`CSGPolygon3D`, `CSGMesh3D` and `CSGCombiner3D`. Each shape's faces are made as Godot's
+`modules/csg/csg_shape.cpp`): `SolidBox3D`, `SolidSphere3D`, `SolidCylinder3D`, `SolidTorus3D`,
+`SolidExtrusion3D`, `SolidMesh3D` and `SolidGroup3D`. Each shape's faces are made as Godot's
 `_build_brush` makes them, packed into Manifold (built with `MANIFOLD_PAR=-1` and
 `-ffp-contract=off`) and combined in Godot's order: a shape with its children, a child's
 `operation` against what came before, hidden children left out. A root (a shape whose parent
@@ -920,30 +920,30 @@ triangles as a concave shape), navigation bakes take roots as Godot's
 for `scene validate`, and `csg.get` returns a root's size, surfaces and problems.
 `examples/csg-shapes` builds a hamlet.
 
-Paths are Godot's `Path2D` and `Path3D` with their curves, and the `PathFollow2D` and
-`PathFollow3D` that ride them (`engine/world/src/path.cpp`, after `scene/resources/curve.cpp`
+Paths are Godot's `Path2D` and `Spline3D` with their curves, and the `SplineFollower2D` and
+`SplineFollower3D` that ride them (`engine/world/src/path.cpp`, after `scene/resources/curve.cpp`
 and `scene/2d/path_2d.cpp` and `scene/3d/path_3d.cpp`). A curve is baked as Godot bakes it,
 each Bézier segment halved until its pieces are no longer than `bake_interval`, with the way it
 goes at each point and, in 3D, its tilt and an up vector carried along as a parallel transport
 frame; `world::Curve2D` and `Curve3D` sample it. The `path_follow` system (priority 930, after
 animations and before physics; added by `canvas::install`) wraps each follower's `progress` and
 places it on its parent's curve, turned as its `rotates` or `rotation_mode` says, so an
-`AnimationPlayer` track on `progress` moves it. `CSGPolygon3D`'s `"path"` mode pushes its
-polygon along the `Path3D` its `path_node` names, as Godot's `MODE_PATH`. `path.get` samples a
+`Animator` track on `progress` moves it. `SolidExtrusion3D`'s `"path"` mode pushes its
+polygon along the `Spline3D` its `path_node` names, as Godot's `MODE_PATH`. `path.get` samples a
 curve and finds its nearest point, `check_paths` (run from `check_meshes`) reports followers
 whose parent has no path, and `examples/paths` laps a cart round a rail.
 
-Grid maps are Godot 4.6's `GridMap` and `MeshLibrary` (`engine/scene3d/src/gridmap.cpp`, after
+Grid maps are Godot 4.6's `BlockMap3D` and `MeshLibrary` (`engine/scene3d/src/gridmap.cpp`, after
 `modules/gridmap/grid_map.cpp`). A `.meshlib.json` file (`$cli schema meshlib`) holds items by
 name, each a model's meshes or a primitive, a material, shapes and a navigation mesh in one
-cell's space. A `GridMap` writes its cells as a `TileMapLayer` does, a `legend` of keys
+cell's space. A `BlockMap3D` writes its cells as a `TileLayer2D` does, a `legend` of keys
 (`world/legend.hpp`, shared with tile maps) and `floors` of rows; `decode_grid_cells` and
 `encode_grid_cells` read and write them in canonical form, and an item's legend value is its
 name, then `:` and one of Godot's 24 orthogonal indices when it is turned
 (`orientation_basis`). Cells are grouped into octants as Godot groups them: `grid_mesh` merges
 each octant's items into one surface per material, `install_gridmap` (called by
 `canvas::install`) keeps it until the cells, the library or a model change and keeps octants
-whose cells didn't, `Renderer` draws them, physics3d makes the GridMap one static body of every
+whose cells didn't, `Renderer` draws them, physics3d makes the BlockMap3D one static body of every
 cell's shapes (each sub-shape tagged with its cell, so `physics.raycast` returns the cell it
 hit), with `bake_navigation` each cell whose item has a navigation mesh is a region, and
 navigation bakes take its meshes and shapes as Godot's `GridMap::navmesh_parse_source_geometry`.
@@ -951,17 +951,17 @@ navigation bakes take its meshes and shapes as Godot's `GridMap::navmesh_parse_s
 `check_gridmaps` reports items the library doesn't have for `scene validate` and exports.
 `examples/gridmap` lays out a room with a ramp.
 
-Terrains follow the HTerrain plugin for Godot (zylann.hterrain, MIT; Godot has none of its own),
-in `engine/scene3d/src/terrain.cpp`. An `HTerrain` names a 16-bit `.height.png` heightmap
+Terrains follow the Terrain3D plugin for Godot (zylann.hterrain, MIT; Godot has none of its own),
+in `engine/scene3d/src/terrain.cpp`. An `Terrain3D` names a 16-bit `.height.png` heightmap
 (`render::Gray16`, `decode_gray16` and `encode_gray16_png`), a splat map and a color map, each
 `resolution` pixels square; one that doesn't exist yet reads as flat, the first texture and
 white. `terrain_data` (kept by `install_terrain`, called by `canvas::install`, until the
-component or a map changes) holds the heights and HTerrain's range map; `terrain_chunks` settles
+component or a map changes) holds the heights and Terrain3D's range map; `terrain_chunks` settles
 its quad tree for a viewer, `terrain_indices` and `terrain_chunk_vertices` make chunks with
 seams toward coarser neighbors as its mesher does, and `Renderer` draws them with
 `render::TerrainShading` (Classic4 in `mesh.hlsl`, `terrain_texel` in `mesh.cpp` its CPU twin;
 a change to one goes in both). physics3d makes it a Jolt height field with holes, navigation
-bakes take `terrain_faces`, and `generate_heights` and `paint` are HTerrain's generator and
+bakes take `terrain_faces`, and `generate_heights` and `paint` are Terrain3D's generator and
 brushes, behind `terrain.generate`, `terrain.brush` and `terrain.get`
 (`engine/command/src/terrain.cpp`), which stage the map files and record their undo. Exports
 ship heightmaps and the maps HTerrains name as they are, never in compressed forms.

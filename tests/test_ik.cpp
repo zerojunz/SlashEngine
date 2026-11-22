@@ -133,7 +133,7 @@ struct Scene {
 
     // The arm's bones in the world, as drawn: animated, then turned by its modifiers.
     std::map<std::string, world::Affine3D> bones(entt::entity entity) {
-        const auto& instance = world.ecs().get<world::MeshInstance3D>(entity);
+        const auto& instance = world.ecs().get<world::Model3D>(entity);
         auto model = assets.load<scene3d::Model>(instance.mesh);
         REQUIRE(model.ok());
         const scene3d::ModelLoader load =
@@ -183,7 +183,7 @@ TEST_CASE("TwoBoneIK3D bends two bones so the end reaches the target, toward the
     const entt::entity goal = scene.create("goal", R"({"Transform3D": {"position": [1, 1, 0]}})");
     const entt::entity pole = scene.create("pole", R"({"Transform3D": {"position": [2, -1, 0]}})");
     const entt::entity arm = scene.create("arm", R"({"Transform3D": {},
-        "MeshInstance3D": {"mesh": "models/arm.gltf"},
+        "Model3D": {"mesh": "models/arm.gltf"},
         "TwoBoneIK3D": {"settings": [{"root_bone": "Shoulder", "middle_bone": "Elbow",
             "end_bone": "Wrist", "target": "goal", "pole": "pole"}]}})");
     CHECK(scene3d::has_modifiers(scene.world, arm));
@@ -241,7 +241,7 @@ TEST_CASE("TwoBoneIK3D reaches with a point past its end bone") {
     scene.create("pole", R"({"Transform3D": {"position": [2, -1, 0]}})");
     // A virtual end a meter past Elbow: Elbow is the middle and the end is where Wrist is.
     const entt::entity arm = scene.create("arm", R"({"Transform3D": {},
-        "MeshInstance3D": {"mesh": "models/arm.gltf"},
+        "Model3D": {"mesh": "models/arm.gltf"},
         "TwoBoneIK3D": {"settings": [{"root_bone": "Shoulder", "middle_bone": "Elbow",
             "end_bone": "Elbow", "use_virtual_end": true, "end_bone_length": 1,
             "target": "goal", "pole": "pole"}]}})");
@@ -251,14 +251,14 @@ TEST_CASE("TwoBoneIK3D reaches with a point past its end bone") {
     check_lengths(at, {"Shoulder", "Elbow", "Wrist"});
 }
 
-TEST_CASE("FABRIK3D, CCDIK3D and JacobianIK3D carry their chains to the target tick by tick") {
-    for (const std::string kind : {"FABRIK3D", "CCDIK3D", "JacobianIK3D"}) {
+TEST_CASE("FabrikIK3D, CcdIK3D and JacobianIK3D carry their chains to the target tick by tick") {
+    for (const std::string kind : {"FabrikIK3D", "CcdIK3D", "JacobianIK3D"}) {
         CAPTURE(kind);
         Scene scene;
         scene.create("goal", R"({"Transform3D": {"position": [2, 2, 0]}})");
         const entt::entity arm =
             scene.create("arm",
-                         R"({"Transform3D": {}, "MeshInstance3D": {"mesh": "models/arm.gltf"},
+                         R"({"Transform3D": {}, "Model3D": {"mesh": "models/arm.gltf"},
             ")" + kind + R"(": {"settings": [{"root_bone": "Shoulder", "end_bone": "Tip",
                 "target": "goal"}]}})");
         CHECK(scene3d::check_meshes(scene.world).empty());
@@ -283,13 +283,13 @@ TEST_CASE("FABRIK3D, CCDIK3D and JacobianIK3D carry their chains to the target t
 }
 
 TEST_CASE("deterministic chains solve from the pose each time") {
-    for (const std::string kind : {"FABRIK3D", "CCDIK3D", "JacobianIK3D"}) {
+    for (const std::string kind : {"FabrikIK3D", "CcdIK3D", "JacobianIK3D"}) {
         CAPTURE(kind);
         Scene scene;
         scene.create("goal", R"({"Transform3D": {"position": [2, 2, 0]}})");
         const entt::entity arm =
             scene.create("arm",
-                         R"({"Transform3D": {}, "MeshInstance3D": {"mesh": "models/arm.gltf"},
+                         R"({"Transform3D": {}, "Model3D": {"mesh": "models/arm.gltf"},
             ")" + kind + R"(": {"deterministic": true, "max_iterations": 200,
                 "angular_delta_limit": 3.14, "settings": [{"root_bone": "Shoulder",
                 "end_bone": "Tip", "target": "goal"}]}})");
@@ -307,14 +307,14 @@ TEST_CASE("deterministic chains solve from the pose each time") {
 }
 
 TEST_CASE("chain joints keep to their rotation axes and cones") {
-    for (const std::string kind : {"FABRIK3D", "CCDIK3D", "JacobianIK3D"}) {
+    for (const std::string kind : {"FabrikIK3D", "CcdIK3D", "JacobianIK3D"}) {
         CAPTURE(kind);
         Scene scene;
         // Off the arm's plane: joints that only turn about z stay in it.
         scene.create("goal", R"({"Transform3D": {"position": [2, 2, 1]}})");
         const entt::entity arm =
             scene.create("arm",
-                         R"({"Transform3D": {}, "MeshInstance3D": {"mesh": "models/arm.gltf"},
+                         R"({"Transform3D": {}, "Model3D": {"mesh": "models/arm.gltf"},
             ")" + kind + R"(": {"settings": [{"root_bone": "Shoulder", "end_bone": "Tip",
                 "target": "goal", "joints": {"Shoulder": {"rotation_axis": "z"},
                 "Elbow": {"rotation_axis": "z"}, "Wrist": {"rotation_axis": "z"},
@@ -334,14 +334,14 @@ TEST_CASE("chain joints keep to their rotation axes and cones") {
 }
 
 TEST_CASE("a cone keeps a chain joint's bone near the way it points at rest") {
-    for (const std::string kind : {"FABRIK3D", "CCDIK3D", "JacobianIK3D"}) {
+    for (const std::string kind : {"FabrikIK3D", "CcdIK3D", "JacobianIK3D"}) {
         CAPTURE(kind);
         Scene scene;
         scene.create("goal", R"({"Transform3D": {"position": [3, 0.5, 0]}})");
         // Half a radian across, so the shoulder's bone stays within a quarter radian of up.
         const entt::entity arm =
             scene.create("arm",
-                         R"({"Transform3D": {}, "MeshInstance3D": {"mesh": "models/arm.gltf"},
+                         R"({"Transform3D": {}, "Model3D": {"mesh": "models/arm.gltf"},
             ")" + kind + R"(": {"settings": [{"root_bone": "Shoulder", "end_bone": "Tip",
                 "target": "goal", "joints": {"Shoulder": {"limitation": "cone",
                 "limitation_angle": 0.5}}}]}})");
@@ -363,7 +363,7 @@ TEST_CASE("influence blends a modifier's result into the pose, and inactive ones
     scene.create("goal", R"({"Transform3D": {"position": [3, 0, 0]}})");
     scene.create("pole", R"({"Transform3D": {"position": [2, -1, 0]}})");
     const entt::entity arm = scene.create("arm", R"({"Transform3D": {},
-        "MeshInstance3D": {"mesh": "models/arm.gltf"},
+        "Model3D": {"mesh": "models/arm.gltf"},
         "TwoBoneIK3D": {"influence": 0.5, "settings": [{"root_bone": "Shoulder",
             "middle_bone": "Elbow", "end_bone": "Wrist", "target": "goal", "pole": "pole"}]}})");
     // Pointing along x at full influence; halfway, the shoulder turns an eighth of a turn.
@@ -394,7 +394,7 @@ TEST_CASE("modifiers run on the drawing entity, then on its Transform3D children
     const entt::entity second = scene.create("second", R"({"Transform3D": {}, "TwoBoneIK3D": )" +
                                                            with_target("right") + "}");
     const entt::entity arm = scene.create("arm", R"({"Transform3D": {"children": ["first",
-        "second"]}, "MeshInstance3D": {"mesh": "models/arm.gltf"}})");
+        "second"]}, "Model3D": {"mesh": "models/arm.gltf"}})");
     CHECK(scene3d::has_modifiers(scene.world, arm));
     // The last child's wins.
     CHECK(near(scene.positions(arm)["Wrist"], {2.0F, 0.0F, 0.0F}));
@@ -413,15 +413,15 @@ TEST_CASE("modifiers run on the drawing entity, then on its Transform3D children
 TEST_CASE("modifier settings are checked against the model, with did you mean") {
     Scene scene;
     scene.create("goal", R"({"Transform3D": {}})");
-    scene.create("arm", R"({"Transform3D": {}, "MeshInstance3D": {"mesh": "models/arm.gltf"},
+    scene.create("arm", R"({"Transform3D": {}, "Model3D": {"mesh": "models/arm.gltf"},
         "TwoBoneIK3D": {"settings": [
             {"root_bone": "Shoulder", "middle_bone": "Elbw", "end_bone": "Wrist",
              "target": "goal"},
             {"root_bone": "Shoulder", "middle_bone": "Wrist", "end_bone": "Elbow",
              "target": "goal", "pole_direction": "plus_w"}]},
-        "CCDIK3D": {"settings": [{"root_bone": "Shoulder", "end_bone": "Wrist",
+        "CcdIK3D": {"settings": [{"root_bone": "Shoulder", "end_bone": "Wrist",
             "joints": {"Hand": {}, "Elbow": {"rotation_axis": "w"}}}]}})");
-    scene.create("loose", R"({"Transform3D": {}, "FABRIK3D": {}})");
+    scene.create("loose", R"({"Transform3D": {}, "FabrikIK3D": {}})");
     std::vector<std::string> problems;
     for (const scene3d::Problem& problem : scene3d::check_meshes(scene.world)) {
         problems.push_back(std::string(scene.world.id_of(problem.entity)) + " " + problem.path +
@@ -439,24 +439,24 @@ TEST_CASE("modifier settings are checked against the model, with did you mean") 
               "\"minus_z\", \"custom\"; did you mean \"plus_x\"?",
               "arm /components/TwoBoneIK3D/settings/1/pole: names no pole: name the entity the "
               "middle bone bends toward",
-              "arm /components/CCDIK3D/settings/0/target: names no target: name the entity the end "
+              "arm /components/CcdIK3D/settings/0/target: names no target: name the entity the end "
               "reaches for",
-              "arm /components/CCDIK3D/settings/0/joints/Elbow/rotation_axis: \"w\" isn't one of "
+              "arm /components/CcdIK3D/settings/0/joints/Elbow/rotation_axis: \"w\" isn't one of "
               "\"all\", \"x\", \"y\", \"z\", \"custom\"; did you mean \"x\"?",
-              "arm /components/CCDIK3D/settings/0/joints/Hand: \"Hand\" isn't a bone of the chain "
+              "arm /components/CcdIK3D/settings/0/joints/Hand: \"Hand\" isn't a bone of the chain "
               "from \"Shoulder\" to \"Wrist\"",
-              "loose /components/FABRIK3D: turns bones, but neither its entity nor a parent's "
-              "draws a model: put it on the MeshInstance3D's entity or in its Transform3D "
+              "loose /components/FabrikIK3D: turns bones, but neither its entity nor a parent's "
+              "draws a model: put it on the Model3D's entity or in its Transform3D "
               "children",
           });
 }
 
-TEST_CASE("LookAtModifier3D turns a bone's forward axis toward its target, within its limits") {
+TEST_CASE("BoneLookAt3D turns a bone's forward axis toward its target, within its limits") {
     Scene scene;
     const entt::entity goal = scene.create("goal", R"({"Transform3D": {"position": [3, 2, 0]}})");
     const entt::entity arm = scene.create("arm", R"({"Transform3D": {},
-        "MeshInstance3D": {"mesh": "models/arm.gltf"},
-        "LookAtModifier3D": {"bone": "Wrist", "target_node": "goal", "forward_axis": "plus_y",
+        "Model3D": {"mesh": "models/arm.gltf"},
+        "BoneLookAt3D": {"bone": "Wrist", "target_node": "goal", "forward_axis": "plus_y",
             "primary_rotation_axis": "z"}})");
     CHECK(scene3d::check_meshes(scene.world).empty());
     // The wrist points its y at the goal, a quarter turn to the side; the bones above stay.
@@ -471,7 +471,7 @@ TEST_CASE("LookAtModifier3D turns a bone's forward axis toward its target, withi
     CHECK(near(way, Vec3{1.0F, 1.0F, 1.0F} * (1.0F / std::sqrt(3.0F))));
     // Limited to half a turn across, it stops a quarter of the way round each side.
     scene.move(goal, {3.0F, 2.0F, 0.0F});
-    auto& look = scene.world.ecs().get<world::LookAtModifier3D>(arm);
+    auto& look = scene.world.ecs().get<world::BoneLookAt3D>(arm);
     look.use_angle_limitation = true;
     look.primary_limit_angle = 1.5707964F;
     at = scene.positions(arm);
@@ -481,13 +481,13 @@ TEST_CASE("LookAtModifier3D turns a bone's forward axis toward its target, withi
     CHECK(near(scene.positions(arm)["Hand"], {0.0F, 3.0F, 0.0F}));
 }
 
-TEST_CASE("LookAtModifier3D eases into a new direction over its duration") {
+TEST_CASE("BoneLookAt3D eases into a new direction over its duration") {
     Scene scene;
     const entt::entity goal =
         scene.create("goal", R"({"Transform3D": {"position": [3, 2.05, 0]}})");
     const entt::entity arm = scene.create("arm", R"({"Transform3D": {},
-        "MeshInstance3D": {"mesh": "models/arm.gltf"},
-        "LookAtModifier3D": {"bone": "Wrist", "target_node": "goal", "forward_axis": "plus_y",
+        "Model3D": {"mesh": "models/arm.gltf"},
+        "BoneLookAt3D": {"bone": "Wrist", "target_node": "goal", "forward_axis": "plus_y",
             "primary_rotation_axis": "x", "duration": 0.5, "transition_type": "sine",
             "ease_type": "in_out"}})");
     for (int i = 0; i < 40; ++i) {
@@ -511,13 +511,13 @@ TEST_CASE("LookAtModifier3D eases into a new direction over its duration") {
     CHECK(halfway.x > after.x + 0.2F);
 }
 
-TEST_CASE("CopyTransformModifier3D copies another bone's turn about its axes, by amount") {
+TEST_CASE("BoneCopy3D copies another bone's turn about its axes, by amount") {
     Scene scene;
     // The shoulder rolls a quarter turn about its y and tips forward a little about x.
     const entt::entity arm = scene.create("arm", R"({"Transform3D": {},
-        "MeshInstance3D": {"mesh": "models/arm.gltf"},
+        "Model3D": {"mesh": "models/arm.gltf"},
         "Skeleton3D": {"bone_rotations": {"Shoulder": [0, 1.5707964, 0]}},
-        "CopyTransformModifier3D": {"settings": [{"apply_bone": "Wrist",
+        "BoneCopy3D": {"settings": [{"apply_bone": "Wrist",
             "reference_bone": "Shoulder", "amount": 0.5, "copy_position": false,
             "copy_scale": false, "axis_x_enabled": false, "axis_z_enabled": false}]}})");
     CHECK(scene3d::check_meshes(scene.world).empty());
@@ -529,7 +529,7 @@ TEST_CASE("CopyTransformModifier3D copies another bone's turn about its axes, by
     CHECK(near(x_of("Elbow"), {0.0F, 0.0F, -1.0F}));
     CHECK(near(x_of("Wrist"), {-std::sqrt(0.5F), 0.0F, -std::sqrt(0.5F)}));
     // Inverted, it rolls back half the way.
-    auto& setting = scene.world.ecs().get<world::CopyTransformModifier3D>(arm).settings[0];
+    auto& setting = scene.world.ecs().get<world::BoneCopy3D>(arm).settings[0];
     setting.axis_y_inverted = true;
     CHECK(near(x_of("Wrist"), {std::sqrt(0.5F), 0.0F, -std::sqrt(0.5F)}));
     // A turn about x alone has no roll about y to copy.
@@ -555,6 +555,6 @@ TEST_CASE("CopyTransformModifier3D copies another bone's turn about its axes, by
         problems.push_back(problem.path + ": " + problem.message);
     }
     REQUIRE(problems.size() == 2);
-    CHECK(problems[0].starts_with("/components/CopyTransformModifier3D/settings/0/reference_type"));
-    CHECK(problems[1].starts_with("/components/CopyTransformModifier3D/settings/0/reference_bone"));
+    CHECK(problems[0].starts_with("/components/BoneCopy3D/settings/0/reference_type"));
+    CHECK(problems[1].starts_with("/components/BoneCopy3D/settings/0/reference_bone"));
 }

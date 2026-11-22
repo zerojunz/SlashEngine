@@ -32,16 +32,16 @@ class World;
 namespace slash::scene3d {
 
 // One of the CSG components.
-using CsgShape =
-    std::variant<world::CSGCombiner3D, world::CSGBox3D, world::CSGSphere3D, world::CSGCylinder3D,
-                 world::CSGTorus3D, world::CSGPolygon3D, world::CSGMesh3D>;
+using CsgShape = std::variant<world::SolidGroup3D, world::SolidBox3D, world::SolidSphere3D,
+                              world::SolidCylinder3D, world::SolidTorus3D, world::SolidExtrusion3D,
+                              world::SolidMesh3D>;
 
 // Their component names, in the variant's order.
 inline constexpr std::array<std::string_view, 7> kCsgNames = {
-    "CSGCombiner3D", "CSGBox3D",     "CSGSphere3D", "CSGCylinder3D",
-    "CSGTorus3D",    "CSGPolygon3D", "CSGMesh3D"};
+    "SolidGroup3D", "SolidBox3D",       "SolidSphere3D", "SolidCylinder3D",
+    "SolidTorus3D", "SolidExtrusion3D", "SolidMesh3D"};
 
-// The fields every CSG component has, as Godot's CSGShape3D (and MeshInstance3D's layers and
+// The fields every CSG component has, as Godot's CSGShape3D (and Model3D's layers and
 // cast_shadow).
 struct CsgSettings {
     std::string operation = "union";
@@ -72,7 +72,7 @@ struct CsgMesh {
     // A number no other mesh made in this process has, for keeping it on a device.
     std::uint64_t version = 0;
     // One surface per material, as Godot's root mesh has: smooth faces' normals shared at each
-    // corner. A CSGMesh3D's model's own material names the CSGMesh3D as its entity.
+    // corner. A SolidMesh3D's model's own material names the SolidMesh3D as its entity.
     std::vector<MeshSurface> surfaces;
     // Every three corners a triangle facing out, as Godot's ConcavePolygonShape3D for
     // use_collision, in the root's space.
@@ -97,12 +97,12 @@ struct CsgMesh {
 struct CsgTree {
     CsgShape shape;
     world::Affine3D local;
-    std::optional<world::StandardMaterial3D> material;
-    // A CSGMesh3D's meshes: a model's, placed as its parts are at rest, or a primitive mesh's.
+    std::optional<world::Surface3D> material;
+    // A SolidMesh3D's meshes: a model's, placed as its parts are at rest, or a primitive mesh's.
     std::shared_ptr<const Model> model;
     std::optional<Primitive> primitive;
-    // A CSGPolygon3D's curve in path mode, in the shape's own space.
-    std::optional<world::Path3D> path;
+    // A SolidExtrusion3D's curve in path mode, in the shape's own space.
+    std::optional<world::Spline3D> path;
     std::string where;
     std::vector<CsgTree> children;
 };
@@ -110,7 +110,7 @@ struct CsgTree {
 // The mesh a tree makes, as a root shape's in a world.
 [[nodiscard]] std::shared_ptr<const CsgMesh> csg_mesh(const CsgTree& root);
 
-// Keeps each root's mesh in the world until it changes, reading CSGMesh3D models with load.
+// Keeps each root's mesh in the world until it changes, reading SolidMesh3D models with load.
 // Sessions and games call it through canvas::install.
 void install_csg(world::World& world, ModelLoader load);
 
@@ -125,7 +125,7 @@ struct CsgBody {
 [[nodiscard]] std::vector<CsgBody> csg_bodies(const world::World& world, const world::Tree3D& tree);
 
 // Every CSG shape that can't be made, in the order entities were made: more than one CSG
-// component on an entity, a CSG shape with a MeshInstance3D, a CSGMesh3D whose mesh doesn't load,
+// component on an entity, a CSG shape with a Model3D, a SolidMesh3D whose mesh doesn't load,
 // settings Godot refuses, faces that don't close and roots whose result is empty.
 [[nodiscard]] std::vector<Problem> check_csg(const world::World& world);
 

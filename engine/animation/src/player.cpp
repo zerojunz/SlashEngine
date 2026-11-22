@@ -74,7 +74,7 @@ struct Step {
 // again from the start if asked to play from there; a linear loop wraps to the start, passing
 // keys at both; a pingpong loop turns round at each end and flips backwards. Whole loops skipped
 // in one tick pass no keys.
-Step advance(world::AnimationPlayer& player, const Animation& animation, double tick_seconds) {
+Step advance(world::Animator& player, const Animation& animation, double tick_seconds) {
     Step step;
     const double length = animation.length;
     double time = std::isfinite(player.time) ? std::clamp(player.time, 0.0, length) : 0.0;
@@ -172,14 +172,13 @@ std::vector<std::string_view> names_of(const Map& map) {
 // The entity a track acts on: the player's own, or the one its targets name; null, with why in
 // error, for a target that names none.
 entt::entity track_entity(const world::World& world, entt::entity entity,
-                          const world::AnimationPlayer& player, const Track& track,
-                          std::string& error) {
+                          const world::Animator& player, const Track& track, std::string& error) {
     if (track.target.empty()) {
         return entity;
     }
     const auto it = player.targets.find(track.target);
     if (it == player.targets.end()) {
-        error = "no entity for target \"" + track.target + "\" in the AnimationPlayer's targets";
+        error = "no entity for target \"" + track.target + "\" in the Animator's targets";
         if (const std::string_view hint = closest_match(track.target, names_of(player.targets));
             !hint.empty()) {
             error += "; did you mean \"" + std::string(hint) + "\"?";
@@ -234,13 +233,12 @@ Result<void> seek_player(world::World& world, detail::LibraryCache& cache, entt:
                          double time, std::string_view name, int depth) {
     auto& ecs = world.ecs();
     const std::string id(world.id_of(entity));
-    if (!ecs.all_of<world::AnimationPlayer>(entity)) {
-        return make_error(ErrorCode::InvalidArgument, "\"" + id + "\" has no AnimationPlayer");
+    if (!ecs.all_of<world::Animator>(entity)) {
+        return make_error(ErrorCode::InvalidArgument, "\"" + id + "\" has no Animator");
     }
-    const world::AnimationPlayer player = ecs.get<world::AnimationPlayer>(entity);
+    const world::Animator player = ecs.get<world::Animator>(entity);
     if (player.library.empty()) {
-        return make_error(ErrorCode::InvalidArgument,
-                          "\"" + id + "\"'s AnimationPlayer has no library");
+        return make_error(ErrorCode::InvalidArgument, "\"" + id + "\"'s Animator has no library");
     }
     std::string error;
     detail::LibraryCache::Entry* cached =
@@ -251,7 +249,7 @@ Result<void> seek_player(world::World& world, detail::LibraryCache& cache, entt:
     const std::string animation_name = name.empty() ? player.animation : std::string(name);
     if (animation_name.empty()) {
         return make_error(ErrorCode::InvalidArgument,
-                          "\"" + id + "\"'s AnimationPlayer has no animation; name one");
+                          "\"" + id + "\"'s Animator has no animation; name one");
     }
     const Animation* found = find_animation(cached->library, player.library, animation_name, error);
     if (found == nullptr) {
@@ -265,7 +263,7 @@ Result<void> seek_player(world::World& world, detail::LibraryCache& cache, entt:
     }
     time = std::min(time, animation.length);
     {
-        auto& stored = ecs.get<world::AnimationPlayer>(entity);
+        auto& stored = ecs.get<world::Animator>(entity);
         stored.animation = animation_name;
         stored.time = time;
     }
@@ -298,7 +296,7 @@ Result<void> seek_player(world::World& world, detail::LibraryCache& cache, entt:
         std::string why;
         const entt::entity on = track_entity(world, entity, player, track, why);
         if (on == entt::null) {
-            log::warn("an AnimationPlayer can't seek a track", {{"id", id}, {"error", why}});
+            log::warn("an Animator can't seek a track", {{"id", id}, {"error", why}});
             continue;
         }
         if (track.type == TrackType::Animation) {
@@ -317,8 +315,7 @@ Result<void> seek_player(world::World& world, detail::LibraryCache& cache, entt:
         }
         const std::optional<Target>& target = resolved[i].target;
         if (!target) {
-            log::warn("an AnimationPlayer can't seek a track",
-                      {{"id", id}, {"error", resolved[i].error}});
+            log::warn("an Animator can't seek a track", {{"id", id}, {"error", resolved[i].error}});
             continue;
         }
         const bool discrete = track.type == TrackType::Value &&
@@ -326,7 +323,7 @@ Result<void> seek_player(world::World& world, detail::LibraryCache& cache, entt:
                                (track.update == UpdateMode::Auto && target->discrete));
         if (auto applied = apply(world, on, *target, sample(animation, track, time, discrete));
             !applied) {
-            log::warn("an AnimationPlayer can't seek a track",
+            log::warn("an Animator can't seek a track",
                       {{"id", id}, {"error", track.path + ": " + applied.error().message}});
         }
     }
@@ -342,7 +339,7 @@ Result<bool> seek_started(world::World& world, LibraryCache& cache, entt::entity
     if (name == kStopAnimation || depth > kMaxSeekDepth) {
         return false;
     }
-    const auto* player = world.ecs().try_get<world::AnimationPlayer>(entity);
+    const auto* player = world.ecs().try_get<world::Animator>(entity);
     if (player == nullptr || player->library.empty()) {
         return false;
     }
@@ -370,10 +367,10 @@ Result<bool> seek_started(world::World& world, LibraryCache& cache, entt::entity
 Result<void> play_started(world::World& world, LibraryCache& cache, entt::entity entity,
                           const std::string& name) {
     auto& ecs = world.ecs();
-    auto* player = ecs.try_get<world::AnimationPlayer>(entity);
+    auto* player = ecs.try_get<world::Animator>(entity);
     if (player == nullptr) {
         return make_error(ErrorCode::InvalidArgument,
-                          "\"" + std::string(world.id_of(entity)) + "\" has no AnimationPlayer");
+                          "\"" + std::string(world.id_of(entity)) + "\" has no Animator");
     }
     if (name == kStopAnimation) {
         player->playing = false;
@@ -389,7 +386,7 @@ Result<void> play_started(world::World& world, LibraryCache& cache, entt::entity
             : cache.get(player->library, [&](const std::string& message) { error = message; });
     if (library == nullptr) {
         return make_error(ErrorCode::InvalidArgument,
-                          error.empty() ? "its AnimationPlayer has no library" : error);
+                          error.empty() ? "its Animator has no library" : error);
     }
     const Animation* animation = find_animation(library->library, player->library, name, error);
     if (animation == nullptr) {
@@ -407,7 +404,7 @@ Result<void> play_started(world::World& world, LibraryCache& cache, entt::entity
 
 namespace {
 
-// Plays AnimationPlayer components. Its state is only a cache of loaded .anim.json files and
+// Plays Animator components. Its state is only a cache of loaded .anim.json files and
 // models, the targets their tracks resolve to and the warnings already logged, so a world's
 // snapshot, undo or dry run is never out of step with it.
 struct PlayerState {
@@ -418,7 +415,7 @@ struct PlayerState {
 
     void warn_once(std::string_view id, const std::string& message) {
         if (warned.insert(std::string(id) + "\n" + message).second) {
-            log::warn("an AnimationPlayer can't play", {{"id", id}, {"error", message}});
+            log::warn("an Animator can't play", {{"id", id}, {"error", message}});
         }
     }
 
@@ -430,10 +427,10 @@ struct PlayerState {
         detail::sweep_audio(world);
         libraries.begin();
         auto& ecs = world.ecs();
-        const auto view = ecs.view<world::AnimationPlayer>();
+        const auto view = ecs.view<world::Animator>();
         const std::vector<entt::entity> entities(view.begin(), view.end());
         for (const entt::entity entity : entities) {
-            if (!ecs.valid(entity) || !ecs.all_of<world::AnimationPlayer>(entity)) {
+            if (!ecs.valid(entity) || !ecs.all_of<world::Animator>(entity)) {
                 continue;
             }
             play(world, entity, tick_seconds);
@@ -444,7 +441,7 @@ struct PlayerState {
     void play(world::World& world, entt::entity entity, double tick_seconds) {
         auto& ecs = world.ecs();
         // A copy, since a track may set the player's own fields.
-        world::AnimationPlayer player = ecs.get<world::AnimationPlayer>(entity);
+        world::Animator player = ecs.get<world::Animator>(entity);
         if (player.library.empty() || player.animation.empty() || !player.playing) {
             // A player that stopped, paused or finished stops its audio tracks' sounds, as
             // Godot's clears its caches.
@@ -470,7 +467,7 @@ struct PlayerState {
         const bool backward = (static_cast<double>(player.speed_scale) < 0.0) != player.backwards;
         const Step step = advance(player, animation, tick_seconds);
         {
-            auto& stored = ecs.get<world::AnimationPlayer>(entity);
+            auto& stored = ecs.get<world::Animator>(entity);
             stored.time = player.time;
             stored.playing = player.playing;
             stored.backwards = player.backwards;
@@ -662,14 +659,14 @@ void add_systems(world::World& world, asset::Assets& assets) {
     auto state = std::make_shared<PlayerState>(assets);
     auto trees = std::make_shared<detail::TreePlayer>(assets);
     // A tree's animations from models pose the nodes of the model its entity draws, as Godot's
-    // AnimationTree drives a Skeleton3D's bones; without one, a player's animation does, playing
+    // AnimationGraph drives a Skeleton3D's bones; without one, a player's animation does, playing
     // or paused, as Godot's AnimationPlayer.
     scene3d::set_clip_source(world, [state, trees](const world::World& w, entt::entity entity) {
         if (auto clips = trees->clips(w, entity)) {
             return std::move(*clips);
         }
         std::vector<scene3d::ClipSample> out;
-        const auto* player = w.ecs().try_get<const world::AnimationPlayer>(entity);
+        const auto* player = w.ecs().try_get<const world::Animator>(entity);
         if (player == nullptr || player->library.empty() || player->animation.empty()) {
             return out;
         }
@@ -702,14 +699,15 @@ void add_systems(world::World& world, asset::Assets& assets) {
         return out;
     });
     world.add_reset([](world::World& w) { detail::reset_audio(w); });
-    world.add_system("animation_player",
-                     [state](world::World& w, double tick_seconds) { state->run(w, tick_seconds); },
-                     {.doc = "Plays each AnimationPlayer's animation on its entity's components.",
-                      .priority = 900});
-    world.add_system("animation_tree",
-                     [trees](world::World& w, double tick_seconds) { trees->run(w, tick_seconds); },
-                     {.doc = "Blends each AnimationTree's animations into its entity's components.",
-                      .priority = 910});
+    world.add_system(
+        "animation_player",
+        [state](world::World& w, double tick_seconds) { state->run(w, tick_seconds); },
+        {.doc = "Plays each Animator's animation on its entity's components.", .priority = 900});
+    world.add_system(
+        "animation_tree",
+        [trees](world::World& w, double tick_seconds) { trees->run(w, tick_seconds); },
+        {.doc = "Blends each AnimationGraph's animations into its entity's components.",
+         .priority = 910});
     // IK modifiers turn bones after the animations, as Godot's SkeletonModifier3Ds process after
     // the AnimationMixer.
     const scene3d::ModelLoader models =

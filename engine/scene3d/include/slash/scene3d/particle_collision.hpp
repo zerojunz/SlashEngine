@@ -20,14 +20,14 @@ namespace slash::asset {
 class Assets;
 }
 
-// What GPUParticles3D's particles collide with besides spheres and boxes, as Godot 4.6's
-// GPUParticlesCollisionSDF3D and GPUParticlesCollisionHeightField3D: a signed distance field baked
+// What GpuEmitter3D's particles collide with besides spheres and boxes, as Godot 4.6's
+// ParticleColliderSdf3D and ParticleColliderHeight3D: a signed distance field baked
 // from the meshes in a box, and the ground under a box drawn from above.
 namespace slash::scene3d {
 
 struct Problem; // scene3d.hpp's
 
-// What a GPUParticlesCollisionSDF3D's texture ends in: a 16-bit gray PNG whose samples are half
+// What a ParticleColliderSdf3D's texture ends in: a 16-bit gray PNG whose samples are half
 // floats' bits, its slices of cells stacked down as Godot's bake image stacks them.
 inline constexpr std::string_view kParticleSdfSuffix = ".sdf.png";
 
@@ -51,7 +51,7 @@ struct ParticleSdfBake {
     std::vector<Problem> problems;
 };
 
-// Bakes a GPUParticlesCollisionSDF3D entity's distances, as Godot's
+// Bakes a ParticleColliderSdf3D entity's distances, as Godot's
 // GPUParticlesCollisionSDF3D::bake: the visible MeshInstance3Ds on a layer of bake_mask under its
 // parent (everything for a root), with CSG roots and GridMaps there, whose triangles touch its box
 // of whole cells, read through models; each cell's distance to the nearest triangle, less than 0
@@ -73,7 +73,7 @@ struct ParticleSdfBake {
 [[nodiscard]] Result<render::ParticleSdf3D>
 particle_sdf(const render::Gray16& texture, int slices_horizontal, int slices_vertical);
 
-// A GPUParticlesCollisionHeightField3D entity's heights, as Godot draws them
+// A ParticleColliderHeight3D entity's heights, as Godot draws them
 // (render_particle_collider_heightfield): an orthographic camera half the box's height above its
 // origin looks down its -y with -z up, and each texel takes the highest point at its center of the
 // opaque triangles of what draws on a layer of heightfield_mask (MeshInstance3Ds, CSG roots,
@@ -124,7 +124,7 @@ particle_depth_contact(const ParticleDepthView& view, Vec3 position, float radiu
 // calls it.
 void add_particle_sdf_type(asset::Assets& assets);
 
-// Each GPUParticlesCollisionSDF3D's and GPUParticlesCollisionHeightField3D's problems, for scene
+// Each ParticleColliderSdf3D's and ParticleColliderHeight3D's problems, for scene
 // validate and exports: a resolution or update_mode that isn't one, a size that isn't positive, a
 // thickness below 0, and a texture that isn't a .sdf.png file, can't be read or can't be cut into
 // its slices.

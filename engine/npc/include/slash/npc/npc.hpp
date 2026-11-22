@@ -6,7 +6,7 @@
 // cheapest chain of actions from the NPC's facts to its goal's. An NpcAgent component gives an
 // entity a brain and keeps its facts, goal and plan, so saving, undo and replays keep them too;
 // the npc system thinks every think_interval and runs each plan's actions: waiting, walking to an
-// entity (along its NavigationAgent3D or 2D's path when it has one) or emitting an event that
+// entity (along its NavAgent3D or 2D's path when it has one) or emitting an event that
 // gameplay code answers by setting facts.
 //
 // A brain can extend a shared one (extends), so each NPC keeps its own traits, goals, priorities

@@ -2,7 +2,7 @@
   "entities": {
     "big": {
       "components": {
-        "MeshInstance3D": {
+        "Model3D": {
           "mesh": "props/crate.model.json::big"
         },
         "Transform3D": {
@@ -12,7 +12,7 @@
     },
     "burnt": {
       "components": {
-        "MeshInstance3D": {
+        "Model3D": {
           "mesh": "props/crate.model.json::burnt"
         },
         "Transform3D": {}
@@ -32,7 +32,7 @@
     },
     "crate": {
       "components": {
-        "MeshInstance3D": {
+        "Model3D": {
           "mesh": "props/crate.model.json"
         },
         "Transform3D": {
@@ -42,7 +42,7 @@
     },
     "environment": {
       "components": {
-        "WorldEnvironment": {
+        "Environment3D": {
           "ambient_light_color": [0.55, 0.6, 0.7, 1.0],
           "ambient_light_energy": 0.6,
           "ambient_light_source": "color",
@@ -53,7 +53,7 @@
     },
     "sun": {
       "components": {
-        "DirectionalLight3D": {
+        "SunLight3D": {
           "light_energy": 1.2
         },
         "Transform3D": {

@@ -191,7 +191,7 @@ void register_commands(command::Registry& registry) {
     registry.add({
         .name = "video.encode",
         .description = "Encodes image files, such as the frames frame.capture writes, as a lossy "
-                       "AV1 .ivf video with libaom for a VideoStreamPlayer. Returns its frames, "
+                       "AV1 .ivf video with libaom for a Video. Returns its frames, "
                        "size, seconds and key frames.",
         .capabilities = {Capability::Read, Capability::Filesystem},
         .effect = command::Effect::Read,

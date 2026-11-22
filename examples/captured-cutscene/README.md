@@ -1,6 +1,6 @@
 # Captured cutscene
 
-`video.encode` turns image files into a video a `VideoStreamPlayer` plays
+`video.encode` turns image files into a video a `Video` plays
 ([docs/reference/commands.md](../../docs/reference/commands.md#videoencode)), so an agent can
 stage a cutscene in a scene, capture it frame by frame and ship it as a clip, with no video
 tool of its own. [calls.jsonl](calls.jsonl) does it the way an agent does over MCP (the tool
@@ -14,7 +14,7 @@ tool of its own. [calls.jsonl](calls.jsonl) does it the way an agent does over M
   from. It codes them lossy with libaom (`video::encode_lossy`), key frames and frames predicted
   from the ones before. It returns the frames, size, length and key frames, not the bytes,
   which can differ a little between machines.
-- The scene's entities go, and a `VideoStreamPlayer` over the whole window plays the clip:
+- The scene's entities go, and a `Video` over the whole window plays the clip:
   three ticks in, it is at 0.2 seconds, and past its half second it stops on the last frame.
 
 ```text

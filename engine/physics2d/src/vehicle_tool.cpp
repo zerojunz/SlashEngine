@@ -172,10 +172,10 @@ void keep_body(world::World& world, entt::entity entity, const VehicleRecipe& re
         world::Transform2D place;
         place.position = s.at({0.0F, (bottom + b.height) * 0.5F});
         ecs.emplace<world::Transform2D>(box, place);
-        world::CollisionShape2D shape;
+        world::Collider2D shape;
         shape.shape = "rectangle";
         shape.size = {b.length * s.ppm, (b.height - bottom) * s.ppm};
-        ecs.emplace<world::CollisionShape2D>(box, shape);
+        ecs.emplace<world::Collider2D>(box, shape);
         add_child(ecs, entity, box);
         const world::VehicleSideView view = world::vehicle_side_view(recipe);
         for (const world::VehicleSideView::Piece& piece : view.body) {
@@ -239,10 +239,10 @@ std::vector<entt::entity> keep_wheels(world::World& world, entt::entity entity,
         body.collision_layer = ecs.get<world::RigidBody2D>(entity).collision_layer;
         body.collision_mask = ecs.get<world::RigidBody2D>(entity).collision_mask;
         ecs.emplace_or_replace<world::RigidBody2D>(wheel, body);
-        world::CollisionShape2D shape;
+        world::Collider2D shape;
         shape.shape = "circle";
         shape.radius = r;
-        ecs.emplace_or_replace<world::CollisionShape2D>(wheel, shape);
+        ecs.emplace_or_replace<world::Collider2D>(wheel, shape);
         world::Polygon2D tire;
         tire.polygon = circle(r, 20);
         tire.color = recipe.body.trim;
@@ -269,12 +269,12 @@ std::vector<entt::entity> keep_wheels(world::World& world, entt::entity entity,
             std::atan2(static_cast<float>(chassis.x.y), static_cast<float>(chassis.x.x));
         const entt::entity groove_entity = create_named(world, name + "_groove");
         ecs.emplace<world::Transform2D>(groove_entity, mount);
-        ecs.emplace<world::GrooveJoint2D>(groove_entity,
-                                          world::GrooveJoint2D{.node_a = entity,
-                                                               .node_b = wheel,
-                                                               .disable_collision = true,
-                                                               .length = rest + (2.0F * travel),
-                                                               .initial_offset = rest + travel});
+        ecs.emplace<world::TrackJoint2D>(groove_entity,
+                                         world::TrackJoint2D{.node_a = entity,
+                                                             .node_b = wheel,
+                                                             .disable_collision = true,
+                                                             .length = rest + (2.0F * travel),
+                                                             .initial_offset = rest + travel});
         // Each side-view wheel holds up its share of the weight a compression as stiff as the
         // recipe's suspension.
         const float share = p.mass * g / static_cast<float>(view.wheels.size());
@@ -286,14 +286,14 @@ std::vector<entt::entity> keep_wheels(world::World& world, entt::entity entity,
                               std::clamp(p.suspension_damping / 2.5F, 0.1F, 4.0F);
         const entt::entity spring_entity = create_named(world, name + "_spring");
         ecs.emplace<world::Transform2D>(spring_entity, mount);
-        ecs.emplace<world::DampedSpringJoint2D>(
-            spring_entity, world::DampedSpringJoint2D{.node_a = entity,
-                                                      .node_b = wheel,
-                                                      .disable_collision = true,
-                                                      .length = rest + travel,
-                                                      .rest_length = rest + travel + compression,
-                                                      .stiffness = stiffness,
-                                                      .damping = damping});
+        ecs.emplace<world::SpringJoint2D>(
+            spring_entity, world::SpringJoint2D{.node_a = entity,
+                                                .node_b = wheel,
+                                                .disable_collision = true,
+                                                .length = rest + travel,
+                                                .rest_length = rest + travel + compression,
+                                                .stiffness = stiffness,
+                                                .damping = damping});
         wheels.push_back(wheel);
     }
     return wheels;
@@ -436,7 +436,7 @@ void hit_people(world::World& world, const world::Tree2D& tree, entt::entity veh
     std::vector<entt::entity> targets;
     for (const entt::entity e : ecs.view<world::Transform2D>()) {
         if (e != vehicle &&
-            ecs.any_of<world::CharacterBody2D, world::Creature2D, world::Ragdoll2D>(e) &&
+            ecs.any_of<world::CharacterMover2D, world::Creature2D, world::Ragdoll2D>(e) &&
             !ecs.all_of<world::VehicleRider>(e) && !kept.hits.contains(e)) {
             targets.push_back(e);
         }
@@ -453,7 +453,7 @@ void hit_people(world::World& world, const world::Tree2D& tree, entt::entity veh
             continue;
         }
         Vec2 target_velocity;
-        if (const auto* body = ecs.try_get<world::CharacterBody2D>(target); body != nullptr) {
+        if (const auto* body = ecs.try_get<world::CharacterMover2D>(target); body != nullptr) {
             target_velocity = body->velocity;
         }
         const Vec2 away{where.x >= chassis.origin.x ? 1.0F : -1.0F, 0.0F};
@@ -468,10 +468,10 @@ void hit_people(world::World& world, const world::Tree2D& tree, entt::entity veh
         const real_t impulse = (1.0F + kHitRestitution) * reduced * closing;
         kept.hits[target] = kHitCooldown;
         const Vec2 shove = (away + Vec2{0.0F, -0.3F}) * (impulse / kPersonMass * s.ppm);
-        if (auto* body = ecs.try_get<world::CharacterBody2D>(target); body != nullptr) {
-            world::CharacterBody2D pushed = *body;
+        if (auto* body = ecs.try_get<world::CharacterMover2D>(target); body != nullptr) {
+            world::CharacterMover2D pushed = *body;
             pushed.velocity = pushed.velocity + shove;
-            ecs.replace<world::CharacterBody2D>(target, pushed);
+            ecs.replace<world::CharacterMover2D>(target, pushed);
         }
         if (auto* creature = ecs.try_get<world::Creature2D>(target); creature != nullptr) {
             world::Creature2D scared = *creature;
@@ -637,14 +637,14 @@ void drive_vehicle(world::World& world, entt::entity entity, Kept& kept, float s
         }
         place_at(world, tree, rider, ahead.apply(s.at({seat->position.z, seat->position.y})),
                  rotation);
-        if (auto* character = ecs.try_get<world::CharacterBody2D>(rider); character != nullptr) {
+        if (auto* character = ecs.try_get<world::CharacterMover2D>(rider); character != nullptr) {
             if (character->velocity != Vec2{} || character->collision_layer != 0 ||
                 character->collision_mask != 0) {
-                world::CharacterBody2D still = *character;
+                world::CharacterMover2D still = *character;
                 still.velocity = {};
                 still.collision_layer = 0;
                 still.collision_mask = 0;
-                ecs.replace<world::CharacterBody2D>(rider, still);
+                ecs.replace<world::CharacterMover2D>(rider, still);
             }
         }
     }
@@ -750,14 +750,14 @@ Result<std::string> enter_vehicle(world::World& world, entt::entity rider, entt:
         }
     }
     world::VehicleRider ride{.vehicle = vehicle, .seat = chosen};
-    if (auto* body = ecs.try_get<world::CharacterBody2D>(rider); body != nullptr) {
+    if (auto* body = ecs.try_get<world::CharacterMover2D>(rider); body != nullptr) {
         ride.collision_layer = body->collision_layer;
         ride.collision_mask = body->collision_mask;
-        world::CharacterBody2D quiet = *body;
+        world::CharacterMover2D quiet = *body;
         quiet.collision_layer = 0;
         quiet.collision_mask = 0;
         quiet.velocity = {};
-        ecs.replace<world::CharacterBody2D>(rider, quiet);
+        ecs.replace<world::CharacterMover2D>(rider, quiet);
     }
     ecs.emplace<world::VehicleRider>(rider, ride);
     const world::Tree2D tree(world);
@@ -782,11 +782,11 @@ Result<void> exit_vehicle(world::World& world, entt::entity rider) {
     }
     const world::VehicleRider was = *ride;
     ecs.remove<world::VehicleRider>(rider);
-    if (auto* body = ecs.try_get<world::CharacterBody2D>(rider); body != nullptr) {
-        world::CharacterBody2D back = *body;
+    if (auto* body = ecs.try_get<world::CharacterMover2D>(rider); body != nullptr) {
+        world::CharacterMover2D back = *body;
         back.collision_layer = was.collision_layer;
         back.collision_mask = was.collision_mask;
-        ecs.replace<world::CharacterBody2D>(rider, back);
+        ecs.replace<world::CharacterMover2D>(rider, back);
     }
     if (ecs.valid(was.vehicle) && ecs.all_of<world::Vehicle2D, world::Transform2D>(was.vehicle)) {
         if (auto recipe = vehicle_recipe(world, was.vehicle); recipe) {

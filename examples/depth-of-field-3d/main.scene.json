@@ -6,7 +6,7 @@
           "current": true,
           "fov": 60.0
         },
-        "CameraAttributesPractical": {
+        "CameraLens": {
           "dof_blur_amount": 0.15,
           "dof_blur_far_distance": 8.0,
           "dof_blur_far_enabled": true,
@@ -22,7 +22,7 @@
     },
     "environment": {
       "components": {
-        "WorldEnvironment": {
+        "Environment3D": {
           "ambient_light_color": [0.6, 0.7, 0.9, 1.0],
           "ambient_light_energy": 0.4,
           "ambient_light_source": "color",
@@ -33,11 +33,11 @@
     },
     "fence": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [24.0, 3.0, 0.2]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.95, 0.95, 0.9, 1.0],
           "roughness": 0.8
         },
@@ -48,11 +48,11 @@
     },
     "lantern": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [0.3, 0.6, 0.3]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.95, 0.75, 0.2, 1.0],
           "roughness": 0.8
         },
@@ -63,11 +63,11 @@
     },
     "lawn": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [40.0, 0.2, 40.0]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.3, 0.45, 0.2, 1.0]
         },
         "Transform3D": {
@@ -77,11 +77,11 @@
     },
     "post_0": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [0.6, 3.2, 0.2]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.08, 0.08, 0.1, 1.0],
           "roughness": 0.8
         },
@@ -92,11 +92,11 @@
     },
     "post_1": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [0.6, 3.2, 0.2]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.08, 0.08, 0.1, 1.0],
           "roughness": 0.8
         },
@@ -107,11 +107,11 @@
     },
     "post_2": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [0.6, 3.2, 0.2]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.08, 0.08, 0.1, 1.0],
           "roughness": 0.8
         },
@@ -122,11 +122,11 @@
     },
     "post_3": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [0.6, 3.2, 0.2]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.08, 0.08, 0.1, 1.0],
           "roughness": 0.8
         },
@@ -137,11 +137,11 @@
     },
     "post_4": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [0.6, 3.2, 0.2]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.08, 0.08, 0.1, 1.0],
           "roughness": 0.8
         },
@@ -152,11 +152,11 @@
     },
     "post_5": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [0.6, 3.2, 0.2]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.08, 0.08, 0.1, 1.0],
           "roughness": 0.8
         },
@@ -167,11 +167,11 @@
     },
     "post_6": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [0.6, 3.2, 0.2]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.08, 0.08, 0.1, 1.0],
           "roughness": 0.8
         },
@@ -182,9 +182,9 @@
     },
     "statue": {
       "components": {
-        "MeshInstance3D": {},
-        "SphereMesh": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "SphereGeometry": {},
+        "Surface3D": {
           "albedo_color": [0.8, 0.15, 0.1, 1.0],
           "roughness": 0.5
         },
@@ -195,7 +195,7 @@
     },
     "sun": {
       "components": {
-        "DirectionalLight3D": {},
+        "SunLight3D": {},
         "Transform3D": {
           "rotation": [-0.8, -0.5, 0.0]
         }

@@ -18,6 +18,7 @@ Status: current · Updated: 2026-11-20
 | Copy code or command calls that are known to work | [../examples/](../examples/README.md) |
 | Look up a `slash-cli`, `slash-mcp` or `slash-game` flag | [reference/cli.md](reference/cli.md) |
 | Write or check a `.scene.json` file | [reference/scene-format.md](reference/scene-format.md) |
+| Find the new name of a component an older scene, doc or model answer uses | [reference/renamed-names.md](reference/renamed-names.md) |
 | See how the world tools fit together: recipes, 2D and 3D, one simulation, procedural graphs | [concepts.md](concepts.md#building-worlds) |
 | Make characters, faces, animals or vehicles from recipes | [Characters](reference/scene-format.md#characters), [Faces](reference/scene-format.md#faces), [Creatures](reference/scene-format.md#creatures), [Vehicle recipes](reference/scene-format.md#vehicle-recipes) |
 | Paint foliage, grow hair, blow wind or break things | [Foliage](reference/scene-format.md#foliage), [Hair and fur](reference/scene-format.md#hair-and-fur), [Wind](reference/scene-format.md#wind), [Destruction](reference/scene-format.md#destruction) |

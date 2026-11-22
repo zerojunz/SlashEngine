@@ -25,7 +25,7 @@
 namespace slash::canvas {
 namespace {
 
-using world::CPUParticles2D;
+using world::Emitter2D;
 using world::GradientPoint;
 
 constexpr float kTau = 2.0F * std::numbers::pi_v<float>;
@@ -220,9 +220,9 @@ Vec4 turn_hue(Vec4 color, float radians) {
     return {out[0], out[1], out[2], color.w};
 }
 
-// A CPUParticles2D's settings readied for a tick: curves and gradients sorted.
+// A Emitter2D's settings readied for a tick: curves and gradients sorted.
 struct Settings {
-    explicit Settings(const CPUParticles2D& s)
+    explicit Settings(const Emitter2D& s)
         : component(&s), angular_velocity(sorted_curve(s.angular_velocity_curve)),
           orbit_velocity(sorted_curve(s.orbit_velocity_curve)),
           linear_accel(sorted_curve(s.linear_accel_curve)),
@@ -242,7 +242,7 @@ struct Settings {
         }
     }
 
-    const CPUParticles2D* component;
+    const Emitter2D* component;
     std::vector<Vec2> angular_velocity;
     std::vector<Vec2> orbit_velocity;
     std::vector<Vec2> linear_accel;
@@ -275,7 +275,7 @@ struct Slot {
     bool was_alive = false;
 };
 
-// One CPUParticles2D's particles and where its cycle is.
+// One Emitter2D's particles and where its cycle is.
 struct Emitter {
     std::vector<Slot> slots;
     double time = 0.0; // seconds into the current cycle
@@ -297,7 +297,7 @@ constexpr std::size_t kMaxExtra = 4096;
 // cycle's start by explosiveness.
 double emit_time(const Settings& settings, std::uint32_t seed, std::uint32_t cycle,
                  std::uint32_t slot) {
-    const CPUParticles2D& s = *settings.component;
+    const Emitter2D& s = *settings.component;
     const auto amount = static_cast<float>(settings.amount);
     float phase = static_cast<float>(slot) / amount;
     if (s.randomness > 0.0F) {
@@ -473,7 +473,7 @@ private:
     }
 
     // Moves a particle on by seconds and works out its look at its new age, as Godot's
-    // CPUParticles2D: forces change its velocity, orbiting turns it about the emitter, damping
+    // Emitter2D: forces change its velocity, orbiting turns it about the emitter, damping
     // slows it, then it moves by its velocity.
     void advance(Slot& slot, float seconds) const {
         Particle& p = slot.particle;
@@ -541,7 +541,7 @@ private:
     }
 
     const Settings& settings_;
-    const CPUParticles2D& s_;
+    const Emitter2D& s_;
     world::Transform2D transform_;
     std::uint32_t seed_;
     Vec2 origin_; // what radial and tangential acceleration and orbits go round
@@ -564,7 +564,7 @@ std::int64_t ticks_in(double seconds, double tick_seconds) {
 
 // Runs preprocess, the first time, and then ticks steps. Returns whether a one_shot's cycle
 // ended.
-bool run(Emitter& emitter, const CPUParticles2D& component, const world::Transform2D& transform,
+bool run(Emitter& emitter, const Emitter2D& component, const world::Transform2D& transform,
          std::uint32_t seed, double tick_seconds, std::int64_t ticks, Vec2 wind = {},
          const world::PhysicsFields2D* fields = nullptr, double time = 0.0) {
     const Settings settings(component);
@@ -617,7 +617,7 @@ struct ParticleSystem {
         const world::Tree2D tree(world);
         struct Run {
             entt::entity entity;
-            CPUParticles2D* component;
+            Emitter2D* component;
             Emitter* emitter;
             world::Transform2D transform;
             std::uint32_t seed;
@@ -629,8 +629,8 @@ struct ParticleSystem {
         const double wind_time = world::wind_time(world);
         const world::PhysicsFields2D fields(world, tree);
         const double field_time = static_cast<double>(world.tick()) * tick_seconds;
-        for (const entt::entity entity : ecs.view<CPUParticles2D>()) {
-            auto& component = ecs.get<CPUParticles2D>(entity);
+        for (const entt::entity entity : ecs.view<Emitter2D>()) {
+            auto& component = ecs.get<Emitter2D>(entity);
             const std::string key = key_of(world, entity);
             seen.insert(key);
             const world::Transform2D transform = tree.global(entity);
@@ -676,7 +676,7 @@ struct ParticleSystem {
     // Errors already logged, so each is logged once.
     std::set<std::string, std::less<>> warned;
 
-    // Runs every ParticleSimulation2D's stages over its CPUParticles2D, after the emitters
+    // Runs every ParticleSimulation2D's stages over its Emitter2D, after the emitters
     // moved; then starts the particles their events start and emits their world events.
     void simulate(world::World& world, double tick_seconds) {
         auto& ecs = world.ecs();
@@ -686,7 +686,7 @@ struct ParticleSystem {
         const world::Tree2D tree(world);
         struct Run {
             entt::entity entity;
-            const CPUParticles2D* component;
+            const Emitter2D* component;
             Emitter* emitter;
             world::ParticleStages stages;
             world::Transform2D transform;
@@ -698,7 +698,7 @@ struct ParticleSystem {
         std::vector<Run> runs;
         bool occluders = false;
         for (const entt::entity entity :
-             ecs.view<const world::ParticleSimulation2D, const CPUParticles2D>()) {
+             ecs.view<const world::ParticleSimulation2D, const Emitter2D>()) {
             const auto& simulation = ecs.get<const world::ParticleSimulation2D>(entity);
             if (!simulation.enabled) {
                 continue;
@@ -718,7 +718,7 @@ struct ParticleSystem {
                 }
                 continue;
             }
-            const auto& component = ecs.get<const CPUParticles2D>(entity);
+            const auto& component = ecs.get<const Emitter2D>(entity);
             occluders = occluders || simulation.collide == "occluders";
             runs.push_back({.entity = entity,
                             .component = &component,
@@ -861,7 +861,7 @@ struct ParticleSystem {
     // What an emitter's events do: start particles in the emitters they name and emit world
     // events, at most kMaxWorldEvents an emitter a tick.
     void answer(world::World& world, const world::Tree2D& tree, entt::entity entity,
-                const CPUParticles2D& component, const world::Affine2D& place, std::uint32_t seed,
+                const Emitter2D& component, const world::Affine2D& place, std::uint32_t seed,
                 const world::ParticleStages& stages, const std::vector<world::SimEvent>& events) {
         constexpr std::size_t kMaxWorldEvents = 8;
         std::size_t emitted = 0;
@@ -886,13 +886,13 @@ struct ParticleSystem {
             }
             const entt::entity target = world.find(rule.spawn);
             auto* settings =
-                target != entt::null ? world.ecs().try_get<CPUParticles2D>(target) : nullptr;
+                target != entt::null ? world.ecs().try_get<Emitter2D>(target) : nullptr;
             if (settings == nullptr) {
                 const std::string message =
                     std::string(world.id_of(entity)) + " spawn " + rule.spawn;
                 if (warned.insert(message).second) {
                     log::warn(
-                        "a particle event's spawn names no CPUParticles2D",
+                        "a particle event's spawn names no Emitter2D",
                         {{"entity", std::string(world.id_of(entity))}, {"spawn", rule.spawn}});
                 }
                 continue;
@@ -938,8 +938,7 @@ struct ParticleSystem {
 
 } // namespace
 
-Vec2 world_position(const CPUParticles2D& settings, const world::Transform2D& transform,
-                    Vec2 position) {
+Vec2 world_position(const Emitter2D& settings, const world::Transform2D& transform, Vec2 position) {
     return settings.local_coords ? to_world(transform, position, true) : position;
 }
 
@@ -964,22 +963,22 @@ void add_particles_system(world::World& world) {
     world.add_system(
         "cpu_particles_2d",
         [system](world::World& w, double tick_seconds) { system->run_all(w, tick_seconds); },
-        {.doc = "Emits, moves and ages each CPUParticles2D's particles.",
+        {.doc = "Emits, moves and ages each Emitter2D's particles.",
          .priority = 1100,
          .threaded = true,
          .reads = {"Transform2D", "WindSource2D", "PhysicsField2D"},
-         .writes = {"CPUParticles2D"}});
+         .writes = {"Emitter2D"}});
     world.add_system(
         "particle_simulation_2d",
         [system](world::World& w, double tick_seconds) { system->simulate(w, tick_seconds); },
-        {.doc = "Runs each ParticleSimulation2D's stages over its CPUParticles2D: neighbors, curl "
+        {.doc = "Runs each ParticleSimulation2D's stages over its Emitter2D: neighbors, curl "
                 "noise, collision, attributes and events.",
          .priority = 1105});
 }
 
 std::vector<Particle> particles(const world::World& world, entt::entity entity) {
     const auto* system = world.ecs().ctx().find<std::shared_ptr<ParticleSystem>>();
-    const auto* component = world.ecs().try_get<CPUParticles2D>(entity);
+    const auto* component = world.ecs().try_get<Emitter2D>(entity);
     if (system == nullptr || component == nullptr) {
         return {};
     }
@@ -988,12 +987,12 @@ std::vector<Particle> particles(const world::World& world, entt::entity entity) 
                                               : std::vector<Particle>{};
 }
 
-std::vector<Particle> simulate(const CPUParticles2D& settings, const world::Transform2D& transform,
+std::vector<Particle> simulate(const Emitter2D& settings, const world::Transform2D& transform,
                                std::uint32_t seed, double seconds, double tick_seconds) {
     if (tick_seconds <= 0.0) {
         return {};
     }
-    CPUParticles2D copy = settings;
+    Emitter2D copy = settings;
     Emitter emitter;
     // Tick 0 runs only preprocess.
     for (std::int64_t i = 0, ticks = ticks_in(seconds, tick_seconds); i <= ticks; ++i) {

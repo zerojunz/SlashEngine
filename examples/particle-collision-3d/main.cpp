@@ -43,7 +43,7 @@ json::Value call(command::Session& session, std::string_view name, std::string_v
 std::vector<render::Particle3D> live(command::Session& session, std::string_view id) {
     const world::World& world = session.world();
     const entt::entity entity = world.find(id);
-    const auto& emitter = world.ecs().get<const world::GPUParticles3D>(entity);
+    const auto& emitter = world.ecs().get<const world::GpuEmitter3D>(entity);
     const auto process =
         session.assets().load<slash::canvas::ProcessMaterial>(emitter.process_material);
     if (!process) {
@@ -108,9 +108,8 @@ int main() {
 
     // A collider acts only on emitters whose layers share a bit with its cull_mask, as Godot's:
     // with the umbrella on layer 2 only, the rain falls through it, and only the floor hides it.
-    call(
-        session, "component.set",
-        R"({"id": "umbrella", "components": {"GPUParticlesCollisionSphere3D": {"cull_mask": 2}}})");
+    call(session, "component.set",
+         R"({"id": "umbrella", "components": {"ParticleColliderSphere3D": {"cull_mask": 2}}})");
     call(session, "step", R"({"ticks": 60})");
     count_rain(session);
     return 0;

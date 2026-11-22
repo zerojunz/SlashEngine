@@ -1,6 +1,6 @@
-// Sound, as Godot's AudioServer: an AudioStreamPlayer plays music through the Music bus, an
-// AudioStreamPlayer2D plays footsteps through the Sfx bus, panned and faded by where they are
-// from the AudioListener2D, and both buses mix into Master. audio/default.bus_layout.json sets up
+// Sound, as Godot's AudioServer: an SoundPlayer plays music through the Music bus, an
+// SoundPlayer2D plays footsteps through the Sfx bus, panned and faded by where they are
+// from the Listener2D, and both buses mix into Master. audio/default.bus_layout.json sets up
 // the buses, as Godot's default_bus_layout.tres, and audio/steps.audio.json takes turns between
 // two footstep sounds, as Godot's AudioStreamRandomizer.
 //

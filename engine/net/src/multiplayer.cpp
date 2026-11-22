@@ -962,7 +962,7 @@ struct Multiplayer::State {
     }
 
     // ------------------------------------------------------------------------------------------
-    // SceneReplicationInterface, with MultiplayerSpawner's and MultiplayerSynchronizer's state.
+    // SceneReplicationInterface, with NetSpawner's and NetSync's state.
     // Godot connects to tree signals; here each poll compares the world with what it tracked.
 
     static constexpr std::uint8_t kInvalidSceneId = 0xFF; // a custom spawn
@@ -994,7 +994,7 @@ struct Multiplayer::State {
         json::Value value;
         std::uint64_t last_change_usec = 0;
     };
-    // A started synchronizer's state, as MultiplayerSynchronizer's.
+    // A started synchronizer's state, as NetSync's.
     struct SyncState {
         entt::entity handle{entt::null};
         std::string root; // the entity it replicates
@@ -1279,7 +1279,7 @@ struct Multiplayer::State {
     [[nodiscard]] std::vector<std::string> properties(std::string_view sync_id,
                                                       PropertyList list) const {
         std::vector<std::string> out;
-        const auto* sync = world.ecs().try_get<world::MultiplayerSynchronizer>(world.find(sync_id));
+        const auto* sync = world.ecs().try_get<world::NetSync>(world.find(sync_id));
         if (sync == nullptr) {
             return out;
         }
@@ -1298,7 +1298,7 @@ struct Multiplayer::State {
     }
 
     // ------------------------------------------------------------------------------------------
-    // Visibility, as MultiplayerSynchronizer's.
+    // Visibility, as NetSync's.
 
     [[nodiscard]] bool is_visible_to(std::string_view sync_id, int peer_id) const {
         const auto settings = sync_settings.find(sync_id);
@@ -1607,7 +1607,7 @@ struct Multiplayer::State {
         offset += 4;
         const entt::entity spawner_entity = cached_entity(from, spawner_cache);
         const auto* spawner = spawner_entity != entt::null
-                                  ? world.ecs().try_get<world::MultiplayerSpawner>(spawner_entity)
+                                  ? world.ecs().try_get<world::NetSpawner>(spawner_entity)
                                   : nullptr;
         if (spawner == nullptr) {
             log::error("a spawn named a spawner this world doesn't have", {{"peer", from}});
@@ -1850,11 +1850,11 @@ struct Multiplayer::State {
     }
 
     // Starts and stops synchronizers as they come, go, change root or change authority, as
-    // MultiplayerSynchronizer's _start and _stop.
+    // NetSync's _start and _stop.
     void start_synchronizers() {
         auto& registry = world.ecs();
         std::map<std::string, std::pair<entt::entity, std::string>> current;
-        for (auto [entity, sync] : registry.view<const world::MultiplayerSynchronizer>().each()) {
+        for (auto [entity, sync] : registry.view<const world::NetSync>().each()) {
             const std::string_view id = world.id_of(entity);
             const entt::entity root = sync.root_path == entt::null ? entity : sync.root_path;
             const std::string_view root_id = world.valid(root) ? world.id_of(root) : "";
@@ -1884,8 +1884,7 @@ struct Multiplayer::State {
             sync.handle = entry.first;
             sync.root = entry.second;
             sync.authority = authority_of(id);
-            sync.public_visibility =
-                registry.get<world::MultiplayerSynchronizer>(entry.first).public_visibility;
+            sync.public_visibility = registry.get<world::NetSync>(entry.first).public_visibility;
             on_replication_start(id, sync);
         }
     }
@@ -1894,7 +1893,7 @@ struct Multiplayer::State {
     // MultiplayerSpawner::_node_added, and despawn those gone.
     void track_spawns() {
         auto& registry = world.ecs();
-        for (auto [entity, spawner] : registry.view<const world::MultiplayerSpawner>().each()) {
+        for (auto [entity, spawner] : registry.view<const world::NetSpawner>().each()) {
             const std::string_view id = world.id_of(entity);
             if (id.empty() || spawner.spawnable_scenes.empty() || !has_authority(id)) {
                 continue;
@@ -1969,8 +1968,7 @@ struct Multiplayer::State {
     // Each synchronizer's public_visibility as the component holds it now.
     void watch_public_visibility() {
         for (auto& [id, sync] : sync_nodes) {
-            const auto* component =
-                world.ecs().try_get<world::MultiplayerSynchronizer>(sync.handle);
+            const auto* component = world.ecs().try_get<world::NetSync>(sync.handle);
             if (component != nullptr && component->public_visibility != sync.public_visibility) {
                 sync.public_visibility = component->public_visibility;
                 visibility_changed(0, id);
@@ -1985,8 +1983,7 @@ struct Multiplayer::State {
             if (settings == sync_settings.end() || settings->second.filters.empty()) {
                 continue;
             }
-            const auto* component =
-                world.ecs().try_get<world::MultiplayerSynchronizer>(sync.handle);
+            const auto* component = world.ecs().try_get<world::NetSync>(sync.handle);
             if (component != nullptr && component->visibility_update_mode == mode) {
                 visibility_changed(0, id);
             }
@@ -2006,7 +2003,7 @@ struct Multiplayer::State {
         if (sync.last_sync_usec == usec) {
             return true; // updated this poll already
         }
-        const auto* component = world.ecs().try_get<world::MultiplayerSynchronizer>(sync.handle);
+        const auto* component = world.ecs().try_get<world::NetSync>(sync.handle);
         const auto interval = static_cast<std::uint64_t>(
             (component != nullptr ? component->replication_interval : 0.0) * 1'000'000.0);
         if (usec < sync.last_sync_usec + interval) {
@@ -2091,8 +2088,7 @@ struct Multiplayer::State {
         indexes = 0;
         json::Array out;
         if (sync.last_watch_usec != usec) {
-            const auto* component =
-                world.ecs().try_get<world::MultiplayerSynchronizer>(sync.handle);
+            const auto* component = world.ecs().try_get<world::NetSync>(sync.handle);
             const auto interval = static_cast<std::uint64_t>(
                 (component != nullptr ? component->delta_interval : 0.0) * 1'000'000.0);
             if (usec < last_usec + interval) {
@@ -2575,11 +2571,10 @@ Result<entt::entity> Multiplayer::spawn(std::string_view spawner_id, std::string
     State& s = *state_;
     const entt::entity spawner_entity = s.world.find(spawner_id);
     const auto* spawner = spawner_entity != entt::null
-                              ? s.world.ecs().try_get<world::MultiplayerSpawner>(spawner_entity)
+                              ? s.world.ecs().try_get<world::NetSpawner>(spawner_entity)
                               : nullptr;
     if (spawner == nullptr) {
-        return make_error(ErrorCode::NotFound,
-                          "no MultiplayerSpawner \"" + std::string(spawner_id) + "\"");
+        return make_error(ErrorCode::NotFound, "no NetSpawner \"" + std::string(spawner_id) + "\"");
     }
     if (!s.has_authority(spawner_id)) {
         return make_error(ErrorCode::InvalidArgument,
@@ -2633,9 +2628,8 @@ void Multiplayer::set_visibility_for(std::string_view synchronizer, int peer, bo
     if (peer == 0) {
         // Public visibility is the component's.
         const entt::entity entity = s.world.find(synchronizer);
-        if (auto* sync = entity != entt::null
-                             ? s.world.ecs().try_get<world::MultiplayerSynchronizer>(entity)
-                             : nullptr) {
+        if (auto* sync =
+                entity != entt::null ? s.world.ecs().try_get<world::NetSync>(entity) : nullptr) {
             sync->public_visibility = visible;
         }
         if (auto started = s.sync_nodes.find(synchronizer); started != s.sync_nodes.end()) {
@@ -2662,9 +2656,8 @@ bool Multiplayer::visibility_for(std::string_view synchronizer, int peer) const 
     const State& s = *state_;
     if (peer == 0) {
         const entt::entity entity = s.world.find(synchronizer);
-        const auto* sync = entity != entt::null
-                               ? s.world.ecs().try_get<world::MultiplayerSynchronizer>(entity)
-                               : nullptr;
+        const auto* sync =
+            entity != entt::null ? s.world.ecs().try_get<world::NetSync>(entity) : nullptr;
         return sync != nullptr && sync->public_visibility;
     }
     const auto settings = s.sync_settings.find(synchronizer);

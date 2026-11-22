@@ -362,9 +362,9 @@ TEST_CASE("compile_stages refuses attributes it can't run, with their JSON Point
 TEST_CASE("3D particles flock and collide with particle colliders in a world") {
     Scene scene;
     scene.create("floor", R"({"Transform3D": {"position": [0, -1, 0]},
-        "GPUParticlesCollisionBox3D": {"size": [20, 2, 20]}})");
+        "ParticleColliderBox3D": {"size": [20, 2, 20]}})");
     const entt::entity rain = scene.create("rain", R"({"Transform3D": {"position": [0, 3, 0]},
-        "CPUParticles3D": {"amount": 40, "lifetime": 4, "explosiveness": 1, "spread": 180,
+        "Emitter3D": {"amount": 40, "lifetime": 4, "explosiveness": 1, "spread": 180,
                            "initial_velocity_min": 1, "initial_velocity_max": 2,
                            "gravity": [0, -9.8, 0]},
         "ParticleSimulation3D": {"collide": "colliders", "bounce": 0, "friction": 1,
@@ -398,9 +398,9 @@ TEST_CASE("3D particles collide with what the current camera sees") {
                  R"({"Transform3D": {"position": [0, 6, 0], "rotation": [-1.5707964, 0, 0]},
         "Camera3D": {"current": true}})");
     scene.create("ground", R"({"Transform3D": {"position": [0, -0.5, 0]},
-        "MeshInstance3D": {}, "BoxMesh": {"size": [20, 1, 20]}})");
+        "Model3D": {}, "BoxGeometry": {"size": [20, 1, 20]}})");
     const entt::entity sand = scene.create("sand", R"({"Transform3D": {"position": [0, 2, 0]},
-        "CPUParticles3D": {"amount": 12, "lifetime": 5, "explosiveness": 1, "spread": 30,
+        "Emitter3D": {"amount": 12, "lifetime": 5, "explosiveness": 1, "spread": 30,
                            "direction": [0, -1, 0], "initial_velocity_min": 0.5,
                            "initial_velocity_max": 1, "gravity": [0, -9.8, 0]},
         "ParticleSimulation3D": {"collide": "depth", "response": "stick"}})");
@@ -416,15 +416,15 @@ TEST_CASE("3D particles collide with what the current camera sees") {
 TEST_CASE("particle events start particles in another emitter") {
     Scene scene;
     scene.create("floor", R"({"Transform3D": {"position": [0, -1, 0]},
-        "GPUParticlesCollisionBox3D": {"size": [20, 2, 20]}})");
+        "ParticleColliderBox3D": {"size": [20, 2, 20]}})");
     scene.create("drops", R"({"Transform3D": {"position": [0, 1, 0]},
-        "CPUParticles3D": {"amount": 4, "lifetime": 3, "explosiveness": 1, "one_shot": true,
+        "Emitter3D": {"amount": 4, "lifetime": 3, "explosiveness": 1, "one_shot": true,
                            "spread": 0, "direction": [0, -1, 0], "initial_velocity_min": 1,
                            "initial_velocity_max": 1, "gravity": [0, -9.8, 0]},
         "ParticleSimulation3D": {"collide": "colliders", "response": "kill",
             "events": [{"on": "collision", "spawn": "splashes", "count": 3, "speed": 2}]}})");
     const entt::entity splashes = scene.create("splashes", R"({"Transform3D": {},
-        "CPUParticles3D": {"emitting": false, "amount": 1, "lifetime": 0.5,
+        "Emitter3D": {"emitting": false, "amount": 1, "lifetime": 0.5,
                            "gravity": [0, 0, 0]}})");
     scene.step(40);
     const std::vector<scene3d::Particle3D> live = scene3d::particles_3d(scene.world, splashes);
@@ -440,7 +440,7 @@ TEST_CASE("particle events start particles in another emitter") {
 TEST_CASE("death and location events fire where particles end and pass") {
     Scene scene;
     scene.create("sparks", R"({"Transform3D": {},
-        "CPUParticles3D": {"amount": 3, "lifetime": 0.5, "explosiveness": 1, "one_shot": true,
+        "Emitter3D": {"amount": 3, "lifetime": 0.5, "explosiveness": 1, "one_shot": true,
                            "spread": 0, "direction": [1, 0, 0], "initial_velocity_min": 4,
                            "initial_velocity_max": 4, "gravity": [0, 0, 0]},
         "ParticleSimulation3D": {"events": [
@@ -472,9 +472,9 @@ TEST_CASE("death and location events fire where particles end and pass") {
 TEST_CASE("2D particles collide with occluders and change size and alpha by attributes") {
     Scene scene;
     scene.create("ground", R"({"Transform2D": {"position": [0, 100]},
-        "LightOccluder2D": {"polygon": [[-500, 0], [500, 0], [500, 40], [-500, 40]]}})");
+        "Occluder2D": {"polygon": [[-500, 0], [500, 0], [500, 40], [-500, 40]]}})");
     const entt::entity dust = scene.create("dust", R"({"Transform2D": {},
-        "CPUParticles2D": {"amount": 20, "lifetime": 4, "explosiveness": 1, "spread": 45,
+        "Emitter2D": {"amount": 20, "lifetime": 4, "explosiveness": 1, "spread": 45,
                            "initial_velocity_min": 50, "initial_velocity_max": 80,
                            "gravity": [0, 300]},
         "ParticleSimulation2D": {"collide": "occluders", "bounce": 0.2, "friction": 0.5,
@@ -494,7 +494,7 @@ TEST_CASE("2D particles collide with occluders and change size and alpha by attr
 TEST_CASE("2D particles flock in the plane") {
     Scene scene;
     const entt::entity birds = scene.create("birds", R"({"Transform2D": {},
-        "CPUParticles2D": {"amount": 30, "lifetime": 10, "explosiveness": 1, "spread": 180,
+        "Emitter2D": {"amount": 30, "lifetime": 10, "explosiveness": 1, "spread": 180,
                            "initial_velocity_min": 20, "initial_velocity_max": 60,
                            "gravity": [0, 0]},
         "ParticleSimulation2D": {"neighbor_radius": 40, "separation": 1, "cohesion": 0.5,
@@ -517,17 +517,17 @@ TEST_CASE("particle simulations don't depend on the number of threads") {
         Scene scene;
         scene.world.set_pool(pool);
         scene.create("floor", R"({"Transform3D": {"position": [0, -1, 0]},
-            "GPUParticlesCollisionBox3D": {"size": [20, 2, 20]}})");
+            "ParticleColliderBox3D": {"size": [20, 2, 20]}})");
         for (const std::string_view id : {"a", "b", "c"}) {
             scene.create(id, R"({"Transform3D": {"position": [0, 2, 0]},
-                "CPUParticles3D": {"amount": 30, "lifetime": 2, "spread": 90,
+                "Emitter3D": {"amount": 30, "lifetime": 2, "spread": 90,
                                    "initial_velocity_min": 1, "initial_velocity_max": 3},
                 "ParticleSimulation3D": {"collide": "colliders", "neighbor_radius": 0.4,
                                          "separation": 2, "alignment": 1, "curl_strength": 3,
                     "attributes": [{"name": "size", "value": "1 + random", "every_tick": false}]}})");
         }
         scene.create("flat", R"({"Transform2D": {},
-            "CPUParticles2D": {"amount": 30, "lifetime": 2, "spread": 180,
+            "Emitter2D": {"amount": 30, "lifetime": 2, "spread": 180,
                                "initial_velocity_min": 20, "initial_velocity_max": 60},
             "ParticleSimulation2D": {"neighbor_radius": 30, "separation": 1, "cohesion": 1,
                                      "curl_strength": 20}})");

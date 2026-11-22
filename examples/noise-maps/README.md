@@ -12,7 +12,7 @@ and [`terrain.generate`](../../docs/reference/commands.md#terraingenerate)'s `no
   the same noise always fills the same cells.
 - A band with `"tile": null` erases the cells under 0.3, and `undo` puts them back.
 - `dunes.texture.json` is a ridged, warped noise. `terrain.generate` puts it in place of the
-  HTerrain generator's Perlin noise, normalized to 0 to 12 meters and curved, then again with
+  Terrain3D generator's Perlin noise, normalized to 0 to 12 meters and curved, then again with
   another seed and shaped into an island, whose corner falls to 0.
 - The tile set's own texture, `ground.texture.json`, is procedural too.
 - The last call names a terrain the tile set lacks and fails with the band's path.

@@ -521,7 +521,7 @@ struct TextInput {
     Vec2 position;
     Vec2 size;
     int caret = 0;
-    // The on-screen keyboard: shown, and which kind, as LineEdit.virtual_keyboard_type
+    // The on-screen keyboard: shown, and which kind, as TextField.virtual_keyboard_type
     // ("default", "multiline", "number", "number_decimal", "phone", "email_address",
     // "password" or "url").
     bool show_keyboard = false;

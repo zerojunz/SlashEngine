@@ -77,7 +77,7 @@ float angle(double radians) {
     return static_cast<float>(radians);
 }
 
-// A Transform3D with Godot's row-major basis, for CSGPolygon3D's spin.
+// A Transform3D with Godot's row-major basis, for SolidExtrusion3D's spin.
 struct Xform {
     std::array<std::array<float, 3>, 3> rows{
         {{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}}};
@@ -207,14 +207,14 @@ struct CsgNode {
     entt::entity entity = entt::null;
     CsgShape shape;
     world::Affine3D local; // in its parent shape; the root's isn't used
-    std::optional<world::StandardMaterial3D> material;
-    // A CSGMesh3D's mesh: its model, or its primitive mesh, or why it has neither.
+    std::optional<world::Surface3D> material;
+    // A SolidMesh3D's mesh: its model, or its primitive mesh, or why it has neither.
     std::shared_ptr<const Model> model;
     std::optional<Primitive> primitive;
     std::string mesh_error;
-    // A CSGPolygon3D's path in path mode: its Path3D, where the curve starts (the path's place in
-    // the world, or nowhere with path_local), or why there is none.
-    std::optional<world::Path3D> path;
+    // A SolidExtrusion3D's path in path mode: its Spline3D, where the curve starts (the path's
+    // place in the world, or nowhere with path_local), or why there is none.
+    std::optional<world::Spline3D> path;
     world::Affine3D path_place;
     std::string path_error;
     // Where its problems are reported, for a node made from a CsgTree; "" for the component's
@@ -255,7 +255,7 @@ Face face_of(std::array<Vec3, 3> vertices, std::array<Vec2, 3> uvs, bool smooth)
     return {.vertices = vertices, .uvs = uvs, .smooth = smooth};
 }
 
-std::vector<Face> box_faces(const world::CSGBox3D& box) {
+std::vector<Face> box_faces(const world::SolidBox3D& box) {
     std::vector<Face> faces;
     const Vec3 mul{box.size.x / 2.0F, box.size.y / 2.0F, box.size.z / 2.0F};
     constexpr std::array<float, 8> kUvPoints = {0, 0, 0, 1, 1, 1, 1, 0};
@@ -287,7 +287,7 @@ std::vector<Face> box_faces(const world::CSGBox3D& box) {
     return faces;
 }
 
-std::vector<Face> sphere_faces(const world::CSGSphere3D& sphere) {
+std::vector<Face> sphere_faces(const world::SolidSphere3D& sphere) {
     std::vector<Face> faces;
     const int rings = std::max(sphere.rings, 1);
     const int segments = std::max(sphere.radial_segments, 4);
@@ -348,7 +348,7 @@ std::vector<Face> sphere_faces(const world::CSGSphere3D& sphere) {
     return faces;
 }
 
-std::vector<Face> cylinder_faces(const world::CSGCylinder3D& cylinder) {
+std::vector<Face> cylinder_faces(const world::SolidCylinder3D& cylinder) {
     std::vector<Face> faces;
     const int sides = std::max(cylinder.sides, 3);
     const Vec3 mul{cylinder.radius, cylinder.height * 0.5F, cylinder.radius};
@@ -387,7 +387,7 @@ std::vector<Face> cylinder_faces(const world::CSGCylinder3D& cylinder) {
     return faces;
 }
 
-std::vector<Face> torus_faces(const world::CSGTorus3D& torus) {
+std::vector<Face> torus_faces(const world::SolidTorus3D& torus) {
     std::vector<Face> faces;
     float min_radius = torus.inner_radius;
     float max_radius = torus.outer_radius;
@@ -431,7 +431,7 @@ std::vector<Face> torus_faces(const world::CSGTorus3D& torus) {
     return faces;
 }
 
-std::vector<Face> polygon_faces(const world::CSGPolygon3D& polygon, const std::string& path,
+std::vector<Face> polygon_faces(const world::SolidExtrusion3D& polygon, const std::string& path,
                                 const CsgNode& node, std::vector<Problem>& problems) {
     const entt::entity entity = node.entity;
     std::vector<Face> faces;
@@ -486,7 +486,7 @@ std::vector<Face> polygon_faces(const world::CSGPolygon3D& polygon, const std::s
         }
         if (node.path->points.size() < 2) {
             problems.push_back({entity, path + "/path_node",
-                                "names a Path3D with fewer than 2 points: give it more"});
+                                "names a Spline3D with fewer than 2 points: give it more"});
             return faces;
         }
         curve.emplace(node.path->points, node.path->closed, node.path->bake_interval,
@@ -702,7 +702,7 @@ std::vector<Face> polygon_faces(const world::CSGPolygon3D& polygon, const std::s
     return faces;
 }
 
-// CSGMesh3D's faces: smooth where a triangle's corners have different normals.
+// SolidMesh3D's faces: smooth where a triangle's corners have different normals.
 Brush mesh_brush(const CsgNode& node, bool flip) {
     Brush brush;
     const auto material_index = [&](const SurfaceMaterial& material) {
@@ -735,7 +735,7 @@ Brush mesh_brush(const CsgNode& node, bool flip) {
             brush.faces.push_back(face);
         }
     };
-    const auto& shape = std::get<world::CSGMesh3D>(node.shape);
+    const auto& shape = std::get<world::SolidMesh3D>(node.shape);
     if (node.primitive) {
         auto made = make_mesh(*node.primitive);
         if (made) {
@@ -773,21 +773,21 @@ Brush own_brush(const CsgNode& node, std::vector<Problem>& problems) {
     return std::visit(
         [&](const auto& shape) -> Brush {
             using T = std::decay_t<decltype(shape)>;
-            if constexpr (std::is_same_v<T, world::CSGCombiner3D>) {
+            if constexpr (std::is_same_v<T, world::SolidGroup3D>) {
                 return {};
-            } else if constexpr (std::is_same_v<T, world::CSGBox3D>) {
+            } else if constexpr (std::is_same_v<T, world::SolidBox3D>) {
                 return primitive_brush(box_faces(shape), node, shape.flip_faces);
-            } else if constexpr (std::is_same_v<T, world::CSGSphere3D>) {
+            } else if constexpr (std::is_same_v<T, world::SolidSphere3D>) {
                 return primitive_brush(sphere_faces(shape), node, shape.flip_faces);
-            } else if constexpr (std::is_same_v<T, world::CSGCylinder3D>) {
+            } else if constexpr (std::is_same_v<T, world::SolidCylinder3D>) {
                 return primitive_brush(cylinder_faces(shape), node, shape.flip_faces);
-            } else if constexpr (std::is_same_v<T, world::CSGTorus3D>) {
+            } else if constexpr (std::is_same_v<T, world::SolidTorus3D>) {
                 if (shape.inner_radius == shape.outer_radius) {
                     problems.push_back({node.entity, path + "/inner_radius",
                                         "equals outer_radius, so the torus has no thickness"});
                 }
                 return primitive_brush(torus_faces(shape), node, shape.flip_faces);
-            } else if constexpr (std::is_same_v<T, world::CSGPolygon3D>) {
+            } else if constexpr (std::is_same_v<T, world::SolidExtrusion3D>) {
                 return primitive_brush(polygon_faces(shape, path, node, problems), node,
                                        shape.flip_faces);
             } else {
@@ -1166,7 +1166,7 @@ ModelLoader file_loader(const world::World& world) {
     };
 }
 
-// Reads the mesh a CSGMesh3D, or a MeshInstance3D being cut, names on its entity: its model or
+// Reads the mesh a SolidMesh3D, or a Model3D being cut, names on its entity: its model or
 // primitive mesh, or why it has neither.
 void read_mesh(CsgNode& node, const world::World& world, entt::entity entity,
                const std::string& mesh, const ModelLoader& load) {
@@ -1191,11 +1191,11 @@ void read_mesh(CsgNode& node, const world::World& world, entt::entity entity,
         }
     } else if (!primitive) {
         node.mesh_error = "names no model and the entity has no primitive mesh: name a model "
-                          "file, or give it a BoxMesh, SphereMesh or another closed mesh";
-    } else if (std::holds_alternative<world::PlaneMesh>(*primitive) ||
-               std::holds_alternative<world::QuadMesh>(*primitive)) {
+                          "file, or give it a BoxGeometry, SphereGeometry or another closed mesh";
+    } else if (std::holds_alternative<world::PlaneGeometry>(*primitive) ||
+               std::holds_alternative<world::QuadGeometry>(*primitive)) {
         node.mesh_error = "its " + std::string(kPrimitiveNames[primitive->index()]) +
-                          " is flat, so it has no inside: use a closed mesh such as a BoxMesh";
+                          " is flat, so it has no inside: use a closed mesh such as a BoxGeometry";
     } else if (auto checked = check_primitive(*primitive); !checked) {
         node.mesh_error = checked.error().message;
     } else {
@@ -1225,21 +1225,20 @@ CsgNode node_of(const world::World& world, const world::Tree3D& tree, entt::enti
             }
         }
     }
-    if (const auto* standard = ecs.try_get<const world::StandardMaterial3D>(entity);
-        standard != nullptr) {
+    if (const auto* standard = ecs.try_get<const world::Surface3D>(entity); standard != nullptr) {
         node.material = *standard;
     }
-    if (const auto* polygon = std::get_if<world::CSGPolygon3D>(&shape);
+    if (const auto* polygon = std::get_if<world::SolidExtrusion3D>(&shape);
         polygon != nullptr && polygon->mode == "path") {
         const auto* path = world.valid(polygon->path_node)
-                               ? ecs.try_get<const world::Path3D>(polygon->path_node)
+                               ? ecs.try_get<const world::Spline3D>(polygon->path_node)
                                : nullptr;
         if (polygon->path_node == entt::null) {
-            node.path_error = "names no entity: name the entity with the Path3D to push the "
+            node.path_error = "names no entity: name the entity with the Spline3D to push the "
                               "polygon along";
         } else if (path == nullptr) {
             node.path_error = "\"" + std::string(world.id_of(polygon->path_node)) +
-                              "\" has no Path3D: give it one, or name another entity";
+                              "\" has no Spline3D: give it one, or name another entity";
         } else {
             node.path = *path;
             if (!polygon->path_local) {
@@ -1247,7 +1246,7 @@ CsgNode node_of(const world::World& world, const world::Tree3D& tree, entt::enti
             }
         }
     }
-    if (const auto* mesh = std::get_if<world::CSGMesh3D>(&shape); mesh != nullptr) {
+    if (const auto* mesh = std::get_if<world::SolidMesh3D>(&shape); mesh != nullptr) {
         read_mesh(node, world, entity, mesh->mesh, load);
     }
     return node;
@@ -1744,25 +1743,25 @@ std::optional<CsgShape> csg_shape_of(const world::World& world, entt::entity ent
     if (!world.valid(entity)) {
         return std::nullopt;
     }
-    if (const auto* s = ecs.try_get<const world::CSGCombiner3D>(entity); s != nullptr) {
+    if (const auto* s = ecs.try_get<const world::SolidGroup3D>(entity); s != nullptr) {
         return *s;
     }
-    if (const auto* s = ecs.try_get<const world::CSGBox3D>(entity); s != nullptr) {
+    if (const auto* s = ecs.try_get<const world::SolidBox3D>(entity); s != nullptr) {
         return *s;
     }
-    if (const auto* s = ecs.try_get<const world::CSGSphere3D>(entity); s != nullptr) {
+    if (const auto* s = ecs.try_get<const world::SolidSphere3D>(entity); s != nullptr) {
         return *s;
     }
-    if (const auto* s = ecs.try_get<const world::CSGCylinder3D>(entity); s != nullptr) {
+    if (const auto* s = ecs.try_get<const world::SolidCylinder3D>(entity); s != nullptr) {
         return *s;
     }
-    if (const auto* s = ecs.try_get<const world::CSGTorus3D>(entity); s != nullptr) {
+    if (const auto* s = ecs.try_get<const world::SolidTorus3D>(entity); s != nullptr) {
         return *s;
     }
-    if (const auto* s = ecs.try_get<const world::CSGPolygon3D>(entity); s != nullptr) {
+    if (const auto* s = ecs.try_get<const world::SolidExtrusion3D>(entity); s != nullptr) {
         return *s;
     }
-    if (const auto* s = ecs.try_get<const world::CSGMesh3D>(entity); s != nullptr) {
+    if (const auto* s = ecs.try_get<const world::SolidMesh3D>(entity); s != nullptr) {
         return *s;
     }
     return std::nullopt;
@@ -1793,13 +1792,13 @@ std::vector<entt::entity> csg_roots(const world::World& world, const world::Tree
             }
         }
     };
-    add_loose(ecs.view<const world::CSGCombiner3D>());
-    add_loose(ecs.view<const world::CSGBox3D>());
-    add_loose(ecs.view<const world::CSGSphere3D>());
-    add_loose(ecs.view<const world::CSGCylinder3D>());
-    add_loose(ecs.view<const world::CSGTorus3D>());
-    add_loose(ecs.view<const world::CSGPolygon3D>());
-    add_loose(ecs.view<const world::CSGMesh3D>());
+    add_loose(ecs.view<const world::SolidGroup3D>());
+    add_loose(ecs.view<const world::SolidBox3D>());
+    add_loose(ecs.view<const world::SolidSphere3D>());
+    add_loose(ecs.view<const world::SolidCylinder3D>());
+    add_loose(ecs.view<const world::SolidTorus3D>());
+    add_loose(ecs.view<const world::SolidExtrusion3D>());
+    add_loose(ecs.view<const world::SolidMesh3D>());
     std::ranges::sort(loose, {}, [](entt::entity entity) { return entt::to_entity(entity); });
     roots.insert(roots.end(), loose.begin(), loose.end());
     return roots;
@@ -1845,11 +1844,11 @@ CsgNode node_of(const CsgTree& tree) {
     node.primitive = tree.primitive;
     node.path = tree.path;
     node.where = tree.where;
-    if (const auto* polygon = std::get_if<world::CSGPolygon3D>(&tree.shape);
+    if (const auto* polygon = std::get_if<world::SolidExtrusion3D>(&tree.shape);
         polygon != nullptr && polygon->mode == "path" && !tree.path) {
         node.path_error = "has no path to push the polygon along";
     }
-    if (const auto* mesh = std::get_if<world::CSGMesh3D>(&tree.shape);
+    if (const auto* mesh = std::get_if<world::SolidMesh3D>(&tree.shape);
         mesh != nullptr && !tree.model && !tree.primitive) {
         node.mesh_error = "has no mesh";
     }
@@ -1901,10 +1900,10 @@ std::vector<world::FractureCut> piece_cuts(const world::FracturePiece3D& piece) 
 
 Result<std::shared_ptr<const Fracture>> fracture_of(const world::World& world, entt::entity entity,
                                                     std::span<const world::FractureCut> cuts) {
-    const auto* instance = world.ecs().try_get<const world::MeshInstance3D>(entity);
+    const auto* instance = world.ecs().try_get<const world::Model3D>(entity);
     if (instance == nullptr) {
         return Error{.code = ErrorCode::InvalidArgument,
-                     .message = "has no MeshInstance3D: give it one that draws a closed mesh"};
+                     .message = "has no Model3D: give it one that draws a closed mesh"};
     }
     if (cuts.empty()) {
         return Error{.code = ErrorCode::InvalidArgument, .message = "no cut was given"};
@@ -1915,8 +1914,8 @@ Result<std::shared_ptr<const Fracture>> fracture_of(const world::World& world, e
     CsgCache* cache = find_cache(world);
     const auto read = [&](const ModelLoader& load) {
         CsgNode node;
-        node.shape = world::CSGMesh3D{.mesh = instance->mesh};
-        if (const auto* standard = world.ecs().try_get<const world::StandardMaterial3D>(entity);
+        node.shape = world::SolidMesh3D{.mesh = instance->mesh};
+        if (const auto* standard = world.ecs().try_get<const world::Surface3D>(entity);
             standard != nullptr) {
             node.material = *standard;
         }
@@ -1942,7 +1941,7 @@ Result<std::shared_ptr<const Fracture>> fracture_of(const world::World& world, e
     }
     // Entities that are gone, or draw no mesh, let theirs go.
     std::erase_if(cache->fractures, [&](const auto& entry) {
-        return !world.valid(entry.first) || !world.ecs().all_of<world::MeshInstance3D>(entry.first);
+        return !world.valid(entry.first) || !world.ecs().all_of<world::Model3D>(entry.first);
     });
     std::shared_ptr<const Fracture> fracture;
     for (const auto& [other, entry] : cache->fractures) {
@@ -1960,7 +1959,7 @@ Result<std::shared_ptr<const Fracture>> fracture_of(const world::World& world, e
 
 bool draws_damaged(const world::World& world, entt::entity entity) {
     const auto& ecs = world.ecs();
-    if (!world.valid(entity) || !ecs.all_of<world::MeshInstance3D>(entity)) {
+    if (!world.valid(entity) || !ecs.all_of<world::Model3D>(entity)) {
         return false;
     }
     if (ecs.all_of<world::FracturePiece3D>(entity)) {
@@ -1978,7 +1977,7 @@ Result<std::shared_ptr<const FracturePiece>> damaged_piece_of(const world::World
         return Error{.code = ErrorCode::InvalidArgument,
                      .message = "is no broken piece and has no dents or carves"};
     }
-    const auto* instance = &ecs.get<const world::MeshInstance3D>(entity);
+    const auto* instance = &ecs.get<const world::Model3D>(entity);
     std::vector<world::FractureCut> cuts;
     std::size_t index = 0;
     if (const auto* piece = ecs.try_get<const world::FracturePiece3D>(entity); piece != nullptr) {
@@ -2006,8 +2005,8 @@ Result<std::shared_ptr<const FracturePiece>> damaged_piece_of(const world::World
     const After after{.index = index, .dents = &destructible.dents, .carves = &destructible.carves};
     const auto read = [&](const ModelLoader& load) {
         CsgNode node;
-        node.shape = world::CSGMesh3D{.mesh = instance->mesh};
-        if (const auto* standard = ecs.try_get<const world::StandardMaterial3D>(entity);
+        node.shape = world::SolidMesh3D{.mesh = instance->mesh};
+        if (const auto* standard = ecs.try_get<const world::Surface3D>(entity);
             standard != nullptr) {
             node.material = *standard;
         }
@@ -2072,11 +2071,11 @@ std::vector<Problem> check_destructibles(const world::World& world) {
     std::ranges::sort(entities, {}, [](entt::entity entity) { return entt::to_entity(entity); });
     for (const entt::entity entity : entities) {
         // A terrain's is dug into, never broken: it needs a profile that carves.
-        if (ecs.all_of<world::HTerrain>(entity)) {
+        if (ecs.all_of<world::Terrain3D>(entity)) {
             const auto& destructible = ecs.get<const world::Destructible3D>(entity);
             if (destructible.profile.empty()) {
                 problems.push_back({entity, "/components/Destructible3D/profile",
-                                    "an HTerrain is dug into by its profile's deform: name a "
+                                    "an Terrain3D is dug into by its profile's deform: name a "
                                     ".damage.json profile that carves, such as a soil one"});
                 continue;
             }
@@ -2092,7 +2091,7 @@ std::vector<Problem> check_destructibles(const world::World& world) {
             continue;
         }
         // The living die and vehicles are wrecked; neither breaks, so neither needs a body.
-        const auto* instance = ecs.try_get<const world::MeshInstance3D>(entity);
+        const auto* instance = ecs.try_get<const world::Model3D>(entity);
         if (ecs.any_of<world::Vehicle3D, world::Ragdoll3D, world::Creature3D, world::Flesh3D,
                        world::NpcAgent>(entity) ||
             (instance != nullptr && (instance->mesh.ends_with(".character.json") ||
@@ -2127,9 +2126,9 @@ std::vector<Problem> check_destructibles(const world::World& world) {
         }
         if (auto made = fracture_of(world, entity, std::span<const world::FractureCut>(&cut, 1));
             !made) {
-            const bool drawn = ecs.all_of<world::MeshInstance3D>(entity);
+            const bool drawn = ecs.all_of<world::Model3D>(entity);
             problems.push_back({entity,
-                                drawn ? "/components/MeshInstance3D" : "/components/Destructible3D",
+                                drawn ? "/components/Model3D" : "/components/Destructible3D",
                                 "can't break: " + made.error().message});
         }
     }
@@ -2196,13 +2195,13 @@ std::vector<Problem> check_csg(const world::World& world) {
                 names.push_back(name);
             }
         };
-        has(std::type_identity<world::CSGCombiner3D>{}, kCsgNames[0]);
-        has(std::type_identity<world::CSGBox3D>{}, kCsgNames[1]);
-        has(std::type_identity<world::CSGSphere3D>{}, kCsgNames[2]);
-        has(std::type_identity<world::CSGCylinder3D>{}, kCsgNames[3]);
-        has(std::type_identity<world::CSGTorus3D>{}, kCsgNames[4]);
-        has(std::type_identity<world::CSGPolygon3D>{}, kCsgNames[5]);
-        has(std::type_identity<world::CSGMesh3D>{}, kCsgNames[6]);
+        has(std::type_identity<world::SolidGroup3D>{}, kCsgNames[0]);
+        has(std::type_identity<world::SolidBox3D>{}, kCsgNames[1]);
+        has(std::type_identity<world::SolidSphere3D>{}, kCsgNames[2]);
+        has(std::type_identity<world::SolidCylinder3D>{}, kCsgNames[3]);
+        has(std::type_identity<world::SolidTorus3D>{}, kCsgNames[4]);
+        has(std::type_identity<world::SolidExtrusion3D>{}, kCsgNames[5]);
+        has(std::type_identity<world::SolidMesh3D>{}, kCsgNames[6]);
         if (names.size() > 1) {
             std::string list;
             for (std::size_t i = 0; i < names.size(); ++i) {
@@ -2214,10 +2213,10 @@ std::vector<Problem> check_csg(const world::World& world) {
             problems.push_back(
                 {entity, "/components", "has more than one CSG shape (" + list + "): keep one"});
         }
-        if (ecs.all_of<world::MeshInstance3D>(entity)) {
-            problems.push_back({entity, "/components/MeshInstance3D",
+        if (ecs.all_of<world::Model3D>(entity)) {
+            problems.push_back({entity, "/components/Model3D",
                                 "is on a CSG shape, which draws itself: remove the "
-                                "MeshInstance3D"});
+                                "Model3D"});
         }
     }
     const world::Tree3D tree(world);

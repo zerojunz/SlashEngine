@@ -767,8 +767,8 @@ Reply entity_destroy(Session& session, const json::Value& params) {
         return unknown_entity(world, id, "/id");
     }
     auto& ecs = world.ecs();
-    // As Godot frees a node's children with it: the entities in its Transform2D, Control and
-    // CanvasLayer children go too, and theirs, and those its instanced scene brought.
+    // As Godot frees a node's children with it: the entities in its Transform2D, Widget and
+    // ScreenLayer children go too, and theirs, and those its instanced scene brought.
     std::vector<entt::entity> doomed{entity};
     std::unordered_set<entt::entity> seen{entity};
     const std::vector<std::string_view> ids = world.ids();
@@ -784,10 +784,10 @@ Reply entity_destroy(Session& session, const json::Value& params) {
             transform != nullptr) {
             add(transform->children);
         }
-        if (const auto* control = ecs.try_get<world::Control>(doomed[i]); control != nullptr) {
+        if (const auto* control = ecs.try_get<world::Widget>(doomed[i]); control != nullptr) {
             add(control->children);
         }
-        if (const auto* layer = ecs.try_get<world::CanvasLayer>(doomed[i]); layer != nullptr) {
+        if (const auto* layer = ecs.try_get<world::ScreenLayer>(doomed[i]); layer != nullptr) {
             add(layer->children);
         }
         if (const std::string_view own = world.id_of(doomed[i]); !own.empty()) {
@@ -807,12 +807,12 @@ Reply entity_destroy(Session& session, const json::Value& params) {
             std::erase_if(transform.children, gone);
         }
     }
-    for (const auto [other, control] : ecs.view<world::Control>().each()) {
+    for (const auto [other, control] : ecs.view<world::Widget>().each()) {
         if (!seen.contains(other) && std::ranges::any_of(control.children, gone)) {
             std::erase_if(control.children, gone);
         }
     }
-    for (const auto [other, layer] : ecs.view<world::CanvasLayer>().each()) {
+    for (const auto [other, layer] : ecs.view<world::ScreenLayer>().each()) {
         if (!seen.contains(other) && std::ranges::any_of(layer.children, gone)) {
             std::erase_if(layer.children, gone);
         }
@@ -1137,7 +1137,7 @@ Reply animation_eval(Session& session, const json::Value& params) {
     std::string name = text(params, "animation");
     if (id.empty() == path.empty()) {
         return param_error(code::kInvalidParams, "",
-                           "give id (an entity with an AnimationPlayer) or path (a .anim.json "
+                           "give id (an entity with an Animator) or path (a .anim.json "
                            "file)");
     }
     if (!id.empty()) {
@@ -1146,12 +1146,11 @@ Reply animation_eval(Session& session, const json::Value& params) {
         if (entity == entt::null) {
             return unknown_entity(world, id, "/id");
         }
-        const auto* player = world.ecs().try_get<world::AnimationPlayer>(entity);
+        const auto* player = world.ecs().try_get<world::Animator>(entity);
         if (player == nullptr || player->library.empty()) {
             return param_error(code::kInvalidParams, "/id",
-                               quoted(id) + (player == nullptr
-                                                 ? " has no AnimationPlayer"
-                                                 : "'s AnimationPlayer has no library"));
+                               quoted(id) + (player == nullptr ? " has no Animator"
+                                                               : "'s Animator has no library"));
         }
         path = player->library;
         if (name.empty()) {
@@ -1272,11 +1271,11 @@ Reply animation_seek(Session& session, const json::Value& params) {
     if (entity == entt::null) {
         return unknown_entity(world, id, "/id");
     }
-    const auto* player = world.ecs().try_get<world::AnimationPlayer>(entity);
+    const auto* player = world.ecs().try_get<world::Animator>(entity);
     if (player == nullptr || player->library.empty()) {
-        return param_error(code::kInvalidParams, "/id",
-                           quoted(id) + (player == nullptr ? " has no AnimationPlayer"
-                                                           : "'s AnimationPlayer has no library"));
+        return param_error(
+            code::kInvalidParams, "/id",
+            quoted(id) + (player == nullptr ? " has no Animator" : "'s Animator has no library"));
     }
     const std::string marker = text(params, "marker");
     const json::Value* time_param = params.find("time");
@@ -1346,7 +1345,7 @@ Reply animation_seek(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
-// An entity's AnimationTree and the tree its tree_root loads.
+// An entity's AnimationGraph and the tree its tree_root loads.
 struct TreeTarget {
     entt::entity entity = entt::null;
     asset::Handle<animation::AnimationTreeResource> tree;
@@ -1358,11 +1357,11 @@ std::optional<Reply> find_tree(Session& session, const std::string& id, TreeTarg
     if (out.entity == entt::null) {
         return unknown_entity(world, id, "/id");
     }
-    const auto* tree = world.ecs().try_get<world::AnimationTree>(out.entity);
+    const auto* tree = world.ecs().try_get<world::AnimationGraph>(out.entity);
     if (tree == nullptr || tree->tree_root.empty()) {
         return param_error(code::kInvalidParams, "/id",
-                           quoted(id) + (tree == nullptr ? " has no AnimationTree"
-                                                         : "'s AnimationTree has no tree_root"));
+                           quoted(id) + (tree == nullptr ? " has no AnimationGraph"
+                                                         : "'s AnimationGraph has no tree_root"));
     }
     auto loaded = session.assets().load<animation::AnimationTreeResource>(tree->tree_root);
     if (!loaded) {
@@ -1378,16 +1377,16 @@ Reply animation_tree(Session& session, const json::Value& params) {
     const std::string path = text(params, "path");
     if (id.empty() == path.empty()) {
         return param_error(code::kInvalidParams, "",
-                           "give id (an entity with an AnimationTree) or path (a .animtree.json "
+                           "give id (an entity with an AnimationGraph) or path (a .animtree.json "
                            "file)");
     }
     TreeTarget target;
-    const world::AnimationTree* component = nullptr;
+    const world::AnimationGraph* component = nullptr;
     if (!id.empty()) {
         if (auto failed = find_tree(session, id, target)) {
             return std::move(*failed);
         }
-        component = &session.world().ecs().get<world::AnimationTree>(target.entity);
+        component = &session.world().ecs().get<world::AnimationGraph>(target.entity);
     } else {
         auto loaded = session.assets().load<animation::AnimationTreeResource>(path);
         if (!loaded) {
@@ -1479,7 +1478,7 @@ Reply animation_set_parameters(Session& session, const json::Value& params) {
             return param_error(code::kInvalidParams, at, error);
         }
     }
-    auto& tree = session.world().ecs().get<world::AnimationTree>(target.entity);
+    auto& tree = session.world().ecs().get<world::AnimationGraph>(target.entity);
     json::Value changed = json::Object{};
     for (const auto& [key, value] : given) {
         const auto set = tree.parameters.find(key);
@@ -1504,7 +1503,7 @@ Reply animation_set_parameters(Session& session, const json::Value& params) {
 // The most cells one tilemap command takes.
 constexpr std::int64_t kMaxTileCells = 65536;
 
-// An entity's TileMapLayer, the tile set it draws from and its cells.
+// An entity's TileLayer2D, the tile set it draws from and its cells.
 struct LayerTarget {
     entt::entity entity = entt::null;
     asset::Handle<canvas::TileSet> set;
@@ -1517,11 +1516,11 @@ std::optional<Reply> find_layer(Session& session, const std::string& id, LayerTa
     if (out.entity == entt::null) {
         return unknown_entity(world, id, "/id");
     }
-    const auto* layer = world.ecs().try_get<world::TileMapLayer>(out.entity);
+    const auto* layer = world.ecs().try_get<world::TileLayer2D>(out.entity);
     if (layer == nullptr || layer->tile_set.empty()) {
         return param_error(code::kInvalidParams, "/id",
-                           quoted(id) + (layer == nullptr ? " has no TileMapLayer"
-                                                          : "'s TileMapLayer has no tile_set"));
+                           quoted(id) + (layer == nullptr ? " has no TileLayer2D"
+                                                          : "'s TileLayer2D has no tile_set"));
     }
     auto set = session.assets().load<canvas::TileSet>(layer->tile_set);
     if (!set) {
@@ -1530,7 +1529,7 @@ std::optional<Reply> find_layer(Session& session, const std::string& id, LayerTa
     auto cells = canvas::decode_cells(*layer, *set.value());
     if (!cells) {
         return param_error(code::kInvalidArgument, "/id",
-                           quoted(id) + "'s TileMapLayer" + cells.error().message);
+                           quoted(id) + "'s TileLayer2D" + cells.error().message);
     }
     out.set = std::move(set).value();
     out.cells = std::move(cells).value();
@@ -1577,7 +1576,7 @@ std::optional<Reply> target_cells(const json::Value& params, std::vector<Vec2i>&
 
 // Writes cells back into the entity's layer after a change.
 void store_cells(Session& session, const LayerTarget& target) {
-    auto& layer = session.world().ecs().get<world::TileMapLayer>(target.entity);
+    auto& layer = session.world().ecs().get<world::TileLayer2D>(target.entity);
     canvas::encode_cells(target.cells, *target.set, layer);
 }
 
@@ -1690,7 +1689,7 @@ std::optional<Reply> band_terrain(const canvas::TileSet& set, const json::Value&
     return param_error(code::kNotFound, at, message);
 }
 
-// Fills a rect of a TileMapLayer by noise: each cell takes the first band whose "below" its
+// Fills a rect of a TileLayer2D by noise: each cell takes the first band whose "below" its
 // noise value, 0 to 1, is under, and each band's terrain is painted on its cells in turn, as
 // tilemap.paint paints, or its tile set.
 Reply tilemap_generate(Session& session, const json::Value& params) {
@@ -1807,7 +1806,7 @@ Reply tilemap_get(Session& session, const json::Value& params) {
     if (auto failed = find_layer(session, id, target)) {
         return std::move(*failed);
     }
-    const auto& layer = session.world().ecs().get<world::TileMapLayer>(target.entity);
+    const auto& layer = session.world().ecs().get<world::TileLayer2D>(target.entity);
     json::Value result;
     const json::Value* rect = params.find("rect");
     if (const json::Value* asked = params.find("cells"); asked != nullptr) {
@@ -1901,7 +1900,7 @@ Reply tilemap_get(Session& session, const json::Value& params) {
 }
 
 // Cells to the points at their centers, or points to the cells they are in, as Godot's
-// TileMapLayer map_to_local and local_to_map, through the layer's transform.
+// TileLayer2D map_to_local and local_to_map, through the layer's transform.
 Reply tilemap_convert(Session& session, const json::Value& params) {
     const std::string id = text(params, "id");
     LayerTarget target;
@@ -2019,11 +2018,11 @@ Reply physics_raycast_3d(Session& session, const json::Value& params) {
     if (hit->cell && world.ecs().all_of<world::Foliage3D>(hit->entity)) {
         found["instance"] = json::Array{hit->cell->x, hit->cell->y};
     } else if (hit->cell) {
-        // A GridMap's cell hit and the item in it.
+        // A BlockMap3D's cell hit and the item in it.
         found["cell"] = json::Array{hit->cell->x, hit->cell->y, hit->cell->z};
-        const auto* map = world.ecs().try_get<const world::GridMap>(hit->entity);
+        const auto* map = world.ecs().try_get<const world::BlockMap3D>(hit->entity);
         auto cells = map != nullptr ? scene3d::decode_grid_cells(*map)
-                                    : make_error(ErrorCode::NotFound, "no GridMap");
+                                    : make_error(ErrorCode::NotFound, "no BlockMap3D");
         if (cells && cells.value().contains(*hit->cell)) {
             found["item"] = cells.value().at(*hit->cell).item;
         }
@@ -2061,9 +2060,9 @@ Reply physics_raycast(Session& session, const json::Value& params) {
     if (!hit->surface.empty()) {
         found["surface"] = hit->surface;
     }
-    // A Foliage2D's instance hit, as its group and index, or a TileMapLayer's cell.
+    // A Foliage2D's instance hit, as its group and index, or a TileLayer2D's cell.
     if (hit->cell && world.ecs().all_of<world::Foliage2D>(hit->entity) &&
-        !world.ecs().all_of<world::TileMapLayer>(hit->entity)) {
+        !world.ecs().all_of<world::TileLayer2D>(hit->entity)) {
         found["instance"] = json::Array{hit->cell->x, hit->cell->y};
     } else if (hit->cell) {
         found["cell"] = json::Array{hit->cell->x, hit->cell->y};
@@ -2105,7 +2104,7 @@ Reply physics_overlap_3d(Session& session, const json::Value& params) {
             id_array(world, physics3d::overlap_point(world, vec3_of(*point), filter, max_results));
         return Reply::success(std::move(result));
     }
-    world::CollisionShape3D shape;
+    world::Collider3D shape;
     std::string path = "/shape";
     if (auto read = world::from_json(world, *params.find("shape"), shape, path); !read) {
         return param_error(code::kInvalidParams, path, read.error().message);
@@ -2141,7 +2140,7 @@ Reply physics_overlap(Session& session, const json::Value& params) {
     const json::Value* shape_fields = params.find("shape");
     if ((point == nullptr) == (shape_fields == nullptr)) {
         return param_error(code::kInvalidParams, "",
-                           "give point, or shape (a CollisionShape2D or CollisionShape3D) with "
+                           "give point, or shape (a Collider2D or Collider3D) with "
                            "position and rotation");
     }
     if (overlap_in_3d(params)) {
@@ -2162,7 +2161,7 @@ Reply physics_overlap(Session& session, const json::Value& params) {
             id_array(world, physics2d::overlap_point(world, {at[0], at[1]}, filter, max_results));
         return Reply::success(std::move(result));
     }
-    world::CollisionShape2D shape;
+    world::Collider2D shape;
     std::string path = "/shape";
     if (auto read = world::from_json(world, *shape_fields, shape, path); !read) {
         return param_error(code::kInvalidParams, path, read.error().message);
@@ -2343,7 +2342,7 @@ Reply physics_soft_body(Session& session, const json::Value& params) {
     if (!found) {
         return param_error(code::kInvalidParams, "/id",
                            quoted(id) + " has no soft body: it needs a SoftBody3D and a "
-                                        "MeshInstance3D drawing a primitive mesh, a Cloth3D on "
+                                        "Model3D drawing a primitive mesh, a Cloth3D on "
                                         "a model or a Cloth2D");
     }
     return soft_body_reply(id, found->points, found->sleeping, params);
@@ -2466,7 +2465,7 @@ json::Value bounds_value(std::span<const Vec2> points) {
     return rounded(json::Array{low.x, low.y, high.x - low.x, high.y - low.y});
 }
 
-// A GPUParticles3D's particles as particles.eval lists them: CUSTOM's age is a share of the
+// A GpuEmitter3D's particles as particles.eval lists them: CUSTOM's age is a share of the
 // system's lifetime.
 std::vector<scene3d::Particle3D> eval_particles(std::span<const render::Particle3D> from,
                                                 float lifetime) {
@@ -2489,13 +2488,13 @@ std::vector<scene3d::Particle3D> eval_particles(std::span<const render::Particle
     return out;
 }
 
-// The simulation stages a GPUParticles3D's steps run, from a ParticleSimulation3D beside it.
+// The simulation stages a GpuEmitter3D's steps run, from a ParticleSimulation3D beside it.
 render::ParticleStages3D gpu_stages_of(const world::World& world, entt::entity entity) {
     const auto* simulation = world.ecs().try_get<world::ParticleSimulation3D>(entity);
     return simulation != nullptr ? scene3d::gpu_stages(*simulation) : render::ParticleStages3D{};
 }
 
-// particles.eval for a CPUParticles3D or GPUParticles3D: its live particles in the world, in
+// particles.eval for a Emitter3D or GpuEmitter3D: its live particles in the world, in
 // meters.
 Reply particles_eval_3d(Session& session, entt::entity entity, const json::Value& params) {
     const world::World& world = session.world();
@@ -2506,14 +2505,14 @@ Reply particles_eval_3d(Session& session, entt::entity entity, const json::Value
     const double tick_seconds = seconds != nullptr ? seconds->as_double() : kDefaultTickSeconds;
     std::vector<scene3d::Particle3D> particles;
     bool local_coords = false;
-    if (const auto* emitter = world.ecs().try_get<world::CPUParticles3D>(entity)) {
+    if (const auto* emitter = world.ecs().try_get<world::Emitter3D>(entity)) {
         local_coords = emitter->local_coords;
         particles = time != nullptr ? scene3d::simulate(*emitter, transform,
                                                         scene3d::particle_seed(id, emitter->seed),
                                                         time->as_double(), tick_seconds)
                                     : scene3d::particles_3d(world, entity);
     } else {
-        const auto& gpu = world.ecs().get<world::GPUParticles3D>(entity);
+        const auto& gpu = world.ecs().get<world::GpuEmitter3D>(entity);
         local_coords = gpu.local_coords;
         render::ParticleProcess3D process;
         if (!gpu.process_material.empty()) {
@@ -2584,15 +2583,15 @@ Reply particles_eval(Session& session, const json::Value& params) {
     if (entity == entt::null) {
         return unknown_entity(world, id, "/id");
     }
-    const auto* emitter = world.ecs().try_get<world::CPUParticles2D>(entity);
-    const auto* gpu = world.ecs().try_get<world::GPUParticles2D>(entity);
+    const auto* emitter = world.ecs().try_get<world::Emitter2D>(entity);
+    const auto* gpu = world.ecs().try_get<world::GpuEmitter2D>(entity);
     if (emitter == nullptr && gpu == nullptr) {
-        if (world.ecs().any_of<world::CPUParticles3D, world::GPUParticles3D>(entity)) {
+        if (world.ecs().any_of<world::Emitter3D, world::GpuEmitter3D>(entity)) {
             return particles_eval_3d(session, entity, params);
         }
         return param_error(code::kInvalidParams, "/id",
-                           quoted(id) + " has no CPUParticles2D, GPUParticles2D, CPUParticles3D or "
-                                        "GPUParticles3D");
+                           quoted(id) + " has no Emitter2D, GpuEmitter2D, Emitter3D or "
+                                        "GpuEmitter3D");
     }
     // Where it is after its parents.
     const world::Transform2D transform = world::Tree2D(world).global(entity);
@@ -2756,12 +2755,12 @@ json::Value rtl_lines(const text::TextLayout& layout, std::size_t first, std::si
     return count == lines.size() ? json::Value(true) : json::Value(std::move(lines));
 }
 
-// A LineEdit as ui.layout reports it: whether it is being edited, its caret and selection in
+// A TextField as ui.layout reports it: whether it is being edited, its caret and selection in
 // characters, what an input method is composing, whether it shows its placeholder, and the
 // characters drawn (of the text with the composition at the caret) when they aren't all of them.
 json::Value line_edit_json(const world::World& world, entt::entity entity,
                            const ui::LineEditView& view) {
-    const auto& edit = world.ecs().get<world::LineEdit>(entity);
+    const auto& edit = world.ecs().get<world::TextField>(entity);
     const auto length = static_cast<std::uint32_t>(to_utf32(edit.text).size());
     json::Value out;
     if (ui::is_editing(world, entity)) {
@@ -2806,13 +2805,13 @@ json::Value screen_rect(const ui::Transform& transform, Vec2 position, Vec2 size
     return rounded(json::Array{low.x, low.y, high.x - low.x, high.y - low.y});
 }
 
-// A TextEdit as ui.layout reports it: its caret and selection as [line, column], what an input
+// A TextArea as ui.layout reports it: its caret and selection as [line, column], what an input
 // method is composing, whether it shows its placeholder, the first and last lines in view when
 // they aren't all of them, its rows when wrapping makes more of them than lines, the scroll
 // bars shown, where search_text shows and its gutters.
 json::Value text_edit_json(const world::World& world, const ui::Placed& placed,
                            const ui::TextEditView& view) {
-    const auto& edit = world.ecs().get<world::TextEdit>(placed.entity);
+    const auto& edit = world.ecs().get<world::TextArea>(placed.entity);
     json::Value out;
     out["caret"] = json::Array{view.caret_line, view.caret_column};
     if (view.selection) {
@@ -2894,9 +2893,9 @@ Reply ui_layout(Session& session, const json::Value& params) {
             if (entity == entt::null) {
                 return unknown_entity(world, id, path);
             }
-            if (!ui::is_control(world, entity) && !world.ecs().all_of<world::PopupMenu>(entity)) {
+            if (!ui::is_control(world, entity) && !world.ecs().all_of<world::PopupList>(entity)) {
                 return param_error(code::kInvalidParams, path,
-                                   quoted(id) + " isn't a control: it has no Control or UI "
+                                   quoted(id) + " isn't a control: it has no Widget or UI "
                                                 "component");
             }
             wanted.insert(entity);
@@ -3110,7 +3109,7 @@ Reply ui_theme(Session& session, const json::Value& params) {
     }
     if (!ui::is_control(world, entity)) {
         return param_error(code::kInvalidParams, "/id",
-                           quoted(id) + " isn't a control: it has no Control or UI component");
+                           quoted(id) + " isn't a control: it has no Widget or UI component");
     }
     const std::vector<ui::ThemeItem> items = ui::theme_items(world, *fonts, entity);
     // What it has, as "kind" and "kind/name", for the filter and its suggestions.
@@ -3259,13 +3258,13 @@ json::Value brief_model(const scene3d::ModelSummary& summary) {
     return out;
 }
 
-// A glTF model's meshes, materials, images and parts, as a MeshInstance3D draws them.
+// A glTF model's meshes, materials, images and parts, as a Model3D draws them.
 Reply model_inspect(Session& session, const json::Value& params) {
     const std::string id = text(params, "id");
     std::string path = text(params, "path");
     if (id.empty() == path.empty()) {
         return param_error(code::kInvalidParams, "",
-                           "give id (an entity whose MeshInstance3D draws a model) or path (a "
+                           "give id (an entity whose Model3D draws a model) or path (a "
                            ".gltf, .glb, .obj, .fbx, .blend or .model.json file)");
     }
     const world::World& world = session.world();
@@ -3274,12 +3273,11 @@ Reply model_inspect(Session& session, const json::Value& params) {
         if (entity == entt::null) {
             return unknown_entity(world, id, "/id");
         }
-        const auto* instance = world.ecs().try_get<world::MeshInstance3D>(entity);
+        const auto* instance = world.ecs().try_get<world::Model3D>(entity);
         if (instance == nullptr || instance->mesh.empty()) {
             return param_error(code::kInvalidParams, "/id",
-                               quoted(id) + (instance == nullptr
-                                                 ? " has no MeshInstance3D"
-                                                 : "'s MeshInstance3D draws no model"));
+                               quoted(id) + (instance == nullptr ? " has no Model3D"
+                                                                 : "'s Model3D draws no model"));
         }
         path = instance->mesh;
     } else if (!scene3d::is_model_path(path) && !asset::is_made_path(path)) {
@@ -3334,9 +3332,9 @@ Reply model_inspect(Session& session, const json::Value& params) {
         }
         result["meshes"].push_back(std::move(out));
     }
-    // Each material's StandardMaterial3D fields that differ from the defaults, and the images
+    // Each material's Surface3D fields that differ from the defaults, and the images
     // its textures sample.
-    const json::Value defaults = world::to_json(world, world::StandardMaterial3D{});
+    const json::Value defaults = world::to_json(world, world::Surface3D{});
     result["materials"] = json::Array{};
     for (const scene3d::ModelMaterial& material : model.materials) {
         json::Value standard = world::to_json(world, material.standard);
@@ -3413,8 +3411,8 @@ Reply model_inspect(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
-// The bones of the model an entity's MeshInstance3D draws, posed as it draws them: by the
-// animation its AnimationPlayer plays from a model, then its Skeleton3D.
+// The bones of the model an entity's Model3D draws, posed as it draws them: by the
+// animation its Animator plays from a model, then its Skeleton3D.
 Reply skeleton_get(Session& session, const json::Value& params) {
     const world::World& world = session.world();
     const std::string id = text(params, "id");
@@ -3422,11 +3420,11 @@ Reply skeleton_get(Session& session, const json::Value& params) {
     if (entity == entt::null) {
         return unknown_entity(world, id, "/id");
     }
-    const auto* instance = world.ecs().try_get<world::MeshInstance3D>(entity);
+    const auto* instance = world.ecs().try_get<world::Model3D>(entity);
     if (instance == nullptr || instance->mesh.empty()) {
-        return param_error(code::kInvalidParams, "/id",
-                           quoted(id) + (instance == nullptr ? " has no MeshInstance3D"
-                                                             : "'s MeshInstance3D draws no model"));
+        return param_error(
+            code::kInvalidParams, "/id",
+            quoted(id) + (instance == nullptr ? " has no Model3D" : "'s Model3D draws no model"));
     }
     auto loaded = session.assets().load<scene3d::Model>(instance->mesh);
     if (!loaded) {
@@ -3467,7 +3465,7 @@ Reply skeleton_get(Session& session, const json::Value& params) {
             out["model"] = clip.model;
         }
         out["time"] = rounded(json::Value(clip.time));
-        // An AnimationTree blends several.
+        // An AnimationGraph blends several.
         if (clip.weight != 1.0F) {
             out["weight"] = rounded(json::Value(static_cast<double>(clip.weight)));
         }
@@ -3566,9 +3564,9 @@ Reply csg_get(Session& session, const json::Value& params) {
                   6.0;
     }
     result["volume"] = rounded(json::Value(volume));
-    // Each surface's material: the StandardMaterial3D fields that differ from the defaults, a
-    // CSGMesh3D model's material, or none for Godot's default material.
-    const json::Value defaults = world::to_json(world, world::StandardMaterial3D{});
+    // Each surface's material: the Surface3D fields that differ from the defaults, a
+    // SolidMesh3D model's material, or none for Godot's default material.
+    const json::Value defaults = world::to_json(world, world::Surface3D{});
     result["surfaces"] = json::Array{};
     for (const scene3d::MeshSurface& surface : mesh->surfaces) {
         json::Value out;
@@ -3603,8 +3601,8 @@ Reply csg_get(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
-// A Path2D's or Path3D's curve, baked as Godot bakes it: its length, the points at offsets along
-// it with the way it goes there, and the point of it nearest to another.
+// A Spline2D's or Spline3D's curve, baked as Godot bakes it: its length, the points at offsets
+// along it with the way it goes there, and the point of it nearest to another.
 Reply path_get(Session& session, const json::Value& params) {
     const world::World& world = session.world();
     const std::string id = text(params, "id");
@@ -3631,7 +3629,7 @@ Reply path_get(Session& session, const json::Value& params) {
         return out;
     };
     json::Value result;
-    if (const auto* path = world.ecs().try_get<const world::Path2D>(entity); path != nullptr) {
+    if (const auto* path = world.ecs().try_get<const world::Spline2D>(entity); path != nullptr) {
         const std::shared_ptr<const world::Curve2D> curve = world::curve_2d(world, entity);
         const world::Affine2D place =
             global ? world::Tree2D(world).global_affine(entity) : world::Affine2D{};
@@ -3653,7 +3651,7 @@ Reply path_get(Session& session, const json::Value& params) {
         if (closest_to != nullptr) {
             if (closest_to->size() != 2) {
                 return param_error(code::kInvalidParams, "/closest_to",
-                                   "a Path2D's points are [x, y]");
+                                   "a Spline2D's points are [x, y]");
             }
             const auto xy = floats<2>(*closest_to);
             const Vec2 to = place.inverse().apply({xy[0], xy[1]});
@@ -3662,9 +3660,10 @@ Reply path_get(Session& session, const json::Value& params) {
         }
         return Reply::success(std::move(result));
     }
-    const auto* path = world.ecs().try_get<const world::Path3D>(entity);
+    const auto* path = world.ecs().try_get<const world::Spline3D>(entity);
     if (path == nullptr) {
-        return param_error(code::kInvalidParams, "/id", quoted(id) + " has no Path2D or Path3D");
+        return param_error(code::kInvalidParams, "/id",
+                           quoted(id) + " has no Spline2D or Spline3D");
     }
     const std::shared_ptr<const world::Curve3D> curve = world::curve_3d(world, entity);
     const world::Affine3D place = global ? world::Tree3D(world).global(entity) : world::Affine3D{};
@@ -3688,7 +3687,7 @@ Reply path_get(Session& session, const json::Value& params) {
     if (closest_to != nullptr) {
         if (closest_to->size() != 3) {
             return param_error(code::kInvalidParams, "/closest_to",
-                               "a Path3D's points are [x, y, z]");
+                               "a Spline3D's points are [x, y, z]");
         }
         const Vec3 to = place.inverse().apply(vec3_of(*closest_to));
         result["closest"]["offset"] = rounded(curve->closest_offset(to));
@@ -3702,7 +3701,7 @@ Reply path_get(Session& session, const json::Value& params) {
 // The most cells one gridmap command takes.
 constexpr std::int64_t kMaxGridCells = 65536;
 
-// An entity's GridMap, its mesh library (if it names one) and its cells.
+// An entity's BlockMap3D, its mesh library (if it names one) and its cells.
 struct GridTarget {
     entt::entity entity = entt::null;
     asset::Handle<scene3d::MeshLibrary> library;
@@ -3715,9 +3714,9 @@ std::optional<Reply> find_gridmap(Session& session, const std::string& id, GridT
     if (out.entity == entt::null) {
         return unknown_entity(world, id, "/id");
     }
-    const auto* map = world.ecs().try_get<world::GridMap>(out.entity);
+    const auto* map = world.ecs().try_get<world::BlockMap3D>(out.entity);
     if (map == nullptr) {
-        return param_error(code::kInvalidParams, "/id", quoted(id) + " has no GridMap");
+        return param_error(code::kInvalidParams, "/id", quoted(id) + " has no BlockMap3D");
     }
     if (!map->mesh_library.empty()) {
         auto library = session.assets().load<scene3d::MeshLibrary>(map->mesh_library);
@@ -3729,7 +3728,7 @@ std::optional<Reply> find_gridmap(Session& session, const std::string& id, GridT
     auto cells = scene3d::decode_grid_cells(*map);
     if (!cells) {
         return param_error(code::kInvalidArgument, "/id",
-                           quoted(id) + "'s GridMap" + cells.error().message);
+                           quoted(id) + "'s BlockMap3D" + cells.error().message);
     }
     out.cells = std::move(cells).value();
     return std::nullopt;
@@ -3798,7 +3797,8 @@ Reply gridmap_set(Session& session, const json::Value& params) {
         const std::string& name = item.as_string();
         if (!target.library) {
             return param_error(code::kInvalidParams, "/id",
-                               quoted(id) + "'s GridMap has no mesh_library to place items from");
+                               quoted(id) +
+                                   "'s BlockMap3D has no mesh_library to place items from");
         }
         const auto& items = target.library->items;
         if (!items.contains(name)) {
@@ -3829,13 +3829,13 @@ Reply gridmap_set(Session& session, const json::Value& params) {
         }
     }
     if (changed > 0) {
-        auto& map = session.world().ecs().get<world::GridMap>(target.entity);
+        auto& map = session.world().ecs().get<world::BlockMap3D>(target.entity);
         scene3d::encode_grid_cells(target.cells, map);
     }
     return Reply::success(changed_json(id, changed));
 }
 
-// A GridMap's cells as its legend and floors, with its library's items and the problems making
+// A BlockMap3D's cells as its legend and floors, with its library's items and the problems making
 // them; or given cells' items and centers, as Godot's get_cell_item and map_to_local; or the
 // cells points are in, as local_to_map.
 Reply gridmap_get(Session& session, const json::Value& params) {
@@ -3845,7 +3845,7 @@ Reply gridmap_get(Session& session, const json::Value& params) {
         return std::move(*failed);
     }
     const world::World& world = session.world();
-    const auto& map = world.ecs().get<world::GridMap>(target.entity);
+    const auto& map = world.ecs().get<world::BlockMap3D>(target.entity);
     const world::Affine3D place =
         flag(params, "global") ? world::Tree3D(world).global(target.entity) : world::Affine3D{};
     const auto held = [&](Vec3i cell, json::Value& out) {
@@ -3943,15 +3943,15 @@ Reply ui_press(Session& session, const json::Value& params) {
     };
     take(world.ecs().try_get<world::Button>(entity));
     take(world.ecs().try_get<world::CheckBox>(entity));
-    take(world.ecs().try_get<world::CheckButton>(entity));
-    take(world.ecs().try_get<world::OptionButton>(entity));
+    take(world.ecs().try_get<world::ToggleSwitch>(entity));
+    take(world.ecs().try_get<world::Dropdown>(entity));
     take(world.ecs().try_get<world::MenuButton>(entity));
-    take(world.ecs().try_get<world::TextureButton>(entity));
+    take(world.ecs().try_get<world::ImageButton>(entity));
     if (!button) {
         return param_error(code::kInvalidParams, "/id",
                            quoted(id) + " isn't a button: it has no Button, CheckBox, "
-                                        "CheckButton, OptionButton, MenuButton or "
-                                        "TextureButton");
+                                        "ToggleSwitch, Dropdown, MenuButton or "
+                                        "ImageButton");
     }
     if (disabled) {
         return param_error(code::kInvalidParams, "/id",
@@ -3976,7 +3976,7 @@ Reply ui_focus(Session& session, const json::Value& params) {
         if (!ui::is_control(world, entity)) {
             return param_error(code::kInvalidParams, "/id",
                                quoted(id->as_string()) +
-                                   " isn't a control: it has no Control or UI component");
+                                   " isn't a control: it has no Widget or UI component");
         }
         if (!ui::grab_focus(world, entity)) {
             return param_error(code::kInvalidParams, "/id",
@@ -4182,7 +4182,7 @@ Reply ui_accessibility_action(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
-// The entity an "id" param names, if it has a popup menu: a PopupMenu, OptionButton or
+// The entity an "id" param names, if it has a popup menu: a PopupList, Dropdown or
 // MenuButton.
 Result<entt::entity> popup_owner(const world::World& world, const std::string& id) {
     const entt::entity entity = world.find(id);
@@ -4191,9 +4191,9 @@ Result<entt::entity> popup_owner(const world::World& world, const std::string& i
         add_hint(message, id, world.ids());
         return make_error(ErrorCode::NotFound, std::move(message));
     }
-    if (!world.ecs().any_of<world::PopupMenu, world::OptionButton, world::MenuButton>(entity)) {
+    if (!world.ecs().any_of<world::PopupList, world::Dropdown, world::MenuButton>(entity)) {
         return make_error(ErrorCode::InvalidArgument,
-                          quoted(id) + " has no popup menu: it has no PopupMenu, OptionButton "
+                          quoted(id) + " has no popup menu: it has no PopupList, Dropdown "
                                        "or MenuButton");
     }
     return entity;
@@ -4310,7 +4310,7 @@ Result<entt::entity> control_named(const world::World& world, const std::string&
     }
     if (!ui::is_control(world, entity)) {
         return make_error(ErrorCode::InvalidArgument,
-                          quoted(id) + " isn't a control: it has no Control or UI component");
+                          quoted(id) + " isn't a control: it has no Widget or UI component");
     }
     return entity;
 }
@@ -4362,9 +4362,9 @@ Reply ui_search(Session& session, const json::Value& params) {
     if (entity == entt::null) {
         return unknown_entity(world, id, "/id");
     }
-    const auto* edit = world.ecs().try_get<world::TextEdit>(entity);
+    const auto* edit = world.ecs().try_get<world::TextArea>(entity);
     if (edit == nullptr) {
-        return param_error(code::kInvalidParams, "/id", quoted(id) + " has no TextEdit");
+        return param_error(code::kInvalidParams, "/id", quoted(id) + " has no TextArea");
     }
     const json::Value* given_key = params.find("text");
     const std::string key = given_key != nullptr ? given_key->as_string() : edit->search_text;
@@ -4733,7 +4733,7 @@ Reply audio_state(Session& session, const json::Value& params) {
             }
             item["sends"] = std::move(sends);
         }
-        if (info.kind == "AudioStreamPlayer3D") {
+        if (info.kind == "SoundPlayer3D") {
             item["pitch_scale"] = rounded(info.pitch_scale);
             item["filter_db"] = level(info.filter_db);
         }
@@ -5164,12 +5164,10 @@ Result<entt::entity> audio_player(const world::World& world, std::string_view id
     if (entity == entt::null) {
         return make_error(ErrorCode::NotFound, "");
     }
-    if (!world.ecs()
-             .any_of<world::AudioStreamPlayer, world::AudioStreamPlayer2D,
-                     world::AudioStreamPlayer3D>(entity)) {
-        return make_error(
-            ErrorCode::InvalidArgument,
-            quoted(id) + " has no AudioStreamPlayer, AudioStreamPlayer2D or AudioStreamPlayer3D");
+    if (!world.ecs().any_of<world::SoundPlayer, world::SoundPlayer2D, world::SoundPlayer3D>(
+            entity)) {
+        return make_error(ErrorCode::InvalidArgument,
+                          quoted(id) + " has no SoundPlayer, SoundPlayer2D or SoundPlayer3D");
     }
     return entity;
 }
@@ -5329,7 +5327,7 @@ Reply light_sample(Session& session, const json::Value& params) {
         if (const auto* sprite = ecs.try_get<world::Sprite2D>(entity); sprite != nullptr) {
             item.light_mask = static_cast<std::uint32_t>(sprite->light_mask);
             item.z_index = canvas::z_index(sprite->z_index, sprite->z_as_relative, from_parents);
-        } else if (const auto* layer = ecs.try_get<world::TileMapLayer>(entity); layer != nullptr) {
+        } else if (const auto* layer = ecs.try_get<world::TileLayer2D>(entity); layer != nullptr) {
             item.light_mask = static_cast<std::uint32_t>(layer->light_mask);
             item.z_index = canvas::z_index(layer->z_index, layer->z_as_relative, from_parents);
         }
@@ -5374,7 +5372,7 @@ Reply light_sample(Session& session, const json::Value& params) {
     const canvas::CanvasLighting& lit = scene.canvases.at(sampled);
     item.layer = lit.layer;
     if (lit.to_lights) {
-        // An entity in a CanvasLayer: where its canvas puts it among the lights.
+        // An entity in a ScreenLayer: where its canvas puts it among the lights.
         const auto& m = *lit.to_lights;
         for (std::array<float, 2>& position : positions) {
             position = {(m[0] * position[0]) + (m[1] * position[1]) + m[2],
@@ -5838,20 +5836,20 @@ Reply frame_summary(Session& session, const json::Value& params) {
         case canvas::FrameItem::Kind::Sprite:
             return "Sprite2D";
         case canvas::FrameItem::Kind::Tiles:
-            return "TileMapLayer";
+            return "TileLayer2D";
         case canvas::FrameItem::Kind::Particles:
-            return "CPUParticles2D";
+            return "Emitter2D";
         case canvas::FrameItem::Kind::GpuParticles:
-            return "GPUParticles2D";
+            return "GpuEmitter2D";
         case canvas::FrameItem::Kind::Popup:
-            return "PopupMenu";
+            return "PopupList";
         case canvas::FrameItem::Kind::Tooltip:
             return "Tooltip";
         case canvas::FrameItem::Kind::Reflection:
             return "Reflection2D";
         case canvas::FrameItem::Kind::Polygon:
             return "Polygon2D";
-        case canvas::FrameItem::Kind::Control:
+        case canvas::FrameItem::Kind::Widget:
             break;
         }
         return ui::control_class(world, item.entity);
@@ -5916,7 +5914,7 @@ Reply frame_summary(Session& session, const json::Value& params) {
         const auto& ecs = world.ecs();
         switch (item.kind) {
         case canvas::FrameItem::Kind::Sprite:
-            if (const auto* animated = ecs.try_get<world::AnimatedSprite2D>(item.entity);
+            if (const auto* animated = ecs.try_get<world::Flipbook2D>(item.entity);
                 animated != nullptr) {
                 each["animation"] = animated->animation;
                 each["frame"] = animated->frame;
@@ -5932,7 +5930,7 @@ Reply frame_summary(Session& session, const json::Value& params) {
         case canvas::FrameItem::Kind::GpuParticles:
             each["particles"] = static_cast<std::int64_t>(item.count);
             break;
-        case canvas::FrameItem::Kind::Control: {
+        case canvas::FrameItem::Kind::Widget: {
             if (const ui::LabelText* label = layout.label(item.entity); label != nullptr) {
                 if (std::string text = shown_text(*label); !text.empty()) {
                     each["text"] = std::move(text);
@@ -7338,7 +7336,7 @@ void register_builtin_commands(Registry& registry) {
     registry.add({
         .name = "entity.destroy",
         .description = "Destroys an entity and its components, and the entities in its "
-                       "Transform2D, Control or CanvasLayer children or its instanced scene, "
+                       "Transform2D, Widget or ScreenLayer children or its instanced scene, "
                        "listed as descendants.",
         .capabilities = {Edit},
         .effect = Effect::Edit,
@@ -7447,13 +7445,13 @@ void register_builtin_commands(Registry& registry) {
     only_tracks["minItems"] = 1;
     registry.add({
         .name = "animation.eval",
-        .description = "Returns the values an animation's tracks set at times, as AnimationPlayer "
+        .description = "Returns the values an animation's tracks set at times, as Animator "
                        "sets them, and its node tracks' under nodes: a check without playing it.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(
             {
-                {"id", id_property("An entity with an AnimationPlayer: its library and, by "
+                {"id", id_property("An entity with an Animator: its library and, by "
                                    "default, its animation. Or give path.")},
                 {"path", property("string", "A .anim.json file. Or give id.")},
                 {"animation", property("string", "The animation's name.")},
@@ -7467,14 +7465,14 @@ void register_builtin_commands(Registry& registry) {
     seek_time["minimum"] = 0;
     registry.add({
         .name = "animation.seek",
-        .description = "Moves an AnimationPlayer to a time or marker and sets what its tracks set "
+        .description = "Moves an Animator to a time or marker and sets what its tracks set "
                        "there at once, players its animation tracks start included, as Godot's "
                        "seek; events wait for playback.",
         .capabilities = {Edit},
         .effect = Effect::Edit,
         .params = params_schema(
             {
-                {"id", id_property("An entity with an AnimationPlayer.")},
+                {"id", id_property("An entity with an Animator.")},
                 {"time", std::move(seek_time)},
                 {"marker", property("string", "A marker of the animation, instead of time.")},
                 {"animation", property("string", "Switch to this animation first.")},
@@ -7484,12 +7482,12 @@ void register_builtin_commands(Registry& registry) {
     });
     registry.add({
         .name = "animation.tree",
-        .description = "Returns an AnimationTree's parameters (value, default and doc), with id "
+        .description = "Returns an AnimationGraph's parameters (value, default and doc), with id "
                        "also the state its nodes keep and the animations it plays.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({
-            {"id", id_property("An entity with an AnimationTree. Or give path.")},
+            {"id", id_property("An entity with an AnimationGraph. Or give path.")},
             {"path", property("string", "A .animtree.json file. Or give id.")},
         }),
         .handler = animation_tree,
@@ -7500,12 +7498,12 @@ void register_builtin_commands(Registry& registry) {
     tree_values["minProperties"] = 1;
     registry.add({
         .name = "animation.set_parameters",
-        .description = "Sets parameters of an entity's AnimationTree, as Godot's "
+        .description = "Sets parameters of an entity's AnimationGraph, as Godot's "
                        "set(\"parameters/...\"), checking each against its node. Returns those "
                        "that changed.",
         .capabilities = {Edit},
         .effect = Effect::Edit,
-        .params = params_schema({{"id", id_property("An entity with an AnimationTree.")},
+        .params = params_schema({{"id", id_property("An entity with an AnimationGraph.")},
                                  {"parameters", std::move(tree_values)}},
                                 {"id", "parameters"}),
         .handler = animation_set_parameters,
@@ -7541,10 +7539,10 @@ void register_builtin_commands(Registry& registry) {
     terrain["type"] = json::Array{"string", "null"};
     json::Value band_terrain_schema = terrain;
     json::Value band_tile_schema = tile;
-    const json::Value layer_id = id_property("An entity with a TileMapLayer.");
+    const json::Value layer_id = id_property("An entity with a TileLayer2D.");
     registry.add({
         .name = "tilemap.set",
-        .description = "Sets cells of an entity's TileMapLayer to one tile, or erases them. "
+        .description = "Sets cells of an entity's TileLayer2D to one tile, or erases them. "
                        "Returns how many changed.",
         .capabilities = {Edit},
         .effect = Effect::Edit,
@@ -7557,7 +7555,7 @@ void register_builtin_commands(Registry& registry) {
     });
     registry.add({
         .name = "tilemap.paint",
-        .description = "Paints a terrain on cells of a TileMapLayer, picking tiles for them and "
+        .description = "Paints a terrain on cells of a TileLayer2D, picking tiles for them and "
                        "their neighbors so edges connect, as Godot's terrain painting. Returns "
                        "how many cells changed.",
         .capabilities = {Edit},
@@ -7589,7 +7587,7 @@ void register_builtin_commands(Registry& registry) {
     generate_rect["description"] = "[column, row, width, height]: the cells to fill.";
     registry.add({
         .name = "tilemap.generate",
-        .description = "Fills cells of a TileMapLayer from noise, as terrains painted by "
+        .description = "Fills cells of a TileLayer2D from noise, as terrains painted by "
                        "thresholds: each cell takes the band its noise falls in, sampled a cell "
                        "apart. Returns how many cells changed and each band's count.",
         .capabilities = {Edit},
@@ -7612,7 +7610,7 @@ void register_builtin_commands(Registry& registry) {
     data_cells["maxItems"] = 1024;
     registry.add({
         .name = "tilemap.get",
-        .description = "Returns a TileMapLayer's cells as rows of legend keys from an origin, "
+        .description = "Returns a TileLayer2D's cells as rows of legend keys from an origin, "
                        "with \".\" for an empty cell, or given cells' tiles and custom data.",
         .capabilities = {Read},
         .effect = Effect::Read,
@@ -7635,7 +7633,7 @@ void register_builtin_commands(Registry& registry) {
     layer_points["maxItems"] = 1024;
     registry.add({
         .name = "tilemap.convert",
-        .description = "Turns a TileMapLayer's cells into the points at their centers, or points "
+        .description = "Turns a TileLayer2D's cells into the points at their centers, or points "
                        "into the cells they are in, as Godot's map_to_local and local_to_map, "
                        "through the layer's transform. Points are in the canvas it draws in.",
         .capabilities = {Read},
@@ -7665,7 +7663,7 @@ void register_builtin_commands(Registry& registry) {
         .params = params_schema({
             {"points", std::move(sample_points)},
             {"id", id_property("An entity with a Transform2D: sample at its position in its "
-                               "canvas, with its Sprite2D or TileMapLayer's light mask and z "
+                               "canvas, with its Sprite2D or TileLayer2D's light mask and z "
                                "index. Or give points.")},
             {"light_mask", integer_property("The draw's light mask: lights whose "
                                             "range_item_cull_mask shares a bit reach it.",
@@ -7789,7 +7787,7 @@ void register_builtin_commands(Registry& registry) {
         .name = "canvas.convert",
         .description = "Turns window pixels into the world through the current camera, or "
                        "back, as Godot's get_global_mouse_position. With id, uses the canvas "
-                       "that entity draws in (its CanvasLayer's, if any, named as layer).",
+                       "that entity draws in (its ScreenLayer's, if any, named as layer).",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({{"points", std::move(convert_points)},
@@ -7821,7 +7819,7 @@ void register_builtin_commands(Registry& registry) {
         .name = "physics.raycast",
         .description = "Returns the first body (or area) a ray from from to to hits: its id, the "
                        "point, the surface normal, how far along and, for a tile map layer or "
-                       "GridMap, the cell (and a GridMap's item). hit is null if none.",
+                       "BlockMap3D, the cell (and a BlockMap3D's item). hit is null if none.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params =
@@ -7848,7 +7846,7 @@ void register_builtin_commands(Registry& registry) {
         .effect = Effect::Read,
         .params = params_schema(with_filter({
             {"point", std::move(overlap_point)},
-            {"shape", property("object", "CollisionShape2D or CollisionShape3D fields, e.g. "
+            {"shape", property("object", "Collider2D or Collider3D fields, e.g. "
                                          "{\"shape\": \"circle\", \"radius\": 8}. Or give "
                                          "point.")},
             {"position", std::move(overlap_position)},
@@ -7958,8 +7956,8 @@ void register_builtin_commands(Registry& registry) {
     particles_tick["maximum"] = 1;
     registry.add({
         .name = "particles.eval",
-        .description = "Returns a CPUParticles2D's, GPUParticles2D's, CPUParticles3D's or "
-                       "GPUParticles3D's live "
+        .description = "Returns a Emitter2D's, GpuEmitter2D's, Emitter3D's or "
+                       "GpuEmitter3D's live "
                        "particles: how many, their bounds [x, y, w, h] in the world ([x, y, z, w, "
                        "h, d] in 3D; and their trails') and, with list, each one. A check without "
                        "a screenshot.",
@@ -7967,8 +7965,8 @@ void register_builtin_commands(Registry& registry) {
         .effect = Effect::Read,
         .params = params_schema(
             {
-                {"id", id_property("An entity with a CPUParticles2D, GPUParticles2D, "
-                                   "CPUParticles3D or GPUParticles3D.")},
+                {"id", id_property("An entity with a Emitter2D, GpuEmitter2D, "
+                                   "Emitter3D or GpuEmitter3D.")},
                 {"time", std::move(particles_time)},
                 {"tick_seconds", std::move(particles_tick)},
                 {"list", property("boolean", "Also return each particle. Default false.")},
@@ -7990,8 +7988,8 @@ void register_builtin_commands(Registry& registry) {
                        "[x, y, w, h], the lines labels, buttons, progress bars and text fields "
                        "show (rtl when they go right to left) and whether text overflows, each "
                        "button's draw_mode, each slider's and scroll bar's value and ratio, each "
-                       "ScrollContainer's scroll, scroll_max and scroll_bars, the part a clip "
-                       "shows (shown_rect, or clipped), each LineEdit's and TextEdit's caret "
+                       "ScrollBox's scroll, scroll_max and scroll_bars, the part a clip "
+                       "shows (shown_rect, or clipped), each TextField's and TextArea's caret "
                        "and selection, the control with focus and the one hovered, the popup "
                        "menus open with each item's rect, the tooltip shown, the drag going "
                        "on, and mistakes such as misspelled theme overrides. A check without a "
@@ -8022,10 +8020,10 @@ void register_builtin_commands(Registry& registry) {
     });
     registry.add({
         .name = "ui.press",
-        .description = "Presses a button (Button, CheckBox, CheckButton, OptionButton, "
-                       "MenuButton or TextureButton) at the next tick, as a click would: it "
+        .description = "Presses a button (Button, CheckBox, ToggleSwitch, Dropdown, "
+                       "MenuButton or ImageButton) at the next tick, as a click would: it "
                        "emits pressed, and toggles first if it is a toggle button; an "
-                       "OptionButton or MenuButton opens or closes its list. Returns the tick.",
+                       "Dropdown or MenuButton opens or closes its list. Returns the tick.",
         .capabilities = {Run},
         .effect = Effect::Read,
         .params = params_schema({{"id", property("string", "The button.")}}, {"id"}),
@@ -8033,14 +8031,14 @@ void register_builtin_commands(Registry& registry) {
     });
     registry.add({
         .name = "ui.popup",
-        .description = "Opens a popup menu (a PopupMenu at its position, or an OptionButton's "
+        .description = "Opens a popup menu (a PopupList at its position, or an Dropdown's "
                        "or MenuButton's list below it), closing any other, or closes it. "
                        "Returns the popups open.",
         .capabilities = {Run},
         .effect = Effect::Read,
         .params = params_schema(
             {
-                {"id", property("string", "The PopupMenu, OptionButton or MenuButton.")},
+                {"id", property("string", "The PopupList, Dropdown or MenuButton.")},
                 {"open", property("boolean", "False closes it. Default true.")},
             },
             {"id"}),
@@ -8050,15 +8048,15 @@ void register_builtin_commands(Registry& registry) {
     select_index["minimum"] = 0;
     registry.add({
         .name = "ui.select",
-        .description = "Picks an item of a PopupMenu, OptionButton or MenuButton at the next "
-                       "tick, as a click on it would, open or not: an OptionButton selects it "
+        .description = "Picks an item of a PopupList, Dropdown or MenuButton at the next "
+                       "tick, as a click on it would, open or not: an Dropdown selects it "
                        "(item_selected), the others emit id_pressed and index_pressed, and the "
                        "popup closes. Give index, item_id or text. Returns the index and tick.",
         .capabilities = {Run},
         .effect = Effect::Read,
         .params = params_schema(
             {
-                {"id", property("string", "The PopupMenu, OptionButton or MenuButton.")},
+                {"id", property("string", "The PopupList, Dropdown or MenuButton.")},
                 {"index", std::move(select_index)},
                 {"item_id", property("integer", "The item's id (its index if it has none).")},
                 {"text", property("string", "The first item with this text.")},
@@ -8151,7 +8149,7 @@ void register_builtin_commands(Registry& registry) {
         .description = "Does what a screen reader asks of a control, as Godot's accessibility "
                        "actions: click presses a button (or picks an open menu's item) at the "
                        "next tick, increment and decrement step a Range, set_value sets a "
-                       "Range or text field, scroll_* scroll a ScrollContainer by a page. "
+                       "Range or text field, scroll_* scroll a ScrollBox by a page. "
                        "Returns the tick.",
         .capabilities = {Run},
         .effect = Effect::Edit,
@@ -8165,7 +8163,7 @@ void register_builtin_commands(Registry& registry) {
             {"id", "action"}),
         .handler = ui_accessibility_action,
     });
-    json::Value search_flags = property("array", "How it matches. Default: the TextEdit's "
+    json::Value search_flags = property("array", "How it matches. Default: the TextArea's "
                                                  "search_flags.");
     search_flags["items"]["enum"] = json::Array{"match_case", "whole_words", "backwards"};
     json::Value search_from =
@@ -8177,7 +8175,7 @@ void register_builtin_commands(Registry& registry) {
     search_from["maxItems"] = 2;
     registry.add({
         .name = "ui.search",
-        .description = "Finds text in a TextEdit, as its search(): the next place it occurs from "
+        .description = "Finds text in a TextArea, as its search(): the next place it occurs from "
                        "a position, going round past the end (or, backwards, the start), as "
                        "found [line, column], or null. With all, every place in order (matches) "
                        "and how many (count).",
@@ -8185,7 +8183,7 @@ void register_builtin_commands(Registry& registry) {
         .effect = Effect::Read,
         .params = params_schema(
             {
-                {"id", property("string", "The TextEdit.")},
+                {"id", property("string", "The TextArea.")},
                 {"text", property("string", "What to find. Default: its search_text.")},
                 {"flags", std::move(search_flags)},
                 {"from", std::move(search_from)},
@@ -8246,12 +8244,12 @@ void register_builtin_commands(Registry& registry) {
     registry.add({
         .name = "model.inspect",
         .description = "Returns a model's meshes, materials, images, parts and bounds, as a "
-                       "MeshInstance3D draws them; brief gives only its size, pivot, triangles, "
+                       "Model3D draws them; brief gives only its size, pivot, triangles, "
                        "parts and attachment points.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({
-            {"id", id_property("An entity whose MeshInstance3D draws a model. Or give path.")},
+            {"id", id_property("An entity whose Model3D draws a model. Or give path.")},
             {"path",
              property("string",
                       "A .gltf, .glb, .obj, .fbx, .blend or .model.json file. Or give id.")},
@@ -8271,7 +8269,7 @@ void register_builtin_commands(Registry& registry) {
         .effect = Effect::Read,
         .params = params_schema(
             {
-                {"id", id_property("An entity whose MeshInstance3D draws a model.")},
+                {"id", id_property("An entity whose Model3D draws a model.")},
                 {"bones", names_property("Bones to pose. Default: the tree, without poses.")},
             },
             {"id"}),
@@ -8291,7 +8289,7 @@ void register_builtin_commands(Registry& registry) {
     path_point["maxItems"] = 3;
     registry.add({
         .name = "path.get",
-        .description = "Returns a Path2D's or Path3D's curve as baked: length, then for each "
+        .description = "Returns a Spline2D's or Spline3D's curve as baked: length, then for each "
                        "offset or ratio asked for the position and rotation there (3D: euler, "
                        "up vector and tilt), and the nearest point to closest_to. In the "
                        "path's space, or the world's with global.",
@@ -8299,7 +8297,7 @@ void register_builtin_commands(Registry& registry) {
         .effect = Effect::Read,
         .params = params_schema(
             {
-                {"id", id_property("An entity with a Path2D or Path3D.")},
+                {"id", id_property("An entity with a Spline2D or Spline3D.")},
                 {"offsets", std::move(path_offsets)},
                 {"ratios", std::move(path_ratios)},
                 {"closest_to", std::move(path_point)},
@@ -8347,17 +8345,17 @@ void register_builtin_commands(Registry& registry) {
                                           grid_extent,     grid_extent,     grid_extent};
     grid_box["minItems"] = 6;
     grid_box["maxItems"] = 6;
-    json::Value grid_item = any_property("An item of the GridMap's mesh library; null erases.");
+    json::Value grid_item = any_property("An item of the BlockMap3D's mesh library; null erases.");
     grid_item["type"] = json::Array{"string", "null"};
     json::Value orientation =
         property("integer", "One of Godot's 24 orientations: 0 none; 16, 10 and 22 turn the "
                             "item 90, 180 and 270 degrees about y. Default 0.");
     orientation["minimum"] = 0;
     orientation["maximum"] = scene3d::kOrientations - 1;
-    const json::Value gridmap_id = id_property("An entity with a GridMap.");
+    const json::Value gridmap_id = id_property("An entity with a BlockMap3D.");
     registry.add({
         .name = "gridmap.set",
-        .description = "Sets cells of an entity's GridMap to one item of its mesh library, "
+        .description = "Sets cells of an entity's BlockMap3D to one item of its mesh library, "
                        "turned by orientation, or erases them. Returns how many changed.",
         .capabilities = {Edit},
         .effect = Effect::Edit,
@@ -8382,7 +8380,7 @@ void register_builtin_commands(Registry& registry) {
     grid_points["maxItems"] = 1024;
     registry.add({
         .name = "gridmap.get",
-        .description = "Returns a GridMap's cells as floors of rows of legend keys, its "
+        .description = "Returns a BlockMap3D's cells as floors of rows of legend keys, its "
                        "library's items and problems; or given cells' items and centers; or the "
                        "cells points are in.",
         .capabilities = {Read},
@@ -8393,7 +8391,7 @@ void register_builtin_commands(Registry& registry) {
                 {"cells", std::move(grid_cells)},
                 {"points", std::move(grid_points)},
                 {"global", property("boolean", "Centers and points in the world's space, not "
-                                               "the GridMap's. Default false.")},
+                                               "the BlockMap3D's. Default false.")},
             },
             {"id"}),
         .handler = gridmap_get,
@@ -8522,7 +8520,7 @@ void register_builtin_commands(Registry& registry) {
     play_pitch["maximum"] = 16;
     registry.add({
         .name = "audio.play",
-        .description = "Plays an AudioStreamPlayer, AudioStreamPlayer2D or AudioStreamPlayer3D at "
+        .description = "Plays an SoundPlayer, SoundPlayer2D or SoundPlayer3D at "
                        "the next tick, as Godot's play(): it restarts, or adds a voice up to "
                        "max_polyphony. With "
                        "stream, plays that sound or .audio.json file on a polyphonic player "
@@ -8545,7 +8543,7 @@ void register_builtin_commands(Registry& registry) {
     });
     registry.add({
         .name = "audio.stop",
-        .description = "Stops an AudioStreamPlayer, AudioStreamPlayer2D or AudioStreamPlayer3D at "
+        .description = "Stops an SoundPlayer, SoundPlayer2D or SoundPlayer3D at "
                        "the next tick, as Godot's stop(). Returns the tick it stops at.",
         .capabilities = {Run},
         .effect = Effect::Read,

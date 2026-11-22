@@ -78,7 +78,7 @@ inline Affine3D moved(Vec3 at) {
 }
 
 inline MeshData unit_sphere(bool hemisphere = false) {
-    world::SphereMesh sphere;
+    world::SphereGeometry sphere;
     sphere.radius = 1.0F;
     // Godot's hemisphere is height tall, its sphere height across.
     sphere.height = hemisphere ? 1.0F : 2.0F;
@@ -90,7 +90,7 @@ inline MeshData unit_sphere(bool hemisphere = false) {
 
 // A tube that is radius wide with a round end each side, length long between their centers.
 inline MeshData capsule(float radius, float length) {
-    world::CapsuleMesh capsule;
+    world::CapsuleGeometry capsule;
     capsule.radius = radius;
     capsule.height = length + (2.0F * radius);
     capsule.radial_segments = 12;
@@ -100,7 +100,7 @@ inline MeshData capsule(float radius, float length) {
 
 // A tube 1 high and 1 across at its top, bottom times as wide at its bottom, with no ends.
 inline MeshData open_tube(float bottom = 1.0F) {
-    world::CylinderMesh cylinder;
+    world::CylinderGeometry cylinder;
     cylinder.top_radius = 1.0F;
     cylinder.bottom_radius = bottom;
     cylinder.height = 1.0F;
@@ -112,7 +112,7 @@ inline MeshData open_tube(float bottom = 1.0F) {
 }
 
 inline MeshData disc_cylinder(float bottom = 1.0F) {
-    world::CylinderMesh cylinder;
+    world::CylinderGeometry cylinder;
     cylinder.top_radius = 1.0F;
     cylinder.bottom_radius = bottom;
     cylinder.height = 1.0F;

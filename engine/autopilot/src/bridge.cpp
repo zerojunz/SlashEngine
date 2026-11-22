@@ -1560,7 +1560,7 @@ struct Bridge::State {
             return Answer::success(json::Object{});
         };
         if (action == "click") {
-            if (const auto* option = ecs.try_get<world::OptionButton>(control); option != nullptr) {
+            if (const auto* option = ecs.try_get<world::Dropdown>(control); option != nullptr) {
                 json::Value params;
                 params["id"] = control_id;
                 if (const json::Value* wanted = args.find("option");
@@ -1579,8 +1579,8 @@ struct Bridge::State {
                 return Answer::success(json::Value(json::Object{{"via", "select"}}));
             }
             push_click(*at, input::MouseButton::Left, false);
-            if (!ecs.any_of<world::Button, world::CheckBox, world::CheckButton, world::MenuButton,
-                            world::TextureButton>(control)) {
+            if (!ecs.any_of<world::Button, world::CheckBox, world::ToggleSwitch, world::MenuButton,
+                            world::ImageButton>(control)) {
                 return Answer::success(json::Value(json::Object{{"via", "mouse"}}));
             }
             // As the addon: the click, else the button pressed as its signal would be.
@@ -1625,10 +1625,10 @@ struct Bridge::State {
             } else if (value != nullptr && value->is_string()) {
                 typed = value->as_string();
             }
-            if (ecs.all_of<world::LineEdit>(control)) {
+            if (ecs.all_of<world::TextField>(control)) {
                 return set("LineEdit", json::Value(json::Object{{"text", typed}}));
             }
-            if (ecs.all_of<world::TextEdit>(control)) {
+            if (ecs.all_of<world::TextArea>(control)) {
                 return set("TextEdit", json::Value(json::Object{{"text", typed}}));
             }
             for (const std::string_view type : {"CheckBox", "CheckButton", "Button"}) {
@@ -1909,8 +1909,8 @@ struct Bridge::State {
 
     bool needs_fall_check() {
         const auto& ecs = session.world().ecs();
-        return !ecs.view<world::CharacterBody3D>().empty() ||
-               !ecs.view<world::CharacterBody2D>().empty();
+        return !ecs.view<world::CharacterMover3D>().empty() ||
+               !ecs.view<world::CharacterMover2D>().empty();
     }
 
     void long_fall(double real_dt, bool paused) {
@@ -1921,9 +1921,9 @@ struct Bridge::State {
         }
         const auto& ecs = session.world().ecs();
         bool falling_now = false;
-        if (const auto* body = ecs.try_get<world::CharacterBody3D>(p); body != nullptr) {
+        if (const auto* body = ecs.try_get<world::CharacterMover3D>(p); body != nullptr) {
             falling_now = !body->on_floor && body->velocity.y < 0.0F;
-        } else if (const auto* body2 = ecs.try_get<world::CharacterBody2D>(p); body2 != nullptr) {
+        } else if (const auto* body2 = ecs.try_get<world::CharacterMover2D>(p); body2 != nullptr) {
             falling_now = !body2->on_floor && body2->velocity.y > 0.0F;
         } else {
             return;
@@ -2021,7 +2021,7 @@ struct Bridge::State {
                     flagged.insert(id);
                     nan_finding(name);
                 } else if (kill_y && g.origin.y < *kill_y &&
-                           ecs.any_of<world::RigidBody3D, world::CharacterBody3D>(e)) {
+                           ecs.any_of<world::RigidBody3D, world::CharacterMover3D>(e)) {
                     flagged.insert(id);
                     std::array<char, 32> below{};
                     (void)std::snprintf(below.data(), below.size(), "%.0f",

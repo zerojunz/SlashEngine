@@ -5,7 +5,7 @@
   "layers": [
     {
       "components": {
-        "CPUParticles2D": {
+        "Emitter2D": {
           "amount": 12,
           "color": "=color",
           "explosiveness": 1,
@@ -38,17 +38,17 @@
     },
     {
       "components": {
-        "ColorRect": {
+        "ColorFill": {
           "color": [1, 1, 1, 0.35]
         },
-        "Control": {
+        "Widget": {
           "anchor_bottom": 1,
           "anchor_right": 1,
           "mouse_filter": "ignore"
         }
       },
       "curves": {
-        "ColorRect/color/a": [
+        "ColorFill/color/a": [
           [0, 0.35],
           [0.1, 0]
         ]

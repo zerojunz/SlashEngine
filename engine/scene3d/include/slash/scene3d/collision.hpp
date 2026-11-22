@@ -17,7 +17,7 @@
 
 // The shapes a model collides as (Model::collision), as Godot's importer makes them: from its
 // nodes' collision hints (apply_import_hints), or generated as its "Generate > Physics" options
-// do, with V-HACD for convex decomposition. A MeshInstance3D whose model has them is a static
+// do, with V-HACD for convex decomposition. A Model3D whose model has them is a static
 // body, as the StaticBody3D Godot's importer adds, or adds them to the body it is on.
 namespace slash::scene3d {
 
@@ -49,23 +49,23 @@ struct DecomposeOptions {
 
 // A model's collision as CollisionShape3Ds in its own space: convex_polygon shapes of hulls'
 // points, and concave_polygon shapes of trimeshes' faces.
-[[nodiscard]] std::vector<world::CollisionShape3D> collision_shapes(const Model& model);
+[[nodiscard]] std::vector<world::Collider3D> collision_shapes(const Model& model);
 
-// The shapes of the model an entity's MeshInstance3D draws, or null when it draws none or its
+// The shapes of the model an entity's Model3D draws, or null when it draws none or its
 // model has no collision. With install_model_collision they are kept until the model changes;
 // without, the model is read with the world's file reader on each call.
-[[nodiscard]] std::shared_ptr<const std::vector<world::CollisionShape3D>>
+[[nodiscard]] std::shared_ptr<const std::vector<world::Collider3D>>
 model_shapes(const world::World& world, entt::entity entity);
 
 // Keeps each model's shapes for model_shapes, the models read with models.
 void install_model_collision(world::World& world, ModelLoader models);
 
-// A MeshInstance3D whose model has collision, in storage order, with its shapes: physics3d
+// A Model3D whose model has collision, in storage order, with its shapes: physics3d
 // makes it a static body of them, layer and mask 1, unless it is a body itself or the child of
-// one, which takes them as it takes a CollisionShape3D.
+// one, which takes them as it takes a Collider3D.
 struct ModelBody {
     entt::entity entity = entt::null;
-    std::shared_ptr<const std::vector<world::CollisionShape3D>> shapes;
+    std::shared_ptr<const std::vector<world::Collider3D>> shapes;
 };
 [[nodiscard]] std::vector<ModelBody> model_bodies(const world::World& world);
 

@@ -74,16 +74,16 @@ std::string courtyard(std::string_view sky, double energy) {
     return R"({"format": 1, "entities": {
         "camera": {"components": {"Camera3D": {"current": true},
             "Transform3D": {"position": [0, 1.5, 5], "rotation": [-0.2, 0, 0]}}},
-        "environment": {"components": {"WorldEnvironment": {"background_mode": "color",
+        "environment": {"components": {"Environment3D": {"background_mode": "color",
             "background_color": )" +
            std::string(sky) + R"(, "ambient_light_source": "color",
             "ambient_light_color": [0.4, 0.4, 0.5, 1]}}},
-        "ground": {"components": {"MeshInstance3D": {}, "PlaneMesh": {"size": [20, 20]},
-            "StandardMaterial3D": {"albedo_color": [0.45, 0.4, 0.35, 1]}, "Transform3D": {}}},
-        "wall": {"components": {"MeshInstance3D": {}, "BoxMesh": {"size": [3, 2, 0.4]},
-            "StandardMaterial3D": {"albedo_color": [0.7, 0.55, 0.45, 1]},
+        "ground": {"components": {"Model3D": {}, "PlaneGeometry": {"size": [20, 20]},
+            "Surface3D": {"albedo_color": [0.45, 0.4, 0.35, 1]}, "Transform3D": {}}},
+        "wall": {"components": {"Model3D": {}, "BoxGeometry": {"size": [3, 2, 0.4]},
+            "Surface3D": {"albedo_color": [0.7, 0.55, 0.45, 1]},
             "Transform3D": {"position": [0, 1, 0]}}},
-        "sun": {"components": {"DirectionalLight3D": {"light_color": [1, 0.75, 0.55, 1],
+        "sun": {"components": {"SunLight3D": {"light_color": [1, 0.75, 0.55, 1],
             "light_energy": )" +
            std::to_string(energy) + R"(}, "Transform3D": {"rotation": [-0.4, 0.6, 0]}}}}})";
 }
@@ -174,9 +174,9 @@ TEST_CASE("style.mark keeps a scene's look, and style.check finds drift and what
     CHECK(fields["capture"] == parse(R"({"frame": "storyboard/style/dusk.png",
         "path": "scenes/yard.scene.json", "size": [64, 36], "what": "scene"})"));
     CHECK(fields["links"] == parse(R"(["scenes/yard.scene.json", "scenes"])"));
-    CHECK(fields["settings"]["entities"]["sun"]["DirectionalLight3D"]["light_energy"].as_double() ==
+    CHECK(fields["settings"]["entities"]["sun"]["SunLight3D"]["light_energy"].as_double() ==
           doctest::Approx(1.2));
-    CHECK(fields["settings"]["entities"].find("wall") != nullptr); // its StandardMaterial3D
+    CHECK(fields["settings"]["entities"].find("wall") != nullptr); // its Surface3D
 
     // A brief for any scene its links cover hands over the reference.
     json::Value brief = engine.ok("storyboard.brief", R"({"scenes": ["scenes/well.scene.json"]})");
@@ -200,8 +200,8 @@ TEST_CASE("style.mark keeps a scene's look, and style.check finds drift and what
     json::Value well = checked["checked"].as_array()[0];
     CHECK(well.find("over") != nullptr);
     CHECK(well["over"].find("value") != nullptr);
-    CHECK(well["changed"] == parse(R"(["/entities/environment/WorldEnvironment/background_color",
-        "/entities/sun/DirectionalLight3D/light_energy"])"));
+    CHECK(well["changed"] == parse(R"(["/entities/environment/Environment3D/background_color",
+        "/entities/sun/SunLight3D/light_energy"])"));
 
     // test.run fails the drift, pointing at the reference.
     json::Value tested = engine.ok("test.run");
@@ -276,12 +276,12 @@ TEST_CASE("style references keep 2D scenes, images, models and materials too") {
     write(root + "/dusk.texture.json", R"({"format": 1, "type": "GradientTexture1D",
         "width": 64, "gradient": {"points": [{"offset": 0, "color": [0.1, 0.1, 0.3, 1]},
         {"offset": 1, "color": [0.9, 0.4, 0.3, 1]}]}})");
-    // A 2D scene: the gradient stretched over the window, under a CanvasModulate.
+    // A 2D scene: the gradient stretched over the window, under a AmbientTint2D.
     const auto menu = [](std::string_view tint) {
         return R"({"format": 1, "entities": {
             "sky": {"components": {"Sprite2D": {"texture": "dusk.texture.json"},
                 "Transform2D": {"position": [32, 18], "scale": [1, 36]}}},
-            "tint": {"components": {"CanvasModulate": {"color": )" +
+            "tint": {"components": {"AmbientTint2D": {"color": )" +
                std::string(tint) + R"(}}}}})";
     };
     write(root + "/scenes/menu.scene.json", menu("[1, 1, 1, 1]"));
@@ -317,7 +317,7 @@ TEST_CASE("style references keep 2D scenes, images, models and materials too") {
     REQUIRE(checked["checked"].size() == 1);
     CHECK(checked["checked"].as_array()[0]["over"].find("warmth") != nullptr);
     CHECK(checked["checked"].as_array()[0]["changed"] ==
-          parse(R"(["/entities/tint/CanvasModulate/color"])"));
+          parse(R"(["/entities/tint/AmbientTint2D/color"])"));
 
     // Mistakes say what to give.
     CHECK(engine

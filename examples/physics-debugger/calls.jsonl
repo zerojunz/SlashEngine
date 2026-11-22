@@ -15,7 +15,7 @@
 {"jsonrpc":"2.0","id":15,"method":"entity.get","params":{"id":"top","components":["Transform3D"]}}
 {"jsonrpc":"2.0","id":16,"method":"physics.cache","params":{"save":"anims/collapse.anim.json","name":"collapse","tolerance":0.002}}
 {"jsonrpc":"2.0","id":17,"method":"world.restore","params":{}}
-{"jsonrpc":"2.0","id":18,"method":"component.set","params":{"id":"director","components":{"AnimationPlayer":{"library":"anims/collapse.anim.json","animation":"collapse","targets":{"bottom":"bottom","middle":"middle","top":"top"}}}}}
+{"jsonrpc":"2.0","id":18,"method":"component.set","params":{"id":"director","components":{"Animator":{"library":"anims/collapse.anim.json","animation":"collapse","targets":{"bottom":"bottom","middle":"middle","top":"top"}}}}}
 {"jsonrpc":"2.0","id":19,"method":"step","params":{"ticks":120}}
 {"jsonrpc":"2.0","id":20,"method":"entity.get","params":{"id":"top","components":["Transform3D"]}}
 {"jsonrpc":"2.0","id":21,"method":"physics.debug","params":{"id":"tp"}}

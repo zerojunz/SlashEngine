@@ -106,7 +106,7 @@ int main() {
 
     std::puts("-- with the wall layer's occlusion off, its tiles cast no shadows");
     agent.call("component.set",
-               R"({"id": "walls", "components": {"TileMapLayer": {"occlusion_enabled": false}}})");
+               R"({"id": "walls", "components": {"TileLayer2D": {"occlusion_enabled": false}}})");
     agent.call("light.sample", R"({"points": [[100, 16], [56, 56]]})");
     return 0;
 }
